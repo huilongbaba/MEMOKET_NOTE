@@ -22,3 +22,4 @@ artifacts/*
 frontend/tsconfig.tsbuildinfo
 
 .DS_Store
+*.lock

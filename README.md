@@ -124,6 +124,9 @@ LLM_MODEL=gpt-4.1-mini
 - **推理强度影响巨大**。交互路径一律 `reasoning_effort=low`，比 high 快 3 倍。
 - **KITE 只从 `os.environ` 读 provider 配置**（`OPENAI_API_KEY` / `OPENAI_BASE_URL`），
   不走参数传递，调用前必须先 export。
+- **KITE 的 `remember()` 不加锁**。它全量重写 XML，两个并发写会互相覆盖，
+  且不报错 —— 事实会静默消失。写入必须持有 `kite_writer.write_lock()`，
+  且 `Memory.load()` 要在锁**内**（锁外加载等于拿过期快照）。
 - **anchor 必须逐字匹配**。修订建议里模型给的 anchor 如果不在正文中出现，前端
   定位不到，后端会直接丢弃这条。
 
@@ -132,4 +135,4 @@ LLM_MODEL=gpt-4.1-mini
 - 修订建议基于纯文本 anchor，不是富文本编辑器的 diff 引擎。用户改动 anchor 所在
   文字后，对应的修订会自动失效并从面板消失。
 - 跨语言提问（中文库用英文问，反之亦然）召回率低 —— 符号引擎没有语义嵌入。
-- 没有认证，没有并发写保护。原型定位。
+- 没有认证。原型定位，`routers/deps.py` 的 `current_user` 是占位。

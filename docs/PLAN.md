@@ -3,24 +3,16 @@
 现状：笔记 CRUD、骨架线、修订线、magic tap、单条文本/音频入库、符号检索
 都已实现（见 README）。本文档只列**剩余工作**。
 
-## 1. 并发写保护（前置，必须先做）
+## 1. 并发写保护 ✅ 已完成
 
-`kite_memory.py` 的 `remember()` 是裸调用：
+实现在 `app/kite_writer.py`，`UserMemory.remember()` 全程持锁。
 
-```python
-memory = Memory.load(self.path, model=s.kite_extract_model)
-facts = memory.remember(messages, session_id=session_id, ...)
-```
+两层锁：进程内 `threading.Lock` 覆盖 `BackgroundTasks` 线程池，
+文件锁覆盖 `uvicorn --workers N` 的多进程部署。锁粒度是单个 codebook 文件，
+不同用户可以并行（KITE 只禁止同一文件的并发写）。
 
-KITE 的 `remember()` 全量重写 XML 且**不加锁**（见 `kite-constraints.md` 约束 1）。
-当前单条入库时并发概率低，但**批量导入会把并发写变成常态**，
-所以这一条是第 2 节的前置条件，不是可选项。
-
-**方案**：每个 codebook 一个单写者队列。入库任务只往队列里投递，
-由该用户专属的 worker 串行执行 `remember()`。
-
-不同用户的 codebook 是不同文件，可以并行 —— KITE 只禁止同一文件的并发写，
-而 `recall()` 支持多文件同时 load（约束 2）。
+回归测试见 `tests/test_write_lock.py`。其中 `test_unlocked_writes_lose_data`
+刻意断言「不加锁就会丢数据」—— 没有这条基线，其他测试通过也可能只是并发没撞上。
 
 ## 2. 批量导入 + 多格式
 

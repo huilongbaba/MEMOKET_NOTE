@@ -23,6 +23,7 @@ from memoket_kite import Memory
 from memoket_kite.core.algebra import Store, execute_plan
 
 from .config import get_settings
+from .kite_writer import write_lock
 
 EMPTY_CODEBOOK = (
     '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -260,13 +261,22 @@ class UserMemory:
 
     def remember(self, messages: list[dict], *, session_id: str,
                  date: str | None = None, title: str = "") -> int:
-        """把一段内容抽成 fact 存进 codebook。调用方负责放到后台执行。"""
+        """把一段内容抽成 fact 存进 codebook。调用方负责放到后台执行。
+
+        写入全程持有该 codebook 的独占锁 —— KITE 的 ``remember()`` 全量重写
+        XML 且不加锁，并发写会互相覆盖造成静默的数据丢失（见 kite_writer）。
+
+        ``Memory.load()`` 必须放在锁**内**：它把整个 XML 读进内存，
+        ``remember()`` 再基于这份快照重写全文。在锁外加载等于拿到一份可能
+        过期的快照，写回时会抹掉别人刚提交的 session。
+        """
         s = get_settings()
         _export_provider_env()
         self.ensure()
-        memory = Memory.load(self.path, model=s.kite_extract_model)
-        facts = memory.remember(messages, session_id=session_id,
-                                date=date, title=title or None)
+        with write_lock(self.path):
+            memory = Memory.load(self.path, model=s.kite_extract_model)
+            facts = memory.remember(messages, session_id=session_id,
+                                    date=date, title=title or None)
         self.invalidate()
         return len(facts)
 
