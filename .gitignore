@@ -1,0 +1,10 @@
+# 生成的知识库产物（体积会变大，且含用户内容）
+artifacts/*
+!artifacts/_seed_empty.xml
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+.env
