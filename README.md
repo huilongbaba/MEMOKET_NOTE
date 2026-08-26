@@ -1,84 +1,135 @@
 # MEMOKET NOTE
 
-AI 驱动的编辑器 + 知识库。上传的文档和录音都会成为知识库中的条目，
-写作时自动引用、对齐和修正已有信息。
+AI 驱动的编辑器 + 个人知识库。写作时自动引用你自己的记录，语音和文档都能入库。
+长期记忆由 [KITE](https://github.com/memoket/memoket-kite) 提供。
 
-长期记忆引擎用 [memoket-kite](https://github.com/memoket/memoket-kite) ——
-无向量、可解释：问题编译成可读的检索 plan，答案带着证据回来。
+前后端分离，可完全本地运行 —— 笔记内容不出内网。
 
-> **当前状态：P0（可行性验证）**
-> 还没有可运行的应用。仓库里目前是架构约束、实施计划和一份中文可行性实测。
-> 结论见 [`docs/P0-findings.md`](docs/P0-findings.md)。
+## 功能
 
-## 为什么先做可行性验证
-
-KITE 的默认 profile 是英文的 —— 它的分词正则只匹配 ASCII 字母，
-而且这个 profile 在库里是硬编码的，调用方换不掉。
-中文笔记能不能用，读代码得不出结论，只能实测。
-
-顺带也验证了整条链路能不能跑在本地模型上（不依赖商用 API）。
+| 功能 | 说明 |
+|---|---|
+| **magic tap 续写** | 先查知识库，命中就据此续写；没命中退回模型自由发挥。流式输出 |
+| **写作骨架**（线 1） | 为当前正文提炼主线逻辑，作为后续编辑和续写的依据 |
+| **智能编辑**（线 2） | 对照骨架和知识库检查正文，以 track-changes 形式给出修订，逐条接受/拒绝，**绝不直接覆盖原文** |
+| **语音入库** | 录音 → Whisper 转写 → 抽成结构化事实存入知识库 |
+| **语音输入** | 录音 → 转写 → 直接插到光标处 |
+| **知识库检索/提问** | 两条路径，见下 |
 
 ## 架构
 
 ```
-前端  React + TypeScript + Vite + TipTap(ProseMirror)
-        │  REST + SSE
-后端  FastAPI (Python 3.11)
-        ├── KITE 记忆引擎   分片 artifact + 单写者队列
-        ├── LLM 网关        OpenAI 兼容，默认指向本地 Muse-Glimmer-30B
-        ├── ASR 网关        Whisper large-v3-turbo
-        └── SQLite          笔记正文、修订记录、任务状态
+前端 (Vite + React, :5173)
+    │  HTTP / SSE
+后端 (FastAPI, :8000)
+    ├── KITE Memory      每用户一个 XML codebook
+    ├── LLM              OpenAI 兼容端点（默认内网 Muse-Glimmer-30B）
+    └── Whisper Turbo    whisper.cpp server
 ```
 
-两个本地推理服务跑在局域网 GPU 服务器上，均为 OpenAI 兼容端点，
-配置可切换到商用 API。
+## 关键设计：检索为什么不走 KITE 原生 API
 
-## 核心功能
+KITE 的 `recall()` / `answer()` 会用 LLM 把问题编译成查询计划（`compile_plan.py`）。
+在本地 30B 模型上实测：
 
-| 功能 | 说明 |
+| 操作 | 耗时 | LLM 调用 |
+|---|---|---|
+| 原生 `recall()` | 188.6s | 3 次 |
+| 降低推理强度后 | 51.5s | 3 次 |
+| **本项目的符号检索** | **~1 ms** | **0 次** |
+
+profiling 显示 `recall()` 的 38s 里，**本地符号检索只占 0.0s，100% 的时间都在 LLM planning**。
+
+所以本项目把两件事拆开：
+
+- **入库（异步，可以慢）** —— 走 KITE 原生 `remember()`，用 LLM 抽取结构化事实。约 13s/段，后台跑。
+- **检索（交互路径，必须快）** —— 用 `Vocab.resolve_topic/resolve_entity` 做确定性符号解析，
+  手工构造 plan dict 交给 `execute_plan()`。零 LLM，亚毫秒。
+
+**代价**：失去意图理解和时序推理（"现在谁负责" 这类需要按时间取最新的问题）。
+所以保留了 `/api/memory/ask` 走原生 planning，用在用户主动提问的路径 —— 那里用户
+按下按钮就知道要等，而且确实需要推理能力。写作路径一律用零 LLM 的 `/recall`。
+
+### 跨语言检索
+
+KITE 的抽取提示词是英文的，中文输入有时抽出英文 fact，符号通道匹配不上。
+但原始 `<line>` 保留了中文原文，所以有三级回退：
+
+1. 符号匹配（topic / entity）
+2. 英文词法 grep
+3. **中文 n-gram grep 原始行 → 定位 session → 取该 session 的 facts**
+
+n-gram 生成有两个要点：从**最靠近光标的片段**开始（续写时正文尾部才相关），
+按片段**轮转取样**（否则第一个长片段会吃光候选配额）。
+
+## 设计文档
+
+| 文档 | 内容 |
 |---|---|
-| 批量导入 | 文档（pdf / docx / txt / md）与音频，异步 job + SSE 进度 |
-| 知识库可视化 | 主题地图、时间线、事实表，每条事实可展开看原文证据 |
-| magic tap | 检索知识库续写；无相关内容时退回模型自由续写 |
-| 自动化编辑 | 后台生成写作骨架，结合知识库产出**修订建议**，不直接覆写用户输入 |
+| [`docs/kite-constraints.md`](docs/kite-constraints.md) | 读 KITE 源码得出的 8 条硬约束，每条标了源码位置。升级 KITE 后应重新核对 |
+| [`docs/P0-findings.md`](docs/P0-findings.md) | 中英文对照实测，量化了中文召回的退化幅度 |
+| [`docs/PLAN.md`](docs/PLAN.md) | 后续路线 |
 
-## 目录
-
-```
-docs/
-  kite-constraints.md   读 KITE 源码得出的硬约束，含源码位置
-  P0-findings.md        中文可行性实测结论
-scripts/
-  kite_zh_smoke.py      中文冒烟测试（P0 gate）
-artifacts/
-  _seed_empty.xml       空 codebook 模板
-```
-
-## 跑冒烟测试
+## 快速开始
 
 ```bash
-pip install memoket-kite
+cp .env.example .env      # 按需改 LLM / Whisper 地址
 
-export OPENAI_BASE_URL=http://<your-llm-host>/v1
-export OPENAI_API_KEY=no-key
-export KITE_MODEL=muse-glimmer-30b
+cd backend
+pip install -r requirements.txt
+PYTHONPATH=. uvicorn app.main:app --reload --port 8000
 
-python scripts/kite_zh_smoke.py        # 中英文对照
-python scripts/kite_zh_smoke.py zh     # 只跑中文
+cd ../frontend
+npm install
+npm run dev               # http://localhost:5173
 ```
 
-耗时取决于 LLM 速度。本地 30B 模型上，中英文各一轮约 15 分钟。
+`GET /api/health` 会报出 LLM 和语音服务是否可达。
 
-## 路线
+## 配置
 
-| 阶段 | 内容 | 状态 |
-|---|---|---|
-| P0 | 骨架 + 中文可行性验证 | 进行中 |
-| P1 | 批量导入流水线（多格式 + 音频 + 异步 job + SSE） | |
-| P2 | 知识库可视化 | |
-| P3 | magic tap | |
-| P4 | 自动化编辑（骨架线 + 修订线） | |
-| P5 | 编辑器前端 + 修订 UI | |
-| P6 | 打包部署 | |
+默认指向内网 DGX Spark 上的服务。切商用 API 只改 `.env`：
 
-P0 是 gate：中文召回若不达标，P3/P4 的方案要改。
+```bash
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4.1-mini
+```
+
+## API
+
+| 端点 | 说明 |
+|---|---|
+| `GET/POST/PUT/DELETE /api/notes` | 笔记 CRUD |
+| `POST /api/skeleton` | 线 1：生成写作骨架 |
+| `POST /api/edit` | 线 2：生成 track-changes 修订建议 |
+| `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |
+| `POST /api/memory/recall` | 符号检索，零 LLM，~1 ms |
+| `POST /api/memory/ask` | 原生 planning 提问，支持时序推理，~50 s |
+| `GET /api/memory/stats` | 知识库统计 |
+| `POST /api/ingest/text` | 文本入库（后台任务，返回 job_id） |
+| `POST /api/ingest/audio` | 语音入库 |
+| `POST /api/ingest/transcribe` | 只转写不入库 |
+| `GET /api/ingest/jobs/{id}` | 入库任务状态 |
+
+用户身份走 `X-User-Id` 请求头，每个 user_id 对应一个独立的 codebook。
+原型阶段没有认证，生产环境把 `routers/deps.py` 里的 `current_user` 换成真实鉴权即可。
+
+## 踩过的坑
+
+- **思考内容关不掉**。Muse-Glimmer 总会先输出 `reasoning_content`，实测
+  `reasoning_budget=0` / `thinking_budget=0` / `chat_template_kwargs` 都压不住
+  （最好一档仍有 467 字符思考）。所以 `max_tokens` 必须预留额度 —— 见 `llm.py`
+  的 `REASONING_RESERVE`。给小了正文会被截断甚至返回空字符串。
+- **推理强度影响巨大**。交互路径一律 `reasoning_effort=low`，比 high 快 3 倍。
+- **KITE 只从 `os.environ` 读 provider 配置**（`OPENAI_API_KEY` / `OPENAI_BASE_URL`），
+  不走参数传递，调用前必须先 export。
+- **anchor 必须逐字匹配**。修订建议里模型给的 anchor 如果不在正文中出现，前端
+  定位不到，后端会直接丢弃这条。
+
+## 已知限制
+
+- 修订建议基于纯文本 anchor，不是富文本编辑器的 diff 引擎。用户改动 anchor 所在
+  文字后，对应的修订会自动失效并从面板消失。
+- 跨语言提问（中文库用英文问，反之亦然）召回率低 —— 符号引擎没有语义嵌入。
+- 没有认证，没有并发写保护。原型定位。
