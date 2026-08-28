@@ -14,45 +14,58 @@
 回归测试见 `tests/test_write_lock.py`。其中 `test_unlocked_writes_lose_data`
 刻意断言「不加锁就会丢数据」—— 没有这条基线，其他测试通过也可能只是并发没撞上。
 
-## 2. 批量导入 + 多格式
+## 2. 批量导入 + 多格式 ✅ 已完成
 
-当前 `/api/ingest/text` 收单条正文，`/api/ingest/audio` 收单个文件。
-需要扩成批量 + 文档格式。
+`POST /api/ingest/batch` 收多文件，PDF/DOCX/TXT/MD/音频混着传：
 
 ```
-多文件上传 → 建 job（含 N 个 item）
-     ↓  每个 item 独立处理，失败不拖垮整批
-  ├─ 音频 wav/mp3/m4a/flac → Whisper（已接）
-  ├─ PDF   → PyMuPDF，保留页码
-  ├─ DOCX  → python-docx
-  └─ TXT/MD→ 直读，markdown 按标题层级切分
+多文件上传 → create_batch_job() 建 job + N 个 item
+     ↓  顺序处理，单个 item 失败不拖垮整批（try/except 包一层）
+  ├─ 音频 wav/mp3/m4a/flac → asr.transcribe()（已接）
+  ├─ PDF   → extract.py，PyMuPDF，逐页标 [pN]
+  ├─ DOCX  → extract.py，python-docx，读段落
+  └─ TXT/MD→ 直读；MD 按标题行先切段（_markdown_sections），
+              再对每段跑 _chunks_for()
      ↓
-  复用现有 _chunks() 切分
-     ↓
-  投递到该用户的单写者队列（第 1 节）
+  mem.remember()，session_id = f"{item_id}-{chunk_idx}"
 ```
 
-**幂等**：`session_id` 用 `{doc_id}-{chunk_idx}`。KITE 在 LLM 调用之前就拒绝
-重复 session_id（约束 3），失败重跑既不写重也不浪费 LLM 调用。
+实现：`app/extract.py`（格式提取）+ `routers/ingest.py` 的 `_batch_job` /
+`_chunks_for` / `_markdown_sections`。`store.py` 新增 `ingest_items` 表，
+`update_job_from_items()` 把 item 状态聚合成 job 状态。
 
-**成本**：实测约 13 s/chunk。100 个文档 × 10 chunk ≈ 3–5 小时。
-批量导入本质上是**小时级后台任务**，job 必须能后台跑、能续、能看进度。
+**幂等**用的是 item_id（uuid）而不是文档路径 —— 重跑同一批次会产生新
+session_id，不去重；如果要支持"重新导入同一份文档不产生重复 fact"，
+还需要按文件内容 hash 复用 item_id，目前没做。
 
-## 3. 异步进度接口
+回归测试见 `tests/test_batch_ingest.py`：切块规则、格式提取、
+job/item 状态聚合（含"有一个失败但其余成功"这类场景）。
 
-当前只有 `GET /api/ingest/jobs/{id}` 轮询。批量场景需要推送。
+## 3. 异步进度接口 ✅ 已完成
 
 ```
 POST /api/ingest/batch              多文件 → {job_id, items[]}
-GET  /api/ingest/jobs/{id}/events   SSE 进度流
-POST /api/ingest/jobs/{id}/cancel
-GET  /api/ingest/jobs               历史列表
+GET  /api/ingest/jobs/{id}/events   SSE 进度流（已实现）
+POST /api/ingest/jobs/{id}/cancel   已实现
+GET  /api/ingest/jobs               历史列表，已实现
 ```
 
-item 状态机：`queued → extracting → transcribing → chunking → remembering →
-done | failed | cancelled`
+item 状态机：`queued → extracting → [transcribing] → chunking →
+remembering → done | failed | cancelled`，与计划一致。
 
-magic tap 已经在用 SSE，前端有现成的处理方式可复用。
+**实现方式**：没有引入消息队列 —— `/events` 是轮询 SQLite（0.7s 一次），
+状态没变化就不推帧，job 到终态推 `end` 事件后关闭连接。批量任务本身
+在一个 `BackgroundTasks` 里顺序处理所有文件（没有跨文件并发），取消
+语义因此很简单：正在跑的文件跑完，还没轮到的直接标 `cancelled`。
+
+前端：`api.ts` 的 `watchJob()` 复用了 magic tap 的 SSE 帧解析方式；
+`MemoryPanel.tsx` 加了"批量导入"区块，多文件选择器 + 实时进度列表 + 取消按钮。
+
+**已知取舍**：顺序处理意味着一个文件卡住（比如 LLM 调用挂起）会让队列里
+后面的文件都等着。真要支持并发，`remember()` 本身的锁允许同用户多文件
+并发写（第 1 节的锁按文件粒度，不是按用户），可以把 `_batch_job` 里的
+顺序 for 循环换成有限并发（比如 asyncio.Semaphore(3)），但目前没有实测
+瓶颈在哪，先不做。
 
 ## 4. 知识库可视化
 

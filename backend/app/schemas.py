@@ -52,11 +52,24 @@ class IngestTextIn(BaseModel):
     source: str = "doc"
 
 
-class IngestOut(BaseModel):
-    job_id: str
-    status: Literal["queued", "running", "done", "error"]
+class IngestItemOut(BaseModel):
+    """批量任务里单个文件的进度。单文件任务（/text /audio）不产生 item，恒为空列表。"""
+    id: str
+    idx: int
+    filename: str
+    kind: str
+    status: Literal["queued", "extracting", "transcribing", "chunking",
+                    "remembering", "done", "failed", "cancelled"]
     facts: int = 0
     detail: str = ""
+
+
+class IngestOut(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "done", "error", "cancelled"]
+    facts: int = 0
+    detail: str = ""
+    items: list[IngestItemOut] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- 写作

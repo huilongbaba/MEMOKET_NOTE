@@ -181,9 +181,80 @@ export const transcribeOnly = (file: Blob, filename = 'recording.webm') => {
     .then(json<{ text: string }>)
 }
 
+export type IngestItem = {
+  id: string
+  idx: number
+  filename: string
+  kind: string
+  status: 'queued' | 'extracting' | 'transcribing' | 'chunking' | 'remembering'
+    | 'done' | 'failed' | 'cancelled'
+  facts: number
+  detail: string
+}
+
+export type JobOut = {
+  job_id: string
+  status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
+  facts: number
+  detail: string
+  items: IngestItem[]
+}
+
 export const jobStatus = (jobId: string) =>
-  fetch(`/api/ingest/jobs/${jobId}`, { headers: headers() }).then(
-    json<{ job_id: string; status: string; facts: number; detail: string }>,
-  )
+  fetch(`/api/ingest/jobs/${jobId}`, { headers: headers() }).then(json<JobOut>)
+
+export const listJobs = (limit = 20) =>
+  fetch(`/api/ingest/jobs?limit=${limit}`, { headers: headers() }).then(json<JobOut[]>)
+
+export const cancelJob = (jobId: string) =>
+  fetch(`/api/ingest/jobs/${jobId}/cancel`, { method: 'POST', headers: headers() }).then(json)
+
+/** 批量入库：PDF / DOCX / TXT / MD / 音频混着传，每个文件独立处理。 */
+export const ingestBatch = (files: File[]) => {
+  const fd = new FormData()
+  for (const f of files) fd.append('files', f, f.name)
+  fd.append('language', 'auto')
+  return fetch('/api/ingest/batch', { method: 'POST', headers: headers(), body: fd })
+    .then(json<JobOut>)
+}
+
+/** 订阅批量任务的进度流。onProgress 每次状态变化都会收到完整快照，任务到
+ * 终态（done/error/cancelled）时 onEnd 被调用一次并自动关闭连接。 */
+export function watchJob(
+  jobId: string,
+  onProgress: (j: JobOut) => void,
+  onEnd: () => void,
+  signal?: AbortSignal,
+) {
+  ;(async () => {
+    const res = await fetch(`/api/ingest/jobs/${jobId}/events`, { headers: headers(), signal })
+    if (!res.ok || !res.body) throw new Error(`events failed: ${res.status}`)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let event = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const frames = buf.split('\n\n')
+      buf = frames.pop() ?? ''
+      for (const frame of frames) {
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) {
+            const raw = line.slice(5).trim()
+            if (!raw) continue
+            if (event === 'progress') onProgress(JSON.parse(raw) as JobOut)
+            else if (event === 'end') onEnd()
+          }
+        }
+      }
+    }
+  })().catch((err) => {
+    if (signal?.aborted) return
+    throw err
+  })
+}
 
 export const health = () => fetch('/api/health').then(json<any>)

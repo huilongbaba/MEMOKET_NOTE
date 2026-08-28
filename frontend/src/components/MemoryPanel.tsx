@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react'
-import { ask, ingestText, jobStatus, memoryStats, recall } from '../api'
-import type { Fact } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { ask, cancelJob, ingestBatch, ingestText, jobStatus, memoryStats, recall, watchJob } from '../api'
+import type { Fact, JobOut } from '../api'
+
+const STATUS_LABEL: Record<string, string> = {
+  queued: '排队中', extracting: '提取文本', transcribing: '转写中',
+  chunking: '切块', remembering: '抽取入库', done: '完成',
+  failed: '失败', cancelled: '已取消',
+}
 
 /**
  * 知识库面板。两条检索路径的差异在这里直接暴露给用户：
@@ -16,9 +22,12 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [busy, setBusy] = useState<'' | 'recall' | 'ask' | 'ingest'>('')
   const [paste, setPaste] = useState('')
   const [job, setJob] = useState('')
+  const [batchJob, setBatchJob] = useState<JobOut | null>(null)
+  const batchAbort = useRef<AbortController | null>(null)
 
   const refresh = () => memoryStats().then(setStats).catch(() => {})
   useEffect(() => { refresh() }, [])
+  useEffect(() => () => batchAbort.current?.abort(), [])
 
   // 入库是后台任务，轮询到 done 再刷新统计
   useEffect(() => {
@@ -61,6 +70,21 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       const r = await ingestText(paste, '手动录入')
       setJob(r.job_id); setPaste('')
     } finally { setBusy('') }
+  }
+
+  async function doBatchIngest(files: FileList | null) {
+    if (!files || files.length === 0) return
+    batchAbort.current?.abort()
+    const controller = new AbortController()
+    batchAbort.current = controller
+    const r = await ingestBatch(Array.from(files))
+    setBatchJob(r)
+    watchJob(r.job_id, setBatchJob, () => refresh(), controller.signal)
+  }
+
+  async function doCancelBatch() {
+    if (!batchJob) return
+    await cancelJob(batchJob.job_id)
   }
 
   const working = pendingJob || job
@@ -122,6 +146,44 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         <button onClick={doIngest} disabled={!paste.trim() || !!busy}>
           {busy === 'ingest' ? <span className="spinner" /> : '存入知识库'}
         </button>
+      </div>
+
+      <h2>批量导入</h2>
+      <div className="stack">
+        <input
+          type="file"
+          multiple
+          accept=".pdf,.docx,.txt,.md,.markdown,.wav,.mp3,.m4a,.flac"
+          onChange={(e) => doBatchIngest(e.target.files)}
+        />
+        <p className="muted" style={{ fontSize: 12 }}>
+          支持 PDF / DOCX / TXT / MD / 音频混合上传，每个文件独立处理，某一个失败不影响其他文件。
+        </p>
+        {batchJob && (
+          <div className="card">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>
+                {batchJob.status === 'running' || batchJob.status === 'queued'
+                  ? <><span className="spinner" /> 处理中…</>
+                  : STATUS_LABEL[batchJob.status] ?? batchJob.status}
+                {' · '}{batchJob.facts} 条事实
+              </strong>
+              {(batchJob.status === 'running' || batchJob.status === 'queued') && (
+                <button onClick={doCancelBatch}>取消</button>
+              )}
+            </div>
+            {batchJob.items.map((it) => (
+              <div key={it.id} className="row" style={{ justifyContent: 'space-between', marginTop: 6 }}>
+                <span>{it.filename}</span>
+                <span className="muted">
+                  {STATUS_LABEL[it.status] ?? it.status}
+                  {it.status === 'done' && ` · ${it.facts} 条`}
+                  {it.status === 'failed' && it.detail && ` · ${it.detail}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

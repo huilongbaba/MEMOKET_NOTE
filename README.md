@@ -14,6 +14,7 @@ AI 驱动的编辑器 + 个人知识库。写作时自动引用你自己的记�
 | **智能编辑**（线 2） | 对照骨架和知识库检查正文，以 track-changes 形式给出修订，逐条接受/拒绝，**绝不直接覆盖原文** |
 | **语音入库** | 录音 → Whisper 转写 → 抽成结构化事实存入知识库 |
 | **语音输入** | 录音 → 转写 → 直接插到光标处 |
+| **批量导入** | 多文件（PDF/DOCX/TXT/MD/音频）一次上传，每个文件独立处理、失败不拖垮整批，SSE 推进度 |
 | **知识库检索/提问** | 两条路径，见下 |
 
 ## 架构
@@ -110,7 +111,11 @@ LLM_MODEL=gpt-4.1-mini
 | `POST /api/ingest/text` | 文本入库（后台任务，返回 job_id） |
 | `POST /api/ingest/audio` | 语音入库 |
 | `POST /api/ingest/transcribe` | 只转写不入库 |
-| `GET /api/ingest/jobs/{id}` | 入库任务状态 |
+| `POST /api/ingest/batch` | 批量导入：多文件（PDF/DOCX/TXT/MD/音频）→ {job_id, items[]} |
+| `GET /api/ingest/jobs` | 当前用户的入库任务列表 |
+| `GET /api/ingest/jobs/{id}` | 入库任务状态（含批量任务的 items 明细） |
+| `GET /api/ingest/jobs/{id}/events` | 批量任务的 SSE 进度流 |
+| `POST /api/ingest/jobs/{id}/cancel` | 取消批量任务（已在处理的文件会跑完，未处理的直接标 cancelled） |
 
 用户身份走 `X-User-Id` 请求头，每个 user_id 对应一个独立的 codebook。
 原型阶段没有认证，生产环境把 `routers/deps.py` 里的 `current_user` 换成真实鉴权即可。

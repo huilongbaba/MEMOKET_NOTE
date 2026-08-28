@@ -26,9 +26,26 @@ CREATE TABLE IF NOT EXISTS ingest_jobs (
     status      TEXT NOT NULL,
     facts       INTEGER NOT NULL DEFAULT 0,
     detail      TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL
+    created_at  TEXT NOT NULL,
+    cancel_requested INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS ingest_items (
+    id          TEXT PRIMARY KEY,
+    job_id      TEXT NOT NULL,
+    idx         INTEGER NOT NULL,
+    filename    TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'queued',
+    facts       INTEGER NOT NULL DEFAULT 0,
+    detail      TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_items_job ON ingest_items(job_id, idx);
 """
+
+# 单个 job 里所有 item 都落到这些状态之一，才算 job 结束
+_TERMINAL_ITEM_STATUSES = {"done", "failed", "cancelled"}
 
 
 def _now() -> str:
@@ -45,6 +62,10 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_db_path(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    try:
+        conn.execute("ALTER TABLE ingest_jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # 列已存在——老库升级用，新库走 _SCHEMA 就已经带这一列
     return conn
 
 
@@ -93,11 +114,16 @@ def delete_note(user_id: str, note_id: str) -> bool:
 
 
 # ---------------------------------------------------------------- 入库任务
+#
+# 单文件任务（/ingest/text /ingest/audio）只用 ingest_jobs 表，没有 items。
+# 批量任务（/ingest/batch）额外在 ingest_items 里给每个文件建一行，job 的
+# status/facts 由 update_job_from_items() 从 items 聚合出来。
 
 def create_job(user_id: str) -> str:
     job_id = uuid.uuid4().hex[:12]
     with connect() as c:
-        c.execute("INSERT INTO ingest_jobs VALUES (?,?,?,?,?,?)",
+        c.execute("INSERT INTO ingest_jobs (id,user_id,status,facts,detail,created_at) "
+                  "VALUES (?,?,?,?,?,?)",
                   (job_id, user_id, "queued", 0, "", _now()))
     return job_id
 
@@ -112,3 +138,73 @@ def get_job(job_id: str) -> dict | None:
     with connect() as c:
         row = c.execute("SELECT * FROM ingest_jobs WHERE id=?", (job_id,)).fetchone()
     return dict(row) if row else None
+
+
+def list_jobs(user_id: str, limit: int = 20) -> list[dict]:
+    with connect() as c:
+        rows = c.execute(
+            "SELECT * FROM ingest_jobs WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def request_cancel(job_id: str) -> None:
+    with connect() as c:
+        c.execute("UPDATE ingest_jobs SET cancel_requested=1 WHERE id=?", (job_id,))
+
+
+def is_cancel_requested(job_id: str) -> bool:
+    job = get_job(job_id)
+    return bool(job and job["cancel_requested"])
+
+
+# ------------------------------------------------------------ 批量任务的 items
+
+def create_batch_job(user_id: str, files: list[dict]) -> tuple[str, list[dict]]:
+    """建一个 job + N 个 item（每个文件一行），全部初始状态 queued。"""
+    job_id = uuid.uuid4().hex[:12]
+    items: list[dict] = []
+    with connect() as c:
+        c.execute("INSERT INTO ingest_jobs (id,user_id,status,facts,detail,created_at) "
+                  "VALUES (?,?,?,?,?,?)",
+                  (job_id, user_id, "queued", 0, "", _now()))
+        for idx, f in enumerate(files):
+            item = {"id": uuid.uuid4().hex[:12], "job_id": job_id, "idx": idx,
+                    "filename": f["filename"], "kind": f["kind"], "status": "queued",
+                    "facts": 0, "detail": "", "updated_at": _now()}
+            c.execute(
+                "INSERT INTO ingest_items VALUES "
+                "(:id,:job_id,:idx,:filename,:kind,:status,:facts,:detail,:updated_at)",
+                item)
+            items.append(item)
+    return job_id, items
+
+
+def set_item(item_id: str, status: str, facts: int = 0, detail: str = "") -> None:
+    with connect() as c:
+        c.execute(
+            "UPDATE ingest_items SET status=?, facts=?, detail=?, updated_at=? WHERE id=?",
+            (status, facts, detail[:500], _now(), item_id))
+
+
+def get_items(job_id: str) -> list[dict]:
+    with connect() as c:
+        rows = c.execute(
+            "SELECT * FROM ingest_items WHERE job_id=? ORDER BY idx", (job_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_job_from_items(job_id: str) -> None:
+    """把 job 的 status/facts 从它的 items 聚合出来。批量流程每次 item 变化都调一次。"""
+    items = get_items(job_id)
+    if not items:
+        return
+    total_facts = sum(i["facts"] for i in items)
+    if any(i["status"] == "failed" for i in items):
+        status = "error"
+    elif all(i["status"] in _TERMINAL_ITEM_STATUSES for i in items):
+        status = "cancelled" if all(i["status"] == "cancelled" for i in items) else "done"
+    else:
+        status = "running"
+    detail = "; ".join(f"{i['filename']}: {i['detail']}" for i in items if i["detail"])
+    set_job(job_id, status, facts=total_facts, detail=detail)

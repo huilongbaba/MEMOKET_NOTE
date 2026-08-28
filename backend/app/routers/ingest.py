@@ -6,20 +6,27 @@ job_id，前端轮询 /api/ingest/jobs/{id} 看进度。
 
 from __future__ import annotations
 
+import asyncio
+import json
+import re
 import uuid
 from datetime import date as _date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
-from .. import asr, store
+from .. import asr, extract, store
 from ..kite_memory import UserMemory
-from ..schemas import IngestOut, IngestTextIn
+from ..schemas import IngestItemOut, IngestOut, IngestTextIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
 # 一次抽取喂给 LLM 的字符上限，太长会拖垮抽取质量和耗时
 CHUNK_CHARS = 1200
+
+# 一个批量任务最多接受多少文件，避免一次请求把后台任务队列堵成小时级
+BATCH_MAX_FILES = 50
 
 
 def _chunks(text: str, size: int = CHUNK_CHARS) -> list[str]:
@@ -36,6 +43,30 @@ def _chunks(text: str, size: int = CHUNK_CHARS) -> list[str]:
     if buf:
         out.append(buf)
     return out or ([text] if text.strip() else [])
+
+
+def _markdown_sections(text: str) -> list[str]:
+    """按标题行切段，让每个 chunk 尽量落在同一个标题层级下。"""
+    sections: list[str] = []
+    buf: list[str] = []
+    for line in text.split("\n"):
+        if re.match(r"^#{1,6}\s", line) and buf:
+            sections.append("\n".join(buf).strip())
+            buf = [line]
+        else:
+            buf.append(line)
+    if buf:
+        sections.append("\n".join(buf).strip())
+    return [s for s in sections if s.strip()]
+
+
+def _chunks_for(text: str, kind: str, size: int = CHUNK_CHARS) -> list[str]:
+    if kind == "md":
+        out: list[str] = []
+        for section in _markdown_sections(text):
+            out.extend(_chunks(section, size))
+        return out or _chunks(text, size)
+    return _chunks(text, size)
 
 
 def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str) -> None:
@@ -105,10 +136,150 @@ async def transcribe_only(file: UploadFile = File(...),
     return {"text": text}
 
 
+# ---------------------------------------------------------------- 批量导入
+#
+# item 状态机：queued -> extracting -> [transcribing](仅音频) -> chunking
+#            -> remembering -> done | failed | cancelled
+#
+# 一个 job 内的文件顺序处理（不并发）：批量导入本质是小时级后台任务
+# （13s/chunk，见 docs/PLAN.md），顺序执行让取消语义简单——「取消」就是
+# 不再处理还没轮到的文件，已经在 remembering 的那个跑完即可。
+
+
+def _extract_item_text(filename: str, kind: str, data: bytes, language: str) -> str:
+    if kind == "audio":
+        return asyncio.run(asr.transcribe(data, filename=filename, language=language))
+    return extract.extract_text(data, filename)
+
+
+def _batch_job(job_id: str, user_id: str, items: list[dict],
+               payloads: dict[str, bytes], language: str) -> None:
+    store.set_job(job_id, "running")
+    mem = UserMemory(user_id)
+    for item in items:
+        item_id, filename, kind = item["id"], item["filename"], item["kind"]
+        if store.is_cancel_requested(job_id):
+            store.set_item(item_id, "cancelled")
+            store.update_job_from_items(job_id)
+            continue
+        try:
+            store.set_item(item_id, "transcribing" if kind == "audio" else "extracting")
+            text = _extract_item_text(filename, kind, payloads[item_id], language)
+            store.update_job_from_items(job_id)
+
+            if not text or not text.strip():
+                store.set_item(item_id, "done", facts=0, detail="内容为空")
+                store.update_job_from_items(job_id)
+                continue
+
+            store.set_item(item_id, "chunking")
+            store.update_job_from_items(job_id)
+            chunks = _chunks_for(text, kind)
+
+            store.set_item(item_id, "remembering")
+            store.update_job_from_items(job_id)
+            total = 0
+            for i, chunk in enumerate(chunks):
+                total += mem.remember(
+                    [{"role": "user", "content": chunk}],
+                    session_id=f"{item_id}-{i}",
+                    date=_date.today().isoformat(),
+                    title=filename,
+                )
+            store.set_item(item_id, "done", facts=total)
+        except Exception as exc:  # noqa: BLE001 — 单个文件失败不能拖垮整批
+            store.set_item(item_id, "failed", detail=f"{type(exc).__name__}: {exc}")
+        store.update_job_from_items(job_id)
+
+
+@router.post("/batch", response_model=IngestOut)
+async def ingest_batch(bg: BackgroundTasks,
+                       files: list[UploadFile] = File(...),
+                       language: str = Form("auto"),
+                       user: str = Depends(current_user)):
+    """多文件批量入库：PDF / DOCX / TXT / MD / 音频混着传，每个文件独立处理，
+    互不拖累。用 GET /jobs/{id}/events 订阅进度。"""
+    if not files:
+        raise HTTPException(400, "no files")
+    if len(files) > BATCH_MAX_FILES:
+        raise HTTPException(400, f"最多一次 {BATCH_MAX_FILES} 个文件")
+
+    specs: list[dict] = []
+    raw: list[bytes] = []
+    for f in files:
+        try:
+            kind = extract.kind_for(f.filename or "")
+        except extract.UnsupportedFileType as exc:
+            raise HTTPException(400, str(exc)) from exc
+        data = await f.read()
+        if not data:
+            raise HTTPException(400, f"空文件：{f.filename}")
+        specs.append({"filename": f.filename or "file", "kind": kind})
+        raw.append(data)
+
+    job_id, items = store.create_batch_job(user, specs)
+    # create_batch_job 按 specs 顺序生成 item，用 idx 位置对齐回原始字节
+    # （不能用文件名做 key —— 同批次可能有同名文件）
+    keyed_payloads = {item["id"]: raw[item["idx"]] for item in items}
+    bg.add_task(_batch_job, job_id, user, items, keyed_payloads, language)
+    return IngestOut(job_id=job_id, status="queued",
+                     items=[IngestItemOut(**it) for it in items])
+
+
+@router.get("/jobs", response_model=list[IngestOut])
+def list_jobs(user: str = Depends(current_user), limit: int = 20):
+    jobs = store.list_jobs(user, limit)
+    return [
+        IngestOut(job_id=j["id"], status=j["status"], facts=j["facts"],
+                  detail=j["detail"],
+                  items=[IngestItemOut(**it) for it in store.get_items(j["id"])])
+        for j in jobs
+    ]
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job(job_id: str, user: str = Depends(current_user)):
+    job = store.get_job(job_id)
+    if not job or job["user_id"] != user:
+        raise HTTPException(404, "job not found")
+    store.request_cancel(job_id)
+    return {"ok": True}
+
+
+@router.get("/jobs/{job_id}/events")
+async def job_events(job_id: str, user: str = Depends(current_user)):
+    """SSE 进度流：轮询 DB 里的 job/items，状态一变就推一帧，job 到终态就结束。"""
+    job = store.get_job(job_id)
+    if not job or job["user_id"] != user:
+        raise HTTPException(404, "job not found")
+
+    async def gen():
+        last = None
+        while True:
+            j = store.get_job(job_id)
+            snap = {
+                "job_id": j["id"], "status": j["status"], "facts": j["facts"],
+                "detail": j["detail"], "items": store.get_items(job_id),
+            }
+            frame = json.dumps(snap, ensure_ascii=False, sort_keys=True)
+            if frame != last:
+                last = frame
+                yield f"event: progress\ndata: {frame}\n\n"
+            if j["status"] in ("done", "error", "cancelled"):
+                yield "event: end\ndata: {}\n\n"
+                return
+            await asyncio.sleep(0.7)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
 @router.get("/jobs/{job_id}", response_model=IngestOut)
 def job_status(job_id: str):
     job = store.get_job(job_id)
     if not job:
         raise HTTPException(404, "job not found")
-    return IngestOut(job_id=job["id"], status=job["status"],
-                     facts=job["facts"], detail=job["detail"])
+    return IngestOut(job_id=job["id"], status=job["status"], facts=job["facts"],
+                     detail=job["detail"], items=[
+                         IngestItemOut(**it) for it in store.get_items(job_id)])
