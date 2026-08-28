@@ -99,3 +99,15 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .rec { color: var(--del); }
+
+.link { color: var(--accent); cursor: pointer; text-decoration: none; }
+.link:hover { text-decoration: underline; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .4);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal {
+  background: var(--bg); border-radius: 10px; padding: 20px;
+  width: min(720px, 92vw); max-height: 86vh; overflow-y: auto;
+}

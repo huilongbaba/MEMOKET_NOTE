@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from memoket_kite import Memory
-from memoket_kite.core.algebra import Store, execute_plan
+from memoket_kite.core.algebra import CONF_ORDER, Store, execute_plan
 
 from .config import get_settings
 from .kite_writer import write_lock
@@ -257,6 +257,97 @@ class UserMemory:
                 out.append(getattr(line, "text", ""))
         return [t for t in out if t]
 
+    # ------------------------------------------------------------ 结构化浏览（可视化用，零 LLM）
+    #
+    # 故意不用 memoket_kite.research.CodebookInspector —— 那是上游明说的非稳定
+    # API（见 docs/kite-constraints.md 约束 8）。这里全走 core.Store / core.Vocab，
+    # 跟 recall() 用的是同一层，字段含义和边界情况都已经在检索路径上踩过坑了。
+
+    def topics(self) -> list[dict]:
+        """topic 树。parents 字段构成层级——前端自己拼树，不在这里嵌套。"""
+        _store, vocab = self._index()
+        return [
+            {"code": t.code, "parents": sorted(t.parents), "status": t.status,
+             "aliases": sorted(t.aliases)}
+            for t in sorted(vocab.topics.values(), key=lambda t: t.code)
+        ]
+
+    def entities(self) -> list[dict]:
+        _store, vocab = self._index()
+        return [
+            {"code": e.code, "name": e.name, "type": e.etype,
+             "aliases": sorted(e.aliases), "relations": sorted(e.rels)}
+            for e in sorted(vocab.entities.values(), key=lambda e: e.code)
+        ]
+
+    def _fact_dict(self, f) -> dict:
+        return {"id": f.id, "text": f.text, "when": f.when, "kind": f.kind,
+                "who": f.who, "conf": f.conf, "topics": list(f.topics),
+                "entities": list(f.entities), "unit": f.unit}
+
+    def facts_page(self, *, kind: str = "", who: str = "", topic: str = "",
+                   entity: str = "", conf_min: str = "", limit: int = 20,
+                   offset: int = 0) -> tuple[list[dict], int]:
+        """分页 + 过滤。topic 过滤走闭包（含子主题），跟 recall() 的语义一致。"""
+        store, vocab = self._index()
+
+        topic_closure: set[str] | None = None
+        if topic:
+            code = vocab.resolve_topic(topic) or topic
+            topic_closure = vocab.downset(code, include_candidates=True) or {code}
+        entity_code = vocab.resolve_entity(entity) if entity else ""
+        if entity and not entity_code:
+            entity_code = entity
+        conf_floor = CONF_ORDER.get(conf_min, 0) if conf_min else 0
+
+        def match(f) -> bool:
+            if kind and f.kind != kind:
+                return False
+            if who and f.who != who:
+                return False
+            if conf_floor and CONF_ORDER.get(f.conf, 1) < conf_floor:
+                return False
+            if topic_closure is not None and not (set(f.topics) & topic_closure):
+                return False
+            if entity_code and entity_code not in f.entities:
+                return False
+            return True
+
+        rows = sorted((f for f in store.facts.values() if match(f)),
+                      key=lambda f: f.when, reverse=True)
+        total = len(rows)
+        page = rows[offset:offset + limit]
+        return [self._fact_dict(f) for f in page], total
+
+    def fact_sources(self, fact_id: str) -> list[dict]:
+        """一条 fact 的原始出处，带 unit/日期/说话人——跟 source_lines() 的区别是
+        这里给结构化字段，不是纯文本，方便前端做「fact -> 原始行」的证据回溯。"""
+        store, _vocab = self._index()
+        fact = store.facts.get(fact_id)
+        if not fact:
+            return []
+        out = []
+        for line_id in fact.src:
+            line = store.lines.get(line_id)
+            if line is not None:
+                out.append({"id": line.id, "unit": line.unit, "date": line.unit_date,
+                           "who": line.who, "text": line.text})
+        return out
+
+    def timeline(self) -> list[dict]:
+        """按日期聚合 session（unit）数与 fact 数，供时间线视图用。"""
+        store, _vocab = self._index()
+        buckets: dict[str, dict] = {}
+        for u in store.units.values():
+            if not u.date:
+                continue
+            buckets.setdefault(u.date, {"date": u.date, "units": 0, "facts": 0})["units"] += 1
+        for f in store.facts.values():
+            if not f.when:
+                continue
+            buckets.setdefault(f.when, {"date": f.when, "units": 0, "facts": 0})["facts"] += 1
+        return sorted(buckets.values(), key=lambda b: b["date"])
+
     # ------------------------------------------------------------ 入库（走 LLM，慢）
 
     def remember(self, messages: list[dict], *, session_id: str,
@@ -301,9 +392,15 @@ class UserMemory:
 
     def stats(self) -> dict:
         store, vocab = self._index()
+        dates = sorted(u.date for u in store.units.values() if u.date)
         return {
             "facts": len(getattr(store, "facts", {}) or {}),
             "topics": len(vocab.topics),
             "entities": len(vocab.entities),
+            "units": len(getattr(store, "units", {}) or {}),
+            "lines": len(getattr(store, "lines", {}) or {}),
+            "speakers": sorted(getattr(store, "speakers", set()) or []),
+            "start_date": dates[0] if dates else None,
+            "end_date": dates[-1] if dates else None,
             "codebook": str(self.path),
         }

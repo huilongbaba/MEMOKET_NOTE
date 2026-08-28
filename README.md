@@ -16,6 +16,7 @@ AI 驱动的编辑器 + 个人知识库。写作时自动引用你自己的记�
 | **语音输入** | 录音 → 转写 → 直接插到光标处 |
 | **批量导入** | 多文件（PDF/DOCX/TXT/MD/音频）一次上传，每个文件独立处理、失败不拖垮整批，SSE 推进度 |
 | **知识库检索/提问** | 两条路径，见下 |
+| **知识库可视化** | 概览 / 主题地图 / 时间线 / 事实表，事实展开可回溯到原文出处 |
 
 ## 架构
 
@@ -107,7 +108,12 @@ LLM_MODEL=gpt-4.1-mini
 | `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |
 | `POST /api/memory/recall` | 符号检索，零 LLM，~1 ms |
 | `POST /api/memory/ask` | 原生 planning 提问，支持时序推理，~50 s |
-| `GET /api/memory/stats` | 知识库统计 |
+| `GET /api/memory/stats` | 知识库统计（facts/topics/entities/units/lines/speakers/日期跨度） |
+| `GET /api/memory/topics` | topic 树（parents 字段构成层级） |
+| `GET /api/memory/entities` | 实体列表 |
+| `GET /api/memory/facts` | 事实表：分页 + 按 kind/who/conf_min/topic/entity 过滤 |
+| `GET /api/memory/facts/{id}/sources` | 一条事实的原始出处（证据回溯） |
+| `GET /api/memory/timeline` | 按日期聚合的 session 数 / fact 数 |
 | `POST /api/ingest/text` | 文本入库（后台任务，返回 job_id） |
 | `POST /api/ingest/audio` | 语音入库 |
 | `POST /api/ingest/transcribe` | 只转写不入库 |

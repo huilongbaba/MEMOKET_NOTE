@@ -5,7 +5,9 @@ import time
 from fastapi import APIRouter, Depends
 
 from ..kite_memory import UserMemory
-from ..schemas import AskIn, AskOut, FactOut, RecallIn, RecallOut
+from ..schemas import (AskIn, AskOut, EntityOut, FactDetailOut, FactOut,
+                       FactsPageOut, RecallIn, RecallOut, SourceLineOut,
+                       StatsOut, TimelineBucket, TimelineOut, TopicOut)
 from .deps import current_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -32,9 +34,49 @@ def recall(body: RecallIn, user: str = Depends(current_user)):
                      terms=terms)
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=StatsOut)
 def stats(user: str = Depends(current_user)):
     return UserMemory(user).stats()
+
+
+# ---------------------------------------------------------------- 可视化（结构化浏览）
+
+@router.get("/topics", response_model=list[TopicOut])
+def topics(user: str = Depends(current_user)):
+    """topic 树。parents 构成层级，前端自己拼——不同 topic 可能有多个 parent。"""
+    return UserMemory(user).topics()
+
+
+@router.get("/entities", response_model=list[EntityOut])
+def entities(user: str = Depends(current_user)):
+    """实体列表，前端按 type 分组展示。"""
+    return UserMemory(user).entities()
+
+
+@router.get("/facts", response_model=FactsPageOut)
+def facts(kind: str = "", who: str = "", topic: str = "", entity: str = "",
+          conf_min: str = "", limit: int = 20, offset: int = 0,
+          user: str = Depends(current_user)):
+    """事实表：分页 + 过滤。topic 过滤含子主题闭包，跟 /recall 语义一致。"""
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    rows, total = UserMemory(user).facts_page(
+        kind=kind, who=who, topic=topic, entity=entity, conf_min=conf_min,
+        limit=limit, offset=offset)
+    return FactsPageOut(facts=[FactDetailOut(**r) for r in rows], total=total,
+                        limit=limit, offset=offset)
+
+
+@router.get("/facts/{fact_id}/sources", response_model=list[SourceLineOut])
+def fact_sources(fact_id: str, user: str = Depends(current_user)):
+    """证据回溯：fact -> 原始对话行。事实表展开一条时按需调用。"""
+    return UserMemory(user).fact_sources(fact_id)
+
+
+@router.get("/timeline", response_model=TimelineOut)
+def timeline(user: str = Depends(current_user)):
+    """按日期聚合的 session 数 / fact 数，体现入库节奏。"""
+    return TimelineOut(buckets=[TimelineBucket(**b) for b in UserMemory(user).timeline()])
 
 
 @router.post("/ask", response_model=AskOut)

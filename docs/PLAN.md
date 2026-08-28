@@ -67,34 +67,40 @@ remembering → done | failed | cancelled`，与计划一致。
 顺序 for 循环换成有限并发（比如 asyncio.Semaphore(3)），但目前没有实测
 瓶颈在哪，先不做。
 
-## 4. 知识库可视化
-
-当前只有 `GET /api/memory/stats`。数据源用 KITE 的 `CodebookInspector`，
-不自己解析 XML。
+## 4. 知识库可视化 ✅ 已完成
 
 ```
 GET /api/memory/topics              topic 树（parents 字段构成层级）
 GET /api/memory/entities            实体，按 type 分组
-GET /api/memory/facts               分页 + 按 kind/who/conf/topic/entity 过滤
+GET /api/memory/facts               分页 + 按 kind/who/conf_min/topic/entity 过滤
 GET /api/memory/facts/{id}/sources  原始证据
 GET /api/memory/timeline            按 session date / fact t 聚合
+GET /api/memory/stats               扩充：units/lines/speakers/日期跨度
 ```
 
-前端四个视图：
+**实现取舍：没有用 `CodebookInspector`**。计划里原本设想走 KITE 的
+`research.CodebookInspector`，但上游明说那不是稳定 API（约束 8），需要包一层
+适配器隔离。实际做下来发现完全不需要 —— `CodebookInspector` 底层也只是包了一层
+`core.Store` / `core.Vocab`（`UserMemory._index()` 已经在用的那一层，`recall()`
+也走这条路），直接读 `store.facts.values()` / `vocab.topics` / `vocab.downset()`
+就够了，反而比引入 research 模块更少一层不稳定依赖。代价是分页/过滤是在 Python
+里线性扫描 `store.facts`（KITE 的 query 算子没有 skip/offset 这种分页原语），
+量级到几万条 fact 之前应该没问题，之后要分页就得自己加索引。
 
-| 视图 | 作用 |
-|---|---|
-| 概览 | 计数与入库趋势 |
-| 主题地图 | topic 树，点击下钻到 facts |
-| 时间线 | 按日期排布，体现时序推理 |
-| 事实表 | 过滤 + 展开看原文证据 |
+实现：`app/kite_memory.py` 新增 `topics()` / `entities()` / `facts_page()` /
+`fact_sources()` / `timeline()`；`routers/memory.py` 挂对应端点。
+`facts_page()` 的 topic 过滤走 `vocab.downset()` 做子主题闭包，语义跟 `recall()`
+一致（父主题命中子主题下的 fact）。
 
-**证据回溯是重点**。`fact → src → 原始 line / 页码 / 音频时间戳` 这条链要打通 ——
-这是 KITE 相对向量检索的核心差异，也是「构建出来的东西看得见」最有价值的部分。
-后端已有 `UserMemory.source_lines()`，可直接复用。
+前端 `components/MemoryBrowser.tsx`：模态框 + 四个 tab（概览 / 主题地图 /
+时间线 / 事实表），从 `MemoryPanel` 的「浏览」按钮打开。主题地图和实体列表点
+一条会跳到事实表并带上对应过滤条件。**证据回溯**（PLAN 原本最看重的部分）：
+事实表点开一条才按需调 `/facts/{id}/sources`，不在列表页把每条的原文都查一遍。
 
-`CodebookInspector` 属于 `research` 模块，上游明说不是稳定 API（约束 8），
-需要包一层适配器隔离。
+用真实 LLM 端到端跑通过一遍（批量导入一份 md → 抽出 5 条 fact → 四个可视化端点
+都能正确读到），另外给纯逻辑部分（分页/过滤/聚合）写了 10 个单元测试
+（`tests/test_memory_browse.py`），用真实的 KITE dataclass 手搭 Store/Vocab，
+不用碰真实 XML 或 LLM。
 
 ## 5. 其他已知缺口
 

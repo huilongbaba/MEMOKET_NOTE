@@ -35,6 +35,72 @@ class FactOut(BaseModel):
     sources: list[str] = Field(default_factory=list)
 
 
+class TopicOut(BaseModel):
+    code: str
+    parents: list[str] = Field(default_factory=list)
+    status: str = "candidate"
+    aliases: list[str] = Field(default_factory=list)
+
+
+class EntityOut(BaseModel):
+    code: str
+    name: str = ""
+    type: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    relations: list[tuple[str, str]] = Field(default_factory=list)
+
+
+class SourceLineOut(BaseModel):
+    id: str
+    unit: str
+    date: str = ""
+    who: str = ""
+    text: str
+
+
+class FactDetailOut(BaseModel):
+    """事实表用的行——比 FactOut 多 who/conf/unit，少 sources（另走
+    /facts/{id}/sources 按需拉，列表页不用为每行都查一遍原文）。"""
+    id: str
+    text: str
+    when: str = ""
+    kind: str = ""
+    who: str = ""
+    conf: str = ""
+    topics: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
+    unit: str = ""
+
+
+class FactsPageOut(BaseModel):
+    facts: list[FactDetailOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class TimelineBucket(BaseModel):
+    date: str
+    units: int = 0
+    facts: int = 0
+
+
+class TimelineOut(BaseModel):
+    buckets: list[TimelineBucket]
+
+
+class StatsOut(BaseModel):
+    facts: int
+    topics: int
+    entities: int
+    units: int = 0
+    lines: int = 0
+    speakers: list[str] = Field(default_factory=list)
+    start_date: str | None = None
+    end_date: str | None = None
+    codebook: str
+
+
 class RecallIn(BaseModel):
     query: str
     limit: int = 8

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ask, cancelJob, ingestBatch, ingestText, jobStatus, memoryStats, recall, watchJob } from '../api'
 import type { Fact, JobOut } from '../api'
+import MemoryBrowser from './MemoryBrowser'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
@@ -24,6 +25,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [job, setJob] = useState('')
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
   const batchAbort = useRef<AbortController | null>(null)
+  const [browsing, setBrowsing] = useState(false)
 
   const refresh = () => memoryStats().then(setStats).catch(() => {})
   useEffect(() => { refresh() }, [])
@@ -91,11 +93,15 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
   return (
     <div>
-      <h2>知识库</h2>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>知识库</h2>
+        <button onClick={() => setBrowsing(true)}>浏览</button>
+      </div>
       <p className="muted">
         {stats ? `${stats.facts} 条事实 · ${stats.entities} 个实体` : '加载中…'}
         {working && <> · <span className="spinner" /> 抽取中</>}
       </p>
+      {browsing && <MemoryBrowser onClose={() => setBrowsing(false)} />}
 
       <div className="stack">
         <input

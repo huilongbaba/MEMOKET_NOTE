@@ -150,10 +150,53 @@ export const ask = (question: string) =>
     body: JSON.stringify({ question }),
   }).then(json<{ answer: string; facts: Fact[]; took_ms: number }>)
 
+export type MemoryStats = {
+  facts: number; topics: number; entities: number; units: number; lines: number
+  speakers: string[]; start_date: string | null; end_date: string | null; codebook: string
+}
+
 export const memoryStats = () =>
-  fetch('/api/memory/stats', { headers: headers() }).then(
-    json<{ facts: number; topics: number; entities: number; codebook: string }>,
-  )
+  fetch('/api/memory/stats', { headers: headers() }).then(json<MemoryStats>)
+
+// ---------------------------------------------------------------- 知识库可视化
+
+export type TopicNode = { code: string; parents: string[]; status: string; aliases: string[] }
+export type EntityNode = {
+  code: string; name: string; type: string; aliases: string[]
+  relations: [string, string][]
+}
+export type FactDetail = {
+  id: string; text: string; when: string; kind: string; who: string; conf: string
+  topics: string[]; entities: string[]; unit: string
+}
+export type FactsPage = { facts: FactDetail[]; total: number; limit: number; offset: number }
+export type SourceLine = { id: string; unit: string; date: string; who: string; text: string }
+export type TimelineBucket = { date: string; units: number; facts: number }
+
+export const memoryTopics = () =>
+  fetch('/api/memory/topics', { headers: headers() }).then(json<TopicNode[]>)
+
+export const memoryEntities = () =>
+  fetch('/api/memory/entities', { headers: headers() }).then(json<EntityNode[]>)
+
+export type FactsFilter = {
+  kind?: string; who?: string; topic?: string; entity?: string; conf_min?: string
+  limit?: number; offset?: number
+}
+
+export const memoryFacts = (filter: FactsFilter = {}) => {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(filter)) {
+    if (v !== undefined && v !== '') q.set(k, String(v))
+  }
+  return fetch(`/api/memory/facts?${q}`, { headers: headers() }).then(json<FactsPage>)
+}
+
+export const factSources = (factId: string) =>
+  fetch(`/api/memory/facts/${factId}/sources`, { headers: headers() }).then(json<SourceLine[]>)
+
+export const memoryTimeline = () =>
+  fetch('/api/memory/timeline', { headers: headers() }).then(json<{ buckets: TimelineBucket[] }>)
 
 // ---------------------------------------------------------------- 入库
 
