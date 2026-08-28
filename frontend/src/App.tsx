@@ -14,7 +14,7 @@ export default function App() {
 
   const [skeleton, setSkeleton] = useState<string[]>([])
   const [revisions, setRevisions] = useState<Revision[]>([])
-  const [loading, setLoading] = useState<'' | 'skeleton' | 'edit' | 'tap'>('')
+  const [loading, setLoading] = useState<'' | 'skeleton' | 'edit' | 'tap' | 'ingest'>('')
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
   const [job, setJob] = useState('')
   const [healthMsg, setHealthMsg] = useState('')
@@ -144,6 +144,24 @@ export default function App() {
     setRevisions((rs) => rs.filter((x) => x.id !== r.id))
   }
 
+  /** Manually push the current note into the knowledge base. Not wired to
+   * autosave: autosave fires every 1.5s of idle typing, so tying ingestion
+   * to it would re-ingest the whole note repeatedly while the user is still
+   * writing -- wasting LLM calls and producing a pile of near-duplicate
+   * facts. */
+  async function ingestCurrentNote() {
+    if (!content.trim()) return
+    setLoading('ingest')
+    try {
+      const r = await api.ingestText(content, title || '未命名', 'note')
+      setJob(r.job_id)
+    } catch (e) {
+      alert('存入知识库失败：' + e)
+    } finally {
+      setLoading('')
+    }
+  }
+
   function insertAtCursor(text: string) {
     if (!text) return
     const el = editorRef.current
@@ -212,6 +230,9 @@ export default function App() {
               </button>
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} />
               <button onClick={save}>保存</button>
+              <button onClick={ingestCurrentNote} disabled={!content.trim() || loading === 'ingest'}>
+                {loading === 'ingest' ? <span className="spinner" /> : '📥 存入知识库'}
+              </button>
             </div>
 
             {tapMeta && (

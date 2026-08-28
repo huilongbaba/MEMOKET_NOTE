@@ -22,13 +22,47 @@ from pathlib import Path
 from memoket_kite import Memory
 from memoket_kite.core.algebra import CONF_ORDER, Store, execute_plan
 
+from . import kite_extract_profile
 from .config import get_settings
 from .kite_writer import write_lock
+
+kite_extract_profile.install()
+
+# Root topics seeded into every new codebook. KITE's extraction prompt only
+# lets the model propose a topic as a child of an already-known root
+# (prompts/extract.py: "propose one specific child under a known root"), and
+# core/vocab.py's propose_topic() rejects any proposal whose parent doesn't
+# already resolve ("orphan proposals are rejected"). A brand-new vocab has no
+# roots at all, so topics can never bootstrap themselves from zero — this
+# fixes that from the very first ingest.
+#
+# Aliases are extra surface forms recall()/ask() can match against non-English
+# input; the app already treats English + Chinese as first-class elsewhere
+# (see STOPWORDS / _cjk_terms below), so both are seeded here too.
+ROOT_TOPICS: dict[str, tuple[str, ...]] = {
+    "work": ("工作",),
+    "project": ("项目",),
+    "personal": ("个人",),
+    "learning": ("学习",),
+    "health": ("健康",),
+    "finance": ("财务", "理财"),
+}
+
+
+def _root_topics_xml() -> str:
+    parts = []
+    for code, aliases in ROOT_TOPICS.items():
+        alias_xml = "".join(f"<alias>{a}</alias>" for a in aliases)
+        parts.append(f'    <topic code="{code}" status="canonical" parents="" born="">{alias_xml}</topic>')
+    return "\n".join(parts)
+
 
 EMPTY_CODEBOOK = (
     '<?xml version="1.0" encoding="utf-8"?>\n'
     '<codebook id="{uid}" speakers="user">\n'
-    "  <vocab/>\n"
+    "  <vocab>\n"
+    f"{_root_topics_xml()}\n"
+    "  </vocab>\n"
     "  <timeline/>\n"
     "</codebook>\n"
 )

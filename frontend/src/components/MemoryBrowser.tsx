@@ -5,6 +5,7 @@ import {
 import type {
   EntityNode, FactDetail, FactsFilter, MemoryStats, SourceLine, TimelineBucket, TopicNode,
 } from '../api'
+import TopicDag from './TopicDag'
 
 type Tab = 'overview' | 'topics' | 'timeline' | 'facts'
 
@@ -59,16 +60,20 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
     setSources(await factSources(f.id).catch(() => []))
   }
 
-  const roots = topics.filter((t) => t.parents.length === 0)
-  const childrenOf = (code: string) => topics.filter((t) => t.parents.includes(code))
   const maxTimelineCount = Math.max(1, ...timeline.map((b) => Math.max(b.units, b.facts)))
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop">
+      <div className="modal">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>知识库</h2>
-          <button onClick={onClose}>✕</button>
+          <button onClick={onClose}>✕ 关闭</button>
         </div>
 
         <div className="row" style={{ margin: '10px 0' }}>
@@ -106,22 +111,7 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
 
         {tab === 'topics' && (
           <div>
-            {roots.length === 0 && <p className="muted">还没有主题——先入库一些内容。</p>}
-            {roots.map((root) => (
-              <div className="card" key={root.code}>
-                <div>
-                  <a className="link" onClick={() => filterByTopic(root.code)}>{root.code}</a>
-                  {root.aliases.length > 0 && (
-                    <span className="muted"> · {root.aliases.join('、')}</span>
-                  )}
-                </div>
-                {childrenOf(root.code).map((c) => (
-                  <div key={c.code} style={{ marginLeft: 16, marginTop: 4 }}>
-                    ↳ <a className="link" onClick={() => filterByTopic(c.code)}>{c.code}</a>
-                  </div>
-                ))}
-              </div>
-            ))}
+            <TopicDag topics={topics} onSelect={filterByTopic} />
 
             {entities.length > 0 && (
               <>

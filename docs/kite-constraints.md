@@ -102,4 +102,66 @@ grep = plan_greps[0] if plan_greps else "|".join(profile.keywords(question)[:6])
   （`summary()` / `topic_tree()` / `topics()` / `entities()` / `sources()`）。
 
 **应对**：在 `research` 之上包一层自己的适配器，把不稳定面收敛到一个模块里，
-上游改接口时只改那一处。
+上游改接口时只改那一处。**实际做下来发现可视化根本不需要 `research` 模块**——
+`CodebookInspector` 底层也只是包了一层 `core.Store`/`core.Vocab`（`recall()`
+已经在用的那一层），直接读就够了，见 `kite_memory.py` 的 `topics()` /
+`entities()` / `facts_page()` 等方法。反而更少一层不稳定依赖。
+
+## 9. 新 codebook 没有 root，topic 抽取永远是空的
+
+`prompts/extract.py` 里 topics 字段的规则：
+
+> "topics": reuse the most specific known codes. If none fits, propose one
+> specific child under a known root.
+
+模型只能在**已知 root** 下面提子主题。而 `core/vocab.py` 的 `propose_topic()`：
+
+```python
+pcode = self.resolve_topic(parent)
+if not pcode:
+    return None  # orphan proposals are rejected
+```
+
+parent 解析不到已有主题，提案直接拒绝（防幻觉的"孤儿提案"防护）。一个全新
+codebook 的 `<vocab/>` 是空的，一个 root 都没有——所以模型从第一次入库起，
+每次想标 topic 都无路可去，**topics 字段永远是空的**，不管抽取质量多好。
+`define_root()` 这个 API 存在，但 KITE 自己的抽取 pipeline 里从来没调用过它，
+需要调用方自己在建 codebook 时预置。
+
+**应对**：`kite_memory.py` 的 `EMPTY_CODEBOOK` 模板预置 6 个 root 主题
+（work/project/personal/learning/health/finance，带中文别名）。实测：预置前
+5 条 fact 全部 `topics: []`，预置后 5/5 都正确挂上了主题。
+
+## 10. Root 定得太宽，模型永远不往下细分
+
+预置 root 后 topics 不再是空的，但会卡在另一个问题上：即使内容明显该细分
+（比如一整段关于招聘三个候选人、预算、offer 的笔记），模型也只会打
+`work`/`finance` 这种笼统的 root，从不往下提子主题——`"proposals": []`。
+直接绕过 KITE 拿同一个 prompt 调原始 LLM 接口复现过，不是 KITE 处理丢的，
+是模型本身几乎不执行"propose one specific child"这条规则。`temperature`
+被硬编码成 0（见约束 7），对"要不要主动提议一个新东西"这种发散任务本来就
+不友好，模型更倾向复用已知代码这种"更安全"的输出。
+
+**应对**：`Memory.remember()` 不接受自定义 profile/prompt（跟约束 5 中文
+分词失效是同一个坑），唯一能插进去的点是 `memoket_kite.remember` 模块里的
+`DEFAULT_MEMORY_PROFILE` 全局名——运行时把它换成我们自己的子类，只重写
+"topics" 那条规则文本（改成强制性措辞+配一个具体例子），其余 prompt 原样
+不动。实现在 `app/kite_extract_profile.py`。实测：同一段招聘内容，改之前
+`"proposals": []`，改之后正确提出 `{"code": "hiring", "parent": "work"}`，
+走完整入库链路后子主题也确实长出来了。
+
+## 11. Fact 的语言全看模型心情，同一份中文输入时而中文时而英文
+
+Prompt 完全没规定 `"content"` 该用什么语言写。直接拿同一段纯中文输入反复调
+原始 LLM 接口：有的调用整段翻成英文，有的原样中文，跟输入内容本身无关，
+纯粹是模型每次的随机发挥（`temperature=0` 按理该是确定性的，但这条規则
+根本没被 prompt 规定过，模型就没有稳定锚点）。对一个中文笔记应用来说，
+这意味着知识库里的 fact 语言完全不可预测，破坏了"用什么语言写就该用什么
+语言搜到"这个基本预期。
+
+**应对**：跟约束 10 用同一个补丁机制，在 "Capture durable information..."
+后面加一条新规则：`content` 必须跟它所依据的原文用**同一种语言**，不许翻译；
+一段对话夹杂多语言时，每条 fact 各自跟随自己那句原文的语言，不用整段会话
+的主语言。实测：同一段中文输入连续跑 3 次，改之前语言随机（有时全英文），
+改之后 3 次全部正确保持中文；中英混杂的输入也验证过，各自 fact 语言跟对
+了原文，没有被强行拉平成一种语言。
