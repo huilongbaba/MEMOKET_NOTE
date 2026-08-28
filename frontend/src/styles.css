@@ -79,6 +79,32 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 
 .editor { min-height: 380px; font-size: 16px; line-height: 1.8; }
 
+/* 高亮编辑器：真正接收输入的 textarea 文字设透明只留光标，背后一层同尺寸/
+   同字体的 div 渲染带颜色的修订高亮 —— 两层像素级对齐，视觉上就像 textarea
+   自己的文字带了颜色。.editor-backdrop 和 .editor-input 除了 color/background
+   外其余盒模型属性必须完全一致，否则两层会错位。 */
+.editor-wrap { position: relative; }
+.editor-backdrop {
+  position: absolute; inset: 0; z-index: 1; margin: 0; box-sizing: border-box;
+  padding: 8px 10px; border: 1px solid transparent; border-radius: 6px;
+  font: inherit; font-size: 16px; line-height: 1.8;
+  white-space: pre-wrap; word-wrap: break-word; overflow: auto;
+  color: var(--fg); pointer-events: none;
+}
+/* The backdrop sits ABOVE the textarea (z-index) so a span that opts back
+   into pointer-events can actually receive the click instead of it falling
+   through to the textarea underneath -- pointer-events:none on the backdrop
+   itself is what lets clicks over plain text pass through to the textarea
+   for normal typing/cursor placement everywhere else. */
+.editor-backdrop .ins, .editor-backdrop .del, .editor-backdrop .replace {
+  pointer-events: auto; cursor: pointer; border-radius: 3px;
+}
+.replace { background: var(--ins-bg); color: var(--ins); text-decoration: underline dotted; }
+.editor-input {
+  position: relative; z-index: 0; box-sizing: border-box;
+  background: transparent; color: transparent; caret-color: var(--fg);
+}
+
 .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px;
         background: var(--panel); font-size: 13px; }
 .card + .card { margin-top: 8px; }

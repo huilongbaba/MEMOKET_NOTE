@@ -72,12 +72,33 @@ def test_topics_lists_all_with_parents_and_aliases(mem):
     assert set(out) == {"work", "work_deadline", "hobby"}
 
 
+def test_topics_fact_count_is_exact_match_not_closure(mem):
+    # f1 is tagged "work_deadline" directly, f3 is tagged "work" directly --
+    # "work" itself must NOT inherit f1's count just because work_deadline is
+    # its child (that's facts_page()'s closure behaviour, not topics()'s).
+    out = {t["code"]: t for t in mem.topics()}
+    assert out["work_deadline"]["fact_count"] == 1
+    assert out["work"]["fact_count"] == 1
+    assert out["hobby"]["fact_count"] == 1
+
+
 def test_entities_lists_type_and_relations(mem):
     out = mem.entities()
     assert out == [{
         "code": "acme", "name": "Acme Corp", "type": "org",
         "aliases": ["acme corp"], "relations": [("employs", "alice")],
+        "fact_count": 2,  # f1 and f3 both tag entities=["acme"]
     }]
+
+
+def test_topic_entity_links_aggregates_cooccurrence(mem):
+    # f1: topics=["work_deadline"], entities=["acme"] -- f3: topics=["work"], entities=["acme"]
+    # f2 has no entities, so it contributes no link.
+    links = mem.topic_entity_links()
+    assert links == [
+        {"topic": "work", "entity": "acme", "weight": 1},
+        {"topic": "work_deadline", "entity": "acme", "weight": 1},
+    ]
 
 
 def test_facts_page_sorted_by_when_desc_and_paginated(mem):

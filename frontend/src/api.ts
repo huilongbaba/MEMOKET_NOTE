@@ -72,6 +72,25 @@ export const saveNote = (id: string, title: string, content: string) =>
 export const deleteNote = (id: string) =>
   fetch(`/api/notes/${id}`, { method: 'DELETE', headers: headers() }).then(json)
 
+// ---------------------------------------------------------------- 个人偏好
+//
+// 独立于知识库：不走 LLM 抽取，用户直接维护，写作三件套生成时会读取。
+
+export type ProfileEntry = { id: string; user_id: string; text: string; created_at: string }
+
+export const listProfile = () =>
+  fetch('/api/profile', { headers: headers() }).then(json<ProfileEntry[]>)
+
+export const addProfileEntry = (text: string) =>
+  fetch('/api/profile', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ text }),
+  }).then(json<ProfileEntry>)
+
+export const deleteProfileEntry = (id: string) =>
+  fetch(`/api/profile/${id}`, { method: 'DELETE', headers: headers() }).then(json)
+
 // ---------------------------------------------------------------- 写作
 
 export const genSkeleton = (title: string, content: string) =>
@@ -79,13 +98,13 @@ export const genSkeleton = (title: string, content: string) =>
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ title, content }),
-  }).then(json<{ skeleton: string[]; took_ms: number }>)
+  }).then(json<{ spine: string; beats: string[]; took_ms: number }>)
 
-export const genRevisions = (content: string, skeleton: string[]) =>
+export const genRevisions = (content: string, spine: string, beats: string[]) =>
   fetch('/api/edit', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, skeleton }),
+    body: JSON.stringify({ content, spine, beats }),
   }).then(json<{ revisions: Revision[]; took_ms: number }>)
 
 export type TapMeta = { facts: number; recall_ms: number; grounded: boolean; sources: string[] }
@@ -93,7 +112,8 @@ export type TapMeta = { facts: number; recall_ms: number; grounded: boolean; sou
 /** magic tap：SSE 流式续写。onMeta 先到（检索结果），onDelta 逐块到达。 */
 export async function magicTap(
   content: string,
-  skeleton: string[],
+  spine: string,
+  beats: string[],
   onMeta: (m: TapMeta) => void,
   onDelta: (s: string) => void,
   signal?: AbortSignal,
@@ -101,7 +121,7 @@ export async function magicTap(
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, skeleton }),
+    body: JSON.stringify({ content, spine, beats }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
@@ -160,11 +180,14 @@ export const memoryStats = () =>
 
 // ---------------------------------------------------------------- 知识库可视化
 
-export type TopicNode = { code: string; parents: string[]; status: string; aliases: string[] }
+export type TopicNode = {
+  code: string; parents: string[]; status: string; aliases: string[]; fact_count: number
+}
 export type EntityNode = {
   code: string; name: string; type: string; aliases: string[]
-  relations: [string, string][]
+  relations: [string, string][]; fact_count: number
 }
+export type TopicEntityLink = { topic: string; entity: string; weight: number }
 export type FactDetail = {
   id: string; text: string; when: string; kind: string; who: string; conf: string
   topics: string[]; entities: string[]; unit: string
@@ -176,8 +199,18 @@ export type TimelineBucket = { date: string; units: number; facts: number }
 export const memoryTopics = () =>
   fetch('/api/memory/topics', { headers: headers() }).then(json<TopicNode[]>)
 
+export const createTopic = (code: string, parent = '', aliases: string[] = []) =>
+  fetch('/api/memory/topics', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ code, parent, aliases }),
+  }).then(json<TopicNode>)
+
 export const memoryEntities = () =>
   fetch('/api/memory/entities', { headers: headers() }).then(json<EntityNode[]>)
+
+export const topicEntityLinks = () =>
+  fetch('/api/memory/topic-entity-links', { headers: headers() }).then(json<TopicEntityLink[]>)
 
 export type FactsFilter = {
   kind?: string; who?: string; topic?: string; entity?: string; conf_min?: string

@@ -23,6 +23,19 @@ class Note(BaseModel):
     updated_at: str
 
 
+# ---------------------------------------------------------------- 个人偏好
+
+class ProfileEntryIn(BaseModel):
+    text: str
+
+
+class ProfileEntry(BaseModel):
+    id: str
+    user_id: str
+    text: str
+    created_at: str
+
+
 # ---------------------------------------------------------------- 记忆
 
 class FactOut(BaseModel):
@@ -40,6 +53,13 @@ class TopicOut(BaseModel):
     parents: list[str] = Field(default_factory=list)
     status: str = "candidate"
     aliases: list[str] = Field(default_factory=list)
+    fact_count: int = 0
+
+
+class TopicCreateIn(BaseModel):
+    code: str
+    parent: str = ""
+    aliases: list[str] = Field(default_factory=list)
 
 
 class EntityOut(BaseModel):
@@ -48,6 +68,13 @@ class EntityOut(BaseModel):
     type: str = ""
     aliases: list[str] = Field(default_factory=list)
     relations: list[tuple[str, str]] = Field(default_factory=list)
+    fact_count: int = 0
+
+
+class TopicEntityLink(BaseModel):
+    topic: str
+    entity: str
+    weight: int
 
 
 class SourceLineOut(BaseModel):
@@ -147,14 +174,19 @@ class SkeletonIn(BaseModel):
 
 
 class SkeletonOut(BaseModel):
-    skeleton: list[str]
+    """spine：一句话，这篇东西真正在处理的核心张力/问题——不是主题。
+    beats：3-6 条结构性/修辞性功能（"建立处境""引入转折"），不是内容摘要。
+    见 prompts.py 的 SKELETON_SYSTEM。"""
+    spine: str = ""
+    beats: list[str] = Field(default_factory=list)
     took_ms: float
 
 
 class EditIn(BaseModel):
-    """线 2：骨架 + 已写内容 + 知识库 -> 修订建议。"""
+    """线 2：骨架（spine+beats）+ 已写内容 + 知识库 -> 修订建议。"""
     content: str
-    skeleton: list[str] = Field(default_factory=list)
+    spine: str = ""
+    beats: list[str] = Field(default_factory=list)
 
 
 class Revision(BaseModel):
@@ -174,7 +206,8 @@ class EditOut(BaseModel):
 
 class MagicTapIn(BaseModel):
     content: str
-    skeleton: list[str] = Field(default_factory=list)
+    spine: str = ""
+    beats: list[str] = Field(default_factory=list)
     max_tokens: int = 1200
 
 

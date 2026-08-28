@@ -13,7 +13,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from .. import llm, prompts
+from .. import llm, prompts, store
 from ..kite_memory import UserMemory
 from ..schemas import (EditIn, EditOut, MagicTapIn, Revision, SkeletonIn,
                        SkeletonOut)
@@ -24,44 +24,64 @@ router = APIRouter(prefix="/api", tags=["compose"])
 # 拿正文的尾部做检索 —— 用户当前在写的地方才是相关的
 TAIL_CHARS = 600
 
+# 个人偏好条数上限：跟知识库事实不一样，这份是用户自己攒的，量级通常不大，
+# 但防着万一积累很多年后把 prompt 撑爆——只取最新的一批
+PROFILE_LIMIT = 20
 
-def _retrieve(user: str, content: str, skeleton: list[str], limit: int = 8):
-    """用正文尾部 + 骨架作为检索线索。返回 (事实文本列表, 耗时毫秒)。"""
+
+def _profile(user: str) -> list[str]:
+    return [p["text"] for p in store.list_profile(user)[:PROFILE_LIMIT]]
+
+
+def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8):
+    """用正文尾部 + spine/beats 作为检索线索。返回 (事实文本列表, 耗时毫秒)。"""
     mem = UserMemory(user)
     query = content[-TAIL_CHARS:]
-    if skeleton:
-        query = " ".join(skeleton[-3:]) + "\n" + query
+    hint = " ".join([spine] + beats[-3:]) if spine or beats else ""
+    if hint:
+        query = hint + "\n" + query
     rows, _terms, took = mem.recall(query, limit=limit)
     return [r.get("text", "") for r in rows if r.get("text")], took
 
 
 @router.post("/skeleton", response_model=SkeletonOut)
 async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
-    """线 1：生成主线逻辑骨架。"""
+    """线 1：生成核心张力（spine）+ 结构节拍（beats）。"""
     t0 = time.perf_counter()
     text = await llm.complete(
         [{"role": "system", "content": prompts.SKELETON_SYSTEM},
-         {"role": "user", "content": prompts.skeleton_user(body.title, body.content)}],
+         {"role": "user", "content": prompts.skeleton_user(
+             body.title, body.content, _profile(user))}],
         max_tokens=800, temperature=0.4)
     parsed = llm.extract_json(text)
-    items = [str(x).strip() for x in parsed if str(x).strip()] if isinstance(parsed, list) else []
-    if not items and text:
-        # 模型没给出合法 JSON 时退回按行解析，不要让前端拿到空结果
-        items = [ln.lstrip("-*0123456789. ").strip()
-                 for ln in text.splitlines() if ln.strip()][:7]
-    return SkeletonOut(skeleton=items[:7],
+    spine = ""
+    beats: list[str] = []
+    if isinstance(parsed, dict):
+        spine = str(parsed.get("spine") or "").strip()
+        raw_beats = parsed.get("beats")
+        if isinstance(raw_beats, list):
+            beats = [str(x).strip() for x in raw_beats if str(x).strip()]
+    if not spine and not beats and text:
+        # 模型没给出合法 JSON 时退回按行解析：第一行当 spine，其余当 beats
+        lines = [ln.lstrip("-*0123456789. ").strip()
+                 for ln in text.splitlines() if ln.strip()]
+        if lines:
+            spine = lines[0]
+            beats = lines[1:7]
+    return SkeletonOut(spine=spine, beats=beats[:6],
                        took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 
 @router.post("/edit", response_model=EditOut)
 async def edit(body: EditIn, user: str = Depends(current_user)):
-    """线 2：结合骨架与知识库，产出 track-changes 修订建议。"""
+    """线 2：结合 spine/beats 与知识库，产出 track-changes 修订建议。"""
     t0 = time.perf_counter()
-    facts, _took = _retrieve(user, body.content, body.skeleton)
+    facts, _took = _retrieve(user, body.content, body.spine, body.beats)
 
     text = await llm.complete(
         [{"role": "system", "content": prompts.EDIT_SYSTEM},
-         {"role": "user", "content": prompts.edit_user(body.skeleton, body.content, facts)}],
+         {"role": "user", "content": prompts.edit_user(
+             body.spine, body.beats, body.content, facts, _profile(user))}],
         max_tokens=1500, temperature=0.2)
 
     parsed = llm.extract_json(text)
@@ -100,12 +120,12 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         event: delta  —— 正文增量
         event: done
     """
-    facts, took = _retrieve(user, body.content, body.skeleton, limit=6)
+    facts, took = _retrieve(user, body.content, body.spine, body.beats, limit=6)
 
     messages = [
         {"role": "system", "content": prompts.MAGIC_TAP_SYSTEM},
         {"role": "user", "content": prompts.magic_tap_user(
-            body.skeleton, body.content, facts)},
+            body.spine, body.beats, body.content, facts, _profile(user))},
     ]
 
     async def gen():

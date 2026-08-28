@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from memoket_kite import Memory
 from memoket_kite.core.algebra import CONF_ORDER, Store, execute_plan
+from memoket_kite.core.vocab import Topic, norm_code
 
 from . import kite_extract_profile
 from .config import get_settings
@@ -298,21 +301,51 @@ class UserMemory:
     # 跟 recall() 用的是同一层，字段含义和边界情况都已经在检索路径上踩过坑了。
 
     def topics(self) -> list[dict]:
-        """topic 树。parents 字段构成层级——前端自己拼树，不在这里嵌套。"""
-        _store, vocab = self._index()
+        """topic 树。parents 字段构成层级——前端自己拼树，不在这里嵌套。
+
+        fact_count 是精确匹配该 code 的 fact 数（不含子主题闭包），给force
+        图当节点大小用；跟 facts_page(topic=...) 的闭包过滤是两回事。
+        """
+        store, vocab = self._index()
+        counts: dict[str, int] = {}
+        for f in store.facts.values():
+            for code in f.topics:
+                counts[code] = counts.get(code, 0) + 1
         return [
             {"code": t.code, "parents": sorted(t.parents), "status": t.status,
-             "aliases": sorted(t.aliases)}
+             "aliases": sorted(t.aliases), "fact_count": counts.get(t.code, 0)}
             for t in sorted(vocab.topics.values(), key=lambda t: t.code)
         ]
 
     def entities(self) -> list[dict]:
-        _store, vocab = self._index()
+        store, vocab = self._index()
+        counts: dict[str, int] = {}
+        for f in store.facts.values():
+            for code in f.entities:
+                counts[code] = counts.get(code, 0) + 1
         return [
             {"code": e.code, "name": e.name, "type": e.etype,
-             "aliases": sorted(e.aliases), "relations": sorted(e.rels)}
+             "aliases": sorted(e.aliases), "relations": sorted(e.rels),
+             "fact_count": counts.get(e.code, 0)}
             for e in sorted(vocab.entities.values(), key=lambda e: e.code)
         ]
+
+    def topic_entity_links(self) -> list[dict]:
+        """topic 和 entity 在 KITE 的数据模型里没有直接的 schema 关联——两个都
+        是挂在 fact 上的独立分类维度，只在同一条 fact 上"共现"。这里把共现
+        次数按 (topic, entity) 聚合成边，主题地图拿这个把两类节点连起来，
+        不然图上主题和实体各画各的，看不出关系（用户反馈原话："这样展示
+        两个，很迷糊"）。
+        """
+        store, _vocab = self._index()
+        counts: dict[tuple[str, str], int] = {}
+        for f in store.facts.values():
+            for t in f.topics:
+                for e in f.entities:
+                    key = (t, e)
+                    counts[key] = counts.get(key, 0) + 1
+        return [{"topic": t, "entity": e, "weight": w}
+                for (t, e), w in sorted(counts.items())]
 
     def _fact_dict(self, f) -> dict:
         return {"id": f.id, "text": f.text, "when": f.when, "kind": f.kind,
@@ -381,6 +414,71 @@ class UserMemory:
                 continue
             buckets.setdefault(f.when, {"date": f.when, "units": 0, "facts": 0})["facts"] += 1
         return sorted(buckets.values(), key=lambda b: b["date"])
+
+    def add_topic(self, code: str, *, parent: str = "", aliases: list[str] | None = None) -> dict:
+        """手动新建一个 topic——主题地图里"新建主题"用。
+
+        跟模型的 propose_topic() 不一样：那条路径是给 LLM 抽取时用的，带
+        admission budget 防模型瞎造（约束 10 那个坑），状态先落 candidate 等
+        promote。这里是用户自己点的，直接给 canonical，不用等门槛。
+
+        没走 Memory.remember()——那条路径必须绑一个 session，为了改 vocab
+        硬造一条空会话既污染时间线又多余。改成直接操作 Vocab 再用
+        Vocab.to_xml() 序列化写回，只换 <vocab> 子树，<timeline> 原样不动。
+        写入仍然全程持锁（约束 1），落盘前 Store.load() 验证一遍能读回来，
+        跟 KITE 自己 storage.append_session() 的做法一致（没直接复用它，因为
+        它的签名绑死了 session/facts 参数）。
+        """
+        self.ensure()
+        new_code = norm_code(code)
+        if not new_code:
+            raise ValueError("主题名不能为空")
+
+        with write_lock(self.path):
+            _store, vocab = Store.load([str(self.path)])
+            if new_code in vocab.topics:
+                raise ValueError(f"主题已存在：{new_code}")
+            parent_code = ""
+            if parent:
+                parent_code = vocab.resolve_topic(parent) or ""
+                if not parent_code:
+                    raise ValueError(f"父主题不存在：{parent}")
+
+            topic = Topic(new_code, parents={parent_code} if parent_code else set(),
+                          status="canonical")
+            for alias in (aliases or []):
+                a = norm_code(alias)
+                if a and a != new_code:
+                    topic.aliases.add(a)
+            vocab.topics[new_code] = topic
+            for alias in topic.aliases:
+                vocab._alias_t[alias] = new_code
+
+            tree = ET.parse(self.path)
+            root = tree.getroot()
+            prior_vocab_el = root.find("vocab")
+            new_vocab_el = vocab.to_xml()
+            if prior_vocab_el is None:
+                root.insert(0, new_vocab_el)
+            else:
+                root.insert(list(root).index(prior_vocab_el), new_vocab_el)
+                root.remove(prior_vocab_el)
+            ET.indent(tree, space="  ")
+
+            fd, tmp_name = tempfile.mkstemp(
+                suffix=".xml", prefix=f".{self.path.stem}-", dir=self.path.parent)
+            os.close(fd)
+            tmp_path = Path(tmp_name)
+            try:
+                tree.write(tmp_path, encoding="utf-8", xml_declaration=True)
+                Store.load([str(tmp_path)])  # refuse to publish an unreadable file
+                os.replace(tmp_path, self.path)
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
+        self.invalidate()
+        return {"code": new_code, "parents": sorted(topic.parents), "status": "canonical",
+                "aliases": sorted(topic.aliases), "fact_count": 0}
 
     # ------------------------------------------------------------ 入库（走 LLM，慢）
 

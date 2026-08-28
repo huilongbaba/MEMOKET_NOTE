@@ -81,6 +81,9 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str) -
                 date=_date.today().isoformat(),
                 title=title,
             )
+            # 每个 chunk 单独一次 LLM 调用（~13s），落一次库让前端轮询能看见
+            # facts 数逐块往上涨，而不是等全部 chunk 跑完才一次性跳到最终值。
+            store.set_job(job_id, "running", facts=total)
         store.set_job(job_id, "done", facts=total)
     except Exception as exc:  # 后台任务的异常必须落库，否则前端只看到永远 running
         store.set_job(job_id, "error", detail=f"{type(exc).__name__}: {exc}")
@@ -179,14 +182,33 @@ def _batch_job(job_id: str, user_id: str, items: list[dict],
             store.set_item(item_id, "remembering")
             store.update_job_from_items(job_id)
             total = 0
+            cancelled_mid_file = False
             for i, chunk in enumerate(chunks):
+                # 取消检查放在块与块之间，不是只在文件与文件之间——一个大文件
+                # 可能切成几百上千个 chunk，每块又是一次独立的 LLM 调用（见
+                # docs/kite-constraints.md 约束 9 提到的耗时），只在外层文件
+                # 循环查取消标记的话，取消这一个大文件的任务实际上完全没用，
+                # 只能等它自己把所有 chunk 跑完（真实碰到过：整本小说当文档传
+                # 进来，切出几百个 chunk，点了取消却半小时都停不下来）。
+                if store.is_cancel_requested(job_id):
+                    cancelled_mid_file = True
+                    break
                 total += mem.remember(
                     [{"role": "user", "content": chunk}],
                     session_id=f"{item_id}-{i}",
                     date=_date.today().isoformat(),
                     title=filename,
                 )
-            store.set_item(item_id, "done", facts=total)
+                # 同一个文件常常切成好几个 chunk，每个 chunk 一次独立的 LLM
+                # 调用——每块跑完就落一次库，SSE 才能把 facts 数逐块往上涨
+                # 推给前端，而不是等一整个文件的所有 chunk 都跑完才跳一次。
+                store.set_item(item_id, "remembering", facts=total)
+                store.update_job_from_items(job_id)
+            if cancelled_mid_file:
+                store.set_item(item_id, "cancelled", facts=total,
+                              detail=f"已处理 {i}/{len(chunks)} 块后取消")
+            else:
+                store.set_item(item_id, "done", facts=total)
         except Exception as exc:  # noqa: BLE001 — 单个文件失败不能拖垮整批
             store.set_item(item_id, "failed", detail=f"{type(exc).__name__}: {exc}")
         store.update_job_from_items(job_id)

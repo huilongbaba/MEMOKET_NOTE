@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ask, cancelJob, ingestBatch, ingestText, jobStatus, memoryStats, recall, watchJob } from '../api'
-import type { Fact, JobOut } from '../api'
+import {
+  addProfileEntry, ask, cancelJob, deleteProfileEntry, ingestBatch, jobStatus, listProfile,
+  memoryFacts, memoryStats, recall, watchJob,
+} from '../api'
+import type { Fact, FactDetail, JobOut, ProfileEntry } from '../api'
 import MemoryBrowser from './MemoryBrowser'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -20,16 +23,31 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const [took, setTook] = useState<number | null>(null)
   const [answer, setAnswer] = useState('')
-  const [busy, setBusy] = useState<'' | 'recall' | 'ask' | 'ingest'>('')
-  const [paste, setPaste] = useState('')
+  const [busy, setBusy] = useState<'' | 'recall' | 'ask'>('')
   const [job, setJob] = useState('')
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
   const batchAbort = useRef<AbortController | null>(null)
   const [browsing, setBrowsing] = useState(false)
+  const [profile, setProfile] = useState<ProfileEntry[]>([])
+  const [newPref, setNewPref] = useState('')
+  const [addingPref, setAddingPref] = useState(false)
+  const [recentFacts, setRecentFacts] = useState<FactDetail[]>([])
+  const lastSeenFactCount = useRef(-1)
 
   const refresh = () => memoryStats().then(setStats).catch(() => {})
   useEffect(() => { refresh() }, [])
+  useEffect(() => { listProfile().then(setProfile).catch(() => {}) }, [])
   useEffect(() => () => batchAbort.current?.abort(), [])
+
+  /** 抽取是分块跑的（一个 chunk 一次 LLM 调用），每跑完一块 facts 数就会
+   * 涨一次——这里跟着那个数字走，数字一变就去把最新的几条 fact 拉过来，
+   * 做出"边抽取边看见内容"的效果，不用等整个任务跑完才一次性刷出来。 */
+  function pollRecentFacts(factCount: number) {
+    if (factCount > 0 && factCount !== lastSeenFactCount.current) {
+      lastSeenFactCount.current = factCount
+      memoryFacts({ limit: 3 }).then((r) => setRecentFacts(r.facts)).catch(() => {})
+    }
+  }
 
   // 入库是后台任务，轮询到 done 再刷新统计
   useEffect(() => {
@@ -38,15 +56,18 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     const timer = setInterval(async () => {
       try {
         const s = await jobStatus(id)
+        pollRecentFacts(s.facts)
         if (s.status === 'done' || s.status === 'error') {
           clearInterval(timer)
           setJob('')
+          setRecentFacts([])
           refresh()
           if (s.status === 'error') alert(`入库失败：${s.detail}`)
         }
       } catch { clearInterval(timer) }
     }, 3000)
     return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJob, job])
 
   async function doRecall() {
@@ -65,13 +86,19 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     } finally { setBusy('') }
   }
 
-  async function doIngest() {
-    if (!paste.trim()) return
-    setBusy('ingest')
+  async function doAddPref() {
+    if (!newPref.trim()) return
+    setAddingPref(true)
     try {
-      const r = await ingestText(paste, '手动录入')
-      setJob(r.job_id); setPaste('')
-    } finally { setBusy('') }
+      const entry = await addProfileEntry(newPref.trim())
+      setProfile((prev) => [entry, ...prev])
+      setNewPref('')
+    } finally { setAddingPref(false) }
+  }
+
+  async function doDeletePref(id: string) {
+    await deleteProfileEntry(id)
+    setProfile((prev) => prev.filter((p) => p.id !== id))
   }
 
   async function doBatchIngest(files: FileList | null) {
@@ -81,7 +108,8 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     batchAbort.current = controller
     const r = await ingestBatch(Array.from(files))
     setBatchJob(r)
-    watchJob(r.job_id, setBatchJob, () => refresh(), controller.signal)
+    watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
+      () => { refresh(); setRecentFacts([]) }, controller.signal)
   }
 
   async function doCancelBatch() {
@@ -102,6 +130,17 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         {working && <> · <span className="spinner" /> 抽取中</>}
       </p>
       {browsing && <MemoryBrowser onClose={() => setBrowsing(false)} />}
+
+      {recentFacts.length > 0 && (
+        <div className="stack" style={{ marginBottom: 10 }}>
+          <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+            刚抽取到（抽取是分块跑的，每跑完一块就会多几条）：
+          </p>
+          {recentFacts.map((f) => (
+            <div className="card" key={f.id} style={{ fontSize: 12 }}>{f.text}</div>
+          ))}
+        </div>
+      )}
 
       <div className="stack">
         <input
@@ -141,17 +180,32 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         </div>
       ))}
 
-      <h2>手动入库</h2>
+      <h2>个人偏好</h2>
+      <p className="muted" style={{ fontSize: 12 }}>
+        跟知识库是两回事——这里不走抽取，写完立刻生效。写作骨架/智能编辑/magic tap
+        续写都会读取，让输出贴合这些偏好。
+      </p>
       <div className="stack">
-        <textarea
-          rows={4}
-          placeholder="粘贴文档内容，抽取成事实存进知识库…"
-          value={paste}
-          onChange={(e) => setPaste(e.target.value)}
-        />
-        <button onClick={doIngest} disabled={!paste.trim() || !!busy}>
-          {busy === 'ingest' ? <span className="spinner" /> : '存入知识库'}
-        </button>
+        <div className="row">
+          <input
+            placeholder="比如：喜欢简洁的语言、写周报先说结论再列数据…"
+            value={newPref}
+            onChange={(e) => setNewPref(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && doAddPref()}
+            style={{ flex: 1 }}
+          />
+          <button onClick={doAddPref} disabled={!newPref.trim() || addingPref}>
+            {addingPref ? <span className="spinner" /> : '添加'}
+          </button>
+        </div>
+        {profile.map((p) => (
+          <div className="card" key={p.id}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span>{p.text}</span>
+              <a className="link" onClick={() => doDeletePref(p.id)}>✕</a>
+            </div>
+          </div>
+        ))}
       </div>
 
       <h2>批量导入</h2>
@@ -183,7 +237,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
                 <span>{it.filename}</span>
                 <span className="muted">
                   {STATUS_LABEL[it.status] ?? it.status}
-                  {it.status === 'done' && ` · ${it.facts} 条`}
+                  {(it.status === 'remembering' || it.status === 'done') && it.facts > 0 && ` · 已抽取 ${it.facts} 条`}
                   {it.status === 'failed' && it.detail && ` · ${it.detail}`}
                 </span>
               </div>

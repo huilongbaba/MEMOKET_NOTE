@@ -2,12 +2,13 @@
 
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..kite_memory import UserMemory
 from ..schemas import (AskIn, AskOut, EntityOut, FactDetailOut, FactOut,
                        FactsPageOut, RecallIn, RecallOut, SourceLineOut,
-                       StatsOut, TimelineBucket, TimelineOut, TopicOut)
+                       StatsOut, TimelineBucket, TimelineOut, TopicCreateIn,
+                       TopicEntityLink, TopicOut)
 from .deps import current_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -47,10 +48,26 @@ def topics(user: str = Depends(current_user)):
     return UserMemory(user).topics()
 
 
+@router.post("/topics", response_model=TopicOut)
+def create_topic(body: TopicCreateIn, user: str = Depends(current_user)):
+    """手动新建主题——主题地图里"新建主题"用，直接落 canonical。"""
+    try:
+        return UserMemory(user).add_topic(body.code, parent=body.parent, aliases=body.aliases)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/entities", response_model=list[EntityOut])
 def entities(user: str = Depends(current_user)):
     """实体列表，前端按 type 分组展示。"""
     return UserMemory(user).entities()
+
+
+@router.get("/topic-entity-links", response_model=list[TopicEntityLink])
+def topic_entity_links(user: str = Depends(current_user)):
+    """topic 和 entity 没有直接 schema 关联，只在同一条 fact 上共现——这里把
+    共现次数聚合成边，主题地图用它把两类节点连起来。"""
+    return UserMemory(user).topic_entity_links()
 
 
 @router.get("/facts", response_model=FactsPageOut)

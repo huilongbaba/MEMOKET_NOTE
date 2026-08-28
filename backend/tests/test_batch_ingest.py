@@ -19,6 +19,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import extract, store  # noqa: E402
+from app.kite_memory import UserMemory  # noqa: E402
+from app.routers import ingest  # noqa: E402
 from app.routers.ingest import _chunks_for, _markdown_sections  # noqa: E402
 
 
@@ -71,6 +73,30 @@ def test_kind_for_rejects_unknown_extension():
 def test_extract_text_txt_and_md_decode_utf8():
     assert extract.extract_text("你好".encode(), "a.txt") == "你好"
     assert extract.extract_text(b"# T\nbody", "a.md") == "# T\nbody"
+
+
+def test_extract_text_txt_decodes_utf8_bom():
+    assert extract.extract_text("你好".encode("utf-8-sig"), "a.txt") == "你好"
+
+
+def test_extract_text_txt_falls_back_to_gb18030():
+    # 老中文 txt 文件（尤其是小说）常见编码不是 UTF-8 而是 GBK/GB2312——
+    # GB18030 是它们的超集，兼容解码。之前这里无条件当 UTF-8 解码，GBK
+    # 文件会被解成乱码送进 LLM，模型自然一条 fact 都抽不出来（真实碰到
+    # 过：GBK 编码的小说 txt，跑了几十个 chunk 全部 0 facts）。
+    text = "这是一段测试文字，里面有乔峰、段誉、虚竹。"
+    assert extract.extract_text(text.encode("gb18030"), "novel.txt") == text
+
+
+def test_extract_text_txt_gbk_bytes_are_not_silently_mangled():
+    """不测「能不能读」，测「读错了会不会看起来还像中文」——GBK 字节被误当
+    UTF-8 解码不会报错，只会产出乱码，这种情况必须被 GB18030 那条路径接住，
+    而不是走到最后的 errors='replace' 兜底。"""
+    text = "金庸的天龙八部里有乔峰、段誉、虚竹。"
+    gbk_bytes = text.encode("gbk")
+    result = extract.extract_text(gbk_bytes, "novel.txt")
+    assert result == text
+    assert "�" not in result  # 没有走到 replace 兜底产生的替换字符
 
 
 def test_extract_text_docx_reads_paragraphs():
@@ -168,3 +194,68 @@ def test_cancel_flag_roundtrip(isolated_store):
     assert isolated_store.is_cancel_requested(job_id) is False
     isolated_store.request_cancel(job_id)
     assert isolated_store.is_cancel_requested(job_id) is True
+
+
+# ---------------------------------------------------------------- 增量进度
+#
+# 抽取是分块跑的，一个 chunk 一次独立的 LLM 调用（~13s）。用户反馈："提取
+# 过程中就能看到，而不是等提取完后才能一次看到"——这两个测试锁定的就是这个
+# 行为：facts 数必须随着每个 chunk 跑完往上涨，不能只在全部 chunk 结束后
+# 才跳一次。不碰真实 remember()（会打 LLM），用一个每次固定 +2 的假实现。
+
+def _fake_remember_plus_two(monkeypatch):
+    monkeypatch.setattr(UserMemory, "remember", lambda self, *a, **kw: 2)
+
+
+def _long_paragraph(tag: str) -> str:
+    # 单段落要撑到 _chunks() 的 CHUNK_CHARS(1200) 附近，三段拼起来必然超过
+    # 一个 chunk 的上限，逼出至少 2 次 remember() 调用。
+    return f"{tag} " + ("内容 " * 220)
+
+
+def test_ingest_job_reports_facts_incrementally_across_chunks(isolated_store, monkeypatch):
+    _fake_remember_plus_two(monkeypatch)
+    seen_facts: list[int] = []
+    real_set_job = store.set_job
+
+    def spy_set_job(job_id, status, facts=0, detail=""):
+        seen_facts.append(facts)
+        real_set_job(job_id, status, facts=facts, detail=detail)
+    monkeypatch.setattr(store, "set_job", spy_set_job)
+
+    text = "\n\n".join(_long_paragraph(t) for t in ("A", "B", "C"))
+    assert len(ingest._chunks(text)) >= 2  # sanity: the fixture text really is multi-chunk
+
+    job_id = store.create_job("u1")
+    ingest._ingest_job(job_id, "u1", text, "t", "doc")
+
+    # every chunk's completion is its own store write, not one write at the end
+    assert len(seen_facts) >= 2
+    # and the count actually climbs chunk by chunk, not just at the final write
+    assert seen_facts == sorted(seen_facts)
+    assert seen_facts[0] < seen_facts[-1]
+
+
+def test_batch_job_reports_item_facts_incrementally_across_chunks(isolated_store, monkeypatch):
+    _fake_remember_plus_two(monkeypatch)
+    text = "\n\n".join(_long_paragraph(t) for t in ("A", "B", "C"))
+    assert len(ingest._chunks_for(text, "txt")) >= 2
+
+    job_id, items = store.create_batch_job("u1", [{"filename": "a.txt", "kind": "txt"}])
+    item_id = items[0]["id"]
+    seen_facts: list[int] = []
+    real_set_item = store.set_item
+
+    def spy_set_item(item_id_, status, facts=0, detail=""):
+        if item_id_ == item_id:
+            seen_facts.append(facts)
+        real_set_item(item_id_, status, facts=facts, detail=detail)
+    monkeypatch.setattr(store, "set_item", spy_set_item)
+
+    ingest._batch_job(job_id, "u1", items, {item_id: text.encode()}, "auto")
+
+    # "remembering" gets written once per chunk (plus the terminal "done") --
+    # if this were only 1, the fix regressed back to "one jump at the end".
+    remembering_facts = seen_facts[:-1]  # last entry is the terminal "done" write
+    assert len(remembering_facts) >= 2
+    assert remembering_facts[0] < remembering_facts[-1]

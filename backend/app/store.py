@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS ingest_items (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_items_job ON ingest_items(job_id, idx);
+
+CREATE TABLE IF NOT EXISTS user_profile (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_profile_user ON user_profile(user_id, created_at DESC);
 """
 
 # 单个 job 里所有 item 都落到这些状态之一，才算 job 结束
@@ -208,3 +216,35 @@ def update_job_from_items(job_id: str) -> None:
         status = "running"
     detail = "; ".join(f"{i['filename']}: {i['detail']}" for i in items if i["detail"])
     set_job(job_id, status, facts=total_facts, detail=detail)
+
+
+# ---------------------------------------------------------------- 个人偏好
+#
+# 故意不进 KITE codebook——那边是"从文档/笔记里抽事实"，异步、经模型取舍、
+# 走 LLM 抽取排队。这里是用户自己直接说的"我喜欢/我倾向于..."，不需要抽取，
+# 写完立刻生效，跟知识库是两个独立的存储。
+
+def list_profile(user_id: str) -> list[dict]:
+    with connect() as c:
+        # created_at has 1-second resolution (_now()), and preferences are
+        # plausibly added back-to-back within the same second -- rowid (SQLite's
+        # implicit, monotonically-increasing insertion order) breaks the tie so
+        # "newest first" still holds even when the timestamps are identical.
+        rows = c.execute(
+            "SELECT * FROM user_profile WHERE user_id=? ORDER BY created_at DESC, rowid DESC",
+            (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_profile_entry(user_id: str, text: str) -> dict:
+    entry = {"id": uuid.uuid4().hex[:12], "user_id": user_id, "text": text, "created_at": _now()}
+    with connect() as c:
+        c.execute("INSERT INTO user_profile VALUES (:id,:user_id,:text,:created_at)", entry)
+    return entry
+
+
+def delete_profile_entry(user_id: str, entry_id: str) -> bool:
+    with connect() as c:
+        cur = c.execute("DELETE FROM user_profile WHERE user_id=? AND id=?",
+                        (user_id, entry_id))
+    return cur.rowcount > 0

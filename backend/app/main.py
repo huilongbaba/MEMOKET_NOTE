@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import asr
 from .config import get_settings
-from .routers import compose, ingest, memory, notes
+from .routers import compose, ingest, memory, notes, profile
 
 app = FastAPI(title="memoket-NOTE", version="0.1.0",
               description="AI 编辑器 + 知识库，长期记忆由 KITE 提供")
@@ -26,6 +26,7 @@ app.include_router(notes.router)
 app.include_router(ingest.router)
 app.include_router(memory.router)
 app.include_router(compose.router)
+app.include_router(profile.router)
 
 
 @app.get("/api/health")

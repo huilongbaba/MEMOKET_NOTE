@@ -43,8 +43,31 @@ def extract_text(data: bytes, filename: str) -> str:
     if kind == "docx":
         return _extract_docx(data)
     if kind in ("txt", "md"):
-        return data.decode("utf-8", errors="replace")
+        return _decode_text(data)
     raise UnsupportedFileType(f"{kind} 不是文档类型，应走 ASR")
+
+
+def _decode_text(data: bytes) -> str:
+    """先按 UTF-8 严格解码；不是 UTF-8 就试 GB18030（兼容 GBK/GB2312，是老
+    中文 txt 文件最常见的编码，尤其是小说这类从旧论坛/资源站流传下来的
+    文件）；两个都解不出来才退回 UTF-8+replace，保证至少不炸，但那种情况
+    下内容本来就没法读。
+
+    之前这里无条件当 UTF-8 解码——GBK 编码的文件会被解成一坨乱码
+    （比如"这是"被解成"����"这种），送进 LLM 抽取自然一条 fact 都抽不出
+    来：不是内容不适合抽取，是从一开始就没读对文件，模型看到的根本不是
+    中文。真实碰到过：一个 GBK 编码的 txt 小说，跑了几十个 chunk 全部
+    返回 0 facts，查到最后才发现是编码问题。
+    """
+    try:
+        return data.decode("utf-8-sig")  # 顺手处理带 BOM 的 UTF-8
+    except UnicodeDecodeError:
+        pass
+    try:
+        return data.decode("gb18030")
+    except UnicodeDecodeError:
+        pass
+    return data.decode("utf-8", errors="replace")
 
 
 def _extract_pdf(data: bytes) -> str:
