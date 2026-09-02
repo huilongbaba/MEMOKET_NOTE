@@ -23,6 +23,7 @@ from .. import harness_adapter, llm, prompts, store
 from ..schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
 from .compose import _profile, _retrieve
 from .deps import current_user
+from .note_harness import _apply_revision  # 纯字符串函数，两条 harness 共用
 
 router = APIRouter(prefix="/api/writing-plan", tags=["writing-plan"])
 
@@ -82,6 +83,59 @@ async def _evaluate_section(user: str, content: str, section_title: str,
         )
     except Exception:
         return None
+
+
+async def _run_section_edit_pass(user: str, content: str, section_title: str, goal: str,
+                                 other_summaries: list[str], note_title: str, note_id: str,
+                                 focus: str, result: dict):
+    """分段专用的修订/清理步骤——之前 writing_plan.py 完全没有这一步，只有
+    续写；真实压测数据（TRACELOG [28]）发现分段的收敛率明显低于笔记
+    （20% vs 50%+），根因是 non_repetition 被打低分之后除了"接着写"没有
+    别的手段，这跟 note_harness.py 改之前撞过的同一个坑——已经在重复的
+    问题，靠"接着写"没道理能自己变好。这里照 note_harness._run_edit_pass
+    的模式给分段也配一份，用 section_edit_user()（跟 edit_user() 共用同
+    一份 EDIT_SYSTEM，只是上下文块换成分段自己的）。"""
+    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6)
+    dup_hints = find_repeats(content) if focus == "non_repetition" else []
+    edit_system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
+    try:
+        edit_text = await llm.complete(
+            [{"role": "system", "content": edit_system},
+             {"role": "user", "content": prompts.section_edit_user(
+                 section_title, goal, other_summaries, content, facts, _profile(user), focus, dup_hints)}],
+            max_tokens=1500, temperature=0.1)
+    except Exception as exc:
+        yield _sse("error", {"detail": f"分段修订调用失败，跳过这一轮修订: {exc}"})
+        result["content"] = content
+        result["applied"] = 0
+        return
+    parsed_revisions = llm.extract_json(edit_text)
+    applied = 0
+    if isinstance(parsed_revisions, list):
+        for item in parsed_revisions[:6]:
+            if not isinstance(item, dict):
+                continue
+            op = str(item.get("op", "")).lower()
+            if op not in ("insert", "delete", "replace"):
+                continue
+            anchor = str(item.get("anchor") or "")
+            if not anchor or anchor not in content:
+                continue
+            text = str(item.get("text") or "")
+            new_content = _apply_revision(content, op, anchor, text)
+            if new_content == content:
+                continue
+            content = new_content
+            applied += 1
+            yield _sse("revision", {
+                "section_id": None, "op": op, "anchor": anchor[:120], "text": text[:300],
+                "reason": str(item.get("reason") or ""),
+                "sources": [str(s) for s in (item.get("sources") or [])][:3],
+            })
+    if applied:
+        store.update_note(user, note_id, note_title, content)
+    result["content"] = content
+    result["applied"] = applied
 
 
 def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
@@ -204,40 +258,69 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             target = {**target, "status": "in_progress", "note_id": note["id"]}
 
             other_summaries = [s["summary"] for s in sections if s["id"] != target["id"] and s["summary"]]
-            facts, ids, took = _retrieve(user, note["content"], target["title"], [], limit=6)
-            folder_notes = store.notes_in_folder(user, body.folder_id, exclude_id=note["id"], limit=6)
-            folder_ctx = prompts.folder_context_block(folder_notes)
-            section_system = prompts.compose_system(
-                prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "section_write"))
+            focus = section_focus.get(target["id"], "")
 
-            messages = [
-                {"role": "system", "content": section_system},
-                {"role": "user", "content": prompts.section_write_user(
-                    target["title"], plan["goal"], other_summaries,
-                    note["content"], facts, folder_ctx, _profile(user),
-                    focus=section_focus.get(target["id"], ""))},
-            ]
+            # 上一轮评分如果说这个分段最弱的是 non_repetition，这一轮跳过
+            # 续写，改跑一次专门的修订/清理（TRACELOG [28]）：真实压测数据
+            # 发现分段的收敛率明显低于笔记，根因是这里之前完全没有编辑
+            # 步骤，non_repetition 被打低分之后除了"接着写"没有别的手段，
+            # 而"接着写"只会往已经重复的内容上再加一层——跟 note_harness.py
+            # 改之前撞过的同一个坑，这里补上对应的修复。
+            skip_continue = focus == "non_repetition"
+            cleanup_applied = 0
+            if skip_continue:
+                cleanup_result: dict = {}
+                # _run_section_edit_pass 自己会在 applied>0 时调用
+                # store.update_note()，这里不用再存一次。
+                async for ev in _run_section_edit_pass(
+                        user, note["content"], target["title"], plan["goal"],
+                        other_summaries, target["title"], note["id"], focus, cleanup_result):
+                    yield ev
+                new_content = cleanup_result["content"]
+                cleanup_applied = cleanup_result["applied"]
+                round_text = ""
+                yield _sse("section-start", {
+                    "section_id": target["id"], "title": target["title"], "note_id": note["id"],
+                    "is_new_note": is_new_note, "facts": 0, "recall_ms": 0,
+                    "sources": [], "fact_ids": [], "skipped_continue": True,
+                })
+            else:
+                facts, ids, took = _retrieve(user, note["content"], target["title"], [], limit=6)
+                folder_notes = store.notes_in_folder(user, body.folder_id, exclude_id=note["id"], limit=6)
+                folder_ctx = prompts.folder_context_block(folder_notes)
+                section_system = prompts.compose_system(
+                    prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "section_write"))
 
-            yield _sse("section-start", {
-                "section_id": target["id"], "title": target["title"], "note_id": note["id"],
-                "is_new_note": is_new_note, "facts": len(facts),
-                "recall_ms": round(took, 3), "sources": facts[:6], "fact_ids": ids[:6],
-            })
+                messages = [
+                    {"role": "system", "content": section_system},
+                    {"role": "user", "content": prompts.section_write_user(
+                        target["title"], plan["goal"], other_summaries,
+                        note["content"], facts, folder_ctx, _profile(user), focus=focus)},
+                ]
 
-            round_text = ""
-            try:
-                async for piece in llm.stream(messages, max_tokens=900):
-                    round_text += piece
-                    yield _sse("delta", {"note_id": note["id"], "text": piece})
-            except Exception as exc:
-                yield _sse("error", {"detail": str(exc)})
-                break
+                yield _sse("section-start", {
+                    "section_id": target["id"], "title": target["title"], "note_id": note["id"],
+                    "is_new_note": is_new_note, "facts": len(facts),
+                    "recall_ms": round(took, 3), "sources": facts[:6], "fact_ids": ids[:6],
+                })
 
-            new_content = prompts.join_round_text(note["content"], round_text)
-            store.update_note(user, note["id"], target["title"], new_content)
+                round_text = ""
+                try:
+                    async for piece in llm.stream(messages, max_tokens=900):
+                        round_text += piece
+                        yield _sse("delta", {"note_id": note["id"], "text": piece})
+                except Exception as exc:
+                    yield _sse("error", {"detail": str(exc)})
+                    break
+
+                new_content = prompts.join_round_text(note["content"], round_text)
+                store.update_note(user, note["id"], target["title"], new_content)
 
             section_rounds[target["id"]] = section_rounds.get(target["id"], 0) + 1
-            no_progress = not round_text.strip()
+            # 普通续写轮：round_text 空就是没进展。跳过续写的清理轮：看
+            # 有没有真的应用修订——两次独立尝试都没改动，才算没进展，跟
+            # note_harness.py 的 no_change 判断是同一个道理。
+            no_progress = (not skip_continue and not round_text.strip()) or (skip_continue and not cleanup_applied)
 
             evaluation = None if no_progress else await _evaluate_section(
                 user, new_content, target["title"], plan["goal"], other_summaries)

@@ -30,16 +30,21 @@ SKELETON_SYSTEM = """你是写作顾问。读用户正在写的内容，不要�
   解释文字
 """
 
-EDIT_SYSTEM = """你是写作编辑。给你五样东西：核心张力（spine）、结构节拍
-（beats，每条是一个功能而不是内容）、用户已写的正文、从用户知识库检索到
-的事实、用户的个人偏好。
+# 开头这段刻意写得不点名"spine/beats"——两个调用方公用同一份 EDIT_SYSTEM：
+# note_harness.py 传的是核心张力/结构节拍，writing_plan.py 传的是分段
+# 主题/总体目标，锚定用的具体是什么由调用方的 user prompt 决定，这里
+# 只描述"要贴合给定的核心目标/结构"这个原则本身，两边都适用，不用维护
+# 两份几乎一样的规则（重复检查/空壳标题检查这些跟锚点类型无关的规则
+# 尤其不该分裂成两份）。
+EDIT_SYSTEM = """你是写作编辑。给你这篇正文应该服务的核心目标/结构、
+用户已写的正文、从用户知识库检索到的事实、用户的个人偏好。
 
-你的任务是提出**具体的修订建议**，让正文更贴合核心张力、让每个结构节拍
-真正被满足。重点：
-- 正文偏离核心张力的地方（比如 spine 是"如何应对不确定性"，正文却通篇在
-  罗列流水账，没有回应这个张力），提出调整
-- 某个结构节拍该出现但正文里完全没有对应内容的地方，提出补充——注意补的
-  是"让这个功能成立的内容"，不是直接把节拍的抽象描述抄进正文
+你的任务是提出**具体的修订建议**，让正文更贴合给定的核心目标、让给定的
+结构要点真正被满足。重点：
+- 正文偏离给定核心目标的地方（比如目标是"说清楚如何应对不确定性"，正文
+  却通篇在罗列流水账，没有回应这个目标），提出调整
+- 给定的某个结构要点该出现但正文里完全没有对应内容的地方，提出补充——
+  注意补的是"让这个功能成立的内容"，不是直接把要点的抽象描述抄进正文
 - 正文与知识库事实矛盾的地方，以事实为准提出更正
 - 正文里含糊、可以用知识库事实补实的地方，提出补充
 - 正文的风格/表达明显违背个人偏好的地方（比如偏好要简洁但正文很啰嗦），也可以提出修订
@@ -50,7 +55,7 @@ EDIT_SYSTEM = """你是写作编辑。给你五样东西：核心张力（spine�
   同一个论点说了不止一次（比如前面一节讲过"这个方案的适用边界是……"，
   后面一节用不同的句子又把同一组边界条件讲了一遍）。发现这种情况，对
   较晚出现、信息量较小或者不如另一处完整的那次重复，提一条 delete
-  把它删掉——这条检查不依赖 spine/beats，是专门为多轮续写场景加的，
+  把它删掉——这条检查不依赖给定的核心目标/结构是什么，是专门为多轮续写场景加的，
   上面几条是"这处该不该改"，这条是"这两处是不是在说同一件事"
 - **删除内容后留意有没有留下空壳标题**：如果你提的某条 delete/replace 会
   让一个 `## 标题` 底下基本没剩什么内容（标题后面直接空行接下一个标题，
@@ -488,6 +493,44 @@ def section_write_user(section_title: str, goal: str, prior_summaries: list[str]
         label = _FOCUS_LABELS.get(focus, focus)
         parts.append(f"【上一轮评分里这一项最弱】\n{label}，这一轮优先解决这个问题。")
     parts.append("请接着写，只围绕上面这个分段主题展开，不要跑去写其他分段该写的内容。")
+    return "\n\n".join(parts)
+
+
+# writing_plan.py 原来只有续写这一步，没有 note_harness.py 那样的独立
+# 修订/清理步骤——真实压测数据发现的问题（TRACELOG [28]）：分段的收敛率
+# 明显低于笔记（会话样本里 20% vs 50%+），因为 non_repetition 被打低分
+# 之后，唯一能做的还是"接着写"，跟 note_harness 改之前撞过的同一个坑
+# 一样——已经在重复的问题，靠"接着写"没道理能自己变好。这里给分段也配一份
+# 对应的修订 prompt，跟 edit_user() 用同一份 EDIT_SYSTEM（已经把开头改成
+# 不点名 spine/beats，两边共用），只是上下文块换成分段自己的主题/目标/
+# 其他分段小结。
+def section_edit_user(section_title: str, goal: str, prior_summaries: list[str],
+                      content: str, facts: list[str], profile: list[str],
+                      focus: str = "", dup_hints: list | None = None) -> str:
+    parts = []
+    block = _profile_block(profile)
+    if block:
+        parts.append(block)
+    parts.append(f"【核心目标/结构】\n这个分段的主题：{section_title}"
+                 + (f"\n整个写作计划的总体目标：{goal}" if goal else ""))
+    if prior_summaries:
+        parts.append("【计划里已完成的其他分段小结（不要跟这些重复）】\n"
+                     + "\n".join(f"- {s}" for s in prior_summaries))
+    if facts:
+        parts.append("【知识库事实】\n" + "\n".join(f"- {f}" for f in facts))
+    else:
+        parts.append("【知识库事实】\n（无相关记录）")
+    if focus:
+        label = _FOCUS_LABELS.get(focus, focus)
+        parts.append(f"【这一轮优先检查】\n上一轮评分里这一项最弱：{label}。"
+                     "优先看这个问题有没有解决，其余几条原则仍然适用，但不用逐条重新过一遍。")
+    if dup_hints:
+        pairs = "\n".join(
+            f"- 段落A：{h.a[:150]}\n  段落B：{h.b[:150]}（相似度 {h.similarity:.0%}）"
+            for h in dup_hints[:5]
+        )
+        parts.append("【机械查重找到的疑似重复段落，逐条判断是不是真的重复、要不要删一条】\n" + pairs)
+    parts.append("【正文】\n" + content)
     return "\n\n".join(parts)
 
 
