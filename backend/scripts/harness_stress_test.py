@@ -114,9 +114,14 @@ def run_note_harness(client: httpx.Client, user: str, note_id: str, content: str
                 if time.monotonic() > deadline:
                     break
             events = parse_sse(buf)
-    except httpx.TimeoutException:
+    except httpx.HTTPError as exc:
+        # 真实撞过 RemoteProtocolError（服务端在流中途异常关闭连接）——
+        # 只抓 TimeoutException 不够，httpx 传输层的问题种类不止超时一种。
+        # 服务端那边已经加了 try/except 不再让 LLM 调用失败直接把 SSE
+        # 流冲断，但这里仍然按"传输层出问题就不算这批数据"处理，宁可
+        # 少采一点、也不要让整个压测脚本被单次连接问题带崩。
         events = []
-        print(f"    [超时，本轮采集到这里为止]", flush=True)
+        print(f"    [连接异常（{type(exc).__name__}），本轮采集到这里为止]", flush=True)
 
     final_reason = None
     round_idx = 0
@@ -155,8 +160,9 @@ def run_writing_plan_section(client: httpx.Client, user: str, folder_id: str,
                 if time.monotonic() > deadline:
                     break
             events = parse_sse(buf)
-    except httpx.TimeoutException:
+    except httpx.HTTPError as exc:
         events = []
+        print(f"    [连接异常（{type(exc).__name__}），本轮采集到这里为止]", flush=True)
 
     for event, payload in events:
         if event == "evaluate":

@@ -66,11 +66,23 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
     facts, _ids, _took = _retrieve(user, content, spine, beats)
     dup_hints = find_repeats(content) if focus == "non_repetition" else []
     edit_system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
-    edit_text = await llm.complete(
-        [{"role": "system", "content": edit_system},
-         {"role": "user", "content": prompts.edit_user(
-             spine, beats, content, facts, _profile(user), focus, dup_hints)}],
-        max_tokens=1500, temperature=0.1)
+    try:
+        edit_text = await llm.complete(
+            [{"role": "system", "content": edit_system},
+             {"role": "user", "content": prompts.edit_user(
+                 spine, beats, content, facts, _profile(user), focus, dup_hints)}],
+            max_tokens=1500, temperature=0.1)
+    except Exception as exc:
+        # 真实压测撞过的问题：本地模型在持续高负载下偶尔单次调用超过
+        # 300s 超时，之前这里没有 try/except，异常直接从 SSE generator
+        # 里冒出去，客户端看到的是连接被硬中断（RemoteProtocolError），
+        # 不是一个正常的错误事件。修订本来就是"这一轮尽量改一点"，不是
+        # 关键路径——调用失败就当这一轮没改动，把错误原样报给前端，
+        # 让 harness 继续走下一步（续写或收尾判断），不整条流程炸掉。
+        yield _sse("error", {"detail": f"修订调用失败，跳过这一轮修订: {exc}"})
+        result["content"] = content
+        result["applied"] = 0
+        return
     parsed_revisions = llm.extract_json(edit_text)
     applied = 0
     if isinstance(parsed_revisions, list):
@@ -104,9 +116,11 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
     result["applied"] = applied
 
 
-async def _evaluate_round(user: str, content: str, spine: str, beats: list[str]) -> Evaluation:
+async def _evaluate_round(user: str, content: str, spine: str, beats: list[str]) -> Evaluation | None:
     """跑一次原则打分：机械查重先做（不用 LLM），结果作为 non_repetition
-    维度的辅助证据喂给 evaluate()。"""
+    维度的辅助证据喂给 evaluate()。调用失败返回 None（不抛出）——这一步
+    的结果直接决定 continue/complete/blocked，调用方要能区分"真的判定为
+    continue"和"这一轮压根没判成"，不能把失败悄悄当成某个正常结果处理。"""
     facts, _ids, _took = _retrieve(user, content, spine, beats)
     dup_hints = find_repeats(content)
     context = {}
@@ -117,13 +131,16 @@ async def _evaluate_round(user: str, content: str, spine: str, beats: list[str])
     if facts:
         context["知识库事实"] = "\n".join(f"- {f}" for f in facts)
     profile = _profile(user)
-    return await evaluate(
-        harness_adapter.AppLLMClient(),
-        content=content,
-        dimensions=harness_adapter.note_dimensions(has_profile=bool(profile)),
-        context=context or None,
-        dup_hints=dup_hints,
-    )
+    try:
+        return await evaluate(
+            harness_adapter.AppLLMClient(),
+            content=content,
+            dimensions=harness_adapter.note_dimensions(has_profile=bool(profile)),
+            context=context or None,
+            dup_hints=dup_hints,
+        )
+    except Exception:
+        return None
 
 
 def _apply_revision(content: str, op: str, anchor: str, text: str) -> str:
@@ -167,16 +184,23 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
         if not spine and not beats:
             skeleton_system = prompts.compose_system(
                 prompts.SKELETON_SYSTEM, store.enabled_skills_for_scope(user, "skeleton"))
-            text = await llm.complete(
-                [{"role": "system", "content": skeleton_system},
-                 {"role": "user", "content": prompts.skeleton_user(note["title"], content, _profile(user))}],
-                max_tokens=800, temperature=0.4)
-            parsed = llm.extract_json(text)
-            if isinstance(parsed, dict):
-                spine = str(parsed.get("spine") or "").strip()
-                raw_beats = parsed.get("beats")
-                if isinstance(raw_beats, list):
-                    beats = [str(b).strip() for b in raw_beats if str(b).strip()][:6]
+            try:
+                text = await llm.complete(
+                    [{"role": "system", "content": skeleton_system},
+                     {"role": "user", "content": prompts.skeleton_user(note["title"], content, _profile(user))}],
+                    max_tokens=800, temperature=0.4)
+                parsed = llm.extract_json(text)
+                if isinstance(parsed, dict):
+                    spine = str(parsed.get("spine") or "").strip()
+                    raw_beats = parsed.get("beats")
+                    if isinstance(raw_beats, list):
+                        beats = [str(b).strip() for b in raw_beats if str(b).strip()][:6]
+            except Exception as exc:
+                # 骨架生成失败不该让整个 harness 跑不起来——没有 spine/beats
+                # 时 evaluate() 仍然能跑（spine_fidelity/beat_coverage 判断
+                # 依据变弱，但不是不能判断），退回空骨架继续，比直接中断
+                # 整个 session 更合理。
+                yield _sse("error", {"detail": f"骨架生成失败，退回空骨架继续: {exc}"})
             yield _sse("skeleton", {"spine": spine, "beats": beats})
 
         max_rounds = max(1, min(body.max_rounds, MAX_ROUNDS_CAP))
@@ -263,6 +287,21 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
             stall_rounds = stall_rounds + 1 if no_change else 0
 
             evaluation = await _evaluate_round(user, content, spine, beats)
+            if evaluation is None:
+                # 打分调用失败（真实撞过：本地模型持续高负载下单次调用
+                # 超时）——不能把这个当成任何一种正常判定结果处理，也不能
+                # 直接把整条 SSE 流炸掉。当成"这一轮没有可信的判断"计入
+                # stall，沿用已有的 STALL_ROUNDS_CAP 安全网：偶尔一次失败，
+                # 下一轮重试大概率能恢复；连续失败到位跟"卡住不动"一样，
+                # 靠同一个安全网收尾，不需要单独再造一套"失败几次算放弃"
+                # 的逻辑。
+                yield _sse("error", {"detail": "打分调用失败，这一轮按未判定处理"})
+                stall_rounds += 1
+                if stall_rounds >= STALL_ROUNDS_CAP:
+                    _finish("stalled", round_idx, None)
+                    yield _sse("done", {"reason": "stalled"})
+                    return
+                continue
             yield _sse("evaluate", {
                 "scores": {name: {"level": s.level, "note": s.note} for name, s in evaluation.scores.items()},
                 "status": evaluation.status,

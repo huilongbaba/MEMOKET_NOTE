@@ -53,10 +53,15 @@ def _make_summary(title: str, content: str) -> str:
 
 
 async def _evaluate_section(user: str, content: str, section_title: str,
-                            goal: str, other_summaries: list[str]) -> Evaluation:
+                            goal: str, other_summaries: list[str]) -> Evaluation | None:
     """一个 section 是不是写完了：跟 note_harness 同一套机制，见
     writer_harness/README.md——机械查重先做，结果作为 non_repetition 维度
-    的辅助证据，跟其他维度一起打分，返回 continue/complete/blocked。"""
+    的辅助证据，跟其他维度一起打分，返回 continue/complete/blocked。
+
+    调用失败返回 None（不抛出）——真实压测撞过：本地模型持续高负载下
+    单次调用超过 300s 超时，异常从 SSE generator 里冒出去，客户端看到的
+    是连接被硬中断，不是正常的错误事件（note_harness.py 那边先修的，
+    这里是同一个模式）。"""
     facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6)
     dup_hints = find_repeats(content)
     context = {"这个分段的主题": section_title}
@@ -67,13 +72,16 @@ async def _evaluate_section(user: str, content: str, section_title: str,
     if facts:
         context["知识库中的相关事实"] = "\n".join(f"- {f}" for f in facts)
     profile = _profile(user)
-    return await evaluate(
-        harness_adapter.AppLLMClient(),
-        content=content,
-        dimensions=harness_adapter.section_dimensions(has_profile=bool(profile)),
-        context=context,
-        dup_hints=dup_hints,
-    )
+    try:
+        return await evaluate(
+            harness_adapter.AppLLMClient(),
+            content=content,
+            dimensions=harness_adapter.section_dimensions(has_profile=bool(profile)),
+            context=context,
+            dup_hints=dup_hints,
+        )
+    except Exception:
+        return None
 
 
 def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
@@ -160,13 +168,20 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 folder_ctx = prompts.folder_context_block(folder_notes)
                 more_system = prompts.compose_system(
                     prompts.MORE_SECTIONS_SYSTEM, store.enabled_skills_for_scope(user, "more_sections"))
-                text = await llm.complete(
-                    [{"role": "system", "content": more_system},
-                     {"role": "user", "content": prompts.more_sections_user(
-                         plan["goal"], done_summaries, facts, folder_ctx)}],
-                    max_tokens=400, temperature=0.4)
-                parsed = llm.extract_json(text)
-                more = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
+                try:
+                    text = await llm.complete(
+                        [{"role": "system", "content": more_system},
+                         {"role": "user", "content": prompts.more_sections_user(
+                             plan["goal"], done_summaries, facts, folder_ctx)}],
+                        max_tokens=400, temperature=0.4)
+                    parsed = llm.extract_json(text)
+                    more = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
+                except Exception as exc:
+                    # 调用失败不能当成"没有更多分段了"处理——那会把一次
+                    # 网络/超时问题误判成计划真的完成了。当成这一步没判成，
+                    # 重试，由外层 PLAN_SAFETY_CAP 兜底防止真的卡死。
+                    yield _sse("error", {"detail": f"判断是否还有更多分段失败，重试: {exc}"})
+                    continue
 
                 if not more:
                     store.set_plan_status(user, plan["id"], "done")
