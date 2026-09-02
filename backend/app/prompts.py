@@ -301,7 +301,7 @@ _FOCUS_LABELS = {
 
 
 def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
-              profile: list[str], focus: str = "") -> str:
+              profile: list[str], focus: str = "", dup_hints: list | None = None) -> str:
     parts = []
     block = _profile_block(profile)
     if block:
@@ -317,6 +317,17 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
         label = _FOCUS_LABELS.get(focus, focus)
         parts.append(f"【这一轮优先检查】\n上一轮评分里这一项最弱：{label}。"
                      "优先看这个问题有没有解决，其余几条原则仍然适用，但不用逐条重新过一遍。")
+    if dup_hints:
+        # 机械查重（writer_harness.find_repeats()，不用 LLM）先算好的疑似
+        # 重复段落对——真实测试暴露的问题：只让模型自己通读全文找重复，
+        # 连续几轮"重复"这条原则都卡住不改善；给具体候选对，比让它每轮
+        # 重新从头找一遍更可靠。这是候选，不是定论，还是要模型自己判断
+        # 是不是真的在说同一件事、该留哪条。
+        pairs = "\n".join(
+            f"- 段落A：{h.a[:150]}\n  段落B：{h.b[:150]}（相似度 {h.similarity:.0%}）"
+            for h in dup_hints[:5]
+        )
+        parts.append("【机械查重找到的疑似重复段落，逐条判断是不是真的重复、要不要删一条】\n" + pairs)
     parts.append("【正文】\n" + content)
     return "\n\n".join(parts)
 

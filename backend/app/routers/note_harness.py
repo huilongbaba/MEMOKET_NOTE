@@ -58,12 +58,18 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
     （可变容器，配合 async generator 不能直接 return 值的限制）。
 
     ``focus`` 是上一轮 evaluate() 给出的最弱维度（第一轮是空字符串，逐条
-    原则都检查）——传给 edit_user() 让这一轮优先看这个问题。"""
+    原则都检查）——传给 edit_user() 让这一轮优先看这个问题。当 focus 是
+    non_repetition 时额外算一次机械查重传进去：真实压测暴露的问题——
+    "重复"这条原则光靠模型自己每轮重新通读全文找，连续好几轮都卡住不
+    改善（TRACELOG [25]/[27]）；find_repeats() 给的是具体候选段落对，
+    不是让模型每次从零开始找。"""
     facts, _ids, _took = _retrieve(user, content, spine, beats)
+    dup_hints = find_repeats(content) if focus == "non_repetition" else []
     edit_system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
     edit_text = await llm.complete(
         [{"role": "system", "content": edit_system},
-         {"role": "user", "content": prompts.edit_user(spine, beats, content, facts, _profile(user), focus)}],
+         {"role": "user", "content": prompts.edit_user(
+             spine, beats, content, facts, _profile(user), focus, dup_hints)}],
         max_tokens=1500, temperature=0.1)
     parsed_revisions = llm.extract_json(edit_text)
     applied = 0
