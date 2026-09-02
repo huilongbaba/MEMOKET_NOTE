@@ -9,14 +9,17 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from datetime import date as _date
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from .. import llm, prompts, store
 from ..kite_memory import UserMemory
-from ..schemas import (EditIn, EditOut, MagicTapIn, Revision, SkeletonIn,
-                       SkeletonOut)
+from ..schemas import (DigestIn, DigestOut, EditIn, EditOut, ExpandIn,
+                       MagicTapIn, Revision, RewriteIn, SkeletonIn,
+                       SkeletonOut, VerifyFinding, VerifyIn, VerifyOut)
 from .deps import current_user
 
 router = APIRouter(prefix="/api", tags=["compose"])
@@ -34,22 +37,29 @@ def _profile(user: str) -> list[str]:
 
 
 def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8):
-    """用正文尾部 + spine/beats 作为检索线索。返回 (事实文本列表, 耗时毫秒)。"""
+    """用正文尾部 + spine/beats 作为检索线索。返回 (事实文本列表, 对应 fact id 列表, 耗时毫秒)。
+
+    fact id 跟着文本一起传出去，是为了让前端能把「续写用了这条事实」精确
+    链回 /api/memory/facts/{id}/sources 的原始对话行——不然 grounding 只是
+    一句自称，用户没法验证。
+    """
     mem = UserMemory(user)
     query = content[-TAIL_CHARS:]
     hint = " ".join([spine] + beats[-3:]) if spine or beats else ""
     if hint:
         query = hint + "\n" + query
     rows, _terms, took = mem.recall(query, limit=limit)
-    return [r.get("text", "") for r in rows if r.get("text")], took
+    hits = [r for r in rows if r.get("text")]
+    return [r["text"] for r in hits], [r.get("id", "") for r in hits], took
 
 
 @router.post("/skeleton", response_model=SkeletonOut)
 async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     """线 1：生成核心张力（spine）+ 结构节拍（beats）。"""
     t0 = time.perf_counter()
+    system = prompts.compose_system(prompts.SKELETON_SYSTEM, store.enabled_skills_for_scope(user, "skeleton"))
     text = await llm.complete(
-        [{"role": "system", "content": prompts.SKELETON_SYSTEM},
+        [{"role": "system", "content": system},
          {"role": "user", "content": prompts.skeleton_user(
              body.title, body.content, _profile(user))}],
         max_tokens=800, temperature=0.4)
@@ -76,13 +86,14 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
 async def edit(body: EditIn, user: str = Depends(current_user)):
     """线 2：结合 spine/beats 与知识库，产出 track-changes 修订建议。"""
     t0 = time.perf_counter()
-    facts, _took = _retrieve(user, body.content, body.spine, body.beats)
+    facts, _ids, _took = _retrieve(user, body.content, body.spine, body.beats)
 
+    system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
     text = await llm.complete(
-        [{"role": "system", "content": prompts.EDIT_SYSTEM},
+        [{"role": "system", "content": system},
          {"role": "user", "content": prompts.edit_user(
              body.spine, body.beats, body.content, facts, _profile(user))}],
-        max_tokens=1500, temperature=0.2)
+        max_tokens=1500, temperature=0.1)
 
     parsed = llm.extract_json(text)
     revisions: list[Revision] = []
@@ -120,17 +131,18 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         event: delta  —— 正文增量
         event: done
     """
-    facts, took = _retrieve(user, body.content, body.spine, body.beats, limit=6)
+    facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6)
 
+    system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "magic_tap"))
     messages = [
-        {"role": "system", "content": prompts.MAGIC_TAP_SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompts.magic_tap_user(
             body.spine, body.beats, body.content, facts, _profile(user))},
     ]
 
     async def gen():
         meta = {"facts": len(facts), "recall_ms": round(took, 3),
-                "grounded": bool(facts), "sources": facts[:6]}
+                "grounded": bool(facts), "sources": facts[:6], "fact_ids": ids[:6]}
         yield f"event: meta\ndata: {json.dumps(meta, ensure_ascii=False)}\n\n"
         try:
             async for piece in llm.stream(messages, max_tokens=body.max_tokens,
@@ -143,3 +155,139 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})
+
+
+@router.post("/digest", response_model=DigestOut)
+async def digest(body: DigestIn, user: str = Depends(current_user)):
+    """阶段回顾：把某段时间的 facts 喂给模型，按「核心结论/关键决定/待跟进/
+    值得注意的变化」总结——不用手动翻记录就能找回一段时间发生了什么。"""
+    t0 = time.perf_counter()
+    date_to = body.date_to or _date.today().isoformat()
+    date_from = body.date_from or (_date.today() - timedelta(days=body.days)).isoformat()
+
+    rows = UserMemory(user).facts_between(date_from, date_to)
+    if not rows:
+        return DigestOut(summary="这段时间没有记录。", fact_count=0,
+                         date_from=date_from, date_to=date_to,
+                         took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+    facts = [f"[{r['when']}] {r['text']}" for r in rows]
+    system = prompts.compose_system(prompts.DIGEST_SYSTEM, store.enabled_skills_for_scope(user, "digest"))
+    text = await llm.complete(
+        [{"role": "system", "content": system},
+         {"role": "user", "content": prompts.digest_user(facts)}],
+        max_tokens=1200, temperature=0.3)
+    return DigestOut(summary=text.strip(), fact_count=len(rows),
+                     date_from=date_from, date_to=date_to,
+                     took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+# ---------------------------------------------------------------- 选中文本操作
+#
+# 右键选中一段文本触发的三个动作。都产出跟线2同一个 Revision 模型的结果，
+# 复用前端已有的接受/拒绝 UI，不用另起一套展示层。
+
+@router.post("/rewrite", response_model=EditOut)
+async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
+    """选中文本 -> 重写/润色，产出一条 replace 修订。"""
+    t0 = time.perf_counter()
+    if body.selection not in body.content:
+        return EditOut(revisions=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    base = prompts.POLISH_SYSTEM if body.intent == "polish" else prompts.REWRITE_SYSTEM
+    scope = "polish" if body.intent == "polish" else "rewrite"
+    system = prompts.compose_system(base, store.enabled_skills_for_scope(user, scope))
+    text = await llm.complete(
+        [{"role": "system", "content": system},
+         {"role": "user", "content": prompts.rewrite_user(
+             body.content, body.selection, body.spine, body.beats)}],
+        max_tokens=600, temperature=0.4)
+    parsed = llm.extract_json(text)
+    revisions: list[Revision] = []
+    if isinstance(parsed, dict):
+        new_text = str(parsed.get("text") or "").strip()
+        if new_text:
+            default_reason = "润色" if body.intent == "polish" else "重写"
+            revisions.append(Revision(
+                id=uuid.uuid4().hex[:8], op="replace", anchor=body.selection,
+                text=new_text, reason=str(parsed.get("reason") or default_reason),
+            ))
+    return EditOut(revisions=revisions, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+@router.post("/expand", response_model=EditOut)
+async def expand(body: ExpandIn, user: str = Depends(current_user)):
+    """选中文本 -> 往前/往后补上下文，最多产出两条修订
+    （insert_before 补在前面、insert 补在后面），各自独立可接受。"""
+    t0 = time.perf_counter()
+    if body.selection not in body.content:
+        return EditOut(revisions=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    # 之前这里没查知识库——"补充缺失的上下文"这个任务本来就该优先从用户
+    # 真实的知识库事实里来，不查的话模型只能自己编一个听起来合理但查无
+    # 实据的背景（审查中实测到："团队把电池容量、功耗优化和充电策略一起
+    # 纳入关键路径评审"这类具体但没有任何依据的细节）。查询用选中片段本身
+    # 当线索，跟校验（verify）用同一个思路。
+    facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6)
+    system = prompts.compose_system(prompts.EXPAND_SYSTEM, store.enabled_skills_for_scope(user, "expand"))
+    text = await llm.complete(
+        [{"role": "system", "content": system},
+         {"role": "user", "content": prompts.expand_user(body.content, body.selection, facts)}],
+        max_tokens=500, temperature=0.5)
+    parsed = llm.extract_json(text)
+    revisions: list[Revision] = []
+    if isinstance(parsed, dict):
+        # before/after 共用同一份 sources：EXPAND_SYSTEM 只要求模型报一次
+        # 依据，不区分是给 before 用的还是给 after 用的（多数情况只会写
+        # 其中一个方向，分开要求没有实际意义，徒增模型输出复杂度）。
+        sources = [str(s) for s in (parsed.get("sources") or [])][:3]
+        before = str(parsed.get("before") or "").strip()
+        after = str(parsed.get("after") or "").strip()
+        if before:
+            revisions.append(Revision(
+                id=uuid.uuid4().hex[:8], op="insert_before", anchor=body.selection,
+                text=before, reason="往前补充上下文", sources=sources,
+            ))
+        if after:
+            revisions.append(Revision(
+                id=uuid.uuid4().hex[:8], op="insert", anchor=body.selection,
+                text=after, reason="往后补充上下文", sources=sources,
+            ))
+    return EditOut(revisions=revisions, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+@router.post("/verify", response_model=VerifyOut)
+async def verify(body: VerifyIn, user: str = Depends(current_user)):
+    """选中文本 -> 核对笔记内部一致性 + 知识库事实，返回带证据引用的判断。
+    检索走 recall()（零 LLM），只有判断这一步调模型——跟线2/续写同一个
+    "快检索 + 一次 LLM 调用"节奏，不是 KITE 的 ask()/planning 那条慢路径。"""
+    t0 = time.perf_counter()
+    mem = UserMemory(user)
+    rows, _terms, _took = mem.recall(body.selection, limit=6)
+    hits = [r for r in rows if r.get("text")]
+    facts = [r["text"] for r in hits]
+
+    system = prompts.compose_system(prompts.VERIFY_SYSTEM, store.enabled_skills_for_scope(user, "verify"))
+    text = await llm.complete(
+        [{"role": "system", "content": system},
+         {"role": "user", "content": prompts.verify_user(body.content, body.selection, facts)}],
+        max_tokens=800, temperature=0.1)
+    parsed = llm.extract_json(text)
+    findings: list[VerifyFinding] = []
+    if isinstance(parsed, list):
+        for item in parsed[:4]:
+            if not isinstance(item, dict):
+                continue
+            verdict = str(item.get("verdict") or "")
+            if verdict not in ("矛盾", "支持", "无法判断"):
+                continue
+            idx = item.get("fact_index")
+            fact_id = fact_text = ""
+            sources: list[str] = []
+            if isinstance(idx, int) and 0 <= idx < len(hits):
+                fact_id = hits[idx].get("id", "")
+                fact_text = hits[idx].get("text", "")
+                sources = mem.source_lines(hits[idx])
+            findings.append(VerifyFinding(
+                verdict=verdict, reason=str(item.get("reason") or ""),
+                fact_id=fact_id, fact_text=fact_text, sources=sources,
+            ))
+    return VerifyOut(findings=findings, took_ms=round((time.perf_counter() - t0) * 1000, 1))

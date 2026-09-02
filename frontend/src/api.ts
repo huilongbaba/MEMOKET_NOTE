@@ -588,13 +588,13 @@ export const generateSkill = (goal: string, scopeHint = '') =>
 // 修订（不等人工点接受）+ 自动续写交替进行，直到内容相对结构节拍已经
 // 完整才停，不是轮数封顶。
 
-export type NoteHarnessRevision = { op: string; anchor: string; text: string; reason: string }
+export type NoteHarnessRevision = { op: string; anchor: string; text: string; reason: string; sources: string[] }
 
 export type NoteHarnessDimensionScore = { level: number; note: string }
 
 export type NoteHarnessHandlers = {
   onSkeleton?: (spine: string, beats: string[]) => void
-  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number }) => void
+  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
   onRoundEnd?: (round: number) => void

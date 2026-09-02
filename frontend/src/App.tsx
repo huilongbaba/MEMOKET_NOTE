@@ -656,17 +656,27 @@ export default function App() {
           },
           onRoundStart: (d) => {
             if (currentRef.current?.id !== noteId) return
+            // skipped_continue：上一轮评分说重复是当前最弱的一项，这一轮
+            // 后端直接跳过续写、只再跑一次聚焦修订，不会有 delta 事件
+            // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
+            // 不能说"续写中"，不然用户会以为卡住了；也不能预留续写用的
+            // 空行，因为这一轮根本不会有内容来填上这个空行。
+            if (d.skipped_continue) {
+              setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
+              return
+            }
             setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，续写中…`)
-            // 每轮续写的增量在这之后才开始到达——本地累积的 content 要先
-            // 补一次分隔，跟后端 prompts.join_round_text() 是同一个道理
+            // 续写的增量在这之后才开始到达——本地累积的 content 要先补一次
+            // 分隔，跟后端 prompts.join_round_text() 是同一个道理
             // （TRACELOG [8]/[10]）：折叠 runHarness 那边已经修过的同一个坑，
             // 这里之前漏了，只修了文件夹 harness 那一侧。
             setContent((c) => (c ? c.replace(/\n*$/, '') + '\n\n' : c))
           },
           onRevision: (r) => {
             if (currentRef.current?.id !== noteId) return
-            setContent((c) => applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, text: r.text, reason: r.reason, sources: [] }))
-            toast(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 60)}`)
+            setContent((c) => applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, text: r.text, reason: r.reason, sources: r.sources ?? [] }))
+            const sourceNote = r.sources?.length ? `（依据：${r.sources[0].slice(0, 40)}${r.sources.length > 1 ? ' 等' : ''}）` : ''
+            toast(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 60)}${sourceNote}`)
           },
           onDelta: (text) => {
             if (currentRef.current?.id !== noteId) return

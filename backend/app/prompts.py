@@ -181,9 +181,20 @@ EXPAND_SYSTEM = """你是写作编辑。用户选中了正文里的一个点（�
 片段），想在它前面和/或后面补充缺失的上下文——往前补"是什么背景/前提让
 这句话成立"，往后补"这句话之后自然的展开或后果"。
 
-只输出 JSON，形如 {"before":"要插在选中片段之前的内容","after":"要插在选中片段之后的内容"}
+只输出 JSON，形如 {"before":"...","after":"...","sources":["依据的知识库事实原文"]}
 - before/after 各自独立判断要不要写，都不需要就都留空字符串，不要硬凑
+- sources：如果 before/after 用到了知识库里的具体事实，把依据的那条事实
+  原文摘进这个数组（不超过 3 条）；纯粹基于选中片段本身合理推断、没有用
+  具体事实的话，sources 留空数组——这是给用户看的溯源标注，不能瞎填，没
+  用到就是没用到
 - 不要重复选中片段本身已经说过的内容
+- **重点检查【选中片段前面已有的内容】【选中片段后面已有的内容】**：这个
+  选中片段大概率不是孤立的，前后已经写了什么，实测踩过的真实问题——
+  完整正文里选中片段前后本来就有真实内容时，模型会把这些已经存在的邻近
+  句子几乎原样当成"新补充的上下文"复述一遍，结果是插入的内容跟旁边已经
+  写的东西重复，等于没补充。判断 before/after 前，先确认这句话是不是
+  【选中片段前面已有的内容】结尾、或【选中片段后面已有的内容】开头已经
+  在说的——是的话这个方向就不用补了，留空字符串，不要为了填满而重复
 - 语言与原文一致，衔接要自然，不要用"首先/其次"这类生硬的过渡词
 - 如果给了知识库中的相关事实，补充的背景/展开优先从这些事实里来，不要在
   知识库明明有真实细节的情况下，自己编一个听起来合理但查无实据的背景
@@ -222,8 +233,21 @@ def rewrite_user(content: str, selection: str, spine: str, beats: list[str]) -> 
     return "\n\n".join(parts)
 
 
+# before/after 各给这么多字符的"已有邻近内容"——不用整段，够模型判断
+# "这个方向是不是已经写过了"就行，太长反而稀释选中片段本身的注意力。
+_EXPAND_NEIGHBOR_CHARS = 150
+
+
 def expand_user(content: str, selection: str, facts: list[str] | None = None) -> str:
     parts = [f"【完整正文】\n{content}", f"【被选中的片段（要在它前后补上下文）】\n{selection}"]
+    idx = content.find(selection)
+    if idx >= 0:
+        before_ctx = content[max(0, idx - _EXPAND_NEIGHBOR_CHARS):idx].strip()
+        after_ctx = content[idx + len(selection):idx + len(selection) + _EXPAND_NEIGHBOR_CHARS].strip()
+        parts.append("【选中片段前面已有的内容（判断 before 前先看这里是不是已经写过了）】\n"
+                     + (before_ctx or "（前面没有内容了，这已经是开头）"))
+        parts.append("【选中片段后面已有的内容（判断 after 前先看这里是不是已经写过了）】\n"
+                     + (after_ctx or "（后面没有内容了，这已经是结尾）"))
     if facts:
         parts.append("【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts))
     return "\n\n".join(parts)

@@ -86,6 +86,11 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
             yield _sse("revision", {
                 "op": op, "anchor": anchor[:120], "text": text[:300],
                 "reason": str(item.get("reason") or ""),
+                # EDIT_SYSTEM 的 JSON 约定本来就要求模型自报 sources（依据的
+                # 事实原文），/api/edit 那条路径一直有正确读出来，这条
+                # harness 专用路径漏了——之前用户读了一次真实笔记，问起
+                # "溯源"才发现：不是没有这个信号，是模型给了、这里没读。
+                "sources": [str(s) for s in (item.get("sources") or [])][:3],
             })
     if applied:
         store.update_note(user, note_id, note_title, content)
