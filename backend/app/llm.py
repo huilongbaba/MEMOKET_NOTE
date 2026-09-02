@@ -1,14 +1,27 @@
 """OpenAI 兼容的 LLM 客户端，支持流式。
 
-默认指向内网 Muse-Glimmer-30B。两个必须处理的模型特性：
+默认指向内网 Muse-Glimmer-30B，但供应商可以在设置页切到 GPT（见
+store.get_active_llm_config()）。几个必须处理的模型特性：
 
-1. **思考内容关不掉**。该模型总会先输出 reasoning_content。实测
-   reasoning_budget=0 / thinking_budget=0 / chat_template_kwargs 都压不住
-   （最好的一档仍有 467 字符思考）。所以 max_tokens 必须为思考预留额度，
+1. **思考内容关不掉**（本地模型）。该模型总会先输出 reasoning_content。
+   实测 reasoning_budget=0 / thinking_budget=0 / chat_template_kwargs 都
+   压不住（最好的一档仍有 467 字符思考）。所以 token 额度必须为思考预留，
    否则正文会被截断甚至为空 —— 调用方传的是**想要的正文长度**，由
    REASONING_RESERVE 补上思考的开销。
-2. **推理强度影响很大**。交互路径一律 reasoning_effort=low，实测比 high
-   快 3 倍（单次调用 ~10s vs ~30s）。
+2. **推理强度影响很大**（本地模型）。交互路径一律 reasoning_effort=low，
+   实测比 high 快 3 倍（单次调用 ~10s vs ~30s）。
+3. **GPT 的推理档模型（比如 gpt-5.x 系列）参数要求不一样**——实测过
+   （真实调用 + 读 OpenAI 报错原文，不是猜的）：
+   - 不认 ``max_tokens``，只认 ``max_completion_tokens``；本地 llama.cpp
+     两个都认（实测 max_completion_tokens 一样能正确截断），所以统一用
+     ``max_completion_tokens`` 一个字段，不用按供应商分叉。
+   - ``temperature`` 只认默认值 1，传别的值直接 400（错误信息："Only the
+     default (1) value is supported"）。本地模型的 temperature 调参
+     （比如 EDIT_SYSTEM 用 0.1 追求确定性、续写用 0.7 要有变化）是真实
+     调过、有效果差异的，不能为了兼容 GPT 推理档就整体去掉——所以不是
+     一开始就不发 temperature，是发送后如果撞到这个特定的 400 错误，
+     剥掉 temperature 重试一次。这样本地模型/GPT 非推理档模型的
+     temperature 调参完全不受影响，只有真的不支持的模型会走这条兜底。
 """
 
 from __future__ import annotations
@@ -18,12 +31,12 @@ from typing import AsyncIterator
 
 import httpx
 
-from .config import get_settings
+from . import store
 
 
 def _headers() -> dict[str, str]:
-    s = get_settings()
-    return {"Authorization": f"Bearer {s.llm_api_key}", "Content-Type": "application/json"}
+    cfg = store.get_active_llm_config()
+    return {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
 
 
 # 为思考内容预留的 token 额度。实测低推理强度下思考约 400-700 字符
@@ -33,12 +46,13 @@ REASONING_RESERVE = 600
 
 def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
              temperature: float, effort: str) -> dict:
-    s = get_settings()
+    cfg = store.get_active_llm_config()
     body = {
-        "model": s.llm_model,
+        "model": cfg["model"],
         "messages": messages,
-        # max_tokens 是调用方想要的正文长度，这里补上思考的开销
-        "max_tokens": max_tokens + REASONING_RESERVE,
+        # max_tokens 是调用方想要的正文长度，这里补上思考的开销。用
+        # max_completion_tokens 而不是 max_tokens——见模块文档字符串第 3 条。
+        "max_completion_tokens": max_tokens + REASONING_RESERVE,
         "temperature": temperature,
         "stream": stream,
     }
@@ -47,17 +61,32 @@ def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
     return body
 
 
+def _rejects_temperature(status_code: int, body: bytes) -> bool:
+    """判断这次 400 是不是"这个模型不支持自定义 temperature"这个特定错误——
+    不是所有 400 都该吞掉重试，只有这一种确定是"参数不支持"而不是"请求
+    本身有问题"才值得剥掉参数重试。"""
+    if status_code != 400:
+        return False
+    try:
+        err = json.loads(body).get("error") or {}
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    return err.get("param") == "temperature" and err.get("code") == "unsupported_value"
+
+
 async def complete(messages: list[dict], *, max_tokens: int = 1500,
                    temperature: float = 0.3, effort: str = "low") -> str:
     """一次性返回完整文本（用于需要拿到完整 JSON 的场景）。"""
-    s = get_settings()
+    cfg = store.get_active_llm_config()
+    payload = _payload(messages, stream=False, max_tokens=max_tokens,
+                       temperature=temperature, effort=effort)
     async with httpx.AsyncClient(timeout=300.0) as client:
-        r = await client.post(
-            f"{s.llm_base_url}/chat/completions",
-            headers=_headers(),
-            json=_payload(messages, stream=False, max_tokens=max_tokens,
-                          temperature=temperature, effort=effort),
-        )
+        r = await client.post(f"{cfg['base_url']}/chat/completions",
+                              headers=_headers(), json=payload)
+        if _rejects_temperature(r.status_code, r.content):
+            payload.pop("temperature", None)
+            r = await client.post(f"{cfg['base_url']}/chat/completions",
+                                  headers=_headers(), json=payload)
         r.raise_for_status()
         data = r.json()
     return (data["choices"][0]["message"].get("content") or "").strip()
@@ -66,32 +95,47 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
 async def stream(messages: list[dict], *, max_tokens: int = 1200,
                  temperature: float = 0.7, effort: str = "low") -> AsyncIterator[str]:
     """逐块产出正文。思考内容（reasoning_content）被丢弃，不进正文。"""
-    s = get_settings()
+    cfg = store.get_active_llm_config()
+    payload = _payload(messages, stream=True, max_tokens=max_tokens,
+                       temperature=temperature, effort=effort)
     async with httpx.AsyncClient(timeout=600.0) as client:
-        async with client.stream(
-            "POST",
-            f"{s.llm_base_url}/chat/completions",
-            headers=_headers(),
-            json=_payload(messages, stream=True, max_tokens=max_tokens,
-                          temperature=temperature, effort=effort),
-        ) as r:
-            r.raise_for_status()
-            async for line in r.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                chunk = line[6:].strip()
-                if chunk == "[DONE]":
-                    break
-                try:
-                    obj = json.loads(chunk)
-                except json.JSONDecodeError:
-                    continue
-                choices = obj.get("choices") or []
-                if not choices:
-                    continue
-                piece = (choices[0].get("delta") or {}).get("content")
-                if piece:
+        url = f"{cfg['base_url']}/chat/completions"
+        # 先按原样发一次；如果撞上"这个模型不支持自定义 temperature"，把
+        # 请求体读完（流式响应不会自动缓冲 body，要 aread() 才能拿到内容
+        # 去判断是不是这个特定错误），剥掉 temperature 重试——跟 complete()
+        # 同一个兜底逻辑，只是流式响应不能像普通响应那样先拿到完整结果
+        # 再决定要不要重试，得在真正开始消费 SSE 流之前就判断好。
+        async with client.stream("POST", url, headers=_headers(), json=payload) as probe:
+            if _rejects_temperature(probe.status_code, await probe.aread()):
+                payload.pop("temperature", None)
+            else:
+                probe.raise_for_status()
+                async for piece in _consume_sse(probe):
                     yield piece
+                return
+        async with client.stream("POST", url, headers=_headers(), json=payload) as r:
+            r.raise_for_status()
+            async for piece in _consume_sse(r):
+                yield piece
+
+
+async def _consume_sse(r: httpx.Response) -> AsyncIterator[str]:
+    async for line in r.aiter_lines():
+        if not line.startswith("data: "):
+            continue
+        chunk = line[6:].strip()
+        if chunk == "[DONE]":
+            break
+        try:
+            obj = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        choices = obj.get("choices") or []
+        if not choices:
+            continue
+        piece = (choices[0].get("delta") or {}).get("content")
+        if piece:
+            yield piece
 
 
 def extract_json(text: str) -> dict | list | None:
@@ -106,13 +150,19 @@ def extract_json(text: str) -> dict | list | None:
             text = text[4:]
     # 按哪个定界符先出现来决定解析目标。固定先试 "{" 会把 JSON 数组
     # 截成它的第一个元素 —— 修订建议就是数组，踩过这个坑。
-    candidates = [(text.find(o), o, c) for o, c in (("{", "}"), ("[", "]"))]
-    candidates = sorted((c for c in candidates if c[0] >= 0), key=lambda x: x[0])
-    for start, opener, closer in candidates:
-        depth = 0
+    pairs = {"{": "}", "[": "]"}
+    starts = [(text.find(o), o) for o in pairs]
+    starts = sorted((s for s in starts if s[0] >= 0), key=lambda x: x[0])
+    for start, opener in starts:
+        # 括号栈，不是单一 depth 计数器 —— 修订建议这种"数组套对象"的真实
+        # 输出，栈顶元素随时可能从 "]" 切到 "}" 再切回来，用单一开合符号的
+        # depth 计数在截断修复时会把内层对象漏掉（实测踩过：数组在断尾修复
+        # 时只补了外层 "]"，内层 "{" 没人管，json.loads 直接炸）。
+        stack = [pairs[opener]]
         in_str = False
         escape = False
-        for i in range(start, len(text)):
+        end_index = None
+        for i in range(start + 1, len(text)):
             ch = text[i]
             if in_str:
                 if escape:
@@ -124,13 +174,32 @@ def extract_json(text: str) -> dict | list | None:
                 continue
             if ch == '"':
                 in_str = True
-            elif ch == opener:
-                depth += 1
-            elif ch == closer:
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[start:i + 1])
-                    except json.JSONDecodeError:
-                        break
+            elif ch in pairs:
+                stack.append(pairs[ch])
+            elif stack and ch == stack[-1]:
+                stack.pop()
+                if not stack:
+                    end_index = i
+                    break
+        if end_index is not None:
+            try:
+                return json.loads(text[start:end_index + 1])
+            except json.JSONDecodeError:
+                continue
+        if stack:
+            # Ran out of text with brackets still open -- the model's own
+            # output got cut off before the final bracket(s), observed for
+            # real (not hypothetical) even on short, otherwise-valid-looking
+            # responses, not just ones truncated by hitting max_tokens.
+            # Close the dangling string (if any), then every still-open
+            # bracket innermost-first (the stack is already in that order),
+            # and retry once.
+            repaired = text[start:]
+            if in_str:
+                repaired += '"'
+            repaired += "".join(reversed(stack))
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                continue
     return None

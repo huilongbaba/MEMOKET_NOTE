@@ -1,0 +1,273 @@
+"""无限续写：文件夹级别的写作 harness。
+
+不是"轮数封顶的自动续写"——是一个持久化的写作计划（plan + 有序 section
+列表），每个 section 独立成一篇笔记，写完当前所有 section 后会主动问一次
+"还有没有更多值得写的"，有就追加继续、没有才真正停。停止条件由内容是否
+覆盖完整决定，不是轮数。
+
+状态全在 writing_plans/writing_sections 两张表里，SSE 连接断开（用户点
+停止）只是暂停——plan 留在 active，section 状态原样留着，下次 /run 直接
+从断的地方接着写，不用重新规划。
+"""
+
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from writer_harness import Evaluation, RunRecord, evaluate, find_repeats
+
+from .. import harness_adapter, llm, prompts, store
+from ..schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
+from .compose import _profile, _retrieve
+from .deps import current_user
+
+router = APIRouter(prefix="/api/writing-plan", tags=["writing-plan"])
+
+TRACKING_NOTE_TITLE = "📋 写作追踪"
+
+# 单个 section 最多写这么多轮还没被 evaluate() 判定 complete/blocked 就
+# 强制结束——防止某个 section 卡住整个 plan 永远走不下去，是安全网，不是
+# "完成"的判定依据（判定依据见 _evaluate_section）。
+SECTION_ROUND_CAP = 4
+
+# 整个 plan 单次 /run 调用最多处理这么多"步"（写一轮 = 一步，问一次"还有
+# 更多吗" = 一步）——真正的终止条件是 more-sections 判定为空，这个只是
+# 防失控的安全网，不是"完成"的判定依据。
+PLAN_SAFETY_CAP = 300
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _make_summary(title: str, content: str) -> str:
+    """便宜的启发式摘要，不额外打一次 LLM 调用——这段小结只是喂给后续
+    section 和「还有没有更多」判断当上下文，以及给追踪笔记看，不需要多精致。"""
+    text = content.strip()
+    if not text:
+        return f"{title}（空）"
+    tail = [p for p in text.split("\n\n") if p.strip()]
+    return (tail[-1].strip() if tail else text)[:200]
+
+
+async def _evaluate_section(user: str, content: str, section_title: str,
+                            goal: str, other_summaries: list[str]) -> Evaluation:
+    """一个 section 是不是写完了：跟 note_harness 同一套机制，见
+    writer_harness/README.md——机械查重先做，结果作为 non_repetition 维度
+    的辅助证据，跟其他维度一起打分，返回 continue/complete/blocked。"""
+    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6)
+    dup_hints = find_repeats(content)
+    context = {"这个分段的主题": section_title}
+    if goal:
+        context["整个写作计划的总体目标"] = goal
+    if other_summaries:
+        context["计划里已完成的其他分段小结"] = "\n".join(f"- {s}" for s in other_summaries)
+    if facts:
+        context["知识库中的相关事实"] = "\n".join(f"- {f}" for f in facts)
+    profile = _profile(user)
+    return await evaluate(
+        harness_adapter.AppLLMClient(),
+        content=content,
+        dimensions=harness_adapter.section_dimensions(has_profile=bool(profile)),
+        context=context,
+        dup_hints=dup_hints,
+    )
+
+
+def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
+    doc = prompts.render_tracking_doc(plan["goal"], plan["status"], sections)
+    if plan.get("doc_note_id"):
+        existing = store.get_note(user, plan["doc_note_id"])
+        if existing:
+            store.update_note(user, plan["doc_note_id"], TRACKING_NOTE_TITLE, doc)
+            return
+    note = store.create_note(user, TRACKING_NOTE_TITLE, doc, plan["folder_id"])
+    store.set_plan_doc_note(user, plan["id"], note["id"])
+    plan["doc_note_id"] = note["id"]
+
+
+@router.get("", response_model=WritingPlanOut)
+def get_plan(folder_id: str, user: str = Depends(current_user)):
+    plan = store.get_active_plan(user, folder_id)
+    if not plan:
+        return WritingPlanOut()
+    return WritingPlanOut(plan=plan, sections=store.list_sections(plan["id"]))
+
+
+@router.post("/start", response_model=WritingPlanOut)
+async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)):
+    goal = body.goal.strip()
+    if not goal:
+        raise HTTPException(400, "goal required")
+
+    facts, _ids, _took = _retrieve(user, goal, "", [], limit=8)
+    folder_notes = store.notes_in_folder(user, body.folder_id, limit=8)
+    folder_ctx = prompts.folder_context_block(folder_notes)
+
+    plan_system = prompts.compose_system(prompts.PLAN_SYSTEM, store.enabled_skills_for_scope(user, "plan_generate"))
+    text = await llm.complete(
+        [{"role": "system", "content": plan_system},
+         {"role": "user", "content": prompts.plan_user(goal, facts, folder_ctx)}],
+        max_tokens=600, temperature=0.4)
+    parsed = llm.extract_json(text)
+    titles = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
+    if not titles:
+        raise HTTPException(502, "模型没能生成有效的分段列表，换个目标描述再试试")
+
+    plan = store.create_plan(user, body.folder_id, goal)
+    sections = store.add_sections(plan["id"], titles)
+    _sync_tracking_note(user, plan, sections)
+    return WritingPlanOut(plan=plan, sections=sections)
+
+
+@router.post("/run")
+async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends(current_user)):
+    """SSE 流式跑 harness 主循环。事件：
+        plan-loaded   —— 连接建立时的当前状态
+        section-start —— 开始/继续写某个 section，带它落在哪篇笔记
+        delta         —— 正文增量
+        evaluate      —— 这一轮打分结果（scores/status/weakest）
+        section-done  —— 这个 section 结束了（complete/blocked/forced 任一），带小结
+        plan-extended —— 「还有更多吗」判定为是，追加了新 section
+        plan-done     —— 「还有更多吗」判定为否，整个计划真正完成
+        error / done
+    """
+    plan = store.get_active_plan(user, body.folder_id)
+    if not plan:
+        raise HTTPException(404, "no active plan for this folder")
+
+    async def gen():
+        sections = store.list_sections(plan["id"])
+        yield _sse("plan-loaded", {"plan": plan, "sections": sections})
+
+        section_rounds: dict[str, int] = {}
+        section_focus: dict[str, str] = {}
+        steps = 0
+        while steps < PLAN_SAFETY_CAP:
+            steps += 1
+            if await request.is_disconnected():
+                break
+
+            sections = store.list_sections(plan["id"])
+            target = next((s for s in sections if s["status"] in ("pending", "in_progress")), None)
+
+            if target is None:
+                done_summaries = [s["summary"] for s in sections if s["summary"]]
+                facts, _ids, _took = _retrieve(user, plan["goal"], "", [], limit=8)
+                folder_notes = store.notes_in_folder(user, body.folder_id, limit=8)
+                folder_ctx = prompts.folder_context_block(folder_notes)
+                more_system = prompts.compose_system(
+                    prompts.MORE_SECTIONS_SYSTEM, store.enabled_skills_for_scope(user, "more_sections"))
+                text = await llm.complete(
+                    [{"role": "system", "content": more_system},
+                     {"role": "user", "content": prompts.more_sections_user(
+                         plan["goal"], done_summaries, facts, folder_ctx)}],
+                    max_tokens=400, temperature=0.4)
+                parsed = llm.extract_json(text)
+                more = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
+
+                if not more:
+                    store.set_plan_status(user, plan["id"], "done")
+                    plan["status"] = "done"
+                    _sync_tracking_note(user, plan, sections)
+                    yield _sse("plan-done", {"plan": plan})
+                    break
+
+                new_sections = store.add_sections(plan["id"], more)
+                _sync_tracking_note(user, plan, sections + new_sections)
+                yield _sse("plan-extended", {"sections": new_sections})
+                continue
+
+            note = store.get_note(user, target["note_id"]) if target["note_id"] else None
+            is_new_note = note is None
+            if is_new_note:
+                note = store.create_note(user, target["title"], "", body.folder_id)
+            if target["status"] != "in_progress" or is_new_note:
+                store.update_section(plan["id"], target["id"], status="in_progress", note_id=note["id"])
+            target = {**target, "status": "in_progress", "note_id": note["id"]}
+
+            other_summaries = [s["summary"] for s in sections if s["id"] != target["id"] and s["summary"]]
+            facts, ids, took = _retrieve(user, note["content"], target["title"], [], limit=6)
+            folder_notes = store.notes_in_folder(user, body.folder_id, exclude_id=note["id"], limit=6)
+            folder_ctx = prompts.folder_context_block(folder_notes)
+            section_system = prompts.compose_system(
+                prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "section_write"))
+
+            messages = [
+                {"role": "system", "content": section_system},
+                {"role": "user", "content": prompts.section_write_user(
+                    target["title"], plan["goal"], other_summaries,
+                    note["content"], facts, folder_ctx, _profile(user),
+                    focus=section_focus.get(target["id"], ""))},
+            ]
+
+            yield _sse("section-start", {
+                "section_id": target["id"], "title": target["title"], "note_id": note["id"],
+                "is_new_note": is_new_note, "facts": len(facts),
+                "recall_ms": round(took, 3), "sources": facts[:6], "fact_ids": ids[:6],
+            })
+
+            round_text = ""
+            try:
+                async for piece in llm.stream(messages, max_tokens=900):
+                    round_text += piece
+                    yield _sse("delta", {"note_id": note["id"], "text": piece})
+            except Exception as exc:
+                yield _sse("error", {"detail": str(exc)})
+                break
+
+            new_content = prompts.join_round_text(note["content"], round_text)
+            store.update_note(user, note["id"], target["title"], new_content)
+
+            section_rounds[target["id"]] = section_rounds.get(target["id"], 0) + 1
+            no_progress = not round_text.strip()
+
+            evaluation = None if no_progress else await _evaluate_section(
+                user, new_content, target["title"], plan["goal"], other_summaries)
+            forced = section_rounds[target["id"]] >= SECTION_ROUND_CAP and (
+                evaluation is None or evaluation.status == "continue")
+            finished = no_progress or forced or (evaluation and evaluation.status in ("complete", "blocked"))
+
+            if evaluation:
+                yield _sse("evaluate", {
+                    "section_id": target["id"],
+                    "scores": {name: {"level": s.level, "note": s.note} for name, s in evaluation.scores.items()},
+                    "status": evaluation.status,
+                    "weakest": evaluation.weakest,
+                })
+                scores = {name: s.level for name, s in evaluation.scores.items()}
+                harness_adapter.SqliteRunHistoryStore().record(RunRecord(
+                    key=note["id"], status=evaluation.status, rounds=section_rounds[target["id"]],
+                    final_scores=scores, weak_dimensions=[n for n, lv in scores.items() if lv < 2]))
+
+            if finished:
+                summary = _make_summary(target["title"], new_content)
+                store.update_section(plan["id"], target["id"], status="done", summary=summary)
+                blocked = bool(evaluation and evaluation.status == "blocked")
+                yield _sse("section-done", {
+                    "section_id": target["id"], "summary": summary, "forced": forced,
+                    "blocked": blocked,
+                    "blocked_reason": evaluation.blocked_reason if blocked else None,
+                })
+                sections = store.list_sections(plan["id"])
+                _sync_tracking_note(user, plan, sections)
+            else:
+                section_focus[target["id"]] = evaluation.weakest or "" if evaluation else ""
+                yield _sse("round-end", {"section_id": target["id"]})
+
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
+@router.post("/{folder_id}/abandon")
+def abandon_plan(folder_id: str, user: str = Depends(current_user)):
+    plan = store.get_active_plan(user, folder_id)
+    if not plan:
+        raise HTTPException(404, "no active plan for this folder")
+    store.set_plan_status(user, plan["id"], "abandoned")
+    return {"abandoned": plan["id"]}
