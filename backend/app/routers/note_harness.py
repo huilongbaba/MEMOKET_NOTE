@@ -192,35 +192,56 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
             revisions_applied = edit_result["applied"]
 
             # --- 自动续写 ---
-            # TRACELOG [14]：这里本来接了 _plan_retrieve()（用 KITE 的
-            # compile_plan() 编译一次查询计划，指望比死板拼正文尾部更懂
-            # 语义）——真实对比测试发现在 terrence 这个 codebook 上反而更差：
-            # 两次真实查询，plan_recall() 返回的全是不相关事实（其中一次
-            # 甚至扯到了完全不同领域的"港中择校"内容），recall() 老办法
-            # 两次都准确命中；而且慢 15-30 倍（10+ 秒 vs 亚毫秒）。既慢又
-            # 不准，退回原来的 _retrieve()。
-            facts2, ids2, took2 = _retrieve(user, content, spine, beats, limit=6)
-            magic_system = prompts.compose_system(
-                prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "magic_tap"))
-            continue_content = compact_context(content, keep_last_chars=CONTEXT_KEEP_LAST_CHARS)
-            messages = [
-                {"role": "system", "content": magic_system},
-                {"role": "user", "content": prompts.note_harness_continue_user(
-                    spine, beats, continue_content, facts2, _profile(user))},
-            ]
-            yield _sse("round-start", {
-                "round": round_idx, "max_rounds": max_rounds, "revisions_applied": revisions_applied,
-                "facts": len(facts2), "sources": facts2[:6], "fact_ids": ids2[:6],
-            })
+            # 上一轮评分如果说最弱的是 non_repetition，这一轮跳过续写：真实
+            # 测试跑出来的结果——terrence 一篇真实笔记连续跑 6 轮，
+            # non_repetition 从没改善过，反而从 1 掉到 0。续写每轮都在加新
+            # 内容，而且完全不知道"重复"是当前最该注意的问题（只有修订
+            # 那一步拿到了 focus），新内容持续在给"已经在重复"的问题上再
+            # 添一层，修订跟不上续写产出的速度。已经在重复的问题，靠"接着
+            # 写"没有道理能自己变好——这一轮改成再跑一次聚焦修订（两次独立
+            # 机会清理同一个问题），不叠加新内容。
+            skip_continue = focus == "non_repetition"
+            if skip_continue:
+                cleanup_result: dict = {}
+                async for ev in _run_edit_pass(user, content, spine, beats, note["title"], body.note_id, focus, cleanup_result):
+                    yield ev
+                content = cleanup_result["content"]
+                revisions_applied += cleanup_result["applied"]
+                yield _sse("round-start", {
+                    "round": round_idx, "max_rounds": max_rounds, "revisions_applied": revisions_applied,
+                    "facts": 0, "sources": [], "fact_ids": [], "skipped_continue": True,
+                })
+                round_text = ""
+            else:
+                # TRACELOG [14]：这里本来接了 _plan_retrieve()（用 KITE 的
+                # compile_plan() 编译一次查询计划，指望比死板拼正文尾部更懂
+                # 语义）——真实对比测试发现在 terrence 这个 codebook 上反而更差：
+                # 两次真实查询，plan_recall() 返回的全是不相关事实（其中一次
+                # 甚至扯到了完全不同领域的"港中择校"内容），recall() 老办法
+                # 两次都准确命中；而且慢 15-30 倍（10+ 秒 vs 亚毫秒）。既慢又
+                # 不准，退回原来的 _retrieve()。
+                facts2, ids2, took2 = _retrieve(user, content, spine, beats, limit=6)
+                magic_system = prompts.compose_system(
+                    prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "magic_tap"))
+                continue_content = compact_context(content, keep_last_chars=CONTEXT_KEEP_LAST_CHARS)
+                messages = [
+                    {"role": "system", "content": magic_system},
+                    {"role": "user", "content": prompts.note_harness_continue_user(
+                        spine, beats, continue_content, facts2, _profile(user))},
+                ]
+                yield _sse("round-start", {
+                    "round": round_idx, "max_rounds": max_rounds, "revisions_applied": revisions_applied,
+                    "facts": len(facts2), "sources": facts2[:6], "fact_ids": ids2[:6],
+                })
 
-            round_text = ""
-            try:
-                async for piece in llm.stream(messages, max_tokens=900):
-                    round_text += piece
-                    yield _sse("delta", {"text": piece})
-            except Exception as exc:
-                yield _sse("error", {"detail": str(exc)})
-                break
+                round_text = ""
+                try:
+                    async for piece in llm.stream(messages, max_tokens=900):
+                        round_text += piece
+                        yield _sse("delta", {"text": piece})
+                except Exception as exc:
+                    yield _sse("error", {"detail": str(exc)})
+                    break
 
             if round_text:
                 content = prompts.join_round_text(content, round_text)
