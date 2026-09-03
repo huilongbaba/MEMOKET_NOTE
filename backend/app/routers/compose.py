@@ -36,17 +36,25 @@ def _profile(user: str) -> list[str]:
     return [p["text"] for p in store.list_profile(user)[:PROFILE_LIMIT]]
 
 
-# harness 自动多轮跑时，除了正文尾部还要带上开头这么多字符当检索线索。
+# harness 自动多轮跑时，正文只取这么多字符——不是不要正文，是不能让它
+# 主导查询。
+#
 # 真实质量采样撞到的问题：检索线索只用「正文最后 600 字」，harness 一轮轮
 # 续写之后尾部全是新展开的细节，早就偏离这篇笔记的主题了——同一篇笔记
-# 前两轮各命中 6 条真实知识库事实，第三轮命中 0 条。用尾部当线索这个设计
-# 对「用户手动在光标处续写」是对的（用户当前在写的地方最相关），对
-# 「harness 自动写整篇」不对：它写的是整篇，主题锚点在开头，不在尾部。
-HEAD_CHARS_FOR_HARNESS = 300
+# 前两轮各命中 6 条真实知识库事实，第三轮命中 0 条。
+#
+# 第一版修复试过「再带上正文开头 300 字当主题锚点」，实测证明方向就是错的
+# ——拿同一篇长正文对比五种查询构造，"只有尾部"和"开头+尾部"都命中一堆
+# 完全无关的内容（写众筹的笔记命中了 Google 合作的对话），因为长正文里的
+# 通用词汇会淹没主题词；而"标题+spine+少量尾部"和"只有标题"都稳定命中 6 条
+# 全部相关的事实（Kickstarter $5 预留、5 月样机、Referral 测试）。
+# 结论：稳定锚点（标题/spine/beats）才是主题信号，正文越长越是噪声源，
+# 加更多正文治不好，得让锚点主导、正文让位。
+TAIL_CHARS_FOR_HARNESS = 300
 
 
 def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8,
-              include_head: bool = False):
+              title: str = "", anchor_first: bool = False):
     """用正文尾部 + spine/beats 作为检索线索。返回 (事实文本列表, 对应 fact id 列表, 耗时毫秒)。
 
     fact id 跟着文本一起传出去，是为了让前端能把「续写用了这条事实」精确
@@ -54,13 +62,18 @@ def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int 
     一句自称，用户没法验证。
     """
     mem = UserMemory(user)
-    query = content[-TAIL_CHARS:]
-    if include_head and len(content) > TAIL_CHARS:
-        # 开头放在前面：主题锚点在这里，尾部只是"当前写到哪了"
-        query = content[:HEAD_CHARS_FOR_HARNESS] + "\n" + query
-    hint = " ".join([spine] + beats[-3:]) if spine or beats else ""
-    if hint:
-        query = hint + "\n" + query
+    if anchor_first:
+        # harness：稳定锚点（标题/spine/beats）主导，正文只留少量尾部说明
+        # "当前写到哪了"。顺序也有意义——放前面的词在关键词匹配里权重更高。
+        anchors = [a for a in (title, spine, " ".join(beats[-3:])) if a]
+        query = "\n".join(anchors + [content[-TAIL_CHARS_FOR_HARNESS:]])
+    else:
+        # magic tap：用户在光标处续写，正文尾部就是"用户当前在写的地方"，
+        # 是最相关的线索，保持原行为不动。
+        query = content[-TAIL_CHARS:]
+        hint = " ".join([spine] + beats[-3:]) if spine or beats else ""
+        if hint:
+            query = hint + "\n" + query
     rows, _terms, took = mem.recall(query, limit=limit)
     hits = [r for r in rows if r.get("text")]
     return [r["text"] for r in hits], [r.get("id", "") for r in hits], took

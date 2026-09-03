@@ -88,7 +88,8 @@ async def _evaluate_section(user: str, content: str, section_title: str,
     单次调用超过 300s 超时，异常从 SSE generator 里冒出去，客户端看到的
     是连接被硬中断，不是正常的错误事件（note_harness.py 那边先修的，
     这里是同一个模式）。"""
-    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6, include_head=True)
+    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6,
+                                   title=section_title, anchor_first=True)
     dup_hints = find_repeats(content)
     context = {"这个分段的主题": section_title}
     if goal:
@@ -120,7 +121,8 @@ async def _run_section_edit_pass(user: str, content: str, section_title: str, go
     问题，靠"接着写"没道理能自己变好。这里照 note_harness._run_edit_pass
     的模式给分段也配一份，用 section_edit_user()（跟 edit_user() 共用同
     一份 EDIT_SYSTEM，只是上下文块换成分段自己的）。"""
-    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6, include_head=True)
+    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6,
+                                   title=section_title, anchor_first=True)
     # 机械查重是纯 difflib、不花 LLM 调用，没有理由只在"最弱项恰好叫
     # non_repetition"时才算——coherence 的多结尾问题往往也伴随重复内容，
     # 而且候选对最多 5 条、prompt 成本可忽略。一律算好传进去，让模型
@@ -333,7 +335,8 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                     "sources": [], "fact_ids": [], "skipped_continue": True,
                 })
             else:
-                facts, ids, took = _retrieve(user, note["content"], target["title"], [], limit=6, include_head=True)
+                facts, ids, took = _retrieve(user, note["content"], target["title"], [], limit=6,
+                                        title=target["title"], anchor_first=True)
                 folder_notes = store.notes_in_folder(user, body.folder_id, exclude_id=note["id"], limit=6)
                 folder_ctx = prompts.folder_context_block(folder_notes)
                 section_system = prompts.compose_system(
