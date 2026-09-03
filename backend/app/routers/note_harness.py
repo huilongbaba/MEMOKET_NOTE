@@ -64,7 +64,11 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
     改善（TRACELOG [25]/[27]）；find_repeats() 给的是具体候选段落对，
     不是让模型每次从零开始找。"""
     facts, _ids, _took = _retrieve(user, content, spine, beats)
-    dup_hints = find_repeats(content) if focus == "non_repetition" else []
+    # 机械查重是纯 difflib、不花 LLM 调用，没有理由只在"最弱项恰好叫
+    # non_repetition"时才算——coherence 的多结尾问题往往也伴随重复内容，
+    # 而且候选对最多 5 条、prompt 成本可忽略。一律算好传进去，让模型
+    # 自己判断这些候选是不是真的重复、要不要动。
+    dup_hints = find_repeats(content)
     edit_system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
     try:
         edit_text = await llm.complete(

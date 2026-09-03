@@ -44,13 +44,38 @@ def _sse(event: str, data: dict) -> str:
 
 
 def _make_summary(title: str, content: str) -> str:
-    """便宜的启发式摘要，不额外打一次 LLM 调用——这段小结只是喂给后续
-    section 和「还有没有更多」判断当上下文，以及给追踪笔记看，不需要多精致。"""
+    """便宜的启发式摘要，不额外打一次 LLM 调用。
+
+    这段小结有三个下游：追踪笔记（给用户看）、后续分段的 other_summaries
+    （分段之间靠它避免写重复内容）、以及「还有没有更多值得写的」判断
+    （靠它决定要不要追加新分段）。
+
+    真实质量采样里抓到的问题：旧版只取「最后一段的前 200 字」，对一篇
+    800 字、含三个大节的分段来说完全不能代表它写了什么——一篇《决策、
+    冲突与升级机制》的小结只剩下"升级触发条件……"那一段，决策原则和冲突
+    处理两大块在小结里完全不存在。结果 more-sections 判断认为"决策与冲突
+    处理"还没被覆盖，又追加了一个《决策与冲突处理规范》，两篇内容几乎
+    一模一样（"先写后聊""范围分级""48 小时评论期"全都重复）；同一批还
+    出现了《工时、在线状态与可预期性》vs《可预期工作时段与在线状态管理》
+    这一对。
+
+    改成"标题 + 各级小标题 + 结尾片段"：小标题是零成本就能拿到的结构化
+    信息，最能说明这个分段到底覆盖了哪些方面，正是判重最需要的东西。"""
     text = content.strip()
     if not text:
         return f"{title}（空）"
+    headings = [
+        line.strip().lstrip("#").strip()
+        for line in text.splitlines()
+        if line.strip().startswith("#")
+    ]
+    parts = [f"《{title}》"]
+    if headings:
+        parts.append("覆盖：" + "、".join(headings[:8]))
     tail = [p for p in text.split("\n\n") if p.strip()]
-    return (tail[-1].strip() if tail else text)[:200]
+    if tail:
+        parts.append(tail[-1].strip()[:120])
+    return " ｜ ".join(parts)
 
 
 async def _evaluate_section(user: str, content: str, section_title: str,
@@ -96,7 +121,11 @@ async def _run_section_edit_pass(user: str, content: str, section_title: str, go
     的模式给分段也配一份，用 section_edit_user()（跟 edit_user() 共用同
     一份 EDIT_SYSTEM，只是上下文块换成分段自己的）。"""
     facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6)
-    dup_hints = find_repeats(content) if focus == "non_repetition" else []
+    # 机械查重是纯 difflib、不花 LLM 调用，没有理由只在"最弱项恰好叫
+    # non_repetition"时才算——coherence 的多结尾问题往往也伴随重复内容，
+    # 而且候选对最多 5 条、prompt 成本可忽略。一律算好传进去，让模型
+    # 自己判断这些候选是不是真的重复、要不要动。
+    dup_hints = find_repeats(content)
     edit_system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
     try:
         edit_text = await llm.complete(
@@ -111,6 +140,12 @@ async def _run_section_edit_pass(user: str, content: str, section_title: str, go
         return
     parsed_revisions = llm.extract_json(edit_text)
     applied = 0
+    # 跟 note_harness._run_edit_pass 同样的 insert 顺序保护：同一锚点上的
+    # 第二条 insert 必须插在第一条插入的内容之后，否则会紧贴锚点把先插的
+    # 顶到后面、顺序颠倒（真实质量采样里抓到过「### 3.」「### 4.」被写成
+    # 4 在 3 前面）。两条 harness 共用 _apply_revision，这个保护也必须
+    # 两边都传，只修一边等于这条路径上的 bug 还活着。
+    insert_offsets: dict[str, int] = {}
     if isinstance(parsed_revisions, list):
         for item in parsed_revisions[:6]:
             if not isinstance(item, dict):
@@ -122,9 +157,12 @@ async def _run_section_edit_pass(user: str, content: str, section_title: str, go
             if not anchor or anchor not in content:
                 continue
             text = str(item.get("text") or "")
-            new_content = _apply_revision(content, op, anchor, text)
+            new_content = _apply_revision(
+                content, op, anchor, text, insert_offset=insert_offsets.get(anchor, 0))
             if new_content == content:
                 continue
+            if op == "insert":
+                insert_offsets[anchor] = insert_offsets.get(anchor, 0) + len(text)
             content = new_content
             applied += 1
             yield _sse("revision", {
@@ -206,6 +244,9 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
 
         section_rounds: dict[str, int] = {}
         section_focus: dict[str, str] = {}
+        # 每个分段上一轮的完整分数——决定该不该续写要看"内在质量维度
+        # 有没有没达标的"，只留最弱项的名字信息不够（见 skip_continue）。
+        section_scores: dict[str, dict[str, int]] = {}
         steps = 0
         while steps < PLAN_SAFETY_CAP:
             steps += 1
@@ -260,13 +301,20 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             other_summaries = [s["summary"] for s in sections if s["id"] != target["id"] and s["summary"]]
             focus = section_focus.get(target["id"], "")
 
-            # 上一轮评分如果说这个分段最弱的是 non_repetition，这一轮跳过
-            # 续写，改跑一次专门的修订/清理（TRACELOG [28]）：真实压测数据
-            # 发现分段的收敛率明显低于笔记，根因是这里之前完全没有编辑
-            # 步骤，non_repetition 被打低分之后除了"接着写"没有别的手段，
-            # 而"接着写"只会往已经重复的内容上再加一层——跟 note_harness.py
-            # 改之前撞过的同一个坑，这里补上对应的修复。
-            skip_continue = focus == "non_repetition"
+            # 这一轮该续写还是该只理顺，看的是"上一轮最弱那项到底是内容
+            # 不够、还是已写内容有毛病"——两类问题处理方式相反：
+            #   topic_fidelity 低 = 该覆盖的内容没写 → 续写
+            #   non_repetition/coherence 低 = 已写的内容自身有毛病
+            #                                 （重复、多结尾、层级乱）
+            #                                 → 只理顺，不再加新内容
+            # 之前这里跟 note_harness.py 一样只判断
+            # `focus == "non_repetition"`，那个版本在真实质量采样里跑出了
+            # 清晰的震荡：清理轮修好 non_repetition 后最弱项变成别的维度，
+            # 下一轮又去续写、又把它弄坏，来回拉锯到轮数上限收场。这里跟
+            # note_harness.py 用同一套判断口径，不各修一半。
+            _INNER_QUALITY_DIMS = ("non_repetition", "coherence")
+            prev_scores = section_scores.get(target["id"], {})
+            skip_continue = any(prev_scores.get(d, 2) < 2 for d in _INNER_QUALITY_DIMS)
             cleanup_applied = 0
             if skip_continue:
                 cleanup_result: dict = {}
@@ -353,6 +401,9 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 _sync_tracking_note(user, plan, sections)
             else:
                 section_focus[target["id"]] = evaluation.weakest or "" if evaluation else ""
+                if evaluation:
+                    section_scores[target["id"]] = {
+                        name: sc.level for name, sc in evaluation.scores.items()}
                 yield _sse("round-end", {"section_id": target["id"]})
 
         yield "event: done\ndata: {}\n\n"
