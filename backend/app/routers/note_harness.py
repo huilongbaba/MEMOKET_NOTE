@@ -85,6 +85,13 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
         return
     parsed_revisions = llm.extract_json(edit_text)
     applied = 0
+    # 同一个锚点被多条 insert 反复用时，记录已经为它插了多少字符——
+    # 真实质量采样里抓到的 bug：模型按正确顺序给了「### 3. ...」和
+    # 「### 4. ...」两条 insert、锚点完全相同，但 _apply_revision 的
+    # insert 语义是「紧贴锚点末尾插入」，第二条又插回锚点正后方，把第一条
+    # 顶到后面去，最终正文里编号 4 排在了编号 3 前面。这不是模型写错顺序，
+    # 是应用机制把顺序颠倒了；任何「在同一处连续补两段」都会中招。
+    insert_offsets: dict[str, int] = {}
     if isinstance(parsed_revisions, list):
         for item in parsed_revisions[:6]:
             if not isinstance(item, dict):
@@ -96,9 +103,12 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
             if not anchor or anchor not in content:
                 continue
             text = str(item.get("text") or "")
-            new_content = _apply_revision(content, op, anchor, text)
+            new_content = _apply_revision(
+                content, op, anchor, text, insert_offset=insert_offsets.get(anchor, 0))
             if new_content == content:
                 continue
+            if op == "insert":
+                insert_offsets[anchor] = insert_offsets.get(anchor, 0) + len(text)
             content = new_content
             applied += 1
             yield _sse("revision", {
@@ -143,15 +153,22 @@ async def _evaluate_round(user: str, content: str, spine: str, beats: list[str])
         return None
 
 
-def _apply_revision(content: str, op: str, anchor: str, text: str) -> str:
+def _apply_revision(content: str, op: str, anchor: str, text: str,
+                    insert_offset: int = 0) -> str:
     """前端 RevisionPanel.tsx 的 applyRevision() 用的是同一套锚点语义，这里
     是要在没有人工审核的情况下自动应用，所以后端自己实现一份——不能指望
-    前端那份，那是给用户点"接受"用的，只在浏览器里跑。"""
+    前端那份，那是给用户点"接受"用的，只在浏览器里跑。
+
+    ``insert_offset``：本轮已经为同一个锚点插入过多少字符。批量自动应用
+    多条修订时，第二条 insert 必须插在第一条插入的内容**之后**，否则会
+    紧贴锚点、把先插的内容顶到后面去，顺序就颠倒了（见调用方注释里记的
+    真实 bug）。单条应用（前端逐条接受）时保持 0，行为跟以前完全一致。"""
     i = content.find(anchor)
     if i < 0:
         return content  # 锚点在当前正文里找不到了（可能已经被上一条修订动过），跳过这条
     end = i + len(anchor)
     if op == "insert":
+        end += insert_offset
         return content[:end] + text + content[end:]
     if op == "insert_before":
         return content[:i] + text + content[i:]

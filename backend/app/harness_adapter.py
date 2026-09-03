@@ -64,6 +64,27 @@ _STYLE_FIT = Dimension(
     "（比如偏好简洁但正文冗长啰嗦）。",
 )
 
+# 这一条是人工读真实产出读出来的缺口，不是照着别处抄的：真实质量采样里
+# 有两篇被四个维度全打 2 分、判定 complete，但人一眼就能看出问题——
+# 一篇正文中间夹了一个完整的结尾（读者以为文章结束了，下面又开始展开），
+# 一篇小节编号是 1、2、4、3，还有二级标题夹在一堆三级标题中间。原来的
+# 四个维度没有任何一条在管"这篇东西作为一个整体是不是自洽"，所以这些
+# 一眼可见的硬伤全部被判满分。guidance 写成明确的检查清单，泛泛说
+# "检查结构"实测没用。
+_COHERENCE = Dimension(
+    "coherence",
+    "整篇作为一个成品是否自洽，逐条对着查，任意一条中招就是不足："
+    "(1) 有没有出现不止一个结尾——某一段已经在做总结收束，后面却又接着"
+    "展开新内容，读者会以为文章已经结束；"
+    "(2) 标题层级是否统一——有没有二级标题和三级标题混着乱用、同一层级"
+    "的内容用了不同级别的标题；"
+    "(3) 编号是否连贯——小节序号有没有跳号、错序（比如 1、2、4、3）；"
+    "(4) 前后体例是否一致——有没有前半部分是纯段落、后半部分突然全是"
+    "带标题的小节这种像两篇文章拼起来的痕迹；"
+    "(5) 有没有自我拆台——正文某处的表述跟这篇东西自己主张的立场相互"
+    "矛盾（比如通篇在批判某种说法，某一段自己又说了这种话）。",
+)
+
 
 def note_dimensions(has_profile: bool) -> list[Dimension]:
     """note_harness.py：单篇笔记续写，有 spine（核心张力）/beats（结构
@@ -82,6 +103,7 @@ def note_dimensions(has_profile: bool) -> list[Dimension]:
         ),
         _NON_REPETITION,
         _FACTUAL_GROUNDING,
+        _COHERENCE,
     ]
     if has_profile:
         dims.append(_STYLE_FIT)
@@ -101,6 +123,7 @@ def section_dimensions(has_profile: bool) -> list[Dimension]:
         ),
         _NON_REPETITION,
         _FACTUAL_GROUNDING,
+        _COHERENCE,
     ]
     if has_profile:
         dims.append(_STYLE_FIT)
