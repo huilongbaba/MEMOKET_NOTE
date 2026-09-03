@@ -63,7 +63,7 @@ async def _run_edit_pass(user: str, content: str, spine: str, beats: list[str],
     "重复"这条原则光靠模型自己每轮重新通读全文找，连续好几轮都卡住不
     改善（TRACELOG [25]/[27]）；find_repeats() 给的是具体候选段落对，
     不是让模型每次从零开始找。"""
-    facts, _ids, _took = _retrieve(user, content, spine, beats)
+    facts, _ids, _took = _retrieve(user, content, spine, beats, include_head=True)
     # 机械查重是纯 difflib、不花 LLM 调用，没有理由只在"最弱项恰好叫
     # non_repetition"时才算——coherence 的多结尾问题往往也伴随重复内容，
     # 而且候选对最多 5 条、prompt 成本可忽略。一律算好传进去，让模型
@@ -135,7 +135,7 @@ async def _evaluate_round(user: str, content: str, spine: str, beats: list[str])
     维度的辅助证据喂给 evaluate()。调用失败返回 None（不抛出）——这一步
     的结果直接决定 continue/complete/blocked，调用方要能区分"真的判定为
     continue"和"这一轮压根没判成"，不能把失败悄悄当成某个正常结果处理。"""
-    facts, _ids, _took = _retrieve(user, content, spine, beats)
+    facts, _ids, _took = _retrieve(user, content, spine, beats, include_head=True)
     dup_hints = find_repeats(content)
     context = {}
     if spine:
@@ -288,7 +288,7 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
                 # 甚至扯到了完全不同领域的"港中择校"内容），recall() 老办法
                 # 两次都准确命中；而且慢 15-30 倍（10+ 秒 vs 亚毫秒）。既慢又
                 # 不准，退回原来的 _retrieve()。
-                facts2, ids2, took2 = _retrieve(user, content, spine, beats, limit=6)
+                facts2, ids2, took2 = _retrieve(user, content, spine, beats, limit=6, include_head=True)
                 magic_system = prompts.compose_system(
                     prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "magic_tap"))
                 continue_content = compact_context(content, keep_last_chars=CONTEXT_KEEP_LAST_CHARS)
