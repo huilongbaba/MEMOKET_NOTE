@@ -223,6 +223,10 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
         max_rounds = max(1, min(body.max_rounds, MAX_ROUNDS_CAP))
         stall_rounds = 0
         focus = ""
+        # 上一轮各维度的分数——决定这一轮该不该续写要看的是"内在质量
+        # 维度有没有没达标的"，不是只看最弱那一项叫什么名字（见下面
+        # skip_continue 处的注释）。
+        last_scores: dict[str, int] = {}
 
         def _finish(reason: str, round_idx: int, evaluation: Evaluation | None):
             status = evaluation.status if evaluation else reason
@@ -244,15 +248,23 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
             revisions_applied = edit_result["applied"]
 
             # --- 自动续写 ---
-            # 上一轮评分如果说最弱的是 non_repetition，这一轮跳过续写：真实
-            # 测试跑出来的结果——terrence 一篇真实笔记连续跑 6 轮，
-            # non_repetition 从没改善过，反而从 1 掉到 0。续写每轮都在加新
-            # 内容，而且完全不知道"重复"是当前最该注意的问题（只有修订
-            # 那一步拿到了 focus），新内容持续在给"已经在重复"的问题上再
-            # 添一层，修订跟不上续写产出的速度。已经在重复的问题，靠"接着
-            # 写"没有道理能自己变好——这一轮改成再跑一次聚焦修订（两次独立
-            # 机会清理同一个问题），不叠加新内容。
-            skip_continue = focus == "non_repetition"
+            # 要不要续写，看的不是"最弱的是哪一项"，而是"最弱的那一项到底
+            # 是内容不够、还是已有内容有毛病"——这两类问题的正确处理方式
+            # 相反：
+            #   beat_coverage/spine_fidelity 低 = 该覆盖的内容还没写 → 续写
+            #   non_repetition/coherence  低 = 已经写的内容自身有毛病
+            #                                  （重复、多个结尾、层级乱）
+            #                                  → 只该理顺，不该再加新内容
+            #
+            # 之前只判断 `focus == "non_repetition"`，真实质量采样里跑出了
+            # 清晰的震荡循环：清理轮把 non_repetition 修到 2 分之后，最弱项
+            # 变成 beat_coverage，于是下一轮又去续写，续写又把
+            # non_repetition 和 coherence 一起弄坏，来回拉锯 5 轮到
+            # max_rounds 收场，最终正文里堆了三个收束板块（"下一步验证
+            # 清单""决策框架""执行节奏与风险对冲"）。所以判断依据从"最弱项
+            # 是不是某一个"放宽成"内在质量这两项里有没有任何一项没达标"。
+            _INNER_QUALITY_DIMS = ("non_repetition", "coherence")
+            skip_continue = any(last_scores.get(d, 2) < 2 for d in _INNER_QUALITY_DIMS)
             if skip_continue:
                 cleanup_result: dict = {}
                 async for ev in _run_edit_pass(user, content, spine, beats, note["title"], body.note_id, focus, cleanup_result):
@@ -338,6 +350,7 @@ async def run(body: NoteHarnessRunIn, request: Request, user: str = Depends(curr
                 yield _sse("done", {"reason": "stalled"})
                 return
             focus = evaluation.weakest or ""
+            last_scores = {name: s.level for name, s in evaluation.scores.items()}
 
         _finish("max_rounds", max_rounds, None)
         yield _sse("done", {"reason": "max_rounds"})
