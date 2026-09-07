@@ -152,3 +152,29 @@ def test_timeline_aggregates_units_and_facts_by_date(mem):
     buckets = {b["date"]: b for b in mem.timeline()}
     assert buckets["2026-01-01"] == {"date": "2026-01-01", "units": 1, "facts": 1}
     assert buckets["2026-01-02"] == {"date": "2026-01-02", "units": 1, "facts": 2}
+
+
+# ---------------------------------------------------------------- facts_between (digest)
+
+def test_facts_between_filters_by_inclusive_date_range(mem):
+    rows = mem.facts_between("2026-01-01", "2026-01-01")
+    assert [r["id"] for r in rows] == ["f1"]
+
+
+def test_facts_between_sorts_ascending_by_date(mem):
+    # facts_page/timeline sort newest-first; digest wants chronological
+    # order since it reads like "what happened, in sequence" -- deliberately
+    # the other direction.
+    rows = mem.facts_between("2026-01-01", "2026-01-02")
+    assert [r["id"] for r in rows] == ["f1", "f2", "f3"]
+    assert rows[0]["when"] == "2026-01-01"
+
+
+def test_facts_between_excludes_out_of_range(mem):
+    rows = mem.facts_between("2025-01-01", "2025-12-31")
+    assert rows == []
+
+
+def test_facts_between_respects_limit(mem):
+    rows = mem.facts_between("2026-01-01", "2026-01-02", limit=1)
+    assert len(rows) == 1

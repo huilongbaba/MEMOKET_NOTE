@@ -182,6 +182,20 @@ def connect() -> sqlite3.Connection:
         conn.execute("ALTER TABLE notes ADD COLUMN folder_id TEXT")
     except sqlite3.OperationalError:
         pass
+    # 写作骨架（核心张力 + 结构节拍）跟着笔记走。
+    #
+    # 之前它只活在前端内存里，`open()` 一进新笔记就清空——换一篇、刷新页面、
+    # 甚至无限续写开着「跟随」自动切到下一段，骨架就没了。而 harness 每轮都
+    # 要拿它当主线依据，没了就得重新花一次模型调用生成，或者干脆没有主线跑。
+    # beats 存成 JSON 数组字符串。
+    try:
+        conn.execute("ALTER TABLE notes ADD COLUMN spine TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE notes ADD COLUMN beats TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(user_id, folder_id, updated_at DESC)")
     try:
         conn.execute("ALTER TABLE skills ADD COLUMN default_key TEXT NOT NULL DEFAULT ''")
@@ -192,6 +206,20 @@ def connect() -> sqlite3.Connection:
 
 
 # ---------------------------------------------------------------- 笔记
+
+def _note(row) -> dict:
+    """行 → dict。**beats 在库里是 JSON 字符串，出去必须是数组**——不转的话
+    Note 这个响应模型会校验失败，整个笔记接口 500。"""
+    d = dict(row)
+    try:
+        d["beats"] = json.loads(d.get("beats") or "[]")
+    except (TypeError, ValueError):
+        d["beats"] = []
+    if not isinstance(d["beats"], list):
+        d["beats"] = []
+    d["spine"] = d.get("spine") or ""
+    return d
+
 
 def list_notes(user_id: str, q: str = "") -> list[dict]:
     with connect() as c:
@@ -205,14 +233,14 @@ def list_notes(user_id: str, q: str = "") -> list[dict]:
             rows = c.execute(
                 "SELECT * FROM notes WHERE user_id=? ORDER BY pinned DESC, updated_at DESC",
                 (user_id,)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 def get_note(user_id: str, note_id: str) -> dict | None:
     with connect() as c:
         row = c.execute("SELECT * FROM notes WHERE user_id=? AND id=?",
                         (user_id, note_id)).fetchone()
-    return dict(row) if row else None
+    return _note(row) if row else None
 
 
 def create_note(user_id: str, title: str, content: str, folder_id: str | None = None) -> dict:
@@ -223,7 +251,7 @@ def create_note(user_id: str, title: str, content: str, folder_id: str | None = 
         c.execute(
             "INSERT INTO notes (id,user_id,title,content,pinned,folder_id,created_at,updated_at) "
             "VALUES (:id,:user_id,:title,:content,:pinned,:folder_id,:created_at,:updated_at)", note)
-    return note
+    return {**note, "spine": "", "beats": []}
 
 
 def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | None:
@@ -235,6 +263,21 @@ def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | 
         if cur.rowcount == 0:
             return None
     return get_note(user_id, note_id)
+
+
+def set_skeleton(user_id: str, note_id: str, spine: str, beats: list[str]) -> None:
+    """写作骨架跟着笔记存。**只在真的有内容时写**——空骨架不该覆盖已有的：
+    前端切笔记时会把内存里的 spine/beats 清空，那个"空"不代表用户想删掉它。"""
+    with connect() as c:
+        c.execute("UPDATE notes SET spine=?, beats=? WHERE user_id=? AND id=?",
+                  (spine, json.dumps(beats, ensure_ascii=False), user_id, note_id))
+
+
+def get_skeleton(user_id: str, note_id: str) -> tuple[str, list[str]]:
+    note = get_note(user_id, note_id)
+    if not note:
+        return "", []
+    return note["spine"], [str(b) for b in note["beats"] if str(b).strip()]
 
 
 def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
@@ -272,7 +315,7 @@ def notes_in_folder(user_id: str, folder_id: str, exclude_id: str = "", limit: i
             "SELECT * FROM notes WHERE user_id=? AND folder_id=? AND id != ? "
             "ORDER BY updated_at DESC LIMIT ?",
             (user_id, folder_id, exclude_id, limit)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 # ---------------------------------------------------------------- 文件夹
@@ -282,7 +325,7 @@ def list_folders(user_id: str) -> list[dict]:
         rows = c.execute(
             "SELECT * FROM folders WHERE user_id=? ORDER BY created_at",
             (user_id,)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 def create_folder(user_id: str, name: str) -> dict:
@@ -366,7 +409,7 @@ def list_sections(plan_id: str) -> list[dict]:
     with connect() as c:
         rows = c.execute("SELECT * FROM writing_sections WHERE plan_id=? ORDER BY idx",
                          (plan_id,)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 def add_sections(plan_id: str, titles: list[str]) -> list[dict]:
@@ -576,7 +619,7 @@ def list_jobs(user_id: str, limit: int = 20) -> list[dict]:
         rows = c.execute(
             "SELECT * FROM ingest_jobs WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
             (user_id, limit)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 def request_cancel(job_id: str) -> None:
@@ -622,7 +665,7 @@ def get_items(job_id: str) -> list[dict]:
     with connect() as c:
         rows = c.execute(
             "SELECT * FROM ingest_items WHERE job_id=? ORDER BY idx", (job_id,)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 def update_job_from_items(job_id: str) -> None:
@@ -636,7 +679,11 @@ def update_job_from_items(job_id: str) -> None:
     elif all(i["status"] in _TERMINAL_ITEM_STATUSES for i in items):
         status = "cancelled" if all(i["status"] == "cancelled" for i in items) else "done"
     else:
-        status = "running"
+        # 收到取消请求但还有 item 没停干净时，状态是「正在停止」而不是「处理中」。
+        # 后台可能卡在一次 LLM 调用或 KITE 写锁里几十秒，这段时间界面必须如实
+        # 说「在停了」，否则跟没点一样。
+        job = get_job(job_id)
+        status = "cancelling" if (job and job["cancel_requested"]) else "running"
     detail = "; ".join(f"{i['filename']}: {i['detail']}" for i in items if i["detail"])
     set_job(job_id, status, facts=total_facts, detail=detail)
 
@@ -656,7 +703,7 @@ def list_profile(user_id: str) -> list[dict]:
         rows = c.execute(
             "SELECT * FROM user_profile WHERE user_id=? ORDER BY created_at DESC, rowid DESC",
             (user_id,)).fetchall()
-    return [dict(r) for r in rows]
+    return [_note(r) for r in rows]
 
 
 def add_profile_entry(user_id: str, text: str) -> dict:
@@ -767,3 +814,21 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def sweep_orphan_jobs() -> int:
+    """把上次进程退出时还没跑完的任务标记掉。启动时调一次。
+
+    后台任务活在进程里，进程一没了它们就没了——但数据库里的状态还停在
+    queued/running。不清理的话：进度面板永远显示「处理中…」，而"同时只跑一个
+    导入任务"的检查会认为一直有任务在跑，**用户再也导不进任何东西**。
+    """
+    with connect() as c:
+        n = c.execute(
+            "UPDATE ingest_items SET status='failed', "
+            "detail='服务重启，任务中断' WHERE status NOT IN ('done','failed','cancelled')"
+        ).rowcount
+        c.execute("UPDATE ingest_jobs SET status='error', "
+                  "detail='服务重启，任务中断' "
+                  "WHERE status NOT IN ('done','error','cancelled')")
+    return n

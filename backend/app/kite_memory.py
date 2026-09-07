@@ -14,8 +14,10 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import re
+import shutil
 import tempfile
 import time
 import xml.etree.ElementTree as ET
@@ -24,12 +26,16 @@ from pathlib import Path
 from memoket_kite import Memory
 from memoket_kite.core.algebra import CONF_ORDER, Store, execute_plan
 from memoket_kite.core.vocab import Topic, norm_code
+from memoket_kite.pipeline.extract import _consolidation_round_votes
+from memoket_kite.providers.llm import llm_json
+from memoket_kite.storage import _verify_loadable
 
-from . import kite_extract_profile
+from . import kite_entity_candidates, kite_extract_profile, store
 from .config import get_settings
 from .kite_writer import write_lock
 
 kite_extract_profile.install()
+kite_entity_candidates.install()
 
 # Root topics seeded into every new codebook. KITE's extraction prompt only
 # lets the model propose a topic as a child of an already-known root
@@ -85,10 +91,116 @@ def _export_provider_env() -> None:
 
     它读 OPENAI_API_KEY / OPENAI_BASE_URL 两个变量（见 providers/llm.py），
     不走参数传递 —— 所以调用前必须先设好，否则报 "OPENAI_API_KEY is required"。
+
+    从 store.get_active_llm_config() 取，不直接读 Settings——用户在设置页
+    切了 GPT，KITE 这边（抽取/问答/实体去重）也要跟着切，不能只有
+    llm.py 那条写作路径切了、KITE 这边还锁死在本地模型。"""
+    cfg = store.get_active_llm_config()
+    os.environ["OPENAI_API_KEY"] = cfg["api_key"]
+    os.environ["OPENAI_BASE_URL"] = cfg["base_url"]
+
+
+_CJK_RE = re.compile(r"[一-鿿]")
+
+
+def _is_cjk_pair(a: str, b: str) -> bool:
+    return bool(_CJK_RE.search(a) or _CJK_RE.search(b))
+
+
+# TRACELOG [15] 续：一开始用 KITE 自带的 ENTITY_CONSOLIDATION_PROMPT（问
+# "这两个是不是同一个真实世界的实体，参考给的例句"）——实测证明这个问法
+# 从根上就问错了：真实数据里的重复实体，中文那批是 ASR 把同一个读音识别
+# 成了不同的字（同音字混淆），英文那批更多是打字/拼写变体（漏字母、
+# 单复数、缩写）——这是两种不同的产生机制，"语义上下文能不能证明"这个
+# 问法对哪种都不对口：中文候选的"上下文"其实是抽取阶段基于错误转写独立
+# 生成的，本身就是错误的下游产物，拿它反过来当"这两个不是同一个实体"的
+# 证据是循环论证；英文候选的拼写变体压根不需要看语义，看拼写本身就够了。
+# 换成针对性的两条问法之后，真实数据上从"该判重复的一个都没判出来"变成
+# "该判重复的基本都判对了，该拒绝的也都正确拒绝了"（见 TRACELOG）。
+_PHONETIC_MERGE_PROMPT = """For each pair of short Chinese text codes below
+(extracted as named entities from noisy speech-to-text transcripts), judge
+ONLY by how they would SOUND if spoken aloud in Mandarin — could a speech
+recognizer plausibly have transcribed the same spoken word as these two
+different strings, due to identical or very close pronunciation (同音字/
+近音字)? This is purely about pronunciation, not meaning or spelling —
+ignore what each string might refer to.
+
+PAIRS:
+{pairs}
+
+Return JSON only:
+{{"decisions": [{{"i": 0, "merge": true, "winner": str}}]}}"""
+
+_SPELLING_VARIANT_MERGE_PROMPT = """For each pair of short text codes below
+(extracted as named entities from hastily typed or transcribed notes), judge
+whether they are plausibly the SAME underlying word/name, differing only
+because of a typo, a missing/extra letter, a singular/plural form, an
+abbreviation, or a near-miss spelling variant — the kind of accidental
+duplication that happens when the same entity gets written slightly
+differently on different occasions. Do NOT merge pairs that are simply two
+different real words/names that happen to be similar length or share some
+letters (e.g. "mba" and "nba" are two different real acronyms, not a typo
+of each other).
+
+PAIRS:
+{pairs}
+
+Return JSON only:
+{{"decisions": [{{"i": 0, "merge": true, "winner": str}}]}}"""
+
+
+def _vote_entity_merges(vocabulary, candidates: list[tuple[str, str]], model: str,
+                        batch_size: int = 60) -> dict[str, str]:
+    """实体去重投票——每批独立投 3 轮，2/3 一致才真的合并（复用 KITE 自带
+    的投票解析函数 ``_consolidation_round_votes``），候选列表由调用方
+    传入而不是内部写死（库自带版本内部固定 ``min_len=2``，实测在真实
+    数据上这个阈值把大量像"ac"/"af"这种 2 字符噪声碎片互相撞出的候选也
+    算了进去，见 TRACELOG）。
+
+    候选按是否含 CJK 字符分成两组，分别用不同的问法投票——中文问"读音
+    像不像"，英文/其他问"是不是同一个词的拼写变体"，理由见上面两个
+    prompt 前的注释。``merged_codes`` 的"同一轮内不链式合并"这条防护
+    是跨两组共享的，不是每组各自独立——两组候选理论上可能共享某个 code
+    （虽然实践中因为分组本身按脚本类型分开，交叉概率很低，但共享防护
+    集合成本几乎为零，没有理由不做）。
+
+    直接 mutate 传入的 vocabulary（调用方决定传真身还是深拷贝——预览用
+    深拷贝，真正执行时传真身）。返回 {loser_code: winner_code}。
     """
-    s = get_settings()
-    os.environ["OPENAI_API_KEY"] = s.llm_api_key
-    os.environ["OPENAI_BASE_URL"] = s.llm_base_url
+    cjk_candidates = [(a, b) for a, b in candidates if _is_cjk_pair(a, b)]
+    latin_candidates = [(a, b) for a, b in candidates if not _is_cjk_pair(a, b)]
+
+    entity_rewrites: dict[str, str] = {}
+    merged_codes: set[str] = set()
+    for candidate_group, prompt_template in (
+        (cjk_candidates, _PHONETIC_MERGE_PROMPT),
+        (latin_candidates, _SPELLING_VARIANT_MERGE_PROMPT),
+    ):
+        for start in range(0, len(candidate_group), batch_size):
+            batch = candidate_group[start:start + batch_size]
+            votes: dict[int, list] = {i: [] for i in range(len(batch))}
+            prompt = prompt_template.format(
+                pairs="\n".join(f"{i}: {a!r} | {b!r}" for i, (a, b) in enumerate(batch)))
+            for _ in range(3):
+                try:
+                    data = llm_json(prompt, model=model)
+                    round_votes = _consolidation_round_votes(data, batch)
+                    for i in votes:
+                        votes[i].append(round_votes.get(i))
+                except RuntimeError:
+                    continue
+            for i, (first_code, second_code) in enumerate(batch):
+                winners = [w for w in votes[i] if w]
+                if len(winners) >= 2 and len(set(winners)) == 1:
+                    winner = winners[0]
+                    loser = second_code if winner == first_code else first_code
+                    if loser in merged_codes or winner in merged_codes:
+                        continue
+                    if loser in vocabulary.entities and winner in vocabulary.entities:
+                        entity_rewrites.update(vocabulary.merge_entities([loser], winner))
+                        merged_codes.add(loser)
+                        merged_codes.add(winner)
+    return entity_rewrites
 
 
 class UserMemory:
@@ -253,6 +365,48 @@ class UserMemory:
 
         return facts[:limit], surfaces, (time.perf_counter() - t0) * 1000
 
+    def recall_multihop(self, question: str, limit: int = 8) -> tuple[list[dict], bool, float]:
+        """多跳检索：先按内容定位到某次会话，再在那个范围里展开。
+
+        上面的 ``recall()`` 是零 LLM 的词法检索，快、直接命中好，但它**不会
+        多跳**：「在讨论 X 的那次会里还提到了什么」这种意图，一个词袋根本
+        表达不了——第一跳要按内容定位 session，第二跳要在那个 session 里展开。
+
+        KITE 的 plan 代数支持这个（``stages`` + ``$anchor.units`` 绑定，引用
+        解析是确定性的，LLM 只写模板），代价是一次 compile 的 LLM 调用
+        （本地模型约 10 秒）。所以它不替代 recall()，是并列的另一条通道，
+        由写作 agent 按问题类型自己选——实测两者的失败场景互不重叠，代码里
+        替用户选反而更差。
+
+        返回 ``(fact 行, 是否真的编出了多跳计划, 耗时毫秒)``。第二个值让调用方
+        能如实说明「这次是不是真走了多跳」：模型判断问题不需要多跳时会编出
+        单跳计划，那种情况这条路径不比 recall() 好，只是更慢。
+        """
+        from memoket_kite.core.algebra import execute_plan
+        from memoket_kite.pipeline.compile_plan import compile_plan
+
+        from .kite_profile import WritingProfile
+
+        t0 = time.perf_counter()
+        _export_provider_env()
+        kb, vocab = self._index()
+        profile = WritingProfile(
+            Memory.load([str(self.path)])._reasoner()._profile, kb, vocab)
+        # 必须取**当前生效**的模型，不能读 Settings.llm_model——后者是 .env
+        # 里的本地模型默认值，进程启动时定死。用户在设置页切到 GPT 之后，
+        # 这里还拿 muse-glimmer-30b 去问 OpenAI，直接 404。
+        model = os.environ.get("KITE_MODEL") or store.get_active_llm_config()["model"]
+        # n_candidates=1 / scorer=None：只 compile 一次。库默认采样 3 个候选再
+        # 用确定性 scorer 选优，实测把耗时推到 110 秒——而那个 scorer 打的是
+        # plan 的形状（行数、有没有用结构过滤），不是结果跟问题的相关性。
+        plan = compile_plan(question, vocab, kb, profile, model,
+                            scorer=None, n_candidates=1)
+        rows, _trace = execute_plan(kb, vocab, plan, speakers=kb.speakers,
+                                    budget=limit)
+        facts = [r for r in rows if r.get("type") == "fact"]
+        return facts[:limit], bool(plan.get("stages")), (time.perf_counter() - t0) * 1000
+
+
     def _recall_via_lines(self, store, vocab, query: str, limit: int) -> list[dict]:
         """跨语言回退：在原始对话行里 grep，命中后取所属 session 的 facts。"""
         terms = self._cjk_terms(query) + self._candidate_terms(query)
@@ -386,6 +540,16 @@ class UserMemory:
         page = rows[offset:offset + limit]
         return [self._fact_dict(f) for f in page], total
 
+    def facts_between(self, date_from: str, date_to: str, limit: int = 400) -> list[dict]:
+        """按日期范围取全部 facts（不分页，按时间正序）——摘要生成用。`when` 是
+        ISO 日期字符串，字典序比较就是时间序，不用另外解析。"""
+        store, _vocab = self._index()
+        rows = sorted(
+            (f for f in store.facts.values() if date_from <= f.when <= date_to),
+            key=lambda f: f.when,
+        )
+        return [self._fact_dict(f) for f in rows[:limit]]
+
     def fact_sources(self, fact_id: str) -> list[dict]:
         """一条 fact 的原始出处，带 unit/日期/说话人——跟 source_lines() 的区别是
         这里给结构化字段，不是纯文本，方便前端做「fact -> 原始行」的证据回溯。"""
@@ -483,7 +647,8 @@ class UserMemory:
     # ------------------------------------------------------------ 入库（走 LLM，慢）
 
     def remember(self, messages: list[dict], *, session_id: str,
-                 date: str | None = None, title: str = "") -> int:
+                 date: str | None = None, title: str = "",
+                 profile=None) -> int:
         """把一段内容抽成 fact 存进 codebook。调用方负责放到后台执行。
 
         写入全程持有该 codebook 的独占锁 —— KITE 的 ``remember()`` 全量重写
@@ -493,13 +658,31 @@ class UserMemory:
         ``remember()`` 再基于这份快照重写全文。在锁外加载等于拿到一份可能
         过期的快照，写回时会抹掉别人刚提交的 session。
         """
-        s = get_settings()
+        cfg = store.get_active_llm_config()
         _export_provider_env()
         self.ensure()
         with write_lock(self.path):
-            memory = Memory.load(self.path, model=s.kite_extract_model)
-            facts = memory.remember(messages, session_id=session_id,
-                                    date=date, title=title or None)
+            memory = Memory.load(self.path, model=cfg["model"])
+            # 换抽取 prompt（面向写作而不是问答）时只能改
+            # DEFAULT_MEMORY_PROFILE——``memoket_kite.remember.extract_facts``
+            # 把它写死了，没有参数可传。所以在**持锁期间**临时替换、finally
+            # 还原。它是进程级全局对象，这样做的前提是同一时刻只有一个
+            # remember 在跑，而这正是上面那把独占锁保证的事。
+            # 不传 profile 时完全不碰它，既有入库行为一个字节都不变。
+            patched = []
+            if profile is not None:
+                from memoket_kite.defaults import DEFAULT_MEMORY_PROFILE as _P
+                for attr in ("EXTRACT_PROMPT", "EXTRACT_PROMPT_NO_FACETS"):
+                    patched.append((attr, getattr(_P, attr)))
+                    setattr(_P, attr, getattr(profile, attr))
+            try:
+                facts = memory.remember(messages, session_id=session_id,
+                                        date=date, title=title or None)
+            finally:
+                if patched:
+                    from memoket_kite.defaults import DEFAULT_MEMORY_PROFILE as _P
+                    for attr, val in patched:
+                        setattr(_P, attr, val)
         self.invalidate()
         return len(facts)
 
@@ -511,16 +694,92 @@ class UserMemory:
         按时间取最新的问题）。代价是本地模型上约 40-50s、3-4 次 LLM 调用。
         所以只用在用户主动提问的路径，写作路径一律走 recall()。
         """
-        s = get_settings()
+        cfg = store.get_active_llm_config()
         _export_provider_env()
         self.ensure()
-        memory = Memory.load(self.path, model=s.kite_extract_model)
+        memory = Memory.load(self.path, model=cfg["model"])
         result = memory.answer_with_evidence(question, limit=limit)
         facts = [{"id": f.id, "text": f.content,
                   "date": getattr(f, "when", ""), "kind": getattr(f, "kind", ""),
                   "sources": [str(x.get("content", "")) for x in (f.sources or [])]}
                  for f in (result.facts or [])]
         return result.text, facts
+
+    # ------------------------------------------------------------ 实体去重（手动触发）
+
+    def preview_entity_consolidation(self, min_len: int = 5, batch_size: int = 60) -> dict[str, str]:
+        """只读预览：算候选、真的跑一遍投票，但改的是 vocab 的深拷贝——
+        不碰真实数据、不写文件、不需要拿 write_lock。返回 {loser: winner}
+        给调用方（前端/人工）审查用，确认要合并哪些之后再调
+        apply_entity_consolidation()，不是自动生效。
+        """
+        cfg = store.get_active_llm_config()
+        _export_provider_env()
+        _store, vocab = self._index()
+        candidates = vocab.entity_merge_candidates(min_len=min_len)
+        staged = copy.deepcopy(vocab)
+        return _vote_entity_merges(staged, candidates, cfg["model"], batch_size)
+
+    def apply_entity_consolidation(self, rewrites: dict[str, str]) -> Path:
+        """真的执行：备份 codebook.xml，把 rewrites 应用到真实 vocab 和
+        真实 fact 的 entities 属性上，原子写回。
+
+        rewrites 必须是 preview_entity_consolidation() 刚返回的那份、经过
+        人工确认的结果——不在这里重新跑一次投票，因为投票本身有概率性
+        （见 TRACELOG），用户审查过的预览应该就是最终生效的那份，不是
+        "大概"。真正写入前对每一条 rewrite 重新核实 loser/winner 是不是
+        还存在于当前 vocab（防的是预览和执行之间又有新内容入库、把还没
+        见过的实体编码合并没了）。
+
+        写入流程仿照 KITE 自己 append_session() 的原子写模式（临时文件+
+        校验能读回来+原子替换），但 append_session() 是给"追加新 session"
+        设计的，没法直接复用——这条路径是这次专门为实体合并写的，全库
+        没有任何先例可以照抄，所以先备份一份原文件，写完之后原文件不会
+        被直接覆盖丢失，出问题能马上恢复。
+        """
+        self.ensure()
+        with write_lock(self.path):
+            backup_path = self.path.with_name(f"{self.path.stem}.bak-{int(time.time())}{self.path.suffix}")
+            shutil.copy2(self.path, backup_path)
+
+            tree = ET.parse(self.path)
+            root = tree.getroot()
+            _store, vocab = Store.load([str(self.path)])  # 锁内重新加载，保证不是过期快照
+
+            applied: dict[str, str] = {}
+            for loser, winner in rewrites.items():
+                if loser in vocab.entities and winner in vocab.entities:
+                    applied.update(vocab.merge_entities([loser], winner))
+
+            for fact in root.iter("fact"):
+                original_codes = (fact.get("entities") or "").split()
+                rewritten_codes = []
+                for code in original_codes:
+                    new_code = applied.get(code, code)
+                    if new_code not in rewritten_codes:
+                        rewritten_codes.append(new_code)
+                fact.set("entities", " ".join(rewritten_codes))
+
+            new_vocab_el = vocab.to_xml()
+            prior_vocab_el = root.find("vocab")
+            if prior_vocab_el is not None:
+                root.insert(list(root).index(prior_vocab_el), new_vocab_el)
+                root.remove(prior_vocab_el)
+            else:
+                root.insert(0, new_vocab_el)
+
+            ET.indent(tree, space="  ")
+            with tempfile.NamedTemporaryFile(
+                mode="wb", suffix=".xml", prefix=f".{self.path.stem}-",
+                dir=self.path.parent, delete=False,
+            ) as handle:
+                temp_path = Path(handle.name)
+                tree.write(handle, encoding="utf-8", xml_declaration=True)
+            _verify_loadable(temp_path)  # 写完先校验能读回来，读不回来就不替换真文件
+            os.replace(temp_path, self.path)
+
+        self.invalidate()
+        return backup_path
 
     def stats(self) -> dict:
         store, vocab = self._index()
@@ -536,3 +795,4 @@ class UserMemory:
             "end_date": dates[-1] if dates else None,
             "codebook": str(self.path),
         }
+

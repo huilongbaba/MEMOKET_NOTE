@@ -47,6 +47,31 @@ button {
 button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Secondary/utility actions (save/export/copy/focus) shouldn't visually
+   compete with the primary "do a thing" buttons above them -- smaller,
+   borderless-until-hovered, so the eye lands on magic-tap/存入知识库 first. */
+.toolbar-secondary button {
+  font-size: 12px; padding: 4px 8px; border-color: transparent;
+  background: transparent; color: var(--muted);
+}
+.toolbar-secondary button:hover:not(:disabled) { border-color: var(--line); color: var(--fg); }
+/* Sticky, not inline -- .col is the scrolling ancestor (overflow-y: auto),
+   so on a long note the toolbar would otherwise scroll away with the title
+   the moment you scroll past the first screenful, which defeats the point
+   of a toolbar (asked directly: "不用悬浮吗，一直在上面吗？"). Opaque
+   background is load-bearing here, not decoration -- without it, editor
+   text scrolling underneath a sticky element shows through. */
+.md-toolbar {
+  gap: 2px; margin-bottom: 6px;
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg); padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.md-toolbar button {
+  font-size: 13px; padding: 3px 9px; min-width: 26px;
+  border-color: transparent; background: transparent; color: var(--muted);
+}
+.md-toolbar button:hover:not(:disabled) { background: var(--panel); border-color: var(--line); color: var(--fg); }
 button.primary:hover:not(:disabled) { color: #fff; opacity: .9; }
 
 input, textarea {
@@ -61,9 +86,30 @@ input, textarea {
 textarea { resize: vertical; }
 
 .app { display: grid; grid-template-columns: 220px 1fr 340px; height: 100vh; }
-.col { overflow-y: auto; padding: 14px; }
+.app.focus-mode { grid-template-columns: 1fr; }
+.app.focus-mode .col { max-width: 760px; margin: 0 auto; width: 100%; }
+/* min-width: 0 is load-bearing, not decoration -- CSS Grid items default to
+   min-width: auto, which means a track never shrinks below its content's
+   intrinsic width. A long unbroken CM6 line (or any long word) was pushing
+   the middle column wider than its 1fr track instead of triggering
+   EditorView.lineWrapping against the actually-visible width, so text just
+   ran off the right edge un-wrapped -- lineWrapping was never the bug,
+   the column never got small enough to force it to wrap there. */
+.col { overflow-y: auto; overflow-x: hidden; min-width: 0; padding: 14px; }
 .col + .col { border-left: 1px solid var(--line); }
 .sidebar { background: var(--panel); }
+/* 侧栏之前把"写作 Skill"/"无限续写"这两个不常用的工具类入口堆在顶部，
+   跟"+新建笔记"这个最高频操作抢视觉权重——新用户一打开先看到一堆按钮，
+   笔记列表反而要往下滚才看得到。这两个挪到侧栏底部，用 sticky 钉住（跟
+   .md-toolbar 是同一个技巧），滚动查笔记的时候仍然随时点得到，但不再
+   跟核心的"新建/找笔记"流程抢第一屏。 */
+.sidebar-footer {
+  position: sticky; bottom: 0; margin: 8px -14px -14px;
+  padding: 8px 14px; background: var(--panel);
+  border-top: 1px solid var(--line);
+  display: flex; gap: 6px;
+}
+.sidebar-footer button { flex: 1; font-size: 12px; padding: 5px 6px; }
 
 h1 { font-size: 16px; margin: 0 0 4px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
@@ -79,38 +125,23 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 
 .editor { min-height: 380px; font-size: 16px; line-height: 1.8; }
 
-/* 高亮编辑器：真正接收输入的 textarea 文字设透明只留光标，背后一层同尺寸/
-   同字体的 div 渲染带颜色的修订高亮 —— 两层像素级对齐，视觉上就像 textarea
-   自己的文字带了颜色。.editor-backdrop 和 .editor-input 除了 color/background
-   外其余盒模型属性必须完全一致，否则两层会错位。 */
-.editor-wrap { position: relative; }
-.editor-backdrop {
-  position: absolute; inset: 0; z-index: 1; margin: 0; box-sizing: border-box;
-  padding: 8px 10px; border: 1px solid transparent; border-radius: 6px;
-  font: inherit; font-size: 16px; line-height: 1.8;
-  white-space: pre-wrap; word-wrap: break-word; overflow: auto;
-  color: var(--fg); pointer-events: none;
-}
-/* The backdrop sits ABOVE the textarea (z-index) so a span that opts back
-   into pointer-events can actually receive the click instead of it falling
-   through to the textarea underneath -- pointer-events:none on the backdrop
-   itself is what lets clicks over plain text pass through to the textarea
-   for normal typing/cursor placement everywhere else. */
-.editor-backdrop .ins, .editor-backdrop .del, .editor-backdrop .replace {
-  pointer-events: auto; cursor: pointer; border-radius: 3px;
-}
-.replace { background: var(--ins-bg); color: var(--ins); text-decoration: underline dotted; }
-.editor-input {
-  position: relative; z-index: 0; box-sizing: border-box;
-  background: transparent; color: transparent; caret-color: var(--fg);
+/* CodeMirror 6 host: input/textarea's box look (border/padding/bg) doesn't
+   apply to a plain div, so it's given explicitly here. */
+.md-editor {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
+  padding: 2px 4px; width: 100%;
 }
 
 .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px;
         background: var(--panel); font-size: 13px; }
 .card + .card { margin-top: 8px; }
 
+/* Revision highlights, now plain CM6 mark decorations (see editor/revisions.ts)
+   instead of a second transparent-textarea layer. */
+.ins, .del, .replace { cursor: pointer; border-radius: 3px; }
 .ins { background: var(--ins-bg); color: var(--ins); text-decoration: underline; }
 .del { background: var(--del-bg); color: var(--del); text-decoration: line-through; }
+.replace { background: var(--ins-bg); color: var(--ins); text-decoration: underline dotted; }
 
 .badge { display: inline-block; padding: 1px 6px; border-radius: 4px;
          font-size: 11px; background: var(--line); color: var(--muted); }
@@ -129,6 +160,59 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .link { color: var(--accent); cursor: pointer; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 
+.toaster {
+  position: fixed; bottom: 16px; right: 16px; z-index: 300;
+  display: flex; flex-direction: column; gap: 8px; max-width: 360px;
+}
+.toast {
+  padding: 10px 14px; border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--line); font-size: 13px; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.toast.error { border-color: var(--del); color: var(--del); }
+
+/* KnowledgeGraph semantic zoom: below the zoom threshold, labels vanish and
+   links fade -- an "abstract point map" overview by design, not a bug. The
+   class is toggled via ref in KnowledgeGraph.tsx (see lodOverviewRef), not
+   React state, specifically to avoid re-rendering thousands of nodes on
+   every zoom animation frame. */
+.kg-zoom-group.lod-overview text { display: none; }
+/* Edges, not just labels, are what actually reads as a solid grey/black
+   mass once there are hundreds of overlapping dashed co-occurrence lines --
+   fading them to a low opacity still leaves that texture (many overlapping
+   translucent lines = ~opaque). Hide them outright at overview zoom; they
+   reappear once you zoom in past the LOD threshold into a legible region. */
+.kg-zoom-group.lod-overview line { display: none; }
+/* "zoom in/out 卡顿" persisted even after settling got faster, because every
+   continuous wheel/drag frame during an interactive zoom still repaints
+   every label/line at whatever LOD level applies. Suppress both outright
+   while a gesture is active (toggled in KnowledgeGraph.tsx, ~150ms after the
+   last zoom event), independent of the LOD threshold -- restored once the
+   gesture actually stops. */
+.kg-zoom-group.kg-interacting text,
+.kg-zoom-group.kg-interacting line { display: none; }
+.kg-hover-card { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2); pointer-events: auto; }
+
+.palette-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 200;
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.palette {
+  width: 560px; max-width: 90vw; max-height: 60vh; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column;
+}
+.palette input {
+  border: none; border-bottom: 1px solid var(--line); border-radius: 0;
+  font-size: 16px; padding: 14px 16px;
+}
+.palette input:focus { outline: none; }
+.palette-results { overflow-y: auto; padding: 6px; }
+.palette-group { font-size: 11px; margin: 8px 4px 4px; padding: 0 4px; }
+.palette-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.palette-item:hover, .palette-item.active { background: var(--panel); }
+
 .modal-backdrop {
   position: fixed; inset: 0; background: var(--bg); z-index: 100;
   overflow-y: auto;
@@ -136,3 +220,203 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .modal {
   max-width: 960px; margin: 0 auto; padding: 24px 32px 60px;
 }
+
+/* harness 自动应用的改动：新增标绿、删掉的原文以删除线补出来，鼠标移上去
+   就地出现「接受 / 撤回」。跟 .ins/.del（还没应用的修订建议）区分开：这层
+   是**已经应用**的改动，撤回意味着把原文写回去。 */
+.harness-ins {
+  background: var(--ins-bg);
+  border-bottom: 1px solid var(--ins);
+  border-radius: 2px;
+}
+.harness-del {
+  background: var(--del-bg);
+  color: var(--del);
+  text-decoration: line-through;
+  opacity: 0.75;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* 「接受 / 撤回」工具条。用 CM6 的 tooltip 定位（.cm-tooltip 已经负责了坐标
+   和边界翻转），这里只管长相。
+   为什么不是塞进正文的 inline 元素靠 CSS 相邻选择器显示：CM6 会在不可编辑的
+   inline widget 两侧插 <img class="cm-widgetBuffer">，相邻选择器永远匹配不上
+   ——第一版就是这么写的，按钮一个都没出来。 */
+.cm-tooltip:has(.harness-actions) {
+  border: none;
+  background: transparent;
+}
+.harness-actions {
+  display: flex;
+  gap: 4px;
+  /* 底部留白：工具条和它下面的那处改动之间不能有空隙，否则鼠标往上挪的
+     途中会掉进"既不在改动上、也不在工具条上"的缝里。 */
+  padding: 2px 2px 6px;
+  pointer-events: auto;
+}
+.harness-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 22%);
+}
+.harness-actions .harness-accept:hover {
+  border-color: var(--ins);
+  color: var(--ins);
+}
+.harness-actions .harness-reject:hover {
+  border-color: var(--del);
+  color: var(--del);
+}
+
+/* `/` 唤起的插入菜单。定位交给 CM6 的 tooltip（.cm-tooltip 已经处理了坐标和
+   边界翻转），这里只管长相。 */
+.cm-tooltip:has(.slash-menu) {
+  border: none;
+  background: transparent;
+}
+.slash-menu {
+  width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 24%);
+}
+.slash-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.slash-item.active,
+.slash-item:hover {
+  background: var(--hover, rgb(127 127 127 / 12%));
+}
+.slash-icon {
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  line-height: 1.4;
+}
+.slash-label {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.slash-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.slash-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* markdown 表格的即时预览。跟 mermaid 一样：光标在外面就渲染成真表格，
+   光标进去就换回原文让人编辑（见 editor/tablePreview.ts）。 */
+.cm-md-table {
+  margin: 8px 0;
+  overflow-x: auto;          /* 宽表格自己横向滚，不撑破编辑器 */
+}
+.cm-md-table table {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cm-md-table th,
+.cm-md-table td {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+}
+.cm-md-table th {
+  font-weight: 600;
+  background: var(--panel);
+}
+.cm-md-table tbody tr:nth-child(even) td {
+  /* 斑马纹用极淡的叠加色，跟着亮/暗主题自适应——写死颜色在暗色下会发光 */
+  background: rgb(127 127 127 / 6%);
+}
+
+/* 「正在跑」的占位块。放在光标处而不是浮在角落：状态离产出最近，而且自带
+   位置就能同时跑好几个（见 editor/runningBlocks.ts）。 */
+.cm-run-block {
+  margin: 6px 0;
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+}
+.cm-run-block.has-error {
+  border-color: var(--del);
+  border-style: solid;
+}
+.cm-run-head {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 9px;
+  cursor: pointer;
+  user-select: none;
+}
+.cm-run-chev { color: var(--muted); width: 9px; }
+.cm-run-title { font-weight: 600; }
+.cm-run-phase {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.cm-run-bad { color: var(--del); font-weight: 700; }
+.cm-run-stop {
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+}
+.cm-run-body {
+  padding: 0 9px 8px;
+  border-top: 1px solid var(--line);
+}
+.cm-run-log { list-style: none; margin: 6px 0 0; padding: 0; }
+.cm-run-log li { display: flex; gap: 6px; line-height: 1.6; }
+.cm-run-at {
+  flex-shrink: 0;
+  min-width: 30px;
+  color: var(--accent);
+}
+.cm-run-preview {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.cm-run-empty { padding: 8px 0 0; color: var(--muted); }

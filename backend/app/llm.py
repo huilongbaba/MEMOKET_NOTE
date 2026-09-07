@@ -45,7 +45,8 @@ REASONING_RESERVE = 600
 
 
 def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
-             temperature: float, effort: str) -> dict:
+             temperature: float, effort: str,
+             tools: list[dict] | None = None) -> dict:
     cfg = store.get_active_llm_config()
     body = {
         "model": cfg["model"],
@@ -58,7 +59,30 @@ def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
     }
     # 本地 llama.cpp 与 OpenAI 都认这个字段；商用端点不认时会被忽略。
     body["reasoning_effort"] = effort
+    if tools:
+        body["tools"] = tools
+        body["tool_choice"] = "auto"
     return body
+
+
+def _rejects_effort_with_tools(status_code: int, body: bytes) -> bool:
+    """判断这次 400 是不是"这个模型不能同时带工具和 reasoning_effort"。
+
+    实测 gpt-5.6-luna 的原话：``Function tools with reasoning_effort are not
+    supported for gpt-5.6-luna in /v1/chat/completions. To use function tools,
+    use /v1/responses or set reasoning_effort to 'none'.``
+
+    不能一刀切去掉 reasoning_effort——本地模型必须带 low，实测比 high 快
+    3 倍。所以跟 temperature 那条一样：只有撞上这个特定错误才降级重试。
+    """
+    if status_code != 400:
+        return False
+    try:
+        err = json.loads(body).get("error") or {}
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    return (err.get("param") == "reasoning_effort"
+            and "tool" in str(err.get("message", "")).lower())
 
 
 def _rejects_temperature(status_code: int, body: bytes) -> bool:
@@ -92,9 +116,60 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
     return (data["choices"][0]["message"].get("content") or "").strip()
 
 
+async def complete_raw(messages: list[dict], *, max_tokens: int = 1500,
+                       temperature: float = 0.3, effort: str = "low",
+                       tools: list[dict] | None = None) -> dict:
+    """跟 complete() 同一条路径，但返回**整个 assistant message**而不是正文
+    字符串——带 tools 调用时必须拿到 ``tool_calls`` 字段，只取 content 会
+    把工具调用整个丢掉（模型决定调工具时 content 通常是空的）。
+
+    返回形如 ``{"role": "assistant", "content": ..., "tool_calls": [...]}``，
+    可以原样 append 回 messages 继续对话，这是 OpenAI 工具协议要求的：
+    tool 结果消息必须紧跟在发起调用的那条 assistant 消息之后。
+    """
+    cfg = store.get_active_llm_config()
+    payload = _payload(messages, stream=False, max_tokens=max_tokens,
+                       temperature=temperature, effort=effort, tools=tools)
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        r = await client.post(f"{cfg['base_url']}/chat/completions",
+                              headers=_headers(), json=payload)
+        if _rejects_effort_with_tools(r.status_code, r.content):
+            # 带工具时这个模型不认 reasoning_effort，改成 none 重试
+            payload["reasoning_effort"] = "none"
+            r = await client.post(f"{cfg['base_url']}/chat/completions",
+                                  headers=_headers(), json=payload)
+        if _rejects_temperature(r.status_code, r.content):
+            payload.pop("temperature", None)
+            r = await client.post(f"{cfg['base_url']}/chat/completions",
+                                  headers=_headers(), json=payload)
+        if r.status_code >= 500:
+            # 本地模型服务端偶发 5xx（复现不出来：同样的 payload 串行、并发、
+            # 各种尺寸都正常）。带工具的调用只有这一次、不是流式，重试一次
+            # 的代价远小于丢掉整个检索步骤——丢掉的后果是模型手里零事实，
+            # 直接掉进"没材料只能编"那个已知最差状态。
+            r = await client.post(f"{cfg['base_url']}/chat/completions",
+                                  headers=_headers(), json=payload)
+        r.raise_for_status()
+        data = r.json()
+    msg = data["choices"][0]["message"]
+    # 规整成可以直接 append 回 messages 的形状：content 缺失时补空字符串
+    # （有的端点在纯工具调用时干脆不返回 content 字段），并且只保留协议
+    # 需要的三个键——reasoning_content 之类的私有字段回传给某些端点会 400。
+    out: dict = {"role": "assistant", "content": msg.get("content") or ""}
+    if msg.get("tool_calls"):
+        out["tool_calls"] = msg["tool_calls"]
+    return out
+
+
 async def stream(messages: list[dict], *, max_tokens: int = 1200,
-                 temperature: float = 0.7, effort: str = "low") -> AsyncIterator[str]:
-    """逐块产出正文。思考内容（reasoning_content）被丢弃，不进正文。"""
+                 temperature: float = 0.7, effort: str = "low",
+                 stats: dict | None = None) -> AsyncIterator[str]:
+    """逐块产出正文。思考内容（reasoning_content）被丢弃，不进正文。
+
+    ``stats`` 是个可写字典，跑完会填上 ``finish_reason``。调用方靠它区分
+    「模型自己写完了」和「撞 token 上限被切断」——后者要把话补完，**绝不能
+    把已经写出来的内容删掉**：那是拿丢内容掩盖截断。
+    """
     cfg = store.get_active_llm_config()
     payload = _payload(messages, stream=True, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
@@ -110,16 +185,49 @@ async def stream(messages: list[dict], *, max_tokens: int = 1200,
                 payload.pop("temperature", None)
             else:
                 probe.raise_for_status()
-                async for piece in _consume_sse(probe):
+                async for piece in _consume_sse(probe, stats):
                     yield piece
                 return
         async with client.stream("POST", url, headers=_headers(), json=payload) as r:
             r.raise_for_status()
-            async for piece in _consume_sse(r):
+            async for piece in _consume_sse(r, stats):
                 yield piece
 
 
-async def _consume_sse(r: httpx.Response) -> AsyncIterator[str]:
+async def stream_events(messages: list[dict], *, max_tokens: int = 1200,
+                        temperature: float = 0.3, effort: str = "low",
+                        ) -> AsyncIterator[tuple[str, str]]:
+    """跟 stream() 同一条路，但产出 ``(kind, text)``：kind 是 "thinking"
+    （模型的 reasoning_content）或 "output"（正文）。
+
+    stream() 一直在丢掉 reasoning_content——那本来就是"agent 在想什么"，
+    是这套东西最值得给用户看的部分。整个 run 里除了续写之外的三步
+    （检索规划、修订、打分）都是非流式的，界面上几十秒完全不动，用户
+    看不到任何进展。用这个接口就能把它们也流出去。
+
+    调用方仍然要自己把 output 拼起来解析 JSON——流式只是为了显示，
+    解析必须等完整文本。
+    """
+    cfg = store.get_active_llm_config()
+    payload = _payload(messages, stream=True, max_tokens=max_tokens,
+                       temperature=temperature, effort=effort)
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        url = f"{cfg['base_url']}/chat/completions"
+        async with client.stream("POST", url, headers=_headers(), json=payload) as probe:
+            if _rejects_temperature(probe.status_code, await probe.aread()):
+                payload.pop("temperature", None)
+            else:
+                probe.raise_for_status()
+                async for ev in _consume_tagged(probe):
+                    yield ev
+                return
+        async with client.stream("POST", url, headers=_headers(), json=payload) as r:
+            r.raise_for_status()
+            async for ev in _consume_tagged(r):
+                yield ev
+
+
+async def _consume_tagged(r: httpx.Response) -> AsyncIterator[tuple[str, str]]:
     async for line in r.aiter_lines():
         if not line.startswith("data: "):
             continue
@@ -133,6 +241,31 @@ async def _consume_sse(r: httpx.Response) -> AsyncIterator[str]:
         choices = obj.get("choices") or []
         if not choices:
             continue
+        delta = choices[0].get("delta") or {}
+        think = delta.get("reasoning_content")
+        if think:
+            yield ("thinking", think)
+        piece = delta.get("content")
+        if piece:
+            yield ("output", piece)
+
+
+async def _consume_sse(r: httpx.Response, stats: dict | None = None) -> AsyncIterator[str]:
+    async for line in r.aiter_lines():
+        if not line.startswith("data: "):
+            continue
+        chunk = line[6:].strip()
+        if chunk == "[DONE]":
+            break
+        try:
+            obj = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        choices = obj.get("choices") or []
+        if not choices:
+            continue
+        if stats is not None and choices[0].get("finish_reason"):
+            stats["finish_reason"] = choices[0]["finish_reason"]
         piece = (choices[0].get("delta") or {}).get("content")
         if piece:
             yield piece

@@ -22,6 +22,7 @@ function applyPreview(content: string, r: Revision): { before: string; after: st
   const i = content.indexOf(r.anchor)
   if (i < 0) return { before: r.anchor, after: r.text }
   if (r.op === 'insert') return { before: r.anchor, after: r.anchor + r.text }
+  if (r.op === 'insert_before') return { before: r.anchor, after: r.text + r.anchor }
   if (r.op === 'delete') return { before: r.anchor, after: '' }
   return { before: r.anchor, after: r.text }
 }
@@ -29,8 +30,17 @@ function applyPreview(content: string, r: Revision): { before: string; after: st
 export function applyRevision(content: string, r: Revision): string {
   const i = content.indexOf(r.anchor)
   if (i < 0) return content // anchor 已被用户改掉，放弃这条
-  const end = i + r.anchor.length
+  let end = i + r.anchor.length
+  if (r.anchor_end) {
+    // 给了结尾标记：要动的是"起始标记开头 → 结尾标记结尾"这一整段。
+    // **必须跟后端 _apply_revision 保持同一套语义**——自动应用走后端、
+    // 手动点接受走这里，两边算出不同的范围就会让同一条修订产生两种结果。
+    // 找不到结尾标记就退回只用 anchor，宁可少改一点也不要按错误范围改。
+    const j = content.indexOf(r.anchor_end, end)
+    if (j >= 0) end = j + r.anchor_end.length
+  }
   if (r.op === 'insert') return content.slice(0, end) + r.text + content.slice(end)
+  if (r.op === 'insert_before') return content.slice(0, i) + r.text + content.slice(i)
   if (r.op === 'delete') return content.slice(0, i) + content.slice(end)
   return content.slice(0, i) + r.text + content.slice(end)
 }
@@ -70,7 +80,7 @@ export default function RevisionPanel({
             </div>
 
             <div style={{ marginTop: 8 }}>
-              {r.op !== 'insert' && <div><span className="del">{p.before}</span></div>}
+              {r.op !== 'insert' && r.op !== 'insert_before' && <div><span className="del">{p.before}</span></div>}
               {r.op !== 'delete' && <div><span className="ins">{r.text}</span></div>}
             </div>
 

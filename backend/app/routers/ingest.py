@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import hashlib
 import uuid
 from datetime import date as _date
 
@@ -69,16 +70,22 @@ def _chunks_for(text: str, kind: str, size: int = CHUNK_CHARS) -> list[str]:
     return _chunks(text, size)
 
 
-def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str) -> None:
+def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
+                date: str = "", source_id: str = "") -> None:
     store.set_job(job_id, "running")
     try:
         mem = UserMemory(user_id)
         total = 0
+        # 有稳定 source_id 就用它拼 session_id：KITE 拒绝重复的 session_id
+        # 且不花 LLM 调用，于是重跑导入自动变成增量同步。没有就退回随机 id
+        # （手工粘贴一段文字这种场景，本来也没有可稳定的标识）。
+        stem = f"{source}-{source_id}" if source_id else f"{source}-{uuid.uuid4().hex[:8]}"
+        when = date or _date.today().isoformat()
         for i, chunk in enumerate(_chunks(text)):
             total += mem.remember(
                 [{"role": "user", "content": chunk}],
-                session_id=f"{source}-{uuid.uuid4().hex[:8]}-{i}",
-                date=_date.today().isoformat(),
+                session_id=f"{stem}-{i}",
+                date=when,
                 title=title,
             )
             # 每个 chunk 单独一次 LLM 调用（~13s），落一次库让前端轮询能看见
@@ -95,7 +102,8 @@ def ingest_text(body: IngestTextIn, bg: BackgroundTasks,
     if not body.content.strip():
         raise HTTPException(400, "content is empty")
     job_id = store.create_job(user)
-    bg.add_task(_ingest_job, job_id, user, body.content, body.title, body.source)
+    bg.add_task(_ingest_job, job_id, user, body.content, body.title, body.source,
+                body.date, body.source_id)
     return IngestOut(job_id=job_id, status="queued")
 
 
@@ -178,11 +186,13 @@ def _batch_job(job_id: str, user_id: str, items: list[dict],
             store.set_item(item_id, "chunking")
             store.update_job_from_items(job_id)
             chunks = _chunks_for(text, kind)
+            file_date = _date.today().isoformat()
 
             store.set_item(item_id, "remembering")
             store.update_job_from_items(job_id)
             total = 0
             cancelled_mid_file = False
+            content_key = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
             for i, chunk in enumerate(chunks):
                 # 取消检查放在块与块之间，不是只在文件与文件之间——一个大文件
                 # 可能切成几百上千个 chunk，每块又是一次独立的 LLM 调用（见
@@ -195,8 +205,11 @@ def _batch_job(job_id: str, user_id: str, items: list[dict],
                     break
                 total += mem.remember(
                     [{"role": "user", "content": chunk}],
-                    session_id=f"{item_id}-{i}",
-                    date=_date.today().isoformat(),
+                    # 用**内容哈希**而不是 item_id：item_id 是每次任务新生成的，
+                    # 同一个文件传两次会在知识库里存两份。内容哈希让"同样的文件
+                    # 再传一次"自动被 KITE 跳过（不花 LLM 调用）。
+                    session_id=f"file-{content_key}-{i}",
+                    date=file_date,
                     title=filename,
                 )
                 # 同一个文件常常切成好几个 chunk，每个 chunk 一次独立的 LLM
@@ -226,6 +239,9 @@ async def ingest_batch(bg: BackgroundTasks,
     if len(files) > BATCH_MAX_FILES:
         raise HTTPException(400, f"最多一次 {BATCH_MAX_FILES} 个文件")
 
+    # 批量上传拿不到原始笔记的日期（HTTP 上传没有这个信息），只能退回今天。
+    # **导入器不要走这条路**——用 POST /api/ingest/text 并带上 date，否则
+    # 用户几年的笔记会被压成同一天。这条路留给「把手边几个文件拖进来」。
     specs: list[dict] = []
     raw: list[bytes] = []
     for f in files:
@@ -265,7 +281,16 @@ def cancel_job(job_id: str, user: str = Depends(current_user)):
     if not job or job["user_id"] != user:
         raise HTTPException(404, "job not found")
     store.request_cancel(job_id)
-    return {"ok": True}
+    # **立刻把还没开工的 item 置为已取消**，不要等后台线程自己发现。
+    #
+    # 后台线程可能正阻塞在一次 LLM 调用或 KITE 的写锁里，几十秒都到不了下一个
+    # 取消检查点——那期间界面上什么都不变，用户看到的就是「点了取消没反应」。
+    # 已经开工的那一条只能等它自己收尾，但排队中的可以马上停，进度条立刻动起来。
+    for it in store.get_items(job_id):
+        if it["status"] == "queued":
+            store.set_item(it["id"], "cancelled")
+    store.update_job_from_items(job_id)
+    return {"ok": True, "status": (store.get_job(job_id) or {}).get("status", "")}
 
 
 @router.get("/jobs/{job_id}/events")

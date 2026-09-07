@@ -7,6 +7,10 @@ export type Note = {
   content: string
   pinned: boolean
   folder_id: string | null
+  /** 写作骨架跟着笔记走。之前只活在前端内存里，换一篇/刷新/无限续写自动
+   * 跟随切页就没了——而 harness 每轮都拿它当主线依据。 */
+  spine: string
+  beats: string[]
   created_at: string
   updated_at: string
 }
@@ -30,6 +34,9 @@ export type Revision = {
   id: string
   op: 'insert' | 'delete' | 'replace' | 'insert_before'
   anchor: string
+  /** 结尾标记。锚点契约改成「短标记定位」之后，要动的是
+   * anchor 开头 → anchor_end 结尾这一整段——模型不用把整段原文抄一遍。 */
+  anchor_end?: string
   text: string
   reason: string
   sources: string[]
@@ -200,6 +207,10 @@ export async function magicTap(
   onMeta: (m: TapMeta) => void,
   onDelta: (s: string) => void,
   signal?: AbortSignal,
+  /** 写完之后的确定性检查：检索到了多少条材料、正文里真的用上了几条。
+   * 一条都没用上时 hint 会给一句诊断——magic tap 刻意不套完整的打分闭环
+   * （它的定位是点一下几秒出一段），所以这里只提示，不打断也不重写。 */
+  onGrounding?: (g: { facts: number; used: number; hint: string }) => void,
 ) {
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
@@ -230,6 +241,7 @@ export async function magicTap(
           const payload = JSON.parse(raw)
           if (event === 'meta') onMeta(payload as TapMeta)
           else if (event === 'delta') onDelta(payload.text as string)
+          else if (event === 'grounding') onGrounding?.(payload)
           else if (event === 'error') throw new Error(payload.detail)
         }
       }
@@ -457,7 +469,9 @@ export type IngestItem = {
 
 export type JobOut = {
   job_id: string
-  status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
+  // cancelling：收到取消但后台还没停干净（可能卡在一次 LLM 调用或 KITE 写锁里），
+  // 这段时间要如实显示「正在停止…」，不能还写着「处理中」——否则跟没点一样。
+  status: 'queued' | 'running' | 'cancelling' | 'done' | 'error' | 'cancelled'
   facts: number
   detail: string
   items: IngestItem[]
@@ -588,18 +602,39 @@ export const generateSkill = (goal: string, scopeHint = '') =>
 // 修订（不等人工点接受）+ 自动续写交替进行，直到内容相对结构节拍已经
 // 完整才停，不是轮数封顶。
 
-export type NoteHarnessRevision = { op: string; anchor: string; text: string; reason: string; sources: string[] }
+export type NoteHarnessRevision = {
+  op: string; anchor: string; anchor_end?: string
+  text: string; reason: string; sources: string[]
+}
 
 export type NoteHarnessDimensionScore = { level: number; note: string }
 
+export type NoteHarnessToolCall = { tool: string; args: Record<string, unknown>; result: string }
+
 export type NoteHarnessHandlers = {
   onSkeleton?: (spine: string, beats: string[]) => void
-  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean }) => void
+  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[] }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
   onRoundEnd?: (round: number) => void
   onEvaluate?: (d: { scores: Record<string, NoteHarnessDimensionScore>; status: string; weakest: string | null }) => void
   onDone?: (reason: string, blockedReason?: string) => void
+  onError?: (detail: string) => void
+  /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
+  onPhase?: (d: { round: number; phase: string; label: string }) => void
+  /** 阶段内的实时输出。kind=thinking 是模型的思考过程，output 是它写出来的东西。 */
+  onPhaseDelta?: (d: { round: number; phase: string; kind: string; text: string }) => void
+  /** agent 自己决定调了哪些工具 */
+  onToolCalls?: (d: { round: number; iters: number; truncated: boolean; calls: NoteHarnessToolCall[] }) => void
+  /** 策略控制器根据上一轮反馈调整了下一轮的跑法 */
+  onPolicy?: (d: { round: number; policy: Partial<{ tool_iters: number; continue_temperature: number; max_revisions: number; require_verification: boolean }>; reasons: string[] }) => void
+  /** 一条修订被防线丢弃了。**不是错误**——同义重写、锚点有歧义、会切出破字、
+   * 会动到用户自己写的标题，这四类都是防线正常起作用，一轮能丢好几条。
+   * 用 onError 渲染的话界面会变成一片红。 */
+  onDropped?: (detail: string) => void
+  /** 骨架被重规划了。目标被改了，用户必须看得见改成了什么——后端在这之后
+   * 还会重发一次 skeleton 事件让骨架面板跟着更新。 */
+  onReplan?: (d: { round: number; why: string; changes: string[]; beats: string[] }) => void
 }
 
 export async function runNoteHarness(
@@ -609,11 +644,15 @@ export async function runNoteHarness(
   beats: string[],
   handlers: NoteHarnessHandlers,
   signal?: AbortSignal,
+  /** write = 边修边续写；polish = **只修不写**，专门理顺已有内容。
+   * 打磨模式下后端还会摘掉 beat_coverage / material_use 两个维度——那两条衡量
+   * 的是「写了多少」，而打磨被明确禁止写，拿它们打分闭环永远收敛不了。 */
+  mode: 'write' | 'polish' = 'write',
 ) {
   const res = await fetch('/api/note-harness/run', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ note_id: noteId, content, spine, beats, max_rounds: 20 }),
+    body: JSON.stringify({ note_id: noteId, content, spine, beats, max_rounds: 20, mode }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`note-harness run failed: ${res.status}`)
@@ -642,8 +681,17 @@ export async function runNoteHarness(
           else if (event === 'delta') handlers.onDelta?.(payload.text)
           else if (event === 'round-end') handlers.onRoundEnd?.(payload.round)
           else if (event === 'evaluate') handlers.onEvaluate?.(payload)
+          else if (event === 'phase') handlers.onPhase?.(payload)
+          else if (event === 'phase-delta') handlers.onPhaseDelta?.(payload)
+          else if (event === 'tool-calls') handlers.onToolCalls?.(payload)
+          else if (event === 'policy') handlers.onPolicy?.(payload)
+          else if (event === 'dropped') handlers.onDropped?.(payload.detail)
+          else if (event === 'replan') handlers.onReplan?.(payload)
           else if (event === 'done') handlers.onDone?.(payload.reason, payload.blocked_reason)
-          else if (event === 'error') throw new Error(payload.detail)
+          // **error 不能 throw**：后端的 error 事件都是可恢复的降级（某个工具
+          // 查不到、某次调用超时），流还在继续。throw 会把整条 SSE 连接掐断，
+          // 用户看到的是"跑到一半没了"。交给 onError 显示，让 harness 继续跑。
+          else if (event === 'error') handlers.onError?.(payload.detail)
         }
       }
     }
@@ -677,3 +725,154 @@ export const setProviderConfig = (body: {
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   }).then(json<ProviderConfig>)
+
+
+// ---------------------------------------------------------------- 从别家笔记应用导入
+//
+// 跟 ingestBatch 分开是因为那条路拿不到原始日期、也不认识各家的私有语法——
+// 一整个 vault 走那条路会被压成同一天，wiki 链接和 dataview 块会原样进知识库。
+// 见 docs/import-from-other-note-apps.md。
+
+/** 选整个 vault 时浏览器把相对路径放在 webkitRelativePath 里，要显式当文件名
+ * 传上去，服务端靠它还原文件夹结构、并生成稳定 id（重跑就是增量同步）。 */
+export const importFiles = (
+  files: File[],
+  source: 'obsidian' | 'evernote',
+  to: 'both' | 'kb' | 'notes' = 'both',
+) => {
+  const fd = new FormData()
+  for (const f of files) {
+    fd.append('files', f, (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name)
+  }
+  fd.append('source', source)
+  fd.append('to', to)
+  return fetch('/api/import/files', { method: 'POST', headers: headers(), body: fd })
+    .then(json<JobOut>)
+}
+
+export const importNotion = (token: string, to: 'both' | 'kb' | 'notes' = 'both') => {
+  const fd = new FormData()
+  fd.append('token', token)
+  fd.append('to', to)
+  return fetch('/api/import/notion', { method: 'POST', headers: headers(), body: fd })
+    .then(json<JobOut>)
+}
+
+/** Apple Notes 没有公开 API，只能靠 AppleScript 在本机导出——而这个后端就跑在
+ * 用户自己的 Mac 上，所以服务端能直接调 osascript。部署到远端时不可用，先问
+ * available 再决定给不给按钮，别让用户点一个必然失败的东西。 */
+export const appleAvailable = () =>
+  fetch('/api/import/apple/available', { headers: headers() })
+    .then(json<{ available: boolean; reason: string }>)
+
+export const importApple = (to: 'both' | 'kb' | 'notes' = 'both') => {
+  const fd = new FormData()
+  fd.append('to', to)
+  return fetch('/api/import/apple', { method: 'POST', headers: headers(), body: fd })
+    .then(json<JobOut>)
+}
+
+// ---------------------------------------------------------------- 写作骨架
+
+/** 骨架跟着笔记存。之前只活在前端内存里，`open()` 一进笔记就清空——换一篇、
+ * 刷新页面、甚至无限续写开着「跟随」自动切到下一段，骨架就没了。 */
+export const saveSkeleton = (noteId: string, spine: string, beats: string[]) =>
+  fetch(`/api/notes/${noteId}/skeleton`, {
+    method: 'PUT',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ spine, beats }),
+  }).then(json<Note>)
+
+// ---------------------------------------------------------------- `/` 唤起的块生成
+
+/** 走跟写作 harness 同一套闭环：规划（调工具）→ 生成 → 打分 → 不达标带着诊断
+ * 再来一轮。数字由 data 组工具算、图表语法由 chart 组工具拼——模型只决定算
+ * 什么、画什么。custom 是右键「自定义提示」，作用域是选中的那段。 */
+export type BlockMode = 'prompt' | 'chart' | 'table' | 'eda' | 'analysis' | 'custom'
+
+export async function composeBlock(
+  body: { note_id: string; title: string; content: string; cursor: number;
+          mode: BlockMode; prompt: string; selection?: string },
+  on: {
+    onPhase?: (label: string) => void
+    onTools?: (calls: NoteHarnessToolCall[]) => void
+    onDelta?: (text: string) => void
+    onEvaluate?: (status: string, scores: Record<string, NoteHarnessDimensionScore>) => void
+    onError?: (detail: string) => void
+  },
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await fetch('/api/compose/block', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (!res.ok || !res.body) throw new Error(await res.text().catch(() => res.statusText))
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  let block = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    const frames = buf.split('\n\n')
+    buf = frames.pop() ?? ''
+    for (const frame of frames) {
+      let event = ''
+      let data = ''
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        else if (line.startsWith('data:')) data += line.slice(5).trim()
+      }
+      if (!data) continue
+      let p: Record<string, unknown>
+      try { p = JSON.parse(data) } catch { continue }
+      if (event === 'phase') on.onPhase?.(String(p.label ?? ''))
+      else if (event === 'tool-calls') on.onTools?.((p.calls ?? []) as NoteHarnessToolCall[])
+      else if (event === 'delta') on.onDelta?.(String(p.text ?? ''))
+      else if (event === 'evaluate') {
+        on.onEvaluate?.(String(p.status ?? ''),
+          p.scores as Record<string, NoteHarnessDimensionScore>)
+      } else if (event === 'error') on.onError?.(String(p.detail ?? ''))
+      else if (event === 'done') block = String(p.block ?? block)
+    }
+  }
+  return block
+}
+
+/** 智能排版：判断哪行该是标题、哪几行该是列表——规则算不出来的语义判断。
+ *
+ * **模型只输出「第几行改成什么结构」，一个字的原文都不输出**，原文由后端按行
+ * 搬运（见 app/restructure.py）。所以"排版顺手改了内容"在结构上就不可能发生，
+ * 不是靠提示词说「不要改内容」。 */
+export const restructureNote = (noteId: string, title: string, content: string) =>
+  fetch('/api/compose/restructure', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ note_id: noteId, title, content }),
+  }).then(json<{ changed: boolean; content: string; ops: number
+                 skipped: string[]; detail: string }>)
+
+// ---------------------------------------------------------------- 附件
+
+/** 图片和音频存成文件，正文里只留短链接。**不内联成 data URI**：笔记正文存在
+ * sqlite 里，一张手机拍的图 base64 之后两三兆，会跟着每一次自动保存、每一轮
+ * harness 的上下文一起搬来搬去。 */
+export const uploadAsset = (file: File) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  return fetch('/api/assets', { method: 'POST', headers: headers(), body: fd })
+    .then(json<{ url: string; name: string; kind: 'image' | 'audio'; bytes: number }>)
+}
+
+/** 一张图 → markdown 表格。看图走**本地**那台带视觉的模型，图片不出内网。
+ * 识别不出表格时 detected=false，前端如实说「没有检测到表格」——比硬塞一张
+ * 空表进用户笔记好得多。 */
+export const tableFromImage = (file: File) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  return fetch('/api/compose/table-from-image', { method: 'POST', headers: headers(), body: fd })
+    .then(json<{ detected: boolean; table: string; raw: string }>)
+}

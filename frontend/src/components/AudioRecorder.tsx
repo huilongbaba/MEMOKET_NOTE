@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ingestAudio, transcribeOnly } from '../api'
+import { toast } from '../toast'
 
 type Props = {
   /** 转写结果插到编辑器光标处 */
@@ -34,15 +35,24 @@ export default function AudioRecorder({ onTranscript, onIngested }: Props) {
           if (target.current === 'insert') {
             setBusy('转写中')
             const { text } = await transcribeOnly(blob)
+            // 静音/没转写出内容时之前是彻底没反应——用户录完音，点了停止，
+            // 什么都没发生，分不清是没录上还是哪里坏了。
             if (text) onTranscript(text)
+            else toast('没有转写出内容，可能是静音录音，检查一下麦克风', 'error')
           } else {
             setBusy('转写并入库')
             const { job_id, detail } = await ingestAudio(blob)
-            if (detail) onTranscript('')  // 只提示，不插入
+            // 后端在转写为空时会返回 job_id="" + detail="转写结果为空……"
+            // （detail 这个字段在成功路径下装的是转写文字预览，不是错误信息，
+            // 两种含义不一样，只在没有 job_id 的失败路径下才该当错误展示）。
+            // 之前不管哪种情况都只是 onTranscript('') 插入一个空字符串
+            // （等于什么也没做），detail 本身从没被展示过——用户录完音同样
+            // 什么反应都看不到。
             if (job_id) onIngested(job_id)
+            else toast(detail || '录音处理失败', 'error')
           }
         } catch (err) {
-          alert(`语音处理失败：${err}`)
+          toast(`语音处理失败：${err}`, 'error')
         } finally {
           setBusy('')
         }
@@ -51,7 +61,7 @@ export default function AudioRecorder({ onTranscript, onIngested }: Props) {
       recorder.current = mr
       setRecording(true)
     } catch {
-      alert('无法访问麦克风。浏览器要求 HTTPS 或 localhost 才允许录音。')
+      toast('无法访问麦克风。浏览器要求 HTTPS 或 localhost 才允许录音。', 'error')
     }
   }
 

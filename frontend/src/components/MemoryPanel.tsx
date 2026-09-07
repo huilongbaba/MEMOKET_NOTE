@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import {
   addProfileEntry, ask, cancelJob, deleteProfileEntry, ingestBatch, jobStatus, listProfile,
   memoryFacts, memoryStats, recall, watchJob,
+  appleAvailable, importApple, importFiles, importNotion,
 } from '../api'
 import type { Fact, FactDetail, JobOut, ProfileEntry } from '../api'
+import { toast } from '../toast'
+import DigestPanel from './DigestPanel'
 import MemoryBrowser from './MemoryBrowser'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
   chunking: '切块', remembering: '抽取入库', done: '完成',
-  failed: '失败', cancelled: '已取消',
+  failed: '失败', cancelled: '已取消', cancelling: '正在停止…',
 }
 
 /**
@@ -27,6 +30,9 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [job, setJob] = useState('')
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
   const batchAbort = useRef<AbortController | null>(null)
+  const [notionToken, setNotionToken] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [apple, setApple] = useState<{ available: boolean; reason: string } | null>(null)
   const [browsing, setBrowsing] = useState(false)
   const [profile, setProfile] = useState<ProfileEntry[]>([])
   const [newPref, setNewPref] = useState('')
@@ -62,7 +68,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           setJob('')
           setRecentFacts([])
           refresh()
-          if (s.status === 'error') alert(`入库失败：${s.detail}`)
+          if (s.status === 'error') toast(`入库失败：${s.detail}`, 'error')
         }
       } catch { clearInterval(timer) }
     }, 3000)
@@ -112,6 +118,51 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       () => { refresh(); setRecentFacts([]) }, controller.signal)
   }
 
+  useEffect(() => { appleAvailable().then(setApple).catch(() => setApple(null)) }, [])
+
+  async function doImport(files: File[], source: 'obsidian' | 'evernote') {
+    if (!files.length) return
+    setImporting(true)
+    try {
+      const r = await importFiles(files, source)
+      setBatchJob(r)
+      watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
+        () => { refresh(); setRecentFacts([]) })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function doImportApple() {
+    setImporting(true)
+    try {
+      const r = await importApple()
+      setBatchJob(r)
+      watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
+        () => { refresh(); setRecentFacts([]) })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function doImportNotion() {
+    setImporting(true)
+    try {
+      const r = await importNotion(notionToken.trim())
+      setBatchJob(r)
+      watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
+        () => { refresh(); setRecentFacts([]) })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function doCancelBatch() {
     if (!batchJob) return
     await cancelJob(batchJob.job_id)
@@ -130,6 +181,8 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         {working && <> · <span className="spinner" /> 抽取中</>}
       </p>
       {browsing && <MemoryBrowser onClose={() => setBrowsing(false)} />}
+
+      <DigestPanel />
 
       {recentFacts.length > 0 && (
         <div className="stack" style={{ marginBottom: 10 }}>
@@ -208,6 +261,79 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         ))}
       </div>
 
+      <h2>从其他应用导入</h2>
+      <div className="stack">
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          按来源清洗后导入：保留原始日期和文件夹结构，去掉各家的私有语法
+          （<code>[[wiki 链接]]</code>、<code>![[附件]]</code>、dataview 块、
+          Evernote 的附件占位）。<strong>重复导入是增量的</strong>——已经导过的
+          内容会被跳过，不会翻倍也不会重新花抽取的时间。
+        </p>
+
+        <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 88 }}>Obsidian</span>
+          <input
+            type="file"
+            multiple
+            /* 选整个 vault：浏览器会带上 webkitRelativePath，服务端靠它还原
+               文件夹结构。React 不认识这两个属性，要用 ref 回调设上去。 */
+            ref={(el) => {
+              if (el) {
+                el.setAttribute('webkitdirectory', '')
+                el.setAttribute('directory', '')
+              }
+            }}
+            onChange={(e) => doImport(Array.from(e.target.files ?? []), 'obsidian')}
+          />
+        </label>
+        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+          选整个 vault 目录。<code>.obsidian/</code> 和 <code>.trash/</code> 会自动跳过。
+        </p>
+
+        <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 88 }}>Evernote</span>
+          <input
+            type="file"
+            multiple
+            accept=".enex"
+            onChange={(e) => doImport(Array.from(e.target.files ?? []), 'evernote')}
+          />
+        </label>
+        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+          在 Evernote 里「导出笔记本为 .enex」，然后把文件选进来。
+        </p>
+
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 88 }}>Notion</span>
+          <input
+            type="password"
+            placeholder="Integration token（ntn_… / secret_…）"
+            value={notionToken}
+            onChange={(e) => setNotionToken(e.target.value)}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button onClick={doImportNotion} disabled={!notionToken.trim() || importing}>
+            {importing ? <span className="spinner" /> : '导入'}
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+          要先在 Notion 里把目标页面 <strong>Connect 给这个 integration</strong>，
+          否则会一条都取不到——这是最常见的「导了但是空的」原因。
+        </p>
+
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 88 }}>Apple Notes</span>
+          <button onClick={doImportApple} disabled={!apple?.available || importing}>
+            {importing ? <span className="spinner" /> : '导入全部备忘录'}
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+          {apple?.available
+            ? '第一次导入时 macOS 会弹一个「允许控制「备忘录」」的授权框，点允许即可。'
+            : `这台机器上不可用：${apple?.reason || '检测中…'}`}
+        </p>
+      </div>
+
       <h2>批量导入</h2>
       <div className="stack">
         <input
@@ -223,7 +349,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           <div className="card">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <strong>
-                {batchJob.status === 'running' || batchJob.status === 'queued'
+                {batchJob.status === 'running' || batchJob.status === 'queued' || batchJob.status === 'cancelling'
                   ? <><span className="spinner" /> 处理中…</>
                   : STATUS_LABEL[batchJob.status] ?? batchJob.status}
                 {' · '}{batchJob.facts} 条事实

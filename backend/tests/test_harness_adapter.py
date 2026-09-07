@@ -97,3 +97,16 @@ def test_section_dimensions_has_topic_fidelity_instead_of_spine_beats():
     assert "topic_fidelity" in dims
     assert "spine_fidelity" not in dims
     assert "beat_coverage" not in dims
+
+
+def test_polish_mode_drops_dimensions_it_may_not_act_on():
+    """打磨只修不写，就不能拿"写了多少"去打分——否则闭环不可能收敛。"""
+    from app.harness_adapter import note_dimensions
+
+    write = {d.name for d in note_dimensions(has_profile=False)}
+    polish = {d.name for d in note_dimensions(has_profile=False, polish=True)}
+    assert {"beat_coverage", "material_use"} <= write
+    assert not ({"beat_coverage", "material_use"} & polish), \
+        "打磨模式不许写，就不该被节拍覆盖/材料使用打分（实测：判 0 → 永远到不了 complete → 撞 max_rounds）"
+    assert {"spine_fidelity", "non_repetition", "factual_grounding", "coherence"} <= polish
+    assert "style_fit" in {d.name for d in note_dimensions(has_profile=True, polish=True)}

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import {
   createTopic, factSources, memoryEntities, memoryFacts, memoryStats, memoryTimeline,
   memoryTopics, topicEntityLinks,
@@ -59,7 +58,15 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
   const [creatingTopic, setCreatingTopic] = useState(false)
   const [newTopicError, setNewTopicError] = useState('')
   const [maxLevel, setMaxLevel] = useState<number | null>(null)
-  const [graphFullscreen, setGraphFullscreen] = useState(false)
+  // 主题地图默认就要用满窗口——.modal 960px 的宽度封顶在节点一多的时候完全
+  // 不够看，之前靠一个"全屏"按钮补，但那是要求用户先看一遍挤成一团的图再
+  // 手动展开；这次改成默认状态本身就取消宽度封顶（见下面渲染部分）。
+  const [graphSize, setGraphSize] = useState({ w: window.innerWidth - 80, h: window.innerHeight - 200 })
+  useEffect(() => {
+    function onResize() { setGraphSize({ w: window.innerWidth - 80, h: window.innerHeight - 200 }) }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [showEntities, setShowEntities] = useState(true)
 
   useEffect(() => { memoryStats().then(setStats).catch(() => {}) }, [])
@@ -102,6 +109,23 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
     return () => clearInterval(timer)
   }, [tab, factsFilter])
 
+  // 大语料下抽取会把 ASR 噪声碎片（单/双字母缩写、纯数字、0 引用的孤儿实体）
+  // 一起当实体提出来——实测 terrence 语料到 1864 个实体时，95% type 为空，
+  // 里面混了不少"bb"/"bba"/"100美元"这类噪声。抽取本身的锅（模型在脏转写文本
+  // 上的已知短板，跟 kite-constraints.md #10/#11 是同一类问题），这里只做
+  // 展示层兜底：默认过滤掉零引用和过短的噪声节点，可关掉看全量。
+  const [hideNoiseEntities, setHideNoiseEntities] = useState(true)
+  const cleanEntities = useMemo(() => {
+    if (!hideNoiseEntities) return entities
+    return entities.filter((e) => e.fact_count > 0
+      && e.code.replace(/[^a-zA-Z0-9一-龥]/g, '').length > 1)
+  }, [entities, hideNoiseEntities])
+  const cleanEntityCodes = useMemo(() => new Set(cleanEntities.map((e) => e.code)), [cleanEntities])
+  const cleanLinks = useMemo(
+    () => (hideNoiseEntities ? links.filter((l) => cleanEntityCodes.has(l.entity)) : links),
+    [links, cleanEntityCodes, hideNoiseEntities],
+  )
+
   // 主题多了以后图会很挤，按层级过滤只留一级/二级/三级根及其祖先链——不是
   // 简单按 depth 相等筛，那样会把中间层的连线也切断，看不出层级关系了。
   const depths = useMemo(() => topicDepths(topics), [topics])
@@ -111,20 +135,44 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
   )
   const visibleTopicCodes = useMemo(() => new Set(visibleTopics.map((t) => t.code)), [visibleTopics])
   const levelFilteredLinks = useMemo(
-    () => (maxLevel === null ? links : links.filter((l) => visibleTopicCodes.has(l.topic))),
-    [links, visibleTopicCodes, maxLevel],
+    () => (maxLevel === null ? cleanLinks : cleanLinks.filter((l) => visibleTopicCodes.has(l.topic))),
+    [cleanLinks, visibleTopicCodes, maxLevel],
   )
   // 实体本身没有"层级"概念——过滤只影响跟主题层级挂钩的那部分：一个实体如果
   // 曾经跟任何主题共现过，就只在它共现的主题还可见时才继续显示；从来没跟
   // 任何主题共现过的实体（图上本来就是孤立节点）不受层级筛选影响。
-  const entityCodesWithAnyTopicLink = useMemo(() => new Set(links.map((l) => l.entity)), [links])
+  const entityCodesWithAnyTopicLink = useMemo(() => new Set(cleanLinks.map((l) => l.entity)), [cleanLinks])
   const levelFilteredEntities = useMemo(() => {
-    if (maxLevel === null) return entities
+    if (maxLevel === null) return cleanEntities
     const stillLinkedCodes = new Set(levelFilteredLinks.map((l) => l.entity))
-    return entities.filter((e) => !entityCodesWithAnyTopicLink.has(e.code) || stillLinkedCodes.has(e.code))
-  }, [entities, levelFilteredLinks, entityCodesWithAnyTopicLink, maxLevel])
+    return cleanEntities.filter((e) => !entityCodesWithAnyTopicLink.has(e.code) || stillLinkedCodes.has(e.code))
+  }, [cleanEntities, levelFilteredLinks, entityCodesWithAnyTopicLink, maxLevel])
   const visibleEntities = useMemo(() => (showEntities ? levelFilteredEntities : []), [showEntities, levelFilteredEntities])
   const visibleLinks = useMemo(() => (showEntities ? levelFilteredLinks : []), [showEntities, levelFilteredLinks])
+
+  // 主题地图会随语料量涨到几百上千个节点（见调研：Capacities 用"每个节点的
+  // 局部图"缓解这个问题，我们暂时用最简单的按名字搜索代替——按层级过滤是
+  // 控制"看多深"，这里是直接"找到那一个"。
+  const [nodeQuery, setNodeQuery] = useState('')
+  const searchedTopics = useMemo(() => {
+    const q = nodeQuery.trim().toLowerCase()
+    if (!q) return visibleTopics
+    return visibleTopics.filter((t) =>
+      t.code.toLowerCase().includes(q) || t.aliases.some((a) => a.toLowerCase().includes(q)))
+  }, [visibleTopics, nodeQuery])
+  const searchedEntities = useMemo(() => {
+    const q = nodeQuery.trim().toLowerCase()
+    if (!q) return visibleEntities
+    return visibleEntities.filter((e) =>
+      e.name.toLowerCase().includes(q) || e.code.toLowerCase().includes(q)
+      || e.aliases.some((a) => a.toLowerCase().includes(q)))
+  }, [visibleEntities, nodeQuery])
+  const searchedLinks = useMemo(() => {
+    if (!nodeQuery.trim()) return visibleLinks
+    const topicCodes = new Set(searchedTopics.map((t) => t.code))
+    const entityCodes = new Set(searchedEntities.map((e) => e.code))
+    return visibleLinks.filter((l) => topicCodes.has(l.topic) && entityCodes.has(l.entity))
+  }, [visibleLinks, nodeQuery, searchedTopics, searchedEntities])
 
   function filterByTopic(code: string) {
     setFactsFilter({ topic: code, limit: PAGE_SIZE, offset: 0 })
@@ -168,7 +216,7 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="modal-backdrop">
-      <div className="modal">
+      <div className="modal" style={tab === 'topics' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>知识库</h2>
           <button onClick={onClose}>✕ 关闭</button>
@@ -186,6 +234,11 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
+        {/* overview 是默认 tab，stats 请求没回来之前是 null——之前这里直接
+           `stats &&` 短路，打开面板的第一瞬间内容区彻底空白，没有任何
+           加载提示（跟 [11] 修的 RelatedMemory 是同一类问题：默认/首屏
+           状态被短路成完全空白）。 */}
+        {tab === 'overview' && !stats && <p className="muted"><span className="spinner" /> 加载中…</p>}
         {tab === 'overview' && stats && (
           <div className="card">
             <div className="row" style={{ gap: 20 }}>
@@ -241,29 +294,30 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
                 <button className={showEntities ? '' : 'primary'} onClick={() => setShowEntities((v) => !v)}>
                   {showEntities ? '隐藏实体' : '不显示实体'}
                 </button>
+                <button
+                  className={hideNoiseEntities ? 'primary' : ''}
+                  onClick={() => setHideNoiseEntities((v) => !v)}
+                  title="过滤零引用/过短的噪声实体（转写抽取常见的缩写碎片）"
+                >
+                  {hideNoiseEntities ? '已过滤噪声' : '显示全部实体'}
+                </button>
+                <input
+                  placeholder="搜索节点名字…"
+                  value={nodeQuery}
+                  onChange={(e) => setNodeQuery(e.target.value)}
+                  style={{ width: 140 }}
+                />
               </div>
-              <button onClick={() => setGraphFullscreen(true)}>⛶ 全屏</button>
             </div>
 
             <KnowledgeGraph
-              topics={visibleTopics}
-              entities={visibleEntities}
-              links={visibleLinks}
+              topics={searchedTopics}
+              entities={searchedEntities}
+              links={searchedLinks}
               onSelect={(kind, code) => (kind === 'topic' ? filterByTopic(code) : filterByEntity(code))}
+              width={graphSize.w}
+              height={graphSize.h}
             />
-
-            {graphFullscreen && (
-              <GraphFullscreenOverlay
-                topics={visibleTopics}
-                entities={visibleEntities}
-                links={visibleLinks}
-                onSelect={(kind, code) => {
-                  setGraphFullscreen(false)
-                  if (kind === 'topic') filterByTopic(code); else filterByEntity(code)
-                }}
-                onClose={() => setGraphFullscreen(false)}
-              />
-            )}
           </div>
         )}
 
@@ -380,47 +434,3 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
   )
 }
 
-/** The graph's own modal is already full-screen, but its `.modal` wrapper
- * caps out at max-width:960px (styles.css) -- crowded once there are more
- * than a handful of nodes. This portals straight to document.body so the
- * canvas can actually use the full window instead of that 960px column, with
- * its own resize listener since it's the only thing that needs one. */
-function GraphFullscreenOverlay(
-  { topics, entities, links, onSelect, onClose }: {
-    topics: TopicNode[]
-    entities: EntityNode[]
-    links: TopicEntityLink[]
-    onSelect: (kind: 'topic' | 'entity', code: string) => void
-    onClose: () => void
-  },
-) {
-  const [size, setSize] = useState({ w: window.innerWidth - 40, h: window.innerHeight - 90 })
-
-  useEffect(() => {
-    const onResize = () => setSize({ w: window.innerWidth - 40, h: window.innerHeight - 90 })
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return createPortal(
-    <div className="modal-backdrop" style={{ zIndex: 200 }}>
-      <div style={{ padding: '10px 20px' }}>
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-          <h2 style={{ margin: 0 }}>主题地图（全屏）</h2>
-          <button onClick={onClose}>✕ 退出全屏</button>
-        </div>
-        <KnowledgeGraph
-          topics={topics} entities={entities} links={links} onSelect={onSelect}
-          width={size.w} height={size.h}
-        />
-      </div>
-    </div>,
-    document.body,
-  )
-}

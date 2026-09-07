@@ -6,13 +6,23 @@ import AudioRecorder from './components/AudioRecorder'
 import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
+import SlashPrompt from './components/SlashPrompt'
+import { formatMarkdown } from './editor/format'
+import type { SlashItem } from './editor/slashMenu'
+import {
+  appendPreview, endRun, logRun, patchRun, runsField, startRun,
+} from './editor/runningBlocks'
+import type { StateEffect } from '@codemirror/state'
 import MarkdownToolbar from './components/MarkdownToolbar'
 import WritingPlanPanel from './components/WritingPlanPanel'
 import MemoryPanel from './components/MemoryPanel'
 import RelatedMemory from './components/RelatedMemory'
-import RevisionPanel, { applyRevision } from './components/RevisionPanel'
+import { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
+import AgentActivity, { type AgentRound } from './components/AgentActivity'
+import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
+  from './editor/roundDiff'
 import SkeletonPanel from './components/SkeletonPanel'
 import SettingsPanel from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
@@ -28,9 +38,6 @@ import { toast, toastAction } from './toast'
 const SKELETON_IDLE_MS = 8000
 const SKELETON_MIN_CHARS = 30
 const SKELETON_MIN_DELTA = 20
-const EDIT_IDLE_MS = 15000
-const EDIT_MIN_CHARS = 30
-const EDIT_MIN_DELTA = 20
 
 /** First non-empty line of a note's content, syntax markers stripped, for
  * the sidebar preview -- strip rather than render so it stays plain text
@@ -88,6 +95,41 @@ export default function App() {
   const [beatCoverage, setBeatCoverage] = useState<{ level: number; note: string } | null>(null)
   const [revisions, setRevisions] = useState<Revision[]>([])
   const [loading, setLoading] = useState<'' | 'skeleton' | 'edit' | 'tap' | 'ingest' | 'note-harness'>('')
+  /** agent 每一轮干了什么，喂给 AgentActivity 可视化。按轮聚合：用户关心的是
+   * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
+   * 事件流水账看不出所以然。 */
+  const [agentRounds, setAgentRounds] = useState<AgentRound[]>([])
+  /** 这一轮 harness 改了什么（新增/删除），传给编辑器做只读高亮。
+   * 自动应用的改动用户否则完全看不见被动了哪里。 */
+  const [roundDiff, setRoundDiff] = useState<DiffPart[] | null>(null)
+  // 还剩几处 harness 改动没被处置。由编辑器上报——逐处接受/撤回、用户自己
+  // 编辑、下一轮写入都会让它变，React 这边只是拿来决定要不要显示那条工具栏。
+  const [pendingDiff, setPendingDiff] = useState(0)
+  // `/` 菜单选中的那一项。needsPrompt 的会先弹输入框，其余的直接执行。
+  // 运行状态**不在这里**：跑起来之后状态在光标处的占位块里
+  // （editor/runningBlocks.ts）——离产出最近，而且支持同时跑好几个。
+  // 这里只留「选中了哪一项、要不要弹提示词输入框」。
+  const [slash, setSlash] = useState<
+    { item: SlashItem; from: number; to: number; x: number; y: number } | null>(null)
+  // **一次运行一个 AbortController**，用 id 索引。原来是单个 ref，
+  // 所以同时只能跑一个 `/`——第二个一开始就把第一个的 controller 顶掉了。
+  const runAborts = useRef(new Map<string, AbortController>())
+  const filePick = useRef<HTMLInputElement>(null)
+  const pickKind = useRef<'image' | 'audio'>('image')
+  // 录音的停止函数按 id 存：停止走 MediaRecorder.stop()（停下来才有音频
+  // 可转写），跟网络请求的 abort 不是一回事。
+  const voiceStopById = useRef(new Map<string, () => void>())
+  // **整次 run 开始时**的正文快照。刻意不按轮记：按轮标的话，第 N 轮的
+  // 高亮会被第 N+1 轮的第一条修订清掉（roundDiffField 一见 docChanged 就丢
+  // 旧装饰），最后一轮的又会被收尾的 reload() 清掉，用户只来得及看见第一次。
+  // 而且你想看的本来就是"这次跑下来它改了什么"，不是"第 3 轮那 20 秒改了什么"。
+  const runBaseRef = useRef<string>('')
+  // 正文的同步镜像。**不能在 setContent 的 updater 里调 setRoundDiff**——
+  // updater 必须是纯函数，在里面触发另一个 setState 是无效用法，React 19
+  // StrictMode 还会双调用 updater，实测直接把 Agent 面板整个搞崩了。
+  // 所以让 updater 只顺手写一下这个 ref（写 ref 是幂等的，双调用无害），
+  // 轮末直接从 ref 读当前正文。
+  const liveContentRef = useRef<string>('')
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
   const [writingPlanFolder, setWritingPlanFolder] = useState<Folder | null>(null)
@@ -112,7 +154,6 @@ export default function App() {
   const loadingRef = useRef(loading)
   useEffect(() => { loadingRef.current = loading }, [loading])
   const lastSkeletonContent = useRef('')
-  const lastEditContent = useRef('')
 
   // 无限续写 harness 用的 ref 镜像——同样的"闭包过时"问题：
   // api.runWritingPlan() 的 handlers 对象在 runHarness() 调用那一刻创建
@@ -337,8 +378,11 @@ export default function App() {
     setCurrent(n)
     setTitle(n.title)
     setContent(n.content)
-    setSpine('')
-    setBeats([])
+    // 骨架跟着笔记读回来，**不是清空**。清空那版的后果是「一会儿就没了」：
+    // 换一篇、刷新页面、甚至无限续写开着「跟随」自动切到下一段，骨架都没了，
+    // 而 harness 下一轮还得重新花一次模型调用生成一份。
+    setSpine(n.spine ?? '')
+    setBeats(n.beats ?? [])
     setRevisions([])
     setTapMeta(null)
   }
@@ -392,37 +436,58 @@ export default function App() {
       if (key === 's') { e.preventDefault(); save() }
       else if (key === 'n') { e.preventDefault(); newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
+      // ⌘/Ctrl+⇧+F 一键格式化。加 shift 是为了不跟浏览器/编辑器的「查找」撞
+      else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, title, content])
 
-  // Right-click with a live selection opens the AI selection menu instead of
-  // the browser's native context menu; right-click with no selection (or
-  // outside the editor) falls through to the browser default as normal.
-  // The listener attaches to the CM6 view's own DOM node rather than a React
-  // onContextMenu prop on MarkdownEditor -- editorViewRef is stable across
-  // note switches (MarkdownEditor mounts its EditorView once, see its own
-  // effect), so this only needs to (re)attach once the ref is populated,
-  // which `current` transitioning from null captures.
-  useEffect(() => {
-    const view = editorViewRef.current
-    if (!view) return
-    function onContextMenu(e: MouseEvent) {
-      const sel = view!.state.selection.main
-      if (sel.empty) return
-      e.preventDefault()
-      const text = view!.state.sliceDoc(sel.from, sel.to)
-      setSelectionMenu({ x: e.clientX, y: e.clientY, text })
-    }
-    view.dom.addEventListener('contextmenu', onContextMenu)
-    return () => view.dom.removeEventListener('contextmenu', onContextMenu)
-  }, [current])
+  /** 把一批建议**直接应用到正文**，然后按 diff 标出来交给「接受 / 撤回」。
+   *
+   * 原来这几个动作（润色/重写/扩展）产出的 Revision 是挂在正文上的一块彩色
+   * 高亮，**点一下就直接接受，没有确认也没有撤回**——想拒绝只能不点它，而它
+   * 会一直挂在那儿；改成什么样只有原生 title 提示里能看到；RevisionPanel 这个
+   * 组件甚至根本没被渲染过。
+   *
+   * 现在跟 harness 自动改动走同一套：先应用，正文里绿/红标出来，鼠标移上去
+   * 接受或撤回，也可以先改几个字再接受。两套交互合成一套，用户不用记两种。 */
+  function applyAsDiff(list: Revision[]): number {
+    if (!list.length) return 0
+    // 从编辑器的实时文档读，不要读 liveContentRef —— 那个只在 harness 跑的
+    // 过程中维护，平时停在上一轮结束时的内容，拿它当基准会把用户之后手打的
+    // 东西全当成"这次建议改的"。也不要读 content state：这个函数是 await 之后
+    // 才跑的，闭包里的 content 可能已经过时。
+    const before = editorViewRef.current?.state.doc.toString() ?? content
+    let next = before
+    for (const r of list) next = applyRevision(next, r)
+    if (next === before) return 0
+    setContent(next)
+    setRoundDiff(diffParts(before, next))
+    return list.length
+  }
 
   async function handleSelectionAction(action: SelectionAction) {
     if (!selectionMenu) return
     const selection = selectionMenu.text
+    if (action === 'custom') {
+      // 跟 `/` 的「用 AI 写」共用同一个输入框和同一套 harness，差的只是作用域：
+      // 那个是「在光标这里插一块」，这个是「把选中的这段换成别的」。
+      // **不走 /api/rewrite**——那条路只认 rewrite/polish 两种固定意图。
+      const view = editorViewRef.current
+      const sel = view?.state.selection.main
+      const at = { x: selectionMenu.x, y: selectionMenu.y }
+      setSelectionMenu(null)
+      if (!view || !sel || sel.empty) return
+      setSlash({
+        item: { key: 'custom', label: '自定义提示', icon: '💬',
+                hint: '对选中的这段做点什么', needsPrompt: true,
+                placeholder: '例如：改写成给投资人看的口吻 / 拆成三条要点' },
+        from: sel.from, to: sel.to, ...at,
+      })
+      return
+    }
     // Keep the menu open (showing a spinner via selectionBusy) instead of
     // closing it immediately -- otherwise a slow LLM call leaves no
     // indication anything is happening at the spot the user right-clicked.
@@ -434,12 +499,16 @@ export default function App() {
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection)
         if (r.revisions.length === 0) toast('模型认为不需要补充上下文。')
-        setRevisions((rs) => [...rs, ...r.revisions])
+        else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
       } else {
-        // 'rewrite' | 'polish'
-        const r = await api.rewriteSelection(content, selection, action, spine, beats)
+        // 到这里只剩 rewrite / polish：custom 在函数最上面提前返回了，
+        // verify / expand 在前面的分支里处理完了。
+        // **这个断言是有前提的**——曾经因为 custom 的分支丢了、断言还在，
+        // 编译器不报错而线上直接 422（intent 只认 rewrite/polish）。
+        const r = await api.rewriteSelection(
+          content, selection, action as 'rewrite' | 'polish', spine, beats)
         if (r.revisions.length === 0) toast('模型没有给出修改建议。')
-        setRevisions((rs) => [...rs, ...r.revisions])
+        else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
       }
     } catch (e) {
       toast(`操作失败：${e}`, 'error')
@@ -520,25 +589,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, current, loading])
 
-  // 后台自动生成修订建议：门槛比骨架更保守（停顿更久），避免骨架和修订两个
-  // 后台任务在同一次停顿窗口里抢着跑。
-  useEffect(() => {
-    if (!current) return
-    if (content.trim().length < EDIT_MIN_CHARS) return
-    if (content === lastEditContent.current) return
-    if (lastEditContent.current
-        && Math.abs(content.length - lastEditContent.current.length) < EDIT_MIN_DELTA) return
-    const t = setTimeout(() => {
-      if (loadingRef.current) return
-      lastEditContent.current = content
-      runEdit()
-    }, EDIT_IDLE_MS)
-    return () => clearTimeout(t)
-    // same reasoning as the skeleton effect above: `loading` as a dep gives
-    // this a chance to retry once whatever was blocking it (e.g. the
-    // skeleton auto-run) finishes, instead of silently never firing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, current, loading])
+  // 「智能编辑」已移除。它原来会在用户停下打字时**自动**跑一次修订建议——
+  // 后来给它加了打分诊断，一次自动触发就是两次模型调用，等于在打字间隙
+  // 悄悄烧钱。而它的用途已被「✨ 打磨」完全覆盖：同一套修订循环，但有明确
+  // 的终止判定（改到已写内容自身达标或改不动为止），而且由用户主动触发。
+  // 后端 /api/edit 保留着（诊断+针对最弱项的改造也保留），以后需要一个
+  // 「人在环内逐条挑」的入口时可以直接接回来。
+
 
   /** Optimistic delete with an undo window instead of a confirm() dialog --
    * deletion used to be instant and permanent past a dialog people click
@@ -573,27 +630,26 @@ export default function App() {
 
   // ---------------------------------------------------------------- AI 动作
 
+  /** 把骨架存到这篇笔记上。存不上不打断用户——骨架在内存里还是好的，
+   * 只是下次打开要重新生成，不值得为它弹个错误。 */
+  async function persistSkeleton(s: string, b: string[], noteId?: string) {
+    const id = noteId ?? current?.id
+    if (!id) return
+    try {
+      await api.saveSkeleton(id, s, b)
+      setNotes((prev) => prev.map((x) => (x.id === id ? { ...x, spine: s, beats: b } : x)))
+    } catch { /* 存不上就算了，内存里还在 */ }
+  }
+
   async function runSkeleton() {
     setLoading('skeleton')
     try {
       const r = await api.genSkeleton(title, content)
       setSpine(r.spine)
       setBeats(r.beats)
+      await persistSkeleton(r.spine, r.beats)
     } catch (e) {
       toast('生成骨架失败：' + e, 'error')
-    } finally {
-      setLoading('')
-    }
-  }
-
-  async function runEdit() {
-    setLoading('edit')
-    try {
-      const r = await api.genRevisions(content, spine, beats)
-      setRevisions(r.revisions)
-      if (r.revisions.length === 0) toast('模型认为当前正文没有需要修订的地方。')
-    } catch (e) {
-      toast('生成修订失败：' + e, 'error')
     } finally {
       setLoading('')
     }
@@ -617,6 +673,10 @@ export default function App() {
         setTapMeta,
         (piece) => setContent((c) => c + piece),
         ctrl.signal,
+        // 写完之后的确定性检查：检索到了材料却一条没用上，说明这段写的是
+        // 通用内容。magic tap 刻意不套完整闭环（它的定位是点一下几秒出一段），
+        // 所以这里不打断也不重写，只提示一句让用户自己决定要不要重来。
+        (g) => { if (g.hint) toast(g.hint, 'error') },
       )
     } catch (e) {
       if ((e as Error).name !== 'AbortError') toast('续写失败：' + e, 'error')
@@ -633,9 +693,36 @@ export default function App() {
    * 用 currentRef 而不是闭包里的 `current` 判断该不该应用——万一运行中
    * 途用户切到了别的笔记，不能把这篇笔记的修订/续写误应用到当前正显示
    * 的另一篇笔记上。 */
-  async function runNoteHarness() {
+  /** 往某一轮的记录里打补丁。事件是分散到达的（round-start / tool-calls /
+   * evaluate / policy 各一条），先到的先建这一轮的空壳，后到的往上补。 */
+  function patchRound(round: number, patch: Partial<AgentRound>) {
+    setAgentRounds((rs) => {
+      const i = rs.findIndex((r) => r.round === round)
+      if (i < 0) {
+        return [...rs, {
+          round, cleanupOnly: false, revisions: 0, toolCalls: [], toolTruncated: false,
+          scores: {}, status: '', weakest: null, policyReasons: [], policy: null, errors: [], dropped: [],
+          ...patch,
+        }]
+      }
+      const next = [...rs]
+      next[i] = { ...next[i], ...patch }
+      return next
+    })
+  }
+
+  async function runNoteHarness(mode: 'write' | 'polish' = 'write') {
     if (loading === 'note-harness') {
+      // 点"停止"时**同时强制复位状态**，不要只 abort 就指望 fetch 的
+      // finally 去复位——真实踩过：后端重启切断 SSE 连接后，前端
+      // reader.read() 卡住不返回，finally 永远不执行，loading 一直停在
+      // 'note-harness'。于是死锁：再点按钮它以为还在运行、走到这里
+      // abort 一个已经死掉的请求、直接 return，什么都不发生，用户只能
+      // 刷新页面才能继续用。
       abortRef.current?.abort()
+      abortRef.current = null
+      setLoading('')
+      setNoteHarnessStatus('')
       return
     }
     if (!current) return
@@ -643,6 +730,10 @@ export default function App() {
     setLoading('note-harness')
     setNoteHarnessStatus('启动中…')
     setBeatCoverage(null)
+    setAgentRounds([])
+    setRoundDiff(null)
+    liveContentRef.current = content
+    runBaseRef.current = content
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
@@ -652,6 +743,8 @@ export default function App() {
           onSkeleton: (s, b) => {
             if (currentRef.current?.id !== noteId) return
             setSpine(s); setBeats(b)
+            // 自动生成的一样要存——否则下一轮/下一次打开又得重新生成一份
+            void persistSkeleton(s, b, noteId)
             setNoteHarnessStatus('已自动生成骨架，开始第一轮')
           },
           onRoundStart: (d) => {
@@ -661,6 +754,10 @@ export default function App() {
             // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
             // 不能说"续写中"，不然用户会以为卡住了；也不能预留续写用的
             // 空行，因为这一轮根本不会有内容来填上这个空行。
+            patchRound(d.round, {
+              cleanupOnly: !!d.skipped_continue,
+              revisions: d.revisions_applied,
+            })
             if (d.skipped_continue) {
               setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
               return
@@ -670,28 +767,135 @@ export default function App() {
             // 分隔，跟后端 prompts.join_round_text() 是同一个道理
             // （TRACELOG [8]/[10]）：折叠 runHarness 那边已经修过的同一个坑，
             // 这里之前漏了，只修了文件夹 harness 那一侧。
-            setContent((c) => (c ? c.replace(/\n*$/, '') + '\n\n' : c))
+            setContent((c) => {
+              const next = c ? c.replace(/\n*$/, '') + '\n\n' : c
+              liveContentRef.current = next
+              return next
+            })
           },
           onRevision: (r) => {
             if (currentRef.current?.id !== noteId) return
-            setContent((c) => applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, text: r.text, reason: r.reason, sources: r.sources ?? [] }))
+            setContent((c) => {
+              const next = applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] })
+              liveContentRef.current = next
+              return next
+            })
             const sourceNote = r.sources?.length ? `（依据：${r.sources[0].slice(0, 40)}${r.sources.length > 1 ? ' 等' : ''}）` : ''
             toast(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 60)}${sourceNote}`)
           },
           onDelta: (text) => {
             if (currentRef.current?.id !== noteId) return
-            setContent((c) => c + text)
+            setContent((c) => { const next = c + text; liveContentRef.current = next; return next })
+            // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
+            // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
+            // 干等的状态文案有用得多。
+            setAgentRounds((rs) => {
+              if (!rs.length) return rs
+              const next = [...rs]
+              const last = next[next.length - 1]
+              next[next.length - 1] = { ...last, streamed: (last.streamed ?? '') + text }
+              return next
+            })
+          },
+          onRoundEnd: () => {
+            if (currentRef.current?.id !== noteId) return
+            // 轮末拿快照跟当前正文做词级 diff，标出这一轮的增删。
+            // 修订是自动应用的（不等人工接受），不标出来用户根本不知道
+            // 正文被动了哪里。
+            // 每轮末都拿**整次 run 的起点**重算一次，高亮是累积的：
+            // 装饰会被下一轮的文档改动清掉，但下一轮末又会重新算出来，
+            // 且范围只增不减。
+            const base = runBaseRef.current
+            const cur = liveContentRef.current
+            if (base && cur && base !== cur) setRoundDiff(diffParts(base, cur))
           },
           onEvaluate: (d) => {
             if (currentRef.current?.id !== noteId) return
             const beatScore = d.scores['beat_coverage']
             if (beatScore) setBeatCoverage(beatScore)
+            setAgentRounds((rs) => {
+              if (!rs.length) return rs
+              const next = [...rs]
+              next[next.length - 1] = {
+                ...next[next.length - 1],
+                scores: d.scores, status: d.status, weakest: d.weakest,
+              }
+              return next
+            })
             if (d.status === 'continue' && d.weakest) {
               setNoteHarnessStatus(`这一轮评分：${d.weakest} 还不够，下一轮优先改这个`)
             }
           },
+          onPhase: (d) => {
+            if (currentRef.current?.id !== noteId) return
+            // 用 patchRound 而不是改"最后一张卡片"：修订 pass 跑在
+            // round-start **之前**，第 1 轮的 edit 阶段到达时卡片还不存在，
+            // 直接改最后一张会把它整段丢掉——而那正是最想看的第一段。
+            patchRound(d.round, { phase: d.phase, phaseLabel: d.label })
+          },
+          onPhaseDelta: (d) => {
+            if (currentRef.current?.id !== noteId) return
+            setAgentRounds((rs) => {
+              const i = rs.findIndex((r) => r.round === d.round)
+              const base = i < 0 ? null : rs[i]
+              const pt = { ...(base?.phaseText ?? {}) }
+              const cur = pt[d.phase] ?? { thinking: '', output: '' }
+              pt[d.phase] = d.kind === 'thinking'
+                ? { ...cur, thinking: cur.thinking + d.text }
+                : { ...cur, output: cur.output + d.text }
+              if (i < 0) {
+                return [...rs, {
+                  round: d.round, cleanupOnly: false, revisions: 0, toolCalls: [],
+                  toolTruncated: false, scores: {}, status: '', weakest: null,
+                  policyReasons: [], policy: null, errors: [], dropped: [], phaseText: pt,
+                }]
+              }
+              const next = [...rs]
+              next[i] = { ...base!, phaseText: pt }
+              return next
+            })
+          },
+          onToolCalls: (d) => {
+            if (currentRef.current?.id !== noteId) return
+            patchRound(d.round, { toolCalls: d.calls, toolTruncated: d.truncated })
+            setNoteHarnessStatus(`第 ${d.round} 轮：agent 自己查了知识库 ${d.calls.length} 次，续写中…`)
+          },
+          onPolicy: (d) => {
+            if (currentRef.current?.id !== noteId) return
+            // round 0 = 开跑前用历史运行记录定的初始策略，还没有对应的轮次卡片，
+            // 挂到第 1 轮上；其余挂在产生它的那一轮
+            patchRound(Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
+          },
+          onDropped: (detail) => {
+            // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
+            if (currentRef.current?.id !== noteId) return
+            setAgentRounds((rs) => {
+              if (!rs.length) return rs
+              const next = [...rs]
+              next[next.length - 1] = {
+                ...next[next.length - 1],
+                dropped: [...next[next.length - 1].dropped, detail],
+              }
+              return next
+            })
+          },
+          onError: (detail) => {
+            if (currentRef.current?.id !== noteId) return
+            // 后端的 error 事件都是可恢复的降级，流还在继续——记在这一轮上
+            // 给用户看，但不打断运行
+            setAgentRounds((rs) => {
+              if (!rs.length) return rs
+              const next = [...rs]
+              next[next.length - 1] = {
+                ...next[next.length - 1],
+                errors: [...next[next.length - 1].errors, detail],
+              }
+              return next
+            })
+          },
           onDone: (reason, blockedReason) => {
-            const label = reason === 'complete' ? '内容已完整，自动停止'
+            const label = reason === 'no_more_changes' ? '已经改不动了，打磨结束'
+              : reason === 'complete' ? (mode === 'polish' ? '已写内容都达标了，打磨完成' : '内容已完整，自动停止')
               : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
               : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
               : '到达轮数上限，自动停止'
@@ -700,14 +904,22 @@ export default function App() {
           },
         },
         ctrl.signal,
+        mode,
       )
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') toast('智能续写失败：' + e, 'error')
+      if ((e as Error).name !== 'AbortError') toast(
+        (mode === 'polish' ? '打磨' : '智能续写') + '失败：' + e, 'error')
     } finally {
       setLoading('')
       setNoteHarnessStatus('')
       abortRef.current = null
       reload()
+      // reload() 会用服务端正文替换文档，docChanged 会把装饰清掉——跑完
+      // 之后必须再补一次，不然用户最终什么都看不到（这正是"只有第一次
+      // 有绿色"的第二个原因）。
+      const base = runBaseRef.current
+      const cur = liveContentRef.current
+      if (base && cur && base !== cur) setRoundDiff(diffParts(base, cur))
     }
   }
 
@@ -762,6 +974,311 @@ export default function App() {
     open(n)
   }
 
+  /** 全部接受：只是把标记清掉，正文保持现状。 */
+  function acceptAllDiff() {
+    editorViewRef.current?.dispatch({ effects: acceptAllHunks.of(null) })
+  }
+
+  /** 全部撤回：把这一轮改的全部还原。
+   *
+   * **从后往前撤**——每撤一处都会改变文档长度，从前往后的话后面那些 hunk 的
+   * 位置就全错位了。逐处撤回不用管这个（每次 dispatch 之后剩下的 hunk 会跟着
+   * 映射），批量在同一批里做就必须自己保证顺序。 */
+  function rejectAllDiff() {
+    const view = editorViewRef.current
+    if (!view) return
+    const hunks = [...(view.state.field(roundDiffField, false)?.hunks ?? [])]
+      .sort((a, b) => b.from - a.from)
+    if (!hunks.length) return
+    for (const h of hunks) {
+      view.dispatch({ changes: { from: h.from, to: h.to, insert: h.del },
+                      effects: dropHunk.of(h.id) })
+    }
+  }
+
+  /** 一键格式化整篇。
+   *
+   * **纯规则、不走模型**（见 editor/format.ts）：格式是有明确规则的东西，
+   * 交给模型只会每次结果不一样、还可能顺手改内容。
+   *
+   * 结果按 diff 交给「接受 / 撤回」——整篇重排是个大改动，用户得能逐处看、
+   * 也能一键全撤。 */
+  function formatNote() {
+    const view = editorViewRef.current
+    if (!view) return
+    const before = view.state.doc.toString()
+    const after = formatMarkdown(before)
+    if (after === before) { toast('已经是规范格式了，没有需要改的'); return }
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: after } })
+    setContent(after)
+    setRoundDiff(diffParts(before, after))
+  }
+
+  /** 智能排版。跟一键格式化是**互补**的两件事：
+   *
+   * · 格式化（纯规则）只能把**已经标好**的结构规范化——补空格、对齐表格、
+   *   块之间补空行。它判断不了「这一行应该是标题」。
+   * · 智能排版做的正是那个语义判断，但**模型只输出「第几行改成什么结构」**，
+   *   原文由后端按行搬运，所以改不到内容。
+   *
+   * 排完再跑一次格式化，输出仍然是规范的；结果按 diff 交给「接受 / 撤回」。 */
+  async function restructureNote() {
+    const view = editorViewRef.current
+    if (!view || !current) return
+    const before = view.state.doc.toString()
+    if (!before.trim()) return
+    setLoading('skeleton')                       // 复用同一个忙碌态，按钮转圈
+    try {
+      const r = await api.restructureNote(current.id, title, before)
+      if (r.detail) toast(r.detail, 'error')
+      if (!r.changed) { toast(r.detail ? '没有改动' : '结构已经很清楚了，没什么可调的'); return }
+      const after = formatMarkdown(r.content)
+      const v = editorViewRef.current
+      if (!v) return
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: after } })
+      setContent(after)
+      setRoundDiff(diffParts(before, after))
+      const skipped = r.skipped.length ? `，跳过 ${r.skipped.length} 处` : ''
+      toast(`调整了 ${r.ops} 处结构${skipped}，可以逐处接受或撤回`)
+    } catch (e) {
+      toast(`排版失败：${e instanceof Error ? e.message : String(e)}`, 'error')
+    } finally {
+      setLoading('')
+    }
+  }
+
+  /** `/` 选中一项之后的入口。需要提示词的先弹输入框，其余的当场做完。 */
+  function onSlash(item: SlashItem, from: number, to: number) {
+    const view = editorViewRef.current
+    const coords = view?.coordsAtPos(from)
+    const at = { x: coords?.left ?? 200, y: (coords?.bottom ?? 200) + 6 }
+    if (item.needsPrompt) { setSlash({ item, from, to, ...at }); return }
+    if (item.key === 'table-image' || item.key === 'audio') {
+      pickKind.current = item.key === 'audio' ? 'audio' : 'image'
+      setSlash({ item, from, to, ...at })
+      filePick.current?.click()
+      return
+    }
+    if (item.key === 'voice') { setSlash(null); void runVoice(from, to); return }
+    // 其余（chart / eda）不需要提示词，直接跑
+    setSlash({ item, from, to, ...at })
+    void runBlock(item, from, to, '')
+  }
+
+  /** 语音输入：录一段、转写、把文字插到 `/` 的位置。
+   *
+   * 用一个独立的 MediaRecorder 而不是复用右侧那个 AudioRecorder 组件——那个的
+   * 产出去向是"插到编辑器"或"存进知识库"，是面板上的常驻功能；这里是「在光标
+   * 这个位置插一段」，位置信息只有这里有。状态走占位块，跟其他 AI 动作一致。 */
+  async function runVoice(from: number, to: number) {
+    const view = editorViewRef.current
+    if (!view) return
+    const id = Math.random().toString(36).slice(2, 10)
+    const push = (fx: StateEffect<unknown>) => editorViewRef.current?.dispatch({ effects: fx })
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      toast('拿不到麦克风权限', 'error')
+      return
+    }
+    const chunks: Blob[] = []
+    const mr = new MediaRecorder(stream)
+    mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
+    voiceStopById.current.set(id, () => { if (mr.state !== 'inactive') mr.stop() })
+    view.dispatch({
+      changes: { from, to, insert: '' },
+      effects: startRun.of({ id, from, label: '语音输入' }),
+    })
+    push(patchRun.of({ id, phase: '录音中，点停止结束' }))
+    mr.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop())
+      voiceStopById.current.delete(id)
+      push(patchRun.of({ id, phase: '转写中…' }))
+      try {
+        const r = await api.transcribeOnly(new Blob(chunks, { type: 'audio/webm' }))
+        const text = (r.text || '').trim()
+        if (!text) {
+          push(patchRun.of({ id, error: '没听清，什么都没转出来', expanded: true }))
+          return
+        }
+        const v = editorViewRef.current
+        if (!v) return
+        const run = v.state.field(runsField, false)?.find((x) => x.id === id)
+        const at = Math.max(0, Math.min(run?.from ?? from, v.state.doc.length))
+        const before = v.state.doc.toString()
+        v.dispatch({ changes: { from: at, insert: text }, effects: endRun.of(id) })
+        const after = v.state.doc.toString()
+        setContent(after)
+        setRoundDiff(diffParts(before, after))
+      } catch (e) {
+        push(patchRun.of({
+          id, error: `转写失败：${e instanceof Error ? e.message : String(e)}`, expanded: true,
+        }))
+      }
+    }
+    mr.start()
+  }
+
+  /** 选完文件之后：图片走「识别里面的表格」，音频走「插入 + 自动转写」。
+   *
+   * 两个都不是"只插入"——`/` 菜单只放 AI 功能，纯插入的在顶部工具栏。
+   * 状态同样走光标处的占位块，跟其他 AI 动作一致。 */
+  async function onPickFile(files: FileList | null) {
+    const f = files?.[0]
+    const ctx = slash
+    setSlash(null)
+    const view = editorViewRef.current
+    if (!f || !ctx || !view) return
+    const id = Math.random().toString(36).slice(2, 10)
+    const push = (fx: StateEffect<unknown>) => editorViewRef.current?.dispatch({ effects: fx })
+    view.dispatch({
+      changes: { from: ctx.from, to: ctx.to, insert: '' },
+      effects: startRun.of({ id, from: ctx.from, label: ctx.item.label }),
+    })
+    const at = () => {
+      const v = editorViewRef.current!
+      const r = v.state.field(runsField, false)?.find((x) => x.id === id)
+      return Math.max(0, Math.min(r?.from ?? ctx.from, v.state.doc.length))
+    }
+    try {
+      if (ctx.item.key === 'table-image') {
+        push(patchRun.of({ id, phase: '在看这张图里有没有表格…' }))
+        const r = await api.tableFromImage(f)
+        if (!r.detected) {
+          // 如实说没检测到，**不要硬塞一张空表进用户笔记**
+          push(patchRun.of({
+            id, expanded: true,
+            error: '没有检测到表格' + (r.raw ? `（模型说：${r.raw.slice(0, 40)}）` : ''),
+          }))
+          return
+        }
+        const v = editorViewRef.current!
+        const before = v.state.doc.toString()
+        v.dispatch({ changes: { from: at(), insert: `\n${r.table}\n\n` }, effects: endRun.of(id) })
+        const after = v.state.doc.toString()
+        setContent(after)
+        setRoundDiff(diffParts(before, after))       // 识别结果一样可以接受/撤回
+        return
+      }
+      // 音频：先传上去插一个播放器，再转写出文字稿
+      push(patchRun.of({ id, phase: '上传中…' }))
+      const a = await api.uploadAsset(f)
+      push(logRun.of({ id, at: '已上传', text: `${a.name}（${Math.round(a.bytes / 1024)}KB）` }))
+      push(patchRun.of({ id, phase: '转写中…' }))
+      const t = await api.transcribeOnly(f, f.name)
+      const text = (t.text || '').trim()
+      const v = editorViewRef.current!
+      const before = v.state.doc.toString()
+      const player = `\n<audio controls src="${a.url}"></audio>\n\n`
+      v.dispatch({
+        changes: { from: at(), insert: player + (text ? text + '\n\n' : '') },
+        effects: endRun.of(id),
+      })
+      const after = v.state.doc.toString()
+      setContent(after)
+      setRoundDiff(diffParts(before, after))
+      if (!text) toast('音频已插入，但转写没有出内容')
+    } catch (e) {
+      push(patchRun.of({
+        id, expanded: true,
+        error: `处理失败：${e instanceof Error ? e.message : String(e)}`,
+      }))
+    }
+  }
+
+  /** 跑一次块生成。
+   *
+   * **产出不往正文里流**：生成过程只在光标处那个占位块里预览，跑完才一次性
+   * 落进正文。直接往文档里流的话，同时跑几个任务就会把文字交错插在一起；
+   * 而且中途打分可能重写好几轮，流进去的是被推翻的版本。
+   *
+   * 落进正文之后同时算出 diff 交给「接受 / 撤回」，跟 harness 改动、右键润色
+   * 走同一套处置方式。 */
+  async function runBlock(item: SlashItem, from: number, to: number, prompt: string) {
+    const view = editorViewRef.current
+    if (!view || !current) return
+    const id = Math.random().toString(36).slice(2, 10)
+    const ctrl = new AbortController()
+    runAborts.current.set(id, ctrl)
+    setSlash(null)                                   // 输入框收起，交给占位块
+
+    // custom 是「替换选中的这段」，其余是「在光标这里插一块」。两种都先把
+    // [from,to) 清掉，产出落在 from。
+    const selection = item.key === 'custom' ? view.state.doc.sliceString(from, to) : ''
+    view.dispatch({
+      changes: { from, to, insert: '' },
+      selection: { anchor: from },
+      effects: startRun.of({ id, from, label: item.label }),
+    })
+    const before = view.state.doc.toString()
+    const push = (fx: StateEffect<unknown>) => editorViewRef.current?.dispatch({ effects: fx })
+
+    try {
+      const block = await api.composeBlock(
+        { note_id: current.id, title, content: before, cursor: from,
+          mode: item.key as api.BlockMode, prompt, selection },
+        {
+          onPhase: (label) => {
+            push(patchRun.of({ id, phase: label }))
+            push(logRun.of({ id, at: '阶段', text: label }))
+          },
+          onTools: (calls) => {
+            for (const c of calls) {
+              const args = Object.entries(c.args)
+                .filter(([k]) => k !== 'limit')
+                .map(([, v]) => String(v)).join(' / ')
+              push(logRun.of({ id, at: '查', text: `${c.tool}${args ? '（' + args + '）' : ''}` }))
+            }
+          },
+          onDelta: (t) => push(appendPreview.of({ id, text: t })),
+          onEvaluate: (status, scores) => {
+            const weak = Object.entries(scores ?? {}).filter(([, v]) => v.level < 2)
+            push(logRun.of({
+              id, at: '打分',
+              text: status === 'complete' ? '都达标了'
+                : weak.map(([k, v]) => `${k}：${v.note}`).join('；') || status,
+            }))
+          },
+          onError: (d) => push(logRun.of({ id, at: '出错', text: d })),
+        },
+        ctrl.signal)
+
+      const v = editorViewRef.current
+      if (!v) return
+      const text = (block || '').trim()
+      if (!text) {
+        push(patchRun.of({ id, error: '没有产出内容', expanded: true }))
+        return                                       // 占位块留着，让用户看到为什么
+      }
+      const run = v.state.field(runsField, false)?.find((r) => r.id === id)
+      const at = Math.max(0, Math.min(run?.from ?? from, v.state.doc.length))
+      const b2 = v.state.doc.toString()
+      v.dispatch({ changes: { from: at, insert: text + '\n\n' }, effects: endRun.of(id) })
+      const after = v.state.doc.toString()
+      setContent(after)
+      setRoundDiff(diffParts(b2, after))
+    } catch (e) {
+      if (ctrl.signal.aborted) {
+        push(endRun.of(id))                          // 用户自己停的，不留残骸
+      } else {
+        push(patchRun.of({
+          id, error: e instanceof Error ? e.message : String(e), expanded: true,
+        }))
+      }
+    } finally {
+      runAborts.current.delete(id)
+    }
+  }
+
+  /** 占位块上的「停止」。 */
+  function stopRun(id: string) {
+    const rec = voiceStopById.current.get(id)
+    if (rec) { rec(); return }        // 录音：停下来还要转写，不能直接撤掉占位块
+    runAborts.current.get(id)?.abort()
+    editorViewRef.current?.dispatch({ effects: endRun.of(id) })
+  }
+
   // ---------------------------------------------------------------- 渲染
 
   return (
@@ -798,6 +1315,24 @@ export default function App() {
       )}
       {skillsPanelOpen && <SkillsPanel onClose={() => setSkillsPanelOpen(false)} />}
       {settingsPanelOpen && <SettingsPanel onClose={() => setSettingsPanelOpen(false)} />}
+      <input
+        ref={filePick}
+        type="file"
+        style={{ display: 'none' }}
+        accept={pickKind.current === 'image' ? 'image/*' : 'audio/*'}
+        onChange={(e) => { void onPickFile(e.target.files); e.target.value = '' }}
+      />
+      {slash?.item.needsPrompt && (
+        <SlashPrompt
+          item={slash.item}
+          x={slash.x}
+          y={slash.y}
+          busy={false}
+          phase=""
+          onRun={(p) => { void runBlock(slash.item, slash.from, slash.to, p) }}
+          onCancel={() => setSlash(null)}
+        />
+      )}
       {selectionMenu && (
         <SelectionMenu
           x={selectionMenu.x}
@@ -947,11 +1482,18 @@ export default function App() {
               </button>
               <button
                 className="primary"
-                onClick={runNoteHarness}
+                onClick={() => runNoteHarness('write')}
                 disabled={loading === 'tap'}
                 title="自动修订（不用手动接受）+ 自动续写交替进行，直到内容相对结构节拍已经完整才停"
               >
                 {loading === 'note-harness' ? '■ 停止' : '🤖 智能续写'}
+              </button>
+              <button
+                onClick={() => runNoteHarness('polish')}
+                disabled={loading === 'note-harness' || !content.trim()}
+                title="只修不写：反复修订+打分，直到已写内容自身达标才停——回答「改到什么时候算够」"
+              >
+                ✨ 打磨
               </button>
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} />
               <button onClick={ingestCurrentNote} disabled={!content.trim() || loading === 'ingest'}>
@@ -972,12 +1514,42 @@ export default function App() {
 
             {tapMeta && <TapProvenance meta={tapMeta} />}
 
-            <MarkdownToolbar viewRef={editorViewRef} />
+            <MarkdownToolbar
+              viewRef={editorViewRef}
+              onFormat={formatNote}
+              onRestructure={restructureNote}
+              restructuring={loading === 'skeleton'}
+            />
+            {pendingDiff > 0 && (
+              <div
+                className="row"
+                style={{
+                  gap: 8, alignItems: 'center', margin: '2px 2px 6px',
+                  fontSize: 12, padding: '5px 8px', borderRadius: 6,
+                  border: '1px solid var(--line)', background: 'var(--panel)',
+                }}
+              >
+                <span style={{ color: 'var(--ins)' }}>●</span>
+                <span>这一轮改了 {pendingDiff} 处</span>
+                <span className="muted">鼠标移到改动上（或点一下钉住）可以逐处接受、撤回，也可以先改再接受</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <button onClick={acceptAllDiff}>全部接受</button>
+                  <button onClick={rejectAllDiff} title="把这一轮改的全部还原成改之前的样子">
+                    全部撤回
+                  </button>
+                </span>
+              </div>
+            )}
             <MarkdownEditor
               content={content}
               onChange={setContent}
               revisions={revisions}
               onAcceptInline={acceptRevision}
+              roundDiff={roundDiff}
+              onPendingDiff={setPendingDiff}
+              onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
+              onSlash={onSlash}
+              onStopRun={stopRun}
               placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点 magic tap，会先查你的知识库再续写。"
               viewRef={editorViewRef}
             />
@@ -1023,14 +1595,12 @@ export default function App() {
               loading={loading === 'skeleton'}
               onRun={runSkeleton}
             />
-            <RevisionPanel
-              revisions={revisions}
-              content={content}
-              loading={loading === 'edit'}
-              onAccept={acceptRevision}
-              onReject={(r) => setRevisions((rs) => rs.filter((x) => x.id !== r.id))}
-              onRun={runEdit}
+            <AgentActivity
+              rounds={agentRounds}
+              status={loading === 'note-harness' ? noteHarnessStatus : ''}
+              running={loading === 'note-harness'}
             />
+
           </>
         )}
         {rightTab === 'memory' && <RelatedMemory content={content} onInsert={insertAtCursor} />}

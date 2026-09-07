@@ -196,3 +196,14 @@ def test_edit_system_cleans_up_orphaned_headings_after_delete():
     # 标题孤零零地对着空行，读起来像正文缺了一截——EDIT_SYSTEM 要主动
     # 把这种空壳标题也一并删掉，不是只删内容不管标题
     assert "空壳标题" in prompts.EDIT_SYSTEM
+
+
+def test_edit_user_carries_placeholder_lines():
+    """占位符要作为具体位置喂给修订，不能只在续写规则里禁止。"""
+    from app import prompts
+
+    out = prompts.edit_user("张力", ["节拍"], "正文", [], [],
+                            defect_lines=["| 众筹素材锁定 | 待指定 |"])
+    assert "必须就地处理" in out and "待指定" in out
+    assert "不许原样留着" in out
+    assert "必须就地处理" not in prompts.edit_user("张力", ["节拍"], "正文", [], [])

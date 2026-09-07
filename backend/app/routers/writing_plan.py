@@ -19,11 +19,17 @@ from fastapi.responses import StreamingResponse
 
 from writer_harness import Evaluation, RunRecord, evaluate, find_repeats
 
-from .. import harness_adapter, llm, prompts, store
+from .. import grounding_check, harness_adapter, llm, outline, prompts, store
 from ..schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
+from .. import agent_loop, tools
 from .compose import _profile, _retrieve
 from .deps import current_user
-from .note_harness import _apply_revision  # 纯字符串函数，两条 harness 共用
+from .note_harness import (  # 纯字符串函数，两条 harness 共用
+    _apply_revision,
+    _breakage,
+    reject_revision,
+    _tidy_blank_lines,
+)
 
 router = APIRouter(prefix="/api/writing-plan", tags=["writing-plan"])
 
@@ -32,6 +38,18 @@ TRACKING_NOTE_TITLE = "📋 写作追踪"
 # 单个 section 最多写这么多轮还没被 evaluate() 判定 complete/blocked 就
 # 强制结束——防止某个 section 卡住整个 plan 永远走不下去，是安全网，不是
 # "完成"的判定依据（判定依据见 _evaluate_section）。
+# 分段写作是否也走 agent 自主检索。跟单篇 harness 共用同一个开关——
+# 两条 harness 的检索行为应该一致，不然用户在文件夹里写和在单篇里写会
+# 得到两种质量的产出（实测差别很大：单篇接了工具之后写的是用户自己的
+# 材料，分段这边还在编「T0 2026-05-15、DVT 2026-05-20」这种知识库里
+# 根本没有的节点）。
+from .note_harness import (
+    AGENT_TOOLS,
+    CONTINUE_MAX_TOKENS,
+    CONTINUE_TAIL_TOKENS,
+    TOOL_GROUPS,
+)  # noqa: E402
+
 SECTION_ROUND_CAP = 4
 
 # 整个 plan 单次 /run 调用最多处理这么多"步"（写一轮 = 一步，问一次"还有
@@ -79,7 +97,8 @@ def _make_summary(title: str, content: str) -> str:
 
 
 async def _evaluate_section(user: str, content: str, section_title: str,
-                            goal: str, other_summaries: list[str]) -> Evaluation | None:
+                            goal: str, other_summaries: list[str],
+                            facts_used: list[str] | None = None) -> Evaluation | None:
     """一个 section 是不是写完了：跟 note_harness 同一套机制，见
     writer_harness/README.md——机械查重先做，结果作为 non_repetition 维度
     的辅助证据，跟其他维度一起打分，返回 continue/complete/blocked。
@@ -88,8 +107,14 @@ async def _evaluate_section(user: str, content: str, section_title: str,
     单次调用超过 300s 超时，异常从 SSE generator 里冒出去，客户端看到的
     是连接被硬中断，不是正常的错误事件（note_harness.py 那边先修的，
     这里是同一个模式）。"""
-    facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6,
-                                   title=section_title, anchor_first=True)
+    # 打分要看的是**这一轮实际用过的事实**，不是另外再检索一批——跟
+    # note_harness 那边同一个 bug：三个环节各自 _retrieve()，正文写的是修订
+    # 那批查到的内容，打分手里是第三批，于是判"知识库中查无此事"。
+    if facts_used is None:
+        facts, _ids, _took = _retrieve(user, content, section_title, [], limit=6,
+                                       title=section_title, anchor_first=True)
+    else:
+        facts = facts_used
     dup_hints = find_repeats(content)
     context = {"这个分段的主题": section_title}
     if goal:
@@ -133,7 +158,9 @@ async def _run_section_edit_pass(user: str, content: str, section_title: str, go
         edit_text = await llm.complete(
             [{"role": "system", "content": edit_system},
              {"role": "user", "content": prompts.section_edit_user(
-                 section_title, goal, other_summaries, content, facts, _profile(user), focus, dup_hints)}],
+                 section_title, goal, other_summaries, content, facts, _profile(user), focus, dup_hints,
+                 defect_lines=(grounding_check.placeholder_lines(content)
+                               + grounding_check.audit_voice_lines(content)))}],
             max_tokens=1500, temperature=0.1)
     except Exception as exc:
         yield _sse("error", {"detail": f"分段修订调用失败，跳过这一轮修订: {exc}"})
@@ -159,23 +186,39 @@ async def _run_section_edit_pass(user: str, content: str, section_title: str, go
             if not anchor or anchor not in content:
                 continue
             text = str(item.get("text") or "")
+            # 同义重写 / 歧义锚点 / 切出破字这三类损坏跟 note_harness 是同一套，
+            # 判定也共用一个函数（这里没有跨轮的 edited 集合——folder 级每节
+            # 只跑一次修订，重复改的问题不在这条路径上）。
+            why_drop = reject_revision(content, op, anchor, text)
+            if why_drop:
+                yield _sse("dropped", {"detail": why_drop})
+                continue
             new_content = _apply_revision(
                 content, op, anchor, text, insert_offset=insert_offsets.get(anchor, 0))
             if new_content == content:
                 continue
+            broke = _breakage(content, new_content)
+            if broke:
+                yield _sse("dropped", {"detail": f"这条会把正文切出破字「{broke}」，已丢弃"})
+                continue
             if op == "insert":
                 insert_offsets[anchor] = insert_offsets.get(anchor, 0) + len(text)
-            content = new_content
+            content = _tidy_blank_lines(new_content)
             applied += 1
             yield _sse("revision", {
                 "section_id": None, "op": op, "anchor": anchor[:120], "text": text[:300],
                 "reason": str(item.get("reason") or ""),
                 "sources": [str(s) for s in (item.get("sources") or [])][:3],
             })
-    if applied:
+    # 修订应用完也要清理，理由同 note_harness：一条 replace 能把审计腔写回去。
+    content, meta_gone = grounding_check.scrub_meta_sentences_v(content)
+    for sent in meta_gone[:3]:
+        yield _sse("dropped", {"detail": f"删掉一句元话语：{sent[:60]}"})
+    if applied or meta_gone:
         store.update_note(user, note_id, note_title, content)
     result["content"] = content
     result["applied"] = applied
+    result["facts"] = facts
 
 
 def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
@@ -318,6 +361,10 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             prev_scores = section_scores.get(target["id"], {})
             skip_continue = any(prev_scores.get(d, 2) < 2 for d in _INNER_QUALITY_DIMS)
             cleanup_applied = 0
+            # 这一轮实际用过的事实，喂给打分——见 _evaluate_section 里
+            # 关于「三个环节各查各的」那段注释：正文写的是修订/续写查到的
+            # 那批，打分不该另外再检索一批去审判它。
+            round_facts: list[str] = []
             if skip_continue:
                 cleanup_result: dict = {}
                 # _run_section_edit_pass 自己会在 applied>0 时调用
@@ -329,16 +376,62 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 new_content = cleanup_result["content"]
                 cleanup_applied = cleanup_result["applied"]
                 round_text = ""
+                round_facts += [f for f in (cleanup_result.get("facts") or [])
+                                if f not in round_facts]
                 yield _sse("section-start", {
                     "section_id": target["id"], "title": target["title"], "note_id": note["id"],
                     "is_new_note": is_new_note, "facts": 0, "recall_ms": 0,
                     "sources": [], "fact_ids": [], "skipped_continue": True,
                 })
             else:
-                facts, ids, took = _retrieve(user, note["content"], target["title"], [], limit=6,
-                                        title=target["title"], anchor_first=True)
                 folder_notes = store.notes_in_folder(user, body.folder_id, exclude_id=note["id"], limit=6)
                 folder_ctx = prompts.folder_context_block(folder_notes)
+                took = 0.0
+                tool_ctx = tools.ToolContext(
+                    user=user, note_id=note["id"], note_title=target["title"])
+
+                if AGENT_TOOLS:
+                    # 跟单篇 harness 同一套两段式：先让 agent 自己决定要不要查、
+                    # 查什么，再流式写。分段的"问题"是这一段的主题 + 计划总目标。
+                    plan_msgs = [
+                        {"role": "system", "content": prompts.RETRIEVAL_PLAN_SYSTEM},
+                        {"role": "user", "content": prompts.retrieval_plan_user(
+                            target["title"], plan["goal"], other_summaries,
+                            note["content"],
+                            topics_overview=tools.dispatch(
+                                "list_topics", {"limit": 40}, tool_ctx))},
+                    ]
+                    _extra, trace = await agent_loop.gather_context(
+                        plan_msgs, tool_ctx, groups=TOOL_GROUPS)
+                    facts, ids = trace.as_facts(), []
+                    if trace.error and not facts:
+                        # 同 note_harness：退回预装配检索，不空手写
+                        facts, ids, took = _retrieve(
+                            user, note["content"], target["title"], [], limit=6,
+                            title=target["title"], anchor_first=True)
+                        yield _sse("error", {
+                            "detail": f"检索规划失败，已退回关键词检索（{len(facts)} 条事实）: {trace.error}"})
+                    elif trace.error:
+                        yield _sse("error", {"detail": f"检索规划部分失败: {trace.error}"})
+                    # 分段主题本身常带「那次/上次」这类锚定说法，命中就预跑多跳
+                    if agent_loop.is_scoped_question(f"{target['title']}\n{note['content'][-400:]}"):
+                        hop = tools.dispatch(
+                            "search_session_context",
+                            {"question": f"{target['title']}——{plan['goal'][:100]}", "limit": 10},
+                            tool_ctx)
+                        hop_facts = [l.strip() for l in hop.splitlines()
+                                     if l.strip() and not l.strip().startswith("（")]
+                        if hop_facts:
+                            facts = hop_facts + facts
+                    if trace.used:
+                        yield _sse("tool-calls", {
+                            "section_id": target["id"], "iters": trace.iters,
+                            "truncated": trace.truncated, "calls": trace.summary(),
+                        })
+                else:
+                    facts, ids, took = _retrieve(user, note["content"], target["title"], [],
+                                                 limit=6, title=target["title"],
+                                                 anchor_first=True)
                 section_system = prompts.compose_system(
                     prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "section_write"))
 
@@ -349,6 +442,8 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                         note["content"], facts, folder_ctx, _profile(user), focus=focus)},
                 ]
 
+                round_facts += [f for f in facts if f not in round_facts]
+
                 yield _sse("section-start", {
                     "section_id": target["id"], "title": target["title"], "note_id": note["id"],
                     "is_new_note": is_new_note, "facts": len(facts),
@@ -356,15 +451,37 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 })
 
                 round_text = ""
+                stats: dict = {}
                 try:
-                    async for piece in llm.stream(messages, max_tokens=900):
+                    async for piece in llm.stream(messages, max_tokens=CONTINUE_MAX_TOKENS,
+                                                  stats=stats):
                         round_text += piece
                         yield _sse("delta", {"note_id": note["id"], "text": piece})
+                    # 撞上限就把话补完，不删已写内容——同 note_harness
+                    if stats.get("finish_reason") == "length" and round_text:
+                        finish_msgs = messages + [
+                            {"role": "assistant", "content": round_text},
+                            {"role": "user", "content":
+                                "上面这段在句子中间被长度限制切断了。接着最后那半句往下写完，"
+                                "**不要重复已经写过的内容**，把当前这个自然段收尾即可。"},
+                        ]
+                        async for piece in llm.stream(finish_msgs,
+                                                      max_tokens=CONTINUE_TAIL_TOKENS):
+                            round_text += piece
+                            yield _sse("delta", {"note_id": note["id"], "text": piece})
                 except Exception as exc:
                     yield _sse("error", {"detail": str(exc)})
                     break
 
-                new_content = prompts.join_round_text(note["content"], round_text)
+                # 插入前先剔掉正文里已经有的段落。**这条防线原来只接在单篇
+                # harness 上**，folder 级这条路径裸奔——第一次给它做 bench 就
+                # 抓到了逐字重复，而且是在同一句里：
+                #   「承接测试与交付时，还要把"软件可用"和"硬件已收到"分开记录：
+                #     承接测试与交付时，还要把"软件可用"和"硬件已收到"分开记录：即使…」
+                # 「两条路径共用一套机制、只修了一边」今晚第五次。
+                round_text = outline.drop_already_written(note["content"], round_text) or round_text
+                new_content = grounding_check.scrub_meta_sentences(
+                    prompts.join_round_text(note["content"], round_text))
                 store.update_note(user, note["id"], target["title"], new_content)
 
             section_rounds[target["id"]] = section_rounds.get(target["id"], 0) + 1
@@ -374,7 +491,8 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             no_progress = (not skip_continue and not round_text.strip()) or (skip_continue and not cleanup_applied)
 
             evaluation = None if no_progress else await _evaluate_section(
-                user, new_content, target["title"], plan["goal"], other_summaries)
+                user, new_content, target["title"], plan["goal"], other_summaries,
+                facts_used=round_facts)
             forced = section_rounds[target["id"]] >= SECTION_ROUND_CAP and (
                 evaluation is None or evaluation.status == "continue")
             finished = no_progress or forced or (evaluation and evaluation.status in ("complete", "blocked"))

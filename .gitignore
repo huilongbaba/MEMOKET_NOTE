@@ -23,3 +23,17 @@ frontend/tsconfig.tsbuildinfo
 
 .DS_Store
 *.lock
+
+# 跑出来的产物：里面是**真实业务内容**（定价、众筹计划、团队信息，来自
+# terrence 的真实会议），而且全部可以重新生成。原始知识库已经被上面的
+# data/ 和 artifacts/ 挡住了，这两个目录是它们的衍生物，同样不该进 git。
+samples/
+prompts/
+
+# bench / soak / 摄入跑出来的运行产物。跟 samples/ 同一个理由：里面是
+# **真实业务内容**（会议标题、正文片段、种子名），而且全部可以重跑生成。
+backend/scripts/*.jsonl
+backend/scripts/*.log
+backend/scripts/harness_stress_cycle.txt
+backend/scripts/editing_bench_results/
+backend/scripts/writing_bench_results/

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { drag as d3drag } from 'd3-drag'
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
 import { select as d3select } from 'd3-selection'
+import { zoom as d3zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { EntityNode, TopicEntityLink, TopicNode } from '../api'
 
 /**
@@ -22,6 +24,19 @@ import type { EntityNode, TopicEntityLink, TopicNode } from '../api'
  *
  * Topics render as circles, entities as squares, so the two node kinds stay
  * visually distinguishable inside one shared layout.
+ *
+ * Interaction model (deliberately not "click = jump away"): hover shows a
+ * cheap, instant detail card (no network call -- everything in it is data
+ * this component already has); only that card's own "查看详情" button
+ * navigates to the full facts table. A plain click instead focuses the
+ * clicked node's immediate neighborhood -- everything else dims -- so you
+ * can explore the graph's structure without leaving it every time you touch
+ * a node. At a few thousand nodes, both node size and the zoom-triggered
+ * level-of-detail (labels only render once zoomed in past a threshold) scale
+ * with how many nodes are actually on screen, not a fixed absolute size --
+ * the whole point being that opening this with a large knowledge base still
+ * reads as a legible overview first, with detail reserved for zooming into
+ * a region, rather than a crowded mess at 100%.
  */
 
 type NodeKind = 'topic' | 'entity'
@@ -43,13 +58,46 @@ const DEFAULT_WIDTH = 900
 const DEFAULT_HEIGHT = 560
 const MIN_R = 16
 const R_SCALE = 6
-// Labels can be wider than their shape (up to 12 chars at 12px), so the
-// boundary clamp needs more headroom than the shape radius alone or a long
-// label peeks past the canvas edge even though its shape is fully inside.
-const LABEL_MARGIN = 30
+const MIN_SCALE = 0.05
+const MAX_SCALE = 12
+// Below this zoom level, labels/detail hide and nodes render as plain dots --
+// an "abstract point map" overview; zooming in past it reveals detail. This
+// is what makes "local zoom" actually mean something: at the overview level
+// nothing is readable by design, so zooming into a region is the only way to
+// read anything, rather than everything being crammed-but-technically-
+// visible at every zoom level.
+const LOD_ZOOM_THRESHOLD = 1.4
+// Node count at which density scaling kicks in at full strength (below this,
+// scale stays 1 -- a handful of nodes shouldn't shrink just because the
+// formula technically applies).
+const DENSITY_BASELINE = 40
 
-function radiusOf(factCount: number): number {
-  return MIN_R + Math.sqrt(factCount) * R_SCALE
+// Real data outgrew what this can render live: terrence's actual knowledge
+// base hit ~2200 topics+entities, and mounting that many <g>/<line> elements
+// PLUS binding d3-drag to each one PLUS running dozens of simulation ticks
+// (each touching every node/link's DOM attributes) is all synchronous,
+// blocking-the-main-thread work -- reported directly as "一进入就卡死"
+// (freezes on entry). The 305-node stress test this was tuned against never
+// caught this because it never tried an order of magnitude more nodes.
+// Hard-cap what actually gets simulated/rendered to the highest-fact-count
+// nodes; MemoryBrowser's own search box (which filters topics/entities
+// BEFORE they reach this component) is the existing way to reach a specific
+// node outside the top of this list -- a search hit is a small filtered set,
+// well under the cap, so it's never capped away.
+export const MAX_RENDERED_NODES = 400
+
+/** More nodes -> smaller nodes, so the graph's *default* (non-zoomed)
+ * legibility degrades gracefully instead of nodes overlapping into a solid
+ * mass once there are hundreds/thousands of them. Relative to node count,
+ * not a fixed absolute radius -- sqrt rather than linear so it doesn't
+ * shrink to illegible dust at the scale this app's real data reaches
+ * (~2000 entities -> ~0.14x, still distinguishable once you zoom in). */
+function densityScale(nodeCount: number): number {
+  return Math.min(1, Math.sqrt(DENSITY_BASELINE / Math.max(nodeCount, 1)))
+}
+
+function radiusOf(factCount: number, scale: number): number {
+  return (MIN_R + Math.sqrt(factCount) * R_SCALE) * scale
 }
 
 /** All descendants of `code` (itself included), via the parents links -- a
@@ -92,6 +140,10 @@ function closureFactCounts(topics: TopicNode[]): Map<string, number> {
   return out
 }
 
+function endpointId(x: string | GraphNode): string {
+  return typeof x === 'string' ? x : x.id
+}
+
 export default function KnowledgeGraph(
   { topics, entities, links, onSelect, width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT }: {
     topics: TopicNode[]
@@ -105,18 +157,22 @@ export default function KnowledgeGraph(
   const nodeEls = useRef(new Map<string, SVGGElement>())
   const linkEls = useRef(new Map<number, SVGLineElement>())
   const simulationRef = useRef<ReturnType<typeof forceSimulation<GraphNode>> | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const zoomGroupRef = useRef<SVGGElement>(null)
+  const zoomBehaviorRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [focusedId, setFocusedId] = useState<string | null>(null)
+  const [hover, setHover] = useState<{ node: GraphNode; x: number; y: number } | null>(null)
 
   const closureCounts = useMemo(() => closureFactCounts(topics), [topics])
-
-  const topicIds = useMemo(() => new Set(topics.map((t) => `topic:${t.code}`)), [topics])
-  const entityIds = useMemo(() => new Set(entities.map((e) => `entity:${e.code}`)), [entities])
 
   const nodesKey = topics.map((t) => t.code).join(',') + '|' + entities.map((e) => e.code).join(',')
 
   // Keep one mutable node/link array across renders -- d3-force writes x/y/vx/vy
   // onto these objects in place, so recreating them every render would throw
   // away the simulation's progress.
-  const nodes = useMemo<GraphNode[]>(() => [
+  const allNodes = useMemo<GraphNode[]>(() => [
     ...topics.map((t): GraphNode => ({
       id: `topic:${t.code}`, kind: 'topic', code: t.code, label: t.code,
       factCount: closureCounts.get(t.code) ?? t.fact_count, status: t.status, aliases: t.aliases,
@@ -128,6 +184,43 @@ export default function KnowledgeGraph(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [nodesKey])
 
+  // Cap by fact count (the richest/most-connected nodes are the most useful
+  // default view), not by insertion order -- .filter() below keeps the same
+  // object REFERENCES from allNodes (not clones), so d3-force mutations onto
+  // a node that's within the cap still land on the one object this component
+  // tracks for it everywhere else.
+  const nodes = useMemo<GraphNode[]>(() => {
+    if (allNodes.length <= MAX_RENDERED_NODES) return allNodes
+    const keep = new Set(
+      [...allNodes].sort((a, b) => b.factCount - a.factCount).slice(0, MAX_RENDERED_NODES).map((n) => n.id),
+    )
+    return allNodes.filter((n) => keep.has(n.id))
+  }, [allNodes])
+
+  const cappedCount = allNodes.length - nodes.length
+
+  // topicIds/entityIds now reflect the CAPPED set -- graphLinks/neighborMap
+  // below filter against these, so a link to a node that got capped away
+  // simply doesn't get built, instead of forceLink() choking on a link that
+  // references an id not present in `nodes`.
+  const topicIds = useMemo(() => new Set(nodes.filter((n) => n.kind === 'topic').map((n) => n.id)), [nodes])
+  const entityIds = useMemo(() => new Set(nodes.filter((n) => n.kind === 'entity').map((n) => n.id)), [nodes])
+
+  const sizeScale = useMemo(() => densityScale(nodes.length), [nodes.length])
+  // Start already in overview mode for a large graph instead of waiting for
+  // the first zoom event to flip it -- otherwise every label on a couple
+  // thousand nodes gets laid out and painted during the (now-shortened but
+  // still real) force-settling animation before anyone's even zoomed.
+  // useRef's initial value is fixed on first render only, so this can't live
+  // above `nodes` -- it needs nodes.length to compute its own starting value.
+  const startsInOverview = nodes.length > DENSITY_BASELINE
+  // Not React state on purpose -- this flips every animation frame during a
+  // zoom gesture, and re-rendering the whole node list (thousands of <g>s)
+  // that often would be the actual performance problem. A CSS class on the
+  // zoom group is the cheap way to do LOD: the stylesheet decides what
+  // "overview" looks like, this only decides when to flip the switch.
+  const lodOverviewRef = useRef(startsInOverview)
+
   // Polling (see MemoryBrowser) hands this component a brand-new `links`
   // array reference every few seconds even when the co-occurrence pairs
   // haven't actually changed -- keying the memo on the array reference would
@@ -136,10 +229,14 @@ export default function KnowledgeGraph(
   const linksKey = links.map((l) => `${l.topic}>${l.entity}`).join(',')
 
   const graphLinks = useMemo<GraphLink[]>(() => {
-    const topicParent: GraphLink[] = topics.flatMap((t) =>
+    // Both endpoints have to survive the MAX_RENDERED_NODES cap, not just
+    // the one each filter happened to check before -- a link whose target
+    // got capped away is a link forceLink() would choke on (it references a
+    // node id that isn't in `nodes`).
+    const topicParent: GraphLink[] = topics.filter((t) => topicIds.has(`topic:${t.code}`)).flatMap((t) =>
       t.parents.filter((p) => topicIds.has(`topic:${p}`))
         .map((p) => ({ source: `topic:${p}`, target: `topic:${t.code}`, kind: 'hierarchy' as const })))
-    const entityRel: GraphLink[] = entities.flatMap((e) =>
+    const entityRel: GraphLink[] = entities.filter((e) => entityIds.has(`entity:${e.code}`)).flatMap((e) =>
       e.relations.filter(([, other]) => entityIds.has(`entity:${other}`))
         .map(([, other]) => ({ source: `entity:${e.code}`, target: `entity:${other}`, kind: 'relation' as const })))
     const cooccur: GraphLink[] = links
@@ -149,31 +246,80 @@ export default function KnowledgeGraph(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesKey, linksKey])
 
+  // Adjacency built from the same source props as graphLinks, NOT from
+  // graphLinks itself -- forceLink() mutates that array's source/target from
+  // plain id strings into direct node-object references after the
+  // simulation's first tick, so reading it for neighbor lookups would be
+  // reading a moving target (string before the sim starts, object after).
+  const neighborMap = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    const add = (a: string, b: string) => {
+      if (!map.has(a)) map.set(a, new Set())
+      if (!map.has(b)) map.set(b, new Set())
+      map.get(a)!.add(b)
+      map.get(b)!.add(a)
+    }
+    for (const t of topics) if (topicIds.has(`topic:${t.code}`)) for (const p of t.parents) if (topicIds.has(`topic:${p}`)) add(`topic:${p}`, `topic:${t.code}`)
+    for (const e of entities) if (entityIds.has(`entity:${e.code}`)) for (const [, other] of e.relations) if (entityIds.has(`entity:${other}`)) add(`entity:${e.code}`, `entity:${other}`)
+    for (const l of links) if (topicIds.has(`topic:${l.topic}`) && entityIds.has(`entity:${l.entity}`)) add(`topic:${l.topic}`, `entity:${l.entity}`)
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodesKey, linksKey])
+
+  const focusSet = useMemo(() => {
+    if (!focusedId) return null
+    return new Set([focusedId, ...(neighborMap.get(focusedId) ?? [])])
+  }, [focusedId, neighborMap])
+
   useEffect(() => {
     if (nodes.length === 0) return
 
+    // Charge/link-distance do NOT shrink with node count, only radius does
+    // (sizeScale) -- that was the actual bug behind "黑压压的一片": the old
+    // code scaled repulsion DOWN as density went up, which is backwards
+    // (more nodes need more room to separate, not less), and on top of that
+    // every node was hard-clamped into the visible width/height box every
+    // tick regardless of zoom -- so 2000 nodes were being forced to
+    // physically overlap inside a fixed ~900x560px area no matter how far
+    // you zoomed out, since zooming only scales the *view* of that already-
+    // saturated box, it can't un-overlap nodes that were squeezed together
+    // in simulation space to begin with. Removing the clamp lets the
+    // simulation spread across however much space it actually needs;
+    // fitToView() (called once after the layout settles, see below) is what
+    // brings that space into frame, not a boundary constraint.
+    // Default alphaDecay (~0.0228) takes ~300 ticks to settle -- each tick
+    // touches every node's DOM transform plus every link's x1/y1/x2/y2, so
+    // at a couple thousand nodes that's a genuinely long, visibly janky
+    // settling animation, not just a few frames. Decaying faster shortens
+    // that window a lot; the graph still spreads out fine since sizeScale
+    // already gives more nodes more collision radius to push apart with.
     const simulation = forceSimulation<GraphNode>(nodes)
+      .alphaDecay(0.05)
+      .alphaMin(0.01)
       .force('link', forceLink<GraphNode, SimLink>(graphLinks as SimLink[]).id((d) => d.id)
-        .distance((l) => (l.kind === 'cooccur' ? 70 : 90)))
-      .force('charge', forceManyBody().strength(-260))
+        .distance((l) => (l.kind === 'cooccur' ? 60 : 80)))
+      .force('charge', forceManyBody().strength(-140))
       .force('center', forceCenter(width / 2, height / 2))
-      .force('collide', forceCollide<GraphNode>((d) => radiusOf(d.factCount) + 6))
+      .force('collide', forceCollide<GraphNode>((d) => radiusOf(d.factCount, sizeScale) + 4))
     simulationRef.current = simulation
 
+    let settleFitDone = false
     simulation.on('tick', () => {
       for (const n of nodes) {
-        // Charge repulsion between disjoint clusters has nothing pulling it
-        // back once a cluster drifts near an edge -- clamp in place (not
-        // just at render time) so the simulation's own state stays
-        // consistent with what's drawn, instead of fighting a display-only
-        // clamp every tick.
-        const r = radiusOf(n.factCount) + LABEL_MARGIN
-        if (n.x !== undefined) n.x = Math.max(r, Math.min(width - r, n.x))
-        if (n.y !== undefined) n.y = Math.max(r, Math.min(height - r, n.y))
         const el = nodeEls.current.get(n.id)
         if (el && n.x !== undefined && n.y !== undefined) {
           el.setAttribute('transform', `translate(${n.x}, ${n.y})`)
         }
+      }
+      // First time alpha decays enough to call the layout "settled", frame
+      // whatever extent it actually spread out to -- this is what replaces
+      // the old fixed-box clamp as "how the graph fits on screen at first
+      // paint" (see fitTo below; deferred so it reads current x/y after the
+      // simulation has had a moment to spread, not the initial random seed
+      // positions from tick 0).
+      if (!settleFitDone && simulation.alpha() < 0.25) {
+        settleFitDone = true
+        fitTo()
       }
       graphLinks.forEach((l, i) => {
         const el = linkEls.current.get(i)
@@ -212,10 +358,10 @@ export default function KnowledgeGraph(
 
     return () => { simulation.stop() }
     // width/height as deps: entering/leaving fullscreen (or a window resize
-    // while in it) changes the canvas size, and the simulation's center/
-    // boundary-clamp forces close over whatever width/height they were built
-    // with -- they need a fresh simulation to pick up the new dimensions.
-  }, [nodes, graphLinks, width, height])
+    // while in it) changes the canvas size, and forceCenter closes over
+    // whatever width/height it was built with -- needs a fresh simulation to
+    // recenter on the new dimensions.
+  }, [nodes, graphLinks, width, height, sizeScale])
 
   // Polling (see MemoryBrowser) refreshes topics/entities every few seconds
   // while a background ingest is adding facts. When the *set* of nodes is
@@ -237,24 +383,183 @@ export default function KnowledgeGraph(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, topics, entities])
 
+  // Pan/zoom, set up once and left alone across data refreshes/polling --
+  // rebuilding it on every nodes/links change would reset the user's current
+  // view (exactly the "graph gets messy at scale" complaint this exists to
+  // fix). Scroll-wheel zoom, drag-to-pan, and double-click-to-zoom-in are
+  // d3-zoom's defaults; per-node drag (above) coexists with it out of the
+  // box because d3-drag stops the originating pointer event from also
+  // reaching the svg's pan handler -- the standard, well-tested d3-force +
+  // d3-zoom + d3-drag combination, not something bolted on here.
+  // BUG THIS FIXES: `nodes.length === 0` on the very first render (MemoryBrowser
+  // starts topics/entities as [] and fetches them async) makes the component
+  // return the "还没有主题或实体" placeholder instead of the <svg> -- so on
+  // that first render svgRef.current is null. With a `[]`-deps effect, that
+  // was the ONE AND ONLY time this ever ran: it bailed out on the null ref
+  // and, because the deps array never changes, never got a second chance
+  // once real data arrived and the <svg> actually mounted. zoomBehaviorRef
+  // stayed null forever -- wheel/drag never attached to the real element,
+  // and fitTo()'s own null-check made it silently no-op on every call. Keying
+  // on `nodes.length > 0` instead means the effect body actually runs (and
+  // this time succeeds) the first time the ref is real, then never again --
+  // still "set up once", just once-when-actually-possible instead of
+  // once-on-mount-regardless.
+  const hasNodes = nodes.length > 0
+  useEffect(() => {
+    if (!svgRef.current || !zoomGroupRef.current) return
+    const zoomGroup = zoomGroupRef.current
+    // "zoom-in/out 卡顿" was reported even after the settling-time fixes
+    // above -- because those addressed how long the *simulation* is
+    // expensive, not that every continuous wheel/drag frame during an
+    // ALREADY-settled interactive zoom still repaints every label and line
+    // at the current LOD level. Text layout/painting is the expensive part
+    // of an SVG repaint at this node count, more than the transform itself.
+    // While a gesture is actively in progress, force overview-level
+    // rendering (no labels, no lines) regardless of the zoom threshold, and
+    // only restore real detail a beat after the gesture stops.
+    let interactingTimer: ReturnType<typeof setTimeout> | null = null
+    const zoom = d3zoom<SVGSVGElement, unknown>()
+      .scaleExtent([MIN_SCALE, MAX_SCALE])
+      .on('zoom', (event) => {
+        zoomGroup.setAttribute('transform', event.transform.toString())
+        const overview = event.transform.k < LOD_ZOOM_THRESHOLD
+        if (overview !== lodOverviewRef.current) {
+          lodOverviewRef.current = overview
+          zoomGroup.classList.toggle('lod-overview', overview)
+        }
+        zoomGroup.classList.add('kg-interacting')
+        if (interactingTimer) clearTimeout(interactingTimer)
+        interactingTimer = setTimeout(() => zoomGroup.classList.remove('kg-interacting'), 150)
+      })
+    zoomBehaviorRef.current = zoom
+    d3select(svgRef.current).call(zoom)
+    // Initial framing comes from fitTo() once the simulation settles (see
+    // the tick handler above), not a guessed scale here -- it frames
+    // whatever extent the graph actually spread out to, which a formula
+    // based only on node count can't know in advance.
+    return () => {
+      if (interactingTimer) clearTimeout(interactingTimer)
+      d3select(svgRef.current!).on('.zoom', null)
+    }
+  }, [hasNodes])
+
+  function resetZoom() {
+    if (!svgRef.current || !zoomBehaviorRef.current) return
+    d3select(svgRef.current).transition().duration(300)
+      .call(zoomBehaviorRef.current.transform, zoomIdentity)
+  }
+
+  /** Frames a set of node ids (defaults to every node) -- fitting to content
+   * rather than to the canvas box is the whole point, whether that's "all
+   * nodes" (适应窗口 button) or a focused neighborhood after a click.
+   * `centerOn`, when given, pins that specific node's own coordinate to the
+   * middle of the screen -- otherwise centering falls back to the bounding
+   * box's centroid, which is generally NOT where the clicked node sits (its
+   * neighbors are rarely distributed evenly around it), and "点击的那个节点
+   * 处于中间" means the clicked node itself, not the average of its cluster. */
+  function fitTo(ids?: Set<string>, centerOn?: GraphNode) {
+    if (!svgRef.current || !zoomBehaviorRef.current || nodes.length === 0) return
+    const targets = ids ? nodes.filter((n) => ids.has(n.id)) : nodes
+    if (targets.length === 0) return
+    const xs = targets.map((n) => n.x ?? width / 2)
+    const ys = targets.map((n) => n.y ?? height / 2)
+    const pad = 80
+    const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad
+    const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad
+    const boxW = Math.max(1, x1 - x0), boxH = Math.max(1, y1 - y0)
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(width / boxW, height / boxH)))
+    const cx = centerOn?.x ?? (x0 + x1) / 2
+    const cy = centerOn?.y ?? (y0 + y1) / 2
+    const transform = zoomIdentity
+      .translate(width / 2, height / 2)
+      .scale(scale)
+      .translate(-cx, -cy)
+    d3select(svgRef.current).transition().duration(400)
+      .call(zoomBehaviorRef.current.transform, transform)
+  }
+
+  /** Click focuses this node's immediate neighborhood: everything else is
+   * unmounted (not just dimmed), and the view zooms so the clicked node
+   * itself sits at the center of the screen with its neighbors arranged
+   * around it -- not navigating away, staying in the graph is the point;
+   * navigating to the facts table is now only the hover card's explicit
+   * "查看详情" action. Clicking a different node while already focused
+   * re-focuses onto that node's own neighborhood (drill further in); the
+   * only way back to the full graph is the "恢复" button, not a second click
+   * on the same node or on empty canvas -- deliberate, so the focused view
+   * doesn't get accidentally cleared while exploring within it. */
+  function handleNodeClick(n: GraphNode) {
+    // A node with zero neighbors (isolated, or its only neighbors got
+    // capped out of MAX_RENDERED_NODES) used to make a click do literally
+    // nothing -- reported directly as "topic点不了". Focusing on just
+    // itself still does something visible (singles it out, centers it),
+    // instead of the click being silently swallowed.
+    const neighbors = neighborMap.get(n.id) ?? new Set<string>()
+    setFocusedId(n.id)
+    fitTo(new Set([n.id, ...neighbors]), n)
+  }
+
+  function clearFocus() {
+    setFocusedId(null)
+    fitTo()
+  }
+
+  function handleNodeEnter(n: GraphNode, e: ReactMouseEvent) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    const x = e.clientX, y = e.clientY
+    hoverTimer.current = setTimeout(() => setHover({ node: n, x, y }), 150)
+  }
+  function handleNodeLeave() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => setHover(null), 200)
+  }
+  function keepHoverOpen() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+  }
+
   if (nodes.length === 0) return <p className="muted">还没有主题或实体——先入库一些内容。</p>
 
   return (
-    <div style={{ overflow: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
-      <div className="row" style={{ padding: '8px 10px 0', fontSize: 12 }}>
-        <span className="muted">
-          <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-                         border: '1.5px solid var(--accent)', marginRight: 4, verticalAlign: -1 }} />
-          主题
-        </span>
-        <span className="muted">
-          <span style={{ display: 'inline-block', width: 10, height: 10,
-                         border: '1.5px solid var(--ins)', marginRight: 4, verticalAlign: -1 }} />
-          实体
-        </span>
-        <span className="muted">虚线 = 共同出现在同一条事实里</span>
+    // overflow: hidden, not auto -- panning is now d3-zoom's job (drag the
+    // canvas), not the browser's native scrollbars; both at once would let
+    // two independent "where am I looking" mechanisms fight each other.
+    <div style={{ position: 'relative', overflow: 'hidden', border: '1px solid var(--line)', borderRadius: 8 }}>
+      <div className="row" style={{ padding: '8px 10px 0', fontSize: 12, justifyContent: 'space-between' }}>
+        <div className="row">
+          <span className="muted">
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                           border: '1.5px solid var(--accent)', marginRight: 4, verticalAlign: -1 }} />
+            主题
+          </span>
+          <span className="muted">
+            <span style={{ display: 'inline-block', width: 10, height: 10,
+                           border: '1.5px solid var(--ins)', marginRight: 4, verticalAlign: -1 }} />
+            实体
+          </span>
+          <span className="muted">虚线 = 共同出现在同一条事实里</span>
+          {focusedId && <span className="badge ok">已聚焦：{focusedId.split(':')[1]} 及其关联节点</span>}
+        </div>
+        <div className="row">
+          {focusedId
+            ? <button className="primary" onClick={clearFocus} title="退出聚焦，显示全部节点">恢复</button>
+            : (
+              <>
+                <button onClick={() => fitTo()} title="缩放到刚好容纳所有节点">适应窗口</button>
+                <button onClick={resetZoom} title="回到 100% 缩放，原点居中">重置视图</button>
+              </>
+            )}
+        </div>
       </div>
-      <svg width={width} height={height} style={{ display: 'block' }}>
+      <p className="muted" style={{ padding: '4px 10px 0', fontSize: 11, margin: 0 }}>
+        节点数量越多，初始点位越小越简化——滚轮缩放到某个区域才会显示标签和细节。
+        鼠标悬停看简介，点节点聚焦它和它的关联节点（其余全部隐藏），点"恢复"回到全部节点；
+        悬停卡片里的"查看详情"才会跳到事实表。
+        {cappedCount > 0 && (
+          <> 当前只显示按事实数量排序的前 {nodes.length} 个节点（共 {allNodes.length} 个）——
+          其余 {cappedCount} 个可以用上面的搜索框按名字找到。</>
+        )}
+      </p>
+      <svg ref={svgRef} width={width} height={height} style={{ display: 'block', cursor: 'grab' }}>
         <defs>
           <marker id="kg-arrow" viewBox="0 0 8 8" refX="7" refY="4"
                   markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -266,37 +571,79 @@ export default function KnowledgeGraph(
           </marker>
         </defs>
 
-        {graphLinks.map((l, i) => (
-          <line
-            key={i}
-            ref={(el) => { if (el) linkEls.current.set(i, el); else linkEls.current.delete(i) }}
-            stroke={l.kind === 'relation' ? 'var(--ins)' : 'var(--muted)'}
-            strokeWidth={1.4}
-            strokeDasharray={l.kind === 'cooccur' ? '3 3' : undefined}
-            markerEnd={l.kind === 'cooccur' ? undefined : `url(#${l.kind === 'relation' ? 'kg-arrow-rel' : 'kg-arrow'})`}
-          />
-        ))}
+        <g ref={zoomGroupRef} className={'kg-zoom-group' + (startsInOverview ? ' lod-overview' : '')}>
+
+        {graphLinks.map((l, i) => {
+          // Focused: unmount non-neighborhood links entirely rather than
+          // dim them -- "别的都隐藏掉", not "faded but still cluttering the
+          // view". The tick handler's ref lookups already tolerate a
+          // missing element (see the `if (el && ...)` guard above), so
+          // skipping the element here is safe -- the simulation keeps
+          // running for hidden nodes/links, they just don't render.
+          if (focusSet && !(focusSet.has(endpointId(l.source)) && focusSet.has(endpointId(l.target)))) return null
+          return (
+            <line
+              key={i}
+              ref={(el) => {
+                if (!el) { linkEls.current.delete(i); return }
+                linkEls.current.set(i, el)
+                // A remounted link (focus cleared, or a different node
+                // clicked) is a BRAND NEW DOM element with no x1/y1/x2/y2 --
+                // if the simulation has already settled (alpha < alphaMin,
+                // tick stopped firing), nothing else will ever position it,
+                // and it renders at (0,0). Position it immediately from
+                // whatever x/y its endpoints already have (forceLink()
+                // resolves l.source/target from ids into the actual node
+                // objects after the first tick, so this reads live data,
+                // not stale/default).
+                const source = l.source as unknown as GraphNode
+                const target = l.target as unknown as GraphNode
+                if (source?.x !== undefined && target?.x !== undefined) {
+                  el.setAttribute('x1', String(source.x))
+                  el.setAttribute('y1', String(source.y))
+                  el.setAttribute('x2', String(target.x))
+                  el.setAttribute('y2', String(target.y))
+                }
+              }}
+              stroke={l.kind === 'relation' ? 'var(--ins)' : 'var(--muted)'}
+              strokeWidth={1.4}
+              strokeDasharray={l.kind === 'cooccur' ? '3 3' : undefined}
+              markerEnd={l.kind === 'cooccur' ? undefined : `url(#${l.kind === 'relation' ? 'kg-arrow-rel' : 'kg-arrow'})`}
+            />
+          )
+        })}
 
         {nodes.map((n) => {
+          if (focusSet && !focusSet.has(n.id)) return null
           const deprecated = n.status === 'deprecated'
           const candidate = n.status === 'candidate'
           const empty = n.factCount === 0
-          const r = radiusOf(n.factCount)
+          const r = radiusOf(n.factCount, sizeScale)
           const label = n.label.length > 12 ? n.label.slice(0, 11) + '…' : n.label
           const color = n.kind === 'topic' ? 'var(--accent)' : 'var(--ins)'
           return (
             <g
               key={n.id}
-              ref={(el) => { if (el) nodeEls.current.set(n.id, el); else nodeEls.current.delete(n.id) }}
+              ref={(el) => {
+                if (!el) { nodeEls.current.delete(n.id); return }
+                nodeEls.current.set(n.id, el)
+                // Same fix as the <line> ref below: a remounted node (focus
+                // cleared/changed) has no transform until the next tick, and
+                // the simulation may have already settled and stopped
+                // ticking -- reported directly as "点击恢复之后，恢复不了，
+                // 显示的有问题" (nodes piling up at the origin instead of
+                // their actual laid-out positions). n.x/n.y persist on the
+                // node object across mount/unmount since d3-force mutates
+                // the object in place, not the DOM.
+                if (n.x !== undefined && n.y !== undefined) {
+                  el.setAttribute('transform', `translate(${n.x}, ${n.y})`)
+                }
+              }}
               style={{ cursor: 'pointer' }}
-              onClick={() => onSelect(n.kind, n.code)}
+              onClick={(e) => { e.stopPropagation(); handleNodeClick(n) }}
+              onMouseEnter={(e) => handleNodeEnter(n, e)}
+              onMouseLeave={handleNodeLeave}
             >
-              <title>
-                {n.kind === 'topic' ? '主题' : '实体'}：{n.label} · {n.factCount} 条事实
-                {n.aliases.length ? ` · 别名：${n.aliases.join('、')}` : ''}
-                {n.kind === 'topic' ? ` · ${n.status}` : ''}
-                {empty ? ' · 还没有内容' : ''}
-              </title>
               {n.kind === 'topic' ? (
                 <circle
                   r={r}
@@ -320,7 +667,47 @@ export default function KnowledgeGraph(
             </g>
           )
         })}
+
+        </g>
       </svg>
+
+      {hover && (
+        <div
+          className="card kg-hover-card"
+          style={{
+            position: 'fixed',
+            left: Math.min(hover.x + 14, window.innerWidth - 300),
+            top: Math.min(hover.y + 14, window.innerHeight - 160),
+            width: 260, zIndex: 50,
+          }}
+          onMouseEnter={keepHoverOpen}
+          onMouseLeave={handleNodeLeave}
+        >
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <strong style={{ fontSize: 13 }}>{hover.node.label}</strong>
+            <span className="badge">{hover.node.kind === 'topic' ? '主题' : '实体'}</span>
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+            {hover.node.factCount} 条事实
+            {hover.node.kind === 'topic' && ` · ${hover.node.status}`}
+          </p>
+          {hover.node.aliases.length > 0 && (
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+              别名：{hover.node.aliases.join('、')}
+            </p>
+          )}
+          {hover.node.factCount === 0 ? (
+            <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>还没有内容</p>
+          ) : (
+            <button
+              style={{ marginTop: 8, width: '100%' }}
+              onClick={() => { onSelect(hover.node.kind, hover.node.code); setHover(null) }}
+            >
+              查看详情（{hover.node.factCount} 条事实）→
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
