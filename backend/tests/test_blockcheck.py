@@ -157,3 +157,39 @@ def test_编造的对照值被抓住():
                      '{"kind":"bar","title":"t","labels":["AI FWI","传统"],'
                      '"values":[10,1],"unit":"倍"}', ctx)
     assert "找不到出处" in out and "```mermaid" not in out
+
+
+def test_best_of_的排序规则():
+    """跑满轮数时交付最好的一轮。折叠规则：先比达标维度数，再比平均分。
+    这个规则必须是确定性的——用它做取舍，不能再打一次模型。"""
+    def rank(levels):
+        return (sum(1 for v in levels if v >= 2), sum(levels) / len(levels))
+
+    # 达标维度多的赢，哪怕平均分一样
+    assert rank([2, 2, 0]) > rank([2, 1, 1])
+    # 达标数相同就比均分
+    assert rank([2, 1, 1]) > rank([2, 1, 0])
+    # complete（全达标）一定是最高的
+    assert rank([2, 2, 2]) > rank([2, 2, 1])
+    # 实测撞到的那次：第 2 轮两张干净的图 vs 第 3 轮多一张单值图
+    assert rank([2, 2, 2, 1]) > rank([2, 2, 1, 1])
+
+
+def test_检查命中时构造的评价是合法的():
+    """确定性检查排在打分前面，命中就跳过那次 LLM 调用、直接构造一份不合格
+    的评价。这份评价要能被下游正常用：算 best-of 的 rank、生成 steer。"""
+    from writer_harness import DimensionScore, Evaluation
+
+    ev = Evaluation(scores={"has_charts": DimensionScore(level=0, note="没有真的画图")},
+                    status="continue", weakest="has_charts")
+    # 下游 ①：best-of 的 rank 算得出来，而且一定输给正常轮次
+    def rank(e):
+        return (sum(1 for s in e.scores.values() if s.level >= 2),
+                sum(s.level for s in e.scores.values()) / max(1, len(e.scores)))
+    ok = Evaluation(scores={f"d{i}": DimensionScore(level=2, note="") for i in range(5)},
+                    status="complete")
+    assert rank(ev) < rank(ok), "跳过打分的那一轮不该被选成 best"
+    # 下游 ②：steer 拿得到诊断原文
+    assert ev.scores[ev.weakest].note == "没有真的画图"
+    # 下游 ③：状态是 continue，循环会继续
+    assert ev.status == "continue"

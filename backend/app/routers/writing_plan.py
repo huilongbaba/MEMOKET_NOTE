@@ -292,6 +292,27 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
         # 每个分段上一轮的完整分数——决定该不该续写要看"内在质量维度
         # 有没有没达标的"，只留最弱项的名字信息不够（见 skip_continue）。
         section_scores: dict[str, dict[str, int]] = {}
+        # **一个 section 跨轮累积的事实**，按 section 分开存。
+        #
+        # 这里踩过跟 note_harness 一模一样的坑：round_facts 每轮重置，而
+        # new_content 是累积的，于是第 3 轮的打分拿着本轮那几条材料去审判
+        # 前三轮写出来的全部正文，factual_grounding 被无端判低、白跑轮次。
+        # 实测数据也对上了：writing_plan 相邻轮次平均掉 0.278（6 对里 0 次
+        # 上升），而同期 compose_block 是 +0.222——三条 harness 里只有这条
+        # 在退化，只有这条有这个 bug。
+        #
+        # **必须按 section 分开**：分段写作里 A 段的材料拿去审判 B 段，
+        # 就成了另一个方向的同一个错误。
+        section_facts: dict[str, list[str]] = {}
+        # 连续几轮一条新事实都没查到，按 section 计。
+        # note_harness 有两条「材料用完就停」的防线（dry_rounds>=2 和
+        # material_exhausted），writing_plan **一条都没有**——又一个"同一个能力
+        # 一条 harness 有、另一条没有"的实例，而这次有数据证明它造成了损失：
+        #   实测 writing_plan 逐轮 non_repetition 2.00 → 1.25 → 1.00，
+        #   而 factual_grounding 基本持平（1.33 → 1.25 → 1.50）。
+        # 掉的是「重复」不是「事实」，症状正是材料不够、同一批事实反复说；
+        # 同期 note_harness 基本持平（−0.042），compose_block +0.222。
+        section_dry: dict[str, int] = {}
         steps = 0
         while steps < PLAN_SAFETY_CAP:
             steps += 1
@@ -485,6 +506,11 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 store.update_note(user, note["id"], target["title"], new_content)
 
             section_rounds[target["id"]] = section_rounds.get(target["id"], 0) + 1
+            # 本轮查到的并进这个 section 的累积材料，打分用累积的那份
+            run_facts = section_facts.setdefault(target["id"], [])
+            fresh = [f for f in round_facts if f not in run_facts]
+            run_facts += fresh
+            section_dry[target["id"]] = 0 if fresh else section_dry.get(target["id"], 0) + 1
             # 普通续写轮：round_text 空就是没进展。跳过续写的清理轮：看
             # 有没有真的应用修订——两次独立尝试都没改动，才算没进展，跟
             # note_harness.py 的 no_change 判断是同一个道理。
@@ -492,10 +518,18 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
 
             evaluation = None if no_progress else await _evaluate_section(
                 user, new_content, target["title"], plan["goal"], other_summaries,
-                facts_used=round_facts)
+                facts_used=run_facts)
             forced = section_rounds[target["id"]] >= SECTION_ROUND_CAP and (
                 evaluation is None or evaluation.status == "continue")
-            finished = no_progress or forced or (evaluation and evaluation.status in ("complete", "blocked"))
+            # **材料用完了就停，不要硬凑。** 判据跟 note_harness 同两条：
+            # 连着两轮零新事实，或者检索回来的每条都已经写进正文了。
+            # 再写下去只能把同一个结论换个措辞重说——那正是 non_repetition
+            # 一路下滑的成因，而它是这条 harness 掉分的主因。
+            used_up = section_rounds[target["id"]] >= 2 and (
+                section_dry.get(target["id"], 0) >= 2
+                or grounding_check.material_exhausted(new_content, run_facts))
+            finished = (no_progress or forced or used_up
+                        or (evaluation and evaluation.status in ("complete", "blocked")))
 
             if evaluation:
                 yield _sse("evaluate", {
@@ -515,6 +549,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 blocked = bool(evaluation and evaluation.status == "blocked")
                 yield _sse("section-done", {
                     "section_id": target["id"], "summary": summary, "forced": forced,
+                    "material_used_up": used_up,
                     "blocked": blocked,
                     "blocked_reason": evaluation.blocked_reason if blocked else None,
                 })

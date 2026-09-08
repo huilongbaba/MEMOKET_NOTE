@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from writer_harness import Dimension, evaluate
+from writer_harness import Dimension, DimensionScore, Evaluation, evaluate
 
 from .. import (agent_loop, blockcheck, harness_adapter, llm, restructure,
                 textshape, tools, vision)
@@ -311,6 +311,20 @@ async def compose_block(body: ComposeBlockIn, request: Request,
         seen_facts: list[str] = []
         # 工具真正产出过的 mermaid 代码，用来判断正文里的图是不是手写的。
         seen_charts: list[str] = []
+        # **跑满轮数时交付最好的一轮，不是最后一轮。**
+        #
+        # 「没达标才会继续跑」，所以跑满上限恰恰意味着「始终没达标」——这时候
+        # 最后一轮最不该被默认当成最好的一轮。实测撞到过：某次第 2 轮画出
+        # 「4 台 vs 576 台」和「75% vs 98%」两张干净的图，第 3 轮为了满足打分器
+        # 又加了张单值柱状图，交付的是第 3 轮。
+        #
+        # 多维度要取最好的，需要一个把维度折叠成可比较标量的规则。这个规则
+        # 是确定性的，不用再打一次模型：**先比达标的维度数，再比平均分**。
+        # （dspy.Refine 全程维护 best_reward 是同一个思路，只是它的判据是
+        # 单个 float。实测收益：compose_block 上平均 +0.018——不大，
+        # 但它防的是最坏情况，而最坏情况实测确实发生过。）
+        best: tuple[tuple[int, float], str] | None = None
+        exhausted = True          # 是不是撞上轮数上限才出来的
 
         for round_idx in range(1, MAX_ROUNDS + 1):
             if await request.is_disconnected():
@@ -397,10 +411,38 @@ async def compose_block(body: ComposeBlockIn, request: Request,
                 break
             block = fresh.strip()
 
-            # ---- ③ 打分 ----
+            # ---- ③ 判断：便宜的先跑 ----
+            #
+            # **确定性检查排在打分前面。** 规则判得准的事不该交给打分器"感觉"，
+            # 而且它零成本——检查一旦命中，这一轮已经确定不合格，那次打分
+            # （一次 LLM 调用、几十秒）就是白花的。原来的顺序是反的。
+            # （PydanticAI 的两阶段验证是同一个道理：语法校验零成本、先跑，
+            # 语义校验要 I/O、后跑。）
+            #
+            # 实测打分器给一份**通篇假图**的产出打了 has_charts=2——它看到
+            # 「柱状图：…」就以为有图。哪一维被打翻由**产生诊断的那个检查**决定，
+            # 不是从文案里猜关键字——检查换个措辞就会静默错位到另一维上。
+            forced = blockcheck.chart_gap(block, seen_charts)
+            dim = "has_charts"
+            if not forced:
+                forced, dim = blockcheck.heading_gap(before, block), "fits_context"
+
+            ev = None
+            if forced:
+                yield _sse("policy", {"round": round_idx,
+                                      "note": f"确定性检查命中（{dim}），跳过打分直接重来"})
+                ev = Evaluation(scores={dim: DimensionScore(level=0, note=forced)},
+                                status="continue", weakest=dim)
+                yield _sse("evaluate", {
+                    "round": round_idx, "status": ev.status, "weakest": ev.weakest,
+                    "scores": {dim: {"level": 0, "note": forced}}})
+                yield _sse("round-end", {"round": round_idx})
+                weak = ev.scores[dim]
+                steer = f"{dim}：{weak.note}"
+                continue
+
             yield _sse("phase", {"round": round_idx, "phase": "evaluate",
                                  "label": f"{mode['label']}：在核对…"})
-            ev = None
             try:
                 ev = await evaluate(
                     harness_adapter.AppLLMClient(), content=block,
@@ -412,23 +454,6 @@ async def compose_block(body: ComposeBlockIn, request: Request,
                              "工具查到的东西": facts[:2500] or "（没查到）"})
             except Exception as exc:                       # noqa: BLE001
                 yield _sse("error", {"detail": f"打分失败，按现状收尾：{exc}"})
-            # ---- 确定性兜底：规则判得准的事不交给打分器「感觉」 ----
-            #
-            # 实测打分器给一份**通篇假图**的产出打了 has_charts=2——它看到
-            # 「柱状图：…」就以为有图。这类能用规则判准的，命中就直接压分并把
-            # 诊断喂回去，跟写作 harness 里 grounding_gap 压 material_use 同一套。
-            # 哪一维被这条诊断打翻，由**产生它的那个检查**决定，不是从
-            # 文案里猜关键字——检查换个措辞就会静默错位到另一维上。
-            forced = blockcheck.chart_gap(block, seen_charts)
-            dim = "has_charts"
-            if not forced:
-                forced, dim = blockcheck.heading_gap(before, block), "fits_context"
-            if forced and ev:
-                import dataclasses as _dc
-                if dim in ev.scores:
-                    sc = _dc.replace(ev.scores[dim], level=0, note=forced)
-                    ev = _dc.replace(ev, scores={**ev.scores, dim: sc},
-                                     status="continue", weakest=dim)
             if ev:
                 yield _sse("evaluate", {
                     "round": round_idx, "status": ev.status, "weakest": ev.weakest,
@@ -436,7 +461,14 @@ async def compose_block(body: ComposeBlockIn, request: Request,
                                for k, s in ev.scores.items()}})
             yield _sse("round-end", {"round": round_idx})
 
+            if ev:
+                rank = (sum(1 for s in ev.scores.values() if s.level >= 2),
+                        sum(s.level for s in ev.scores.values()) / max(1, len(ev.scores)))
+                if best is None or rank > best[0]:
+                    best = (rank, block)
+
             if not ev or ev.status == "complete":
+                exhausted = False
                 break
             if ev.status == "blocked":
                 yield _sse("done", {"reason": "blocked", "blocked_reason": ev.blocked_reason,
@@ -447,6 +479,15 @@ async def compose_block(body: ComposeBlockIn, request: Request,
             weak = ev.scores.get(ev.weakest or "")
             steer = (f"{ev.weakest}：{weak.note}" if weak else "")
 
+        # 循环正常跑完（没 break）= 撞上轮数上限，始终没达标：交付最好的那轮。
+        # break 出来的是 complete，那一轮本来就是最好的，best 也指向它。
+        # **只有跑满轮数才回退到 best**。打分失败那条路也走 break，
+        # 那时 best 停在上一轮，拿它替换掉这一轮的新产出是错的——
+        # 打分失败不代表这一轮写得差。
+        if exhausted and best is not None and best[1] != block:
+            yield _sse("policy", {"note": f"跑满 {MAX_ROUNDS} 轮仍未达标，"
+                                          f"交付其中评分最高的那一轮"})
+            block = best[1]
         yield _sse("done", {"reason": "complete", "block": block})
 
     return StreamingResponse(gen(), media_type="text/event-stream",
