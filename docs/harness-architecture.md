@@ -8,6 +8,81 @@
 
 ---
 
+## 系统总览
+
+三条链路：**写作**（编辑器 → harness 闭环 → 回写正文）、**摄入**（录音/导入/上传
+→ 抽取 → 知识库）、**知识库**（浏览、主题地图、时间线）。写作那条是这篇文档的
+主题，另外两条是它的燃料。
+
+```mermaid
+flowchart TB
+    subgraph FE["前端　React + CodeMirror 6"]
+        direction LR
+        EDT["编辑器：14 个 CM6 扩展<br/>slashMenu · roundDiff · runningBlocks · tablePreview<br/>format · mermaid · recallCompletion · imagePaste"]
+        PANEL["22 个面板<br/>Skeleton · Revision · WritingPlan · TapProvenance<br/>MemoryBrowser · KnowledgeGraph · Digest · Skills"]
+        REC["录音 · 上传 · 从别的笔记应用导入"]
+    end
+
+    subgraph API["FastAPI　13 个 router"]
+        direction LR
+        H1["写作<br/>note_harness · writing_plan · compose · compose_block"]
+        H2["知识库<br/>ingest · import_sources · memory"]
+        H3["资源与配置<br/>notes · folders · assets · skills · profile · settings"]
+    end
+
+    subgraph CAP["能力层"]
+        direction LR
+        HAR["harness 闭环<br/>evaluate 打分 → 三态 → 最弱维回下一轮"]
+        AGT["agent 运行时<br/>agent_loop：工具循环 · 预算 · ToolTrace"]
+        PURE["确定性层，零 LLM<br/>tabular · blocks · blockcheck · textshape<br/>restructure · outline · grounding_check"]
+        IMP["摄入与抽取<br/>importers · extract · asr · vision"]
+    end
+
+    subgraph TOOL["工具池　17 个工具，按 group 授权"]
+        direction LR
+        TM["memory ×7<br/>search_memory · list_topics · list_entities<br/>filter_facts · facts_in_range · fact_sources<br/>search_session_context"]
+        TD["data ×5 · chart ×4 · image ×1<br/>numbers_near_cursor · aggregate_table · correlate_columns<br/>chart_from_text · render_chart · render_table · render_image"]
+    end
+
+    subgraph INF["数据与模型"]
+        direction LR
+        KITE[("KITE 知识库<br/>memoket_kite")]
+        SQL[("sqlite<br/>笔记 · 计划 · 技能 · run 历史")]
+        M1["muse-glimmer-30b 本地<br/>写作 · 打分 · 抽取 · 看图"]
+        M2["gpt-image-2<br/>文生图"]
+    end
+
+    EDT --> H1
+    PANEL --> H1
+    PANEL --> H2
+    REC --> H2
+    H1 --> HAR
+    H1 --> AGT
+    H2 --> IMP
+    H3 --> SQL
+    HAR --> PURE
+    HAR --> SQL
+    AGT --> TOOL
+    TM --> KITE
+    TD --> PURE
+    IMP --> KITE
+    HAR --> M1
+    AGT --> M1
+    IMP --> M1
+    TD --> M2
+```
+
+看这张图要抓住的三件事：
+
+- **`PURE` 那一格没有任何出边。** 九个模块两千行，只 import 标准库。数字由它算、
+  mermaid 由它拼、缺陷由它判——凡是规则判得准的，都不经过模型。
+- **模型只有两个，且写作/打分/抽取/看图共用同一个本地模型。** 打分器和被打分的
+  是同一个模型，这是这套系统最大的先天弱点，也是 `PURE` 那一格必须一直变厚的原因。
+- **工具按 `group` 授权**：写整篇只开 `memory`，编辑器里画图才开 `data`/`chart`。
+  加一个工具 = 写一个带装饰器的函数，不用动调度代码。
+
+---
+
 ## 1. 问题：为什么写作 harness 比 coding harness 难
 
 coding harness 有客观 oracle：代码跑不跑得起来、测试过不过，是外部世界给的答案，
@@ -25,6 +100,151 @@ coding harness 有客观 oracle：代码跑不跑得起来、测试过不过，�
 ---
 
 ## 2. 分层：边界按「能不能独立开源」划
+
+全景：**一条闭环，四个入口，判据分两半。**
+
+```mermaid
+flowchart TD
+    ED["前端 frontend/src<br/>编辑器 CM6：slashMenu · runningBlocks · roundDiff · format<br/>面板：Skeleton · Revision · WritingPlan · TapProvenance"]
+    ED --> ENTRY
+
+    subgraph ENTRY["入口 app/routers：四条 harness，共用一个内核"]
+        direction LR
+        NH["note_harness<br/>写完整篇"]
+        WP["writing_plan<br/>文件夹级分段"]
+        CB["compose_block<br/>敲 / 生成一段"]
+        CP["compose<br/>润色 · 重写 · 校验"]
+    end
+
+    ENTRY --> AL
+    AL["agent_loop：工具循环 · 预算 · ToolTrace"]
+    AL --> TL["tools/registry：memory · data · chart · image 四组，按 group 授权"]
+    TL --> KT[("KITE 知识库 memoket_kite")]
+    TL --> CODE["tabular 算数字 · blocks 拼 mermaid<br/>零 LLM：模型决定画什么，语法和数字由代码产出"]
+
+    AL --> GEN["生成：流式续写 / 写这一段"]
+    GEN --> JUDGE
+
+    subgraph JUDGE["判据：谁能判定谁来判"]
+        DIM["评分维度是配置传进去的<br/>harness_adapter.note_dimensions · compose_block.MODES"]
+        EV["evaluate：模型按维度打分<br/>writer_harness 独立包，不认识本产品"]
+        DET["确定性检查：blockcheck · textshape · outline · tabular<br/>假图 · 手写 mermaid · 标题层级 · 单位混用 · 内容漂移"]
+        DIM --> EV
+        DET -.->|"命中就把那一维打回 0，强制重跑"| EV
+    end
+
+    JUDGE --> ST{"三态"}
+    ST -->|complete| DONE["写完了"]
+    ST -->|blocked| STOP["结构性冲突：停下来告诉用户"]
+    ST -->|"continue：带上最弱的那一维"| AL
+```
+
+图里有三处是这套设计的要害，其余都是常规分层：
+
+1. **判据分两半。** 能用代码判定的不交给打分器——实测打分器给一份通篇假图的
+   产出打了 `has_charts=2`，因为它看见「柱状图：…」就以为有图。确定性检查跑在
+   打分之后，命中就强制把对应维度打回 0 并重跑一轮，模型没有商量余地。
+2. **数字和图表语法由代码产出，不经模型。** 让模型自己算均值它会编，让它自己写
+   mermaid 会写出渲染不出来的语法。模型只决定算什么、画什么。
+3. **维度是配置，不是包的一部分。** 换一套维度就是换一个领域的写作 harness，
+   闭环本身不用动。
+
+### 2.1 模块依赖
+
+下面这张是**实扫 54 个模块的 import 得到的**，不是设计意图图。箭头方向就是
+依赖方向，没有反向边——`writer_harness` 里没有一行 import 指向 `app`，
+纯函数层没有一行 import 指向任何业务模块。
+
+```mermaid
+flowchart TD
+    MAIN["main.py：挂 13 个 router"]
+
+    subgraph R["routers/：四条 harness + 导入 + CRUD"]
+        direction LR
+        NH["note_harness<br/>1078 行"]
+        WP["writing_plan<br/>543"]
+        CB["compose_block<br/>566"]
+        CO["compose<br/>413"]
+        IO["import_sources · ingest · assets"]
+        CRUD["notes · folders · memory<br/>profile · settings · skills"]
+    end
+
+    subgraph MID["中间层：有状态、有 I/O"]
+        direction LR
+        HA["harness_adapter<br/>LLMClient · RunHistoryStore · 维度定义"]
+        AL["agent_loop 259<br/>工具循环 · 预算 · ToolTrace"]
+        LLM["llm 338"]
+        ST["store 834　sqlite"]
+        KM["kite_memory 798"]
+        PR["prompts 1328"]
+    end
+
+    subgraph TOOLS["tools/：装饰器注册，按 group 授权"]
+        direction LR
+        REG["registry"]
+        DT["data_tools 483<br/>data · chart · image"]
+        MT["memory_tools<br/>memory"]
+    end
+
+    subgraph PURE["纯函数层：只 import re / math / difflib / dataclasses"]
+        direction LR
+        TB["tabular 469<br/>认表 · 算数 · 认单位"]
+        BL["blocks<br/>拼 mermaid"]
+        BC["blockcheck 113<br/>假图 · 手写图 · 标题层级"]
+        TS["textshape<br/>内容漂移"]
+        RS["restructure 239<br/>排版操作"]
+        OL["outline 247"]
+        GC["grounding_check 228"]
+        RP["runtime_policy 252"]
+    end
+
+    subgraph PKG["writer_harness/：独立可安装包，零 app 依赖"]
+        direction LR
+        EV["rubric.evaluate"]
+        DD["dedup.find_repeats"]
+        CX["context.compact_context"]
+        TY["types · protocols"]
+    end
+
+    KITE[("memoket_kite<br/>外部包")]
+
+    MAIN --> R
+    NH --> HA
+    WP --> HA
+    CB --> HA
+    CO --> HA
+    NH --> AL
+    WP --> AL
+    CB --> AL
+    HA --> PKG
+    HA --> LLM
+    HA --> ST
+    AL --> REG
+    REG --> DT
+    REG --> MT
+    DT --> TB
+    DT --> BL
+    MT --> KM
+    KM --> KITE
+    IO --> KM
+    CRUD --> ST
+    ST --> PR
+    NH --> OL
+    NH --> GC
+    NH --> RP
+    CB --> BC
+    CB --> TS
+    CB --> RS
+```
+
+两件事只能从这张图上看出来，从代码里一个文件一个文件读是看不出来的：
+
+- **纯函数层是叶子，没有任何出边。** 九个模块加起来两千行，全部只依赖标准库。
+  这不是巧合——判据要是依赖了 store 或 llm，就没法在单测里构造一个输入直接断言，
+  也就不可能有现在这批「拿真实产出当用例」的回归测试。
+- **`writer_harness` 和 `app` 之间只有一条边，方向是 `harness_adapter` → 包。**
+  这条边就是可开源性的全部代价：搬走这个目录，只需要在新家实现一遍
+  `LLMClient` 和 `RunHistoryStore` 两个 Protocol。
 
 `backend/writer_harness/` 是独立可安装的包，自带 `pyproject.toml` 和自己的
 `tests/`，能脱离这个 app 独立跑 pytest。它不依赖 FastAPI、不认识 `spine`/`beats`
