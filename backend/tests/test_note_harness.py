@@ -517,6 +517,51 @@ def test_meta_scrub_runs_after_revisions_too():
     assert "if applied or meta_gone:" in src, "只有修订成功才落盘，纯清理的结果会丢"
 
 
+def test_老库连上来会补齐后加的列(tmp_path, monkeypatch):
+    """已经有数据的库，升级之后要能用。
+
+    原来这条断言查的是 store.py 的**源码里有没有那句 ALTER 字符串**——
+    改一下写法（比如换成先查 PRAGMA 再决定）测试就红，可行为一点没变；
+    反过来，SQL 写错了它照样绿。所以改成建一个「缺列的老库」，连上去，
+    看列有没有真的补上、老数据还在不在。
+    """
+    import sqlite3
+
+    from app.database import store
+
+    db = tmp_path / "old.sqlite3"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE notes (id TEXT PRIMARY KEY, user_id TEXT, "
+                 "title TEXT, content TEXT, created_at TEXT, updated_at TEXT)")
+    conn.execute("INSERT INTO notes VALUES ('n1','u','旧标题','旧正文','t','t')")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(store, "_db_path", lambda: db)
+    with store.connect() as c:
+        cols = {row[1] for row in c.execute("PRAGMA table_info(notes)")}
+        assert {"spine", "beats", "pinned", "folder_id"} <= cols
+        assert c.execute("SELECT title FROM notes").fetchone()[0] == "旧标题"
+
+
+def test_补列不会把真正的错误吞掉(tmp_path, monkeypatch):
+    """「列已经在了」和「库锁了 / 表名打错了」不是一回事。
+
+    原来那段是 ALTER 一下、`except sqlite3.OperationalError: pass`——后面
+    这两类会被一起静默跳过，然后在几十行外以看不懂的样子炸。
+    """
+    import sqlite3
+
+    import pytest as _pytest
+
+    from app.database import store
+
+    conn = sqlite3.connect(tmp_path / "x.sqlite3")
+    with _pytest.raises(sqlite3.OperationalError):
+        store._add_column(conn, "没有这张表", "c", "TEXT")
+    conn.close()
+
+
 def test_skeleton_is_persisted_with_the_note():
     """写作骨架必须跟着笔记存，不能只活在前端内存里。
 
@@ -526,10 +571,6 @@ def test_skeleton_is_persisted_with_the_note():
     重新花一次模型调用生成一份。
     """
     from app.database import store
-
-    src = (Path(__file__).resolve().parent.parent / "app" / "database" / "store.py").read_text(encoding="utf-8")
-    assert "ALTER TABLE notes ADD COLUMN spine" in src
-    assert "ALTER TABLE notes ADD COLUMN beats" in src
 
     user = "test-skeleton"
     n = store.create_note(user, "标题", "正文")

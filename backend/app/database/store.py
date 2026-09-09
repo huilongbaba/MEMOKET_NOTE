@@ -172,43 +172,47 @@ def _db_path() -> Path:
     return root / "notes.sqlite3"
 
 
-def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_db_path(), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
-    try:
-        conn.execute("ALTER TABLE ingest_jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass  # 列已存在——老库升级用，新库走 _SCHEMA 就已经带这一列
-    try:
-        conn.execute("ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE notes ADD COLUMN folder_id TEXT")
-    except sqlite3.OperationalError:
-        pass
+def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """老库补一列。列已经在了就什么都不做。
+
+    先查 PRAGMA 再决定，而不是「ALTER 一下、报错就 pass」。原来那种写法
+    吞掉的是**整个** ``OperationalError``：库被锁上、磁盘满了、表名打错了，
+    症状都一样——静默跳过，然后在几十行外以一个看不懂的方式炸。判断「这列
+    在不在」不需要靠异常，PRAGMA 就能直接回答。
+    """
+    cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+# 老库要补的列。新库走 _SCHEMA 就已经带上了，这张表只为升级存在——
+# 每一条都对应一次「功能加上了，可真实库里已经有数据」的时刻。
+_ADDED_COLUMNS = (
+    ("ingest_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
+    ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
+    ("notes", "folder_id", "TEXT"),
     # 写作骨架（核心张力 + 结构节拍）跟着笔记走。
     #
     # 之前它只活在前端内存里，`open()` 一进新笔记就清空——换一篇、刷新页面、
     # 甚至无限续写开着「跟随」自动切到下一段，骨架就没了。而 harness 每轮都
     # 要拿它当主线依据，没了就得重新花一次模型调用生成，或者干脆没有主线跑。
     # beats 存成 JSON 数组字符串。
-    try:
-        conn.execute("ALTER TABLE notes ADD COLUMN spine TEXT NOT NULL DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE notes ADD COLUMN beats TEXT NOT NULL DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(user_id, folder_id, updated_at DESC)")
+    ("notes", "spine", "TEXT NOT NULL DEFAULT ''"),
+    ("notes", "beats", "TEXT NOT NULL DEFAULT ''"),
     # skill_config 是这一版新建的，但真实库里已经跑过一轮，
     # CREATE TABLE IF NOT EXISTS 不会给它补上后加的列。
-    try:
-        conn.execute("ALTER TABLE skill_config ADD COLUMN idx INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    ("skill_config", "idx", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+
+def connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(_db_path(), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_SCHEMA)
+    for table, column, decl in _ADDED_COLUMNS:
+        _add_column(conn, table, column, decl)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder "
+                 "ON notes(user_id, folder_id, updated_at DESC)")
     return conn
 
 
