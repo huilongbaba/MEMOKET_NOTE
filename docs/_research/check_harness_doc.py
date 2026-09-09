@@ -27,7 +27,11 @@ for i, l in enumerate(ls, 1):
     if m := re.match(r"^## (\d+)\.", l): cur = m.group(1)
     if (m2 := re.match(r"^### (\d+)\.(\d+)", l)) and m2.group(1) != cur:
         sub_bad.append(f"{i}行 {m2.group(0)}@第{cur}节")
+# 三级编号也要查重复：两个 ### 10.1.1 曾经并存过，只查 X.Y 抓不到
+lv3 = re.findall(r"^### (\d+\.\d+\.\d+)", t, re.M)
+dup3 = [x for x in set(lv3) if lv3.count(x) > 1]
 chk("子节编号跟父节一致", not sub_bad, str(sub_bad))
+chk("三级编号不重复", not dup3, str(dup3))
 refs = {int(x) for x in re.findall(r"见第 (\d+) 节", t)} | {int(x) for x in re.findall(r"第 (\d+) 节", t)}
 chk("章节引用存在", refs <= set(nums), str(refs - set(nums)))
 sub = {f"{a}.{b}" for a, b in re.findall(r"^### (\d+)\.(\d+)", t, re.M)}
@@ -81,6 +85,18 @@ for word, why in [("with_skills", "已废弃：skill 不再叠加到 Mode"),
                   ("mode_from_skill", "已废弃")]:
     n = t.count(word)
     chk(f"无「{word}」", n == 0, f"{n} 处（{why}）")
+
+print("── SKILL.md 规格 ──")
+# 官方规格：name 只能小写字母/数字/连字符，≤64 字符
+# 剥掉行尾注释再验——文档里的例子常带 `# ← 说明`
+names = [n.split("#")[0].strip() for n in re.findall(r"^name:\s*(.+)$", t, re.M)]
+bad_n = [n for n in names if not re.fullmatch(r"[a-z0-9-]{1,64}", n)]
+chk("frontmatter 的 name 合规", not bad_n, str(bad_n))
+# frontmatter 里不该有私有字段
+fm_keys = set()
+for m in re.finditer(r"```yaml\n---\n(.*?)\n---", t, re.S):
+    fm_keys |= set(re.findall(r"^(\w[\w-]*):", m.group(1), re.M))
+chk("frontmatter 没有私有字段", fm_keys <= {"name", "description"}, str(fm_keys - {"name", "description"}))
 
 print("── 需求 ──")
 R = sorted({int(x) for x in re.findall(r"\bR(\d+)\b", t)})

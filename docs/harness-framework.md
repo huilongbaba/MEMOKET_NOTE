@@ -94,7 +94,7 @@ flowchart TB
 | R9 | **全部框架** | 状态挂在 run 上下文里，不用模块级全局 |
 | R10 | **DSPy `fail_count`** · **OpenHands Controller** | 失败有预算；「管约束的」跟「做决策的」分层 |
 | R11 | **LangGraph checkpointer** | 状态在每个 super-step 存快照，中断能恢复 |
-| R12 | **Claude Agent Skills** | 三层渐进披露：frontmatter 常驻（~60 token）→ 命中才加载 body → 引用文件按需读。8 个 skill 启动占 500 token 而不是 70,000 |
+| R12 | **Claude Agent Skills** | 三层渐进披露：frontmatter 常驻（~100 token/skill）→ 命中才加载 body（<5k）→ 引用文件不读不花 |
 | R13 | **Claude Code 的沙箱**（Seatbelt / bubblewrap） | 内核级强制、白名单、网络走代理 + 域名过滤 |
 
 十条横向结论（12 个框架无一例外的那些）：
@@ -175,17 +175,18 @@ backend/app/routers/     薄壳
 一句话：**工具只有开发者能配；skill 是用户装的，而且大多数时候
 由模型自己决定这次用不用（第 10 节）。**
 
-**skill 存文件系统，不存 DB**——`SKILL.md` 标准要保住 `references/` 和
-`scripts/`，那些是文件。
+**skill 内容存文件系统，我们的配置存 DB**（见 10.1.1）：
 
 ```
-data/<user>/skills/<slug>/
-  SKILL.md · references/ · scripts/
+data/<user>/skills/<slug>/       ← 原样的标准目录，一个字不改
+  SKILL.md · FORMS.md · scripts/
+
+DB: skill_config                 ← 我们的配置，跟内容完全分离
+  user · slug · enabled · scopes · sandbox_grant · source
 ```
 
-DB 里只存**元数据**：装没装、开没开、沙箱授了什么权限、来源是内置还是导入。
-内容永远在文件里——这样第三方 skill 装进来是「把目录放进去」，
-拿出去也是「把目录拷走」。
+这样第三方 skill 装进来是「把目录放进去」，拿出去也是「把目录拷走」——
+**不往别人的文件里塞我们的字段**。
 
 ### 为什么工具不给用户配
 
@@ -198,9 +199,9 @@ DB 里只存**元数据**：装没装、开没开、沙箱授了什么权限、�
 
 ### skill 的匹配方向是反的
 
-```yaml
-# SKILL.md frontmatter
-scopes: [block_write, magic_tap]     # ← skill 声明**自己适用于哪些场景**
+```python
+# DB 里的 skill_config，不在 SKILL.md 里
+scopes = ["block_write", "magic_tap"]     # ← 用户勾的：这个 skill 在哪些场景生效
 ```
 
 不是「场景声明用哪些 skill」。这跟 `Mode.skill_scope` 正好配对：
@@ -325,8 +326,9 @@ class State:
     trace: ToolTrace | None = None
     ev: Evaluation | None = None
     best: tuple[tuple[int, float], str] | None = None
-    skill_bodies: list[str] = field(default_factory=list)          # 匹配 scope、直接注入的
-    skill_menu: list[tuple[str, str]] = field(default_factory=list)  # (name, description)，等模型自己调
+    # 匹配 scope 直接注入的 + 模型 load_skill 加载的，**跨轮保留**
+    skill_bodies: list[str] = field(default_factory=list)
+    skill_menu: list[tuple[str, str]] = field(default_factory=list)   # (name, description)
     steer: str = ""                 # 上一轮最弱那一维的诊断
     skip_judge: bool = False        # 检查已判定不合格，跳过这一轮的打分（R8）
     bag: dict = field(default_factory=dict)             # middleware 之间传东西
@@ -706,59 +708,121 @@ class Verdict:
 
 ## 10. Skill：模型按需调用的能力包
 
-### 10.1 用标准格式，不自造
+### 10.1 用标准格式，一个字段都不加
 
-skill 的事实标准是 **`SKILL.md` 目录**（Claude Agent Skills）。**照用，不改**：
+skill 的事实标准是 **Agent Skills 的 `SKILL.md`**。规格很严：
 
 ```
-skills/写ppt/
-  SKILL.md           # YAML frontmatter + markdown body
-  references/        # 按需读的文件：模板、示例、清单
-    骨架模板.md
-    好的一页长什么样.md
-  scripts/           # 可执行（跑在沙箱里，见 10.8）
-    render.py
+pdf-processing/
+  SKILL.md          # YAML frontmatter + markdown body
+  FORMS.md          # 参考文件平铺，不放子目录
+  REFERENCE.md
+  scripts/
+    fill_form.py    # 可执行，跑在沙箱里（10.8）
 ```
 
 ```yaml
 ---
-name: 写 PPT
-description: 用户要做演示文稿、汇报材料、路演稿时用      # ← 模型靠这句判断该不该用
-# 下面是我们的扩展字段，标准允许 frontmatter 有自定义 key
-scopes: [block_write]        # 可选：明确指定场景，见 10.4
-sandbox: none                # 可选：脚本权限，见 10.8
+name: pdf-processing
+description: Extract text and tables from PDF files, fill forms, merge documents.
+  Use when working with PDF files or when the user mentions PDFs, forms,
+  or document extraction.
 ---
 
-把内容拆成一页一个观点的结构。每页：一句话标题（是判断不是名词）、
-三条以内支撑、必要时一张图。不要把段落直接搬上去。
-
-具体的骨架见 `references/骨架模板.md`。
+# PDF Processing
+…怎么做…
+更详细的表单处理见 FORMS.md。
 ```
 
-**为什么必须用标准格式**：第三方 skill 能直接装进来，我们的 skill 也能拿出去用。
-自定义 dataclass 的代价是两头都不通——而「装一个别人写的 skill」正是这个功能
-存在的理由之一。
+**必需字段只有两个**，而且有硬约束：
 
-我们的扩展字段（`scopes` / `sandbox`）放在 frontmatter 里。**YAML 本来就允许
-自定义 key**，不认识它们的工具会忽略，标准不破。
+| 字段 | 约束 |
+|---|---|
+| `name` | ≤64 字符，**只能小写字母 / 数字 / 连字符**，不能含 XML 标签，不能含 "anthropic" / "claude" |
+| `description` | 非空，≤1024 字符，不能含 XML 标签。**必须同时说清「做什么」和「什么时候用」**——它是模型判断要不要触发这个 skill 的唯一依据 |
+
+**没有自定义字段这回事。** 官方规格里没有任何扩展机制，
+往 frontmatter 里塞私有 key 就是在造方言。
+
+### 10.1.1 现有 13 个内置 skill 的名字不合规
+
+它们现在叫「结构化分段（受 doc-coauthoring 启发）」这种中文名，
+而规格要求 `name` **只能小写字母、数字、连字符**。迁移时要改：
+
+```yaml
+---
+name: structured-sections          # ← slug，合规
+description: 生成分段列表时先想读者会追问什么…用于文件夹级写作计划
+---
+
+# 结构化分段                        # ← 中文名放这里，body 的一级标题
+```
+
+**`name` 是标识符，不是显示名**。UI 上展示什么由我们决定
+（读 body 的一级标题、或直接展示 `description`），但存进 frontmatter 的
+必须是合规 slug——否则这个 skill 拿到 Claude Code 里就用不了。
+
+### 10.1.2 那我们的配置放哪
+
+`scopes`（这个 skill 在哪些场景生效）和沙箱权限**不进 `SKILL.md`**。
+理由不只是"标准不让"，更是它们**本来就不是 skill 的属性**：
+
+| 东西 | 为什么不该由 skill 自己声明 |
+|---|---|
+| `scopes` | 是**我们的系统**怎么用它。同一个 skill，A 用户想让它写作时生效、B 用户想让它润色时生效——这是用户配置 |
+| 沙箱权限 | 是**用户授予**的。手机 App 不能自己声明「我有相机权限」 |
+
+按第 4 节那条原则「用户配的存 DB」，这两个都在我们这边：
+
+```
+data/<user>/skills/pdf-processing/     ← 原样的标准目录，一个字不改
+  SKILL.md · FORMS.md · scripts/
+
+DB: skill_config
+  user · slug · enabled · scopes · sandbox_grant · source
+      ↑ 我们的配置，跟 skill 内容完全分离
+```
+
+**好处是双向的**：从 Anthropic 官方库或社区下载的 skill 原样能装
+（它们不可能有我们的私有字段）；我们的 skill 拷出去也能在 Claude Code
+里直接用。**「装一个别人写的 skill」正是这个功能存在的理由之一，
+方言会让它落空。**
+
+### 10.1.3 一个 skill 的一生
+
+| 阶段 | 内置的 13 个 | 用户自己写的 | 第三方装的 |
+|---|---|---|---|
+| **来源** | 仓库里的 `skills/`，随版本发布 | `SkillsPanel` 里写，或让模型草拟 | 上传 zip / 粘贴 `SKILL.md` |
+| **落地** | 首次启动时 seed 到 `data/<user>/skills/` | 同左 | 同左，**目录原样保留** |
+| **`source`** | `builtin` | `user` | `imported` |
+| **`enabled` 默认** | ✓ 开 | ✓ 开（用户刚写的） | **✗ 关**——装进来先看，用户点开才生效 |
+| **`scopes` 默认** | 随内置定义给（见迁移表） | 用户在表单里勾 | **空**——落到菜单，由模型判断 |
+| **`sandbox_grant` 默认** | `NONE` | `NONE` | `NONE`，要单独授权 |
+
+**三种来源走同一套机制**，只有默认值不同。内置的不搞特殊通道——
+它们也是 `data/<user>/skills/` 下的标准目录，用户可以关掉、可以改。
+
+第三方装进来**默认关闭**，这是跟官方安全建议一致的
+（*"Use Skills only from trusted sources"*、*"Audit thoroughly"*）：
+装 ≠ 启用，中间隔一次用户确认。
 
 ### 10.2 加载方式：模型按需调用
 
 这是 skill 机制的实质——**不是我们替模型决定用哪个，是告诉它有哪些、让它自己挑**。
 
 ```
-system prompt 常驻（每个 skill ~60 token）：
+system prompt 常驻（官方口径 ~100 token/skill）：
     可用技能：
-    - 写 PPT: 用户要做演示文稿、汇报材料、路演稿时用
-    - 去 AI 味: 续写时避开排比收尾、"不仅…而且"这类套路
-    - 术语一致: 分段写作时人名/项目名/缩写的写法要跟其它分段一致
+    - slide-deck: 把内容做成演示文稿。用户要做汇报材料、路演稿时用
+    - de-ai-voice: 续写时避开排比收尾、"不仅…而且"这类套路
+    - term-consistency: 分段写作时人名/项目名/缩写要跟其它分段一致
         ↓
-模型判断「这次要用写 PPT」→ 调工具
+模型判断「这次要用 slide-deck」→ 调工具
         ↓
-    load_skill("写 PPT")   →  SKILL.md 的 body 进上下文
+    load_skill("slide-deck")   →  SKILL.md 的 body 进上下文
         ↓
-body 里写着「见 references/骨架模板.md」→ 模型再调
-    read_skill_ref("写 PPT", "骨架模板.md")  →  那个文件进上下文
+body 里写着「更详细的见 FORMS.md」→ 模型再调
+    read_skill_ref("pdf-processing", "FORMS.md")  →  那个文件进上下文
 ```
 
 两个工具，`group="skill"`：
@@ -775,15 +839,43 @@ def load_skill(ctx: ToolContext, name: str) -> str: ...
 def read_skill_ref(ctx: ToolContext, skill: str, path: str) -> str: ...
 ```
 
+#### 三个运行时的细节
+
+**① 直接注入的不进菜单。** 匹配 scope 的 skill 已经在 system prompt 里了，
+再列进菜单会让模型重复 `load_skill` 一次——白花一次工具往返。
+`for_scope()` 返回的两个列表是互斥的。
+
+**② 加载过的跨轮保留。** `load_skill` 的结果写进 `State.skill_bodies`，
+下一轮还在。**不这样的话模型每轮都得重新 load 一次**——多轮 harness
+最多 8 轮，那就是 8 次白调用。
+
+```python
+def load_skill(ctx: ToolContext, name: str) -> str:
+    body = skills.read_body(ctx.user, name)
+    ctx.state.skill_bodies.append(body)      # ← 跨轮留着
+    return body
+```
+
+**③ 加载有上限。** 模型可能一口气 load 五六个，把上下文占满。
+`MAX_LOADED_SKILLS = 3`，超了拒绝并说明：
+
+```
+（这次已经加载了 3 个技能，够用了。要换一个的话，说清楚要用哪个。）
+```
+
+跟 `chart_column` 拒绝没信息量的图是同一个思路——**工具自己拒绝，
+比让模型自觉克制可靠**（第 8 节）。
+
 **三层渐进披露就是这么落地的**：
 
 | 层 | 什么时候进上下文 | 谁决定 | 成本 |
 |---|---|---|---|
-| 1 · frontmatter | 常驻 | — | ~60 token/skill |
+| 1 · frontmatter | 常驻 | — | ~100 token/skill |
 | 2 · body | 模型调 `load_skill` | **模型** | 几百 token |
 | 3 · references | 模型调 `read_skill_ref` | **模型** | 按需 |
 
-8 个 skill 常驻只占约 500 token；用不上的那 7 个的 body 永远不进上下文。
+官方给的量级：Level 1 约 100 token/skill、Level 2 5k token 以内、Level 3 不读不花。
+用不上的那些，body 永远不进上下文。
 
 ### 10.3 skill 加载之后影响什么
 
@@ -802,24 +894,55 @@ body 进上下文之后，它就是**这次对话里的一段说明**——跟�
 （我一度设计成 skill 直接改 `Mode` 的字段——那是把动态机制
 做成了静态配置，而且让判据可能被 skill 碰到。两个问题一起消失了。）
 
-### 10.4 scope：可选的快捷方式，不是主路径
+### 10.4 scope：谁进上下文，Mode 说了算
 
-模型按 description 判断是**默认**路径。但有两种情况不该让模型判：
+**`Mode` 决定「哪些 skill 进上下文」，loop 决定「怎么进」。**
+`scopes` 是用户在我们这边配的（10.1.1），不在 `SKILL.md` 里。三条规则：
 
-- 用户明确说了「这个技能在数据可视化时一直生效」——他已经决定了，不用再判
-- 那些**总该生效的**约束（「去 AI 味」「术语一致」），每次都让模型判是浪费
+| 用户配的 `scopes` | 结果 |
+|---|---|
+| 配了，且匹配当前 `Mode.skill_scope` | **body 直接进 system prompt** |
+| 配了，但不匹配 | **完全不出现**——连菜单都不进 |
+| **没配**（默认，第三方装进来就是这样） | 进菜单（name + description），模型自己判断要不要 `load_skill` |
 
-所以 frontmatter 里可以写 `scopes: [block_write]`——**匹配上就直接把 body
-放进 system prompt，跳过 `load_skill`**。
+```python
+def for_scope(user: str, scope: str) -> tuple[list[Skill], list[Skill]]:
+    """返回 (直接注入的, 列进菜单的)。
 
+    读法：**配了 scopes = 用户说「我知道它什么时候该用」**。
+    内置那 13 个都声明了（「术语一致」只在 section_write），
+    所以精确控制；`slide-deck` 这种不确定什么时候用的就不配，
+    让模型看 description 判断。
+    """
+    enabled = [s for s in load_skills(user) if s.enabled]   # 内容来自文件，enabled/scopes 来自 DB
+    matched = [s for s in enabled if s.scopes and scope in s.scopes]
+    listed  = [s for s in enabled if not s.scopes]
+    return matched, listed
 ```
-有 scopes 且匹配当前 Mode  →  body 直接进 system prompt（省一次工具往返）
-没有 scopes                →  只有 description 常驻，模型要用自己调
+
+#### 为什么不是「全部注入」也不是「全部白名单」
+
+| 设计 | 问题 |
+|---|---|
+| 全部注入 loop | 「术语一致」只对分段写作有意义，出现在数据可视化里就是干扰 |
+| 全部由 Mode 白名单 | 加一个功能要记得填 scope——**现有 `compose_block` 6 个模式一个都没填，就是这么漏的** |
+| **scope 过滤 + 剩下的交给模型** | 不相关的不占上下文；漏填也不会让 skill 消失，它落到菜单里 |
+
+第三种是**故障安全**的：`Mode.skill_scope` 忘了填，最坏结果是「配了
+scopes 的 skill 都不匹配」，那些 skill 静默失效——所以加一条测试盯住：
+
+```python
+def test_每个_Mode_都有_skill_scope():
+    """漏填 = 那个功能的用户技能全部失效，而且不报错。"""
+    for m in ALL_MODES:
+        assert m.skill_scope, f"{m.label} 没填 skill_scope"
 ```
 
-现有 13 个内置 skill 全部有 scopes，因为它们都是「该一直生效的短约束」，
-平均 136 字符——直接注入比让模型判一次便宜。**长 skill 和第三方 skill
-默认走模型按需调用**，不然一装几个就把上下文占满了。
+#### 成本
+
+没配 scopes 的 skill 全部常驻菜单，每个约 100 token。30 个就是 3000 token，
+可接受；上百个就要再加一层（比如按 `description` 做粗筛）。
+**现在不用做**——内置 13 个都配了 scopes，菜单是空的。
 
 ### 10.5 现状与缺口
 
@@ -852,6 +975,9 @@ class Skills:
     """
     name = "skills"
     async def before_produce(self, st) -> None:
+        if st.round > 1:
+            return          # 第一轮算一次就够——skill_bodies 跨轮保留，
+                            # 每轮重算会把模型 load_skill 加载的那几个冲掉
         matched, listed = skills.for_scope(st.ctx.user, st.mode.skill_scope)
         st.skill_bodies = [s.body for s in matched]
         st.skill_menu = [(s.name, s.description) for s in listed]
@@ -870,7 +996,7 @@ class Skills:
 |---|---|
 | frontmatter | 进菜单，模型能看见 |
 | body | 模型调 `load_skill` 时加载 |
-| `references/` | 模型调 `read_skill_ref` 时读 |
+| 平铺的 `.md` 文件（`FORMS.md` 等） | 模型调 `read_skill_ref` 时读 |
 | **`scripts/`** | **跑在沙箱里**（10.8），默认不给权限 |
 
 导入时**必须预览**（现状已经是「先预览再保存」，保持住）——
@@ -900,18 +1026,19 @@ UI 上要能看出来这是别人写的。
 
 #### 三档权限，没有第四档
 
-```yaml
-# SKILL.md frontmatter
-sandbox: none      # 不跑脚本（默认）
-sandbox: compute   # 只读技能自己的目录 + 一个临时输出目录；无网络
-sandbox: files     # 上面 + 能写用户明确选定的输出路径；无网络
-# 没有第四档：**网络一律不给**。要联网的能力走系统工具池，
+```python
+# DB 的 skill_config.sandbox_grant，**用户安装时授予**，不在 SKILL.md 里
+NONE    = 0   # 不跑脚本（默认）
+COMPUTE = 1   # 只读技能自己的目录 + 一个临时输出目录；无网络
+FILES   = 2   # 上面 + 能写用户明确选定的输出路径；无网络
+# 没有第三档：**网络一律不给**。要联网的能力走系统工具池，
 # 那里有授权、有审计、有速率限制。
 ```
 
-**frontmatter 里写的只是「这个技能想要什么」，不是「它有什么」**——
-实际权限由**用户在安装时授予**（跟手机装 App 授权同一个模型），
-默认 `none`，UI 上要说清「这个技能想读写文件」。
+**权限由用户授予，不由 skill 声明**——跟手机装 App 授权同一个模型。
+默认 `NONE`，UI 上要说清「这个技能想读写文件」。
+（官方安全建议也是这个方向：*"Use Skills only from trusted sources"*、
+*"Audit thoroughly: review all files bundled in the Skill"*。）
 
 资源上限硬编码不给配：**CPU 10s · 内存 256MB · 产出 20MB · 单次 run 最多 3 次**。
 
@@ -1320,7 +1447,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | `harness_adapter.note_dimensions()` / `section_dimensions()` | `modes.py`，跟 `MODES` 合并到一处 |
 | 18 处 `compose_system(X, enabled_skills_for_scope(user, scope))` | `middleware/skills.py`（匹配 scope 的注入 + 其余列菜单） |
 | `Skill` 存 DB 的 `content` 字段 | **改存文件系统**：`data/<user>/skills/<slug>/SKILL.md`，DB 只留元数据 |
-| `frontend/src/skillImport.ts` 解析后丢掉结构 | 保留整个目录，`references/` 和 `scripts/` 都留着 |
+| `frontend/src/skillImport.ts` 解析后丢掉结构 | 保留整个目录原样，平铺的 `.md` 和 `scripts/` 都留着 |
 | `prompts.SKILL_SCOPES` | 留在 `prompts.py`，但加两个新 scope（`block_write` / `block_prompt`） |
 | `harness_adapter.AppLLMClient` / `SqliteRunHistoryStore` | 原地不动（包的适配层） |
 | `blockcheck.py` | `checks/charts.py` + `checks/structure.py` |
