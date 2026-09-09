@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from ..scoring import Dimension
+from .types import Dimension
 
 from .. import grounding_check, harness_adapter
 from .checks import (charts_from_tools, citations_hold, heading_fits,
@@ -205,6 +205,16 @@ ANALYSIS_DIMS = (
               "Meets the bar: it says what the conclusion depends on and when "
               "it stops holding. Insufficient: a small-sample result stated as "
               "settled."),
+    # 这两条是被一条断言逼出来的：analysis 挂着图表检查和标题检查，dims 里
+    # 却没有对应的轴，于是 check 命中时打翻的是一个这个模式根本没有的维度。
+    # 它的 task 明说「有对比价值时用 render_chart 配一张图」，而且它是插进
+    # 笔记里的一块——两条本来就该有。
+    Dimension("chart_validity",
+              "Meets the bar: any chart here came from render_chart (a "
+              "complete ```mermaid block). Insufficient: a chart described in "
+              "prose, or hand-written mermaid imitating tool output. Drawing "
+              "nothing is fine -- this mode's body is an answer, not charts."),
+    _FITS_CONTEXT,
 )
 
 _REPLACES_CLEANLY = Dimension(

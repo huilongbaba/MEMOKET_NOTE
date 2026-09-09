@@ -87,19 +87,23 @@ def test_图上没有已经不存在的文件():
     assert not ghosts, f"图上有代码里不存在的文件：{ghosts}"
 
 
-def test_scoring_不依赖app():
-    """图上写着「这一层不依赖 app 的任何东西」——那是它能被拷出去开源的
-    唯一条件，也是它当初做成独立包的理由。合回 app 之后这条更要盯：
-    现在没有目录边界拦着了，只剩这条断言。
+def test_打分引擎不依赖这个产品():
+    """`rubric.py` 和它的三个零 LLM 邻居不许认识这个产品。
+
+    这曾经靠目录边界维持（它是个独立安装的包），现在只剩这条断言。它值得
+    留着的理由不是「将来要开源」，是**换个领域就能复用**——知识库判抽取
+    质量用的就是同一个 evaluate()，一行新机制都没加。一旦它开始 import
+    store / kite_memory，那个属性就没了。
     """
     import ast
 
-    for path in (ROOT / "app" / "scoring").glob("*.py"):
+    engine = ["rubric.py", "dedup.py", "compaction.py", "citations.py"]
+    for path in [(ROOT / "app" / "harness" / n) for n in engine]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 # 相对 import 只允许 scoring 包内部（level 1）
-                assert node.level <= 1, f"{path.name} 伸到了 scoring 外面"
+                assert node.level <= 1, f"{path.name} 伸到了 harness 外面"
                 if node.module and node.module.startswith("app"):
                     raise AssertionError(f"{path.name} imports {node.module}")
             elif isinstance(node, ast.Import):

@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from app.scoring import DimensionScore, Evaluation
+from app.harness.types import DimensionScore, Evaluation
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

@@ -105,7 +105,7 @@ def test_plan_user_includes_goal():
 
 
 def test_section_write_user_includes_focus_when_given():
-    # "写完了没有"现在由 scoring.evaluate() 单独打分判定（见
+    # "写完了没有"现在由 harness.rubric.evaluate() 单独打分判定（见
     # app/harness_adapter.py），不再靠模型自己在正文末尾吐标记；这里只
     # 测 focus（上一轮打分里最弱的维度）会不会被正确带进 prompt。
     text = prompts.section_write_user(

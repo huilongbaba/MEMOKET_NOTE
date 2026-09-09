@@ -6,7 +6,7 @@
        list_tables / describe_table / aggregate_table / correlate_columns
        （数字由代码算）和 render_chart / render_table（mermaid 语法由代码拼）
     ② 生成：把工具查到的东西喂回去，流式写出要插入的那一块
-    ③ 打分：scoring.evaluate() 按这个模式该守的原则打分
+    ③ 打分：harness.rubric.evaluate() 按这个模式该守的原则打分
     ④ 不达标就带着诊断再来一轮（最多 MAX_ROUNDS 轮）
 
 **为什么数字和图表语法都不让模型出**：让它自己算均值会编，让它自己写

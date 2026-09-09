@@ -14,7 +14,7 @@ from typing import AsyncIterator
 
 import dataclasses
 
-from ...scoring import DimensionScore, Evaluation
+from ..types import DimensionScore, Evaluation
 
 from ..events import CUSTOM_CHECK_HIT, Event
 from ..state import State

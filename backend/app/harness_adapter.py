@@ -1,27 +1,27 @@
-"""Wires the domain-agnostic scoring package into this app: an
+"""Wires the domain-agnostic scoring engine into this app: an
 LLMClient adapter over app.llm, a RunHistoryStore backed by the
 harness_runs sqlite table, and memoket-note's own rubric (spine/beats
-vocabulary lives here, not in the package -- see app/scoring/README.md
+vocabulary lives here, not in harness/rubric.py -- see harness/rubric.py 的 docstring
 "Design notes").
 """
 
 from __future__ import annotations
 
-from .scoring import Dimension, RunRecord
+from .harness.types import Dimension, RunRecord
 
 from . import llm as _llm
 from . import store
 
 
 class AppLLMClient:
-    """Implements scoring.LLMClient by forwarding to app.llm.complete()."""
+    """Implements harness.types.LLMClient by forwarding to app.llm.complete()."""
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
         return await _llm.complete(messages, **kwargs)
 
 
 class SqliteRunHistoryStore:
-    """Implements scoring.RunHistoryStore over app/store.py's
+    """Implements harness.types.RunHistoryStore over app/store.py's
     harness_runs table."""
 
     def record(self, run: RunRecord) -> None:

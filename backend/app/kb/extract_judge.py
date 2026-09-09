@@ -6,9 +6,9 @@ months later, or whether it was filed under the right subject -- and those are
 the two things that decide whether the writing side can use it at all.
 
 **This is the same mechanism as the writing harness, with different
-dimensions.** ``scoring.evaluate`` was built as a package precisely so
-that swapping the dimensions swaps the domain; extraction is the second
-domain, and it needed no new machinery.
+dimensions.** ``harness.rubric.evaluate`` takes its criteria from the caller, so swapping
+the dimensions swaps the domain; extraction is the second domain, and it
+needed no new machinery.
 
 **The cost, measured, is not what the design assumed.** The plan said model
 judgement would double the price of ingestion, on the assumption of judging
@@ -31,7 +31,8 @@ from __future__ import annotations
 import collections
 from dataclasses import dataclass
 
-from ..scoring import Dimension, Evaluation, evaluate
+from ..harness.rubric import evaluate
+from ..harness.types import Dimension, Evaluation
 
 from .. import harness_adapter
 from ..kite_memory import UserMemory

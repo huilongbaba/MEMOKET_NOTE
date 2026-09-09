@@ -10,6 +10,7 @@ from __future__ import annotations
 from ... import blockcheck
 from ..state import State
 from ..types import Verdict
+from . import pick_dimension
 
 
 def no_fake_charts(st: State) -> Verdict | None:
@@ -24,7 +25,7 @@ def no_fake_charts(st: State) -> Verdict | None:
     if not hits:
         return None
     return Verdict(
-        "has_charts",
+        pick_dimension(st, "has_charts", "chart_validity"),
         "This round did not actually draw anything -- it described charts in "
         f"prose: {'; '.join(hits)}. Call chart_column / render_chart / "
         "chart_from_text and paste the ```mermaid block they return verbatim; "
@@ -51,7 +52,7 @@ def charts_from_tools(st: State) -> Verdict | None:
     if not bad:
         return None
     return Verdict(
-        "has_charts",
+        pick_dimension(st, "has_charts", "chart_validity"),
         f"{len(bad)} mermaid chart(s) here were not produced by a tool "
         f"({'; '.join(bad)}) -- they were hand-written to imitate tool output. "
         "Hand-written mermaid is unverified; syntax that fails to render "

@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import harness_adapter, llm, store  # noqa: E402
-from app.scoring import RunRecord  # noqa: E402
+from app.harness.types import RunRecord  # noqa: E402
 
 
 @pytest.fixture()

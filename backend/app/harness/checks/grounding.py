@@ -11,11 +11,12 @@ disagree; a deletion nobody was told about offers neither.
 
 from __future__ import annotations
 
-from ...scoring import check_citations
+from ..citations import check_citations
 
 from ... import grounding_check
 from ..state import State
 from ..types import Verdict
+from . import pick_dimension
 
 
 def no_placeholder(st: State) -> Verdict | None:
@@ -28,7 +29,7 @@ def no_placeholder(st: State) -> Verdict | None:
     if not lines:
         return None
     return Verdict(
-        "factual_grounding",
+        pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
         "There are placeholders standing in for content: "
         + "; ".join(lines[:3])
         + ". Either write the thing, or leave it out -- a promise of content "
@@ -47,7 +48,7 @@ def no_audit_voice(st: State) -> Verdict | None:
     if not lines:
         return None
     return Verdict(
-        "style_fit",
+        pick_dimension(st, "style_fit", "coherence", "fits_context"),
         "Some sentences are about the evidence rather than about the subject: "
         + "; ".join(lines[:3])
         + ". If a fact isn't there, leave the claim out; don't narrate the gap.",
@@ -70,7 +71,7 @@ def citations_hold(st: State) -> Verdict | None:
     if not missing:
         return None
     return Verdict(
-        "factual_grounding",
+        pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
         f"{len(missing)} cited source(s) don't match anything in the material "
         f"you were given ({'; '.join(m[:40] for m in missing[:2])}). Cite only "
         "what you actually retrieved.",
@@ -98,4 +99,4 @@ def material_used(st: State) -> Verdict | None:
     gap = grounding_check.grounding_gap(st.content, st.facts)
     if not gap:
         return None
-    return Verdict("material_use", gap)
+    return Verdict(pick_dimension(st, "material_use", "factual_grounding"), gap)

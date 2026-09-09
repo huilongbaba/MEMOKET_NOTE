@@ -175,3 +175,50 @@ def test_每个mode都能拿到skill工具():
     """能看见有哪些技能却调不了 load_skill，这个机制就只剩半截。"""
     for mode in modes.ALL:
         assert "skill" in mode.groups, f"{mode.key} 没开 skill 工具组"
+
+
+def test_每条check打翻的维度这个mode真的有():
+    """**这是被问出来的一个真 bug。**
+
+    一条 check 被多个 Mode 共用，而它以前把维度名写死：``no_fake_charts``
+    写死打 ``has_charts``，在数据可视化模式下对，在智能插图模式下打的是一个
+    **那个模式根本没有的维度**（它那一维叫 ``chart_validity``）。24 个
+    「check × mode」组合里 8 个是这样。
+
+    后果不大但很别扭：Evaluation 里冒出一个模型从来不会打的维度名，喂回
+    下一轮的诊断也顶着一个模型没见过的标签。
+
+    修法不是统一命名——``has_charts``（图有没有信息量）和 ``chart_validity``
+    （图是不是工具产出的）是**不同的轴**。修法是让 check 在候选里挑这个
+    Mode 认识的那个（``checks.pick_dimension``）。这条断言保证挑得到。
+    """
+    import asyncio
+    import types as _t
+
+    from app.agent_loop import ToolTrace
+    from app.harness.state import State
+    from app.tools import ToolContext
+
+    bad = []
+    for mode in modes.ALL:
+        for polish in (False, True) if mode.key == "note" else (False,):
+            for has_profile in (False, True):
+                shaped = modes.for_run(mode, has_profile=has_profile, polish=polish)
+                names = {d.name for d in shaped.dims}
+                st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
+                # 让每条 check 都命中：喂一段同时踩中所有判据的正文
+                st.content = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
+                              "现有材料不足以证明这一点。\n[fact-nope] 引用了不存在的事实\n"
+                              "```mermaid\nxychart-beta\n bar [1,2]\n```\n")
+                st.before = "### 上文的标题\n"
+                st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
+                st.charts = []
+                st.trace = ToolTrace()
+                for check in shaped.checks:
+                    verdict = check(st)
+                    if verdict and verdict.dimension not in names:
+                        bad.append(f"{shaped.key}(profile={has_profile},polish={polish})"
+                                   f" 的 {check.__name__} 打了 {verdict.dimension}，"
+                                   f"而它的 dims 是 {sorted(names)}")
+    assert not bad, "check 打翻了这个 Mode 没有的维度：\n  " + "\n  ".join(bad)
+    _ = asyncio, _t

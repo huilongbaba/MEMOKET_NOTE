@@ -233,6 +233,11 @@ backend/app/
     revision.py              修订的定位与应用（纯函数，从 note_harness 搬出来）
     snapshot.py              State ⇄ JSON，轮末暂停用（第 13.1 节）
     params.py                跨 harness 的两个续写预算 + AGENT_TOOLS 开关
+    rubric.py                **判据的模型判那一半**：evaluate()，按 Mode.dims
+                             逐条打 0/1/2 分，然后由代码数一遍决定「完没完」（第 9 节）
+    dedup.py                 find_repeats()：机械查重，零 LLM
+    compaction.py            compact_context()：渐进式压缩，零 LLM
+    citations.py             check_citations()：引用核对，零 LLM
     hooks/                 ← 每条 harness 自己写的三个回调（第 5、16 节）
       block.py                 `/` 块生成：prepare / produce / commit
       note.py                  单篇续写：骨架、大纲模式、检索规划
@@ -256,19 +261,6 @@ backend/app/
       charts.py                假图 · 手写 mermaid
       structure.py             标题层级 · 收尾节撞车 · 大纲被压平
       grounding.py             占位符 · 审计腔 · 引用核对 · 材料没用上
-
-  scoring/                 ← 模型判的那一半判据的**执行引擎**。第 9 节
-    rubric.py                evaluate()：一次 LLM 调用，逐维度打分，代码判「完没完」
-    types.py                 Dimension · DimensionScore · Evaluation · DupHint · RunRecord
-    protocols.py             LLMClient · RunHistoryStore —— 由 app 实现（harness_adapter.py）
-    dedup.py                 find_repeats()：机械查重，零 LLM
-    context.py               compact_context()：渐进式压缩，零 LLM
-    citations.py             check_citations()：引用核对，零 LLM
-    ↑ 这一层**不依赖 app 的任何东西**（有分层断言盯着）。它一度是
-      `backend/writer_harness/` 那个可独立安装的包，为「将来开源」做的准备；
-      因为只有这一个使用者、而那套包机制（pyproject + editable 安装 +
-      单独的测试目录）只换来一个额外的概念，已经合回 app。真要开源，
-      把这一个目录拷出去就行。
 
   sandbox/                 ← 第三方 skill 脚本的笼子。第 10.8 节
     runner.py                Seatbelt(macOS) / bubblewrap(Linux) 的薄封装
@@ -839,6 +831,52 @@ class Verdict:
 **fix 之后要重跑这条 check**，而且**要在副本上修、通过了才采纳**——
 一次没修好的 fix 如果留下副作用，下一轮就基于被改坏的内容继续。
 （这条是写原型跑出来的，见第 21 节。）
+
+### 9.2.1 两半判据是同一种东西的两种实现
+
+**产出类型完全一样。** `Check` 命中之后，`Checks` 中间件把它变成：
+
+```python
+st.ev = Evaluation(scores={verdict.dimension: DimensionScore(level=0, ...)})
+```
+
+跟 `rubric.evaluate()` 返回的是同一个 `Evaluation`。所以两半判据**共用
+一套 dimension 词表**——差的只是谁来判、花多少钱。
+
+| | `Check` | `Dimension` |
+|---|---|---|
+| 谁判 | 代码，纯函数 | 模型，一次调用 |
+| 成本 | 零 | 几秒 + token |
+| 能判什么 | 有没有 mermaid 代码块、标题深几级、数字在不在原文里 | 切不切题、自不自足、有没有说清约束 |
+| 能自动修吗 | 能（`Verdict.fix`） | 不能 |
+| 在哪 | `harness/checks/` | `harness/rubric.py` |
+
+循环里的顺序是「先跑 `checks`，命中就 `skip_judge`，不跑 `evaluate`」——
+所以代码判的那一半既是判据，也是省钱的闸。
+
+#### 共用词表就要对齐：check 打的维度必须是这个 Mode 真有的
+
+一条 check 被多个 Mode 共用，而它以前把维度名**写死**：`no_fake_charts`
+写死打 `has_charts`，在数据可视化模式下对，在智能插图模式下打了个那个
+模式根本没有的维度（它那一维叫 `chart_validity`）。24 个「check × mode」
+组合里 **8 个是这样**。后果不大但很别扭：`Evaluation` 里冒出一个模型从来
+不会打的维度名，喂回下一轮的诊断也顶着一个模型没见过的标签。
+
+修法**不是统一命名**——`has_charts`（图有没有信息量）和 `chart_validity`
+（图是不是工具产出的）是不同的轴。修法是 `checks.pick_dimension(st, …)`：
+check 拿得到 `State`，就在候选里挑这个 Mode 认识的那个。
+
+顺带发现 `analysis` 的 dims 漏了两条：它挂着图表检查和标题检查，却既没有
+图表维度也没有贴合度维度——是 dims 不全，不是 check 挂错了，补上了。
+
+`test_每条check打翻的维度这个mode真的有` 覆盖 8 个 Mode × 运行时变体，
+反向验证过：把 `pick_dimension` 换回写死的名字，断言会红。
+
+`rubric.py` 一条标准都没有，全部由调用方传 `dimensions`；这就是为什么
+知识库那边能拿同一个 `evaluate()` 去判抽取质量（见 `kb-architecture.md`），
+一行新机制都没加。它一度是 `backend/writer_harness/` 那个可独立安装的包，
+为「将来开源」做的准备——因为只有这一个使用者、而那套包机制只换来一个
+额外的概念，已经并进 `harness/`。
 
 ### 9.3 现有的 checks
 
@@ -1686,16 +1724,15 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 flowchart TD
     L0["L0　前端　只认 AG-UI 事件"]
     L1["L1　routers/：薄壳　选 Mode，提供 Hooks，转 SSE"]
-    L2["L2　app/harness/　loop · State · middleware/ · checks/ · modes/ · events"]
+    L2["L2　app/harness/　loop · State · middleware/ · checks/ · rubric · modes · events"]
     L3["L3　app/：能力　agent_loop · llm · store · kite_memory · tools/ · sandbox/"]
     L4["L4　纯函数层　tabular · blocks · outline · textshape · restructure · revision"]
-    L5["L5　app/scoring/　evaluate · find_repeats · compact_context · check_citations"]
+
 
     L0 -->|AG-UI 事件| L1
     L1 --> L2
     L2 --> L3
     L2 --> L4
-    L2 --> L5
     L3 --> L4
 ```
 

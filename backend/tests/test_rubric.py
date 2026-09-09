@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from app.scoring import Dimension, DupHint, evaluate
+from app.harness.rubric import evaluate
+from app.harness.types import Dimension, DupHint
 
 
 class _MockLLM:

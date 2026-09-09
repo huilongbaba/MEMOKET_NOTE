@@ -1,4 +1,4 @@
-from app.scoring import compact_context
+from app.harness.compaction import compact_context
 
 
 def test_short_content_returned_unchanged():

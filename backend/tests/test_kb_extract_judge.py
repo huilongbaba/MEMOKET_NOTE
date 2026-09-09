@@ -20,7 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.scoring import DimensionScore, Evaluation  # noqa: E402
+from app.harness.rubric import Evaluation  # noqa: E402
+from app.harness.types import DimensionScore
 
 from app.kb import extract_judge  # noqa: E402
 

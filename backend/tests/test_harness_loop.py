@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from app.scoring import Dimension, DimensionScore, Evaluation
+from app.harness.types import Dimension, DimensionScore, Evaluation
 
 from app.harness import State
 from app.harness.loop import run

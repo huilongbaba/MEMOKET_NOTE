@@ -1,16 +1,30 @@
-"""The five types every harness is built from.
+"""Every type a harness is built from, in one file.
 
 Nothing here knows about writing, notes, or KITE. A harness is assembled by
 picking a ``Mode`` and supplying three callbacks; the loop and the middleware
 chain do the rest.
+
+Two groups, and they used to live apart:
+
+* **The framework**: ``Mode`` (what this run wants), ``Hooks`` (the three
+  callbacks each harness writes), ``Middleware`` (capabilities), ``Check`` /
+  ``Verdict`` (the code-judged half of 判据), ``StopCondition``.
+* **Scoring**: ``Dimension`` / ``DimensionScore`` / ``Evaluation`` -- the
+  model-judged half. These were in a separate installable package
+  (``writer_harness``) built to be open-sourced one day. It had exactly one
+  consumer, and the cost of the extra concept was that nobody could tell
+  what it was. ``Mode.dims`` is a ``tuple[Dimension, ...]`` and ``State.ev``
+  is an ``Evaluation`` -- they were always framework types, so they live
+  with the rest of them now.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, AsyncIterator, Callable, Protocol
+from dataclasses import field
+from typing import (TYPE_CHECKING, AsyncIterator, Callable, Literal, Protocol,
+                    runtime_checkable)
 
-from ..scoring import Dimension
 
 if TYPE_CHECKING:                       # pragma: no cover
     from ..agent_loop import ToolTrace
@@ -184,3 +198,92 @@ class Mode:
     fact_budget: int = 40             # how many accumulated facts to keep
     context_keep_last: int = 4000     # chars of content kept verbatim for continuation
     max_tokens: int = 1400
+
+
+# ------------------------------------------------------------ 打分 ---
+# 判据的模型判那一半用到的类型。代码判的那一半是上面的 Check / Verdict。
+
+Status = Literal["continue", "complete", "blocked"]
+
+
+@dataclass(frozen=True)
+class Dimension:
+    """One scored axis of "what good means here", supplied by the caller.
+
+    ``guidance`` is rendered directly into the scoring prompt -- write it as
+    a sentence describing what a low vs. high score looks like for this
+    dimension, not as a bare label. The model scores against this text, not
+    against any assumption baked into this package.
+    """
+
+    name: str
+    guidance: str
+
+
+@dataclass(frozen=True)
+class DimensionScore:
+    """One dimension's result for one evaluate() call.
+
+    ``level`` is 0 (insufficient) / 1 (partial) / 2 (meets the bar) -- coarse
+    on purpose. A finer scale invites false precision from a single LLM call;
+    three levels is enough to drive "what's weakest" without pretending the
+    judgment is more exact than it is.
+    """
+
+    level: int
+    note: str
+
+
+@dataclass(frozen=True)
+class Evaluation:
+    """Result of one evaluate() call."""
+
+    scores: dict[str, DimensionScore]
+    status: Status
+    weakest: str | None = None
+    blocked_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class DupHint:
+    """One candidate near-duplicate pair found by find_repeats()."""
+
+    a: str
+    b: str
+    similarity: float
+
+
+@dataclass(frozen=True)
+class RunRecord:
+    """One completed (or abandoned) harness run, for RunHistoryStore."""
+
+    key: str
+    status: Status
+    rounds: int
+    final_scores: dict[str, int]
+    weak_dimensions: list[str] = field(default_factory=list)
+    timestamp: str = ""
+
+
+@runtime_checkable
+class LLMClient(Protocol):
+    """Anything that can turn a chat-style message list into text. Matches
+    the common OpenAI-compatible `complete(messages, **kw) -> str` shape
+    closely enough that most existing app-side LLM wrappers satisfy this
+    with a one-line adapter, without this package caring which provider,
+    auth scheme, or model is behind it."""
+
+    async def complete(self, messages: list[dict], **kwargs) -> str: ...
+
+
+@runtime_checkable
+class RunHistoryStore(Protocol):
+    """Persists completed runs and retrieves recent ones for a given key
+    (whatever the host app's model of "same recurring task" is -- a note
+    id, a user id, a task type -- this package doesn't prescribe it).
+    Optional: callers that don't care about cross-run history simply never
+    construct one."""
+
+    def record(self, run: RunRecord) -> None: ...
+
+    def recent(self, key: str, limit: int = 3) -> list[RunRecord]: ...

@@ -17,6 +17,7 @@ import re
 from ... import blockcheck, outline
 from ..state import State
 from ..types import Verdict
+from . import pick_dimension
 
 _HEADING = re.compile(r"^(#{1,6})(\s)", re.M)
 
@@ -32,7 +33,7 @@ def heading_fits(st: State) -> Verdict | None:
     gap = blockcheck.heading_gap(st.before, st.content)
     if not gap:
         return None
-    return Verdict("fits_context", gap, fix=lambda text: _sink_headings(st.before, text))
+    return Verdict(pick_dimension(st, "fits_context", "coherence"), gap, fix=lambda text: _sink_headings(st.before, text))
 
 
 def _sink_headings(before: str, block: str) -> str:
@@ -66,7 +67,7 @@ def tail_clashes(st: State) -> Verdict | None:
     if not clashing:
         return None
     return Verdict(
-        "fits_context",
+        pick_dimension(st, "fits_context", "coherence"),
         f"This block ends with its own closing section ({clashing[0]!r}) while "
         "the text below already has one. Drop it -- a block inserted into a "
         "note is a passage, not a standalone report.",
@@ -96,7 +97,7 @@ def outline_intact(st: State) -> Verdict | None:
     if outline.structure_intact(st.before, st.content):
         return None
     return Verdict(
-        "fits_context",
+        pick_dimension(st, "fits_context", "coherence"),
         "This note is an outline and its heading hierarchy has been flattened. "
         "Keep the existing levels: write under them, don't rewrite them.",
     )

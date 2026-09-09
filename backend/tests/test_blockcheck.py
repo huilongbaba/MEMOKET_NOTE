@@ -184,7 +184,7 @@ def test_best_of_的排序规则():
 def test_检查命中时构造的评价是合法的():
     """确定性检查排在打分前面，命中就跳过那次 LLM 调用、直接构造一份不合格
     的评价。这份评价要能被下游正常用：算 best-of 的 rank、生成 steer。"""
-    from app.scoring import DimensionScore, Evaluation
+    from app.harness.types import DimensionScore, Evaluation
 
     ev = Evaluation(scores={"has_charts": DimensionScore(level=0, note="没有真的画图")},
                     status="continue", weakest="has_charts")

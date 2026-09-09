@@ -571,7 +571,7 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
                       + "\n照这句话去正文里找对应的位置，就地改掉。")
         parts.append(block)
     if dup_hints:
-        # 机械查重（scoring.find_repeats()，不用 LLM）先算好的疑似
+        # 机械查重（harness.dedup.find_repeats()，不用 LLM）先算好的疑似
         # 重复段落对——真实测试暴露的问题：只让模型自己通读全文找重复，
         # 连续几轮"重复"这条原则都卡住不改善；给具体候选对，比让它每轮
         # 重新从头找一遍更可靠。这是候选，不是定论，还是要模型自己判断
@@ -644,7 +644,7 @@ def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
 # 完成条件是结构节拍（spine/beats）被正文实质覆盖，不是分段列表跑完。
 #
 # "写完了没有"不再靠续写模型自己在正文末尾主观判断、吐一个标记——见
-# scoring.evaluate()：改成每轮续写完之后单独跑一次打分，续写这一步
+# harness.rubric.evaluate()：改成每轮续写完之后单独跑一次打分，续写这一步
 # 只管往下写，不用兼顾"自我判断完不完整"这件事。
 
 RETRIEVAL_PLAN_SYSTEM = """你是写作助手的检索规划环节。给你一篇正在写的
@@ -990,7 +990,7 @@ def more_sections_user(goal: str, section_summaries: list[str], facts: list[str]
     return "\n\n".join(parts)
 
 
-# TRACELOG [10] 的发现（现在由 scoring.evaluate() 的 beat_coverage
+# TRACELOG [10] 的发现（现在由 harness.rubric.evaluate() 的 beat_coverage
 # 维度承接，见 app/harness_adapter.py 里这个维度的 guidance 文案）：
 # note_harness 每轮"要不要停"完全靠模型自己在续写输出末尾主观判断——实测
 # 一个 4 条 beats 的笔记，第 1 轮就已经把 4 条 beats 都实质覆盖了，模型却

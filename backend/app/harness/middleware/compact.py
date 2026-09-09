@@ -11,7 +11,7 @@ a few hundred characters.
 
 from __future__ import annotations
 
-from ...scoring import compact_context
+from ..compaction import compact_context
 
 from ..state import State
 

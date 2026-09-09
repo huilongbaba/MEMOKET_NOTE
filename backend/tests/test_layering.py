@@ -113,8 +113,13 @@ def test_the_knowledge_base_layer_knows_nothing_above_it():
     for path in (ROOT / "app" / "kb").glob("*.py"):
         # 注意匹配的是 app 自己的那个 harness 包，不是 scoring——
         # 后者是它下面一层的、可独立开源的包，kb 用它的 evaluate() 正是设计。
+        # kb 用 harness 的打分引擎（rubric）和它的类型是**设计**——抽取判据
+        # 复用同一个 evaluate()，换一组 dimensions 就换个领域。不许碰的是
+        # 循环本身：State / loop / middleware / hooks。
+        allowed = {"app.harness.rubric", "app.harness.types"}
         offending = {m for m in _imports(path)
-                     if "app.routers" in m or m.startswith("app.harness")}
+                     if ("app.routers" in m
+                         or (m.startswith("app.harness") and m not in allowed))}
         assert not offending, f"{path.name} imports {offending}"
 
 
