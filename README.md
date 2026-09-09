@@ -34,6 +34,8 @@ AI 驱动的编辑器 + 个人知识库。写作时自动引用你自己的记�
       routers/     和前端对接：认 Mode、装 State、翻事件
       util/        公共：配置 · LLM 客户端
     │
+shared/          前后端共同的判据（见 shared/README.md）
+    │
     ├── KITE Memory      每用户一个 XML codebook
     ├── LLM              OpenAI 兼容端点（默认内网 Muse-Glimmer-30B）
     └── Whisper Turbo    whisper.cpp server
