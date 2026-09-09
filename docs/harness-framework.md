@@ -28,7 +28,8 @@ flowchart TB
     subgraph LIB["全局共享　一份，不随 harness 增加而变"]
         LOOP["<b>loop.run()</b><br/>prepare → produce → judge → 停不停"]
         MW["<b>middleware 库</b>　默认全开<br/>skills · facts · repeats · checks · best_of · history<br/>按需挂：revise · compact · save · policy · replan"]
-        CK["<b>checks 库</b>　代码判的判据<br/>charts · structure · grounding"]
+        CK["<b>checks 库</b>　判据·代码判的<br/>charts · structure · grounding<br/><i>零成本，先跑</i>"]
+        SC["<b>scoring</b>　判据·模型判的<br/>evaluate()：按 Mode.dims 逐条打分<br/><i>一次调用，checks 短路时不跑</i>"]
         ST["<b>State</b>　一次 run 的数据"]
         EVT["<b>events</b>　AG-UI 标准事件"]
     end
@@ -45,6 +46,8 @@ flowchart TB
     HOOK --> LOOP
     MODES --> LOOP
     CK -.->|"Mode 从库里挑几条填进 checks"| MODES
+    SC -.->|"Mode 把要看的标准填进 dims"| MODES
+    LOOP -->|"判这一轮写得怎么样"| SC
     MW --> LOOP
     LOOP --> ST
     LOOP --> EVT
@@ -63,6 +66,11 @@ flowchart TB
   **取材料和生成的方式是同一套代码**。
 - **中间是全局共享的**，一份，不随 harness 增加而变。`middleware` 和
   `checks` 是**库**：middleware 默认全开，checks 由 `Mode` 从库里挑几条填进去。
+- **判据有两半，图上是并排的两个框**：`checks` 代码判、零成本、先跑；
+  `scoring` 模型判、一次调用、`checks` 命中时直接短路不跑。两半的标准都由
+  `Mode` 填——`Mode.checks` 挑代码判的，`Mode.dims` 写模型判的。
+  **`scoring` 本身一条标准都没有**，所以换一组 `dims` 就能换个领域用
+  （知识库那边就是这么复用它去判抽取质量的）。
 - **下面是用户配的**，改了不用发版。
 
 ### 一轮里发生什么：三个概念的位置
@@ -81,7 +89,8 @@ flowchart TB
   ├─ after_produce       middleware　Save 落盘
   │
   ├─ before_judge        middleware　Repeats 查重 → Checks 跑判据（可能短路）
-  ├─ evaluate            循环写死的，不可换
+  ├─ evaluate            ★ scoring ── 循环写死的，不可换
+  │                        按 Mode.dims 逐条打分，代码数一遍决定「完没完」
   ├─ after_judge         middleware　BestOf 记住最好的一轮
   ├─ after_round         middleware　Policy / Replan
   │
