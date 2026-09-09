@@ -31,10 +31,10 @@ from __future__ import annotations
 import collections
 from dataclasses import dataclass
 
-from ..harness.checks.rubric import evaluate
-from ..harness.types import Dimension, Evaluation
+from ...harness.checks.rubric import evaluate
+from ...harness.types import Dimension, Evaluation
 
-from .. import harness_adapter
+from ...harness import adapter as harness_adapter
 from ..kite.kite_memory import UserMemory
 
 # How much of the original conversation the judge sees. It has to see some --

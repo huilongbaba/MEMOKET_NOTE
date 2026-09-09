@@ -7,7 +7,7 @@ makes it a capability, not part of any one endpoint.
 
 from __future__ import annotations
 
-from . import store
+from ..database import store
 
 # Enough to shape the writing without crowding out the material. Past this,
 # preferences start competing with the facts for the model's attention.

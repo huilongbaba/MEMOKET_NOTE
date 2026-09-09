@@ -27,8 +27,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # constructing a string -- which in turn is why the regression suite for real
 # failing output exists at all.
 # 名单就是目录本身——之前是手写的，跟代码分开维护，搬一次文件就对不上了。
-PURE_DIR = ROOT / "app" / "pure"
-PURE = sorted(p.stem for p in PURE_DIR.glob("*.py") if p.name != "__init__.py")
+# 这九个模块的**性质**是「只依赖标准库、给个字符串就能测」，跟它们放在
+# 哪个包无关——按职责重排之后它们散在 harness/checks、harness/tools 和
+# editor/ 三处。名单只能显式写，但每一条都有具体理由：它们承载了全部
+# 确定性判据，那是这个产品对抗「模型自己判自己」的唯一手段。
+PURE = ["harness/checks/blockcheck", "harness/checks/grounding_rules",
+        "harness/tools/tabular", "harness/tools/blocks",
+        "harness/policy", "harness/replan_rules",
+        "editor/outline", "editor/restructure", "editor/textshape"]
 
 
 def _imports(path: pathlib.Path) -> set[str]:
@@ -55,7 +61,7 @@ def test_pure_layer_imports_only_the_standard_library():
                  "collections", "itertools", "functools", "enum", "datetime",
                  "__future__"}
     for name in PURE:
-        path = PURE_DIR / f"{name}.py"
+        path = ROOT / "app" / f"{name}.py"
         external = {m for m in _imports(path)
                     if m not in stdlib_ok and not m.startswith("_")}
         assert not external, f"app/{name}.py grew a dependency: {external}"
@@ -122,7 +128,8 @@ def test_the_knowledge_base_layer_knows_nothing_above_it():
         assert not offending, f"{path.name} imports {offending}"
 
 
-def test_the_pure_layer_is_not_empty():
-    """名单现在是目录本身，不会再跟代码对不上——但空目录会让整条检查静默
-    失效，所以还是要有个下限。"""
-    assert len(PURE) >= 8, f"app/pure 只剩 {PURE}，这条检查快没意义了"
+def test_the_pure_layer_list_points_at_real_files():
+    """名单是手写的，就必须有东西盯着它别过期——一个不存在的条目会让
+    整条纯度检查静默地少查一个模块。"""
+    missing = [n for n in PURE if not (ROOT / "app" / f"{n}.py").exists()]
+    assert not missing, f"名单里这些文件不在了：{missing}"

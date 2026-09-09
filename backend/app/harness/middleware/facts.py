@@ -60,7 +60,7 @@ def _mermaid_of(trace) -> list[str]:
     been observed copying a tool's output and adjusting it, which produces
     charts that look right and don't render.
     """
-    from ...pure.blockcheck import mermaid_blocks
+    from ..checks.blockcheck import mermaid_blocks
 
     out: list[str] = []
     for _name, _args, result in trace.calls:

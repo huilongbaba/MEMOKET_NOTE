@@ -20,11 +20,11 @@ from app.harness.types import DimensionScore, Evaluation
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import store
-from app.pure import runtime_policy# noqa: E402
+from app.database import store
+from app.harness import policy as runtime_policy# noqa: E402
 from app.harness import loop, modes, snapshot  # noqa: E402
 from app.harness.state import State  # noqa: E402
-from app.tools import ToolContext  # noqa: E402
+from app.harness.tools import ToolContext  # noqa: E402
 
 
 @pytest.fixture()
@@ -118,7 +118,7 @@ class _Hooks:
         self.committed = 0
 
     async def prepare(self, st):
-        from app.agent_loop import ToolTrace
+        from app.harness.agent_loop import ToolTrace
         return [f"第{st.round}轮的材料"], ToolTrace()
 
     async def produce(self, st):
@@ -185,7 +185,7 @@ def test_暂停的run不进历史(db, monkeypatch):
     st.ev = _passing(st)
     st.stopped = "awaiting_review"
     recorded = []
-    monkeypatch.setattr("app.harness_adapter.SqliteRunHistoryStore",
+    monkeypatch.setattr("app.harness.adapter.SqliteRunHistoryStore",
                         lambda: type("S", (), {"record": lambda self, r: recorded.append(r)})())
     asyncio.run(History().after_run(st))
     assert recorded == []

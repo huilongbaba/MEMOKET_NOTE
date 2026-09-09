@@ -21,8 +21,8 @@ from .types import Evaluation
 if TYPE_CHECKING:                       # pragma: no cover
     from fastapi import Request
 
-    from ..agent_loop import ToolTrace
-    from ..tools import ToolContext
+    from .agent_loop import ToolTrace
+    from .tools import ToolContext
     from .types import Mode
 
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.llm import extract_json  # noqa: E402
+from app.util.llm import extract_json  # noqa: E402
 
 
 def test_plain_object():

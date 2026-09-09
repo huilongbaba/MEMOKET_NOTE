@@ -1,7 +1,8 @@
 
 
 def test_手写的_mermaid_认得出来():
-    from app.pure import blocks, blockcheck
+    from app.harness.tools import blocks
+    from app.harness.checks import blockcheck
     real = blocks.mermaid_xy("各渠道曝光", ["官网", "Kickstarter"], [93000, 254000])
     allowed = blockcheck.mermaid_blocks(real)
     # 工具原样搬过来的：放行
@@ -21,7 +22,7 @@ def test_聚焦轮看产物不看行为():
     """`focus_groups` 那一轮该不该跑，判据是画图工具**产出了东西**，
     不是调过画图工具——chart_column 会主动拒绝没信息量的图，连拒三次按
     「调过了」算就会跳过补画轮，最后一张图都没有。"""
-    from app.pure import blocks
+    from app.harness.tools import blocks
     from app.harness.hooks.block import _produced
 
     class T:
@@ -40,7 +41,7 @@ def test_聚焦轮看产物不看行为():
 def test_远处的表不冒充就在旁边():
     """一篇笔记里唯一的一张表，哪怕在一万字外，nearest 也会返回它——
     实测因此分析了跟光标毫无关系的项目进度表。距离要如实报出来。"""
-    import app.tools as T
+    import app.harness.tools as T
 
     table = "| 阶段 | 状态 |\n|---|---|\n| 启动 | 进行中 |\n"
     md = table + "隔着很远的一段。" * 900 + "\n\n效率提升 10 倍，成本降幅 75%。"
@@ -56,7 +57,7 @@ def test_远处的表不冒充就在旁边():
 
 
 def test_光标附近的数字句子():
-    import app.tools as T
+    import app.harness.tools as T
 
     md = ("很久以前的事，销量 100。" + "无关的话。" * 300
           + "AI FWI 将反演效率提升 10 倍、成本降幅 75%。"
@@ -71,7 +72,7 @@ def test_光标附近的数字句子():
 
 
 def test_混量纲的图被拒():
-    import app.tools as T
+    import app.harness.tools as T
 
     md = "效率提升 10 倍、成本降幅 75%、机房空间降低 98%。"
     ctx = T.ToolContext(user="u", note_id="n", content=md, cursor=len(md))
@@ -93,8 +94,8 @@ def test_量纲混了的图被原文判掉():
     """模型可以声明 unit="倍" 却把「576 台」画进来——声明没撒谎，混的是数据。
     单位要从原文取，而且只取离光标最近的那次出现：三万字里「10」出现几十次，
     后面跟着"倍""秒""%""月"什么都有，全收一遍等于没有判据。"""
-    import app.tools as T
-    from app.pure import tabular
+    import app.harness.tools as T
+    from app.harness.tools import tabular
 
     md = ("很久以前：等了 10 秒。" + "无关。" * 400
           + "AI FWI 将反演效率提升 10 倍、成本降幅 75%。"
@@ -121,7 +122,7 @@ def test_量纲混了的图被原文判掉():
 
 def test_单值的图被拒():
     """一根柱子的柱状图，读者得到的信息跟直接读那句话一样。"""
-    import app.tools as T
+    import app.harness.tools as T
 
     md = "反演效率提升 10 倍。三月 100，四月 120。"
     ctx = T.ToolContext(user="u", note_id="n", content=md, cursor=len(md))
@@ -144,7 +145,7 @@ def test_单值的图被拒():
 def test_编造的对照值被抓住():
     """两条互相拉扯的要求都得挡住：编造的对照值要拒，省了单位的同组项要放行。
     区别在同不同句。"""
-    from app.pure import tabular
+    from app.harness.tools import tabular
 
     near = ("其中，最新技术 AI FWI 将反演效率提升 10 倍、成本降幅 75%。"
             "计划后续在全国总部署 1 万公里。")
@@ -157,7 +158,7 @@ def test_编造的对照值被抓住():
     # 一个值都没带这个单位时判据不生效——原文常常压根不写单位
     assert tabular.without_unit("三月 100，四月 120。", [100, 120], "件") == []
 
-    import app.tools as T
+    import app.harness.tools as T
     ctx = T.ToolContext(user="u", note_id="n", content=near, cursor=len(near))
     out = T.dispatch("chart_from_text",
                      '{"kind":"bar","title":"t","labels":["AI FWI","传统"],'

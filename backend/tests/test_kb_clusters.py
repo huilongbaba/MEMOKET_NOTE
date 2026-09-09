@@ -35,7 +35,7 @@ def _store(topics: dict[str, list[str]]):
 
 
 def test_同一批会议里反复一起出现的主题合成一簇():
-    from app.kb import build
+    from app.database.kb import build
 
     st = _store({
         "school_admissions": ["m1", "m2", "m3", "m4"],
@@ -50,7 +50,7 @@ def test_同一批会议里反复一起出现的主题合成一簇():
 
 def test_只共同出现过一次不算():
     """每个知识库里都有一场会同时提到两件无关的事。"""
-    from app.kb import build
+    from app.database.kb import build
 
     st = _store({"a": ["m1", "x1", "x2"], "b": ["m1", "y1", "y2"]})
     assert all(len(c.topics) == 1 for c in build(st, floor=100))
@@ -64,7 +64,7 @@ def test_链式漂移被拦住():
     某一个成员有交集。complete linkage 要求新成员跟**每一个**已有成员都
     达标，这类合并就不成立了。
     """
-    from app.kb import build
+    from app.database.kb import build
 
     st = _store({
         "a": ["m1", "m2", "m3"],
@@ -78,7 +78,7 @@ def test_链式漂移被拦住():
 def test_两个都已经够大的主题不合并():
     """粗一层是给碎片用的。把两个本来就完整的主题捏在一起，只会让检索
     带回一堆不相干的材料——那正是要修的病。"""
-    from app.kb import build
+    from app.database.kb import build
 
     units = [f"m{i}" for i in range(10)]
     st = _store({"big_a": units, "big_b": units})
@@ -88,7 +88,7 @@ def test_两个都已经够大的主题不合并():
 
 
 def test_结果不依赖字典顺序():
-    from app.kb import build
+    from app.database.kb import build
 
     spec = {"school": ["m1", "m2", "m3"], "math": ["m1", "m2", "m4"],
             "hw": ["h1", "h2"], "fw": ["h1", "h2"]}
@@ -100,7 +100,7 @@ def test_结果不依赖字典顺序():
 
 def test_没有出处的主题不参与聚类():
     """聚类的信号就是出处。没有出处就没有信号，硬凑只会造出假簇。"""
-    from app.kb import build
+    from app.database.kb import build
 
     st = _store({"a": ["m1", "m2"]})
     st.facts["F1"].src = []
@@ -109,7 +109,7 @@ def test_没有出处的主题不参与聚类():
 
 
 def test_簇按最大的成员命名():
-    from app.kb import build
+    from app.database.kb import build
 
     st = _store({"small": ["m1", "m2"], "large": ["m1", "m2", "m3", "m4"]})
     c = build(st, floor=100)[0]
@@ -133,7 +133,7 @@ def test_按主题过滤必须带上candidate():
     import re
 
     src = (pathlib.Path(__file__).resolve().parents[1]
-           / "app" / "kite" / "kite_memory.py").read_text(encoding="utf-8")
+           / "app" / "database" / "kite" / "kite_memory.py").read_text(encoding="utf-8")
     calls = re.findall(r"downset\([^)]*\)", src, re.S)
     assert calls, "kite_memory 不再调 downset 了，这条测试的前提变了"
     for call in calls:

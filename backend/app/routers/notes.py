@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import store
+from ..database import store
 from ..schemas import Note, NoteFolderIn, NoteIn, SkeletonSaveIn
 from .deps import current_user
 

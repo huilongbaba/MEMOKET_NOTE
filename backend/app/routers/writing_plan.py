@@ -16,13 +16,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from .. import llm, prompts, store, tools
+from .. import prompts
+from ..database import store
+from ..harness import tools
+from ..util import llm
 from ..harness import loop, modes
 from ..harness.events import EventType, legacy_frames, sse as _sse
 from ..harness.hooks.section import SectionHooks
 from ..harness.state import State
-from ..profile import entries as _profile
-from ..retrieval import retrieve as _retrieve
+from ..editor.profile import entries as _profile
+from ..database.retrieval import retrieve as _retrieve
 from ..schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
 from .deps import current_user
 

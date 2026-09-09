@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from memoket_kite.core.algebra import FactRecord, Line, Store, Unit  # noqa: E402
 from memoket_kite.core.vocab import Entity, Topic, Vocab  # noqa: E402
 
-from app.kite.kite_memory import UserMemory  # noqa: E402
+from app.database.kite.kite_memory import UserMemory  # noqa: E402
 
 
 def _fact(id, text, when, *, kind="pref", who="user", conf="high",

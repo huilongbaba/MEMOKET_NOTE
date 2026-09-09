@@ -18,12 +18,13 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import llm, prompts, store
-from ...pure import grounding_check, outline
-from ..events import (CUSTOM_DROPPED, CUSTOM_PHASE_DELTA,
-                      CUSTOM_REVISION, Event)
-from ..revision import (_apply_revision, _breakage, _expand_sources,
-                        _tidy_blank_lines, reject_revision)
+from ... import prompts
+from ...database import store
+from ...util import llm
+from ...editor import outline
+from ..checks import grounding_rules as grounding_check
+from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, Event
+from ..revision import _apply_revision, _breakage, _expand_sources, _tidy_blank_lines, reject_revision
 from ..state import State
 
 # One pass proposes at most this many edits. Beyond it the model stops

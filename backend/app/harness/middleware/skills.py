@@ -16,7 +16,7 @@ the menu, or the model will spend a tool call re-loading what it already has.
 
 from __future__ import annotations
 
-from ... import skills as skills_store
+from .. import skills as skills_store
 from ..state import State
 
 

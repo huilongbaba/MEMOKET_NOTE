@@ -7,7 +7,7 @@ averages and writes mermaid that doesn't render -- both observed.
 
 from __future__ import annotations
 
-from ...pure import blockcheck
+from . import blockcheck
 from ..state import State
 from ..types import Verdict
 from . import pick_dimension

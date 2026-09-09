@@ -15,7 +15,7 @@ import base64
 
 import httpx
 
-from .config import get_settings
+from ..util.config import get_settings
 
 
 class VisionError(RuntimeError):

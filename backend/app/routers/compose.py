@@ -15,12 +15,13 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from .. import llm, profile, prompts, retrieval
-from ..pure import grounding_check
-from ..kite.kite_memory import UserMemory
-from ..schemas import (DigestIn, DigestOut, EditOut, ExpandIn,
-                       MagicTapIn, Revision, RewriteIn, SkeletonIn,
-                       SkeletonOut, VerifyFinding, VerifyIn, VerifyOut)
+from .. import prompts
+from ..database import retrieval
+from ..editor import profile
+from ..util import llm
+from ..harness.checks import grounding_rules as grounding_check
+from ..database.kite.kite_memory import UserMemory
+from ..schemas import DigestIn, DigestOut, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api", tags=["compose"])

@@ -1,5 +1,5 @@
 """harness_adapter.py：把 scoring 的 LLMClient/RunHistoryStore 接口
-接到 app.llm / app.store 上的薄适配层。
+接到 app.util.llm / app.database.store 上的薄适配层。
 
     cd backend && python -m pytest tests/test_harness_adapter.py -v
 """
@@ -13,7 +13,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import harness_adapter, llm, store  # noqa: E402
+from app.database import store
+from app.harness import adapter as harness_adapter
+from app.util import llm# noqa: E402
 from app.harness.types import RunRecord  # noqa: E402
 
 
@@ -101,7 +103,7 @@ def test_section_dimensions_has_topic_fidelity_instead_of_spine_beats():
 
 def test_polish_mode_drops_dimensions_it_may_not_act_on():
     """打磨只修不写，就不能拿"写了多少"去打分——否则闭环不可能收敛。"""
-    from app.harness_adapter import note_dimensions
+    from app.harness.adapter import note_dimensions
 
     write = {d.name for d in note_dimensions(has_profile=False)}
     polish = {d.name for d in note_dimensions(has_profile=False, polish=True)}

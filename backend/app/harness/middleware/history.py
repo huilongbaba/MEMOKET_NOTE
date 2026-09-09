@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ..types import RunRecord
 
-from ... import harness_adapter
+from .. import adapter as harness_adapter
 from ..state import State
 
 

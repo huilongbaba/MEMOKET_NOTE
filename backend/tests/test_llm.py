@@ -14,7 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import llm, store  # noqa: E402
+from app.database import store
+from app.util import llm# noqa: E402
 
 
 def test_payload_uses_max_completion_tokens_not_max_tokens(monkeypatch):

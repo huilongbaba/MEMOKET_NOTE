@@ -4,11 +4,8 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..kite.kite_memory import UserMemory
-from ..schemas import (AskIn, AskOut, EntityOut, FactDetailOut, FactOut,
-                       FactsPageOut, RecallIn, RecallOut, SourceLineOut,
-                       StatsOut, TimelineBucket, TimelineOut, TopicCreateIn,
-                       TopicEntityLink, TopicOut)
+from ..database.kite.kite_memory import UserMemory
+from ..schemas import AskIn, AskOut, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])

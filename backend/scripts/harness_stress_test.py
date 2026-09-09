@@ -29,7 +29,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import store  # noqa: E402
+from app.database import store# noqa: E402
 
 BASE_URL = "http://localhost:8000"
 LOG_PATH = Path(__file__).resolve().parent / "harness_stress_log.jsonl"

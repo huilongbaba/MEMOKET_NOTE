@@ -15,10 +15,10 @@
 不需要改注册表本身。
 """
 
-from . import data_tools  # noqa: F401  —— import 即注册
-from . import memory_tools  # noqa: F401
-from . import sandbox_tools  # noqa: F401
-from . import skill_tools  # noqa: F401
+from . import data_tools
+from . import memory_tools
+from . import sandbox_tools
+from . import skill_tools
 from .registry import (
     Tool,
     ToolContext,

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.harness.checks.rubric import Evaluation  # noqa: E402
 from app.harness.types import DimensionScore
 
-from app.kb import extract_judge  # noqa: E402
+from app.database.kb import extract_judge  # noqa: E402
 
 
 def _memory(units: dict[str, list[str]], facts: list[tuple[str, str, list[str]]]):
@@ -122,7 +122,7 @@ def test_聚合是给规则看的不是给单场看的(monkeypatch):
 
 def test_判据说的话跟抽取规则对得上():
     """判据挑毛病、规则不说怎么做，闭环就是空的。这两条是同一件事的两面。"""
-    from app.kite import kite_profile
+    from app.database.kite import kite_profile
 
     rules = kite_profile.EXTRACT_RULES
     assert "No relative time, no bare pronouns" in rules

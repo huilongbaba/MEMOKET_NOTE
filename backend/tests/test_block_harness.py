@@ -14,13 +14,14 @@ import asyncio
 import pytest
 from app.harness.types import DimensionScore, Evaluation
 
-from app import agent_loop, llm
-from app.pure import blocks
-from app.agent_loop import ToolTrace
+from app.harness import agent_loop
+from app.util import llm
+from app.harness.tools import blocks
+from app.harness.agent_loop import ToolTrace
 from app.harness import loop, modes
 from app.harness.hooks.block import BlockHooks
 from app.harness.state import State
-from app.tools import ToolContext
+from app.harness.tools import ToolContext
 
 
 def _passing(content, dimensions, **kw):
@@ -85,7 +86,7 @@ def test_a_tool_chart_is_not_reported_as_hand_written(stub):
     """charts_from_tools compares byte-for-byte against what the tools
     returned. If Facts stopped collecting them, every real chart would be
     rejected as a forgery and the run would never finish."""
-    from app.pure.blockcheck import mermaid_blocks, unauthorized_charts
+    from app.harness.checks.blockcheck import mermaid_blocks, unauthorized_charts
 
     _events, st = _run(modes.CHART)
     assert st.charts == mermaid_blocks(stub)          # fence stripped, body kept

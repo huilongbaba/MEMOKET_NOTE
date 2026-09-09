@@ -25,7 +25,7 @@ from typing import Any
 
 from .types import DimensionScore, Evaluation
 
-from ..tools import ToolContext
+from .tools import ToolContext
 from .state import State
 
 # Bag values are tagged so a set doesn't come back as a list and a policy

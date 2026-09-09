@@ -19,7 +19,7 @@ from app.harness import State
 from app.harness.loop import run
 from app.harness.middleware import BASE, OrderError, verify
 from app.harness.types import Mode, Verdict
-from app.tools import ToolContext
+from app.harness.tools import ToolContext
 
 
 class FakeHooks:

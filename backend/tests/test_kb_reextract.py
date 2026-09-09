@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import types
 
-from app.kb import reextract
+from app.database.kb import reextract
 
 
 def _memory(units: dict[str, list[str]]):

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import get_settings
+from ..util.config import get_settings
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (

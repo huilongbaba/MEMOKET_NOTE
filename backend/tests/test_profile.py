@@ -12,7 +12,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts, store  # noqa: E402
+from app import prompts
+from app.database import store# noqa: E402
 
 
 @pytest.fixture()

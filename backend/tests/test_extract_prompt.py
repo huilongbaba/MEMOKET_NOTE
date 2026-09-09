@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.kite import kite_profile# noqa: E402
+from app.database.kite import kite_profile# noqa: E402
 
 
 def _base_prompts():

@@ -49,7 +49,7 @@ def test_middleware_order_holds_for_every_mode():
 
 
 def test_tool_groups_exist():
-    import app.tools as T
+    import app.harness.tools as T
 
     known = {t.group for t in T.registry._REGISTRY.values()}
     for m in modes.ALL:
@@ -132,10 +132,10 @@ def test_a_repair_round_does_not_count_as_running_dry():
     """
     import asyncio
 
-    from app.agent_loop import ToolTrace
+    from app.harness.agent_loop import ToolTrace
     from app.harness.middleware.facts import Facts
     from app.harness.state import State
-    from app.tools import ToolContext
+    from app.harness.tools import ToolContext
 
     st = State(mode=modes.NOTE, ctx=ToolContext(user="u", note_id="n"))
     st.trace, st.facts_new = ToolTrace(), ["查到的一条"]
@@ -195,9 +195,9 @@ def test_每条check打翻的维度这个mode真的有():
     import asyncio
     import types as _t
 
-    from app.agent_loop import ToolTrace
+    from app.harness.agent_loop import ToolTrace
     from app.harness.state import State
-    from app.tools import ToolContext
+    from app.harness.tools import ToolContext
 
     bad = []
     for mode in modes.ALL:

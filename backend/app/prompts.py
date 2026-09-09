@@ -1083,7 +1083,7 @@ def compose_system(base: str, scope: str, user: str = "",
     here would drop the loaded ones on the floor -- the model would call
     ``load_skill``, watch the body never arrive, and call it again.
     """
-    from . import skills as skills_store
+    from .harness import skills as skills_store
 
     if bodies is None or menu is None:
         injected, listed = skills_store.for_scope(user, scope)
@@ -1109,7 +1109,7 @@ def skill_generate_system() -> str:
     definition of what a skill is, and this function reads three of them as
     examples instead of holding its own copy.
     """
-    from . import skills as skills_store
+    from .harness import skills as skills_store
 
     scope_lines = "\n".join(f"- {k}：{v}" for k, v in SKILL_SCOPES.items())
     examples = []

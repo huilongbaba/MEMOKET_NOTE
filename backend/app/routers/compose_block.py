@@ -19,14 +19,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from .. import llm, tools
-from .. import vision
-from ..pure import restructure, textshape
+from ..harness import tools
+from ..util import llm
+from ..editor import vision
+from ..editor import restructure, textshape
 from ..harness import loop, modes
 from ..harness.events import legacy_frames
 from ..harness.hooks.block import BlockHooks
 from ..harness.state import State
-from ..profile import entries as _profile
+from ..editor.profile import entries as _profile
 from ..schemas import ComposeBlockIn
 from .deps import current_user
 

@@ -31,7 +31,7 @@ from typing import AsyncIterator
 
 import httpx
 
-from . import store
+from ..database import store
 
 
 def _headers() -> dict[str, str]:

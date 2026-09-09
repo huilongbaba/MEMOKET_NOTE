@@ -15,8 +15,8 @@ import dataclasses
 
 from .types import Dimension
 
-from .. import harness_adapter
-from ..pure import grounding_check
+from . import adapter as harness_adapter
+from .checks import grounding_rules as grounding_check
 from .checks import (charts_from_tools, citations_hold, heading_fits,
                      material_used, no_audit_voice, no_fake_charts,
                      no_placeholder, outline_intact, tail_clashes)

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import store
+from ..database import store
 from ..schemas import ProfileEntry, ProfileEntryIn
 from .deps import current_user
 

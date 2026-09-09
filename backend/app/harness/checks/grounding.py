@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from .citations import check_citations
 
-from ...pure import grounding_check
+from . import grounding_rules as grounding_check
 from ..state import State
 from ..types import Verdict
 from . import pick_dimension

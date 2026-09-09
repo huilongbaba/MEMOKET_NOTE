@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import harness_adapter
-from ...pure import runtime_policy
+from .. import adapter as harness_adapter
+from .. import policy as runtime_policy
 from ..events import CUSTOM_POLICY, Event
 from ..state import State
 

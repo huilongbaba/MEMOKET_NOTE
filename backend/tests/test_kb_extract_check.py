@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import types
 
-from app.kb.extract_check import numbers_without_source, rate
+from app.database.kb.extract_check import numbers_without_source, rate
 
 
 def test_原文里有的数字不算问题():
@@ -78,7 +78,7 @@ def test_比率按可核对的那部分算():
 
 
 def test_写不了的形态各归各类():
-    from app.kb.extract_check import unusable_shape
+    from app.database.kb.extract_check import unusable_shape
 
     assert unusable_shape("沪江维多利亚有机会。") == "太短"
     assert unusable_shape("团队讨论了那个那个方案的成本结构和交付时间安排") == "口语填充/ASR 噪声"
@@ -92,7 +92,7 @@ def test_speaker标签单独报不混进无用():
     """规则明说了不许把 Speaker A/B/C 写进正文——归属放 who 字段。一条带
     标签但内容完整的事实仍然能写，只是标签本身是错的：那是 per-session 的
     临时代号，下一场会议里是另一个人。"""
-    from app.kb.extract_check import shapes
+    from app.database.kb.extract_check import shapes
 
     facts = [types.SimpleNamespace(
         text="Speaker A 认为外壳样件每套 2300 元的成本必须摊到头 50-100 台里")]
@@ -105,14 +105,14 @@ def test_形态判据不需要原文():
     """所以它能几毫秒扫完整个知识库，而数字那条要逐条比对原文。"""
     import inspect
 
-    from app.kb import extract_check
+    from app.database.kb import extract_check
 
     params = inspect.signature(extract_check.shapes).parameters
     assert list(params) == ["facts"]
 
 
 def test_空文本不进分母():
-    from app.kb.extract_check import shapes
+    from app.database.kb.extract_check import shapes
 
     got = shapes([types.SimpleNamespace(text=""),
                   types.SimpleNamespace(text="  "),

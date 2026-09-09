@@ -5,12 +5,13 @@ import dataclasses
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from .. import store, tools
+from ..database import store
+from ..harness import tools
 from ..harness import loop, modes
 from ..harness.events import legacy_frames, sse as _sse
 from ..harness.hooks.note import NoteHooks
 from ..harness.state import State
-from ..profile import entries as _profile
+from ..editor.profile import entries as _profile
 from ..schemas import NoteHarnessRunIn
 from .deps import current_user
 

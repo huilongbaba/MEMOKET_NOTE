@@ -11,7 +11,7 @@ straight to the editor.
 
 from __future__ import annotations
 
-from ... import store
+from ...database import store
 from ..state import State
 
 

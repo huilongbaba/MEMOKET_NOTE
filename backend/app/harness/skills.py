@@ -28,7 +28,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import get_settings
+from ..util.config import get_settings
 
 NAME_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 MAX_DESCRIPTION = 1024
@@ -177,7 +177,7 @@ def load_all(user: str) -> list[Skill]:
     skill must not stop the other twelve from working. Import-time validation
     is where malformed input gets rejected loudly.
     """
-    from . import store
+    from ..database import store
 
     root = skills_root(user)
     if not root.is_dir():
@@ -257,7 +257,9 @@ def read_reference(user: str, slug: str, relative: str) -> str | None:
 
 # --------------------------------------------------------------- install ---
 
-BUILTIN_ROOT = Path(__file__).resolve().parent.parent / "skills"
+# backend/skills/ —— 跟 app/ 平级，随版本发布。这里数了三层：
+# app/harness/skills.py → app/harness → app → backend
+BUILTIN_ROOT = Path(__file__).resolve().parents[2] / "skills"
 
 
 def seed(user: str) -> int:
@@ -272,7 +274,7 @@ def seed(user: str) -> int:
     Incremental: a directory that already exists is left alone, so a user's
     edits survive an upgrade and a new built-in reaches existing users.
     """
-    from . import store
+    from ..database import store
 
     root = skills_root(user)
     root.mkdir(parents=True, exist_ok=True)
@@ -303,7 +305,7 @@ def install(user: str, directory_name: str, files: dict[str, str], *,
     taking effect -- the official guidance is the same ("use Skills only from
     trusted sources", "audit thoroughly").
     """
-    from . import store
+    from ..database import store
 
     if "SKILL.md" not in files:
         raise SkillFormatError("a skill directory must contain SKILL.md")
@@ -338,7 +340,7 @@ def install(user: str, directory_name: str, files: dict[str, str], *,
 
 
 def uninstall(user: str, slug: str) -> bool:
-    from . import store
+    from ..database import store
 
     target = skills_root(user) / slug
     if not target.is_dir():

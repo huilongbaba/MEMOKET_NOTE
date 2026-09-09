@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import types
 
-from app.kb import search
+from app.database.kb import search
 
 
 class _FakeMemory:

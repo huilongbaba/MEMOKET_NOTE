@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from ..kite.kite_memory import UserMemory
+from ...database.kite.kite_memory import UserMemory
 from .registry import ToolContext, register
 
 # 单条事实在工具输出里的截断长度。事实本身通常一两句话，200 字足够完整，
@@ -248,7 +248,7 @@ def gather_subject(ctx: ToolContext, query: str, limit: int = 14) -> str:
     Which one to use is the model's call, which is the point: it knows
     whether it is checking a detail or writing a section, and we don't.
     """
-    from ..kb.recall import recall_clustered
+    from ...database.kb.recall import recall_clustered
 
     rows, _terms, _took = recall_clustered(
         UserMemory(ctx.user), query, limit=max(1, min(int(limit or 14), 30)))

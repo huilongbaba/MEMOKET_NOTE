@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import agent_loop, llm
-from ...agent_loop import ToolTrace
+from .. import agent_loop
+from ...util import llm
+from ..agent_loop import ToolTrace
 from ... import prompts
 from ...prompts import BLOCK_SYSTEM
 from ..state import State
@@ -138,7 +139,7 @@ def _produced(trace: ToolTrace, groups: tuple[str, ...]) -> bool:
     how the harness once shipped a chart-mode block with no chart in it.
     **Judge the output, not the behaviour.**
     """
-    from ...tools import registry
+    from ..tools import registry
     wanted = set(registry.names(list(groups)))
     return any(name in wanted and res and not res.startswith("（")
                for name, _args, res in trace.calls)

@@ -33,7 +33,7 @@ from memoket_kite.storage import _verify_loadable
 from .. import store
 from . import kite_entity_candidates, kite_extract_profile
 from ..kb import search
-from ..config import get_settings
+from ...util.config import get_settings
 from .kite_writer import write_lock
 
 kite_extract_profile.install()

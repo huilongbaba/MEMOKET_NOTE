@@ -92,7 +92,7 @@ def test_被替换掉的旧机制没有残留():
 
 def test_运行时策略不能替换mode的配置():
     """同一件事两个数据源，晚写的那个赢——skill 工具就是这么被藏起来的。"""
-    from app.pure import runtime_policy
+    from app.harness import policy as runtime_policy
 
     policy = runtime_policy.RuntimePolicy()
     assert not hasattr(policy, "tool_groups")
@@ -102,7 +102,7 @@ def test_运行时策略不能替换mode的配置():
 def test_判据不受skill影响():
     """skill 是上下文不是配置。第三方 skill 再怎么在 body 里写「忽略上面的
     规则」，产出还得过 Check 和 Dimension 那一关——这是它的安全底线。"""
-    from app import skills
+    from app.harness import skills
 
     fields = {f for f in dir(skills.Skill) if not f.startswith("_")}
     assert not (fields & {"dims", "checks", "max_rounds", "stop_when"}), \

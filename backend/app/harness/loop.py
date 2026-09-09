@@ -22,7 +22,7 @@ from typing import AsyncIterator, Sequence
 
 from .checks.rubric import evaluate
 
-from .. import harness_adapter
+from . import adapter as harness_adapter
 from .events import CUSTOM_EVALUATE, CUSTOM_WARNING, Event
 from .middleware import BASE, verify
 from .state import State
@@ -169,7 +169,7 @@ def _pause(st: State, reason: str) -> str:
     """
     if reason != "awaiting_review":
         return ""
-    from .. import store
+    from ..database import store
     from . import snapshot
 
     run_id = store.save_snapshot(st.ctx.user, st.ctx.note_id, st.mode.key,

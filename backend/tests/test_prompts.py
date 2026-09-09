@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts  # noqa: E402
+from app import prompts# noqa: E402
 
 
 def test_folder_context_block_empty_list_returns_empty_string():

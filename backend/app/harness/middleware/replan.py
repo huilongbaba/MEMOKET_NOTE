@@ -22,10 +22,10 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import llm, prompts
-from ...pure import replan as replan_rules
-from ..events import (CUSTOM_POLICY, CUSTOM_REPLAN, CUSTOM_SKELETON,
-                      Event)
+from ... import prompts
+from ...util import llm
+from .. import replan_rules
+from ..events import CUSTOM_POLICY, CUSTOM_REPLAN, CUSTOM_SKELETON, Event
 from ..state import State
 
 MAX_REPLANS_PER_RUN = 2

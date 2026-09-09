@@ -22,7 +22,8 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from . import llm, tools
+from . import tools
+from ..util import llm
 
 # 工具循环最多来回几次。每一次 = 一次模型调用，本地模型 20-90 秒——
 # 这是整个 harness 里最贵的东西，宁可让模型少查一轮也不能让单轮变成五分钟。

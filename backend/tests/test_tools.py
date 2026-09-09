@@ -11,8 +11,9 @@ import json
 
 import pytest
 
-from app import agent_loop
-from app.tools import registry
+from app.harness import agent_loop
+from app.harness import agent_loop as al
+from app.harness.tools import registry
 
 
 @pytest.fixture
@@ -243,7 +244,7 @@ async def test_loop_degrades_to_no_tools_when_model_call_fails(clean_registry, m
 
 def test_builtin_memory_tools_are_registered():
     """内置工具跑在真实注册表上（不用 clean_registry），确认 import 即注册。"""
-    from app import tools
+    from app.harness import tools
 
     for name in ("search_memory", "list_topics", "list_entities",
                  "filter_facts", "facts_in_range", "fact_sources"):
@@ -253,8 +254,8 @@ def test_builtin_memory_tools_are_registered():
 
 def test_memory_tools_on_empty_codebook_return_text_not_errors(tmp_path, monkeypatch):
     """空知识库是新用户的常态，每个工具都必须给出可读的空结果而不是报错。"""
-    from app import tools
-    from app.config import get_settings
+    from app.harness import tools
+    from app.util.config import get_settings
 
     s = get_settings()
     monkeypatch.setattr(s, "kite_data_dir", str(tmp_path), raising=False)
@@ -273,7 +274,7 @@ def test_as_facts_ignores_metadata_only_tools():
     实测踩过：agent 只调了 list_topics 就收手，那份主题列表被原样当成
     「知识库事实」喂给续写——模型手里一条真事实都没有，整段正文全是编的。
     """
-    from app.agent_loop import ToolTrace
+    from app.harness.agent_loop import ToolTrace
 
     t = ToolTrace()
     t.calls = [
@@ -292,7 +293,7 @@ def test_as_facts_ignores_metadata_only_tools():
 def test_scoped_question_detection():
     """把范围锚定到某个场合的说法，必须由代码识别——实测提示词层面的
     工具选择指令在本地模型上无效，模型会拿另一次会议的真实内容张冠李戴。"""
-    from app.agent_loop import is_scoped_question
+    from app.harness.agent_loop import is_scoped_question
 
     for yes in ["上次专门聊众筹定价的会上，除了价格本身还定了几件事",
                 "在讨论 APP 装不上的那次会议里还提到了什么",
@@ -313,7 +314,6 @@ async def test_second_iteration_reserves_budget_for_depth(clean_registry, monkey
     （先拿 id、再回溯原话）永远轮不到——哪怕策略控制器已经触发了
     require_verification、prompt 里也明确要求用它。
     """
-    from app import agent_loop as al
 
     @registry.register(name="search_memory", description="", params={},
                        max_calls_per_round=3)
@@ -345,7 +345,7 @@ async def test_second_iteration_reserves_budget_for_depth(clean_registry, monkey
 
 def test_fact_ids_extracted_from_tool_output():
     """工具输出里的事实 id 要能被代码抽出来——自动回溯原话靠它。"""
-    from app.agent_loop import ToolTrace, fact_ids_in
+    from app.harness.agent_loop import ToolTrace, fact_ids_in
 
     t = ToolTrace()
     t.calls = [("search_memory", {}, "[terrence-2046-2F3] 甲\n    （2026-03-31）\n"
@@ -364,7 +364,6 @@ async def test_retrieval_failure_falls_back_instead_of_writing_blind(monkeypatch
     就把这一轮推进"没材料只能编造"那个已知最差状态，而手上有一条 2 毫秒、
     零模型调用的兜底路径没用。
     """
-    from app import agent_loop as al
 
     async def boom(messages, **kw):
         raise RuntimeError("Server error '500 Internal Server Error'")

@@ -33,8 +33,14 @@ def _map_section() -> str:
 
 
 def _listed(section: str) -> set[str]:
-    """图里出现过的名字。缩进和注释都无所谓，只认名字本身。"""
-    return set(re.findall(r"[\w/]+\.py|\b[a-z_]+/", section))
+    """图里出现过的名字。
+
+    带不带 `.py` 都认——同一行列三四个模块时（`charts · structure ·
+    grounding`）写全后缀会把一张给人看的图变成一张噪声表。
+    """
+    names = set(re.findall(r"[\w/]+\.py|\b[a-z_]+/", section))
+    names |= {f"{w}.py" for w in re.findall(r"\b([a-z_][a-z0-9_]{2,})\b", section)}
+    return names
 
 
 def test_app_下的每个包都在图上():

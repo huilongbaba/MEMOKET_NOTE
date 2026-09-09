@@ -6,9 +6,9 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import store
-from .ingest import asr
-from .config import get_settings
+from .database import store
+from .database.ingest import asr
+from .util.config import get_settings
 from .routers import (assets, compose, compose_block, folders, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
                       settings as settings_router, skills, writing_plan)
 

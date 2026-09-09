@@ -38,7 +38,7 @@ import httpx  # noqa: E402
 from suite import (AUDIT, BASE, H, LEAK, OUT, OUTLINES, POLISH_SEEDS,  # noqa: E402
                    PLACEHOLDER, TAP_SEEDS, WRITE_SEEDS, _HEADING,
                    run_note, sse)
-from app.pure import outline# noqa: E402
+from app.editor import outline# noqa: E402
 from app.harness.revision import _BROKEN  # noqa: E402  修订的定位与应用搬到这里了
 
 # 收束段：以"因此/所以/综上…"起头的段落。假设是每轮写完都想收个尾，三轮就有

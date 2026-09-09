@@ -71,10 +71,10 @@ def test_累积的材料按section分开():
     """
     import asyncio
 
-    from app.agent_loop import ToolTrace
+    from app.harness.agent_loop import ToolTrace
     from app.harness.middleware.facts import Facts
     from app.harness.state import State
-    from app.tools import ToolContext
+    from app.harness.tools import ToolContext
 
     ctx = ToolContext(user="u", note_id="n")
     a = State(mode=modes.SECTION, ctx=ctx)

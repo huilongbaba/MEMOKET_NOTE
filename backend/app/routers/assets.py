@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from ..config import get_settings
+from ..util.config import get_settings
 from .deps import current_user
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])

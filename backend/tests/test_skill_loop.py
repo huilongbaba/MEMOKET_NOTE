@@ -20,7 +20,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts, skills, store, tools  # noqa: E402
+from app import prompts
+from app.database import store
+from app.harness import skills, tools  # noqa: E402
 from app.harness import modes  # noqa: E402
 from app.harness.middleware.skills import Skills  # noqa: E402
 from app.harness.state import State  # noqa: E402
@@ -140,7 +142,7 @@ def test_运行时策略不能把mode给的工具组盖掉(env):
     """真实 bug：``RuntimePolicy.tool_groups`` 默认 ``["memory"]`` 且直接
     替换 Mode 的配置，于是 skill 工具注册了、prompt 里列了、模型永远调不到。
     策略可以**加**组（升级到核验工具），不能**替换**。"""
-    from app.pure import runtime_policy
+    from app.harness import policy as runtime_policy
 
     policy = runtime_policy.RuntimePolicy()
     assert not hasattr(policy, "tool_groups"), "替换语义的字段必须消失"

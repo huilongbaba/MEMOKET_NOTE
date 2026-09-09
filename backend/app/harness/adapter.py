@@ -7,10 +7,10 @@ vocabulary lives here, not in harness/rubric.py -- see harness/rubric.py 的 doc
 
 from __future__ import annotations
 
-from .harness.types import Dimension, RunRecord
+from .types import Dimension, RunRecord
 
-from . import llm as _llm
-from . import store
+from ..util import llm as _llm
+from ..database import store
 
 
 class AppLLMClient:

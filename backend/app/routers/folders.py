@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import store
+from ..database import store
 from ..schemas import Folder, FolderIn
 from .deps import current_user
 

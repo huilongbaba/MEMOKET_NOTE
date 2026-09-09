@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..config import get_settings
+from ...util.config import get_settings
 
 
 async def transcribe(data: bytes, filename: str = "audio.wav",

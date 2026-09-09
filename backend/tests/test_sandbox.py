@@ -12,8 +12,8 @@ import pathlib
 
 import pytest
 
-from app import sandbox
-from app.sandbox import SandboxError, SandboxLevel
+from app.harness import sandbox
+from app.harness.sandbox import SandboxError, SandboxLevel
 
 pytestmark = pytest.mark.skipif(
     not sandbox.available(),
@@ -103,7 +103,7 @@ def test_a_script_that_hangs_is_killed(tmp_path):
 def test_oversized_output_is_refused(tmp_path):
     """A runaway script filling the disk is a denial of service; the ceiling
     is checked after the run, before anything is handed back."""
-    from app.sandbox import limits
+    from app.harness.sandbox import limits
 
     root = _skill(tmp_path, f"""
 import os

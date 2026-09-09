@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts  # noqa: E402
+from app import prompts# noqa: E402
 # 修订的定位与应用搬到了 app/harness/revision.py —— 两条 harness 共用，
 # 而 router 之间不该互相 import。
 from app.harness.revision import _apply_revision  # noqa: E402
@@ -192,8 +192,8 @@ def test_judging_uses_run_level_facts_not_this_round():
     from app.harness.middleware.facts import Facts
     from app.harness.state import State
     from app.harness.modes import NOTE
-    from app.agent_loop import ToolTrace
-    from app.tools import ToolContext
+    from app.harness.agent_loop import ToolTrace
+    from app.harness.tools import ToolContext
 
     st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
     st.trace = ToolTrace()
@@ -381,7 +381,7 @@ def test_outline_headings_are_excluded_from_scoring():
     from app.harness.state import State
     from app.harness.modes import NOTE
     from app.routers.note_harness import _score_context
-    from app.tools import ToolContext
+    from app.harness.tools import ToolContext
 
     st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
     assert "标题结构" not in _score_context(st)
@@ -407,7 +407,7 @@ def test_dry_rounds_stop_the_loop():
     """
     from app.harness.modes import NOTE, material_used_up
     from app.harness.state import State
-    from app.tools import ToolContext
+    from app.harness.tools import ToolContext
 
     st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"), round=3)
     st.bag["dry_rounds"] = 2
@@ -453,7 +453,7 @@ def test_scorer_diagnosis_reaches_the_edit_pass():
     from app.harness.loop import _weak_note
     from app.harness.modes import NOTE
     from app.harness.state import State
-    from app.tools import ToolContext
+    from app.harness.tools import ToolContext
 
     assert "focus_note" in inspect.signature(prompts.edit_user).parameters
 
@@ -525,9 +525,9 @@ def test_skeleton_is_persisted_with_the_note():
     自动切到下一段，骨架都没了——而 harness 每轮都拿它当主线依据，没了就得
     重新花一次模型调用生成一份。
     """
-    from app import store
+    from app.database import store
 
-    src = (Path(__file__).resolve().parent.parent / "app" / "store.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parent.parent / "app" / "database" / "store.py").read_text(encoding="utf-8")
     assert "ALTER TABLE notes ADD COLUMN spine" in src
     assert "ALTER TABLE notes ADD COLUMN beats" in src
 
