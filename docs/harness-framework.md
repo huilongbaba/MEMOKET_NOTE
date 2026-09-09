@@ -1851,8 +1851,14 @@ cd docs/_research/prototype && python3 test_harness_proto.py
 | `writing_plan.py` | 578 | **281** | plan 级循环：选下一段、判断要不要加段、同步追踪笔记 |
 | `compose_block.py` | 607 | **186** | 认模式、装 State、图片转表格、restructure |
 
-搬出去的东西进了 `app/harness/`（31 个文件、3193 行）：一份 `loop.py`、
-11 个 middleware、3 组 hooks、8 个 Mode、9 条 check。
+搬出去的东西进了 `app/harness/`：一份 `loop.py`、13 个 middleware、
+3 组 hooks、8 个 Mode、9 条 check、21 个工具。
+
+> 这几个数字有 `tests/test_doc_counts.py` 盯着——**写在文档里的数字必然
+> 会过期**。这一行原来写着「31 个文件、3193 行」，那是改造刚落地时的快照，
+> 后来 prompts 拆了包、check 拆了 pick.py，早就不是那个数了，而没有任何
+> 东西会因此报错。现在结构性的那几个（Mode / 工具 / check / middleware）
+> 对不上就红；「多少个文件、多少行」这种一改就变的量不再写进文档。
 
 **三份手抄的循环变成一份。** 这是整件事唯一的目的：文档里逐条记着的
 「同一个能力一条 harness 有、另一条没有」出现过六次，每次都是遗漏而不是
