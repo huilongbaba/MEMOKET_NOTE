@@ -1,0 +1,215 @@
+"""单篇 harness 的骨架这一步。
+
+这里每个分支背后都写着一次真实事故——打磨模式为什么要关掉大纲保护、
+用户自己的目录为什么不能被重新生成、骨架生成挂了为什么不能连累整场——
+可跑覆盖率之前 `hooks/note.py` 114 行里 87 行没被执行过，这些结论一条
+断言都没有。
+
+除了那次模型调用全是确定性的。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+
+import pytest
+
+from app.harness.hooks.note import NoteHooks
+from app.harness.state import State
+from app.harness.tools import ToolContext
+from app.harness.types import Dimension, Mode
+
+# 一份「标题搭好了、内容还没填」的大纲：outline.is_outline() 认这个。
+大纲 = ("## 一、背景\n\n## 二、硬件\n\n## 三、众筹\n\n"
+        "## 四、时间线\n\n## 五、反思与展望\n\n")
+
+
+def _st(content: str) -> State:
+    mode = Mode(key="t", label="t", skill_scope="skeleton",
+                dims=(Dimension("coherence", "..."),))
+    st = State(mode=mode, ctx=ToolContext(user="u", note_id="n", note_title="标题"))
+    st.content = content
+    return st
+
+
+def _stub(monkeypatch, payload):
+    from app.harness.hooks import note as mod
+
+    async def fake(messages, **kw):
+        if payload is None:
+            raise RuntimeError("模型挂了")
+        return json.dumps(payload, ensure_ascii=False)
+
+    monkeypatch.setattr(mod.llm, "complete", fake)
+
+
+def _drive(hooks, st):
+    async def go():
+        return [e async for e in hooks.skeleton(st)]
+    return asyncio.run(go())
+
+
+def test_用户自己写的目录直接当节拍不再生成一份(monkeypatch):
+    """真实代价：用户写了九节的大纲等 AI 填，骨架这一步无视它、自己另造了
+    一份节拍，写到最后「硬件」跑到了最底下、三个子标题没了、「反思与展望」
+    整节消失。"""
+    _stub(monkeypatch, {"spine": "模型自己想的", "beats": ["模型自己的节拍"]})
+    hooks = NoteHooks(polish=False, spine="", beats=[], profile=[])
+    st = _st(大纲)
+    _drive(hooks, st)
+    assert st.bag["outline_mode"] is True
+    assert st.bag["beats"][:2] == ["一、背景", "二、硬件"], "用的不是用户的目录"
+    assert "模型自己的节拍" not in st.bag["beats"]
+    assert "按用户已有的目录逐节填充" in st.bag["spine"]
+
+
+def test_打磨模式下大纲保护要关掉(monkeypatch):
+    """两件事是直接对立的：打磨就是来修结构缺陷（重复标题、脚手架标题、
+    编号错乱）的，而大纲保护是来冻结结构的。打磨的种子恰恰是「每节一句话」
+    的短笔记——正好被 is_outline() 认成大纲，于是结构冻死，每一条想删掉
+    重复标题的修订都被拒，non_repetition 连着二十轮 0 分。"""
+    _stub(monkeypatch, {"spine": "打磨时该由模型给骨架", "beats": ["甲", "乙"]})
+    hooks = NoteHooks(polish=True, spine="", beats=[], profile=[])
+    st = _st(大纲)
+    _drive(hooks, st)
+    assert st.bag["outline_mode"] is False
+    assert st.bag["beats"] == ["甲", "乙"]
+
+
+def test_骨架生成挂了退回空骨架继续跑(monkeypatch):
+    """没有骨架，spine_fidelity 和 beat_coverage 是靠更弱的证据判，不是没法
+    判。为这个丢掉整场才是更糟的交易。"""
+    _stub(monkeypatch, None)
+    hooks = NoteHooks(polish=False, spine="", beats=[], profile=[])
+    st = _st("一段普通正文，写得够长，不像大纲。" * 4)
+    events = _drive(hooks, st)
+    assert st.bag["spine"] == "" and st.bag["beats"] == []
+    assert any(e.type.value == "RUN_ERROR" for e in events)
+    assert any(e.data.get("name") == "skeleton" for e in events), \
+        "失败也要把骨架事件发出去，前端面板才不会一直空着"
+
+
+def test_已经有骨架就不再花一次模型调用(monkeypatch):
+    from app.harness.hooks import note as mod
+
+    async def boom(messages, **kw):
+        pytest.fail("已经给了骨架，不该再调模型")
+
+    monkeypatch.setattr(mod.llm, "complete", boom)
+    hooks = NoteHooks(polish=False, spine="给定的张力", beats=["给定的节拍"],
+                      profile=[])
+    st = _st("一段普通正文。" * 20)
+    _drive(hooks, st)
+    assert st.bag["spine"] == "给定的张力"
+
+
+def test_模型返回的节拍最多留六条(monkeypatch):
+    _stub(monkeypatch, {"spine": "张力", "beats": [f"节拍{i}" for i in range(10)]})
+    hooks = NoteHooks(polish=False, spine="", beats=[], profile=[])
+    st = _st("一段普通正文，写得够长，不像大纲。" * 4)
+    _drive(hooks, st)
+    assert len(st.bag["beats"]) == 6
+
+
+def test_模型返回垃圾时不会把骨架弄成半截(monkeypatch):
+    _stub(monkeypatch, ["这不是个对象"])
+    hooks = NoteHooks(polish=False, spine="", beats=[], profile=[])
+    st = _st("一段普通正文，写得够长，不像大纲。" * 4)
+    _drive(hooks, st)
+    assert st.bag["spine"] == "" and st.bag["beats"] == []
+
+
+# ------------------------------------------------------ 取材料这一步 ---
+#
+# 这几条同样是「每个分支背后一次事故」：先定这轮写哪一节再检索、策略只能
+# 往工具组里加不能替换、工具挂了要退回零 LLM 的关键词检索。
+
+def _prep(monkeypatch, *, facts=(), error=False, used=True, groups_seen=None,
+          iters_seen=None):
+    """把 agent_loop.gather_context 打桩，返回它拿到的 groups/max_iters。"""
+    from app.harness.hooks import note as mod
+
+    class T:
+        def __init__(self):
+            self.calls = [("recall", {}, "x")] if facts else []
+            self.error = error
+            self.truncated = False
+            self.used = used
+
+        def as_facts(self):
+            return list(facts)
+
+    async def fake_gather(msgs, ctx, *, groups, max_iters):
+        if groups_seen is not None:
+            groups_seen.extend(groups)
+        if iters_seen is not None:
+            iters_seen.append(max_iters)
+        return [], T()
+
+    monkeypatch.setattr(mod.agent_loop, "gather_context", fake_gather)
+    monkeypatch.setattr(mod.agent_loop, "is_scoped_question", lambda p: False)
+    monkeypatch.setattr(mod.tools, "dispatch", lambda name, args, ctx: "（没有）")
+    return mod
+
+
+def _run_prepare(hooks, st):
+    return asyncio.run(hooks.prepare(st))
+
+
+def test_打磨轮和清理轮不取材料(monkeypatch):
+    """这两种轮次一个字都不写，新材料没有地方可去。"""
+    mod = _prep(monkeypatch)
+
+    async def boom(*a, **kw):
+        pytest.fail("不该去取材料")
+
+    monkeypatch.setattr(mod.agent_loop, "gather_context", boom)
+
+    polish_facts, polish_trace = _run_prepare(NoteHooks(polish=True), _st("正文"))
+    assert polish_facts == [] and polish_trace.calls == []
+
+    cleanup = _st("正文")
+    cleanup.bag["cleanup_only"] = True
+    cleanup_facts, cleanup_trace = _run_prepare(NoteHooks(polish=False), cleanup)
+    assert cleanup_facts == [] and cleanup_trace.calls == []
+
+
+def test_先定这轮写哪一节再去检索(monkeypatch):
+    """顺序一度是反的：检索时还不知道目标，于是每轮拿回同一批材料——模型
+    手里全是众筹的料、却被要求写「团队」那节，只能换个标题把同样的话再说
+    一遍。"""
+    _prep(monkeypatch)
+    st = _st(大纲)
+    st.bag["outline_mode"] = True
+    _run_prepare(NoteHooks(), st)
+    assert st.bag["outline_target"] is not None, "检索之前就该定好写哪一节"
+
+
+def test_策略只能往工具组里加不能替换(monkeypatch):
+    """替换掉 Mode 给的工具组，正是 skill 工具当初变得不可达的原因。"""
+    groups, iters = [], []
+    _prep(monkeypatch, groups_seen=groups, iters_seen=iters)
+
+    class P:
+        extra_tool_groups = ("verify",)
+        tool_iters = 5
+        steer = ""
+        require_verification = False
+
+    st = _st("正文")
+    st.bag["policy"] = P()
+    _run_prepare(NoteHooks(), st)
+    assert set(st.mode.groups) <= set(groups), "Mode 给的工具组被盖掉了"
+    assert "verify" in groups
+    assert iters == [5]
+
+
+def test_工具挂了退回零LLM的关键词检索(monkeypatch):
+    """一次偶发 500 会把这一轮推进最坏的状态——没材料，于是自己编——而
+    一个两毫秒的退路就在旁边没人用。"""
+    mod = _prep(monkeypatch, error=True, facts=())
+    monkeypatch.setattr(mod, "_retrieve",
+                        lambda *a, **kw: (["退路查到的"], [], 0.0))
+    facts, _trace = _run_prepare(NoteHooks(), _st("正文"))
+    assert facts == ["退路查到的"]
