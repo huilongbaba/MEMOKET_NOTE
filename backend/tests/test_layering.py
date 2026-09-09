@@ -9,6 +9,7 @@ Layers, top to bottom:
 
     L1  app/routers/     thin shells
     L2  app/harness/     the loop, State, middleware, checks, modes
+    L3  app/kb/          knowledge-base capabilities above KITE
     L3  app/            capabilities: agent_loop, llm, store, kite_memory, tools
     L4  pure functions   tabular, blocks, outline, textshape, restructure, ...
     L5  writer_harness/  the package
@@ -71,8 +72,8 @@ def test_the_package_does_not_know_about_this_app():
 
 def test_routers_do_not_import_each_other():
     """A router reaching into another router means something belongs one layer
-    down. Currently violated by compose_block importing _profile and _sse --
-    both are moving during migration."""
+    down. Six of these existed; all six moved (``profile``, ``retrieval``,
+    ``chunking``, ``harness/events``, ``harness/params``, ``harness/revision``)."""
     violations: list[str] = []
     for path in (ROOT / "app" / "routers").glob("*.py"):
         if path.name in {"__init__.py", "deps.py"}:
@@ -99,3 +100,28 @@ def test_tools_do_not_import_the_harness():
     for path in (ROOT / "app" / "tools").glob("*.py"):
         offending = {m for m in _imports(path) if "harness" in m}
         assert not offending, f"{path.name} imports {offending}"
+
+
+def test_the_knowledge_base_layer_knows_nothing_above_it():
+    """``app/kb`` sits above KITE and below everything that writes.
+
+    It has no business knowing that a harness or an endpoint exists: the same
+    clustering and the same extraction judgement should be runnable from a
+    script, and one import upward is all it takes for that to stop being
+    true.
+    """
+    for path in (ROOT / "app" / "kb").glob("*.py"):
+        # 注意匹配的是 app 自己的那个 harness 包，不是 writer_harness——
+        # 后者是它下面一层的、可独立开源的包，kb 用它的 evaluate() 正是设计。
+        offending = {m for m in _imports(path)
+                     if "app.routers" in m or m.startswith("app.harness")}
+        assert not offending, f"{path.name} imports {offending}"
+
+
+def test_the_pure_layer_list_is_still_accurate():
+    """A module that quietly grows a dependency stops being testable by
+    constructing a string -- and the list above is what says which modules
+    are supposed to stay that way, so an entry that no longer exists makes
+    the whole check silently weaker."""
+    missing = [n for n in PURE if not (ROOT / "app" / f"{n}.py").exists()]
+    assert not missing, f"PURE lists modules that are gone: {missing}"

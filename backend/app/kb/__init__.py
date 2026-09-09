@@ -6,6 +6,6 @@ about -- clustering topics for writing, and judging an extraction before it
 is kept.
 """
 
-from .clusters import Cluster, build, clusters_for
+from .clusters import Cluster, build
 
-__all__ = ["Cluster", "build", "clusters_for"]
+__all__ = ["Cluster", "build"]

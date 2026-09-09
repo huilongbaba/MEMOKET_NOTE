@@ -110,15 +110,6 @@ def build(store, *, floor: int = FACT_FLOOR,
     return sorted(out, key=lambda c: (-c.facts, c.key))
 
 
-def clusters_for(store, topic: str, cached: list[Cluster] | None = None
-                 ) -> Cluster | None:
-    """The cluster a topic belongs to, or None if it isn't in the codebook."""
-    for cluster in (cached if cached is not None else build(store)):
-        if topic in cluster.topics:
-            return cluster
-    return None
-
-
 # ------------------------------------------------------------------ internals
 
 

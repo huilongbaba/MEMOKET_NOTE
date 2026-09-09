@@ -163,10 +163,6 @@ def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def to_sse(event: Event) -> str:
-    """Serialise an ``Event``. ``type`` goes on the wire as the AG-UI name."""
-    return sse(event.type.value, event.data)
-
 
 def legacy_frames(event: Event) -> list[str]:
     """Serialise one ``Event`` into the frames today's frontend listens for.
