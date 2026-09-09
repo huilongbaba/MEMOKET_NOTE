@@ -167,8 +167,3 @@ export function runningBlocks(stop: StopRun) {
   })
   return [runsField, decos]
 }
-
-/** 还在跑的有几个。给上层显示用。 */
-export function runningCount(state: { field: (f: typeof runsField, req: false) => RunState[] | undefined }): number {
-  return state.field(runsField, false)?.length ?? 0
-}

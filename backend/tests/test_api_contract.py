@@ -114,3 +114,34 @@ def test_后端发的每种标准事件前端要么接要么写明不接():
 
     stale = sorted(set(_DELIBERATELY_IGNORED) & handled)
     assert not stale, f"这些已经接上了，从「故意不接」名单里删掉：{stale}"
+
+
+def test_前端没有导出了谁都不用的东西():
+    """一个导出的名字，全仓（连它自己的文件都算）只在定义处出现一次，
+    就是死代码。
+
+    tsc 开了 ``noUnusedLocals``，但它管不到 export——一个 export 出去的
+    函数在 TypeScript 眼里永远「可能有人用」。实际抓到过一个：
+    ``runningBlocks.runningCount``，注释写着「给上层显示用」，而上层从来
+    没有用过。
+
+    只查「一次都没被引用」这一类。**只在本文件里用**的 export 有二十多个，
+    那是 TS 里常见且无害的写法（有些是有意留的公开面），不在这条测试的
+    管辖范围。
+    """
+    import re
+
+    sources = {p: p.read_text(encoding="utf-8") for p in FRONTEND.rglob("*.ts*")}
+    assert len(sources) > 20, f"只扫到 {len(sources)} 个前端文件"
+
+    dead = []
+    for path, text in sources.items():
+        for m in re.finditer(
+                r"^export\s+(?:async\s+)?(?:function|const|type|class|interface)\s+(\w+)",
+                text, re.M):
+            name = m.group(1)
+            uses = sum(len(re.findall(rf"\b{re.escape(name)}\b", s))
+                       for s in sources.values())
+            if uses <= 1:
+                dead.append(f"{path.name}:{text[:m.start()].count(chr(10)) + 1} {name}")
+    assert not dead, "导出了但谁都不用：\n  " + "\n  ".join(dead)
