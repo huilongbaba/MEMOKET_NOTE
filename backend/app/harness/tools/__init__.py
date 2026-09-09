@@ -15,10 +15,13 @@
 不需要改注册表本身。
 """
 
-from . import data_tools
-from . import memory_tools
-from . import sandbox_tools
-from . import skill_tools
+# 这四个是**为副作用而导入**的：每个模块顶层的 @register 装饰器在导入的
+# 那一刻把工具填进注册表。名字本身没人用，所以标 noqa——静态检查会把
+# 「导入了没用」当成重构没做干净的残留报出来，而这里恰恰不是。
+from . import data_tools      # noqa: F401  注册 data 组
+from . import memory_tools    # noqa: F401  注册 memory 组
+from . import sandbox_tools   # noqa: F401  注册 skill_script 组
+from . import skill_tools     # noqa: F401  注册 skill 组
 from .registry import (
     Tool,
     ToolContext,
