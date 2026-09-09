@@ -192,36 +192,53 @@ def test_每条check打翻的维度这个mode真的有():
     （图是不是工具产出的）是**不同的轴**。修法是让 check 在候选里挑这个
     Mode 认识的那个（``checks.pick_dimension``）。这条断言保证挑得到。
     """
-    import asyncio
-    import types as _t
+    import collections
 
     from app.harness.agent_loop import ToolTrace
     from app.harness.state import State
     from app.harness.tools import ToolContext
 
+    # 一段同时踩中全部九条判据的输入。before 是一份大纲、after 有收尾小节、
+    # bag 里挂着一条对不上的引用——这三样是后加的：**第一版只喂了正文**，
+    # 于是 citations_hold / no_audit_voice / outline_intact / tail_clashes
+    # 四条一次都没触发，下面那条「维度对不对」的断言对它们完全是空转的。
+    # 一条永远返回 None 的坏判据能安然通过。所以现在既查维度，也查触发。
+    BEFORE = "## 一、背景\n\n## 二、现状\n\n## 三、问题\n\n## 四、方案\n\n"
+    AFTER = "## Next steps\n\n收尾在这儿。\n"
+    CONTENT = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
+               "现有材料不足以说明这一点。\n"
+               "```mermaid\nxychart-beta\n bar [1,2]\n```\n"
+               "## Summary\n收个尾。\n")
+
     bad = []
+    fired: collections.Counter = collections.Counter()
+    seen: collections.Counter = collections.Counter()
     for mode in modes.ALL:
         for polish in (False, True) if mode.key == "note" else (False,):
             for has_profile in (False, True):
                 shaped = modes.for_run(mode, has_profile=has_profile, polish=polish)
                 names = {d.name for d in shaped.dims}
                 st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
-                # 让每条 check 都命中：喂一段同时踩中所有判据的正文
-                st.content = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
-                              "现有材料不足以证明这一点。\n[fact-nope] 引用了不存在的事实\n"
-                              "```mermaid\nxychart-beta\n bar [1,2]\n```\n")
-                st.before = "### 上文的标题\n"
+                st.content, st.before, st.after = CONTENT, BEFORE, AFTER
                 st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
                 st.charts = []
                 st.trace = ToolTrace()
+                st.bag["claimed_sources"] = ["[fact-nope] 不存在的来源"]
                 for check in shaped.checks:
+                    seen[check.__name__] += 1
                     verdict = check(st)
-                    if verdict and verdict.dimension not in names:
+                    if not verdict:
+                        continue
+                    fired[check.__name__] += 1
+                    if verdict.dimension not in names:
                         bad.append(f"{shaped.key}(profile={has_profile},polish={polish})"
                                    f" 的 {check.__name__} 打了 {verdict.dimension}，"
                                    f"而它的 dims 是 {sorted(names)}")
+
+    silent = sorted(n for n in seen if not fired[n])
+    assert not silent, ("这些判据在一段踩满了所有毛病的正文上一次都没触发——"
+                        "要么它坏了，要么这段素材该补：" + "、".join(silent))
     assert not bad, "check 打翻了这个 Mode 没有的维度：\n  " + "\n  ".join(bad)
-    _ = asyncio, _t
 
 
 # ---------------------------------------------- 长循环那两组维度 ---
