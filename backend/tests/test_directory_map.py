@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 
@@ -131,3 +132,41 @@ def test_打分引擎不依赖这个产品():
                 for alias in node.names:
                     assert not alias.name.startswith("app"), \
                         f"{name} imports {alias.name}"
+
+
+# ------------------------------------------------------ 包自己的地图 ---
+
+
+PACKAGES = ["harness", "database", "editor", "util", "routers",
+            "harness/checks", "harness/hooks", "harness/middleware",
+            "harness/tools", "harness/sandbox",
+            "database/kite", "database/kb", "database/ingest"]
+
+
+def test_每个包的入口都说清了自己是干什么的():
+    """`__init__.py` 的开头是**打开这个目录时第一眼看到的东西**。
+
+    这个仓库被问过一连串「X 是干嘛的」——kite 是 kb 的 utility 吗、ingest
+    是不是 kb 的应用、这些不都是 tool 吗。每一次的答案都在代码里躺着，
+    只是没写在会被看到的地方。
+    """
+    thin = []
+    for name in PACKAGES:
+        init = ROOT / "app" / name / "__init__.py"
+        assert init.exists(), f"app/{name} 没有 __init__.py"
+        doc = ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))) or ""
+        if len(doc) < 60:
+            thin.append(f"app/{name}（{len(doc)} 字）")
+    assert not thin, "这些包没说清自己是干什么的：" + "、".join(thin)
+
+
+def test_harness的地图列全了它自己的文件():
+    """`harness/` 顶层 14 个文件，光看文件名分不出「哪个是循环本身、哪个是
+    某个 middleware 背后的规则」——地图就在 `__init__.py` 里，得跟着代码走。
+    """
+    init = ROOT / "app" / "harness" / "__init__.py"
+    doc = ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))) or ""
+    files = {p.name for p in (ROOT / "app" / "harness").glob("*.py")
+             if p.name != "__init__.py"}
+    missing = sorted(f for f in files if f not in doc)
+    assert not missing, f"harness/__init__.py 的地图漏了：{missing}"
