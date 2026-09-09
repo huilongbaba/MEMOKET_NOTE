@@ -22,7 +22,7 @@ from .runtime import Runtime
 from .repeats import Repeats
 from .save import Save
 from .skills import Skills
-from .trace import Trace
+from .provenance import Provenance
 
 # Where each one runs. Two on the same hook execute in list order, and that
 # sometimes matters -- see the ``after`` declarations, which ``verify()``
@@ -33,7 +33,7 @@ from .trace import Trace
 #   Skills       before_round      the menu must exist before gather:
 #                                  gather is the only call with tools
 #   Facts        after_prepare     fold this round's haul into the run's
-#   Trace        after_prepare     after Facts: show what the tools returned
+#   Provenance   after_prepare     after Facts: show what the tools returned
 #   Repeats      before_judge      dup_hints is evidence for the scoring call
 #   Checks       before_judge      after Repeats: it may skip scoring entirely,
 #                                  and dup_hints is still wanted next round
@@ -49,7 +49,7 @@ from .trace import Trace
 #   Runtime      after_judge       feed the round's signals back into the
 #                                  next round's run parameters
 #   Replan       after_judge       adjust the skeleton, under constraints
-BASE: tuple = (Skills(), Facts(), Trace(), Repeats(), Checks(), BestOf(),
+BASE: tuple = (Skills(), Facts(), Provenance(), Repeats(), Checks(), BestOf(),
                History())
 
 # Not in BASE, attached per-Mode via extra_mw:
@@ -61,6 +61,5 @@ BASE: tuple = (Skills(), Facts(), Trace(), Repeats(), Checks(), BestOf(),
 #   Runtime / Replan -- note_harness only.
 
 __all__ = ["BASE", "BestOf", "Checks", "Compact", "Facts", "History",
-           "OrderError", "Repair", "Replan", "Repeats", "Runtime", "Save", "Skills",
-           "Trace", "describe",
-           "verify"]
+           "OrderError", "Provenance", "Repair", "Replan", "Repeats",
+           "Runtime", "Save", "Skills", "describe", "verify"]

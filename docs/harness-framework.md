@@ -1872,7 +1872,22 @@ compose_system(base, scope, user, menu=None, bodies=None)
 在函数里重算 `for_scope` 会把后者丢掉——模型调了 `load_skill`、看着 body
 永远不出现、于是再调一次。
 
+### 架构的主张，逐条对着代码验
+
+`tests/test_architecture_claims.py` 把这一节里的设计主张写成断言：
+循环不认识任何 middleware 的名字、循环不按 mode 分支、没有 Mode 悄悄关掉
+能力、被替换掉的旧机制没有残留、运行时策略不能替换 Mode 的配置、判据不受
+skill 影响、文档记着这次改造的结论。
+
+写这个文件之前先用一版粗糙的子串匹配跑了一遍，**报了三条不一致，三条全是
+误报**（`st.facts_new` 里含 "facts"、`extra_tool_groups` 里含
+`tool_groups=`）。所以最终版用 AST 取标识符做精确匹配，而且每条都反向验证
+过——往代码里注入违规，断言确实抓得到。
+
+顺带发现一个真问题：middleware `Trace` 跟 `State.trace` 撞名，「这是
+middleware 还是那个字段」得读代码才知道。改名 `Provenance`——那才是这个能力
+的名字（用户要能验证 grounding），ToolTrace 只是它数据的来源。
+
 ### 还没做的
 
-* 前端簇视图（`kb-architecture.md` 第 9 节第 6 步，`/api/kb/clusters` 已就绪）
-* 模型判的两条抽取判据（同上第 5 步，成本翻倍要先算账）
+（这一轮的清单清空了。）

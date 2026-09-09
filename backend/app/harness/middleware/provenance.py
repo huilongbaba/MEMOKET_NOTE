@@ -14,8 +14,14 @@ from ..events import CUSTOM_ROUND, Event
 from ..state import State
 
 
-class Trace:
+class Provenance:
     """Report what this round gathered: every tool call, then a summary.
+
+    Named for what it is rather than for the object it reads. It was ``Trace``
+    once, which collided with ``State.trace`` -- the tool trace itself -- and
+    made "is this the middleware or the field" a question you had to answer by
+    reading. Grounding that the user can check is the capability; ToolTrace is
+    just where the data comes from.
 
     The summary is what the round counter and the sources panel read. It has
     to come *after* prepare rather than at the round's start, because before
@@ -23,7 +29,7 @@ class Trace:
     that never updates is worse than none.
     """
 
-    name = "trace"
+    name = "provenance"
     hooks = ("after_prepare",)
     after: tuple[str, ...] = ("facts",)   # Facts is what decides a call counted
 
