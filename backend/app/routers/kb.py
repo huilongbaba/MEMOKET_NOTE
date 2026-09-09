@@ -99,13 +99,21 @@ def quality(user: str = Depends(current_user), limit: int = 0) -> dict:
     and inference sometimes supplies a figure nobody said. It is reported
     rather than blocked, because a number the model derived correctly is
     worth having.
+
+    ``shape`` is the second half: facts too short to carry anything, ASR
+    stutters, bare questions, lone speaker labels. That is the measure the
+    whole re-extraction was justified by -- 16% of the source library against
+    1.2% of the writing one -- and it still has something to say, because
+    9.5% of writing facts carry a "Speaker A/B/C" label the extraction rules
+    forbid outright.
     """
     memory = UserMemory(user)
     store, _vocab = memory._index()
     facts = list(store.facts.values())
     if limit > 0:
         facts = facts[:limit]
-    return extract_check.rate(facts, _source_text(store))
+    return {"numbers": extract_check.rate(facts, _source_text(store)),
+            "shape": extract_check.shapes(facts)}
 
 
 def _source_text(store) -> dict[str, str]:

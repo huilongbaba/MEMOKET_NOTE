@@ -37,9 +37,9 @@ import httpx  # noqa: E402
 
 from suite import (AUDIT, BASE, H, LEAK, OUT, OUTLINES, POLISH_SEEDS,  # noqa: E402
                    PLACEHOLDER, TAP_SEEDS, WRITE_SEEDS, _HEADING,
-                   advice_ratio, run_note, sse)
+                   run_note, sse)
 from app import outline  # noqa: E402
-from app.routers.note_harness import _BROKEN  # noqa: E402
+from app.harness.revision import _BROKEN  # noqa: E402  修订的定位与应用搬到这里了
 
 # 收束段：以"因此/所以/综上…"起头的段落。假设是每轮写完都想收个尾，三轮就有
 # 三个收束，而它们必然重述前文——这是 non_repetition 的一个待验证的候选根因。

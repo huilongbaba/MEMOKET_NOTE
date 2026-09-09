@@ -28,6 +28,16 @@ did itself (``112 / 1.5 = 74.6``) and years it inferred rather than read.
 **It reports; it does not reject.** A derived number can be right, and a
 correct extraction that computes a ratio is more useful than one that
 doesn't. What matters is that the rate is visible.
+
+The second group of checks here is about **shape**: a fact too short to carry
+anything, a transcription stutter, a bare question, a lone speaker label.
+These are what justified re-extracting the whole library in the first place --
+15.6% of the source codebook's 20406 facts are unusable by these rules
+against 1.2% of the writing one. They are kept because one of them is still
+being violated: **9.5% of writing facts still carry a "Speaker A/B/C" label**
+even though the extraction rules say in as many words never to write one, and
+those labels are per-session tags that mean a different person in the next
+conversation.
 """
 
 from __future__ import annotations
@@ -135,3 +145,67 @@ def _value_of(run: str) -> int | None:
     if len(run) == 3 and run[1] == "十":
         return _CN_DIGIT.get(run[0], 0) * 10 + _CN_DIGIT.get(run[2], 0)
     return None
+
+
+# ---------------------------------------------------------------- shape ---
+
+# Below this a fact cannot carry what it needs to (what happened, to what,
+# with which constraint). Measured against real output: the source codebook
+# has 1699 facts shorter than this, most of them noun phrases.
+MIN_USEFUL_CHARS = 16
+
+_FILLER = re.compile(r"(那个那个|就是就是|他他他|要要|嗯嗯|呃呃|我说那个|这个这个)")
+
+# A fact whose whole content is "Speaker B said <a few words>". The label is
+# useless (it names a different person next session) and what remains is too
+# little to write from.
+_SPEAKER_ONLY = re.compile(r"^Speaker [A-Z] ?(说|表示|认为|提到)?\s*[「\"\']?.{0,12}[」\"\']?$")
+
+# The label anywhere in the content, which the extraction rules forbid
+# outright: attribution belongs in the ``who`` field.
+_SPEAKER_LABEL = re.compile(r"Speaker [A-Z]")
+
+
+def unusable_shape(text: str) -> str | None:
+    """Why this fact can't be written from, or None if it can."""
+    if len(text) < MIN_USEFUL_CHARS:
+        return "太短"
+    if _FILLER.search(text):
+        return "口语填充/ASR 噪声"
+    if text.rstrip().endswith(("？", "?")):
+        return "是提问不是事实"
+    if _SPEAKER_ONLY.match(text):
+        return "只有说话人+短语"
+    return None
+
+
+def shapes(facts) -> dict:
+    """How many facts are the wrong shape to write from, and which way.
+
+    Separate from ``rate`` because it needs no source text: shape is decidable
+    from the fact alone, so this runs over a whole codebook in milliseconds.
+    """
+    reasons: dict[str, int] = {}
+    labelled = 0
+    total = 0
+    for fact in facts:
+        text = (getattr(fact, "text", "") or "").strip()
+        if not text:
+            continue
+        total += 1
+        why = unusable_shape(text)
+        if why:
+            reasons[why] = reasons.get(why, 0) + 1
+        if _SPEAKER_LABEL.search(text):
+            labelled += 1
+    unusable = sum(reasons.values())
+    return {
+        "facts": total,
+        "unusable": unusable,
+        "unusable_rate": round(unusable / total, 3) if total else 0.0,
+        "reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])),
+        # 抽取规则明说了不许把 Speaker A/B/C 写进正文——归属放 who 字段。
+        # 实测写作库还有 9.5%，所以这条单独报，不混进 unusable。
+        "speaker_labels": labelled,
+        "speaker_label_rate": round(labelled / total, 3) if total else 0.0,
+    }

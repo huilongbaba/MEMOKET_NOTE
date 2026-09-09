@@ -131,6 +131,12 @@ export default function App() {
   // 轮末直接从 ref 读当前正文。
   const liveContentRef = useRef<string>('')
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
+  // 逐轮处置：开着的话每轮写完就停下来，等你在编辑器里逐条接受/撤回，
+  // 处置完再点「接着写」。关着是原来的行为——一口气跑完再处置，而那意味着
+  // 你在跑的过程中做的处置会被下一轮盖掉。
+  const [reviewEachRound, setReviewEachRound] = useState(false)
+  const [pausedRun, setPausedRun] = useState<
+    { id: string; noteId: string; mode: 'write' | 'polish' } | null>(null)
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
   const [writingPlanFolder, setWritingPlanFolder] = useState<Folder | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
@@ -385,6 +391,21 @@ export default function App() {
     setBeats(n.beats ?? [])
     setRevisions([])
     setTapMeta(null)
+    setPausedRun(null)
+    // 找回跑到一半停下来等处置的那次运行。
+    //
+    // **SSE 流断了之后它就再也找不回来了**——关标签页、后端重启、网络抖一下，
+    // 快照留在库里，而 run_id 只存在于那条已经断掉的流里。用户看到的是「我
+    // 明明点了智能续写，现在什么都没有」。这个接口是它唯一的入口。
+    void api.listPausedRuns()
+      .then((runs) => {
+        const mine = runs.find((r) => r.note_id === n.id)
+        if (mine) {
+          setPausedRun({ id: mine.id, noteId: n.id, mode: 'write' })
+          setNoteHarnessStatus(`上次写到第 ${mine.round} 轮停下来等你处置`)
+        }
+      })
+      .catch(() => {})
   }
 
   useEffect(() => {
@@ -593,8 +614,11 @@ export default function App() {
   // 后来给它加了打分诊断，一次自动触发就是两次模型调用，等于在打字间隙
   // 悄悄烧钱。而它的用途已被「✨ 打磨」完全覆盖：同一套修订循环，但有明确
   // 的终止判定（改到已写内容自身达标或改不动为止），而且由用户主动触发。
-  // 后端 /api/edit 保留着（诊断+针对最弱项的改造也保留），以后需要一个
-  // 「人在环内逐条挑」的入口时可以直接接回来。
+  // 「人在环内逐条挑」这个入口现在有了，但走的不是 /api/edit——是
+  // 「逐轮我来定」：harness 每轮写完停下来，你在编辑器里逐条接受/撤回，
+  // 点「接着写」把处置后的正文送回去接着跑。所以那条一次性调用不再需要
+  // 前端封装；后端 /api/edit 还在（诊断和针对最弱项的改造也在），要接回来
+  // 是三行的事。
 
 
   /** Optimistic delete with an undo window instead of a confirm() dialog --
@@ -711,6 +735,183 @@ export default function App() {
     })
   }
 
+  /** 这一次运行的事件处理。**开跑和「接着写」共用同一份**——两条路径各写
+   * 一份的话，恢复之后的运行就会少掉几个 handler，而那是最难发现的一类
+   * 差异：界面看起来在跑，只是某个面板不再更新了。 */
+  function noteHarnessHandlers(noteId: string, mode: 'write' | 'polish'): api.NoteHarnessHandlers {
+    return {
+      onSkeleton: (s, b) => {
+        if (currentRef.current?.id !== noteId) return
+        setSpine(s); setBeats(b)
+        // 自动生成的一样要存——否则下一轮/下一次打开又得重新生成一份
+        void persistSkeleton(s, b, noteId)
+        setNoteHarnessStatus('已自动生成骨架，开始第一轮')
+      },
+      onRoundStart: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        // skipped_continue：上一轮评分说重复是当前最弱的一项，这一轮
+        // 后端直接跳过续写、只再跑一次聚焦修订，不会有 delta 事件
+        // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
+        // 不能说"续写中"，不然用户会以为卡住了；也不能预留续写用的
+        // 空行，因为这一轮根本不会有内容来填上这个空行。
+        patchRound(d.round, {
+          cleanupOnly: !!d.skipped_continue,
+          revisions: d.revisions_applied,
+    })
+        if (d.skipped_continue) {
+          setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
+          return
+    }
+        setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，续写中…`)
+        // 续写的增量在这之后才开始到达——本地累积的 content 要先补一次
+        // 分隔，跟后端 prompts.join_round_text() 是同一个道理
+        // （TRACELOG [8]/[10]）：折叠 runHarness 那边已经修过的同一个坑，
+        // 这里之前漏了，只修了文件夹 harness 那一侧。
+        setContent((c) => {
+          const next = c ? c.replace(/\n*$/, '') + '\n\n' : c
+          liveContentRef.current = next
+          return next
+    })
+      },
+      onRevision: (r) => {
+        if (currentRef.current?.id !== noteId) return
+        setContent((c) => {
+          const next = applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] })
+          liveContentRef.current = next
+          return next
+    })
+        const sourceNote = r.sources?.length ? `（依据：${r.sources[0].slice(0, 40)}${r.sources.length > 1 ? ' 等' : ''}）` : ''
+        toast(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 60)}${sourceNote}`)
+      },
+      onDelta: (text) => {
+        if (currentRef.current?.id !== noteId) return
+        setContent((c) => { const next = c + text; liveContentRef.current = next; return next })
+        // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
+        // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
+        // 干等的状态文案有用得多。
+        setAgentRounds((rs) => {
+          if (!rs.length) return rs
+          const next = [...rs]
+          const last = next[next.length - 1]
+          next[next.length - 1] = { ...last, streamed: (last.streamed ?? '') + text }
+          return next
+    })
+      },
+      onRoundEnd: () => {
+        if (currentRef.current?.id !== noteId) return
+        // 轮末拿快照跟当前正文做词级 diff，标出这一轮的增删。
+        // 修订是自动应用的（不等人工接受），不标出来用户根本不知道
+        // 正文被动了哪里。
+        // 每轮末都拿**整次 run 的起点**重算一次，高亮是累积的：
+        // 装饰会被下一轮的文档改动清掉，但下一轮末又会重新算出来，
+        // 且范围只增不减。
+        const base = runBaseRef.current
+        const cur = liveContentRef.current
+        if (base && cur && base !== cur) setRoundDiff(diffParts(base, cur))
+      },
+      onEvaluate: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        const beatScore = d.scores['beat_coverage']
+        if (beatScore) setBeatCoverage(beatScore)
+        setAgentRounds((rs) => {
+          if (!rs.length) return rs
+          const next = [...rs]
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            scores: d.scores, status: d.status, weakest: d.weakest,
+          }
+          return next
+    })
+        if (d.status === 'continue' && d.weakest) {
+          setNoteHarnessStatus(`这一轮评分：${d.weakest} 还不够，下一轮优先改这个`)
+    }
+      },
+      onPhase: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        // 用 patchRound 而不是改"最后一张卡片"：修订 pass 跑在
+        // round-start **之前**，第 1 轮的 edit 阶段到达时卡片还不存在，
+        // 直接改最后一张会把它整段丢掉——而那正是最想看的第一段。
+        patchRound(d.round, { phase: d.phase, phaseLabel: d.label })
+      },
+      onPhaseDelta: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        setAgentRounds((rs) => {
+          const i = rs.findIndex((r) => r.round === d.round)
+          const base = i < 0 ? null : rs[i]
+          const pt = { ...(base?.phaseText ?? {}) }
+          const cur = pt[d.phase] ?? { thinking: '', output: '' }
+          pt[d.phase] = d.kind === 'thinking'
+            ? { ...cur, thinking: cur.thinking + d.text }
+            : { ...cur, output: cur.output + d.text }
+          if (i < 0) {
+            return [...rs, {
+              round: d.round, cleanupOnly: false, revisions: 0, toolCalls: [],
+              toolTruncated: false, scores: {}, status: '', weakest: null,
+              policyReasons: [], policy: null, errors: [], dropped: [], phaseText: pt,
+            }]
+          }
+          const next = [...rs]
+          next[i] = { ...base!, phaseText: pt }
+          return next
+    })
+      },
+      onToolCalls: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        patchRound(d.round, { toolCalls: d.calls, toolTruncated: d.truncated })
+        setNoteHarnessStatus(`第 ${d.round} 轮：agent 自己查了知识库 ${d.calls.length} 次，续写中…`)
+      },
+      onPolicy: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        // round 0 = 开跑前用历史运行记录定的初始策略，还没有对应的轮次卡片，
+        // 挂到第 1 轮上；其余挂在产生它的那一轮
+        patchRound(Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
+      },
+      onDropped: (detail) => {
+        // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
+        if (currentRef.current?.id !== noteId) return
+        setAgentRounds((rs) => {
+          if (!rs.length) return rs
+          const next = [...rs]
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            dropped: [...next[next.length - 1].dropped, detail],
+          }
+          return next
+    })
+      },
+      onError: (detail) => {
+        if (currentRef.current?.id !== noteId) return
+        // 后端的 error 事件都是可恢复的降级，流还在继续——记在这一轮上
+        // 给用户看，但不打断运行
+        setAgentRounds((rs) => {
+          if (!rs.length) return rs
+          const next = [...rs]
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            errors: [...next[next.length - 1].errors, detail],
+          }
+          return next
+    })
+      },
+      onDone: (reason, blockedReason, runId) => {
+        if (reason === 'awaiting_review' && runId) {
+          // 这一轮写完了，等你处置。**正文的最终形态由编辑器说了算**——
+          // 逐条接受/撤回都在这儿做，点「接着写」时把当前正文送回去。
+          setPausedRun({ id: runId, noteId, mode })
+          setNoteHarnessStatus('这一轮写完了，逐条看过之后点「接着写」')
+          return
+    }
+        const label = reason === 'no_more_changes' ? '已经改不动了，打磨结束'
+          : reason === 'complete' ? (mode === 'polish' ? '已写内容都达标了，打磨完成' : '内容已完整，自动停止')
+          : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
+          : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
+          : '到达轮数上限，自动停止'
+        setNoteHarnessStatus(label)
+        toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
+      },
+    }
+  }
+
   async function runNoteHarness(mode: 'write' | 'polish' = 'write') {
     if (loading === 'note-harness') {
       // 点"停止"时**同时强制复位状态**，不要只 abort 就指望 fetch 的
@@ -732,6 +933,7 @@ export default function App() {
     setBeatCoverage(null)
     setAgentRounds([])
     setRoundDiff(null)
+    setPausedRun(null)
     liveContentRef.current = content
     runBaseRef.current = content
     const ctrl = new AbortController()
@@ -739,172 +941,10 @@ export default function App() {
     try {
       await api.runNoteHarness(
         noteId, content, spine, beats,
-        {
-          onSkeleton: (s, b) => {
-            if (currentRef.current?.id !== noteId) return
-            setSpine(s); setBeats(b)
-            // 自动生成的一样要存——否则下一轮/下一次打开又得重新生成一份
-            void persistSkeleton(s, b, noteId)
-            setNoteHarnessStatus('已自动生成骨架，开始第一轮')
-          },
-          onRoundStart: (d) => {
-            if (currentRef.current?.id !== noteId) return
-            // skipped_continue：上一轮评分说重复是当前最弱的一项，这一轮
-            // 后端直接跳过续写、只再跑一次聚焦修订，不会有 delta 事件
-            // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
-            // 不能说"续写中"，不然用户会以为卡住了；也不能预留续写用的
-            // 空行，因为这一轮根本不会有内容来填上这个空行。
-            patchRound(d.round, {
-              cleanupOnly: !!d.skipped_continue,
-              revisions: d.revisions_applied,
-            })
-            if (d.skipped_continue) {
-              setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
-              return
-            }
-            setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，续写中…`)
-            // 续写的增量在这之后才开始到达——本地累积的 content 要先补一次
-            // 分隔，跟后端 prompts.join_round_text() 是同一个道理
-            // （TRACELOG [8]/[10]）：折叠 runHarness 那边已经修过的同一个坑，
-            // 这里之前漏了，只修了文件夹 harness 那一侧。
-            setContent((c) => {
-              const next = c ? c.replace(/\n*$/, '') + '\n\n' : c
-              liveContentRef.current = next
-              return next
-            })
-          },
-          onRevision: (r) => {
-            if (currentRef.current?.id !== noteId) return
-            setContent((c) => {
-              const next = applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] })
-              liveContentRef.current = next
-              return next
-            })
-            const sourceNote = r.sources?.length ? `（依据：${r.sources[0].slice(0, 40)}${r.sources.length > 1 ? ' 等' : ''}）` : ''
-            toast(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 60)}${sourceNote}`)
-          },
-          onDelta: (text) => {
-            if (currentRef.current?.id !== noteId) return
-            setContent((c) => { const next = c + text; liveContentRef.current = next; return next })
-            // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
-            // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
-            // 干等的状态文案有用得多。
-            setAgentRounds((rs) => {
-              if (!rs.length) return rs
-              const next = [...rs]
-              const last = next[next.length - 1]
-              next[next.length - 1] = { ...last, streamed: (last.streamed ?? '') + text }
-              return next
-            })
-          },
-          onRoundEnd: () => {
-            if (currentRef.current?.id !== noteId) return
-            // 轮末拿快照跟当前正文做词级 diff，标出这一轮的增删。
-            // 修订是自动应用的（不等人工接受），不标出来用户根本不知道
-            // 正文被动了哪里。
-            // 每轮末都拿**整次 run 的起点**重算一次，高亮是累积的：
-            // 装饰会被下一轮的文档改动清掉，但下一轮末又会重新算出来，
-            // 且范围只增不减。
-            const base = runBaseRef.current
-            const cur = liveContentRef.current
-            if (base && cur && base !== cur) setRoundDiff(diffParts(base, cur))
-          },
-          onEvaluate: (d) => {
-            if (currentRef.current?.id !== noteId) return
-            const beatScore = d.scores['beat_coverage']
-            if (beatScore) setBeatCoverage(beatScore)
-            setAgentRounds((rs) => {
-              if (!rs.length) return rs
-              const next = [...rs]
-              next[next.length - 1] = {
-                ...next[next.length - 1],
-                scores: d.scores, status: d.status, weakest: d.weakest,
-              }
-              return next
-            })
-            if (d.status === 'continue' && d.weakest) {
-              setNoteHarnessStatus(`这一轮评分：${d.weakest} 还不够，下一轮优先改这个`)
-            }
-          },
-          onPhase: (d) => {
-            if (currentRef.current?.id !== noteId) return
-            // 用 patchRound 而不是改"最后一张卡片"：修订 pass 跑在
-            // round-start **之前**，第 1 轮的 edit 阶段到达时卡片还不存在，
-            // 直接改最后一张会把它整段丢掉——而那正是最想看的第一段。
-            patchRound(d.round, { phase: d.phase, phaseLabel: d.label })
-          },
-          onPhaseDelta: (d) => {
-            if (currentRef.current?.id !== noteId) return
-            setAgentRounds((rs) => {
-              const i = rs.findIndex((r) => r.round === d.round)
-              const base = i < 0 ? null : rs[i]
-              const pt = { ...(base?.phaseText ?? {}) }
-              const cur = pt[d.phase] ?? { thinking: '', output: '' }
-              pt[d.phase] = d.kind === 'thinking'
-                ? { ...cur, thinking: cur.thinking + d.text }
-                : { ...cur, output: cur.output + d.text }
-              if (i < 0) {
-                return [...rs, {
-                  round: d.round, cleanupOnly: false, revisions: 0, toolCalls: [],
-                  toolTruncated: false, scores: {}, status: '', weakest: null,
-                  policyReasons: [], policy: null, errors: [], dropped: [], phaseText: pt,
-                }]
-              }
-              const next = [...rs]
-              next[i] = { ...base!, phaseText: pt }
-              return next
-            })
-          },
-          onToolCalls: (d) => {
-            if (currentRef.current?.id !== noteId) return
-            patchRound(d.round, { toolCalls: d.calls, toolTruncated: d.truncated })
-            setNoteHarnessStatus(`第 ${d.round} 轮：agent 自己查了知识库 ${d.calls.length} 次，续写中…`)
-          },
-          onPolicy: (d) => {
-            if (currentRef.current?.id !== noteId) return
-            // round 0 = 开跑前用历史运行记录定的初始策略，还没有对应的轮次卡片，
-            // 挂到第 1 轮上；其余挂在产生它的那一轮
-            patchRound(Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
-          },
-          onDropped: (detail) => {
-            // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
-            if (currentRef.current?.id !== noteId) return
-            setAgentRounds((rs) => {
-              if (!rs.length) return rs
-              const next = [...rs]
-              next[next.length - 1] = {
-                ...next[next.length - 1],
-                dropped: [...next[next.length - 1].dropped, detail],
-              }
-              return next
-            })
-          },
-          onError: (detail) => {
-            if (currentRef.current?.id !== noteId) return
-            // 后端的 error 事件都是可恢复的降级，流还在继续——记在这一轮上
-            // 给用户看，但不打断运行
-            setAgentRounds((rs) => {
-              if (!rs.length) return rs
-              const next = [...rs]
-              next[next.length - 1] = {
-                ...next[next.length - 1],
-                errors: [...next[next.length - 1].errors, detail],
-              }
-              return next
-            })
-          },
-          onDone: (reason, blockedReason) => {
-            const label = reason === 'no_more_changes' ? '已经改不动了，打磨结束'
-              : reason === 'complete' ? (mode === 'polish' ? '已写内容都达标了，打磨完成' : '内容已完整，自动停止')
-              : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
-              : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
-              : '到达轮数上限，自动停止'
-            setNoteHarnessStatus(label)
-            toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
-          },
-        },
+        noteHarnessHandlers(noteId, mode),
         ctrl.signal,
         mode,
+        reviewEachRound,
       )
     } catch (e) {
       if ((e as Error).name !== 'AbortError') toast(
@@ -993,6 +1033,46 @@ export default function App() {
     for (const h of hunks) {
       view.dispatch({ changes: { from: h.from, to: h.to, insert: h.del },
                       effects: dropHunk.of(h.id) })
+    }
+  }
+
+  /** 处置完接着跑，或者到此为止。
+   *
+   * 送回去的是**编辑器当前的正文**：逐条接受/撤回都发生在编辑器里，让后端
+   * 拿一串 hunk id 再合并一遍等于同一个合并写两份实现，而用户真正看到的是
+   * 浏览器里那一份。
+   */
+  async function resumePausedRun(stop = false) {
+    const run = pausedRun
+    const view = editorViewRef.current
+    if (!run || !view) return
+    const kept = view.state.doc.toString()
+    setPausedRun(null)
+    if (stop) {
+      try {
+        await api.stopHarness(run.id, kept)
+        setNoteHarnessStatus('已按你处置后的正文收尾')
+      } catch (e) {
+        toast('收尾失败：' + e, 'error')
+      }
+      setLoading('')
+      return
+    }
+    setLoading('note-harness')
+    setNoteHarnessStatus('接着写…')
+    runBaseRef.current = kept
+    liveContentRef.current = kept
+    setRoundDiff(null)
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    try {
+      await api.resumeHarness(
+        run.id, kept, noteHarnessHandlers(run.noteId, run.mode), ctrl.signal)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') toast('接着写失败：' + e, 'error')
+    } finally {
+      abortRef.current = null
+      setLoading('')
     }
   }
 
@@ -1495,11 +1575,38 @@ export default function App() {
               >
                 ✨ 打磨
               </button>
+              <label
+                className="muted"
+                style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                title="每轮写完停下来等你逐条接受/撤回。关着的话它一口气跑完，而你在中途做的处置会被下一轮盖掉"
+              >
+                <input
+                  type="checkbox"
+                  checked={reviewEachRound}
+                  onChange={(e) => setReviewEachRound(e.target.checked)}
+                  disabled={loading === 'note-harness'}
+                />
+                逐轮我来定
+              </label>
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} />
               <button onClick={ingestCurrentNote} disabled={!content.trim() || loading === 'ingest'}>
                 {loading === 'ingest' ? <span className="spinner" /> : '📥 存入知识库'}
               </button>
             </div>
+            {pausedRun && (
+              /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
+                 关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
+                 你在跑的过程中做的处置会被下一轮盖掉。 */
+              <div className="row" style={{ margin: '0 0 8px', flexWrap: 'wrap' }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  这一轮写完了，逐条看过之后：
+                </span>
+                <button className="primary" onClick={() => resumePausedRun()}>
+                  ▶ 接着写
+                </button>
+                <button onClick={() => resumePausedRun(true)}>到此为止</button>
+              </div>
+            )}
             {loading === 'note-harness' && noteHarnessStatus && (
               <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>🤖 {noteHarnessStatus}</p>
             )}

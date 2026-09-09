@@ -1,7 +1,7 @@
 # MEMOKET_NOTE Harness 框架
 
 > 目标架构。为什么这么设计、调研依据、数据支撑，见
-> [refactor-harness-runtime.md](refactor-harness-runtime.md)。
+> [_research/refactor-harness-runtime.md](_research/refactor-harness-runtime.md)。
 
 ---
 

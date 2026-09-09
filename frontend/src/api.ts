@@ -113,13 +113,6 @@ export const createFolder = (name: string) =>
     body: JSON.stringify({ name }),
   }).then(json<Folder>)
 
-export const renameFolder = (id: string, name: string) =>
-  fetch(`/api/folders/${id}`, {
-    method: 'PUT',
-    headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ name }),
-  }).then(json<Folder>)
-
 export const deleteFolder = (id: string) =>
   fetch(`/api/folders/${id}`, { method: 'DELETE', headers: headers() }).then(json)
 
@@ -151,16 +144,9 @@ export const genSkeleton = (title: string, content: string) =>
     body: JSON.stringify({ title, content }),
   }).then(json<{ spine: string; beats: string[]; took_ms: number }>)
 
-export const genRevisions = (content: string, spine: string, beats: string[]) =>
-  fetch('/api/edit', {
-    method: 'POST',
-    headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, spine, beats }),
-  }).then(json<{ revisions: Revision[]; took_ms: number }>)
-
 // ---------------------------------------------------------------- 选中文本操作
 //
-// 右键选中一段文本触发。都产出跟 genRevisions 同一个 Revision 形状的结果，
+// 右键选中一段文本触发。都产出同一个 Revision 形状的结果，
 // 复用同一套接受/拒绝 UI。
 
 export const rewriteSelection = (
@@ -281,9 +267,6 @@ export const startWritingPlan = (folderId: string, goal: string) =>
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ folder_id: folderId, goal }),
   }).then(json<WritingPlanOut>)
-
-export const abandonWritingPlan = (folderId: string) =>
-  fetch(`/api/writing-plan/${folderId}/abandon`, { method: 'POST', headers: headers() }).then(json)
 
 export type WritingPlanHandlers = {
   onPlanLoaded?: (plan: WritingPlan, sections: WritingSection[]) => void
@@ -424,15 +407,6 @@ export const listClusters = () =>
   fetch('/api/kb/clusters', { headers: headers() })
     .then(json<{ clusters: TopicCluster[]; topics: number }>)
 
-export type KbCoverage = {
-  facts: number; units: number
-  topics: number; topic_median: number; topic_small_share: number
-  clusters: number; cluster_median: number; cluster_small_share: number
-}
-
-export const kbCoverage = () =>
-  fetch('/api/kb/coverage', { headers: headers() }).then(json<KbCoverage>)
-
 export type FactsFilter = {
   kind?: string; who?: string; topic?: string; entity?: string; conf_min?: string
   limit?: number; offset?: number
@@ -501,9 +475,6 @@ export type JobOut = {
 
 export const jobStatus = (jobId: string) =>
   fetch(`/api/ingest/jobs/${jobId}`, { headers: headers() }).then(json<JobOut>)
-
-export const listJobs = (limit = 20) =>
-  fetch(`/api/ingest/jobs?limit=${limit}`, { headers: headers() }).then(json<JobOut[]>)
 
 export const cancelJob = (jobId: string) =>
   fetch(`/api/ingest/jobs/${jobId}/cancel`, { method: 'POST', headers: headers() }).then(json)

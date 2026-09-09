@@ -263,35 +263,19 @@ def log_line(obj: dict) -> None:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
-def parse_sse(text: str) -> list[tuple[str, dict]]:
-    events, event = [], ""
-    for frame in text.split("\n\n"):
-        for line in frame.split("\n"):
-            if line.startswith("event:"):
-                event = line[6:].strip()
-            elif line.startswith("data:"):
-                raw = line[5:].strip()
-                if raw:
-                    try:
-                        events.append((event, json.loads(raw)))
-                    except json.JSONDecodeError:
-                        pass
-    return events
-
-
 def run_seed(client: httpx.Client, seed: dict, max_rounds: int) -> dict:
     H = {"X-User-Id": TEST_USER, "Content-Type": "application/json"}
     note = httpx.post(f"{BASE_URL}/api/notes", headers=H,
                       json={"title": f"writing-{seed['id']}", "content": seed["seed"],
                             "folder_id": None}, timeout=30).json()
     try:
-        buf = ""
+        # 这个 bench 量的是**最终正文**，不是过程事件——所以流只要读完就行，
+        # 不用解析。读完是必须的：不把 SSE 消费干净，服务端那次 run 就不算跑完。
         with client.stream("POST", f"{BASE_URL}/api/note-harness/run", headers=H,
                            json={"note_id": note["id"], "content": seed["seed"],
                                  "max_rounds": max_rounds}, timeout=900.0) as r:
-            for chunk in r.iter_text():
-                buf += chunk
-        events = parse_sse(buf)
+            for _chunk in r.iter_text():
+                pass
         final = httpx.get(f"{BASE_URL}/api/notes/{note['id']}", headers=H, timeout=30).json()
         final_text = final.get("content", "")
     finally:

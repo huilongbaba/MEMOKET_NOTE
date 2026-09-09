@@ -191,7 +191,7 @@ def main() -> None:
 
     idx = OUT / "README.md"
     idx.write_text("\n".join(
-        [f"# 每一步实际发给模型的 prompt", "",
+        ["# 每一步实际发给模型的 prompt", "",
          f"导出时间：{datetime.now().isoformat(timespec='seconds')}　·　用户 {USER}（真实知识库）", "",
          "渲染的是**真实调用时拼好的完整消息**，不是 prompts.py 里的模板：",
          "system 部分带上了用户启用的写作技能，user 部分带上了真实的骨架、正文、",

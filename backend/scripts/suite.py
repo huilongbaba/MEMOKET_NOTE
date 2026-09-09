@@ -218,7 +218,7 @@ def main() -> None:
 
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "回归-写作功能.md").write_text("\n".join(report), encoding="utf-8")
-    print(f"\n报告 → samples/回归-写作功能.md", flush=True)
+    print("\n报告 → samples/回归-写作功能.md", flush=True)
 
 
 if __name__ == "__main__":

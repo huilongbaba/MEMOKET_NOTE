@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -250,7 +249,7 @@ def sample_plan(client: httpx.Client, spec: dict) -> Path:
             if sid != cur:
                 out += [f"## 分段：{title}", ""]
                 cur = sid
-            out += [f"### 一轮" + ("（跳过续写，只做清理）" if p.get("skipped_continue") else ""), ""]
+            out += ["### 一轮" + ("（跳过续写，只做清理）" if p.get("skipped_continue") else ""), ""]
             delta = ""
             continue
         if ev == "delta":

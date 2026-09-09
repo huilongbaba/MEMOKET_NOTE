@@ -72,3 +72,49 @@ def test_比率按可核对的那部分算():
     assert got["checked"] == 2, "不含数字的那条不该进分母"
     assert got["flagged"] == 1 and got["rate"] == 0.5
     assert got["examples"][0]["numbers"] == ["849"]
+
+
+# ------------------------------------------------------------------ 形态 ---
+
+
+def test_写不了的形态各归各类():
+    from app.kb.extract_check import unusable_shape
+
+    assert unusable_shape("沪江维多利亚有机会。") == "太短"
+    assert unusable_shape("团队讨论了那个那个方案的成本结构和交付时间安排") == "口语填充/ASR 噪声"
+    assert unusable_shape("硬件的良率问题到底要怎么解决才能赶上交付？") == "是提问不是事实"
+    assert unusable_shape("Speaker B 说硬件这个设计") == "只有说话人+短语"
+    assert unusable_shape(
+        "外壳样件由模型厂出，每套 2300 元，要摊到头 50-100 台里") is None
+
+
+def test_speaker标签单独报不混进无用():
+    """规则明说了不许把 Speaker A/B/C 写进正文——归属放 who 字段。一条带
+    标签但内容完整的事实仍然能写，只是标签本身是错的：那是 per-session 的
+    临时代号，下一场会议里是另一个人。"""
+    from app.kb.extract_check import shapes
+
+    facts = [types.SimpleNamespace(
+        text="Speaker A 认为外壳样件每套 2300 元的成本必须摊到头 50-100 台里")]
+    got = shapes(facts)
+    assert got["unusable"] == 0, "内容完整就不该算无用"
+    assert got["speaker_labels"] == 1 and got["speaker_label_rate"] == 1.0
+
+
+def test_形态判据不需要原文():
+    """所以它能几毫秒扫完整个知识库，而数字那条要逐条比对原文。"""
+    import inspect
+
+    from app.kb import extract_check
+
+    params = inspect.signature(extract_check.shapes).parameters
+    assert list(params) == ["facts"]
+
+
+def test_空文本不进分母():
+    from app.kb.extract_check import shapes
+
+    got = shapes([types.SimpleNamespace(text=""),
+                  types.SimpleNamespace(text="  "),
+                  types.SimpleNamespace(text="短")])
+    assert got["facts"] == 1 and got["unusable"] == 1

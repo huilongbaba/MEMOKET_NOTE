@@ -28,7 +28,6 @@ import argparse
 import json
 import sys
 import time
-import uuid
 from datetime import datetime
 from pathlib import Path
 
