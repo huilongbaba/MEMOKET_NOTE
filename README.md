@@ -110,9 +110,14 @@ npm run dev               # http://localhost:5173
 ## 测试
 
 ```bash
-cd backend  && PYTHONPATH=. pytest -q      # 649 条，约 35 秒，不需要模型
-cd frontend && npm test                    # tsc + vitest + 10 个检查脚本
+cd backend
+pip install -r requirements.txt -r requirements-dev.txt
+PYTHONPATH=. pytest -q                     # 649 条，约 35 秒，不需要模型
+
+cd ../frontend && npm test                 # tsc + vitest + 10 个检查脚本
 ```
+
+两道闸门都在 `.github/workflows/ci.yml` 里，每次 push 和 PR 自动跑。
 
 后端全部不打模型：判据、循环、middleware、修订的四道防线都靠打桩驱动，
 所以跑得起来、跑得快。真实模型只在 `backend/scripts/` 下的 bench 里用。

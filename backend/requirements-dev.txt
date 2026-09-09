@@ -1,1 +1,9 @@
-pyflakes
+# 跑测试要的东西。requirements.txt 里没有它们是对的（生产不需要），但
+# 照 README 装完却跑不了 pytest 也不对——所以单独列一份。
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+#     PYTHONPATH=. pytest -q
+pytest>=8.0
+pytest-asyncio>=0.24
+pytest-cov>=5.0
+pyflakes>=3.0
