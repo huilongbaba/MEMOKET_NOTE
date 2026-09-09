@@ -56,3 +56,81 @@ def test_rejects_temperature_ignores_non_400_status():
 def test_rejects_temperature_handles_non_json_body_gracefully():
     assert llm._rejects_temperature(400, b"not json at all") is False
     assert llm._rejects_temperature(400, b"") is False
+
+
+# ------------------------------------------------ 模型流怎么被解析 ---
+#
+# 这两个解析器决定了上层看到什么：`_consume_sse` 给出的 finish_reason 是
+# 「撞到 token 上限、要把那半句写完」这条逻辑的唯一依据，解析漏了它，
+# 两条 harness 都会把被切断的正文当成写完了。此前零覆盖。
+
+class _FakeResponse:
+    """只提供 aiter_lines()，够这两个解析器用。"""
+
+    def __init__(self, lines):
+        self._lines = list(lines)
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
+
+
+def _sse(*objs):
+    import json as _json
+
+    return [f"data: {_json.dumps(o)}" for o in objs]
+
+
+def _drain(agen):
+    import asyncio
+
+    async def go():
+        return [x async for x in agen]
+    return asyncio.run(go())
+
+
+def test_流里的内容片段按顺序取出来():
+    from app.util.llm import _consume_sse
+
+    lines = _sse({"choices": [{"delta": {"content": "甲"}}]},
+                 {"choices": [{"delta": {"content": "乙"}}]}) + ["data: [DONE]"]
+    assert _drain(_consume_sse(_FakeResponse(lines))) == ["甲", "乙"]
+
+
+def test_finish_reason被记进stats():
+    """上层靠它判断「是不是被 token 上限拦腰切了」。漏掉这一步，被切断的
+    正文会被当成写完了，那半句就永远补不上。"""
+    from app.util.llm import _consume_sse
+
+    stats: dict = {}
+    lines = _sse({"choices": [{"delta": {"content": "写到一半"},
+                               "finish_reason": None}]},
+                 {"choices": [{"delta": {}, "finish_reason": "length"}]})
+    _drain(_consume_sse(_FakeResponse(lines), stats))
+    assert stats["finish_reason"] == "length"
+
+
+def test_坏行和心跳行不会打断整条流():
+    """真实服务会插入注释行、空行，偶尔还有半截 JSON。为一行坏数据放弃
+    整次生成，代价是几十秒的工作量。"""
+    from app.util.llm import _consume_sse
+
+    lines = ([": keep-alive", "", "data: {这不是合法 JSON"]
+             + _sse({"choices": [{"delta": {"content": "还是拿到了"}}]})
+             + ["data: {\"choices\": []}", "data: [DONE]",
+                "data: {\"choices\": [{\"delta\": {\"content\": \"DONE 之后的不要\"}}]}"])
+    assert _drain(_consume_sse(_FakeResponse(lines))) == ["还是拿到了"]
+
+
+def test_思考过程和正文分开标出来():
+    """reasoning_content 一度被整个丢掉——那本来就是「agent 在想什么」，
+    是这一步最值得看的东西。"""
+    from app.util.llm import _consume_tagged
+
+    lines = _sse({"choices": [{"delta": {"reasoning_content": "先想一想"}}]},
+                 {"choices": [{"delta": {"content": "再写出来"}}]},
+                 {"choices": [{"delta": {"reasoning_content": "又想了想",
+                                         "content": "接着写"}}]})
+    assert _drain(_consume_tagged(_FakeResponse(lines))) == [
+        ("thinking", "先想一想"), ("output", "再写出来"),
+        ("thinking", "又想了想"), ("output", "接着写")]
