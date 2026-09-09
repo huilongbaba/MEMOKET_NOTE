@@ -10,7 +10,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pytest  # noqa: E402
+
 from app.harness import prompts  # noqa: E402
+from app.harness.types import DupHint  # noqa: E402
 
 
 def test_folder_context_block_empty_list_returns_empty_string():
@@ -207,3 +210,58 @@ def test_edit_user_carries_placeholder_lines():
     assert "必须就地处理" in out and "待指定" in out
     assert "不许原样留着" in out
     assert "必须就地处理" not in prompts.edit_user("张力", ["节拍"], "正文", [], [])
+
+
+# ------------------------------------------------ 每个构造函数都要能跑 ---
+#
+# 这一组的来历：把 1119 行的 prompts.py 拆成包之后，全量测试是绿的，但
+# 一查覆盖，22 个构造函数里有 8 个**从来没有被任何测试调用过**——它们只在
+# 真实请求里被调，f-string 里拼错一个名字要到线上才炸。
+#
+# 断言不止「跑得通」，还要「喂进去的东西真的出现在产出里」：一次重构悄悄
+# 把 {facts} 从模板里漏掉，功能不报错，只是模型从此少拿一块上下文，靠人
+# 是看不出来的。
+
+_OVERRIDES = {
+    # dup_hints 要的是 DupHint 对象，不是字符串；scope 要的是真实的
+    # SKILL_SCOPES 键；user 是查 skill 用的用户名，不是要嵌进提示词的文本。
+    "dup_hints": [DupHint(a="重复的一段", b="又一段", similarity=0.9)],
+    "scope": "note",
+}
+_NOT_EMBEDDED = {("compose_system", "user")}
+
+
+def _dummy(name: str, ann: str):
+    if name in _OVERRIDES:
+        return _OVERRIDES[name]
+    if ann == "bool":
+        return True
+    if "dict" in ann:
+        return [{"title": f"T{name}", "content": f"C{name}",
+                 "summary": f"S{name}", "status": "done"}]
+    if "tuple" in ann:
+        return [(f"M{name}", f"D{name}")]
+    if "list" in ann:
+        return [f"L{name}1", f"L{name}2"]
+    return f"V{name}"
+
+
+@pytest.mark.parametrize("name", sorted(
+    n for n in prompts.__all__ if callable(getattr(prompts, n))))
+def test_每个提示词构造函数都跑得通且不丢参数(name):
+    import inspect
+
+    fn = getattr(prompts, name)
+    kw = {p: _dummy(p, str(a.annotation))
+          for p, a in inspect.signature(fn).parameters.items()}
+    out = fn(**kw)
+    assert isinstance(out, str) and out.strip(), f"{name} 产出是空的"
+
+    for param, value in kw.items():
+        if (name, param) in _NOT_EMBEDDED:
+            continue
+        probe = value[0] if isinstance(value, list) and value and \
+            isinstance(value[0], str) else value
+        if not isinstance(probe, str) or not probe.startswith(("V", "L")):
+            continue
+        assert probe in out, f"{name} 收了 {param} 但产出里找不到它"
