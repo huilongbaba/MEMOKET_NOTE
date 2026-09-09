@@ -27,6 +27,7 @@ from ..checks import grounding_rules as grounding_check
 from ..agent_loop import ToolTrace
 from ...database.retrieval import retrieve as _retrieve
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
+from ..events import CUSTOM_SKELETON, Event
 from ..state import State
 
 # How many of the user's own headings become beats. Past this the skeleton
@@ -45,12 +46,15 @@ class NoteHooks:
         self.profile = list(profile or [])
 
     # -------------------------------------------------------- before_run --
-    async def skeleton(self, st: State) -> AsyncIterator[tuple[str, dict]]:
+    async def skeleton(self, st: State) -> AsyncIterator[Event]:
         """Establish spine/beats and whether this note is an outline.
 
         Called by the router before the loop starts, because a failure here
-        has to be reportable without a round having begun. Yields
-        ``(event_name, payload)`` pairs for the router to serialise.
+        has to be reportable without a round having begun. Yields ordinary
+        ``Event``s -- **one event vocabulary, no exceptions**: this used to
+        yield ``(name, payload)`` tuples that the router serialised with the
+        old custom names, and when the frontend switched to the AG-UI names
+        the skeleton silently stopped arriving.
         """
         content = st.content
         # **Outline protection is off in polish mode.** The two are directly
@@ -92,11 +96,11 @@ class NoteHooks:
                 # Scoring still works without a skeleton -- spine_fidelity and
                 # beat_coverage judge on weaker evidence, not on none. Losing
                 # the whole session over it would be the worse trade.
-                yield "error", {"detail": f"骨架生成失败，退回空骨架继续: {exc}"}
+                yield Event.run_error(f"骨架生成失败，退回空骨架继续: {exc}")
 
         st.bag["spine"], st.bag["beats"] = self.spine, self.beats
         st.bag["profile"] = self.profile
-        yield "skeleton", {"spine": self.spine, "beats": self.beats}
+        yield Event.custom(CUSTOM_SKELETON, {"spine": self.spine, "beats": self.beats})
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:

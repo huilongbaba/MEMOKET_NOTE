@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from ..database import store
 from ..harness import tools
 from ..harness import loop, modes
-from ..harness.events import legacy_frames, sse as _sse
+from ..harness.events import to_sse
 from ..harness.hooks.note import NoteHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
@@ -88,14 +88,13 @@ async def run(body: NoteHarnessRunIn, request: Request,
         # The skeleton is established before the loop starts: a failure here
         # has to be reportable without a round having begun, and every round
         # after it reads spine/beats out of the bag.
-        async for name, payload in hooks.skeleton(st):
-            yield _sse(name, payload)
+        async for event in hooks.skeleton(st):
+            yield to_sse(event)
 
         st.bag["score_context"] = _score_context(st)
 
         async for event in loop.run(st, hooks):
-            for frame in legacy_frames(event):
-                yield frame
+            yield to_sse(event)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",

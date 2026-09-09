@@ -24,7 +24,7 @@ from ..util import llm
 from ..editor import vision
 from ..editor import restructure, textshape
 from ..harness import loop, modes
-from ..harness.events import legacy_frames
+from ..harness.events import to_sse
 from ..harness.hooks.block import BlockHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
@@ -71,8 +71,7 @@ async def compose_block(body: ComposeBlockIn, request: Request,
         st.bag.update(prompt=body.prompt, selection=body.selection,
                       profile=_profile(user))
         async for event in loop.run(st, hooks):
-            for frame in legacy_frames(event):
-                yield frame
+            yield to_sse(event)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",

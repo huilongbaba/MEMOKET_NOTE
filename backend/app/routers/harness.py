@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 
 from ..database import store
 from ..harness import loop, modes, snapshot
-from ..harness.events import legacy_frames
+from ..harness.events import to_sse
 from ..harness.hooks.block import BlockHooks
 from ..harness.hooks.note import NoteHooks
 from ..harness.hooks.section import SectionHooks
@@ -71,8 +71,7 @@ async def resume(run_id: str, body: HarnessResumeIn, request: Request,
     async def gen():
         st.request = request
         async for event in loop.run(st, hooks):
-            for frame in legacy_frames(event):
-                yield frame
+            yield to_sse(event)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",

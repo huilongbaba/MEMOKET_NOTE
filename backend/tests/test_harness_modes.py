@@ -222,3 +222,45 @@ def test_每条check打翻的维度这个mode真的有():
                                    f"而它的 dims 是 {sorted(names)}")
     assert not bad, "check 打翻了这个 Mode 没有的维度：\n  " + "\n  ".join(bad)
     _ = asyncio, _t
+
+
+# ---------------------------------------------- 长循环那两组维度 ---
+#
+# 这几条原来在 test_harness_adapter 里，因为维度定义曾经在 adapter.py。
+# 维度是 Mode 的配置，测试跟着搬过来。
+
+def test_note_dimensions_includes_style_fit_only_with_profile():
+    with_profile = modes._note_dims(has_profile=True)
+    without_profile = modes._note_dims(has_profile=False)
+    assert "style_fit" in {d.name for d in with_profile}
+    assert "style_fit" not in {d.name for d in without_profile}
+
+
+def test_beat_coverage_guidance_does_not_demand_more_elaboration():
+    # TRACELOG [10]：实测 beats 早就被正文实质覆盖了，续写模型还是主观
+    # 续续续，没有内在动力主动收敛——这条打分指令必须明确"覆盖了就是
+    # 覆盖了"，不能被"还能写得更详细"这种理由带着继续判定"没覆盖"。
+    # 之前是 BEATS_COVERAGE_SYSTEM 自己的规则，现在是 beat_coverage 这个
+    # 维度的 guidance 文案。
+    dims = {d.name: d for d in modes._note_dims(has_profile=False)}
+    assert "写到极致" in dims["beat_coverage"].guidance
+
+
+def test_section_dimensions_has_topic_fidelity_instead_of_spine_beats():
+    dims = {d.name for d in modes._section_dims(has_profile=False)}
+    assert "topic_fidelity" in dims
+    assert "spine_fidelity" not in dims
+    assert "beat_coverage" not in dims
+
+
+def test_polish_mode_drops_dimensions_it_may_not_act_on():
+    """打磨只修不写，就不能拿"写了多少"去打分——否则闭环不可能收敛。"""
+    from app.harness.modes import _note_dims as note_dimensions
+
+    write = {d.name for d in note_dimensions(has_profile=False)}
+    polish = {d.name for d in note_dimensions(has_profile=False, polish=True)}
+    assert {"beat_coverage", "material_use"} <= write
+    assert not ({"beat_coverage", "material_use"} & polish), \
+        "打磨模式不许写，就不该被节拍覆盖/材料使用打分（实测：判 0 → 永远到不了 complete → 撞 max_rounds）"
+    assert {"spine_fidelity", "non_repetition", "factual_grounding", "coherence"} <= polish
+    assert "style_fit" in {d.name for d in note_dimensions(has_profile=True, polish=True)}

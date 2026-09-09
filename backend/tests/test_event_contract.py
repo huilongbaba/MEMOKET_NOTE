@@ -1,15 +1,13 @@
-"""前端监听的事件名，后端必须发得出来。
+"""前端听的事件名，后端必须发得出来。
 
-这次重构把三条 harness 的循环合成了一份，事件也从 23 个手写名字换成了
-AG-UI 那 9 个标准事件 + CUSTOM。前端一行没改——中间隔着
-``events.legacy_frames()`` 这个翻译层。
+**这一版是过渡层拆掉之后的形态。** 后端一度用 23 个自定义事件名，改成
+AG-UI 标准之后加了一层 `legacy_frames()` 把标准名翻回旧名，好让三条
+router 逐条迁移期间前端不用动。三条都切完了，前端换成标准名，翻译层删掉。
 
-翻译层最容易出的错是**沉默地少翻一个**：前端的事件分发是 else-if 链，
-不认识的名字直接忽略，所以少发一种帧的症状不是报错，是「轮数不动了」
-「来源面板一直空的」这种没人第一时间归因到后端的现象。实测就漏过
-``round-start`` 和 ``replan`` 两个。
-
-所以这里从前端源码里把它监听的名字抠出来，跟翻译层能产出的名字对一遍。
+现在两边说的是同一套名字，这个文件盯的就变成了：**前端的分支不能比后端
+发得出的事件少**。前端的事件分发是 else-if 链，不认识的名字直接忽略——
+少一个分支的症状不是报错，是「轮数不动了」「来源面板一直空的」这种没人
+第一时间归因到后端的现象。翻译层时代就漏过 `round-start` 和 `replan`。
 """
 
 from __future__ import annotations
@@ -17,68 +15,56 @@ from __future__ import annotations
 import pathlib
 import re
 
-from app.harness.events import Event, EventType, legacy_frames
+from app.harness.events import Event, EventType, to_sse
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 API_TS = ROOT / "frontend" / "src" / "api.ts"
 
-# 前端里跟 harness 无关的那几条流（磁贴续写、批量导入任务）。它们没走这个
-# 循环，事件名也不该由翻译层负责。
-NOT_OURS = {"meta", "grounding", "progress", "end",
-            # plan 级事件由 writing_plan 的 router 直接发，不经过翻译层
-            "plan-loaded", "plan-extended", "plan-done",
-            "section-start", "section-done"}
 
-
-def _frontend_event_names() -> set[str]:
+def _frontend_events() -> set[str]:
+    """前端认的 AG-UI 事件名。"""
     src = API_TS.read_text(encoding="utf-8")
-    return {m.group(1) for m in re.finditer(r"event === '([a-z-]+)'", src)} - NOT_OURS
+    return {m.group(1) for m in re.finditer(r"event === '([A-Z_]+)'", src)}
 
 
-def _translatable() -> set[str]:
-    """翻译层实际能产出的帧名。"""
-    samples = [
-        Event.run_started("note", "写"),
-        Event.run_finished("正文", "complete"),
-        Event.run_error("boom"),
-        Event.step_started(1, "写"),
-        Event.step_finished(1),
-        Event.text_start("r1"),
-        Event.text_content("r1", "字"),
-        Event.text_end("r1"),
-        Event.tool_result("recall", {}, "结果"),
-        Event.activity("在查…"),
-    ]
-    samples += [Event.custom(name, {}) for name in (
-        "evaluate", "policy", "revision", "dropped", "skeleton",
-        "phase_delta", "round_summary", "replan")]
-
-    names = set()
-    for event in samples:
-        for frame in legacy_frames(event):
-            names.add(frame.split("\n", 1)[0].removeprefix("event: "))
-    return names
+def _frontend_custom_names() -> set[str]:
+    """CUSTOM 里前端认的 name。"""
+    src = API_TS.read_text(encoding="utf-8")
+    return {m.group(1) for m in re.finditer(r"name === '([a-z_]+)'", src)}
 
 
-def test_前端听的每一个事件后端都发得出来():
-    missing = _frontend_event_names() - _translatable()
-    assert not missing, (
-        f"翻译层发不出这些帧，前端会静默地什么都不显示：{sorted(missing)}")
+def _backend_custom_names() -> set[str]:
+    """后端定义的 CUSTOM name 常量。"""
+    src = (ROOT / "backend" / "app" / "harness" / "events.py").read_text(encoding="utf-8")
+    return {m.group(1) for m in re.finditer(r'^CUSTOM_\w+ = "([a-z_]+)"', src, re.M)}
 
 
-def test_每一种事件都翻得出东西或明确不翻():
-    """AG-UI 那边新增一种事件时，这条会逼着做个决定，而不是默认漏掉。"""
-    # TEXT_MESSAGE_START/END 在旧契约里没有对应物——旧前端从来没见过它们。
-    silent = {EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_END,
-              EventType.RUN_STARTED}
+def test_前端认的每个标准事件后端都发得出来():
+    backend = {e.value for e in EventType}
+    unknown = _frontend_events() - backend
+    assert not unknown, f"前端在等一些后端不会发的事件：{sorted(unknown)}"
+
+
+def test_后端每个custom事件前端都接得住():
+    """一个后端在发、前端没有分支的 CUSTOM，就是一个静默丢失的信号。"""
+    missing = _backend_custom_names() - _frontend_custom_names()
+    # warning 是给开发看的诊断（某个 middleware 挂了但 run 继续），前端不展示
+    missing -= {"warning", "check_hit"}
+    assert not missing, f"这些 CUSTOM 事件前端没有分支：{sorted(missing)}"
+
+
+def test_每种事件都序列化得出一帧():
     for kind in EventType:
-        if kind is EventType.CUSTOM or kind in silent:
-            continue
-        event = Event(kind, {"step": 1, "delta": "x", "content": "x",
-                             "message": "x", "reason": "complete",
-                             "toolName": "t", "args": {}})
-        assert legacy_frames(event), f"{kind.value} 翻不出任何帧，也没写在 silent 里"
+        frame = to_sse(Event(kind, {"x": 1}))
+        assert frame.startswith(f"event: {kind.value}\n")
+        assert frame.endswith("\n\n")
 
 
-def test_未知的custom事件不会炸():
-    assert legacy_frames(Event.custom("something_new", {"a": 1})) == []
+def test_翻译层真的删干净了():
+    """过渡层从写下第一天就标好了死期：三条 router 都切完就删。留着的话，
+    下一个人会以为前端还在听旧名字。"""
+    backend = ROOT / "backend" / "app"
+    left = [str(f.relative_to(backend)) for f in backend.rglob("*.py")
+            if "legacy_frames" in f.read_text(encoding="utf-8")]
+    assert not left, f"还有地方引用翻译层：{left}"
+    assert "legacy" not in API_TS.read_text(encoding="utf-8").lower()

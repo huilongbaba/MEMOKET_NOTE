@@ -70,16 +70,15 @@ def test_a_chart_block_comes_out_of_the_shared_loop(stub):
 
 
 def test_the_frames_the_frontend_listens_for_still_arrive(stub):
-    """The frontend was not touched by this refactor. If the translation drops
-    a frame the editor shows nothing streaming, or never inserts the block."""
-    from app.harness.events import legacy_frames
+    """前端没被这次重构碰过。少发一种帧的症状不是报错，是编辑器里什么都
+    不动——所以这里检查一轮跑完真的发出了它需要的那几种。"""
+    from app.harness.events import to_sse
 
     events, _ = _run(modes.CHART)
-    names = {line.split(": ", 1)[1]
-             for e in events for frame in legacy_frames(e)
-             for line in frame.splitlines() if line.startswith("event: ")}
-    assert {"phase", "delta", "tool-calls", "evaluate", "round-end",
-            "done"} <= names
+    names = {frame.split(": ", 1)[1].split("\n")[0]
+             for frame in (to_sse(e) for e in events)}
+    assert {"ACTIVITY_SNAPSHOT", "TEXT_MESSAGE_CONTENT", "TOOL_CALL_RESULT",
+            "STEP_STARTED", "STEP_FINISHED", "RUN_FINISHED", "CUSTOM"} <= names
 
 
 def test_a_tool_chart_is_not_reported_as_hand_written(stub):

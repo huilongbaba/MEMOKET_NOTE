@@ -6,8 +6,10 @@ domain-specific ones. Using it means the frontend can eventually plug into
 off-the-shelf UI libraries, and -- more immediately -- that adding a fourth
 harness needs zero new event names.
 
-The 23 hand-rolled names the three routers currently emit map onto 9 standard
-events plus ``CUSTOM``; see ``ALIASES`` for the migration mapping.
+三条 router 一度各发一套自定义事件名，一共 23 个，映射到这 9 个标准事件
+加一个 ``CUSTOM``。迁移期间有过一层把标准名翻回旧名的函数，好让前端不用
+跟着一条条改；三条都切完之后前端换成标准名、那个函数删掉——**过渡层从
+写下第一天就该标好死期**。
 
 **Pairing matters.** ``TEXT_MESSAGE_START`` / ``CONTENT`` / ``END`` must
 nest properly -- the protocol has a state machine that rejects two STARTs in
@@ -125,94 +127,22 @@ class Event:
         return Event(EventType.CUSTOM, {"name": name, "value": value})
 
 
-# Legacy names the three routers emit today. Kept as an explicit map so the
-# migration can emit both for one release and the frontend needs no change.
-ALIASES: dict[str, EventType] = {
-    "skeleton": EventType.RUN_STARTED,
-    "plan-loaded": EventType.RUN_STARTED,
-    "done": EventType.RUN_FINISHED,
-    "plan-done": EventType.RUN_FINISHED,
-    "error": EventType.RUN_ERROR,
-    "round-start": EventType.STEP_STARTED,
-    "section-start": EventType.STEP_STARTED,
-    "round-end": EventType.STEP_FINISHED,
-    "delta": EventType.TEXT_MESSAGE_CONTENT,
-    "tool-calls": EventType.TOOL_CALL_RESULT,
-    "phase": EventType.ACTIVITY_SNAPSHOT,
-    "phase-delta": EventType.ACTIVITY_SNAPSHOT,
-    # everything below became CUSTOM with a name
-    "evaluate": EventType.CUSTOM,
-    "revision": EventType.CUSTOM,
-    "dropped": EventType.CUSTOM,
-    "policy": EventType.CUSTOM,
-    "replan": EventType.CUSTOM,
-    "plan-extended": EventType.CUSTOM,
-    "section-done": EventType.CUSTOM,
-}
-
-
 def sse(event: str, data: dict) -> str:
-    """Serialise one SSE frame.
+    """序列化一帧 SSE。
 
-    Lived in ``routers/note_harness`` and was imported by two other routers.
-    It is the wire format for the event contract, so it belongs next to the
-    contract.
+    住在这儿是因为它是事件契约的线上格式——三条 router 都要用，而它们之间
+    不该互相 import（这个函数就是因为那条规则从 note_harness 搬出来的）。
     """
     import json
 
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def to_sse(event: Event) -> str:
+    """把一个 ``Event`` 序列化成一帧 SSE。
 
-def legacy_frames(event: Event) -> list[str]:
-    """Serialise one ``Event`` into the frames today's frontend listens for.
-
-    A translation shim with a known end date. The three routers are migrating
-    to the loop one at a time; if each migration also changed the wire format,
-    the frontend would have to support two contracts for as long as the
-    migration runs. Instead the backend speaks AG-UI internally and this
-    function speaks the old names outward. When the last router has moved,
-    the frontend switches to the AG-UI names in one commit and this function
-    is deleted -- ``ALIASES`` above is the map it will follow.
-
-    Events with no legacy equivalent (TEXT_MESSAGE_START/END, warnings)
-    serialise to nothing. The old frontend never saw them.
+    事件名直接用 AG-UI 的标准名字上线。这里曾经有一层把它们翻回旧自定义名字的翻译函数，因为三条 router 是逐条迁移的、期间前端要同时
+    认两套。三条都切完之后前端换成标准名、这个函数换回来，是一个 commit
+    的事——**过渡层从写下第一天就标好了死期，到期就删**。
     """
-    t, d = event.type, event.data
-    if t is EventType.TEXT_MESSAGE_CONTENT:
-        return [sse("delta", {"text": d.get("delta", "")})]
-    if t is EventType.STEP_STARTED:
-        return [sse("phase", {"round": d.get("step"), "label": d.get("label", "")})]
-    if t is EventType.STEP_FINISHED:
-        return [sse("round-end", {"round": d.get("step")})]
-    if t is EventType.ACTIVITY_SNAPSHOT:
-        return [sse("phase", {"label": d.get("content", "")})]
-    if t is EventType.TOOL_CALL_RESULT:
-        # The old frame carried a whole round's calls at once; one call per
-        # frame is equivalent for a frontend that appends them.
-        return [sse("tool-calls", {"calls": [{"tool": d.get("toolName"),
-                                              "args": d.get("args"),
-                                              "result": d.get("content")}]})]
-    if t is EventType.RUN_FINISHED:
-        return [sse("done", {"reason": d.get("reason"),
-                             "run_id": d.get("run_id"),
-                             "blocked_reason": d.get("blocked_reason"),
-                             # ``block`` for the block harness, ``content``
-                             # for the long-form ones -- one field under the
-                             # two names the frontend already reads.
-                             "block": d.get("content"),
-                             "content": d.get("content")})]
-    if t is EventType.RUN_ERROR:
-        return [sse("error", {"detail": d.get("message", "")})]
-    if t is EventType.CUSTOM:
-        name, value = d.get("name", ""), d.get("value") or {}
-        if name in ("evaluate", "policy", "revision", "dropped", "skeleton"):
-            return [sse(name, value)]
-        if name == "phase_delta":
-            return [sse("phase-delta", value)]
-        if name == "round_summary":
-            return [sse("round-start", value)]
-        if name == "replan":
-            return [sse("replan", value)]
-        return []
-    return []
+    return sse(event.type.value, event.data)

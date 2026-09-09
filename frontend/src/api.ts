@@ -733,23 +733,36 @@ async function consumeHarnessStream(res: Response, handlers: NoteHarnessHandlers
           const raw = line.slice(5).trim()
           if (!raw) continue
           const payload = JSON.parse(raw)
-          if (event === 'skeleton') handlers.onSkeleton?.(payload.spine, payload.beats)
-          else if (event === 'round-start') handlers.onRoundStart?.(payload)
-          else if (event === 'revision') handlers.onRevision?.(payload)
-          else if (event === 'delta') handlers.onDelta?.(payload.text)
-          else if (event === 'round-end') handlers.onRoundEnd?.(payload.round)
-          else if (event === 'evaluate') handlers.onEvaluate?.(payload)
-          else if (event === 'phase') handlers.onPhase?.(payload)
-          else if (event === 'phase-delta') handlers.onPhaseDelta?.(payload)
-          else if (event === 'tool-calls') handlers.onToolCalls?.(payload)
-          else if (event === 'policy') handlers.onPolicy?.(payload)
-          else if (event === 'dropped') handlers.onDropped?.(payload.detail)
-          else if (event === 'replan') handlers.onReplan?.(payload)
-          else if (event === 'done') handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id)
-          // **error 不能 throw**：后端的 error 事件都是可恢复的降级（某个工具
+          // AG-UI 标准事件。领域相关的东西走 CUSTOM 的 name 字段，所以这里
+          // 是「9 个标准分支 + 一个 CUSTOM 分支」，加一条 harness 不用改这儿。
+          //
+          // 后端一度用另一套自定义事件名，中间隔着一层翻译——那是三条 router
+          // 逐条迁移期间的过渡层。三条都切完之后前端换名字、后端删函数，
+          // 就是一个 commit 的事。
+          if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(payload.delta)
+          else if (event === 'STEP_STARTED') handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label })
+          else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step)
+          else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round: 0, phase: '', label: payload.content })
+          else if (event === 'TOOL_CALL_RESULT') {
+            handlers.onToolCalls?.({ round: 0, iters: 1, truncated: false,
+              calls: [{ tool: payload.toolName, args: payload.args, result: payload.content }] })
+          } else if (event === 'RUN_FINISHED') {
+            handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id)
+          // **RUN_ERROR 不能 throw**：后端发它的场景都是可恢复的降级（某个工具
           // 查不到、某次调用超时），流还在继续。throw 会把整条 SSE 连接掐断，
           // 用户看到的是"跑到一半没了"。交给 onError 显示，让 harness 继续跑。
-          else if (event === 'error') handlers.onError?.(payload.detail)
+          } else if (event === 'RUN_ERROR') handlers.onError?.(payload.message)
+          else if (event === 'CUSTOM') {
+            const v = payload.value ?? {}
+            if (payload.name === 'skeleton') handlers.onSkeleton?.(v.spine, v.beats)
+            else if (payload.name === 'round_summary') handlers.onRoundStart?.(v)
+            else if (payload.name === 'revision') handlers.onRevision?.(v)
+            else if (payload.name === 'evaluate') handlers.onEvaluate?.(v)
+            else if (payload.name === 'phase_delta') handlers.onPhaseDelta?.(v)
+            else if (payload.name === 'policy') handlers.onPolicy?.(v)
+            else if (payload.name === 'dropped') handlers.onDropped?.(v.detail)
+            else if (payload.name === 'replan') handlers.onReplan?.(v)
+          }
         }
       }
     }
@@ -887,14 +900,18 @@ export async function composeBlock(
       if (!data) continue
       let p: Record<string, unknown>
       try { p = JSON.parse(data) } catch { continue }
-      if (event === 'phase') on.onPhase?.(String(p.label ?? ''))
-      else if (event === 'tool-calls') on.onTools?.((p.calls ?? []) as NoteHarnessToolCall[])
-      else if (event === 'delta') on.onDelta?.(String(p.text ?? ''))
-      else if (event === 'evaluate') {
-        on.onEvaluate?.(String(p.status ?? ''),
-          p.scores as Record<string, NoteHarnessDimensionScore>)
-      } else if (event === 'error') on.onError?.(String(p.detail ?? ''))
-      else if (event === 'done') block = String(p.block ?? block)
+      if (event === 'ACTIVITY_SNAPSHOT') on.onPhase?.(String(p.content ?? ''))
+      else if (event === 'STEP_STARTED') on.onPhase?.(String(p.label ?? ''))
+      else if (event === 'TOOL_CALL_RESULT') {
+        on.onTools?.([{ tool: String(p.toolName ?? ''), args: p.args as Record<string, unknown>,
+                        result: String(p.content ?? '') }] as NoteHarnessToolCall[])
+      } else if (event === 'TEXT_MESSAGE_CONTENT') on.onDelta?.(String(p.delta ?? ''))
+      else if (event === 'CUSTOM' && p.name === 'evaluate') {
+        const v = (p.value ?? {}) as Record<string, unknown>
+        on.onEvaluate?.(String(v.status ?? ''),
+          v.scores as Record<string, NoteHarnessDimensionScore>)
+      } else if (event === 'RUN_ERROR') on.onError?.(String(p.message ?? ''))
+      else if (event === 'RUN_FINISHED') block = String(p.content ?? block)
     }
   }
   return block

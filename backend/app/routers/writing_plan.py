@@ -21,7 +21,7 @@ from ..database import store
 from ..harness import tools
 from ..util import llm
 from ..harness import loop, modes
-from ..harness.events import EventType, legacy_frames, sse as _sse
+from ..harness.events import EventType, to_sse, sse as _sse
 from ..harness.hooks.section import SectionHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
@@ -253,8 +253,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             async for event in loop.run(st, hooks):
                 if event.type is EventType.RUN_FINISHED:
                     reason = event.data.get("reason", reason)
-                for frame in legacy_frames(event):
-                    yield frame
+                yield to_sse(event)
 
             summary = _make_summary(target["title"], st.content)
             store.update_section(plan["id"], target["id"], status="done",
