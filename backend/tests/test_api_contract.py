@@ -76,3 +76,41 @@ def test_后端发的每个CUSTOM事件前端都接得住():
     missing = sorted(emitted - handled)
     assert not missing, ("后端会发、前端没有分支接的 CUSTOM 事件："
                          f"{missing}——发出去直接被丢掉，不会有任何症状")
+
+
+# 后端会发、前端**故意**不接的标准事件。每一条都要有理由——默认掉进 else
+# 和「想清楚了不接」看起来一模一样，区别只在有没有写下来。
+_DELIBERATELY_IGNORED = {
+    "RUN_STARTED": "前端自己发起的请求，它早就知道跑起来了",
+    "TEXT_MESSAGE_START": "正文按轮累积、轮次由 STEP_STARTED 划分，消息边界是冗余的",
+    "TEXT_MESSAGE_END": "同上",
+}
+
+
+def test_后端发的每种标准事件前端要么接要么写明不接():
+    """AG-UI 那 11 个标准事件名，也是一份契约。
+
+    这一条跟 CUSTOM 那条的区别：CUSTOM 漏一个是 bug（那两个漏掉的确实
+    是），标准事件里有几个前端**本来就不需要**。所以判据不是「全都要接」，
+    是「要么接，要么在上面那张表里写明为什么不接」。
+    """
+    import re
+
+    from app.harness import events
+
+    api_ts = (FRONTEND / "api.ts").read_text(encoding="utf-8")
+    handled = set(re.findall(r"event === '([A-Z_]+)'", api_ts))
+
+    backend_src = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in (FRONTEND.parents[1] / "backend" / "app").rglob("*.py"))
+    emitted = {e.value for e in events.EventType
+               if re.search(rf"EventType\.{e.name}\b", backend_src)}
+    assert len(emitted) >= 10, f"没认出后端在发哪些事件：{sorted(emitted)}"
+
+    unaccounted = sorted(emitted - handled - set(_DELIBERATELY_IGNORED))
+    assert not unaccounted, (
+        f"这些事件后端会发，前端既没接也没写明为什么不接：{unaccounted}")
+
+    stale = sorted(set(_DELIBERATELY_IGNORED) & handled)
+    assert not stale, f"这些已经接上了，从「故意不接」名单里删掉：{stale}"
