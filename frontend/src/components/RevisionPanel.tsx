@@ -27,18 +27,52 @@ function applyPreview(content: string, r: Revision): { before: string; after: st
   return { before: r.anchor, after: r.text }
 }
 
-export function applyRevision(content: string, r: Revision): string {
-  const i = content.indexOf(r.anchor)
-  if (i < 0) return content // anchor 已被用户改掉，放弃这条
-  let end = i + r.anchor.length
-  if (r.anchor_end) {
-    // 给了结尾标记：要动的是"起始标记开头 → 结尾标记结尾"这一整段。
-    // **必须跟后端 apply_revision 保持同一套语义**——自动应用走后端、
-    // 手动点接受走这里，两边算出不同的范围就会让同一条修订产生两种结果。
-    // 找不到结尾标记就退回只用 anchor，宁可少改一点也不要按错误范围改。
-    const j = content.indexOf(r.anchor_end, end)
-    if (j >= 0) end = j + r.anchor_end.length
+/** 这条修订要动的区间 `[起, 止)`。找不到返回 `[-1, -1]`。
+ *
+ * anchor 在正文里出现多处时，取**跨度最小**的那一组 (anchor, 其后最近的
+ * anchor_end)。这是去重场景的正确语义：
+ *
+ *     ## 众筹节奏      ← anchor 第一处
+ *     三月上旬启动。
+ *     ## 众筹节奏      ← anchor 第二处
+ *     三月上旬启动众筹。 ← anchor_end
+ *
+ * 「删掉重复的那一节」给出的就是这一对。从第一处 anchor 往后找 anchor_end
+ * 会把两节整个删掉；取最小跨度才落在第二节上。
+ *
+ * **这段是照着后端 `harness/revision.py` 的 `_locate()` 搬过来的。** 之前
+ * 这里只有 `indexOf(anchor)`，跟后端算出的范围不一样——自动应用走后端、
+ * 手动点「接受」走这里，同一条去重修订：后端删掉重复的那一节，前端把整篇
+ * 笔记删光（实测上面那个例子，前端只剩一个换行）。两份实现同一套语义是
+ * 有意的（后端要在没人审核时自动应用，不能指望只跑在浏览器里的那份），
+ * 代价就是必须钉住——`scripts/check-revision-parity.mts` 和后端的
+ * `tests/test_revision_parity.py` 读同一份用例表。
+ */
+function locate(content: string, anchor: string, anchorEnd: string): [number, number] {
+  let i = content.indexOf(anchor)
+  if (i < 0) return [-1, -1]
+  if (!anchorEnd) return [i, i + anchor.length]
+  const first = i
+  let best: [number, number] = [-1, -1]
+  while (i >= 0) {
+    const j = content.indexOf(anchorEnd, i + anchor.length)
+    if (j >= 0) {
+      const end = j + anchorEnd.length
+      if (best[0] < 0 || end - i < best[1] - best[0]) best = [i, end]
+    }
+    i = content.indexOf(anchor, i + 1)
   }
+  // 结尾标记一次都没匹配上时退回只用 anchor：宁可少改一点，也不要按错误的
+  // 范围改，更不要因为一个写错的结尾标记就整条丢弃。
+  return best[0] >= 0 ? best : [first, first + anchor.length]
+}
+
+export function applyRevision(content: string, r: Revision): string {
+  const [i, located] = locate(content, r.anchor, r.anchor_end ?? '')
+  if (i < 0) return content // anchor 已被用户改掉，放弃这条
+  const end = r.anchor_end && located <= i + r.anchor.length
+    ? i + r.anchor.length
+    : located
   if (r.op === 'insert') return content.slice(0, end) + r.text + content.slice(end)
   if (r.op === 'insert_before') return content.slice(0, i) + r.text + content.slice(i)
   if (r.op === 'delete') return content.slice(0, i) + content.slice(end)

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "tsc -b && vitest run && npx tsx scripts/check-format.mts && npx tsx scripts/check-hunks.mts && npx tsx scripts/check-diff-ui.mts && npx tsx scripts/check-runs.mts && npx tsx scripts/check-slash.mts && npx tsx scripts/check-table.mts && npx tsx scripts/check-doc-mermaid.mts && npx tsx scripts/smoke-editor.ts && npx tsx scripts/smoke-graph.ts && npx tsx scripts/smoke-skill-import.ts"
+    "test": "tsc -b && vitest run && npx tsx scripts/check-format.mts && npx tsx scripts/check-hunks.mts && npx tsx scripts/check-revision-parity.mts && npx tsx scripts/check-diff-ui.mts && npx tsx scripts/check-runs.mts && npx tsx scripts/check-slash.mts && npx tsx scripts/check-table.mts && npx tsx scripts/check-doc-mermaid.mts && npx tsx scripts/smoke-editor.ts && npx tsx scripts/smoke-graph.ts && npx tsx scripts/smoke-skill-import.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

@@ -1,0 +1,65 @@
+{
+  "_why": "同一套锚点语义，后端 harness/revision.py 的 apply_revision() 和前端 components/RevisionPanel.tsx 的 applyRevision() 各实现了一份。两份是有意的——后端要在没人审核的情况下自动应用，不能指望只跑在浏览器里的那一份。代价是它们会漂：实测过一次，同一条去重修订后端删掉重复的那一节、前端把整篇笔记删光。这张表是两边共同的判据，backend/tests/test_revision_parity.py 和 frontend/scripts/check-revision-parity.mts 各读一遍。",
+  "cases": [
+    {
+      "name": "replace 最简单的一条",
+      "content": "前面。旧的说法。后面。",
+      "op": "replace", "anchor": "旧的说法", "text": "新的说法",
+      "expected": "前面。新的说法。后面。"
+    },
+    {
+      "name": "delete 去掉一段",
+      "content": "前面。要删的。后面。",
+      "op": "delete", "anchor": "要删的", "text": "",
+      "expected": "前面。。后面。"
+    },
+    {
+      "name": "insert 插在锚点之后",
+      "content": "锚点在这。",
+      "op": "insert", "anchor": "锚点", "text": "（补充）",
+      "expected": "锚点（补充）在这。"
+    },
+    {
+      "name": "insert_before 插在锚点之前",
+      "content": "锚点在这。",
+      "op": "insert_before", "anchor": "锚点", "text": "（前言）",
+      "expected": "（前言）锚点在这。"
+    },
+    {
+      "name": "锚点不在正文里就整条放弃",
+      "content": "一段正文。",
+      "op": "replace", "anchor": "根本没有这句", "text": "改",
+      "expected": "一段正文。"
+    },
+    {
+      "name": "带结尾标记：动的是两个标记之间的整段",
+      "content": "开头。起点这里，中间很长一段，终点在这。结尾。",
+      "op": "replace", "anchor": "起点这里", "anchor_end": "终点在这。",
+      "text": "换成一句话。",
+      "expected": "开头。换成一句话。结尾。"
+    },
+    {
+      "name": "去重：锚点重复时取跨度最小的那一组",
+      "_note": "这条是真 bug 的复现。前端原来只用 indexOf(anchor) 取第一处，从第一处往后找结尾标记，把两节整个删掉——实测整篇笔记只剩一个换行。",
+      "content": "## 众筹节奏\n三月上旬启动。\n## 众筹节奏\n三月上旬启动众筹。\n",
+      "op": "delete", "anchor": "## 众筹节奏", "anchor_end": "三月上旬启动众筹。",
+      "text": "",
+      "expected": "## 众筹节奏\n三月上旬启动。\n\n"
+    },
+    {
+      "name": "结尾标记一次都匹配不上时退回只用锚点",
+      "_note": "宁可少改一点，也不要按错误的范围改，更不要因为一个写错的结尾标记就整条丢弃。",
+      "content": "前面。锚点在这。后面。",
+      "op": "replace", "anchor": "锚点在这", "anchor_end": "这个标记不存在",
+      "text": "改过了",
+      "expected": "前面。改过了。后面。"
+    },
+    {
+      "name": "结尾标记落在锚点内部时不缩短区间",
+      "content": "前面。锚点在这。后面。",
+      "op": "delete", "anchor": "锚点在这", "anchor_end": "锚",
+      "text": "",
+      "expected": "前面。。后面。"
+    }
+  ]
+}
