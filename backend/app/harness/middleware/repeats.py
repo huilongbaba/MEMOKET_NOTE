@@ -8,7 +8,7 @@ and capped, so this is close to free.
 
 from __future__ import annotations
 
-from writer_harness import find_repeats
+from ...scoring import find_repeats
 
 from ..state import State
 

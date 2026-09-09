@@ -48,7 +48,7 @@ date=_date.today().isoformat(),
 ```
 
 所有导进来的内容，日期都变成导入当天。而知识库里事实的日期是写作时判断
-`factual_grounding` 的依据（见 `docs/harness-architecture.md` 第 9 节
+`factual_grounding` 的依据（见 `docs/_research/harness-architecture.md` 第 9 节
 「事实的时间信息从未进过 prompt」那条根因）——**一次导入会把用户几年的笔记
 全部压成同一天，时间线彻底失真**。
 

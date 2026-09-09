@@ -65,7 +65,8 @@ flowchart TB
 
 ## 2. 跟 KITE 的边界
 
-`memoket_kite` 是一个独立的 PyPI 包（跟 `writer_harness` 一样的定位）。
+`memoket_kite` 是一个独立的 PyPI 包——**真的在包外维护**，跟 `app/scoring/`
+不一样（那个一度也是包，因为只有这一个使用者，已经合回 app 了）。
 我们**只调它两个方法**：
 
 ```python
@@ -107,7 +108,7 @@ flowchart TD
 ```
 
 L4 那条虚线是这里唯一不干净的依赖——**它靠字符串锚点改 L5 内部的 prompt**。
-干净的做法是 KITE 把 prompt 做成可注入的（就像 `writer_harness` 的
+干净的做法是 KITE 把 prompt 做成可注入的（就像 `app/scoring` 的
 `dimensions` 是参数），那样 L4 就变成传一个配置进去，而不是打补丁。
 
 ---
@@ -255,7 +256,7 @@ P5 是最有架构意义的一条。抽取的产出是一批事实，而**事实
 | 粒度 | **代码** | 一条事实里塞了三件事（分号/换行计数） |
 
 这跟写作 harness 是**同一套机制**：`Dimension`（模型判）+ `Check`（代码判）
-+ 不合格就重来。`writer_harness` 包的 `evaluate()` 本来就是「维度可插拔」的——
++ 不合格就重来。`app/scoring` 的 `evaluate()` 本来就是「维度可插拔」的——
 换一组维度就是换一个领域，这是它当初设计成包的全部理由。
 
 ```python
@@ -301,7 +302,7 @@ GraphRAG 的解法值得抄：**实体保持细粒度，另外用社区检测建
 
 目标：KITE 把抽取 prompt 做成**可注入的配置**（`profile=` 参数已经有了，
 把 prompt 规则也纳进去），我们这边就变成「传一份写作侧的抽取配置」，
-跟 `writer_harness` 传 `dimensions` 是同一个模式。
+跟 `app/scoring` 传 `dimensions` 是同一个模式。
 
 **这是要给 KITE 提的需求，不是我们这边能单方面解决的。**
 

@@ -11,7 +11,7 @@ disagree; a deletion nobody was told about offers neither.
 
 from __future__ import annotations
 
-from writer_harness import check_citations
+from ...scoring import check_citations
 
 from ... import grounding_check
 from ..state import State

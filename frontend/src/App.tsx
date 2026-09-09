@@ -299,6 +299,24 @@ export default function App() {
     await reloadFolders()
   }
 
+  /** 双击文件夹名改名。
+   *
+   * 之前没有这个入口：能建能删，不能改名——名字打错了只能删掉重建，再把
+   * 里面的笔记一篇篇挪回去。用 prompt() 而不是做一套行内编辑，是因为改名
+   * 是低频动作，为它加一个编辑态会让侧栏那一行的点击语义（展开/收起）
+   * 变复杂。 */
+  async function renameFolderPrompt(f: Folder) {
+    const name = window.prompt('文件夹改名', f.name)?.trim()
+    if (!name || name === f.name) return
+    setFolders((prev) => prev.map((x) => (x.id === f.id ? { ...x, name } : x)))
+    try {
+      await api.renameFolder(f.id, name)
+    } catch (e) {
+      toast('改名失败：' + e, 'error')
+      await reloadFolders()
+    }
+  }
+
   /** Same optimistic-delete-with-undo pattern as note deletion (see remove()
    * below) instead of a confirm() dialog -- lower stakes here too, since
    * the folder's notes survive (they just fall back to uncategorized). */
@@ -1479,7 +1497,12 @@ export default function App() {
                             fontSize: 12, padding: '4px 2px', cursor: 'pointer' }}
                     onClick={() => toggleFolderExpanded(f.id)}
                   >
-                    <span>{collapsed ? '▸' : '▾'} 📁 {f.name} <span style={{ opacity: 0.6 }}>({inFolder.length})</span></span>
+                    <span
+                      onDoubleClick={(e) => { e.stopPropagation(); void renameFolderPrompt(f) }}
+                      title="双击改名"
+                    >
+                      {collapsed ? '▸' : '▾'} 📁 {f.name} <span style={{ opacity: 0.6 }}>({inFolder.length})</span>
+                    </span>
                     <span>
                       <span
                         title="无限续写：给个目标，自动拆分段一段接一段写"

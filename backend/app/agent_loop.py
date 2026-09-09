@@ -1,6 +1,6 @@
 """Tool loop：让写作 agent 自己决定要不要查知识库、查什么。
 
-放在 app 层而不是 writer_harness 包里，是刻意的边界选择：包的 ``LLMClient``
+放在 app 层而不是 app/scoring里，是刻意的边界选择：包的 ``LLMClient``
 Protocol 只有 ``complete(messages) -> str``，把 tools 塞进去会破坏「包不做
 任何 I/O、不认识具体能力」这条边界。工具执行本身就是 I/O，属于宿主应用。
 包继续只做打分，这里做「装配上下文」。

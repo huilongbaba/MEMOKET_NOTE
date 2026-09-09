@@ -2,8 +2,8 @@
 前端 RevisionPanel.tsx 的 applyRevision() 是同一套语义，Python 版本），
 以及 prompts.note_harness_continue_user()/edit_user() 的拼装。
 
-"完不完整"的判断已经迁到 writer_harness.evaluate()（见
-writer_harness/tests/test_rubric.py），这里不再重复测；_beats_status()
+"完不完整"的判断已经迁到 scoring.evaluate()（见
+tests/test_scoring_test_rubric.py），这里不再重复测；_beats_status()
 和 NOTE_HARNESS_DONE_MARKER 已经随之删除。
 
     cd backend && python -m pytest tests/test_note_harness.py -v
@@ -447,7 +447,7 @@ def test_scorer_diagnosis_reaches_the_edit_pass():
     三轮一次都没回到 2，而清理分支存在的全部意义就是修这个。
     """
     import inspect
-    from writer_harness import DimensionScore, Evaluation
+    from app.scoring import DimensionScore, Evaluation
 
     from app import prompts
     from app.harness.loop import _weak_note

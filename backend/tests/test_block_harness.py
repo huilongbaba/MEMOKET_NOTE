@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from writer_harness import DimensionScore, Evaluation
+from app.scoring import DimensionScore, Evaluation
 
 from app import agent_loop, blocks, llm
 from app.agent_loop import ToolTrace

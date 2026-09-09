@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from writer_harness import Dimension
+from ..scoring import Dimension
 
 from .. import grounding_check, harness_adapter
 from .checks import (charts_from_tools, citations_hold, heading_fits,

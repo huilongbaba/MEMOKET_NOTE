@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS provider_config (
     updated_at   TEXT NOT NULL
 );
 
--- writer_harness.RunHistoryStore 的落地实现（见 app/harness_adapter.py）。
+-- scoring.RunHistoryStore 的落地实现（见 app/harness_adapter.py）。
 -- key 是调用方定的"同一件反复发生的事情"是什么——note_harness 传
 -- note_id，writing_plan 传 folder_id，包本身不关心这个约定。
 -- final_scores/weak_dimensions 存 JSON 文本，不是关系型列——评分维度是
@@ -650,7 +650,7 @@ def get_active_llm_config() -> dict:
     return {"base_url": s.llm_base_url, "api_key": s.llm_api_key, "model": s.llm_model}
 
 
-# ---------------------------------------------------------------- writer_harness 落地存储
+# ---------------------------------------------------------------- scoring 落地存储
 
 def record_harness_run(key: str, status: str, rounds: int,
                        final_scores: dict[str, int], weak_dimensions: list[str]) -> None:

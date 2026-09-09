@@ -396,16 +396,6 @@ class SkeletonOut(BaseModel):
     took_ms: float
 
 
-class EditIn(BaseModel):
-    """线 2：骨架（spine+beats）+ 已写内容 + 知识库 -> 修订建议。"""
-    content: str
-    spine: str = ""
-    beats: list[str] = Field(default_factory=list)
-    # 用户在这篇笔记上拒绝过的锚点。带进来是为了别再提同样的建议——
-    # 之前用户点"拒绝"这个信号是纯浪费掉的。
-    rejected_anchors: list[str] = Field(default_factory=list)
-
-
 class Revision(BaseModel):
     """一条 track-changes 修订。前端据此渲染可接受/拒绝的标记。
 
@@ -428,19 +418,14 @@ class Revision(BaseModel):
 
 
 class EditOut(BaseModel):
-    """修订建议 + **这篇现在到底哪里弱**。
+    """一批 track-changes 修订建议。
 
-    加上诊断是为了给这个一次性功能一个"终点"：它原来只会不停给建议，
-    用户永远不知道改到什么时候算够。现在全部维度达标时 revisions 为空、
-    ``verdict`` 直说没什么要改的了。
+    右键「重写 / 润色 / 扩展上下文」共用这一个形状，跟前端的接受/拒绝 UI
+    是一套——三个入口做的事不同，但产出都是「几条可以逐条挑的修订」。
     """
 
     revisions: list[Revision]
     took_ms: float
-    # 维度名 -> {level, note}，跟 harness 用的是同一套七维打分
-    scores: dict[str, dict] = Field(default_factory=dict)
-    weakest: str = ""
-    verdict: str = ""
 
 
 class MagicTapIn(BaseModel):

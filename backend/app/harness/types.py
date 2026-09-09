@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Protocol
 
-from writer_harness import Dimension
+from ..scoring import Dimension
 
 if TYPE_CHECKING:                       # pragma: no cover
     from ..agent_loop import ToolTrace

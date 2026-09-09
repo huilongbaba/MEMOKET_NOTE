@@ -116,7 +116,7 @@ def test_文档记着这次改造的结论():
         "harness-framework.md": ["落地记录", "load_skill", "awaiting_review"],
         "kb-architecture.md": ["P6", "已不成立", "complete linkage"],
         "kite-constraints.md": ["ExtractPromptDrift"],
-        "harness-architecture.md": ["现在在哪"],
+        "_research/harness-architecture.md": ["现在在哪"],
     }.items():
         text = (docs / name).read_text(encoding="utf-8")
         missing = [m for m in must if m not in text]

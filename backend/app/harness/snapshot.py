@@ -23,7 +23,7 @@ import dataclasses
 import json
 from typing import Any
 
-from writer_harness import DimensionScore, Evaluation
+from ..scoring import DimensionScore, Evaluation
 
 from ..tools import ToolContext
 from .state import State

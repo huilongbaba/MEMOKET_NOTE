@@ -82,7 +82,7 @@ def test_material_use_override_does_not_mutate_a_frozen_evaluation():
 
     import pytest
 
-    from writer_harness.types import DimensionScore, Evaluation
+    from app.scoring.types import DimensionScore, Evaluation
 
     ev = Evaluation(scores={"material_use": DimensionScore(level=2, note="ok")},
                     status="complete")

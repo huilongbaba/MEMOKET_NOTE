@@ -20,7 +20,7 @@ import functools
 import inspect
 from typing import AsyncIterator, Sequence
 
-from writer_harness import evaluate
+from ..scoring import evaluate
 
 from .. import harness_adapter
 from .events import CUSTOM_EVALUATE, CUSTOM_WARNING, Event

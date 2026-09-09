@@ -4,7 +4,7 @@
 上下文还读得懂吗」和「挂的主题对不对」——而这两条恰恰决定了写作那边用不
 用得上它。
 
-用的是写作 harness 那套 `evaluate()`，只换一组维度——`writer_harness` 当初
+用的是写作 harness 那套 `evaluate()`，只换一组维度——`app/scoring` 当初
 做成独立包就是为了这个。
 
 **成本实测**：判一场 6-9 秒，抽一场 32-48 秒，判据是抽取的约 20%，不是
@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from writer_harness import DimensionScore, Evaluation  # noqa: E402
+from app.scoring import DimensionScore, Evaluation  # noqa: E402
 
 from app.kb import extract_judge  # noqa: E402
 

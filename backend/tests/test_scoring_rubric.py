@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from writer_harness import Dimension, DupHint, evaluate
+from app.scoring import Dimension, DupHint, evaluate
 
 
 class _MockLLM:

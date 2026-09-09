@@ -399,7 +399,7 @@ flowchart TD
 - **修订调用的 try/except**：本地模型持续高负载下偶尔单次调用超过 300s，之前异常
   直接从 SSE generator 里冒出去，客户端看到的是连接被硬中断，不是一个正常的错误事件。
 - **`sources` 字段**：`EDIT_SYSTEM` 的 JSON 约定一直要求模型自报依据的事实原文，
-  `/api/edit` 那条路径读了，这条 harness 专用路径漏了——不是没有这个信号，是模型
+  一次性那条路径读了，这条 harness 专用路径漏了——不是没有这个信号，是模型
   给了、这里没读。
 
 后来又加了四道**丢弃**防线（`reject_revision()` + `_breakage()` + `structure_intact()`，

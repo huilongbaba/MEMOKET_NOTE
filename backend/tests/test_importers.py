@@ -190,8 +190,6 @@ def test_table_from_image_detection_rule():
     判据：至少两行以 | 开头，且第二行是 |---|---| 这种分隔行。识别不出就
     如实返回 detected=False——比硬编一张空表塞进用户笔记好得多。
     """
-    import re
-
     src = (Path(__file__).resolve().parent.parent
            / "app" / "routers" / "compose_block.py").read_text(encoding="utf-8")
     assert "detected" in src and "没有表格" in src

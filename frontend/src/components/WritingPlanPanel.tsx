@@ -55,6 +55,27 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
     }
   }, [isActive, harness])
 
+  /** 放弃当前计划，好在同一个文件夹里换个目标重开。
+   *
+   * 没有这个动作的话，一个文件夹起过计划就再也换不掉：计划状态只有两个来源
+   * ——跑完了置 `done`，和这里置 `abandoned`。这个按钮不接的话 `abandoned`
+   * 永远不会出现，而上面那个「没有计划就显示表单」的分支也就永远等不到。
+   *
+   * 已经写出来的笔记**一篇都不动**——放弃的是这份计划，不是它的产出。 */
+  async function abandon() {
+    if (!plan) return
+    if (!window.confirm(`放弃「${plan.goal}」这份计划？已经写出来的笔记会保留，只是不再按这个目标往下写。`)) return
+    try {
+      await api.abandonWritingPlan(folder.id)
+      setLocalPlan({ ...plan, status: 'abandoned' })
+      setLocalSections([])
+      setGoal('')
+      onNoteChanged()
+    } catch (e) {
+      toast('放弃计划失败：' + e, 'error')
+    }
+  }
+
   async function start() {
     if (!goal.trim()) return
     setStarting(true)
@@ -121,6 +142,11 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
                     title={!!harness?.running && !running ? `「${harness.folderName}」正在跑，先停掉那边才能开始这个` : undefined}
                   >
                     {running ? '■ 停止' : '▶ 继续写'}
+                  </button>
+                )}
+                {!running && (
+                  <button onClick={abandon} title="换个目标重开。已经写出来的笔记会保留">
+                    换个目标
                   </button>
                 )}
               </div>

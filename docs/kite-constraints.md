@@ -73,7 +73,7 @@ def keywords(question: str) -> list[str]:
 grep = plan_greps[0] if plan_greps else "|".join(profile.keywords(question)[:6])
 ```
 
-所以中文不是必然失败，取决于 plan 编译质量。实测结论见 `P0-findings.md`。
+所以中文不是必然失败，取决于 plan 编译质量。实测结论见 `_research/P0-findings.md`。
 
 ## 6. 纯同步 API，零依赖
 
@@ -197,6 +197,6 @@ memory.remember(messages, session_id=..., profile=my_profile)
 #   profile.EXTRACT_PROMPT 若非 None 就用它，否则用 DEFAULT_MEMORY_PROFILE
 ```
 
-这样调用方换规则就是传一个对象，跟 `writer_harness` 传 `dimensions` 是同一个
+这样调用方换规则就是传一个对象，跟 `app/scoring` 传 `dimensions` 是同一个
 模式：**机制在包里，领域知识在调用方**。同时也解决约束 10（root 太宽）和
 约束 11（fact 语言随机）——那两条现在也是靠同一套字符串补丁在打。

@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import types
 
-import pytest
-
 from app.kb import reextract
 
 

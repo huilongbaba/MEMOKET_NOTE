@@ -7,7 +7,7 @@ compose_block entirely, which is exactly the class of omission that made
 
 from __future__ import annotations
 
-from writer_harness import RunRecord
+from ...scoring import RunRecord
 
 from ... import harness_adapter
 from ..state import State

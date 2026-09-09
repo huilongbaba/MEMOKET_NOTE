@@ -1,4 +1,4 @@
-"""harness_adapter.py：把 writer_harness 的 LLMClient/RunHistoryStore 接口
+"""harness_adapter.py：把 scoring 的 LLMClient/RunHistoryStore 接口
 接到 app.llm / app.store 上的薄适配层。
 
     cd backend && python -m pytest tests/test_harness_adapter.py -v
@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import harness_adapter, llm, store  # noqa: E402
-from writer_harness import RunRecord  # noqa: E402
+from app.scoring import RunRecord  # noqa: E402
 
 
 @pytest.fixture()

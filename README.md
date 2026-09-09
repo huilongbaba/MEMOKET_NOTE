@@ -69,8 +69,8 @@ n-gram 生成有两个要点：从**最靠近光标的片段**开始（续写时
 | 文档 | 内容 |
 |---|---|
 | [`docs/kite-constraints.md`](docs/kite-constraints.md) | 读 KITE 源码得出的 8 条硬约束，每条标了源码位置。升级 KITE 后应重新核对 |
-| [`docs/P0-findings.md`](docs/P0-findings.md) | 中英文对照实测，量化了中文召回的退化幅度 |
-| [`docs/PLAN.md`](docs/PLAN.md) | 后续路线 |
+| [`docs/_research/P0-findings.md`](docs/_research/P0-findings.md) | 中英文对照实测，量化了中文召回的退化幅度 |
+| [`docs/_research/PLAN.md`](docs/_research/PLAN.md) | 后续路线 |
 
 ## 快速开始
 
@@ -104,7 +104,6 @@ LLM_MODEL=gpt-4.1-mini
 |---|---|
 | `GET/POST/PUT/DELETE /api/notes` | 笔记 CRUD |
 | `POST /api/skeleton` | 线 1：生成写作骨架 |
-| `POST /api/edit` | 线 2：生成 track-changes 修订建议 |
 | `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |
 | `POST /api/memory/recall` | 符号检索，零 LLM，~1 ms |
 | `POST /api/memory/ask` | 原生 planning 提问，支持时序推理，~50 s |

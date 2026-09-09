@@ -210,46 +210,90 @@ hook 是空的契约**，空契约给不出默认值。
 
 ## 3. 目录
 
+**这一节是地图**：每个文件属于哪一节、干什么，一行说清。
+`tests/test_directory_map.py` 盯着它跟代码一致——图漂了测试会红。
+
 ```
-backend/app/harness/
-  types.py        Mode · Hooks · Middleware · Check · Verdict · StopCondition · Skill
-  state.py        State —— 一次 run 的全部数据
-  loop.py         run() —— 唯一的循环
-  events.py       AG-UI 事件契约
-  modes.py        8 个内置 Mode（现在散在 compose_block.MODES 和 harness_adapter）
-  revision.py     修订的定位与应用（纯函数，从 note_harness 搬出来）
-  middleware/
-    facts.py        材料累积 + 压缩
-    skills.py       列出有哪些技能 / 直接注入匹配 scope 的
-    repeats.py      机械查重 → dup_hints
-    revise.py       生成前先改一遍已有正文
-    checks.py       跑 Mode.checks，auto-fix 或打回
-    best_of.py      留最好的一轮
-    history.py      记 run 历史
-    compact.py      压缩喂给续写的正文  （不进 BASE，note/section 专用）
-    save.py         每轮落盘            （不进 BASE，note/section 专用）
-    policy.py       调下一轮参数        （不进 BASE）
-    replan.py       骨架重规划          （不进 BASE）
-  checks/
-    charts.py       假图 · 手写 mermaid · 图的信息量
-    structure.py    标题层级 · 收尾节撞车 · 大纲被压平
-    grounding.py    占位符 · 审计腔 · 引用核对
+backend/app/
+  harness/                 ← 循环本体。第 5、6、11 节
+    types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition（第 5 节）
+    state.py                 State —— 一次 run 的全部数据（第 5 节）
+    loop.py                  run() —— 唯一的循环（第 6 节）
+    events.py                AG-UI 事件契约 + 翻回旧事件名（第 7 节）
+    modes.py                 8 个内置 Mode + 停机条件 + for_run() 运行时裁剪（第 14 节）
+    revision.py              修订的定位与应用（纯函数，从 note_harness 搬出来）
+    snapshot.py              State ⇄ JSON，轮末暂停用（第 13.1 节）
+    params.py                跨 harness 的两个续写预算 + AGENT_TOOLS 开关
+    hooks/                 ← 每条 harness 自己写的三个回调（第 5、16 节）
+      block.py                 `/` 块生成：prepare / produce / commit
+      note.py                  单篇续写：骨架、大纲模式、检索规划
+      section.py               文件夹级分段
+    middleware/            ← 能力包，BASE 默认全开（第 11 节）
+      _order.py                verify()：声明的先后依赖真的成立
+      skills.py                技能菜单进上下文（第 10 节）
+      facts.py                 材料跨轮累积 + 封顶
+      provenance.py            报出工具查了什么、这一轮拿到多少
+      repeats.py               机械查重 → dup_hints
+      revise.py                生成前先改一遍已有正文
+      checks.py                跑 Mode.checks，auto-fix 或打回（第 9 节）
+      best_of.py               留最好的一轮
+      history.py               记 run 历史
+      compact.py               压缩喂给续写的正文      （不进 BASE）
+      save.py                  每轮落盘                （不进 BASE）
+      repair.py                内在质量弱 → 下一轮只理顺（不进 BASE）
+      runtime.py               把这一轮的观测变成下一轮的参数（不进 BASE）
+      replan.py                骨架重规划              （不进 BASE）
+    checks/                ← 代码判的那一半判据（第 9 节）
+      charts.py                假图 · 手写 mermaid
+      structure.py             标题层级 · 收尾节撞车 · 大纲被压平
+      grounding.py             占位符 · 审计腔 · 引用核对 · 材料没用上
 
-backend/app/sandbox/     第三方 skill 脚本的笼子（R13，见 10.8）
-  runner.py       Seatbelt(macOS) / bubblewrap(Linux) 的薄封装
-  policy.py       三档权限 → 具体的沙箱 profile
-  limits.py       CPU 10s · 内存 256MB · 产出 20MB，硬编码
+  scoring/                 ← 模型判的那一半判据的**执行引擎**。第 9 节
+    rubric.py                evaluate()：一次 LLM 调用，逐维度打分，代码判「完没完」
+    types.py                 Dimension · DimensionScore · Evaluation · DupHint · RunRecord
+    protocols.py             LLMClient · RunHistoryStore —— 由 app 实现（harness_adapter.py）
+    dedup.py                 find_repeats()：机械查重，零 LLM
+    context.py               compact_context()：渐进式压缩，零 LLM
+    citations.py             check_citations()：引用核对，零 LLM
+    ↑ 这一层**不依赖 app 的任何东西**（有分层断言盯着）。它一度是
+      `backend/writer_harness/` 那个可独立安装的包，为「将来开源」做的准备；
+      因为只有这一个使用者、而那套包机制（pyproject + editable 安装 +
+      单独的测试目录）只换来一个额外的概念，已经合回 app。真要开源，
+      把这一个目录拷出去就行。
 
-backend/app/routers/     薄壳
-  note_harness.py   1078 → 约 120
-  writing_plan.py    543 → 约 100
-  compose_block.py   566 → 约 60
+  sandbox/                 ← 第三方 skill 脚本的笼子。第 10.8 节
+    runner.py                Seatbelt(macOS) / bubblewrap(Linux) 的薄封装
+    policy.py                三档权限 → 具体的沙箱 profile
+    limits.py                CPU 10s · 内存 256MB · 产出 20MB，硬编码
+
+  kb/                      ← 知识库能力层。**架构见 kb-architecture.md**
+    clusters.py              主题簇：共现 + complete linkage，零 LLM
+    recall.py                按簇检索（写作用），种子仍走普通 recall
+    search.py                零 LLM 检索的排序
+    reextract.py             写作库续跑：找出源库有而写作库没有的会议
+    extract_check.py         抽取判据（代码判的）
+    extract_judge.py         抽取判据（模型判的）——复用 scoring 的 evaluate
+
+  tools/                   ← 工具注册表。第 8 节
+    registry.py              注册 + 分组授权 + ToolContext
+    memory_tools.py · data_tools.py · skill_tools.py · sandbox_tools.py
+
+  routers/                 ← 薄壳：认 Mode、装 State、把事件翻成前端听的名字
+    note_harness.py            1078 → 98
+    writing_plan.py             578 → 281（plan 级循环留在这儿）
+    compose_block.py            607 → 186
+    harness.py                  轮末暂停的恢复入口（第 13.1 节）
+    kb.py                       知识库端点
+    …其余是 CRUD
+
+backend/skills/            ← 13 个内置 SKILL.md，随版本发布（第 10.1.3 节）
+backend/scripts/           ← bench / 摄入 / 诊断，不参与运行
+backend/tests/             ← 第 20 节
 ```
 
-不动的：`app/agent_loop.py`、纯函数层（`tabular` `blocks` `outline`
-`textshape` `restructure` `runtime_policy` `replan`）、`writer_harness/`
-（对 app 零依赖）。
-`app/tools/` 的注册表机制不动，但**分组要调**（见第 8 节）。
+不动的：`app/agent_loop.py`、纯函数层（`tabular` `blocks` `blockcheck`
+`outline` `textshape` `restructure` `grounding_check` `runtime_policy`
+`replan`）。`app/tools/` 的注册表机制不动，但**分组要调**（见第 8 节）。
 
 ---
 
@@ -1253,7 +1297,7 @@ class Facts:                      # 不发事件的 middleware：普通 async de
 
 
 class Compact:
-    """把喂给续写的正文压一压。`writer_harness.compact_context()`：
+    """把喂给续写的正文压一压。`scoring.compact_context()`：
     最近 keep_last_chars 全量保留，更早的按 `##` 切小节、每节折叠成摘要。
 
     **只压给续写看的那一份，edit pass 和打分吃全量**——那两步要通读全篇
@@ -1602,7 +1646,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | `blockcheck.py` | `checks/charts.py` + `checks/structure.py` |
 | `grounding_check.py` | `checks/grounding.py`；**三处静默改写改成带 `fix` 的 Check** |
 | `runtime_policy.py` · `replan.py` · `outline.py` · `textshape.py` · `tabular.py` · `blocks.py` | **原地不动**（纯函数层） |
-| `agent_loop.py` · `writer_harness/` | **原地不动** |
+| `agent_loop.py` · `app/scoring/` | **原地不动**（`scoring` 是原 `writer_harness` 包合回来的，见第 3 节） |
 | `app/tools/registry.py` | 机制不动；**`render_table` 从 chart 组挪出来**（见第 8 节） |
 
 ---
@@ -1636,7 +1680,7 @@ flowchart TD
     L2["L2　app/harness/　loop · State · middleware/ · checks/ · modes/ · events"]
     L3["L3　app/：能力　agent_loop · llm · store · kite_memory · tools/ · sandbox/"]
     L4["L4　纯函数层　tabular · blocks · outline · textshape · restructure · revision"]
-    L5["L5　writer_harness 包　evaluate · find_repeats · compact_context"]
+    L5["L5　app/scoring/　evaluate · find_repeats · compact_context · check_citations"]
 
     L0 -->|AG-UI 事件| L1
     L1 --> L2

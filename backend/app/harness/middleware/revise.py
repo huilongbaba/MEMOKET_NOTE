@@ -161,8 +161,8 @@ class Revise:
                 "text": body[:300],
                 "reason": reason,
                 # EDIT_SYSTEM already asks the model to report which facts a
-                # revision rests on, and the /api/edit path has always read
-                # them. This one didn't: the signal existed and was dropped.
+                # revision rests on. The one-shot endpoint read them and this
+                # path didn't: the signal existed and was being dropped.
                 "sources": _expand_sources(item.get("sources") or [], st.facts)[:3],
             })
 

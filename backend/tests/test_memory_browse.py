@@ -1,4 +1,4 @@
-"""知识库可视化端点背后的纯逻辑（PLAN.md 第 4 节）：topics/entities/facts 分页
+"""知识库可视化端点背后的纯逻辑（_research/PLAN.md 第 4 节）：topics/entities/facts 分页
 过滤/timeline 聚合。
 
 刻意不走真实 XML —— UserMemory._index() 之后的这些方法只消费 core.Store /

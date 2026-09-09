@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import harness_adapter, prompts, store, tools  # noqa: E402
 from app.routers.compose import _profile, _retrieve  # noqa: E402
-from writer_harness import find_repeats  # noqa: E402
-from writer_harness.rubric import DEFAULT_SYSTEM_PROMPT, _build_prompt  # noqa: E402
+from app.scoring import find_repeats  # noqa: E402
+from app.scoring.rubric import DEFAULT_SYSTEM_PROMPT, _build_prompt  # noqa: E402
 
 USER = "terrence"
 OUT = Path(__file__).resolve().parents[2] / "prompts"
@@ -114,7 +114,7 @@ def main() -> None:
 
     ev_ctx = {"核心张力": SPINE, "结构节拍": "\n".join(f"- {b}" for b in BEATS),
               "知识库事实": "\n".join(f"- {f}" for f in facts)}
-    write("05", "打分", "⑤ 打分 · writer_harness.evaluate()",
+    write("05", "打分", "⑤ 打分 · app/scoring 的 evaluate()",
           "六个维度各自独立打 0/1/2。**system prompt 在独立包里、是英文的**——"
           "包要能开源出去，不带任何中文领域词汇；维度定义由 app 侧作为配置传入。",
           [("system（包内置，英文）", DEFAULT_SYSTEM_PROMPT),

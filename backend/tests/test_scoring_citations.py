@@ -1,5 +1,5 @@
-from writer_harness import check_citations
-from writer_harness.citations import DEFAULT_MATCH_THRESHOLD
+from app.scoring import check_citations
+from app.scoring.citations import DEFAULT_MATCH_THRESHOLD
 
 
 def test_exact_match_is_verified():

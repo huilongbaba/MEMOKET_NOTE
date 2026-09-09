@@ -1,4 +1,4 @@
-from writer_harness import find_repeats
+from app.scoring import find_repeats
 
 
 def test_finds_near_identical_paragraphs():

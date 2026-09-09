@@ -113,6 +113,13 @@ export const createFolder = (name: string) =>
     body: JSON.stringify({ name }),
   }).then(json<Folder>)
 
+export const renameFolder = (id: string, name: string) =>
+  fetch(`/api/folders/${id}`, {
+    method: 'PUT',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name }),
+  }).then(json<Folder>)
+
 export const deleteFolder = (id: string) =>
   fetch(`/api/folders/${id}`, { method: 'DELETE', headers: headers() }).then(json)
 
@@ -267,6 +274,12 @@ export const startWritingPlan = (folderId: string, goal: string) =>
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ folder_id: folderId, goal }),
   }).then(json<WritingPlanOut>)
+
+/** 放弃当前计划，好在同一个文件夹里换个目标重开。
+ *  没有它的话，一个文件夹起过计划就再也换不掉——面板会一直显示那个旧目标。 */
+export const abandonWritingPlan = (folderId: string) =>
+  fetch(`/api/writing-plan/${folderId}/abandon`, { method: 'POST', headers: headers() })
+    .then(json<{ abandoned: string }>)
 
 export type WritingPlanHandlers = {
   onPlanLoaded?: (plan: WritingPlan, sections: WritingSection[]) => void

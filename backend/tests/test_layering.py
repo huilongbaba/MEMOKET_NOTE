@@ -12,7 +12,7 @@ Layers, top to bottom:
     L3  app/kb/          knowledge-base capabilities above KITE
     L3  app/            capabilities: agent_loop, llm, store, kite_memory, tools
     L4  pure functions   tabular, blocks, outline, textshape, restructure, ...
-    L5  writer_harness/  the package
+    L5  scoring/  the package
 """
 
 from __future__ import annotations
@@ -63,9 +63,9 @@ def test_pure_layer_imports_only_the_standard_library():
 
 
 def test_the_package_does_not_know_about_this_app():
-    """The single condition for writer_harness being extractable. One import
+    """The single condition for scoring being extractable. One import
     of ``app`` and the only way to open-source it is to untangle it again."""
-    for path in (ROOT / "writer_harness" / "src").rglob("*.py"):
+    for path in (ROOT / "scoring" / "src").rglob("*.py"):
         offending = {m for m in _imports(path) if m == "app" or m.startswith("app.")}
         assert not offending, f"{path.name} imports {offending}"
 
@@ -111,7 +111,7 @@ def test_the_knowledge_base_layer_knows_nothing_above_it():
     true.
     """
     for path in (ROOT / "app" / "kb").glob("*.py"):
-        # 注意匹配的是 app 自己的那个 harness 包，不是 writer_harness——
+        # 注意匹配的是 app 自己的那个 harness 包，不是 scoring——
         # 后者是它下面一层的、可独立开源的包，kb 用它的 evaluate() 正是设计。
         offending = {m for m in _imports(path)
                      if "app.routers" in m or m.startswith("app.harness")}

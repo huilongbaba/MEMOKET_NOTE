@@ -5,7 +5,6 @@ no execution oracle for writing" -- see README."""
 from __future__ import annotations
 
 import json
-import re
 
 from .protocols import LLMClient
 from .types import Dimension, DimensionScore, DupHint, Evaluation
