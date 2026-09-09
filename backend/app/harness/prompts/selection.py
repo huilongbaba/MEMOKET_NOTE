@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from .fragments import spine_beats_block
+from .fragments import facts_block, spine_beats_block
 
 
 # 结构直接照抄语料本身的人工摘要习惯（见 terrence_records 里已有的
@@ -126,7 +126,7 @@ def expand_user(content: str, selection: str, facts: list[str] | None = None) ->
         parts.append("【选中片段后面已有的内容（判断 after 前先看这里是不是已经写过了）】\n"
                      + (after_ctx or "（后面没有内容了，这已经是结尾）"))
     if facts:
-        parts.append("【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts))
+        parts.append(facts_block(facts))
     return "\n\n".join(parts)
 
 

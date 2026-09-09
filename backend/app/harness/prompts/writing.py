@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from .fragments import FOCUS_LABELS, heading_format_reminder, profile_block, spine_beats_block
+from .fragments import (FOCUS_LABELS, content_block, facts_block,
+                        heading_format_reminder, profile_block, spine_beats_block)
 
 
 # 骨架不是内容大纲（"这段该讲什么"），是结构：spine 是这篇东西真正在处理的
@@ -457,8 +458,8 @@ def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
     if folder_context:
         parts.append(folder_context)
     if facts:
-        parts.append("【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts))
-    parts.append("【已写正文】\n" + content)
+        parts.append(facts_block(facts))
+    parts.append(content_block(content))
     if "##" not in content:
         parts.append(heading_format_reminder())
     parts.append("请接着往下写。")

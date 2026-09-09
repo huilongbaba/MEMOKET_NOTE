@@ -228,7 +228,10 @@ _OVERRIDES = {
     "dup_hints": [DupHint(a="重复的一段", b="又一段", similarity=0.9)],
     "scope": "note",
 }
-_NOT_EMBEDDED = {("compose_system", "user")}
+_NOT_EMBEDDED = {
+    ("compose_system", "user"),      # 查 skill 用的用户名，不是要嵌进去的文本
+    ("content_block", "empty"),      # 正文为空时才用得上的替代句，正文不空就该看不见
+}
 
 
 def _dummy(name: str, ann: str):

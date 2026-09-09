@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .fragments import FOCUS_LABELS, heading_format_reminder, profile_block
+from .fragments import (FOCUS_LABELS, content_block, facts_block,
+                        heading_format_reminder, profile_block)
 
 
 # ---------------------------------------------------------------- 无限续写计划
@@ -35,7 +36,7 @@ def plan_user(goal: str, facts: list[str], folder_context: str) -> str:
     if folder_context:
         parts.append(folder_context)
     if facts:
-        parts.append("【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts))
+        parts.append(facts_block(facts))
     parts.append("请给出分段列表。")
     return "\n\n".join(parts)
 
@@ -57,8 +58,8 @@ def section_write_user(section_title: str, goal: str, prior_summaries: list[str]
     if folder_context:
         parts.append(folder_context)
     if facts:
-        parts.append("【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts))
-    parts.append("【已写正文】\n" + (content or "（这个分段还没开始写）"))
+        parts.append(facts_block(facts))
+    parts.append(content_block(content, "（这个分段还没开始写）"))
     if "##" not in content:
         # 笔记标题已经是这个分段的主题了，不用在正文里再重复一次一级标题
         # ——这条是 section_write 特有的（每个 section 独立成一篇笔记，标题

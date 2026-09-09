@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .fragments import heading_format_reminder, profile_block, spine_beats_block
+from .fragments import (content_block, facts_block, heading_format_reminder,
+                        profile_block, spine_beats_block)
 
 
 # ---------------------------------------------------------------- 单篇笔记 harness
@@ -97,7 +98,7 @@ def retrieval_plan_user(title: str, spine: str, beats: list[str], content: str,
     block = spine_beats_block(spine, beats)
     if block:
         parts.append(block)
-    parts.append("【已写正文】\n" + (content or "（还没开始写）"))
+    parts.append(content_block(content, "（还没开始写）"))
     if steer:
         parts.append("【上一轮的反馈，这一轮优先处理】\n" + steer)
     if require_verification:
@@ -173,8 +174,8 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
     if spine_block:
         parts.append(spine_block)
     if facts:
-        parts.append("【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts))
-    parts.append("【已写正文】\n" + content)
+        parts.append(facts_block(facts))
+    parts.append(content_block(content))
     if "##" not in content:
         parts.append(heading_format_reminder())
     parts.append(

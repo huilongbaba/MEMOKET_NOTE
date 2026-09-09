@@ -26,6 +26,8 @@
 
 from .fragments import (
     FOCUS_LABELS,
+    content_block,
+    facts_block,
     heading_format_reminder,
     profile_block,
     spine_beats_block,
@@ -78,6 +80,8 @@ from .block import (
 )
 
 __all__ = [
+    "content_block",
+    "facts_block",
     "BLOCK_SYSTEM",
     "DIGEST_SYSTEM",
     "EDIT_SYSTEM",
