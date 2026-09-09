@@ -217,3 +217,39 @@ def search_session_context(ctx: ToolContext, question: str, limit: int = 10) -> 
     head = (f"（{'走了多跳定位' if multihop else '这个问题被判定不需要多跳，退化成了普通检索'}"
             f"，耗时 {took / 1000:.1f}s）\n")
     return head + _fmt_facts(rows)
+
+
+@register(
+    name="gather_subject",
+    description=(
+        "把一个题目的材料**一次取全**——先按关键词定位，再把命中主题所在"
+        "的那一簇里的相关事实一起带回来。要写完整一节、需要同一件事的来龙"
+        "去脉时用这个；只想核对某一个具体问题用 search_memory。"
+        "返回的条数比 search_memory 多，覆盖也更宽。"
+    ),
+    params={
+        "query": {"type": "string", "description": "这一节要写的题目，一句话即可"},
+        "limit": {"type": "integer", "description": "最多返回几条，默认 14"},
+    },
+    required=["query"],
+)
+def gather_subject(ctx: ToolContext, query: str, limit: int = 14) -> str:
+    """The coarse view of the same codebook.
+
+    Why both this and ``search_memory`` exist, rather than one of them
+    winning: they are measurably better at different jobs. Asked to find one
+    fact, precise topic matching wins. Asked to write a whole section, it
+    returns six facts spread over six sibling topics and the section has
+    nothing left to say the next round -- which is what ``non_repetition``
+    has been penalising. Measured on 60 real queries, the fraction that
+    reached the wanted subject went from 57% to 88% at the cost of about one
+    extra fact returned.
+
+    Which one to use is the model's call, which is the point: it knows
+    whether it is checking a detail or writing a section, and we don't.
+    """
+    from ..kb.recall import recall_clustered
+
+    rows, _terms, _took = recall_clustered(
+        UserMemory(ctx.user), query, limit=max(1, min(int(limit or 14), 30)))
+    return _fmt_facts([r for r in rows if r.get("text")])

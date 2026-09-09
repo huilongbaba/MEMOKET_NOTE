@@ -31,6 +31,7 @@ from memoket_kite.providers.llm import llm_json
 from memoket_kite.storage import _verify_loadable
 
 from . import kite_entity_candidates, kite_extract_profile, store
+from .kb import search
 from .config import get_settings
 from .kite_writer import write_lock
 
@@ -331,37 +332,32 @@ class UserMemory:
         return topics[:4], entities[:4], hit_surfaces
 
     def recall(self, query: str, limit: int = 8) -> tuple[list[dict], list[str], float]:
-        """符号检索。返回 (fact 行, 命中的表层词, 耗时毫秒)。"""
+        """符号检索。返回 (fact 行, 命中的表层词, 耗时毫秒)。
+
+        **先撒网再排序**，不是「命中主题后按时间取前 8」。原来那个写法等于
+        「这个主题下最近的 8 条」，跟查询内容无关——实测拿一条事实自己的原文
+        去查，只有 22% 能召回它自己、38% 能召回同主题的东西。撒网 + 按词面
+        重排之后是 90% / 97%，仍然零 LLM 调用、仍然几毫秒。判据和量出来的
+        数字见 ``kb/search.py``。
+        """
         t0 = time.perf_counter()
         store, vocab = self._index()
-        topics, entities, surfaces = self._match_vocab(query, vocab)
+        _topics, _entities, surfaces = self._match_vocab(query, vocab)
 
-        queries = []
-        if topics or entities:
-            queries.append({
-                "select": "facts",
-                "where": {"topics": topics, "entities": entities},
-                "pipe": [{"op": "sort", "key": "t", "desc": True},
-                         {"op": "head", "n": limit}],
-            })
-        # 词表没命中时退回词法检索，否则新用户永远召回为空
-        for term in self._candidate_terms(query)[:3]:
-            queries.append({
-                "select": "facts",
-                "where": {"grep": term},
-                "pipe": [{"op": "sort", "key": "t", "desc": True},
-                         {"op": "head", "n": limit}],
-            })
-
+        queries = search.plan(self, query, vocab)
         facts: list[dict] = []
         if queries:
-            rows, _trace = execute_plan(store, vocab, {"queries": queries[:3]},
-                                        budget=limit)
+            rows, _trace = execute_plan(store, vocab, {"queries": queries},
+                                        budget=search.POOL * 2)
             facts = [r for r in rows if r.get("type") == "fact"]
+        facts = search.rank(facts, query, self, store, limit=limit)
 
         if not facts:
             facts = self._recall_via_lines(store, vocab, query, limit)
             surfaces = surfaces + self._cjk_terms(query)[:3]
+        else:
+            surfaces = surfaces + [t for t in search.matched_terms(
+                facts, query, self, store) if t not in surfaces]
 
         return facts[:limit], surfaces, (time.perf_counter() - t0) * 1000
 

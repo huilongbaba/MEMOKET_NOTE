@@ -11,6 +11,7 @@ run that did.
 
 from __future__ import annotations
 
+from .kb.recall import recall_clustered
 from .kite_memory import UserMemory
 
 # Retrieve against the tail of what's written -- where the user is now is
@@ -45,7 +46,13 @@ def retrieve(user: str, content: str, spine: str, beats: list[str], limit: int =
         hint = " ".join([spine] + beats[-3:]) if spine or beats else ""
         if hint:
             query = hint + "\n" + query
-    rows, _terms, took = mem.recall(query, limit=limit)
+    # The harness writes whole sections, so it reads the codebook at cluster
+    # grain; magic tap answers a cursor and reads it at topic grain. Same
+    # data, two views -- see kb/clusters.py for why the fine topics stay.
+    if anchor_first:
+        rows, _terms, took = recall_clustered(mem, query, limit=limit)
+    else:
+        rows, _terms, took = mem.recall(query, limit=limit)
     hits = [r for r in rows if r.get("text")]
     # 事实带上日期再进 prompt。之前只返回裸文本，导致**整条写作链路里事实的
     # 时间信息从来没进过任何一个 prompt**：修订看不到这条是什么时候说的，
