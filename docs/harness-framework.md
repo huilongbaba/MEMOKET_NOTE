@@ -292,6 +292,13 @@ backend/scripts/           bench / 摄入 / 诊断，不参与运行
 backend/tests/             第 20 节
 ```
 
+**`util/` 不是最底层。** `util/llm.py` 反过来要 `database.store` 拿「用户
+当前选的是哪个供应商」——这条边是有意的，客户端不知道用户选了谁就没法
+工作。但它是悄悄长出来的，而「公共 utilities」这个名字会让人以为它谁都
+不依赖。`tests/test_layering.py` 把它钉成一条窄边：`util` 只许碰
+`database.store`，`database` 只许碰 `util.config`，再宽一点就红。
+
+
 **顶层从 31 个 .py 降到 3 个。** 分成五块的判据是**这块代码为谁服务**：
 agent 运行（harness）、知识库和数据库（database）、前端对接（routers）、
 既不属于前两者的编辑功能（editor）、谁都可能用的（util）。

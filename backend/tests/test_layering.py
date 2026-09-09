@@ -170,3 +170,39 @@ def test_the_pure_layer_list_points_at_real_files():
     整条纯度检查静默地少查一个模块。"""
     missing = [n for n in PURE if not (ROOT / "app" / f"{n}.py").exists()]
     assert not missing, f"名单里这些文件不在了：{missing}"
+
+
+def test_editor这一层不认识harness也不认识端点():
+    """文件夹/正文这类编辑操作跟 agent 无关。
+
+    它反过来被 harness 用（`outline` 那几个纯函数四处都在调），所以方向
+    一旦反过来就是环：改一次大纲判据要同时想 harness 和 editor 两边。
+    """
+    for path in _files("app", "editor"):
+        offending = {m for m in _imports(path)
+                     if m.startswith(("app.harness", "app.routers"))}
+        assert not offending, f"{path.name} imports {offending}"
+
+
+def test_util和database之间只有那一条窄依赖():
+    """这两个包**互相**依赖，是有意的，但只许这么窄。
+
+    实情：``database/*`` 要 ``util.config`` 拿设置，而 ``util/llm`` 要
+    ``database.store`` 拿「用户当前选的是哪个供应商」——那个选择存在库里，
+    这条依赖本身是对的，LLM 客户端不知道用户选了谁就没法工作。
+
+    问题不在有这条边，在于它是**悄悄长出来的**：`util` 在文档里被写成
+    「公共 utilities」，读的人会当它是最底层。所以这里把它钉死成一条窄边，
+    再宽一点就红——比如哪天 `util` 开始 import `database.kb`，或者
+    `database` 开始 import `util.llm`，那才是真的绕成一团。
+    """
+    for path in _files("app", "util"):
+        upward = {m for m in _imports(path) if m.startswith("app.")
+                  and not m.startswith("app.util")}
+        assert upward <= {"app.database.store"}, \
+            f"{path.name} 越界了：{sorted(upward - {'app.database.store'})}"
+
+    for path in _files("app", "database", deep=True):
+        into_util = {m for m in _imports(path) if m.startswith("app.util")}
+        assert into_util <= {"app.util.config"}, \
+            f"{path.name} 从 util 里拿了不该拿的：{sorted(into_util)}"
