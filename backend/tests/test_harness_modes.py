@@ -154,3 +154,24 @@ def test_a_repair_round_does_not_count_as_running_dry():
     for _ in range(2):
         asyncio.run(Facts().after_prepare(st))
     assert st.bag["dry_rounds"] == 2
+
+
+def test_每个mode都填了skill_scope():
+    """漏填 = 那个功能上用户配的技能全部静默失效。
+
+    `compose_block` 的六个模式此前就是这么漏的：一个 scope 都没有，用户
+    在数据可视化那条路径上配的技能一条都不生效，也不报错。
+    """
+    from app import prompts
+
+    for mode in modes.ALL:
+        assert mode.skill_scope, f"{mode.label} 没填 skill_scope"
+        assert mode.skill_scope in prompts.SKILL_SCOPES, (
+            f"{mode.key} 的 skill_scope={mode.skill_scope!r} 不在 SKILL_SCOPES 里，"
+            "用户在面板上根本选不到这个范围")
+
+
+def test_每个mode都能拿到skill工具():
+    """能看见有哪些技能却调不了 load_skill，这个机制就只剩半截。"""
+    for mode in modes.ALL:
+        assert "skill" in mode.groups, f"{mode.key} 没开 skill 工具组"

@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from writer_harness import evaluate, find_repeats
 
 from .. import (grounding_check, harness_adapter, llm, profile, prompts,
-                retrieval, store)
+                retrieval)
 from ..kite_memory import UserMemory
 from ..schemas import (DigestIn, DigestOut, EditIn, EditOut, ExpandIn,
                        MagicTapIn, Revision, RewriteIn, SkeletonIn,
@@ -70,7 +70,7 @@ def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int 
 async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     """线 1：生成核心张力（spine）+ 结构节拍（beats）。"""
     t0 = time.perf_counter()
-    system = prompts.compose_system(prompts.SKELETON_SYSTEM, store.enabled_skills_for_scope(user, "skeleton"))
+    system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user)
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.skeleton_user(
@@ -147,7 +147,7 @@ async def edit(body: EditIn, user: str = Depends(current_user)):
                        scores=scores, weakest="",
                        verdict="七项都达标了，这篇暂时没什么要改的。继续写、或者点打磨再跑一轮都行。")
 
-    system = prompts.compose_system(prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(user, "edit"))
+    system = prompts.compose_system(prompts.EDIT_SYSTEM, "edit", user)
     user_prompt = prompts.edit_user(
         body.spine, body.beats, body.content, facts, profile,
         focus=weakest, dup_hints=dup_hints)
@@ -211,7 +211,7 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
     """
     facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6)
 
-    system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(user, "magic_tap"))
+    system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompts.magic_tap_user(
@@ -268,7 +268,7 @@ async def digest(body: DigestIn, user: str = Depends(current_user)):
                          took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
     facts = [f"[{r['when']}] {r['text']}" for r in rows]
-    system = prompts.compose_system(prompts.DIGEST_SYSTEM, store.enabled_skills_for_scope(user, "digest"))
+    system = prompts.compose_system(prompts.DIGEST_SYSTEM, "digest", user)
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.digest_user(facts)}],
@@ -291,7 +291,7 @@ async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
         return EditOut(revisions=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
     base = prompts.POLISH_SYSTEM if body.intent == "polish" else prompts.REWRITE_SYSTEM
     scope = "polish" if body.intent == "polish" else "rewrite"
-    system = prompts.compose_system(base, store.enabled_skills_for_scope(user, scope))
+    system = prompts.compose_system(base, scope, user)
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.rewrite_user(
@@ -323,7 +323,7 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
     # 纳入关键路径评审"这类具体但没有任何依据的细节）。查询用选中片段本身
     # 当线索，跟校验（verify）用同一个思路。
     facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6)
-    system = prompts.compose_system(prompts.EXPAND_SYSTEM, store.enabled_skills_for_scope(user, "expand"))
+    system = prompts.compose_system(prompts.EXPAND_SYSTEM, "expand", user)
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.expand_user(body.content, body.selection, facts)}],
@@ -361,7 +361,7 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
     hits = [r for r in rows if r.get("text")]
     facts = [r["text"] for r in hits]
 
-    system = prompts.compose_system(prompts.VERIFY_SYSTEM, store.enabled_skills_for_scope(user, "verify"))
+    system = prompts.compose_system(prompts.VERIFY_SYSTEM, "verify", user)
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.verify_user(body.content, body.selection, facts)}],

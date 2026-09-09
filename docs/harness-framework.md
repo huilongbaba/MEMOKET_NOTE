@@ -1783,8 +1783,60 @@ allow-default + 按区域拒绝。
 三条 router 都切完之后，前端换成 AG-UI 名字、删掉这个函数，是一个 commit
 的事。
 
+### Skill：三层渐进披露接通了（2026-09-09）
+
+第 10 节设计的东西全部落地，**旧的那套删干净了**——`skills` 表、
+`store.list_skills/create_skill/update_skill/delete_skill/reorder_skills/
+enabled_skills_for_scope`、`_seed_missing_default_skills`、
+`prompts.DEFAULT_SKILLS` 全部删除，不留兼容层。
+
+现在一个 skill 就是盘上一个标准目录：
+
+```
+backend/skills/<slug>/SKILL.md          仓库里的 13 个内置，随版本发布
+data/<user>/skills/<slug>/SKILL.md      装到用户目录，内置/自写/第三方同一条路
+DB skill_config                          enabled · scopes · sandbox · source · idx
+```
+
+内置那 13 条原来叫「结构化分段（受 doc-coauthoring 启发）」这种中文名，
+不合规格。现在 `name` 是 `doc-coauthoring-sections` 这样的 slug，中文名
+放 body 的一级标题——**规格给可读名字留的位置就是那里**。用户自己写的
+中文名走 `slugify()`，生成不出合法 slug 时退到稳定哈希。
+
+#### 真跑抓到的两个 bug：机制齐了但接不起来
+
+单测全绿、工具注册了、菜单也算出来了，**`load_skill` 真跑三次一次都没被
+调用过**。两个原因叠在一起：
+
+**① `Skills` 中间件跑在 `before_produce`。** 工具只在 gather 那次调用上
+存在，写正文那次没有工具。菜单在 `before_produce` 才算出来，等于模型读到
+「有哪些技能」时，唯一能加载的时机已经过去了。改到 `before_round`。
+
+**② 检索规划的 prompt 里没有菜单。** 菜单只进了续写的 system prompt——
+**看得见菜单的时候调不了工具，能调工具的时候没看见菜单。** 三条 harness
+的 gather 步现在都带菜单，`RETRIEVAL_PLAN_SYSTEM` 里也明说了「只有这一步
+能调工具，那时候再想起来就晚了」。
+
+顺带挖出第三个：**`RuntimePolicy.tool_groups` 默认 `["memory"]` 且直接
+替换 `Mode.groups`**，于是 `skill` 组从来没被暴露给模型。同一件事有两个
+数据源，晚写的那个赢。改成 `extra_tool_groups`——策略可以**加**组
+（升级到核验工具），不能**替换**；组由 Mode 决定。
+
+修完真跑：模型自己判断出「这一节要做成给投资人看的汇报材料」，调了
+`load_skill("slide-deck")`，body 进上下文。
+
+#### `compose_system` 的签名也变了
+
+```python
+compose_system(base, scope, user, menu=None, bodies=None)
+```
+
+`bodies` 必须由调用方传：它装的是**匹配 scope 的 + 模型自己 load 进来的**，
+在函数里重算 `for_scope` 会把后者丢掉——模型调了 `load_skill`、看着 body
+永远不出现、于是再调一次。
+
 ### 还没做的
 
-* 知识库：续跑端点、主题簇、抽取判断（`kb-architecture.md` 第 9 节 1–7 步）
-* skill 的第一层（触发）与第三层（`read_skill_ref`）接进真实 loop
 * 用户处置回路（第 13 节）
+* 前端簇视图（`kb-architecture.md` 第 9 节第 6 步，`/api/kb/clusters` 已就绪）
+* 模型判的两条抽取判据（同上第 5 步，成本翻倍要先算账）

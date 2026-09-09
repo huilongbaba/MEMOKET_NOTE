@@ -13,6 +13,7 @@ from typing import AsyncIterator
 
 from ... import agent_loop, llm
 from ...agent_loop import ToolTrace
+from ... import prompts
 from ...prompts import BLOCK_SYSTEM
 from ..state import State
 
@@ -35,7 +36,7 @@ class BlockHooks:
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:
-        msgs = [{"role": "system", "content": BLOCK_SYSTEM},
+        msgs = [{"role": "system", "content": self._system(st)},
                 {"role": "user", "content": self._user(st, facts="")}]
         extra, trace = await agent_loop.gather_context(
             msgs, st.ctx, groups=list(st.mode.groups), max_iters=3)
@@ -69,7 +70,7 @@ class BlockHooks:
                        "也不要因为这一轮没再调工具就说画不出图。")
         fresh = ""
         async for piece in llm.stream(
-                [{"role": "system", "content": BLOCK_SYSTEM},
+                [{"role": "system", "content": self._system(st)},
                  {"role": "user", "content": user}],
                 max_tokens=st.mode.max_tokens, temperature=0.4):
             fresh += piece
@@ -83,6 +84,16 @@ class BlockHooks:
         decides where it lands; writing it server-side would insert it twice."""
 
     # ------------------------------------------------------------ prompt --
+    def _system(self, st: State) -> str:
+        """Base rules, the skills the user scoped to block work, and the menu
+        of the rest. Same treatment as the two long-form harnesses -- the six
+        block modes had no skill scope at all until now, so anything a user
+        configured for them silently did nothing."""
+        return prompts.compose_system(BLOCK_SYSTEM, st.mode.skill_scope,
+                                      st.ctx.user, st.skill_menu,
+                                      st.skill_bodies)
+
+
     def _user(self, st: State, *, facts: str) -> str:
         """The round's user message.
 
@@ -101,8 +112,6 @@ class BlockHooks:
         if self.profile:
             parts.append("【用户的写作偏好】\n"
                          + "\n".join(f"- {p}" for p in self.profile))
-        for body in st.skill_bodies:
-            parts.append(body)
         if facts:
             parts.append("【工具查到的东西】\n" + facts)
         parts.append("【光标前面的正文】\n" + (st.before[-900:] or "（这里是开头）"))

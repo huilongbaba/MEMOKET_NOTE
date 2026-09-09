@@ -24,6 +24,7 @@ So: content on disk, untouched; configuration in ``skill_config``.
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,27 @@ MAX_BODY_CHARS = 20_000
 # reliable than an instruction to show restraint.
 MAX_LOADED_SKILLS = 3
 
+# Which built-in applies where. **Deliberately not in SKILL.md**: a skill
+# does not get to declare when our system uses it, any more than an app
+# declares its own permissions. Same user, same skill, different opinion
+# about when it should fire -- that is configuration, and configuration
+# lives in the database (see harness-framework 10.1.2).
+BUILTIN_SCOPES: dict[str, list[str]] = {
+    "doc-coauthoring-sections": ['plan_generate'],
+    "discernment-nudge-verify-triage": ['verify'],
+    "brainstorming-confirm-scope": ['plan_generate'],
+    "structured-reasoning-evidence-tiers": ['verify'],
+    "source-check-top-edit-rewrite": ['rewrite', 'polish'],
+    "llm-writing-avoid-defaults": ["magic_tap", "block_prompt"],
+    "story-memory-term-consistency": ['section_write'],
+    "discernment-nudge-more-sections-restraint": ['more_sections'],
+    "story-planning-expand-consistency": ['expand'],
+    "source-check-edit-evidence": ['edit'],
+    "top-edit-structural-patterns": ['edit'],
+    "doc-coauthoring-anticipate-questions": ['skeleton'],
+    "highlight-deltas-digest": ['digest']
+}
+
 
 @dataclass(frozen=True)
 class Skill:
@@ -57,6 +79,20 @@ class Skill:
     scopes: tuple[str, ...] = ()
     sandbox: str = "none"           # none | compute | files
     source: str = "user"            # builtin | user | imported
+    idx: int = 0                    # stacking order in the prompt
+
+    @property
+    def title(self) -> str:
+        """What a person calls it.
+
+        ``name`` is an identifier -- lowercase, hyphens, so the directory
+        copies straight into Claude Code. The readable name is the body's
+        first heading, which is where the spec leaves room for it.
+        """
+        for line in self.body.splitlines():
+            if line.startswith("# "):
+                return line[2:].strip()
+        return self.name
 
 
 class SkillFormatError(ValueError):
@@ -164,7 +200,12 @@ def load_all(user: str) -> list[Skill]:
             scopes=tuple(cfg.get("scopes") or ()),
             sandbox=str(cfg.get("sandbox") or "none"),
             source=str(cfg.get("source") or "user"),
+            idx=int(cfg.get("idx") or 0),
         ))
+    # Stacking order is user configuration: two skills that disagree are
+    # resolved by whichever the model reads last. Directory name is only the
+    # tie-break.
+    out.sort(key=lambda s: (s.idx, s.slug))
     return out
 
 
@@ -212,3 +253,143 @@ def read_reference(user: str, slug: str, relative: str) -> str | None:
         return target.read_text(encoding="utf-8")[:MAX_BODY_CHARS]
     except (OSError, UnicodeDecodeError):
         return None
+
+
+# --------------------------------------------------------------- install ---
+
+BUILTIN_ROOT = Path(__file__).resolve().parent.parent / "skills"
+
+
+def seed(user: str) -> int:
+    """Install the built-in skills into this user's directory. Returns how many.
+
+    Built-ins go through **the same path as everything else** -- a standard
+    directory under ``data/<user>/skills/`` with the standard ``SKILL.md``.
+    They get no private channel, which means the user can disable one, edit
+    one, or delete one, and a skill written here can be copied straight into
+    Claude Code.
+
+    Incremental: a directory that already exists is left alone, so a user's
+    edits survive an upgrade and a new built-in reaches existing users.
+    """
+    from . import store
+
+    root = skills_root(user)
+    root.mkdir(parents=True, exist_ok=True)
+    added = 0
+    for source in sorted(BUILTIN_ROOT.iterdir()) if BUILTIN_ROOT.is_dir() else []:
+        md = source / "SKILL.md"
+        if not source.is_dir() or not md.is_file():
+            continue
+        target = root / source.name
+        if target.exists():
+            continue
+        shutil.copytree(source, target)
+        store.set_skill_config(user, source.name, enabled=True,
+                               scopes=BUILTIN_SCOPES.get(source.name, []),
+                               sandbox="none", source="builtin")
+        added += 1
+    return added
+
+
+def install(user: str, directory_name: str, files: dict[str, str], *,
+            source: str = "user", scopes: list[str] | None = None,
+            enabled: bool | None = None) -> Skill:
+    """Write one skill directory. ``files`` maps relative path -> text.
+
+    ``enabled`` defaults to False for imported skills and True otherwise:
+    **installing is not enabling**. Someone else's instructions go into the
+    model's context, so there is a user confirmation between arriving and
+    taking effect -- the official guidance is the same ("use Skills only from
+    trusted sources", "audit thoroughly").
+    """
+    from . import store
+
+    if "SKILL.md" not in files:
+        raise SkillFormatError("a skill directory must contain SKILL.md")
+    name, _description, _body = parse_skill_md(files["SKILL.md"])
+    slug = directory_name.strip() or name
+    if not NAME_RE.match(slug):
+        raise SkillFormatError(
+            f"directory name {slug!r} must be lowercase letters, digits and hyphens")
+
+    target = skills_root(user) / slug
+    target.mkdir(parents=True, exist_ok=True)
+    for relative, text in files.items():
+        path = (target / relative).resolve()
+        try:
+            path.relative_to(target.resolve())
+        except ValueError:
+            # An archive entry named ../../something. Rejected rather than
+            # sanitised: a skill that needs to write outside its own
+            # directory is not a skill this product can install.
+            raise SkillFormatError(f"{relative!r} escapes the skill directory")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    store.set_skill_config(
+        user, slug,
+        enabled=(source != "imported") if enabled is None else enabled,
+        scopes=scopes or [], sandbox="none", source=source)
+    found = [s for s in load_all(user) if s.slug == slug]
+    if not found:
+        raise SkillFormatError("the skill was written but could not be read back")
+    return found[0]
+
+
+def uninstall(user: str, slug: str) -> bool:
+    from . import store
+
+    target = skills_root(user) / slug
+    if not target.is_dir():
+        return False
+    shutil.rmtree(target)
+    store.delete_skill_config(user, slug)
+    return True
+
+
+def menu_block(menu: list[tuple[str, str]]) -> str:
+    """The always-resident skill list -- level 1 of progressive disclosure.
+
+    Roughly 100 tokens per skill, which is why only name and description are
+    here and the body waits for ``load_skill``. With 13 built-ins that all
+    have scopes configured this block is usually empty, and costs nothing.
+    """
+    if not menu:
+        return ""
+    lines = "\n".join(f"- {name}: {description}" for name, description in menu)
+    return ("【可用技能】（判断这次用得上就调 load_skill 把它的完整说明加载进来）\n"
+            + lines)
+
+
+def slugify(text: str) -> str:
+    """A spec-legal identifier from whatever the user typed.
+
+    The name a person writes is usually Chinese, and the spec allows only
+    lowercase letters, digits and hyphens. When nothing survives -- a purely
+    Chinese name, which is the normal case here -- fall back to a stable hash
+    so the directory still has a legal name and the readable name lives in
+    the body's heading, where the spec leaves room for it.
+    """
+    import hashlib
+
+    cleaned = re.sub(r"[^a-z0-9]+", "-", (text or "").strip().lower()).strip("-")
+    if cleaned:
+        return cleaned[:64]
+    digest = hashlib.sha1((text or "").encode("utf-8")).hexdigest()[:10]
+    return f"skill-{digest}"
+
+
+def render_skill_md(slug: str, description: str, title: str, body: str) -> str:
+    """Write a SKILL.md the spec accepts.
+
+    The readable title goes in the body's first heading rather than the
+    frontmatter, because ``name`` is an identifier. A skill written in this
+    product's panel is therefore a file that Claude Code can also read.
+    """
+    description = " ".join((description or title or slug).split())[:MAX_DESCRIPTION]
+    heading = (title or slug).strip()
+    text = body.strip()
+    if not text.startswith("# "):
+        text = f"# {heading}\n\n{text}"
+    return f"---\nname: {slug}\ndescription: {description}\n---\n\n{text}\n"

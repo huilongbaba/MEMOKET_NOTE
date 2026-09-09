@@ -1,19 +1,45 @@
-"""Skill 系统的管理接口：CRUD + 开关 + 排序 + 可用 scope 列表。
+"""Skills: install, configure, remove.
 
-真正"生效"的地方不在这里——各个生成调用点（compose.py/writing_plan.py）
-在拼 system prompt 时自己调 store.enabled_skills_for_scope() +
-prompts.compose_system()，这个路由只管前端面板增删改查。
+**A skill is a directory, not a database row.** ``data/<user>/skills/<slug>/``
+holds a standard ``SKILL.md`` plus whatever it bundles, exactly as the Agent
+Skills format defines it -- so a skill downloaded from anywhere installs by
+being copied in, and one written here can be copied out. That is the whole
+reason for using the standard format rather than a schema of our own.
+
+What is *not* in the file is our configuration: which scopes it applies to,
+whether it is enabled, what sandbox level its scripts may have. Those are not
+properties of the skill (a skill declaring its own permissions makes as much
+sense as an app declaring it has the camera) -- they are the user's decisions,
+and they live in ``skill_config``.
 """
 
-import json
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import llm, prompts, store
-from ..schemas import Skill, SkillGenerateIn, SkillIn, SkillReorderIn, SkillScope
+from .. import llm, prompts, skills as skills_store, store
+from ..schemas import (Skill, SkillGenerateIn, SkillIn, SkillReorderIn,
+                       SkillScope)
 from .deps import current_user
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
+
+
+def _out(skill: skills_store.Skill) -> dict:
+    return {
+        "id": skill.slug, "name": skill.title, "slug": skill.slug,
+        "description": skill.description, "scopes": list(skill.scopes),
+        "content": skill.body, "enabled": skill.enabled, "idx": skill.idx,
+        "builtin": skill.source == "builtin", "source": skill.source,
+        "sandbox": skill.sandbox,
+    }
+
+
+def _find(user: str, slug: str) -> skills_store.Skill:
+    for skill in skills_store.load_all(user):
+        if skill.slug == slug:
+            return skill
+    raise HTTPException(404, "skill not found")
 
 
 @router.get("/scopes", response_model=list[SkillScope])
@@ -23,15 +49,20 @@ def list_scopes():
 
 @router.get("", response_model=list[Skill])
 def list_skills(user: str = Depends(current_user)):
-    return store.list_skills(user)
+    # Seeding here rather than at startup: a user who has never opened the
+    # panel has no directory yet, and this is the first place that matters.
+    skills_store.seed(user)
+    return [_out(s) for s in skills_store.load_all(user)]
 
 
 @router.post("/generate", response_model=SkillIn)
 async def generate_skill(body: SkillGenerateIn, user: str = Depends(current_user)):
-    """用一两句话描述想要的写作行为，让模型草拟一条 skill——返回的是草稿
-    （SkillIn 形状），不直接落库。前端在同一个编辑表单里展示，用户看过、
-    改过、选好 scope 之后再调 POST /api/skills 真正保存，跟"导入第三方
-    skill"走的是同一套"先预览再保存"流程。"""
+    """Draft a skill from a sentence. **Returns a draft, saves nothing.**
+
+    The user reads it, edits it, picks the scopes, then POSTs it -- the same
+    preview-before-save path a third-party import takes, for the same reason:
+    text nobody has read should not reach the model's context.
+    """
     goal = body.goal.strip()
     if not goal:
         raise HTTPException(400, "goal required")
@@ -42,14 +73,14 @@ async def generate_skill(body: SkillGenerateIn, user: str = Depends(current_user
     parsed = llm.extract_json(text)
     if not isinstance(parsed, dict):
         raise HTTPException(502, "模型没能生成有效的技能内容，换个描述再试试")
-    scopes = [s for s in (parsed.get("scopes") or []) if s in prompts.SKILL_SCOPES]
     content = str(parsed.get("content") or "").strip()
     if not content:
         raise HTTPException(502, "模型没能生成有效的技能内容，换个描述再试试")
     return SkillIn(
         name=str(parsed.get("name") or "").strip() or "未命名技能",
+        slug=skills_store.slugify(str(parsed.get("slug") or parsed.get("name") or "")),
         description=str(parsed.get("description") or "").strip(),
-        scopes=scopes,
+        scopes=[s for s in (parsed.get("scopes") or []) if s in prompts.SKILL_SCOPES],
         content=content,
         enabled=True,
     )
@@ -57,46 +88,52 @@ async def generate_skill(body: SkillGenerateIn, user: str = Depends(current_user
 
 @router.post("", response_model=Skill)
 def create_skill(body: SkillIn, user: str = Depends(current_user)):
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(400, "skill name required")
     if not body.content.strip():
         raise HTTPException(400, "skill content required")
-    return store.create_skill(user, name, body.description, body.scopes, body.content, body.enabled)
+    slug = skills_store.slugify(body.slug or body.name)
+    if not slug:
+        raise HTTPException(400, "skill name must yield a usable identifier")
+    try:
+        skill = skills_store.install(
+            user, slug, {"SKILL.md": skills_store.render_skill_md(
+                slug, body.description, body.name, body.content)},
+            source="user", scopes=body.scopes, enabled=body.enabled)
+    except skills_store.SkillFormatError as exc:
+        raise HTTPException(400, str(exc))
+    return _out(skill)
 
 
-@router.put("/{skill_id}", response_model=Skill)
-def update_skill(skill_id: str, body: SkillIn, user: str = Depends(current_user)):
-    updated = store.update_skill(
-        user, skill_id,
-        name=body.name.strip() or "未命名技能",
-        description=body.description,
-        scopes=json.dumps(body.scopes, ensure_ascii=False),
-        content=body.content,
-        enabled=1 if body.enabled else 0,
-    )
-    if not updated:
+@router.put("/{slug}", response_model=Skill)
+def update_skill(slug: str, body: SkillIn, user: str = Depends(current_user)):
+    existing = _find(user, slug)
+    try:
+        skill = skills_store.install(
+            user, slug, {"SKILL.md": skills_store.render_skill_md(
+                slug, body.description, body.name, body.content)},
+            source=existing.source, scopes=body.scopes, enabled=body.enabled)
+    except skills_store.SkillFormatError as exc:
+        raise HTTPException(400, str(exc))
+    return _out(skill)
+
+
+@router.post("/{slug}/toggle", response_model=Skill)
+def toggle_skill(slug: str, user: str = Depends(current_user)):
+    skill = _find(user, slug)
+    store.set_skill_config(user, slug, enabled=not skill.enabled)
+    return _out(_find(user, slug))
+
+
+@router.delete("/{slug}")
+def delete_skill(slug: str, user: str = Depends(current_user)):
+    if not skills_store.uninstall(user, slug):
         raise HTTPException(404, "skill not found")
-    return updated
-
-
-@router.post("/{skill_id}/toggle", response_model=Skill)
-def toggle_skill(skill_id: str, user: str = Depends(current_user)):
-    skill = store.get_skill(user, skill_id)
-    if not skill:
-        raise HTTPException(404, "skill not found")
-    updated = store.update_skill(user, skill_id, enabled=0 if skill["enabled"] else 1)
-    return updated
-
-
-@router.delete("/{skill_id}")
-def delete_skill(skill_id: str, user: str = Depends(current_user)):
-    if not store.delete_skill(user, skill_id):
-        raise HTTPException(404, "skill not found")
-    return {"deleted": skill_id}
+    return {"deleted": slug}
 
 
 @router.post("/reorder")
 def reorder_skills(body: SkillReorderIn, user: str = Depends(current_user)):
-    store.reorder_skills(user, body.ordered_ids)
+    """Stacking order. It is configuration, not presentation: two skills that
+    disagree are resolved by whichever the model reads last."""
+    for position, slug in enumerate(body.ordered_ids):
+        store.set_skill_config(user, slug, idx=position)
     return {"ok": True}

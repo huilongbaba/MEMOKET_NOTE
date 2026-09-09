@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import (agent_loop, grounding_check, outline, prompts, store, tools)
+from ... import agent_loop, grounding_check, outline, prompts, tools
 from ... import llm
 from ...agent_loop import ToolTrace
-from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS, TOOL_GROUPS
+from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
 from ...retrieval import retrieve as _retrieve
 from ..state import State
 
@@ -46,14 +46,16 @@ class SectionHooks:
             return facts, trace
 
         msgs = [
-            {"role": "system", "content": prompts.RETRIEVAL_PLAN_SYSTEM},
+            {"role": "system", "content": prompts.compose_system(
+                prompts.RETRIEVAL_PLAN_SYSTEM, st.mode.skill_scope, st.ctx.user,
+                st.skill_menu, [])},
             {"role": "user", "content": prompts.retrieval_plan_user(
                 title, self.goal, self.other_summaries, st.content,
                 topics_overview=tools.dispatch(
                     "list_topics", {"limit": 40}, st.ctx))},
         ]
         _extra, trace = await agent_loop.gather_context(
-            msgs, st.ctx, groups=TOOL_GROUPS)
+            msgs, st.ctx, groups=list(st.mode.groups))
         facts = list(trace.as_facts())
 
         # A failed tool loop must not mean writing empty-handed: fall back to
@@ -86,9 +88,9 @@ class SectionHooks:
             # more now is precisely what this round exists to avoid.
             return
 
-        system = prompts.compose_system(
-            prompts.MAGIC_TAP_SYSTEM,
-            store.enabled_skills_for_scope(st.ctx.user, "section_write"))
+        system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, st.mode.skill_scope,
+                                        st.ctx.user, st.skill_menu,
+                                        st.skill_bodies)
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompts.section_write_user(

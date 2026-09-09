@@ -53,9 +53,8 @@ class Revise:
         edited: set[str] = st.bag.setdefault("edited_spans", set())
         focus = st.bag.get("focus", "")
 
-        system = prompts.compose_system(
-            prompts.EDIT_SYSTEM,
-            store.enabled_skills_for_scope(st.ctx.user, "edit"))
+        system = prompts.compose_system(prompts.EDIT_SYSTEM, "edit", st.ctx.user,
+                                        st.skill_menu, None)
         user = prompts.edit_user(
             st.bag.get("spine", ""), st.bag.get("beats") or [], st.content,
             st.facts, st.bag.get("profile") or [], focus,

@@ -127,7 +127,7 @@ async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)
     folder_notes = store.notes_in_folder(user, body.folder_id, limit=8)
     folder_ctx = prompts.folder_context_block(folder_notes)
 
-    plan_system = prompts.compose_system(prompts.PLAN_SYSTEM, store.enabled_skills_for_scope(user, "plan_generate"))
+    plan_system = prompts.compose_system(prompts.PLAN_SYSTEM, "plan_generate", user)
     text = await llm.complete(
         [{"role": "system", "content": plan_system},
          {"role": "user", "content": prompts.plan_user(goal, facts, folder_ctx)}],
@@ -178,7 +178,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 folder_notes = store.notes_in_folder(user, body.folder_id, limit=8)
                 folder_ctx = prompts.folder_context_block(folder_notes)
                 more_system = prompts.compose_system(
-                    prompts.MORE_SECTIONS_SYSTEM, store.enabled_skills_for_scope(user, "more_sections"))
+                    prompts.MORE_SECTIONS_SYSTEM, "more_sections", user)
                 try:
                     text = await llm.complete(
                         [{"role": "system", "content": more_system},

@@ -64,7 +64,12 @@ class RuntimePolicy:
     「一轮都不调整」时行为跟改动前完全一致。"""
 
     tool_iters: int = 2
-    tool_groups: list[str] = field(default_factory=lambda: ["memory"])
+    # **Extra** groups for this round, not the whole list. Which groups a
+    # feature gets is Mode configuration; a runtime policy that replaced it
+    # silently dropped every group the Mode declared -- measured: the skill
+    # tools were registered, listed in the prompt, and never reachable,
+    # because this defaulted to ["memory"] and won.
+    extra_tool_groups: list[str] = field(default_factory=list)
     # 注入下一轮检索规划 prompt 的自然语言指令。这是把打分诊断喂回去的
     # 通道——控制器决定"要不要提、提什么方向"，具体措辞用打分模型自己
     # 写的那句话，因为它比我们更清楚哪里不对。
@@ -207,7 +212,7 @@ def adjust(policy: RuntimePolicy, fb: RoundFeedback) -> tuple[RuntimePolicy, lis
 
     new = RuntimePolicy(
         tool_iters=_clamp(tool_iters, TOOL_ITERS_MIN, TOOL_ITERS_MAX),
-        tool_groups=list(policy.tool_groups),
+        extra_tool_groups=list(policy.extra_tool_groups),
         steer="\n".join(steer_parts),
         continue_temperature=_clamp(temperature, TEMP_MIN, TEMP_MAX),
         max_revisions=_clamp(revisions, REVISIONS_MIN, REVISIONS_MAX),

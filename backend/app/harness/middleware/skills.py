@@ -22,10 +22,15 @@ from ..state import State
 
 class Skills:
     name = "skills"
-    hooks = ("before_produce",)
+    # **before_round, not before_produce.** Tools only exist on the gather
+    # call, so the menu has to be in context before gather runs -- a model
+    # that first reads "these skills are available" while writing has already
+    # passed the only point where it could load one. Measured: with this on
+    # before_produce, ``load_skill`` was never called.
+    hooks = ("before_round",)
     after: tuple[str, ...] = ()
 
-    async def before_produce(self, st: State) -> None:
+    async def before_round(self, st: State) -> None:
         # First round only. ``skill_bodies`` also holds whatever the model
         # loaded via ``load_skill``, and recomputing every round would wipe
         # those out -- forcing it to re-load the same skill up to 8 times.

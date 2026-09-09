@@ -689,7 +689,12 @@ list_topics / list_entities 只是帮你决定往哪查的**元信息**，它们
 - 拿到事实后如果拿不准某条的确切含义，可以用 fact_sources 回溯原话。
 
 宁可多查一点，也不要在该查的时候不查——查不到最多是白花点时间，不查就
-会编造，而编造出来的具体日期和人名会被用户当成自己的记录。"""
+会编造，而编造出来的具体日期和人名会被用户当成自己的记录。
+
+**这一步也是加载技能的地方。** 下面如果列了可用技能，判断这次写的东西
+跟哪一条对得上，就调 load_skill 把它的完整说明拿进来；技能说明里提到某个
+参考文件时再调 read_skill_ref。**只有这一步能调工具**——写正文那一步没有
+工具可用，那时候再想起来就晚了。"""
 
 
 def retrieval_plan_user(title: str, spine: str, beats: list[str], content: str,
@@ -1097,28 +1102,73 @@ SKILL_SCOPES = {
     "edit": "整篇修订建议",
     "skeleton": "生成骨架",
     "digest": "阶段回顾",
+    # `/` 唤起的块生成。这两个是新加的——六个块模式此前一个 scope 都没有，
+    # 于是用户在那条路径上配的技能一条都不生效，而且不报错。
+    "block_write": "`/` 生成图表 · 表格 · 数据分析",
+    "block_prompt": "`/` 按提示词写 · 右键自定义提示",
 }
 
 
-def compose_system(base: str, skills: list[dict]) -> str:
-    """在基础 system prompt 后面按顺序叠加启用的 skill 内容。skills 已经是
-    过滤+排序好的（见 store.enabled_skills_for_scope），这里只管拼。"""
-    if not skills:
-        return base
-    parts = [base, "以下是额外启用的写作技能，在不违反上面规则的前提下按顺序叠加生效："]
-    for sk in skills:
-        parts.append(f"【{sk['name']}】\n{sk['content']}")
+def compose_system(base: str, scope: str, user: str = "",
+                   menu: list[tuple[str, str]] | None = None,
+                   bodies: list[str] | None = None) -> str:
+    """Base prompt + the skills in play + the menu of the rest.
+
+    Two channels, and the difference is who decided:
+
+    * **scope match** -- the user configured "this skill applies when doing
+      X". The body goes straight in; there is nothing for the model to judge.
+    * **the menu** -- name and description only, about 100 tokens each. The
+      model calls ``load_skill`` if one fits. This is what progressive
+      disclosure means: read the table of contents, pick the chapter.
+
+    ``bodies`` and ``menu`` come from the run's state when there is one. That
+    matters for ``bodies`` specifically: it holds the scope matches **plus
+    whatever the model loaded itself**, and recomputing from ``for_scope``
+    here would drop the loaded ones on the floor -- the model would call
+    ``load_skill``, watch the body never arrive, and call it again.
+    """
+    from . import skills as skills_store
+
+    if bodies is None or menu is None:
+        injected, listed = skills_store.for_scope(user, scope)
+        bodies = [s.body for s in injected] if bodies is None else bodies
+        menu = [(s.name, s.description) for s in listed] if menu is None else menu
+
+    parts = [base]
+    if bodies:
+        parts.append("以下是额外启用的写作技能，在不违反上面规则的前提下按顺序叠加生效：")
+        parts.extend(bodies)
+    block = skills_store.menu_block(menu)
+    if block:
+        parts.append(block)
     return "\n\n".join(parts)
 
 
 def skill_generate_system() -> str:
-    """懒生成而不是模块顶层常量——要引用 DEFAULT_SKILLS 里的例子当风格
-    参考，放函数里避免在模块加载顺序上对 DEFAULT_SKILLS（定义在下面）产生
-    依赖。"""
+    """Read the style examples off disk rather than from a constant.
+
+    The built-in skills used to be a list of dicts here, and were seeded into
+    a database table. They are ordinary ``SKILL.md`` directories now -- the
+    same shape a user writes and a third party ships -- so there is one
+    definition of what a skill is, and this function reads three of them as
+    examples instead of holding its own copy.
+    """
+    from . import skills as skills_store
+
     scope_lines = "\n".join(f"- {k}：{v}" for k, v in SKILL_SCOPES.items())
-    examples = "\n\n".join(
-        f"例：{sk['name']}\n{sk['content']}" for sk in DEFAULT_SKILLS[:3]
-    )
+    examples = []
+    root = skills_store.BUILTIN_ROOT
+    for directory in sorted(root.iterdir())[:3] if root.is_dir() else []:
+        md = directory / "SKILL.md"
+        if not md.is_file():
+            continue
+        try:
+            _name, _desc, body = skills_store.parse_skill_md(
+                md.read_text(encoding="utf-8"))
+        except skills_store.SkillFormatError:
+            continue
+        examples.append(f"例：{body}")
     return f"""你是写作技能生成助手。用户会用一两句话描述想要的写作行为，
 你要把它写成一条具体、可执行的写作指令。
 
@@ -1126,8 +1176,9 @@ def skill_generate_system() -> str:
 {scope_lines}
 
 要求：
-- name：8-16 字左右的技能名称
-- description：一句话说明这条技能做什么
+- name：8-16 字左右的技能名称（可以是中文，会作为技能说明的一级标题）
+- description：一句话说明这条技能**做什么**、以及**什么时候用**——
+  这是模型判断要不要触发它的唯一依据
 - scopes：从上面的可选范围里选 1-3 个最贴合用户描述意图的，不要瞎猜太多、
   跟意图明显无关的范围不要选
 - content：具体的指令内容，风格参考下面的例子——描述具体的"不要做什么/
@@ -1137,7 +1188,7 @@ def skill_generate_system() -> str:
   不要任何解释文字
 
 参考风格例子：
-{examples}
+{chr(10).join(examples)}
 """
 
 
@@ -1149,183 +1200,6 @@ def skill_generate_user(goal: str, scope_hint: str = "") -> str:
     return "\n\n".join(parts)
 
 
-# 从调研到的高质量 Claude Skill 改写来的默认技能——内容是重新写的、贴合
-# MEMOKET_NOTE 现有 prompt 风格的中文版本，不是原文翻译。每条有个稳定的
-# "key"，store._seed_missing_default_skills() 靠它做增量播种（判断这个
-# 用户是不是已经有过这条了），所以这里新增条目会自动补给已有用户，但已经
-# 加过的 key 千万不能改字符串本身，否则等于又是一条新的，会重复种一遍。
-#
-# 覆盖面：11 个生成调用点（SKILL_SCOPES）现在每个至少有一条，不是只集中
-# 在校验/无限续写这两个我最先调研的方向——续写、分段写作、判断还有没有
-# 更多、扩展上下文、整篇修订、生成骨架、阶段回顾之前是空的，都补上了。
-DEFAULT_SKILLS: list[dict] = [
-    {
-        "key": "doc-coauthoring-sections",
-        "name": "结构化分段（受doc-coauthoring 启发）",
-        "description": "生成分段列表前先想清楚读者会追问什么，让分段之间体现真正的推进关系，不是把目标里的名词各开一段。",
-        "scopes": ["plan_generate"],
-        "content": (
-            "生成分段列表前，先在心里过一遍：这个目标如果要写成一份完整、"
-            "经得起读者检验的文档，读者最可能追问的几个问题是什么——分段要"
-            "覆盖到能回答这些追问，不是简单地把目标里出现的名词各开一段。"
-            "分段之间要能看出明确的推进关系（比如问题→方案→验证→执行这种"
-            "结构性递进），不是并列罗列话题。"
-        ),
-    },
-    {
-        "key": "discernment-nudge-verify-triage",
-        "name": "校验触发/跳过规则（受discernment-nudge 启发）",
-        "description": "只标记看起来像事实陈述、但知识库里没有直接支持的具体论断，别把创意表达或用户已承认的猜测也标成待核实。",
-        "scopes": ["verify"],
-        "content": (
-            "给内容打校验标记前，先判断值不值得校验：如果选中内容是纯粹的"
-            "创意表达、语气性的润色用词，或者用户已经在这句话里明确说了"
-            "是自己的猜测/不确定，就不用标记为需要核实——只标记那些看起来"
-            "像陈述事实、但没有在知识库里找到直接支持的具体论断（数字、"
-            "时间点、因果关系、归因）。每条校验意见要说清楚缺的是什么证据，"
-            "不要只说“建议核实”这种空话。"
-        ),
-    },
-    {
-        "key": "brainstorming-confirm-scope",
-        "name": "生成前确认范围（受brainstorming 启发）",
-        "description": "目标描述得模糊或范围很大时，先给一份偏保守聚焦的分段列表，而不是自己脑补一个特别大的计划。",
-        "scopes": ["plan_generate"],
-        "content": (
-            "如果写作目标描述得比较模糊、或者范围看起来很大（比如笼统的"
-            "“写一份 XX 规划”没给出具体边界），不要因为目标模糊就默认展开"
-            "成一个特别大而全的计划，宁可先给一份偏保守、聚焦在目标里明确"
-            "提到的内容的分段列表——范围不够可以后面用「还有没有更多」的"
-            "机制自然补上，先给太大的范围反而容易写偏。"
-        ),
-    },
-    {
-        "key": "structured-reasoning-evidence-tiers",
-        "name": "区分证据确定性（受结构化推理 skill 启发）",
-        "description": "校验意见要区分「原文直接支持」「能合理推断但没有直接原文」「知识库完全没提到」三种不同确定性，不要把推断包装成原文支持。",
-        "scopes": ["verify"],
-        "content": (
-            "给出校验意见时，明确区分三类确定性：知识库里有原文直接支持的"
-            "（标“支持”或“矛盾”，给出原文依据）；知识库里没有直接证据、但"
-            "能从已有事实合理推出的（说明这是推断，以及推理链条是什么）；"
-            "以及知识库完全没提到、纯粹在正文之外的（如实说无法判断，不要"
-            "为了给出意见就强行编一个）。不要把“合理推断”包装成“原文支持”，"
-            "这是两种确定性完全不同的结论，混在一起会让人误判证据强度。"
-        ),
-    },
-    {
-        "key": "source-check-top-edit-rewrite",
-        "name": "保留具体信息 + 去 AI 味（受source-check/top-edit 启发）",
-        "description": "重写润色时别把数字、人名、时间点这类具体信息改得笼统模糊，同时主动去掉套话开头、过度排比、各打五十大板式的和稀泥表达。",
-        "scopes": ["rewrite", "polish"],
-        "content": (
-            "重写/润色时如果正文里有具体的数字、人名、时间点、因果归因这类"
-            "可核实的陈述，优先原样保留这些具体信息，不要在让语言更顺的过程"
-            "中把具体表述改得更笼统模糊——这是最常见的把内容改“顺”但改“空”的"
-            "失误。同时检查有没有典型的 AI 写作痕迹要去掉：不必要的“总的来说”"
-            "“值得注意的是”这类套话开头、过度使用排比结构、正反双面各打"
-            "五十大板式的和稀泥表达——发现就直接去掉，不用保留痕迹。"
-        ),
-    },
-    {
-        "key": "llm-writing-avoid-defaults",
-        "name": "去 AI 写作痕迹（受llm-writing 启发）",
-        "description": "续写时主动避开排比收尾、升调句式、硬凑对比这些无意识的 AI 写作默认习惯，句子长短要自然变化。",
-        "scopes": ["magic_tap"],
-        "content": (
-            "续写时主动避开无意识的 AI 写作默认习惯：不要每段都用排比句式"
-            "收尾，不要习惯性地用“这不仅…而且…”这种升调句式制造虚假的重要"
-            "感，没有实际内容对比时不要硬凑“不是 A，而是 B”这种句式来制造"
-            "深度感。句子长短应该自然变化，不要每句都写成中等长度的复合句"
-            "——短句、长句交替，跟真实写作的语感一致。"
-        ),
-    },
-    {
-        "key": "story-memory-term-consistency",
-        "name": "分段术语一致性（受story-memory 启发）",
-        "description": "分段写作时人名/项目名/专有名词的写法要跟其他分段保持一致，不要在这一段又造一个新叫法。",
-        "scopes": ["section_write"],
-        "content": (
-            "这个分段引用的人名、项目名、专有名词、缩写，写法要跟计划里其他"
-            "分段/已完成小结保持完全一致，不要在这段又造一个新叫法（比如已经"
-            "统一用某个正式项目名，就不要在这段又换成非正式简称，除非原文"
-            "本身就是这么叫的）。发现术语不一致，以先写的那个分段为准。"
-        ),
-    },
-    {
-        "key": "discernment-nudge-more-sections-restraint",
-        "name": "宁缺毋滥（受discernment-nudge 的克制原则启发）",
-        "description": "判断还有没有更多分段时默认倾向于「没有了」，只有知识库里明显有一块内容完全没被覆盖到才追加。",
-        "scopes": ["more_sections"],
-        "content": (
-            "判断还有没有更多分段时，默认倾向于“没有了”——只有当知识库事实"
-            "或已有笔记里有一块跟目标明显相关、但完全没被任何已完成分段覆盖"
-            "到的具体内容时，才提出新分段。不要因为“这个话题理论上还能再"
-            "展开”就加分段，展开空间是无限的，但那不代表值得写。"
-        ),
-    },
-    {
-        "key": "story-planning-expand-consistency",
-        "name": "扩展不能制造矛盾（受story-planning 的一致性检查启发）",
-        "description": "往前/往后补充上下文前，先扫一遍正文其他地方有没有相关的既定信息，补充内容不能跟已经写出的部分矛盾。",
-        "scopes": ["expand"],
-        "content": (
-            "往前/往后补充上下文时，补充的内容不能跟正文里已经明确写出的"
-            "信息矛盾——如果正文后面已经提到某个结论或数字，往前补的背景就"
-            "不能暗示一个不同的结论或数字。补充前先扫一遍正文其他部分有没有"
-            "相关的既定信息。"
-        ),
-    },
-    {
-        "key": "source-check-edit-evidence",
-        "name": "修订意见要给具体依据（受source-check 启发）",
-        "description": "每条修订建议要说清楚具体依据是知识库哪条事实或正文哪句话，给不出具体依据就不提这条。",
-        "scopes": ["edit"],
-        "content": (
-            "每条修订建议的理由要说清楚具体依据是什么（引用了知识库哪条"
-            "事实、或者正文哪里的哪句话跟这里矛盾），不要写“表述不够准确”"
-            "这种没有具体依据的空泛理由——给不出具体依据的地方，宁可不提"
-            "这条修订。"
-        ),
-    },
-    {
-        "key": "top-edit-structural-patterns",
-        "name": "跨全文结构套路检查（受top-edit 启发）",
-        "description": "检查有没有每节都用一模一样的三段式展开、每次建议都硬凑够三条这类结构性的 AI 写作套路，不只是逐句看。",
-        "scopes": ["edit"],
-        "content": (
-            "除了逐句检查，也要跨全文看有没有结构性的 AI 写作痕迹：是不是"
-            "每个小节都用一模一样的套路展开（比如永远是“背景/现状/建议”三"
-            "段式，不管内容是否真的适合这个结构）；是不是每次给建议都必须"
-            "凑够三条，明显是为了凑数而不是真的有三个要点。发现这种结构性"
-            "套路化，在修订建议里指出来。"
-        ),
-    },
-    {
-        "key": "doc-coauthoring-anticipate-questions",
-        "name": "先想读者会追问什么（受doc-coauthoring 的语境收集启发）",
-        "description": "生成骨架的 beats 之前先想清楚读者会在哪里卡住、追问什么，beats 里至少留一条专门用来接住这些追问。",
-        "scopes": ["skeleton"],
-        "content": (
-            "生成 beats 之前，先想清楚这篇东西如果拿给一个不了解背景的读者"
-            "看，读者会在哪里卡住、会追问什么——beats 里至少要有一条是专门"
-            "用来接住这些追问的（比如“预判反对意见”“补充背景”），不能只有"
-            "正叙推进、没有防守的部分。"
-        ),
-    },
-    {
-        "key": "highlight-deltas-digest",
-        "name": "标出变化而不只是罗列",
-        "description": "阶段回顾的「值得注意的变化」要专门标出跟更早记录相比的改变/反转/矛盾，不要图省事写成「没有变化」。",
-        "scopes": ["digest"],
-        "content": (
-            "阶段回顾不只是把这段时间的事实分类罗列，“值得注意的变化”这一"
-            "节要专门标出跟更早的记录相比发生了改变、反转、或者互相矛盾的"
-            "地方——这是回顾最有价值的部分，不要因为找起来麻烦就跳过，写成"
-            "“没有变化”之前先确认真的对比过前后的事实。"
-        ),
-    },
-]
 
 
 # ------------------------------------------------ 块生成（`/` 唤起）---

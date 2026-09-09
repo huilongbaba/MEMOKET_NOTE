@@ -4,10 +4,10 @@ These lived in ``routers/note_harness`` and were imported by
 ``routers/writing_plan`` -- the last case of one router reaching into
 another.
 
-**They are on their way into ``Mode``**: ``TOOL_GROUPS`` becomes
-``Mode.groups``, ``CONTINUE_MAX_TOKENS`` becomes ``Mode.max_tokens``, and so
-on. This module is where they sit until the routers migrate; it exists to
-break the import cycle, not as a permanent home.
+``TOOL_GROUPS`` has already gone -- it is ``Mode.groups``. What is left is
+here because it is genuinely not per-Mode: ``AGENT_TOOLS`` is an environment
+switch for A/B measurement, and the two continuation budgets are safety nets
+rather than configuration (see the comments below, which explain why).
 
 The comments are the originals. They are worth keeping intact: each records
 a number that was wrong once, and why.
@@ -27,7 +27,6 @@ import os
 # 同材料 A/B：这个改动动的是 factual_grounding 这一维，不实测不能说它更好。
 AGENT_TOOLS = os.getenv("MEMOKET_AGENT_TOOLS", "1").lower() not in ("0", "false", "no")
 
-TOOL_GROUPS = ["memory"]
 
 # 单轮续写的正文 token 上限。**这是安全网，不是控制器。**
 #

@@ -544,14 +544,19 @@ export const health = () => fetch('/api/health').then(json<any>)
 
 export type SkillScope = { value: string; label: string }
 
+/** 一个 skill 是盘上一个标准的 `SKILL.md` 目录，不是数据库里一行。
+ *  `id` 就是目录名（slug）——前端一直按 id 寻址，含义变了、用法没变。
+ *  `source` 区分内置 / 自己写的 / 第三方装的；装进来的默认是关的。 */
 export type Skill = {
-  id: string; user_id: string; name: string; description: string
+  id: string; slug: string; name: string; description: string
   scopes: string[]; content: string; enabled: boolean
-  idx: number; builtin: boolean; created_at: string; updated_at: string
+  idx: number; builtin: boolean
+  source: 'builtin' | 'user' | 'imported'; sandbox: 'none' | 'compute' | 'files'
 }
 
 export type SkillIn = {
-  name: string; description: string; scopes: string[]; content: string; enabled: boolean
+  name: string; slug?: string; description: string
+  scopes: string[]; content: string; enabled: boolean
 }
 
 export const listSkillScopes = () =>

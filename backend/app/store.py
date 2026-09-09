@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS skill_config (
     scopes  TEXT NOT NULL DEFAULT '',
     sandbox TEXT NOT NULL DEFAULT 'none',
     source  TEXT NOT NULL DEFAULT 'user',
+    -- 叠加顺序。skill 的 body 是按顺序拼进 system prompt 的，两条规则
+    -- 冲突时排后面的那条更晚被读到——所以顺序是用户配置的一部分，不是
+    -- 展示细节。
+    idx     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, slug)
 );
 
@@ -78,33 +82,6 @@ CREATE TABLE IF NOT EXISTS writing_sections (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_writing_sections_plan ON writing_sections(plan_id, idx);
-
--- 把写作 prompt 系统"skill 化"：每条 skill 是一段额外叠加的写作指令，
--- 挂在一个或多个 scope（比如 verify/rewrite/plan_generate）上，生成时
--- 在对应 scope 的基础 system prompt 后面按 idx 顺序拼接生效。scopes 存
--- JSON 数组文本（这个规模用 JSON 文本够了，不用另开关联表）。
--- default_key 标记"这条是从 prompts.DEFAULT_SKILLS 哪一条种出来的"（用户
--- 自建的技能这一列是空字符串）——种子技能会持续增加，靠这个字段做增量
--- 播种：已有用户下次打开面板时只补新增的默认技能，不会把已经种过的老的
--- 重新插一遍，也不会因为整批清空判定重新触发全量播种。
-CREATE TABLE IF NOT EXISTS skills (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    scopes      TEXT NOT NULL DEFAULT '[]',
-    content     TEXT NOT NULL,
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    idx         INTEGER NOT NULL DEFAULT 0,
-    builtin     INTEGER NOT NULL DEFAULT 0,
-    default_key TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_skills_user ON skills(user_id, idx);
--- idx_skills_default_key 建在 connect() 里、迁移之后，理由跟 idx_notes_folder
--- 一样：已存在的 skills 表（这张表本身也是这个会话里新建的，但已经在真实
--- 库里跑过一轮）不会因为 CREATE TABLE IF NOT EXISTS 补上这一列。
 
 CREATE TABLE IF NOT EXISTS ingest_jobs (
     id          TEXT PRIMARY KEY,
@@ -212,11 +189,12 @@ def connect() -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(user_id, folder_id, updated_at DESC)")
+    # skill_config 是这一版新建的，但真实库里已经跑过一轮，
+    # CREATE TABLE IF NOT EXISTS 不会给它补上后加的列。
     try:
-        conn.execute("ALTER TABLE skills ADD COLUMN default_key TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE skill_config ADD COLUMN idx INTEGER NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_skills_default_key ON skills(user_id, default_key)")
     return conn
 
 
@@ -461,145 +439,6 @@ def update_section(plan_id: str, section_id: str, **fields) -> None:
     with connect() as c:
         c.execute(f"UPDATE writing_sections SET {cols} WHERE plan_id=? AND id=?",
                   (*fields.values(), plan_id, section_id))
-
-
-# ---------------------------------------------------------------- Skill 系统
-
-def _skill_dict(row: sqlite3.Row) -> dict:
-    d = dict(row)
-    try:
-        d["scopes"] = json.loads(d["scopes"])
-    except (TypeError, json.JSONDecodeError):
-        d["scopes"] = []
-    d["enabled"] = bool(d["enabled"])
-    d["builtin"] = bool(d["builtin"])
-    return d
-
-
-def _backfill_default_keys(user_id: str) -> None:
-    """default_key 这一列是后加的——在它存在之前就已经种过的那批默认技能
-    （builtin=1 但 default_key=''）要靠 name 精确匹配把 default_key 补上，
-    不然增量播种查不到"已经有了"，会把这几条重新插一遍（这个 bug 真的
-    在 terrence 账号上炸出来过：18 条里 5 条是重复的）。按 name 匹配是
-    安全的——DEFAULT_SKILLS 里 name 没改过，改了才会走"当成新条目"这条
-    分支，这在“只新增、不改字符串”的约定下不会发生。"""
-    from . import prompts
-    by_name = {sk["name"]: sk["key"] for sk in prompts.DEFAULT_SKILLS}
-    with connect() as c:
-        rows = c.execute(
-            "SELECT id, name FROM skills WHERE user_id=? AND builtin=1 AND default_key=''",
-            (user_id,)).fetchall()
-        for row in rows:
-            key = by_name.get(row["name"])
-            if key:
-                c.execute("UPDATE skills SET default_key=? WHERE id=?", (key, row["id"]))
-
-
-def _seed_missing_default_skills(user_id: str) -> None:
-    """增量播种：只插入这个用户还没有的默认技能（按 default_key 判重），
-    不是"整批只在完全空的时候种一次"。DEFAULT_SKILLS 之后还会继续加条目
-    覆盖新的生成调用点——已经用过一阵子、已经有自建/已删改内置技能的老
-    用户，下次打开面板也要能自动收到新加的默认技能，不能因为库里已经有
-    别的 skill 就跳过。"""
-    from . import prompts  # 延迟导入，避开模块加载顺序上的循环依赖风险
-    _backfill_default_keys(user_id)
-    with connect() as c:
-        have = {r[0] for r in c.execute(
-            "SELECT default_key FROM skills WHERE user_id=? AND default_key != ''", (user_id,))}
-        missing = [sk for sk in prompts.DEFAULT_SKILLS if sk["key"] not in have]
-        if not missing:
-            return
-        next_idx = c.execute("SELECT COALESCE(MAX(idx), -1) + 1 FROM skills WHERE user_id=?",
-                             (user_id,)).fetchone()[0]
-        for offset, sk in enumerate(missing):
-            row = {
-                "id": uuid.uuid4().hex[:12], "user_id": user_id,
-                "name": sk["name"], "description": sk["description"],
-                "scopes": json.dumps(sk["scopes"], ensure_ascii=False),
-                "content": sk["content"], "enabled": 1, "idx": next_idx + offset,
-                "builtin": 1, "default_key": sk["key"],
-                "created_at": _now(), "updated_at": _now(),
-            }
-            c.execute(
-                "INSERT INTO skills (id,user_id,name,description,scopes,content,enabled,idx,builtin,default_key,created_at,updated_at) "
-                "VALUES (:id,:user_id,:name,:description,:scopes,:content,:enabled,:idx,:builtin,:default_key,:created_at,:updated_at)",
-                row)
-
-
-def list_skills(user_id: str) -> list[dict]:
-    """每次访问都补齐这个用户还没有的默认技能（见
-    _seed_missing_default_skills）——新用户第一次访问等于全量播种，老用户
-    只补新增的那几条，已有的（不管是不是被改过/关掉）不会被重复插入。"""
-    _seed_missing_default_skills(user_id)
-    with connect() as c:
-        rows = c.execute("SELECT * FROM skills WHERE user_id=? ORDER BY idx", (user_id,)).fetchall()
-    return [_skill_dict(r) for r in rows]
-
-
-def get_skill(user_id: str, skill_id: str) -> dict | None:
-    with connect() as c:
-        row = c.execute("SELECT * FROM skills WHERE user_id=? AND id=?",
-                        (user_id, skill_id)).fetchone()
-    return _skill_dict(row) if row else None
-
-
-def enabled_skills_for_scope(user_id: str, scope: str) -> list[dict]:
-    """生成调用点用这个拿"这个 scope 下、按顺序启用的 skill 列表"，直接
-    喂给 prompts.compose_system()。"""
-    return [s for s in list_skills(user_id) if s["enabled"] and scope in s["scopes"]]
-
-
-def create_skill(user_id: str, name: str, description: str, scopes: list[str],
-                 content: str, enabled: bool = True) -> dict:
-    with connect() as c:
-        next_idx = c.execute("SELECT COALESCE(MAX(idx), -1) + 1 FROM skills WHERE user_id=?",
-                             (user_id,)).fetchone()[0]
-        row = {
-            "id": uuid.uuid4().hex[:12], "user_id": user_id, "name": name,
-            "description": description, "scopes": json.dumps(scopes, ensure_ascii=False),
-            "content": content, "enabled": 1 if enabled else 0, "idx": next_idx, "builtin": 0,
-            "created_at": _now(), "updated_at": _now(),
-        }
-        c.execute(
-            "INSERT INTO skills (id,user_id,name,description,scopes,content,enabled,idx,builtin,created_at,updated_at) "
-            "VALUES (:id,:user_id,:name,:description,:scopes,:content,:enabled,:idx,:builtin,:created_at,:updated_at)",
-            row)
-    return get_skill(user_id, row["id"])
-
-
-_SKILL_UPDATABLE_COLS = {"name", "description", "scopes", "content", "enabled"}
-
-
-def update_skill(user_id: str, skill_id: str, **fields) -> dict | None:
-    """跟 update_section 一样的列名白名单模式。scopes 如果传了，调用方
-    要先自己 json.dumps 成字符串——这里不做隐式转换，保持跟 create_skill
-    的输入形状对称容易搞错，不如强制显式。"""
-    if not fields:
-        return get_skill(user_id, skill_id)
-    bad = set(fields) - _SKILL_UPDATABLE_COLS
-    if bad:
-        raise ValueError(f"update_skill got unknown column(s): {bad}")
-    fields = dict(fields)
-    fields["updated_at"] = _now()
-    cols = ", ".join(f"{k}=?" for k in fields)
-    with connect() as c:
-        cur = c.execute(f"UPDATE skills SET {cols} WHERE user_id=? AND id=?",
-                        (*fields.values(), user_id, skill_id))
-        if cur.rowcount == 0:
-            return None
-    return get_skill(user_id, skill_id)
-
-
-def delete_skill(user_id: str, skill_id: str) -> bool:
-    with connect() as c:
-        cur = c.execute("DELETE FROM skills WHERE user_id=? AND id=?", (user_id, skill_id))
-    return cur.rowcount > 0
-
-
-def reorder_skills(user_id: str, ordered_ids: list[str]) -> None:
-    with connect() as c:
-        for i, skill_id in enumerate(ordered_ids):
-            c.execute("UPDATE skills SET idx=? WHERE user_id=? AND id=?", (i, user_id, skill_id))
 
 
 # ---------------------------------------------------------------- 入库任务
@@ -860,7 +699,7 @@ def skill_configs(user_id: str) -> dict[str, dict]:
     """
     with connect() as conn:
         rows = conn.execute(
-            "SELECT slug, enabled, scopes, sandbox, source FROM skill_config "
+            "SELECT slug, enabled, scopes, sandbox, source, idx FROM skill_config "
             "WHERE user_id = ?", (user_id,)).fetchall()
     return {
         r["slug"]: {
@@ -868,6 +707,7 @@ def skill_configs(user_id: str) -> dict[str, dict]:
             "scopes": [s for s in (r["scopes"] or "").split(",") if s],
             "sandbox": r["sandbox"],
             "source": r["source"],
+            "idx": r["idx"],
         }
         for r in rows
     }
@@ -875,7 +715,7 @@ def skill_configs(user_id: str) -> dict[str, dict]:
 
 def set_skill_config(user_id: str, slug: str, *, enabled: bool | None = None,
                      scopes: list[str] | None = None, sandbox: str | None = None,
-                     source: str | None = None) -> None:
+                     source: str | None = None, idx: int | None = None) -> None:
     """Upsert one skill's configuration; unspecified fields keep their value.
 
     First-insert defaults are deliberately conservative: ``sandbox='none'``
@@ -889,9 +729,17 @@ def set_skill_config(user_id: str, slug: str, *, enabled: bool | None = None,
         for column, value in (("enabled", None if enabled is None else int(enabled)),
                               ("scopes", None if scopes is None else ",".join(scopes)),
                               ("sandbox", sandbox),
-                              ("source", source)):
+                              ("source", source),
+                              ("idx", idx)):
             if value is not None:
                 conn.execute(
                     f"UPDATE skill_config SET {column} = ? WHERE user_id = ? AND slug = ?",
                     (value, user_id, slug))
+        conn.commit()
+
+
+def delete_skill_config(user_id: str, slug: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM skill_config WHERE user_id=? AND slug=?",
+                     (user_id, slug))
         conn.commit()

@@ -30,7 +30,8 @@ from .trace import Trace
 #
 #   middleware   hook              why there
 #   ---------------------------------------------------------------------
-#   Skills       before_produce    context has to exist before prompting
+#   Skills       before_round      the menu must exist before gather:
+#                                  gather is the only call with tools
 #   Facts        after_prepare     fold this round's haul into the run's
 #   Trace        after_prepare     after Facts: show what the tools returned
 #   Repeats      before_judge      dup_hints is evidence for the scoring call

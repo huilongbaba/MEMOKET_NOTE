@@ -18,8 +18,7 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
-from ... import (agent_loop, grounding_check, llm, outline, prompts, store,
-                 tools)
+from ... import agent_loop, grounding_check, llm, outline, prompts, tools
 from ...agent_loop import ToolTrace
 from ...retrieval import retrieve as _retrieve
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
@@ -70,9 +69,8 @@ class NoteHooks:
             self.beats = [txt for _lv, txt in outline.headings(content)][:MAX_OUTLINE_BEATS]
             self.spine = self.spine or f"按用户已有的目录逐节填充：{'、'.join(self.beats[:4])}…"
         elif not self.spine and not self.beats:
-            system = prompts.compose_system(
-                prompts.SKELETON_SYSTEM,
-                store.enabled_skills_for_scope(st.ctx.user, "skeleton"))
+            system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton",
+                                            st.ctx.user)
             try:
                 text = await llm.complete(
                     [{"role": "system", "content": system},
@@ -130,7 +128,7 @@ class NoteHooks:
         # own call makes *that question* the task. The model can still answer
         # "nothing needed" -- what changed is the context it is asked in.
         msgs = [
-            {"role": "system", "content": prompts.RETRIEVAL_PLAN_SYSTEM},
+            {"role": "system", "content": self._plan_system(st)},
             {"role": "user", "content": prompts.retrieval_plan_user(
                 title, spine, beats, st.content_for_continue(),
                 steer=getattr(policy, "steer", ""),
@@ -138,9 +136,15 @@ class NoteHooks:
                 topics_overview=tools.dispatch("list_topics", {"limit": 40}, st.ctx),
                 section=target[0] if target else "")},
         ]
+        # Mode decides which groups exist; the policy may add to them for a
+        # round (escalating to verification tools, say). It may not replace
+        # them -- doing so is how the skill tools became unreachable.
+        groups = list(st.mode.groups)
+        for extra in getattr(policy, "extra_tool_groups", ()) or ():
+            if extra not in groups:
+                groups.append(extra)
         _extra, trace = await agent_loop.gather_context(
-            msgs, st.ctx,
-            groups=getattr(policy, "tool_groups", None) or ["memory"],
+            msgs, st.ctx, groups=groups,
             max_iters=getattr(policy, "tool_iters", 2))
         facts = list(trace.as_facts())
 
@@ -181,6 +185,23 @@ class NoteHooks:
 
         return facts, trace
 
+    def _plan_system(self, st: State) -> str:
+        """The retrieval-planning prompt, carrying the skill menu.
+
+        **The menu has to be here, not only in the writing prompt.** Tools
+        exist on this call and nowhere else, so a model that first reads
+        "these skills are available" while writing has already lost its
+        chance to load one. Measured: with the menu only in the writing
+        prompt, ``load_skill`` was never called once.
+
+        Bodies are deliberately empty here -- what to retrieve is not what a
+        writing skill has an opinion about, and they land in the writing
+        prompt where they belong.
+        """
+        return prompts.compose_system(
+            prompts.RETRIEVAL_PLAN_SYSTEM, st.mode.skill_scope, st.ctx.user,
+            st.skill_menu, [])
+
     # ----------------------------------------------------------- produce --
     async def produce(self, st: State) -> AsyncIterator[str]:
         if self.polish or st.bag.get("cleanup_only"):
@@ -190,8 +211,8 @@ class NoteHooks:
         base = (prompts.MAGIC_TAP_SYSTEM_LEAN
                 if os.getenv("MEMOKET_LEAN_PROMPT") == "1"
                 else prompts.MAGIC_TAP_SYSTEM)
-        system = prompts.compose_system(
-            base, store.enabled_skills_for_scope(st.ctx.user, "magic_tap"))
+        system = prompts.compose_system(base, st.mode.skill_scope, st.ctx.user,
+                                    st.skill_menu, st.skill_bodies)
 
         note_block = ""
         target = st.bag.get("outline_target")

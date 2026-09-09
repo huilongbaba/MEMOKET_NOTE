@@ -129,6 +129,10 @@ class NoteHarnessRunIn(BaseModel):
 
 class SkillIn(BaseModel):
     name: str
+    # 目录名，也是 SKILL.md 里的 ``name``——规格只允许小写字母/数字/连字符。
+    # 前端可以不传，后端从 name 生成；中文名生成不出合法 slug 时退到稳定哈希，
+    # 可读的名字放 body 的一级标题（规格给它留的位置就是那里）。
+    slug: str = ""
     description: str = ""
     scopes: list[str] = Field(default_factory=list)
     content: str
@@ -136,8 +140,15 @@ class SkillIn(BaseModel):
 
 
 class Skill(BaseModel):
+    """一个 skill 目录的对外形状。
+
+    ``id`` 就是 slug（目录名）——skill 不再是数据库行，没有独立主键。
+    前端一直按 ``id`` 寻址，所以这个字段留着，只是含义从「随机 id」变成
+    「目录名」。
+    """
+
     id: str
-    user_id: str
+    slug: str
     name: str
     description: str
     scopes: list[str]
@@ -145,8 +156,8 @@ class Skill(BaseModel):
     enabled: bool
     idx: int
     builtin: bool
-    created_at: str
-    updated_at: str
+    source: str = "user"
+    sandbox: str = "none"
 
 
 class SkillScope(BaseModel):
