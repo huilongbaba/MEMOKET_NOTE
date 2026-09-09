@@ -107,6 +107,22 @@ npm run dev               # http://localhost:5173
 
 `GET /api/health` 会报出 LLM 和语音服务是否可达。
 
+## 测试
+
+```bash
+cd backend  && PYTHONPATH=. pytest -q      # 649 条，约 35 秒，不需要模型
+cd frontend && npm test                    # tsc + vitest + 10 个检查脚本
+```
+
+后端全部不打模型：判据、循环、middleware、修订的四道防线都靠打桩驱动，
+所以跑得起来、跑得快。真实模型只在 `backend/scripts/` 下的 bench 里用。
+
+前端 `npm test` 串起三样：类型检查、`src/editor/__tests__/` 下的单元测试、
+以及 `frontend/scripts/` 下的十个检查脚本（格式化幂等性、撤回可逆性、
+diff 状态层、`/` 菜单、表格预览、图谱/编辑器/skill 导入 smoke）。
+`backend/tests/test_api_contract.py` 盯着「每个检查脚本都被 npm test 跑到」
+——写了却不执行的检查比没写还糟，读的人会以为这块被守着。
+
 ## 配置
 
 默认指向内网 DGX Spark 上的服务。切商用 API 只改 `.env`：

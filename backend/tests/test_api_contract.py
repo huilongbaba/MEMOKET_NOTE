@@ -175,3 +175,26 @@ def test_README里写的端点后端都有():
     have = {_normalise(p) for p in _backend_paths()}
     missing = sorted(p for p in paths if _normalise(p) not in have)
     assert not missing, "README 里写了、后端没有的端点：\n  " + "\n  ".join(missing)
+
+
+def test_前端每个检查脚本都被npm_test跑到():
+    """`frontend/scripts/` 下躺着十个检查脚本——格式化幂等性、撤回可逆性、
+    diff 状态层、占位块、`/` 菜单、表格预览、文档里的 mermaid、编辑器/图谱/
+    skill 导入三个 smoke。**它们全都通过，而且没有任何地方跑它们**：
+    package.json 里没有，仓库里没有 CI，后端套件也不碰。
+
+    写了却不执行的检查跟没写差不多——比没写还糟一点，因为读代码的人会
+    以为这块被守着。所以这里不查它们过不过（那是 `npm test` 的事），查的是
+    **每一个都被 npm test 引用了**：新写一个检查脚本又忘了接进去，这条会红。
+    """
+    import json
+
+    front = FRONTEND.parent
+    scripts = sorted(p.name for p in (front / "scripts").glob("*.*ts")
+                     if p.name.startswith(("check-", "smoke-")))
+    assert len(scripts) >= 8, f"没找到几个检查脚本：{scripts}"
+
+    cmd = json.loads((front / "package.json").read_text(encoding="utf-8"))["scripts"]["test"]
+    missing = [s for s in scripts if s not in cmd]
+    assert not missing, ("这些检查脚本没被 npm test 跑到，等于没写："
+                         + "、".join(missing))
