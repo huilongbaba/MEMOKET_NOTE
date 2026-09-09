@@ -259,3 +259,73 @@ def test_ordering_only_matters_within_a_shared_hook():
         after = ("a",)
 
     verify((B(), A()))                # no complaint
+
+
+# ------------------------------------------------- 洋葱包装的两个扩展点 ---
+#
+# wrap_prepare / wrap_produce 在 Middleware 协议里声明、在 loop 里实现、
+# 在 harness-framework.md 里当作设计过的扩展点写着（重试、短路、改写
+# 进出），**但生产里一个使用者都没有，测试里一条覆盖都没有**——只在
+# docs/_research 的原型里出现过。
+#
+# 一个从没被验证过的扩展点，第一次有人用的时候大概率是坏的。这两条测试
+# 就是让它「有人用过」：文档承诺的三件事（多次调 handler、根本不调、
+# 改写进出）在真实循环里各验一遍。
+
+
+def test_wrap_prepare_能重试也能短路():
+    class Retry:
+        name = "retry"
+        hooks: tuple = ()
+        after: tuple = ()
+
+        def __init__(self):
+            self.calls = 0
+
+        async def wrap_prepare(self, st, handler):
+            self.calls += 1
+            facts, trace = await handler(st)       # 第一次
+            facts2, _ = await handler(st)          # 再来一次：多次调是允许的
+            return facts + facts2, trace
+
+    class Cached:
+        name = "cached"
+        hooks: tuple = ()
+        after: tuple = ()
+
+        async def wrap_prepare(self, st, handler):
+            return ["缓存里的材料"], _FakeTrace()   # 根本不调 handler
+
+    hooks = FakeHooks(["a"])
+    st = _state(_mode(max_rounds=1))
+    asyncio.run(_drive(st, hooks, _scorer([[2, 2]]), mw=(Retry(),)))
+    assert hooks.prepared == 2, "wrap_prepare 调了两次 handler，取材料该跑两遍"
+    assert st.facts_new == ["fact-1", "fact-1"]   # 累积到 st.facts 是 Facts 那条 middleware 的活，这里没挂它
+
+    hooks = FakeHooks(["a"])
+    st = _state(_mode(max_rounds=1))
+    asyncio.run(_drive(st, hooks, _scorer([[2, 2]]), mw=(Cached(),)))
+    assert hooks.prepared == 0, "短路了却还是调到了 handler"
+    assert st.facts_new == ["缓存里的材料"]
+
+
+def test_wrap_produce_能改写流出去的内容():
+    class Upper:
+        name = "upper"
+        hooks: tuple = ()
+        after: tuple = ()
+
+        def wrap_produce(self, st, handler):
+            async def gen():
+                async for piece in handler(st):
+                    yield piece.upper()
+                st.content = st.content.upper()
+            return gen()
+
+    hooks = FakeHooks(["abc"])
+    st = _state(_mode(max_rounds=1))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2, 2]]), mw=(Upper(),)))
+    deltas = "".join(e.data["delta"] for e in events
+                     if e.type.value == "TEXT_MESSAGE_CONTENT")
+    assert deltas == "ABC", f"流出去的是 {deltas!r}"
+    assert _finished(events).data["content"] == "ABC"

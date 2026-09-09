@@ -281,3 +281,44 @@ def test_polish_mode_drops_dimensions_it_may_not_act_on():
         "打磨模式不许写，就不该被节拍覆盖/材料使用打分（实测：判 0 → 永远到不了 complete → 撞 max_rounds）"
     assert {"spine_fidelity", "non_repetition", "factual_grounding", "coherence"} <= polish
     assert "style_fit" in {d.name for d in note_dimensions(has_profile=True, polish=True)}
+
+
+def test_每条middleware声明的hook和它真的实现的一致():
+    """打错一个字母，这条 middleware 就永远不会跑，而且完全无声。
+
+    循环 `_fire` 用的是 ``getattr(m, hook)``——它**不看** ``m.hooks``。
+    所以两个方向都会悄悄出错：
+
+      · 方法名写成 ``after_prodcue``：循环永远取不到它，能力静默消失；
+      · ``hooks`` 声明写错：方法照跑，但 ``middleware/_order.py`` 的先后
+        依赖校验是按声明做的，于是校验在错的钩子上进行。
+
+    没有任何东西会报错，两种情况的症状都是「这个能力好像没生效」。
+    ``wrap_prepare``/``wrap_produce`` 同样按 hasattr 找，一并纳入。
+    """
+    import pathlib
+    import re
+
+    from app.harness.middleware import BASE
+
+    loop_src = (pathlib.Path(__file__).resolve().parents[1]
+                / "app" / "harness" / "loop.py").read_text(encoding="utf-8")
+    fired = set(re.findall(r'_fire\(chain, "([a-z_]+)"', loop_src))
+    fired |= set(re.findall(r'hasattr\(x, "(wrap_[a-z_]+)"\)', loop_src))
+    assert len(fired) >= 9, f"没从 loop.py 里认出钩子名，只找到 {sorted(fired)}"
+
+    instances = {}
+    for m in list(BASE) + [x for mo in modes.ALL for x in mo.extra_mw]:
+        instances[type(m).__name__] = m
+
+    bad = []
+    for cls, m in sorted(instances.items()):
+        declared = set(getattr(m, "hooks", ()))
+        implemented = {n for n in dir(m)
+                       if n.startswith(("before_", "after_", "wrap_"))
+                       and callable(getattr(m, n))}
+        if declared - fired:
+            bad.append(f"{cls} 声明了循环不会触发的钩子：{sorted(declared - fired)}")
+        if declared != implemented:
+            bad.append(f"{cls} 声明 {sorted(declared)} ≠ 实现 {sorted(implemented)}")
+    assert not bad, "\n  ".join([""] + bad)
