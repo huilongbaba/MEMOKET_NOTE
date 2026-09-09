@@ -42,11 +42,15 @@ def test_打分读的是累积字段():
     assert "facts_new" not in call, "打分不能只拿本轮材料——正文是累积的"
 
 
-def test_累积字段只有一个写入方():
-    writers = sorted(name for name, src in _sources().items()
-                     if "st.facts = " in src)
-    assert writers == ["app/harness/middleware/facts.py"], \
-        f"st.facts 有多个写入方，累积规则又要分叉了：{writers}"
+def test_累积规则只有一个写入方():
+    """恢复快照也写这个字段，但那不是累积——它是把上次累积的结果放回去。
+    白名单里多一个就要在这里写明为什么，不能默默多出来。"""
+    allowed = {
+        "app/harness/middleware/facts.py",   # 累积规则本身
+        "app/harness/snapshot.py",           # 轮末暂停后把上次的结果放回去
+    }
+    writers = {name for name, src in _sources().items() if "st.facts = " in src}
+    assert writers == allowed, f"st.facts 的写入方变了：{sorted(writers)}"
 
 
 def test_没有任何地方在循环体里把材料清零():

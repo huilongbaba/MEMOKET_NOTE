@@ -623,7 +623,9 @@ export type NoteHarnessHandlers = {
   onDelta?: (text: string) => void
   onRoundEnd?: (round: number) => void
   onEvaluate?: (d: { scores: Record<string, NoteHarnessDimensionScore>; status: string; weakest: string | null }) => void
-  onDone?: (reason: string, blockedReason?: string) => void
+  /** `reason` 是 awaiting_review 时带 `runId`：这一轮停下来等你逐条处置，
+   *  处置完把留下来的正文用 resumeHarness(runId, content) 送回去接着跑。 */
+  onDone?: (reason: string, blockedReason?: string, runId?: string) => void
   onError?: (detail: string) => void
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   onPhase?: (d: { round: number; phase: string; label: string }) => void
@@ -653,14 +655,59 @@ export async function runNoteHarness(
    * 打磨模式下后端还会摘掉 beat_coverage / material_use 两个维度——那两条衡量
    * 的是「写了多少」，而打磨被明确禁止写，拿它们打分闭环永远收敛不了。 */
   mode: 'write' | 'polish' = 'write',
+  /** 每轮写完停下来等你逐条接受/拒绝。关着的时候是原来的行为：一口气跑完
+   *  再处置——而那意味着你在编辑器里的处置会被下一轮盖掉。 */
+  reviewEachRound = false,
 ) {
   const res = await fetch('/api/note-harness/run', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ note_id: noteId, content, spine, beats, max_rounds: 20, mode }),
+    body: JSON.stringify({
+      note_id: noteId, content, spine, beats, max_rounds: 20, mode,
+      review_each_round: reviewEachRound,
+    }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`note-harness run failed: ${res.status}`)
+  return consumeHarnessStream(res, handlers)
+}
+
+/** 处置完接着跑。`content` 是编辑器里逐条接受/拒绝之后的正文——用户的决定
+ *  发生在编辑器里，后端拿一串 hunk id 再合并一遍等于同一个合并写两份实现。 */
+export async function resumeHarness(
+  runId: string,
+  content: string,
+  handlers: NoteHarnessHandlers,
+  signal?: AbortSignal,
+) {
+  const res = await fetch(`/api/harness/${runId}/resume`, {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ content }),
+    signal,
+  })
+  if (!res.ok || !res.body) throw new Error(`resume failed: ${res.status}`)
+  return consumeHarnessStream(res, handlers)
+}
+
+/** 用户看完决定不再往下写：存盘收尾，丢掉快照。 */
+export const stopHarness = (runId: string, content: string) =>
+  fetch(`/api/harness/${runId}/resume`, {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ content, stop: true }),
+  }).then(json<{ stopped: string; rounds: number }>)
+
+export type PausedRun = {
+  id: string; note_id: string; mode: string; round: number; created_at: string
+}
+
+/** 跑到一半在等我处置的运行。SSE 流断了之后这是唯一能找回它们的地方。 */
+export const listPausedRuns = () =>
+  fetch('/api/harness/paused', { headers: headers() }).then(json<PausedRun[]>)
+
+async function consumeHarnessStream(res: Response, handlers: NoteHarnessHandlers) {
+  if (!res.body) throw new Error('no stream')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -692,7 +739,7 @@ export async function runNoteHarness(
           else if (event === 'policy') handlers.onPolicy?.(payload)
           else if (event === 'dropped') handlers.onDropped?.(payload.detail)
           else if (event === 'replan') handlers.onReplan?.(payload)
-          else if (event === 'done') handlers.onDone?.(payload.reason, payload.blocked_reason)
+          else if (event === 'done') handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id)
           // **error 不能 throw**：后端的 error 事件都是可恢复的降级（某个工具
           // 查不到、某次调用超时），流还在继续。throw 会把整条 SSE 连接掐断，
           // 用户看到的是"跑到一半没了"。交给 onError 显示，让 harness 继续跑。

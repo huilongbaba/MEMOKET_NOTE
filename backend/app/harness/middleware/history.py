@@ -21,6 +21,11 @@ class History:
     async def after_run(self, st: State) -> None:
         if not st.ev:
             return
+        if st.stopped == "awaiting_review":
+            # A paused run has not finished. Recording it would tell the next
+            # run "this note reached round 2 and stopped", which is a lesson
+            # about the user stepping away, not about the writing.
+            return
         scores = {name: s.level for name, s in st.ev.scores.items()}
         harness_adapter.SqliteRunHistoryStore().record(RunRecord(
             key=f"{st.mode.key}:{st.ctx.note_id}",

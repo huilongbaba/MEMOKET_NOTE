@@ -233,10 +233,13 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             )
             st.bag["score_context"] = _score_context(
                 target["title"], plan["goal"], other_summaries)
+            folder_ctx = prompts.folder_context_block(folder_notes)
             hooks = SectionHooks(
                 goal=plan["goal"], other_summaries=other_summaries,
-                folder_ctx=prompts.folder_context_block(folder_notes),
-                profile=_profile(user))
+                folder_ctx=folder_ctx, profile=_profile(user))
+            # 恢复时靠这些重建 hooks（见 routers/harness.py 的 _hooks_for）
+            st.bag.update(goal=plan["goal"], other_summaries=other_summaries,
+                          folder_ctx=folder_ctx, profile=_profile(user))
 
             yield _sse("section-start", {
                 "section_id": target["id"], "title": target["title"],

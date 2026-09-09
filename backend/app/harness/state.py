@@ -65,6 +65,11 @@ class State:
     best: tuple[tuple[int, float], str] | None = None
     steer: str = ""                     # last round's weakest-dimension note
 
+    # Why the run ended, set by the loop just before commit. Middleware needs
+    # it: recording a paused run in the history as "finished" would teach the
+    # next run the wrong lesson.
+    stopped: str = ""
+
     bag: dict[str, Any] = field(default_factory=dict)   # middleware scratch space
 
     def rank(self) -> tuple[int, float]:

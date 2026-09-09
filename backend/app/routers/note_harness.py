@@ -71,15 +71,18 @@ async def run(body: NoteHarnessRunIn, request: Request,
             mode=dataclasses.replace(
                 modes.for_run(modes.NOTE, has_profile=bool(_profile(user)),
                               polish=polish),
-                max_rounds=max(1, min(body.max_rounds, MAX_ROUNDS_CAP))),
+                max_rounds=max(1, min(body.max_rounds, MAX_ROUNDS_CAP)),
+                review_each_round=body.review_each_round),
             ctx=tools.ToolContext(user=user, note_id=body.note_id,
                                   note_title=note["title"]),
             request=request,
             content=body.content,
         )
-        st.bag["polish"] = polish
         hooks = NoteHooks(polish=polish, spine=body.spine, beats=body.beats,
                           profile=_profile(user))
+        # 这次请求的参数。恢复时要靠它重建 hooks——放 bag 里，快照跟着走
+        # （见 routers/harness.py 的 _hooks_for）。
+        st.bag["polish"] = polish
 
         # The skeleton is established before the loop starts: a failure here
         # has to be reportable without a round having begun, and every round

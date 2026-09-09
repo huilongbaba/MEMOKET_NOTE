@@ -106,6 +106,20 @@ CREATE TABLE IF NOT EXISTS ingest_items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_job ON ingest_items(job_id, idx);
 
+-- 轮末暂停的快照。跟 harness_runs 不是一回事：那张记的是「跑完了，结果
+-- 如何」，供跨 run 的经验复用；这张记的是「跑到一半，等用户处置」，
+-- 供恢复。一个 run 同一时刻最多一份快照，用户处置完就删。
+CREATE TABLE IF NOT EXISTS harness_snapshots (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    note_id    TEXT NOT NULL DEFAULT '',
+    mode       TEXT NOT NULL,
+    round      INTEGER NOT NULL DEFAULT 0,
+    state      TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user ON harness_snapshots(user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS user_profile (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
@@ -743,3 +757,61 @@ def delete_skill_config(user_id: str, slug: str) -> None:
         conn.execute("DELETE FROM skill_config WHERE user_id=? AND slug=?",
                      (user_id, slug))
         conn.commit()
+
+
+# ---------------------------------------------------------------- 轮末快照
+
+
+def save_snapshot(user_id: str, note_id: str, mode: str, round_idx: int,
+                  state: str) -> str:
+    run_id = uuid.uuid4().hex[:12]
+    with connect() as c:
+        c.execute(
+            "INSERT INTO harness_snapshots (id,user_id,note_id,mode,round,state,created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (run_id, user_id, note_id, mode, round_idx, state, _now()))
+        c.commit()
+    return run_id
+
+
+def get_snapshot(user_id: str, run_id: str) -> dict | None:
+    """Scoped by user on purpose: a run id is the only thing the resume
+    endpoint takes, and one user must not be able to resume another's run."""
+    with connect() as c:
+        row = c.execute(
+            "SELECT * FROM harness_snapshots WHERE id=? AND user_id=?",
+            (run_id, user_id)).fetchone()
+    return dict(row) if row else None
+
+
+def list_snapshots(user_id: str, limit: int = 20) -> list[dict]:
+    """State 本体不返回——它可以有几十 KB，而这个列表只是给用户看
+    「有哪些跑到一半在等我」。"""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT id, note_id, mode, round, created_at FROM harness_snapshots "
+            "WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, max(1, min(limit, 100)))).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_snapshot(user_id: str, run_id: str) -> None:
+    with connect() as c:
+        c.execute("DELETE FROM harness_snapshots WHERE id=? AND user_id=?",
+                  (run_id, user_id))
+        c.commit()
+
+
+def prune_snapshots(user_id: str, keep: int = 20) -> int:
+    """A paused run the user never came back to is dead weight. Keeping the
+    most recent few per user is enough: resuming something from last month
+    would apply month-old material to a note that has moved on."""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT id FROM harness_snapshots WHERE user_id=? "
+            "ORDER BY created_at DESC", (user_id,)).fetchall()
+        stale = [r["id"] for r in rows[keep:]]
+        for run_id in stale:
+            c.execute("DELETE FROM harness_snapshots WHERE id=?", (run_id,))
+        c.commit()
+    return len(stale)

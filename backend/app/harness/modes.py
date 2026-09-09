@@ -70,6 +70,22 @@ def stalled(st: State) -> str | None:
     return "stalled" if st.bag.get("no_change_rounds", 0) >= STALL_ROUNDS else None
 
 
+def pause_for_review(st: State) -> str | None:
+    """Stop after each round and wait for the user.
+
+    Without this the run keeps writing while the user is still reading, and
+    every acceptance they make gets overwritten by the next round -- the
+    editor's per-hunk accept/reject never reached the backend at all, so on
+    an eight-round run "accept this one paragraph" was decided seven times
+    and honoured zero.
+
+    It is an ordinary stop condition, which is the point: the loop needs no
+    concept of pausing. Resuming is loading the snapshot and running again
+    with a higher round number.
+    """
+    return "awaiting_review" if st.mode.review_each_round else None
+
+
 def nothing_left_to_fix(st: State) -> str | None:
     """Polish only repairs. When a round applies no revision, the next one
     would propose the same nothing -- there is no second mechanism that could
@@ -234,7 +250,8 @@ NOTE = Mode(
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
             material_used),
-    stop_when=(material_used_up, stalled, nothing_left_to_fix),
+    stop_when=(material_used_up, stalled, nothing_left_to_fix,
+               pause_for_review),
     extra_mw=(Revise(), Repair(), Runtime(), Replan(), Compact(), Save()),
     max_rounds=8,
     context_keep_last=4000,
@@ -247,7 +264,7 @@ SECTION = Mode(
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, citations_hold, material_used),
-    stop_when=(material_used_up,),
+    stop_when=(material_used_up, pause_for_review),
     extra_mw=(Revise(), Repair(), Compact(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
     # scoring 'continue' must not hold the whole plan hostage.

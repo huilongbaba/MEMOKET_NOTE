@@ -1384,6 +1384,43 @@ def pause_for_review(st: State) -> str | None:
 `State` 收敛成一个 dataclass 之后本来就接近可序列化。**这两件事让
 将来实现它只是加一个 StopCondition 和一个端点，不是再改一次架构。**
 
+### 13.1 已实现（2026-09-09）
+
+上面那句话成立了：一个停止条件 + 一个端点，`loop.py` 里
+**没有出现 `review_each_round` 这个词**（有一条测试盯着这件事）。
+
+```
+Mode.review_each_round        请求级开关，不是功能属性——同一个人在重要
+                              文档上想要、在草稿上不想要
+modes.pause_for_review        停止条件，返回 "awaiting_review"
+harness/snapshot.py           State ⇄ JSON
+DB harness_snapshots          一个 run 一份，恢复即消费
+POST /api/harness/{id}/resume  带上用户处置后的正文，接着跑
+GET  /api/harness/paused      SSE 流断了之后唯一能找回它们的地方
+```
+
+**`bag` 是序列化里唯一难的地方。** 它故意没有类型（middleware 想放什么放
+什么），所以里面既有 `RuntimePolicy` 这个 dataclass、又有一个 `set`、还有
+普通 JSON。做法是**打标签**而不是让 snapshot 认识每个 middleware——认识了
+就等于把 `bag` 当初要避免的耦合又装回去。编不动的值**大声丢掉**：快照里记
+着丢了哪些键，恢复之后少一个能力是看得见的，不是神秘的。
+
+**正文由前端送回来，不是后端重算。** 用户的决定发生在编辑器里；让后端拿
+一串 hunk id 再合并一遍等于同一个合并写两份实现，而用户真正看到的是浏览器
+里那一份。
+
+#### 真跑抓到的 bug：恢复之后轮数从 1 重新数
+
+`for st.round in range(1, max_rounds + 1)`——恢复的 run 也从 1 开始，于是
+每一条「第一轮不做」的护栏都重新生效：`Revise` 因为「还没写东西」跳过第
+一轮，而恢复的 run 显然写过了；`material_used_up` 的 `round < 2` 同理。
+改成 `range(st.round + 1, max_rounds + 1)`——`st.round` 的含义本来就是
+「已经跑完几轮」。顺带地，轮数预算也不用在恢复时减掉已花的，它本来就是
+整个 run 的预算（每恢复一次多送几轮的话，`max_rounds` 这条安全网等于没有）。
+
+真跑验证：第 1 轮停下、拿到 run_id、在正文里手加一句标记、恢复 → 第 2 轮
+接着写、标记句活着、再次暂停并给出新的 run_id。
+
 ---
 
 ## 14. Mode：8 个内置 + 用户定义的
@@ -1837,6 +1874,5 @@ compose_system(base, scope, user, menu=None, bodies=None)
 
 ### 还没做的
 
-* 用户处置回路（第 13 节）
 * 前端簇视图（`kb-architecture.md` 第 9 节第 6 步，`/api/kb/clusters` 已就绪）
 * 模型判的两条抽取判据（同上第 5 步，成本翻倍要先算账）

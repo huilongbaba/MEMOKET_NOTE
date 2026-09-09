@@ -47,7 +47,12 @@ async def run(st: State, hooks: Hooks,
         async for e in _fire(chain, "before_run", st):
             yield e
 
-        for st.round in range(1, st.mode.max_rounds + 1):
+        # **Counts on from where the run left off**, not from 1. ``st.round``
+        # is rounds completed, which is zero for a fresh State and non-zero
+        # for a resumed one. Restarting at 1 would re-arm every guard that
+        # asks "is this the first round" -- Revise skips round 1 because
+        # nothing is written yet, and on a resumed run that is false.
+        for st.round in range(st.round + 1, st.mode.max_rounds + 1):
             if st.request is not None and await st.request.is_disconnected():
                 raise asyncio.CancelledError
             yield Event.step_started(st.round, st.mode.label)
@@ -129,13 +134,15 @@ async def run(st: State, hooks: Hooks,
             if st.best is not None:
                 st.content = st.best[1]
 
+        st.stopped = reason
         await hooks.commit(st)
         committed = True
         async for e in _fire(chain, "after_run", st):
             yield e
         yield Event.run_finished(
             st.content, reason,
-            st.ev.blocked_reason if st.ev and reason == "blocked" else "")
+            st.ev.blocked_reason if st.ev and reason == "blocked" else "",
+            _pause(st, reason))
 
     except asyncio.CancelledError:
         raise                       # persistence happens in finally
@@ -152,6 +159,23 @@ async def run(st: State, hooks: Hooks,
 
 async def _commit(hooks: Hooks, st: State) -> None:
     await hooks.commit(st)
+
+
+def _pause(st: State, reason: str) -> str:
+    """Freeze the run if it stopped to wait for the user; return the run id.
+
+    Everything the next round needs is in ``State``, so pausing is one write
+    and resuming is one read -- the loop itself has no idea this happened.
+    """
+    if reason != "awaiting_review":
+        return ""
+    from .. import store
+    from . import snapshot
+
+    run_id = store.save_snapshot(st.ctx.user, st.ctx.note_id, st.mode.key,
+                                 st.round, snapshot.dumps(st))
+    store.prune_snapshots(st.ctx.user)
+    return run_id
 
 
 async def _score(st: State):

@@ -123,6 +123,22 @@ class NoteHarnessRunIn(BaseModel):
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
     max_rounds: int = 20
+    # 每轮写完停下来等用户逐条接受/拒绝。**是用户的选择，不是功能的属性**
+    # ——同一个人在重要文档上想要、在草稿上不想要。
+    review_each_round: bool = False
+
+
+class HarnessResumeIn(BaseModel):
+    """用户处置完之后带回来的东西。
+
+    ``content`` 是**编辑器里逐条接受/拒绝之后的正文**——用户的决定发生在
+    编辑器里，让后端拿一串 hunk id 再合并一遍等于同一个合并写两份实现，
+    而用户真正看到的是浏览器里那一份。
+    """
+
+    content: str = ""
+    # 用户看完决定不再往下写了：存盘收尾，不再跑一轮。
+    stop: bool = False
 
 
 # ---------------------------------------------------------------- Skill 系统

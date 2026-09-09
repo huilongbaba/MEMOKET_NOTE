@@ -175,6 +175,11 @@ class Mode:
     # a pull request.
     rails_off: tuple[str, ...] = ()
 
+    # Pause at the end of each round so the user can accept or reject what
+    # was just written. Off by default and set per request, not per feature:
+    # whether to review is the user's call, and the same person wants it on a
+    # document that matters and off on a scratch note.
+    review_each_round: bool = False
     max_rounds: int = 3
     fact_budget: int = 40             # how many accumulated facts to keep
     context_keep_last: int = 4000     # chars of content kept verbatim for continuation

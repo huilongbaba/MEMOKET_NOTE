@@ -64,6 +64,9 @@ async def compose_block(body: ComposeBlockIn, request: Request,
         )
         hooks = BlockHooks(prompt=body.prompt, selection=body.selection,
                            profile=_profile(user), title=body.title)
+        # 恢复时靠这些重建 hooks（见 routers/harness.py 的 _hooks_for）
+        st.bag.update(prompt=body.prompt, selection=body.selection,
+                      profile=_profile(user))
         async for event in loop.run(st, hooks):
             for frame in legacy_frames(event):
                 yield frame

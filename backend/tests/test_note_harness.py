@@ -203,8 +203,10 @@ def test_judging_uses_run_level_facts_not_this_round():
     assert st.facts == ["第一轮的事实", "第二轮的事实"], "材料必须跨轮累积"
 
     src = (Path(__file__).resolve().parent.parent / "app" / "harness").rglob("*.py")
-    writers = [f.name for f in src if "st.facts = " in f.read_text(encoding="utf-8")]
-    assert writers == ["facts.py"], f"st.facts 有多个写入方：{writers}"
+    writers = sorted(f.name for f in src
+                     if "st.facts = " in f.read_text(encoding="utf-8"))
+    # snapshot.py 也写，但那是「把上次累积的结果放回去」，不是累积规则
+    assert writers == ["facts.py", "snapshot.py"], f"st.facts 的写入方变了：{writers}"
 
 
 def test_same_meaning_rewrite_is_rejected():

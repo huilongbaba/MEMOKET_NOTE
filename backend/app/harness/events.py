@@ -73,9 +73,13 @@ class Event:
         return Event(EventType.RUN_STARTED, {"mode": mode_key, "label": label})
 
     @staticmethod
-    def run_finished(content: str, reason: str,
-                     blocked_reason: str = "") -> "Event":
+    def run_finished(content: str, reason: str, blocked_reason: str = "",
+                     run_id: str = "") -> "Event":
         data = {"content": content, "reason": reason}
+        if run_id:
+            # A paused run. The client sends this back to /resume together
+            # with what the user kept.
+            data["run_id"] = run_id
         if blocked_reason:
             # "blocked" on its own tells the user nothing. The scorer wrote a
             # sentence about what the structural conflict is; carry it.
@@ -195,6 +199,7 @@ def legacy_frames(event: Event) -> list[str]:
                                               "result": d.get("content")}]})]
     if t is EventType.RUN_FINISHED:
         return [sse("done", {"reason": d.get("reason"),
+                             "run_id": d.get("run_id"),
                              "blocked_reason": d.get("blocked_reason"),
                              # ``block`` for the block harness, ``content``
                              # for the long-form ones -- one field under the

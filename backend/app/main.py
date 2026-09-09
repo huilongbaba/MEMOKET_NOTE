@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import asr, store
 from .config import get_settings
-from .routers import (assets, compose, compose_block, folders, import_sources, ingest, kb, memory, note_harness, notes, profile,
+from .routers import (assets, compose, compose_block, folders, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
                       settings as settings_router, skills, writing_plan)
 
 app = FastAPI(title="memoket-NOTE", version="0.1.0",
@@ -41,6 +41,7 @@ app.include_router(ingest.router)
 app.include_router(import_sources.router)
 app.include_router(memory.router)
 app.include_router(kb.router)
+app.include_router(harness.router)
 app.include_router(compose.router)
 app.include_router(compose_block.router)
 app.include_router(profile.router)
