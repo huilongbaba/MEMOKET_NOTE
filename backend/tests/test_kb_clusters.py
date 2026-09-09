@@ -115,3 +115,26 @@ def test_簇按最大的成员命名():
     c = build(st, floor=100)[0]
     assert c.key == "large" and c.merged
     assert c.label.startswith("large")
+
+
+# ------------------------------------------------------------ 主题 closure ---
+
+
+def test_按主题过滤必须带上candidate():
+    """KITE 的 ``downset(include_candidates=False)`` 是默认值，而这个产品里
+    **97% 的主题都是 candidate**（抽取提出来的一律是内置根主题下的候选子
+    主题，实测 194/200、120/126）。忘了传这个参数，closure 就只剩根主题
+    自己：实测 ``work`` 从「19 个主题 / 244 条事实」塌成「1 个主题」。
+
+    这条不测行为测调用点——真出问题时的症状是「按主题筛什么都筛不出来」，
+    而那看起来像知识库是空的，不像参数传错了。
+    """
+    import pathlib
+    import re
+
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "app" / "kite_memory.py").read_text(encoding="utf-8")
+    calls = re.findall(r"downset\([^)]*\)", src, re.S)
+    assert calls, "kite_memory 不再调 downset 了，这条测试的前提变了"
+    for call in calls:
+        assert "include_candidates=True" in call, f"漏了候选主题：{call}"

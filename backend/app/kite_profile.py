@@ -232,14 +232,45 @@ Rules:
 """
 
 
-def _writing_extract_prompt(base_prompt: str) -> str:
-    """把库里那份 prompt 的规则段换掉，**保留它原有的 JSON schema 段**。
+class ExtractPromptDrift(RuntimeError):
+    """KITE 的抽取 prompt 变了，我们的补丁贴不上去了。
 
-    schema 段（facts/proposals/entity_types 的字段定义）必须原样保留——
-    解析那一侧是库里的代码，改了 schema 就解析不出来。这里只换规则。
+    **必须炸，不能降级。** 失效方式很具体：锚点找不到时 ``schema`` 是空串，
+    于是发出去的 prompt 里一个 JSON schema 都没有——模型返回的东西解析不出
+    来，每一场会议抽出 0 条事实，而且全程不报错。这个仓库已经栽过一次一模
+    一样的形状（GBK 编码的 txt 被当 UTF-8 解码，跑了几十个 chunk 全部 0
+    facts，查到最后才发现是编码问题）。
+
+    炸出来的代价是升级 KITE 之后摄入立刻不可用；不炸的代价是它看起来在跑，
+    库里悄悄地什么都不进。后者贵得多。
     """
-    marker = "Return JSON only"
-    i = base_prompt.find(marker)
-    schema = base_prompt[i:] if i >= 0 else ""
-    facets = base_prompt[base_prompt.find("Add retrieval facets"):i] if "Add retrieval facets" in base_prompt else ""
+
+
+# 库里那份 prompt 的分段标记。我们只换规则段，schema 段必须原样保留——
+# 解析那一侧是库里的代码，改了 schema 就解析不出来。
+SCHEMA_MARKER = "Return JSON only"
+FACETS_MARKER = "Add retrieval facets"
+
+
+def _writing_extract_prompt(base_prompt: str) -> str:
+    """把库里那份 prompt 的规则段换掉，保留 schema 段。
+
+    这是**按字符串锚点打补丁**，不是接口——`memoket_kite.remember.extract_facts`
+    把 ``DEFAULT_MEMORY_PROFILE`` 写死了，没有参数可传。所以升级 KITE 有可能
+    让这里贴不上去，而 ``tests/test_extract_prompt.py`` 就是那道闸：它跑在
+    **装着的那个版本**上，升级把它跑红，而不是把生产跑挂。
+
+    真正的解法是 KITE 让抽取 prompt 可注入（见 docs/kite-constraints.md），
+    那是外部依赖。
+    """
+    i = base_prompt.find(SCHEMA_MARKER)
+    if i < 0:
+        raise ExtractPromptDrift(
+            f"KITE 的抽取 prompt 里找不到 {SCHEMA_MARKER!r}——写作侧的补丁没法"
+            f"保住 JSON schema 段。不修就发出一份没有 schema 的 prompt，"
+            f"结果是每场会议抽 0 条事实且不报错。")
+    schema = base_prompt[i:]
+    # NO_FACETS 那份本来就没有 facets 段，缺了是正常的。
+    j = base_prompt.find(FACETS_MARKER)
+    facets = base_prompt[j:i] if 0 <= j < i else ""
     return EXTRACT_RULES + "\n" + facets + schema

@@ -165,3 +165,38 @@ Prompt 完全没规定 `"content"` 该用什么语言写。直接拿同一段纯
 的主语言。实测：同一段中文输入连续跑 3 次，改之前语言随机（有时全英文），
 改之后 3 次全部正确保持中文；中英混杂的输入也验证过，各自 fact 语言跟对
 了原文，没有被强行拉平成一种语言。
+
+## 12. 抽取 prompt 写死在全局对象上，只能按字符串锚点打补丁
+
+`memoket_kite.remember.extract_facts` 直接读 `DEFAULT_MEMORY_PROFILE`，
+没有参数可传。这个应用要换一套**面向写作**的抽取规则（库自带那份的第一句是
+"Extract durable, atomic structured facts"，目标是问答召回；写作要的是自足、
+带因果和约束、合并同一件事的多次提及），只能：
+
+1. 在持锁期间临时替换 `DEFAULT_MEMORY_PROFILE.EXTRACT_PROMPT`（`kite_memory.remember()`）；
+2. 按字符串锚点 `"Return JSON only"` 切开库里那份 prompt，换掉规则段、
+   **保留 schema 段**（`app/kite_profile._writing_extract_prompt`）。
+
+**失效方式很难看**：锚点没了 → schema 段是空串 → 发出去的 prompt 里一个 JSON
+schema 都没有 → 模型返回的东西解析不出来 → **每场会议抽出 0 条事实，全程不
+报错**。这个仓库栽过一次一模一样的形状（GBK 编码的 txt 被当 UTF-8 解码，
+几十个 chunk 全部 0 facts，查到最后才发现是编码问题）。
+
+**应对**（我们这边能做的两件）
+
+- 锚点找不到时抛 `ExtractPromptDrift`，不降级。炸出来的代价是升级之后摄入
+  立刻不可用；不炸的代价是它看起来在跑、库里悄悄什么都不进。后者贵得多。
+- `tests/test_extract_prompt.py` 跑在**当前装着的那个版本**上，升级把测试
+  跑红，而不是把生产跑挂。
+
+**要给 KITE 提的需求**：`remember()` 已经收 `profile=` 参数了，把抽取 prompt
+也纳进去——
+
+```python
+memory.remember(messages, session_id=..., profile=my_profile)
+#   profile.EXTRACT_PROMPT 若非 None 就用它，否则用 DEFAULT_MEMORY_PROFILE
+```
+
+这样调用方换规则就是传一个对象，跟 `writer_harness` 传 `dimensions` 是同一个
+模式：**机制在包里，领域知识在调用方**。同时也解决约束 10（root 太宽）和
+约束 11（fact 语言随机）——那两条现在也是靠同一套字符串补丁在打。

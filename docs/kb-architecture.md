@@ -493,9 +493,38 @@ POST，而且抽样不是全扫。
 簇视图下不画实体：簇本来就是好几个主题合起来的，几乎每个簇都会碰上每个
 常见实体，画出来是一团噪声。
 
-### 还没做的
+### P3 复核：不是问题，但底下压着一颗雷
 
-* 第 9 节第 7 步：给 KITE 提「抽取 prompt 可注入」的需求。这是外部依赖，
-  现在还是靠 `_writing_extract_prompt()` 按字符串锚点给库里的 prompt 打
-  补丁——**库一升级就失效**。
-* P3（120/126 主题是 `candidate` 态）没复核
+「126 个主题里 120 个是 candidate」——复核之后这不是「主题体系没收敛」，
+而是 **KITE 的工作方式**：`canonical` 的那 6 个是库自带的根主题
+（finance / health / learning / personal / project / work），抽取提出来的
+一律是它们下面的候选子主题。写作库同样：194/200。而 `candidate` 在 KITE
+内部**全程带 `include_candidates=True`**（`algebra.py` 四处 `downset` 调用
+无一例外），功能上是惰性的。
+
+**但 `downset()` 的默认值是 `include_candidates=False`。** 这个库里 97% 的
+主题是 candidate，所以任何一个忘了传这个参数的调用，拿到的 closure 就只剩
+根主题自己：
+
+| | 带 include_candidates | 不带 |
+|---|---|---|
+| `work` 的 closure | 19 个主题 / 244 条事实 | **1 个主题** |
+| `learning` | 22 个主题 / 377 条事实 | **1 个主题** |
+
+症状会是「按主题筛什么都筛不出来」——那看起来像知识库是空的，不像参数传
+错了。我们这边只有一处调用，已经传了；`tests/test_kb_clusters.py` 加了一条
+断言盯住它。
+
+顺带量到的：`project` 有 128 个直接子主题——抽取几乎把什么都往它下面挂。
+这是碎片化的另一个侧面，跟 P1 是同一件事。
+
+### 第 9 节第 7 步：需求写清楚了，闸也设上了
+
+抽取 prompt 可注入是外部依赖，具体的需求写在
+`docs/kite-constraints.md` 约束 12。我们这边能做的两件做了：
+
+* 锚点找不到时抛 `ExtractPromptDrift`，**不降级**。失效方式很难看——锚点没
+  了则 schema 段是空串，发出去的 prompt 里一个 JSON schema 都没有，模型返回
+  的东西解析不出来，**每场会议抽 0 条事实且全程不报错**。
+* `tests/test_extract_prompt.py` 跑在**当前装着的那个 KITE 版本**上，升级把
+  测试跑红，而不是把生产跑挂。
