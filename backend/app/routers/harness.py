@@ -21,7 +21,6 @@ from __future__ import annotations
 import dataclasses
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 
 from ..database import store
 from ..harness import loop, modes, snapshot
@@ -31,7 +30,7 @@ from ..harness.hooks.note import NoteHooks
 from ..harness.hooks.section import SectionHooks
 from ..editor.profile import entries as _profile
 from .schemas import HarnessResumeIn
-from .deps import current_user
+from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api/harness", tags=["harness"])
 
@@ -73,9 +72,7 @@ async def resume(run_id: str, body: HarnessResumeIn, request: Request,
         async for event in loop.run(st, hooks):
             yield to_sse(event)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return sse_response(gen())
 
 
 def _mode_for(key: str):

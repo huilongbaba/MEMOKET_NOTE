@@ -68,3 +68,32 @@ def test_翻译层真的删干净了():
             if "legacy_frames" in f.read_text(encoding="utf-8")]
     assert not left, f"还有地方引用翻译层：{left}"
     assert "legacy" not in API_TS.read_text(encoding="utf-8").lower()
+
+
+def test_没有人手写sse帧也没有人自己开流():
+    """SSE 的帧格式和响应头，各只有一处。
+
+    改之前：帧格式 ``event: X\\ndata: {json}\\n\\n`` 在 compose / ingest /
+    writing_plan 里各手写了一遍（八处），``StreamingResponse(...)`` 带着
+    那两个响应头在六个 router 里各抄了一遍。
+
+    抄出来的东西迟早漂，而且漂了不报错：``ensure_ascii`` 漏一个，那条流
+    吐的就是 ``\\u4e2d\\u6587`` 转义；``X-Accel-Buffering: no`` 漏一个，
+    那条流在 nginx 后面会攒够几 KB 才吐一次——本地一切正常，线上「一动
+    不动然后突然全出来」。
+    """
+    import pathlib
+
+    routers = pathlib.Path(__file__).resolve().parents[1] / "app" / "routers"
+    files = sorted(routers.glob("*.py"))
+    assert files, "一个 router 都没找到"
+
+    handwritten, own_stream = [], []
+    for f in files:
+        src = f.read_text(encoding="utf-8")
+        if '"event: ' in src or "'event: " in src:
+            handwritten.append(f.name)
+        if "StreamingResponse(" in src and f.name != "deps.py":
+            own_stream.append(f.name)
+    assert not handwritten, f"这些 router 在手写 SSE 帧，用 events.sse()：{handwritten}"
+    assert not own_stream, f"这些 router 自己开流，用 deps.sse_response()：{own_stream}"

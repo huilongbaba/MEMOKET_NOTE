@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 
 from ..database import store
 from ..harness import tools
@@ -13,7 +12,7 @@ from ..harness.hooks.note import NoteHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
 from .schemas import NoteHarnessRunIn
-from .deps import current_user
+from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api/note-harness", tags=["note-harness"])
 
@@ -96,6 +95,4 @@ async def run(body: NoteHarnessRunIn, request: Request,
         async for event in loop.run(st, hooks):
             yield to_sse(event)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return sse_response(gen())

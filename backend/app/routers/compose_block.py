@@ -18,7 +18,6 @@ mermaid 会出语法错（用户碰到过"mermaid 语法错误，自动修复也
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
 from ..harness import tools
 from ..util import llm
 from ..editor import vision
@@ -29,7 +28,7 @@ from ..harness.hooks.block import BlockHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
 from .schemas import ComposeBlockIn
-from .deps import current_user
+from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api/compose", tags=["compose"])
 
@@ -73,9 +72,7 @@ async def compose_block(body: ComposeBlockIn, request: Request,
         async for event in loop.run(st, hooks):
             yield to_sse(event)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return sse_response(gen())
 
 
 # ---------------------------------------------------------------- 图片转表格

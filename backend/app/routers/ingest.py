@@ -13,14 +13,14 @@ import uuid
 from datetime import date as _date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
 
 from ..database import store
 from ..database.ingest import asr, extract
 from ..database.ingest.chunking import chunks as _chunks, chunks_for as _chunks_for
 from ..database.kite.kite_memory import UserMemory
 from .schemas import IngestItemOut, IngestOut, IngestTextIn
-from .deps import current_user
+from ..harness.events import sse
+from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
@@ -267,18 +267,18 @@ async def job_events(job_id: str, user: str = Depends(current_user)):
                 "job_id": j["id"], "status": j["status"], "facts": j["facts"],
                 "detail": j["detail"], "items": store.get_items(job_id),
             }
+            # 这一份序列化只用来比对「有没有变」，不上线——上线的那一帧由
+            # sse() 统一生成，免得帧格式在这里再手写一遍。
             frame = json.dumps(snap, ensure_ascii=False, sort_keys=True)
             if frame != last:
                 last = frame
-                yield f"event: progress\ndata: {frame}\n\n"
+                yield sse("progress", snap)
             if j["status"] in ("done", "error", "cancelled"):
-                yield "event: end\ndata: {}\n\n"
+                yield sse("end", {})
                 return
             await asyncio.sleep(0.7)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return sse_response(gen())
 
 
 @router.get("/jobs/{job_id}", response_model=IngestOut)

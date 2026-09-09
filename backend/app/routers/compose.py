@@ -6,23 +6,22 @@
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from datetime import date as _date
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
 
 from ..harness import prompts
+from ..harness.events import sse
 from ..database import retrieval
 from ..editor import profile
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..database.kite.kite_memory import UserMemory
 from .schemas import DigestIn, DigestOut, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
-from .deps import current_user
+from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api", tags=["compose"])
 
@@ -115,15 +114,15 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
     async def gen():
         meta = {"facts": len(facts), "recall_ms": round(took, 3),
                 "grounded": bool(facts), "sources": facts[:6], "fact_ids": ids[:6]}
-        yield f"event: meta\ndata: {json.dumps(meta, ensure_ascii=False)}\n\n"
+        yield sse("meta", meta)
         written = ""
         try:
             async for piece in llm.stream(messages, max_tokens=body.max_tokens,
                                           temperature=0.7):
                 written += piece
-                yield f"event: delta\ndata: {json.dumps({'text': piece}, ensure_ascii=False)}\n\n"
+                yield sse("delta", {"text": piece})
         except Exception as exc:
-            yield f"event: error\ndata: {json.dumps({'detail': str(exc)}, ensure_ascii=False)}\n\n"
+            yield sse("error", {"detail": str(exc)})
 
         # 写完之后确定性地看一眼：检索到了材料，这段有没有真的用上。
         #
@@ -134,17 +133,14 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         # 在别的维度上都是满分。这里不打断、不重写，只回一个信号让用户自己
         # 决定要不要重来。
         used, _u = grounding_check.fact_usage(written, facts)
-        yield ("event: grounding\ndata: "
-               + json.dumps({"facts": len(facts), "used": used,
-                             "hint": ("" if used or not facts else
-                                      "这段没用上检索到的记录，写的是通用内容——"
-                                      "重新点一次，或者先补一句具体的再续写")},
-                            ensure_ascii=False) + "\n\n")
-        yield "event: done\ndata: {}\n\n"
+        yield sse("grounding", {
+            "facts": len(facts), "used": used,
+            "hint": ("" if used or not facts else
+                     "这段没用上检索到的记录，写的是通用内容——"
+                     "重新点一次，或者先补一句具体的再续写")})
+        yield sse("done", {})
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return sse_response(gen())
 
 
 @router.post("/digest", response_model=DigestOut)

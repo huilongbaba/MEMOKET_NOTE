@@ -14,7 +14,6 @@ from __future__ import annotations
 
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 
 from ..harness import prompts
 from ..database import store
@@ -27,7 +26,7 @@ from ..harness.state import State
 from ..editor.profile import entries as _profile
 from ..database.retrieval import retrieve as _retrieve
 from .schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
-from .deps import current_user
+from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api/writing-plan", tags=["writing-plan"])
 
@@ -270,11 +269,9 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             sections = store.list_sections(plan["id"])
             _sync_tracking_note(user, plan, sections)
 
-        yield "event: done\ndata: {}\n\n"
+        yield _sse("done", {})
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return sse_response(gen())
 
 
 @router.post("/{folder_id}/abandon")
