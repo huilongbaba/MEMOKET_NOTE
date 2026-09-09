@@ -145,3 +145,33 @@ def test_前端没有导出了谁都不用的东西():
             if uses <= 1:
                 dead.append(f"{path.name}:{text[:m.start()].count(chr(10)) + 1} {name}")
     assert not dead, "导出了但谁都不用：\n  " + "\n  ".join(dead)
+
+
+def test_README里写的端点后端都有():
+    """README 是**第一个**被读的东西。它列的端点不存在，读的人会先怀疑
+    自己装错了。
+
+    这次补 README 时就发现它整段没提 harness——app 里最大的一块（7700 行）、
+    八个功能共用的那份循环，入口文档里一个字都没有；两份主设计文档也不在
+    「设计文档」那张表里。文档漂了没有任何症状，只有下一个人读的时候才
+    付账。
+    """
+    import re
+
+    readme = (FRONTEND.parents[1] / "README.md").read_text(encoding="utf-8")
+    listed = {m.group(1) for m in re.finditer(r"`((?:GET|POST|PUT|DELETE)[^`]*?)`",
+                                              readme)}
+    paths = set()
+    for entry in listed:
+        for word in entry.split():
+            if word.startswith("/api"):
+                paths.add(word)
+            elif word.startswith("/") and paths:
+                # `POST /api/writing-plan/start` · `/run` 这种续写形式
+                head = sorted(paths)[-1].rsplit("/", 1)[0]
+                paths.add(head + word)
+    assert len(paths) > 15, f"没从 README 里扒出多少端点：{sorted(paths)}"
+
+    have = {_normalise(p) for p in _backend_paths()}
+    missing = sorted(p for p in paths if _normalise(p) not in have)
+    assert not missing, "README 里写了、后端没有的端点：\n  " + "\n  ".join(missing)

@@ -17,17 +17,33 @@ AI 驱动的编辑器 + 个人知识库。写作时自动引用你自己的记�
 | **批量导入** | 多文件（PDF/DOCX/TXT/MD/音频）一次上传，每个文件独立处理、失败不拖垮整批，SSE 推进度 |
 | **知识库检索/提问** | 两条路径，见下 |
 | **知识库可视化** | 概览 / 主题地图 / 时间线 / 事实表，事实展开可回溯到原文出处 |
+| **写作 harness** | 「写一轮 → 判一轮 → 决定继不继续」的自动循环。八个功能共用同一份循环，差别全部表达成配置。见下 |
+| **Skill** | 用 SKILL.md 目录教它你的写法。菜单按需加载（先给一行简介，模型要用才读全文），第三方 skill 的脚本跑在沙箱里 |
+| **主题簇 / 抽取判据** | 知识库自己的质量闭环：事实聚成主题簇、抽取质量用同一套打分引擎判 |
 
 ## 架构
 
 ```
 前端 (Vite + React, :5173)
-    │  HTTP / SSE
+    │  HTTP / SSE（AG-UI 事件）
 后端 (FastAPI, :8000)
+    app/
+      harness/     agent 运行：一份循环 · Mode · 判据 · middleware · 工具 · skill · 沙箱
+      database/    知识库和数据库：sqlite · KITE 适配 · 主题簇 · 摄入
+      editor/      既不是 agent 也不是知识库的那部分：大纲 · 重排 · 图片转表格 · 画像
+      routers/     和前端对接：认 Mode、装 State、翻事件
+      util/        公共：配置 · LLM 客户端
+    │
     ├── KITE Memory      每用户一个 XML codebook
     ├── LLM              OpenAI 兼容端点（默认内网 Muse-Glimmer-30B）
     └── Whisper Turbo    whisper.cpp server
 ```
+
+**一份循环，八个功能共用。** 之前是三份手抄的循环（555 + 245 + 156 行），
+「这条 harness 有、那条没有」的 bug 付了四次学费。现在加一条 harness ＝ 写一个
+`Mode`（配置）加三个回调，循环本身不用碰。判据分两半：代码能确定判的用
+`Check`（零成本、能自动修），只有模型判得了的才走 `Dimension`——打分的和被
+打分的是同一个本地模型，它的盲区跟写作者的完全重合。
 
 ## 关键设计：检索为什么不走 KITE 原生 API
 
@@ -68,6 +84,9 @@ n-gram 生成有两个要点：从**最靠近光标的片段**开始（续写时
 
 | 文档 | 内容 |
 |---|---|
+| [`docs/harness-framework.md`](docs/harness-framework.md) | **写作 harness 的完整设计**：为什么循环要硬编码、判据为什么分两半、能力为什么做成默认全开的 middleware。第 3 节是目录地图，`tests/test_directory_map.py` 盯着它跟代码一致 |
+| [`docs/kb-architecture.md`](docs/kb-architecture.md) | 知识库这一侧：主题簇怎么聚、抽取质量怎么判、检索计划怎么定 |
+| [`docs/import-from-other-note-apps.md`](docs/import-from-other-note-apps.md) | 从别的笔记应用导入 |
 | [`docs/kite-constraints.md`](docs/kite-constraints.md) | 读 KITE 源码得出的 8 条硬约束，每条标了源码位置。升级 KITE 后应重新核对 |
 | [`docs/_research/P0-findings.md`](docs/_research/P0-findings.md) | 中英文对照实测，量化了中文召回的退化幅度 |
 | [`docs/_research/PLAN.md`](docs/_research/PLAN.md) | 后续路线 |
@@ -121,6 +140,12 @@ LLM_MODEL=gpt-4.1-mini
 | `GET /api/ingest/jobs/{id}` | 入库任务状态（含批量任务的 items 明细） |
 | `GET /api/ingest/jobs/{id}/events` | 批量任务的 SSE 进度流 |
 | `POST /api/ingest/jobs/{id}/cancel` | 取消批量任务（已在处理的文件会跑完，未处理的直接标 cancelled） |
+| `POST /api/note-harness/run` | 单篇 harness：一篇笔记内部自动修订 + 自动续写，SSE 推 AG-UI 事件 |
+| `POST /api/writing-plan/start` · `/run` | 文件夹级无限续写：拆分段、每段各写一篇、写完再判断还缺不缺 |
+| `GET /api/harness/paused` · `POST /api/harness/{id}/resume` | 轮末暂停与恢复（State 存成快照） |
+| `POST /api/compose/block` | 编辑器里 `/` 唤起的块生成 |
+| `GET/POST/PUT/DELETE /api/skills` | Skill 的增删改查、启停、排序、让模型自己生成一个 |
+| `GET /api/kb/clusters` · `/coverage` · `/quality` | 主题簇、覆盖度、抽取质量（后两个是运维/诊断端点，界面上没有入口） |
 
 用户身份走 `X-User-Id` 请求头，每个 user_id 对应一个独立的 codebook。
 原型阶段没有认证，生产环境把 `routers/deps.py` 里的 `current_user` 换成真实鉴权即可。
