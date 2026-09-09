@@ -24,6 +24,12 @@ and the point of this move is to change where they live, not what they do:
   already broken isn't this revision's fault.
 
 The comments below are the original ones; they carry the specific evidence.
+
+对外的是这五个：``apply_revision`` · ``reject_revision`` · ``breakage`` ·
+``expand_sources`` · ``tidy_blank_lines``，``middleware/revise.py`` 全用。
+其余（``_locate`` · ``_replaced_span`` · ``_is_same_meaning_rewrite``）才是
+真私有。**下划线只用来标真私有**——之前那四个明明被别的模块 import，却顶着
+下划线，读的人无从知道这个模块的契约到底是哪几个。
 """
 
 from __future__ import annotations
@@ -49,7 +55,7 @@ _BROKEN = re.compile(r"[：:，,。.；;！!？?]\s*[、，,；;。.]"      # �
                      r"|[，、]\s*(?:\n\n|$)")                   # 段落以顿号/逗号收尾
 
 
-def _tidy_blank_lines(content: str) -> str:
+def tidy_blank_lines(content: str) -> str:
     """把连续空行压回一个。
 
     delete 一条修订会留下 ``前段\n\n`` + ``\n\n后段``——两组段落分隔符
@@ -75,7 +81,7 @@ def _tidy_blank_lines(content: str) -> str:
     return "\n".join(out)
 
 
-def _breakage(before: str, after: str) -> str:
+def breakage(before: str, after: str) -> str:
     """这条修订有没有把正文切出破字。只报**新增**的破损，原文本来就有的不算。"""
     was = len(_BROKEN.findall(before))
     now = _BROKEN.findall(after)
@@ -155,7 +161,7 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
     三类都是在真实产出上抓到的，且都是**确定性可判**的——整晚反复验证过，
     这类"别重复改""别切坏"的元指令写进提示词不管用，只有在应用阶段硬拦有效。
 
-    ``note_harness`` 和 ``writing_plan`` 共用 ``_apply_revision``，所以这三道
+    ``note_harness`` 和 ``writing_plan`` 共用 ``apply_revision``，所以这三道
     防线也必须共用：只修一边，等于另一条路径上的 bug 还活着。
     """
     key = " ".join(anchor.split())[:40]
@@ -178,7 +184,7 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
     return ""
 
 
-def _apply_revision(content: str, op: str, anchor: str, text: str,
+def apply_revision(content: str, op: str, anchor: str, text: str,
                     insert_offset: int = 0, anchor_end: str = "") -> str:
     """前端 RevisionPanel.tsx 的 applyRevision() 用的是同一套锚点语义，这里
     是要在没有人工审核的情况下自动应用，所以后端自己实现一份——不能指望
@@ -207,7 +213,7 @@ def _apply_revision(content: str, op: str, anchor: str, text: str,
     return content[:i] + text + content[end:]  # replace
 
 
-def _expand_sources(raw: list, facts: list[str]) -> list[str]:
+def expand_sources(raw: list, facts: list[str]) -> list[str]:
     """把模型给的简短来源标记还原成完整事实。
 
     知识库事实进 prompt 时都带方括号前缀（``[2026-04-10]`` 或

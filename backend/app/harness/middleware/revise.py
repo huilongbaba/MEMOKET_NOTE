@@ -24,7 +24,7 @@ from ...util import llm
 from ...editor import outline
 from ..checks import grounding_rules as grounding_check
 from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, Event
-from ..revision import _apply_revision, _breakage, _expand_sources, _tidy_blank_lines, reject_revision
+from ..revision import apply_revision, breakage, expand_sources, tidy_blank_lines, reject_revision
 from ..state import State
 
 # One pass proposes at most this many edits. Beyond it the model stops
@@ -129,12 +129,12 @@ class Revise:
                                    {"round": st.round, "detail": why_not})
                 continue
 
-            updated = _apply_revision(
+            updated = apply_revision(
                 st.content, op, anchor, body,
                 insert_offset=insert_offsets.get(anchor, 0), anchor_end=anchor_end)
             if updated == st.content:
                 continue
-            broke = _breakage(st.content, updated)
+            broke = breakage(st.content, updated)
             if broke:
                 yield Event.custom(CUSTOM_DROPPED, {
                     "round": st.round,
@@ -152,7 +152,7 @@ class Revise:
 
             if op == "insert":
                 insert_offsets[anchor] = insert_offsets.get(anchor, 0) + len(body)
-            st.content = _tidy_blank_lines(updated)
+            st.content = tidy_blank_lines(updated)
             if op in ("replace", "delete"):
                 edited.add(key)
             applied += 1
@@ -165,7 +165,7 @@ class Revise:
                 # EDIT_SYSTEM already asks the model to report which facts a
                 # revision rests on. The one-shot endpoint read them and this
                 # path didn't: the signal existed and was being dropped.
-                "sources": _expand_sources(item.get("sources") or [], st.facts)[:3],
+                "sources": expand_sources(item.get("sources") or [], st.facts)[:3],
             })
 
         # **Clean up after revising too.** This used to run only where

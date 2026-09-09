@@ -1642,7 +1642,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | `_run_edit_pass`（131） | `middleware/revise.py` |
 | `_replan_beats`（22） | `middleware/replan.py` |
 | `_evaluate_round`（53） | `loop.py` 的 judge 段 |
-| `_locate` `_breakage` `_replaced_span` `_is_same_meaning_rewrite` `reject_revision` `_apply_revision` `_tidy_blank_lines` `_expand_sources` | `harness/revision.py`（纯函数） |
+| `_locate` `breakage` `_replaced_span` `_is_same_meaning_rewrite` `reject_revision` `apply_revision` `tidy_blank_lines` `expand_sources` | `harness/revision.py`（纯函数） |
 | `TOOL_GROUPS` `CONTINUE_MAX_TOKENS` `MAX_ROUNDS_CAP` `STALL_ROUNDS_CAP` `CONTEXT_KEEP_LAST_CHARS` | `modes.py` 的 `NOTE` 字段 |
 | 剩下 | `routers/note_harness.py` ≈120 行 |
 

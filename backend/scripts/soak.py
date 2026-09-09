@@ -108,7 +108,7 @@ def one(kind: str, name: str, seed: str, tag: str) -> dict:
 
 
 # 文件夹级无限续写。单篇 harness 已经跑了上千次，而 writing_plan 一次没测过——
-# 它跟单篇共用 EDIT_SYSTEM、_apply_revision 和那四道丢弃防线，而今晚"两条路径
+# 它跟单篇共用 EDIT_SYSTEM、apply_revision 和那四道丢弃防线，而今晚"两条路径
 # 共用一个函数、只修了一边"的缺陷已经出现过三次。没有 bench 等于这条路径在裸奔。
 # 一次计划要写好几篇笔记、几分钟起步，所以每批只跑一遍，不跟着 rounds 翻。
 PLAN_GOALS = [

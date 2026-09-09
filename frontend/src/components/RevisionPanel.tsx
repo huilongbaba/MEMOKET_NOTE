@@ -33,7 +33,7 @@ export function applyRevision(content: string, r: Revision): string {
   let end = i + r.anchor.length
   if (r.anchor_end) {
     // 给了结尾标记：要动的是"起始标记开头 → 结尾标记结尾"这一整段。
-    // **必须跟后端 _apply_revision 保持同一套语义**——自动应用走后端、
+    // **必须跟后端 apply_revision 保持同一套语义**——自动应用走后端、
     // 手动点接受走这里，两边算出不同的范围就会让同一条修订产生两种结果。
     // 找不到结尾标记就退回只用 anchor，宁可少改一点也不要按错误范围改。
     const j = content.indexOf(r.anchor_end, end)

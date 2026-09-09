@@ -1,4 +1,4 @@
-"""单篇笔记 harness：note_harness._apply_revision() 的锚点应用语义（跟
+"""单篇笔记 harness：note_harness.apply_revision() 的锚点应用语义（跟
 前端 RevisionPanel.tsx 的 applyRevision() 是同一套语义，Python 版本），
 以及 prompts.note_harness_continue_user()/edit_user() 的拼装。
 
@@ -20,31 +20,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import prompts# noqa: E402
 # 修订的定位与应用搬到了 app/harness/revision.py —— 两条 harness 共用，
 # 而 router 之间不该互相 import。
-from app.harness.revision import _apply_revision  # noqa: E402
+from app.harness.revision import apply_revision  # noqa: E402
 
 
 def test_apply_revision_replace():
-    result = _apply_revision("正文里有一段旧内容在这里。", "replace", "旧内容", "新内容")
+    result = apply_revision("正文里有一段旧内容在这里。", "replace", "旧内容", "新内容")
     assert result == "正文里有一段新内容在这里。"
 
 
 def test_apply_revision_insert_after_anchor():
-    result = _apply_revision("开头。结尾。", "insert", "开头。", "中间。")
+    result = apply_revision("开头。结尾。", "insert", "开头。", "中间。")
     assert result == "开头。中间。结尾。"
 
 
 def test_apply_revision_insert_before_anchor():
-    result = _apply_revision("开头。结尾。", "insert_before", "结尾。", "中间。")
+    result = apply_revision("开头。结尾。", "insert_before", "结尾。", "中间。")
     assert result == "开头。中间。结尾。"
 
 
 def test_apply_revision_delete():
-    result = _apply_revision("保留这段，删掉这段，保留这段。", "delete", "，删掉这段", "")
+    result = apply_revision("保留这段，删掉这段，保留这段。", "delete", "，删掉这段", "")
     assert result == "保留这段，保留这段。"
 
 
 def test_apply_revision_missing_anchor_returns_unchanged():
-    result = _apply_revision("正文内容", "replace", "找不到的锚点", "新内容")
+    result = apply_revision("正文内容", "replace", "找不到的锚点", "新内容")
     assert result == "正文内容"
 
 
@@ -59,24 +59,24 @@ def test_consecutive_inserts_on_same_anchor_keep_model_order():
 
     # 旧行为（不传 insert_offset）会颠倒顺序——这里明确固定住"为什么需要
     # 这个参数"，不是抽象地测新参数能用
-    naive = _apply_revision(content, "insert", "锚点句。", first)
-    naive = _apply_revision(naive, "insert", "锚点句。", second)
+    naive = apply_revision(content, "insert", "锚点句。", first)
+    naive = apply_revision(naive, "insert", "锚点句。", second)
     assert naive.index("第四节") < naive.index("第三节")
 
-    stepped = _apply_revision(content, "insert", "锚点句。", first, insert_offset=0)
-    stepped = _apply_revision(stepped, "insert", "锚点句。", second, insert_offset=len(first))
+    stepped = apply_revision(content, "insert", "锚点句。", first, insert_offset=0)
+    stepped = apply_revision(stepped, "insert", "锚点句。", second, insert_offset=len(first))
     assert stepped.index("第三节") < stepped.index("第四节")
 
 
 def test_apply_revision_insert_offset_defaults_to_old_behavior():
     # 前端逐条接受走的是单条应用，不传 offset，行为必须跟以前一模一样
-    assert _apply_revision("开头。结尾。", "insert", "开头。", "中间。") == "开头。中间。结尾。"
+    assert apply_revision("开头。结尾。", "insert", "开头。", "中间。") == "开头。中间。结尾。"
 
 
 def test_apply_revision_only_touches_first_occurrence():
     # find() 找第一处，跟前端 indexOf() 语义一致——重复出现的锚点里，
     # 修订只作用在第一个匹配上，不是全局替换
-    result = _apply_revision("重复 重复 重复", "replace", "重复", "改了")
+    result = apply_revision("重复 重复 重复", "replace", "重复", "改了")
     assert result == "改了 重复 重复"
 
 
@@ -105,20 +105,20 @@ def test_edit_user_omits_focus_block_when_not_given():
 
 def test_tidy_blank_lines_collapses_runs_left_by_delete():
     """delete 一条修订会把前后两组段落分隔符并在一起，留下多余空行。"""
-    from app.harness.revision import _tidy_blank_lines
+    from app.harness.revision import tidy_blank_lines
 
     # 「## A\n\n正文\n\n## B」删掉中间正文后的形态
-    assert _tidy_blank_lines("## A\n\n\n\n## B") == "## A\n\n## B"
-    assert _tidy_blank_lines("a\n\nb") == "a\n\nb"          # 正常段落间距不动
-    assert _tidy_blank_lines("a\nb") == "a\nb"                # 单换行不动
+    assert tidy_blank_lines("## A\n\n\n\n## B") == "## A\n\n## B"
+    assert tidy_blank_lines("a\n\nb") == "a\n\nb"          # 正常段落间距不动
+    assert tidy_blank_lines("a\nb") == "a\nb"                # 单换行不动
 
 
 def test_tidy_blank_lines_keeps_code_block_content_intact():
     """代码块里的空行是内容不是格式，不能压。"""
-    from app.harness.revision import _tidy_blank_lines
+    from app.harness.revision import tidy_blank_lines
 
     src = "```\nx\n\n\n\ny\n```"
-    assert _tidy_blank_lines(src) == src
+    assert tidy_blank_lines(src) == src
 
 
 def test_every_harness_supplies_the_three_callbacks_the_loop_calls():
@@ -150,33 +150,33 @@ def test_anchor_end_locates_a_span_without_echoing_it():
     原样回显两百字，replace 时改后的 text 再输出一遍，同一段内容进出各一次。
     输出 token 直接换算成时间，是纯浪费。
     """
-    from app.harness.revision import _apply_revision
+    from app.harness.revision import apply_revision
 
     c = "## 标题\n\n开头这几个字，中间很长的一大段内容省略掉，结尾这几个字。\n\n下一段。"
-    assert _apply_revision(c, "replace", "开头这几个字", "换成这个",
+    assert apply_revision(c, "replace", "开头这几个字", "换成这个",
                            anchor_end="结尾这几个字。") == "## 标题\n\n换成这个\n\n下一段。"
-    assert _apply_revision(c, "delete", "开头这几个字", "",
+    assert apply_revision(c, "delete", "开头这几个字", "",
                            anchor_end="结尾这几个字。") == "## 标题\n\n\n\n下一段。"
 
 
 def test_missing_anchor_end_falls_back_to_anchor_only():
     """结尾标记定位不到时宁可少改一点，也不要按错误的范围改。"""
-    from app.harness.revision import _apply_revision
+    from app.harness.revision import apply_revision
 
     c = "第一段。第二段。"
-    assert _apply_revision(c, "delete", "第一段。", "", anchor_end="不存在") == "第二段。"
+    assert apply_revision(c, "delete", "第一段。", "", anchor_end="不存在") == "第二段。"
     # 不给 anchor_end 时行为跟以前完全一致
-    assert _apply_revision(c, "delete", "第一段。", "") == "第二段。"
+    assert apply_revision(c, "delete", "第一段。", "") == "第二段。"
 
 
 def test_sources_markers_expand_to_full_facts():
     """模型只回显方括号标记，后端还原成完整事实——显示不减，输出 token 大减。"""
-    from app.harness.revision import _expand_sources
+    from app.harness.revision import expand_sources
 
     facts = ["[2026-04-10] 硬件4月10号出来。", "[terrence-2046-2F3] Speaker E 问3月31号。"]
-    assert _expand_sources(["2026-04-10"], facts) == ["[2026-04-10] 硬件4月10号出来。"]
-    assert _expand_sources(["[terrence-2046-2F3]"], facts)[0].startswith("[terrence-2046-2F3]")
-    assert _expand_sources(["认不出来的"], facts) == ["认不出来的"]   # 不丢来源
+    assert expand_sources(["2026-04-10"], facts) == ["[2026-04-10] 硬件4月10号出来。"]
+    assert expand_sources(["[terrence-2046-2F3]"], facts)[0].startswith("[terrence-2046-2F3]")
+    assert expand_sources(["认不出来的"], facts) == ["认不出来的"]   # 不丢来源
 
 
 def test_judging_uses_run_level_facts_not_this_round():
@@ -246,7 +246,7 @@ def test_edited_spans_block_second_rewrite_of_same_place():
 
 def test_breakage_catches_half_replaced_sentence():
     """修订切错位置留下的残骸要能查出来。样本是真实产出里抓到的破字。"""
-    from app.harness.revision import _breakage as brk
+    from app.harness.revision import breakage as brk
 
     ok = "不要把未计算的节点写成已确定日期。应把需求收口、设计稿确认逐项列入倒排表。"
     bad = "不要把未计算的节点写成已确定日期：、设计稿确认、页面开发逐项列入倒排表。"
@@ -265,7 +265,7 @@ def test_ambiguous_anchor_is_skipped():
     assert 'op == "replace" and not anchor_end and content.count(anchor) > 1' in src
     revise = (Path(__file__).resolve().parent.parent
               / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
-    assert "broke = _breakage(st.content, updated)" in revise
+    assert "broke = breakage(st.content, updated)" in revise
 
 
 def test_both_harnesses_share_the_same_revision_guards():
@@ -353,21 +353,21 @@ def test_outline_target_is_decided_before_retrieval():
 
 def test_locate_picks_the_smallest_span_when_anchor_repeats():
     """锚点重复时取跨度最小的那一组——这是"删掉重复的那一节"的正确语义。"""
-    from app.harness.revision import _apply_revision, _locate
+    from app.harness.revision import apply_revision, _locate
 
     doc = ("## 众筹节奏\n\n三月上旬启动。\n\n"
            "## 众筹节奏\n\n三月上旬启动众筹。\n\n综上所述，要盯紧。\n")
     i, j = _locate(doc, "## 众筹节奏", "三月上旬启动众筹。")
     assert doc[i:j] == "## 众筹节奏\n\n三月上旬启动众筹。", "从第一处往后找会把两节整个删掉"
 
-    out = _apply_revision(doc, "delete", "## 众筹节奏", "", anchor_end="三月上旬启动众筹。")
+    out = apply_revision(doc, "delete", "## 众筹节奏", "", anchor_end="三月上旬启动众筹。")
     assert out.count("## 众筹节奏") == 1, "重复的那一节应该被删掉"
     assert "三月上旬启动。" in out, "留下的应该是第一节"
 
     # 没有 anchor_end 时行为不变：定位到第一处的锚点本身
     assert _locate(doc, "## 众筹节奏", "") == (0, len("## 众筹节奏"))
     # 结尾标记找不到时退回只用 anchor，不能按错误范围乱切
-    assert _apply_revision(doc, "delete", "综上所述，", "", anchor_end="根本不存在的标记") \
+    assert apply_revision(doc, "delete", "综上所述，", "", anchor_end="根本不存在的标记") \
         == doc.replace("综上所述，", "", 1)
 
 

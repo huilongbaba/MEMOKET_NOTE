@@ -23,6 +23,16 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# 下面两个 import 伸进了 memoket_kite 的私有名（前面带下划线的那两个）。
+# 这是有意的、也是有代价的：
+#   * ``_consolidation_round_votes`` 是投票解析，重写一份就等于让两边的
+#     解析规则各自漂移，比借用更糟；
+#   * ``_verify_loadable`` 是写回前的可读性校验，没有公开等价物。
+# 代价是 memoket-kite 在 requirements 里是 ``git+…`` 不带 ref 的，跟着上游
+# HEAD 走：上游把这两个名字一改，这里是**import 期**炸，整个 app 起不来。
+# 所以 tests/test_kite_private_api.py 盯着这两个名字——把「某天服务起不来」
+# 提前成一条说得清哪个名字没了的红测试。降级没有意义：这两件事做不了，
+# 整合本身就做不了。
 from memoket_kite import Memory
 from memoket_kite.core.algebra import CONF_ORDER, Store, execute_plan
 from memoket_kite.core.vocab import Topic, norm_code
