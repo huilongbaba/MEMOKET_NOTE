@@ -5,7 +5,7 @@
 
 ---
 
-**目录**：[0 一页纸](#0-一页纸) · [1 memoket-note 需要什么](#1-memoket-note-需要什么) · [2 每条需求借鉴谁](#2-每条需求借鉴谁) · [3 目录](#3-目录) · [4 类型](#4-类型) · [5 循环](#5-循环) · [6 事件](#6-事件) · [7 工具](#7-工具) · [8 判据](#8-判据) · [9 middleware](#9-middleware) · [10 错误与取消（R10 R11）](#10-错误与取消（R10-R11）) · [11 用户处置的回路（R5）](#11-用户处置的回路（R5）) · [12 8 个 Mode](#12-8-个-Mode) · [13 一条 harness 改造后](#13-一条-harness-改造后) · [14 现有代码搬到哪里去](#14-现有代码搬到哪里去) · [15 这个架构顺手解决的现有 bug](#15-这个架构顺手解决的现有-bug) · [16 分层与依赖规则](#16-分层与依赖规则) · [17 怎么测](#17-怎么测) · [18 架构原型](#18-架构原型) · [19 落地顺序](#19-落地顺序)
+**目录**：[0 一页纸](#0-一页纸) · [1 memoket-note 需要什么](#1-memoket-note-需要什么) · [2 每条需求借鉴谁](#2-每条需求借鉴谁) · [3 目录](#3-目录) · [4 什么东西谁能配](#4-什么东西谁能配) · [5 类型](#5-类型) · [6 循环](#6-循环) · [7 事件](#7-事件) · [8 工具](#8-工具) · [9 判据](#9-判据) · [10 Skill](#10-Skill) · [11 middleware](#11-middleware) · [12 错误与取消（R10 R11）](#12-错误与取消（R10-R11）) · [13 用户处置的回路（R5）](#13-用户处置的回路（R5）) · [14 8 个 Mode](#14-8-个-Mode) · [15 一条 harness 改造后](#15-一条-harness-改造后) · [16 现有代码搬到哪里去](#16-现有代码搬到哪里去) · [17 这个架构顺手解决的现有 bug](#17-这个架构顺手解决的现有-bug) · [18 分层与依赖规则](#18-分层与依赖规则) · [19 怎么测](#19-怎么测) · [20 架构原型](#20-架构原型) · [21 落地顺序](#21-落地顺序)
 
 ---
 
@@ -52,7 +52,7 @@ flowchart TB
 | # | 需求 | 从哪来 |
 |---|---|---|
 | **R1** | **没有 oracle**，合格与否要靠一组可插拔的判据 | 写作没有编译器和测试 |
-| **R2** | **判据不能只靠模型**：打分器和被打分的是同一个本地模型 | 实测打分器给通篇假图打过 `has_charts=2` |
+| **R2** | **判据不能只靠模型**：打分器和被打分的是同一个本地模型 | 实测打分器给通篇假图打过 `has_charts=2`；LLM-as-judge 的公认建议是「别拿同一个模型家族既生成又评判」（self-preference bias） |
 | **R3** | **多种任务形态**：写整篇 / 分段 / 生成一段 / 改选中的一段 | 8 个功能，共用一套闭环 |
 | **R4** | **流式**：本地模型 20–90 秒一次调用，产出必须边生成边看 | `muse-glimmer-30b` 的实测延迟 |
 | **R5** | **可追溯 + 可处置**：修订逐条 accept/reject，能看到某段依据哪条事实 | `roundDiff.ts`（385 行）· `TapProvenance` |
@@ -62,6 +62,7 @@ flowchart TB
 | **R9** | **并发**：同一篇笔记多个 `/` 同时跑，状态不能串 | `runningBlocks.ts` 就是这么设计的 |
 | **R10** | **一步失败不能炸掉整个 run**，且已有产出必须落盘 | 本地模型高负载时单次调用超 300s 超时，异常从 SSE generator 冒出去 = 连接被硬中断 |
 | **R11** | **用户随时可以关掉页面**，取消要干净 | 每条 harness 现在各有一处 `is_disconnected()` |
+| **R12** | **用户能自己定写作规则**（skill），按场景生效 | `SkillsPanel` · 11 个 scope · `store.enabled_skills_for_scope()` |
 
 ## 2. 每条需求借鉴谁
 
@@ -80,6 +81,7 @@ flowchart TB
 | R9 | **全部框架** | 状态挂在 run 上下文里，不用模块级全局 |
 | R10 | **DSPy `fail_count`** · **OpenHands Controller** | 失败有预算；「管约束的」跟「做决策的」分层 |
 | R11 | **LangGraph checkpointer** | 状态在每个 super-step 存快照，中断能恢复 |
+| R12 | **LangChain `middleware.tools`** · **Claude Code 的 skills** | 能力和它的配置打包在一起；用户写的规则按场景注入 system prompt |
 
 十条横向结论（12 个框架无一例外的那些）：
 
@@ -126,13 +128,54 @@ backend/app/routers/     薄壳
   compose_block.py   566 → 约 60
 ```
 
-不动的：`app/tools/`（工具池已经是对的）、`app/agent_loop.py`、
-纯函数层（`tabular` `blocks` `outline` `textshape` `restructure`）、
-`writer_harness/`（对 app 零依赖）。
+不动的：`app/agent_loop.py`、纯函数层（`tabular` `blocks` `outline`
+`textshape` `restructure` `runtime_policy` `replan`）、`writer_harness/`
+（对 app 零依赖）。
+`app/tools/` 的注册表机制不动，但**分组要调**（见第 8 节）。
 
 ---
 
-## 4. 类型
+## 4. 什么东西谁能配
+
+架构里有三层配置，**主体不同**，混在一起想就会乱：
+
+| 配什么 | 谁配 | 存哪 | 改了要发版吗 |
+|---|---|---|---|
+| `groups` / `exclude`　工具授权 | **开发者** | `modes.py` | 要 |
+| `dims` / `checks`　判据 | **开发者** | `modes.py` + `checks/` | 要 |
+| `skill_scope`　技能挂哪个作用域 | **开发者** | `modes.py` | 要 |
+| `max_rounds` / `fact_budget` | **开发者** | `modes.py` | 要 |
+| **具体启用哪些 skill** | **用户** | DB · `SkillsPanel` | 不要 |
+| **个人偏好 profile** | **用户** | DB | 不要 |
+| **用哪个模型**（local / gpt） | **用户** | DB · `SettingsPanel` | 不要 |
+
+一句话：**工具只有开发者能配；skill 是两层——作用域开发者定，
+具体规则用户写。**
+
+### 为什么工具不给用户配
+
+用户不知道 `filter_facts` 和 `search_memory` 的区别，配错了功能直接坏掉，
+而且坏得很隐蔽（不报错，只是查不到东西）。**开发者配「这个功能需要什么能力」，
+用户配「写出来要什么风格」——边界按「懂不懂语义」划。**
+
+真要给用户开口子，只该是粗粒度的开关（比如「允许文生图」，因为它慢且花钱），
+那是产品决策，走 `settings` 表，不走 `Mode`。
+
+### skill 的匹配方向是反的
+
+```python
+class SkillIn:
+    scopes: list[str]     # ← skill 声明**自己适用于哪些场景**
+```
+
+不是「场景声明用哪些 skill」。这跟 `Mode.skill_scope` 正好配对：
+Mode 说「我是 `block_write`」，skill 说「我适用于 `block_write` 和
+`magic_tap`」，匹配上就生效。用户新建一个 skill 时勾选它适用的场景——
+这个方向对用户更自然，**不要为了架构整齐把它反过来**。
+
+---
+
+## 5. 类型
 
 ```python
 # ── types.py ──────────────────────────────────────────────────────────
@@ -155,7 +198,7 @@ class Hooks(Protocol):
 
     async def commit(self, st: State) -> None:
         """一次 run 收尾。**不是每轮落盘**——每轮落盘是 `Save` middleware
-        的事（见第 9 节）。这里做的是收尾专属的动作，比如 writing_plan
+        的事（见第 10 节）。这里做的是收尾专属的动作，比如 writing_plan
         更新那篇进度追踪笔记。"""
 
 
@@ -172,7 +215,9 @@ class Middleware(Protocol):
     middleware 会被迫写 `return; yield` 这种为了"让它成为生成器"的怪写法。
     """
     name: str
-    async def before_round(self, st) -> AsyncIterator[Event]: ...
+    async def before_run(self, st) -> AsyncIterator[Event]: ...      # 一次 run 一次
+    async def after_run(self, st) -> AsyncIterator[Event]: ...
+    async def before_round(self, st) -> AsyncIterator[Event]: ...    # 每轮
     async def after_prepare(self, st) -> AsyncIterator[Event]: ...
     async def before_produce(self, st) -> AsyncIterator[Event]: ...
     async def after_produce(self, st) -> AsyncIterator[Event]: ...
@@ -202,7 +247,12 @@ class Mode:
     key: str
     label: str
     task: str
-    groups: tuple[str, ...] = ("memory",)           # 工具授权
+    # 工具授权：`group` 是工具的分组，一组一个领域。
+    #   memory(7) 查知识库 · data(5) 认表算数 · chart(4) 画图 · image(1) 文生图
+    # groups=("memory",) 的功能只能查知识库，画不了图。见第 8 节。
+    groups: tuple[str, ...] = ("memory",)
+    exclude: tuple[str, ...] = ()                   # 排除个别工具（见第 8 节）
+    skill_scope: str = ""                           # 用户技能挂哪个作用域（见第 10 节）
     dims: tuple[Dimension, ...] = ()                # 模型判的判据
     checks: tuple[Check, ...] = ()                  # 代码判的判据
     stop_when: tuple[StopCondition, ...] = ()       # 内置三条之外的
@@ -230,11 +280,13 @@ class State:
     after: str = ""
     content: str = ""               # 当前产出
     fresh: str = ""                 # 这一轮新写的部分
+    facts_new: list[str] = field(default_factory=list)  # 这一轮刚查到的（未累积）
     facts: list[str] = field(default_factory=list)      # 累积并压缩过
     charts: list[str] = field(default_factory=list)     # 工具产出过的 mermaid
     trace: ToolTrace | None = None
     ev: Evaluation | None = None
     best: tuple[tuple[int, float], str] | None = None
+    skills: list[dict] = field(default_factory=list)     # 用户启用的技能（R12）
     steer: str = ""                 # 上一轮最弱那一维的诊断
     skip_judge: bool = False        # 检查已判定不合格，跳过这一轮的打分（R8）
     bag: dict = field(default_factory=dict)             # middleware 之间传东西
@@ -250,7 +302,7 @@ class State:
 
 ---
 
-## 5. 循环
+## 6. 循环
 
 ```python
 # ── loop.py ───────────────────────────────────────────────────────────
@@ -259,7 +311,7 @@ class State:
 # Checks 排在它后面，被拦下时 dup_hints 白算（零成本纯函数，无所谓），
 # 反过来排的话 Checks 短路后 Repeats 根本不会跑，而它的结果下一轮还要用。
 BASE: tuple[Middleware, ...] = (
-    Facts(), Repeats(), Checks(), BestOf(), History(),
+    Facts(), Skills(), Repeats(), Checks(), BestOf(), History(),
 )
 # Revise 不在 BASE 里：它是「生成前先改一遍已有正文」，
 # 只有长文续写用得上。块生成没有"已有正文"——它是整块重写，不是改。
@@ -373,7 +425,7 @@ def _stop(st: State) -> str | None:
 
 ---
 
-## 6. 事件：AG-UI 协议
+## 7. 事件：AG-UI 协议
 
 不自己定一套。[AG-UI](https://docs.ag-ui.com) 是现成的开放协议，
 5 大类事件，领域专属的走 `CUSTOM`。好处是前端将来能直接接
@@ -439,7 +491,7 @@ CUSTOM                                          # {name, value}
 
 ---
 
-## 7. 工具：不动，现状已经是对的
+## 8. 工具：注册表不动，分组要调
 
 加一个工具 = 写一个带装饰器的函数，不改 harness、不改调度、不改授权。
 
@@ -460,8 +512,76 @@ def numbers_near_cursor(ctx: ToolContext, radius: int | None = None) -> str: ...
 | `chart` | 4 | 拼 mermaid · 拼表格 —— **R7** |
 | `image` | 1 | 文生图 |
 
-**授权在 `Mode.groups`**，不在 middleware 里：工具是按领域分组的通用能力，
+### 授权粒度：组为主，工具为辅
+
+**授权在 `Mode` 上**，不在 middleware 里：工具是按领域分组的通用能力，
 「哪个功能用哪几组」是功能的属性。
+
+```python
+groups: tuple[str, ...] = ("memory",)     # 粗粒度：按组给
+exclude: tuple[str, ...] = ()             # 细粒度：排除个别
+# 解析结果 = names(groups) - exclude
+```
+
+`exclude` 借鉴 deepagents 的 `excluded_tools`。**为什么需要它**——实测各模式
+拿到的工具数：
+
+| 模式 | 授权的组 | 拿到 | 真正要用的 | spec ≈token |
+|---|---|---|---|---|
+| 智能表格 | data·chart·memory | 16 | 约 10 | 3728 → 1896（**省 49%**） |
+| 数据可视化 | data·chart·memory | 16 | 15 | 3728 → 3400 |
+| 智能插图 | data·chart·image·memory | 17 | 约 12 | 3927 → 3000 |
+
+这段 spec **每次工具循环调用都要带**，一轮最多 3 次迭代、一次 run 最多
+3 轮——最多 9 次。除了 token，17 个选项里挑也让模型更容易选错。
+
+### 但先修分组，别拿 exclude 打补丁
+
+实测发现一处分组本身就是错的：
+
+```
+chart 组：chart_column · chart_from_text · render_chart · render_table
+                                                          ↑ 这个是**做表**不是画图
+```
+
+于是所有画图的模式被迫拿到 `render_table`，做表的模式被迫拿到三个画图工具。
+**这种情况该改分组，不是加 exclude。**
+
+建议的分组（重构时一并调整）：
+
+| group | 工具 | 谁用 |
+|---|---|---|
+| `memory` | 7 个 KITE 检索 | 全部（R6） |
+| `data` | `list_tables` `numbers_near_cursor` `describe_table` `aggregate_table` `correlate_columns` | 要读数据的 |
+| `chart` | `chart_column` `chart_from_text` `render_chart` | 画图的 |
+| `table` | `render_table` | 做表的 |
+| `image` | `render_image` | 文生图 |
+
+**规则：一个组如果经常要 `exclude` 同一个工具，说明分组错了——
+先改分组，`exclude` 是留给真正的例外的。** 加一条测试盯住它：
+
+```python
+def test_exclude_不该被当成常规手段():
+    """同一个工具被两个以上 Mode 排除 = 它待错组了。"""
+    c = Counter(tool for m in ALL_MODES for tool in m.exclude)
+    bad = [t for t, n in c.items() if n >= 2]
+    assert not bad, f"{bad} 被多个 Mode 排除，说明分组错了，去改 group 而不是加 exclude"
+```
+
+### spec 长度也是成本
+
+各组的 spec 长度实测：
+
+| group | 工具数 | 字符 | 平均 |
+|---|---|---|---|
+| `memory` | 7 | 2891 | 413 |
+| `chart` | 4 | 2876 | **719** |
+| `data` | 5 | 1689 | 337 |
+| `image` | 1 | 398 | 398 |
+
+`chart` 组平均 719 字符/工具最长——`chart_from_text` 的描述里塞了单位、
+出处校验、拆图规则等一堆说明。**那些应该在拒绝理由里说（工具拒绝时返回的
+文本），不是在 spec 里预先说**：spec 每次调用都带，拒绝理由只在真出错时出现一次。
 
 **判据尽量往工具层放（R8）**——工具能拒绝的，不留给检查层：
 
@@ -474,19 +594,31 @@ def numbers_near_cursor(ctx: ToolContext, radius: int | None = None) -> str: ...
 
 ---
 
-## 8. 判据
+## 9. 判据
 
-### 8.1 两类，边界按「能不能用代码判定」划（R2）
+### 9.1 两类，边界按「能不能用代码判定」划（R2）
 
 | | 谁判 | 形态 | 成本 |
 |---|---|---|---|
 | `Check` | 代码 | `(State) -> Verdict \| None`，纯函数只读 | 零 |
 | `Dimension` | 模型 | `Dimension(name, guidance)` | 一次 LLM 调用 |
 
-**能写出确定性判据的一律归代码。** 不是洁癖——打分器和被打分的是同一个
-本地模型，它的盲区和写作时的盲区是同一个（R2）。
+**能写出确定性判据的一律归代码。** 不是洁癖——我们踩在一个公认的坑上：
 
-### 8.2 三档修复
+> LLM-as-judge 的标准建议是 **never use the same model family as both
+> generator and judge**（self-preference bias：judge 给自己家族的输出打分会虚高）。
+> 我们正是这样：`muse-glimmer-30b` 既写又判，它的盲区和写作时的盲区是同一个。
+
+三条缓解按成本排：
+
+1. **把 rubric 拆成离散检查** —— 就是这一节说的 `Check`，被调研验证为标准手段
+2. **换个模型打分** —— 我们有 `gpt-5.6-luna`，打分只占一次调用。
+   **值得单独做一次 A/B**：同一批产出两边打分，分歧大就说明 bias 确实在起作用
+3. **pairwise 双向比较**代替打分 —— best-of 的场景天然适合
+
+第 1 条是这个架构在做的；第 2、3 条不改架构，随时可以试。
+
+### 9.2 三档修复
 
 ```python
 @dataclass(frozen=True)
@@ -506,9 +638,9 @@ class Verdict:
 「4 个小标题太碎」✗（删哪个是语义判断）。
 **fix 之后要重跑这条 check**，而且**要在副本上修、通过了才采纳**——
 一次没修好的 fix 如果留下副作用，下一轮就基于被改坏的内容继续。
-（这条是写原型跑出来的，见第 18 节。）
+（这条是写原型跑出来的，见第 20 节。）
 
-### 8.3 现有的 checks
+### 9.3 现有的 checks
 
 | 文件 | 检查 | 抓什么 |
 |---|---|---|
@@ -523,12 +655,85 @@ class Verdict:
 
 ---
 
-## 9. middleware
+## 10. Skill：用户自己定的写作规则（R12）
+
+`skill` 是用户在 `SkillsPanel` 里写的规则，按 **scope** 叠加到 system prompt
+后面。跟 `Dimension`/`Check` 的区别：
+
+| | 谁写 | 什么时候起作用 |
+|---|---|---|
+| `Dimension` | 我们 | 产出**之后**，打分 |
+| `Check` | 我们 | 产出**之后**，代码判 |
+| **`skill`** | **用户** | 产出**之前**，进 system prompt |
+
+### 现状：18 处重复，而且 `/` 菜单一个都没有
+
+```python
+# 这一行在 compose.py / note_harness.py / writing_plan.py 里出现 18 次
+system = prompts.compose_system(prompts.EDIT_SYSTEM,
+                                store.enabled_skills_for_scope(user, "edit"))
+```
+
+11 个 scope：`magic_tap` `section_write` `plan_generate` `more_sections`
+`verify` `rewrite` `polish` `expand` `edit` `skeleton` `digest`。
+
+**`compose_block` 的 6 个模式一个 scope 都没有**——用户在编辑器里敲 `/`
+做的智能插图、数据可视化、按提示词写，全都不受他自己写的技能影响。
+这不是设计决定，是加功能时漏了——**跟「一条 harness 有另一条没有」是同一类**。
+
+### 架构里怎么放
+
+`Mode.skill_scope` 声明用哪个作用域，`Skills` middleware 在 `before_produce`
+查出来放进 `State`，`produce` hook 组装 prompt 时用：
+
+```python
+class Skills:
+    """把用户启用的技能查出来，放进 State。R12。
+
+    做成 middleware 而不是让每个 hook 自己查，是因为它 18 处重复且逻辑相同；
+    做成 middleware 之后，**加一个新功能只要给 Mode 填个 skill_scope
+    就自动支持用户技能**，不用记得去调 compose_system。
+    """
+    name = "skills"
+    async def before_produce(self, st) -> None:
+        st.skills = (store.enabled_skills_for_scope(st.ctx.user, st.mode.skill_scope)
+                     if st.mode.skill_scope else [])
+
+# produce hook 里：
+system = prompts.compose_system(BLOCK_SYSTEM, st.skills)
+```
+
+`Skills` 进 `BASE`——**默认全开，`skill_scope` 为空就自然是空列表**，
+不需要每条 harness 记得接。
+
+### scope 和 Mode 的关系
+
+现在 scope 是按「动作」分的（rewrite / polish / expand），Mode 是按「功能」
+分的，两套命名并存。重构时对齐：
+
+| Mode | skill_scope | 备注 |
+|---|---|---|
+| `NOTE` | `magic_tap` | 沿用旧名，用户配好的技能不失效 |
+| `SECTION` | `section_write` | |
+| `EDA` `CHART` `TABLE` `ANALYSIS` | **新增** `block_write` | 现在没有——这是要补的功能缺口 |
+| `PROMPT` `CUSTOM` | **新增** `block_prompt` | 同上 |
+
+**不要为了整齐把旧 scope 改名**：scope 名字存在用户数据里，改名等于让所有
+人已经配好的技能失效。新加的用新名字，旧的原样留着。
+
+`compose.py` 那些单点动作（rewrite / polish / expand / verify / digest）
+不走 harness 循环，它们保留各自的 scope，但可以共用一个
+`system_for(scope, base)` 小函数，把那 18 处重复收成一处。
+
+---
+
+## 11. middleware
 
 一个能力一个文件，**不认识循环，能脱离它单测**。
 
 | middleware | 钩子 | 干什么 | 在 BASE 里 |
 |---|---|---|---|
+| `Skills` | `before_produce` | 查用户启用的技能进 `State`（R12） | ✓ |
 | `Facts` | `after_prepare` | 材料累积 + 压缩，**绑死在一起** | ✓ |
 | `Repeats` | `before_judge` | `find_repeats` → `bag["dup_hints"]` | ✓ |
 | `Revise` | `before_produce` | 生成前先改一遍已有正文（R5 发 CUSTOM revision 事件） | ✗ note/section 专用 |
@@ -543,7 +748,7 @@ class Verdict:
 class Facts:                      # 不发事件的 middleware：普通 async def
     """材料累积 + 压缩**绑死在一起**——不给调用方"只累积不压缩"的选项。
     三处无上限累积（seen_facts / seen_charts / run_facts）就是分开做的后果，
-    而「材料每轮清零」这个 bug 犯过四次。"""
+    而「材料每轮清零」那个 bug（见第 17 节）就是分开做的另一半后果。"""
     name = "facts"
     async def after_prepare(self, st) -> None:
         fresh = [f for f in st.facts_new if f not in st.facts]
@@ -586,7 +791,7 @@ class Checks:
 
 ---
 
-## 10. 错误与取消（R10 R11）
+## 12. 错误与取消（R10 R11）
 
 现状：三条 harness 各有 4–5 处 `try/except`，策略各不相同（有的 `return`、
 有的 `break`、有的退回 fallback），**没有一处 `finally`，没有一处
@@ -626,7 +831,7 @@ yield Event.text_end(mid)
 
 ---
 
-## 11. 用户处置的回路（R5）—— 现状有缺口
+## 13. 用户处置的回路（R5）—— 现状有缺口
 
 **这一节记的是一个已知缺口，不是已实现的设计。**
 
@@ -650,6 +855,7 @@ StateEffect**（`acceptHunk` / `dropHunk` / `acceptAllHunks`），**不回传后
 def pause_for_review(st: State) -> str | None:
     """轮末暂停等用户处置。State 存快照，SSE 正常收尾，
     前端拿 run_id 调 /resume 带上用户接受了哪些改动。"""
+    # review_each_round 是**这个功能实现时才加的 Mode 字段**，现在没有
     return "awaiting_review" if st.mode.review_each_round else None
 
 # POST /api/harness/{run_id}/resume  {accepted: [hunk_id...], content: str}
@@ -671,13 +877,16 @@ def pause_for_review(st: State) -> str | None:
 
 ---
 
-## 12. 8 个 Mode
+## 14. 8 个 Mode
 
 ```python
 # ── modes.py ──────────────────────────────────────────────────────────
 NOTE = Mode(key="note", label="写完整篇", task=...,
             groups=("memory",), dims=note_dimensions(),
             checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold),
+            # ⚠️ material_used_up 的**现有判据实测触发率接近 0**
+            #（要求「连着两轮零新事实」，而每轮都能检索回字面不同、
+            # 语义相同的条目）。搬过来时要重新设计判据，不要照抄。
             stop_when=(material_used_up, stalled),
             extra_mw=(Revise(), Policy(), Replan()), max_rounds=8)
 
@@ -700,7 +909,7 @@ CUSTOM  = Mode(key="custom",  label="按提示词改这段", groups=("memory",),
 
 ---
 
-## 13. 一条 harness 改造后
+## 15. 一条 harness 改造后
 
 ```python
 # ── routers/compose_block.py：566 → 约 60 行 ─────────────────────────
@@ -734,7 +943,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 
 ---
 
-## 14. 现有代码搬到哪里去
+## 16. 现有代码搬到哪里去
 
 ### note_harness.py（1078 行）
 
@@ -781,15 +990,18 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | 现有 | 去向 |
 |---|---|
 | `harness_adapter.note_dimensions()` / `section_dimensions()` | `modes.py`，跟 `MODES` 合并到一处 |
+| 18 处 `compose_system(X, enabled_skills_for_scope(user, scope))` | `middleware/skills.py` + `prompts.system_for(scope, base)` |
+| `prompts.SKILL_SCOPES` | 留在 `prompts.py`，但加两个新 scope（`block_write` / `block_prompt`） |
 | `harness_adapter.AppLLMClient` / `SqliteRunHistoryStore` | 原地不动（包的适配层） |
 | `blockcheck.py` | `checks/charts.py` + `checks/structure.py` |
 | `grounding_check.py` | `checks/grounding.py`；**三处静默改写改成带 `fix` 的 Check** |
 | `runtime_policy.py` · `replan.py` · `outline.py` · `textshape.py` · `tabular.py` · `blocks.py` | **原地不动**（纯函数层） |
-| `agent_loop.py` · `app/tools/` · `writer_harness/` | **原地不动** |
+| `agent_loop.py` · `writer_harness/` | **原地不动** |
+| `app/tools/registry.py` | 机制不动；**`render_table` 从 chart 组挪出来**（见第 8 节） |
 
 ---
 
-## 15. 这个架构顺手解决的现有 bug
+## 17. 这个架构顺手解决的现有 bug
 
 不是设计目标，是结构对了之后的副产品——**这几条是架构对不对的验证**：
 
@@ -800,6 +1012,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | **`find_repeats` / `compact_context` / `record_harness_run` /「材料用完就停」一条 harness 有另一条没有**（四次） | 都在 `BASE` 里，默认全开 |
 | **跨轮累积没有上限**（三处） | `Facts` middleware 把累积和压缩绑死，没有"只做一半"的写法 |
 | **交付最后一轮而不是最好的一轮** | `BestOf` 在 `BASE` 里 |
+| **`/` 菜单的 6 个功能不支持用户技能** | `Skills` 在 `BASE` 里，`Mode` 填个 `skill_scope` 就有 |
 | **同一篇笔记并发 run 会串光标** | `ToolContext` 挂在 `State` 上，一次 run 一个 |
 | **一个能力出错炸掉整条 SSE 流** | `_fire` 隔离每个 middleware 的异常 |
 | **中途出错已写的内容全丢** | `finally` 保证 `commit` |
@@ -808,7 +1021,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 
 ---
 
-## 16. 分层与依赖规则
+## 18. 分层与依赖规则
 
 ```mermaid
 flowchart TD
@@ -838,7 +1051,7 @@ flowchart TD
 
 ---
 
-## 17. 怎么测
+## 19. 怎么测
 
 | 测什么 | 怎么测 | 要模型吗 |
 |---|---|---|
@@ -853,12 +1066,12 @@ flowchart TD
 **前六层都不要模型**——现在验证一个循环改动要跑一次真实 harness
 （分钟级、带随机性），之后是毫秒级确定性单测。
 
-第 18 节那个原型就是「loop.py 怎么测」的现成模板：假 `Hooks` + 假
+第 20 节那个原型就是「loop.py 怎么测」的现成模板：假 `Hooks` + 假
 `evaluate`，11 个场景全在毫秒级跑完。
 
 ---
 
-## 18. 架构原型：能跑的验证
+## 20. 架构原型：能跑的验证
 
 `docs/_research/prototype/` 是这套类型和循环的**可执行版本**——零依赖、
 假 LLM、假工具，约 180 行。
@@ -890,7 +1103,7 @@ cd docs/_research/prototype && python3 test_harness_proto.py
 
 ---
 
-## 19. 落地顺序
+## 21. 落地顺序
 
 | 步 | 做什么 | 风险 | 老代码还能跑吗 |
 |---|---|---|---|
