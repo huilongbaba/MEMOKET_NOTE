@@ -192,6 +192,47 @@ export type TapMeta = {
   sources: string[]; fact_ids: string[]
 }
 
+/** 一条 SSE 流拆成一帧一帧的 `{event, payload}`。
+ *
+ * 抽出来之前，这段「读 chunk → 按空行切帧 → 认 event:/data: → JSON.parse」
+ * 在这个文件里有**五份拷贝**，而且已经不一致了：块生成那一份把事件名放在
+ * 帧循环里面（对的），另外四份放在外面——一个只有 data: 的帧会沿用上一帧
+ * 的事件名。后端目前总是成对发所以没炸过，但那是颗哑弹。只有块生成那一份
+ * 会跳过解析不了的帧，另外四份会抛出去，把整条流掐断。
+ *
+ * 现在一处修好，五处都对：**事件名逐帧独立**，**解析不了的帧跳过**——为
+ * 一帧坏数据放弃整次生成，代价是几十秒的工作量。
+ */
+export async function* sseFrames(
+  res: Response,
+): AsyncGenerator<{ event: string; payload: any }> {
+  if (!res.body) throw new Error('no stream')
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    // SSE 以空行分帧，最后一段可能不完整，留在 buffer 里等下一个 chunk
+    const frames = buf.split('\n\n')
+    buf = frames.pop() ?? ''
+    for (const frame of frames) {
+      let event = ''
+      let data = ''
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        else if (line.startsWith('data:')) data += line.slice(5).trim()
+      }
+      if (!data) continue
+      let payload: any
+      try { payload = JSON.parse(data) } catch { continue }
+      yield { event, payload }
+    }
+  }
+}
+
+
 /** magic tap：SSE 流式续写。onMeta 先到（检索结果），onDelta 逐块到达。 */
 export async function magicTap(
   content: string,
@@ -213,32 +254,11 @@ export async function magicTap(
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  let event = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    // SSE 以空行分帧，最后一段可能不完整，留在 buffer 里
-    const frames = buf.split('\n\n')
-    buf = frames.pop() ?? ''
-    for (const frame of frames) {
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) {
-          const raw = line.slice(5).trim()
-          if (!raw) continue
-          const payload = JSON.parse(raw)
-          if (event === 'meta') onMeta(payload as TapMeta)
-          else if (event === 'delta') onDelta(payload.text as string)
-          else if (event === 'grounding') onGrounding?.(payload)
-          else if (event === 'error') throw new Error(payload.detail)
-        }
-      }
-    }
+  for await (const { event, payload } of sseFrames(res)) {
+    if (event === 'meta') onMeta(payload as TapMeta)
+    else if (event === 'delta') onDelta(payload.text as string)
+    else if (event === 'grounding') onGrounding?.(payload)
+    else if (event === 'error') throw new Error(payload.detail)
   }
 }
 
@@ -307,34 +327,14 @@ export async function runWritingPlan(
   })
   if (!res.ok || !res.body) throw new Error(`writing-plan run failed: ${res.status}`)
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  let event = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    const frames = buf.split('\n\n')
-    buf = frames.pop() ?? ''
-    for (const frame of frames) {
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) {
-          const raw = line.slice(5).trim()
-          if (!raw) continue
-          const payload = JSON.parse(raw)
-          if (event === 'plan-loaded') handlers.onPlanLoaded?.(payload.plan, payload.sections)
-          else if (event === 'section-start') handlers.onSectionStart?.(payload)
-          else if (event === 'delta') handlers.onDelta?.(payload.note_id, payload.text)
-          else if (event === 'section-done') handlers.onSectionDone?.(payload)
-          else if (event === 'plan-extended') handlers.onPlanExtended?.(payload.sections)
-          else if (event === 'plan-done') handlers.onPlanDone?.(payload.plan)
-          else if (event === 'error') throw new Error(payload.detail)
-        }
-      }
-    }
+  for await (const { event, payload } of sseFrames(res)) {
+    if (event === 'plan-loaded') handlers.onPlanLoaded?.(payload.plan, payload.sections)
+    else if (event === 'section-start') handlers.onSectionStart?.(payload)
+    else if (event === 'delta') handlers.onDelta?.(payload.note_id, payload.text)
+    else if (event === 'section-done') handlers.onSectionDone?.(payload)
+    else if (event === 'plan-extended') handlers.onPlanExtended?.(payload.sections)
+    else if (event === 'plan-done') handlers.onPlanDone?.(payload.plan)
+    else if (event === 'error') throw new Error(payload.detail)
   }
 }
 
@@ -512,27 +512,9 @@ export function watchJob(
   ;(async () => {
     const res = await fetch(`/api/ingest/jobs/${jobId}/events`, { headers: headers(), signal })
     if (!res.ok || !res.body) throw new Error(`events failed: ${res.status}`)
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    let event = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const frames = buf.split('\n\n')
-      buf = frames.pop() ?? ''
-      for (const frame of frames) {
-        for (const line of frame.split('\n')) {
-          if (line.startsWith('event:')) event = line.slice(6).trim()
-          else if (line.startsWith('data:')) {
-            const raw = line.slice(5).trim()
-            if (!raw) continue
-            if (event === 'progress') onProgress(JSON.parse(raw) as JobOut)
-            else if (event === 'end') onEnd()
-          }
-        }
-      }
+    for await (const { event, payload } of sseFrames(res)) {
+      if (event === 'progress') onProgress(payload as JobOut)
+      else if (event === 'end') onEnd()
     }
   })().catch((err) => {
     if (signal?.aborted) return
@@ -717,61 +699,42 @@ export type PausedRun = {
 export const listPausedRuns = () =>
   fetch('/api/harness/paused', { headers: headers() }).then(json<PausedRun[]>)
 
-async function consumeHarnessStream(res: Response, handlers: NoteHarnessHandlers) {
-  if (!res.body) throw new Error('no stream')
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  let event = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    const frames = buf.split('\n\n')
-    buf = frames.pop() ?? ''
-    for (const frame of frames) {
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) {
-          const raw = line.slice(5).trim()
-          if (!raw) continue
-          const payload = JSON.parse(raw)
-          // AG-UI 标准事件。领域相关的东西走 CUSTOM 的 name 字段，所以这里
-          // 是「9 个标准分支 + 一个 CUSTOM 分支」，加一条 harness 不用改这儿。
-          //
-          // 后端一度用另一套自定义事件名，中间隔着一层翻译——那是三条 router
-          // 逐条迁移期间的过渡层。三条都切完之后前端换名字、后端删函数，
-          // 就是一个 commit 的事。
-          if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(payload.delta)
-          else if (event === 'STEP_STARTED') handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label })
-          else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step)
-          else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round: 0, phase: '', label: payload.content })
-          else if (event === 'TOOL_CALL_RESULT') {
-            handlers.onToolCalls?.({ round: 0, iters: 1, truncated: false,
-              calls: [{ tool: payload.toolName, args: payload.args, result: payload.content }] })
-          } else if (event === 'RUN_FINISHED') {
-            handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id)
-          // **RUN_ERROR 不能 throw**：后端发它的场景都是可恢复的降级（某个工具
-          // 查不到、某次调用超时），流还在继续。throw 会把整条 SSE 连接掐断，
-          // 用户看到的是"跑到一半没了"。交给 onError 显示，让 harness 继续跑。
-          } else if (event === 'RUN_ERROR') handlers.onError?.(payload.message)
-          else if (event === 'CUSTOM') {
-            const v = payload.value ?? {}
-            if (payload.name === 'skeleton') handlers.onSkeleton?.(v.spine, v.beats)
-            else if (payload.name === 'round_summary') handlers.onRoundStart?.(v)
-            else if (payload.name === 'revision') handlers.onRevision?.(v)
-            else if (payload.name === 'evaluate') handlers.onEvaluate?.(v)
-            else if (payload.name === 'phase_delta') handlers.onPhaseDelta?.(v)
-            else if (payload.name === 'policy') handlers.onPolicy?.(v)
-            else if (payload.name === 'dropped') handlers.onDropped?.(v.detail)
-            else if (payload.name === 'check_hit') handlers.onCheckHit?.(v)
-            else if (payload.name === 'warning') handlers.onWarning?.(v)
-            else if (payload.name === 'replan') handlers.onReplan?.(v)
-          }
-        }
-      }
+/** 导出只是为了能测。它是这条 harness 前端这一半的全部解析逻辑——
+ * 事件被悄悄丢掉、帧在 chunk 边界上被切坏，都在这里发生，而症状是
+ * 「面板上少了点东西」，没人会当成 bug 报。 */
+export async function consumeHarnessStream(res: Response, handlers: NoteHarnessHandlers) {
+  // AG-UI 标准事件。领域相关的东西走 CUSTOM 的 name 字段，所以这里是
+  // 「九个标准分支 + 一个 CUSTOM 分支」，加一条 harness 不用改这儿。
+  //
+  // 后端一度用另一套自定义事件名，中间隔着一层翻译——那是三条 router 逐条
+  // 迁移期间的过渡层。三条都切完之后前端换名字、后端删函数，一个 commit
+  // 的事。
+  for await (const { event, payload } of sseFrames(res)) {
+    if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(payload.delta)
+    else if (event === 'STEP_STARTED') handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label })
+    else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step)
+    else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round: 0, phase: '', label: payload.content })
+    else if (event === 'TOOL_CALL_RESULT') {
+      handlers.onToolCalls?.({ round: 0, iters: 1, truncated: false,
+        calls: [{ tool: payload.toolName, args: payload.args, result: payload.content }] })
+    } else if (event === 'RUN_FINISHED') {
+      handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id)
+    // **RUN_ERROR 不能 throw**：后端发它的场景都是可恢复的降级（某个工具查
+    // 不到、某次调用超时），流还在继续。throw 会把整条 SSE 连接掐断，用户
+    // 看到的是「跑到一半没了」。交给 onError 显示，让 harness 继续跑。
+    } else if (event === 'RUN_ERROR') handlers.onError?.(payload.message)
+    else if (event === 'CUSTOM') {
+      const v = payload.value ?? {}
+      if (payload.name === 'skeleton') handlers.onSkeleton?.(v.spine, v.beats)
+      else if (payload.name === 'round_summary') handlers.onRoundStart?.(v)
+      else if (payload.name === 'revision') handlers.onRevision?.(v)
+      else if (payload.name === 'evaluate') handlers.onEvaluate?.(v)
+      else if (payload.name === 'phase_delta') handlers.onPhaseDelta?.(v)
+      else if (payload.name === 'policy') handlers.onPolicy?.(v)
+      else if (payload.name === 'dropped') handlers.onDropped?.(v.detail)
+      else if (payload.name === 'check_hit') handlers.onCheckHit?.(v)
+      else if (payload.name === 'warning') handlers.onWarning?.(v)
+      else if (payload.name === 'replan') handlers.onReplan?.(v)
     }
   }
 }
@@ -887,39 +850,21 @@ export async function composeBlock(
     signal,
   })
   if (!res.ok || !res.body) throw new Error(await res.text().catch(() => res.statusText))
-  const reader = res.body.getReader()
-  const dec = new TextDecoder()
-  let buf = ''
   let block = ''
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += dec.decode(value, { stream: true })
-    const frames = buf.split('\n\n')
-    buf = frames.pop() ?? ''
-    for (const frame of frames) {
-      let event = ''
-      let data = ''
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) data += line.slice(5).trim()
-      }
-      if (!data) continue
-      let p: Record<string, unknown>
-      try { p = JSON.parse(data) } catch { continue }
-      if (event === 'ACTIVITY_SNAPSHOT') on.onPhase?.(String(p.content ?? ''))
-      else if (event === 'STEP_STARTED') on.onPhase?.(String(p.label ?? ''))
-      else if (event === 'TOOL_CALL_RESULT') {
-        on.onTools?.([{ tool: String(p.toolName ?? ''), args: p.args as Record<string, unknown>,
-                        result: String(p.content ?? '') }] as NoteHarnessToolCall[])
-      } else if (event === 'TEXT_MESSAGE_CONTENT') on.onDelta?.(String(p.delta ?? ''))
-      else if (event === 'CUSTOM' && p.name === 'evaluate') {
-        const v = (p.value ?? {}) as Record<string, unknown>
-        on.onEvaluate?.(String(v.status ?? ''),
-          v.scores as Record<string, NoteHarnessDimensionScore>)
-      } else if (event === 'RUN_ERROR') on.onError?.(String(p.message ?? ''))
-      else if (event === 'RUN_FINISHED') block = String(p.content ?? block)
-    }
+  for await (const { event, payload } of sseFrames(res)) {
+    const p = payload as Record<string, unknown>
+    if (event === 'ACTIVITY_SNAPSHOT') on.onPhase?.(String(p.content ?? ''))
+    else if (event === 'STEP_STARTED') on.onPhase?.(String(p.label ?? ''))
+    else if (event === 'TOOL_CALL_RESULT') {
+      on.onTools?.([{ tool: String(p.toolName ?? ''), args: p.args as Record<string, unknown>,
+                      result: String(p.content ?? '') }] as NoteHarnessToolCall[])
+    } else if (event === 'TEXT_MESSAGE_CONTENT') on.onDelta?.(String(p.delta ?? ''))
+    else if (event === 'CUSTOM' && p.name === 'evaluate') {
+      const v = (p.value ?? {}) as Record<string, unknown>
+      on.onEvaluate?.(String(v.status ?? ''),
+        v.scores as Record<string, NoteHarnessDimensionScore>)
+    } else if (event === 'RUN_ERROR') on.onError?.(String(p.message ?? ''))
+    else if (event === 'RUN_FINISHED') block = String(p.content ?? block)
   }
   return block
 }
