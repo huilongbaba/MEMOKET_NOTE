@@ -11,13 +11,16 @@ writer_harness/tests/test_rubric.py），这里不再重复测；_beats_status()
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import prompts  # noqa: E402
-from app.routers.note_harness import _apply_revision  # noqa: E402
+# 修订的定位与应用搬到了 app/harness/revision.py —— 两条 harness 共用，
+# 而 router 之间不该互相 import。
+from app.harness.revision import _apply_revision  # noqa: E402
 
 
 def test_apply_revision_replace():
@@ -102,7 +105,7 @@ def test_edit_user_omits_focus_block_when_not_given():
 
 def test_tidy_blank_lines_collapses_runs_left_by_delete():
     """delete 一条修订会把前后两组段落分隔符并在一起，留下多余空行。"""
-    from app.routers.note_harness import _tidy_blank_lines
+    from app.harness.revision import _tidy_blank_lines
 
     # 「## A\n\n正文\n\n## B」删掉中间正文后的形态
     assert _tidy_blank_lines("## A\n\n\n\n## B") == "## A\n\n## B"
@@ -112,33 +115,32 @@ def test_tidy_blank_lines_collapses_runs_left_by_delete():
 
 def test_tidy_blank_lines_keeps_code_block_content_intact():
     """代码块里的空行是内容不是格式，不能压。"""
-    from app.routers.note_harness import _tidy_blank_lines
+    from app.harness.revision import _tidy_blank_lines
 
     src = "```\nx\n\n\n\ny\n```"
     assert _tidy_blank_lines(src) == src
 
 
-def test_harness_entry_points_accept_the_args_the_loop_passes():
-    """调用点跟函数签名必须对得上。
-
-    真实踩过：给 _run_edit_pass 加 round_idx 时签名替换没匹配上，调用点却
-    加了这个 kwarg，跑起来第一时间 TypeError、整个 run 当场死掉——而
-    **pytest 全绿**，因为没有任何测试会调用这个函数。SSE 生成器里的
-    TypeError 只会在真机跑的时候暴露，所以这里用签名检查兜住。
+def test_every_harness_supplies_the_three_callbacks_the_loop_calls():
+    """The loop calls prepare / produce / commit by name on whatever it is
+    given. Nothing type-checks that at import time, and a missing one only
+    surfaces inside an SSE generator -- where it reads to the user as the
+    connection dying.
     """
     import inspect
 
-    from app.routers import note_harness as nh, writing_plan as wp
+    from app.harness.hooks.block import BlockHooks
+    from app.harness.hooks.note import NoteHooks
+    from app.harness.hooks.section import SectionHooks
 
-    edit = inspect.signature(nh._run_edit_pass).parameters
-    for name in ("max_revisions", "round_idx"):
-        assert name in edit, f"_run_edit_pass 缺少 {name}"
-
-    ev = inspect.signature(nh._evaluate_round).parameters
-    assert "facts_used" in ev
-
-    sec = inspect.signature(wp._evaluate_section).parameters
-    assert "facts_used" in sec
+    for cls in (BlockHooks, NoteHooks, SectionHooks):
+        for name in ("prepare", "produce", "commit"):
+            fn = getattr(cls, name, None)
+            assert fn is not None, f"{cls.__name__} 缺 {name}"
+            assert list(inspect.signature(fn).parameters) == ["self", "st"], \
+                f"{cls.__name__}.{name} 的签名跟 loop 的调用对不上"
+        assert inspect.isasyncgenfunction(cls.produce), \
+            f"{cls.__name__}.produce 必须是 async generator，loop 是 async for 消费的"
 
 
 def test_anchor_end_locates_a_span_without_echoing_it():
@@ -148,7 +150,7 @@ def test_anchor_end_locates_a_span_without_echoing_it():
     原样回显两百字，replace 时改后的 text 再输出一遍，同一段内容进出各一次。
     输出 token 直接换算成时间，是纯浪费。
     """
-    from app.routers.note_harness import _apply_revision
+    from app.harness.revision import _apply_revision
 
     c = "## 标题\n\n开头这几个字，中间很长的一大段内容省略掉，结尾这几个字。\n\n下一段。"
     assert _apply_revision(c, "replace", "开头这几个字", "换成这个",
@@ -159,7 +161,7 @@ def test_anchor_end_locates_a_span_without_echoing_it():
 
 def test_missing_anchor_end_falls_back_to_anchor_only():
     """结尾标记定位不到时宁可少改一点，也不要按错误的范围改。"""
-    from app.routers.note_harness import _apply_revision
+    from app.harness.revision import _apply_revision
 
     c = "第一段。第二段。"
     assert _apply_revision(c, "delete", "第一段。", "", anchor_end="不存在") == "第二段。"
@@ -169,7 +171,7 @@ def test_missing_anchor_end_falls_back_to_anchor_only():
 
 def test_sources_markers_expand_to_full_facts():
     """模型只回显方括号标记，后端还原成完整事实——显示不减，输出 token 大减。"""
-    from app.routers.note_harness import _expand_sources
+    from app.harness.revision import _expand_sources
 
     facts = ["[2026-04-10] 硬件4月10号出来。", "[terrence-2046-2F3] Speaker E 问3月31号。"]
     assert _expand_sources(["2026-04-10"], facts) == ["[2026-04-10] 硬件4月10号出来。"]
@@ -178,30 +180,36 @@ def test_sources_markers_expand_to_full_facts():
 
 
 def test_judging_uses_run_level_facts_not_this_round():
-    """一切"拿整篇正文去比对材料"的判断，材料一侧必须是整次 run 累积的。
+    """"拿整篇正文去比对材料"的判断，材料一侧必须是整次 run 累积的。
 
-    真实 bug：``round_facts`` 每轮重置，正文却是累积的。第 3 轮的打分拿第 3 轮
-    检索到的材料审判包含第 1 轮内容的整篇，于是把第 1 轮明明有依据的日期判成
-    "知识库中查无此事"——``factual_grounding`` 从 2 掉到 0。篇幅越长误判越多，
-    所以它是随写作质量变好才暴露的。
+    真实 bug：本轮材料每轮重置，正文却是累积的。第 3 轮的打分拿第 3 轮检索
+    到的材料审判包含第 1 轮内容的整篇，于是把第 1 轮明明有依据的日期判成
+    「知识库中查无此事」。这个 bug 在三条 harness 里各写了一遍、修了两遍。
 
-    这条只能靠读源码测：三个判断点都在 SSE 生成器内部，没有可以单独调用的
-    入口，而 290 条单测全绿的时候这个 bug 就在线上跑着。
+    现在只有一处能犯这个错：``Facts`` 是唯一往 ``st.facts`` 写的东西，而
+    打分、material_use 兜底、材料耗尽三处判断都读它。
     """
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    for call in ("facts_used=",                      # 打分
-                 "grounding_check.grounding_gap(",   # material_use 兜底
-                 "grounding_check.material_exhausted("):  # 材料耗尽终止
-        idx = src.index(call)
-        arg = src[idx:idx + 90]
-        assert "round_facts" not in arg, f"{call} 用了本轮事实，应该用 run_facts：{arg!r}"
-        assert "run_facts" in arg, f"{call} 没用累积事实：{arg!r}"
+    from app.harness.middleware.facts import Facts
+    from app.harness.state import State
+    from app.harness.modes import NOTE
+    from app.agent_loop import ToolTrace
+    from app.tools import ToolContext
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    st.trace = ToolTrace()
+    for round_facts in (["第一轮的事实"], ["第二轮的事实"]):
+        st.facts_new = round_facts
+        asyncio.run(Facts().after_prepare(st))
+    assert st.facts == ["第一轮的事实", "第二轮的事实"], "材料必须跨轮累积"
+
+    src = (Path(__file__).resolve().parent.parent / "app" / "harness").rglob("*.py")
+    writers = [f.name for f in src if "st.facts = " in f.read_text(encoding="utf-8")]
+    assert writers == ["facts.py"], f"st.facts 有多个写入方：{writers}"
 
 
 def test_same_meaning_rewrite_is_rejected():
     """只换措辞的 replace 必须被拦下。样本取自真实产出：同一段被 replace 三次。"""
-    from app.routers.note_harness import _is_same_meaning_rewrite as same
+    from app.harness.revision import _is_same_meaning_rewrite as same
 
     v1 = ("因此，`ask memory` 进入本版。它被视为 2026 年 3 月 15 日版本的显著差异点和核心价值，"
           "即使 integration 还不能完全实现，也不能因此把 ask memory 一起往后推。")
@@ -217,18 +225,26 @@ def test_same_meaning_rewrite_is_rejected():
 
 
 def test_edited_spans_block_second_rewrite_of_same_place():
-    """同一处只允许改一次——第二次一律拦掉，否则轮次全耗在原地打磨措辞。"""
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    assert "edited_spans: set[str] = set()" in src, "run 循环里要建跨轮集合"
-    assert "edited=edited_spans" in src, "集合要传进编辑 pass"
-    assert 'if op == "replace" and edited is not None and key in edited:' in src, \
+    """同一处只允许改一次——第二次一律拦掉，否则轮次全耗在原地打磨措辞。
+
+    集合必须是**整次 run 级**的，不是一遍修订内的：两轮各改一次同一段，
+    每轮各自看都合法，合起来就是编辑 pass 在跟自己打架。
+    """
+    revise = (Path(__file__).resolve().parent.parent
+              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert 'st.bag.setdefault("edited_spans", set())' in revise, \
+        "跨轮集合要放在 bag 里，放局部变量就只在一轮内有效"
+    assert "edited)" in revise, "集合要传进 reject_revision"
+
+    rev = (Path(__file__).resolve().parent.parent
+           / "app" / "harness" / "revision.py").read_text(encoding="utf-8")
+    assert 'if op == "replace" and edited is not None and key in edited:' in rev, \
         "应用阶段要硬拦，不能只在提示词里说"
 
 
 def test_breakage_catches_half_replaced_sentence():
     """修订切错位置留下的残骸要能查出来。样本是真实产出里抓到的破字。"""
-    from app.routers.note_harness import _breakage as brk
+    from app.harness.revision import _breakage as brk
 
     ok = "不要把未计算的节点写成已确定日期。应把需求收口、设计稿确认逐项列入倒排表。"
     bad = "不要把未计算的节点写成已确定日期：、设计稿确认、页面开发逐项列入倒排表。"
@@ -243,22 +259,30 @@ def test_breakage_catches_half_replaced_sentence():
 def test_ambiguous_anchor_is_skipped():
     """锚点在正文里有多处时不能瞎改——短锚点契约下这会切坏正文。"""
     src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
+           / "app" / "harness" / "revision.py").read_text(encoding="utf-8")
     assert 'op == "replace" and not anchor_end and content.count(anchor) > 1' in src
-    assert "broke = _breakage(content, new_content)" in src
+    revise = (Path(__file__).resolve().parent.parent
+              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert "broke = _breakage(st.content, updated)" in revise
 
 
 def test_both_harnesses_share_the_same_revision_guards():
-    """两条 harness 共用 _apply_revision，防线也必须共用——只修一边等于
-    另一条路径上的 bug 还活着（insert 顺序那个保护就吃过这个亏）。"""
-    root = Path(__file__).resolve().parent.parent / "app" / "routers"
-    plan = (root / "writing_plan.py").read_text(encoding="utf-8")
-    assert "reject_revision(" in plan, "writing_plan 没接上同义重写/歧义锚点防线"
-    assert "_breakage(content, new_content)" in plan, "writing_plan 没接上破字防线"
+    """两条长循环 harness 必须跑同一份修订实现。
+
+    这条测试以前比对两个 router 的源码字符串，因为那时确实是两份拷贝，而
+    「只修了一边」发生过六次。现在只有一份——所以要钉的变成了「两条都挂上
+    了它」。
+    """
+    from app.harness import modes
+
+    for mode in (modes.NOTE, modes.SECTION):
+        names = [type(m).__name__ for m in mode.extra_mw]
+        assert "Revise" in names, f"{mode.key} 没挂修订"
+        assert "Save" in names, f"{mode.key} 没挂逐轮落盘"
 
 
 def test_reject_revision_reasons():
-    from app.routers.note_harness import reject_revision as rej
+    from app.harness.revision import reject_revision as rej
 
     body = ("因此，`ask memory` 进入本版。它被视为 2026 年 3 月 15 日版本的显著差异点和核心价值，"
             "即使 integration 还不能完全实现，也不能因此把它一起往后推。")
@@ -279,7 +303,7 @@ def test_dedup_delete_survives_the_ambiguity_guard():
     ``## 众筹节奏`` 出现两次的那篇跑满三轮也没删掉重复的那个，
     non_repetition 掉到 0。
     """
-    from app.routers.note_harness import reject_revision as rej
+    from app.harness.revision import reject_revision as rej
 
     doc = "## 众筹节奏\n\n三月上旬启动。\n\n## 众筹节奏\n\n三月上旬启动众筹。\n"
     assert rej(doc, "delete", "## 众筹节奏", "") == ""          # 去重，放行
@@ -289,25 +313,23 @@ def test_dedup_delete_survives_the_ambiguity_guard():
     assert rej(doc, "delete", "## 众筹节奏", "", anchor_end="启动众筹。") == ""
 
 
-def test_every_edit_pass_call_site_carries_the_guards():
-    """每一个 _run_edit_pass 调用点都必须带上结构硬防线和跨轮去重集合。
+def test_the_edit_pass_carries_the_guards_on_every_path():
+    """修订的结构硬防线和跨轮去重不能只在某一条分支上生效。
 
-    真实缺陷：「只清理不续写」那条分支两个都没传，于是三层大纲的标题层级
-    在 20 轮 soak 里 **20/20 全被压平**（两层 95%、深层 90% 正常）——清理这一步
-    正是「空壳标题要删掉」规则火力最猛的地方，而它在裸奔。
-
-    这类"两条路径共用一个函数，只修了一边"的缺陷今晚出现过三次
-    （insert_offset、writing_plan 的丢弃防线、这一条），所以用测试钉住。
+    真实缺陷：「只清理不续写」那条分支两个都没传，三层大纲的标题层级在
+    20 轮 soak 里 **20/20 全被压平**——清理这一步正是「空壳标题要删掉」
+    规则火力最猛的地方，而它在裸奔。现在没有第二条分支可漏：修订是一个
+    middleware，续写与否是它之后的事。
     """
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    calls = [i for i in range(len(src)) if src.startswith("_run_edit_pass(user,", i)]
-    assert len(calls) >= 2, "调用点少于两个，这条测试的前提变了"
-    for i in calls:
-        block = src[i:i + 900]
-        end = block.index("):")
-        assert "outline_note=" in block[:end], f"第 {src[:i].count(chr(10))+1} 行的调用没传 outline_note"
-        assert "edited=" in block[:end], f"第 {src[:i].count(chr(10))+1} 行的调用没传 edited"
+    revise = (Path(__file__).resolve().parent.parent
+              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert 'outline_mode = bool(st.bag.get("outline_mode"))' in revise
+    assert "outline.structure_intact(st.content, updated)" in revise, "缺结构硬防线"
+    assert 'st.bag.setdefault("edited_spans", set())' in revise, "缺跨轮去重"
+
+    from app.harness.middleware.revise import Revise
+    assert Revise.hooks == ("before_produce",), \
+        "修订必须在续写之前跑：先修已经写坏的，再往上加"
 
 
 def test_outline_target_is_decided_before_retrieval():
@@ -318,17 +340,18 @@ def test_outline_target_is_decided_before_retrieval():
     根因是顺序反了，模型手握众筹的材料被要求写「团队」那一节。
     """
     src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    decide = src.index("outline_target = outline.next_gap(content) if is_outline else None")
-    assert src.count("outline_target = outline.next_gap(") == 1, "只该算一次"
+           / "app" / "harness" / "hooks" / "note.py").read_text(encoding="utf-8")
+    decide = src.index("target = outline.next_gap(st.content)")
+    assert src.count("outline.next_gap(") == 1, "只该算一次"
     assert decide < src.index("agent_loop.gather_context("), "定小节必须在检索之前"
-    assert decide < src.index("if AGENT_TOOLS:"), "要在两条分支之上，否则关工具那条会用陈旧值"
-    assert "section=outline_target[0] if outline_target else \"\"" in src, "小节名要传进检索规划"
+    assert decide < src.index("if not AGENT_TOOLS:"), \
+        "要在两条分支之上，否则关工具那条会用陈旧值"
+    assert 'section=target[0] if target else ""' in src, "小节名要传进检索规划"
 
 
 def test_locate_picks_the_smallest_span_when_anchor_repeats():
     """锚点重复时取跨度最小的那一组——这是"删掉重复的那一节"的正确语义。"""
-    from app.routers.note_harness import _apply_revision, _locate
+    from app.harness.revision import _apply_revision, _locate
 
     doc = ("## 众筹节奏\n\n三月上旬启动。\n\n"
            "## 众筹节奏\n\n三月上旬启动众筹。\n\n综上所述，要盯紧。\n")
@@ -353,18 +376,22 @@ def test_outline_headings_are_excluded_from_scoring():
     二级标题，造成标题层级不统一」——那正是用户给的结构，而且系统还有一道
     硬防线专门保证它不被改动。**既扣分又不许改，闭环只能空转。**
     """
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    assert 'context["标题结构"]' in src
-    assert "不要评价标题的层级" in src
-    assert "is_outline=is_outline" in src, "打分调用要知道这是大纲模式"
+    from app.harness.state import State
+    from app.harness.modes import NOTE
+    from app.routers.note_harness import _score_context
+    from app.tools import ToolContext
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    assert "标题结构" not in _score_context(st)
+    st.bag["outline_mode"] = True
+    assert "不要评价标题的层级" in _score_context(st)["标题结构"]
 
 
 def test_polish_mode_never_freezes_structure():
     """打磨模式不能启用大纲保护——两者语义直接冲突。"""
     src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    assert 'is_outline = body.mode != "polish" and outline.is_outline(content)' in src, \
+           / "app" / "harness" / "hooks" / "note.py").read_text(encoding="utf-8")
+    assert "is_outline = (not self.polish) and outline.is_outline(content)" in src, \
         "打磨的全部意义是修结构缺陷，大纲保护的全部意义是冻结结构"
 
 
@@ -376,13 +403,20 @@ def test_dry_rounds_stop_the_loop():
     出现」。机械查重和 drop_already_written 都抓不到这种语义重复，根因也
     不在写作在材料——material_use 一直是 2.0，它确实在用材料，用了三遍。
     """
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "routers" / "note_harness.py").read_text(encoding="utf-8")
-    assert "dry_rounds = 0 if fresh else dry_rounds + 1" in src
-    assert 'body.mode != "polish" and round_idx >= 2 and dry_rounds >= 2' in src, \
-        "打磨模式本来就不检索，不能拿这条停它"
-    # 必须在打分之后判：停下来时要带上这一轮的分数
-    assert src.index("dry_rounds >= 2") > src.index("evaluation = await _evaluate_round(")
+    from app.harness.modes import NOTE, material_used_up
+    from app.harness.state import State
+    from app.tools import ToolContext
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"), round=3)
+    st.bag["dry_rounds"] = 2
+    assert material_used_up(st) == "material_used_up"
+
+    st.bag["polish"] = True
+    assert material_used_up(st) is None, "打磨模式本来就不检索，不能拿这条停它"
+
+    assert material_used_up(State(mode=NOTE, ctx=st.ctx, round=1,
+                                  bag={"dry_rounds": 5})) is None, "第一轮不算"
+    assert material_used_up in NOTE.stop_when
 
 
 def test_dropped_revisions_are_not_reported_as_errors():
@@ -391,20 +425,15 @@ def test_dropped_revisions_are_not_reported_as_errors():
     四道防线（同义重写／锚点有歧义／会切出破字／会动到用户的标题）一轮能丢
     好几条，全用 error 报的话前端会渲染成一片红色报错。
     """
-    root = Path(__file__).resolve().parent.parent / "app" / "routers"
-    for name in ("note_harness.py", "writing_plan.py"):
-        src = (root / name).read_text(encoding="utf-8")
-        assert '_sse("dropped"' in src, f"{name} 没用 dropped 事件"
-        for phrase in ("已丢弃", "已跳过", "改哪个说不准"):
-            for i in range(len(src)):
-                if not src.startswith(phrase, i):
-                    continue
-                # 往前找最近的 _sse( 调用，确认不是 error
-                head = src.rfind("_sse(", max(0, i - 400), i)
-                if head < 0:
-                    continue                       # 注释或 reject_revision 的返回值
-                kind = src[head + 5:head + 15]
-                assert '"error"' not in kind, f"{name} 用 error 报了丢弃：{src[i:i+30]!r}"
+    src = (Path(__file__).resolve().parent.parent
+           / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert "CUSTOM_DROPPED" in src
+    assert "Event.run_error" not in src, "丢弃不是错误"
+    for phrase in ("已丢弃", "删掉一句元话语"):
+        i = src.index(phrase)
+        head = src.rfind("Event.custom(", max(0, i - 400), i)
+        assert head >= 0 and "CUSTOM_DROPPED" in src[head:head + 40], \
+            f"{phrase!r} 不是用 dropped 事件报的"
 
 
 def test_scorer_diagnosis_reaches_the_edit_pass():
@@ -414,18 +443,28 @@ def test_scorer_diagnosis_reaches_the_edit_pass():
     查重看不见，`dup_hints` 是空的——那句诊断是修订唯一的具体线索。丢掉它的
     代价：12 次跑里 7 次第一轮就判 non_repetition=1，然后 1 → 1 → 1，跑完
     三轮一次都没回到 2，而清理分支存在的全部意义就是修这个。
-
-    这条测试是防"改了一半"：上一次改这里，note_harness 改完了、prompts 没改，
-    单测全绿而线上一跑就是 TypeError（今晚第三次栽在同一个坑）。
     """
     import inspect
+    from writer_harness import DimensionScore, Evaluation
+
     from app import prompts
-    from app.routers import note_harness as nh
+    from app.harness.loop import _weak_note
+    from app.harness.modes import NOTE
+    from app.harness.state import State
+    from app.tools import ToolContext
 
     assert "focus_note" in inspect.signature(prompts.edit_user).parameters
-    assert "focus_note" in inspect.signature(nh._run_edit_pass).parameters
-    src = Path(nh.__file__).read_text(encoding="utf-8")
-    assert src.count("focus_note=focus_note") >= 3, "两个调用点 + prompts 那次都要传"
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    st.ev = Evaluation(
+        scores={"non_repetition": DimensionScore(level=1, note="结论在多个段落中反复出现")},
+        status="continue", weakest="non_repetition")
+    assert _weak_note(st) == "结论在多个段落中反复出现"
+
+    revise = (Path(__file__).resolve().parent.parent
+              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert 'focus_note=st.bag.get("focus_note", "")' in revise, "诊断没传进修订"
+
     out = prompts.edit_user("张力", ["节拍"], "正文", [], [], focus="non_repetition",
                             focus_note="结论在多个段落中反复出现")
     assert "结论在多个段落中反复出现" in out
@@ -437,15 +476,17 @@ def test_scorer_diagnosis_reaches_the_edit_pass():
 def test_both_harnesses_get_the_same_deterministic_defect_feed():
     """占位符、审计腔、插入前去重——三条都必须两条 harness 都接上。
 
-    「两条路径共用一套机制、只修了一边」今晚出现了五次：insert_offset、
+    「两条路径共用一套机制、只修了一边」出现过六次：insert_offset、
     writing_plan 的丢弃防线、清理分支的结构保护、drop_already_written、
-    以及审计腔定位。每次都是给新路径做 bench 才发现的，所以在这里钉死。
+    审计腔定位、修订后清理。前五次都是给新路径做 bench 才发现的。
     """
-    root = Path(__file__).resolve().parent.parent / "app" / "routers"
-    for name in ("note_harness.py", "writing_plan.py"):
-        src = (root / name).read_text(encoding="utf-8")
-        assert "grounding_check.placeholder_lines(content)" in src, f"{name} 缺占位符检测"
-        assert "grounding_check.audit_voice_lines(content)" in src, f"{name} 缺审计腔检测"
+    harness = Path(__file__).resolve().parent.parent / "app" / "harness"
+    revise = (harness / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert "grounding_check.placeholder_lines(st.content)" in revise, "缺占位符检测"
+    assert "grounding_check.audit_voice_lines(st.content)" in revise, "缺审计腔检测"
+
+    for name in ("note.py", "section.py"):
+        src = (harness / "hooks" / name).read_text(encoding="utf-8")
         assert "outline.drop_already_written(" in src, f"{name} 缺插入前去重"
 
 
@@ -456,9 +497,9 @@ def test_mechanism_leak_is_scrubbed_before_saving():
     只靠 audit_voice_lines() 喂给修订这条线够不到它——文件夹级实测两个目标
     两次都把「知识库」写进了用户的笔记。
     """
-    root = Path(__file__).resolve().parent.parent / "app" / "routers"
-    for name in ("note_harness.py", "writing_plan.py"):
-        src = (root / name).read_text(encoding="utf-8")
+    hooks = Path(__file__).resolve().parent.parent / "app" / "harness" / "hooks"
+    for name in ("note.py", "section.py"):
+        src = (hooks / name).read_text(encoding="utf-8")
         assert "grounding_check.scrub_meta_sentences(" in src, f"{name} 落盘前没做清理"
 
 
@@ -466,13 +507,12 @@ def test_meta_scrub_runs_after_revisions_too():
     """修订应用完也要清理元话语——一条 replace 就能把审计腔写回正文。
 
     实测：给续写侧加了清理之后，文件夹级仍然出现「不能证明」。第六次撞上
-    「一条路径修了、另一条没修」。
+    「一条路径修了、另一条没修」——现在只有一条路径了。
     """
-    root = Path(__file__).resolve().parent.parent / "app" / "routers"
-    for name in ("note_harness.py", "writing_plan.py"):
-        src = (root / name).read_text(encoding="utf-8")
-        assert "scrub_meta_sentences_v(content)" in src, f"{name} 修订后没清理"
-        assert "if applied or meta_gone:" in src, f"{name} 只有修订成功才落盘，纯清理的结果会丢"
+    src = (Path(__file__).resolve().parent.parent
+           / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert "scrub_meta_sentences_v(st.content)" in src, "修订后没清理"
+    assert "if applied or meta_gone:" in src, "只有修订成功才落盘，纯清理的结果会丢"
 
 
 def test_skeleton_is_persisted_with_the_note():

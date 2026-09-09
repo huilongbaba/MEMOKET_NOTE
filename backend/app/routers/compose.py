@@ -17,7 +17,8 @@ from fastapi.responses import StreamingResponse
 
 from writer_harness import evaluate, find_repeats
 
-from .. import grounding_check, harness_adapter, llm, prompts, store
+from .. import (grounding_check, harness_adapter, llm, profile, prompts,
+                retrieval, store)
 from ..kite_memory import UserMemory
 from ..schemas import (DigestIn, DigestOut, EditIn, EditOut, ExpandIn,
                        MagicTapIn, Revision, RewriteIn, SkeletonIn,
@@ -35,7 +36,9 @@ PROFILE_LIMIT = 20
 
 
 def _profile(user: str) -> list[str]:
-    return [p["text"] for p in store.list_profile(user)[:PROFILE_LIMIT]]
+    """Kept as a thin alias while the routers migrate; the implementation
+    moved to ``app/profile.py`` so routers stop importing each other."""
+    return profile.entries(user)
 
 
 # harness 自动多轮跑时，正文只取这么多字符——不是不要正文，是不能让它
@@ -57,37 +60,10 @@ TAIL_CHARS_FOR_HARNESS = 300
 
 def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8,
               title: str = "", anchor_first: bool = False):
-    """用正文尾部 + spine/beats 作为检索线索。返回 (事实文本列表, 对应 fact id 列表, 耗时毫秒)。
-
-    fact id 跟着文本一起传出去，是为了让前端能把「续写用了这条事实」精确
-    链回 /api/memory/facts/{id}/sources 的原始对话行——不然 grounding 只是
-    一句自称，用户没法验证。
-    """
-    mem = UserMemory(user)
-    if anchor_first:
-        # harness：稳定锚点（标题/spine/beats）主导，正文只留少量尾部说明
-        # "当前写到哪了"。顺序也有意义——放前面的词在关键词匹配里权重更高。
-        anchors = [a for a in (title, spine, " ".join(beats[-3:])) if a]
-        query = "\n".join(anchors + [content[-TAIL_CHARS_FOR_HARNESS:]])
-    else:
-        # magic tap：用户在光标处续写，正文尾部就是"用户当前在写的地方"，
-        # 是最相关的线索，保持原行为不动。
-        query = content[-TAIL_CHARS:]
-        hint = " ".join([spine] + beats[-3:]) if spine or beats else ""
-        if hint:
-            query = hint + "\n" + query
-    rows, _terms, took = mem.recall(query, limit=limit)
-    hits = [r for r in rows if r.get("text")]
-    # 事实带上日期再进 prompt。之前只返回裸文本，导致**整条写作链路里事实的
-    # 时间信息从来没进过任何一个 prompt**：修订看不到这条是什么时候说的，
-    # 打分判 factual_grounding 时也没法核对正文写的日期跟事实对不对得上——
-    # 而这个应用大量在写「硬件 4 月 10 号出来」这类带时间的内容。
-    # 日期键在这条路径上是 ``date``（execute_plan 的行），不是 ``when``。
-    texts = []
-    for r in hits:
-        d = (r.get("date") or r.get("when") or "").strip()
-        texts.append(f"[{d}] {r['text']}" if d else r["text"])
-    return texts, [r.get("id", "") for r in hits], took
+    """Thin alias while the routers migrate; implementation moved to
+    ``app/retrieval.py`` so routers stop importing each other."""
+    return retrieval.retrieve(user, content, spine, beats, limit=limit,
+                              title=title, anchor_first=anchor_first)
 
 
 @router.post("/skeleton", response_model=SkeletonOut)

@@ -21,7 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import extract, store  # noqa: E402
 from app.kite_memory import UserMemory  # noqa: E402
 from app.routers import ingest  # noqa: E402
-from app.routers.ingest import _chunks_for, _markdown_sections  # noqa: E402
+# 分块搬到了 app/chunking.py —— router 之间不该互相 import，
+# 而 import_sources 曾经从 ingest 里拿这些函数。
+from app.chunking import chunks_for as _chunks_for  # noqa: E402
+from app.chunking import markdown_sections as _markdown_sections  # noqa: E402
 
 
 # ---------------------------------------------------------------- 切块

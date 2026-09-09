@@ -5,55 +5,151 @@
 
 ---
 
-**目录**：[0 一页纸](#0-一页纸) · [1 memoket-note 需要什么](#1-memoket-note-需要什么) · [2 每条需求借鉴谁](#2-每条需求借鉴谁) · [3 目录](#3-目录) · [4 什么东西谁能配](#4-什么东西谁能配) · [5 类型](#5-类型) · [6 循环](#6-循环) · [7 事件](#7-事件) · [8 工具](#8-工具) · [9 判据](#9-判据) · [10 Skill](#10-Skill) · [11 middleware](#11-middleware) · [12 错误与取消（R10 R11）](#12-错误与取消（R10-R11）) · [13 用户处置的回路（R5）](#13-用户处置的回路（R5）) · [14 Mode](#14-Mode) · [15 不走 harness 的东西](#15-不走-harness-的东西) · [16 一条 harness 改造后](#16-一条-harness-改造后) · [17 现有代码搬到哪里去](#17-现有代码搬到哪里去) · [18 这个架构顺手解决的现有 bug](#18-这个架构顺手解决的现有-bug) · [19 分层与依赖规则](#19-分层与依赖规则) · [20 怎么测](#20-怎么测) · [21 架构原型](#21-架构原型) · [22 落地顺序](#22-落地顺序)
+**目录**：[0 一页纸](#0-一页纸) · [1 memoket-note 需要什么](#1-memoket-note-需要什么) · [2 每条需求借鉴谁](#2-每条需求借鉴谁) · [3 目录](#3-目录) · [4 什么东西谁能配](#4-什么东西谁能配) · [5 类型](#5-类型) · [6 循环](#6-循环) · [7 事件](#7-事件) · [8 工具](#8-工具) · [9 判据](#9-判据) · [10 Skill](#10-Skill) · [11 middleware](#11-middleware) · [12 错误与取消（R10 R11）](#12-错误与取消（R10-R11）) · [13 用户处置的回路（R5）](#13-用户处置的回路（R5）) · [14 Mode](#14-Mode) · [15 不走 harness 的东西](#15-不走-harness-的东西) · [16 一条 harness 改造后](#16-一条-harness-改造后) · [17 现有代码搬到哪里去](#17-现有代码搬到哪里去) · [18 这个架构顺手解决的现有 bug](#18-这个架构顺手解决的现有-bug) · [19 分层与依赖规则](#19-分层与依赖规则) · [20 怎么测](#20-怎么测) · [21 架构原型](#21-架构原型) · [22 落地顺序](#22-落地顺序) · [23 落地记录](#23-落地记录2026-09-09)
 
 ---
 
 ## 0. 一页纸
 
-一条 harness = **一个 `Mode`（配置）+ 一套 `Hooks`（三个回调）**。
-循环只有一份，写死。能力做成 middleware，默认全开。判据分两类：
-代码判的 `Check`、模型判的 `Dimension`。事件走 **AG-UI 协议**。
+一条 harness = **一个 `Mode`（配置）+ 一套 `Hooks`（三个回调）**，其余全部共用。
 
 ```mermaid
 flowchart TB
-    subgraph USER["用户配的　存 DB，改了不用发版"]
+    subgraph HARNESS["一条 harness = 一个 router　　这是唯一要自己写的"]
+        HOOK["<b>一套 Hooks</b>　代码<br/>prepare 怎么取材料 · produce 怎么生成 · commit 怎么收尾<br/><i>它底下所有 Mode 共用这一套</i>"]
+        subgraph MODES["<b>N 个 Mode</b>　数据　一个功能一个"]
+            direction LR
+            M1["数据可视化<br/>task · groups<br/>dims ×7 · checks ×4"]
+            M2["智能插图<br/>task · groups<br/>dims ×4 · …"]
+            M3["按提示词写<br/>…"]
+        end
+    end
+
+    subgraph LIB["全局共享　一份，不随 harness 增加而变"]
+        LOOP["<b>loop.run()</b><br/>prepare → produce → judge → 停不停"]
+        MW["<b>middleware 库</b>　默认全开<br/>skills · facts · repeats · checks · best_of · history<br/>按需挂：revise · compact · save · policy · replan"]
+        CK["<b>checks 库</b>　代码判的判据<br/>charts · structure · grounding"]
+        ST["<b>State</b>　一次 run 的数据"]
+        EVT["<b>events</b>　AG-UI 标准事件"]
+    end
+
+    subgraph USER["用户配的　改了不用发版"]
         direction LR
-        SK["<b>Skill</b>　SKILL.md 目录<br/>frontmatter 常驻 → 模型调 load_skill<br/>→ body 进上下文 → 按需读 references"]
+        SK["<b>Skill</b>　标准 SKILL.md 目录<br/>内容在文件系统 · 配置在 DB"]
         PF["<b>Profile</b>　个人偏好"]
         PV["<b>Provider</b>　用哪个模型"]
     end
 
-    subgraph DEV["开发者配的　写在 modes.py"]
-        direction LR
-        MODE["<b>Mode</b>　一个功能<br/>task · groups · exclude · skill_scope<br/>dims · checks · stop_when · max_rounds"]
-        MW["<b>middleware</b>　能力包<br/>facts · <b>skills</b> · repeats · checks<br/>best_of · history ｜ revise · policy · replan"]
-    end
+    TOOLS["<b>工具池</b>　按 group 授权<br/>memory · data · chart · table · image · skill · skill_script"]
 
-    subgraph CORE["核心　一份，不随 harness 增加而变"]
-        LOOP["<b>loop.run()</b><br/>prepare → produce → judge → 停不停"]
-        ST["<b>State</b>　一次 run 的数据<br/>只有 loop 和 middleware 能改"]
-        EVT["<b>events</b>　AG-UI 协议"]
-    end
-
-    subgraph HK["每条 harness 自己写的：三个回调"]
-        direction LR
-        H1["prepare<br/>怎么取材料"]
-        H2["produce<br/>怎么生成"]
-        H3["commit<br/>怎么收尾"]
-    end
-
-    SK -.->|"Skills middleware 列菜单 / 直接注入"| CORE
-    PF -.-> MW
-    DEV --> LOOP
-    HK --> LOOP
+    HOOK --> LOOP
+    MODES --> LOOP
+    CK -.->|"Mode 从库里挑几条填进 checks"| MODES
+    MW --> LOOP
     LOOP --> ST
     LOOP --> EVT
+    HOOK -->|"prepare 里调"| TOOLS
+    SK -.->|"匹配 scope 直接注入 / 其余列菜单"| LOOP
+    PF -.-> MW
     EVT --> FE["前端<br/>加一条 harness 零改动"]
 ```
 
-读法：**上面两层是配置**（用户配的和开发者配的，主体不同，见第 4 节），
-**中间是核心**（一份，不变），**下面三个回调是每条 harness 唯一要自己写的**。
+
+**读法**：
+
+- **最上面那个框是唯一要自己写的**——一条 harness = 一套 `Hooks`（代码）
+  + N 个 `Mode`（数据）。`Hooks` 比 `Mode` 高一层：`compose_block` 一个 router、
+  一套 hooks，底下挂 6 个功能，它们的差别全在 `Mode` 里，
+  **取材料和生成的方式是同一套代码**。
+- **中间是全局共享的**，一份，不随 harness 增加而变。`middleware` 和
+  `checks` 是**库**：middleware 默认全开，checks 由 `Mode` 从库里挑几条填进去。
+- **下面是用户配的**，改了不用发版。
+
+### 一轮里发生什么：三个概念的位置
+
+概念之间的关系，看一轮的执行顺序最直观：
+
+```
+一轮开始
+  │
+  ├─ before_round        middleware
+  ├─ prepare             ★ HOOK ── 契约公用，实现这条 harness 自己写
+  ├─ after_prepare       middleware　Facts 累积材料并裁剪
+  │
+  ├─ before_produce      middleware　Skills 注入技能 → Revise 改旧文 → Compact 压缩
+  ├─ produce             ★ HOOK ── 同上
+  ├─ after_produce       middleware　Save 落盘
+  │
+  ├─ before_judge        middleware　Repeats 查重 → Checks 跑判据（可能短路）
+  ├─ evaluate            循环写死的，不可换
+  ├─ after_judge         middleware　BestOf 记住最好的一轮
+  ├─ after_round         middleware　Policy / Replan
+  │
+  └─ 停不停？　complete / blocked / no_progress / Mode.stop_when，任一命中就停
+```
+
+**钩子名就是围绕 hook 命名的**——`before_produce` / `after_produce` 就是
+`produce` 这个 hook 的前后。middleware 夹在 hook 之间。
+
+| | `Mode` | `Hooks` | `middleware` |
+|---|---|---|---|
+| 是什么 | **参数**（数据） | **三个空位**（契约公用，实现各写） | **十个能力**（实现就是公用的） |
+| 回答 | 这次要什么 | 怎么拿到 | 顺带都做了 |
+| 有几个 | 8 个（一个功能一个） | 3 套实现（现在三条恰好各不相同） | 10 个（全局） |
+| 不写会怎样 | 没这个功能 | **跑不起来**，循环缺一块 | 照常跑，少个能力 |
+| 类比 | 参数表 | **填空题** | **赠品** |
+
+一次运行 = **拿一个 `Mode` 的参数，跑一套 `Hooks` 的代码，中间夹着
+`middleware` 自动做的事**。
+
+**`Hooks` 跟 `middleware` 正好相反**：`Hooks` 公用的是**契约**（一个
+Protocol，所有 harness 实现它），实现各写各的；`middleware` 公用的是
+**实现**（一份 `Facts` 代码，所有 harness 跑同一个实例）。这也是为什么
+middleware 能「默认全开」而 hook 不能——**middleware 是写好的实现，
+hook 是空的契约**，空契约给不出默认值。
+
+不过实现也**可以**共用：如果两条 harness 某个 hook 的做法一样，抽出来
+就是库里的一个实现。`note_harness` 和 `writing_plan` 的 `prepare` 就很像
+（都是「工具循环失败退回关键词检索」），迁移时若只有参数不同，
+应该抽成共用基类而不是抄两遍。
+
+同一段 `prepare` 代码，用户点「数据可视化」时 `mode.groups` 是
+`("data","chart","memory")`，点「智能插图」时是
+`("data","chart","image","memory")`——**代码一行没变，参数变了**。
+
+`Mode` 的字段被三方读，各读各的：
+
+| 谁读 | 读哪些 |
+|---|---|
+| `Hooks` | `task` · `groups` · `max_tokens` |
+| 循环 | `max_rounds` · `stop_when` · `extra_mw` · `rails_off` |
+| middleware | `checks` · `dims` · `fact_budget` · `context_keep_last` · `skill_scope` |
+
+### 六条核心判断
+
+只看这一节的话，带走这六条：
+
+| # | 判断 | 依据 |
+|---|---|---|
+| 1 | **循环写死，一份** | 调研的 12 个框架无一例外。我们现在是三份手抄的（555 + 245 + 156 行） |
+| 2 | **判据分两类，代码判得准的不交给模型** | 打分器和被打分的是同一个本地模型——它的盲区和写作时的盲区是同一个（R2） |
+| 3 | **判据尽量往早了放**：工具层 → 检查层 → 打分层 | 越早越省。工具拒绝的根本到不了打分器，成本为零（R8） |
+| 4 | **能力做成 middleware，默认全开** | 「一条 harness 有、另一条没有」发生过四次，全是遗漏不是决定 |
+| 5 | **不自造标准**：事件用 AG-UI，skill 用 SKILL.md | 自造的代价是两头不通——第三方装不进来，我们的也拿不出去 |
+| 6 | **用户配「要什么」，系统配「用什么能力」** | 边界按「懂不懂语义」划。用户不知道 `filter_facts` 和 `search_memory` 的区别，配错了坏得很隐蔽（第 4 节） |
+
+### 改造前后
+
+| | 现在 | 之后 |
+|---|---|---|
+| 循环 | 三份手抄 | 一份，约 60 行 |
+| 加一条 harness | 抄循环、新起事件名、前端加解析、决定维度放哪、决定检查怎么接（**5 处**） | 一个 `Mode` + 三个 hook |
+| 加一个功能 | 改 `MODES`，可能改循环 | `modes.py` 加个实例，**router 都不动** |
+| 加一条能力 | 三条 harness 各接一遍，**实测漏了 4 次** | 一个 middleware 进 `BASE` |
+| 测循环逻辑 | 跑真实 harness（分钟级、带随机性） | 假 Hooks，毫秒级确定性单测（第 21 节有可跑的原型） |
+
+**这个架构还顺手让 8 个已知 bug 变得写不出来**（第 18 节）——
+如果一个重构方案做不到这点，它只是把代码搬了个地方。
 
 ---
 
@@ -1022,7 +1118,23 @@ UI 上要能看出来这是别人写的。
 **为什么不选看起来更轻的 Pyodide/WASM**：查到两个真实逃逸事故
 （Grist-Core 的 Pyodide 逃逸导致 RCE、n8n 的 CVE-2025-68668，9.9 Critical）。
 根子在这类方案常是**黑名单式的**——假设防御方能枚举出所有危险能力，
-而那枚举不完。OS 级沙箱是白名单：默认什么都不给，要什么显式开。
+而那枚举不完。
+
+**但两个平台的强度不一样，这点实测出来了，不能含糊过去。**
+Linux 的 `bwrap --unshare-all` 是真白名单：新建 mount namespace，
+盘上其余部分根本不在里面。macOS 的 Seatbelt 理论上也支持
+`(deny default)` 白名单，实际跑不起来——CPython 在 deny-default 下
+启动即 SIGABRT（无任何诊断输出），要让它启动就得枚举解释器碰到的每一个
+路径、mach service、sysctl，而那个枚举跟上面批评的黑名单一样开放。
+退一步用 `(deny file-read-data)` + 允许清单也一样崩。
+
+所以 macOS 落地的是 **allow-default + 按区域拒绝**：
+断网、除 scratch 外禁写、禁读所有「本机数据所在的区域」
+（`/Users` `/Volumes` `/private/tmp` `/private/var/folders` `/private/var/root`），
+再把解释器安装目录和 skill 自己的目录挖回来。
+结果是脚本仍能读 `/usr` `/System`，但读不到知识库、笔记、$HOME、
+别的 skill 的文件。比 Linux 弱，够用，代码里
+`_seatbelt_profile()` 的 docstring 记了同样的话。
 
 #### 三档权限，没有第四档
 
@@ -1582,3 +1694,97 @@ cd docs/_research/prototype && python3 test_harness_proto.py
 
 **前六步都是往旁边加东西，不动现有路径。** 第 7 步一条一条切，
 每切一条跑一轮 soak 对比。
+
+---
+
+## 23. 落地记录（2026-09-09）
+
+第 1–7 步全部完成。三条 router 都已切到共享循环，408 passed，
+三条 harness 各真跑一次通过。
+
+### 三条 router 的体量变化
+
+| 文件 | 迁移前 | 迁移后 | 里面还剩什么 |
+|---|---|---|---|
+| `note_harness.py` | 1078 | **98** | 骨架前置、打磨模式配置、事件翻译 |
+| `writing_plan.py` | 578 | **281** | plan 级循环：选下一段、判断要不要加段、同步追踪笔记 |
+| `compose_block.py` | 607 | **186** | 认模式、装 State、图片转表格、restructure |
+
+搬出去的东西进了 `app/harness/`（31 个文件、3193 行）：一份 `loop.py`、
+11 个 middleware、3 组 hooks、8 个 Mode、9 条 check。
+
+**三份手抄的循环变成一份。** 这是整件事唯一的目的：文档里逐条记着的
+「同一个能力一条 harness 有、另一条没有」出现过六次，每次都是遗漏而不是
+决定。现在能力是挂在 Mode 上的 middleware，漏没漏是 `test_harness_parity`
+一句断言的事。
+
+### 跟设计稿不一样的地方
+
+设计稿写完到落地之间，有几处是实现时才发现设计错了，按实际改的：
+
+**① `Policy` 拆成 `Repair` 和 `Runtime`。** 设计稿里 `Policy` 一个名字
+盖了两件不同的事：「内在质量维度弱 → 下一轮只理顺不续写」和「把这一轮的
+观测变成下一轮的运行参数」。前者决定这一轮**做什么**，后者决定**怎么做**，
+挂的钩子相同但触发条件、失效后果都不一样，合在一起只会让「为什么这一轮
+没续写」变成要读两段逻辑才能回答的问题。
+
+**② `Mode` 多了 `focus_groups`。** 原来 `compose_block` 里是个叫
+`chart_pass` 的布尔量。搬进 Mode 时不能带着「图表」这个领域词，泛化成
+「第一轮没从这几个组拿到东西，就再开一轮只用这几个组」。判据仍然是**看
+产物不看行为**——`chart_column` 连拒三次算「调过了」的话，补画轮会被跳过。
+
+**③ `NOTE.dims` / `SECTION.dims` 不是静态的。** 有两维依赖运行时才知道
+的事实，写死会让闭环不收敛：`style_fit` 没有写作画像时永远达不标；
+`beat_coverage` / `material_use` 衡量的是「写了多少」，而打磨模式被明令
+禁止写。`modes.for_run()` 负责裁剪，规则一句话：**永远不要拿一个 run
+无权改善的维度去给它打分。**
+
+**④ `Repeats` 一轮跑两次。** 设计稿只在 `before_judge` 算一次，但修订在
+`before_produce` 就要用它，而两点之间正文会变。算两次是纯 difflib，不花
+模型调用。
+
+**⑤ `_score` 不许抛。** 设计稿没写这条，是从旧代码里捡回来的：本地模型
+持续高负载下单次打分超过 300s 超时，异常从 SSE 生成器里冒出去，客户端
+看到的是连接被硬中断而不是错误事件。现在打分失败 = 这一轮没判定，计入
+停滞安全网。
+
+**⑥ macOS 沙箱比 Linux 弱，写进代码了。** 见第 20 节改后的那段：
+`(deny default)` 白名单在 CPython 上启动即 SIGABRT，落地的是
+allow-default + 按区域拒绝。
+
+### 真跑抓到的两个 bug
+
+纸面推演和 408 条单测都没抓到，**跑一次就出来了**：
+
+**① 整轮只发一次进度。** 旧代码每一步（取数/写/核对）各发一次
+`phase`，循环合并后只剩 `STEP_STARTED` 那一次。工具循环和打分各要几十秒，
+界面标签在最慢的那段时间不动，看起来像卡死。修复：循环在三个步骤前各发
+一次 `ACTIVITY_SNAPSHOT`。
+
+**② 清理轮被算成材料枯竭。** 一篇笔记第 1 轮查回 22 条事实，第 2、3 轮
+因为 `coherence` 弱转成清理轮——清理轮**根本不检索**，于是连着两轮
+`facts=0`，`material_used_up` 当场触发，跑到第 3 轮就停了，而知识库里的
+材料一条没少。根因是两个能力合并后语义错位：`Facts` 数「干轮」时不知道
+这一轮压根没去查。修复：`cleanup_only` 的轮次不参与干轮计数。
+
+这两个都是**能力合并才出现的新 bug**——三份拷贝时不存在，因为每份各自
+处理自己的进度和干轮。合并的收益是「漏一个能力」变得写不出来，代价是
+「两个能力的语义要对齐」成了新的一类错误。文档里记下来，不装作没有。
+
+### 事件契约：翻译层，有明确的死期
+
+前端一行没改。后端内部说 AG-UI，`events.legacy_frames()` 往外说旧名字。
+这层最容易出的错是**沉默地少翻一种**——前端的事件分发是 else-if 链，
+不认识的名字直接忽略，症状不是报错而是「轮数不动了」「来源面板一直空的」。
+实测就漏过 `round-start` 和 `replan`。所以
+`tests/test_event_contract.py` 直接从 `frontend/src/api.ts` 里正则抠出
+它监听的名字，跟翻译层能产出的名字对一遍。
+
+三条 router 都切完之后，前端换成 AG-UI 名字、删掉这个函数，是一个 commit
+的事。
+
+### 还没做的
+
+* 知识库：续跑端点、主题簇、抽取判断（`kb-architecture.md` 第 9 节 1–7 步）
+* skill 的第一层（触发）与第三层（`read_skill_ref`）接进真实 loop
+* 用户处置回路（第 13 节）

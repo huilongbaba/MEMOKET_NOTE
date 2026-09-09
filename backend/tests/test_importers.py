@@ -220,7 +220,11 @@ def test_render_image_is_a_separate_tool_group():
     assert "render_image" not in T.names(["chart"])
     # 图表工具必须仍然是零成本的本地拼装
     assert set(T.names(["chart"])) == {"chart_column", "chart_from_text",
-                                       "render_chart", "render_table"}
+                                       "render_chart"}
+    # render_table **不在 chart 组**：做表不是画图。它待在 chart 组的时候，
+    # 每个画图模式都被迫拿到一个做表工具、做表模式被迫拿到三个画图工具，
+    # 每一个都占 prompt 空间、多一个选错的机会。
+    assert T.names(["table"]) == ["render_table"]
 
 
 def test_async_tools_are_awaited():

@@ -40,6 +40,21 @@ CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id, created_at);
 -- 落到某篇笔记里。这是可靠的机器状态——人看的进度是从这两张表渲染出的一篇
 -- 笔记镜像（见 writing_plan.py 的 _sync_tracking_note），不是反过来解析
 -- markdown 复选框当状态，那样在 harness 反复读写多轮之后太容易解析飘掉。
+-- Skill *content* lives on disk as standard SKILL.md directories (see
+-- app/skills.py for why). Only our own configuration lives here: which
+-- scopes it applies to, whether it is on, what sandbox level the user
+-- granted. Keeping them apart is what lets a third-party skill be installed
+-- by dropping in a directory, and ours be exported by copying one out.
+CREATE TABLE IF NOT EXISTS skill_config (
+    user_id TEXT NOT NULL,
+    slug    TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    scopes  TEXT NOT NULL DEFAULT '',
+    sandbox TEXT NOT NULL DEFAULT 'none',
+    source  TEXT NOT NULL DEFAULT 'user',
+    PRIMARY KEY (user_id, slug)
+);
+
 CREATE TABLE IF NOT EXISTS writing_plans (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
@@ -832,3 +847,51 @@ def sweep_orphan_jobs() -> int:
                   "detail='服务重启，任务中断' "
                   "WHERE status NOT IN ('done','error','cancelled')")
     return n
+
+
+
+# ------------------------------------------------------- skill configuration
+
+def skill_configs(user_id: str) -> dict[str, dict]:
+    """Our settings for each installed skill, keyed by directory name.
+
+    Content is never in here -- it stays in the SKILL.md directory on disk.
+    A skill with no row yet gets sensible defaults from the caller.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT slug, enabled, scopes, sandbox, source FROM skill_config "
+            "WHERE user_id = ?", (user_id,)).fetchall()
+    return {
+        r["slug"]: {
+            "enabled": bool(r["enabled"]),
+            "scopes": [s for s in (r["scopes"] or "").split(",") if s],
+            "sandbox": r["sandbox"],
+            "source": r["source"],
+        }
+        for r in rows
+    }
+
+
+def set_skill_config(user_id: str, slug: str, *, enabled: bool | None = None,
+                     scopes: list[str] | None = None, sandbox: str | None = None,
+                     source: str | None = None) -> None:
+    """Upsert one skill's configuration; unspecified fields keep their value.
+
+    First-insert defaults are deliberately conservative: ``sandbox='none'``
+    means an imported skill's scripts do not run until the user grants
+    permission explicitly, the same way installing an app doesn't grant it
+    the camera.
+    """
+    with connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO skill_config (user_id, slug) VALUES (?, ?)",
+                     (user_id, slug))
+        for column, value in (("enabled", None if enabled is None else int(enabled)),
+                              ("scopes", None if scopes is None else ",".join(scopes)),
+                              ("sandbox", sandbox),
+                              ("source", source)):
+            if value is not None:
+                conn.execute(
+                    f"UPDATE skill_config SET {column} = ? WHERE user_id = ? AND slug = ?",
+                    (value, user_id, slug))
+        conn.commit()

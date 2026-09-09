@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import hashlib
 import uuid
 from datetime import date as _date
@@ -17,57 +16,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import StreamingResponse
 
 from .. import asr, extract, store
+from ..chunking import chunks as _chunks, chunks_for as _chunks_for
 from ..kite_memory import UserMemory
 from ..schemas import IngestItemOut, IngestOut, IngestTextIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
-# 一次抽取喂给 LLM 的字符上限，太长会拖垮抽取质量和耗时
-CHUNK_CHARS = 1200
-
 # 一个批量任务最多接受多少文件，避免一次请求把后台任务队列堵成小时级
 BATCH_MAX_FILES = 50
 
-
-def _chunks(text: str, size: int = CHUNK_CHARS) -> list[str]:
-    """按段落切块，尽量不在句子中间断开。"""
-    paras = [p.strip() for p in text.split("\n") if p.strip()]
-    out: list[str] = []
-    buf = ""
-    for p in paras:
-        if len(buf) + len(p) + 1 > size and buf:
-            out.append(buf)
-            buf = p
-        else:
-            buf = f"{buf}\n{p}" if buf else p
-    if buf:
-        out.append(buf)
-    return out or ([text] if text.strip() else [])
-
-
-def _markdown_sections(text: str) -> list[str]:
-    """按标题行切段，让每个 chunk 尽量落在同一个标题层级下。"""
-    sections: list[str] = []
-    buf: list[str] = []
-    for line in text.split("\n"):
-        if re.match(r"^#{1,6}\s", line) and buf:
-            sections.append("\n".join(buf).strip())
-            buf = [line]
-        else:
-            buf.append(line)
-    if buf:
-        sections.append("\n".join(buf).strip())
-    return [s for s in sections if s.strip()]
-
-
-def _chunks_for(text: str, kind: str, size: int = CHUNK_CHARS) -> list[str]:
-    if kind == "md":
-        out: list[str] = []
-        for section in _markdown_sections(text):
-            out.extend(_chunks(section, size))
-        return out or _chunks(text, size)
-    return _chunks(text, size)
 
 
 def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,

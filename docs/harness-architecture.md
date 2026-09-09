@@ -3,6 +3,24 @@
 > MEMOKET_NOTE 技术报告 · 2026-09-07
 > 后端 12,706 行 · 345 passed · 单篇 6 个评分维度 + 块生成 23 个 · 5 个终止状态 · 质量 bench 6+4
 
+> **2026-09-09 更新：循环已经合并成一份。** 这篇文档描述的是三条 harness
+> 各写一份循环的形态——它准确记录了每个机制**为什么**长这样、是被哪一次真实
+> 产出逼出来的，那部分仍然有效。但代码结构已经变了：循环、middleware、Mode、
+> check 都进了 `app/harness/`，三条 router 只剩「装 State、翻事件」。
+> 结构以 `docs/harness-framework.md` 为准（第 23 节是落地记录），下面提到
+> 「note_harness 里的 XX」时，实际位置对照：
+>
+> | 这篇文档里说的 | 现在在哪 |
+> |---|---|
+> | 三条 router 各自的轮循环 | `app/harness/loop.py`（一份） |
+> | `_run_edit_pass` | `middleware/revise.py` |
+> | `_evaluate_round` / `_evaluate_section` | `loop._score` + `Mode.dims` |
+> | `runtime_policy` 的接线 | `middleware/runtime.py` |
+> | `replan` 的接线 | `middleware/replan.py` |
+> | `compose_block.MODES` | `harness/modes.py` 的 8 个 `Mode` |
+> | 确定性检查的调用点 | `harness/checks/` + `middleware/checks.py` |
+> | SSE 事件名 | AG-UI 标准名 + `events.legacy_frames()` 翻回旧名 |
+
 写作没有编译器。这套系统用一组可插拔的评分维度替代执行 oracle，驱动「自动修订 →
 自动续写 → 打分 → 三态判定」的闭环，直到一篇笔记被判为写完。
 

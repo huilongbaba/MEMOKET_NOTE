@@ -437,7 +437,11 @@ def _extra(values2, series2: str, kind2: str):
 
 
 @register(
-    name="render_table", group="chart",
+    # Its own group, not "chart": building a table is not drawing. While it
+    # lived under chart, every drawing mode was handed a table builder and
+    # the table mode was handed three chart builders -- each one costing
+    # prompt space and one more thing for the model to pick wrongly.
+    name="render_table", group="table",
     description="把数据拼成 markdown 表格，返回可以直接插进笔记的文本。行太多会自动截断并注明。",
     params={
         "columns": {"type": "array", "items": {"type": "string"}, "description": "表头"},

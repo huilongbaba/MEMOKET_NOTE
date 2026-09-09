@@ -32,7 +32,7 @@ from memoket_kite import StorageError
 from ..kite_memory import UserMemory
 from ..schemas import IngestItemOut, IngestOut
 from .deps import current_user
-from .ingest import _chunks
+from ..chunking import chunks as _chunks
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 

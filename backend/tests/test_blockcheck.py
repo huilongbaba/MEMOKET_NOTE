@@ -17,18 +17,24 @@ def test_手写的_mermaid_认得出来():
     assert blockcheck.chart_gap(forged) == ""
 
 
-def test_drew_看产物不看行为():
+def test_聚焦轮看产物不看行为():
+    """`focus_groups` 那一轮该不该跑，判据是画图工具**产出了东西**，
+    不是调过画图工具——chart_column 会主动拒绝没信息量的图，连拒三次按
+    「调过了」算就会跳过补画轮，最后一张图都没有。"""
     from app import blocks
-    from app.routers.compose_block import _drew
+    from app.harness.hooks.block import _produced
 
     class T:
-        def __init__(self, calls): self.calls = calls
+        def __init__(self, calls):
+            self.calls = calls
 
     real = blocks.mermaid_xy("曝光", ["a", "b"], [1, 2])
-    # chart_column 拒绝画图时返回的是一句解释，不是图——不算画过
     refused = "（点击 只有 6 个数据点，画直方图看不出分布，不值得画。）"
-    assert not _drew(T([("chart_column", {}, refused)] * 3))
-    assert _drew(T([("chart_column", {}, refused), ("render_chart", {}, real)]))
+    assert not _produced(T([("chart_column", {}, refused)] * 3), ("chart",))
+    assert _produced(T([("chart_column", {}, refused),
+                        ("render_chart", {}, real)]), ("chart",))
+    # 别的组产出了东西不算——聚焦轮问的是「这一组画出来没有」
+    assert not _produced(T([("list_tables", {}, "| a | b |")]), ("chart",))
 
 
 def test_远处的表不冒充就在旁边():

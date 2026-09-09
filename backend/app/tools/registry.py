@@ -49,6 +49,15 @@ class ToolContext:
     content: str = ""
     cursor: int = 0
 
+    # Scratch space the caller owns; the tool pool never interprets it.
+    #
+    # This exists so tools can share mutable state with whatever is driving
+    # them **without the tool layer knowing what that driver is**. The harness
+    # puts its own list object in here, so a tool appending to it writes
+    # straight through to the run's state -- and ``registry`` still has no
+    # idea a harness exists. Any other caller can put whatever it likes here.
+    scratch: dict = field(default_factory=dict)
+
 
 @dataclass
 class Tool:

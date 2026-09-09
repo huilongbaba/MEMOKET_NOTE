@@ -17,6 +17,8 @@
 
 from . import data_tools  # noqa: F401  —— import 即注册
 from . import memory_tools  # noqa: F401
+from . import sandbox_tools  # noqa: F401
+from . import skill_tools  # noqa: F401
 from .registry import (
     Tool,
     ToolContext,
