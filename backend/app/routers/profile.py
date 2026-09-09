@@ -12,7 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
-from ..schemas import ProfileEntry, ProfileEntryIn
+from .schemas import ProfileEntry, ProfileEntryIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])

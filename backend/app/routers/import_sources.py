@@ -31,7 +31,7 @@ from ..database.ingest import importers
 from memoket_kite import StorageError
 
 from ..database.kite.kite_memory import UserMemory
-from ..schemas import IngestItemOut, IngestOut
+from .schemas import IngestItemOut, IngestOut
 from .deps import current_user
 from ..database.ingest.chunking import chunks as _chunks
 

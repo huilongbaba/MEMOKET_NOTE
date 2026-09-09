@@ -26,7 +26,7 @@ from ..harness.hooks.section import SectionHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
 from ..database.retrieval import retrieve as _retrieve
-from ..schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
+from .schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/writing-plan", tags=["writing-plan"])

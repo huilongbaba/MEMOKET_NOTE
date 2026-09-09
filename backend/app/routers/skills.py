@@ -21,7 +21,7 @@ from .. import prompts
 from ..database import store
 from ..harness import skills as skills_store
 from ..util import llm
-from ..schemas import Skill, SkillGenerateIn, SkillIn, SkillReorderIn, SkillScope
+from .schemas import Skill, SkillGenerateIn, SkillIn, SkillReorderIn, SkillScope
 from .deps import current_user
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])

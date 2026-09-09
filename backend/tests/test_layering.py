@@ -81,10 +81,13 @@ def test_routers_do_not_import_each_other():
     ``chunking``, ``harness/events``, ``harness/params``, ``harness/revision``)."""
     violations: list[str] = []
     for path in (ROOT / "app" / "routers").glob("*.py"):
-        if path.name in {"__init__.py", "deps.py"}:
+        # deps（所有 router 共用的依赖）和 schemas（API 契约）不是 router，
+        # 是这一层里共享的东西——它们没有自己的端点，也不该有。
+        if path.name in {"__init__.py", "deps.py", "schemas.py"}:
             continue
         for module in _imports(path):
-            if module.startswith("app.routers.") and not module.endswith(".deps"):
+            if module.startswith("app.routers.") \
+                    and not module.endswith((".deps", ".schemas")):
                 other = module.split(".")[-1]
                 if other != path.stem:
                     violations.append(f"{path.name} -> {other}")

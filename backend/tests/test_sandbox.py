@@ -112,3 +112,29 @@ with open(os.path.join(os.environ["SKILL_OUT"], "big.bin"), "wb") as fh:
 """)
     with pytest.raises(SandboxError, match="over the"):
         _run(root)
+
+
+def test_the_cpu_ceiling_actually_reaches_the_child(tmp_path):
+    """CPU 和内存上限一度只是 limits.py 里的常量，没有任何代码执行它们。
+
+    验证方式是让脚本自己把 rlimit 读回来打印出来——比跑一个死循环等它被
+    杀掉快几个数量级，而且是精确的：断言的是「上限等于我们设的值」，不是
+    「反正它死了」（死循环也可能是被墙钟杀的，那就证明不了 CPU 上限存在）。
+
+    内存那条按平台放行：实测 macOS 拒绝 RLIMIT_AS，见 limits.py。
+    """
+    from app.harness.sandbox import limits
+    from app.harness.sandbox.runner import enforced_limits
+
+    root = _skill(tmp_path, "import resource\n"
+                            "print(resource.getrlimit(resource.RLIMIT_CPU)[0])\n"
+                            "print(resource.getrlimit(resource.RLIMIT_AS)[0])")
+    result = _run(root)
+    assert result.ok
+    cpu, mem = result.stdout.split()
+
+    can = enforced_limits()
+    assert can["cpu_seconds"], "这台机器连 RLIMIT_CPU 都设不上，沙箱只剩墙钟"
+    assert int(cpu) == limits.CPU_SECONDS
+    if can["memory_bytes"]:
+        assert int(mem) == limits.MEMORY_BYTES

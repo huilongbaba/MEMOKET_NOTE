@@ -21,7 +21,7 @@ from ..editor import profile
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..database.kite.kite_memory import UserMemory
-from ..schemas import DigestIn, DigestOut, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
+from .schemas import DigestIn, DigestOut, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api", tags=["compose"])

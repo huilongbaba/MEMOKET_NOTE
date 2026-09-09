@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from ..database import store
-from ..schemas import ProviderConfigIn, ProviderConfigOut
+from .schemas import ProviderConfigIn, ProviderConfigOut
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 

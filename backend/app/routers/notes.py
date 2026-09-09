@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
-from ..schemas import Note, NoteFolderIn, NoteIn, SkeletonSaveIn
+from .schemas import Note, NoteFolderIn, NoteIn, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])

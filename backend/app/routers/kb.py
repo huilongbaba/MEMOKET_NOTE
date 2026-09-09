@@ -13,7 +13,7 @@ from ..database import store
 from ..database.kb import extract_check, extract_judge, reextract
 from ..database.kb.recall import cached
 from ..database.kite.kite_memory import UserMemory
-from ..schemas import IngestOut
+from .schemas import IngestOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/kb", tags=["kb"])

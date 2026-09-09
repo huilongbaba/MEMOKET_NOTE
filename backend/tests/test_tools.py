@@ -373,3 +373,36 @@ async def test_retrieval_failure_falls_back_instead_of_writing_blind(monkeypatch
     # gather_context 本身只负责如实报告失败；降级由调用方做（见
     # note_harness / writing_plan 里 trace.error and not facts 那段）
     assert extra == [] and "500" in trace.error and not trace.as_facts()
+
+
+def test_a_run_cannot_spend_its_whole_life_running_scripts(tmp_path, monkeypatch):
+    """单轮 3 次的预算乘上十几轮就是三四十次执行，每次墙钟上限 30 秒。
+
+    limits.MAX_RUNS_PER_HARNESS_RUN 写着整轮 run 的上限，但在这次自查之前
+    没有代码读它。这里既测上限生效，也测**失败的执行照样记账**——否则一个
+    一调用就报错的脚本可以无限重试。
+    """
+    import asyncio
+
+    from app.harness.sandbox import limits
+    from app.harness.tools import registry, sandbox_tools
+
+    ran: list[str] = []
+
+    async def fake_run(skill_dir, script, args, level):
+        ran.append(script)
+        raise sandbox_tools.sandbox.SandboxError("boom")
+
+    monkeypatch.setattr(sandbox_tools.sandbox, "run", fake_run)
+    monkeypatch.setattr(sandbox_tools.store, "skill_configs",
+                        lambda user: {"demo": {"sandbox": "compute"}})
+    root = tmp_path / "demo"
+    (root / "scripts").mkdir(parents=True)
+    monkeypatch.setattr(sandbox_tools.skills, "skills_root", lambda user: tmp_path)
+
+    ctx = registry.ToolContext(user="u")
+    out = [asyncio.run(sandbox_tools.run_skill_script(ctx, "demo", "s.py"))
+           for _ in range(limits.MAX_RUNS_PER_HARNESS_RUN + 2)]
+
+    assert len(ran) == limits.MAX_RUNS_PER_HARNESS_RUN
+    assert "budget" in out[-1] and "budget" not in out[0]

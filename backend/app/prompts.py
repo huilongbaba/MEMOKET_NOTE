@@ -902,56 +902,6 @@ def section_write_user(section_title: str, goal: str, prior_summaries: list[str]
     return "\n\n".join(parts)
 
 
-# writing_plan.py 原来只有续写这一步，没有 note_harness.py 那样的独立
-# 修订/清理步骤——真实压测数据发现的问题（TRACELOG [28]）：分段的收敛率
-# 明显低于笔记（会话样本里 20% vs 50%+），因为 non_repetition 被打低分
-# 之后，唯一能做的还是"接着写"，跟 note_harness 改之前撞过的同一个坑
-# 一样——已经在重复的问题，靠"接着写"没道理能自己变好。这里给分段也配一份
-# 对应的修订 prompt，跟 edit_user() 用同一份 EDIT_SYSTEM（已经把开头改成
-# 不点名 spine/beats，两边共用），只是上下文块换成分段自己的主题/目标/
-# 其他分段小结。
-def section_edit_user(section_title: str, goal: str, prior_summaries: list[str],
-                      content: str, facts: list[str], profile: list[str],
-                      focus: str = "", dup_hints: list | None = None,
-                      defect_lines: list[str] | None = None) -> str:
-    parts = []
-    block = _profile_block(profile)
-    if block:
-        parts.append(block)
-    parts.append(f"【核心目标/结构】\n这个分段的主题：{section_title}"
-                 + (f"\n整个写作计划的总体目标：{goal}" if goal else ""))
-    if prior_summaries:
-        parts.append("【计划里已完成的其他分段小结（不要跟这些重复）】\n"
-                     + "\n".join(f"- {s}" for s in prior_summaries))
-    if facts:
-        parts.append("【知识库事实】\n" + "\n".join(f"- {f}" for f in facts))
-    else:
-        parts.append("【知识库事实】\n（无相关记录）")
-    if focus:
-        label = _FOCUS_LABELS.get(focus, focus)
-        parts.append(f"【这一轮优先检查】\n上一轮评分里这一项最弱：{label}。"
-                     "优先看这个问题有没有解决，其余几条原则仍然适用，但不用逐条重新过一遍。")
-    if dup_hints:
-        pairs = "\n".join(
-            f"- 段落A：{h.a[:150]}\n  段落B：{h.b[:150]}（相似度 {h.similarity:.0%}）"
-            for h in dup_hints[:5]
-        )
-        parts.append("【机械查重找到的疑似重复段落，逐条判断是不是真的重复、要不要删一条】\n" + pairs)
-    if defect_lines:
-        # 跟 edit_user() 用同一套：占位符和审计腔/机制泄漏，确定性扫出来、
-        # 指到具体位置。这条原来只接在单篇 harness 上，folder 级第一次做 bench
-        # 两次跑两次命中审计腔——「只修了一边」今晚第五次。
-        parts.append("【这几处必须就地处理】\n"
-                     + "\n".join(f"- {d}" for d in defect_lines)
-                     + "\n**占位符**：有材料就填实，没材料就删掉这一行/这一格。"
-                       "\n**审计腔/机制泄漏**：删掉关于证据够不够的元评论，正文里也不许"
-                       "出现「知识库」「KB」「检索到的记录」这类词——这是用户自己的笔记，"
-                       "不是给第三方看的审计报告。"
-                       "\n**一条都不许原样留着。**")
-    parts.append("【正文】\n" + content)
-    return "\n\n".join(parts)
-
-
 MORE_SECTIONS_SYSTEM = """你是写作规划助手。一份写作计划的所有已规划分段都
 写完了，现在要判断：基于写作目标、已经写完的这些分段、以及知识库里的相关
 事实，还有没有明显遗漏、值得单独再开一个分段来写的内容。

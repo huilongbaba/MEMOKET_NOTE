@@ -12,7 +12,7 @@ from ..harness.events import to_sse
 from ..harness.hooks.note import NoteHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
-from ..schemas import NoteHarnessRunIn
+from .schemas import NoteHarnessRunIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/note-harness", tags=["note-harness"])

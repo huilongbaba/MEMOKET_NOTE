@@ -110,7 +110,7 @@ def test_every_item_status_written_is_allowed_by_the_schema():
     """
     import re
 
-    from app.schemas import ITEM_STATUSES, JOB_STATUSES
+    from app.routers.schemas import ITEM_STATUSES, JOB_STATUSES
 
     root = Path(__file__).resolve().parent.parent
     files = [root / "app" / "routers" / "import_sources.py",

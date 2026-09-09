@@ -130,6 +130,62 @@ def _command(prof: Profile, script: Path, scratch: Path) -> list[str]:
     raise SandboxError(f"no sandbox available on {platform.system()}")
 
 
+def _apply_limits() -> None:
+    """在 exec 之前给子进程套上 CPU 和内存的硬上限。**逐条尽力，设不上就跳过。**
+
+    这两个上限一度只是 limits.py 里的两个常量，没有任何地方执行它们——墙钟和
+    产出大小拦住了，CPU 和内存没有。写下来却不生效的限制比没写更糟：读代码
+    的人会以为它在。
+
+    但也不能假装每台机器都拦得住。实测 macOS 上 ``RLIMIT_AS`` 设不下去
+    （"current limit exceeds maximum limit"），Linux 可以。所以这里逐条
+    try，设不上的那条**在 limits.py 里记着它在哪个平台无效**，而不是让整个
+    子进程起不来（第一版没 try，macOS 上所有沙箱调用当场 SubprocessError）。
+
+    ``RLIMIT_AS`` 限的是虚拟地址空间不是 RSS——对「一次分配一大块」这种最
+    常见的失控有效，对慢慢涨的不精确。够用：这是防失控，不是配额。
+
+    跑在 fork 之后 exec 之前，只影响子进程。
+    """
+    import resource
+
+    for what, value in ((resource.RLIMIT_CPU, limits.CPU_SECONDS),
+                        (resource.RLIMIT_AS, limits.MEMORY_BYTES)):
+        try:
+            resource.setrlimit(what, (value, value))
+        except (ValueError, OSError):
+            pass          # 这台机器不支持这一条；墙钟上限仍然兜着
+
+
+def enforced_limits() -> dict[str, bool]:
+    """哪几条上限在这台机器上真的生效。给诊断和测试用。
+
+    存在的理由跟 Seatbelt 那段一样：**能力有平台差异时，如实报出来**，
+    不要让读文档的人以为处处相同。
+
+    在子进程里探，不在当前进程探——第一版就地 setrlimit 再设回去，结果
+    是：降下来的硬上限抬不回去，恢复那步抛异常，被同一个 try 吞掉，于是
+    把「可设」的 CPU 报成了「不可设」，还顺手把服务进程自己的 CPU 上限
+    永久压到了 10 秒。探测手段不该改被探测的对象。
+    """
+    import json
+    import subprocess
+    import sys
+
+    src = (
+        "import json,resource\n"
+        "def t(w,v):\n"
+        "    try:\n"
+        "        resource.setrlimit(w,(v,v)); return True\n"
+        "    except (ValueError,OSError): return False\n"
+        "print(json.dumps({'cpu_seconds':t(resource.RLIMIT_CPU,%d),"
+        "'memory_bytes':t(resource.RLIMIT_AS,%d)}))"
+    ) % (limits.CPU_SECONDS, limits.MEMORY_BYTES)
+    out = subprocess.run([sys.executable, "-c", src], capture_output=True, text=True, timeout=30)
+    got = json.loads(out.stdout) if out.returncode == 0 else {"cpu_seconds": False, "memory_bytes": False}
+    return {"wall_clock": True, "output_bytes": True, **got}
+
+
 async def run(skill_dir: Path, script: str, args: dict,
               level: SandboxLevel, output: Path | None = None) -> SandboxResult:
     """Run one script from a skill directory, confined to ``level``.
@@ -166,6 +222,7 @@ async def run(skill_dir: Path, script: str, args: dict,
             env={"SKILL_ARGS": str(scratch / "args.json"),
                  "SKILL_OUT": str(scratch),
                  "PATH": "/usr/bin:/bin"},
+            preexec_fn=_apply_limits,
         )
         try:
             out, err = await asyncio.wait_for(

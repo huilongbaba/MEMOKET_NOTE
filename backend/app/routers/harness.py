@@ -30,7 +30,7 @@ from ..harness.hooks.block import BlockHooks
 from ..harness.hooks.note import NoteHooks
 from ..harness.hooks.section import SectionHooks
 from ..editor.profile import entries as _profile
-from ..schemas import HarnessResumeIn
+from .schemas import HarnessResumeIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/harness", tags=["harness"])

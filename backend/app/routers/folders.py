@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
-from ..schemas import Folder, FolderIn
+from .schemas import Folder, FolderIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/folders", tags=["folders"])

@@ -28,7 +28,7 @@ from ..harness.events import to_sse
 from ..harness.hooks.block import BlockHooks
 from ..harness.state import State
 from ..editor.profile import entries as _profile
-from ..schemas import ComposeBlockIn
+from .schemas import ComposeBlockIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/compose", tags=["compose"])

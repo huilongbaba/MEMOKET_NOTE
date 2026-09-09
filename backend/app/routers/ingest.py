@@ -19,7 +19,7 @@ from ..database import store
 from ..database.ingest import asr, extract
 from ..database.ingest.chunking import chunks as _chunks, chunks_for as _chunks_for
 from ..database.kite.kite_memory import UserMemory
-from ..schemas import IngestItemOut, IngestOut, IngestTextIn
+from .schemas import IngestItemOut, IngestOut, IngestTextIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
