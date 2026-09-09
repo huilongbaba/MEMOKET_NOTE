@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts# noqa: E402
+from app.harness import prompts  # noqa: E402
 # 修订的定位与应用搬到了 app/harness/revision.py —— 两条 harness 共用，
 # 而 router 之间不该互相 import。
 from app.harness.revision import apply_revision  # noqa: E402
@@ -449,7 +449,7 @@ def test_scorer_diagnosis_reaches_the_edit_pass():
     import inspect
     from app.harness.types import DimensionScore, Evaluation
 
-    from app import prompts
+    from app.harness import prompts
     from app.harness.loop import _weak_note
     from app.harness.modes import NOTE
     from app.harness.state import State

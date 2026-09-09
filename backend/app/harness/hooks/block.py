@@ -14,8 +14,8 @@ from typing import AsyncIterator
 from .. import agent_loop
 from ...util import llm
 from ..agent_loop import ToolTrace
-from ... import prompts
-from ...prompts import BLOCK_SYSTEM
+from .. import prompts
+from ..prompts import BLOCK_SYSTEM
 from ..state import State
 
 # Sent into the focus round. The model has already explored by this point;

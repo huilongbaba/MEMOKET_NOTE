@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import prompts
+from .. import prompts
 from ...database import store
 from ...util import llm
 from ...editor import outline

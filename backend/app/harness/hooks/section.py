@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import prompts
+from .. import prompts
 from .. import agent_loop
 from .. import tools
 from ...editor import outline

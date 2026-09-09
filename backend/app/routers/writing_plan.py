@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from .. import prompts
+from ..harness import prompts
 from ..database import store
 from ..harness import tools
 from ..util import llm

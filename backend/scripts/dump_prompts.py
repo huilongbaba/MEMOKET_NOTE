@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts
+from app.harness import prompts
 from app.database import store
 from app.harness import adapter as harness_adapter, tools# noqa: E402
 from app.routers.compose import _profile, _retrieve  # noqa: E402

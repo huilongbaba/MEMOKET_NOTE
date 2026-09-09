@@ -39,9 +39,10 @@ this package. The short version:
     policy.py         这一轮的观测怎么变成下一轮的参数   → middleware/runtime
     replan_rules.py   骨架该不该改、改完合不合法         → middleware/replan
 
-子包：``hooks/``（每条 harness 自己写的三个回调）· ``middleware/``（能力
-包）· ``checks/``（判据，代码判和模型判两半）· ``tools/``（模型能按名字
-调的东西）· ``sandbox/``（第三方 skill 脚本的笼子）。
+子包：``prompts/``（全部写作 prompt，按主题分）· ``hooks/``（每条 harness
+自己写的三个回调）· ``middleware/``（能力包）· ``checks/``（判据，代码判和
+模型判两半）· ``tools/``（模型能按名字调的东西）· ``sandbox/``（第三方
+skill 脚本的笼子）。
 """
 
 from .events import Event, EventType

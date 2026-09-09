@@ -101,7 +101,7 @@ def test_both_prompts_forbid_leaking_the_retrieval_machinery():
     """实测漏出过「目前 KB 中可直接核对的记录集中在…」——模型把自己的
     工作机制写进了用户的笔记。审计腔（「现有材料不能证明…」）是同一类问题：
     用户要的是「这一年发生了什么」，不是「哪些事我无法证明」。"""
-    from app.prompts import MAGIC_TAP_SYSTEM, MAGIC_TAP_SYSTEM_LEAN
+    from app.harness.prompts import MAGIC_TAP_SYSTEM, MAGIC_TAP_SYSTEM_LEAN
 
     for p in (MAGIC_TAP_SYSTEM, MAGIC_TAP_SYSTEM_LEAN):
         assert "KB" in p and "知识库" in p          # 明确点名了这些词

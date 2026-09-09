@@ -224,7 +224,7 @@ hook 是空的契约**，空契约给不出默认值。
 
 ```
 backend/app/
-  main.py · schemas.py · prompts.py      入口 · API 契约 · 全部写作 prompt
+  main.py                                入口
 
   harness/                 ① agent 运行：跟大模型有关的一切
     loop.py                  唯一的循环（第 6 节）
@@ -238,6 +238,15 @@ backend/app/
     adapter.py               app 和 harness 之间的接缝（LLMClient 等的实现）
     skills.py                SKILL.md 目录的读写（第 10 节）
     snapshot.py              State ⇄ JSON，轮末暂停用（第 13.1 节）
+    prompts/                 全部写作 prompt，按主题分（不按调用方：有几条
+                             是两条 harness 共用的，按调用方拆会交叉引用）
+      fragments.py             提示词里反复出现的积木：画像 · 骨架 · 标题格式
+      writing.py               写作本身：给骨架 · 改一遍 · 往下写
+      selection.py             选中一段之后：改写 · 润色 · 展开 · 核查 · 回顾
+      note.py                  单篇 harness：检索规划 · 改骨架 · 接着写
+      plan.py                  续写计划：拆分段 · 写一段 · 要不要再加几段
+      skills.py                skill 拼进 system prompt · 让模型写一个 skill
+      block.py                 块生成（`/` 唤起）
     revision.py              修订的定位与应用 + 四道防线（纯函数）
     policy.py                把这一轮的观测算成下一轮的运行参数（纯函数）
     replan_rules.py          骨架重规划该不该做、改完合不合法（纯函数）
@@ -271,6 +280,7 @@ backend/app/
     profile.py                             用户的写作偏好
 
   routers/                 ④ 和前端对接：认 Mode、装 State、翻事件
+    schemas.py               API 契约
     note_harness 98 · writing_plan 281 · compose_block 186 · harness（恢复）
     kb · memory · ingest · notes · folders · skills · profile · settings · assets
 

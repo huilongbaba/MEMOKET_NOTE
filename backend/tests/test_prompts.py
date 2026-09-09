@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts# noqa: E402
+from app.harness import prompts  # noqa: E402
 
 
 def test_folder_context_block_empty_list_returns_empty_string():
@@ -200,7 +200,7 @@ def test_edit_system_cleans_up_orphaned_headings_after_delete():
 
 def test_edit_user_carries_placeholder_lines():
     """占位符要作为具体位置喂给修订，不能只在续写规则里禁止。"""
-    from app import prompts
+    from app.harness import prompts
 
     out = prompts.edit_user("张力", ["节拍"], "正文", [], [],
                             defect_lines=["| 众筹素材锁定 | 待指定 |"])

@@ -15,7 +15,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from .. import prompts
+from ..harness import prompts
 from ..database import retrieval
 from ..editor import profile
 from ..util import llm

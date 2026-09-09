@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import prompts
+from ..harness import prompts
 from ..database import store
 from ..harness import skills as skills_store
 from ..util import llm

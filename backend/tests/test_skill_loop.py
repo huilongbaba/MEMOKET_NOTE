@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import prompts
+from app.harness import prompts
 from app.database import store
 from app.harness import skills, tools  # noqa: E402
 from app.harness import modes  # noqa: E402

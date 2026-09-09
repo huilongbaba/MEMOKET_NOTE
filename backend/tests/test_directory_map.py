@@ -28,9 +28,14 @@ DOC = ROOT.parent / "docs" / "harness-framework.md"
 
 
 def _map_section() -> str:
+    """第 3 节里**围栏中**的那张图，不含围栏外的说明文字。
+
+    只取围栏是必须的：围栏外那句「agent 运行（harness）、知识库…」以
+    `agent` 开头，按目录树去解析就成了一个叫 `agent.py` 的幽灵文件。
+    """
     text = DOC.read_text(encoding="utf-8")
-    start = text.index("## 3. 目录")
-    return text[start:text.index("## 4. ")]
+    section = text[text.index("## 3. 目录"):text.index("## 4. ")]
+    return section[section.index("```") + 3:section.index("```", section.index("```") + 3)]
 
 
 def _listed(section: str) -> set[str]:
@@ -68,6 +73,13 @@ def _tree_paths(section: str) -> list[tuple[str, int]]:
     只按文件名找是不够的——第一版就是这么写的，反向验证时往图里塞了一个
     已经删掉的 `middleware/policy.py`，测试没抓到：`policy.py` 在
     `app/sandbox/` 下真的存在，同名把它放过去了。
+
+    第二版又漏了一整类：一行上用 `·` 并排列几个模块（`outline ·
+    restructure · textshape`、`skills · facts · provenance`）时，只有**第一个**
+    名字被解析，后面的一概不查。图上 `main.py · schemas.py · prompts.py`
+    里的 `schemas.py` 早就搬进 `routers/` 了，测试一声没吭。所以现在按
+    `·` 切开整行，每一段取开头那个标识符；描述文字在两个以上空格之后，先
+    截掉——不然「入口 · API 契约」也会被当成模块名。
     """
     paths: list[tuple[str, int]] = []
     stack: list[tuple[int, str]] = []
@@ -79,11 +91,19 @@ def _tree_paths(section: str) -> list[tuple[str, int]]:
         while stack and stack[-1][0] >= indent:
             stack.pop()
         prefix = stack[-1][1] if stack else ""
-        full = prefix + name
         if name.endswith("/"):
-            stack.append((indent, full))
-        elif name.endswith(".py"):
-            paths.append((full, indent))
+            stack.append((indent, prefix + name))
+            continue
+        head = re.split(r"\s{2,}", line.strip())[0]
+        for piece in head.split("·"):
+            got = re.match(r"\s*([\w.-]+)", piece)
+            if not got:
+                continue
+            word = got.group(1)
+            if not re.fullmatch(r"[a-z_][\w.-]*", word):
+                continue                      # 「API」这类描述词不是模块名
+            paths.append((prefix + (word if word.endswith(".py") else word + ".py"),
+                          indent))
     return paths
 
 

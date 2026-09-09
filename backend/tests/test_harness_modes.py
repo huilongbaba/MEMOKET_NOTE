@@ -162,7 +162,7 @@ def test_每个mode都填了skill_scope():
     `compose_block` 的六个模式此前就是这么漏的：一个 scope 都没有，用户
     在数据可视化那条路径上配的技能一条都不生效，也不报错。
     """
-    from app import prompts
+    from app.harness import prompts
 
     for mode in modes.ALL:
         assert mode.skill_scope, f"{mode.label} 没填 skill_scope"
