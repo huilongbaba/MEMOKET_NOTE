@@ -47,10 +47,3 @@ class SqliteRunHistoryStore:
             )
             for row in store.recent_harness_runs(key, limit)
         ]
-
-
-# 从现有 EDIT_SYSTEM/BEATS_COVERAGE_SYSTEM/MAGIC_TAP_SYSTEM 里已经写好的
-# 原则提炼出来的 guidance 文案，不是新想的标准——这几条本来就是这些
-# prompt 里一直在检查的东西，只是之前从没被结构化打分过。note_harness
-# （单篇笔记，有 spine/beats）和 writing_plan（文件夹级分段，只有"这个
-# 分段的主题"）适用的"主题贴合度"维度不一样，其余三条共用。

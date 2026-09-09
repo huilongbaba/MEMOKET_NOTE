@@ -7,12 +7,11 @@ request instead of in passing.
 
 Layers, top to bottom:
 
-    L1  app/routers/     thin shells
-    L2  app/harness/     the loop, State, middleware, checks, modes
-    L3  app/kb/          knowledge-base capabilities above KITE
-    L3  app/            capabilities: agent_loop, llm, store, kite_memory, tools
-    L4  pure functions   tabular, blocks, outline, textshape, restructure, ...
-    L5  scoring/  the package
+    L1  app/routers/         thin shells
+    L2  app/harness/         the loop, State, middleware, checks, modes
+    L3  app/database/kb/     knowledge-base capabilities above KITE
+    L3  app/database/        store · retrieval · kite adapters
+    L4  pure functions       tabular, blocks, outline, textshape, restructure
 """
 
 from __future__ import annotations
@@ -37,6 +36,22 @@ PURE = ["harness/checks/blockcheck", "harness/checks/grounding_rules",
         "editor/outline", "editor/restructure", "editor/textshape"]
 
 
+def _files(*parts: str, deep: bool = False) -> list[pathlib.Path]:
+    """一层里的所有 .py，**并且断言这一层不是空的**。
+
+    这条断言是被三条静默失效的测试逼出来的：`scoring/src`、`app/tools`、
+    `app/kb` 三个目录在重构里全搬了家，而三条分层测试还在对着旧路径
+    glob。空集合上跑 for 循环不报错——三条架构不变量green 了不知道多久，
+    实际上一个字节都没检查。
+
+    发现型的集合必须自证非空，否则「测试通过」只说明没找到文件。
+    """
+    base = ROOT.joinpath(*parts)
+    found = sorted(base.rglob("*.py") if deep else base.glob("*.py"))
+    assert found, f"{base} 下一个 .py 都没有——这一层搬走了还是改名了？"
+    return found
+
+
 def _imports(path: pathlib.Path) -> set[str]:
     """Top-level module names this file imports, relative imports resolved to
     the package they land in."""
@@ -49,8 +64,18 @@ def _imports(path: pathlib.Path) -> set[str]:
             if node.level:
                 parts = path.relative_to(ROOT).with_suffix("").parts
                 base = parts[:max(0, len(parts) - node.level)]
-                target = ".".join(base + tuple((node.module or "").split(".")))
-                out.add(target)
+                target = ".".join(base + tuple(
+                    x for x in (node.module or "").split(".") if x))
+                # `from ..x import y`：y 如果自己就是个模块，解析成 x.y。
+                # 不这么做的话，`from ...harness import adapter` 和
+                # `from ...harness import loop` 在这里长得一模一样（都只是
+                # `app.harness`），要放行前者就只能连后者一起放行。
+                for alias in node.names:
+                    sub = ROOT.joinpath(*target.split("."), alias.name)
+                    if sub.with_suffix(".py").exists() or sub.is_dir():
+                        out.add(f"{target}.{alias.name}")
+                    else:
+                        out.add(target)
             elif node.module:
                 out.add(node.module.split(".")[0])
     return out
@@ -62,17 +87,10 @@ def test_pure_layer_imports_only_the_standard_library():
                  "__future__"}
     for name in PURE:
         path = ROOT / "app" / f"{name}.py"
+        assert path.exists(), f"PURE 名单里的 {name} 不在了——搬走了还是删了？"
         external = {m for m in _imports(path)
                     if m not in stdlib_ok and not m.startswith("_")}
         assert not external, f"app/{name}.py grew a dependency: {external}"
-
-
-def test_the_package_does_not_know_about_this_app():
-    """The single condition for scoring being extractable. One import
-    of ``app`` and the only way to open-source it is to untangle it again."""
-    for path in (ROOT / "scoring" / "src").rglob("*.py"):
-        offending = {m for m in _imports(path) if m == "app" or m.startswith("app.")}
-        assert not offending, f"{path.name} imports {offending}"
 
 
 def test_routers_do_not_import_each_other():
@@ -80,7 +98,7 @@ def test_routers_do_not_import_each_other():
     down. Six of these existed; all six moved (``profile``, ``retrieval``,
     ``chunking``, ``harness/events``, ``harness/params``, ``harness/revision``)."""
     violations: list[str] = []
-    for path in (ROOT / "app" / "routers").glob("*.py"):
+    for path in _files("app", "routers"):
         # deps（所有 router 共用的依赖）和 schemas（API 契约）不是 router，
         # 是这一层里共享的东西——它们没有自己的端点，也不该有。
         if path.name in {"__init__.py", "deps.py", "schemas.py"}:
@@ -96,35 +114,51 @@ def test_routers_do_not_import_each_other():
 
 def test_harness_does_not_import_routers():
     """The loop must not know which endpoint is driving it."""
-    for path in (ROOT / "app" / "harness").rglob("*.py"):
+    for path in _files("app", "harness", deep=True):
         offending = {m for m in _imports(path) if "routers" in m}
         assert not offending, f"{path} imports {offending}"
 
 
-def test_tools_do_not_import_the_harness():
-    """The tool pool is a layer below. It shares mutable state with whatever
-    drives it through ``ToolContext.scratch`` -- a plain dict -- precisely so
-    it never has to know a harness exists."""
-    for path in (ROOT / "app" / "tools").glob("*.py"):
-        offending = {m for m in _imports(path) if "harness" in m}
+def test_tools_do_not_import_the_harness_runtime():
+    """工具池不认识循环。
+
+    原话是「工具池在下面一层」——那时它在 `app/tools/`。按职责重排之后它
+    进了 `app/harness/tools/`，**这条测试却还在对 `app/tools/` glob，空集
+    上静默绿了整段重构**。位置变了，可这条边界本身没变，只是要说得更准：
+    工具可以用 harness 的能力（`skills`、`sandbox`），但不许认识运行时——
+    loop / state / modes / types / agent_loop / middleware / hooks / checks。
+    它跟驱动方之间只有 `ToolContext.scratch` 这一个 dict，正是为了不用知道
+    有没有 harness 在跑。
+    """
+    runtime = {"loop", "state", "modes", "types", "agent_loop",
+               "middleware", "hooks", "checks", "adapter", "snapshot"}
+    for path in _files("app", "harness", "tools"):
+        offending = {m for m in _imports(path)
+                     if m.startswith("app.harness.")
+                     and m.split(".")[2] in runtime}
         assert not offending, f"{path.name} imports {offending}"
 
 
 def test_the_knowledge_base_layer_knows_nothing_above_it():
-    """``app/kb`` sits above KITE and below everything that writes.
+    """``app/database/kb`` sits above KITE and below everything that writes.
 
     It has no business knowing that a harness or an endpoint exists: the same
     clustering and the same extraction judgement should be runnable from a
     script, and one import upward is all it takes for that to stop being
     true.
     """
-    for path in (ROOT / "app" / "kb").glob("*.py"):
+    for path in _files("app", "database", "kb"):
         # 注意匹配的是 app 自己的那个 harness 包，不是 scoring——
         # 后者是它下面一层的、可独立开源的包，kb 用它的 evaluate() 正是设计。
         # kb 用 harness 的打分引擎（rubric）和它的类型是**设计**——抽取判据
         # 复用同一个 evaluate()，换一组 dimensions 就换个领域。不许碰的是
         # 循环本身：State / loop / middleware / hooks。
-        allowed = {"app.harness.checks.rubric", "app.harness.types"}
+        # adapter 也在名单里：kb 要打分就要一个 LLMClient 实现，而 adapter
+        # 就是「把协议接到 util/llm 和 database/store 上」的那条缝。它不是
+        # 循环——放行它跟这条测试要守的东西（kb 不认识 loop、不认识端点）
+        # 不冲突。
+        allowed = {"app.harness.checks.rubric", "app.harness.types",
+                   "app.harness.adapter"}
         offending = {m for m in _imports(path)
                      if ("app.routers" in m
                          or (m.startswith("app.harness") and m not in allowed))}
