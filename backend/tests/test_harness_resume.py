@@ -20,7 +20,8 @@ from app.harness.types import DimensionScore, Evaluation
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import runtime_policy, store  # noqa: E402
+from app import store
+from app.pure import runtime_policy# noqa: E402
 from app.harness import loop, modes, snapshot  # noqa: E402
 from app.harness.state import State  # noqa: E402
 from app.tools import ToolContext  # noqa: E402

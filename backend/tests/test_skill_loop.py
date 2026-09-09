@@ -140,7 +140,7 @@ def test_运行时策略不能把mode给的工具组盖掉(env):
     """真实 bug：``RuntimePolicy.tool_groups`` 默认 ``["memory"]`` 且直接
     替换 Mode 的配置，于是 skill 工具注册了、prompt 里列了、模型永远调不到。
     策略可以**加**组（升级到核验工具），不能**替换**。"""
-    from app import runtime_policy
+    from app.pure import runtime_policy
 
     policy = runtime_policy.RuntimePolicy()
     assert not hasattr(policy, "tool_groups"), "替换语义的字段必须消失"

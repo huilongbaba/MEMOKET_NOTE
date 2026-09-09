@@ -6,7 +6,7 @@ months later, or whether it was filed under the right subject -- and those are
 the two things that decide whether the writing side can use it at all.
 
 **This is the same mechanism as the writing harness, with different
-dimensions.** ``harness.rubric.evaluate`` takes its criteria from the caller, so swapping
+dimensions.** ``harness.checks.rubric.evaluate`` takes its criteria from the caller, so swapping
 the dimensions swaps the domain; extraction is the second domain, and it
 needed no new machinery.
 
@@ -31,11 +31,11 @@ from __future__ import annotations
 import collections
 from dataclasses import dataclass
 
-from ..harness.rubric import evaluate
+from ..harness.checks.rubric import evaluate
 from ..harness.types import Dimension, Evaluation
 
 from .. import harness_adapter
-from ..kite_memory import UserMemory
+from ..kite.kite_memory import UserMemory
 
 # How much of the original conversation the judge sees. It has to see some --
 # "is this self-contained" can be answered from the fact alone, but "is this

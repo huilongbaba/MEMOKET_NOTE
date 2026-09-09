@@ -30,10 +30,10 @@ OUT = Path(__file__).resolve().parents[2] / "samples"
 
 _HEADING = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$", re.M)
 # 不该出现在用户笔记里的两类话：把工作机制写进正文，以及关于证据充分性的元评论。
-# **词表从 app.grounding_check 导入，不在这里另写一份**——之前两边各写各的，
+# **词表从 app.pure.grounding_check 导入，不在这里另写一份**——之前两边各写各的，
 # 漂移出「无法判断」「仍需与」这两个 bench 报得出来、scrub 删不掉的词。
-from app.grounding_check import AUDIT_PHRASES as AUDIT  # noqa: E402
-from app.grounding_check import LEAK_PHRASES as LEAK  # noqa: E402
+from app.pure.grounding_check import AUDIT_PHRASES as AUDIT  # noqa: E402
+from app.pure.grounding_check import LEAK_PHRASES as LEAK  # noqa: E402
 # 占位符：写了个坑没填，等于没写
 PLACEHOLDER = re.compile(r"待指定|待倒排|待定|待补|待确认|待明确|TBD|（待|待填")
 # 顾问腔：写的是"这件事应该怎么安排"而不是这件事本身。旧代码产出的真实笔记

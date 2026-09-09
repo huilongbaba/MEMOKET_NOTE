@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from ..kite_memory import UserMemory
+from ..kite.kite_memory import UserMemory
 from .registry import ToolContext, register
 
 # 单条事实在工具输出里的截断长度。事实本身通常一两句话，200 字足够完整，

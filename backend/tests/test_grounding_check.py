@@ -7,7 +7,7 @@ factual_grounding 只查"有没有矛盾/编造"，通用常识既不矛盾也�
 
 from __future__ import annotations
 
-from app.grounding_check import fact_usage, grounding_gap
+from app.pure.grounding_check import fact_usage, grounding_gap
 
 FACTS = [
     "[2026-03-12] 手板厂之前打的那架外观结构样 2300 块钱一套。",
@@ -104,7 +104,7 @@ def test_material_exhausted_stops_the_pointless_extra_rounds():
     第 2、3 轮把「ask memory 优先、integration 延后」翻来覆去写了三遍，
     每节各收一次尾，coherence 和 non_repetition 一路从 2 掉到 1。
     """
-    from app.grounding_check import material_exhausted
+    from app.pure.grounding_check import material_exhausted
 
     facts = ["[2026-01-23] ask memory 功能优先做，integration 延后。",
              "[2026-01-23] 首发版本先覆盖核心录音与摘要体验。"]
@@ -120,7 +120,7 @@ def test_material_exhausted_stops_the_pointless_extra_rounds():
 
 
 def test_placeholder_lines():
-    from app.grounding_check import placeholder_lines
+    from app.pure.grounding_check import placeholder_lines
 
     doc = ("## 倒排表\n\n"
            "| 众筹素材锁定 | 待指定 | 页面与首发版本一致 | 待倒排 |\n"
@@ -136,7 +136,7 @@ def test_placeholder_lines():
 
 def test_audit_voice_lines():
     """审计腔和机制泄漏要能定位到具体句子。样本取自文件夹级 bench 的真实产出。"""
-    from app.grounding_check import audit_voice_lines
+    from app.pure.grounding_check import audit_voice_lines
 
     doc = ("众筹三月上旬启动。"
            "即使面向发货的相关功能已经可用，也不能据此判断用户已经完成硬件交付。"
@@ -152,7 +152,7 @@ def test_audit_voice_lines():
 
 def test_scrub_meta_sentences():
     """元话语（机制泄漏 + 审计腔）整句删掉——最后一轮写的内容不会再经过修订。"""
-    from app.grounding_check import scrub_meta_sentences
+    from app.pure.grounding_check import scrub_meta_sentences
 
     t = "三月上旬启动众筹。目前 KB 中可核对的记录集中在二月。排期要往前倒推。"
     got = scrub_meta_sentences(t)
@@ -184,7 +184,7 @@ def test_bench_wordlist_and_scrubber_cannot_drift():
     sys.path.insert(0, str(_P(__file__).resolve().parent.parent / "scripts"))
     from suite import AUDIT, LEAK  # noqa: PLC0415
 
-    from app.grounding_check import _META_SENT, scrub_meta_sentences
+    from app.pure.grounding_check import _META_SENT, scrub_meta_sentences
 
     for w in tuple(AUDIT) + tuple(LEAK):
         assert _META_SENT.search(f"这里{w}的一句话。"), f"bench 报 {w!r} 而 scrub 删不掉"

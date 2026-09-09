@@ -22,7 +22,8 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import llm, prompts, replan as replan_rules
+from ... import llm, prompts
+from ...pure import replan as replan_rules
 from ..events import (CUSTOM_POLICY, CUSTOM_REPLAN, CUSTOM_SKELETON,
                       Event)
 from ..state import State

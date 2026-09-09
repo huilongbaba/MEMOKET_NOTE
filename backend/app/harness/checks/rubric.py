@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from .types import (Dimension, DimensionScore, DupHint, Evaluation, LLMClient)
+from ..types import (Dimension, DimensionScore, DupHint, Evaluation, LLMClient)
 
 DEFAULT_SYSTEM_PROMPT = """You are a rigorous editor. You will be given a \
 piece of writing and a fixed set of dimensions to score it against. Score \

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.harness.rubric import evaluate
+from app.harness.checks.rubric import evaluate
 from app.harness.types import Dimension, DupHint
 
 

@@ -14,8 +14,8 @@ import base64
 import hashlib
 import httpx
 
-from .config import get_settings
-from .store import get_active_llm_config
+from ..config import get_settings
+from ..store import get_active_llm_config
 
 
 class ImageGenError(RuntimeError):

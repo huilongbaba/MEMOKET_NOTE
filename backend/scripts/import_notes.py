@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx  # noqa: E402
 
-from app.importers import (ImportedNote, clean_obsidian, html_to_markdown,  # noqa: E402
+from app.ingest.importers import (ImportedNote, clean_obsidian, html_to_markdown,  # noqa: E402
                            normalize_date, parse_enex, parse_frontmatter, today)
 
 BASE = os.environ.get("MEMOKET_NOTE_BASE", "http://localhost:8000")

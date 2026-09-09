@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..kite_memory import UserMemory
+from ..kite.kite_memory import UserMemory
 
 # ``terrence-268-0``, ``terrence-268-1``: the trailing number is the chunk,
 # what precedes it is the meeting.
@@ -148,7 +148,7 @@ def extract_one(user: str, meeting: Meeting) -> int:
 
 def _profile(user: str):
     """The writing-side extraction profile, or None to leave KITE's alone."""
-    from ..kite_profile import WritingProfile
+    from ..kite.kite_profile import WritingProfile
     from memoket_kite import Memory
 
     src = UserMemory(source_user(user))

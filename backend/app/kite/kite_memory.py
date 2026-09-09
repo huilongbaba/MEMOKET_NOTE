@@ -30,9 +30,10 @@ from memoket_kite.pipeline.extract import _consolidation_round_votes
 from memoket_kite.providers.llm import llm_json
 from memoket_kite.storage import _verify_loadable
 
-from . import kite_entity_candidates, kite_extract_profile, store
-from .kb import search
-from .config import get_settings
+from .. import store
+from . import kite_entity_candidates, kite_extract_profile
+from ..kb import search
+from ..config import get_settings
 from .kite_writer import write_lock
 
 kite_extract_profile.install()

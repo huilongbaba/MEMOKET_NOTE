@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from app.replan import MAX_BEATS, MAX_REPLANS, apply_beat_ops, should_replan
+from app.pure.replan import MAX_BEATS, MAX_REPLANS, apply_beat_ops, should_replan
 
 
 # ------------------------------------------------------------------ 触发条件

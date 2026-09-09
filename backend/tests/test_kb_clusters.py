@@ -133,7 +133,7 @@ def test_按主题过滤必须带上candidate():
     import re
 
     src = (pathlib.Path(__file__).resolve().parents[1]
-           / "app" / "kite_memory.py").read_text(encoding="utf-8")
+           / "app" / "kite" / "kite_memory.py").read_text(encoding="utf-8")
     calls = re.findall(r"downset\([^)]*\)", src, re.S)
     assert calls, "kite_memory 不再调 downset 了，这条测试的前提变了"
     for call in calls:

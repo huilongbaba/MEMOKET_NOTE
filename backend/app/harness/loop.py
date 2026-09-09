@@ -20,7 +20,7 @@ import functools
 import inspect
 from typing import AsyncIterator, Sequence
 
-from .rubric import evaluate
+from .checks.rubric import evaluate
 
 from .. import harness_adapter
 from .events import CUSTOM_EVALUATE, CUSTOM_WARNING, Event

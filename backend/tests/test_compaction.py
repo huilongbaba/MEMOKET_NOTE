@@ -1,4 +1,4 @@
-from app.harness.compaction import compact_context
+from app.harness.middleware.compact import compact_context
 
 
 def test_short_content_returned_unchanged():

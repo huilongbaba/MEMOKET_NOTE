@@ -1,7 +1,7 @@
 
 
 def test_手写的_mermaid_认得出来():
-    from app import blocks, blockcheck
+    from app.pure import blocks, blockcheck
     real = blocks.mermaid_xy("各渠道曝光", ["官网", "Kickstarter"], [93000, 254000])
     allowed = blockcheck.mermaid_blocks(real)
     # 工具原样搬过来的：放行
@@ -21,7 +21,7 @@ def test_聚焦轮看产物不看行为():
     """`focus_groups` 那一轮该不该跑，判据是画图工具**产出了东西**，
     不是调过画图工具——chart_column 会主动拒绝没信息量的图，连拒三次按
     「调过了」算就会跳过补画轮，最后一张图都没有。"""
-    from app import blocks
+    from app.pure import blocks
     from app.harness.hooks.block import _produced
 
     class T:
@@ -94,7 +94,7 @@ def test_量纲混了的图被原文判掉():
     单位要从原文取，而且只取离光标最近的那次出现：三万字里「10」出现几十次，
     后面跟着"倍""秒""%""月"什么都有，全收一遍等于没有判据。"""
     import app.tools as T
-    from app import tabular
+    from app.pure import tabular
 
     md = ("很久以前：等了 10 秒。" + "无关。" * 400
           + "AI FWI 将反演效率提升 10 倍、成本降幅 75%。"
@@ -144,7 +144,7 @@ def test_单值的图被拒():
 def test_编造的对照值被抓住():
     """两条互相拉扯的要求都得挡住：编造的对照值要拒，省了单位的同组项要放行。
     区别在同不同句。"""
-    from app import tabular
+    from app.pure import tabular
 
     near = ("其中，最新技术 AI FWI 将反演效率提升 10 倍、成本降幅 75%。"
             "计划后续在全国总部署 1 万公里。")

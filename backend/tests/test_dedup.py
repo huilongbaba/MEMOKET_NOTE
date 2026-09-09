@@ -1,4 +1,4 @@
-from app.harness.dedup import find_repeats
+from app.harness.middleware.repeats import find_repeats
 
 
 def test_finds_near_identical_paragraphs():

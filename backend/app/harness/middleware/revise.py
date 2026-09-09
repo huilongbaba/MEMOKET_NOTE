@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import grounding_check, llm, outline, prompts, store
+from ... import llm, prompts, store
+from ...pure import grounding_check, outline
 from ..events import (CUSTOM_DROPPED, CUSTOM_PHASE_DELTA,
                       CUSTOM_REVISION, Event)
 from ..revision import (_apply_revision, _breakage, _expand_sources,

@@ -12,7 +12,7 @@ run that did.
 from __future__ import annotations
 
 from .kb.recall import recall_clustered
-from .kite_memory import UserMemory
+from .kite.kite_memory import UserMemory
 
 # Retrieve against the tail of what's written -- where the user is now is
 # what's relevant, not the top of a long note.

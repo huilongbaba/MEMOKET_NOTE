@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.importers import (clean_obsidian, html_to_markdown, normalize_date,  # noqa: E402
+from app.ingest.importers import (clean_obsidian, html_to_markdown, normalize_date,  # noqa: E402
                            parse_enex, parse_frontmatter)
 
 
@@ -136,7 +136,7 @@ def test_tabular_stats_are_exact():
     """
     import statistics as st
 
-    from app import tabular
+    from app.pure import tabular
 
     text = ("| 渠道 | 曝光 | 下单 |\n|---|---|---|\n"
             "| 官网 | 42,000 | 88 |\n| KS | 156000 | 612 |\n"
@@ -164,7 +164,7 @@ def test_generated_charts_never_contain_syntax_breakers():
     """图表语法由代码拼，不让模型写——引号/方括号/换行这些会让 mermaid 解析失败
     的字符必须在标签里被清掉。用户碰到过「mermaid 语法错误，自动修复也没成功」，
     那种错会在笔记里留下一块渲染不出来的死代码。"""
-    from app import blocks
+    from app.pure import blocks
 
     nasty = '带"引号"和[方括号]\n还有换行(和括号);分号'
     for code in (blocks.mermaid_pie(nasty, [(nasty, 3)]),
@@ -253,7 +253,7 @@ def test_restructure_never_touches_content():
     这是结构性保证，不是靠提示词说「不要改内容」。逐条验证每种操作只动行首
     的结构标记，正文一个字都不变。
     """
-    from app import restructure, textshape
+    from app.pure import restructure, textshape
 
     md = ("众筹复盘\n三月上旬启动，四月底结束。\n启动前要做的事\n"
           "设计稿确认\n页面开发\n风险在排期\n如果设计稿晚一天，后面全都要顺延。")
@@ -277,7 +277,7 @@ def test_restructure_never_touches_content():
 
 def test_restructure_refuses_dangerous_ops():
     """越界、代码块里、表格里、超长新标题——都要被跳过而不是照做。"""
-    from app import restructure
+    from app.pure import restructure
 
     md = "正文一。\n```py\nx = 1\n```\n| a | b |\n|---|---|\n正文二。"
     out, skipped = restructure.apply_ops(md, [
@@ -297,7 +297,7 @@ def test_restructure_refuses_dangerous_ops():
 
 def test_restructure_ops_are_idempotent():
     """同一组操作跑两次结果一样——换结构之前会先剥掉已有的标记。"""
-    from app import restructure
+    from app.pure import restructure
 
     md = "标题行\n列表项一\n列表项二"
     ops = [{"op": "heading", "line": 1, "level": 2},
@@ -312,7 +312,7 @@ def test_restructure_ops_are_idempotent():
 
 def test_content_drift_tolerates_layout_but_catches_edits():
     """漂移校验：排版的合法产物放行，改词/删句一律抓住。"""
-    from app.textshape import content_drift
+    from app.pure.textshape import content_drift
 
     a = "三月上旬启动众筹。\n依赖：设计稿确认、页面开发。\n风险是排期太紧。"
     b = ("## 众筹节奏\n\n三月上旬启动众筹。\n\n依赖：\n\n- 设计稿确认\n- 页面开发\n\n"
@@ -330,7 +330,7 @@ def test_restructure_refuses_paragraph_length_headings():
     上学、养老这些具体需求。而大民生，是把整座城市的运行都看成民生…」这样
     一整段提升成了三级标题——目录里出现一段一百多字的"标题"，比不排版还糟。
     """
-    from app import restructure
+    from app.pure import restructure
 
     long_line = "大民生：什么叫大民生？过去理解民生，就是看病、上学、养老这些具体需求。" \
                 "而大民生，是把整座城市的运行都看成民生、市容环境、城市安全、交通出行。"
@@ -352,7 +352,7 @@ def test_heading_vs_sentence_on_real_document_lines():
         应用在油气、电力和矿山。」
     它有主谓宾、有句号——是一句话，不是标题。标题是**命名**，句子是**叙述**。
     """
-    from app.restructure import looks_like_sentence as sent
+    from app.pure.restructure import looks_like_sentence as sent
 
     headings = [
         "政府：", "智慧教育", "算力底座：", "宁夏大学具体教室功能：",
@@ -379,7 +379,7 @@ def test_split_enumerated_list_from_one_line():
     **拆点由代码按显式序号找，模型只说拆哪一行**——让模型报拆点等于让它重新
     输出正文，那正是这个设计要避免的事。
     """
-    from app import restructure, textshape
+    from app.pure import restructure, textshape
 
     md = ("引子。\n"
           "比如针对特定事件，（1）智能体自动生成巡查任务。（2）它能主动识别风险。"
@@ -432,7 +432,7 @@ def test_data_tools_follow_the_cursor():
 
 def test_histogram_bins_converge_on_small_samples():
     """分箱数按数据量收敛。6 个点分 8 箱，每箱一两个，看不出任何形状。"""
-    from app.tabular import histogram
+    from app.pure.tabular import histogram
 
     labels, counts = histogram([str(v) for v in (42000, 156000, 23000, 51000, 98000, 61000)])
     assert 2 <= len(labels) <= 3, f"6 个点不该分成 {len(labels)} 箱"

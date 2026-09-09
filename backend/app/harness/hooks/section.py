@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ... import agent_loop, grounding_check, outline, prompts, tools
+from ... import agent_loop, prompts, tools
+from ...pure import grounding_check, outline
 from ... import llm
 from ...agent_loop import ToolTrace
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS

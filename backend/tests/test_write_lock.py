@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.kite_writer import WriteLockTimeout, write_lock  # noqa: E402
+from app.kite.kite_writer import WriteLockTimeout, write_lock  # noqa: E402
 
 WRITERS = 8
 SEED = "<codebook>\n</codebook>\n"
@@ -164,7 +164,7 @@ CHILD = """
 import sys, time
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from app.kite_writer import write_lock
+from app.kite.kite_writer import write_lock
 
 book = Path(sys.argv[2])
 with write_lock(book, timeout=60):

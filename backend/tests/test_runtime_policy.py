@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.runtime_policy import (
+from app.pure.runtime_policy import (
     REVISIONS_MAX,
     TEMP_MIN,
     TOOL_ITERS_MAX,

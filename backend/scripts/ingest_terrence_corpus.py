@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.kite_memory import UserMemory  # noqa: E402
+from app.kite.kite_memory import UserMemory  # noqa: E402
 from app.routers.ingest import _chunks  # noqa: E402
 from memoket_kite import StorageError  # noqa: E402
 

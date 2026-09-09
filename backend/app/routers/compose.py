@@ -15,8 +15,9 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from .. import grounding_check, llm, profile, prompts, retrieval
-from ..kite_memory import UserMemory
+from .. import llm, profile, prompts, retrieval
+from ..pure import grounding_check
+from ..kite.kite_memory import UserMemory
 from ..schemas import (DigestIn, DigestOut, EditOut, ExpandIn,
                        MagicTapIn, Revision, RewriteIn, SkeletonIn,
                        SkeletonOut, VerifyFinding, VerifyIn, VerifyOut)

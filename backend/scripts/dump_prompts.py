@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import harness_adapter, prompts, store, tools  # noqa: E402
 from app.routers.compose import _profile, _retrieve  # noqa: E402
-from app.harness.dedup import find_repeats  # noqa: E402
-from app.harness.rubric import DEFAULT_SYSTEM_PROMPT, _build_prompt  # noqa: E402
+from app.harness.middleware.repeats import find_repeats  # noqa: E402
+from app.harness.checks.rubric import DEFAULT_SYSTEM_PROMPT, _build_prompt  # noqa: E402
 
 USER = "terrence"
 OUT = Path(__file__).resolve().parents[2] / "prompts"
@@ -170,8 +170,8 @@ def main() -> None:
         from memoket_kite import Memory
         from memoket_kite.pipeline.compile_plan import _compile_prompt
 
-        from app.kite_memory import UserMemory, _export_provider_env
-        from app.kite_profile import WritingProfile
+        from app.kite.kite_memory import UserMemory, _export_provider_env
+        from app.kite.kite_profile import WritingProfile
 
         _export_provider_env()
         um = UserMemory(USER)

@@ -14,8 +14,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import kite_memory  # noqa: E402
-from app.kite_memory import UserMemory, _is_cjk_pair, _vote_entity_merges  # noqa: E402
+from app.kite import kite_memory# noqa: E402
+from app.kite.kite_memory import UserMemory, _is_cjk_pair, _vote_entity_merges  # noqa: E402
 
 
 @pytest.fixture()

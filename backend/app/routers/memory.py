@@ -4,7 +4,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..kite_memory import UserMemory
+from ..kite.kite_memory import UserMemory
 from ..schemas import (AskIn, AskOut, EntityOut, FactDetailOut, FactOut,
                        FactsPageOut, RecallIn, RecallOut, SourceLineOut,
                        StatsOut, TimelineBucket, TimelineOut, TopicCreateIn,

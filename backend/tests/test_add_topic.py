@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from memoket_kite.core.algebra import Store  # noqa: E402
 
-from app.kite_memory import UserMemory  # noqa: E402
+from app.kite.kite_memory import UserMemory  # noqa: E402
 
 
 @pytest.fixture()

@@ -18,7 +18,8 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
-from ... import agent_loop, grounding_check, llm, outline, prompts, tools
+from ... import agent_loop, llm, prompts, tools
+from ...pure import grounding_check, outline
 from ...agent_loop import ToolTrace
 from ...retrieval import retrieve as _retrieve
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS

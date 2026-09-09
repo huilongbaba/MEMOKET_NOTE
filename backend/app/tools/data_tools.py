@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 
-from .. import blocks, tabular
+from ..pure import blocks, tabular
 from .registry import ToolContext, register
 
 # 正文和光标位置从 ctx 上取（调用方构造 ToolContext 时带进来）。
@@ -477,7 +477,7 @@ def render_table(ctx: ToolContext, columns: list, rows: list) -> str:
     required=["prompt"],
 )
 async def render_image(ctx: ToolContext, prompt: str) -> str:
-    from .. import imagegen
+    from . import imagegen
     try:
         png, model = await imagegen.generate(str(prompt))
     except imagegen.ImageGenError as exc:

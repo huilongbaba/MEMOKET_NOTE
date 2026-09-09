@@ -35,8 +35,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import kite_memory  # noqa: E402 (installs both patched profiles)
-from app.kite_writer import write_lock  # noqa: E402
+from app.kite import kite_memory# noqa: E402 (installs both patched profiles)
+from app.kite.kite_writer import write_lock  # noqa: E402
 from app.routers.ingest import _chunks  # noqa: E402
 from memoket_kite import StorageError  # noqa: E402
 from memoket_kite.core.algebra import Store  # noqa: E402

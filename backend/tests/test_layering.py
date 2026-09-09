@@ -26,8 +26,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # lives, and keeping them dependency-free is what makes them testable by
 # constructing a string -- which in turn is why the regression suite for real
 # failing output exists at all.
-PURE = ["tabular", "blocks", "blockcheck", "textshape", "outline",
-        "restructure", "grounding_check", "runtime_policy", "replan"]
+# 名单就是目录本身——之前是手写的，跟代码分开维护，搬一次文件就对不上了。
+PURE_DIR = ROOT / "app" / "pure"
+PURE = sorted(p.stem for p in PURE_DIR.glob("*.py") if p.name != "__init__.py")
 
 
 def _imports(path: pathlib.Path) -> set[str]:
@@ -54,9 +55,7 @@ def test_pure_layer_imports_only_the_standard_library():
                  "collections", "itertools", "functools", "enum", "datetime",
                  "__future__"}
     for name in PURE:
-        path = ROOT / "app" / f"{name}.py"
-        if not path.exists():
-            continue
+        path = PURE_DIR / f"{name}.py"
         external = {m for m in _imports(path)
                     if m not in stdlib_ok and not m.startswith("_")}
         assert not external, f"app/{name}.py grew a dependency: {external}"
@@ -116,17 +115,14 @@ def test_the_knowledge_base_layer_knows_nothing_above_it():
         # kb 用 harness 的打分引擎（rubric）和它的类型是**设计**——抽取判据
         # 复用同一个 evaluate()，换一组 dimensions 就换个领域。不许碰的是
         # 循环本身：State / loop / middleware / hooks。
-        allowed = {"app.harness.rubric", "app.harness.types"}
+        allowed = {"app.harness.checks.rubric", "app.harness.types"}
         offending = {m for m in _imports(path)
                      if ("app.routers" in m
                          or (m.startswith("app.harness") and m not in allowed))}
         assert not offending, f"{path.name} imports {offending}"
 
 
-def test_the_pure_layer_list_is_still_accurate():
-    """A module that quietly grows a dependency stops being testable by
-    constructing a string -- and the list above is what says which modules
-    are supposed to stay that way, so an entry that no longer exists makes
-    the whole check silently weaker."""
-    missing = [n for n in PURE if not (ROOT / "app" / f"{n}.py").exists()]
-    assert not missing, f"PURE lists modules that are gone: {missing}"
+def test_the_pure_layer_is_not_empty():
+    """名单现在是目录本身，不会再跟代码对不上——但空目录会让整条检查静默
+    失效，所以还是要有个下限。"""
+    assert len(PURE) >= 8, f"app/pure 只剩 {PURE}，这条检查快没意义了"

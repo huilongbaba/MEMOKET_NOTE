@@ -224,77 +224,88 @@ hook 是空的契约**，空契约给不出默认值。
 
 ```
 backend/app/
+  ── 顶层只留「谁都可能用」的 ──────────────────────────────
+  main.py                  挂路由
+  config.py                配置
+  schemas.py               请求/响应模型（routers 用）
+  store.py                 sqlite：笔记 · 文件夹 · 计划 · skill 配置 · 快照
+  llm.py                   调模型（文本）
+  vision.py                调模型（读图）——图片转表格用
+  prompts.py               写作 prompt 的全部文本
+  skills.py · profile.py   用户配的两样：技能目录、写作偏好
+  agent_loop.py            工具循环：让模型自己决定查什么，带预算和 ToolTrace
+  retrieval.py             零 LLM 的关键词检索，工具循环失败时的兜底
+  harness_adapter.py       app 和 harness 之间的接缝
+
   harness/                 ← 循环本体。第 5、6、11 节
-    types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition（第 5 节）
+    types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition
+                             + Dimension · Evaluation · LLMClient（第 5、9 节）
     state.py                 State —— 一次 run 的全部数据（第 5 节）
     loop.py                  run() —— 唯一的循环（第 6 节）
     events.py                AG-UI 事件契约 + 翻回旧事件名（第 7 节）
     modes.py                 8 个内置 Mode + 停机条件 + for_run() 运行时裁剪（第 14 节）
-    revision.py              修订的定位与应用（纯函数，从 note_harness 搬出来）
+    revision.py              修订的定位与应用
     snapshot.py              State ⇄ JSON，轮末暂停用（第 13.1 节）
     params.py                跨 harness 的两个续写预算 + AGENT_TOOLS 开关
-    rubric.py                **判据的模型判那一半**：evaluate()，按 Mode.dims
-                             逐条打 0/1/2 分，然后由代码数一遍决定「完没完」（第 9 节）
-    dedup.py                 find_repeats()：机械查重，零 LLM
-    compaction.py            compact_context()：渐进式压缩，零 LLM
-    citations.py             check_citations()：引用核对，零 LLM
     hooks/                 ← 每条 harness 自己写的三个回调（第 5、16 节）
-      block.py                 `/` 块生成：prepare / produce / commit
-      note.py                  单篇续写：骨架、大纲模式、检索规划
-      section.py               文件夹级分段
+      block.py · note.py · section.py
     middleware/            ← 能力包，BASE 默认全开（第 11 节）
       _order.py                verify()：声明的先后依赖真的成立
       skills.py                技能菜单进上下文（第 10 节）
       facts.py                 材料跨轮累积 + 封顶
-      provenance.py            报出工具查了什么、这一轮拿到多少
-      repeats.py               机械查重 → dup_hints
+      provenance.py            报出工具查了什么
+      repeats.py               机械查重 → dup_hints（find_repeats 就在里面）
       revise.py                生成前先改一遍已有正文
       checks.py                跑 Mode.checks，auto-fix 或打回（第 9 节）
-      best_of.py               留最好的一轮
-      history.py               记 run 历史
-      compact.py               压缩喂给续写的正文      （不进 BASE）
-      save.py                  每轮落盘                （不进 BASE）
-      repair.py                内在质量弱 → 下一轮只理顺（不进 BASE）
-      runtime.py               把这一轮的观测变成下一轮的参数（不进 BASE）
-      replan.py                骨架重规划              （不进 BASE）
-    checks/                ← 代码判的那一半判据（第 9 节）
-      charts.py                假图 · 手写 mermaid
-      structure.py             标题层级 · 收尾节撞车 · 大纲被压平
-      grounding.py             占位符 · 审计腔 · 引用核对 · 材料没用上
+      best_of.py · history.py
+      compact.py               压缩续写上下文（compact_context 在里面，不进 BASE）
+      save.py · repair.py · runtime.py · replan.py    （都不进 BASE）
+    checks/                ← **判据，两半都在这儿**（第 9 节）
+      charts.py                代码判：假图 · 手写 mermaid
+      structure.py             代码判：标题层级 · 收尾节撞车 · 大纲被压平
+      grounding.py             代码判：占位符 · 审计腔 · 引用核对 · 材料没用上
+      citations.py             上面那条引用核对的实现，零 LLM
+      rubric.py                **模型判**：evaluate()，按 Mode.dims 逐条打分
+      __init__.py              pick_dimension()：按当前 Mode 有的维度挑
+
+  pure/                    ← L4 纯函数：只依赖标准库，给个字符串就能测
+    blockcheck · grounding_check · outline · restructure · textshape
+    tabular · blocks · runtime_policy · replan
+
+  kite/                    ← 跟 memoket-kite 那个外部包打交道的适配层
+    kite_memory（主入口）· kite_writer（写锁）· kite_profile
+    kite_extract_profile · kite_entity_candidates
+    ↑ **不是 kb/ 的下属**：routers / tools / kb 四处都在用它
+
+  kb/                      ← 建在 kite 上面的能力。**架构见 kb-architecture.md**
+    clusters · recall · search · reextract · extract_check · extract_judge
+
+  ingest/                  ← 外部东西 → 文本 → 块
+    asr（音频）· extract（PDF/DOCX）· importers（Notion/Obsidian）· chunking
+
+  tools/                   ← 工具池：模型能按名字调的 21 个函数。第 8 节
+    registry.py              注册 + 分组授权 + ToolContext
+    memory_tools · data_tools · skill_tools · sandbox_tools
+    imagegen.py              render_image 这个工具背后干活的那段
 
   sandbox/                 ← 第三方 skill 脚本的笼子。第 10.8 节
-    runner.py                Seatbelt(macOS) / bubblewrap(Linux) 的薄封装
-    policy.py                三档权限 → 具体的沙箱 profile
-    limits.py                CPU 10s · 内存 256MB · 产出 20MB，硬编码
-
-  kb/                      ← 知识库能力层。**架构见 kb-architecture.md**
-    clusters.py              主题簇：共现 + complete linkage，零 LLM
-    recall.py                按簇检索（写作用），种子仍走普通 recall
-    search.py                零 LLM 检索的排序
-    reextract.py             写作库续跑：找出源库有而写作库没有的会议
-    extract_check.py         抽取判据（代码判的）
-    extract_judge.py         抽取判据（模型判的）——复用 scoring 的 evaluate
-
-  tools/                   ← 工具注册表。第 8 节
-    registry.py              注册 + 分组授权 + ToolContext
-    memory_tools.py · data_tools.py · skill_tools.py · sandbox_tools.py
+    runner · policy · limits
 
   routers/                 ← 薄壳：认 Mode、装 State、把事件翻成前端听的名字
-    note_harness.py            1078 → 98
-    writing_plan.py             578 → 281（plan 级循环留在这儿）
-    compose_block.py            607 → 186
-    harness.py                  轮末暂停的恢复入口（第 13.1 节）
-    kb.py                       知识库端点
-    …其余是 CRUD
+    note_harness 1078→98 · writing_plan 578→281 · compose_block 607→186
+    harness.py（轮末暂停的恢复入口）· kb.py · …其余是 CRUD
 
 backend/skills/            ← 13 个内置 SKILL.md，随版本发布（第 10.1.3 节）
 backend/scripts/           ← bench / 摄入 / 诊断，不参与运行
 backend/tests/             ← 第 20 节
 ```
 
-不动的：`app/agent_loop.py`、纯函数层（`tabular` `blocks` `blockcheck`
-`outline` `textshape` `restructure` `grounding_check` `runtime_policy`
-`replan`）。`app/tools/` 的注册表机制不动，但**分组要调**（见第 8 节）。
+**顶层从 31 个 .py 降到 12 个。** 原来它们全平铺在 `app/` 下，看不出
+哪个是循环的一部分、哪个是纯函数、哪个只是某个工具背后干活的那段。
+分组的判据是**实扫「谁在用它」**，不是按感觉——按感觉分过一次，
+`imagegen`（文生图）被归进了「摄入」，而它的方向正好相反。
+
+`app/tools/` 的注册表机制不动，但**分组要调**（见第 8 节）。
 
 ---
 

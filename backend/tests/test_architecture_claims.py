@@ -92,7 +92,7 @@ def test_被替换掉的旧机制没有残留():
 
 def test_运行时策略不能替换mode的配置():
     """同一件事两个数据源，晚写的那个赢——skill 工具就是这么被藏起来的。"""
-    from app import runtime_policy
+    from app.pure import runtime_policy
 
     policy = runtime_policy.RuntimePolicy()
     assert not hasattr(policy, "tool_groups")

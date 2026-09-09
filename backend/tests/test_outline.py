@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from app.outline import headings, is_outline, outline_block
+from app.pure.outline import headings, is_outline, outline_block
 
 OUTLINE = """创业一年回顾
 
@@ -68,7 +68,7 @@ def test_structure_guard_rejects_every_way_the_model_broke_it():
     """代码硬防线：实测模型无视「一个字都不许改」，把标题加后缀、删掉、
     重排都干过。提示词拦不住（EDIT_SYSTEM 里的「空壳标题要删」「脚手架
     标题要换」两条在 system prompt 里，权重高过 user prompt 的保护说明）。"""
-    from app.outline import structure_intact
+    from app.pure.outline import structure_intact
 
     o = "## 甲\n\n## 乙\n\n## 丙\n"
     assert structure_intact(o, o)
@@ -81,7 +81,7 @@ def test_structure_guard_rejects_every_way_the_model_broke_it():
 
 
 def test_structure_guard_is_inert_without_user_headings():
-    from app.outline import structure_intact
+    from app.pure.outline import structure_intact
 
     assert structure_intact("没有标题的一段话。", "改成了另一段话。")
 
@@ -89,7 +89,7 @@ def test_structure_guard_is_inert_without_user_headings():
 def test_continuation_headings_are_stripped_in_outline_mode():
     """续写被告知「不要写标题」，它照样写——实测两版 prompt 都把用户的
     ### 压平成了 ##。结构的唯一权威是用户，多写的标题直接剥掉。"""
-    from app.outline import strip_headings
+    from app.pure.outline import strip_headings
 
     assert strip_headings("## APP\n\nAPP 的正文在这里。\n") == "APP 的正文在这里。"
     assert strip_headings("正文一。\n\n### 小标题\n\n正文二。") == "正文一。\n\n正文二。"
@@ -111,7 +111,7 @@ def test_both_prompts_forbid_leaking_the_retrieval_machinery():
 
 def test_drop_already_written():
     """这一轮写出来的、正文里已经有的段落，插进去之前就该剔掉。"""
-    from app.outline import drop_already_written
+    from app.pure.outline import drop_already_written
 
     para = ("众筹阶段除了导入流量，还需要把价值感和转化规则讲清楚。团队曾建议展示划线的"
             "179美元 MSRP，并突出「Deposit 5 Now Save 20」；另一项计划又将设备 MSRP 定为"
@@ -140,7 +140,7 @@ def test_duplicate_headings_are_not_an_outline():
     每一条想删重复标题的修订都被 structure_intact 拦掉，non_repetition
     连着 20 次判 0。
     """
-    from app.outline import is_outline
+    from app.pure.outline import is_outline
 
     dup = "## 众筹节奏\n\n三月上旬启动。\n\n## 众筹节奏\n\n三月上旬启动众筹。\n\n## 还有\n\n媒体版本另算。\n"
     assert not is_outline(dup)
@@ -154,7 +154,7 @@ def test_drop_already_written_also_dedupes_within_the_same_round():
     实测：180 篇里 3 篇段落相似度 >0.5，全部被打分器独立判了 non_repetition=1；
     把阈值从 0.72 降到 0.55 也没消掉它们，因为只跟旧正文比根本看不到轮内重复。
     """
-    from app.outline import drop_already_written
+    from app.pure.outline import drop_already_written
 
     a = "这一段讲的是众筹三月上旬启动，前后依赖要理清楚，排期要往前倒推一遍才准，测试和修复都要留出缓冲时间。"
     b = "另一段完全不同，讲的是团队协作里的卡点，每次同步都说没问题到节点才发现理解不一样，得四要素逐项对照。"
@@ -170,7 +170,7 @@ def test_code_blocks_never_count_as_duplicates():
     的图表：**按测量伪影改真实机制，比不改更糟**。把命中的原文抓出来看一眼
     就发现了，而聚合指标看了三批都没看出来。
     """
-    from app.outline import _is_block, drop_already_written
+    from app.pure.outline import _is_block, drop_already_written
 
     m1 = "```mermaid\nflowchart LR\nA[软件版本准备] --> B[150至170名定金用户测试]\nB --> C[反馈整理]\n```"
     m2 = "```mermaid\nflowchart LR\nA[众筹版本锁定] --> B[众筹启动]\nB --> C[一周后backers测试]\n```"

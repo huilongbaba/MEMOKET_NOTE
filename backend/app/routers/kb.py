@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from .. import store
 from ..kb import extract_check, extract_judge, reextract
 from ..kb.recall import cached
-from ..kite_memory import UserMemory
+from ..kite.kite_memory import UserMemory
 from ..schemas import IngestOut
 from .deps import current_user
 

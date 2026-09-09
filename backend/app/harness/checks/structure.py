@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from ... import blockcheck, outline
+from ...pure import blockcheck, outline
 from ..state import State
 from ..types import Verdict
 from . import pick_dimension

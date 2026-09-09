@@ -18,6 +18,11 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# 标准库不算「认识这个产品」。列出来而不是 try-import，是为了让
+# 名单本身可读——多一个名字要有人点头。
+_STDLIB = {"__future__", "json", "re", "dataclasses", "difflib",
+           "typing", "collections", "itertools", "math"}
 DOC = ROOT.parent / "docs" / "harness-framework.md"
 
 
@@ -88,25 +93,35 @@ def test_图上没有已经不存在的文件():
 
 
 def test_打分引擎不依赖这个产品():
-    """`rubric.py` 和它的三个零 LLM 邻居不许认识这个产品。
+    """`rubric.py` 和 `citations.py` 不许认识这个产品。
 
     这曾经靠目录边界维持（它是个独立安装的包），现在只剩这条断言。它值得
     留着的理由不是「将来要开源」，是**换个领域就能复用**——知识库判抽取
     质量用的就是同一个 evaluate()，一行新机制都没加。一旦它开始 import
     store / kite_memory，那个属性就没了。
+
+    判据是**把相对 import 解析成绝对模块名**，不是数点的个数：文件从
+    `harness/` 挪进 `harness/checks/` 时点数就变了，按点数写的断言当场
+    误报（实测踩过）。
     """
     import ast
 
-    engine = ["rubric.py", "dedup.py", "compaction.py", "citations.py"]
-    for path in [(ROOT / "app" / "harness" / n) for n in engine]:
+    for name in ("checks/rubric.py", "checks/citations.py"):
+        path = ROOT / "app" / "harness" / name
+        pkg = ["app", "harness"] + name.split("/")[:-1]
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
-                # 相对 import 只允许 scoring 包内部（level 1）
-                assert node.level <= 1, f"{path.name} 伸到了 harness 外面"
-                if node.module and node.module.startswith("app"):
-                    raise AssertionError(f"{path.name} imports {node.module}")
+                if node.level:
+                    base = pkg[:len(pkg) - node.level + 1]
+                    target = ".".join(base + ([node.module] if node.module else []))
+                else:
+                    target = node.module or ""
+                if not node.level and (target in _STDLIB or "." not in target):
+                    continue                     # 标准库随便用
+                assert target.startswith("app.harness"), \
+                    f"{name} imports {target}——它就不再是能换领域复用的那一块了"
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith("app"), \
-                        f"{path.name} imports {alias.name}"
+                        f"{name} imports {alias.name}"
