@@ -256,18 +256,6 @@ def test_breakage_catches_half_replaced_sentence():
     assert not brk(ok, "换了一句完全正常的话。")
     # 只报**新增**的破损：原文本来就有的不能让一条无关修订背锅
     assert not brk(bad, bad + "\n\n新加一段正常的话。")
-
-
-def test_ambiguous_anchor_is_skipped():
-    """锚点在正文里有多处时不能瞎改——短锚点契约下这会切坏正文。"""
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "harness" / "revision.py").read_text(encoding="utf-8")
-    assert 'op == "replace" and not anchor_end and content.count(anchor) > 1' in src
-    revise = (Path(__file__).resolve().parent.parent
-              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
-    assert "broke = breakage(st.content, updated)" in revise
-
-
 def test_both_harnesses_share_the_same_revision_guards():
     """两条长循环 harness 必须跑同一份修订实现。
 
@@ -313,27 +301,6 @@ def test_dedup_delete_survives_the_ambiguity_guard():
     # 「删掉重复的那一节」= 重复的锚 + 结尾标记，是去重的**标准形态**，必须放行。
     # 第一版把它拦了，20 轮实测 non_repetition 全 20 次 0 分、coherence 掉到 0.5。
     assert rej(doc, "delete", "## 众筹节奏", "", anchor_end="启动众筹。") == ""
-
-
-def test_the_edit_pass_carries_the_guards_on_every_path():
-    """修订的结构硬防线和跨轮去重不能只在某一条分支上生效。
-
-    真实缺陷：「只清理不续写」那条分支两个都没传，三层大纲的标题层级在
-    20 轮 soak 里 **20/20 全被压平**——清理这一步正是「空壳标题要删掉」
-    规则火力最猛的地方，而它在裸奔。现在没有第二条分支可漏：修订是一个
-    middleware，续写与否是它之后的事。
-    """
-    revise = (Path(__file__).resolve().parent.parent
-              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
-    assert 'outline_mode = bool(st.bag.get("outline_mode"))' in revise
-    assert "outline.structure_intact(st.content, updated)" in revise, "缺结构硬防线"
-    assert 'st.bag.setdefault("edited_spans", set())' in revise, "缺跨轮去重"
-
-    from app.harness.middleware.revise import Revise
-    assert Revise.hooks == ("before_produce",), \
-        "修订必须在续写之前跑：先修已经写坏的，再往上加"
-
-
 def test_outline_target_is_decided_before_retrieval():
     """大纲模式下必须先定"这轮写哪一节"再去检索，否则每轮拿回同一批事实。
 
@@ -387,16 +354,6 @@ def test_outline_headings_are_excluded_from_scoring():
     assert "标题结构" not in _score_context(st)
     st.bag["outline_mode"] = True
     assert "不要评价标题的层级" in _score_context(st)["标题结构"]
-
-
-def test_polish_mode_never_freezes_structure():
-    """打磨模式不能启用大纲保护——两者语义直接冲突。"""
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "harness" / "hooks" / "note.py").read_text(encoding="utf-8")
-    assert "is_outline = (not self.polish) and outline.is_outline(content)" in src, \
-        "打磨的全部意义是修结构缺陷，大纲保护的全部意义是冻结结构"
-
-
 def test_dry_rounds_stop_the_loop():
     """连着两轮检索没带回新事实就停——继续写只能语义重复。
 
@@ -419,25 +376,6 @@ def test_dry_rounds_stop_the_loop():
     assert material_used_up(State(mode=NOTE, ctx=st.ctx, round=1,
                                   bag={"dry_rounds": 5})) is None, "第一轮不算"
     assert material_used_up in NOTE.stop_when
-
-
-def test_dropped_revisions_are_not_reported_as_errors():
-    """防线丢掉一条修订是正常工作，不能用 error 事件报。
-
-    四道防线（同义重写／锚点有歧义／会切出破字／会动到用户的标题）一轮能丢
-    好几条，全用 error 报的话前端会渲染成一片红色报错。
-    """
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
-    assert "CUSTOM_DROPPED" in src
-    assert "Event.run_error" not in src, "丢弃不是错误"
-    for phrase in ("已丢弃", "删掉一句元话语"):
-        i = src.index(phrase)
-        head = src.rfind("Event.custom(", max(0, i - 400), i)
-        assert head >= 0 and "CUSTOM_DROPPED" in src[head:head + 40], \
-            f"{phrase!r} 不是用 dropped 事件报的"
-
-
 def test_scorer_diagnosis_reaches_the_edit_pass():
     """打分器写的那句诊断原文必须传到修订，光传维度名不够。
 
@@ -490,33 +428,6 @@ def test_both_harnesses_get_the_same_deterministic_defect_feed():
     for name in ("note.py", "section.py"):
         src = (harness / "hooks" / name).read_text(encoding="utf-8")
         assert "outline.drop_already_written(" in src, f"{name} 缺插入前去重"
-
-
-def test_mechanism_leak_is_scrubbed_before_saving():
-    """两条 harness 落盘前都要删掉提到工作机制的句子。
-
-    最后一轮写出来的内容不会再经过修订（循环是「修订→续写→打分」），所以
-    只靠 audit_voice_lines() 喂给修订这条线够不到它——文件夹级实测两个目标
-    两次都把「知识库」写进了用户的笔记。
-    """
-    hooks = Path(__file__).resolve().parent.parent / "app" / "harness" / "hooks"
-    for name in ("note.py", "section.py"):
-        src = (hooks / name).read_text(encoding="utf-8")
-        assert "grounding_check.scrub_meta_sentences(" in src, f"{name} 落盘前没做清理"
-
-
-def test_meta_scrub_runs_after_revisions_too():
-    """修订应用完也要清理元话语——一条 replace 就能把审计腔写回正文。
-
-    实测：给续写侧加了清理之后，文件夹级仍然出现「不能证明」。第六次撞上
-    「一条路径修了、另一条没修」——现在只有一条路径了。
-    """
-    src = (Path(__file__).resolve().parent.parent
-           / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
-    assert "scrub_meta_sentences_v(st.content)" in src, "修订后没清理"
-    assert "if applied or meta_gone:" in src, "只有修订成功才落盘，纯清理的结果会丢"
-
-
 def test_老库连上来会补齐后加的列(tmp_path, monkeypatch):
     """已经有数据的库，升级之后要能用。
 

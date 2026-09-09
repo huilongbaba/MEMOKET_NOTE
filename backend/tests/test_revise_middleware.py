@@ -201,3 +201,57 @@ def test_会切出破字的修订被丢弃(monkeypatch):
     events = _drive(st)
     assert st.content == "正文开头。占位。正文结尾。"
     assert any("破字" in d["detail"] for d in _named(events, "dropped"))
+
+
+def test_同一段不能连着两轮被改写(monkeypatch):
+    """跨轮去重：改过的锚点记在 ``st.bag["edited_spans"]`` 里，**整个 run**
+    有效，不是这一轮有效。
+
+    没有它的时候，修订这一步会跟自己吵架——同一段连着三轮被重写，每轮
+    只换措辞。这条以前只有一句「源码里有没有 `st.bag.setdefault(
+    "edited_spans", set())`」的断言：改个变量名它就红，而真把去重删了、
+    只要那行字符串还在，它照样绿。
+    """
+    _stub_llm(monkeypatch, [{"op": "replace", "anchor": "这一段要改",
+                             "text": "改过一次了"}])
+    st = _st("前面。这一段要改。后面。")
+    _drive(st)
+    assert "改过一次了" in st.content
+    assert st.bag["revisions_applied"] == 1
+
+    # 第二轮：模型又想改同一处（换个说法），必须被拦
+    _stub_llm(monkeypatch, [{"op": "replace", "anchor": "改过一次了",
+                             "text": "再换个说法"}])
+    st.bag["edited_spans"].add("改过一次了")     # 上一轮记下的就是这个 key
+    st.round = 3
+    events = _drive(st)
+    assert "再换个说法" not in st.content, "同一段被连着改了两轮"
+    assert _named(events, "dropped"), "拦下来了却没说一声"
+
+
+def test_只做了元话语清理也要落盘(monkeypatch, _no_db):
+    """一条修订都没应用、但清掉了一句审计腔——这也是改动，不落盘就丢了。
+
+    以前这条靠「源码里有没有 `if applied or meta_gone:`」来断言：改个变量
+    名它就红，真把 or 那半边删了、只要字符串还在它照样绿。
+    """
+    _stub_llm(monkeypatch, [])          # 模型一条修订都没提
+    st = _st("正文开头。现有材料不足以说明这一点。正文结尾。")
+    _drive(st)
+    assert st.bag["revisions_applied"] == 0
+    assert "不足以说明" not in st.content
+    assert _no_db == [st.content], "只做了清理就没存，这次清理白做了"
+
+
+def test_被防线丢弃的修订不能用错误事件报(monkeypatch):
+    """四道防线一轮能丢好几条。全用 error 报的话，界面会渲染成一片红色
+    报错——而这恰恰是防线在正常工作的样子。"""
+    _stub_llm(monkeypatch, [
+        {"op": "replace", "anchor": "同样的话", "text": "改"},        # 歧义锚点
+        {"op": "replace", "anchor": "占位", "text": "换成这句话。"},   # 破字
+    ])
+    st = _st("同样的话在这里。同样的话又出现。同样的话第三次。占位。结尾。")
+    events = _drive(st)
+    assert _named(events, "dropped"), "防线该报丢弃"
+    assert not [e for e in events if e.type.value == "RUN_ERROR"], \
+        "丢弃被当成错误报了"
