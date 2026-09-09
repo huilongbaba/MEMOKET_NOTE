@@ -260,7 +260,8 @@ backend/app/
       blockcheck · grounding_rules         上面那些判据的纯函数实现
       rubric.py                            **模型判**：evaluate()
       citations.py                         引用核对的实现
-      __init__.py                          pick_dimension()
+      pick.py                              pick_dimension()：按 Mode 实际
+                                           有的维度挑一个来打翻
     tools/                   模型能按名字调的 21 个函数（第 8 节）
       registry · memory_tools · data_tools · skill_tools · sandbox_tools
       tabular · blocks · imagegen          工具背后干活的那几段

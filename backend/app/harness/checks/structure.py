@@ -18,7 +18,7 @@ from ...editor import outline
 from . import blockcheck
 from ..state import State
 from ..types import Verdict
-from . import pick_dimension
+from .pick import pick_dimension
 
 _HEADING = re.compile(r"^(#{1,6})(\s)", re.M)
 

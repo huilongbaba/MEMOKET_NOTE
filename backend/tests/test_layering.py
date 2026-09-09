@@ -206,3 +206,72 @@ def test_util和database之间只有那一条窄依赖():
         into_util = {m for m in _imports(path) if m.startswith("app.util")}
         assert into_util <= {"app.util.config"}, \
             f"{path.name} 从 util 里拿了不该拿的：{sorted(into_util)}"
+
+
+def _runtime_import_graph() -> dict[str, set[str]]:
+    """模块之间的**运行时** import 关系。
+
+    只看真的会执行的 import：``if TYPE_CHECKING:`` 里那些不算——
+    ``types`` 和 ``state`` 互相引用类型注解是正常的，把它们报成环只会
+    让这条测试没人信。
+    """
+    import collections
+
+    mods: dict[str, pathlib.Path] = {}
+    for path in (ROOT / "app").rglob("*.py"):
+        name = ".".join(path.relative_to(ROOT).with_suffix("").parts)
+        mods[name[:-9] if name.endswith(".__init__") else name] = path
+
+    graph: dict[str, set[str]] = collections.defaultdict(set)
+    for name, path in mods.items():
+        parts = name.split(".")
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        nodes = list(tree.body)
+        for stmt in tree.body:                 # 展开一层 if，但跳过 TYPE_CHECKING
+            if isinstance(stmt, ast.If) and getattr(stmt.test, "id", "") != "TYPE_CHECKING":
+                nodes += stmt.body
+        for node in nodes:
+            if not isinstance(node, ast.ImportFrom) or not node.level:
+                continue
+            base = (parts[:max(0, len(parts) - node.level)]
+                    if path.name != "__init__.py"
+                    else parts[:max(0, len(parts) - node.level + 1)])
+            target = ".".join(base + [x for x in (node.module or "").split(".") if x])
+            for alias in node.names:
+                full = f"{target}.{alias.name}"
+                graph[name].add(full if full in mods else target)
+    return {k: {v for v in vs if v in mods} for k, vs in graph.items()}
+
+
+def test_没有运行时的循环import():
+    """环是那种「今天能跑、明天被一次无害的整理弄坏」的东西。
+
+    真撞过一个：``checks/__init__.py`` 定义 ``pick_dimension``，然后 import
+    三个 check 模块来再导出，而那三个模块又 ``from . import pick_dimension``。
+    它能跑**只是因为**函数定义恰好写在那几行 import 前面——谁把 import 挪
+    到文件顶部（每个 linter 都会这么建议）就当场 ImportError。已经拆成
+    ``checks/pick.py`` 了。
+    """
+    graph = _runtime_import_graph()
+    assert len(graph) > 40, "没扫到多少模块，图怕是建错了"
+
+    seen: set[str] = set()
+    stack: list[str] = []
+    cycles: list[list[str]] = []
+
+    def walk(node: str) -> None:
+        seen.add(node)
+        stack.append(node)
+        for nxt in sorted(graph.get(node, ())):
+            if nxt in stack:
+                cycles.append(stack[stack.index(nxt):] + [nxt])
+            elif nxt not in seen:
+                walk(nxt)
+        stack.pop()
+
+    for node in sorted(graph):
+        if node not in seen:
+            walk(node)
+
+    assert not cycles, "循环 import：\n  " + "\n  ".join(
+        " → ".join(c) for c in cycles)

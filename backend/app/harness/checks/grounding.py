@@ -16,7 +16,7 @@ from .citations import check_citations
 from . import grounding_rules as grounding_check
 from ..state import State
 from ..types import Verdict
-from . import pick_dimension
+from .pick import pick_dimension
 
 
 def no_placeholder(st: State) -> Verdict | None:

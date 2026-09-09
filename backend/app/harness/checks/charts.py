@@ -10,7 +10,7 @@ from __future__ import annotations
 from . import blockcheck
 from ..state import State
 from ..types import Verdict
-from . import pick_dimension
+from .pick import pick_dimension
 
 
 def no_fake_charts(st: State) -> Verdict | None:
