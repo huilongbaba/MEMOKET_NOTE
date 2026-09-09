@@ -5,7 +5,7 @@
 
 ---
 
-**目录**：[0 一页纸](#0-一页纸) · [1 memoket-note 需要什么](#1-memoket-note-需要什么) · [2 每条需求借鉴谁](#2-每条需求借鉴谁) · [3 目录](#3-目录) · [4 什么东西谁能配](#4-什么东西谁能配) · [5 类型](#5-类型) · [6 循环](#6-循环) · [7 事件](#7-事件) · [8 工具](#8-工具) · [9 判据](#9-判据) · [10 Skill](#10-Skill) · [11 middleware](#11-middleware) · [12 错误与取消（R10 R11）](#12-错误与取消（R10-R11）) · [13 用户处置的回路（R5）](#13-用户处置的回路（R5）) · [14 8 个 Mode](#14-8-个-Mode) · [15 一条 harness 改造后](#15-一条-harness-改造后) · [16 现有代码搬到哪里去](#16-现有代码搬到哪里去) · [17 这个架构顺手解决的现有 bug](#17-这个架构顺手解决的现有-bug) · [18 分层与依赖规则](#18-分层与依赖规则) · [19 怎么测](#19-怎么测) · [20 架构原型](#20-架构原型) · [21 落地顺序](#21-落地顺序)
+**目录**：[0 一页纸](#0-一页纸) · [1 memoket-note 需要什么](#1-memoket-note-需要什么) · [2 每条需求借鉴谁](#2-每条需求借鉴谁) · [3 目录](#3-目录) · [4 什么东西谁能配](#4-什么东西谁能配) · [5 类型](#5-类型) · [6 循环](#6-循环) · [7 事件](#7-事件) · [8 工具](#8-工具) · [9 判据](#9-判据) · [10 Skill](#10-Skill) · [11 middleware](#11-middleware) · [12 错误与取消（R10 R11）](#12-错误与取消（R10-R11）) · [13 用户处置的回路（R5）](#13-用户处置的回路（R5）) · [14 Mode](#14-Mode) · [15 不走 harness 的东西](#15-不走-harness-的东西) · [16 一条 harness 改造后](#16-一条-harness-改造后) · [17 现有代码搬到哪里去](#17-现有代码搬到哪里去) · [18 这个架构顺手解决的现有 bug](#18-这个架构顺手解决的现有-bug) · [19 分层与依赖规则](#19-分层与依赖规则) · [20 怎么测](#20-怎么测) · [21 架构原型](#21-架构原型) · [22 落地顺序](#22-落地顺序)
 
 ---
 
@@ -17,37 +17,49 @@
 
 ```mermaid
 flowchart TB
-    subgraph CFG["配置：加东西就是往这里加"]
+    subgraph USER["用户配的　存 DB，改了不用发版"]
         direction LR
-        MODE["<b>Mode</b><br/>task · groups · dims · checks<br/>stop_when · max_rounds"]
-        MW["<b>middleware</b><br/>facts · repeats · revise · checks<br/>best_of · history · policy"]
+        SK["<b>Skill</b>　SKILL.md 目录<br/>frontmatter 常驻 → 模型调 load_skill<br/>→ body 进上下文 → 按需读 references"]
+        PF["<b>Profile</b>　个人偏好"]
+        PV["<b>Provider</b>　用哪个模型"]
     end
 
-    subgraph CORE["核心：一份，不随 harness 增加而变"]
-        LOOP["<b>loop.run()</b>　约 40 行<br/>prepare → produce → judge → 停不停"]
+    subgraph DEV["开发者配的　写在 modes.py"]
+        direction LR
+        MODE["<b>Mode</b>　一个功能<br/>task · groups · exclude · skill_scope<br/>dims · checks · stop_when · max_rounds"]
+        MW["<b>middleware</b>　能力包<br/>facts · <b>skills</b> · repeats · checks<br/>best_of · history ｜ revise · policy · replan"]
+    end
+
+    subgraph CORE["核心　一份，不随 harness 增加而变"]
+        LOOP["<b>loop.run()</b><br/>prepare → produce → judge → 停不停"]
         ST["<b>State</b>　一次 run 的数据<br/>只有 loop 和 middleware 能改"]
-        EVT["<b>events</b>　AG-UI 协议<br/>标准事件 + CUSTOM"]
+        EVT["<b>events</b>　AG-UI 协议"]
     end
 
     subgraph HK["每条 harness 自己写的：三个回调"]
         direction LR
         H1["prepare<br/>怎么取材料"]
         H2["produce<br/>怎么生成"]
-        H3["commit<br/>怎么落盘"]
+        H3["commit<br/>怎么收尾"]
     end
 
-    CFG --> LOOP
+    SK -.->|"Skills middleware 列菜单 / 直接注入"| CORE
+    PF -.-> MW
+    DEV --> LOOP
     HK --> LOOP
     LOOP --> ST
     LOOP --> EVT
     EVT --> FE["前端<br/>加一条 harness 零改动"]
 ```
 
+读法：**上面两层是配置**（用户配的和开发者配的，主体不同，见第 4 节），
+**中间是核心**（一份，不变），**下面三个回调是每条 harness 唯一要自己写的**。
+
 ---
 
 ## 1. memoket-note 需要什么
 
-架构从需求推，不从现有代码倒推。九条，每条都能在产品行为里找到出处。
+架构从需求推，不从现有代码倒推。十三条，每条都能在产品行为里找到出处。
 
 | # | 需求 | 从哪来 |
 |---|---|---|
@@ -62,7 +74,8 @@ flowchart TB
 | **R9** | **并发**：同一篇笔记多个 `/` 同时跑，状态不能串 | `runningBlocks.ts` 就是这么设计的 |
 | **R10** | **一步失败不能炸掉整个 run**，且已有产出必须落盘 | 本地模型高负载时单次调用超 300s 超时，异常从 SSE generator 冒出去 = 连接被硬中断 |
 | **R11** | **用户随时可以关掉页面**，取消要干净 | 每条 harness 现在各有一处 `is_disconnected()` |
-| **R12** | **用户能自己定写作规则**（skill），按场景生效 | `SkillsPanel` · 11 个 scope · `store.enabled_skills_for_scope()` |
+| **R12** | **skill 是按需加载上下文的机制**，不只是一段规则文本——要装得下「怎么写 PPT」这类一整套做法 | `SkillsPanel` · 11 个 scope；现状只做了三层里的中间层 |
+| **R13** | **第三方 skill 的脚本要能跑，但不能在我们的进程里跑** | 有些事光靠 prompt 做不到（生成 .pptx、按模板渲染） |
 
 ## 2. 每条需求借鉴谁
 
@@ -81,7 +94,8 @@ flowchart TB
 | R9 | **全部框架** | 状态挂在 run 上下文里，不用模块级全局 |
 | R10 | **DSPy `fail_count`** · **OpenHands Controller** | 失败有预算；「管约束的」跟「做决策的」分层 |
 | R11 | **LangGraph checkpointer** | 状态在每个 super-step 存快照，中断能恢复 |
-| R12 | **LangChain `middleware.tools`** · **Claude Code 的 skills** | 能力和它的配置打包在一起；用户写的规则按场景注入 system prompt |
+| R12 | **Claude Agent Skills** | 三层渐进披露：frontmatter 常驻（~60 token）→ 命中才加载 body → 引用文件按需读。8 个 skill 启动占 500 token 而不是 70,000 |
+| R13 | **Claude Code 的沙箱**（Seatbelt / bubblewrap） | 内核级强制、白名单、网络走代理 + 域名过滤 |
 
 十条横向结论（12 个框架无一例外的那些）：
 
@@ -102,25 +116,33 @@ flowchart TB
 
 ```
 backend/app/harness/
-  types.py        Mode · Hooks · Middleware · Check · Verdict · StopCondition
+  types.py        Mode · Hooks · Middleware · Check · Verdict · StopCondition · Skill
   state.py        State —— 一次 run 的全部数据
   loop.py         run() —— 唯一的循环
   events.py       AG-UI 事件契约
-  modes.py        8 个 Mode（现在散在 compose_block.MODES 和 harness_adapter）
+  modes.py        8 个内置 Mode（现在散在 compose_block.MODES 和 harness_adapter）
   revision.py     修订的定位与应用（纯函数，从 note_harness 搬出来）
   middleware/
     facts.py        材料累积 + 压缩
+    skills.py       列出有哪些技能 / 直接注入匹配 scope 的
     repeats.py      机械查重 → dup_hints
     revise.py       生成前先改一遍已有正文
     checks.py       跑 Mode.checks，auto-fix 或打回
     best_of.py      留最好的一轮
     history.py      记 run 历史
+    compact.py      压缩喂给续写的正文  （不进 BASE，note/section 专用）
+    save.py         每轮落盘            （不进 BASE，note/section 专用）
     policy.py       调下一轮参数        （不进 BASE）
     replan.py       骨架重规划          （不进 BASE）
   checks/
     charts.py       假图 · 手写 mermaid · 图的信息量
     structure.py    标题层级 · 收尾节撞车 · 大纲被压平
     grounding.py    占位符 · 审计腔 · 引用核对
+
+backend/app/sandbox/     第三方 skill 脚本的笼子（R13，见 10.8）
+  runner.py       Seatbelt(macOS) / bubblewrap(Linux) 的薄封装
+  policy.py       三档权限 → 具体的沙箱 profile
+  limits.py       CPU 10s · 内存 256MB · 产出 20MB，硬编码
 
 backend/app/routers/     薄壳
   note_harness.py   1078 → 约 120
@@ -145,12 +167,25 @@ backend/app/routers/     薄壳
 | `dims` / `checks`　判据 | **开发者** | `modes.py` + `checks/` | 要 |
 | `skill_scope`　技能挂哪个作用域 | **开发者** | `modes.py` | 要 |
 | `max_rounds` / `fact_budget` | **开发者** | `modes.py` | 要 |
-| **具体启用哪些 skill** | **用户** | DB · `SkillsPanel` | 不要 |
+| **装哪些 skill、开不开** | **用户** | 文件系统 + DB（见下） | 不要 |
+| **skill 的沙箱权限** | **用户**，安装时授予 | DB | 不要 |
 | **个人偏好 profile** | **用户** | DB | 不要 |
 | **用哪个模型**（local / gpt） | **用户** | DB · `SettingsPanel` | 不要 |
 
-一句话：**工具只有开发者能配；skill 是两层——作用域开发者定，
-具体规则用户写。**
+一句话：**工具只有开发者能配；skill 是用户装的，而且大多数时候
+由模型自己决定这次用不用（第 10 节）。**
+
+**skill 存文件系统，不存 DB**——`SKILL.md` 标准要保住 `references/` 和
+`scripts/`，那些是文件。
+
+```
+data/<user>/skills/<slug>/
+  SKILL.md · references/ · scripts/
+```
+
+DB 里只存**元数据**：装没装、开没开、沙箱授了什么权限、来源是内置还是导入。
+内容永远在文件里——这样第三方 skill 装进来是「把目录放进去」，
+拿出去也是「把目录拷走」。
 
 ### 为什么工具不给用户配
 
@@ -163,15 +198,18 @@ backend/app/routers/     薄壳
 
 ### skill 的匹配方向是反的
 
-```python
-class SkillIn:
-    scopes: list[str]     # ← skill 声明**自己适用于哪些场景**
+```yaml
+# SKILL.md frontmatter
+scopes: [block_write, magic_tap]     # ← skill 声明**自己适用于哪些场景**
 ```
 
 不是「场景声明用哪些 skill」。这跟 `Mode.skill_scope` 正好配对：
 Mode 说「我是 `block_write`」，skill 说「我适用于 `block_write` 和
-`magic_tap`」，匹配上就生效。用户新建一个 skill 时勾选它适用的场景——
+`magic_tap`」，匹配上就直接注入。用户装一个 skill 时勾选它适用的场景——
 这个方向对用户更自然，**不要为了架构整齐把它反过来**。
+
+而且 `scopes` 是**可选的**——没写的 skill 只把 name + description 列进菜单，
+用不用由模型判断（10.4）。**这是主路径，scope 是快捷方式。**
 
 ---
 
@@ -258,7 +296,8 @@ class Mode:
     stop_when: tuple[StopCondition, ...] = ()       # 内置三条之外的
     extra_mw: tuple[Middleware, ...] = ()           # BASE 之外的
     max_rounds: int = 3
-    fact_budget: int = 40
+    fact_budget: int = 40          # 累积多少条事实（Facts middleware 裁剪用）
+    context_keep_last: int = 4000  # 续写时正文保留多少字全量（Compact 用）
     max_tokens: int = 1400
 ```
 
@@ -286,7 +325,8 @@ class State:
     trace: ToolTrace | None = None
     ev: Evaluation | None = None
     best: tuple[tuple[int, float], str] | None = None
-    skills: list[dict] = field(default_factory=list)     # 用户启用的技能（R12）
+    skill_bodies: list[str] = field(default_factory=list)          # 匹配 scope、直接注入的
+    skill_menu: list[tuple[str, str]] = field(default_factory=list)  # (name, description)，等模型自己调
     steer: str = ""                 # 上一轮最弱那一维的诊断
     skip_judge: bool = False        # 检查已判定不合格，跳过这一轮的打分（R8）
     bag: dict = field(default_factory=dict)             # middleware 之间传东西
@@ -306,15 +346,22 @@ class State:
 
 ```python
 # ── loop.py ───────────────────────────────────────────────────────────
-# **顺序有讲究**：同一个钩子上，先跑产出材料的，最后跑可能短路的。
-# Repeats 产出 dup_hints 给打分用，Checks 可能判定不合格直接跳过打分——
-# Checks 排在它后面，被拦下时 dup_hints 白算（零成本纯函数，无所谓），
-# 反过来排的话 Checks 短路后 Repeats 根本不会跑，而它的结果下一轮还要用。
+# **顺序有讲究**，两条：
+#
+# ① 同一个钩子上，先跑产出材料的，最后跑可能短路的。
+#    Repeats 产出 dup_hints 给打分用，Checks 可能判定不合格直接跳过打分——
+#    Checks 排在它后面，被拦下时 dup_hints 白算（零成本纯函数，无所谓）；
+#    反过来排的话 Checks 短路后 Repeats 根本不会跑，而它的结果下一轮还要用。
+
 BASE: tuple[Middleware, ...] = (
-    Facts(), Skills(), Repeats(), Checks(), BestOf(), History(),
+    Skills(), Facts(), Repeats(), Checks(), BestOf(), History(),
 )
-# Revise 不在 BASE 里：它是「生成前先改一遍已有正文」，
-# 只有长文续写用得上。块生成没有"已有正文"——它是整块重写，不是改。
+# 不在 BASE 里的三个，由 Mode.extra_mw 显式挂：
+#   Revise —— 「生成前先改一遍已有正文」，只有长文续写用得上；
+#             块生成没有"已有正文"，它是整块重写，不是改。
+#   Compact —— 压缩喂给续写的正文，只有长文会撞上下文上限。
+#   Save   —— 每轮落盘，同理只有长文续写需要（块不落盘）。
+#   Policy / Replan —— note 专用。
 
 async def run(st: State, hooks: Hooks) -> AsyncIterator[Event]:
     mw = BASE + st.mode.extra_mw
@@ -511,6 +558,8 @@ def numbers_near_cursor(ctx: ToolContext, radius: int | None = None) -> str: ...
 | `data` | 5 | 认表 · 算统计 · 找光标附近的数字 —— **R7** |
 | `chart` | 4 | 拼 mermaid · 拼表格 —— **R7** |
 | `image` | 1 | 文生图 |
+| `skill` | 2（**待加**） | `load_skill` · `read_skill_ref`——渐进披露的第二、三层（10.2）。**默认给**：模型能看到有哪些技能却调不了没有意义 |
+| `skill_script` | 1（**待加**） | `run_skill_script`——在沙箱里跑 skill 自带的脚本（10.7） |
 
 ### 授权粒度：组为主，工具为辅
 
@@ -638,7 +687,7 @@ class Verdict:
 「4 个小标题太碎」✗（删哪个是语义判断）。
 **fix 之后要重跑这条 check**，而且**要在副本上修、通过了才采纳**——
 一次没修好的 fix 如果留下副作用，下一轮就基于被改坏的内容继续。
-（这条是写原型跑出来的，见第 20 节。）
+（这条是写原型跑出来的，见第 21 节。）
 
 ### 9.3 现有的 checks
 
@@ -655,75 +704,267 @@ class Verdict:
 
 ---
 
-## 10. Skill：用户自己定的写作规则（R12）
+## 10. Skill：模型按需调用的能力包
 
-`skill` 是用户在 `SkillsPanel` 里写的规则，按 **scope** 叠加到 system prompt
-后面。跟 `Dimension`/`Check` 的区别：
+### 10.1 用标准格式，不自造
 
-| | 谁写 | 什么时候起作用 |
-|---|---|---|
-| `Dimension` | 我们 | 产出**之后**，打分 |
-| `Check` | 我们 | 产出**之后**，代码判 |
-| **`skill`** | **用户** | 产出**之前**，进 system prompt |
+skill 的事实标准是 **`SKILL.md` 目录**（Claude Agent Skills）。**照用，不改**：
 
-### 现状：18 处重复，而且 `/` 菜单一个都没有
-
-```python
-# 这一行在 compose.py / note_harness.py / writing_plan.py 里出现 18 次
-system = prompts.compose_system(prompts.EDIT_SYSTEM,
-                                store.enabled_skills_for_scope(user, "edit"))
+```
+skills/写ppt/
+  SKILL.md           # YAML frontmatter + markdown body
+  references/        # 按需读的文件：模板、示例、清单
+    骨架模板.md
+    好的一页长什么样.md
+  scripts/           # 可执行（跑在沙箱里，见 10.8）
+    render.py
 ```
 
-11 个 scope：`magic_tap` `section_write` `plan_generate` `more_sections`
-`verify` `rewrite` `polish` `expand` `edit` `skeleton` `digest`。
+```yaml
+---
+name: 写 PPT
+description: 用户要做演示文稿、汇报材料、路演稿时用      # ← 模型靠这句判断该不该用
+# 下面是我们的扩展字段，标准允许 frontmatter 有自定义 key
+scopes: [block_write]        # 可选：明确指定场景，见 10.4
+sandbox: none                # 可选：脚本权限，见 10.8
+---
 
-**`compose_block` 的 6 个模式一个 scope 都没有**——用户在编辑器里敲 `/`
-做的智能插图、数据可视化、按提示词写，全都不受他自己写的技能影响。
-这不是设计决定，是加功能时漏了——**跟「一条 harness 有另一条没有」是同一类**。
+把内容拆成一页一个观点的结构。每页：一句话标题（是判断不是名词）、
+三条以内支撑、必要时一张图。不要把段落直接搬上去。
 
-### 架构里怎么放
+具体的骨架见 `references/骨架模板.md`。
+```
 
-`Mode.skill_scope` 声明用哪个作用域，`Skills` middleware 在 `before_produce`
-查出来放进 `State`，`produce` hook 组装 prompt 时用：
+**为什么必须用标准格式**：第三方 skill 能直接装进来，我们的 skill 也能拿出去用。
+自定义 dataclass 的代价是两头都不通——而「装一个别人写的 skill」正是这个功能
+存在的理由之一。
+
+我们的扩展字段（`scopes` / `sandbox`）放在 frontmatter 里。**YAML 本来就允许
+自定义 key**，不认识它们的工具会忽略，标准不破。
+
+### 10.2 加载方式：模型按需调用
+
+这是 skill 机制的实质——**不是我们替模型决定用哪个，是告诉它有哪些、让它自己挑**。
+
+```
+system prompt 常驻（每个 skill ~60 token）：
+    可用技能：
+    - 写 PPT: 用户要做演示文稿、汇报材料、路演稿时用
+    - 去 AI 味: 续写时避开排比收尾、"不仅…而且"这类套路
+    - 术语一致: 分段写作时人名/项目名/缩写的写法要跟其它分段一致
+        ↓
+模型判断「这次要用写 PPT」→ 调工具
+        ↓
+    load_skill("写 PPT")   →  SKILL.md 的 body 进上下文
+        ↓
+body 里写着「见 references/骨架模板.md」→ 模型再调
+    read_skill_ref("写 PPT", "骨架模板.md")  →  那个文件进上下文
+```
+
+两个工具，`group="skill"`：
+
+```python
+@register(name="load_skill", group="skill",
+          description="加载一个技能的完整说明。system prompt 里列了有哪些技能"
+                      "和各自的适用场景，判断这次用得上就调它。")
+def load_skill(ctx: ToolContext, name: str) -> str: ...
+
+@register(name="read_skill_ref", group="skill",
+          description="读技能自带的参考文件（模板、示例、清单）。"
+                      "技能说明里提到某个文件时才调。")
+def read_skill_ref(ctx: ToolContext, skill: str, path: str) -> str: ...
+```
+
+**三层渐进披露就是这么落地的**：
+
+| 层 | 什么时候进上下文 | 谁决定 | 成本 |
+|---|---|---|---|
+| 1 · frontmatter | 常驻 | — | ~60 token/skill |
+| 2 · body | 模型调 `load_skill` | **模型** | 几百 token |
+| 3 · references | 模型调 `read_skill_ref` | **模型** | 按需 |
+
+8 个 skill 常驻只占约 500 token；用不上的那 7 个的 body 永远不进上下文。
+
+### 10.3 skill 加载之后影响什么
+
+body 进上下文之后，它就是**这次对话里的一段说明**——跟工具返回的结果、
+检索到的事实同一个性质。它影响模型接下来怎么写，**不改 `Mode`**。
+
+| | 谁定 | 什么时候 |
+|---|---|---|
+| `Mode`（task · dims · checks · groups） | **系统**，`modes.py` | 请求进来时就定了 |
+| skill 的 body | **模型按需拉进来** | 运行中，模型判断要用才加载 |
+
+**判据完全不受 skill 影响**——`dims` 和 `checks` 在 `Mode` 里，skill 是
+上下文不是配置。这条同时是第三方 skill 的安全底线（10.7）：
+它再怎么在 body 里写「忽略上面的规则」，产出还得过 `Check` 和 `Dimension` 那一关。
+
+（我一度设计成 skill 直接改 `Mode` 的字段——那是把动态机制
+做成了静态配置，而且让判据可能被 skill 碰到。两个问题一起消失了。）
+
+### 10.4 scope：可选的快捷方式，不是主路径
+
+模型按 description 判断是**默认**路径。但有两种情况不该让模型判：
+
+- 用户明确说了「这个技能在数据可视化时一直生效」——他已经决定了，不用再判
+- 那些**总该生效的**约束（「去 AI 味」「术语一致」），每次都让模型判是浪费
+
+所以 frontmatter 里可以写 `scopes: [block_write]`——**匹配上就直接把 body
+放进 system prompt，跳过 `load_skill`**。
+
+```
+有 scopes 且匹配当前 Mode  →  body 直接进 system prompt（省一次工具往返）
+没有 scopes                →  只有 description 常驻，模型要用自己调
+```
+
+现有 13 个内置 skill 全部有 scopes，因为它们都是「该一直生效的短约束」，
+平均 136 字符——直接注入比让模型判一次便宜。**长 skill 和第三方 skill
+默认走模型按需调用**，不然一装几个就把上下文占满了。
+
+### 10.5 现状与缺口
+
+```python
+# 现状：18 处重复，只有 scope 一条路，而且是全量注入
+system = prompts.compose_system(base, store.enabled_skills_for_scope(user, scope))
+```
+
+| 能力 | 现状 | 缺什么 |
+|---|---|---|
+| 标准 `SKILL.md` 格式 | 只在导入时解析一次，然后丢掉结构存成一个 `content` 字段 | **按目录存**，保住 references 和 scripts |
+| frontmatter 常驻 | ✗ | 模型不知道有哪些 skill |
+| `load_skill` / `read_skill_ref` | ✗ | 没有按需加载的路径 |
+| scope 快捷方式 | ✓ | 够用，但它现在是唯一的路 |
+| `compose_block` 的 6 个模式 | **一个 scope 都没有** | 补 `block_write` / `block_prompt` |
+
+**不要给旧 scope 改名**——名字存在用户数据里，改名等于让所有人配好的技能失效。
+
+### 10.6 架构里怎么放
 
 ```python
 class Skills:
-    """把用户启用的技能查出来，放进 State。R12。
+    """把「有哪些技能」放进上下文。R12。
 
-    做成 middleware 而不是让每个 hook 自己查，是因为它 18 处重复且逻辑相同；
-    做成 middleware 之后，**加一个新功能只要给 Mode 填个 skill_scope
-    就自动支持用户技能**，不用记得去调 compose_system。
+    只做两件事：
+      · 有 scopes 且匹配的 → body 直接进 system prompt（快捷方式）
+      · 其余的 → 只把 name + description 列进去，等模型自己调 load_skill
+
+    **不改 Mode**——skill 是上下文，不是配置（10.3）。
     """
     name = "skills"
     async def before_produce(self, st) -> None:
-        st.skills = (store.enabled_skills_for_scope(st.ctx.user, st.mode.skill_scope)
-                     if st.mode.skill_scope else [])
-
-# produce hook 里：
-system = prompts.compose_system(BLOCK_SYSTEM, st.skills)
+        matched, listed = skills.for_scope(st.ctx.user, st.mode.skill_scope)
+        st.skill_bodies = [s.body for s in matched]
+        st.skill_menu = [(s.name, s.description) for s in listed]
 ```
 
-`Skills` 进 `BASE`——**默认全开，`skill_scope` 为空就自然是空列表**，
-不需要每条 harness 记得接。
+`produce` hook 拼 prompt 时把这两样放进去。`load_skill` / `read_skill_ref`
+两个工具由 `Mode.groups` 里的 `skill` 组授权——**默认给**，因为
+「模型能看到有哪些技能却调不了」没有意义。
 
-### scope 和 Mode 的关系
+### 10.7 第三方 skill：直接装目录
 
-现在 scope 是按「动作」分的（rewrite / polish / expand），Mode 是按「功能」
-分的，两套命名并存。重构时对齐：
+因为用的是标准格式（10.1），装第三方 skill 就是**把目录放进
+`skills/` 下面**——不用转换、不用解析成我们的结构再存回去。
 
-| Mode | skill_scope | 备注 |
+| 内容 | 怎么用 |
+|---|---|
+| frontmatter | 进菜单，模型能看见 |
+| body | 模型调 `load_skill` 时加载 |
+| `references/` | 模型调 `read_skill_ref` 时读 |
+| **`scripts/`** | **跑在沙箱里**（10.8），默认不给权限 |
+
+导入时**必须预览**（现状已经是「先预览再保存」，保持住）——
+用户没看过的内容不该进上下文。frontmatter 里标 `source: imported`，
+UI 上要能看出来这是别人写的。
+
+### 10.8 沙箱：脚本要跑，但跑在笼子里
+
+#### 选型：本地 OS 级沙箱
+
+| 方案 | 隔离 | 代表 |
 |---|---|---|
-| `NOTE` | `magic_tap` | 沿用旧名，用户配好的技能不失效 |
-| `SECTION` | `section_write` | |
-| `EDA` `CHART` `TABLE` `ANALYSIS` | **新增** `block_write` | 现在没有——这是要补的功能缺口 |
-| `PROMPT` `CUSTOM` | **新增** `block_prompt` | 同上 |
+| microVM | 独立内核，硬件级 | E2B（Firecracker） |
+| gVisor | 用户态拦截系统调用 | Modal |
+| WASM | Pyodide + Deno 权限模型 | LangChain Sandbox · PydanticAI |
 
-**不要为了整齐把旧 scope 改名**：scope 名字存在用户数据里，改名等于让所有
-人已经配好的技能失效。新加的用新名字，旧的原样留着。
+**E2B / Modal 这类托管服务直接排除**——它们要把代码和数据传出去，
+跟这个产品「图片不出内网」「知识库是本地 sqlite」的前提冲突。
 
-`compose.py` 那些单点动作（rewrite / polish / expand / verify / digest）
-不走 harness 循环，它们保留各自的 scope，但可以共用一个
-`system_for(scope, base)` 小函数，把那 18 处重复收成一处。
+**选 Seatbelt(macOS) / bubblewrap(Linux)**，跟 Claude Code 同一套，
+内核级强制，不依赖应用层检查。
+
+**为什么不选看起来更轻的 Pyodide/WASM**：查到两个真实逃逸事故
+（Grist-Core 的 Pyodide 逃逸导致 RCE、n8n 的 CVE-2025-68668，9.9 Critical）。
+根子在这类方案常是**黑名单式的**——假设防御方能枚举出所有危险能力，
+而那枚举不完。OS 级沙箱是白名单：默认什么都不给，要什么显式开。
+
+#### 三档权限，没有第四档
+
+```yaml
+# SKILL.md frontmatter
+sandbox: none      # 不跑脚本（默认）
+sandbox: compute   # 只读技能自己的目录 + 一个临时输出目录；无网络
+sandbox: files     # 上面 + 能写用户明确选定的输出路径；无网络
+# 没有第四档：**网络一律不给**。要联网的能力走系统工具池，
+# 那里有授权、有审计、有速率限制。
+```
+
+**frontmatter 里写的只是「这个技能想要什么」，不是「它有什么」**——
+实际权限由**用户在安装时授予**（跟手机装 App 授权同一个模型），
+默认 `none`，UI 上要说清「这个技能想读写文件」。
+
+资源上限硬编码不给配：**CPU 10s · 内存 256MB · 产出 20MB · 单次 run 最多 3 次**。
+
+#### 关键：脚本也是一个工具
+
+```python
+@register(name="run_skill_script", group="skill_script",
+          description="跑技能自带的脚本。脚本在沙箱里执行，不能联网。")
+def run_skill_script(ctx: ToolContext, skill: str, script: str, args: dict) -> str:
+    granted = store.sandbox_grant(ctx.user, skill)      # 用户授予的，不是 skill 声明的
+    if granted == SandboxLevel.NONE:
+        return "（这个技能没有被授予运行脚本的权限。）"
+    return sandbox.run(skill, script, args, level=granted)
+```
+
+**不给脚本单开执行路径**——那会绕过所有既有的授权和溯源。跟
+`load_skill` / `read_skill_ref` 一样注册成工具之后，它自动继承整套机制：
+
+| 机制 | 怎么继承的 |
+|---|---|
+| 授权 | `group="skill_script"`，要 `Mode.groups` 里有才给 |
+| 溯源 | 结果进 `ToolTrace`，`TapProvenance` 能看到跑了什么 |
+| 预算 | `max_calls_per_round` 管次数 |
+| 判据 | 产出照样过 `Check` 和 `Dimension` |
+| 错误隔离 | 脚本挂了就是一次工具失败，`_fire` 那套照常生效（第 12 节） |
+
+**「skill 的一切都走工具」是这段设计的要点**：加载 body 是工具、读参考文件
+是工具、跑脚本也是工具。沙箱只解决「跑得安不安全」，
+「能不能跑、跑了什么、结果算不算数」由已有的工具池机制回答。
+
+### 10.9 prompt injection
+
+skill 的 body 会进上下文，第三方 skill 可以在里面写「忽略上面所有规则」——
+**这是真实风险**。三道防线按硬度排：
+
+| 防线 | 硬度 | 说明 |
+|---|---|---|
+| **判据不受 skill 影响**（10.3） | **硬** | `dims` 和 `checks` 在 `Mode` 里，skill 是上下文不是配置。产出还得过判据那一关 |
+| **授权不受 skill 影响** | **硬** | `groups` 在 `Mode` 里。skill 说「我需要读知识库」不等于就能读 |
+| 注入时声明边界 | 软 | 「以下是技能说明，在不违反上面规则的前提下生效」只是提示，**别指望它** |
+
+**「判据独立」是这个架构在安全上最值钱的性质**，而它不是为安全设计的——
+本来是为了解决「打分器和被打分的是同一个模型」（第 9 节）。同一个决定
+同时挡住两件事：判据既不受模型自身盲区影响，也不受注入内容影响。
+
+### 10.10 明确不做的
+
+- **不自造 skill 格式**——用 `SKILL.md` 标准，扩展字段放 frontmatter
+- **不给沙箱网络**——要联网的能力走系统工具池
+- **不让 skill 自己决定沙箱权限**——frontmatter 里是「想要」，用户安装时授予
+- **不让 skill 改 `Mode`**——它是上下文，不是配置（10.3）
+- **不给旧 scope 改名**——名字在用户数据里
+- **不做 marketplace**——那需要来源审核、版本、签名，是另一个量级的工程
 
 ---
 
@@ -733,29 +974,58 @@ system = prompts.compose_system(BLOCK_SYSTEM, st.skills)
 
 | middleware | 钩子 | 干什么 | 在 BASE 里 |
 |---|---|---|---|
-| `Skills` | `before_produce` | 查用户启用的技能进 `State`（R12） | ✓ |
-| `Facts` | `after_prepare` | 材料累积 + 压缩，**绑死在一起** | ✓ |
-| `Repeats` | `before_judge` | `find_repeats` → `bag["dup_hints"]` | ✓ |
-| `Revise` | `before_produce` | 生成前先改一遍已有正文（R5 发 CUSTOM revision 事件） | ✗ note/section 专用 |
-| `Checks` | `before_judge` | 跑 `Mode.checks`，auto-fix 或打回（R8 命中就跳过打分） | ✓ |
-| `BestOf` | `after_judge` | 留 `rank()` 最高的一轮 | ✓ |
-| `History` | `after_run` | 记 `RunRecord` | ✓ |
-| `Save` | `after_produce` | 每轮落盘 —— 跑到一半关掉页面，已写的轮次要保住 | ✗ note/section 专用（块不落盘） |
-| `Policy` | `after_round` | 上轮观测 → 下轮参数 | ✗ note 专用 |
-| `Replan` | `after_round` | 有约束的骨架重规划 | ✗ note 专用 |
+**`BASE` 六个，默认全开**（顺序即执行顺序）：
+
+| middleware | 钩子 | 干什么 |
+|---|---|---|
+| `Skills` | `before_produce` | 把「有哪些技能」放进上下文：匹配 scope 的直接注入 body，其余只列 name+description 等模型自己调（R12） |
+| `Facts` | `after_prepare` | 材料累积 + 压缩，**绑死在一起** |
+| `Repeats` | `before_judge` | `find_repeats` → `bag["dup_hints"]` |
+| `Checks` | `before_judge` | 跑 `Mode.checks`，auto-fix 或打回（R8 命中就跳过打分） |
+| `BestOf` | `after_judge` | 留 `rank()` 最高的一轮 |
+| `History` | `after_run` | 记 `RunRecord` |
+
+**四个由 `Mode.extra_mw` 显式挂**：
+
+| middleware | 钩子 | 干什么 | 谁挂 |
+|---|---|---|---|
+| `Revise` | `before_produce` | 生成前先改一遍已有正文（R5 发 CUSTOM revision 事件） | note · section |
+| `Compact` | `before_produce` | 压缩喂给续写的正文（**只压这一份**，edit pass 和打分吃全量） | note · section |
+| `Save` | `after_produce` | 每轮落盘——跑到一半关掉页面，已写的轮次要保住 | note · section（块不落盘） |
+| `Policy` | `after_round` | 上轮观测 → 下轮参数 | note |
+| `Replan` | `after_round` | 有约束的骨架重规划 | note |
 
 ```python
 class Facts:                      # 不发事件的 middleware：普通 async def
-    """材料累积 + 压缩**绑死在一起**——不给调用方"只累积不压缩"的选项。
+    """材料累积 + 裁剪**绑死在一起**——不给调用方"只累积不裁剪"的选项。
     三处无上限累积（seen_facts / seen_charts / run_facts）就是分开做的后果，
-    而「材料每轮清零」那个 bug（见第 17 节）就是分开做的另一半后果。"""
+    而「材料每轮清零」那个 bug（见第 18 节）是分开做的另一半后果。
+
+    **注意跟正文压缩不是一回事**（见 Compact）：这里裁的是**事实条目列表**
+    （一条一句话，超预算就丢最早的），那边压的是**一整篇正文**
+    （按 `##` 切小节、每节折叠成摘要）。用不了同一个函数。"""
     name = "facts"
     async def after_prepare(self, st) -> None:
         fresh = [f for f in st.facts_new if f not in st.facts]
-        st.facts = compact_facts(st.facts + fresh, st.mode.fact_budget)
+        st.facts = (st.facts + fresh)[-st.mode.fact_budget:]      # 保最近的
         st.charts += [c for c in mermaid_of(st.trace) if c not in st.charts]
         st.bag["dry_rounds"] = 0 if fresh else st.bag.get("dry_rounds", 0) + 1
         # 不发事件，所以是普通 async 函数——不用写 `return; yield`
+
+
+class Compact:
+    """把喂给续写的正文压一压。`writer_harness.compact_context()`：
+    最近 keep_last_chars 全量保留，更早的按 `##` 切小节、每节折叠成摘要。
+
+    **只压给续写看的那一份，edit pass 和打分吃全量**——那两步要通读全篇
+    抓跨段的偏题和重复，压了反而漏掉要抓的东西。所以它写进 bag 而不是
+    改 st.content。
+
+    不进 BASE：只有长文续写会撞上下文上限，块生成不会。"""
+    name = "compact"
+    async def before_produce(self, st) -> None:
+        st.bag["content_for_continue"] = compact_context(
+            st.content, keep_last_chars=st.mode.context_keep_last)
 
 
 class Checks:
@@ -855,8 +1125,8 @@ StateEffect**（`acceptHunk` / `dropHunk` / `acceptAllHunks`），**不回传后
 def pause_for_review(st: State) -> str | None:
     """轮末暂停等用户处置。State 存快照，SSE 正常收尾，
     前端拿 run_id 调 /resume 带上用户接受了哪些改动。"""
-    # review_each_round 是**这个功能实现时才加的 Mode 字段**，现在没有
-    return "awaiting_review" if st.mode.review_each_round else None
+    # 实现这个功能时给 Mode 加一个 review_each_round 字段；现在还没有
+    return "awaiting_review" if getattr(st.mode, "review_each_round", False) else None
 
 # POST /api/harness/{run_id}/resume  {accepted: [hunk_id...], content: str}
 #   → 用用户处置后的 content 覆盖 st.content，从 st.round + 1 继续
@@ -877,39 +1147,95 @@ def pause_for_review(st: State) -> str | None:
 
 ---
 
-## 14. 8 个 Mode
+## 14. Mode：8 个内置 + 用户定义的
+
+**这 8 个是底座，不是全部**——运行时 skill 会叠加上来（第 10.1 节），
+叠出来的还是一个 `Mode`。所以 `Mode` 必须是纯数据（`frozen dataclass`），
+不能带任何只有代码能提供的东西，否则叠加就没法用 `replace()` 一行做完。
 
 ```python
 # ── modes.py ──────────────────────────────────────────────────────────
 NOTE = Mode(key="note", label="写完整篇", task=...,
-            groups=("memory",), dims=note_dimensions(),
+            groups=("memory",), skill_scope="magic_tap", dims=note_dimensions(),
             checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold),
             # ⚠️ material_used_up 的**现有判据实测触发率接近 0**
             #（要求「连着两轮零新事实」，而每轮都能检索回字面不同、
             # 语义相同的条目）。搬过来时要重新设计判据，不要照抄。
             stop_when=(material_used_up, stalled),
-            extra_mw=(Revise(), Policy(), Replan()), max_rounds=8)
+            extra_mw=(Revise(), Compact(), Save(), Policy(), Replan()), max_rounds=8)
 
-SECTION = Mode(key="section", label="文件夹级分段", ...,
-               extra_mw=(Revise(),), stop_when=(material_used_up,), max_rounds=6)
+SECTION = Mode(key="section", label="文件夹级分段", ..., skill_scope="section_write",
+               extra_mw=(Revise(), Compact(), Save()),
+               stop_when=(material_used_up,), max_rounds=6)
 
 EDA = Mode(key="eda", label="数据可视化", task=...,
-           groups=("data", "chart", "memory"),
+           groups=("data", "chart", "memory"), skill_scope="block_write",   # ← 新 scope
            dims=(numbers_from_tools, honest_caveats, has_charts,
                  no_duplicate_charts, covers_the_data, fits_context, actionable),
            checks=(no_fake_charts, charts_from_tools, heading_fits, tail_clashes),
            max_rounds=3)
 
-CHART   = Mode(key="chart",   label="智能插图",     groups=("data","chart","image","memory"), ...)
-TABLE   = Mode(key="table",   label="智能表格",     groups=("data","chart","memory"), ...)
-ANALYSIS= Mode(key="analysis",label="智能数据分析", groups=("data","chart","memory"), ...)
-PROMPT  = Mode(key="prompt",  label="按提示词写",   groups=("memory",), ...)
-CUSTOM  = Mode(key="custom",  label="按提示词改这段", groups=("memory",), ...)
+# 注意 groups：render_table 从 chart 组挪到新的 table 组之后（第 8 节），
+# 做表的不再被迫拿到三个画图工具、画图的也不再拿到 render_table。
+CHART   = Mode(key="chart",   label="智能插图",  groups=("data","chart","image","memory"),
+               skill_scope="block_write", ...)
+TABLE   = Mode(key="table",   label="智能表格",  groups=("data","table","memory"),
+               skill_scope="block_write", ...)
+ANALYSIS= Mode(key="analysis",label="智能数据分析", groups=("data","chart","memory"),
+               skill_scope="block_write", ...)
+PROMPT  = Mode(key="prompt", label="按提示词写", groups=("memory",),
+               skill_scope="block_prompt", ...)
+CUSTOM  = Mode(key="custom", label="按提示词改这段", groups=("memory",),
+               skill_scope="block_prompt", ...)
 ```
 
 ---
 
-## 15. 一条 harness 改造后
+## 15. 不走 harness 的东西
+
+这份文档讲的是写作闭环。系统里还有三块**不走这个循环**，为了不让人误以为
+漏了，在这里交代清楚它们的位置和边界。
+
+| 链路 | 是什么 | 为什么不走 harness |
+|---|---|---|
+| **摄入与抽取** | 录音/上传/导入 → `asr` · `extract` · `importers` → KITE 抽事实 | 它是**一次性转换**，不是「产出 → 判 → 改」的闭环。有自己的进度事件和幂等要求 |
+| **知识库浏览** | `memory` router · `MemoryBrowser` · `KnowledgeGraph` · 时间线 | 纯读，没有产出可判 |
+| **单点写作动作** | `compose.py` 的 rewrite / polish / expand / verify / digest / skeleton | **一次调用出结果**，用户当场接受或撤销。套上多轮闭环只会变慢 |
+
+### 15.1 单点动作跟 harness 共用什么
+
+它们不走循环，但共用下面这些——**不要因为「不走 harness」就让它们各写各的**：
+
+| 共用 | 怎么共用 |
+|---|---|
+| **skill** | `prompts.system_for(scope, base)`，把现在 18 处重复收成一处（第 10 节） |
+| **profile** | 同一个 `_profile(user)`，个人偏好对所有写作动作都生效 |
+| **判据** | `verify` 就是一次性的判据调用；`Check` 里的纯函数它也能直接用 |
+| **修订应用** | `harness/revision.py` 的锚点定位与守卫——rewrite/polish 产出的也是修订 |
+| **事件** | 同一套 AG-UI 事件（第 7 节） |
+
+**边界的判据：要不要多轮。** 需要「产出 → 判 → 不合格再来」的走 harness；
+一次给结果、由用户当场处置的走单点动作。`compose_block` 的
+「按提示词改这段」是个边界案例——它现在走 harness（因为要判「有没有照
+提示词做」），这是对的。
+
+### 15.2 profile：一直生效，不属于任何一层
+
+`profile`（个人偏好，用户写的「我不喜欢排比句」「多用具体数字」）
+跟 skill 的区别：
+
+| | `profile` | `skill` |
+|---|---|---|
+| 范围 | **所有**写作动作 | 按 scope |
+| 形态 | 一条条短句 | 一段说明，可能带引用文件 |
+| 谁写 | 用户，也可以从历史笔记里自动提取 | 用户 / 第三方导入 |
+
+架构里它跟 skill 走同一个 middleware（`Skills` 顺便把 profile 也放进
+`State`），因为两者都是「产出之前进 prompt 的用户配置」，区别只在过滤条件。
+
+---
+
+## 16. 一条 harness 改造后
 
 ```python
 # ── routers/compose_block.py：566 → 约 60 行 ─────────────────────────
@@ -943,7 +1269,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 
 ---
 
-## 16. 现有代码搬到哪里去
+## 17. 现有代码搬到哪里去
 
 ### note_harness.py（1078 行）
 
@@ -968,6 +1294,8 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | `_make_summary`（33） | 留在 router |
 | `_sync_tracking_note`（10） | Hooks 的 `commit`（收尾，一次） |
 | 每轮的 `store.update_note()` | `middleware/save.py`（每轮，不是收尾） |
+| `compact_context()`（`note_harness.py:703`） | `middleware/compact.py` |
+| `CONTEXT_KEEP_LAST_CHARS` | `Mode.context_keep_last` |
 | `SECTION_ROUND_CAP` | `modes.py` 的 `SECTION.max_rounds` |
 | `PLAN_SAFETY_CAP` | **留在 router**——它管的是外层分段调度，不是一条 harness 的轮数 |
 | 剩下 | `routers/writing_plan.py` ≈100 行 |
@@ -990,7 +1318,9 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 | 现有 | 去向 |
 |---|---|
 | `harness_adapter.note_dimensions()` / `section_dimensions()` | `modes.py`，跟 `MODES` 合并到一处 |
-| 18 处 `compose_system(X, enabled_skills_for_scope(user, scope))` | `middleware/skills.py` + `prompts.system_for(scope, base)` |
+| 18 处 `compose_system(X, enabled_skills_for_scope(user, scope))` | `middleware/skills.py`（匹配 scope 的注入 + 其余列菜单） |
+| `Skill` 存 DB 的 `content` 字段 | **改存文件系统**：`data/<user>/skills/<slug>/SKILL.md`，DB 只留元数据 |
+| `frontend/src/skillImport.ts` 解析后丢掉结构 | 保留整个目录，`references/` 和 `scripts/` 都留着 |
 | `prompts.SKILL_SCOPES` | 留在 `prompts.py`，但加两个新 scope（`block_write` / `block_prompt`） |
 | `harness_adapter.AppLLMClient` / `SqliteRunHistoryStore` | 原地不动（包的适配层） |
 | `blockcheck.py` | `checks/charts.py` + `checks/structure.py` |
@@ -1001,7 +1331,7 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 
 ---
 
-## 17. 这个架构顺手解决的现有 bug
+## 18. 这个架构顺手解决的现有 bug
 
 不是设计目标，是结构对了之后的副产品——**这几条是架构对不对的验证**：
 
@@ -1021,14 +1351,14 @@ async def compose_block(body: ComposeBlockIn, user: str = Depends(current_user))
 
 ---
 
-## 18. 分层与依赖规则
+## 19. 分层与依赖规则
 
 ```mermaid
 flowchart TD
     L0["L0　前端　只认 AG-UI 事件"]
     L1["L1　routers/：薄壳　选 Mode，提供 Hooks，转 SSE"]
     L2["L2　app/harness/　loop · State · middleware/ · checks/ · modes/ · events"]
-    L3["L3　app/：能力　agent_loop · llm · store · kite_memory · tools/"]
+    L3["L3　app/：能力　agent_loop · llm · store · kite_memory · tools/ · sandbox/"]
     L4["L4　纯函数层　tabular · blocks · outline · textshape · restructure · revision"]
     L5["L5　writer_harness 包　evaluate · find_repeats · compact_context"]
 
@@ -1051,7 +1381,7 @@ flowchart TD
 
 ---
 
-## 19. 怎么测
+## 20. 怎么测
 
 | 测什么 | 怎么测 | 要模型吗 |
 |---|---|---|
@@ -1061,17 +1391,18 @@ flowchart TD
 | `modes.py` | 遍历 8 个 Mode，断言必需 middleware 都在、维度名不重复 | 否 |
 | 分层规则 | `ast` 扫 import | 否 |
 | 事件契约 | `events.py` 的集合 == 前端处理的集合 | 否 |
+| 沙箱 | 跑一批**故意越界**的脚本，断言全部被拦（读 /etc、连网络、超时、超内存） | 否 |
 | 端到端质量 | soak，**先读两篇产出再看表** | 是 |
 
 **前六层都不要模型**——现在验证一个循环改动要跑一次真实 harness
 （分钟级、带随机性），之后是毫秒级确定性单测。
 
-第 20 节那个原型就是「loop.py 怎么测」的现成模板：假 `Hooks` + 假
+第 21 节那个原型就是「loop.py 怎么测」的现成模板：假 `Hooks` + 假
 `evaluate`，11 个场景全在毫秒级跑完。
 
 ---
 
-## 20. 架构原型：能跑的验证
+## 21. 架构原型：能跑的验证
 
 `docs/_research/prototype/` 是这套类型和循环的**可执行版本**——零依赖、
 假 LLM、假工具，约 180 行。
@@ -1103,7 +1434,7 @@ cd docs/_research/prototype && python3 test_harness_proto.py
 
 ---
 
-## 21. 落地顺序
+## 22. 落地顺序
 
 | 步 | 做什么 | 风险 | 老代码还能跑吗 |
 |---|---|---|---|
@@ -1114,6 +1445,13 @@ cd docs/_research/prototype && python3 test_harness_proto.py
 | 5 | `types.py` + `state.py` + `loop.py`：假 Hooks 先测通 | 中 | ✓ |
 | 6 | `modes.py`：8 个 Mode 定义到一处 | 低 | ✓ |
 | 7 | router 迁移：`compose_block` → `writing_plan` → `note_harness` | 高 | 逐条切换 |
+| **后续** | skill 的第一层（触发）+ 第三层（`read_skill_ref`） | 中 | ✓ |
+| **后续** | 沙箱 + `run_skill_script`（R13） | 高 | ✓ |
+| **后续** | 用户处置回路（第 13 节） | 中 | ✓ |
+
+**后续三项都不是重构**，是新功能。放在重构之后做，理由见第 13 节：
+重构的目标是「结构变清楚、行为不变」，混进新功能会让「改坏了没有」
+无从判断。
 
 **前六步都是往旁边加东西，不动现有路径。** 第 7 步一条一条切，
 每切一条跑一轮 soak 对比。
