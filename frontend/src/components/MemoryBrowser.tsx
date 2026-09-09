@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  createTopic, factSources, memoryEntities, memoryFacts, memoryStats, memoryTimeline,
-  memoryTopics, topicEntityLinks,
+  createTopic, factSources, listClusters, memoryEntities, memoryFacts, memoryStats,
+  memoryTimeline, memoryTopics, topicEntityLinks,
 } from '../api'
 import type {
-  EntityNode, FactDetail, FactsFilter, MemoryStats, SourceLine, TimelineBucket, TopicEntityLink,
-  TopicNode,
+  EntityNode, FactDetail, FactsFilter, MemoryStats, SourceLine, TimelineBucket, TopicCluster,
+  TopicEntityLink, TopicNode,
 } from '../api'
 import KnowledgeGraph from './KnowledgeGraph'
 
@@ -68,6 +68,13 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
   const [showEntities, setShowEntities] = useState(true)
+
+  // 主题地图默认看**簇**，不是全部主题。196 个节点不是一张图，实测的代价是
+  // 没人看得出自己知识库的形状。点开一个簇再看它里面的主题（见 kb-architecture
+  // 6.4「聚合视图作为默认，全量图作为下钻」）。
+  const [clusters, setClusters] = useState<TopicCluster[]>([])
+  const [drilled, setDrilled] = useState<string | null>(null)
+  useEffect(() => { listClusters().then((r) => setClusters(r.clusters)).catch(() => {}) }, [])
 
   useEffect(() => { memoryStats().then(setStats).catch(() => {}) }, [])
   // 主题/实体/共现边同样是抽取时后台不断产出的，之前只在切进 tab 的时候拉
@@ -154,12 +161,26 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
   // 局部图"缓解这个问题，我们暂时用最简单的按名字搜索代替——按层级过滤是
   // 控制"看多深"，这里是直接"找到那一个"。
   const [nodeQuery, setNodeQuery] = useState('')
+  // 簇视图：把每个簇画成一个节点。KnowledgeGraph 一个字都不用改——一个簇
+  // 就是一个没有父节点的主题，`fact_count` 是它里面所有事实。
+  const clusterNodes = useMemo<TopicNode[]>(() => clusters.map((c) => ({
+    code: c.key, parents: [], status: c.merged ? 'candidate' : 'canonical',
+    aliases: c.topics, fact_count: c.facts,
+  })), [clusters])
+
+  // 下钻：只看这一簇里的主题。
+  const scopedTopics = useMemo(() => {
+    if (!drilled) return visibleTopics
+    const inside = new Set(clusters.find((c) => c.key === drilled)?.topics ?? [])
+    return visibleTopics.filter((t) => inside.has(t.code))
+  }, [visibleTopics, drilled, clusters])
+
   const searchedTopics = useMemo(() => {
     const q = nodeQuery.trim().toLowerCase()
-    if (!q) return visibleTopics
-    return visibleTopics.filter((t) =>
+    if (!q) return scopedTopics
+    return scopedTopics.filter((t) =>
       t.code.toLowerCase().includes(q) || t.aliases.some((a) => a.toLowerCase().includes(q)))
-  }, [visibleTopics, nodeQuery])
+  }, [scopedTopics, nodeQuery])
   const searchedEntities = useMemo(() => {
     const q = nodeQuery.trim().toLowerCase()
     if (!q) return visibleEntities
@@ -167,12 +188,25 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
       e.name.toLowerCase().includes(q) || e.code.toLowerCase().includes(q)
       || e.aliases.some((a) => a.toLowerCase().includes(q)))
   }, [visibleEntities, nodeQuery])
+  const drilledEntityCodes = useMemo(() => {
+    if (!drilled) return null
+    const topicCodes = new Set(scopedTopics.map((t) => t.code))
+    return new Set(visibleLinks.filter((l) => topicCodes.has(l.topic)).map((l) => l.entity))
+  }, [drilled, scopedTopics, visibleLinks])
   const searchedLinks = useMemo(() => {
-    if (!nodeQuery.trim()) return visibleLinks
     const topicCodes = new Set(searchedTopics.map((t) => t.code))
     const entityCodes = new Set(searchedEntities.map((e) => e.code))
+    if (!nodeQuery.trim() && !drilled) return visibleLinks
     return visibleLinks.filter((l) => topicCodes.has(l.topic) && entityCodes.has(l.entity))
-  }, [visibleLinks, nodeQuery, searchedTopics, searchedEntities])
+  }, [visibleLinks, nodeQuery, drilled, searchedTopics, searchedEntities])
+
+  // 簇视图下不画实体：一个簇跟一个实体共现说明不了什么，簇本来就是好几个
+  // 主题合起来的，几乎每个簇都会碰上每个常见实体。
+  const graphTopics = drilled === null && clusters.length ? clusterNodes : searchedTopics
+  const graphEntities = drilled === null && clusters.length
+    ? []
+    : (drilledEntityCodes ? searchedEntities.filter((e) => drilledEntityCodes.has(e.code)) : searchedEntities)
+  const graphLinks = drilled === null && clusters.length ? [] : searchedLinks
 
   function filterByTopic(code: string) {
     setFactsFilter({ topic: code, limit: PAGE_SIZE, offset: 0 })
@@ -282,6 +316,33 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
               {newTopicError && <span className="muted" style={{ color: 'var(--del)' }}>{newTopicError}</span>}
             </div>
 
+            {clusters.length > 0 && (
+              <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+                <button className={drilled === null ? 'primary' : ''} onClick={() => setDrilled(null)}>
+                  全部（{clusters.length} 簇）
+                </button>
+                {drilled !== null && (
+                  <>
+                    <span className="muted">→</span>
+                    <button className="primary" onClick={() => setDrilled(null)}>
+                      {clusters.find((c) => c.key === drilled)?.label ?? drilled}
+                    </button>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {scopedTopics.length} 个主题 ·
+                      {' '}{clusters.find((c) => c.key === drilled)?.facts ?? 0} 条事实
+                    </span>
+                  </>
+                )}
+                {drilled === null && (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    点一个簇看它里面的主题。簇是按「哪些主题老在同一场会议里一起出现」
+                    合出来的，不是按名字——{topics.length} 个主题里一半只有 10 条以内的事实，
+                    平铺出来看不出形状。
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
               <div className="row" style={{ flexWrap: 'wrap' }}>
                 <span className="muted" style={{ fontSize: 12 }}>显示到：</span>
@@ -311,10 +372,19 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
             </div>
 
             <KnowledgeGraph
-              topics={searchedTopics}
-              entities={searchedEntities}
-              links={searchedLinks}
-              onSelect={(kind, code) => (kind === 'topic' ? filterByTopic(code) : filterByEntity(code))}
+              topics={graphTopics}
+              entities={graphEntities}
+              links={graphLinks}
+              onSelect={(kind, code) => {
+                if (kind !== 'topic') return filterByEntity(code)
+                // 簇视图下点一个节点 = 下钻到它里面；已经在簇里了才是"看事实"
+                if (drilled === null && clusters.some((c) => c.key === code)) {
+                  setDrilled(code)
+                  setNodeQuery('')
+                  return
+                }
+                filterByTopic(code)
+              }}
               width={graphSize.w}
               height={graphSize.h}
             />

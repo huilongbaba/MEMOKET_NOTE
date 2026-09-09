@@ -411,6 +411,28 @@ export const memoryEntities = () =>
 export const topicEntityLinks = () =>
   fetch('/api/memory/topic-entity-links', { headers: headers() }).then(json<TopicEntityLink[]>)
 
+/** 主题簇：细主题上面加的一层粗视图。
+ *
+ *  细主题让问答准，也正是让写作重复的原因——一节的材料摊在六个兄弟主题里。
+ *  实测这个库 196 个主题、中位 10 条事实、51% ≤10 条；聚类之后中位 18。
+ *  `merged=false` 的簇就是一个本来就够大的主题，没被并过。 */
+export type TopicCluster = {
+  key: string; label: string; topics: string[]; facts: number; merged: boolean
+}
+
+export const listClusters = () =>
+  fetch('/api/kb/clusters', { headers: headers() })
+    .then(json<{ clusters: TopicCluster[]; topics: number }>)
+
+export type KbCoverage = {
+  facts: number; units: number
+  topics: number; topic_median: number; topic_small_share: number
+  clusters: number; cluster_median: number; cluster_small_share: number
+}
+
+export const kbCoverage = () =>
+  fetch('/api/kb/coverage', { headers: headers() }).then(json<KbCoverage>)
+
 export type FactsFilter = {
   kind?: string; who?: string; topic?: string; entity?: string; conf_min?: string
   limit?: number; offset?: number

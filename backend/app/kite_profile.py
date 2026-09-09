@@ -196,6 +196,14 @@ Rules:
   and the concrete numbers, dates, amounts, model names or part names involved.
   Write "the enclosure sample from the model shop cost 2300 RMB per set, which
   has to be amortised over the first 50-100 units", not "the sample cost 2300".
+- **No relative time, no bare pronouns.** Write the date the session
+  establishes, not the words the speaker used: "in June 2026", not "next
+  month" / "later" / "currently" / "this year". Name the thing, not a pointer
+  to it: "the wristband prototype", not "this plan" / "that project". This is
+  the single most common defect measured in real output -- five sampled
+  meetings, five identical complaints -- and it is fatal for writing, because
+  a fact that says "starting this year" is unusable once it is read outside
+  the conversation it came from.
 - **Merge, do not atomise.** If one thing is discussed several times in this
   conversation — a number that changes, a decision that gets revised — emit ONE
   fact that carries the progression, not one fact per mention.

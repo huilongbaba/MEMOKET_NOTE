@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from .. import store
-from ..kb import extract_check, reextract
+from ..kb import extract_check, extract_judge, reextract
 from ..kb.recall import cached
 from ..kite_memory import UserMemory
 from ..schemas import IngestOut
@@ -114,6 +114,22 @@ def _source_text(store) -> dict[str, str]:
     for line in store.lines.values():
         out.setdefault(line.unit, []).append(line.text or "")
     return {unit: "".join(parts) for unit, parts in out.items()}
+
+
+@router.post("/quality/judged")
+async def judged_quality(user: str = Depends(current_user), limit: int = 5) -> dict:
+    """What a rule cannot decide: does a fact read on its own, is it filed right.
+
+    Costs model calls, so it is a POST and it samples rather than sweeping --
+    6-9 seconds per meeting, which is a fraction of what extracting that
+    meeting cost but is still not free.
+
+    Read the aggregate, not the individual scores: this exists to find defects
+    in the extraction rules, and a defect in the rules shows up as the same
+    complaint on every meeting. That is how the "relative time and bare
+    pronouns" rule got written -- five meetings, five identical diagnoses.
+    """
+    return await extract_judge.judge_sample(user, limit=limit)
 
 
 # ------------------------------------------------------- 摄入续跑（写作库）
