@@ -41,3 +41,26 @@ def test_脚本导得进来(path, monkeypatch):
 def test_脚本目录不是空的():
     """上面那条是 parametrize 的——名单空了它会静默全绿。"""
     assert len(SCRIPTS) >= 10
+
+
+def test_bench跑出来的产物不许进库():
+    """`.gitignore` 里写着理由：这些目录里是**真实业务内容**（众筹计划、
+    团队信息、真实会议的正文片段），而且全部可以重跑生成。
+
+    政策写下来了却漏掉一个：`harness_quality_samples/` 的 11 份采样一直被
+    跟踪着，跟旁边两个被忽略的目录完全同类。所以这里不查「有没有写规则」，
+    查的是**每个产出目录都真的被忽略了**。
+    """
+    import subprocess
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    produced = ["backend/scripts/harness_quality_samples",
+                "backend/scripts/editing_bench_results",
+                "backend/scripts/writing_bench_results"]
+    tracked = []
+    for rel in produced:
+        out = subprocess.run(["git", "ls-files", rel], cwd=root,
+                             capture_output=True, text=True).stdout.strip()
+        if out:
+            tracked.append(f"{rel}（{len(out.splitlines())} 个文件）")
+    assert not tracked, "bench 产物进了库：\n  " + "\n  ".join(tracked)

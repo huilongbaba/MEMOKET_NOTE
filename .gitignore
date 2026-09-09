@@ -39,3 +39,7 @@ backend/scripts/*.log
 backend/scripts/harness_stress_cycle.txt
 backend/scripts/editing_bench_results/
 backend/scripts/writing_bench_results/
+# 这一个漏在外面很久：11 份采样一直被跟踪着，内容跟上面两个目录完全同类
+# （众筹计划、团队信息、真实会议里的正文片段）。文件留在磁盘上，只是不再
+# 入库；已经进了历史的那些没动——重写历史是另一回事，要单独决定。
+backend/scripts/harness_quality_samples/
