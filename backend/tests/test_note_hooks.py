@@ -213,3 +213,88 @@ def test_工具挂了退回零LLM的关键词检索(monkeypatch):
                         lambda *a, **kw: (["退路查到的"], [], 0.0))
     facts, _trace = _run_prepare(NoteHooks(), _st("正文"))
     assert facts == ["退路查到的"]
+
+
+# ---------------------------------------------------------- 写这一步 ---
+
+def _stream(monkeypatch, chunks, *, finish_reason="stop", tail=()):
+    from app.harness.hooks import note as mod
+
+    calls = []
+
+    async def fake(messages, *, max_tokens=None, temperature=None, stats=None, **kw):
+        calls.append(messages)
+        for p in (chunks if len(calls) == 1 else tail):
+            yield p
+        if stats is not None:
+            stats["finish_reason"] = finish_reason
+
+    monkeypatch.setattr(mod.llm, "stream", fake)
+    return calls
+
+
+def _produce(hooks, st) -> str:
+    async def go():
+        return "".join([p async for p in hooks.produce(st)])
+    return asyncio.run(go())
+
+
+def test_打磨轮和清理轮都不写新内容(monkeypatch):
+    from app.harness.hooks import note as mod
+
+    async def boom(*a, **kw):
+        pytest.fail("这两种轮次不该写新内容")
+        yield ""
+
+    monkeypatch.setattr(mod.llm, "stream", boom)
+    assert _produce(NoteHooks(polish=True), _st("已有正文")) == ""
+    st = _st("已有正文")
+    st.bag["cleanup_only"] = True
+    assert _produce(NoteHooks(polish=False), st) == ""
+
+
+def test_被切断时补完那半句并且提醒补上没闭合的代码块(monkeypatch):
+    """真实产出停在「这意味着」。删掉半句会把模型已经做的工作扔掉；而如果
+    切在一个没闭合的 ``` 里，整段渲染都会坏。"""
+    calls = _stream(monkeypatch, ["前面一段\n```python\nprint(1)"],
+                    finish_reason="length", tail=["\n```\n收尾。"])
+    _produce(NoteHooks(), _st(""))
+    assert len(calls) == 2
+    assert "还没闭合" in calls[1][-1]["content"]
+
+
+def test_代码块闭合了就不多提醒(monkeypatch):
+    calls = _stream(monkeypatch, ["```python\nprint(1)\n```\n还没写完"],
+                    finish_reason="length", tail=["，补完。"])
+    _produce(NoteHooks(), _st(""))
+    assert "还没闭合" not in calls[1][-1]["content"]
+
+
+def test_大纲模式把内容插进目标小节而不是追加到末尾(monkeypatch):
+    """追加会让模型在下面另造一个同名标题，目录里「市场」出现两次。
+    它自己写的标题要剥掉——提示词说了别写，它照写，还把用户的 ### 压平成 ##。"""
+    _stream(monkeypatch, ["## 模型自己加的标题\n这一节的正文内容。"])
+    st = _st(大纲)
+    st.bag["outline_mode"] = True
+    st.bag["outline_target"] = ("二、硬件", st.content.index("## 三、众筹"))
+    _produce(NoteHooks(), st)
+    assert "模型自己加的标题" not in st.content, "它写的标题没被剥掉"
+    assert st.content.index("这一节的正文内容") < st.content.index("## 三、众筹"), \
+        "内容被追加到末尾了，没插进目标小节"
+
+
+def test_写出来是空的就什么都不改(monkeypatch):
+    _stream(monkeypatch, ["   \n  "])
+    st = _st("原有正文")
+    _produce(NoteHooks(), st)
+    assert st.content == "原有正文"
+
+
+def test_追加时也丢掉已经写过的段落并清元话语(monkeypatch):
+    重复段 = ("这是一段已经写过的话，写得足够长，长到能越过判重的长度门槛，"
+              "于是模型再写一遍时会被认出来是同一段内容。")
+    _stream(monkeypatch, [重复段 + "\n\n新的一段。现有材料不足以说明这一点。"])
+    st = _st(重复段)
+    _produce(NoteHooks(), st)
+    assert st.content.count(重复段) == 1
+    assert "新的一段。" in st.content and "不足以说明" not in st.content
