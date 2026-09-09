@@ -50,3 +50,29 @@ def test_前端调的每个端点后端都有():
     have = {_normalise(p) for p in _backend_paths()}
     missing = sorted(u for u in calls if _normalise(u) not in have)
     assert not missing, "前端在调后端没有的端点：\n  " + "\n  ".join(missing)
+
+
+def test_后端发的每个CUSTOM事件前端都接得住():
+    """CUSTOM 事件的名字是前后端之间的第二份契约，比路径那份更容易漏。
+
+    实际漏过两个：``check_hit``（代码判据当场判这一轮不合格，触发很频繁）
+    和 ``warning``（某条 middleware 抛异常了）。两个都在生产路径上真的会
+    发，前端一个分支都没有，全被 else 掉了——`loop.py` 里明明写着「失败
+    不能是静默的，要变成一个 CUSTOM 警告事件」，那句话在端到端层面并不
+    成立，因为没有任何东西显示它。
+
+    路径漂了会 404，还看得见；事件名漂了什么都不会发生。
+    """
+    import re
+
+    from app.harness import events
+
+    emitted = {v for k, v in vars(events).items()
+               if k.startswith("CUSTOM_") and isinstance(v, str)}
+    assert len(emitted) >= 8, f"没认出 CUSTOM 名字，只找到 {sorted(emitted)}"
+
+    api_ts = (FRONTEND / "api.ts").read_text(encoding="utf-8")
+    handled = set(re.findall(r"payload\.name === '([\w_]+)'", api_ts))
+    missing = sorted(emitted - handled)
+    assert not missing, ("后端会发、前端没有分支接的 CUSTOM 事件："
+                         f"{missing}——发出去直接被丢掉，不会有任何症状")

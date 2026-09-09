@@ -24,6 +24,9 @@ export type AgentRound = {
   /** 被防线丢弃的修订及原因。跟 errors 分开：这是防线正常起作用，
    * 混在报错里会让界面变成一片红。 */
   dropped: string[]
+  /** 代码判据（不是模型）当场判这一轮不合格。命中时这一轮**不会**再花一次
+   * 模型调用去打分——所以要标出来，否则用户看到一个 0 分却不知道是谁判的。 */
+  checkHit?: { dimension: string; note: string }
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
   phaseLabel?: string
@@ -282,6 +285,17 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 borderRadius: 4,
               }}>{r.streamed}</pre>
             </details>
+          )}
+
+          {r.checkHit && (
+            <p className="muted" style={{ margin: '4px 0 0', lineHeight: 1.55,
+                                          display: 'flex', gap: 5 }}>
+              <span style={{ flexShrink: 0 }}>⚑</span>
+              <span>
+                代码判据判了 <b>{r.checkHit.dimension}</b> 不合格，这一轮没再花模型
+                调用去打分。{r.checkHit.note}
+              </span>
+            </p>
           )}
 
           {r.dropped.length > 0 && (

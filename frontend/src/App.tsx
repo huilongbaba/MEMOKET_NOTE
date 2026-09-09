@@ -897,6 +897,24 @@ export default function App() {
           return next
     })
       },
+      onCheckHit: (d) => {
+        // 代码判据当场判不合格，这一轮不会再花模型调用去打分。不标出来的话
+        // 用户看到一个 0 分，不知道是谁判的、为什么这轮这么快。
+        if (currentRef.current?.id !== noteId) return
+        setAgentRounds((rs) => {
+          if (!rs.length) return rs
+          const next = [...rs]
+          next[next.length - 1] = { ...next[next.length - 1], checkHit: d }
+          return next
+        })
+      },
+      onWarning: (d) => {
+        // 一条 middleware 抛异常了。循环继续跑（能力分包的隔离好处），但这一轮
+        // 少了那个能力——后端注释写着「不能是静默的」，可在这之前前端根本没接
+        // 这个事件，发出来的警告全被丢掉了。
+        if (currentRef.current?.id !== noteId) return
+        toast(`「${d.middleware}」这一步出错了，本轮少了这个能力：${d.error}`, 'error')
+      },
       onError: (detail) => {
         if (currentRef.current?.id !== noteId) return
         // 后端的 error 事件都是可恢复的降级，流还在继续——记在这一轮上

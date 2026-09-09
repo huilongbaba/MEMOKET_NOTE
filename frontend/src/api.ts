@@ -645,6 +645,11 @@ export type NoteHarnessHandlers = {
    * 会动到用户自己写的标题，这四类都是防线正常起作用，一轮能丢好几条。
    * 用 onError 渲染的话界面会变成一片红。 */
   onDropped?: (detail: string) => void
+  /** 代码判据当场判这一轮不合格。命中时跳过模型打分，分数就是这条判据给的。 */
+  onCheckHit?: (d: { dimension: string; note: string }) => void
+  /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
+   * 但**不能是静默的**——这一轮少了那个能力，用户得知道。 */
+  onWarning?: (d: { middleware: string; hook: string; error: string }) => void
   /** 骨架被重规划了。目标被改了，用户必须看得见改成了什么——后端在这之后
    * 还会重发一次 skeleton 事件让骨架面板跟着更新。 */
   onReplan?: (d: { round: number; why: string; changes: string[]; beats: string[] }) => void
@@ -761,6 +766,8 @@ async function consumeHarnessStream(res: Response, handlers: NoteHarnessHandlers
             else if (payload.name === 'phase_delta') handlers.onPhaseDelta?.(v)
             else if (payload.name === 'policy') handlers.onPolicy?.(v)
             else if (payload.name === 'dropped') handlers.onDropped?.(v.detail)
+            else if (payload.name === 'check_hit') handlers.onCheckHit?.(v)
+            else if (payload.name === 'warning') handlers.onWarning?.(v)
             else if (payload.name === 'replan') handlers.onReplan?.(v)
           }
         }
