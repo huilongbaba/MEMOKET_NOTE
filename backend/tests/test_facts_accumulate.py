@@ -34,12 +34,43 @@ def test_打分只有一个调用点():
     assert sites == [("app/harness/loop.py", 1)], f"打分调用点不止一处：{sites}"
 
 
-def test_打分读的是累积字段():
-    src = (HARNESS / "loop.py").read_text(encoding="utf-8")
-    i = src.index("await evaluate(")
-    call = src[i:i + 400]
-    assert "dimensions=list(st.mode.dims)" in call
-    assert "facts_new" not in call, "打分不能只拿本轮材料——正文是累积的"
+def test_打分拿到的是累积正文和这个mode的维度(monkeypatch):
+    """打分不能只拿本轮的材料——正文是累积的，只按本轮材料判，会对着写作者
+    上一轮刚用过的一句话报「知识库里没有」（实测撞过）。
+
+    以前这条查的是「loop.py 里那段源码字符串包不包含 facts_new」。那种
+    断言两头都不对：换个参数名它就红，真传错了、只要字符串还在它照样绿。
+    现在直接看 evaluate() 收到了什么。
+    """
+    import asyncio
+
+    from app.harness import loop as loop_mod
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+    from app.harness.types import Dimension, DimensionScore, Evaluation, Mode
+
+    seen = {}
+
+    async def fake_evaluate(client, *, content, dimensions, **kw):
+        seen.update(content=content, dimensions=dimensions, kw=kw)
+        return Evaluation(scores={"d0": DimensionScore(level=2, note="")},
+                          status="complete", weakest=None)
+
+    monkeypatch.setattr(loop_mod, "evaluate", fake_evaluate)
+
+    mode = Mode(key="t", label="t", skill_scope="test_scope",
+                dims=(Dimension("d0", "..."), Dimension("d1", "...")))
+    st = State(mode=mode, ctx=ToolContext(user="u", note_id="n"))
+    st.content = "累积到现在的全部正文"
+    st.facts = ["第一轮查到的", "第二轮查到的"]
+    st.facts_new = ["只有第二轮的"]
+    st.bag["score_context"] = {"核心张力": "张力"}
+
+    asyncio.run(loop_mod._score(st))
+    assert seen["content"] == "累积到现在的全部正文"
+    assert [d.name for d in seen["dimensions"]] == ["d0", "d1"], \
+        "维度要按这个 Mode 实际配的来"
+    assert seen["kw"]["context"] == {"核心张力": "张力"}
 
 
 def test_累积规则只有一个写入方():

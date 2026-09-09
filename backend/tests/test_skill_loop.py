@@ -148,6 +148,6 @@ def test_运行时策略不能把mode给的工具组盖掉(env):
     assert not hasattr(policy, "tool_groups"), "替换语义的字段必须消失"
     assert policy.extra_tool_groups == []
 
-    src = (Path(__file__).resolve().parent.parent / "app" / "harness" / "hooks"
-           / "note.py").read_text(encoding="utf-8")
-    assert "groups = list(st.mode.groups)" in src, "工具组要以 Mode 为准"
+    # 「以 Mode 的组为准、策略只能往上加」这件事本身，由
+    # test_note_hooks.test_策略只能往工具组里加不能替换 直接驱动 prepare()
+    # 验证——那才是行为，这里只钉住「替换语义的字段必须消失」。
