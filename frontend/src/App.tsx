@@ -25,6 +25,7 @@ import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import NoteTree from './components/NoteTree'
+import TabBar, { type Tab } from './components/TabBar'
 import Ribbon, { type RibbonTab } from './components/Ribbon'
 import RightPane, { type PaneTab } from './components/RightPane'
 import SkeletonPanel from './components/SkeletonPanel'
@@ -77,6 +78,16 @@ export default function App() {
   // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
   const [tree, setTree] = useState<TreeRow[]>([])
   const [treeMenu, setTreeMenu] = useState<{ row: TreeRow; at: MenuAt } | null>(null)
+  /** 打开着的标签。**存在 localStorage 里，按用户分**——关掉应用再打开时
+   *  桌面还在，这是桌面应用的基本预期；不存的话每次启动都要重新找回那几篇
+   *  正在写的东西，而「找回来」正是判据 2 要省下的注意力。 */
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    try {
+      const raw = localStorage.getItem('memoket-note-tabs:' + api.getUser())
+      return raw ? (JSON.parse(raw) as Tab[]) : []
+    } catch { return [] }
+  })
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
   // 展开状态不在这儿了——它跟着 branch 存在服务端（见 toggleTreeNode）。
   const [noteQuery, setNoteQuery] = useState('')
   // null = not searching (show `notes` unfiltered); kept separate from
@@ -187,6 +198,62 @@ export default function App() {
     setNotes(list)
     return list
   }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('memoket-note-tabs:' + api.getUser(), JSON.stringify(tabs))
+    } catch { /* 隐私模式下写不了，不值得为它报错 */ }
+  }, [tabs])
+
+  /** 打开一篇笔记时同步标签：已经开着就切过去，没开就新开一个。
+   *
+   *  **不是每打开一篇就无限堆标签**——那样几分钟后标签行就满了。已开的
+   *  复用，是浏览器和 Trilium 共同的做法。 */
+  const syncTab = useCallback((note: Note) => {
+    // **updater 必须是纯函数。** 第一版把 setActiveTabId 写在 setTabs 的
+    // updater 里面——这个文件在别处已经为同一件事写过警告（见 liveContentRef
+    // 上面那段）：React 19 StrictMode 会双调用 updater。实拍的结果是连开三篇
+    // 只出现一个标签。
+    //
+    // 现在这里只管「有没有这个标签」，**哪个是当前**由下面那个 effect 从
+    // current 推导——一个真相，不用两处同步。
+    setTabs((prev) => {
+      const found = prev.find((x) => x.noteId === note.id)
+      if (found) {
+        return found.title === note.title
+          ? prev
+          : prev.map((x) => (x.id === found.id ? { ...x, title: note.title } : x))
+      }
+      return [...prev, { id: 't' + Math.random().toString(36).slice(2, 9),
+                         noteId: note.id, title: note.title }]
+    })
+  }, [])
+
+  // 当前标签从 current 推导。这样「打开笔记」只有一件事要做（syncTab），
+  // 高亮哪个是它的结果，不是又一处要记得同步的状态。
+  useEffect(() => {
+    if (!current) return
+    const tab = tabs.find((x) => x.noteId === current.id)
+    if (tab && tab.id !== activeTabId) setActiveTabId(tab.id)
+  }, [current, tabs, activeTabId])
+
+  /** 关一个标签。关掉当前这个时切到**右边那个**（没有就左边）——跟浏览器
+   *  一致。跳回列表第一篇会让用户失去位置感。 */
+  function closeTab(id: string) {
+    const i = tabs.findIndex((x) => x.id === id)
+    if (i < 0) return
+    const next = tabs.filter((x) => x.id !== id)
+    setTabs(next)
+    if (id !== activeTabId) return
+    const fallback = next[i] ?? next[i - 1] ?? null
+    if (fallback) {
+      const note = notes.find((n) => n.id === fallback.noteId)
+      if (note) void switchTo(note)
+      else setActiveTabId(fallback.id)
+    } else {
+      setActiveTabId(null); setCurrent(null); setTitle(''); setContent('')
+    }
+  }
 
   const reloadTree = useCallback(async () => {
     const rows = await api.getTree()
@@ -486,6 +553,7 @@ export default function App() {
     setRevisions([])
     setTapMeta(null)
     setPausedRun(null)
+    syncTab(n)
     // 找回跑到一半停下来等处置的那次运行。
     //
     // **SSE 流断了之后它就再也找不回来了**——关标签页、后端重启、网络抖一下，
@@ -519,6 +587,13 @@ export default function App() {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
     const timer = setTimeout(() => {
+      if (probe === 'tabs' && notes.length >= 3) {
+        // 连开三篇，看标签行铺开的样子
+        void (async () => {
+          for (const n of notes.slice(0, 3)) { await switchTo(n) }
+        })()
+        return
+      }
       if (probe === 'fact-peek') {
         // 往正文插一条真实的出处，再把鼠标事件打到它上面——CodeMirror 的
         // hoverTooltip 只认真实的 mousemove。
@@ -540,7 +615,10 @@ export default function App() {
       }
     }, 800)
     return () => clearTimeout(timer)
-  }, [tree])
+    // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
+    // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针
+    // 一个都没开出来，查了两轮才发现是这个。
+  }, [tree, notes])
 
   useEffect(() => {
     reload().then((list) => {
@@ -593,11 +671,24 @@ export default function App() {
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
       // ⌘/Ctrl+⇧+F 一键格式化。加 shift 是为了不跟浏览器/编辑器的「查找」撞
       else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
+      // 标签：⌘T 新开、⌘W 关掉当前、⌘1..9 跳到第 n 个。跟浏览器一致，
+      // 不需要学。⌘9 是**最后一个**（不是第九个）——同样是浏览器的约定。
+      else if (key === 't') { e.preventDefault(); newNote() }
+      else if (key === 'w') {
+        e.preventDefault()
+        if (activeTabId) closeTab(activeTabId)
+      } else if (/^[1-9]$/.test(key)) {
+        e.preventDefault()
+        const i = key === '9' ? tabs.length - 1 : Number(key) - 1
+        const tab = tabs[i]
+        const note = tab && notes.find((n) => n.id === tab.noteId)
+        if (note) void switchTo(note)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, title, content])
+  }, [current, title, content, tabs, activeTabId, notes])
 
   /** 把一批建议**直接应用到正文**，然后按 diff 标出来交给「接受 / 撤回」。
    *
@@ -1664,9 +1755,18 @@ export default function App() {
         {/* 标签行。多标签本身还没做（计划 61–75 轮），这里先立出这条 40px 的
             带子：它同时是 macOS 上的窗口拖动区，红绿灯右边那段空白靠它。 */}
         <div className="tab-bar">
-          <span className="muted" style={{ fontSize: 12, paddingInlineStart: 4 }}>
-            {title || '未命名'}
-          </span>
+          <TabBar
+            tabs={tabs}
+            activeId={activeTabId}
+            onSelect={(id) => {
+              const tab = tabs.find((x) => x.id === id)
+              const note = tab && notes.find((n) => n.id === tab.noteId)
+              if (note) void switchTo(note)
+              else setActiveTabId(id)
+            }}
+            onClose={closeTab}
+            onNew={newNote}
+          />
         </div>
         <div className="center-pane">
         <div className="note-pane">

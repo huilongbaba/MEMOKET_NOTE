@@ -214,3 +214,44 @@
   background: var(--accent); color: #fff; font-size: 10px;
   padding: 0 5px; border-radius: 8px; line-height: 15px;
 }
+
+/* ---------------------------------------------------------------- 标签行
+   尺寸取自 Trilium 的 tab_row.ts：100–240px，最窄 48px（再窄就点不准），
+   新建按钮 36px。 */
+.tab-strip {
+  display: flex; align-items: center; gap: 2px;
+  flex: 1; min-width: 0; overflow: hidden;
+}
+.note-tab {
+  display: flex; align-items: center; gap: 4px;
+  width: var(--tab-w, 180px); min-width: 48px;
+  height: 30px; padding: 0 8px; border-radius: 6px 6px 0 0;
+  background: transparent; color: var(--launcher-fg);
+  font-size: 12px; cursor: pointer; user-select: none;
+}
+.note-tab:hover { background: var(--hover-item-bg); }
+.note-tab.active { background: var(--active-tab-bg); color: var(--main-fg); }
+.note-tab-title {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.note-tab-close {
+  flex-shrink: 0; width: 16px; height: 16px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: .45; font-size: 13px; line-height: 1;
+}
+.note-tab:hover .note-tab-close { opacity: .8; }
+.note-tab-close:hover {
+  background: var(--tab-close-hover-bg); color: var(--tab-close-hover-fg); opacity: 1;
+}
+/* 标签很窄时把叉藏起来——不藏的话标题只剩两三个字，反而认不出是哪篇。
+   中键仍然能关。 */
+.note-tab { container-type: inline-size; }
+@container (max-width: 90px) { .note-tab-close { display: none; } }
+
+.note-new-tab {
+  flex-shrink: 0; width: 26px; height: 26px;
+  border: none; border-radius: 6px; background: transparent;
+  color: var(--launcher-fg); cursor: pointer; font-size: 14px;
+}
+.note-new-tab:hover { background: var(--hover-item-bg); color: var(--main-fg); }
