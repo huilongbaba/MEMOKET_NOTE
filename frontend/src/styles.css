@@ -1,9 +1,13 @@
 :root {
-  --bg: #ffffff;
-  --fg: #1a1d21;
+  /* **老变量名指向 Trilium 的令牌**（定义在 shell.css）。
+     保留这一层别名而不是全局改名，是因为这十来个名字散在两千多行 CSS 和
+     几十个组件的内联样式里——一次性改完是一个纯粹的机械风险，而别名让整个
+     应用一步吃到新配色，且随时能对照 shell.css 看每个值的出处。 */
+  --bg: var(--accented-bg);
+  --fg: var(--main-fg);
   --muted: #6b7280;
-  --line: #e5e7eb;
-  --panel: #f9fafb;
+  --line: var(--main-border);
+  --panel: var(--main-bg);
   --accent: #2563eb;
   --ins: #16a34a;
   --ins-bg: #dcfce7;
@@ -12,17 +16,15 @@
 }
 
 @media (prefers-color-scheme: dark) {
+  /* 底色、边框、文字都从 shell.css 的令牌来（见那边的 @media 块）。
+     这里只补它没有的几个语义色。 */
   :root {
-    --bg: #0f1115;
-    --fg: #e5e7eb;
     --muted: #9ca3af;
-    --line: #262b33;
-    --panel: #161a20;
     --accent: #60a5fa;
     --ins: #4ade80;
     --ins-bg: #14351f;
     --del: #f87171;
-    --del-bg: #3b1618;
+    --del-bg: #3b1616;
   }
 }
 

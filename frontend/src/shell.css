@@ -1,0 +1,175 @@
+/* Trilium 的设计令牌 + 我们自己的外壳结构。
+ *
+ * **只搬值，不搬选择器。** theme-next 的 CSS 跟它自己的 DOM
+ * （#root-widget、.fancytree-*、body.layout-*）绑得很死，整段搬过来对不上
+ * 我们的结构，会变成一堆永远不生效的规则——那比不搬更糟，因为下一个人会
+ * 以为主题已经在了。
+ *
+ * 取自 apps/client/src/stylesheets/theme-next-{light,dark}.css。
+ * Trilium 是 AGPL-3.0，本项目同样以 AGPL-3.0 发布，见 docs/desktop-plan.md。
+ */
+
+:root {
+  --root-bg: #e8e8e8;
+  --main-bg: #ffffff;
+  --main-fg: #000000;
+  --main-border: #dbdbdb;
+  --subtle-border: rgba(0, 0, 0, .1);
+  --accented-bg: #f5f5f5;
+  --hover-item-bg: rgba(0, 0, 0, .1);
+  --hover-item-fg: #000000;
+
+  --launcher-bg: #e8e8e8;
+  --launcher-fg: #000000bd;
+  --launcher-hover-fg: #000000;
+  --launcher-hover-bg: #ffffff;
+  --launcher-hover-shadow: 4px 4px 4px rgba(0, 0, 0, .075);
+
+  --left-pane-bg: #f2f2f2;
+  --left-pane-fg: #383838;
+  --left-pane-item-hover-bg: rgba(0, 0, 0, .032);
+  --left-pane-item-selected-bg: #ffffff;
+  --left-pane-item-selected-fg: #000000;
+  --left-pane-item-selected-shadow: 1px 1px 2px rgba(0, 0, 0, .2);
+
+  --active-tab-bg: #ffffff;
+  --tab-close-hover-bg: #c95a5a;
+  --tab-close-hover-fg: #ffffff;
+
+  --right-pane-heading: gray;
+
+  /* 尺寸取自 desktop_layout.tsx：启动栏 53px、标签行 40px。
+     这两个数字是它自己写死的，不是我猜的。 */
+  --launcher-width: 53px;
+  --tab-bar-height: 40px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --root-bg: #1a1a1a;
+    --main-bg: #242424;
+    --main-fg: #cccccc;
+    --main-border: #454545;
+    --subtle-border: #313131;
+    --accented-bg: #555555;
+    --hover-item-bg: #ffffff16;
+    --hover-item-fg: #efefef;
+
+    --launcher-bg: #1a1a1a;
+    --launcher-fg: #909090;
+    --launcher-hover-fg: #ffffff;
+    --launcher-hover-bg: #ffffff1c;
+    --launcher-hover-shadow: 4px 4px 4px rgba(0, 0, 0, .2);
+
+    --left-pane-bg: #1f1f1f;
+    --left-pane-fg: #aaaaaa;
+    --left-pane-item-hover-bg: #ffffff0d;
+    --left-pane-item-selected-bg: #ffffff25;
+    --left-pane-item-selected-fg: #dfdfdf;
+    --left-pane-item-selected-shadow: 1px 1px 2px rgba(0, 0, 0, .6);
+
+    --active-tab-bg: #ffffff1c;
+    --tab-close-hover-bg: #a45353;
+    --right-pane-heading: gray;
+  }
+}
+
+/* ---------------------------------------------------------------- 外壳
+ *
+ * 六块骨架，照 desktop_layout.tsx 的竖版布局：
+ *
+ *   ┌────┬──────────┬──────────────────────────┬────────┐
+ *   │启动│ 快速搜索  │ 标签行                    │        │
+ *   │ 栏 ├──────────┼──────────────────────────┤ 右栏   │
+ *   │53px│ 笔记树    │ 中栏（标题·ribbon·编辑器） │        │
+ *   ├────┴──────────┴──────────────────────────┴────────┤
+ *   │ 状态栏                                             │
+ *   └───────────────────────────────────────────────────┘
+ */
+.shell {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden;
+  background: var(--root-bg); color: var(--main-fg);
+}
+
+.shell-main { display: flex; flex: 1; min-height: 0; }
+
+/* 启动栏。macOS 上顶部留出红绿灯的位置——titleBarStyle: hiddenInset 之后
+   系统按钮画在窗口左上角，不留位置就会压在第一个图标上。 */
+.launcher-pane {
+  width: var(--launcher-width); flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 8px 0;
+  background: var(--launcher-bg); color: var(--launcher-fg);
+  -webkit-app-region: drag;          /* 空白处可拖动窗口 */
+}
+.launcher-pane > * { -webkit-app-region: no-drag; }
+.launcher-top-space { height: 22px; flex-shrink: 0; }   /* 红绿灯 */
+
+.launcher-btn {
+  width: 38px; height: 38px; border: none; border-radius: 8px;
+  background: transparent; color: inherit; cursor: pointer;
+  font-size: 18px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.launcher-btn:hover {
+  background: var(--launcher-hover-bg); color: var(--launcher-hover-fg);
+  box-shadow: var(--launcher-hover-shadow);
+}
+.launcher-btn.active { background: var(--launcher-hover-bg); color: var(--accent); }
+.launcher-spacer { flex: 1; }
+
+/* 左栏 */
+.left-pane {
+  width: 260px; flex-shrink: 0;
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--left-pane-bg); color: var(--left-pane-fg);
+  border-right: 1px solid var(--subtle-border);
+}
+.left-pane-search { padding: 8px; }
+.left-pane-body { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+
+/* 中栏 */
+.rest-pane {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--main-bg);
+}
+.tab-bar {
+  height: var(--tab-bar-height); flex-shrink: 0;
+  display: flex; align-items: center; gap: 2px;
+  padding: 0 6px; background: var(--launcher-bg);
+  -webkit-app-region: drag;
+}
+.tab-bar > * { -webkit-app-region: no-drag; }
+
+.center-pane { flex: 1; min-height: 0; display: flex; }
+.note-pane { flex: 1; min-width: 0; overflow-y: auto; }
+
+/* 右栏 */
+.right-pane {
+  width: 300px; flex-shrink: 0;
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--main-bg);
+  border-left: 1px solid var(--subtle-border);
+}
+.right-pane-heading {
+  color: var(--right-pane-heading); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 8px 10px 4px;
+}
+.right-pane-body { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+
+/* 状态栏 */
+.status-bar {
+  height: 24px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px; padding: 0 10px;
+  background: var(--launcher-bg); color: var(--launcher-fg);
+  font-size: 11px;
+  border-top: 1px solid var(--subtle-border);
+}
+
+/* 启动栏底部的用户切换。UserSwitcher 自己带一行文字，这里把它压成一个
+   窄条，跟上面那排图标对齐。 */
+.launcher-user { font-size: 10px; text-align: center; line-height: 1.2; }
+.launcher-user * { font-size: 10px !important; }

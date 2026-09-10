@@ -1501,7 +1501,7 @@ export default function App() {
   // ---------------------------------------------------------------- 渲染
 
   return (
-    <div className={'app' + (focusMode ? ' focus-mode' : '')}>
+    <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
       {treeMenu && (
         <ContextMenu
           at={treeMenu.at}
@@ -1573,38 +1573,40 @@ export default function App() {
           onClose={() => { if (!selectionBusy) setSelectionMenu(null) }}
         />
       )}
-      {!focusMode && (
-      <div className="col sidebar">
-        <h1>
-          memoket-NOTE{' '}
-          <span
-            className="muted"
-            style={{ fontSize: 12, cursor: 'help' }}
-            title={'⌘K 全局搜索（笔记+知识库）\n⌘N 新建笔记\n⌘S 保存\n⌘. 专注模式\nEsc 关闭弹层'}
-          >
-            ⌘?
-          </span>
-        </h1>
-        <UserSwitcher />
-        {/* 最高频操作放最前面、最显眼——"写作 Skill"/"无限续写"这两个工具类
-           入口挪到侧栏底部的 sidebar-footer 里了（见下面），不再跟这两个
-           抢第一屏。 */}
-        <div className="row" style={{ marginBottom: 8 }}>
-          <button className="primary" style={{ flex: 1 }} onClick={newNote}>
-            + 新建笔记
-          </button>
-          <label className="muted" style={{ fontSize: 18, cursor: 'pointer', padding: '0 4px' }} title="导入 .md 文件为笔记">
-            ⬆
-            <input
-              type="file"
-              accept=".md,.markdown,.txt"
-              style={{ display: 'none' }}
-              onChange={(e) => importMarkdown(e.target.files)}
-            />
-          </label>
-        </div>
+      <div className="shell-main">
+      {/* 启动栏 —— 照 Trilium 的 53px 竖排。放的是**跨笔记的入口**：
+          知识库、Skill、无限续写、设置、用户。判据见 docs/product-north-star.md：
+          记忆是一等公民，不该藏在某个按钮后面的弹层里。 */}
+      <div className="launcher-pane">
+        <div className="launcher-top-space" />
+        <button className="launcher-btn" title="新建笔记（⌘N）" onClick={newNote}>＋</button>
+        <button className="launcher-btn" title="全局搜索：笔记 + 知识库（⌘K）"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}>⌕</button>
+        <label className="launcher-btn" title="导入 .md 文件为笔记" style={{ cursor: 'pointer' }}>
+          ⬆
+          <input type="file" accept=".md,.markdown,.txt" style={{ display: 'none' }}
+                 onChange={(e) => importMarkdown(e.target.files)} />
+        </label>
+        <div className="launcher-spacer" />
+        <button className="launcher-btn" title="写作 Skill"
+                onClick={() => setSkillsPanelOpen(true)}>🧩</button>
+        <button className="launcher-btn" title="无限续写：对着一棵子树自动一段接一段"
+                onClick={openWritingPlan}>🚀</button>
+        <button className="launcher-btn" title="设置：LLM 供应商"
+                onClick={() => setSettingsPanelOpen(true)}>⚙</button>
+        {/* 用户切换放在最底下——对标 Trilium 启动栏底部的 GlobalMenu。 */}
+        <div className="launcher-user"><UserSwitcher /></div>
+      </div>
 
+      {/* 专注模式把左栏收起来——但启动栏留着：那是跨笔记的入口，收掉之后
+          专注模式就等于「什么都点不到」。 */}
+      {!focusMode && (
+      <div className="left-pane">
+        {/* 左栏只放「找笔记」这一件事：快速搜索 + 树。
+            标题、用户切换、新建、导入都挪进了启动栏——照 Trilium：左栏是
+            导航，跨笔记的入口在启动栏。 */}
         {/* 快速搜索在树的上面——照 Trilium 的位置。 */}
+        <div className="left-pane-search">
         <input
           placeholder="搜索笔记标题或正文…（⌘K 全局搜索）"
           value={noteQuery}
@@ -1628,16 +1630,20 @@ export default function App() {
             onContextMenu={(row, at) => setTreeMenu({ row, at })}
           />
         )}
-
-        <div className="sidebar-footer">
-          <button onClick={() => setSkillsPanelOpen(true)}>🧩 Skill</button>
-          <button onClick={openWritingPlan} title="按文件夹自动一段接一段续写">🚀 无限续写</button>
-          <button onClick={() => setSettingsPanelOpen(true)} title="LLM 供应商：本地模型 / GPT">⚙️ 设置</button>
         </div>
       </div>
       )}
 
-      <div className="col">
+      <div className="rest-pane">
+        {/* 标签行。多标签本身还没做（计划 61–75 轮），这里先立出这条 40px 的
+            带子：它同时是 macOS 上的窗口拖动区，红绿灯右边那段空白靠它。 */}
+        <div className="tab-bar">
+          <span className="muted" style={{ fontSize: 12, paddingInlineStart: 4 }}>
+            {title || '未命名'}
+          </span>
+        </div>
+        <div className="center-pane">
+        <div className="note-pane" style={{ padding: 14 }}>
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
@@ -1783,10 +1789,11 @@ export default function App() {
             </p>
           </>
         )}
-      </div>
+        </div>{/* note-pane */}
 
       {!focusMode && (
-      <div className="col">
+      <div className="right-pane">
+        <div className="right-pane-body">
         {verifyFindings && (
           <VerifyPanel findings={verifyFindings} onClose={() => setVerifyFindings(null)} />
         )}
@@ -1830,8 +1837,25 @@ export default function App() {
         )}
         {rightTab === 'memory' && <RelatedMemory content={content} onInsert={insertAtCursor} />}
         {rightTab === 'kb' && <MemoryPanel pendingJob={job} />}
+        </div>{/* right-pane-body */}
       </div>
       )}
+        </div>{/* center-pane */}
+      </div>{/* rest-pane */}
+      </div>{/* shell-main */}
+
+      {/* 状态栏。放**当前在发生什么**——harness 跑到第几轮、后端连没连上。
+          判据 3（高度自动化）要求自动化的过程是看得见的；一个只会转圈的
+          指示器等于什么都没说。 */}
+      <div className="status-bar">
+        <span>{notes.length} 篇笔记</span>
+        {loading === 'note-harness' && noteHarnessStatus && (
+          <span style={{ color: 'var(--accent)' }}>🤖 {noteHarnessStatus}</span>
+        )}
+        {pausedRun && <span style={{ color: 'var(--accent)' }}>⏸ 等你处置</span>}
+        {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
+        <span style={{ marginInlineStart: 'auto' }}>{healthMsg ? '⚠ ' + healthMsg : ''}</span>
+      </div>
     </div>
   )
 }
