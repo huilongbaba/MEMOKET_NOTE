@@ -137,6 +137,10 @@ export default function App() {
   const [reviewEachRound, setReviewEachRound] = useState(false)
   const [pausedRun, setPausedRun] = useState<
     { id: string; noteId: string; mode: 'write' | 'polish' } | null>(null)
+  // 这一轮是不是停在了「等你处置」。**必须是 ref 不是 state**：读它的地方是
+  // runNoteHarness 的 finally，那是个闭包，state 在那里永远是这次运行开始时
+  // 的旧值。
+  const pausedRef = useRef(false)
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
   const [writingPlanFolder, setWritingPlanFolder] = useState<Folder | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
@@ -419,8 +423,12 @@ export default function App() {
       .then((runs) => {
         const mine = runs.find((r) => r.note_id === n.id)
         if (mine) {
-          setPausedRun({ id: mine.id, noteId: n.id, mode: 'write' })
-          setNoteHarnessStatus(`上次写到第 ${mine.round} 轮停下来等你处置`)
+          // 接口本来就返回 mode，原来这里写死成 'write'——一次「打磨」跑出来的
+          // 暂停，恢复之后所有提示都说成「智能续写」。
+          const mode = mine.mode === 'polish' ? 'polish' : 'write'
+          setPausedRun({ id: mine.id, noteId: n.id, mode })
+          setNoteHarnessStatus(
+            `上次${mode === 'polish' ? '打磨' : '智能续写'}写到第 ${mine.round} 轮停下来等你处置`)
         }
       })
       .catch(() => {})
@@ -933,6 +941,7 @@ export default function App() {
         if (reason === 'awaiting_review' && runId) {
           // 这一轮写完了，等你处置。**正文的最终形态由编辑器说了算**——
           // 逐条接受/撤回都在这儿做，点「接着写」时把当前正文送回去。
+          pausedRef.current = true
           setPausedRun({ id: runId, noteId, mode })
           setNoteHarnessStatus('这一轮写完了，逐条看过之后点「接着写」')
           return
@@ -970,6 +979,7 @@ export default function App() {
     setAgentRounds([])
     setRoundDiff(null)
     setPausedRun(null)
+    pausedRef.current = false
     liveContentRef.current = content
     runBaseRef.current = content
     const ctrl = new AbortController()
@@ -987,7 +997,9 @@ export default function App() {
         (mode === 'polish' ? '打磨' : '智能续写') + '失败：' + e, 'error')
     } finally {
       setLoading('')
-      setNoteHarnessStatus('')
+      // 停在「等你处置」时不能清——那句提示刚在 onDone 里设好，清掉就等于
+      // 两个按钮凭空出现、没有任何说明。
+      if (!pausedRef.current) setNoteHarnessStatus('')
       abortRef.current = null
       reload()
       // reload() 会用服务端正文替换文档，docChanged 会把装饰清掉——跑完
@@ -1087,7 +1099,10 @@ export default function App() {
     if (stop) {
       try {
         await api.stopHarness(run.id, kept)
-        setNoteHarnessStatus('已按你处置后的正文收尾')
+        // 用 toast 不用状态行：这一刻 pausedRun 已经清空、loading 也是 ''，
+        // 状态行的两个渲染条件都不成立，写进去没人看得见。
+        setNoteHarnessStatus('')
+        toast('已按你处置后的正文收尾')
       } catch (e) {
         toast('收尾失败：' + e, 'error')
       }
@@ -1648,7 +1663,12 @@ export default function App() {
                 <button onClick={() => resumePausedRun(true)}>到此为止</button>
               </div>
             )}
-            {loading === 'note-harness' && noteHarnessStatus && (
+            {/* **暂停时也要显示。** 原来这里只写了 `loading === 'note-harness'`，
+                而轮末暂停恰恰是 loading 已经复位成 '' 的时刻——于是
+                「这一轮写完了，逐条看过之后点『接着写』」和重开笔记时的
+                「上次写到第 N 轮停下来等你处置」两句话都设了但永远显示不出来。
+                用户只看到两个按钮凭空出现，不知道发生了什么。 */}
+            {(loading === 'note-harness' || pausedRun) && noteHarnessStatus && (
               <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>🤖 {noteHarnessStatus}</p>
             )}
             <div className="row toolbar-secondary" style={{ marginBottom: 10 }}>
@@ -1745,7 +1765,7 @@ export default function App() {
             />
             <AgentActivity
               rounds={agentRounds}
-              status={loading === 'note-harness' ? noteHarnessStatus : ''}
+              status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
               running={loading === 'note-harness'}
             />
 
