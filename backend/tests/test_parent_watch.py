@@ -74,9 +74,15 @@ def test_stdout_断了也照样退(monkeypatch):
         raise BrokenPipeError("管道断了")
 
     monkeypatch.setattr(builtins, "print", boom)
-    parent_watch.watch_parent(4242)          # 不传 on_orphan，走真实退出路径
+    t = parent_watch.watch_parent(4242)      # 不传 on_orphan，走真实退出路径
+    assert t is not None
     for _ in range(100):
         if exited:
             break
         time.sleep(0.01)
     assert exited == [0], "stdout 断了就退不掉了"
+    # **线程必须自己结束。** 不结束的话它会活过这个测试：monkeypatch 还原
+    # 之后它拿到真的 os._exit(0)，把整个 pytest 干掉——退出码 0、输出截断
+    # 在半行，看起来像「跑完了」。实测踩过。
+    t.join(timeout=2)
+    assert not t.is_alive(), "看门狗线程没退，会在后面的测试里开枪"

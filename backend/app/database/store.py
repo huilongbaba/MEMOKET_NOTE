@@ -27,6 +27,34 @@ CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id, updated_at DESC);
 -- CREATE TABLE IF NOT EXISTS is a no-op, so an index on folder_id right
 -- here would reference a column that doesn't exist yet on that table.
 
+-- 一次性迁移的登记处。_ADDED_COLUMNS 那张表只能补列，做不了数据搬运
+-- （把文件夹变成笔记这种），而数据搬运又必须**只跑一次**。
+CREATE TABLE IF NOT EXISTS meta (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL
+);
+
+-- 树的边。**照 Trilium 的模型：notes 表里没有父子关系，全在这儿。**
+--
+-- 一个笔记可以有多条 branch —— 那就是「克隆」：同一篇笔记同时出现在树的
+-- 多个位置，改一处处处都变。这是 Trilium 的招牌特性，也是为什么父子关系
+-- 不能是 notes 表上的一个 parent_id 列。
+--
+-- 「文件夹」不再是一种东西：**任何有子节点的笔记就是文件夹**。
+CREATE TABLE IF NOT EXISTS branches (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL,
+    note_id         TEXT NOT NULL,
+    parent_note_id  TEXT NOT NULL,       -- 'root' 表示挂在树根
+    position        INTEGER NOT NULL DEFAULT 0,
+    is_expanded     INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL,
+    UNIQUE(note_id, parent_note_id)
+);
+CREATE INDEX IF NOT EXISTS idx_branches_parent
+    ON branches(user_id, parent_note_id, position);
+CREATE INDEX IF NOT EXISTS idx_branches_note ON branches(note_id);
+
 CREATE TABLE IF NOT EXISTS folders (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
@@ -205,6 +233,67 @@ _ADDED_COLUMNS = (
 )
 
 
+ROOT_ID = "root"
+"""树根。Trilium 里也是这个字面量——它不是一条真笔记，是「没有父节点」的写法。"""
+
+
+def _migrate_once(conn: sqlite3.Connection, key: str, run) -> bool:
+    """只跑一次的数据搬运。跑过了返回 False。
+
+    跟 `_ADDED_COLUMNS` 分开：那张表是「补一列」，幂等、每次连接跑一遍也
+    没关系；这里是**搬数据**（把文件夹变成笔记），跑第二遍就会把已经搬好的
+    再搬一次。所以要有登记处。
+    """
+    done = conn.execute("SELECT 1 FROM meta WHERE key=?", (key,)).fetchone()
+    if done:
+        return False
+    run(conn)
+    conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                 (key, _now()))
+    conn.commit()
+    return True
+
+
+def _folders_into_tree(conn: sqlite3.Connection) -> None:
+    """把「文件夹 + 笔记」两层结构搬成一棵树。
+
+    照 Trilium 的模型：**文件夹不再是一种东西**，任何有子节点的笔记就是
+    文件夹。所以每个旧文件夹变成一篇笔记（正文为空），原来属于它的笔记
+    变成它的子节点。
+
+    **旧文件夹的 id 直接当新笔记的 id。** 这一点是有意的：``writing_plans``
+    的 folder_id、前端记着的「当前文件夹」、知识库里按 folder 存的东西，
+    全都还指向同一个 id，不用跟着改一遍。
+    """
+    folders = conn.execute(
+        "SELECT id, user_id, name, created_at FROM folders").fetchall()
+    for f in folders:
+        # 同 id 的笔记可能已经存在（重跑、或者手工建过）——不覆盖。
+        if conn.execute("SELECT 1 FROM notes WHERE id=?", (f["id"],)).fetchone():
+            continue
+        conn.execute(
+            "INSERT INTO notes (id, user_id, title, content, pinned, folder_id,"
+            " created_at, updated_at) VALUES (?,?,?,'',0,NULL,?,?)",
+            (f["id"], f["user_id"], f["name"], f["created_at"], f["created_at"]))
+
+    # 每篇笔记挂一条 branch：有 folder_id 的挂到那个（现在是笔记了）下面，
+    # 没有的挂在树根。
+    notes = conn.execute(
+        "SELECT id, user_id, folder_id, created_at FROM notes").fetchall()
+    seen: dict[tuple[str, str], int] = {}
+    for n in notes:
+        parent = n["folder_id"] or ROOT_ID
+        key = (n["user_id"], parent)
+        pos = seen.get(key, 0)
+        seen[key] = pos + 1
+        conn.execute(
+            "INSERT OR IGNORE INTO branches (id, user_id, note_id,"
+            " parent_note_id, position, is_expanded, created_at)"
+            " VALUES (?,?,?,?,?,0,?)",
+            (uuid.uuid4().hex[:12], n["user_id"], n["id"], parent, pos,
+             n["created_at"]))
+
+
 def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_db_path(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -213,6 +302,7 @@ def connect() -> sqlite3.Connection:
         _add_column(conn, table, column, decl)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder "
                  "ON notes(user_id, folder_id, updated_at DESC)")
+    _migrate_once(conn, "folders-into-tree-v1", _folders_into_tree)
     return conn
 
 
@@ -327,6 +417,158 @@ def notes_in_folder(user_id: str, folder_id: str, exclude_id: str = "", limit: i
             "ORDER BY updated_at DESC LIMIT ?",
             (user_id, folder_id, exclude_id, limit)).fetchall()
     return [_note(r) for r in rows]
+
+
+# ---------------------------------------------------------------- 笔记树
+#
+# 照 Trilium 的模型：树的边全在 branches 里，notes 表不存父子关系。一个笔记
+# 有多条 branch 就是「克隆」——同时出现在树的多个位置，改一处处处都变。
+#
+# 这里的函数都只认 branches，不看 notes.folder_id。folder_id 是迁移前的遗物，
+# 迁移之后由 branches 说了算（见 _folders_into_tree）。
+
+
+def _next_position(c: sqlite3.Connection, user_id: str, parent_id: str) -> int:
+    row = c.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM branches"
+                    " WHERE user_id=? AND parent_note_id=?",
+                    (user_id, parent_id)).fetchone()
+    return int(row[0])
+
+
+def attach(user_id: str, note_id: str, parent_id: str = ROOT_ID,
+           position: int | None = None) -> dict:
+    """把一篇笔记挂到某个父节点下面。已经挂过就原样返回那条 branch。
+
+    **同一对 (note, parent) 只能有一条 branch**（表上有 UNIQUE 约束）：
+    同一篇笔记在同一个位置出现两次没有任何意义，而放任它出现会让树里出现
+    两个看起来一样、删一个另一个还在的节点。
+    """
+    with connect() as c:
+        row = c.execute("SELECT * FROM branches WHERE note_id=? AND parent_note_id=?",
+                        (note_id, parent_id)).fetchone()
+        if row:
+            return dict(row)
+        bid = uuid.uuid4().hex[:12]
+        pos = _next_position(c, user_id, parent_id) if position is None else position
+        c.execute("INSERT INTO branches (id, user_id, note_id, parent_note_id,"
+                  " position, is_expanded, created_at) VALUES (?,?,?,?,?,0,?)",
+                  (bid, user_id, note_id, parent_id, pos, _now()))
+        c.commit()
+        return dict(c.execute("SELECT * FROM branches WHERE id=?", (bid,)).fetchone())
+
+
+def detach(user_id: str, note_id: str, parent_id: str) -> bool:
+    """摘掉一条 branch（不删笔记本身）。
+
+    **最后一条不给摘。** 摘掉之后那篇笔记就不在树上的任何位置了，用户再也
+    找不到它，而它还在库里占着——这不是删除，是丢失。要删笔记走 delete_note。
+    """
+    with connect() as c:
+        n = c.execute("SELECT COUNT(*) FROM branches WHERE note_id=? AND user_id=?",
+                      (note_id, user_id)).fetchone()[0]
+        if n <= 1:
+            return False
+        cur = c.execute("DELETE FROM branches WHERE note_id=? AND parent_note_id=?"
+                        " AND user_id=?", (note_id, parent_id, user_id))
+        c.commit()
+        return cur.rowcount > 0
+
+
+def _would_cycle(c: sqlite3.Connection, note_id: str, new_parent: str) -> bool:
+    """把 note 挂到 new_parent 下面会不会成环。
+
+    **必须查。** 树里成环之后，任何一次深度遍历（渲染树、算路径、删子树）
+    都会无限转下去——症状是界面直接卡死，而不是报一个错。
+    """
+    seen = {new_parent}
+    frontier = [new_parent]
+    while frontier:
+        cur = frontier.pop()
+        if cur == note_id:
+            return True
+        for row in c.execute("SELECT parent_note_id FROM branches WHERE note_id=?",
+                             (cur,)):
+            if row[0] not in seen:
+                seen.add(row[0])
+                frontier.append(row[0])
+    return False
+
+
+def move_branch(user_id: str, note_id: str, old_parent: str, new_parent: str,
+                position: int | None = None) -> bool:
+    """把一条 branch 换个父节点。成环就拒绝。"""
+    with connect() as c:
+        if note_id == new_parent or _would_cycle(c, note_id, new_parent):
+            return False
+        if c.execute("SELECT 1 FROM branches WHERE note_id=? AND parent_note_id=?"
+                     " AND user_id=?", (note_id, new_parent, user_id)).fetchone():
+            # 目标位置已经有它了：这次移动等于「从旧位置摘掉」
+            return detach(user_id, note_id, old_parent)
+        pos = _next_position(c, user_id, new_parent) if position is None else position
+        cur = c.execute("UPDATE branches SET parent_note_id=?, position=?"
+                        " WHERE note_id=? AND parent_note_id=? AND user_id=?",
+                        (new_parent, pos, note_id, old_parent, user_id))
+        c.commit()
+        return cur.rowcount > 0
+
+
+def set_expanded(user_id: str, note_id: str, parent_id: str, expanded: bool) -> None:
+    """树节点的展开状态存在库里，不在前端内存里——刷新一次就全收起来的树
+    在几十个节点之后就没法用了。"""
+    with connect() as c:
+        c.execute("UPDATE branches SET is_expanded=? WHERE note_id=? AND"
+                  " parent_note_id=? AND user_id=?",
+                  (1 if expanded else 0, note_id, parent_id, user_id))
+        c.commit()
+
+
+def tree(user_id: str) -> list[dict]:
+    """整棵树的边 + 每个节点的显示信息，一次查完。
+
+    **不做成「按需展开时再查一层」。** 笔记数量在几千这个量级，一次查完是
+    几毫秒的事；而按层查会让「展开一个节点」变成一次网络往返，树用起来就
+    是一顿一顿的。真到了十万节点再说，那时候改的是这一个函数。
+    """
+    with connect() as c:
+        rows = c.execute(
+            "SELECT b.id, b.note_id, b.parent_note_id, b.position, b.is_expanded,"
+            "       n.title, n.pinned, n.updated_at,"
+            "       (SELECT COUNT(*) FROM branches k WHERE k.parent_note_id=b.note_id)"
+            "         AS child_count,"
+            "       (SELECT COUNT(*) FROM branches m WHERE m.note_id=b.note_id)"
+            "         AS branch_count"
+            " FROM branches b JOIN notes n ON n.id = b.note_id"
+            " WHERE b.user_id=? ORDER BY b.parent_note_id, b.position, n.title",
+            (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def note_paths(user_id: str, note_id: str) -> list[list[str]]:
+    """这篇笔记在树上的所有位置，每个位置是一条从根到它的 id 路径（含自己）。
+
+    **是 list 不是单个**：克隆之后一篇笔记同时长在好几个地方，「它在哪」
+    没有唯一答案。面包屑要显示的是用户**当前是从哪条路径点进来的**，所以
+    调用方得自己挑一条。
+    """
+    out: list[list[str]] = []
+    with connect() as c:
+        def walk(nid: str, below: list[str]) -> None:
+            if len(below) > 64:      # 环的兜底；_would_cycle 应该已经挡住了
+                return
+            trail = [nid] + below
+            parents = [r[0] for r in c.execute(
+                "SELECT parent_note_id FROM branches WHERE note_id=? AND user_id=?",
+                (nid, user_id))]
+            if not parents:
+                return               # 不在树上（不该发生，除非数据被外力改过）
+            for parent in parents:
+                if parent == ROOT_ID:
+                    out.append(trail)
+                else:
+                    walk(parent, trail)
+
+        walk(note_id, [])
+    return out
 
 
 # ---------------------------------------------------------------- 文件夹

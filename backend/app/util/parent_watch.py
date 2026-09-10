@@ -49,6 +49,12 @@ def watch_parent(expected_ppid: int, *, on_orphan=None) -> threading.Thread | No
             except Exception:      # noqa: BLE001  管道断了、句柄没了，都不重要
                 pass
             os._exit(0)
+            # 真实情况下上面那行不返回。**但被替换掉时会返回**——测试里把
+            # os._exit 换成记录函数，没有这个 return 的话线程会继续 while True
+            # 转下去；测试结束、monkeypatch 还原之后它拿到的就是真的
+            # os._exit(0)，把 pytest 整个干掉，退出码 0、输出截断在半行。
+            # 实测踩过，症状是「测试跑到一半没了，还说成功」。
+            return
 
     t = threading.Thread(target=loop, name="parent-watchdog", daemon=True)
     t.start()
