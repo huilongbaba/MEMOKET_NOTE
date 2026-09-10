@@ -103,6 +103,9 @@ export default function App() {
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const [locateTick, setLocateTick] = useState(0)
+  // 树菜单「导入到这里…」用的隐藏文件框；记住要挂到哪个节点下面
+  const importInput = useRef<HTMLInputElement>(null)
+  const importUnder = useRef<string>(api.ROOT_ID)
   // 分屏：中栏右侧再开一栏看另一篇（Trilium 的 SplitNoteContainer）。
   // **第二栏是只读的**——「对照着另一篇写」要的是看得见，不是两个光标；
   // 编辑器的状态（正文/骨架/修订/harness）是单实例的，做成可编辑要重构一半的
@@ -578,6 +581,8 @@ export default function App() {
       { label: '在后面插入笔记', icon: '↳',
         onSelect: () => void newNoteUnder(row.parent_note_id) },
       { label: '重命名', icon: '✎', shortcut: 'F2', onSelect: () => void renameNode(row) },
+      { label: '导入 .md 到这里…', icon: '⬆', hint: '多个文件成一棵子树',
+        onSelect: () => { importUnder.current = row.note_id; importInput.current?.click() } },
       { kind: 'sep' },
       { kind: 'header', label: 'AI' },
       // ---- 我们自己的：harness 就在这儿，跟结构操作平级
@@ -1694,17 +1699,17 @@ export default function App() {
    * shouldn't require re-typing it. */
   /** 导入 .md：一个文件就是一篇；**多个文件生成一棵子树**——一个「导入 日期」
    *  的父节点，每个文件是它的子节点。几十篇散在树根上没法收拾。 */
-  async function importMarkdown(files: FileList | null) {
+  async function importMarkdown(files: FileList | null, under: string = api.ROOT_ID) {
     const list = Array.from(files ?? []).filter((f) => /\.(md|markdown|txt)$/i.test(f.name))
     if (list.length === 0) return
     await save()
     const strip = (name: string) => name.replace(/\.(md|markdown|txt)$/i, '')
     if (list.length === 1) {
-      const n = await api.createNote(strip(list[0].name), await list[0].text())
+      const n = await api.createNote(strip(list[0].name), await list[0].text(), under)
       await reload(); await reloadTree()
       open(n); return
     }
-    const parent = await api.createNote(`导入 ${new Date().toISOString().slice(0, 10)}`, `从 ${list.length} 个文件导入。`)
+    const parent = await api.createNote(`导入 ${new Date().toISOString().slice(0, 10)}`, `从 ${list.length} 个文件导入。`, under)
     let first: Note | null = null
     for (const f of list) {
       const n = await api.createNote(strip(f.name), await f.text(), parent.id)
@@ -2105,6 +2110,8 @@ export default function App() {
         <ContextMenu at={tabMenu.at} items={tabMenuItems(tabMenu.tab)} onClose={() => setTabMenu(null)} />
       )}
       {picker && <NotePicker req={picker} rows={tree} />}
+      <input ref={importInput} type="file" accept=".md,.markdown,.txt" multiple style={{ display: 'none' }}
+             onChange={(e) => { void importMarkdown(e.target.files, importUnder.current); e.target.value = '' }} />
       {quick && <QuickView note={quick} onClose={() => setQuick(null)} onOpen={(n) => void switchTo(n)} />}
       {prompt && <TextPrompt req={prompt} />}
       {confirmReq && <ConfirmDialog req={confirmReq} />}
