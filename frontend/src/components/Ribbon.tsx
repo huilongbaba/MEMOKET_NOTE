@@ -17,6 +17,8 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 
+import ContextMenu, { type MenuAt, type MenuItem } from './ContextMenu'
+
 export type RibbonTab = {
   id: string
   title: string
@@ -31,8 +33,11 @@ export type RibbonTab = {
 }
 
 export default function Ribbon({
-  tabs, defaultOpen, noteKey,
-}: { tabs: RibbonTab[]; defaultOpen?: string; noteKey?: string }) {
+  tabs, defaultOpen, noteKey, actions,
+}: { tabs: RibbonTab[]; defaultOpen?: string; noteKey?: string; actions?: MenuItem[] }) {
+  // 右端的三点菜单（Trilium NoteActions）：导出 / 复制 / 专注模式这些低频杂项
+  // 收进来，不跟 magic tap / 智能续写抢同一行的注意力（判据 1 的反面）
+  const [menuAt, setMenuAt] = useState<MenuAt | null>(null)
   // undefined = 收起。收起是默认：正文才是主角，元数据是需要时才展开的东西。
   const [open, setOpen] = useState<string | undefined>(defaultOpen)
 
@@ -63,6 +68,13 @@ export default function Ribbon({
             )}
           </button>
         ))}
+        {actions && actions.length > 0 && (
+          <button className="ribbon-actions" title="更多操作" aria-haspopup="menu"
+                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.right - 200, y: r.bottom + 4 }) }}>
+            ⋯
+          </button>
+        )}
+        {menuAt && actions && <ContextMenu at={menuAt} items={actions} onClose={() => setMenuAt(null)} />}
       </div>
       {open && (
         <div className="ribbon-body" role="tabpanel">

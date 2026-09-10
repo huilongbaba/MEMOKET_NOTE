@@ -40,6 +40,14 @@ CATEGORIES = [
     ("kb:recent", "最近摄入"),
 ]
 
+# 可视化与配套工具，也长在树上——「打开一张图」跟「打开一篇笔记」是同一个
+# 动作。它们没有子节点，前端按 id 决定画什么（KbNoteView）。
+TOOLS = [
+    ("kb:overview", "总览"),
+    ("kb:graph", "主题地图"),
+    ("kb:digest", "定期回顾"),
+]
+
 ETYPE_LABELS = {
     "person": "人", "org": "组织", "product": "产品", "place": "地点",
     "event": "事件", "project": "项目", "": "其他",
@@ -144,7 +152,7 @@ def build(mem) -> list[dict]:
     ]
 
     rows.append(_row(KB_ROOT, "root", "知识库", position=ROOT_POSITION,
-                     child_count=len(CATEGORIES), fact_count=len(facts),
+                     child_count=len(CATEGORIES) + len(TOOLS), fact_count=len(facts),
                      branch_id="kbb:root"))
     counts = {
         "kb:topics": children_of.get("", 0),
@@ -154,6 +162,8 @@ def build(mem) -> list[dict]:
     }
     for i, (cid, label) in enumerate(CATEGORIES):
         rows.append(_row(cid, KB_ROOT, label, position=i, child_count=counts[cid]))
+    for i, (cid, label) in enumerate(TOOLS):
+        rows.append(_row(cid, KB_ROOT, label, position=len(CATEGORIES) + i))
     rows += topic_rows + etype_rows + entity_rows + month_rows + unit_rows
     return rows
 

@@ -8,6 +8,9 @@
  */
 import { useEffect, useState } from 'react'
 
+import DigestPanel from './DigestPanel'
+import MemoryBrowser from './MemoryBrowser'
+
 import {
   factPeek, factSources, kbTreeChildren, notesCiting, recall,
   isFactId, type CitingNote, type Fact, type FactPeek, type SourceLine, type TreeRow,
@@ -24,7 +27,22 @@ type Props = {
 }
 
 export default function KbNoteView(props: Props) {
-  return isFactId(props.id) ? <FactNote {...props} /> : <CollectionNote {...props} />
+  if (isFactId(props.id)) return <FactNote {...props} />
+  // 可视化与配套工具，也是树上的节点：打开一张图跟打开一篇笔记是同一个动作
+  if (props.id === 'kb:overview') return <ToolNote title="总览" icon="▤"><MemoryBrowser embedded initialTab="overview" /></ToolNote>
+  if (props.id === 'kb:graph') return <ToolNote title="主题地图" icon="◉"><MemoryBrowser embedded initialTab="topics" /></ToolNote>
+  if (props.id === 'kb:digest') return <ToolNote title="定期回顾" icon="↻"><DigestPanel /></ToolNote>
+  return <CollectionNote {...props} />
+}
+
+function ToolNote({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+  return (
+    <div className="kb-note" style={{ maxWidth: 'none' }}>
+      <div className="muted kb-note-meta"><span>{icon} 知识库</span></div>
+      <h2 className="kb-note-title">{title}</h2>
+      {children}
+    </div>
+  )
 }
 
 // ----------------------------------------------------------------- 一条事实

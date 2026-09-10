@@ -4,7 +4,7 @@
  * 三件事：起后端、开窗口、退出时收干净。界面本身全在渲染进程里，跟网页版
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
-import { nativeTheme, app, BrowserWindow, dialog, shell } from 'electron'
+import { nativeTheme, app, BrowserWindow, Menu, dialog, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
@@ -115,7 +115,31 @@ async function boot() {
 }
 
 if (forcedTheme) nativeTheme.themeSource = forcedTheme
-app.whenReady().then(boot)
+
+/** 应用菜单。macOS 上没有它，⌘C/⌘V 这些 role 快捷键在 Electron 里不生效；
+ *  缩放三件套（⌘= / ⌘- / ⌘0）也从这里来——照 Trilium 的 zoomIn/Out/Reset。 */
+function installMenu() {
+  const isMac = process.platform === 'darwin'
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' as const },
+    { role: 'editMenu' as const },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'resetZoom' as const, label: '实际大小' },
+        { role: 'zoomIn' as const, label: '放大', accelerator: 'CommandOrControl+=' },
+        { role: 'zoomOut' as const, label: '缩小' },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const },
+        { role: 'toggleDevTools' as const },
+      ],
+    },
+    { role: 'windowMenu' as const },
+  ]))
+}
+
+app.whenReady().then(() => { installMenu(); return boot() })
 
 app.on('window-all-closed', () => {
   // macOS 的习惯是关窗不退出；但后端是这个 app 的子进程，留着它空跑没有意义

@@ -40,8 +40,13 @@ function topicDepths(topics: TopicNode[]): Map<string, number> {
  * 证据回溯是重点——事实表展开一条就按需拉 /facts/{id}/sources，不在列表页
  * 就把每条的原文都查一遍。
  */
-export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('overview')
+export default function MemoryBrowser({ onClose, embedded = false, initialTab = 'overview' }: {
+  onClose?: () => void
+  /** 内嵌进中栏（知识库虚拟节点打开时），不要弹层外壳、不要关闭按钮 */
+  embedded?: boolean
+  initialTab?: Tab
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [stats, setStats] = useState<MemoryStats | null>(null)
   const [topics, setTopics] = useState<TopicNode[]>([])
   const [entities, setEntities] = useState<EntityNode[]>([])
@@ -243,18 +248,24 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
   const maxTimelineCount = Math.max(1, ...timeline.map((b) => Math.max(b.units, b.facts)))
 
   useEffect(() => {
+    if (embedded || !onClose) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, embedded])
+
+  const Shell = ({ children }: { children: React.ReactNode }) => embedded
+    ? <div className="kb-browser">{children}</div>
+    : <div className="modal-backdrop"><div className="modal" style={tab === 'topics' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}>{children}</div></div>
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal" style={tab === 'topics' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}>
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>知识库</h2>
-          <button onClick={onClose}>✕ 关闭</button>
-        </div>
+    <Shell>
+        {!embedded && (
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>知识库</h2>
+            <button onClick={onClose}>✕ 关闭</button>
+          </div>
+        )}
 
         <div className="row" style={{ margin: '10px 0' }}>
           {(['overview', 'topics', 'timeline', 'facts'] as Tab[]).map((t) => (
@@ -499,8 +510,6 @@ export default function MemoryBrowser({ onClose }: { onClose: () => void }) {
             )}
           </div>
         )}
-      </div>
-    </div>
+      </Shell>
   )
 }
-

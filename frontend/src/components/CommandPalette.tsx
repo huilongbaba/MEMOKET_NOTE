@@ -22,7 +22,8 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      // ⌘K 是我们的；⌘J 是 Trilium 的 jumpToNote——给个别名，两边的肌肉记忆都认
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'j')) {
         e.preventDefault()
         setOpen((v) => !v)
       } else if (e.key === 'Escape') {

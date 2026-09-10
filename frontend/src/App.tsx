@@ -28,6 +28,8 @@ import Gutter from './components/Gutter'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle } from './util/displayTitle'
 import { NotePicker, TextPrompt, type PickerRequest, type PromptRequest } from './components/Dialogs'
+import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
+import QuickView from './components/QuickView'
 import type { DropWhere } from './components/NoteTree'
 import NoteKbPanel from './components/NoteKbPanel'
 import NoteTree from './components/NoteTree'
@@ -100,6 +102,10 @@ export default function App() {
   const [picker, setPicker] = useState<PickerRequest | null>(null)
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; at: MenuAt } | null>(null)
+  const [quick, setQuick] = useState<Note | null>(null)
+  // 保存状态角标（Trilium 的 save-status-badge）：存了就说一声、5s 淡出；
+  // 出错变红不淡出。自动保存的产品里留一个「保存」按钮反而暗示「不点就没存」。
+  const [saveStatus, setSaveStatus] = useState<{ at: number; error?: string } | null>(null)
   // 关掉的标签留一个栈，⌘⇧T 找回来（reopenLastTab）。关错标签不该无法挽回。
   const closedTabs = useRef<Tab[]>([])
   // 前进/后退：跳去看一篇旧笔记后要能一键回来（判据 2 的痛点 12）。
@@ -398,6 +404,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbRows])
 
+  // 虚拟节点的标签可能在 kbRows 到之前就开了（恢复的标签、探针），名字还是
+  // 裸 id——数据到了补成真名。
+  useEffect(() => {
+    if (kbRows.length === 0) return
+    setTabs((prev) => {
+      let changed = false
+      const next = prev.map((t) => {
+        if (!api.isVirtualId(t.noteId) || t.title !== t.noteId) return t
+        const r = kbRows.find((x) => x.note_id === t.noteId)
+        if (!r) return t
+        changed = true
+        return { ...t, title: r.title }
+      })
+      return changed ? next : prev
+    })
+  }, [kbRows])
+
   /** 真笔记 + 虚拟子树，一个控件画。虚拟节点的展开状态从本机的集合来。 */
   const allRows = useMemo(() => {
     const virt = [...kbRows, ...Object.values(kbChildren).flat()]
@@ -459,11 +482,25 @@ export default function App() {
   }
 
   /** 树上点了一个节点。 */
-  function openFromTree(id: string) {
+  function openFromTree(id: string, mods?: { alt: boolean }) {
     if (api.isVirtualId(id)) { void openVirtual(id); return }
     const n = notes.find((x) => x.id === id)
-    if (n) void switchTo(n)
+    if (!n) return
+    if (mods?.alt) setQuick(n)     // 不离开当前笔记看一眼（PopupEditor）
+    else void switchTo(n)
   }
+
+  /** 当前在看的东西在树上的路径（面包屑）。克隆时取第一条。 */
+  const crumbs = useMemo(() => {
+    const id = current?.id ?? virtualId
+    if (!id) return [] as TreeRow[]
+    const byNote = new Map<string, TreeRow>()
+    for (const r of allRows) if (!byNote.has(r.note_id)) byNote.set(r.note_id, r)
+    const out: TreeRow[] = []
+    let cur = byNote.get(id); let guard = 0
+    while (cur && guard++ < 50) { out.unshift(cur); cur = byNote.get(cur.parent_note_id) }
+    return out
+  }, [current, virtualId, allRows])
 
   /** 虚拟节点的右键菜单——没有「删除」「移动」这些：它们不是笔记，是知识库
    *  的一个视角。有的是把它带进笔记的动作。 */
@@ -501,6 +538,7 @@ export default function App() {
     return [
       { label: '打开', icon: '↗', shortcut: '↩', onSelect: () => { if (note) void switchTo(note) } },
       { label: '在新标签打开', icon: '⧉', onSelect: () => { if (note) { syncTab(note); void switchTo(note) } } },
+      { label: '快速查看', icon: '👁', hint: '⌥点击', onSelect: () => { if (note) setQuick(note) } },
       { kind: 'sep' },
       { kind: 'header', label: '新建' },
       { label: '插入子笔记', icon: '＋', hint: '成为它的下一级',
@@ -878,6 +916,12 @@ export default function App() {
         // 一条真、一条假（FFF 是合法十六进制，正则认得）——看「找不到」的红提示
         setContent((c) => c + '\n\n据 [terrence-1872-5F8] 所述，另见 [terrence-9999-FFF]。\n')
       }
+      if (probe === 'kb-graph' || probe === 'kb-overview') {
+        setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
+      }
+      if (probe === 'quick-view' && notes.length) {
+        setTimeout(() => setQuick(notes[0]), 800)
+      }
       if (probe === 'picker' && tree.length) {
         // 「移动到…」的选择器
         setTimeout(() => void moveNodeTo(tree[0]), 600)
@@ -958,9 +1002,19 @@ export default function App() {
   async function save() {
     if (!current) return
     if (title === current.title && content === current.content) return
-    const n = await api.saveNote(current.id, title, content)
-    setCurrent(n)
-    await reload()
+    // probe 是给截图摆姿势的：往正文塞的假引用不能落库。只拦自动保存不够——
+    // switchTo / openVirtual 离开笔记前都会走到这里（实拍：三篇笔记各多了几行
+    // 「据 […] 所述」）。
+    if (new URLSearchParams(location.search).get('probe')) return
+    try {
+      const n = await api.saveNote(current.id, title, content)
+      setCurrent(n)
+      setSaveStatus({ at: Date.now() })
+      await reload()
+    } catch (e) {
+      setSaveStatus({ at: Date.now(), error: String(e) })
+      throw e
+    }
   }
 
   // Cmd/Ctrl+S saves explicitly instead of falling through to the browser's
@@ -1949,6 +2003,7 @@ export default function App() {
         <ContextMenu at={tabMenu.at} items={tabMenuItems(tabMenu.tab)} onClose={() => setTabMenu(null)} />
       )}
       {picker && <NotePicker req={picker} rows={tree} />}
+      {quick && <QuickView note={quick} onClose={() => setQuick(null)} onOpen={(n) => void switchTo(n)} />}
       {prompt && <TextPrompt req={prompt} />}
       <Toaster />
       <CommandPalette onOpenNote={switchTo} onInsertFact={insertAtCursor} />
@@ -2121,6 +2176,12 @@ export default function App() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="标题"
             />
+            {saveStatus && (
+              <span key={saveStatus.at} className={'save-status' + (saveStatus.error ? ' error' : '')}
+                    title={saveStatus.error ?? undefined}>
+                {saveStatus.error ? '⚠ 没存上' : '已保存'}
+              </span>
+            )}
           </div>
         )}
         {/* ribbon —— 这篇笔记的元数据。第一件放进来的是**写作骨架**：
@@ -2130,6 +2191,15 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
+            actions={[
+              { label: '导出为 .md', icon: '⬇', onSelect: exportMarkdown },
+              { label: '复制正文', icon: '⧉', onSelect: () => void copyMarkdown() },
+              { label: '存入知识库', icon: '📥', disabled: !content.trim() || loading === 'ingest',
+                hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
+              { kind: 'sep' },
+              { label: focusMode ? '退出专注模式' : '专注模式', icon: '⛶', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },
+              { label: '保存', icon: '💾', shortcut: '⌘S', onSelect: () => void save() },
+            ]}
             defaultOpen={new URLSearchParams(location.search).get('probe') === 'kb-tab' ? 'kb' : undefined}
             tabs={[{
               id: 'skeleton', title: '写作骨架', icon: '◈',
@@ -2156,6 +2226,15 @@ export default function App() {
                 onIngest={ingestCurrentNote}
                 ingesting={loading === 'ingest'}
               />,
+            }, {
+              id: 'paths', title: '路径', icon: '⌘',
+              badge: (tree.find((r) => r.note_id === current.id)?.branch_count ?? 1) > 1
+                ? tree.filter((r) => r.note_id === current.id).length : undefined,
+              body: <NotePathsPanel noteId={current.id} rows={tree}
+                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
+            }, {
+              id: 'info', title: '信息', icon: 'ⓘ',
+              body: <NoteInfoPanel note={current} content={content} row={tree.find((r) => r.note_id === current.id)} />,
             }] as RibbonTab[]}
           />
         )}
@@ -2184,7 +2263,7 @@ export default function App() {
                utilities are real but secondary, so they're visually quieter
                and grouped separately instead of competing for the same
                attention as "continue writing". */}
-            <div className="row" style={{ margin: '10px 0 6px' }}>
+            <div className="row note-actions" style={{ margin: '0 0 6px' }}>
               <button className="primary" onClick={runMagicTap} disabled={loading === 'note-harness'}>
                 {loading === 'tap' ? '■ 停止' : '✨ magic tap 续写'}
               </button>
@@ -2253,14 +2332,6 @@ export default function App() {
             {(loading === 'note-harness' || pausedRun) && noteHarnessStatus && (
               <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>🤖 {noteHarnessStatus}</p>
             )}
-            <div className="row toolbar-secondary" style={{ marginBottom: 10 }}>
-              <button onClick={save}>保存</button>
-              <button onClick={exportMarkdown} title="导出为 .md 文件">⬇ 导出</button>
-              <button onClick={copyMarkdown} title="复制正文到剪贴板">⧉ 复制</button>
-              <button onClick={() => setFocusMode((v) => !v)} title="专注模式（⌘.）">
-                {focusMode ? '⤢ 退出专注' : '⛶ 专注模式'}
-              </button>
-            </div>
 
             {tapMeta && <TapProvenance meta={tapMeta} />}
 
@@ -2381,7 +2452,20 @@ export default function App() {
           判据 3（高度自动化）要求自动化的过程是看得见的；一个只会转圈的
           指示器等于什么都没说。 */}
       <div className="status-bar">
-        <span>{notes.length} 篇笔记</span>
+        {/* 面包屑：当前笔记在树的哪个位置。克隆之后同一篇在多处，这是唯一能
+            说清「你现在看的是哪一份」的东西（Trilium StatusBar 的 Breadcrumb）。 */}
+        <span className="breadcrumb status-crumbs">
+          {crumbs.length === 0
+            ? <span>{notes.length} 篇笔记</span>
+            : crumbs.map((r, i) => (
+              <span key={r.id}>
+                {i > 0 && <span className="muted"> / </span>}
+                {i === crumbs.length - 1
+                  ? <b>{displayTitle(r)}</b>
+                  : <a href="#" onClick={(e) => { e.preventDefault(); openFromTree(r.note_id) }}>{displayTitle(r)}</a>}
+              </span>
+            ))}
+        </span>
         {loading === 'note-harness' && noteHarnessStatus && (
           <span style={{ color: 'var(--accent)' }}>🤖 {noteHarnessStatus}</span>
         )}

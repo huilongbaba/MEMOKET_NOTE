@@ -21,7 +21,7 @@ import { displayTitle } from '../util/displayTitle'
 type Props = {
   rows: TreeRow[]
   activeNoteId: string | null
-  onOpen: (noteId: string) => void
+  onOpen: (noteId: string, mods?: { alt: boolean }) => void
   onToggle: (row: TreeRow) => void
   onContextMenu?: (row: TreeRow, at: { x: number; y: number }) => void
   /** 键盘：Delete 删除、F2 改名；hover 出现的「＋」建子笔记。只对真笔记生效。 */
@@ -152,7 +152,7 @@ export default function NoteTree({
               + (drag?.id === n.id ? ' dragging' : '') + (drop?.id === n.id ? ' drop-' + drop.where : '')}
             // 每级 10px、根再让 12px（theme-next/shell.css:716-723）
             style={{ paddingInlineStart: 12 + n.depth * 10 }}
-            onClick={() => { setFocusKey(n.id); onOpen(n.note_id) }}
+            onClick={(e) => { setFocusKey(n.id); onOpen(n.note_id, { alt: e.altKey }) }}
             draggable={!!onDrop && !virtual}
             onDragStart={(e) => {
               setDrag(n); e.dataTransfer.effectAllowed = 'move'
