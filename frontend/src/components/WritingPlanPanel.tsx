@@ -128,8 +128,12 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
                 {plan.status === 'done' ? '已完成' : '进行中'}
               </span>
               <div className="row" style={{ gap: 6 }}>
+                {/* nowrap 同 App.tsx 那个「逐轮我来定」：中文在 flex 行里能被
+                    压到一个字一行，这个面板更窄，更容易中招。 */}
                 {running && (
-                  <label className="muted" style={{ fontSize: 12, cursor: 'pointer' }}>
+                  <label className="muted"
+                         style={{ fontSize: 12, cursor: 'pointer',
+                                  whiteSpace: 'nowrap', flexShrink: 0 }}>
                     <input type="checkbox" checked={harness.follow} onChange={onToggleFollow} style={{ marginRight: 4 }} />
                     编辑器跟随写作
                   </label>

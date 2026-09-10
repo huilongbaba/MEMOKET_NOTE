@@ -1631,13 +1631,23 @@ export default function App() {
               >
                 ✨ 打磨
               </button>
+              {/* whiteSpace/flexShrink 是承重的，不是装饰。
+                  这个 label 自己是 flex 容器，里面的中文是个**匿名 flex 项**，
+                  而 CJK 可以在任意两个字之间断行——它的 min-content 宽度只有
+                  一个字。同一行放不下时，浏览器会去压这个能压的项，于是
+                  「逐轮我来定」被挤成一列竖排，复选框还跟文字脱了开。
+                  实拍见用户反馈。nowrap 让它整体换行而不是被拆散。 */}
               <label
                 className="muted"
-                style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                style={{
+                  fontSize: 12, display: 'flex', alignItems: 'center', gap: 4,
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
                 title="每轮写完停下来等你逐条接受/撤回。关着的话它一口气跑完，而你在中途做的处置会被下一轮盖掉"
               >
                 <input
                   type="checkbox"
+                  style={{ flexShrink: 0 }}
                   checked={reviewEachRound}
                   onChange={(e) => setReviewEachRound(e.target.checked)}
                   disabled={loading === 'note-harness'}
