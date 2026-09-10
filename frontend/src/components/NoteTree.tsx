@@ -113,6 +113,16 @@ export default function NoteTree({
               {hasKids ? (n.is_expanded ? '▾' : '▸') : ''}
             </span>
             <span className="tree-title">{displayTitle(n)}</span>
+            {/* 跟知识库的连接，树上直接看得见（docs/kb-fusion-design.md）。
+                一眼分出「有据可依的」和「还只是草稿的」。 */}
+            {n.ingested_at && (
+              <span className="tree-badge ingested"
+                    title={`已摄入知识库（${n.ingested_at.slice(0, 10)}）`}>⇡</span>
+            )}
+            {n.cite_count > 0 && (
+              <span className="tree-badge cited"
+                    title={`引用了 ${n.cite_count} 条知识库记录`}>◆{n.cite_count}</span>
+            )}
             {n.branch_count > 1 && (
               // 克隆标记。用户得知道改这一处会让别处跟着变。
               <span className="tree-badge" title={`这篇笔记同时在 ${n.branch_count} 个位置`}>

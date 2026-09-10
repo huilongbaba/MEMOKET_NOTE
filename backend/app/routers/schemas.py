@@ -64,6 +64,11 @@ class TreeRow(BaseModel):
     title: str
     # 正文开头。标题为空或还是「未命名」这种占位符时，树上拿它当显示名。
     preview: str = ""
+    # 跟知识库的连接，树上直接看得见（见 docs/kb-fusion-design.md）：
+    # 引用了几条事实、什么时候被摄入的。一眼看出哪些笔记「有据可依」、
+    # 哪些还只是草稿。
+    cite_count: int = 0
+    ingested_at: str = ""
     pinned: bool = False
     updated_at: str
     child_count: int = 0
@@ -301,6 +306,13 @@ class SourceLineOut(BaseModel):
     date: str = ""
     who: str = ""
     text: str
+
+
+class CitingNoteOut(BaseModel):
+    """引用了某条事实的笔记。右栏「反向链接」用。"""
+    id: str
+    title: str
+    updated_at: str
 
 
 class FactPeekOut(BaseModel):

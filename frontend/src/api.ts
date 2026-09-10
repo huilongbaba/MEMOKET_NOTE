@@ -32,6 +32,11 @@ export type TreeRow = {
   pinned: boolean
   updated_at: string
   child_count: number
+  /** 这篇引用了几条事实。树上画角标——一眼看出哪些笔记「有据可依」、
+   *  哪些还只是草稿。见 docs/kb-fusion-design.md。 */
+  cite_count: number
+  /** 什么时候被摄入进知识库的。空 = 没摄入过。 */
+  ingested_at: string
   /** 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道
    *  改这一处会让别处跟着变。 */
   branch_count: number
@@ -411,6 +416,15 @@ export const factPeek = (id: string) =>
   fetch(`/api/memory/facts/${encodeURIComponent(id)}`, { headers: headers() })
     .then((r) => (r.ok ? (r.json() as Promise<FactPeek>) : null))
 
+/** 引用了某条事实的笔记。右栏「反向链接」用。 */
+export type CitingNote = { id: string; title: string; updated_at: string }
+
+/** **哪些笔记引用了这条事实。** 反查——整个「笔记 × 知识库」融合的关键。
+ *  回答的是「这条事实还活着吗、改了它会影响谁」。对标 Trilium 的 Backlinks。 */
+export const notesCiting = (factId: string) =>
+  fetch(`/api/memory/facts/${encodeURIComponent(factId)}/citing`,
+        { headers: headers() }).then(json<CitingNote[]>)
+
 export type TraceOut = { answer: string; facts: Fact[]; took_ms: number }
 
 export const traceMemory = (passage: string, limit = 10) =>
@@ -507,11 +521,14 @@ export const memoryTimeline = () =>
 
 // ---------------------------------------------------------------- 入库
 
-export const ingestText = (content: string, title = '', source = 'doc') =>
+/** `source_id`：摄入的是哪篇笔记。**摄笔记时必须传**——后端据此在摄入完成
+ *  后给那篇打上「已入库」标记，树上才看得见 ⇡；同时 KITE 用它拼稳定的
+ *  session_id，同一篇重复摄入不会重复入库。 */
+export const ingestText = (content: string, title = '', source = 'doc', source_id = '') =>
   fetch('/api/ingest/text', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, title, source }),
+    body: JSON.stringify({ content, title, source, source_id }),
   }).then(json<{ job_id: string; status: string; detail: string }>)
 
 export const ingestAudio = (file: Blob, filename = 'recording.webm', title = '') => {

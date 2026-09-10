@@ -4,8 +4,9 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import AskIn, AskOut, FactPeekOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
+from .schemas import AskIn, AskOut, CitingNoteOut, FactPeekOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -117,6 +118,18 @@ def fact_peek(fact_id: str, user: str = Depends(current_user)):
         sources=[_clip(s["text"] if isinstance(s, dict) else str(s))
                  for s in mem.fact_sources(fact_id)][:3],
     )
+
+
+@router.get("/facts/{fact_id}/citing", response_model=list[CitingNoteOut])
+def citing_notes(fact_id: str, user: str = Depends(current_user)):
+    """**哪些笔记引用了这条事实。** 反查——整个「笔记 × 知识库」融合的关键。
+
+    回答的是一个真问题：这条事实还活着吗、改了它会影响谁。没有反查，知识库
+    就是个只进不出的仓库。对标 Trilium 右栏的 Backlinks。
+
+    设计见 `docs/kb-fusion-design.md`。
+    """
+    return store.notes_citing(user, fact_id)
 
 
 @router.get("/facts/{fact_id}/sources", response_model=list[SourceLineOut])

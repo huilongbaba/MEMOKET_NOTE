@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
 import * as api from './api'
 import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
@@ -24,6 +24,7 @@ import AgentActivity, { type AgentRound } from './components/AgentActivity'
 import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
+import NoteKbPanel from './components/NoteKbPanel'
 import NoteTree from './components/NoteTree'
 import TabBar, { type Tab } from './components/TabBar'
 import Ribbon, { type RibbonTab } from './components/Ribbon'
@@ -159,6 +160,16 @@ export default function App() {
   const [skillsPanelOpen, setSkillsPanelOpen] = useState(false)
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false)
   const [job, setJob] = useState('')
+
+  /** 正文里引用了哪些事实。跟后端 `store.cited_fact_ids` 用同一条正则——
+   *  两边认的不是同一批，ribbon 的角标和树上的 ◆ 就会对不上。 */
+  const citedIds = useMemo(() => {
+    const re = /\[([A-Za-z0-9_-]+-\d+-[0-9A-Fa-f]+)\]/g
+    const seen = new Set<string>()
+    for (const m of content.matchAll(re)) seen.add(m[1])
+    return [...seen]
+  }, [content])
+
   const [healthMsg, setHealthMsg] = useState('')
   const [focusMode, setFocusMode] = useState(false)
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
@@ -594,6 +605,9 @@ export default function App() {
         })()
         return
       }
+      if (probe === 'kb-tab') {
+        setContent((c) => c + '\n\n据 [terrence-1872-5F8] 所述，另见 [terrence-9999-ZZZ]。\n')
+      }
       if (probe === 'fact-peek') {
         // 往正文插一条真实的出处，再把鼠标事件打到它上面——CodeMirror 的
         // hoverTooltip 只认真实的 mousemove。
@@ -640,6 +654,16 @@ export default function App() {
     }, 300)
     return () => clearTimeout(t)
   }, [noteQuery])
+
+  // 摄入是后台任务。任务结束时刷一次树——不刷的话「已入库」的 ⇡ 要等下次
+  // 打开应用才出现，用户会以为存入没成功、再存一遍。
+  useEffect(() => {
+    if (!job) return
+    const ctrl = new AbortController()
+    api.watchJob(job, () => {}, () => { void reloadTree(); void reload() }, ctrl.signal)
+    return () => ctrl.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job])
 
   const visibleNotes = searchResults ?? notes
 
@@ -814,6 +838,9 @@ export default function App() {
   // 自动保存：停止输入 1.5 秒后落库
   useEffect(() => {
     if (!current) return
+    // probe 是给截图摆姿势的，往正文塞的假引用不能落库——落一次，每次截图
+    // 都会在真实笔记里多一行「据 [...] 所述」。
+    if (new URLSearchParams(location.search).get('probe')) return
     if (title === current.title && content === current.content) return
     const t = setTimeout(save, 1500)
     return () => clearTimeout(t)
@@ -1230,7 +1257,7 @@ export default function App() {
     if (!content.trim()) return
     setLoading('ingest')
     try {
-      const r = await api.ingestText(content, title || '未命名', 'note')
+      const r = await api.ingestText(content, title || '未命名', 'note', current?.id ?? '')
       setJob(r.job_id)
     } catch (e) {
       toast('存入知识库失败：' + e, 'error')
@@ -1776,6 +1803,7 @@ export default function App() {
             用户能看到的就只剩一个转圈的指示器，那等于什么都没说。 */}
         {current && (
           <Ribbon
+            defaultOpen={new URLSearchParams(location.search).get('probe') === 'kb-tab' ? 'kb' : undefined}
             tabs={[{
               id: 'skeleton', title: '写作骨架', icon: '◈',
               badge: beats.length || undefined,
@@ -1788,6 +1816,17 @@ export default function App() {
                   onRun={runSkeleton}
                 />
               ),
+            }, {
+              id: 'kb', title: '知识库', icon: '◆',
+              badge: citedIds.length || undefined,
+              body: <NoteKbPanel
+                citedIds={citedIds}
+                row={tree.find((r) => r.note_id === current.id)}
+                noteId={current.id}
+                onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}
+                onIngest={ingestCurrentNote}
+                ingesting={loading === 'ingest'}
+              />,
             }] as RibbonTab[]}
           />
         )}

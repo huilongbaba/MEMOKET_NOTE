@@ -31,6 +31,22 @@ CREATE TABLE IF NOT EXISTS meta (
     value       TEXT NOT NULL
 );
 
+-- 笔记引用了哪些事实。**整个「笔记 × 知识库」融合的承重墙。**
+--
+-- 方向是双向的：正文里的 `[terrence-1872-5F8]` 是「笔记 → 事实」，而这张表
+-- 让「事实 → 哪些笔记用了我」也查得出来。没有反查，知识库就是个只进不出的
+-- 仓库——而「这条事实还活着吗、改了它影响谁」是个真问题。
+--
+-- **保存笔记时扫正文重建，不给用户维护。** 引用写在正文里，正文才是唯一
+-- 真相；手工维护的关联表迟早跟正文对不上。
+CREATE TABLE IF NOT EXISTS note_citations (
+    note_id  TEXT NOT NULL,
+    fact_id  TEXT NOT NULL,
+    user_id  TEXT NOT NULL,
+    PRIMARY KEY (note_id, fact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_citations_fact ON note_citations(user_id, fact_id);
+
 -- 树的边。**照 Trilium 的模型：notes 表里没有父子关系，全在这儿。**
 --
 -- 一个笔记可以有多条 branch —— 那就是「克隆」：同一篇笔记同时出现在树的
@@ -223,6 +239,9 @@ _ADDED_COLUMNS = (
     # skill_config 是这一版新建的，但真实库里已经跑过一轮，
     # CREATE TABLE IF NOT EXISTS 不会给它补上后加的列。
     ("skill_config", "idx", "INTEGER NOT NULL DEFAULT 0"),
+    # 这篇笔记什么时候被摄入进知识库的。空 = 没摄入过。树上据此标 ⇡，
+    # 一眼看出哪些笔记「有据可依」、哪些还只是草稿。
+    ("notes", "ingested_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -410,6 +429,9 @@ def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | 
             (title, content, _now(), user_id, note_id))
         if cur.rowcount == 0:
             return None
+    # 正文变了就重建引用。**在这里做而不是让调用方记得调**——保存是
+    # 唯一会改正文的入口，放这儿就不会漏；漏一次，反查结果就开始不可信。
+    sync_citations(user_id, note_id, content)
     return get_note(user_id, note_id)
 
 
@@ -490,6 +512,74 @@ def child_notes(user_id: str, parent_id: str, exclude_id: str = "",
             " ORDER BY n.updated_at DESC LIMIT ?",
             (user_id, parent_id, exclude_id, limit)).fetchall()
     return [_note(r) for r in rows]
+
+
+# ------------------------------------------------------- 笔记 × 知识库
+#
+# 双向链接。设计见 docs/kb-fusion-design.md。
+
+import re as _re
+
+# 事实 id 的形状：`<用户>-<数字>-<十六进制>`。跟前端 editor/factCite.ts 里那条
+# **必须一致**——两边认的不是同一批引用的话，树上的角标和正文里的高亮会对不上。
+_CITE = _re.compile(r"\[([A-Za-z0-9_-]+-\d+-[0-9A-Fa-f]+)\]")
+
+
+def cited_fact_ids(content: str) -> list[str]:
+    """正文里引用了哪些事实。去重，保持出现顺序。"""
+    seen: dict[str, None] = {}
+    for m in _CITE.finditer(content or ""):
+        seen.setdefault(m.group(1), None)
+    return list(seen)
+
+
+def sync_citations(user_id: str, note_id: str, content: str) -> list[str]:
+    """按正文重建这篇笔记的引用。返回引用到的事实 id。
+
+    **整篇替换而不是增量。** 用户删掉一句话就等于撤销了那条引用，增量更新
+    会把删掉的引用永远留在表里——那种「幽灵引用」会让反查结果越来越不可信。
+    """
+    ids = cited_fact_ids(content)
+    with connect() as c:
+        c.execute("DELETE FROM note_citations WHERE note_id=? AND user_id=?",
+                  (note_id, user_id))
+        c.executemany(
+            "INSERT OR IGNORE INTO note_citations (note_id, fact_id, user_id)"
+            " VALUES (?,?,?)", [(note_id, f, user_id) for f in ids])
+        c.commit()
+    return ids
+
+
+def notes_citing(user_id: str, fact_id: str) -> list[dict]:
+    """哪些笔记引用了这条事实。**反查——融合的关键。**
+
+    回答的是「这条事实还活着吗、改了它会影响谁」。没有它，知识库就是个只进
+    不出的仓库。对标 Trilium 右栏的 Backlinks。
+    """
+    with connect() as c:
+        rows = c.execute(
+            "SELECT n.id, n.title, n.updated_at FROM note_citations k"
+            " JOIN notes n ON n.id = k.note_id"
+            " WHERE k.user_id=? AND k.fact_id=? ORDER BY n.updated_at DESC",
+            (user_id, fact_id)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def citation_counts(user_id: str) -> dict[str, int]:
+    """每篇笔记引用了几条事实。树上画角标用——一次查完，不要每个节点问一次。"""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT note_id, COUNT(*) AS n FROM note_citations WHERE user_id=?"
+            " GROUP BY note_id", (user_id,)).fetchall()
+    return {r["note_id"]: r["n"] for r in rows}
+
+
+def mark_ingested(user_id: str, note_id: str) -> None:
+    """记下这篇被摄入进知识库了。树上据此标 ⇡。"""
+    with connect() as c:
+        c.execute("UPDATE notes SET ingested_at=? WHERE id=? AND user_id=?",
+                  (_now(), note_id, user_id))
+        c.commit()
 
 
 # ---------------------------------------------------------------- 笔记树
@@ -611,6 +701,11 @@ def tree(user_id: str) -> list[dict]:
             # 默认值），一列二十个「未命名」的树是没法用的。
             # 只取前 80 字：树是导航，不是预览器。
             "       substr(n.content, 1, 80) AS preview,"
+            # 跟知识库的连接，树上直接看得见：引用了几条、摄入过没有。
+            # 一次查完，不要每个节点问一次。
+            "       n.ingested_at,"
+            "       (SELECT COUNT(*) FROM note_citations k"
+            "          WHERE k.note_id = b.note_id) AS cite_count,"
             "       (SELECT COUNT(*) FROM branches k WHERE k.parent_note_id=b.note_id)"
             "         AS child_count,"
             "       (SELECT COUNT(*) FROM branches m WHERE m.note_id=b.note_id)"

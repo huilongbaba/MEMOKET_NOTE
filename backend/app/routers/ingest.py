@@ -51,6 +51,11 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
             # facts 数逐块往上涨，而不是等全部 chunk 跑完才一次性跳到最终值。
             store.set_job(job_id, "running", facts=total)
         store.set_job(job_id, "done", facts=total)
+        # 摄入的是一篇笔记 → 记下来，树上据此标 ⇡（docs/kb-fusion-design.md）。
+        # 放在 done 之后：摄到一半失败的不算摄入过，否则树上会有一个「已入库」
+        # 的标记指着一篇其实没进去的笔记。
+        if source == "note" and source_id:
+            store.mark_ingested(user_id, source_id)
     except Exception as exc:  # 后台任务的异常必须落库，否则前端只看到永远 running
         store.set_job(job_id, "error", detail=f"{type(exc).__name__}: {exc}")
 
