@@ -43,3 +43,9 @@ backend/scripts/writing_bench_results/
 # （众筹计划、团队信息、真实会议里的正文片段）。文件留在磁盘上，只是不再
 # 入库；已经进了历史的那些没动——重写历史是另一回事，要单独决定。
 backend/scripts/harness_quality_samples/
+
+# 桌面版（Electron）
+desktop/node_modules/
+desktop/dist/
+desktop/out/
+frontend/dist/
