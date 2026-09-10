@@ -27,7 +27,7 @@ import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMen
 import Gutter from './components/Gutter'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle } from './util/displayTitle'
-import { NotePicker, TextPrompt, type PickerRequest, type PromptRequest } from './components/Dialogs'
+import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import QuickView from './components/QuickView'
 import type { DropWhere } from './components/NoteTree'
@@ -101,6 +101,8 @@ export default function App() {
   // 应用内对话框（替掉 window.prompt——Electron 里那是系统级模态，主题管不到）
   const [picker, setPicker] = useState<PickerRequest | null>(null)
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
+  const [locateTick, setLocateTick] = useState(0)
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; at: MenuAt } | null>(null)
   const [quick, setQuick] = useState<Note | null>(null)
   // 保存状态角标（Trilium 的 save-status-badge）：存了就说一声、5s 淡出；
@@ -191,8 +193,6 @@ export default function App() {
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
   const [writingPlanParent, setWritingPlanParent] = useState<TreeRow | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
-  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false)
-  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false)
   const [job, setJob] = useState('')
 
   /** 正文里引用了哪些事实。跟后端 `store.cited_fact_ids` 用同一条正则——
@@ -419,7 +419,9 @@ export default function App() {
       })
       return changed ? next : prev
     })
-  }, [kbRows])
+    // tabs 也在依赖里：标签可能在 kbRows 到了**之后**才开（探针、恢复的标签），
+    // 只盯 kbRows 就永远等不到下一次。有 changed 守卫，不会循环。
+  }, [kbRows, tabs])
 
   /** 真笔记 + 虚拟子树，一个控件画。虚拟节点的展开状态从本机的集合来。 */
   const allRows = useMemo(() => {
@@ -470,6 +472,15 @@ export default function App() {
       ? prev
       : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
   }
+
+  // 右栏那些面板没有 openVirtual 的句柄，用一个窗口事件把「打开某个虚拟节点」
+  // 送过来（跟 open-command-palette 同一个模式）。
+  useEffect(() => {
+    const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) void openVirtual(id) }
+    window.addEventListener('open-virtual', on)
+    return () => window.removeEventListener('open-virtual', on)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, virtualId, allRows])
 
   /** 点标签 / ⌘数字 / 关标签后的回退，都走这一条：真笔记就 switchTo，
    *  虚拟节点就 openVirtual。 */
@@ -565,10 +576,32 @@ export default function App() {
         onSelect: () => void detachNode(row) },
       { label: '复制笔记路径', icon: '⌘', onSelect: () => void copyNotePath(row) },
       { kind: 'sep' },
-      { label: '删除（连同子树）', icon: '🗑', danger: true, shortcut: '⌫',
+      { label: row.child_count > 0 ? '删除（连同子树）' : '删除', icon: '🗑', danger: true, shortcut: '⌫',
         hint: row.child_count > 0 ? `会一起删掉 ${row.child_count} 篇` : undefined,
-        onSelect: () => { if (note) remove(note) } },
+        onSelect: () => { if (note) void removeWithSubtree(note, row) } },
     ]
+  }
+
+  /** 删一棵子树之前列出会删掉什么——它会连带删掉看不见的东西，用户在点之前
+   *  不知道会删几篇（Trilium 的 delete_notes 对话框）。单篇仍走乐观删除 + 撤销。 */
+  async function removeWithSubtree(note: Note, row: TreeRow) {
+    const kids = [...subtreeIds(row.note_id)].filter((id) => id !== row.note_id)
+    if (kids.length === 0) { remove(note); return }
+    const names = kids.slice(0, 8).map((id) => '· ' + displayTitle(tree.find((r) => r.note_id === id) ?? { title: id }))
+    const ok = await askConfirm({
+      title: `删除「${displayTitle(row)}」和它下面的 ${kids.length} 篇？`,
+      detail: names.join('\n') + (kids.length > 8 ? `\n· …还有 ${kids.length - 8} 篇` : ''),
+      okLabel: '删除', danger: true,
+    })
+    if (ok) remove(note)
+  }
+
+  /** 折叠整棵树（只折真笔记的 branch；知识库那边清本机集合）。 */
+  async function collapseAll() {
+    const open = tree.filter((r) => r.is_expanded)
+    setTree((prev) => prev.map((r) => ({ ...r, is_expanded: false })))
+    setKbExpanded(new Set())
+    await Promise.all(open.map((r) => api.setBranchExpanded(r.note_id, r.parent_note_id, false).catch(() => {})))
   }
 
   async function newNoteUnder(parentId: string) {
@@ -580,6 +613,8 @@ export default function App() {
   /** 应用内的输入框，Promise 形式——调用处跟原来用 window.prompt 一样直。 */
   const askText = (title: string, initial: string) =>
     new Promise<string | null>((resolve) => setPrompt({ title, initial, resolve: (v) => { setPrompt(null); resolve(v) } }))
+  const askConfirm = (req: Omit<ConfirmRequest, 'resolve'>) =>
+    new Promise<boolean>((resolve) => setConfirmReq({ ...req, resolve: (ok) => { setConfirmReq(null); resolve(ok) } }))
   const askNode = (title: string, exclude: Set<string>) =>
     new Promise<string | null>((resolve) => setPicker({ title, exclude, resolve: (v) => { setPicker(null); resolve(v) } }))
 
@@ -918,6 +953,12 @@ export default function App() {
       }
       if (probe === 'kb-graph' || probe === 'kb-overview') {
         setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
+      }
+      if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+      if (probe === 'confirm' && tree.length) {
+        const parent = tree.find((r) => r.child_count > 0)
+        const n = parent && notes.find((x) => x.id === parent.note_id)
+        if (parent && n) setTimeout(() => void removeWithSubtree(n, parent), 800)
       }
       if (probe === 'quick-view' && notes.length) {
         setTimeout(() => setQuick(notes[0]), 800)
@@ -1629,15 +1670,27 @@ export default function App() {
    * note (not knowledge-base extraction -- that's the separate "存入知识库"
    * / 批量导入 path). Migrating content in from Obsidian/Notion exports etc.
    * shouldn't require re-typing it. */
+  /** 导入 .md：一个文件就是一篇；**多个文件生成一棵子树**——一个「导入 日期」
+   *  的父节点，每个文件是它的子节点。几十篇散在树根上没法收拾。 */
   async function importMarkdown(files: FileList | null) {
-    const file = files?.[0]
-    if (!file) return
-    const text = await file.text()
+    const list = Array.from(files ?? []).filter((f) => /\.(md|markdown|txt)$/i.test(f.name))
+    if (list.length === 0) return
     await save()
-    const title = file.name.replace(/\.(md|markdown|txt)$/i, '')
-    const n = await api.createNote(title, text)
-    await reload()
-    open(n)
+    const strip = (name: string) => name.replace(/\.(md|markdown|txt)$/i, '')
+    if (list.length === 1) {
+      const n = await api.createNote(strip(list[0].name), await list[0].text())
+      await reload(); await reloadTree()
+      open(n); return
+    }
+    const parent = await api.createNote(`导入 ${new Date().toISOString().slice(0, 10)}`, `从 ${list.length} 个文件导入。`)
+    let first: Note | null = null
+    for (const f of list) {
+      const n = await api.createNote(strip(f.name), await f.text(), parent.id)
+      first ??= n
+    }
+    await reload(); await reloadTree()
+    toast(`已导入 ${list.length} 篇，放在「${parent.title}」下面`)
+    open(first ?? parent)
   }
 
   /** 全部接受：只是把标记清掉，正文保持现状。 */
@@ -2005,6 +2058,7 @@ export default function App() {
       {picker && <NotePicker req={picker} rows={tree} />}
       {quick && <QuickView note={quick} onClose={() => setQuick(null)} onOpen={(n) => void switchTo(n)} />}
       {prompt && <TextPrompt req={prompt} />}
+      {confirmReq && <ConfirmDialog req={confirmReq} />}
       <Toaster />
       <CommandPalette onOpenNote={switchTo} onInsertFact={insertAtCursor} />
       {writingPlanParent && (
@@ -2040,8 +2094,7 @@ export default function App() {
           </p>
         </div>
       )}
-      {skillsPanelOpen && <SkillsPanel onClose={() => setSkillsPanelOpen(false)} />}
-      {settingsPanelOpen && <SettingsPanel onClose={() => setSettingsPanelOpen(false)} />}
+
       <input
         ref={filePick}
         type="file"
@@ -2099,16 +2152,18 @@ export default function App() {
                 onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}>⌕</button>
         <label className="launcher-btn" title="导入 .md 文件为笔记" style={{ cursor: 'pointer' }}>
           ⬆
-          <input type="file" accept=".md,.markdown,.txt" style={{ display: 'none' }}
+          <input type="file" accept=".md,.markdown,.txt" multiple style={{ display: 'none' }}
                  onChange={(e) => importMarkdown(e.target.files)} />
         </label>
         <div className="launcher-spacer" />
-        <button className="launcher-btn" title="写作 Skill"
-                onClick={() => setSkillsPanelOpen(true)}>🧩</button>
+        {/* 设置和 Skill 是「特殊笔记」：开标签、进中栏，跟别的笔记一样对待
+            （照 Trilium：选项是隐藏子树里的笔记，不是弹层）。 */}
+        <button className={'launcher-btn' + (virtualId === 'app:skills' ? ' active' : '')} title="写作 Skill"
+                onClick={() => void openVirtual('app:skills', '写作 Skill')}>🧩</button>
         <button className="launcher-btn" title="无限续写：对着一棵子树自动一段接一段"
                 onClick={openWritingPlan}>🚀</button>
-        <button className="launcher-btn" title="设置：LLM 供应商"
-                onClick={() => setSettingsPanelOpen(true)}>⚙</button>
+        <button className={'launcher-btn' + (virtualId === 'app:settings' ? ' active' : '')} title="设置：LLM 供应商"
+                onClick={() => void openVirtual('app:settings', '设置')}>⚙</button>
         <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
                 title={panes.leftOn ? '收起左栏（⌘\\）' : '展开左栏（⌘\\）'}
                 onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}>«</button>
@@ -2144,13 +2199,20 @@ export default function App() {
             activeNoteId={current?.id ?? virtualId}
             onOpen={openFromTree}
             onToggle={(row) => (api.isVirtualId(row.note_id) ? toggleKbNode(row) : void toggleTreeNode(row))}
-            onDelete={(row) => { const n = notes.find((x) => x.id === row.note_id); if (n) remove(n) }}
+            onDelete={(row) => { const n = notes.find((x) => x.id === row.note_id); if (n) void removeWithSubtree(n, row) }}
+            locateTick={locateTick}
             onRename={(row) => void renameNode(row)}
             onNewChild={(row) => void newNoteUnder(row.note_id)}
             onDrop={(d, t, w) => void dropNode(d, t, w)}
             onContextMenu={(row, at) => setTreeMenu({ row, at })}
           />
         )}
+        </div>
+        {/* 底部浮动工具条（note_tree.ts:113-121）：定位到当前笔记 / 折叠全树。
+            「定位」我们尤其需要——克隆意味着同一篇在树上有多处。 */}
+        <div className="tree-actions">
+          <button className="icon-btn" title="定位到当前笔记" onClick={() => setLocateTick((v) => v + 1)}>⌖</button>
+          <button className="icon-btn" title="折叠全部" onClick={() => void collapseAll()}>⇈</button>
         </div>
       </div>
       )}
@@ -2242,7 +2304,11 @@ export default function App() {
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
-          virtualId ? (
+          virtualId === 'app:settings' ? (
+            <div className="kb-note"><h2 className="kb-note-title">⚙️ 设置</h2><SettingsPanel embedded /></div>
+          ) : virtualId === 'app:skills' ? (
+            <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title">🧩 写作 Skill</h2><SkillsPanel embedded /></div>
+          ) : virtualId ? (
             <KbNoteView
               id={virtualId}
               rows={allRows}

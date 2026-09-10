@@ -30,6 +30,8 @@ type Props = {
   onNewChild?: (row: TreeRow) => void
   /** 拖拽：把 drag 放到 target 的前面 / 后面 / 里面。只对真笔记生效。 */
   onDrop?: (drag: TreeRow, target: TreeRow, where: DropWhere) => void
+  /** 底部工具条「定位到当前笔记」：每次 +1 就滚一次（克隆意味着同一篇多处，用户会找不到自己在哪） */
+  locateTick?: number
 }
 
 export type DropWhere = 'before' | 'after' | 'over'
@@ -70,7 +72,7 @@ function flatten(rows: TreeRow[]): Node[] {
 }
 
 export default function NoteTree({
-  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop,
+  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop, locateTick,
 }: Props) {
   const nodes = useMemo(() => flatten(rows), [rows])
   const rootRef = useRef<HTMLDivElement>(null)
@@ -92,8 +94,8 @@ export default function NoteTree({
   // 克隆意味着同一篇在树上有多处，滚到**第一处**。
   useEffect(() => {
     const el = rootRef.current?.querySelector<HTMLElement>('.tree-node.active')
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [activeNoteId])
+    el?.scrollIntoView({ block: locateTick ? 'center' : 'nearest' })
+  }, [activeNoteId, locateTick])
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (!focused || e.metaKey || e.ctrlKey || e.altKey) return

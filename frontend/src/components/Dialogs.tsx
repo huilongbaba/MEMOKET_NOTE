@@ -113,3 +113,35 @@ export function TextPrompt({ req }: { req: PromptRequest }) {
     </div>
   )
 }
+
+
+// ------------------------------------------------------------ 确认一下
+
+export type ConfirmRequest = {
+  title: string
+  detail?: string
+  okLabel?: string
+  danger?: boolean
+  resolve: (ok: boolean) => void
+}
+
+/** 只给**看不见后果**的动作用（删一棵子树会连带删掉看不见的东西）。单篇
+ *  删除走的是乐观删除 + 撤销，比确认框好——别把这个用滥了。 */
+export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
+  const btn = useRef<HTMLButtonElement>(null)
+  useEffect(() => { btn.current?.focus() }, [])
+  return (
+    <div className="palette-backdrop" onMouseDown={() => req.resolve(false)}>
+      <div className="palette" role="alertdialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}
+           onKeyDown={(e) => { if (e.key === 'Escape') req.resolve(false) }}>
+        <div style={{ fontWeight: 600, padding: '2px 4px 4px' }}>{req.title}</div>
+        {req.detail && <div className="muted" style={{ fontSize: 13, padding: '0 4px 8px', whiteSpace: 'pre-wrap' }}>{req.detail}</div>}
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
+          <button onClick={() => req.resolve(false)}>取消</button>
+          <button ref={btn} className="primary" style={req.danger ? { background: 'var(--del)', borderColor: 'var(--del)' } : undefined}
+                  onClick={() => req.resolve(true)}>{req.okLabel ?? '确定'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}

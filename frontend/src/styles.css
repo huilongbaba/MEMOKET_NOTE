@@ -117,8 +117,6 @@ input, textarea {
 textarea { resize: vertical; }
 
 .app { display: grid; grid-template-columns: 220px 1fr 340px; height: 100vh; }
-.app.focus-mode { grid-template-columns: 1fr; }
-.app.focus-mode .col { max-width: 760px; margin: 0 auto; width: 100%; }
 /* min-width: 0 is load-bearing, not decoration -- CSS Grid items default to
    min-width: auto, which means a track never shrinks below its content's
    intrinsic width. A long unbroken CM6 line (or any long word) was pushing
@@ -662,3 +660,14 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   background: var(--main-bg);
 }
 .kb-browser { display: flex; flex-direction: column; gap: 8px; }
+
+
+/* ------------------------------------------------ 树底部工具条 / 内嵌面板 */
+.tree-actions {
+  position: absolute; bottom: 8px; inset-inline-end: 10px; display: flex; gap: 2px;
+  padding: 2px; border-radius: 20px; background: var(--left-pane-bg);
+  box-shadow: 0 1px 4px rgba(0,0,0,var(--shadow-opacity)); opacity: .55; transition: opacity 200ms;
+}
+.tree-actions:hover { opacity: 1; }
+.left-pane { position: relative; }
+.embedded-panel { max-width: 720px; }

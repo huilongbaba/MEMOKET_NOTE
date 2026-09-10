@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createTopic, factSources, listClusters, memoryEntities, memoryFacts, memoryStats,
   memoryTimeline, memoryTopics, topicEntityLinks,
@@ -47,6 +47,16 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   initialTab?: Tab
 }) {
   const [tab, setTab] = useState<Tab>(initialTab)
+  // 内嵌进中栏时图随容器宽——写死 900 在窄栏里会横向溢出、在宽屏上又留一大块白
+  const graphHost = useRef<HTMLDivElement>(null)
+  const [graphW, setGraphW] = useState(900)
+  useEffect(() => {
+    const el = graphHost.current
+    if (!el || !embedded) return
+    const ro = new ResizeObserver(() => setGraphW(Math.max(320, Math.floor(el.clientWidth))))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [embedded, tab])
   const [stats, setStats] = useState<MemoryStats | null>(null)
   const [topics, setTopics] = useState<TopicNode[]>([])
   const [entities, setEntities] = useState<EntityNode[]>([])
@@ -382,6 +392,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
               </div>
             </div>
 
+            <div ref={graphHost} />
             <KnowledgeGraph
               topics={graphTopics}
               entities={graphEntities}
@@ -396,8 +407,8 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
                 }
                 filterByTopic(code)
               }}
-              width={graphSize.w}
-              height={graphSize.h}
+              width={embedded ? graphW : graphSize.w}
+              height={embedded ? Math.max(420, Math.round(graphW * 0.62)) : graphSize.h}
             />
           </div>
         )}

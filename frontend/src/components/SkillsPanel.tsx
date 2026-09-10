@@ -12,7 +12,7 @@ const EMPTY_FORM: SkillIn = { name: '', description: '', scopes: [], content: ''
  * 可以自建。请求的具体内容在哪些调用点生效由 scopes 决定——排序用上下
  * 箭头挪动，不是拖拽，够用且不用额外引入 DnD 依赖。
  */
-export default function SkillsPanel({ onClose }: { onClose: () => void }) {
+export default function SkillsPanel({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
   const [skills, setSkills] = useState<Skill[]>([])
   const [scopes, setScopes] = useState<SkillScope[]>([])
   const [loading, setLoading] = useState(true)
@@ -170,17 +170,19 @@ export default function SkillsPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="palette-backdrop" onClick={onClose}>
+    <div className={embedded ? 'embedded-panel' : 'palette-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
-        className="modal"
-        style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
+        className={embedded ? '' : 'modal'}
+        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
                 maxWidth: 720, width: '92vw', maxHeight: '84vh', overflowY: 'auto', padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>🧩 写作 Skill</h2>
-          <button onClick={onClose}>✕</button>
-        </div>
+        {!embedded && (
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>🧩 写作 Skill</h2>
+            <button onClick={onClose}>✕</button>
+          </div>
+        )}
         <p className="muted" style={{ fontSize: 13, margin: '6px 0 12px' }}>
           每条 skill 是叠加在某个生成动作（续写/校验/重写…）基础规则之后的额外指令，可以开关、排序、自建。
         </p>

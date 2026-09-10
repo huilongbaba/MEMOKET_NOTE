@@ -7,7 +7,6 @@ import {
 import type { Fact, FactDetail, JobOut, ProfileEntry } from '../api'
 import { toast } from '../toast'
 import DigestPanel from './DigestPanel'
-import MemoryBrowser from './MemoryBrowser'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
@@ -33,7 +32,6 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [notionToken, setNotionToken] = useState('')
   const [importing, setImporting] = useState(false)
   const [apple, setApple] = useState<{ available: boolean; reason: string } | null>(null)
-  const [browsing, setBrowsing] = useState(false)
   const [profile, setProfile] = useState<ProfileEntry[]>([])
   const [newPref, setNewPref] = useState('')
   const [addingPref, setAddingPref] = useState(false)
@@ -166,13 +164,13 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>知识库</h2>
-        <button onClick={() => setBrowsing(true)}>浏览</button>
+        <button onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:overview' }))}
+                title="在标签里打开知识库总览">浏览</button>
       </div>
       <p className="muted">
         {stats ? `${stats.facts} 条事实 · ${stats.entities} 个实体` : '加载中…'}
         {working && <> · <span className="spinner" /> 抽取中</>}
       </p>
-      {browsing && <MemoryBrowser onClose={() => setBrowsing(false)} />}
 
       <DigestPanel />
 

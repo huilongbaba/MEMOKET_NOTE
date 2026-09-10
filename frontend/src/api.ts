@@ -6,7 +6,6 @@ export type Note = {
   title: string
   content: string
   pinned: boolean
-  folder_id: string | null
   /** 写作骨架跟着笔记走。之前只活在前端内存里，换一篇/刷新/无限续写自动
    * 跟随切页就没了——而 harness 每轮都拿它当主线依据。 */
   spine: string
@@ -433,7 +432,9 @@ export const factPeek = (id: string) =>
 // 节点 id 以 `kb` 开头——前端靠这个认出「这不是一篇真笔记」。
 
 export const KB_ROOT = 'kb'
-export const isVirtualId = (id: string) => id === KB_ROOT || id.startsWith('kb:')
+/** `app:` 是应用自己的特殊笔记（设置 / Skill），照 Trilium 的「选项是隐藏子树里的笔记」——
+ *  开标签、进中栏，跟别的笔记一样对待。 */
+export const isVirtualId = (id: string) => id === KB_ROOT || id.startsWith('kb:') || id.startsWith('app:')
 export const isFactId = (id: string) => id.startsWith('kb:fact:')
 
 /** 分类层：根 + 主题树 + 实体 + 月份 + 最近会议。事实不在里面，展开时再取。 */

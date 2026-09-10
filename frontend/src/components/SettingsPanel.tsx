@@ -11,7 +11,7 @@ import { toast } from '../toast'
  * API key、按量计费，但通常快很多——两者的取舍留给用户自己判断，这里
  * 只负责让切换这件事简单、随时能切回去。
  */
-export default function SettingsPanel({ onClose }: { onClose: () => void }) {
+export default function SettingsPanel({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [cfg, setCfg] = useState<ProviderConfig | null>(null)
@@ -52,17 +52,19 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="palette-backdrop" onClick={onClose}>
+    <div className={embedded ? 'embedded-panel' : 'palette-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
-        className="modal"
-        style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
+        className={embedded ? '' : 'modal'}
+        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
                 maxWidth: 480, width: '92vw', padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>⚙️ 设置</h2>
-          <button onClick={onClose}>✕</button>
-        </div>
+        {!embedded && (
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>⚙️ 设置</h2>
+            <button onClick={onClose}>✕</button>
+          </div>
+        )}
 
         {loading ? (
           <p className="muted"><span className="spinner" /> 加载中…</p>

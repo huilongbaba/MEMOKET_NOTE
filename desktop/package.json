@@ -49,7 +49,8 @@
           ]
         }
       ],
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.icns"
     },
     "linux": {
       "target": [
