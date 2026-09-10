@@ -78,6 +78,31 @@ def citations_hold(st: State) -> Verdict | None:
     )
 
 
+def citations_exist(st: State) -> Verdict | None:
+    """正文里 ``[事实 id]`` 形式的引用，每一个都得真的存在。
+
+    跟 citations_hold 的区别：那条是模糊文本匹配（模型自报），这条是确定性的
+    ——id 要么在这轮的材料里、要么在知识库里查得到，否则就是编的。可自动修：
+    摘掉那个编造的 ``[id]``，正文其他部分不动。
+    """
+    from ...database.kite.kite_memory import UserMemory
+    from .citations import cited_ids, dangling_citations, strip_citations
+    if not cited_ids(st.content):
+        return None
+    user = getattr(st.ctx, "user", "")
+    mem = UserMemory(user) if user else None
+    exists = (lambda fid: mem.fact_by_id(fid) is not None) if mem else (lambda _fid: False)
+    bad = dangling_citations(st.content, st.facts, exists)
+    if not bad:
+        return None
+    return Verdict(
+        pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
+        f"引用了 {len(bad)} 条不存在的事实（{', '.join(bad[:3])}）。只引用材料里列出的编号，"
+        "不要自己编——一个像真的一样的引用比不引用更糟。",
+        fix=lambda text: strip_citations(text, bad),
+    )
+
+
 def material_used(st: State) -> Verdict | None:
     """Facts were retrieved and none of them made it into the text.
 

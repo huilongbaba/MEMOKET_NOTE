@@ -42,7 +42,7 @@ _META_SENT = re.compile(_MECHANISM.pattern + "|" + _AUDIT_VOICE.pattern)
 
 # 事实文本前面的元信息前缀，比对时要剥掉：``[2026-04-10] 正文……``、
 # ``[terrence-2046-2F3] 正文……``、以及工具输出里的 ``（日期 · 说话人 · 类型）``
-_META_PREFIX = re.compile(r"^\[[^\]]{1,40}\]\s*")
+_META_PREFIX = re.compile(r"^(?:\[[^\]]{1,40}\]\s*)+")
 _META_SUFFIX = re.compile(r"（[^）]{0,60}）\s*$")
 
 # 太常见、出现在哪都不说明问题的词，不能拿它们判"用上了"

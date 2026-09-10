@@ -25,6 +25,21 @@ TAIL_CHARS = 600
 TAIL_CHARS_FOR_HARNESS = 300
 
 
+def format_fact(r: dict) -> str:
+    """一条事实喂给写作 prompt 的样子：``[id] [日期] 正文``。
+
+    **id 在最前面**，跟 agent 工具输出（memory_tools._fmt_facts）同一种形态——
+    模型在两条路径上看到的材料得长得一样。id 是让它能在正文里引用
+    （``…定在 6 月 30 日 [terrence-1872-5F8]``）：这个 ``[id]`` 正是
+    ``store.cited_fact_ids`` 认的东西，也是树上 ◆N、行内 peek、反向链接的
+    数据来源。没有 id 就退回原来的 ``[日期] 正文``。
+    """
+    d = (r.get("date") or r.get("when") or "").strip()
+    fid = (r.get("id") or "").strip()
+    head = (f"[{fid}] " if fid else "") + (f"[{d}] " if d else "")
+    return head + r["text"]
+
+
 def retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8,
               title: str = "", anchor_first: bool = False):
     """用正文尾部 + spine/beats 作为检索线索。返回 (事实文本列表, 对应 fact id 列表, 耗时毫秒)。
@@ -61,6 +76,5 @@ def retrieve(user: str, content: str, spine: str, beats: list[str], limit: int =
     # 日期键在这条路径上是 ``date``（execute_plan 的行），不是 ``when``。
     texts = []
     for r in hits:
-        d = (r.get("date") or r.get("when") or "").strip()
-        texts.append(f"[{d}] {r['text']}" if d else r["text"])
+        texts.append(format_fact(r))
     return texts, [r.get("id", "") for r in hits], took

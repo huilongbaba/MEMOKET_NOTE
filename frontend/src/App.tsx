@@ -215,7 +215,7 @@ export default function App() {
   /** 正文里引用了哪些事实。跟后端 `store.cited_fact_ids` 用同一条正则——
    *  两边认的不是同一批，ribbon 的角标和树上的 ◆ 就会对不上。 */
   const citedIds = useMemo(() => {
-    const re = /\[([A-Za-z0-9_-]+-\d+-[0-9A-Fa-f]+)\]/g
+    const re = /\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]/g
     const seen = new Set<string>()
     for (const m of content.matchAll(re)) seen.add(m[1])
     return [...seen]

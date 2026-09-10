@@ -904,6 +904,7 @@ check 拿得到 `State`，就在候选里挑这个 Mode 认识的那个。
 | `grounding.py` | `no_placeholder` | 「（此处待补充）」这类占位符 |
 | | `no_audit_voice` | 审计腔：说证据够不够而不是说事 |
 | | `citations_hold` | 引用的事实标记确实存在（**R6**，`check_citations` 终于接上） |
+| | `citations_exist` | 正文里 `[事实 id]` 形式的引用每一个都查得到（材料里或知识库里），编造的自动摘掉。确定性的，跟树上 ◆N / 行内 peek 认同一条正则 |
 
 ---
 
@@ -1852,7 +1853,7 @@ cd docs/_research/prototype && python3 test_harness_proto.py
 | `compose_block.py` | 607 | **186** | 认模式、装 State、图片转表格、restructure |
 
 搬出去的东西进了 `app/harness/`：一份 `loop.py`、13 个 middleware、
-3 组 hooks、8 个 Mode、9 条 check、21 个工具。
+3 组 hooks、8 个 Mode、10 条 check、21 个工具。
 
 > 这几个数字有 `tests/test_doc_counts.py` 盯着——**写在文档里的数字必然
 > 会过期**。这一行原来写着「31 个文件、3193 行」，那是改造刚落地时的快照，

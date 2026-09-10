@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 /** 跟 factCite.ts 里那条保持一致——形状写死是为了不把普通方括号误标。 */
-const CITE = /\[([A-Za-z0-9_-]+-\d+-[0-9A-Fa-f]+)\]/g
+const CITE = /\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]/g
 
 function ids(text: string): string[] {
   CITE.lastIndex = 0
@@ -45,4 +45,9 @@ describe('出处标记的形状', () => {
     const line = '甲[a-1-A]乙[b-2-B]丙[c-3-C]'
     expect(ids(line)).toHaveLength(3)
   })
+})
+
+
+it('方括号里的日期不是引用（01 是合法十六进制，旧正则会误认）', () => {
+  expect(ids('[2026-01-01] 开会，见 [terrence-1872-5F8]')).toEqual(['terrence-1872-5F8'])
 })

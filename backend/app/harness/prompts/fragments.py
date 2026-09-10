@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 def profile_block(profile: list[str]) -> str:
     return "【个人偏好】\n" + "\n".join(f"- {p}" for p in profile) if profile else ""
@@ -53,6 +55,10 @@ def heading_format_reminder() -> str:
     )
 
 
+# 材料开头的事实 id：``[terrence-2046-2F3] …``。跟 store._CITE / 前端 factCite 同一形状。
+_FACT_ID = re.compile(r"^\[[A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+\]")
+
+
 def facts_block(facts: list[str]) -> str:
     """检索到的事实那一块。没有事实就返回空串，由调用方决定丢不丢。
 
@@ -63,7 +69,14 @@ def facts_block(facts: list[str]) -> str:
     """
     if not facts:
         return ""
-    return "【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts)
+    block = "【知识库中的相关事实】\n" + "\n".join(f"- {f}" for f in facts)
+    if any(_FACT_ID.match(f) for f in facts):
+        # 引用规则只在材料真的带 id 时才说——没有 id 的材料（工具的多跳结果、
+        # 原话回溯）说了也照不了办，反而诱导它编一个。
+        block += ("\n\n引用规则：每条开头的 [编号] 是这条事实的 id。正文里用到某条事实时，"
+                  "在那句话末尾**原样照抄**它的 [编号]（例：「…定在 6 月 30 日 [terrence-1872-5F8]」）。"
+                  "只引用上面列出的编号，不要自己编；一句话用到几条就带几个。")
+    return block
 
 
 def content_block(content: str, empty: str = "") -> str:

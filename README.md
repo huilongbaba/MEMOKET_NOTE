@@ -164,7 +164,7 @@ LLM_MODEL=gpt-4.1-mini
 |---|---|
 | `GET/POST/PUT/DELETE /api/notes` | 笔记 CRUD（新建时同时挂到树上） |
 | `GET /api/tree` · `POST/DELETE /api/tree/branches` · `PATCH .../move` `.../reorder` `.../expanded` · `GET .../paths/{id}` | 笔记树：整棵拿全（带引用数/摄入标记）、克隆、摘除、移动、拖拽重排、展开、一篇在树上的所有路径。**没有文件夹这种东西**——有子节点的笔记就是文件夹 |
-| `GET /api/kb/tree` · `GET /api/kb/tree/children?node=` | 知识库的虚拟子树：分类层一次给全，展开一个分类时才取它名下的事实 |
+| `GET /api/kb/tree` · `GET /api/kb/tree/children` | 知识库的虚拟子树：分类层一次给全，展开一个分类时才取它名下的事实 |
 | `GET /api/memory/facts/{id}` · `.../citing` | 一条事实（行内出处浮层用，找不到 404）· 哪些笔记引用了它（反向链接） |
 | `POST /api/skeleton` | 线 1：生成写作骨架 |
 | `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |

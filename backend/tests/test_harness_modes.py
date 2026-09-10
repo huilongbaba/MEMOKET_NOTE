@@ -199,14 +199,14 @@ def test_每条check打翻的维度这个mode真的有():
     from app.harness.tools import ToolContext
 
     # 一段同时踩中全部九条判据的输入。before 是一份大纲、after 有收尾小节、
-    # bag 里挂着一条对不上的引用——这三样是后加的：**第一版只喂了正文**，
+    # bag 里挂着一条对不上的引用、正文里带一个编造的 [事实 id]——这几样是后加的：**第一版只喂了正文**，
     # 于是 citations_hold / no_audit_voice / outline_intact / tail_clashes
     # 四条一次都没触发，下面那条「维度对不对」的断言对它们完全是空转的。
     # 一条永远返回 None 的坏判据能安然通过。所以现在既查维度，也查触发。
     BEFORE = "## 一、背景\n\n## 二、现状\n\n## 三、问题\n\n## 四、方案\n\n"
     AFTER = "## Next steps\n\n收尾在这儿。\n"
     CONTENT = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
-               "现有材料不足以说明这一点。\n"
+               "现有材料不足以说明这一点 [u-999-FF]。\n"
                "```mermaid\nxychart-beta\n bar [1,2]\n```\n"
                "## Summary\n收个尾。\n")
 

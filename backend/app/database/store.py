@@ -522,7 +522,8 @@ import re as _re
 
 # 事实 id 的形状：`<用户>-<数字>-<十六进制>`。跟前端 editor/factCite.ts 里那条
 # **必须一致**——两边认的不是同一批引用的话，树上的角标和正文里的高亮会对不上。
-_CITE = _re.compile(r"\[([A-Za-z0-9_-]+-\d+-[0-9A-Fa-f]+)\]")
+# 用户名段以字母开头：不然 [2026-01-01] 这种日期也会被当成引用（01 是合法十六进制）。
+_CITE = _re.compile(r"\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]")
 
 
 def cited_fact_ids(content: str) -> list[str]:

@@ -16,7 +16,7 @@ import dataclasses
 from .types import Dimension
 
 from .checks import grounding_rules as grounding_check
-from .checks import (charts_from_tools, citations_hold, heading_fits,
+from .checks import (charts_from_tools, citations_exist, citations_hold, heading_fits,
                      material_used, no_audit_voice, no_fake_charts,
                      no_placeholder, outline_intact, tail_clashes)
 from .middleware import Compact, Repair, Replan, Runtime, Save
@@ -408,7 +408,7 @@ NOTE = Mode(
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
-            material_used),
+            citations_exist, material_used),
     stop_when=(material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
     extra_mw=(Revise(), Repair(), Runtime(), Replan(), Compact(), Save()),
@@ -422,7 +422,7 @@ SECTION = Mode(
     groups=("memory", "skill"),
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
-    checks=(no_placeholder, no_audit_voice, citations_hold, material_used),
+    checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, material_used),
     stop_when=(material_used_up, pause_for_review),
     extra_mw=(Revise(), Repair(), Compact(), Save()),
     # Measured cap, not a completion criterion: a section that keeps

@@ -15,14 +15,15 @@ thing that breaks a run.
 """
 
 from .charts import charts_from_tools, no_fake_charts
-from .grounding import (citations_hold, material_used, no_audit_voice,
-                        no_placeholder)
+from .grounding import (citations_exist, citations_hold, material_used,
+                        no_audit_voice, no_placeholder)
 from .pick import pick_dimension
 from .structure import heading_fits, outline_intact, tail_clashes
 
 __all__ = [
     "pick_dimension",
     "charts_from_tools",
+    "citations_exist",
     "citations_hold",
     "heading_fits",
     "material_used",
