@@ -27,12 +27,14 @@ export type PaneTab = {
   /** 没内容也留在标签条上。见上面注释里说的「条自己变形」。 */
   alwaysShown?: boolean
   hasContent?: boolean
+  /** hasContent 为 false 时内容区说一句为什么是空的，别留白。 */
+  emptyHint?: string
   body: ReactNode
 }
 
 export default function RightPane({
-  ambient, tabs, defaultTab,
-}: { ambient: ReactNode; tabs: PaneTab[]; defaultTab: string }) {
+  ambient, tabs, defaultTab, onCollapse,
+}: { ambient: ReactNode; tabs: PaneTab[]; defaultTab: string; onCollapse?: () => void }) {
   const shown = tabs.filter((t) => t.alwaysShown || t.hasContent !== false)
   const [active, setActive] = useState(defaultTab)
   const current = shown.find((t) => t.id === active) ?? shown[0]
@@ -57,8 +59,18 @@ export default function RightPane({
             )}
           </button>
         ))}
+        {/* 右端动作区：任何宽度下都完整可点（RightPanelContainer.css:110-145） */}
+        {onCollapse && (
+          <span className="right-pane-actions">
+            <button className="icon-btn" title="收起右栏（⌘⇧\\）" onClick={onCollapse}>»</button>
+          </span>
+        )}
       </div>
-      <div className="right-pane-body" role="tabpanel">{current?.body}</div>
+      <div className="right-pane-body" role="tabpanel">
+        {current?.hasContent === false
+          ? <p className="muted" style={{ fontSize: 12 }}>{current.emptyHint ?? '这篇还没有这一项的内容。'}</p>
+          : current?.body}
+      </div>
     </>
   )
 }

@@ -471,11 +471,25 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 
 .tree-expander {
   flex-shrink: 0; width: 14px; text-align: center;
-  color: var(--muted); font-size: 10px; line-height: 1;
+  color: var(--muted); font-size: 12px; line-height: 1;
+  opacity: .65; transition: opacity 300ms;
   /* 叶子节点也占同样的宽度：不占的话同一层的标题会因为「有没有孩子」
      而左右错开，树看起来是歪的。 */
 }
+.tree-node:hover .tree-expander { opacity: 1; transition-duration: 150ms; }
 .tree-expander:not(.leaf):hover { color: var(--fg); }
+/* 键盘焦点行。跟激活态分开：焦点是「方向键走到哪」，激活是「打开的是哪篇」 */
+.note-tree:focus-visible { outline: none; }
+.note-tree:focus-visible .tree-node.focused { box-shadow: inset 0 0 0 1px var(--focus-ring); }
+/* hover 才出现的圆形「＋」（theme-next/shell.css:843-867） */
+.tree-item-button {
+  flex-shrink: 0; width: 20px; height: 20px; padding: 0; margin-inline-end: 2px;
+  border: none; border-radius: 50%; background: var(--left-pane-item-action-bg);
+  color: var(--left-pane-fg); font-size: 13px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity 200ms, background 200ms;
+}
+.tree-node:hover .tree-item-button { opacity: 1; }
+.tree-item-button:hover { background: var(--left-pane-item-action-hover-bg); }
 
 .tree-title {
   flex: 1; min-width: 0;
@@ -543,7 +557,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .tree-badge.ingested { color: var(--muted); opacity: .8; }
 
 /* ------------------------------------------------ 知识库：虚拟子树 + 只读笔记 */
-.tree-icon { flex-shrink: 0; font-size: 10px; color: var(--muted); width: 12px; }
+.tree-icon { flex-shrink: 0; font-size: 11px; color: var(--left-pane-icon); width: 14px; margin-inline-end: 3px; text-align: center; }
 
 .kb-note { max-width: 760px; display: flex; flex-direction: column; gap: 14px; }
 .kb-note-meta { display: flex; gap: 6px; align-items: center; font-size: 12px; }

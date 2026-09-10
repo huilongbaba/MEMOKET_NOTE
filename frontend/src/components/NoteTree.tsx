@@ -12,7 +12,7 @@
  * · **行高 2.4em、圆角 5px**（取自 Trilium 的 tree.css）：这个高度是给鼠标
  *   拖拽留的余量，压到 1.6em 之后拖放的命中率会明显变差。
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { TreeRow } from '../api'
 import { ROOT_ID, isFactId, isVirtualId } from '../api'
@@ -24,6 +24,10 @@ type Props = {
   onOpen: (noteId: string) => void
   onToggle: (row: TreeRow) => void
   onContextMenu?: (row: TreeRow, at: { x: number; y: number }) => void
+  /** 键盘：Delete 删除、F2 改名；hover 出现的「＋」建子笔记。只对真笔记生效。 */
+  onDelete?: (row: TreeRow) => void
+  onRename?: (row: TreeRow) => void
+  onNewChild?: (row: TreeRow) => void
 }
 
 type Node = TreeRow & { depth: number }
@@ -61,9 +65,58 @@ function flatten(rows: TreeRow[]): Node[] {
 }
 
 export default function NoteTree({
-  rows, activeNoteId, onOpen, onToggle, onContextMenu,
+  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild,
 }: Props) {
   const nodes = useMemo(() => flatten(rows), [rows])
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // 键盘焦点落在哪一行（roving tabindex）。默认跟着当前笔记；用户用方向键
+  // 挪开后各走各的——Trilium 也是「焦点」和「激活」两个概念。
+  const [focusKey, setFocusKey] = useState<string | null>(null)
+  const focused = nodes.find((n) => n.id === focusKey)
+    ?? nodes.find((n) => n.note_id === activeNoteId) ?? nodes[0]
+
+  // 切换笔记后把激活行滚进视口（note_tree.ts:393-397 的 scrollOfs 100）。
+  // 克隆意味着同一篇在树上有多处，滚到**第一处**。
+  useEffect(() => {
+    const el = rootRef.current?.querySelector<HTMLElement>('.tree-node.active')
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [activeNoteId])
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (!focused || e.metaKey || e.ctrlKey || e.altKey) return
+    const i = nodes.indexOf(focused)
+    const go = (n: Node | undefined) => { if (n) { setFocusKey(n.id); e.preventDefault() } }
+    switch (e.key) {
+      case 'ArrowDown': go(nodes[i + 1]); break
+      case 'ArrowUp': go(nodes[i - 1]); break
+      case 'ArrowRight':
+        e.preventDefault()
+        if (focused.child_count > 0 && !focused.is_expanded) onToggle(focused)
+        else go(nodes[i + 1]?.depth === focused.depth + 1 ? nodes[i + 1] : undefined)
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        if (focused.child_count > 0 && focused.is_expanded) onToggle(focused)
+        else go(nodes.slice(0, i).reverse().find((n) => n.depth === focused.depth - 1))
+        break
+      case 'Enter': case ' ': e.preventDefault(); onOpen(focused.note_id); break
+      case 'Delete': case 'Backspace':
+        if (onDelete && !isVirtualId(focused.note_id)) { e.preventDefault(); onDelete(focused) }
+        break
+      case 'F2':
+        if (onRename && !isVirtualId(focused.note_id)) { e.preventDefault(); onRename(focused) }
+        break
+      case 'Home': go(nodes[0]); break
+      case 'End': go(nodes[nodes.length - 1]); break
+    }
+  }
+
+  // 焦点行随键盘移动时也要滚进视口
+  useEffect(() => {
+    if (!focusKey) return
+    rootRef.current?.querySelector<HTMLElement>('.tree-node.focused')?.scrollIntoView({ block: 'nearest' })
+  }, [focusKey])
 
   if (nodes.length === 0) {
     return <p className="muted" style={{ fontSize: 13, padding: '8px 4px' }}>
@@ -72,23 +125,33 @@ export default function NoteTree({
   }
 
   return (
-    <div className="note-tree" role="tree">
+    <div className="note-tree" role="tree" ref={rootRef} tabIndex={0} onKeyDown={onKeyDown}>
       {nodes.map((n) => {
         const active = n.note_id === activeNoteId
         const hasKids = n.child_count > 0
+        const virtual = isVirtualId(n.note_id)
         return (
           <div
             key={n.id}
             role="treeitem"
             aria-expanded={hasKids ? n.is_expanded : undefined}
             aria-selected={active}
-            className={'tree-node' + (active ? ' active' : '')}
-            style={{ paddingInlineStart: 4 + n.depth * 16 }}
-            onClick={() => onOpen(n.note_id)}
+            className={'tree-node' + (active ? ' active' : '') + (focused?.id === n.id ? ' focused' : '')}
+            // 每级 10px、根再让 12px（theme-next/shell.css:716-723）
+            style={{ paddingInlineStart: 12 + n.depth * 10 }}
+            onClick={() => { setFocusKey(n.id); onOpen(n.note_id) }}
             onContextMenu={(e) => {
               if (!onContextMenu) return
               e.preventDefault()
+              setFocusKey(n.id)
               onContextMenu(n, { x: e.clientX, y: e.clientY })
+            }}
+            // 只在文字真被截断时才给 tooltip（note_tree.ts:329-353），
+            // 否则每行都弹一个悬浮框很烦
+            onMouseEnter={(e) => {
+              const title = e.currentTarget.querySelector<HTMLElement>('.tree-title')
+              if (title && title.scrollWidth > title.clientWidth) e.currentTarget.title = title.textContent ?? ''
+              else e.currentTarget.removeAttribute('title')
             }}
           >
             <span
@@ -98,11 +161,11 @@ export default function NoteTree({
             >
               {hasKids ? (n.is_expanded ? '▾' : '▸') : ''}
             </span>
-            {/* 知识库那棵虚拟子树的节点带图标：事实 ◆、分类 ▤。真笔记不带——
-                Trilium 的树也是只给特殊类型的笔记配图标。 */}
-            {isVirtualId(n.note_id) && (
-              <span className="tree-icon" aria-hidden>{isFactId(n.note_id) ? '◆' : '▤'}</span>
-            )}
+            {/* 图标：真笔记 叶子 = 文档 / 有子节点 = 文件夹（notes.ts:140-143）；
+                知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
+            <span className="tree-icon" aria-hidden>
+              {virtual ? (isFactId(n.note_id) ? '◆' : '▤') : (hasKids ? '▣' : '▢')}
+            </span>
             <span className="tree-title">{displayTitle(n)}</span>
             {n.fact_count > 0 && !isFactId(n.note_id) && (
               <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
@@ -123,7 +186,13 @@ export default function NoteTree({
                 ⧉
               </span>
             )}
-            {hasKids && !isVirtualId(n.note_id) && <span className="tree-count">{n.child_count}</span>}
+            {hasKids && !virtual && <span className="tree-count">{n.child_count}</span>}
+            {/* hover 才出现的「＋ 建子笔记」。建笔记是最高频动作，藏在右键里
+                成本太高（note_tree.ts:1875-1941 的 add-note-button）。 */}
+            {onNewChild && !virtual && (
+              <button className="tree-item-button" title="新建子笔记"
+                      onClick={(e) => { e.stopPropagation(); onNewChild(n) }}>＋</button>
+            )}
           </div>
         )
       })}

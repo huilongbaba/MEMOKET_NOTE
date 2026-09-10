@@ -24,6 +24,7 @@ import AgentActivity, { type AgentRound } from './components/AgentActivity'
 import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
+import Gutter from './components/Gutter'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle } from './util/displayTitle'
 import NoteKbPanel from './components/NoteKbPanel'
@@ -187,6 +188,21 @@ export default function App() {
 
   const [healthMsg, setHealthMsg] = useState('')
   const [focusMode, setFocusMode] = useState(false)
+  // 左右栏各自可拖宽、可独立折叠，按用户存本机（Trilium 存 leftPaneWidth /
+  // rightPaneWidth / leftPaneVisible，我们同一套思路）。focusMode 保留为
+  // 「两个都收」的快捷方式。
+  const [panes, setPanes] = useState(() => {
+    const d = { leftW: 260, rightW: 340, leftOn: true, rightOn: true }
+    try {
+      const raw = localStorage.getItem('memoket-note-panes:' + api.getUser())
+      return raw ? { ...d, ...(JSON.parse(raw) as Partial<typeof d>) } : d
+    } catch { return d }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('memoket-note-panes:' + api.getUser(), JSON.stringify(panes)) } catch { /* 无所谓 */ }
+  }, [panes])
+  const leftShown = !focusMode && panes.leftOn
+  const rightShown = !focusMode && panes.rightOn
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   const [selectionBusy, setSelectionBusy] = useState(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
@@ -836,6 +852,9 @@ export default function App() {
       if (key === 's') { e.preventDefault(); save() }
       else if (key === 'n') { e.preventDefault(); newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
+      // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
+      else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => ({ ...p, rightOn: !p.rightOn })) }
+      else if (key === '\\') { e.preventDefault(); setPanes((p) => ({ ...p, leftOn: !p.leftOn })) }
       // ⌘/Ctrl+⇧+F 一键格式化。加 shift 是为了不跟浏览器/编辑器的「查找」撞
       else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
       // 标签：⌘T 新开、⌘W 关掉当前、⌘1..9 跳到第 n 个。跟浏览器一致，
@@ -1891,14 +1910,17 @@ export default function App() {
                 onClick={openWritingPlan}>🚀</button>
         <button className="launcher-btn" title="设置：LLM 供应商"
                 onClick={() => setSettingsPanelOpen(true)}>⚙</button>
+        <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
+                title={panes.leftOn ? '收起左栏（⌘\\）' : '展开左栏（⌘\\）'}
+                onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}>«</button>
         {/* 用户切换放在最底下——对标 Trilium 启动栏底部的 GlobalMenu。 */}
         <div className="launcher-user"><UserSwitcher /></div>
       </div>
 
       {/* 专注模式把左栏收起来——但启动栏留着：那是跨笔记的入口，收掉之后
           专注模式就等于「什么都点不到」。 */}
-      {!focusMode && (
-      <div className="left-pane">
+      {leftShown && (
+      <div className="left-pane" style={{ width: panes.leftW }}>
         {/* 左栏只放「找笔记」这一件事：快速搜索 + 树。
             标题、用户切换、新建、导入都挪进了启动栏——照 Trilium：左栏是
             导航，跨笔记的入口在启动栏。 */}
@@ -1923,6 +1945,9 @@ export default function App() {
             activeNoteId={current?.id ?? virtualId}
             onOpen={openFromTree}
             onToggle={(row) => (api.isVirtualId(row.note_id) ? toggleKbNode(row) : void toggleTreeNode(row))}
+            onDelete={(row) => { const n = notes.find((x) => x.id === row.note_id); if (n) remove(n) }}
+            onRename={(row) => void renameNode(row)}
+            onNewChild={(row) => void newNoteUnder(row.note_id)}
             onContextMenu={(row, at) => setTreeMenu({ row, at })}
           />
         )}
@@ -1930,7 +1955,15 @@ export default function App() {
       </div>
       )}
 
+      {leftShown && (
+        <Gutter side="left" onResize={(dx) => setPanes((p) => ({ ...p, leftW: Math.max(150, Math.min(600, p.leftW + dx)) }))} />
+      )}
+
       <div className="rest-pane">
+        {!rightShown && !focusMode && (
+          <button className="right-pane-reopen" title="展开右栏（⌘⇧\\）"
+                  onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}>»</button>
+        )}
         <div className="center-pane">
         <div className="note-pane">
         {/* 标题行固定在滚动区之上（Trilium 的 title-row 是 ScrollingContainer
@@ -2133,12 +2166,16 @@ export default function App() {
         </div>{/* note-scroll */}
         </div>{/* note-pane */}
 
-      {!focusMode && (
-      <div className="right-pane">
+      {rightShown && (
+        <Gutter side="right" onResize={(dx) => setPanes((p) => ({ ...p, rightW: Math.max(180, Math.min(700, p.rightW + dx)) }))} />
+      )}
+      {rightShown && (
+      <div className="right-pane" style={{ width: panes.rightW }}>
         {verifyFindings && (
           <VerifyPanel findings={verifyFindings} onClose={() => setVerifyFindings(null)} />
         )}
         <RightPane
+          onCollapse={() => setPanes((p) => ({ ...p, rightOn: false }))}
           defaultTab="outline"
           // 常驻区：边写边浮现的召回。判据 2——点一下标签虽然没离开页面，但那
           // 是一次**主动检索**，用户得先想起「我该查一下」；被动浮现的召回在
