@@ -153,6 +153,10 @@ export default function App() {
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   const [selectionBusy, setSelectionBusy] = useState(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
+  /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
+   *  不该离开这一页，弹层要么盖住正文、要么关掉就没了。 */
+  const [trace, setTrace] = useState<
+    { answer: string; facts: api.Fact[]; at: string } | null>(null)
 
   const editorViewRef = useRef<EditorView | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -632,6 +636,12 @@ export default function App() {
       if (action === 'verify') {
         const r = await api.verifySelection(content, selection)
         setVerifyFindings(r.findings)
+      } else if (action === 'trace') {
+        // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
+        // 问题由后端拼（判据 1）。结果落在右栏的「来龙去脉」标签里，
+        // 不是弹层：判据 2，看一条旧记录不该离开这一页。
+        const r = await api.traceMemory(selection)
+        setTrace({ answer: r.answer, facts: r.facts, at: new Date().toISOString() })
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection)
         if (r.revisions.length === 0) toast('模型认为不需要补充上下文。')
@@ -1850,6 +1860,23 @@ export default function App() {
                   onRun={() => {}}
                 />
               ) },
+            { id: 'trace', title: '来龙去脉', hasContent: !!trace,
+              badge: trace?.facts.length || undefined,
+              body: trace ? (
+                <div className="stack">
+                  <p style={{ margin: 0, lineHeight: 1.6 }}>{trace.answer}</p>
+                  {trace.facts.map((f) => (
+                    <div key={f.id} className="card" style={{ fontSize: 12 }}>
+                      <span className="muted">{f.when}</span>
+                      <div>{f.text}</div>
+                      <button style={{ fontSize: 11, marginTop: 4 }}
+                              onClick={() => insertAtCursor(`[${f.id}] ${f.text}\n`)}>
+                        插入到正文
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null },
             { id: 'kb', title: '知识库', alwaysShown: true,
               body: <MemoryPanel pendingJob={job} /> },
           ] as PaneTab[]}

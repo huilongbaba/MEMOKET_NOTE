@@ -5,7 +5,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database.kite.kite_memory import UserMemory
-from .schemas import AskIn, AskOut, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
+from .schemas import AskIn, AskOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -93,9 +93,47 @@ def timeline(user: str = Depends(current_user)):
     return TimelineOut(buckets=[TimelineBucket(**b) for b in UserMemory(user).timeline()])
 
 
-@router.post("/ask", response_model=AskOut)
+@router.post("/trace", response_model=AskOut)
+def trace(body: TraceIn, user: str = Depends(current_user)):
+    """**来龙去脉**：给一段正文，回它涉及的事情按时间怎么演进的。
+
+    这是 `ask` 那条能力的**封装**，也是它现在唯一的对外入口。判据 1
+    （docs/product-north-star.md）：
+
+      > 所有「AI 协助」的功能封装成一个按钮，按钮能完成用户预期的功能执行，
+      > 无需再反复和 AI 交互。
+      > **界面上出现聊天输入框，就是我们没把意图封装好。**
+
+    所以问题**由这里拼**，用户一个字都不写——他只是选中了一段，然后点了
+    「来龙去脉」。
+
+    对应的是痛点 13：把零散笔记汇总时「AI 根本捋不清楚时间线」。KITE 的
+    planning 恰好擅长时序，之前却藏在一个要用户自己想怎么问的输入框后面。
+    """
+    passage = body.passage.strip()
+    if not passage:
+        raise HTTPException(400, "没有选中内容")
+    # 太长的选区对时序检索没有帮助，反而会把主语淹掉——取前后各一段。
+    head = passage[:400]
+    question = (f"围绕下面这段内容涉及的事情，按时间顺序说明它是怎么演进的，"
+                f"每条都要带上日期：\n\n{head}")
+    t0 = time.perf_counter()
+    text, facts = UserMemory(user).ask(question, limit=body.limit)
+    return AskOut(
+        answer=text,
+        facts=[FactOut(id=f["id"], text=f["text"], when=f["date"],
+                       kind=f["kind"], sources=f["sources"]) for f in facts],
+        took_ms=round((time.perf_counter() - t0) * 1000, 1),
+    )
+
+
+@router.post("/ask", response_model=AskOut, include_in_schema=False)
 def ask(body: AskIn, user: str = Depends(current_user)):
-    """显式提问。同步 def —— FastAPI 会丢到线程池，不阻塞事件循环。
+    """自由提问。**不再有对外的入口**——留着是因为 /trace 和以后别的封装
+    动作都建在它上面，而它自己那个「用户自己想怎么问」的交互正是判据 1 要
+    消灭的东西（见 /trace 的注释）。
+
+    同步 def —— FastAPI 会丢到线程池，不阻塞事件循环。
 
     注意这个接口很慢（本地模型上约 40-50s），前端要给明确的等待反馈。
     写作路径请用 /recall，那条是零 LLM 的。

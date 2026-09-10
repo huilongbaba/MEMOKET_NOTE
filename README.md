@@ -144,11 +144,12 @@ LLM_MODEL=gpt-4.1-mini
 
 | 端点 | 说明 |
 |---|---|
-| `GET/POST/PUT/DELETE /api/notes` | 笔记 CRUD |
+| `GET/POST/PUT/DELETE /api/notes` | 笔记 CRUD（新建时同时挂到树上） |
+| `GET /api/tree` · `POST/DELETE /api/tree/branches` · `PATCH .../move` `.../expanded` | 笔记树：整棵拿全、克隆、摘除、移动、展开。**没有文件夹这种东西**——有子节点的笔记就是文件夹 |
 | `POST /api/skeleton` | 线 1：生成写作骨架 |
 | `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |
 | `POST /api/memory/recall` | 符号检索，零 LLM，~1 ms |
-| `POST /api/memory/ask` | 原生 planning 提问，支持时序推理，~50 s |
+| `POST /api/memory/trace` | **来龙去脉**：给一段正文，回它涉及的事按时间怎么演进的。问题由后端拼，用户不写 prompt——见 `docs/product-north-star.md` 判据 1 |
 | `GET /api/memory/stats` | 知识库统计（facts/topics/entities/units/lines/speakers/日期跨度） |
 | `GET /api/memory/topics` | topic 树（parents 字段构成层级） |
 | `GET /api/memory/entities` | 实体列表 |

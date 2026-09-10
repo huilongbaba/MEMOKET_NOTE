@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  addProfileEntry, ask, cancelJob, deleteProfileEntry, ingestBatch, jobStatus, listProfile,
+  addProfileEntry, cancelJob, deleteProfileEntry, ingestBatch, jobStatus, listProfile,
   memoryFacts, memoryStats, recall, watchJob,
   appleAvailable, importApple, importFiles, importNotion,
 } from '../api'
@@ -18,15 +18,15 @@ const STATUS_LABEL: Record<string, string> = {
 /**
  * 知识库面板。两条检索路径的差异在这里直接暴露给用户：
  *   「检索」 —— 零 LLM 符号查询，毫秒级，写作路径用的就是它
- *   「提问」 —— KITE 原生 planning，支持时序推理，但要几十秒
+ *   时序推理那条能力还在，入口是正文里选中一段右键「来龙去脉」——
+ *   问题由后端拼，用户不写 prompt（判据 1）
  */
 export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [stats, setStats] = useState<{ facts: number; entities: number } | null>(null)
   const [q, setQ] = useState('')
   const [facts, setFacts] = useState<Fact[]>([])
   const [took, setTook] = useState<number | null>(null)
-  const [answer, setAnswer] = useState('')
-  const [busy, setBusy] = useState<'' | 'recall' | 'ask'>('')
+  const [busy, setBusy] = useState<'' | 'recall'>('')
   const [job, setJob] = useState('')
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
   const batchAbort = useRef<AbortController | null>(null)
@@ -77,18 +77,10 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   }, [pendingJob, job])
 
   async function doRecall() {
-    setBusy('recall'); setAnswer('')
+    setBusy('recall')
     try {
       const r = await recall(q)
       setFacts(r.facts); setTook(r.took_ms)
-    } finally { setBusy('') }
-  }
-
-  async function doAsk() {
-    setBusy('ask'); setAnswer('')
-    try {
-      const r = await ask(q)
-      setAnswer(r.answer); setFacts(r.facts); setTook(r.took_ms)
     } finally { setBusy('') }
   }
 
@@ -195,9 +187,17 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         </div>
       )}
 
+      {/* **只剩搜索，「提问」那个框删了。**
+          搜索不是聊天：它的结果是可预期的（匹配的记录）。而问答框要求用户
+          自己组织 prompt，那正是判据 1 要消灭的摩擦——
+          「界面上出现聊天输入框，就是我们没把意图封装好」。
+
+          时序推理那条能力没扔，它是痛点 13（AI 捋不清时间线）的解药，
+          现在的入口是选中一段正文点「来龙去脉」：问题由后端拼，用户一个字
+          都不用写。 */}
       <div className="stack">
         <input
-          placeholder="搜索或提问…"
+          placeholder="搜索知识库…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && q.trim() && doRecall()}
@@ -206,22 +206,13 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           <button onClick={doRecall} disabled={!q.trim() || !!busy}>
             {busy === 'recall' ? <span className="spinner" /> : '检索'}
           </button>
-          <button onClick={doAsk} disabled={!q.trim() || !!busy}>
-            {busy === 'ask' ? <span className="spinner" /> : '提问'}
-          </button>
           {took !== null && <span className="muted">{took} ms</span>}
         </div>
         <p className="muted" style={{ fontSize: 12 }}>
-          检索是符号查询，毫秒级；提问会让模型编译查询计划，支持「现在谁负责」
-          这类时序推理，但要等几十秒。
+          零 LLM 的符号检索，毫秒级。想知道某件事怎么演进的，在正文里选中
+          那一段，右键「来龙去脉」。
         </p>
       </div>
-
-      {answer && (
-        <div className="card" style={{ marginTop: 10 }}>
-          <strong>{answer}</strong>
-        </div>
-      )}
 
       {facts.map((f) => (
         <div className="card" key={f.id}>

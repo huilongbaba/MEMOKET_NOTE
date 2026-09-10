@@ -518,6 +518,15 @@ class DigestOut(BaseModel):
     took_ms: float
 
 
+class TraceIn(BaseModel):
+    """「来龙去脉」的入参：**只有一段正文，没有问题**。
+
+    问题由后端拼——判据 1：用户点按钮，不写 prompt。
+    """
+    passage: str
+    limit: int = 10
+
+
 class AskIn(BaseModel):
     """显式提问知识库。走 KITE 原生 planning，慢但支持时序推理。"""
     question: str

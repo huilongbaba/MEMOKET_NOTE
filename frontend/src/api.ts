@@ -395,12 +395,19 @@ export const recall = (query: string, limit = 8) =>
     body: JSON.stringify({ query, limit }),
   }).then(json<{ facts: Fact[]; took_ms: number; terms: string[] }>)
 
-export const ask = (question: string) =>
-  fetch('/api/memory/ask', {
+/** 「来龙去脉」：给一段正文，回它涉及的事情按时间怎么演进的。
+ *
+ * **没有自由提问的接口了。** 问题由后端拼，用户一个字都不写——判据 1：
+ * 界面上出现聊天输入框，就是我们没把意图封装好。原来那个 /api/memory/ask
+ * 还在（这条建在它上面），但不再有对外入口。 */
+export type TraceOut = { answer: string; facts: Fact[]; took_ms: number }
+
+export const traceMemory = (passage: string, limit = 10) =>
+  fetch('/api/memory/trace', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ question }),
-  }).then(json<{ answer: string; facts: Fact[]; took_ms: number }>)
+    body: JSON.stringify({ passage, limit }),
+  }).then(json<TraceOut>)
 
 export type MemoryStats = {
   facts: number; topics: number; entities: number; units: number; lines: number

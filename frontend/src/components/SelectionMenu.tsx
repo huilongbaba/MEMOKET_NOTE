@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-export type SelectionAction = 'verify' | 'rewrite' | 'polish' | 'expand' | 'custom'
+export type SelectionAction = 'verify' | 'rewrite' | 'polish' | 'expand' | 'trace' | 'custom'
 
 /**
  * Right-click-with-a-selection context menu. Standard AI-editor actions
@@ -57,6 +57,10 @@ export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
           <div className="palette-item" onClick={() => onAction('rewrite')}>✏️ 重写</div>
           <div className="palette-item" onClick={() => onAction('polish')}>✨ 润色</div>
           <div className="palette-item" onClick={() => onAction('expand')}>↔️ 扩展上下文</div>
+          {/* 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
+              问题由后端拼（判据 1）。对应痛点 13：汇总零散笔记时 AI 捋不清
+              时间线，而 KITE 的 planning 恰好擅长时序。 */}
+          <div className="palette-item" onClick={() => onAction('trace')}>🕘 来龙去脉</div>
           {/* 跟 `/` 的「用 AI 写」是同一套 harness，差别在**作用域**：那个是
               「在光标这里插一块」，这个是「对我选中的这段做点什么」。 */}
           <div className="palette-item" onClick={() => onAction('custom')}>💬 自定义提示…</div>
