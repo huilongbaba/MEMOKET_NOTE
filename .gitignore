@@ -49,3 +49,6 @@ desktop/node_modules/
 desktop/dist/
 desktop/out/
 frontend/dist/
+backend/build/
+backend/dist/
+backend/*.spec.bak

@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     whisper_base_url: str = "http://192.168.77.8:8081"
 
     # KITE 记忆
+    # 数据落在哪。**打包之后绝不能是相对路径**——那会解析到 .app 包内部：
+    # macOS 的应用包在真实安装场景下只读，而且**更新时整个包会被替换，
+    # 用户数据跟着没**。实拍踩过：第一次打包出来的 .app 把 notes.sqlite3
+    # 建在了 Contents/Resources/backend/data/ 里。
+    #
+    # 所以桌面版由 Electron 把系统的用户数据目录传进来
+    # （KITE_DATA_DIR，pydantic-settings 自动认这个名字；见 desktop/src/backend.ts）；开发时保持
+    # 相对 ./data 不变。
     kite_data_dir: Path = Path("./data")
     kite_extract_model: str = "muse-glimmer-30b"
 

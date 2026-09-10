@@ -94,6 +94,10 @@ async function boot() {
       isPackaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
       webDir,
+      // 打包之后数据落在系统的用户数据目录（macOS 上是
+      // ~/Library/Application Support/<appName>）。开发时不传，后端保持
+      // 相对 ./data，跟手工起后端时用的是同一个库。
+      dataDir: app.isPackaged ? path.join(app.getPath('userData'), 'data') : undefined,
       onLog: remember,
     })
   } catch (e) {

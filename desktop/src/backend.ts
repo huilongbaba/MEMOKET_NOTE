@@ -72,6 +72,12 @@ export async function startBackend(opts: {
   isPackaged: boolean
   resourcesPath: string
   webDir: string
+  /** 数据落在哪。**打包之后必须是系统的用户数据目录**——不给的话后端会用
+   *  相对路径 ./data，那在 .app 里解析到包内部：macOS 的应用包在真实安装
+   *  场景下只读，而且**更新时整个包会被替换，用户的笔记跟着没**。
+   *  实拍踩过：第一次打包出来的 .app 把 notes.sqlite3 建在了
+   *  Contents/Resources/backend/data/ 里。 */
+  dataDir?: string
   onLog?: (line: string) => void
   timeoutMs?: number
 }): Promise<Backend> {
@@ -94,6 +100,7 @@ export async function startBackend(opts: {
       // 活动监视器里「强制退出」都走不到，实测强杀之后 uvicorn 活了下来，
       // 占着 sqlite 和端口。后端那边看 os.getppid() 变了就退。
       MEMOKET_NOTE_PARENT_PID: String(process.pid),
+      ...(opts.dataDir ? { KITE_DATA_DIR: opts.dataDir } : {}),
       PYTHONUNBUFFERED: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

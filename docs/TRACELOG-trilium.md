@@ -184,3 +184,34 @@ placeholder 从「搜索或提问…」改成「搜索知识库…」。
    `notes.length >= 3` 静默跳过。修完才拍到三个标签。
 
 两次都是 tsc 绿、测试绿，只有截图看得见。
+
+## [9] 打包：装到没有 python 的机器上（第 126–140 轮）
+
+**这是整件事里最后一个有真实失败风险的点**，所以做完就验。
+
+- `backend/entry.py` + `backend.spec`：PyInstaller 把后端打成一个不依赖
+  系统 python 的可执行程序（12MB 主程序 / 101MB 目录）
+- `desktop/package.json` 的 electron-builder 配置把**前端和后端一起装进
+  .app**（`extraResources`：web / backend）
+- 打出 `MEMOKET NOTE-0.1.0-arm64.dmg`（181MB）
+
+**验证方式不是「打包成功」，是真的跑打包产物**：
+
+1. 先在 `env -i`（没有任何环境变量、没有 python）里跑冻结的后端——健康检查、
+   首页、树接口全通
+2. 再跑打包好的 .app——它自己拉起了**包内的**后端（
+   `Contents/Resources/backend/memoket-note-backend`），接口全通
+
+**实拍抓到的真 bug**：第一版打出来的 .app 是空库。查下去发现后端的
+`kite_data_dir` 默认是相对路径 `./data`，打包后解析到了**.app 包内部**
+（`Contents/Resources/backend/data/notes.sqlite3`）。这是个会丢数据的错：
+macOS 的应用包在真实安装场景下只读，而且**更新时整个包会被替换，用户的
+笔记跟着没**。
+
+修法：Electron 用 `app.getPath('userData')` 把系统的用户数据目录经
+`KITE_DATA_DIR` 传给后端，且只在 `app.isPackaged` 时传——开发时保持相对
+`./data`，跟手工起后端用的是同一个库。重打包验证：数据落在
+`~/Library/Application Support/memoket-note-desktop/data/`，**包内干净**。
+
+七条回归测试盯着这些约定（`tests/test_packaging.py`）——它们不是「代码对不
+对」，是「装到别人机器上会不会出事」，而那件事只有真打一次包才看得见。

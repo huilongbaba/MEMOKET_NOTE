@@ -7,11 +7,60 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && electron . --dev",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "dist": "npm run dist:web && npm run dist:backend && npm run build && electron-builder",
+    "dist:web": "cd ../frontend && npm run build",
+    "dist:backend": "cd ../backend && .venv/bin/pyinstaller backend.spec --noconfirm --clean"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",
     "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "com.memoket.note",
+    "productName": "MEMOKET NOTE",
+    "directories": {
+      "output": "out",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "web"
+      },
+      {
+        "from": "../backend/dist/memoket-note-backend",
+        "to": "backend"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
   }
 }
