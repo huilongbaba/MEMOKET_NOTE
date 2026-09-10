@@ -15,7 +15,7 @@
 import { useMemo } from 'react'
 
 import type { TreeRow } from '../api'
-import { ROOT_ID } from '../api'
+import { ROOT_ID, isFactId, isVirtualId } from '../api'
 
 type Props = {
   rows: TreeRow[]
@@ -112,7 +112,15 @@ export default function NoteTree({
             >
               {hasKids ? (n.is_expanded ? '▾' : '▸') : ''}
             </span>
+            {/* 知识库那棵虚拟子树的节点带图标：事实 ◆、分类 ▤。真笔记不带——
+                Trilium 的树也是只给特殊类型的笔记配图标。 */}
+            {isVirtualId(n.note_id) && (
+              <span className="tree-icon" aria-hidden>{isFactId(n.note_id) ? '◆' : '▤'}</span>
+            )}
             <span className="tree-title">{displayTitle(n)}</span>
+            {n.fact_count > 0 && !isFactId(n.note_id) && (
+              <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
+            )}
             {/* 跟知识库的连接，树上直接看得见（docs/kb-fusion-design.md）。
                 一眼分出「有据可依的」和「还只是草稿的」。 */}
             {n.ingested_at && (
@@ -129,7 +137,7 @@ export default function NoteTree({
                 ⧉
               </span>
             )}
-            {hasKids && <span className="tree-count">{n.child_count}</span>}
+            {hasKids && !isVirtualId(n.note_id) && <span className="tree-count">{n.child_count}</span>}
           </div>
         )
       })}

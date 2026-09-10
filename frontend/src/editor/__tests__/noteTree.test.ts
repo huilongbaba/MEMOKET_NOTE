@@ -17,7 +17,7 @@ function row(note: string, parent: string, extra: Partial<TreeRow> = {}): TreeRo
     id: `${parent}>${note}`, note_id: note, parent_note_id: parent,
     position: 0, is_expanded: false, title: note, preview: '',
     pinned: false, updated_at: "", child_count: 0, branch_count: 1,
-    cite_count: 0, ingested_at: "",
+    cite_count: 0, ingested_at: "", fact_count: 0,
     ...extra,
   }
 }

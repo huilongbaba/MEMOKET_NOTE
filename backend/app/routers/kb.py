@@ -10,13 +10,26 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from ..database import store
-from ..database.kb import extract_check, extract_judge, reextract
+from ..database.kb import extract_check, extract_judge, reextract, virtual_tree
 from ..database.kb.recall import cached
 from ..database.kite.kite_memory import UserMemory
-from .schemas import IngestOut
+from .schemas import IngestOut, TreeRow
 from .deps import current_user
 
 router = APIRouter(prefix="/api/kb", tags=["kb"])
+
+
+@router.get("/tree", response_model=list[TreeRow])
+def kb_tree(user: str = Depends(current_user)):
+    """知识库的虚拟子树——分类层。跟 /api/tree 同一种行，前端同一个控件画。
+    见 database/kb/virtual_tree.py 的模块注释。"""
+    return virtual_tree.build(UserMemory(user))
+
+
+@router.get("/tree/children", response_model=list[TreeRow])
+def kb_tree_children(node: str, user: str = Depends(current_user)):
+    """展开一个分类节点时才取的事实层。"""
+    return virtual_tree.children(UserMemory(user), node)
 
 
 @router.get("/clusters")

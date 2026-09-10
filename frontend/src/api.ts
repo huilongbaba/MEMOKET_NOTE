@@ -37,6 +37,8 @@ export type TreeRow = {
   cite_count: number
   /** 什么时候被摄入进知识库的。空 = 没摄入过。 */
   ingested_at: string
+  /** 只有知识库虚拟子树的节点用：名下有几条事实。真笔记恒为 0。 */
+  fact_count: number
   /** 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道
    *  改这一处会让别处跟着变。 */
   branch_count: number
@@ -415,6 +417,25 @@ export type FactPeek = {
 export const factPeek = (id: string) =>
   fetch(`/api/memory/facts/${encodeURIComponent(id)}`, { headers: headers() })
     .then((r) => (r.ok ? (r.json() as Promise<FactPeek>) : null))
+
+// ---------------------------------------------------------- 知识库虚拟子树
+//
+// 知识库长在笔记树的底部，是一棵**虚拟**子树（docs/kb-fusion-design.md §3.2）：
+// 不落库，只是把 KITE 的数据呈现成跟 /api/tree 同一种行，同一个树控件画。
+// 节点 id 以 `kb` 开头——前端靠这个认出「这不是一篇真笔记」。
+
+export const KB_ROOT = 'kb'
+export const isVirtualId = (id: string) => id === KB_ROOT || id.startsWith('kb:')
+export const isFactId = (id: string) => id.startsWith('kb:fact:')
+
+/** 分类层：根 + 主题树 + 实体 + 月份 + 最近会议。事实不在里面，展开时再取。 */
+export const kbTree = () =>
+  fetch('/api/kb/tree', { headers: headers() }).then(json<TreeRow[]>)
+
+/** 展开一个分类节点时才取的那一层：它名下的事实。 */
+export const kbTreeChildren = (node: string) =>
+  fetch(`/api/kb/tree/children?node=${encodeURIComponent(node)}`, { headers: headers() })
+    .then(json<TreeRow[]>)
 
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
 export type CitingNote = { id: string; title: string; updated_at: string }

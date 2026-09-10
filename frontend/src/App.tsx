@@ -24,6 +24,7 @@ import AgentActivity, { type AgentRound } from './components/AgentActivity'
 import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
+import KbNoteView from './components/KbNoteView'
 import NoteKbPanel from './components/NoteKbPanel'
 import NoteTree from './components/NoteTree'
 import TabBar, { type Tab } from './components/TabBar'
@@ -78,6 +79,19 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
   const [tree, setTree] = useState<TreeRow[]>([])
+  // 知识库那棵**虚拟**子树（docs/kb-fusion-design.md §3.2）。分类层一次取全，
+  // 事实按需展开；展开状态不在服务端（虚拟节点没有 branch），存本机。
+  const [kbRows, setKbRows] = useState<TreeRow[]>([])
+  const [kbChildren, setKbChildren] = useState<Record<string, TreeRow[]>>({})
+  const [kbExpanded, setKbExpanded] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('memoket-note-kb-expanded:' + api.getUser())
+      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch { return new Set() }
+  })
+  // 中栏正在看的虚拟节点（一条事实 / 一个分类）。跟 current 互斥：有 current
+  // 就是在写笔记，有 virtualId 就是在看知识库。
+  const [virtualId, setVirtualId] = useState<string | null>(null)
   const [treeMenu, setTreeMenu] = useState<{ row: TreeRow; at: MenuAt } | null>(null)
   /** 打开着的标签。**存在 localStorage 里，按用户分**——关掉应用再打开时
    *  桌面还在，这是桌面应用的基本预期；不存的话每次启动都要重新找回那几篇
@@ -243,10 +257,11 @@ export default function App() {
   // 当前标签从 current 推导。这样「打开笔记」只有一件事要做（syncTab），
   // 高亮哪个是它的结果，不是又一处要记得同步的状态。
   useEffect(() => {
-    if (!current) return
-    const tab = tabs.find((x) => x.noteId === current.id)
+    const key = current?.id ?? virtualId
+    if (!key) return
+    const tab = tabs.find((x) => x.noteId === key)
     if (tab && tab.id !== activeTabId) setActiveTabId(tab.id)
-  }, [current, tabs, activeTabId])
+  }, [current, virtualId, tabs, activeTabId])
 
   /** 关一个标签。关掉当前这个时切到**右边那个**（没有就左边）——跟浏览器
    *  一致。跳回列表第一篇会让用户失去位置感。 */
@@ -257,20 +272,133 @@ export default function App() {
     setTabs(next)
     if (id !== activeTabId) return
     const fallback = next[i] ?? next[i - 1] ?? null
-    if (fallback) {
-      const note = notes.find((n) => n.id === fallback.noteId)
-      if (note) void switchTo(note)
-      else setActiveTabId(fallback.id)
-    } else {
-      setActiveTabId(null); setCurrent(null); setTitle(''); setContent('')
+    if (fallback) activateTab(fallback)
+    else {
+      setActiveTabId(null); setCurrent(null); setVirtualId(null); setTitle(''); setContent('')
     }
   }
 
   const reloadTree = useCallback(async () => {
     const rows = await api.getTree()
     setTree(rows)
+    // 知识库子树跟着一起刷：摄入完新事实，主题/月份的计数要跟上。
+    // 取不到（KITE 还没建库）就当没有，不影响真笔记。
+    api.kbTree().then(setKbRows).catch(() => setKbRows([]))
     return rows
   }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('memoket-note-kb-expanded:' + api.getUser(),
+                           JSON.stringify([...kbExpanded]))
+    } catch { /* 存不上就下次全收起，不致命 */ }
+  }, [kbExpanded])
+
+  /** 事实是按需取的：展开一个主题/实体/月份/会议时才去拿它名下那一层。 */
+  const needsFacts = (id: string) => /^kb:(topic|entity|month|unit):/.test(id)
+  const loadKbChildren = useCallback(async (id: string) => {
+    if (!needsFacts(id)) return
+    try {
+      const rows = await api.kbTreeChildren(id)
+      setKbChildren((m) => ({ ...m, [id]: rows }))
+    } catch { /* 展开了但没内容，树上就是空的，比报错好 */ }
+  }, [])
+
+  // 刷新后已经展开着的分类，把事实层补回来。
+  useEffect(() => {
+    for (const id of kbExpanded) if (needsFacts(id) && !kbChildren[id]) void loadKbChildren(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbRows])
+
+  /** 真笔记 + 虚拟子树，一个控件画。虚拟节点的展开状态从本机的集合来。 */
+  const allRows = useMemo(() => {
+    const virt = [...kbRows, ...Object.values(kbChildren).flat()]
+      .map((r) => ({ ...r, is_expanded: kbExpanded.has(r.note_id) }))
+    return [...tree, ...virt]
+  }, [tree, kbRows, kbChildren, kbExpanded])
+
+  // 截图探针：把知识库子树摆成「根 + 主题 + 第一个主题」展开的样子，
+  // 并打开第一个主题（kb-tree）或它名下第一条事实（kb-fact）。
+  const kbProbeDone = useRef(false)
+  useEffect(() => {
+    const probe = new URLSearchParams(location.search).get('probe')
+    if (!probe?.startsWith('kb-') || probe === 'kb-tab' || kbProbeDone.current || kbRows.length === 0) return
+    const first = kbRows.filter((r) => r.parent_note_id === 'kb:topics')
+      .sort((a, b) => b.fact_count - a.fact_count)[0]
+    if (!first) return
+    kbProbeDone.current = true
+    setKbExpanded(new Set(['kb', 'kb:topics', first.note_id]))
+    void api.kbTreeChildren(first.note_id).then((rows) => {
+      setKbChildren((m) => ({ ...m, [first.note_id]: rows }))
+      if (probe === 'kb-fact' && rows[0]) void openVirtual(rows[0].note_id, rows[0].title)
+      else void openVirtual(first.note_id, first.title)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbRows])
+
+  function toggleKbNode(row: TreeRow) {
+    const next = !row.is_expanded
+    setKbExpanded((prev) => {
+      const s = new Set(prev)
+      if (next) s.add(row.note_id); else s.delete(row.note_id)
+      return s
+    })
+    if (next && !kbChildren[row.note_id]) void loadKbChildren(row.note_id)
+  }
+
+  /** 打开一个虚拟节点：一条事实 = 一篇只读笔记，占中栏、开标签，跟真笔记
+   *  一样的肌肉记忆。离开正在写的那篇之前先落盘——跟 switchTo 同一条纪律。 */
+  async function openVirtual(id: string, title?: string) {
+    if (virtualId === id && !current) return
+    await save()
+    setCurrent(null); setTitle(''); setContent('')
+    setVirtualId(id)
+    const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? id
+    setTabs((prev) => prev.find((x) => x.noteId === id)
+      ? prev
+      : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
+  }
+
+  /** 点标签 / ⌘数字 / 关标签后的回退，都走这一条：真笔记就 switchTo，
+   *  虚拟节点就 openVirtual。 */
+  function activateTab(tab: Tab | undefined) {
+    if (!tab) return
+    if (api.isVirtualId(tab.noteId)) { void openVirtual(tab.noteId, tab.title); return }
+    const note = notes.find((n) => n.id === tab.noteId)
+    if (note) void switchTo(note)
+    else setActiveTabId(tab.id)
+  }
+
+  /** 树上点了一个节点。 */
+  function openFromTree(id: string) {
+    if (api.isVirtualId(id)) { void openVirtual(id); return }
+    const n = notes.find((x) => x.id === id)
+    if (n) void switchTo(n)
+  }
+
+  /** 虚拟节点的右键菜单——没有「删除」「移动」这些：它们不是笔记，是知识库
+   *  的一个视角。有的是把它带进笔记的动作。 */
+  function kbMenuItems(row: TreeRow): MenuItem[] {
+    const isFact = api.isFactId(row.note_id)
+    const factId = row.note_id.slice('kb:fact:'.length)
+    const items: MenuItem[] = [
+      { label: '打开', icon: '↗', onSelect: () => void openVirtual(row.note_id, row.title) },
+    ]
+    if (isFact) {
+      items.push(
+        { kind: 'sep' },
+        { label: '复制引用', icon: '⎘', hint: `[${factId}]`,
+          onSelect: () => { void navigator.clipboard.writeText(`[${factId}]`) } },
+      )
+      if (current) items.push({ label: '引用到当前笔记', icon: '↩', hint: current.title || '未命名',
+                                onSelect: () => insertAtCursor(`[${factId}]`) })
+    } else if (row.child_count > 0) {
+      items.push({ kind: 'sep' },
+        { label: row.is_expanded ? '收起' : '展开', icon: row.is_expanded ? '▾' : '▸',
+          onSelect: () => toggleKbNode(row) })
+    }
+    return items
+  }
 
   /** 树上右键。**harness 的动作直接长在节点上**——智能续写/打磨是对某一篇
    *  的，无限续写是对某一棵子树的，而树上本来就有「一篇」和「一棵子树」
@@ -553,6 +681,7 @@ export default function App() {
   }
 
   function open(n: Note) {
+    setVirtualId(null)
     setCurrent(n)
     setTitle(n.title)
     setContent(n.content)
@@ -704,9 +833,7 @@ export default function App() {
       } else if (/^[1-9]$/.test(key)) {
         e.preventDefault()
         const i = key === '9' ? tabs.length - 1 : Number(key) - 1
-        const tab = tabs[i]
-        const note = tab && notes.find((n) => n.id === tab.noteId)
-        if (note) void switchTo(note)
+        activateTab(tabs[i])
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -1649,7 +1776,7 @@ export default function App() {
       {treeMenu && (
         <ContextMenu
           at={treeMenu.at}
-          items={treeMenuItems(treeMenu.row)}
+          items={api.isVirtualId(treeMenu.row.note_id) ? kbMenuItems(treeMenu.row) : treeMenuItems(treeMenu.row)}
           onClose={() => setTreeMenu(null)}
         />
       )}
@@ -1764,13 +1891,10 @@ export default function App() {
             : visibleNotes.map(renderNoteItem)
         ) : (
           <NoteTree
-            rows={tree}
-            activeNoteId={current?.id ?? null}
-            onOpen={(id) => {
-              const n = notes.find((x) => x.id === id)
-              if (n) void switchTo(n)
-            }}
-            onToggle={toggleTreeNode}
+            rows={allRows}
+            activeNoteId={current?.id ?? virtualId}
+            onOpen={openFromTree}
+            onToggle={(row) => (api.isVirtualId(row.note_id) ? toggleKbNode(row) : void toggleTreeNode(row))}
             onContextMenu={(row, at) => setTreeMenu({ row, at })}
           />
         )}
@@ -1785,12 +1909,7 @@ export default function App() {
           <TabBar
             tabs={tabs}
             activeId={activeTabId}
-            onSelect={(id) => {
-              const tab = tabs.find((x) => x.id === id)
-              const note = tab && notes.find((n) => n.id === tab.noteId)
-              if (note) void switchTo(note)
-              else setActiveTabId(id)
-            }}
+            onSelect={(id) => activateTab(tabs.find((x) => x.id === id))}
             onClose={closeTab}
             onNew={newNote}
           />
@@ -1834,10 +1953,20 @@ export default function App() {
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
-          <p className="muted">
-            左侧新建一篇笔记开始。<br />
-            找导入过的知识库内容？那是分开存的，看右侧「知识库」面板，不在笔记列表里。
-          </p>
+          virtualId ? (
+            <KbNoteView
+              id={virtualId}
+              rows={allRows}
+              onOpen={(id) => void openVirtual(id)}
+              onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}
+              onCite={null}
+            />
+          ) : (
+            <p className="muted">
+              左侧新建一篇笔记开始。<br />
+              导入过的会议、录音抽出来的事实都在树底部的「知识库」里，点开一条就是一篇只读笔记。
+            </p>
+          )
         ) : (
           <>
             <input

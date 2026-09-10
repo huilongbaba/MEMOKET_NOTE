@@ -512,3 +512,25 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
    ——挤在一起会让人以为是同一类东西。 */
 .tree-badge.cited { color: var(--ins); opacity: .85; font-size: 10px; }
 .tree-badge.ingested { color: var(--muted); opacity: .8; }
+
+/* ------------------------------------------------ 知识库：虚拟子树 + 只读笔记 */
+.tree-icon { flex-shrink: 0; font-size: 10px; color: var(--muted); width: 12px; }
+
+.kb-note { max-width: 760px; display: flex; flex-direction: column; gap: 14px; }
+.kb-note-meta { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.kb-note-id { font-size: 11px; opacity: .7; }
+.kb-note-title { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.4; }
+.kb-section { display: flex; flex-direction: column; gap: 6px; }
+.kb-section-title {
+  margin: 0; font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.kb-quote {
+  margin: 0; padding: 6px 10px; border-inline-start: 2px solid var(--line);
+  font-size: 13px; line-height: 1.6;
+}
+.kb-link {
+  display: block; padding: 6px 8px; border-radius: 6px; font-size: 13px;
+  color: var(--fg); text-decoration: none;
+}
+.kb-link:hover { background: var(--bg); color: var(--accent); }

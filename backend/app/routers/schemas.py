@@ -75,6 +75,9 @@ class TreeRow(BaseModel):
     # 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道
     # 改这一处会让别处跟着变。
     branch_count: int = 1
+    # 只有知识库虚拟子树的节点用：这个主题/实体/月份名下有几条事实（主题含
+    # 子主题闭包）。真笔记恒为 0。
+    fact_count: int = 0
 
 
 class NoteCreateIn(BaseModel):
