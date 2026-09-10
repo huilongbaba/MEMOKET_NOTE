@@ -180,3 +180,85 @@ def test_code_blocks_never_count_as_duplicates():
     # 散文里真正的整段重复照删
     a = "这一段讲的是众筹三月上旬启动，前后依赖要理清楚，排期要往前倒推一遍才准，测试和修复都要留缓冲。"
     assert drop_already_written(a, a) == ""
+
+
+# ------------------------------------------------ 围栏代码块不是结构 ---
+#
+# Python 和 Shell 的注释正好是 `# ` 开头，跟 markdown 一级标题一个样子，
+# 而 outline.py 里每个函数都在拿 _HEADING 扫全文。实测一篇「两节正文 +
+# 一个带注释的代码块」的普通笔记，四个函数全错。
+
+_满 = "这一节已经写满了内容，长度足够越过四十字的门槛，所以它不会被当成还没填的空小节。"
+_带代码的笔记 = f"""## 背景
+
+{_满}
+
+## 脚本
+
+```python
+# 读取退货工单
+import pandas as pd
+# 按原因分组统计
+df.groupby("reason").size()
+```
+
+## 结论
+
+{_满}
+"""
+
+
+def test_代码块里的注释不算标题():
+    from app.editor import outline
+
+    assert outline.headings(_带代码的笔记) == [(2, "背景"), (2, "脚本"), (2, "结论")]
+
+
+def test_带代码块的普通笔记不会被误判成大纲():
+    """假标题会凭空造出「空小节」，把空标题占比顶过 0.6。
+
+    误判的代价写在 outline.py 开头：正常文章被判成大纲，结构就被冻死、
+    修订改不动任何标题——「宁可漏判也不要误判」。
+    """
+    from app.editor import outline
+
+    assert outline.is_outline(_带代码的笔记) is False
+
+
+def test_下一个空小节不会落进代码块():
+    """「脚本」那节有大段代码，却因为正文被代码块第一行注释截断而被当成
+    空的——这一轮写的内容会插到代码块**前面**去。"""
+    from app.editor import outline
+
+    assert outline.next_gap(_带代码的笔记) is None
+
+
+def test_剥标题不许删掉用户代码里的注释():
+    from app.editor import outline
+
+    got = outline.strip_headings(
+        "```python\n# 读取退货工单\nimport pandas as pd\n```\n\n## 模型写的标题\n正文。")
+    assert "# 读取退货工单" in got, "把注释当标题剥掉了，这是在删用户的代码"
+    assert "## 模型写的标题" not in got, "真标题没剥掉"
+
+
+def test_代码块里的标题不参与结构防线():
+    """structure_intact 把代码注释也算进「用户的标题」，会让一条只是改了
+    代码注释的正常修订被当成「动了用户的结构」丢弃。"""
+    from app.editor import outline
+
+    改了注释 = _带代码的笔记.replace("# 按原因分组统计", "# 按退货原因分组统计")
+    assert outline.structure_intact(_带代码的笔记, 改了注释)
+
+
+def test_围栏没闭合时后面一律当代码():
+    """跟 markdown 渲染器一致。宁可少认几个标题，也不要把代码当结构。"""
+    from app.editor import outline
+
+    assert outline.headings("## 真标题\n\n```\n# 看着像标题\n") == [(2, "真标题")]
+
+
+def test_波浪线围栏也算():
+    from app.editor import outline
+
+    assert outline.headings("## 真标题\n\n~~~\n# 不是标题\n~~~\n") == [(2, "真标题")]

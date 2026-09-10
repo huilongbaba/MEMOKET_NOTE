@@ -4,11 +4,32 @@ import { EditorView } from '@codemirror/view'
 
 type Heading = { level: number; text: string; pos: number }
 
-function parseHeadings(content: string): Heading[] {
+/** 正文里的标题。**围栏代码块里的不算**——Python 和 Shell 的注释正好是
+ * `# ` 开头，跟一级标题一个样子，不排除的话大纲面板里会冒出「读取退货
+ * 工单」这种条目，点一下光标跳进代码块中间。
+ *
+ * 后端 `app/editor/outline.py` 的 `_mask_fences()` 干的是同一件事，而且
+ * 后果更重（那边这个 bug 会让普通笔记被误判成大纲、把结构冻死）。这两处
+ * 各自解析各自的标题是合理的——一个是导航面板，一个是 harness 的结构防线，
+ * 不构成共享契约；但踩的是同一个坑。
+ */
+export function parseHeadings(content: string): Heading[] {
   const out: Heading[] = []
   const re = /^(#{1,6})\s+(.+)$/gm
+  const fence = /^\s*(`{3,}|~{3,})/
+  // 每一行的起始偏移 → 它在不在围栏里
+  const inFence = new Set<number>()
+  let fenced = false
+  let at = 0
+  for (const line of content.split('\n')) {
+    const isFence = fence.test(line)
+    if (isFence || fenced) inFence.add(at)
+    if (isFence) fenced = !fenced
+    at += line.length + 1
+  }
   let m: RegExpExecArray | null
   while ((m = re.exec(content))) {
+    if (inFence.has(m.index)) continue
     out.push({ level: m[1].length, text: m[2].trim(), pos: m.index })
   }
   return out

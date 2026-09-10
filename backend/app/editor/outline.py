@@ -30,6 +30,48 @@ import difflib
 import re
 
 _HEADING = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$", re.M)
+_FENCE = re.compile(r"^\s*(`{3,}|~{3,})", re.M)
+
+
+def _mask_fences(content: str) -> str:
+    """把围栏代码块里的字符抹成同样长度的占位符。
+
+    **围栏里的东西不是标题。** Python 和 Shell 的注释正好是 ``# `` 开头，
+    跟 markdown 的一级标题一个样子，而这个文件里的每个函数都在拿 `_HEADING`
+    扫全文。实测一篇「两节正文 + 一个带注释的代码块」的普通笔记：
+
+      · ``is_outline()`` 判成 True —— 假标题凭空造出两个「空小节」，空标题
+        占比越过 0.6。这正是这个文件开头写着要避免的事：把正常文章误判成
+        大纲，结构就被冻死、修订改不动任何标题。
+      · ``next_gap()`` 认为「脚本」那节是空的 —— 它的正文被代码块第一行
+        注释截断了，于是这一轮的内容插到了代码块**前面**。
+      · ``strip_headings()`` 直接把 ``# 读取退货工单`` 这类注释行从用户的
+        代码里删掉。
+
+    **长度和换行必须逐字符保持**：``next_gap()`` 返回的偏移量要拿回原文去
+    切，`_bodies()` 也按长度判断「这一节填了没有」。所以是抹成同长占位符，
+    不是删掉。
+
+    围栏没闭合时后面一律当代码，跟 markdown 渲染器的处理一致——宁可少认
+    几个标题，也不要把代码当结构。
+    """
+    if "```" not in content and "~~~" not in content:
+        return content
+    out = list(content)
+    fenced = False
+    for m in re.finditer(r"^.*$", content, re.M):
+        is_fence = bool(_FENCE.match(m.group(0)))
+        if is_fence or fenced:
+            for i in range(m.start(), m.end()):
+                out[i] = "x"
+        if is_fence:
+            fenced = not fenced
+    return "".join(out)
+
+
+def _marks(content: str) -> list[re.Match]:
+    """正文里的标题，围栏代码块里的不算。偏移量对得上原文。"""
+    return list(_HEADING.finditer(_mask_fences(content or "")))
 
 # 一个标题下面少于这么多字，就算"还没填"
 EMPTY_BODY_CHARS = 40
@@ -40,17 +82,17 @@ MIN_HEADINGS = 3
 
 
 def headings(content: str) -> list[tuple[int, str]]:
-    """正文里的标题，返回 (层级, 标题文字)。"""
-    return [(len(m.group(1)), m.group(2)) for m in _HEADING.finditer(content or "")]
+    """正文里的标题，返回 (层级, 标题文字)。围栏代码块里的不算（见 _mask_fences）。"""
+    return [(len(m.group(1)), m.group(2)) for m in _marks(content)]
 
 
 def _bodies(content: str) -> list[tuple[str, str]]:
     """每个标题和它下面到下一个标题之间的正文。"""
     out: list[tuple[str, str]] = []
-    marks = list(_HEADING.finditer(content or ""))
+    marks = _marks(content)
     for i, m in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(content)
-        out.append((m.group(2), content[m.end():end].strip()))
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(content or "")
+        out.append((m.group(2), (content or "")[m.end():end].strip()))
     return out
 
 
@@ -134,10 +176,10 @@ def next_gap(content: str) -> tuple[str, int] | None:
 
     这里确定性地找出第一个空小节和它的插入点，让续写定向填进去。
     """
-    marks = list(_HEADING.finditer(content or ""))
+    marks = _marks(content)
     for i, m in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(content)
-        body = content[m.end():end].strip()
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(content or "")
+        body = (content or "")[m.end():end].strip()
         if len(body) < EMPTY_BODY_CHARS:
             return m.group(2), m.end()
     return None
@@ -168,7 +210,11 @@ def strip_headings(text: str) -> str:
     跟今晚其他几处一样：指令层面的约束在这类事情上不可靠，只有确定性手段
     有效。这里直接剥掉，用户的结构是唯一权威。
     """
-    kept = [ln for ln in (text or "").splitlines() if not _HEADING.match(ln)]
+    # 按掩码后的文本判断哪几行是标题，但保留原文那一行——围栏里的 ``# 注释``
+    # 不是标题，剥掉它等于在删用户的代码。
+    masked = _mask_fences(text or "").splitlines()
+    kept = [ln for ln, mk in zip((text or "").splitlines(), masked)
+            if not _HEADING.match(mk)]
     out = "\n".join(kept)
     # 剥完可能留下连续空行
     return re.sub(r"\n{3,}", "\n\n", out).strip()
