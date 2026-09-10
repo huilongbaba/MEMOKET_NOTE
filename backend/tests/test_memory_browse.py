@@ -178,3 +178,27 @@ def test_facts_between_excludes_out_of_range(mem):
 def test_facts_between_respects_limit(mem):
     rows = mem.facts_between("2026-01-01", "2026-01-02", limit=1)
     assert len(rows) == 1
+
+
+def test_出处浮层里的原话要截断():
+    """实拍发现的：一条会议记录原文能有几千字，浮层直接占半屏、把正文盖住
+    ——那反而违背了「不打断当前这一页」。浮层是扫一眼用的，不是阅读器。"""
+    from app.routers.memory import PEEK_SOURCE_CHARS, _clip
+
+    long = "会议记录。" * 500
+    got = _clip(long)
+    assert len(got) <= PEEK_SOURCE_CHARS + 1
+    assert got.endswith("…")
+
+
+def test_短原话不动它():
+    from app.routers.memory import _clip
+
+    assert _clip("很短的一句话。") == "很短的一句话。"
+
+
+def test_原话里的换行压成空格():
+    """浮层是几行小字，原始换行会把它撑得很高。"""
+    from app.routers.memory import _clip
+
+    assert _clip("第一行\n\n  第二行  ") == "第一行 第二行"

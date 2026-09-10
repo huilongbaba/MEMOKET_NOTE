@@ -485,3 +485,25 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .cm-label { flex: 1; }
 .cm-hint { color: var(--muted); font-size: 11px; flex-shrink: 0; }
 .context-menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* ---------------------------------------------------------- 行内出处 */
+.cm-fact-cite {
+  color: var(--accent); cursor: help;
+  border-bottom: 1px dotted var(--accent);
+  /* 不加背景色：正文里出处可能很密，块块底色会把段落切碎 */
+}
+.cm-fact-peek {
+  max-width: 420px; padding: 8px 10px;
+  font-size: 12px; line-height: 1.6;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.16);
+}
+.cm-fact-peek.missing { color: var(--del); }
+.peek-when { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+.peek-text { font-weight: 500; }
+.peek-source {
+  margin-top: 6px; padding-inline-start: 8px;
+  border-inline-start: 2px solid var(--line);
+  color: var(--muted);
+}

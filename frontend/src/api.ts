@@ -400,6 +400,17 @@ export const recall = (query: string, limit = 8) =>
  * **没有自由提问的接口了。** 问题由后端拼，用户一个字都不写——判据 1：
  * 界面上出现聊天输入框，就是我们没把意图封装好。原来那个 /api/memory/ask
  * 还在（这条建在它上面），但不再有对外入口。 */
+/** 一条事实 + 它的原话，给行内出处浮层。 */
+export type FactPeek = {
+  id: string; text: string; when: string; kind: string; sources: string[]
+}
+
+/** 按 id 取一条事实。**找不到会 404**——一条指向不存在事实的引用是个真问题
+ *  （模型编的、或者知识库重建过），浮层要把它说出来而不是显示成普通文字。 */
+export const factPeek = (id: string) =>
+  fetch(`/api/memory/facts/${encodeURIComponent(id)}`, { headers: headers() })
+    .then((r) => (r.ok ? (r.json() as Promise<FactPeek>) : null))
+
 export type TraceOut = { answer: string; facts: Fact[]; took_ms: number }
 
 export const traceMemory = (passage: string, limit = 10) =>

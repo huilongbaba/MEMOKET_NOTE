@@ -5,7 +5,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database.kite.kite_memory import UserMemory
-from .schemas import AskIn, AskOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
+from .schemas import AskIn, AskOut, FactPeekOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -79,6 +79,44 @@ def facts(kind: str = "", who: str = "", topic: str = "", entity: str = "",
         limit=limit, offset=offset)
     return FactsPageOut(facts=[FactDetailOut(**r) for r in rows], total=total,
                         limit=limit, offset=offset)
+
+
+PEEK_SOURCE_CHARS = 220
+"""浮层里每条原话最多显示多少字。见 fact_peek 里的注释。"""
+
+
+def _clip(s: str) -> str:
+    s = " ".join((s or "").split())
+    return s if len(s) <= PEEK_SOURCE_CHARS else s[:PEEK_SOURCE_CHARS] + "…"
+
+
+@router.get("/facts/{fact_id}", response_model=FactPeekOut)
+def fact_peek(fact_id: str, user: str = Depends(current_user)):
+    """一条事实 + 它的原话。**行内出处浮层**用这个。
+
+    判据 2（docs/product-north-star.md）：为了看一条旧记录而离开当前页面
+    就是失败。正文里的 `[terrence-1872-5F8]` 悬停就能看到原文和出处行——
+    代价是「移开鼠标」，而不是跳走再回来时丢掉的那条思路。
+
+    也直接对着痛点 13：汇总零散笔记时「有些事实好像也不对」。事实旁边就是
+    它的原话，对不对当场看得见，不用相信模型。
+
+    **找不到要明确 404**，不能回一个空壳：一条指向不存在事实的引用是个真
+    问题（模型编的、或者知识库重建过），静默当成没事等于把它藏起来。
+    """
+    mem = UserMemory(user)
+    fact = mem.fact_by_id(fact_id)
+    if not fact:
+        raise HTTPException(404, f"没有这条记录：{fact_id}")
+    return FactPeekOut(
+        id=fact_id, text=fact.get("text", ""), when=fact.get("when", ""),
+        kind=fact.get("kind", ""),
+        # **每条原话截断。** 实拍发现一条会议记录原文能有几千字，浮层直接
+        # 占了半屏、把正文盖住——那反而违背了判据 2（不打断当前这一页）。
+        # 浮层是「扫一眼确认对不对」，不是阅读器；要看全文走知识库那一栏。
+        sources=[_clip(s["text"] if isinstance(s, dict) else str(s))
+                 for s in mem.fact_sources(fact_id)][:3],
+    )
 
 
 @router.get("/facts/{fact_id}/sources", response_model=list[SourceLineOut])

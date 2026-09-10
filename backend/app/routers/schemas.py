@@ -303,6 +303,19 @@ class SourceLineOut(BaseModel):
     text: str
 
 
+class FactPeekOut(BaseModel):
+    """行内出处浮层要的东西：一条事实 + 它的原话。
+
+    `sources` 最多三条——浮层是**扫一眼**用的，不是阅读器；要看全部走
+    知识库那一栏。
+    """
+    id: str
+    text: str
+    when: str = ""
+    kind: str = ""
+    sources: list[str] = Field(default_factory=list)
+
+
 class FactDetailOut(BaseModel):
     """事实表用的行——比 FactOut 多 who/conf/unit，少 sources（另走
     /facts/{id}/sources 按需拉，列表页不用为每行都查一遍原文）。"""

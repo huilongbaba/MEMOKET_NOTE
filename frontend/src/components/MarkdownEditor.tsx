@@ -7,11 +7,13 @@ import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { GFM } from '@lezer/markdown'
+import { factPeek } from '../api'
 import type { Revision } from '../api'
 import { imageEmbed } from '../editor/imageEmbed'
 import { imagePaste } from '../editor/imagePaste'
 import { linkClick } from '../editor/linkClick'
 import { markdownKeymap } from '../editor/markdownCommands'
+import { factCite } from '../editor/factCite'
 import { mermaidPreview } from '../editor/mermaid'
 import { runningBlocks } from '../editor/runningBlocks'
 import { tablePreview } from '../editor/tablePreview'
@@ -93,6 +95,12 @@ export default function MarkdownEditor({
     const state = EditorState.create({
       doc: content,
       extensions: [
+        // 行内出处：`[terrence-1872-5F8]` 悬停看原话。判据 2——为了看一条
+        // 旧记录而跳走，代价是那条思路；浮层的代价是移开鼠标。
+        factCite(async (id) => {
+          const f = await factPeek(id)
+          return f && { text: f.text, when: f.when, sources: f.sources }
+        }),
         history(),
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
         autocompletion({ override: [recallSource], activateOnTyping: true }),

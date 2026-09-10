@@ -519,6 +519,21 @@ export default function App() {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
     const timer = setTimeout(() => {
+      if (probe === 'fact-peek') {
+        // 往正文插一条真实的出处，再把鼠标事件打到它上面——CodeMirror 的
+        // hoverTooltip 只认真实的 mousemove。
+        setContent((c) => c + '\n\n据 [terrence-1872-5F8] 所述。\n')
+        setTimeout(() => {
+          const el = document.querySelector('.cm-fact-cite')
+          if (!el) return
+          const r = el.getBoundingClientRect()
+          const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }
+          el.dispatchEvent(new MouseEvent('mousemove', { ...at, bubbles: true }))
+          document.querySelector('.cm-content')?.dispatchEvent(
+            new MouseEvent('mousemove', { ...at, bubbles: true }))
+        }, 1200)
+        return
+      }
       if (probe === 'tree-menu' && tree.length) {
         const row = tree.find((r) => r.child_count > 0) ?? tree[0]
         setTreeMenu({ row, at: { x: 260, y: 180 } })

@@ -557,6 +557,17 @@ class UserMemory:
         )
         return [self._fact_dict(f) for f in rows[:limit]]
 
+    def fact_by_id(self, fact_id: str) -> dict | None:
+        """按 id 取一条事实。行内出处浮层用。
+
+        找不到返回 None——调用方要据此回 404。**不能返回空壳**：一条指向
+        不存在事实的引用是个真问题（模型编的、或者知识库重建过 id 变了），
+        静默当成没事等于把它藏起来。
+        """
+        store, _vocab = self._index()
+        fact = store.facts.get(fact_id)
+        return self._fact_dict(fact) if fact is not None else None
+
     def fact_sources(self, fact_id: str) -> list[dict]:
         """一条 fact 的原始出处，带 unit/日期/说话人——跟 source_lines() 的区别是
         这里给结构化字段，不是纯文本，方便前端做「fact -> 原始行」的证据回溯。"""
