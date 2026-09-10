@@ -451,8 +451,14 @@ def test_老库连上来会补齐后加的列(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "_db_path", lambda: db)
     with store.connect() as c:
         cols = {row[1] for row in c.execute("PRAGMA table_info(notes)")}
-        assert {"spine", "beats", "pinned", "folder_id"} <= cols
+        assert {"spine", "beats", "pinned"} <= cols
+        # folder_id **应该没了**：文件夹时代的残留由 _drop_folder_remnants
+        # 删掉。留着它会让下一个人以为笔记还有个文件夹字段，然后写出一半走
+        # 树、一半走 folder_id 的代码。
+        assert "folder_id" not in cols
         assert c.execute("SELECT title FROM notes").fetchone()[0] == "旧标题"
+        # 老数据要真的挂到树上，不是只留在 notes 表里
+        assert c.execute("SELECT COUNT(*) FROM branches").fetchone()[0] == 1
 
 
 def test_补列不会把真正的错误吞掉(tmp_path, monkeypatch):

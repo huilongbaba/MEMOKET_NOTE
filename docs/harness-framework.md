@@ -283,7 +283,7 @@ backend/app/
   routers/                 ④ 和前端对接：认 Mode、装 State、翻事件
     schemas.py               API 契约
     note_harness 98 · writing_plan 281 · compose_block 186 · harness（恢复）
-    kb · memory · ingest · notes · folders · skills · profile · settings · assets
+    kb · memory · ingest · notes · tree · skills · profile · settings · assets
 
   util/                    ⑤ 公共
     config.py · llm.py

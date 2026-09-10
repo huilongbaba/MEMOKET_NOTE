@@ -14,8 +14,8 @@ from .database import store
 from .database.ingest import asr
 from .util import parent_watch
 from .util.config import get_settings
-from .routers import (assets, compose, compose_block, folders, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
-                      settings as settings_router, skills, writing_plan)
+from .routers import (assets, compose, compose_block, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
+                      settings as settings_router, skills, tree, writing_plan)
 
 app = FastAPI(title="memoket-NOTE", version="0.1.0",
               description="AI 编辑器 + 知识库，长期记忆由 KITE 提供")
@@ -43,7 +43,7 @@ app.add_middleware(
 
 app.include_router(assets.router)
 app.include_router(notes.router)
-app.include_router(folders.router)
+app.include_router(tree.router)
 app.include_router(writing_plan.router)
 app.include_router(note_harness.router)
 app.include_router(skills.router)

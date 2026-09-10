@@ -420,3 +420,66 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   border-radius: 4px;
 }
 .cm-run-empty { padding: 8px 0 0; color: var(--muted); }
+
+/* ---------------------------------------------------------------- 笔记树
+   尺寸取自 Trilium 的 tree.css：行高 2.4em、圆角 5px。这个高度是给鼠标
+   拖拽留的余量——压到 1.6em 之后拖放的命中率会明显变差。 */
+.note-tree { margin: 0 -4px; }
+
+.tree-node {
+  display: flex; align-items: center; gap: 4px;
+  height: 2.4em; padding: 4px; padding-inline-end: 6px;
+  border-radius: 5px; cursor: pointer;
+  font-size: 14px; color: var(--fg);
+  /* 标题一行放不下时截断，不换行——树靠缩进表达层级，换行会把缩进读乱 */
+  white-space: nowrap;
+}
+.tree-node:hover { background: var(--bg); }
+.tree-node.active { background: var(--bg); box-shadow: inset 2px 0 0 var(--accent); }
+.tree-node.active .tree-title { color: var(--accent); font-weight: 500; }
+
+.tree-expander {
+  flex-shrink: 0; width: 14px; text-align: center;
+  color: var(--muted); font-size: 10px; line-height: 1;
+  /* 叶子节点也占同样的宽度：不占的话同一层的标题会因为「有没有孩子」
+     而左右错开，树看起来是歪的。 */
+}
+.tree-expander:not(.leaf):hover { color: var(--fg); }
+
+.tree-title {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 克隆标记。用户得知道改这一处会让别处跟着变——不标的话他会以为那是
+   两篇不同的笔记。 */
+.tree-badge {
+  flex-shrink: 0; font-size: 11px; color: var(--accent); opacity: .75;
+}
+
+.tree-count {
+  flex-shrink: 0; font-size: 11px; color: var(--muted);
+  min-width: 16px; text-align: right;
+}
+
+/* ------------------------------------------------------------- 右键菜单 */
+.context-menu {
+  position: fixed; z-index: 200; min-width: 200px;
+  padding: 4px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 8px 28px rgba(0,0,0,.18);
+  font-size: 13px;
+}
+.context-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: none; background: transparent;
+  color: var(--fg); text-align: start; cursor: pointer; border-radius: 5px;
+  white-space: nowrap;
+}
+.context-menu-item:hover:not(:disabled) { background: var(--bg); }
+.context-menu-item:disabled { opacity: .4; cursor: default; }
+.context-menu-item.danger { color: var(--del); }
+.cm-icon { width: 16px; flex-shrink: 0; text-align: center; }
+.cm-label { flex: 1; }
+.cm-hint { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+.context-menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }

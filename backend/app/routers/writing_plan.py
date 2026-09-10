@@ -106,14 +106,14 @@ def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
         if existing:
             store.update_note(user, plan["doc_note_id"], TRACKING_NOTE_TITLE, doc)
             return
-    note = store.create_note(user, TRACKING_NOTE_TITLE, doc, plan["folder_id"])
+    note = store.create_note(user, TRACKING_NOTE_TITLE, doc, plan["parent_note_id"])
     store.set_plan_doc_note(user, plan["id"], note["id"])
     plan["doc_note_id"] = note["id"]
 
 
 @router.get("", response_model=WritingPlanOut)
-def get_plan(folder_id: str, user: str = Depends(current_user)):
-    plan = store.get_active_plan(user, folder_id)
+def get_plan(parent_note_id: str, user: str = Depends(current_user)):
+    plan = store.get_active_plan(user, parent_note_id)
     if not plan:
         return WritingPlanOut()
     return WritingPlanOut(plan=plan, sections=store.list_sections(plan["id"]))
@@ -126,8 +126,8 @@ async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)
         raise HTTPException(400, "goal required")
 
     facts, _ids, _took = _retrieve(user, goal, "", [], limit=8)
-    folder_notes = store.notes_in_folder(user, body.folder_id, limit=8)
-    folder_ctx = prompts.folder_context_block(folder_notes)
+    sibling_notes = store.child_notes(user, body.parent_note_id, limit=8)
+    folder_ctx = prompts.folder_context_block(sibling_notes)
 
     plan_system = prompts.compose_system(prompts.PLAN_SYSTEM, "plan_generate", user)
     text = await llm.complete(
@@ -139,7 +139,7 @@ async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)
     if not titles:
         raise HTTPException(502, "模型没能生成有效的分段列表，换个目标描述再试试")
 
-    plan = store.create_plan(user, body.folder_id, goal)
+    plan = store.create_plan(user, body.parent_note_id, goal)
     sections = store.add_sections(plan["id"], titles)
     _sync_tracking_note(user, plan, sections)
     return WritingPlanOut(plan=plan, sections=sections)
@@ -157,7 +157,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
         plan-done     —— 「还有更多吗」判定为否，整个计划真正完成
         error / done
     """
-    plan = store.get_active_plan(user, body.folder_id)
+    plan = store.get_active_plan(user, body.parent_note_id)
     if not plan:
         raise HTTPException(404, "no active plan for this folder")
 
@@ -177,8 +177,8 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             if target is None:
                 done_summaries = [s["summary"] for s in sections if s["summary"]]
                 facts, _ids, _took = _retrieve(user, plan["goal"], "", [], limit=8)
-                folder_notes = store.notes_in_folder(user, body.folder_id, limit=8)
-                folder_ctx = prompts.folder_context_block(folder_notes)
+                sibling_notes = store.child_notes(user, body.parent_note_id, limit=8)
+                folder_ctx = prompts.folder_context_block(sibling_notes)
                 more_system = prompts.compose_system(
                     prompts.MORE_SECTIONS_SYSTEM, "more_sections", user)
                 try:
@@ -211,15 +211,15 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             note = store.get_note(user, target["note_id"]) if target["note_id"] else None
             is_new_note = note is None
             if is_new_note:
-                note = store.create_note(user, target["title"], "", body.folder_id)
+                note = store.create_note(user, target["title"], "", body.parent_note_id)
             if target["status"] != "in_progress" or is_new_note:
                 store.update_section(plan["id"], target["id"], status="in_progress", note_id=note["id"])
             target = {**target, "status": "in_progress", "note_id": note["id"]}
 
             other_summaries = [s["summary"] for s in sections
                                if s["id"] != target["id"] and s["summary"]]
-            folder_notes = store.notes_in_folder(
-                user, body.folder_id, exclude_id=note["id"], limit=6)
+            sibling_notes = store.child_notes(
+                user, body.parent_note_id, exclude_id=note["id"], limit=6)
 
             # One section = one harness run. Rounds, material accumulation,
             # dedup, the repair-vs-continue policy, scoring, best-of and the
@@ -235,7 +235,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             )
             st.bag["score_context"] = _score_context(
                 target["title"], plan["goal"], other_summaries)
-            folder_ctx = prompts.folder_context_block(folder_notes)
+            folder_ctx = prompts.folder_context_block(sibling_notes)
             hooks = SectionHooks(
                 goal=plan["goal"], other_summaries=other_summaries,
                 folder_ctx=folder_ctx, profile=_profile(user))
@@ -274,9 +274,9 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
     return sse_response(gen())
 
 
-@router.post("/{folder_id}/abandon")
-def abandon_plan(folder_id: str, user: str = Depends(current_user)):
-    plan = store.get_active_plan(user, folder_id)
+@router.post("/{parent_note_id}/abandon")
+def abandon_plan(parent_note_id: str, user: str = Depends(current_user)):
+    plan = store.get_active_plan(user, parent_note_id)
     if not plan:
         raise HTTPException(404, "no active plan for this folder")
     store.set_plan_status(user, plan["id"], "abandoned")

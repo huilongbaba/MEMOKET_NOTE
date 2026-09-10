@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api'
-import type { Folder, WritingPlan, WritingSection } from '../api'
+import type { TreeRow, WritingPlan, WritingSection } from '../api'
 import type { HarnessState } from '../App'
 import { toast } from '../toast'
 
@@ -9,7 +9,7 @@ const STATUS_LABEL: Record<WritingSection['status'], string> = {
 }
 
 /**
- * 文件夹级别的无限续写 harness 控制台：设定目标 -> 自动拆分段 -> 一段接
+ * 子树级别的无限续写 harness 控制台：设定目标 -> 自动拆分段 -> 一段接
  * 一段自动写（每段落成一篇笔记）-> 写完已知分段后自动检查还有没有更多，
  * 没有才真正停。跟笔记级别的 magic tap 是两回事，所以是独立入口，不是
  * 编辑器工具栏里的一个按钮。
@@ -20,8 +20,8 @@ const STATUS_LABEL: Record<WritingSection['status'], string> = {
  * harness（或者活跃的是别的文件夹）时，本地拉一份这个文件夹当前的
  * plan/sections 做"静止"展示。
  */
-export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harness, onRun, onToggleFollow }: {
-  folder: Folder
+export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harness, onRun, onToggleFollow }: {
+  parent: TreeRow
   onClose: () => void
   onNoteChanged: () => void
   harness: HarnessState | null
@@ -33,17 +33,17 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
   const [goal, setGoal] = useState('')
   const [starting, setStarting] = useState(false)
 
-  const isActive = harness?.folderId === folder.id
+  const isActive = harness?.folderId === parent.note_id
   const plan = isActive ? harness.plan : localPlan
   const sections = isActive ? harness.sections : localSections
   const running = isActive && harness.running
 
   useEffect(() => {
-    api.getWritingPlan(folder.id).then((r) => {
+    api.getWritingPlan(parent.note_id).then((r) => {
       setLocalPlan(r.plan)
       setLocalSections(r.sections)
     })
-  }, [folder.id])
+  }, [parent.note_id])
 
   // harness 更新了这个文件夹的 plan/sections（跑起来之后）就同步一份到
   // 本地，这样即使中途关了又重开面板、或者切去另一个文件夹的 harness，
@@ -66,7 +66,7 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
     if (!plan) return
     if (!window.confirm(`放弃「${plan.goal}」这份计划？已经写出来的笔记会保留，只是不再按这个目标往下写。`)) return
     try {
-      await api.abandonWritingPlan(folder.id)
+      await api.abandonWritingPlan(parent.note_id)
       setLocalPlan({ ...plan, status: 'abandoned' })
       setLocalSections([])
       setGoal('')
@@ -80,7 +80,7 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
     if (!goal.trim()) return
     setStarting(true)
     try {
-      const r = await api.startWritingPlan(folder.id, goal.trim())
+      const r = await api.startWritingPlan(parent.note_id, goal.trim())
       setLocalPlan(r.plan)
       setLocalSections(r.sections)
       onNoteChanged()
@@ -100,7 +100,7 @@ export default function WritingPlanPanel({ folder, onClose, onNoteChanged, harne
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>🚀 {folder.name} · 写作计划</h2>
+          <h2 style={{ margin: 0 }}>🚀 {parent.title} · 写作计划</h2>
           <button onClick={onClose}>✕</button>
         </div>
 

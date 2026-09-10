@@ -17,15 +17,12 @@ CREATE TABLE IF NOT EXISTS notes (
     title       TEXT NOT NULL DEFAULT '',
     content     TEXT NOT NULL DEFAULT '',
     pinned      INTEGER NOT NULL DEFAULT 0,
-    folder_id   TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id, updated_at DESC);
--- idx_notes_folder is created in connect(), AFTER the folder_id migration
--- below runs -- on an already-existing (pre-migration) notes table,
--- CREATE TABLE IF NOT EXISTS is a no-op, so an index on folder_id right
--- here would reference a column that doesn't exist yet on that table.
+-- 没有 folder_id：笔记归谁管由 branches 说了算。老库里那一列由
+-- _drop_folder_remnants 删掉。
 
 -- 一次性迁移的登记处。_ADDED_COLUMNS 那张表只能补列，做不了数据搬运
 -- （把文件夹变成笔记这种），而数据搬运又必须**只跑一次**。
@@ -55,14 +52,6 @@ CREATE INDEX IF NOT EXISTS idx_branches_parent
     ON branches(user_id, parent_note_id, position);
 CREATE INDEX IF NOT EXISTS idx_branches_note ON branches(note_id);
 
-CREATE TABLE IF NOT EXISTS folders (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    created_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id, created_at);
-
 -- 无限续写的 harness 状态：一个文件夹同一时间最多一个活跃 plan（旧的会先
 -- 被标记 done/abandoned），sections 是它拆出来的有序写作单元，每个最终会
 -- 落到某篇笔记里。这是可靠的机器状态——人看的进度是从这两张表渲染出的一篇
@@ -88,16 +77,21 @@ CREATE TABLE IF NOT EXISTS skill_config (
 );
 
 CREATE TABLE IF NOT EXISTS writing_plans (
-    id          TEXT PRIMARY KEY,
-    user_id     TEXT NOT NULL,
-    folder_id   TEXT NOT NULL,
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL,
+    -- 这个计划对着树上哪一棵子树跑。原来叫 folder_id——文件夹没了之后它
+    -- 就是那棵子树根笔记的 id，值一个没变（迁移时旧文件夹沿用了原 id）。
+    parent_note_id TEXT NOT NULL,
     goal        TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'active',
     doc_note_id TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_writing_plans_folder ON writing_plans(user_id, folder_id, status);
+-- idx_writing_plans_parent 不在这儿建，在 connect() 里、**列改名之后**。
+-- 老库上 `CREATE TABLE IF NOT EXISTS` 是空操作（表已经存在、列还是旧名），
+-- 在这里建一个引用新列名的索引会当场 no such column。这个文件为
+-- idx_notes_folder 写过同样的注释，我照样撞了一次。
 
 CREATE TABLE IF NOT EXISTS writing_sections (
     id          TEXT PRIMARY KEY,
@@ -171,7 +165,7 @@ CREATE TABLE IF NOT EXISTS provider_config (
 
 -- harness.types.RunHistoryStore 的落地实现（见 app/harness_adapter.py）。
 -- key 是调用方定的"同一件反复发生的事情"是什么——note_harness 传
--- note_id，writing_plan 传 folder_id，包本身不关心这个约定。
+-- note_id，writing_plan 传子树根笔记的 id，包本身不关心这个约定。
 -- final_scores/weak_dimensions 存 JSON 文本，不是关系型列——评分维度是
 -- 调用方配置出来的，不是这张表能提前知道的固定集合。
 CREATE TABLE IF NOT EXISTS harness_runs (
@@ -218,7 +212,6 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 _ADDED_COLUMNS = (
     ("ingest_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
-    ("notes", "folder_id", "TEXT"),
     # 写作骨架（核心张力 + 结构节拍）跟着笔记走。
     #
     # 之前它只活在前端内存里，`open()` 一进新笔记就清空——换一篇、刷新页面、
@@ -265,8 +258,12 @@ def _folders_into_tree(conn: sqlite3.Connection) -> None:
     的 folder_id、前端记着的「当前文件夹」、知识库里按 folder 存的东西，
     全都还指向同一个 id，不用跟着改一遍。
     """
+    has_folders = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='folders'"
+    ).fetchone()
     folders = conn.execute(
-        "SELECT id, user_id, name, created_at FROM folders").fetchall()
+        "SELECT id, user_id, name, created_at FROM folders").fetchall() \
+        if has_folders else []
     for f in folders:
         # 同 id 的笔记可能已经存在（重跑、或者手工建过）——不覆盖。
         if conn.execute("SELECT 1 FROM notes WHERE id=?", (f["id"],)).fetchone():
@@ -278,8 +275,10 @@ def _folders_into_tree(conn: sqlite3.Connection) -> None:
 
     # 每篇笔记挂一条 branch：有 folder_id 的挂到那个（现在是笔记了）下面，
     # 没有的挂在树根。
+    note_cols = {r[1] for r in conn.execute("PRAGMA table_info(notes)")}
+    col = "folder_id" if "folder_id" in note_cols else "NULL AS folder_id"
     notes = conn.execute(
-        "SELECT id, user_id, folder_id, created_at FROM notes").fetchall()
+        f"SELECT id, user_id, {col}, created_at FROM notes").fetchall()
     seen: dict[tuple[str, str], int] = {}
     for n in notes:
         parent = n["folder_id"] or ROOT_ID
@@ -294,15 +293,50 @@ def _folders_into_tree(conn: sqlite3.Connection) -> None:
              n["created_at"]))
 
 
+def _drop_folder_remnants(conn: sqlite3.Connection) -> None:
+    """文件夹时代的残留清干净：`folders` 表、`notes.folder_id` 列。
+
+    **必须排在 `_folders_into_tree` 后面**——那次迁移正是靠读这两样把旧数据
+    搬成树的。顺序由 connect() 里的调用顺序保证。
+
+    留着不删是不行的：一个还在的 `folder_id` 列会让下一个读代码的人以为
+    「笔记还有个文件夹字段」，然后写出一半走树、一半走 folder_id 的代码。
+    这个仓库的主人为这种「新旧混着」付过账。
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(notes)")}
+    if "folder_id" in cols:
+        conn.execute("DROP INDEX IF EXISTS idx_notes_folder")
+        conn.execute("ALTER TABLE notes DROP COLUMN folder_id")
+    conn.execute("DROP INDEX IF EXISTS idx_folders_user")
+    conn.execute("DROP TABLE IF EXISTS folders")
+
+
+def _plan_folder_to_parent(conn: sqlite3.Connection) -> None:
+    """`writing_plans.folder_id` 改名成 `parent_note_id`。
+
+    值一个都不用动：迁移时旧文件夹沿用了原 id，所以那一列里存的本来就已经
+    是一个笔记 id 了。改的只是名字——留着 `folder_id` 这个名字会让人以为
+    还有文件夹这种东西。
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(writing_plans)")}
+    if "folder_id" in cols and "parent_note_id" not in cols:
+        conn.execute("ALTER TABLE writing_plans RENAME COLUMN folder_id"
+                     " TO parent_note_id")
+
+
 def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_db_path(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     for table, column, decl in _ADDED_COLUMNS:
         _add_column(conn, table, column, decl)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_folder "
-                 "ON notes(user_id, folder_id, updated_at DESC)")
+    # 顺序有意义：先把旧数据搬成树（要读 folders 和 notes.folder_id），
+    # 再把那两样删掉。
     _migrate_once(conn, "folders-into-tree-v1", _folders_into_tree)
+    _migrate_once(conn, "plan-folder-to-parent-v1", _plan_folder_to_parent)
+    _migrate_once(conn, "drop-folder-remnants-v1", _drop_folder_remnants)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_writing_plans_parent"
+                 " ON writing_plans(user_id, parent_note_id, status)")
     return conn
 
 
@@ -344,14 +378,27 @@ def get_note(user_id: str, note_id: str) -> dict | None:
     return _note(row) if row else None
 
 
-def create_note(user_id: str, title: str, content: str, folder_id: str | None = None) -> dict:
+def create_note(user_id: str, title: str, content: str,
+                parent_id: str = ROOT_ID) -> dict:
+    """建一篇笔记，**同时把它挂到树上**。
+
+    照 Trilium：笔记总是创建在某个父节点下面，没有「建完再决定放哪」这个
+    中间态。不挂的话它就不在树上的任何位置——存在于库里但用户看不见，
+    那不是一篇笔记，是一条垃圾数据。
+    """
     note = {"id": uuid.uuid4().hex[:12], "user_id": user_id, "title": title,
-            "content": content, "pinned": 0, "folder_id": folder_id,
+            "content": content, "pinned": 0,
             "created_at": _now(), "updated_at": _now()}
     with connect() as c:
         c.execute(
-            "INSERT INTO notes (id,user_id,title,content,pinned,folder_id,created_at,updated_at) "
-            "VALUES (:id,:user_id,:title,:content,:pinned,:folder_id,:created_at,:updated_at)", note)
+            "INSERT INTO notes (id,user_id,title,content,pinned,created_at,updated_at) "
+            "VALUES (:id,:user_id,:title,:content,:pinned,:created_at,:updated_at)", note)
+        pos = _next_position(c, user_id, parent_id)
+        c.execute("INSERT INTO branches (id,user_id,note_id,parent_note_id,"
+                  "position,is_expanded,created_at) VALUES (?,?,?,?,?,0,?)",
+                  (uuid.uuid4().hex[:12], user_id, note["id"], parent_id, pos,
+                   note["created_at"]))
+        c.commit()
     return {**note, "spine": "", "beats": []}
 
 
@@ -391,31 +438,57 @@ def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
     return get_note(user_id, note_id)
 
 
-def delete_note(user_id: str, note_id: str) -> bool:
+def delete_note(user_id: str, note_id: str) -> list[str]:
+    """删一篇笔记**以及它的整棵子树**，返回被删掉的所有 id。
+
+    子树必须一起删。只删自己的话，孩子们的 branch 指向一个不存在的父节点
+    ——它们既不在树根、也不在任何看得见的地方，是一批用户再也找不到、
+    却还在库里占着的笔记。Trilium 也是删整棵子树。
+
+    **克隆是例外**：一个孩子如果在别处还有 branch，就只摘掉这条边，笔记
+    本身留着——它在别的位置还长着，删掉就是把用户在那边看得见的东西弄没了。
+    """
+    removed: list[str] = []
     with connect() as c:
-        cur = c.execute("DELETE FROM notes WHERE user_id=? AND id=?",
-                        (user_id, note_id))
-    return cur.rowcount > 0
+        if not c.execute("SELECT 1 FROM notes WHERE user_id=? AND id=?",
+                         (user_id, note_id)).fetchone():
+            return removed
 
+        def drop(nid: str) -> None:
+            kids = [r[0] for r in c.execute(
+                "SELECT note_id FROM branches WHERE parent_note_id=? AND user_id=?",
+                (nid, user_id))]
+            for kid in kids:
+                others = c.execute(
+                    "SELECT COUNT(*) FROM branches WHERE note_id=? AND user_id=?"
+                    " AND parent_note_id<>?", (kid, user_id, nid)).fetchone()[0]
+                if others:
+                    # 别处还长着：只摘这条边
+                    c.execute("DELETE FROM branches WHERE note_id=? AND"
+                              " parent_note_id=? AND user_id=?", (kid, nid, user_id))
+                else:
+                    drop(kid)
+            c.execute("DELETE FROM branches WHERE note_id=? AND user_id=?",
+                      (nid, user_id))
+            c.execute("DELETE FROM notes WHERE id=? AND user_id=?", (nid, user_id))
+            removed.append(nid)
 
-def set_note_folder(user_id: str, note_id: str, folder_id: str | None) -> dict | None:
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE notes SET folder_id=?, updated_at=? WHERE user_id=? AND id=?",
-            (folder_id, _now(), user_id, note_id))
-        if cur.rowcount == 0:
-            return None
-    return get_note(user_id, note_id)
+        drop(note_id)
+        c.commit()
+    return removed
+def child_notes(user_id: str, parent_id: str, exclude_id: str = "",
+                limit: int = 5) -> list[dict]:
+    """某个节点下面的直接子笔记。无限续写拿它当「同一批内容」的参考上下文。
 
-
-def notes_in_folder(user_id: str, folder_id: str, exclude_id: str = "", limit: int = 5) -> list[dict]:
-    """无限续写用来把同文件夹里的其他笔记当参考上下文——只取标题+正文，
-    按最近更新排在前面，数量封顶避免把 prompt 撑爆。"""
+    走 branches 而不是 notes.folder_id：**克隆之后一篇笔记可以同时属于好几个
+    父节点**，folder_id 那个单值字段表达不了。
+    """
     with connect() as c:
         rows = c.execute(
-            "SELECT * FROM notes WHERE user_id=? AND folder_id=? AND id != ? "
-            "ORDER BY updated_at DESC LIMIT ?",
-            (user_id, folder_id, exclude_id, limit)).fetchall()
+            "SELECT n.* FROM notes n JOIN branches b ON b.note_id = n.id"
+            " WHERE b.user_id=? AND b.parent_note_id=? AND n.id != ?"
+            " ORDER BY n.updated_at DESC LIMIT ?",
+            (user_id, parent_id, exclude_id, limit)).fetchall()
     return [_note(r) for r in rows]
 
 
@@ -533,6 +606,11 @@ def tree(user_id: str) -> list[dict]:
         rows = c.execute(
             "SELECT b.id, b.note_id, b.parent_note_id, b.position, b.is_expanded,"
             "       n.title, n.pinned, n.updated_at,"
+            # 正文开头。**树上标题为空或还是占位符时拿它当显示名**——真实
+            # 库里 18 篇有 15 篇标题字面就是「未命名」（旧界面建笔记时的
+            # 默认值），一列二十个「未命名」的树是没法用的。
+            # 只取前 80 字：树是导航，不是预览器。
+            "       substr(n.content, 1, 80) AS preview,"
             "       (SELECT COUNT(*) FROM branches k WHERE k.parent_note_id=b.note_id)"
             "         AS child_count,"
             "       (SELECT COUNT(*) FROM branches m WHERE m.note_id=b.note_id)"
@@ -572,53 +650,11 @@ def note_paths(user_id: str, note_id: str) -> list[list[str]]:
 
 
 # ---------------------------------------------------------------- 文件夹
-
-def list_folders(user_id: str) -> list[dict]:
-    with connect() as c:
-        rows = c.execute(
-            "SELECT * FROM folders WHERE user_id=? ORDER BY created_at",
-            (user_id,)).fetchall()
-    return [_note(r) for r in rows]
-
-
-def create_folder(user_id: str, name: str) -> dict:
-    folder = {"id": uuid.uuid4().hex[:12], "user_id": user_id, "name": name, "created_at": _now()}
-    with connect() as c:
-        c.execute(
-            "INSERT INTO folders (id,user_id,name,created_at) VALUES (:id,:user_id,:name,:created_at)",
-            folder)
-    return folder
-
-
-def rename_folder(user_id: str, folder_id: str, name: str) -> dict | None:
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE folders SET name=? WHERE user_id=? AND id=?",
-            (name, user_id, folder_id))
-        if cur.rowcount == 0:
-            return None
-        row = c.execute("SELECT * FROM folders WHERE user_id=? AND id=?",
-                        (user_id, folder_id)).fetchone()
-    return dict(row) if row else None
-
-
-def delete_folder(user_id: str, folder_id: str) -> bool:
-    with connect() as c:
-        # 笔记不跟着删——文件夹只是分类，删文件夹时笔记退回「未分类」
-        c.execute("UPDATE notes SET folder_id=NULL WHERE user_id=? AND folder_id=?",
-                  (user_id, folder_id))
-        cur = c.execute("DELETE FROM folders WHERE user_id=? AND id=?",
-                        (user_id, folder_id))
-    return cur.rowcount > 0
-
-
-# ---------------------------------------------------------------- 无限续写计划
-
-def get_active_plan(user_id: str, folder_id: str) -> dict | None:
+def get_active_plan(user_id: str, parent_note_id: str) -> dict | None:
     with connect() as c:
         row = c.execute(
-            "SELECT * FROM writing_plans WHERE user_id=? AND folder_id=? AND status='active'",
-            (user_id, folder_id)).fetchone()
+            "SELECT * FROM writing_plans WHERE user_id=? AND parent_note_id=? AND status='active'",
+            (user_id, parent_note_id)).fetchone()
     return dict(row) if row else None
 
 
@@ -629,20 +665,20 @@ def get_plan(user_id: str, plan_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-def create_plan(user_id: str, folder_id: str, goal: str) -> dict:
+def create_plan(user_id: str, parent_note_id: str, goal: str) -> dict:
     """新建之前先把这个文件夹里任何还挂着 active 的旧 plan 标成
     abandoned——同一个文件夹同时只应该有一个活跃计划，不然 harness 不知道
     该跑哪个。"""
-    plan = {"id": uuid.uuid4().hex[:12], "user_id": user_id, "folder_id": folder_id,
+    plan = {"id": uuid.uuid4().hex[:12], "user_id": user_id, "parent_note_id": parent_note_id,
             "goal": goal, "status": "active", "doc_note_id": "",
             "created_at": _now(), "updated_at": _now()}
     with connect() as c:
         c.execute(
-            "UPDATE writing_plans SET status='abandoned' WHERE user_id=? AND folder_id=? AND status='active'",
-            (user_id, folder_id))
+            "UPDATE writing_plans SET status='abandoned' WHERE user_id=? AND parent_note_id=? AND status='active'",
+            (user_id, parent_note_id))
         c.execute(
-            "INSERT INTO writing_plans (id,user_id,folder_id,goal,status,doc_note_id,created_at,updated_at) "
-            "VALUES (:id,:user_id,:folder_id,:goal,:status,:doc_note_id,:created_at,:updated_at)", plan)
+            "INSERT INTO writing_plans (id,user_id,parent_note_id,goal,status,doc_note_id,created_at,updated_at) "
+            "VALUES (:id,:user_id,:parent_note_id,:goal,:status,:doc_note_id,:created_at,:updated_at)", plan)
     return plan
 
 

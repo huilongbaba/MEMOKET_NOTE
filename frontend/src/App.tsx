@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
 import * as api from './api'
-import type { Folder, Note, Revision, TapMeta, VerifyFinding, WritingPlan, WritingSection } from './api'
+import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
 import AudioRecorder from './components/AudioRecorder'
 import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
@@ -23,6 +23,8 @@ import type { SelectionAction } from './components/SelectionMenu'
 import AgentActivity, { type AgentRound } from './components/AgentActivity'
 import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
+import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
+import NoteTree from './components/NoteTree'
 import SkeletonPanel from './components/SkeletonPanel'
 import SettingsPanel from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
@@ -70,13 +72,10 @@ export type HarnessState = {
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
-  const [folders, setFolders] = useState<Folder[]>([])
-  // absence from this set = expanded (the default) -- tracking collapsed
-  // folders instead of expanded ones means a newly created folder starts
-  // open without needing to seed its id into any state first.
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
-  const [creatingFolder, setCreatingFolder] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
+  // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
+  const [tree, setTree] = useState<TreeRow[]>([])
+  const [treeMenu, setTreeMenu] = useState<{ row: TreeRow; at: MenuAt } | null>(null)
+  // 展开状态不在这儿了——它跟着 branch 存在服务端（见 toggleTreeNode）。
   const [noteQuery, setNoteQuery] = useState('')
   // null = not searching (show `notes` unfiltered); kept separate from
   // `notes`/`reload()` so typing a search term can never accidentally
@@ -142,7 +141,7 @@ export default function App() {
   // 的旧值。
   const pausedRef = useRef(false)
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
-  const [writingPlanFolder, setWritingPlanFolder] = useState<Folder | null>(null)
+  const [writingPlanParent, setWritingPlanParent] = useState<TreeRow | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
   const [skillsPanelOpen, setSkillsPanelOpen] = useState(false)
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false)
@@ -184,48 +183,175 @@ export default function App() {
     return list
   }, [])
 
-  const reloadFolders = useCallback(async () => {
-    const list = await api.listFolders()
-    setFolders(list)
-    return list
+  const reloadTree = useCallback(async () => {
+    const rows = await api.getTree()
+    setTree(rows)
+    return rows
   }, [])
 
-  function toggleFolderExpanded(id: string) {
-    setCollapsedFolders((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
+  /** 树上右键。**harness 的动作直接长在节点上**——智能续写/打磨是对某一篇
+   *  的，无限续写是对某一棵子树的，而树上本来就有「一篇」和「一棵子树」
+   *  这两个层级。做成节点自带的能力，而不是另开一个面板去选目标。
+   *
+   *  分组照 Trilium 的树菜单：打开 → 插入 → 结构操作 → 剪贴/克隆 → 危险动作。
+   */
+  function treeMenuItems(row: TreeRow): MenuItem[] {
+    const note = notes.find((n) => n.id === row.note_id)
+    const isClone = row.branch_count > 1
+    return [
+      { label: '打开', icon: '↗', onSelect: () => { if (note) void switchTo(note) } },
+      { kind: 'sep' },
+      { label: '插入子笔记', icon: '＋', hint: '成为它的下一级',
+        onSelect: () => void newNoteUnder(row.note_id) },
+      { label: '在后面插入笔记', icon: '↳',
+        onSelect: () => void newNoteUnder(row.parent_note_id) },
+      { label: '重命名', icon: '✎', onSelect: () => void renameNode(row) },
+      { kind: 'sep' },
+      // ---- 我们自己的：harness 就在这儿，跟结构操作平级
+      { label: '🤖 智能续写这篇', disabled: !note,
+        onSelect: () => { if (note) void openAndRun(note, 'write') } },
+      { label: '✨ 打磨这篇', disabled: !note || !(note.content ?? '').trim(),
+        onSelect: () => { if (note) void openAndRun(note, 'polish') } },
+      { label: '🚀 对这棵子树无限续写', disabled: row.child_count === 0,
+        hint: row.child_count === 0 ? '它下面还没有笔记' : undefined,
+        onSelect: () => setWritingPlanParent(row) },
+      { kind: 'sep' },
+      { label: '克隆到…', icon: '⧉', hint: '同一篇，两处都能看到',
+        onSelect: () => void cloneNodeTo(row) },
+      { label: '移动到…', icon: '⇄', onSelect: () => void moveNodeTo(row) },
+      { label: '从这个位置移除', icon: '⊘', disabled: !isClone,
+        hint: isClone ? undefined : '它只在这一个位置',
+        onSelect: () => void detachNode(row) },
+      { label: '复制笔记路径', icon: '⌘', onSelect: () => void copyNotePath(row) },
+      { kind: 'sep' },
+      { label: '删除（连同子树）', icon: '🗑', danger: true,
+        onSelect: () => { if (note) remove(note) } },
+    ]
   }
 
-  /** 无限续写按文件夹组织，之前唯一的入口是文件夹标题栏里那个不起眼的
-   * 🚀 图标——没有文件夹的话那个图标根本不会出现在页面上任何地方，等于
-   * 完全没有入口（反馈原文："我找不到那个按钮了"）。这是一个随时可见的
-   * 侧栏按钮，自己判断该打开哪个文件夹的面板，而不是要求用户先知道"这个
-   * 功能是按文件夹来的"这件事。 */
+  async function newNoteUnder(parentId: string) {
+    const n = await api.createNote('', '', parentId)
+    await Promise.all([reload(), reloadTree()])
+    void switchTo(n)
+  }
+
+  async function renameNode(row: TreeRow) {
+    const title = window.prompt('改个名字', row.title)?.trim()
+    if (title === undefined || title === row.title) return
+    setTree((prev) => prev.map((r) => (r.note_id === row.note_id ? { ...r, title } : r)))
+    try {
+      const note = notes.find((n) => n.id === row.note_id)
+      await api.saveNote(row.note_id, title, note?.content ?? '')
+      await reload()
+      if (current?.id === row.note_id) setTitle(title)
+    } catch (e) {
+      toast('改名失败：' + e, 'error')
+      await reloadTree()
+    }
+  }
+
+  /** 挑一个目标节点。用 prompt 列表而不是做一个树选择器：这是低频动作，
+   *  为它再写一棵可选择的树是把复杂度花在错地方。**先做对，再做好看。** */
+  function pickTarget(row: TreeRow, verb: string): string | null {
+    const candidates = tree
+      .filter((r) => r.note_id !== row.note_id)
+      .map((r, i) => `${i + 1}. ${r.title || '未命名'}`)
+    if (candidates.length === 0) { toast('树上没有别的位置'); return null }
+    const raw = window.prompt(
+      `${verb}到哪儿？输入序号，留空表示树根：\n\n${candidates.join('\n')}`, '')
+    if (raw === null) return null
+    if (!raw.trim()) return api.ROOT_ID
+    const idx = Number(raw.trim()) - 1
+    const target = tree.filter((r) => r.note_id !== row.note_id)[idx]
+    if (!target) { toast('序号不对', 'error'); return null }
+    return target.note_id
+  }
+
+  async function cloneNodeTo(row: TreeRow) {
+    const to = pickTarget(row, '克隆')
+    if (!to) return
+    try {
+      await api.cloneNoteTo(row.note_id, to)
+      await reloadTree()
+      toast('已克隆——两处是同一篇，改一处处处都变')
+    } catch (e) { toast('克隆失败：' + e, 'error') }
+  }
+
+  async function moveNodeTo(row: TreeRow) {
+    const to = pickTarget(row, '移动')
+    if (!to) return
+    try {
+      await api.moveBranch(row.note_id, row.parent_note_id, to)
+      await reloadTree()
+    } catch (e) { toast('移不过去：' + e, 'error') }
+  }
+
+  async function detachNode(row: TreeRow) {
+    try {
+      await api.detachBranch(row.note_id, row.parent_note_id)
+      await reloadTree()
+    } catch (e) { toast('移除失败：' + e, 'error') }
+  }
+
+  async function copyNotePath(row: TreeRow) {
+    const paths = await api.notePaths(row.note_id)
+    const byId = new Map(tree.map((r) => [r.note_id, r.title || '未命名']))
+    // 克隆之后路径不止一条，全给出来——用户自己知道他要哪条
+    const text = paths.map((p) => p.map((id) => byId.get(id) ?? id).join(' / ')).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      toast('路径已复制')
+    } catch { toast(text) }
+  }
+
+  /** 从树上直接跑 harness：先切到那篇，再跑。**不切就跑的话流式输出会写进
+   *  一篇用户看不见的笔记里**，他只看到状态栏在转。 */
+  async function openAndRun(note: Note, mode: 'write' | 'polish') {
+    await switchTo(note)
+    await runNoteHarness(mode)
+  }
+
+  /** 展开/收起一个节点。**状态写回服务端**，不是只改本地——刷新一次就全
+   *  收起来的树，在几十个节点之后就没法用了。本地先改是为了点下去立刻有
+   *  反馈，请求失败再回滚。 */
+  async function toggleTreeNode(row: TreeRow) {
+    const next = !row.is_expanded
+    setTree((prev) => prev.map((r) => (r.id === row.id ? { ...r, is_expanded: next } : r)))
+    try {
+      await api.setBranchExpanded(row.note_id, row.parent_note_id, next)
+    } catch {
+      setTree((prev) => prev.map((r) => (r.id === row.id ? { ...r, is_expanded: !next } : r)))
+    }
+  }
+
+  /** 无限续写现在对着**树上的一棵子树**跑（从前是「文件夹」——树上没有
+   * 文件夹这种东西了，有子节点的笔记就是文件夹）。
+   *
+   * 入口仍然是侧栏一个随时可见的按钮，自己判断该对哪棵子树开：当前笔记
+   * 的父节点优先。反馈原文是「我找不到那个按钮了」——那时它藏在文件夹
+   * 标题栏的一个图标里，没有文件夹时页面上根本不出现。 */
   function openWritingPlan() {
-    if (folders.length === 0) {
-      toast('无限续写按文件夹组织，先建一个文件夹')
-      setCreatingFolder(true)
+    const parents = tree.filter((r) => r.child_count > 0)
+    if (parents.length === 0) {
+      toast('无限续写对着一棵子树跑——先建一篇笔记，往它下面放几篇')
       return
     }
-    if (folders.length === 1) {
-      setWritingPlanFolder(folders[0])
-      return
+    const mine = current
+      ? tree.find((r) => r.note_id === current.id)?.parent_note_id
+      : undefined
+    const preferred = parents.find((r) => r.note_id === mine) ?? parents[0]
+    setWritingPlanParent(preferred)
+    if (parents.length > 1) {
+      toast(`已打开「${preferred.title}」的无限续写——想换一棵，在树上右键选`)
     }
-    // 当前笔记所在的文件夹优先，没有的话退回第一个——都不是完美的选择，
-    // 但比强迫用户先去研究"要点哪个文件夹的哪个图标"要好。
-    const preferred = folders.find((f) => f.id === current?.folder_id) ?? folders[0]
-    setWritingPlanFolder(preferred)
-    if (folders.length > 1) toast(`已打开「${preferred.name}」的无限续写——想用别的文件夹，点文件夹标题栏自己的 🚀`)
   }
 
   /** 跑 harness——挂在 App 级别，不依赖 WritingPlanPanel 是否挂载（见
    * HarnessState 上面的注释）。跟随开着的时候，每次开始写一个新分段就把
    * 主编辑器切到那篇笔记，正文流式追加进 content（跟 magic tap 增量到达
    * 时的处理方式完全一样），是直接回应"不能在实际的笔记里看到流输出吗"。 */
-  async function runHarness(folder: Folder) {
-    if (harness?.running && harness.folderId === folder.id) {
+  async function runHarness(parent: TreeRow) {
+    if (harness?.running && harness.folderId === parent.note_id) {
       harnessAbortRef.current?.abort()
       return
     }
@@ -235,16 +361,16 @@ export default function App() {
       toast(`「${harness.folderName}」的无限续写正在跑，先停掉那边再开始新的`, 'error')
       return
     }
-    const got = await api.getWritingPlan(folder.id)
+    const got = await api.getWritingPlan(parent.note_id)
     if (!got.plan) { toast('这个文件夹还没有写作计划，先在面板里生成一个'); return }
     setHarness({
-      folderId: folder.id, folderName: folder.name, plan: got.plan, sections: got.sections,
+      folderId: parent.note_id, folderName: parent.title, plan: got.plan, sections: got.sections,
       running: true, currentSectionTitle: '', currentNoteId: '', preview: '', waitingFirstToken: true, follow: true,
     })
     const ctrl = new AbortController()
     harnessAbortRef.current = ctrl
     try {
-      await api.runWritingPlan(folder.id, {
+      await api.runWritingPlan(parent.note_id, {
         onPlanLoaded: (p, s) => setHarness((h) => (h ? { ...h, plan: p, sections: s } : h)),
         onSectionStart: async (d) => {
           setHarness((h) => (h ? {
@@ -277,12 +403,12 @@ export default function App() {
             sections: h.sections.map((s) => (s.id === d.section_id ? { ...s, status: 'done', summary: d.summary } : s)),
           } : h))
           if (d.blocked) toast(`这个分段卡住了，需要你看一眼：${d.blocked_reason || '原因未知'}`, 'error')
-          reload(); reloadFolders()
+          reload(); reloadTree()
         },
         onPlanExtended: (newSections) => setHarness((h) => (h ? { ...h, sections: [...h.sections, ...newSections] } : h)),
         onPlanDone: (p) => {
           setHarness((h) => (h ? { ...h, plan: p } : h))
-          toast(`「${folder.name}」的写作计划已完成`)
+          toast(`「${parent.title}」的写作计划已完成`)
         },
       }, ctrl.signal)
     } catch (e) {
@@ -290,60 +416,11 @@ export default function App() {
     } finally {
       setHarness((h) => (h ? { ...h, running: false, waitingFirstToken: false } : h))
       harnessAbortRef.current = null
-      reload(); reloadFolders()
+      reload(); reloadTree()
     }
   }
 
-  async function confirmCreateFolder() {
-    const name = newFolderName.trim()
-    if (!name) { setCreatingFolder(false); return }
-    await api.createFolder(name)
-    setNewFolderName('')
-    setCreatingFolder(false)
-    await reloadFolders()
-  }
 
-  /** 双击文件夹名改名。
-   *
-   * 之前没有这个入口：能建能删，不能改名——名字打错了只能删掉重建，再把
-   * 里面的笔记一篇篇挪回去。用 prompt() 而不是做一套行内编辑，是因为改名
-   * 是低频动作，为它加一个编辑态会让侧栏那一行的点击语义（展开/收起）
-   * 变复杂。 */
-  async function renameFolderPrompt(f: Folder) {
-    const name = window.prompt('文件夹改名', f.name)?.trim()
-    if (!name || name === f.name) return
-    setFolders((prev) => prev.map((x) => (x.id === f.id ? { ...x, name } : x)))
-    try {
-      await api.renameFolder(f.id, name)
-    } catch (e) {
-      toast('改名失败：' + e, 'error')
-      await reloadFolders()
-    }
-  }
-
-  /** Same optimistic-delete-with-undo pattern as note deletion (see remove()
-   * below) instead of a confirm() dialog -- lower stakes here too, since
-   * the folder's notes survive (they just fall back to uncategorized). */
-  function removeFolder(f: Folder) {
-    setFolders((prev) => prev.filter((x) => x.id !== f.id))
-    setNotes((prev) => prev.map((n) => (n.folder_id === f.id ? { ...n, folder_id: null } : n)))
-    let undone = false
-    const timer = setTimeout(() => {
-      if (!undone) api.deleteFolder(f.id).catch(() => {})
-    }, 5000)
-    toastAction(`已删除文件夹「${f.name}」（笔记已移至未分类）`, '撤销', () => {
-      undone = true
-      clearTimeout(timer)
-      reloadFolders()
-      reload()
-    })
-  }
-
-  async function moveNote(n: Note, folderId: string | null) {
-    const updated = await api.moveNoteToFolder(n.id, folderId)
-    setNotes((prev) => prev.map((x) => (x.id === n.id ? updated : x)))
-    if (current?.id === n.id) setCurrent(updated)
-  }
 
   /** Shared between the flat search-results list and the per-folder grouped
    * list -- same note-item markup either way, only what array it's mapped
@@ -371,18 +448,8 @@ export default function App() {
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {n.updated_at.slice(0, 16).replace('T', ' ')}
           </span>
-          {folders.length > 0 && (
-            <select
-              value={n.folder_id ?? ''}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => moveNote(n, e.target.value || null)}
-              title="移动到文件夹"
-              style={{ fontSize: 10, maxWidth: 60, padding: '0 1px', flexShrink: 0 }}
-            >
-              <option value="">未分类</option>
-              {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          )}
+          {/* 「移动到文件夹」的下拉没了：树上靠拖拽和右键菜单移动，一个
+              只能选一层的下拉表达不了任意深度的树。 */}
           <span
             style={{ flexShrink: 0, opacity: n.pinned ? 1 : 0.35 }}
             title={n.pinned ? '取消置顶' : '置顶'}
@@ -434,18 +501,39 @@ export default function App() {
       .catch(() => {})
   }
 
+  // ---------------------------------------------------------------- 探针
+  //
+  // `?probe=xxx` 把界面驱动到某个状态，供截图核对。
+  //
+  // **为什么要这个**：右键菜单、弹层、分屏这些东西只有在交互之后才存在，
+  // 而截图工具没法替我点——发合成点击要系统的「辅助访问」权限，那是得让
+  // 仓库主人去系统设置里授权的东西，不该为了自测要求他改系统权限。
+  //
+  // 只认 URL 参数，不留任何常驻入口：正常使用时这段代码一次都不会执行。
+  useEffect(() => {
+    const probe = new URLSearchParams(location.search).get('probe')
+    if (!probe) return
+    const timer = setTimeout(() => {
+      if (probe === 'tree-menu' && tree.length) {
+        const row = tree.find((r) => r.child_count > 0) ?? tree[0]
+        setTreeMenu({ row, at: { x: 260, y: 180 } })
+      }
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [tree])
+
   useEffect(() => {
     reload().then((list) => {
       if (list.length) open(list[0])
     })
-    reloadFolders()
+    reloadTree()
     api.health().then((h) => {
       const bad: string[] = []
       if (!h.llm?.ok) bad.push('LLM 不可达 (' + h.llm?.base_url + ')')
       if (!h.asr?.ok) bad.push('语音服务不可达 (' + h.asr?.base_url + ')')
       setHealthMsg(bad.join(' · '))
     }).catch(() => setHealthMsg('后端不可达'))
-  }, [reload, reloadFolders])
+  }, [reload, reloadTree])
 
   useEffect(() => {
     if (!noteQuery.trim()) { setSearchResults(null); return }
@@ -1414,25 +1502,37 @@ export default function App() {
 
   return (
     <div className={'app' + (focusMode ? ' focus-mode' : '')}>
+      {treeMenu && (
+        <ContextMenu
+          at={treeMenu.at}
+          items={treeMenuItems(treeMenu.row)}
+          onClose={() => setTreeMenu(null)}
+        />
+      )}
       <Toaster />
       <CommandPalette onOpenNote={switchTo} onInsertFact={insertAtCursor} />
-      {writingPlanFolder && (
+      {writingPlanParent && (
         <WritingPlanPanel
-          folder={writingPlanFolder}
-          onClose={() => setWritingPlanFolder(null)}
-          onNoteChanged={() => { reload(); reloadFolders() }}
+          parent={writingPlanParent}
+          onClose={() => setWritingPlanParent(null)}
+          onNoteChanged={() => { reload(); reloadTree() }}
           harness={harness}
-          onRun={() => runHarness(writingPlanFolder)}
+          onRun={() => runHarness(writingPlanParent)}
           onToggleFollow={() => setHarness((h) => (h ? { ...h, follow: !h.follow } : h))}
         />
       )}
       {/* 关掉面板不再停止 harness（见 HarnessState 注释）——这块是面板关着
          的时候唯一能看到"还在跑"的地方，点了直接重新打开对应文件夹的面板。 */}
-      {harness?.running && !writingPlanFolder && (
+      {harness?.running && !writingPlanParent && (
         <div
           className="card"
           style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, width: 260, cursor: 'pointer' }}
-          onClick={() => setWritingPlanFolder({ id: harness.folderId, name: harness.folderName, user_id: '', created_at: '' })}
+          onClick={() => {
+            // 从树里找回那一行——正在跑的 harness 只记了 id 和标题，而面板
+            // 要的是完整的 TreeRow。找不到就不开（子树可能已经被删了）。
+            const row = tree.find((r) => r.note_id === harness.folderId)
+            if (row) setWritingPlanParent(row)
+          }}
           title="点击打开写作计划面板"
         >
           <div className="row" style={{ gap: 6 }}>
@@ -1504,82 +1604,29 @@ export default function App() {
           </label>
         </div>
 
-        <h2>笔记</h2>
+        {/* 快速搜索在树的上面——照 Trilium 的位置。 */}
         <input
           placeholder="搜索笔记标题或正文…（⌘K 全局搜索）"
           value={noteQuery}
           onChange={(e) => setNoteQuery(e.target.value)}
           style={{ marginBottom: 8 }}
         />
-        {visibleNotes.length === 0 && (
-          <p className="muted">{noteQuery ? '没有匹配的笔记。' : '还没有笔记。'}</p>
-        )}
-        {searchResults !== null ? (
-          // 搜索结果不按文件夹分组——命中就该直接看到，不用先猜它在哪个文件夹里
-          visibleNotes.map(renderNoteItem)
+        {searchResults !== null || noteQuery ? (
+          // 搜索时不画树：命中就该直接看到，不用先猜它在树的哪一层。
+          visibleNotes.length === 0
+            ? <p className="muted">没有匹配的笔记。</p>
+            : visibleNotes.map(renderNoteItem)
         ) : (
-          <>
-            {folders.map((f) => {
-              const inFolder = notes.filter((n) => n.folder_id === f.id)
-              const collapsed = collapsedFolders.has(f.id)
-              return (
-                <div key={f.id} style={{ marginBottom: 4 }}>
-                  <div
-                    className="muted"
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            fontSize: 12, padding: '4px 2px', cursor: 'pointer' }}
-                    onClick={() => toggleFolderExpanded(f.id)}
-                  >
-                    <span
-                      onDoubleClick={(e) => { e.stopPropagation(); void renameFolderPrompt(f) }}
-                      title="双击改名"
-                    >
-                      {collapsed ? '▸' : '▾'} 📁 {f.name} <span style={{ opacity: 0.6 }}>({inFolder.length})</span>
-                    </span>
-                    <span>
-                      <span
-                        title="无限续写：给个目标，自动拆分段一段接一段写"
-                        onClick={(e) => { e.stopPropagation(); setWritingPlanFolder(f) }}
-                        style={{ marginRight: 8 }}
-                      >
-                        🚀
-                      </span>
-                      <span
-                        title="删除文件夹（笔记会变为未分类，不会被删除）"
-                        onClick={(e) => { e.stopPropagation(); removeFolder(f) }}
-                      >
-                        ✕
-                      </span>
-                    </span>
-                  </div>
-                  {!collapsed && inFolder.map(renderNoteItem)}
-                </div>
-              )
-            })}
-
-            {creatingFolder ? (
-              <div className="row" style={{ marginBottom: 8 }}>
-                <input
-                  autoFocus
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') confirmCreateFolder()
-                    if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName('') }
-                  }}
-                  placeholder="文件夹名称"
-                  style={{ flex: 1 }}
-                />
-                <button onClick={confirmCreateFolder}>确定</button>
-              </div>
-            ) : (
-              <button style={{ width: '100%', marginBottom: 8 }} onClick={() => setCreatingFolder(true)}>
-                + 新建文件夹
-              </button>
-            )}
-
-            {notes.filter((n) => !n.folder_id).map(renderNoteItem)}
-          </>
+          <NoteTree
+            rows={tree}
+            activeNoteId={current?.id ?? null}
+            onOpen={(id) => {
+              const n = notes.find((x) => x.id === id)
+              if (n) void switchTo(n)
+            }}
+            onToggle={toggleTreeNode}
+            onContextMenu={(row, at) => setTreeMenu({ row, at })}
+          />
         )}
 
         <div className="sidebar-footer">

@@ -15,12 +15,29 @@ export type Note = {
   updated_at: string
 }
 
-export type Folder = {
-  id: string
-  user_id: string
-  name: string
-  created_at: string
+/** 树上的一个节点 = 一条 branch + 那篇笔记的显示信息。
+ *
+ * **没有 Folder 这个类型了。** 照 Trilium：文件夹不是一种东西，任何有子节点
+ * 的笔记就是文件夹。所以「新建文件夹」= 新建笔记，「改文件夹名」= 改标题，
+ * 「删文件夹」= 删笔记（连子树）。 */
+export type TreeRow = {
+  id: string                 // branch id
+  note_id: string
+  parent_note_id: string     // ROOT_ID = 挂在树根
+  position: number
+  is_expanded: boolean
+  title: string
+  /** 正文开头。标题为空或还是占位符时，树上拿它当显示名。 */
+  preview: string
+  pinned: boolean
+  updated_at: string
+  child_count: number
+  /** 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道
+   *  改这一处会让别处跟着变。 */
+  branch_count: number
 }
+
+export const ROOT_ID = 'root'
 
 export type Fact = {
   id: string
@@ -45,6 +62,14 @@ export type Revision = {
 const USER_KEY = 'memoket-note-user'
 
 export function getUser(): string {
+  // `?user=xxx` 优先，并且记下来。桌面版靠它开到指定身份（`electron . --user=`），
+  // 网页版靠它做「用另一个身份打开这个链接」——不然新环境永远拿到一个随机
+  // 用户，看到的是一个空库，很容易误判成「数据没了」。
+  const fromUrl = new URLSearchParams(location.search).get('user')?.trim()
+  if (fromUrl) {
+    localStorage.setItem(USER_KEY, fromUrl)
+    return fromUrl
+  }
   let u = localStorage.getItem(USER_KEY)
   if (!u) {
     u = 'user-' + Math.random().toString(36).slice(2, 8)
@@ -74,11 +99,11 @@ export const listNotes = (q = '') =>
 export const getNote = (id: string) =>
   fetch(`/api/notes/${id}`, { headers: headers() }).then(json<Note>)
 
-export const createNote = (title: string, content: string, folder_id: string | null = null) =>
+export const createNote = (title: string, content: string, parent_note_id: string = ROOT_ID) =>
   fetch('/api/notes', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ title, content, folder_id }),
+    body: JSON.stringify({ title, content, parent_note_id }),
   }).then(json<Note>)
 
 export const saveNote = (id: string, title: string, content: string) =>
@@ -94,34 +119,57 @@ export const deleteNote = (id: string) =>
 export const togglePin = (id: string) =>
   fetch(`/api/notes/${id}/pin`, { method: 'POST', headers: headers() }).then(json<Note>)
 
-export const moveNoteToFolder = (id: string, folder_id: string | null) =>
-  fetch(`/api/notes/${id}/folder`, {
-    method: 'PUT',
-    headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ folder_id }),
-  }).then(json<Note>)
+// ---------------------------------------------------------------- 笔记树
+//
+// 操作的主语是 **branch**（哪篇笔记 · 在哪个父节点下），不是笔记：一篇笔记
+// 可以同时长在好几个位置，说「移动这篇笔记」是没有指向的。
 
-// ---------------------------------------------------------------- 文件夹
+/** 整棵树一次拿全。按需一层层拿的话，「展开一个节点」就变成一次网络往返，
+ *  树用起来会一顿一顿的。 */
+export const getTree = () =>
+  fetch('/api/tree', { headers: headers() }).then(json<TreeRow[]>)
 
-export const listFolders = () =>
-  fetch('/api/folders', { headers: headers() }).then(json<Folder[]>)
-
-export const createFolder = (name: string) =>
-  fetch('/api/folders', {
+/** 把一篇已有的笔记挂到另一个位置 = **克隆**。不是复制：两处是同一篇，
+ *  改一处处处都变。 */
+export const cloneNoteTo = (note_id: string, parent_note_id: string) =>
+  fetch('/api/tree/branches', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ name }),
-  }).then(json<Folder>)
+    body: JSON.stringify({ note_id, parent_note_id }),
+  }).then(json<TreeRow>)
 
-export const renameFolder = (id: string, name: string) =>
-  fetch(`/api/folders/${id}`, {
-    method: 'PUT',
+/** 摘掉一条 branch——只是「不在这个位置显示了」，笔记本身还在别处。
+ *  最后一条摘不掉（后端回 400）：那不是删除，是丢失。 */
+export const detachBranch = (note_id: string, parent_note_id: string) =>
+  fetch(`/api/tree/branches?note_id=${encodeURIComponent(note_id)}`
+        + `&parent_note_id=${encodeURIComponent(parent_note_id)}`,
+        { method: 'DELETE', headers: headers() }).then(json)
+
+export const moveBranch = (
+  note_id: string, from_parent_id: string, to_parent_id: string,
+  position?: number,
+) =>
+  fetch('/api/tree/branches/move', {
+    method: 'PATCH',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ name }),
-  }).then(json<Folder>)
+    body: JSON.stringify({ note_id, from_parent_id, to_parent_id, position }),
+  }).then(json)
 
-export const deleteFolder = (id: string) =>
-  fetch(`/api/folders/${id}`, { method: 'DELETE', headers: headers() }).then(json)
+/** 展开状态存在库里，不在前端内存里——刷新一次就全收起来的树，几十个节点
+ *  之后就没法用了。 */
+export const setBranchExpanded = (
+  note_id: string, parent_note_id: string, expanded: boolean,
+) =>
+  fetch('/api/tree/branches/expanded', {
+    method: 'PATCH',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ note_id, parent_note_id, expanded }),
+  }).then(json)
+
+/** 这篇笔记在树上的所有位置。克隆之后「它在哪」没有唯一答案——面包屑要显示
+ *  的是用户当前从哪条路径点进来的，所以由调用方挑一条。 */
+export const notePaths = (note_id: string) =>
+  fetch(`/api/tree/paths/${note_id}`, { headers: headers() }).then(json<string[][]>)
 
 // ---------------------------------------------------------------- 个人偏好
 //

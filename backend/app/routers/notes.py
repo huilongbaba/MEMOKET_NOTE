@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
-from .schemas import Note, NoteFolderIn, NoteIn, SkeletonSaveIn
+from .schemas import Note, NoteCreateIn, NoteIn, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -15,8 +15,14 @@ def list_notes(q: str = "", user: str = Depends(current_user)):
 
 
 @router.post("", response_model=Note)
-def create_note(body: NoteIn, user: str = Depends(current_user)):
-    return store.create_note(user, body.title, body.content, body.folder_id)
+def create_note(body: NoteCreateIn, user: str = Depends(current_user)):
+    """新建笔记，**同时挂到树上**。
+
+    「新建文件夹」不是单独的操作——在 Trilium 的模型里文件夹不是一种东西，
+    有子节点的笔记就是文件夹。所以建一个空笔记再往里面建东西，那个空笔记
+    自然就成了文件夹。
+    """
+    return store.create_note(user, body.title, body.content, body.parent_note_id)
 
 
 @router.get("/{note_id}", response_model=Note)
@@ -52,9 +58,16 @@ def save_skeleton(note_id: str, body: SkeletonSaveIn, user: str = Depends(curren
 
 @router.delete("/{note_id}")
 def delete_note(note_id: str, user: str = Depends(current_user)):
-    if not store.delete_note(user, note_id):
+    """删一篇笔记**以及它的整棵子树**。
+
+    子树必须一起删：只删自己的话，孩子们的 branch 指向一个不存在的父节点，
+    它们既不在树根也不在任何看得见的地方——是一批用户再也找不到、却还在库里
+    占着的笔记。克隆是例外，在别处还长着的孩子只摘掉这条边。
+    """
+    removed = store.delete_note(user, note_id)
+    if not removed:
         raise HTTPException(404, "note not found")
-    return {"deleted": note_id}
+    return {"deleted": removed}
 
 
 @router.post("/{note_id}/pin", response_model=Note)
@@ -63,14 +76,6 @@ def pin_note(note_id: str, user: str = Depends(current_user)):
     if not note:
         raise HTTPException(404, "note not found")
     updated = store.set_pinned(user, note_id, not note["pinned"])
-    if not updated:
-        raise HTTPException(404, "note not found")
-    return updated
-
-
-@router.put("/{note_id}/folder", response_model=Note)
-def move_note(note_id: str, body: NoteFolderIn, user: str = Depends(current_user)):
-    updated = store.set_note_folder(user, note_id, body.folder_id)
     if not updated:
         raise HTTPException(404, "note not found")
     return updated

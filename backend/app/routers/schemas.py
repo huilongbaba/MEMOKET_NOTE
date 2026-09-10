@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 class NoteIn(BaseModel):
     title: str = ""
     content: str = ""
-    folder_id: str | None = None
 
 
 class Note(BaseModel):
@@ -21,7 +20,6 @@ class Note(BaseModel):
     title: str
     content: str
     pinned: bool = False
-    folder_id: str | None = None
     # 写作骨架跟着笔记走。之前只活在前端内存里，换一篇/刷新/无限续写自动
     # 跟随切页，骨架就没了——而 harness 每轮都要拿它当主线依据。
     spine: str = ""
@@ -50,27 +48,61 @@ class SkeletonSaveIn(BaseModel):
     beats: list[str] = Field(default_factory=list)
 
 
-class NoteFolderIn(BaseModel):
-    folder_id: str | None = None
+# ---------------------------------------------------------------- 笔记树
+#
+# 照 Trilium：树的边是 branch，不是笔记上的一个 parent 字段。一个笔记有多条
+# branch 就是「克隆」——同时长在树的多个位置。所以下面这些操作的主语都是
+# **branch**（哪个笔记、在哪个父节点下），不是笔记。
+
+class TreeRow(BaseModel):
+    """树上的一个节点 = 一条 branch + 那篇笔记的显示信息。"""
+    id: str                  # branch id
+    note_id: str
+    parent_note_id: str      # 'root' 表示挂在树根
+    position: int
+    is_expanded: bool = False
+    title: str
+    # 正文开头。标题为空或还是「未命名」这种占位符时，树上拿它当显示名。
+    preview: str = ""
+    pinned: bool = False
+    updated_at: str
+    child_count: int = 0
+    # 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道
+    # 改这一处会让别处跟着变。
+    branch_count: int = 1
 
 
-# ---------------------------------------------------------------- 文件夹
+class NoteCreateIn(BaseModel):
+    title: str = ""
+    content: str = ""
+    # 建在哪个父节点下。笔记总是创建在树上的某个位置，没有「先建了再说」
+    # 这个中间态——不挂的话它存在于库里但用户看不见。
+    parent_note_id: str = "root"
 
-class FolderIn(BaseModel):
-    name: str
+
+class BranchAttachIn(BaseModel):
+    """把一篇已有的笔记挂到另一个位置 = 克隆。"""
+    note_id: str
+    parent_note_id: str = "root"
 
 
-class Folder(BaseModel):
-    id: str
-    user_id: str
-    name: str
-    created_at: str
+class BranchMoveIn(BaseModel):
+    note_id: str
+    from_parent_id: str
+    to_parent_id: str
+    position: int | None = None
+
+
+class BranchExpandIn(BaseModel):
+    note_id: str
+    parent_note_id: str
+    expanded: bool
 
 
 # ---------------------------------------------------------------- 无限续写计划
 
 class WritingPlanStartIn(BaseModel):
-    folder_id: str
+    parent_note_id: str
     goal: str = ""
 
 
@@ -88,7 +120,7 @@ class WritingSection(BaseModel):
 class WritingPlan(BaseModel):
     id: str
     user_id: str
-    folder_id: str
+    parent_note_id: str
     goal: str
     status: Literal["active", "done", "abandoned"] = "active"
     doc_note_id: str = ""
@@ -102,7 +134,7 @@ class WritingPlanOut(BaseModel):
 
 
 class WritingPlanRunIn(BaseModel):
-    folder_id: str
+    parent_note_id: str
 
 
 # ---------------------------------------------------------------- 单篇笔记 harness

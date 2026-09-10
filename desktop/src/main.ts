@@ -14,6 +14,20 @@ import { startBackend, type Backend } from './backend.js'
 // 用命令行标志决定的话，忘了带 --dev 就会去找打包后才存在的目录，后端挂不上
 // 前端，窗口里甩出一个裸的 {"detail":"Not Found"}——第一次跑就踩了。
 const wantDevTools = process.argv.includes('--dev')
+/** `--user=xxx`：用指定身份打开。开发和排查时用——不给的话渲染进程会给
+ *  自己造一个随机用户，看到的是空库。 */
+const forcedUser = process.argv.find((a) => a.startsWith('--user='))?.slice(7)
+/** `--probe=xxx`：把界面驱动到某个状态供截图核对（右键菜单、弹层这些只有
+ *  交互之后才存在的东西）。正常使用时不带这个参数，那段代码一次都不会跑。 */
+const probe = process.argv.find((a) => a.startsWith('--probe='))?.slice(8)
+
+function appUrl(port: number): string {
+  const q = new URLSearchParams()
+  if (forcedUser) q.set('user', forcedUser)
+  if (probe) q.set('probe', probe)
+  const s = q.toString()
+  return `http://127.0.0.1:${port}/` + (s ? `?${s}` : '')
+}
 let backend: Backend | null = null
 let win: BrowserWindow | null = null
 const logs: string[] = []
@@ -91,7 +105,7 @@ async function boot() {
     app.quit()
     return
   }
-  createWindow(`http://127.0.0.1:${backend.port}/`)
+  createWindow(appUrl(backend.port))
 }
 
 app.whenReady().then(boot)
@@ -106,7 +120,7 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (win) return
-  if (backend) createWindow(`http://127.0.0.1:${backend.port}/`)
+  if (backend) createWindow(appUrl(backend.port))
   else void boot()
 })
 
