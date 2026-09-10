@@ -529,3 +529,24 @@ POST，而且抽样不是全扫。
   的东西解析不出来，**每场会议抽 0 条事实且全程不报错**。
 * `tests/test_extract_prompt.py` 跑在**当前装着的那个 KITE 版本**上，升级把
   测试跑红，而不是把生产跑挂。
+
+## 11. 落地记录（2026-09-10）：知识库长在笔记树上
+
+设计在 `docs/kb-fusion-design.md`，这里只记结果和边界。
+
+- **虚拟子树**（`app/database/kb/virtual_tree.py`）：`GET /api/kb/tree` 一次
+  给分类层（主题树 / 实体 / 月份 / 最近会议 / 三个工具节点），
+  `GET /api/kb/tree/children?node=` 展开时才取事实（主题走闭包，跟 recall /
+  facts_page 同一语义）。不落库——只是把 KITE 的数据呈现成跟 `store.tree()`
+  同一种行，前端同一个树控件画。多个父主题 = 多条 branch = 树上标 ⧉，跟真
+  笔记的克隆一模一样。
+- **双向链接**：`note_citations` 表随每次保存重建（正文里的 `[user-n-hex]`
+  引用），`tree()` 带 `cite_count` / `ingested_at`，树上直接看 ◆N 和 ⇡；
+  `GET /api/memory/facts/{id}` 给行内 peek，`/citing` 反查哪几篇引用了它。
+- **事实 = 只读笔记**：打开 `kb:fact:<id>` 是一篇只读笔记（原话可展开、被哪
+  些笔记引用、相关事实），开标签、进面包屑、前进后退全都白拿。
+- **可视化工具也是节点**：`kb:overview` / `kb:graph` / `kb:digest`，
+  `MemoryBrowser` 的 `embedded` 模式内嵌中栏，图随容器宽。
+- **边界**：实体 1220 个全没标类型，「按类型分组」这一层在只有一种类型时不
+  画（否则是一层只有「其他」的空壳）；一个分类下最多给 300 条事实
+  （`MAX_CHILDREN`），再多要走事实表的分页。

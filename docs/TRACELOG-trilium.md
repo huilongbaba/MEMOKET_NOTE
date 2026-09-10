@@ -335,3 +335,25 @@ desktop_layout.tsx 的 53/40）：启动栏 58、标签行 50、标签 36 全圆
    了**自动保存**，而 `switchTo` / `openVirtual` 离开笔记前都会显式 `save()`。
    这回把拦截放进 `save()` 本身，再清一次库。教训：**同一条纪律要放在
    唯一的出口上**，放在某一个调用方那里迟早漏。
+
+## [14] 第五批：特殊笔记、导入子树、收尾杂项（第 211–235 轮）
+
+- **设置和 Skill 是特殊笔记**：`app:settings` / `app:skills`，启动栏点开是一个
+  标签、进中栏，跟别的笔记一样对待——照 Trilium「选项是隐藏子树里的笔记」。
+  两个面板加 `embedded` 模式，弹层外壳和 ✕ 按钮不再渲染。
+- 导入 .md：一个文件一篇；**多个文件生成一棵子树**（「导入 日期」父节点 +
+  每个文件一个子节点）。几十篇散在树根上没法收拾。
+- 删子树先列出会删掉什么（`ConfirmDialog`）；单篇仍是乐观删除 + 撤销——确认框
+  只给看不见后果的动作用。
+- 树底部浮动工具条：定位到当前笔记 / 折叠全部。
+- 主题地图内嵌中栏时随容器宽（ResizeObserver），不再写死 900。
+- 右栏「浏览」改成打开「总览」标签（`open-virtual` 窗口事件），弹层版
+  MemoryBrowser 不再有入口。
+- 应用图标：PIL 画 1024 → iconset → `iconutil` → icns；electron-builder `mac.icon`。
+  重新打了 dmg（181MB）。
+
+**实拍抓到的**：
+1. `kb:graph` 标签名还是裸 id——修名的 effect 只盯 `kbRows`，而标签在 kbRows
+   到了之后才开，就永远等不到下一次。依赖加上 `tabs`，有 changed 守卫不循环。
+2. 设置页单选框孤零零居中画在一行、文字掉到下一行：全局 `input { width: 100% }`
+   把 radio 也吃了。`input[type=radio], [type=checkbox] { width: auto }`。
