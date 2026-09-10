@@ -20,11 +20,16 @@ AI 驱动的编辑器 + 个人知识库。写作时自动引用你自己的记�
 | **写作 harness** | 「写一轮 → 判一轮 → 决定继不继续」的自动循环。八个功能共用同一份循环，差别全部表达成配置。见下 |
 | **Skill** | 用 SKILL.md 目录教它你的写法。菜单按需加载（先给一行简介，模型要用才读全文），第三方 skill 的脚本跑在沙箱里 |
 | **主题簇 / 抽取判据** | 知识库自己的质量闭环：事实聚成主题簇、抽取质量用同一套打分引擎判 |
+| **笔记树**（照 Trilium） | 没有文件夹：有子节点的笔记就是文件夹。同一篇可以**克隆**到多处（改一处处处都变），拖拽移动，键盘导航，右键菜单里直接长着 harness 的动作 |
+| **知识库长在树上** | 知识库是树底部的一棵虚拟子树（主题 / 实体 / 时间线 / 最近摄入 / 总览 / 主题地图 / 回顾）。一条事实打开就是一篇只读笔记；正文里的 `[引用]` 悬停看出处，树上直接看每篇引用了几条（◆N）、摄入过没有（⇡） |
+| **桌面版** | Electron 外壳（`desktop/`），后端打成不依赖系统 python 的可执行程序一起装进 .app。标签页、分栏可拖可折叠、前进后退、⌘F 页内查找 |
 
 ## 架构
 
 ```
-前端 (Vite + React, :5173)
+桌面 (Electron, desktop/)   拉起后端、托管打包好的前端；数据落在系统的用户数据目录
+    │
+前端 (Vite + React, :5173)  外壳照 Trilium：启动栏 · 树 · 标签行 · ribbon · 右栏 · 状态栏
     │  HTTP / SSE（AG-UI 事件）
 后端 (FastAPI, :8000)
     app/
@@ -109,6 +114,19 @@ npm run dev               # http://localhost:5173
 
 `GET /api/health` 会报出 LLM 和语音服务是否可达。
 
+## 桌面版
+
+```bash
+cd desktop && npm install
+npm run dev            # 开发：起 Vite + Electron
+npm run dist           # 打包：先 PyInstaller 后端、再 electron-builder → out/*.dmg
+npx electron . --user=<id> --probe=<name> --dark   # 截图核对用：固定用户 / 摆好某个界面状态 / 强制暗色
+```
+
+打包出来的 .app 自带后端（`Contents/Resources/backend/`），数据落在
+`~/Library/Application Support/memoket-note-desktop/data/`——**不在 .app 包内**，
+更新时不会跟着包被替换掉。见 `docs/desktop-plan.md` 与 `docs/TRACELOG-trilium.md`。
+
 ## 测试
 
 ```bash
@@ -145,7 +163,9 @@ LLM_MODEL=gpt-4.1-mini
 | 端点 | 说明 |
 |---|---|
 | `GET/POST/PUT/DELETE /api/notes` | 笔记 CRUD（新建时同时挂到树上） |
-| `GET /api/tree` · `POST/DELETE /api/tree/branches` · `PATCH .../move` `.../expanded` | 笔记树：整棵拿全、克隆、摘除、移动、展开。**没有文件夹这种东西**——有子节点的笔记就是文件夹 |
+| `GET /api/tree` · `POST/DELETE /api/tree/branches` · `PATCH .../move` `.../reorder` `.../expanded` · `GET .../paths/{id}` | 笔记树：整棵拿全（带引用数/摄入标记）、克隆、摘除、移动、拖拽重排、展开、一篇在树上的所有路径。**没有文件夹这种东西**——有子节点的笔记就是文件夹 |
+| `GET /api/kb/tree` · `GET /api/kb/tree/children?node=` | 知识库的虚拟子树：分类层一次给全，展开一个分类时才取它名下的事实 |
+| `GET /api/memory/facts/{id}` · `.../citing` | 一条事实（行内出处浮层用，找不到 404）· 哪些笔记引用了它（反向链接） |
 | `POST /api/skeleton` | 线 1：生成写作骨架 |
 | `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |
 | `POST /api/memory/recall` | 符号检索，零 LLM，~1 ms |
