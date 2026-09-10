@@ -10,10 +10,13 @@ import * as api from '../api'
  * always-available search-and-cite action means they're never stuck hoping
  * the automatic path picks up a fact -- they can just go get it.
  *
- * Citations are inserted as plain text (`[事实：... · 日期]`), not a custom
+ * Citations are inserted as plain text (`原文 [fact-id]`), not a custom
  * widget/reference token: the document must stay a single plain string for
  * the anchor-based revision system, so there's no round-trip-safe way to
- * embed a "live" reference object without breaking that contract.
+ * embed a "live" reference object without breaking that contract. The
+ * `[fact-id]` tail is what the backend's `store.cited_fact_ids` and the
+ * editor's `factCite` plugin both recognise -- 三条「找到并引用」的路径
+ * （@ 补全 / 相关记忆 / ⌘K）插的必须是同一种东西，否则只有一条会算成引用。
  */
 export async function recallSource(context: CompletionContext): Promise<CompletionResult | null> {
   const match = context.matchBefore(/@[一-鿿\w][一-鿿\w ]{0,40}$/)
@@ -54,7 +57,7 @@ export async function recallSource(context: CompletionContext): Promise<Completi
         return div
       },
       apply: (view, _completion, from, to) => {
-        const citation = `[事实：${f.text}${f.when ? ' · ' + f.when : ''}]`
+        const citation = `${f.text} [${f.id}]`
         view.dispatch({
           changes: { from, to, insert: citation },
           selection: { anchor: from + citation.length },

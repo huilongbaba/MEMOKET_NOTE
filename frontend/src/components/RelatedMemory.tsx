@@ -63,7 +63,7 @@ export default function RelatedMemory({ content, onInsert }: {
           className="card"
           key={f.id}
           style={{ cursor: 'pointer' }}
-          onClick={() => onInsert(`[事实：${f.text}${f.when ? ' · ' + f.when : ''}]`)}
+          onClick={() => onInsert(`${f.text} [${f.id}]`)}
           title="点击插入引用到光标处"
         >
           <div style={{ fontSize: 13 }}>{f.text}</div>

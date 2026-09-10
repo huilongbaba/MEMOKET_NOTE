@@ -66,7 +66,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     if (item.kind === 'note') {
       onOpenNote(item.note)
     } else {
-      onInsertFact(`[事实：${item.fact.text}${item.fact.when ? ' · ' + item.fact.when : ''}]`)
+      onInsertFact(`${item.fact.text} [${item.fact.id}]`)
     }
     setOpen(false)
   }

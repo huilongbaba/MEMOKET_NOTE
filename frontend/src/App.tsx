@@ -103,6 +103,23 @@ export default function App() {
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const [locateTick, setLocateTick] = useState(0)
+  // 分屏：中栏右侧再开一栏看另一篇（Trilium 的 SplitNoteContainer）。
+  // **第二栏是只读的**——「对照着另一篇写」要的是看得见，不是两个光标；
+  // 编辑器的状态（正文/骨架/修订/harness）是单实例的，做成可编辑要重构一半的
+  // App.tsx，收益不成比例。要改它就点「在标签里打开」。
+  const [split, setSplit] = useState<{ id: string; w: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem('memoket-note-split:' + api.getUser())
+      return raw ? (JSON.parse(raw) as { id: string; w: number }) : null
+    } catch { return null }
+  })
+  useEffect(() => {
+    try {
+      if (split) localStorage.setItem('memoket-note-split:' + api.getUser(), JSON.stringify(split))
+      else localStorage.removeItem('memoket-note-split:' + api.getUser())
+    } catch { /* 无所谓 */ }
+  }, [split])
+  const openInSplit = (id: string) => setSplit((s) => ({ id, w: s?.w ?? 420 }))
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; at: MenuAt } | null>(null)
   const [quick, setQuick] = useState<Note | null>(null)
   // 保存状态角标（Trilium 的 save-status-badge）：存了就说一声、5s 淡出；
@@ -335,6 +352,8 @@ export default function App() {
     const last = i === tabs.length - 1
     const none = closedTabs.current.length === 0
     return [
+      { label: '在右侧分屏打开', icon: '◫', onSelect: () => openInSplit(tab.noteId) },
+      { kind: 'sep' },
       { label: '关闭', icon: '×', shortcut: '⌘W', onSelect: () => closeTab(tab.id) },
       { label: '关闭其他', disabled: only, hint: only ? '只有这一个' : undefined,
         onSelect: () => closeTabsWhere((t) => t.id !== tab.id) },
@@ -520,6 +539,7 @@ export default function App() {
     const factId = row.note_id.slice('kb:fact:'.length)
     const items: MenuItem[] = [
       { label: '打开', icon: '↗', onSelect: () => void openVirtual(row.note_id, row.title) },
+      { label: '在右侧分屏打开', icon: '◫', onSelect: () => openInSplit(row.note_id) },
     ]
     if (isFact) {
       items.push(
@@ -550,6 +570,7 @@ export default function App() {
       { label: '打开', icon: '↗', shortcut: '↩', onSelect: () => { if (note) void switchTo(note) } },
       { label: '在新标签打开', icon: '⧉', onSelect: () => { if (note) { syncTab(note); void switchTo(note) } } },
       { label: '快速查看', icon: '👁', hint: '⌥点击', onSelect: () => { if (note) setQuick(note) } },
+      { label: '在右侧分屏打开', icon: '◫', hint: '对照着写', onSelect: () => openInSplit(row.note_id) },
       { kind: 'sep' },
       { kind: 'header', label: '新建' },
       { label: '插入子笔记', icon: '＋', hint: '成为它的下一级',
@@ -955,6 +976,7 @@ export default function App() {
         setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+      if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
       if (probe === 'confirm' && tree.length) {
         const parent = tree.find((r) => r.child_count > 0)
         const n = parent && notes.find((x) => x.id === parent.note_id)
@@ -2041,6 +2063,33 @@ export default function App() {
     editorViewRef.current?.dispatch({ effects: endRun.of(id) })
   }
 
+  /** 分屏的第二栏。真笔记只读渲染；虚拟节点走 KbNoteView。
+   *  **是函数不是组件**：写成 App 内部的组件的话每次 render 都是新类型，
+   *  里面的 MarkdownEditor 会跟着重挂，滚动位置全丢。 */
+  function renderSplit(id: string) {
+    const note = notes.find((n) => n.id === id)
+    const row = allRows.find((r) => r.note_id === id)
+    const title = note ? displayTitle(note) : (row?.title ?? id)
+    return (
+      <>
+        <div className="split-head">
+          <span className="split-title" title={title}>{title}</span>
+          {note && <button className="icon-btn" title="在标签里打开" onClick={() => void switchTo(note)}>↗</button>}
+          <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}>×</button>
+        </div>
+        <div className="split-body">
+          {api.isVirtualId(id)
+            ? <KbNoteView id={id} rows={allRows} onOpen={(x) => openInSplit(x)}
+                          onOpenNote={(nid) => { const n = notes.find((x) => x.id === nid); if (n) void switchTo(n) }}
+                          onCite={current ? (fid) => insertAtCursor(`[${fid}]`) : null} />
+            : note
+              ? <MarkdownEditor content={note.content} readOnly />
+              : <p className="muted">这篇笔记已经不在了。</p>}
+        </div>
+      </>
+    )
+  }
+
   // ---------------------------------------------------------------- 渲染
 
   return (
@@ -2254,6 +2303,8 @@ export default function App() {
           <Ribbon
             noteKey={current.id}
             actions={[
+              { label: '分屏对照另一篇…', icon: '◫', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
+              { kind: 'sep' },
               { label: '导出为 .md', icon: '⬇', onSelect: exportMarkdown },
               { label: '复制正文', icon: '⧉', onSelect: () => void copyMarkdown() },
               { label: '存入知识库', icon: '📥', disabled: !content.trim() || loading === 'ingest',
@@ -2447,6 +2498,14 @@ export default function App() {
         )}
         </div>{/* note-scroll */}
         </div>{/* note-pane */}
+        {split && (
+          <>
+            <Gutter side="right" onResize={(dx) => setSplit((s) => s && ({ ...s, w: Math.max(260, Math.min(900, s.w + dx)) }))} />
+            <div className="split-pane" style={{ width: split.w }}>
+              {renderSplit(split.id)}
+            </div>
+          </>
+        )}
 
       {rightShown && (
         <Gutter side="right" onResize={(dx) => setPanes((p) => ({ ...p, rightW: Math.max(180, Math.min(700, p.rightW + dx)) }))} />

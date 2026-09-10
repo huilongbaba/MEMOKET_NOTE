@@ -354,3 +354,17 @@
 }
 .note-new-tab:hover > span { background: var(--launcher-hover-bg); color: var(--main-fg); box-shadow: var(--launcher-hover-shadow); }
 .note-new-tab:active > span { transform: scale(.85); }
+
+
+/* ---------------------------------------------------------------- 分屏
+   中栏右侧的第二栏（SplitNoteContainer）。只读——见 App.tsx 里 split 状态的注释。 */
+.split-pane {
+  flex-shrink: 0; min-width: 0; display: flex; flex-direction: column;
+  border-inline-start: 1px solid var(--subtle-border); background: var(--main-bg);
+}
+.split-head {
+  flex-shrink: 0; height: 50px; display: flex; align-items: center; gap: 4px;
+  padding-inline: 12px 6px; border-bottom: 1px solid var(--subtle-border);
+}
+.split-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 16px 40px; }
