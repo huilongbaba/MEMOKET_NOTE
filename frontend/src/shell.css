@@ -173,3 +173,44 @@
    窄条，跟上面那排图标对齐。 */
 .launcher-user { font-size: 10px; text-align: center; line-height: 1.2; }
 .launcher-user * { font-size: 10px !important; }
+
+/* ---------------------------------------------------------------- ribbon
+   标题下面那条可折叠的元数据带。收起是默认——正文才是主角。 */
+.ribbon { border-bottom: 1px solid var(--subtle-border); }
+.ribbon-strip { display: flex; gap: 2px; padding: 4px 6px; flex-wrap: wrap; }
+.ribbon-tab {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border: none; border-radius: 6px;
+  background: transparent; color: var(--muted);
+  font-size: 12px; cursor: pointer;
+}
+.ribbon-tab:hover { background: var(--hover-item-bg); color: var(--hover-item-fg); }
+.ribbon-tab.active { background: var(--accented-bg); color: var(--main-fg); }
+.ribbon-icon { font-size: 13px; line-height: 1; }
+.ribbon-badge {
+  background: var(--accent); color: #fff; font-size: 10px;
+  padding: 0 5px; border-radius: 8px; line-height: 15px;
+}
+.ribbon-body { padding: 6px 12px 12px; }
+
+/* ------------------------------------------------------------- 右栏内部 */
+.right-pane-ambient {
+  flex-shrink: 0; max-height: 42%; overflow-y: auto;
+  padding: 8px 10px; border-bottom: 1px solid var(--subtle-border);
+}
+.right-pane-tabs {
+  display: flex; gap: 2px; padding: 6px 8px 0;
+  border-bottom: 1px solid var(--subtle-border); flex-shrink: 0;
+}
+.pane-tab {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border: none; border-radius: 6px 6px 0 0;
+  background: transparent; color: var(--muted);
+  font-size: 12px; cursor: pointer;
+}
+.pane-tab:hover { color: var(--main-fg); }
+.pane-tab.active { background: var(--accented-bg); color: var(--main-fg); }
+.pane-tab-badge {
+  background: var(--accent); color: #fff; font-size: 10px;
+  padding: 0 5px; border-radius: 8px; line-height: 15px;
+}

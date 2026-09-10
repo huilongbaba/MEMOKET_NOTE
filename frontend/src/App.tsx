@@ -17,7 +17,7 @@ import MarkdownToolbar from './components/MarkdownToolbar'
 import WritingPlanPanel from './components/WritingPlanPanel'
 import MemoryPanel from './components/MemoryPanel'
 import RelatedMemory from './components/RelatedMemory'
-import { applyRevision } from './components/RevisionPanel'
+import RevisionPanel, { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
 import AgentActivity, { type AgentRound } from './components/AgentActivity'
@@ -25,6 +25,8 @@ import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import NoteTree from './components/NoteTree'
+import Ribbon, { type RibbonTab } from './components/Ribbon'
+import RightPane, { type PaneTab } from './components/RightPane'
 import SkeletonPanel from './components/SkeletonPanel'
 import SettingsPanel from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
@@ -151,7 +153,6 @@ export default function App() {
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   const [selectionBusy, setSelectionBusy] = useState(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
-  const [rightTab, setRightTab] = useState<'write' | 'memory' | 'kb'>('write')
 
   const editorViewRef = useRef<EditorView | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -1643,7 +1644,29 @@ export default function App() {
           </span>
         </div>
         <div className="center-pane">
-        <div className="note-pane" style={{ padding: 14 }}>
+        <div className="note-pane">
+        {/* ribbon —— 这篇笔记的元数据。第一件放进来的是**写作骨架**：
+            判据 3 说「自主规划、自主执行、检查结果」，那**计划就得看得见**，
+            跟正文一起，而不是右栏某个要切过去才有的面板。把计划藏起来，
+            用户能看到的就只剩一个转圈的指示器，那等于什么都没说。 */}
+        {current && (
+          <Ribbon
+            tabs={[{
+              id: 'skeleton', title: '写作骨架', icon: '◈',
+              badge: beats.length || undefined,
+              body: (
+                <SkeletonPanel
+                  spine={spine}
+                  beats={beats}
+                  beatCoverage={beatCoverage}
+                  loading={loading === 'skeleton'}
+                  onRun={runSkeleton}
+                />
+              ),
+            }] as RibbonTab[]}
+          />
+        )}
+        <div style={{ padding: 14 }}>
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
@@ -1789,55 +1812,48 @@ export default function App() {
             </p>
           </>
         )}
+        </div>{/* 内容内边距 */}
         </div>{/* note-pane */}
 
       {!focusMode && (
       <div className="right-pane">
-        <div className="right-pane-body">
         {verifyFindings && (
           <VerifyPanel findings={verifyFindings} onClose={() => setVerifyFindings(null)} />
         )}
-        {/* Tabbed instead of five-plus panels stacked in one endless scroll --
-           "写作"/"记忆"/"知识库" are three different modes of attention
-           (structuring THIS note / ambient recall while writing / browsing
-           the whole knowledge base), not things you look at simultaneously. */}
-        <div className="row" style={{ marginBottom: 10 }}>
-          {([
-            ['write', '写作' + (revisions.length > 0 ? ` (${revisions.length})` : '')],
-            ['memory', '相关记忆'],
-            ['kb', '知识库'],
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              className={rightTab === key ? 'primary' : ''}
-              onClick={() => setRightTab(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {rightTab === 'write' && (
-          <>
-            <DocumentOutline content={content} viewRef={editorViewRef} />
-            <SkeletonPanel
-              spine={spine}
-              beats={beats}
-              beatCoverage={beatCoverage}
-              loading={loading === 'skeleton'}
-              onRun={runSkeleton}
-            />
-            <AgentActivity
-              rounds={agentRounds}
-              status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
-              running={loading === 'note-harness'}
-            />
-
-          </>
-        )}
-        {rightTab === 'memory' && <RelatedMemory content={content} onInsert={insertAtCursor} />}
-        {rightTab === 'kb' && <MemoryPanel pendingJob={job} />}
-        </div>{/* right-pane-body */}
+        <RightPane
+          defaultTab="outline"
+          // 常驻区：边写边浮现的召回。判据 2——点一下标签虽然没离开页面，但那
+          // 是一次**主动检索**，用户得先想起「我该查一下」；被动浮现的召回在
+          // 你需要之前就已经在那儿了。
+          ambient={<RelatedMemory content={content} onInsert={insertAtCursor} />}
+          tabs={[
+            { id: 'outline', title: '目录', alwaysShown: true,
+              body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
+            { id: 'run', title: '运行', alwaysShown: true,
+              badge: agentRounds.length || undefined,
+              body: (
+                <AgentActivity
+                  rounds={agentRounds}
+                  status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
+                  running={loading === 'note-harness'}
+                />
+              ) },
+            { id: 'revisions', title: '修订', badge: revisions.length || undefined,
+              hasContent: revisions.length > 0,
+              body: (
+                <RevisionPanel
+                  revisions={revisions}
+                  content={content}
+                  loading={loading === 'edit'}
+                  onAccept={acceptRevision}
+                  onReject={(r) => setRevisions((rs) => rs.filter((x) => x.id !== r.id))}
+                  onRun={() => {}}
+                />
+              ) },
+            { id: 'kb', title: '知识库', alwaysShown: true,
+              body: <MemoryPanel pendingJob={job} /> },
+          ] as PaneTab[]}
+        />
       </div>
       )}
         </div>{/* center-pane */}
