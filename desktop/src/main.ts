@@ -5,7 +5,7 @@
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
 import { nativeTheme, app, BrowserWindow, Menu, dialog, shell } from 'electron'
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { startBackend, type Backend } from './backend.js'
@@ -22,6 +22,11 @@ const forcedUser = process.argv.find((a) => a.startsWith('--user='))?.slice(7)
 const probe = process.argv.find((a) => a.startsWith('--probe='))?.slice(8)
 /** `--dark` / `--light`：强制主题，给截图核对暗色用——不用去系统设置里来回切。 */
 const forcedTheme = process.argv.includes('--dark') ? 'dark' : process.argv.includes('--light') ? 'light' : null
+/** `--shot=/path.png [--shot-delay=ms]`：页面加载完等一会儿，用 webContents.capturePage
+ *  把窗口内容存成 PNG 然后退出。给截图核对用——比 screencapture 可靠：不依赖窗口
+ *  在不在前台、桌面有没有被切走、有没有辅助功能权限。 */
+const shotPath = process.argv.find((a) => a.startsWith('--shot='))?.slice(7)
+const shotDelay = Number(process.argv.find((a) => a.startsWith('--shot-delay='))?.slice(13) ?? 9000)
 
 function appUrl(port: number): string {
   const q = new URLSearchParams()
@@ -71,6 +76,18 @@ function createWindow(url: string) {
 
   win.loadURL(url)
   if (wantDevTools) win.webContents.openDevTools({ mode: 'detach' })
+  if (shotPath) {
+    win.webContents.once('did-finish-load', () => {
+      setTimeout(async () => {
+        try {
+          const img = await win!.webContents.capturePage()
+          writeFileSync(shotPath, img.toPNG())
+          process.stdout.write(`[shot] ${shotPath} ${img.getSize().width}x${img.getSize().height}\n`)
+        } catch (e) { process.stderr.write(`[shot] failed: ${e}\n`) }
+        app.quit()
+      }, shotDelay)
+    })
+  }
 }
 
 async function boot() {
