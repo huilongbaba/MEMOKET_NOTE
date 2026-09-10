@@ -4,7 +4,7 @@
  * 三件事：起后端、开窗口、退出时收干净。界面本身全在渲染进程里，跟网页版
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
-import { app, BrowserWindow, dialog, shell } from 'electron'
+import { nativeTheme, app, BrowserWindow, dialog, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
@@ -20,6 +20,8 @@ const forcedUser = process.argv.find((a) => a.startsWith('--user='))?.slice(7)
 /** `--probe=xxx`：把界面驱动到某个状态供截图核对（右键菜单、弹层这些只有
  *  交互之后才存在的东西）。正常使用时不带这个参数，那段代码一次都不会跑。 */
 const probe = process.argv.find((a) => a.startsWith('--probe='))?.slice(8)
+/** `--dark` / `--light`：强制主题，给截图核对暗色用——不用去系统设置里来回切。 */
+const forcedTheme = process.argv.includes('--dark') ? 'dark' : process.argv.includes('--light') ? 'light' : null
 
 function appUrl(port: number): string {
   const q = new URLSearchParams()
@@ -112,6 +114,7 @@ async function boot() {
   createWindow(appUrl(backend.port))
 }
 
+if (forcedTheme) nativeTheme.themeSource = forcedTheme
 app.whenReady().then(boot)
 
 app.on('window-all-closed', () => {

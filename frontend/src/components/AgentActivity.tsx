@@ -43,7 +43,7 @@ type Props = {
   running: boolean
 }
 
-const LEVEL_COLOR: Record<number, string> = { 0: 'var(--del)', 1: '#d68910', 2: 'var(--ins)' }
+const LEVEL_COLOR: Record<number, string> = { 0: 'var(--del)', 1: 'var(--warn)', 2: 'var(--ins)' }
 const LEVEL_LABEL: Record<number, string> = { 0: '不足', 1: '部分', 2: '达标' }
 
 /** 维度的中文名。后端用英文 key 是因为 writer_harness 是要开源出去的独立包，

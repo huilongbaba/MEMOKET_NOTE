@@ -15,8 +15,10 @@ import { useEffect, useRef } from 'react'
 export type Tab = { id: string; noteId: string; title: string }
 
 const MAX_W = 240
-/** 再窄就只剩一个图标位、点不准了——取自 Trilium 的 TAB_SIZE_MINI。 */
-const MIN_W = 48
+/** Trilium 的三档：TAB_SIZE_SMALL 84 / SMALLER 60 / MINI 48。我们的下限取
+ *  84——再窄的那两档它靠滚动按钮兜底，我们靠 strip 横向可滚兜底，效果一样。 */
+const MIN_W = 84
+const MARGIN_W = 5
 
 export default function TabBar({
   tabs, activeId, onSelect, onClose, onNew, onContextMenu,
@@ -35,13 +37,21 @@ export default function TabBar({
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const avail = el.clientWidth - 36           // 给「＋」留位
+    // 可用宽度是 strip 的父容器（标签行）减去左右 spacer / filler / ＋；
+    // 间隙照 tab_row.ts:536-538 扣掉 (n-1)*5。
+    const parent = el.parentElement
+    const avail = (parent?.clientWidth ?? el.clientWidth) - 36 - 50 - 72 - (tabs.length - 1) * MARGIN_W
     const each = Math.floor(avail / Math.max(1, tabs.length))
-    el.style.setProperty('--tab-w', `${Math.max(MIN_W, Math.min(each, MAX_W))}px`)
+    const w = Math.max(MIN_W, Math.min(each, MAX_W))
+    el.style.setProperty('--tab-w', `${w}px`)
+    el.dataset.size = w <= 84 ? 'small' : ''
   }, [tabs.length])
 
   return (
-    <div className="tab-strip" ref={ref} role="tablist">
+    <>
+    <div className="tab-strip" ref={ref} role="tablist"
+         // 滚轮竖滚转横滚：strip 是横向的，用户的滚轮是竖向的（tab_row.ts:424-466）
+         onWheel={(e) => { if (e.deltaY && ref.current) ref.current.scrollLeft += e.deltaY }}>
       {tabs.map((t, i) => (
         <div
           key={t.id}
@@ -69,7 +79,9 @@ export default function TabBar({
           </span>
         </div>
       ))}
-      <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）">＋</button>
     </div>
+    <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）"><span>＋</span></button>
+    <div className="tab-row-filler" />
+    </>
   )
 }

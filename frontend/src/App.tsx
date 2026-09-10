@@ -25,6 +25,7 @@ import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import KbNoteView from './components/KbNoteView'
+import { displayTitle } from './util/displayTitle'
 import NoteKbPanel from './components/NoteKbPanel'
 import NoteTree from './components/NoteTree'
 import TabBar, { type Tab } from './components/TabBar'
@@ -242,17 +243,30 @@ export default function App() {
     //
     // 现在这里只管「有没有这个标签」，**哪个是当前**由下面那个 effect 从
     // current 推导——一个真相，不用两处同步。
+    const label = displayTitle(note)
     setTabs((prev) => {
       const found = prev.find((x) => x.noteId === note.id)
       if (found) {
-        return found.title === note.title
+        return found.title === label
           ? prev
-          : prev.map((x) => (x.id === found.id ? { ...x, title: note.title } : x))
+          : prev.map((x) => (x.id === found.id ? { ...x, title: label } : x))
       }
       return [...prev, { id: 't' + Math.random().toString(36).slice(2, 9),
-                         noteId: note.id, title: note.title }]
+                         noteId: note.id, title: label }]
     })
   }, [])
+
+  // 标签名跟着标题/首行走：用户改了标题，标签上还是旧名字会让他以为没改上。
+  useEffect(() => {
+    if (!current) return
+    const label = displayTitle({ title, content })
+    setTabs((prev) => {
+      const found = prev.find((x) => x.noteId === current.id)
+      return found && found.title !== label
+        ? prev.map((x) => (x.id === found.id ? { ...x, title: label } : x))
+        : prev
+    })
+  }, [title, content, current])
 
   // 当前标签从 current 推导。这样「打开笔记」只有一件事要做（syncTab），
   // 高亮哪个是它的结果，不是又一处要记得同步的状态。
@@ -1844,12 +1858,24 @@ export default function App() {
           onClose={() => { if (!selectionBusy) setSelectionMenu(null) }}
         />
       )}
+      {/* 标签行在最顶上、整行宽。macOS 的红绿灯落在左端 spacer 里，右端 filler
+          是窗口拖动区（照 Trilium desktop_layout.tsx:71-95：窗口控件在左侧时
+          标签行只占 rest-pane 就给不出位置，红绿灯会画到启动栏上）。 */}
+      <div className="tab-bar">
+        <div className="tab-row-left-spacer" />
+        <TabBar
+          tabs={tabs}
+          activeId={activeTabId}
+          onSelect={(id) => activateTab(tabs.find((x) => x.id === id))}
+          onClose={closeTab}
+          onNew={newNote}
+        />
+      </div>
       <div className="shell-main">
-      {/* 启动栏 —— 照 Trilium 的 53px 竖排。放的是**跨笔记的入口**：
+      {/* 启动栏 —— 照 Trilium 的 58px 竖排。放的是**跨笔记的入口**：
           知识库、Skill、无限续写、设置、用户。判据见 docs/product-north-star.md：
           记忆是一等公民，不该藏在某个按钮后面的弹层里。 */}
       <div className="launcher-pane">
-        <div className="launcher-top-space" />
         <button className="launcher-btn" title="新建笔记（⌘N）" onClick={newNote}>＋</button>
         <button className="launcher-btn" title="全局搜索：笔记 + 知识库（⌘K）"
                 onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}>⌕</button>
@@ -1882,8 +1908,10 @@ export default function App() {
           placeholder="搜索笔记标题或正文…（⌘K 全局搜索）"
           value={noteQuery}
           onChange={(e) => setNoteQuery(e.target.value)}
-          style={{ marginBottom: 8 }}
         />
+        </div>
+        {/* 树的滚动容器——笔记一多，没有它树底部就被裁掉且滚不到 */}
+        <div className="left-pane-body">
         {searchResults !== null || noteQuery ? (
           // 搜索时不画树：命中就该直接看到，不用先猜它在树的哪一层。
           visibleNotes.length === 0
@@ -1903,29 +1931,32 @@ export default function App() {
       )}
 
       <div className="rest-pane">
-        {/* 标签行。多标签本身还没做（计划 61–75 轮），这里先立出这条 40px 的
-            带子：它同时是 macOS 上的窗口拖动区，红绿灯右边那段空白靠它。 */}
-        <div className="tab-bar">
-          <TabBar
-            tabs={tabs}
-            activeId={activeTabId}
-            onSelect={(id) => activateTab(tabs.find((x) => x.id === id))}
-            onClose={closeTab}
-            onNew={newNote}
-          />
-        </div>
         <div className="center-pane">
         <div className="note-pane">
+        {/* 标题行固定在滚动区之上（Trilium 的 title-row 是 ScrollingContainer
+            的兄弟，50px）。跟正文一起滚走的标题，滚到下面就不知道在写哪篇。 */}
+        {current && (
+          <div className="title-row">
+            <input
+              className="note-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="标题"
+            />
+          </div>
+        )}
         {/* ribbon —— 这篇笔记的元数据。第一件放进来的是**写作骨架**：
             判据 3 说「自主规划、自主执行、检查结果」，那**计划就得看得见**，
             跟正文一起，而不是右栏某个要切过去才有的面板。把计划藏起来，
             用户能看到的就只剩一个转圈的指示器，那等于什么都没说。 */}
         {current && (
           <Ribbon
+            noteKey={current.id}
             defaultOpen={new URLSearchParams(location.search).get('probe') === 'kb-tab' ? 'kb' : undefined}
             tabs={[{
               id: 'skeleton', title: '写作骨架', icon: '◈',
               badge: beats.length || undefined,
+              activate: beats.length > 0,
               body: (
                 <SkeletonPanel
                   spine={spine}
@@ -1938,6 +1969,7 @@ export default function App() {
             }, {
               id: 'kb', title: '知识库', icon: '◆',
               badge: citedIds.length || undefined,
+              activate: citedIds.length > 0,
               body: <NoteKbPanel
                 citedIds={citedIds}
                 row={tree.find((r) => r.note_id === current.id)}
@@ -1949,7 +1981,7 @@ export default function App() {
             }] as RibbonTab[]}
           />
         )}
-        <div style={{ padding: 14 }}>
+        <div className="note-scroll">
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
@@ -1969,13 +2001,6 @@ export default function App() {
           )
         ) : (
           <>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="标题"
-              style={{ fontSize: 20, fontWeight: 600, border: 'none', padding: '4px 0' }}
-            />
-
             {/* Two tiers, not one flat row of 7 -- content-generation actions
                (what you came here to do) stay big and prominent; file/view
                utilities are real but secondary, so they're visually quieter
@@ -2105,7 +2130,7 @@ export default function App() {
             </p>
           </>
         )}
-        </div>{/* 内容内边距 */}
+        </div>{/* note-scroll */}
         </div>{/* note-pane */}
 
       {!focusMode && (

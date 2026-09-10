@@ -240,3 +240,37 @@ macOS 的应用包在真实安装场景下只读，而且**更新时整个包会
 
 测试：后端 703 通过（+11 `test_kb_fusion.py`），前端 tsc + vitest + 11 条
 check 脚本全绿。
+
+## [11] Trilium 比对报告第一批：现在就是坏的六条（第 151–160 轮）
+
+比对报告在 `docs/trilium-ui-gap.md`（11 严重 / 39 明显 / 58 细节，每条带
+Trilium 的 `文件:行号`）。第一批按「现在会不会坏」排，不按好看程度：
+
+1. **左栏没有滚动容器**——树塞在 `.left-pane-search` 里、外层 `overflow:hidden`，
+   笔记一多底部被裁掉且滚不到。`.left-pane-body` 早就写好了但 0 处引用。接上。
+2. **标签行溢出不可达**——一路缩到 48px 后再多就点不到。改成 strip 横向可滚
+   （滚轮竖转横、不显滚动条）、下限 84px、间隙 5px；新建按钮挪出 strip；
+   末尾 50px filler 做拖动区。
+3. **`--bg` 语义倒置**——错指到 `--accented-bg`（Trilium 的「抬升面」，暗色
+   `#555`），暗色下页面底比卡片还亮，遮罩是一块不透明中灰。改指 `--main-bg`，
+   另立 `--surface-raised` / `--hover` / `--backdrop-color` / `--shadow-opacity` /
+   `--accent-fg` / `--warn` / `--card-alt` / `--focus-ring`。后四个里有两个原来
+   是**从未定义的幽灵变量**（`--card-alt` 被引 4 次），代码块底色一直不跟主题。
+4. **`data-theme` 半坏**——shell.css 有 `:not([data-theme="light"])` 守卫，
+   styles.css 是裸 `:root`，没有代码写过它。删掉守卫，两边一致只看系统偏好。
+5. **红绿灯压住左栏**——`hiddenInset` 下只在 58px 宽的启动栏顶部留了 22px，
+   红绿灯横向约 70px。照 Trilium 的处理：标签行提到最顶、整行宽，左端 72px
+   spacer（仅 macOS，`html.is-mac`）。
+6. **写作骨架 ribbon 永远默认收起**——直接违反判据 3。照 `Ribbon.tsx:46-51`
+   加 `activate` 规则：换笔记时取第一个 activate 为真的 tab 展开。骨架有节拍、
+   或正文有引用时自动展开。
+
+顺手：尺寸抄**跑起来的** Trilium（theme-next 用 `!important` 盖掉了
+desktop_layout.tsx 的 53/40）：启动栏 58、标签行 50、标签 36 全圆角 8 +
+激活阴影、状态栏 28 走左栏色；树激活态换成「浮起来的卡片」（那四个
+`--left-pane-item-*` 令牌抄来了从没接上）；标题行提出滚动区固定 50px；
+标签名走共享的 `displayTitle`（三个「未命名」标签现在各叫各的名）；
+`:focus-visible` 焦点环（此前全仓一条都没有）。
+
+实拍：亮/暗各一张（`--dark` 标志强制 nativeTheme，不用去系统设置切）。
+暗色层级终于是对的。

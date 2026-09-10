@@ -15,7 +15,7 @@
  * `alwaysShown`）。消失的话，在笔记之间切换时整条带子会自己变形，鼠标下面
  * 的东西会跑掉。
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 export type RibbonTab = {
   id: string
@@ -23,14 +23,25 @@ export type RibbonTab = {
   icon?: string
   /** 有内容时给个角标，让用户不用点开就知道里面有东西 */
   badge?: string | number
+  /** 换笔记时要不要自动展开。照 Trilium Ribbon.tsx:46-51：取第一个 activate
+   *  为真的 tab 展开，都不满足才收起。写作骨架有内容时**必须**展开——判据 3
+   *  说计划要看得见，一个折叠起来的计划跟转圈的指示器没区别。 */
+  activate?: boolean
   body: ReactNode
 }
 
 export default function Ribbon({
-  tabs, defaultOpen,
-}: { tabs: RibbonTab[]; defaultOpen?: string }) {
+  tabs, defaultOpen, noteKey,
+}: { tabs: RibbonTab[]; defaultOpen?: string; noteKey?: string }) {
   // undefined = 收起。收起是默认：正文才是主角，元数据是需要时才展开的东西。
   const [open, setOpen] = useState<string | undefined>(defaultOpen)
+
+  // 换笔记时按 activate 规则重算；同一篇里用户手动收起/展开的不动。
+  const activateId = tabs.find((t) => t.activate)?.id
+  useEffect(() => {
+    setOpen(defaultOpen ?? activateId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteKey, defaultOpen, activateId === undefined])
 
   if (tabs.length === 0) return null
 

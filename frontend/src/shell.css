@@ -38,14 +38,22 @@
 
   --right-pane-heading: gray;
 
-  /* 尺寸取自 desktop_layout.tsx：启动栏 53px、标签行 40px。
-     这两个数字是它自己写死的，不是我猜的。 */
-  --launcher-width: 53px;
-  --tab-bar-height: 40px;
+  --inactive-tab-fg: #4e4e4e;
+  --active-tab-shadow: 3px 3px 6px rgba(0, 0, 0, .1), -1px -1px 3px rgba(0, 0, 0, .05);
+
+  /* 尺寸。desktop_layout.tsx 里写的是 53 / 40，但 theme-next 用 !important
+     把它们全盖掉了：跑起来的 Trilium 是启动栏 58px、标签行 50px、标签 36px、
+     新建按钮 24px（theme-next/base.css:40,56-58）。抄跑起来的那个。 */
+  --launcher-width: 58px;
+  --tab-bar-height: 50px;
+  --tab-height: 36px;
+  --new-tab-button-size: 24px;
+  --center-pane-border-radius: 10px;
+  --content-margin-inline: 24px;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --root-bg: #1a1a1a;
     --main-bg: #242424;
     --main-fg: #cccccc;
@@ -70,7 +78,10 @@
 
     --active-tab-bg: #ffffff1c;
     --tab-close-hover-bg: #a45353;
+    --tab-close-hover-fg: #ffffff;
     --right-pane-heading: gray;
+    --inactive-tab-fg: #7c7c7c;
+    --active-tab-shadow: none;
   }
 }
 
@@ -94,24 +105,26 @@
 
 .shell-main { display: flex; flex: 1; min-height: 0; }
 
-/* 启动栏。macOS 上顶部留出红绿灯的位置——titleBarStyle: hiddenInset 之后
-   系统按钮画在窗口左上角，不留位置就会压在第一个图标上。 */
+/* 启动栏。红绿灯的位置不在这儿留——标签行提到了最顶上、整行宽，红绿灯
+   落在它左端的 spacer 里（照 Trilium desktop_layout.tsx:71-95 的处理：
+   窗口控件在左侧时，标签行只占 rest-pane 就给不出位置）。 */
 .launcher-pane {
   width: var(--launcher-width); flex-shrink: 0;
   display: flex; flex-direction: column; align-items: center;
-  gap: 2px; padding: 8px 0;
+  gap: 3px; padding: 6px 0;
   background: var(--launcher-bg); color: var(--launcher-fg);
   -webkit-app-region: drag;          /* 空白处可拖动窗口 */
 }
 .launcher-pane > * { -webkit-app-region: no-drag; }
-.launcher-top-space { height: 22px; flex-shrink: 0; }   /* 红绿灯 */
 
 .launcher-btn {
-  width: 38px; height: 38px; border: none; border-radius: 8px;
+  width: calc(var(--launcher-width) - 12px); height: calc(var(--launcher-width) - 12px);
+  border: none; border-radius: 8px;
   background: transparent; color: inherit; cursor: pointer;
-  font-size: 18px; line-height: 1;
+  font-size: 21px; line-height: 1;
   display: flex; align-items: center; justify-content: center;
 }
+.launcher-btn:focus-visible { outline: 2px solid var(--focus-ring); }
 .launcher-btn:hover {
   background: var(--launcher-hover-bg); color: var(--launcher-hover-fg);
   box-shadow: var(--launcher-hover-shadow);
@@ -126,8 +139,10 @@
   background: var(--left-pane-bg); color: var(--left-pane-fg);
   border-right: 1px solid var(--subtle-border);
 }
-.left-pane-search { padding: 8px; }
-.left-pane-body { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.left-pane-search { padding: 8px 8px 0; flex-shrink: 0; }
+/* 树的滚动容器。第一版把树塞在 .left-pane-search 里、外层 .shell 又是
+   overflow: hidden——笔记一多，树底部直接被裁掉且滚不到。 */
+.left-pane-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 8px 35px; }
 
 /* 中栏 */
 .rest-pane {
@@ -135,16 +150,41 @@
   display: flex; flex-direction: column;
   background: var(--main-bg);
 }
+/* 标签行在最顶上、整行宽。左端 spacer 给 macOS 红绿灯让位（hiddenInset
+   下它们画在窗口左上角，横向约 70px）；右端 filler 是窗口拖动区——标签再
+   多也留 50px 空白能拖。 */
 .tab-bar {
   height: var(--tab-bar-height); flex-shrink: 0;
-  display: flex; align-items: center; gap: 2px;
+  display: flex; align-items: center; gap: 5px;
   padding: 0 6px; background: var(--launcher-bg);
   -webkit-app-region: drag;
 }
 .tab-bar > * { -webkit-app-region: no-drag; }
+.tab-row-left-spacer { width: 0; flex-shrink: 0; -webkit-app-region: drag; }
+.is-mac .tab-row-left-spacer { width: 72px; }
+.tab-row-filler { flex: 1; min-width: 50px; height: 100%; -webkit-app-region: drag; }
 
 .center-pane { flex: 1; min-height: 0; display: flex; }
-.note-pane { flex: 1; min-width: 0; overflow-y: auto; }
+.note-pane {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+  border-start-start-radius: var(--center-pane-border-radius);
+}
+/* 标题行：固定 50px，不随正文滚（desktop_layout.tsx:135-146） */
+.title-row {
+  flex-shrink: 0; min-height: 50px; display: flex; align-items: center;
+  padding-inline: 12px;
+}
+.note-title {
+  flex: 1; font-size: var(--note-title-size, 18px); font-weight: 600; line-height: 1;
+  border: none !important; background: transparent !important; padding: 8px 0 !important;
+}
+.note-title:focus-visible { outline: none; }
+/* 正文的滚动容器。左右边距 --content-margin-inline（scrolling_container.css） */
+.note-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 10px var(--content-margin-inline) 60px;
+}
 
 /* 右栏 */
 .right-pane {
@@ -162,10 +202,11 @@
 
 /* 状态栏 */
 .status-bar {
-  height: 24px; flex-shrink: 0;
+  min-height: 28px; flex-shrink: 0;
   display: flex; align-items: center; gap: 12px; padding: 0 10px;
-  background: var(--launcher-bg); color: var(--launcher-fg);
-  font-size: 11px;
+  /* 状态栏在视觉上是左栏的延伸，不是启动栏的（StatusBar.css:4-14） */
+  background: var(--left-pane-bg); color: var(--left-pane-fg);
+  font-size: 12px;
   border-top: 1px solid var(--subtle-border);
 }
 
@@ -177,7 +218,7 @@
 /* ---------------------------------------------------------------- ribbon
    标题下面那条可折叠的元数据带。收起是默认——正文才是主角。 */
 .ribbon { border-bottom: 1px solid var(--subtle-border); }
-.ribbon-strip { display: flex; gap: 2px; padding: 4px 6px; flex-wrap: wrap; }
+.ribbon-strip { display: flex; gap: 2px; padding: 4px 6px; flex-wrap: wrap; min-height: 36px; align-items: center; }
 .ribbon-tab {
   display: flex; align-items: center; gap: 5px;
   padding: 4px 10px; border: none; border-radius: 6px;
@@ -188,7 +229,7 @@
 .ribbon-tab.active { background: var(--accented-bg); color: var(--main-fg); }
 .ribbon-icon { font-size: 13px; line-height: 1; }
 .ribbon-badge {
-  background: var(--accent); color: #fff; font-size: 10px;
+  background: var(--accent); color: var(--accent-fg); font-size: 10px;
   padding: 0 5px; border-radius: 8px; line-height: 15px;
 }
 .ribbon-body { padding: 6px 12px 12px; }
@@ -201,7 +242,10 @@
 .right-pane-tabs {
   display: flex; gap: 2px; padding: 6px 8px 0;
   border-bottom: 1px solid var(--subtle-border); flex-shrink: 0;
+  /* 5 个中文标签在 300px 里已经很挤，栏一窄就溢出——自己横向滚，不显滚动条 */
+  overflow-x: auto; scrollbar-width: none;
 }
+.right-pane-tabs::-webkit-scrollbar { display: none; }
 .pane-tab {
   display: flex; align-items: center; gap: 4px;
   padding: 4px 9px; border: none; border-radius: 6px 6px 0 0;
@@ -211,47 +255,69 @@
 .pane-tab:hover { color: var(--main-fg); }
 .pane-tab.active { background: var(--accented-bg); color: var(--main-fg); }
 .pane-tab-badge {
-  background: var(--accent); color: #fff; font-size: 10px;
+  background: var(--accent); color: var(--accent-fg); font-size: 10px;
   padding: 0 5px; border-radius: 8px; line-height: 15px;
 }
 
 /* ---------------------------------------------------------------- 标签行
    尺寸取自 Trilium 的 tab_row.ts：100–240px，最窄 48px（再窄就点不准），
    新建按钮 36px。 */
+/* strip 装不下时**横向可滚**（滚轮横滚、不显滚动条），而不是一路缩到点不到。
+   Trilium 是加两个滚动按钮；效果一样，改动小得多。 */
 .tab-strip {
-  display: flex; align-items: center; gap: 2px;
-  flex: 1; min-width: 0; overflow: hidden;
+  display: flex; align-items: center; gap: 5px;
+  flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none;
+  height: 100%;
 }
+.tab-strip::-webkit-scrollbar { display: none; }
+/* 竖版布局里的标签是「悬浮的胶囊」：36px、四角全圆 8px、激活靠阴影抬升
+   （theme-next 特意取消了加粗）。上圆下方是浏览器标签的画法。 */
 .note-tab {
-  display: flex; align-items: center; gap: 4px;
-  width: var(--tab-w, 180px); min-width: 48px;
-  height: 30px; padding: 0 8px; border-radius: 6px 6px 0 0;
-  background: transparent; color: var(--launcher-fg);
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  width: var(--tab-w, 180px); min-width: 84px;
+  height: var(--tab-height); padding: 7px 5px 7px 11px; border-radius: 8px;
+  background: transparent; color: var(--inactive-tab-fg);
   font-size: 12px; cursor: pointer; user-select: none;
+  /* 新标签入场：从上方 10px 落下来，120ms（tab_row.ts:131-134） */
+  animation: note-tab-was-just-added 120ms ease-out;
 }
+@keyframes note-tab-was-just-added { from { transform: translateY(10px); opacity: 0; } }
 .note-tab:hover { background: var(--hover-item-bg); }
-.note-tab.active { background: var(--active-tab-bg); color: var(--main-fg); }
+.note-tab.active {
+  background: var(--active-tab-bg); color: var(--main-fg);
+  box-shadow: var(--active-tab-shadow);
+}
 .note-tab-title {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .note-tab-close {
-  flex-shrink: 0; width: 16px; height: 16px; border-radius: 4px;
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  opacity: .45; font-size: 13px; line-height: 1;
+  opacity: .45; font-size: 14px; line-height: 1;
 }
 .note-tab:hover .note-tab-close { opacity: .8; }
 .note-tab-close:hover {
   background: var(--tab-close-hover-bg); color: var(--tab-close-hover-fg); opacity: 1;
 }
 /* 标签很窄时把叉藏起来——不藏的话标题只剩两三个字，反而认不出是哪篇。
+   **当前那个不藏**：正在看的标签的叉不该消失（tab_row.ts:272-281）。
    中键仍然能关。 */
 .note-tab { container-type: inline-size; }
-@container (max-width: 90px) { .note-tab-close { display: none; } }
+@container (max-width: 90px) { .note-tab:not(.active) .note-tab-close { display: none; } }
 
+/* 新建按钮在 strip **外面**，是它的 flex 兄弟——放在里面会被 overflow 裁掉。
+   外框 36px、内圈 24px 圆底（theme-next/shell.css:1249-1313）。 */
 .note-new-tab {
-  flex-shrink: 0; width: 26px; height: 26px;
-  border: none; border-radius: 6px; background: transparent;
-  color: var(--launcher-fg); cursor: pointer; font-size: 14px;
+  flex: 0 0 36px; height: 36px; padding: 0;
+  border: none; background: transparent; color: var(--launcher-fg);
+  cursor: pointer; font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
 }
-.note-new-tab:hover { background: var(--hover-item-bg); color: var(--main-fg); }
+.note-new-tab > span {
+  width: var(--new-tab-button-size); height: var(--new-tab-button-size); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 100ms, box-shadow 100ms;
+}
+.note-new-tab:hover > span { background: var(--launcher-hover-bg); color: var(--main-fg); box-shadow: var(--launcher-hover-shadow); }
+.note-new-tab:active > span { transform: scale(.85); }

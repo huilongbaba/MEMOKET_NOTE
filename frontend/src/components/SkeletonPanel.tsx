@@ -14,7 +14,7 @@ type Props = {
 }
 
 const LEVEL_LABEL: Record<number, string> = { 0: '还不够', 1: '部分覆盖', 2: '已覆盖' }
-const LEVEL_COLOR: Record<number, string> = { 0: '#c0392b', 1: '#d68910', 2: '#27ae60' }
+const LEVEL_COLOR: Record<number, string> = { 0: 'var(--del)', 1: 'var(--warn)', 2: 'var(--ins)' }
 
 /** 线 1：核心张力（spine）+ 结构节拍（beats）。也是 magic tap 和智能编辑的输入。
  * beats 是这篇东西各部分承担的修辞/叙事功能，不是内容大纲——所以不用 <ol>

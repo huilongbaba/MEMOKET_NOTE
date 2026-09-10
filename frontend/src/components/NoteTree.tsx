@@ -16,6 +16,7 @@ import { useMemo } from 'react'
 
 import type { TreeRow } from '../api'
 import { ROOT_ID, isFactId, isVirtualId } from '../api'
+import { displayTitle } from '../util/displayTitle'
 
 type Props = {
   rows: TreeRow[]
@@ -27,22 +28,7 @@ type Props = {
 
 type Node = TreeRow & { depth: number }
 
-/** 旧界面建笔记时把标题填成了「未命名」，真实库里 18 篇有 15 篇是这个值。
- *  一列二十个「未命名」的树没法用，所以这种情况退回正文首行。
- *
- *  只在**显示**这一层做，不改库里的值：把它当真标题写回去，就等于替用户
- *  给笔记起了名，而他可能只是还没想好。 */
-const PLACEHOLDER = new Set(['', '未命名', 'Untitled', 'note'])
 
-function displayTitle(n: TreeRow): string {
-  const t = (n.title ?? '').trim()
-  if (!PLACEHOLDER.has(t)) return t
-  const firstLine = (n.preview ?? '')
-    .split('\n')
-    .map((l) => l.replace(/^#+\s*/, '').trim())
-    .find((l) => l.length > 0)
-  return firstLine || '未命名'
-}
 
 /** 把扁平的 branch 列表按父子关系铺平成「要画的行」，只铺开展开着的。 */
 function flatten(rows: TreeRow[]): Node[] {
