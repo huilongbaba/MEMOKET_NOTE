@@ -27,6 +27,8 @@ import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMen
 import Gutter from './components/Gutter'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle } from './util/displayTitle'
+import { NotePicker, TextPrompt, type PickerRequest, type PromptRequest } from './components/Dialogs'
+import type { DropWhere } from './components/NoteTree'
 import NoteKbPanel from './components/NoteKbPanel'
 import NoteTree from './components/NoteTree'
 import TabBar, { type Tab } from './components/TabBar'
@@ -94,6 +96,16 @@ export default function App() {
   // 中栏正在看的虚拟节点（一条事实 / 一个分类）。跟 current 互斥：有 current
   // 就是在写笔记，有 virtualId 就是在看知识库。
   const [virtualId, setVirtualId] = useState<string | null>(null)
+  // 应用内对话框（替掉 window.prompt——Electron 里那是系统级模态，主题管不到）
+  const [picker, setPicker] = useState<PickerRequest | null>(null)
+  const [prompt, setPrompt] = useState<PromptRequest | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ tab: Tab; at: MenuAt } | null>(null)
+  // 关掉的标签留一个栈，⌘⇧T 找回来（reopenLastTab）。关错标签不该无法挽回。
+  const closedTabs = useRef<Tab[]>([])
+  // 前进/后退：跳去看一篇旧笔记后要能一键回来（判据 2 的痛点 12）。
+  // 记的是 note id / 虚拟节点 id；navigating 为真时 open 不再入栈。
+  const hist = useRef<{ list: string[]; idx: number; navigating: boolean }>({ list: [], idx: -1, navigating: false })
+  const [histState, setHistState] = useState({ back: false, fwd: false })
   const [treeMenu, setTreeMenu] = useState<{ row: TreeRow; at: MenuAt } | null>(null)
   /** 打开着的标签。**存在 localStorage 里，按用户分**——关掉应用再打开时
    *  桌面还在，这是桌面应用的基本预期；不存的话每次启动都要重新找回那几篇
@@ -293,11 +305,57 @@ export default function App() {
     if (tab && tab.id !== activeTabId) setActiveTabId(tab.id)
   }, [current, virtualId, tabs, activeTabId])
 
+  function reopenLastTab() {
+    const t = closedTabs.current.pop()
+    if (!t) return
+    setTabs((prev) => (prev.find((x) => x.noteId === t.noteId) ? prev : [...prev, t]))
+    activateTab(tabs.find((x) => x.noteId === t.noteId) ?? t)
+  }
+  function closeTabsWhere(pred: (t: Tab, i: number) => boolean) {
+    const gone = tabs.filter(pred)
+    if (gone.length === 0) return
+    closedTabs.current = [...closedTabs.current, ...gone].slice(-20)
+    const next = tabs.filter((t, i) => !pred(t, i))
+    setTabs(next)
+    if (activeTabId && gone.some((t) => t.id === activeTabId)) {
+      if (next[0]) activateTab(next[0])
+      else { setActiveTabId(null); setCurrent(null); setVirtualId(null); setTitle(''); setContent('') }
+    }
+  }
+  /** 标签的右键菜单（tab_row.ts:377-416 那 9 项里跟我们相关的）。禁用时带原因。 */
+  function tabMenuItems(tab: Tab): MenuItem[] {
+    const i = tabs.findIndex((x) => x.id === tab.id)
+    const only = tabs.length <= 1
+    const last = i === tabs.length - 1
+    const none = closedTabs.current.length === 0
+    return [
+      { label: '关闭', icon: '×', shortcut: '⌘W', onSelect: () => closeTab(tab.id) },
+      { label: '关闭其他', disabled: only, hint: only ? '只有这一个' : undefined,
+        onSelect: () => closeTabsWhere((t) => t.id !== tab.id) },
+      { label: '关闭右侧', disabled: last, hint: last ? '已经是最右边' : undefined,
+        onSelect: () => closeTabsWhere((_t, k) => k > i) },
+      { label: '关闭全部', onSelect: () => closeTabsWhere(() => true) },
+      { kind: 'sep' },
+      { label: '重新打开刚关的', shortcut: '⇧⌘T', disabled: none, hint: none ? '没有刚关的' : undefined,
+        onSelect: reopenLastTab },
+    ]
+  }
+  function reorderTab(id: string, index: number) {
+    setTabs((prev) => {
+      const from = prev.findIndex((t) => t.id === id)
+      if (from < 0) return prev
+      const next = prev.filter((t) => t.id !== id)
+      next.splice(index > from ? index - 1 : index, 0, prev[from])
+      return next
+    })
+  }
+
   /** 关一个标签。关掉当前这个时切到**右边那个**（没有就左边）——跟浏览器
    *  一致。跳回列表第一篇会让用户失去位置感。 */
   function closeTab(id: string) {
     const i = tabs.findIndex((x) => x.id === id)
     if (i < 0) return
+    closedTabs.current = [...closedTabs.current, tabs[i]].slice(-20)
     const next = tabs.filter((x) => x.id !== id)
     setTabs(next)
     if (id !== activeTabId) return
@@ -381,6 +439,7 @@ export default function App() {
   async function openVirtual(id: string, title?: string) {
     if (virtualId === id && !current) return
     await save()
+    pushHistory(id)
     setCurrent(null); setTitle(''); setContent('')
     setVirtualId(id)
     const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? id
@@ -440,14 +499,17 @@ export default function App() {
     const note = notes.find((n) => n.id === row.note_id)
     const isClone = row.branch_count > 1
     return [
-      { label: '打开', icon: '↗', onSelect: () => { if (note) void switchTo(note) } },
+      { label: '打开', icon: '↗', shortcut: '↩', onSelect: () => { if (note) void switchTo(note) } },
+      { label: '在新标签打开', icon: '⧉', onSelect: () => { if (note) { syncTab(note); void switchTo(note) } } },
       { kind: 'sep' },
+      { kind: 'header', label: '新建' },
       { label: '插入子笔记', icon: '＋', hint: '成为它的下一级',
         onSelect: () => void newNoteUnder(row.note_id) },
       { label: '在后面插入笔记', icon: '↳',
         onSelect: () => void newNoteUnder(row.parent_note_id) },
-      { label: '重命名', icon: '✎', onSelect: () => void renameNode(row) },
+      { label: '重命名', icon: '✎', shortcut: 'F2', onSelect: () => void renameNode(row) },
       { kind: 'sep' },
+      { kind: 'header', label: 'AI' },
       // ---- 我们自己的：harness 就在这儿，跟结构操作平级
       { label: '🤖 智能续写这篇', disabled: !note,
         onSelect: () => { if (note) void openAndRun(note, 'write') } },
@@ -465,7 +527,8 @@ export default function App() {
         onSelect: () => void detachNode(row) },
       { label: '复制笔记路径', icon: '⌘', onSelect: () => void copyNotePath(row) },
       { kind: 'sep' },
-      { label: '删除（连同子树）', icon: '🗑', danger: true,
+      { label: '删除（连同子树）', icon: '🗑', danger: true, shortcut: '⌫',
+        hint: row.child_count > 0 ? `会一起删掉 ${row.child_count} 篇` : undefined,
         onSelect: () => { if (note) remove(note) } },
     ]
   }
@@ -476,8 +539,14 @@ export default function App() {
     void switchTo(n)
   }
 
+  /** 应用内的输入框，Promise 形式——调用处跟原来用 window.prompt 一样直。 */
+  const askText = (title: string, initial: string) =>
+    new Promise<string | null>((resolve) => setPrompt({ title, initial, resolve: (v) => { setPrompt(null); resolve(v) } }))
+  const askNode = (title: string, exclude: Set<string>) =>
+    new Promise<string | null>((resolve) => setPicker({ title, exclude, resolve: (v) => { setPicker(null); resolve(v) } }))
+
   async function renameNode(row: TreeRow) {
-    const title = window.prompt('改个名字', row.title)?.trim()
+    const title = (await askText('改个名字', row.title))?.trim()
     if (title === undefined || title === row.title) return
     setTree((prev) => prev.map((r) => (r.note_id === row.note_id ? { ...r, title } : r)))
     try {
@@ -491,25 +560,44 @@ export default function App() {
     }
   }
 
-  /** 挑一个目标节点。用 prompt 列表而不是做一个树选择器：这是低频动作，
-   *  为它再写一棵可选择的树是把复杂度花在错地方。**先做对，再做好看。** */
-  function pickTarget(row: TreeRow, verb: string): string | null {
-    const candidates = tree
-      .filter((r) => r.note_id !== row.note_id)
-      .map((r, i) => `${i + 1}. ${r.title || '未命名'}`)
-    if (candidates.length === 0) { toast('树上没有别的位置'); return null }
-    const raw = window.prompt(
-      `${verb}到哪儿？输入序号，留空表示树根：\n\n${candidates.join('\n')}`, '')
-    if (raw === null) return null
-    if (!raw.trim()) return api.ROOT_ID
-    const idx = Number(raw.trim()) - 1
-    const target = tree.filter((r) => r.note_id !== row.note_id)[idx]
-    if (!target) { toast('序号不对', 'error'); return null }
-    return target.note_id
+  /** 这个节点的子树里有谁（含自己）——移动/克隆时不能选这些，会成环。 */
+  function subtreeIds(noteId: string): Set<string> {
+    const out = new Set([noteId])
+    const stack = [noteId]
+    while (stack.length) {
+      const p = stack.pop()!
+      for (const r of tree) if (r.parent_note_id === p && !out.has(r.note_id)) { out.add(r.note_id); stack.push(r.note_id) }
+    }
+    return out
+  }
+
+  /** 挑一个目标节点：带搜索的选择器（对标 Trilium 的 move_to / clone_to）。 */
+  function pickTarget(row: TreeRow, verb: string): Promise<string | null> {
+    return askNode(`${verb}「${displayTitle(row)}」到哪儿？`, subtreeIds(row.note_id))
+  }
+
+  /** 树上的拖放。before/after 先挪到同一个父节点再整体重排；over 就是挪进去。 */
+  async function dropNode(drag: TreeRow, target: TreeRow, where: DropWhere) {
+    if (api.isVirtualId(drag.note_id) || api.isVirtualId(target.note_id)) return
+    if (subtreeIds(drag.note_id).has(target.note_id)) { toast('不能放进自己的子树里'); return }
+    try {
+      if (where === 'over') {
+        await api.moveBranch(drag.note_id, drag.parent_note_id, target.note_id)
+      } else {
+        if (drag.parent_note_id !== target.parent_note_id)
+          await api.moveBranch(drag.note_id, drag.parent_note_id, target.parent_note_id)
+        const sibs = tree.filter((r) => r.parent_note_id === target.parent_note_id && r.note_id !== drag.note_id)
+          .sort((x, y) => x.position - y.position).map((r) => r.note_id)
+        const k = sibs.indexOf(target.note_id) + (where === 'after' ? 1 : 0)
+        sibs.splice(k, 0, drag.note_id)
+        await api.reorderBranches(target.parent_note_id, sibs)
+      }
+      await reloadTree()
+    } catch (e) { toast('移不过去：' + e, 'error'); await reloadTree() }
   }
 
   async function cloneNodeTo(row: TreeRow) {
-    const to = pickTarget(row, '克隆')
+    const to = await pickTarget(row, '克隆')
     if (!to) return
     try {
       await api.cloneNoteTo(row.note_id, to)
@@ -519,7 +607,7 @@ export default function App() {
   }
 
   async function moveNodeTo(row: TreeRow) {
-    const to = pickTarget(row, '移动')
+    const to = await pickTarget(row, '移动')
     if (!to) return
     try {
       await api.moveBranch(row.note_id, row.parent_note_id, to)
@@ -710,7 +798,29 @@ export default function App() {
     )
   }
 
+  /** 记一步历史。同一个 id 连续两次不记；从中间往回走后再打开新的，
+   *  前面那截丢掉——浏览器就是这么做的。 */
+  function pushHistory(id: string) {
+    const h = hist.current
+    if (h.navigating) { h.navigating = false; return }
+    if (h.list[h.idx] === id) return
+    h.list = [...h.list.slice(0, h.idx + 1), id].slice(-100)
+    h.idx = h.list.length - 1
+    setHistState({ back: h.idx > 0, fwd: false })
+  }
+  function goHistory(step: -1 | 1) {
+    const h = hist.current
+    const k = h.idx + step
+    if (k < 0 || k >= h.list.length) return
+    h.idx = k; h.navigating = true
+    setHistState({ back: k > 0, fwd: k < h.list.length - 1 })
+    const id = h.list[k]
+    if (api.isVirtualId(id)) void openVirtual(id)
+    else { const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else h.navigating = false }
+  }
+
   function open(n: Note) {
+    pushHistory(n.id)
     setVirtualId(null)
     setCurrent(n)
     setTitle(n.title)
@@ -765,7 +875,19 @@ export default function App() {
         return
       }
       if (probe === 'kb-tab') {
-        setContent((c) => c + '\n\n据 [terrence-1872-5F8] 所述，另见 [terrence-9999-ZZZ]。\n')
+        // 一条真、一条假（FFF 是合法十六进制，正则认得）——看「找不到」的红提示
+        setContent((c) => c + '\n\n据 [terrence-1872-5F8] 所述，另见 [terrence-9999-FFF]。\n')
+      }
+      if (probe === 'picker' && tree.length) {
+        // 「移动到…」的选择器
+        setTimeout(() => void moveNodeTo(tree[0]), 600)
+      }
+      if (probe === 'tab-menu' && notes.length >= 2) {
+        void (async () => {
+          for (const n of notes.slice(0, 2)) { await switchTo(n) }
+          setTimeout(() => setTabs((ts) => { setTabMenu({ tab: ts[0], at: { x: 160, y: 40 } }); return ts }), 800)
+        })()
+        return
       }
       if (probe === 'fact-peek') {
         // 往正文插一条真实的出处，再把鼠标事件打到它上面——CodeMirror 的
@@ -859,7 +981,17 @@ export default function App() {
       else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
       // 标签：⌘T 新开、⌘W 关掉当前、⌘1..9 跳到第 n 个。跟浏览器一致，
       // 不需要学。⌘9 是**最后一个**（不是第九个）——同样是浏览器的约定。
+      else if (key === 't' && e.shiftKey) { e.preventDefault(); reopenLastTab() }
       else if (key === 't') { e.preventDefault(); newNote() }
+      // 前进后退：macOS 上 Trilium 用 ⌘[ / ⌘]（Alt+←/→ 被树的升降级占了）
+      else if (key === '[') { e.preventDefault(); goHistory(-1) }
+      else if (key === ']') { e.preventDefault(); goHistory(1) }
+      // ⌃Tab / ⌃⇧Tab 轮换标签（⌘Tab 是系统的）
+      else if (key === 'tab' && e.ctrlKey && tabs.length > 1) {
+        e.preventDefault()
+        const i = tabs.findIndex((t) => t.id === activeTabId)
+        activateTab(tabs[(i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length])
+      }
       else if (key === 'w') {
         e.preventDefault()
         if (activeTabId) closeTab(activeTabId)
@@ -1813,6 +1945,11 @@ export default function App() {
           onClose={() => setTreeMenu(null)}
         />
       )}
+      {tabMenu && (
+        <ContextMenu at={tabMenu.at} items={tabMenuItems(tabMenu.tab)} onClose={() => setTabMenu(null)} />
+      )}
+      {picker && <NotePicker req={picker} rows={tree} />}
+      {prompt && <TextPrompt req={prompt} />}
       <Toaster />
       <CommandPalette onOpenNote={switchTo} onInsertFact={insertAtCursor} />
       {writingPlanParent && (
@@ -1882,12 +2019,19 @@ export default function App() {
           标签行只占 rest-pane 就给不出位置，红绿灯会画到启动栏上）。 */}
       <div className="tab-bar">
         <div className="tab-row-left-spacer" />
+        {/* 前进后退（TabHistoryNavigationButtons）。跳去看一篇再回来。 */}
+        <span className="history-nav">
+          <button className="icon-btn" disabled={!histState.back} title="后退（⌘[）" onClick={() => goHistory(-1)}>‹</button>
+          <button className="icon-btn" disabled={!histState.fwd} title="前进（⌘]）" onClick={() => goHistory(1)}>›</button>
+        </span>
         <TabBar
           tabs={tabs}
           activeId={activeTabId}
           onSelect={(id) => activateTab(tabs.find((x) => x.id === id))}
           onClose={closeTab}
           onNew={newNote}
+          onContextMenu={(tab, at) => setTabMenu({ tab, at })}
+          onReorder={reorderTab}
         />
       </div>
       <div className="shell-main">
@@ -1948,6 +2092,7 @@ export default function App() {
             onDelete={(row) => { const n = notes.find((x) => x.id === row.note_id); if (n) remove(n) }}
             onRename={(row) => void renameNode(row)}
             onNewChild={(row) => void newNoteUnder(row.note_id)}
+            onDrop={(d, t, w) => void dropNode(d, t, w)}
             onContextMenu={(row, at) => setTreeMenu({ row, at })}
           />
         )}

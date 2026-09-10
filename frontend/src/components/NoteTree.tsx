@@ -28,7 +28,12 @@ type Props = {
   onDelete?: (row: TreeRow) => void
   onRename?: (row: TreeRow) => void
   onNewChild?: (row: TreeRow) => void
+  /** 拖拽：把 drag 放到 target 的前面 / 后面 / 里面。只对真笔记生效。 */
+  onDrop?: (drag: TreeRow, target: TreeRow, where: DropWhere) => void
 }
+
+export type DropWhere = 'before' | 'after' | 'over'
+
 
 type Node = TreeRow & { depth: number }
 
@@ -65,10 +70,17 @@ function flatten(rows: TreeRow[]): Node[] {
 }
 
 export default function NoteTree({
-  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild,
+  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop,
 }: Props) {
   const nodes = useMemo(() => flatten(rows), [rows])
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // 拖拽状态。drop 位置按行内 y 分三段：上 25% = 放前面、下 25% = 放后面、
+  // 中间 = 放进去（note_tree.ts:615-623 的 moveBefore/After/ToParent）。
+  const [drag, setDrag] = useState<Node | null>(null)
+  const [drop, setDrop] = useState<{ id: string; where: DropWhere } | null>(null)
+  const expandTimer = useRef<number | null>(null)
+  const clearExpandTimer = () => { if (expandTimer.current) { window.clearTimeout(expandTimer.current); expandTimer.current = null } }
 
   // 键盘焦点落在哪一行（roving tabindex）。默认跟着当前笔记；用户用方向键
   // 挪开后各走各的——Trilium 也是「焦点」和「激活」两个概念。
@@ -136,10 +148,37 @@ export default function NoteTree({
             role="treeitem"
             aria-expanded={hasKids ? n.is_expanded : undefined}
             aria-selected={active}
-            className={'tree-node' + (active ? ' active' : '') + (focused?.id === n.id ? ' focused' : '')}
+            className={'tree-node' + (active ? ' active' : '') + (focused?.id === n.id ? ' focused' : '')
+              + (drag?.id === n.id ? ' dragging' : '') + (drop?.id === n.id ? ' drop-' + drop.where : '')}
             // 每级 10px、根再让 12px（theme-next/shell.css:716-723）
             style={{ paddingInlineStart: 12 + n.depth * 10 }}
             onClick={() => { setFocusKey(n.id); onOpen(n.note_id) }}
+            draggable={!!onDrop && !virtual}
+            onDragStart={(e) => {
+              setDrag(n); e.dataTransfer.effectAllowed = 'move'
+              e.dataTransfer.setData('text/plain', n.note_id)
+            }}
+            onDragOver={(e) => {
+              if (!drag || virtual || drag.id === n.id) return
+              e.preventDefault()
+              const r = e.currentTarget.getBoundingClientRect()
+              const y = (e.clientY - r.top) / r.height
+              const where: DropWhere = y < .25 ? 'before' : y > .75 ? 'after' : 'over'
+              if (drop?.id !== n.id || drop.where !== where) {
+                setDrop({ id: n.id, where })
+                // 悬停 600ms 自动展开（fancytree dnd5 的 autoExpandMS）
+                clearExpandTimer()
+                if (where === 'over' && hasKids && !n.is_expanded)
+                  expandTimer.current = window.setTimeout(() => onToggle(n), 600)
+              }
+            }}
+            onDragLeave={() => { if (drop?.id === n.id) { setDrop(null); clearExpandTimer() } }}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (drag && drop && drop.id === n.id && drag.id !== n.id) onDrop?.(drag, n, drop.where)
+              setDrag(null); setDrop(null); clearExpandTimer()
+            }}
+            onDragEnd={() => { setDrag(null); setDrop(null); clearExpandTimer() }}
             onContextMenu={(e) => {
               if (!onContextMenu) return
               e.preventDefault()

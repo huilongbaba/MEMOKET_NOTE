@@ -101,6 +101,11 @@ class BranchMoveIn(BaseModel):
     position: int | None = None
 
 
+class BranchReorderIn(BaseModel):
+    parent_note_id: str
+    order: list[str]
+
+
 class BranchExpandIn(BaseModel):
     note_id: str
     parent_note_id: str

@@ -274,3 +274,37 @@ desktop_layout.tsx 的 53/40）：启动栏 58、标签行 50、标签 36 全圆
 
 实拍：亮/暗各一张（`--dark` 标志强制 nativeTheme，不用去系统设置切）。
 暗色层级终于是对的。
+
+## [12] 比对报告第二、三批：结构性的和手感的（第 161–185 轮）
+
+**第二批（越晚改越贵）**
+- 左/右栏可拖宽（5px 把手，hover 才显形）+ 各自独立折叠（启动栏底部 « /
+  右栏头部 »，⌘\ / ⌘⇧\），按用户持久化；focusMode 保留为「两个都收」
+- 树的键盘导航：容器 `tabIndex=0` + roving focus，↑↓←→ / Enter / Delete /
+  F2 / Home / End。**scope 问题的解法不是重构全局快捷键**：键盘事件挂在树
+  自己的 DOM 上，天然只在树有焦点时生效——Trilium 的 note-tree scope 就是
+  这个意思
+- 树图标（叶子 ▢ / 文件夹 ▣ / 事实 ◆ / 分类 ▤）、hover 才出现的圆形「＋」、
+  切笔记时激活行滚入视口、只在截断时给 tooltip、缩进 12+10/级
+
+**第三批（补齐手感）**
+- 树拖拽移动：行内 y 分三段 before/after/over，悬停 600ms 自动展开，
+  drop 标记线 + 中空圆环照 tree.css:274-327。before/after 走新端点
+  `PATCH /api/tree/branches/reorder`——整体重编号而不是相对插入：位置一旦
+  有重复（克隆、老数据）相对插入不知道插到哪，重编号顺手把脏数据洗了
+- `window.prompt` 全部替掉：`NotePicker`（带搜索 + 路径的选择器，对标
+  move_to / clone_to）和 `TextPrompt`。Electron 里 prompt 是系统级模态，
+  主题管不到；拍平成编号列表让人输序号的那个，上百篇后滚不动
+- 标签右键菜单（关闭 / 关闭其他 / 关闭右侧 / 关闭全部 / 重新打开刚关的，
+  禁用带原因）、拖拽排序、⌘⇧T、⌃Tab 轮换
+- 前进后退：历史栈 + ⌘[ / ⌘] + 标签行左端两个按钮（TabHistoryNavigationButtons）
+- ⌘F 页内查找：`@codemirror/search`
+- 右键菜单：分组标题、`shortcut` 跟 `hint` 分槽、连续分隔线去重、上下键 +
+  Enter、圆角 10 / 内边距 8 / 毛玻璃半透明底 / 破坏性项只染图标
+- 滚动条照 forms.css:962-1044（细 thumb，hover 变粗）
+
+**实拍抓到的**：选择器第一项的高亮不可见——`.palette-item.active` 用的
+`--panel`，改完 `--bg` 之后它跟面板底色一样了。换 `--hover`。
+`[terrence-9999-FFF]` 这回正则认得了，「1 条引用在知识库里找不到」红框拍到。
+
+测试：后端 +3（reorder），前端 tsc + vitest 全绿。

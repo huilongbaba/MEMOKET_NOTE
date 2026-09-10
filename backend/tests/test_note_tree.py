@@ -241,3 +241,37 @@ def test_删子树时别处还长着的克隆只摘掉这条边(db):
     assert db.get_note("u", shared["id"]) is not None
     assert [r["parent_note_id"] for r in db.tree("u")
             if r["note_id"] == shared["id"]] == [keep["id"]]
+
+
+# -------------------------------------------------------------- 拖拽排序 ---
+
+def test_重排把子节点按给定顺序编号(db):
+    a = db.create_note("u", "a", "")
+    b = db.create_note("u", "b", "")
+    c = db.create_note("u", "c", "")
+    assert db.reorder("u", db.ROOT_ID, [c["id"], a["id"], b["id"]]) == 3
+    rows = sorted((r for r in db.tree("u") if r["parent_note_id"] == db.ROOT_ID),
+                  key=lambda r: r["position"])
+    assert _ids(rows) == [c["id"], a["id"], b["id"]]
+    assert [r["position"] for r in rows] == [0, 1, 2]
+
+
+def test_重排时没列出的排在后面_不认识的忽略(db):
+    a = db.create_note("u", "a", "")
+    b = db.create_note("u", "b", "")
+    c = db.create_note("u", "c", "")
+    db.reorder("u", db.ROOT_ID, [b["id"], "no-such", b["id"]])
+    rows = sorted((r for r in db.tree("u") if r["parent_note_id"] == db.ROOT_ID),
+                  key=lambda r: r["position"])
+    assert _ids(rows) == [b["id"], a["id"], c["id"]]
+
+
+def test_重排只动这个父节点下面的(db):
+    p = db.create_note("u", "p", "")
+    x = db.create_note("u", "x", "", parent_id=p["id"])
+    y = db.create_note("u", "y", "", parent_id=p["id"])
+    top = db.create_note("u", "top", "")
+    db.reorder("u", p["id"], [y["id"], x["id"]])
+    rows = {r["note_id"]: r for r in db.tree("u")}
+    assert rows[y["id"]]["position"] < rows[x["id"]]["position"]
+    assert rows[top["id"]]["parent_note_id"] == db.ROOT_ID

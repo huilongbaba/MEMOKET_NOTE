@@ -24,6 +24,9 @@
      个没定义的幽灵变量，亮暗都走 fallback，不跟主题。 */
   --card-alt: rgba(0, 0, 0, .05);
   --backdrop-color: rgba(124, 124, 124, .55);
+  --menu-bg: rgba(255, 255, 255, .92);
+  --scrollbar-thumb: #0000005c;
+  --scrollbar-thumb-hover: #00000080;
   --shadow-opacity: .18;
   --focus-ring: #00000063;
 }
@@ -42,6 +45,9 @@
     --del-bg: #3b1616;
     --card-alt: rgba(255, 255, 255, .08);
     --backdrop-color: rgba(0, 0, 0, .6);
+    --menu-bg: #222222d9;
+    --scrollbar-thumb: #fdfdfd5c;
+    --scrollbar-thumb-hover: #fdfdfd90;
     --shadow-opacity: .55;
     --focus-ring: #ffffff57;
   }
@@ -235,7 +241,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .palette-results { overflow-y: auto; padding: 6px; }
 .palette-group { font-size: 11px; margin: 8px 4px 4px; padding: 0 4px; }
 .palette-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-.palette-item:hover, .palette-item.active { background: var(--panel); }
+.palette-item:hover, .palette-item.active { background: var(--hover); }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: var(--backdrop-color); z-index: 100;
@@ -508,26 +514,38 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 }
 
 /* ------------------------------------------------------------- 右键菜单 */
+/* 圆角 10 / 内边距 8 / 毛玻璃半透明底 / 阴影亮暗分开（theme-next/base.css:77,153-187）。
+   打开 100ms 只淡入。 */
 .context-menu {
   position: fixed; z-index: 200; min-width: 200px;
-  padding: 4px; border-radius: 8px;
-  background: var(--panel); border: 1px solid var(--line);
+  padding: 8px; border-radius: 10px;
+  background: var(--menu-bg); border: 1px solid var(--line);
+  backdrop-filter: blur(20px) saturate(6); -webkit-backdrop-filter: blur(20px) saturate(6);
   box-shadow: 0 10px 20px rgba(0,0,0,var(--shadow-opacity));
   font-size: 13px;
+  animation: dropdown-menu-opening 100ms ease-in;
 }
+@keyframes dropdown-menu-opening { from { opacity: 0; } }
 .context-menu-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 6px 8px; border: none; background: transparent;
-  color: var(--fg); text-align: start; cursor: pointer; border-radius: 5px;
+  padding: 4px 8px; border: none; background: transparent;
+  color: var(--fg); text-align: start; cursor: pointer; border-radius: 6px;
   white-space: nowrap;
 }
-.context-menu-item:hover:not(:disabled) { background: var(--hover); }
-.context-menu-item:disabled { opacity: .4; cursor: default; }
-.context-menu-item.danger { color: var(--del); }
+.context-menu-item:hover:not(:disabled), .context-menu-item.hi:not(:disabled) { background: var(--hover); }
+.context-menu-item:disabled { opacity: .45; cursor: default; }
+/* 破坏性项只染图标不染文字（base.css:281-284）——整行红在删除项上过于抢眼 */
+.context-menu-item.danger .cm-icon { color: var(--del); }
 .cm-icon { width: 16px; flex-shrink: 0; text-align: center; }
 .cm-label { flex: 1; }
-.cm-hint { color: var(--muted); font-size: 11px; flex-shrink: 0; }
-.context-menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+.cm-hint { color: var(--muted); font-size: 11px; flex-shrink: 0; margin-inline-start: 12px; }
+.cm-kbd { color: var(--muted); font: 11px/1 system-ui, sans-serif; margin-inline-start: 16px; }
+/* 分隔线通栏：向两侧各溢出内边距 */
+.context-menu-sep { height: 1px; margin: 6px -8px; background: var(--line); }
+.context-menu-header {
+  padding: 6px 8px 2px; font-size: 10.5px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em;
+}
 
 /* ---------------------------------------------------------- 行内出处 */
 .cm-fact-cite {
@@ -577,3 +595,37 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--fg); text-decoration: none;
 }
 .kb-link:hover { background: var(--hover); color: var(--accent); }
+
+
+/* ------------------------------------------------ 树/标签的拖拽反馈 */
+.tree-node.dragging { opacity: .4; }
+/* over：目标行描边（tree.css:270-272）；before/after：一条 2px 线带中空圆环（tree.css:274-327） */
+.tree-node.drop-over { box-shadow: inset 0 0 0 1px var(--main-border); }
+.tree-node.drop-before, .tree-node.drop-after { position: relative; }
+.tree-node.drop-before::after, .tree-node.drop-after::after {
+  content: ''; position: absolute; inset-inline-start: 20px; width: 100px; height: 2px;
+  border-radius: 1px; background: var(--muted);
+}
+.tree-node.drop-before::after { top: -1px; }
+.tree-node.drop-after::after { bottom: -1px; }
+.tree-node.drop-before::before, .tree-node.drop-after::before {
+  content: ''; position: absolute; inset-inline-start: 12px; width: 8px; height: 8px;
+  border: 2px solid var(--muted); border-radius: 50%; box-sizing: border-box;
+}
+.tree-node.drop-before::before { top: -4px; }
+.tree-node.drop-after::before { bottom: -4px; }
+.note-tab.dragging { opacity: .4; }
+.note-tab.drop-before { box-shadow: -3px 0 0 var(--accent); }
+.history-nav { display: flex; gap: 2px; flex-shrink: 0; }
+.history-nav .icon-btn:disabled { opacity: .3; cursor: default; }
+
+/* ------------------------------------------------ 滚动条（theme-next/forms.css:962-1044）
+   细条 thumb，hover 变粗；两端各留 8px 空隙。 */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; margin: 8px 0; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb); border: 3.5px solid transparent; border-radius: 10px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { border-width: 2px; background-color: var(--scrollbar-thumb-hover); }

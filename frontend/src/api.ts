@@ -152,6 +152,14 @@ export const detachBranch = (note_id: string, parent_note_id: string) =>
         + `&parent_note_id=${encodeURIComponent(parent_note_id)}`,
         { method: 'DELETE', headers: headers() }).then(json)
 
+/** 拖拽排序：一个父节点下的子节点按给定顺序重编号。 */
+export const reorderBranches = (parent_note_id: string, order: string[]) =>
+  fetch('/api/tree/branches/reorder', {
+    method: 'PATCH',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ parent_note_id, order }),
+  }).then(json<{ parent: string; count: number }>)
+
 export const moveBranch = (
   note_id: string, from_parent_id: string, to_parent_id: string,
   position?: number,

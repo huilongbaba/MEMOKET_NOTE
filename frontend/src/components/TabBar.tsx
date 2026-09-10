@@ -10,7 +10,7 @@
  * 一篇写。单篇编辑器逼着用户在脑子里存住另一篇的内容，那正是判据 2 要省
  * 下来的注意力。
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type Tab = { id: string; noteId: string; title: string }
 
@@ -21,7 +21,7 @@ const MIN_W = 84
 const MARGIN_W = 5
 
 export default function TabBar({
-  tabs, activeId, onSelect, onClose, onNew, onContextMenu,
+  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder,
 }: {
   tabs: Tab[]
   activeId: string | null
@@ -29,8 +29,12 @@ export default function TabBar({
   onClose: (id: string) => void
   onNew: () => void
   onContextMenu?: (tab: Tab, at: { x: number; y: number }) => void
+  /** 拖拽排序：把 id 挪到第 index 位 */
+  onReorder?: (id: string, index: number) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
 
   // 标签多到放不下时按比例缩。宽度算在这儿而不是交给 flex，是因为要保证
   // 每个标签**至少**看得出是个标签（Trilium 的下限是 48px）。
@@ -57,9 +61,25 @@ export default function TabBar({
           key={t.id}
           role="tab"
           aria-selected={t.id === activeId}
-          className={'note-tab' + (t.id === activeId ? ' active' : '')}
+          className={'note-tab' + (t.id === activeId ? ' active' : '')
+            + (dragId === t.id ? ' dragging' : '') + (overIndex === i && dragId !== t.id ? ' drop-before' : '')}
           title={`${t.title || '未命名'}${i < 9 ? `　⌘${i + 1}` : ''}`}
           onClick={() => onSelect(t.id)}
+          // 同行内拖拽排序（Trilium 用 Draggabilly；HTML5 dnd 够用）
+          draggable={!!onReorder}
+          onDragStart={(e) => { setDragId(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id) }}
+          onDragOver={(e) => {
+            if (!dragId) return
+            e.preventDefault()
+            const r = e.currentTarget.getBoundingClientRect()
+            setOverIndex(e.clientX < r.left + r.width / 2 ? i : i + 1)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            if (dragId && overIndex !== null) onReorder?.(dragId, overIndex)
+            setDragId(null); setOverIndex(null)
+          }}
+          onDragEnd={() => { setDragId(null); setOverIndex(null) }}
           // 中键关闭：浏览器里的通用习惯，Trilium 也有。没有它的话，关一堆
           // 标签要一个个瞄准那个小叉。
           onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id) } }}

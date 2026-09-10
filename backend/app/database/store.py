@@ -675,6 +675,27 @@ def move_branch(user_id: str, note_id: str, old_parent: str, new_parent: str,
         return cur.rowcount > 0
 
 
+def reorder(user_id: str, parent_id: str, order: list[str]) -> int:
+    """把一个父节点下的子节点按给定顺序重新编号 0..n-1。
+
+    拖拽排序用。**不做「插到第 k 个位置」这种相对操作**：位置一旦有重复
+    （克隆、并发、老数据），相对插入就不知道插到哪；整体重编号一次就把
+    脏数据也顺手洗干净了。没列在 order 里的子节点排在后面，保持原相对顺序。
+    """
+    with connect() as c:
+        rows = c.execute("SELECT note_id FROM branches WHERE parent_note_id=? AND user_id=?"
+                         " ORDER BY position", (parent_id, user_id)).fetchall()
+        existing = [r["note_id"] for r in rows]
+        seen = set()
+        final = [n for n in order if n in existing and not (n in seen or seen.add(n))]
+        final += [n for n in existing if n not in seen]
+        for i, nid in enumerate(final):
+            c.execute("UPDATE branches SET position=? WHERE note_id=? AND parent_note_id=?"
+                      " AND user_id=?", (i, nid, parent_id, user_id))
+        c.commit()
+        return len(final)
+
+
 def set_expanded(user_id: str, note_id: str, parent_id: str, expanded: bool) -> None:
     """树节点的展开状态存在库里，不在前端内存里——刷新一次就全收起来的树
     在几十个节点之后就没法用了。"""

@@ -4,6 +4,7 @@ import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
+import { search, searchKeymap } from '@codemirror/search'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { GFM } from '@lezer/markdown'
@@ -102,7 +103,9 @@ export default function MarkdownEditor({
           return f && { text: f.text, when: f.when, sources: f.sources }
         }),
         history(),
-        keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+        keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, ...searchKeymap, indentWithTab]),
+        // ⌘F 页内查找（Trilium 的 FindWidget）。长文档没有它是硬伤。
+        search({ top: true }),
         autocompletion({ override: [recallSource], activateOnTyping: true }),
         markdown({ codeLanguages: languages, extensions: [GFM] }),
         syntaxHighlighting(markdownHighlight),

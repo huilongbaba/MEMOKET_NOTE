@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
 from .deps import current_user
-from .schemas import BranchAttachIn, BranchExpandIn, BranchMoveIn, TreeRow
+from .schemas import BranchAttachIn, BranchExpandIn, BranchMoveIn, BranchReorderIn, TreeRow
 
 router = APIRouter(prefix="/api/tree", tags=["tree"])
 
@@ -63,6 +63,13 @@ def detach(note_id: str, parent_note_id: str, user: str = Depends(current_user))
         raise HTTPException(
             400, "这是它在树上的最后一个位置了。要删掉这篇笔记，用删除笔记。")
     return {"detached": note_id, "from": parent_note_id}
+
+
+@router.patch("/branches/reorder")
+def reorder(body: BranchReorderIn, user: str = Depends(current_user)):
+    """拖拽排序：一个父节点下的子节点按给定顺序重编号。"""
+    return {"parent": body.parent_note_id,
+            "count": store.reorder(user, body.parent_note_id, body.order)}
 
 
 @router.patch("/branches/move")
