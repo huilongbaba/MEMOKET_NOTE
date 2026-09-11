@@ -111,6 +111,19 @@ export default function App() {
   const importInput = useRef<HTMLInputElement>(null)
   const importUnder = useRef<string>(api.ROOT_ID)
   const harnessProbeDone = useRef(false)
+  // 这次会话新建、还一个字没写的笔记。离开它时悄悄删掉：每按一次 ＋ 树上就多一个
+  // 「未命名」（实拍：截图用户树上堆了九个），Trilium 的做法也是新笔记不写就不留。
+  const freshEmpty = useRef(new Set<string>())
+  async function dropIfStillEmpty(n: Note | null) {
+    if (!n || !freshEmpty.current.has(n.id)) return
+    if (title.trim() || content.trim()) { freshEmpty.current.delete(n.id); return }
+    freshEmpty.current.delete(n.id)
+    try {
+      await api.deleteNote(n.id)
+      setTabs((prev) => prev.filter((t) => t.noteId !== n.id))
+      void Promise.all([reload(), reloadTree()])
+    } catch { /* 删不掉就留着，不值得报错 */ }
+  }
   // 分屏：中栏右侧再开一栏看另一篇（Trilium 的 SplitNoteContainer）。
   // **第二栏是只读的**——「对照着另一篇写」要的是看得见，不是两个光标；
   // 编辑器的状态（正文/骨架/修订/harness）是单实例的，做成可编辑要重构一半的
@@ -394,6 +407,9 @@ export default function App() {
   function closeTab(id: string) {
     const i = tabs.findIndex((x) => x.id === id)
     if (i < 0) return
+    if (current && tabs[i].noteId === current.id && freshEmpty.current.has(current.id) && !title.trim() && !content.trim()) {
+      void dropIfStillEmpty(current)
+    }
     closedTabs.current = [...closedTabs.current, tabs[i]].slice(-20)
     const next = tabs.filter((x) => x.id !== id)
     setTabs(next)
@@ -497,7 +513,9 @@ export default function App() {
   async function openVirtual(id: string, title?: string) {
     if (virtualId === id && !current) return
     await save()
+    const leaving = current
     pushHistory(id)
+    void dropIfStillEmpty(leaving)
     setCurrent(null); setTitle(''); setContent('')
     setVirtualId(id)
 
@@ -661,6 +679,7 @@ export default function App() {
 
   async function newNoteUnder(parentId: string) {
     const n = await api.createNote('', '', parentId)
+    freshEmpty.current.add(n.id)
     await Promise.all([reload(), reloadTree()])
     void switchTo(n)
   }
@@ -1116,6 +1135,7 @@ export default function App() {
   async function newNote() {
     await save()
     const n = await api.createNote('', '')
+    freshEmpty.current.add(n.id)
     // 树也要刷：不刷的话新笔记不在树上，用户以为「没存」（实拍反馈）
     await Promise.all([reload(), reloadTree()])
     open(n)
@@ -1296,7 +1316,9 @@ export default function App() {
   async function switchTo(n: Note, viaHarness = false) {
     if (current?.id === n.id) return
     await save()
+    const leaving = current
     open(n)
+    void dropIfStillEmpty(leaving)
     // 手动点了别的笔记 = 明确表示现在想看别的东西，无限续写继续在后台跑，
     // 但不再把编辑器拽回正在写的那篇——harness 自己触发的切换不算"手动"，
     // 不应该关掉跟随（否则每次它自己切笔记都会把 follow 关掉，只能跟一次）。

@@ -43,6 +43,16 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
         </KbSection>
       ) : !data ? (
         <p className="muted"><span className="spinner" /> 加载中…</p>
+      ) : data.stats.facts === 0 ? (
+        <div className="kb-empty">
+          <i className="bx bx-brain" />
+          <h3>知识库还是空的</h3>
+          <p className="muted">把会议记录、录音、其他应用的笔记导进来，或者把一篇写好的笔记「存入知识库」——之后这里会长出主题、实体和时间线，写作时右栏会自动浮现相关的记忆。</p>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><i className="bx bx-import" /> 导入</button>
+            <button onClick={() => actions.onOpen('kb:facts')}>看看事实表长什么样</button>
+          </div>
+        </div>
       ) : (
         <>
           <div className="stat-row">
