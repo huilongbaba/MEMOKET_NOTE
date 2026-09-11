@@ -813,3 +813,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .tl-num { font-size: 12px; text-align: end; }
 .tl-days { margin-inline-start: 16px; border-inline-start: 2px solid var(--line); padding-inline-start: 8px; }
 .tl-facts { padding: 4px 0 8px 8px; }
+
+.memory-card-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 120ms; }
+.memory-card:hover .memory-card-actions { opacity: 1; }
+.memory-card:hover { border-color: var(--accent); }

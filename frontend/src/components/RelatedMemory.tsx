@@ -56,14 +56,25 @@ export default function RelatedMemory({ content, onInsert }: {
       )}
       {facts.map((f) => (
         <div
-          className="card"
+          className="card memory-card"
           key={f.id}
           style={{ cursor: 'pointer' }}
           onClick={() => onInsert(`${f.text} [${f.id}]`)}
           title="点击插入引用到光标处"
         >
           <div style={{ fontSize: 13 }}>{f.text}</div>
-          {f.when && <span className="badge" style={{ marginTop: 4 }}>{f.when}</span>}
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            {f.when ? <span className="badge">{f.when}</span> : <span />}
+            <span className="memory-card-actions">
+              <button className="icon-btn" title="打开这条事实"
+                      onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })) }}>
+                <i className="bx bx-link-external" />
+              </button>
+              <button className="icon-btn" title="插入引用到光标处" onClick={(e) => { e.stopPropagation(); onInsert(`${f.text} [${f.id}]`) }}>
+                <i className="bx bx-link" />
+              </button>
+            </span>
+          </div>
         </div>
       ))}
     </div>

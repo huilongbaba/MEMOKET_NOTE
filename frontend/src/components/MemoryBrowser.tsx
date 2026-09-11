@@ -47,6 +47,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   initialTab?: Tab
 }) {
   const [tab, setTab] = useState<Tab>(initialTab)
+  const [showCreate, setShowCreate] = useState(false)
   // 内嵌进中栏时图随容器宽——写死 900 在窄栏里会横向溢出、在宽屏上又留一大块白
   const graphHost = useRef<HTMLDivElement>(null)
   const [graphW, setGraphW] = useState(900)
@@ -277,7 +278,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
           </div>
         )}
 
-        <div className="row" style={{ margin: '10px 0' }}>
+        <div className="row" style={{ margin: '10px 0' }} hidden={embedded}>
           {(['overview', 'topics', 'timeline', 'facts'] as Tab[]).map((t) => (
             <button
               key={t}
@@ -316,8 +317,8 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
         )}
 
         {tab === 'topics' && (
-          <div>
-            <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+          <div className="stack">
+            {showCreate && <div className="filter-row">
               <input
                 placeholder="新主题名"
                 value={newTopicCode}
@@ -335,10 +336,10 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
                 {creatingTopic ? <span className="spinner" /> : '+ 新建主题'}
               </button>
               {newTopicError && <span className="muted" style={{ color: 'var(--del)' }}>{newTopicError}</span>}
-            </div>
+            </div>}
 
             {clusters.length > 0 && (
-              <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+              <div className="filter-row">
                 <button className={drilled === null ? 'primary' : ''} onClick={() => setDrilled(null)}>
                   全部（{clusters.length} 簇）
                 </button>
@@ -364,7 +365,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
               </div>
             )}
 
-            <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <div className="filter-row" style={{ justifyContent: 'space-between' }}>
               <div className="row" style={{ flexWrap: 'wrap' }}>
                 <span className="muted" style={{ fontSize: 12 }}>显示到：</span>
                 <button className={maxLevel === null ? 'primary' : ''} onClick={() => setMaxLevel(null)}>全部</button>
@@ -389,6 +390,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
                   onChange={(e) => setNodeQuery(e.target.value)}
                   style={{ width: 140 }}
                 />
+                <button className="chip" onClick={() => setShowCreate((v) => !v)} title="手工加一个主题"><i className="bx bx-plus" />新建主题</button>
               </div>
             </div>
 
