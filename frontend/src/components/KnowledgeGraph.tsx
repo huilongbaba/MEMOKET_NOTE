@@ -67,6 +67,10 @@ const MAX_SCALE = 12
 // read anything, rather than everything being crammed-but-technically-
 // visible at every zoom level.
 const LOD_ZOOM_THRESHOLD = 1.4
+// 节点不多（簇视图 111 个、搜索命中几十个）时标签一直显示——「先看形状再放大」
+// 的 LOD 是为两千个节点设计的；一百来个圆圈没有名字，用户看到的只是一堆泡泡
+// （实拍：主题地图页默认全是空心圆，一个字都没有）。
+const LABELS_ALWAYS_BELOW = 150
 // Node count at which density scaling kicks in at full strength (below this,
 // scale stays 1 -- a handful of nodes shouldn't shrink just because the
 // formula technically applies).
@@ -96,8 +100,12 @@ function densityScale(nodeCount: number): number {
   return Math.min(1, Math.sqrt(DENSITY_BASELINE / Math.max(nodeCount, 1)))
 }
 
+// 半径封顶：簇节点的事实数上千（sqrt(6000)*6 ≈ 465px），不封顶一个圆就占满画布
+// （实拍：主题地图页默认只看到几个被裁掉一半的大圆）。相对大小仍由 sqrt 给。
+const MAX_R = 44
+
 function radiusOf(factCount: number, scale: number): number {
-  return (MIN_R + Math.sqrt(factCount) * R_SCALE) * scale
+  return Math.min(MAX_R, (MIN_R + Math.sqrt(factCount) * R_SCALE) * scale)
 }
 
 /** All descendants of `code` (itself included), via the parents links -- a
@@ -213,7 +221,9 @@ export default function KnowledgeGraph(
   // still real) force-settling animation before anyone's even zoomed.
   // useRef's initial value is fixed on first render only, so this can't live
   // above `nodes` -- it needs nodes.length to compute its own starting value.
-  const startsInOverview = nodes.length > DENSITY_BASELINE
+  const startsInOverview = nodes.length > LABELS_ALWAYS_BELOW
+  const labelsAlwaysRef = useRef(!startsInOverview)
+  labelsAlwaysRef.current = nodes.length <= LABELS_ALWAYS_BELOW
   // Not React state on purpose -- this flips every animation frame during a
   // zoom gesture, and re-rendering the whole node list (thousands of <g>s)
   // that often would be the actual performance problem. A CSS class on the
@@ -304,6 +314,9 @@ export default function KnowledgeGraph(
     simulationRef.current = simulation
 
     let settleFitDone = false
+    // alpha < 0.25 那次适应是「尽快有个能看的画面」；节点之后还会继续外扩，
+    // 布局真正停下来再适应一次，不然外圈的节点留在画布外。
+    simulation.on('end', () => { settledRef.current = true; fitTo() })
     simulation.on('tick', () => {
       for (const n of nodes) {
         const el = nodeEls.current.get(n.id)
@@ -319,6 +332,7 @@ export default function KnowledgeGraph(
       // positions from tick 0).
       if (!settleFitDone && simulation.alpha() < 0.25) {
         settleFitDone = true
+        settledRef.current = true
         fitTo()
       }
       graphLinks.forEach((l, i) => {
@@ -422,7 +436,7 @@ export default function KnowledgeGraph(
       .scaleExtent([MIN_SCALE, MAX_SCALE])
       .on('zoom', (event) => {
         zoomGroup.setAttribute('transform', event.transform.toString())
-        const overview = event.transform.k < LOD_ZOOM_THRESHOLD
+        const overview = !labelsAlwaysRef.current && event.transform.k < LOD_ZOOM_THRESHOLD
         if (overview !== lodOverviewRef.current) {
           lodOverviewRef.current = overview
           zoomGroup.classList.toggle('lod-overview', overview)
@@ -457,6 +471,14 @@ export default function KnowledgeGraph(
    * box's centroid, which is generally NOT where the clicked node sits (its
    * neighbors are rarely distributed evenly around it), and "点击的那个节点
    * 处于中间" means the clicked node itself, not the average of its cluster. */
+  const settledRef = useRef(false)
+  useEffect(() => {
+    if (!settledRef.current) return
+    const t = setTimeout(() => fitTo(), 50)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height])
+
   function fitTo(ids?: Set<string>, centerOn?: GraphNode) {
     if (!svgRef.current || !zoomBehaviorRef.current || nodes.length === 0) return
     const targets = ids ? nodes.filter((n) => ids.has(n.id)) : nodes

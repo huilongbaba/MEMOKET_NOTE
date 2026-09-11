@@ -2376,7 +2376,6 @@ export default function App() {
         )}
         <div className={'note-scroll' + (current ? ' has-fb' : '')}>
         <div className="note-body">
-        {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
           virtualId === 'app:import' ? (
