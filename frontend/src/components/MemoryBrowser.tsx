@@ -224,12 +224,16 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
     : (drilledEntityCodes ? searchedEntities.filter((e) => drilledEntityCodes.has(e.code)) : searchedEntities)
   const graphLinks = drilled === null && clusters.length ? [] : searchedLinks
 
+  // 内嵌在中栏时，点一个主题/实体 = 打开它的页面（树上的节点），不是切到
+  // 这个组件自己那个已经藏起来的「事实表」tab。
   function filterByTopic(code: string) {
+    if (embedded) { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:topic:' + code })); return }
     setFactsFilter({ topic: code, limit: PAGE_SIZE, offset: 0 })
     setTab('facts')
   }
 
   function filterByEntity(code: string) {
+    if (embedded) { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:entity:' + code })); return }
     setFactsFilter({ entity: code, limit: PAGE_SIZE, offset: 0 })
     setTab('facts')
   }
@@ -410,7 +414,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
                 filterByTopic(code)
               }}
               width={embedded ? graphW : graphSize.w}
-              height={embedded ? Math.max(420, Math.round(graphW * 0.62)) : graphSize.h}
+              height={embedded ? Math.max(520, Math.round(graphW * 0.72)) : graphSize.h}
             />
           </div>
         )}

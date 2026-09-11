@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { drag as d3drag } from 'd3-drag'
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from 'd3-force'
 import { select as d3select } from 'd3-selection'
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { EntityNode, TopicEntityLink, TopicNode } from '../api'
@@ -153,7 +153,7 @@ function endpointId(x: string | GraphNode): string {
 }
 
 export default function KnowledgeGraph(
-  { topics, entities, links, onSelect, width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT }: {
+  { topics, entities, links, onSelect, width: widthProp = DEFAULT_WIDTH, height = DEFAULT_HEIGHT }: {
     topics: TopicNode[]
     entities: EntityNode[]
     links: TopicEntityLink[]
@@ -162,6 +162,8 @@ export default function KnowledgeGraph(
     height?: number
   },
 ) {
+  const [measuredW, setMeasuredW] = useState<number | null>(null)
+  const width = measuredW ?? widthProp
   const nodeEls = useRef(new Map<string, SVGGElement>())
   const linkEls = useRef(new Map<number, SVGLineElement>())
   const simulationRef = useRef<ReturnType<typeof forceSimulation<GraphNode>> | null>(null)
@@ -222,6 +224,7 @@ export default function KnowledgeGraph(
   // useRef's initial value is fixed on first render only, so this can't live
   // above `nodes` -- it needs nodes.length to compute its own starting value.
   const startsInOverview = nodes.length > LABELS_ALWAYS_BELOW
+  const small = nodes.length <= LABELS_ALWAYS_BELOW
   const labelsAlwaysRef = useRef(!startsInOverview)
   labelsAlwaysRef.current = nodes.length <= LABELS_ALWAYS_BELOW
   // Not React state on purpose -- this flips every animation frame during a
@@ -306,11 +309,17 @@ export default function KnowledgeGraph(
     const simulation = forceSimulation<GraphNode>(nodes)
       .alphaDecay(0.05)
       .alphaMin(0.01)
+      // 小图（簇视图 / 搜索命中）要摊开到标签读得出来：斥力、连线长度、碰撞半径
+      // 都给标签留位；两千个节点的大图仍用紧凑参数，否则布局要跑很久。
       .force('link', forceLink<GraphNode, SimLink>(graphLinks as SimLink[]).id((d) => d.id)
-        .distance((l) => (l.kind === 'cooccur' ? 60 : 80)))
-      .force('charge', forceManyBody().strength(-140))
+        .distance((l) => (l.kind === 'cooccur' ? 60 : 80) * (small ? 1.4 : 1)))
+      // 小图（簇视图没有连线）：靠碰撞半径分开、靠向心力聚拢——斥力一大就被推成
+      // 三千个单位宽，适应窗口后每个节点只剩几个像素（实拍两次）。
+      .force('charge', forceManyBody().strength(small ? -40 : -140))
       .force('center', forceCenter(width / 2, height / 2))
-      .force('collide', forceCollide<GraphNode>((d) => radiusOf(d.factCount, sizeScale) + 4))
+      .force('x', forceX(width / 2).strength(small ? 0.08 : 0))
+      .force('y', forceY(height / 2).strength(small ? 0.08 : 0))
+      .force('collide', forceCollide<GraphNode>((d) => radiusOf(d.factCount, sizeScale) + (small ? 30 : 4)).iterations(2))
     simulationRef.current = simulation
 
     let settleFitDone = false
@@ -463,6 +472,14 @@ export default function KnowledgeGraph(
       .call(zoomBehaviorRef.current.transform, zoomIdentity)
   }
 
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => { const w = Math.floor(el.clientWidth); if (w > 0) setMeasuredW(w) })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [nodes.length])
+
   /** Frames a set of node ids (defaults to every node) -- fitting to content
    * rather than to the canvas box is the whole point, whether that's "all
    * nodes" (适应窗口 button) or a focused neighborhood after a click.
@@ -483,17 +500,22 @@ export default function KnowledgeGraph(
     if (!svgRef.current || !zoomBehaviorRef.current || nodes.length === 0) return
     const targets = ids ? nodes.filter((n) => ids.has(n.id)) : nodes
     if (targets.length === 0) return
-    const xs = targets.map((n) => n.x ?? width / 2)
-    const ys = targets.map((n) => n.y ?? height / 2)
-    const pad = 80
+    // 用 <svg> 此刻的真实尺寸，不用 props：simulation 'end' 回调闭包里的
+    // width/height 是首次渲染的 900×560，内嵌后真实尺寸早变了——按旧尺寸算的
+    // 适应结果就是「缩得很小、偏在左边」（实拍）。
+    const W = svgRef.current.clientWidth || width
+    const H = svgRef.current.clientHeight || height
+    const xs = targets.map((n) => n.x ?? W / 2)
+    const ys = targets.map((n) => n.y ?? H / 2)
+    const pad = small ? 36 : 80
     const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad
     const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad
     const boxW = Math.max(1, x1 - x0), boxH = Math.max(1, y1 - y0)
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(width / boxW, height / boxH)))
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(W / boxW, H / boxH)))
     const cx = centerOn?.x ?? (x0 + x1) / 2
     const cy = centerOn?.y ?? (y0 + y1) / 2
     const transform = zoomIdentity
-      .translate(width / 2, height / 2)
+      .translate(W / 2, H / 2)
       .scale(scale)
       .translate(-cx, -cy)
     d3select(svgRef.current).transition().duration(400)
@@ -581,7 +603,7 @@ export default function KnowledgeGraph(
           其余 {cappedCount} 个可以用上面的搜索框按名字找到。</>
         )}
       </p>
-      <svg ref={svgRef} width={width} height={height} style={{ display: 'block', cursor: 'grab' }}>
+      <svg ref={svgRef} width="100%" height={height} style={{ display: 'block', cursor: 'grab' }}>
         <defs>
           <marker id="kg-arrow" viewBox="0 0 8 8" refX="7" refY="4"
                   markerWidth="7" markerHeight="7" orient="auto-start-reverse">
