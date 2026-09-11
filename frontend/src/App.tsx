@@ -110,6 +110,7 @@ export default function App() {
   // 树菜单「导入到这里…」用的隐藏文件框；记住要挂到哪个节点下面
   const importInput = useRef<HTMLInputElement>(null)
   const importUnder = useRef<string>(api.ROOT_ID)
+  const harnessProbeDone = useRef(false)
   // 分屏：中栏右侧再开一栏看另一篇（Trilium 的 SplitNoteContainer）。
   // **第二栏是只读的**——「对照着另一篇写」要的是看得见，不是两个光标；
   // 编辑器的状态（正文/骨架/修订/harness）是单实例的，做成可编辑要重构一半的
@@ -992,8 +993,11 @@ export default function App() {
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
       if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
-      if (probe === 'harness' && notes.length) {
-        const n = notes.find((x) => (x.content ?? '').trim().length > 200)
+      // 只对截图用户跑：harness 在服务端改笔记，对真实用户跑一次就污染一篇（实拍踩过）。
+      // 探针 effect 会因依赖变化跑两次，用 ref 挡住第二次。
+      if (probe === 'harness' && notes.length && api.getUser().startsWith('shot-') && !harnessProbeDone.current) {
+        harnessProbeDone.current = true
+        const n = notes.find((x) => (x.content ?? '').trim().length > 200) ?? notes[0]
         if (n) void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })()
       }
       if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
