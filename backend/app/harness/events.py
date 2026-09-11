@@ -56,6 +56,7 @@ CUSTOM_SKELETON = "skeleton"
 CUSTOM_PHASE_DELTA = "phase_delta"   # live output from a sub-step
 CUSTOM_ROUND = "round_summary"       # what this round gathered, before writing
 CUSTOM_REPLAN = "replan"             # the skeleton changed mid-run
+CUSTOM_INSERT_AT = "insert_at"       # this round's text goes into a section, not the end
 
 
 @dataclass(frozen=True)

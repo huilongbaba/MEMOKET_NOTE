@@ -29,6 +29,7 @@ import Logo from './components/Logo'
 import PreferencesPanel from './components/PreferencesPanel'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
+import { sectionEnd } from './util/sectionEnd'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import NoteLinksPanel from './components/NoteLinksPanel'
@@ -231,6 +232,11 @@ export default function App() {
   // 所以让 updater 只顺手写一下这个 ref（写 ref 是幂等的，双调用无害），
   // 轮末直接从 ref 读当前正文。
   const liveContentRef = useRef<string>('')
+  // 定向续写的插入光标：null = 追加到文末；每轮开始时复位
+  const insertCursorRef = useRef<number | null>(null)
+  // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
+  // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1077,7 +1083,7 @@ export default function App() {
       }
       if (probe?.startsWith('tap:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(4))
-        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runMagicTap(), 1500) })() }
+        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runMagicTap(), 1500) })() }
       }
       // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
       if ((probe === 'slash' || probe === 'mention' || probe === 'wikilink') && notes.length && !harnessProbeDone.current) {
@@ -1140,14 +1146,14 @@ export default function App() {
       }
       if (probe?.startsWith('harness:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(8))
-        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })() }
+        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runNoteHarness('write'), 1500) })() }
       }
       // 只对截图用户跑：harness 在服务端改笔记，对真实用户跑一次就污染一篇（实拍踩过）。
       // 探针 effect 会因依赖变化跑两次，用 ref 挡住第二次。
       if (probe === 'harness' && notes.length && api.getUser().startsWith('shot-') && !harnessProbeDone.current) {
         harnessProbeDone.current = true
         const n = notes.find((x) => (x.content ?? '').trim().length > 200) ?? notes[0]
-        if (n) void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })()
+        if (n) void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runNoteHarness('write'), 1500) })()
       }
       if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
       if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
@@ -1599,7 +1605,7 @@ export default function App() {
    * 一份的话，恢复之后的运行就会少掉几个 handler，而那是最难发现的一类
    * 差异：界面看起来在跑，只是某个面板不再更新了。 */
   function noteHarnessHandlers(noteId: string, mode: 'write' | 'polish'): api.NoteHarnessHandlers {
-    return {
+    const h: api.NoteHarnessHandlers = {
       onSkeleton: (s, b) => {
         if (currentRef.current?.id !== noteId) return
         setSpine(s); setBeats(b)
@@ -1623,6 +1629,7 @@ export default function App() {
           return
     }
         setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，续写中…`)
+        insertCursorRef.current = null
         // 续写的增量在这之后才开始到达——本地累积的 content 要先补一次
         // 分隔，跟后端 prompts.join_round_text() 是同一个道理
         // （TRACELOG [8]/[10]）：折叠 runHarness 那边已经修过的同一个坑，
@@ -1644,9 +1651,38 @@ export default function App() {
         // 完整记录，状态行说一句就够
         setNoteHarnessStatus(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 50)}`)
       },
+      onInsertAt: (d) => {
+        if (currentRef.current?.id !== noteId) return
+        // 落点按本地正文重算（本地可能刚应用过修订、跟服务端差几个字）；
+        // 找不到标题才用后端给的 pos。轮初为追加预留的那个空行要收回来。
+        setContent((c) => {
+          const base = c.replace(/\n+$/, '\n')
+          const pos = sectionEnd(base, d.section) ?? Math.min(d.pos, base.length)
+          const head = base.slice(0, pos).replace(/\n*$/, '\n\n')
+          const tail = base.slice(pos).replace(/^\n*/, '\n\n')
+          insertCursorRef.current = head.length
+          const next = head + tail
+          liveContentRef.current = next
+          return next
+        })
+        setNoteHarnessStatus((s) => s.replace(/续写中…$/, `写到「${d.section}」这一节…`))
+        requestAnimationFrame(() => {
+          const view = editorViewRef.current
+          if (view && insertCursorRef.current != null) view.dispatch({ effects: EditorView.scrollIntoView(Math.min(insertCursorRef.current, view.state.doc.length), { y: 'center' }) })
+        })
+      },
       onDelta: (text) => {
         if (currentRef.current?.id !== noteId) return
-        setContent((c) => { const next = c + text; liveContentRef.current = next; return next })
+        setContent((c) => {
+          const cur = insertCursorRef.current
+          let next: string
+          if (cur != null && cur <= c.length) {
+            next = c.slice(0, cur) + text + c.slice(cur)
+            insertCursorRef.current = cur + text.length
+          } else next = c + text
+          liveContentRef.current = next
+          return next
+        })
         // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
         // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
         // 干等的状态文案有用得多。
@@ -1782,6 +1818,13 @@ export default function App() {
     })
       },
       onDone: (reason, blockedReason, runId, serverContent) => {
+        // **用户已经切到别的笔记了**：这一篇的结果绝不能写进现在显示的那篇——
+        // 探针实拍：run 在 A 上跑完，把 A 的正文塞进了正显示的 B 的编辑器，
+        // 自动保存接着就会把 A 的内容存进 B。只提示一句，正文由服务端保存。
+        if (currentRef.current?.id !== noteId) {
+          toast(`「${notes.find((x) => x.id === noteId)?.title || '另一篇笔记'}」的${mode === 'polish' ? '打磨' : '智能续写'}已结束，内容已保存在那篇里`)
+          return
+        }
         // 跑完（或暂停）时也用服务端的正文对齐——见 onRoundEnd
         if (typeof serverContent === 'string' && serverContent && serverContent !== liveContentRef.current) {
           liveContentRef.current = serverContent
@@ -1808,8 +1851,19 @@ export default function App() {
         toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
       },
     }
+    // **统一挡一层**：run 属于 noteId 那篇，用户切走之后它的每个事件都不该碰
+    // 现在显示的这篇——之前只有一半 handler 各自写了这条判断，漏掉的那半
+    // （onDone 的正文对齐、骨架）把 A 的内容和骨架写进了 B（探针实拍两次）。
+    // onDone 自己处理了跨笔记的情况（只提示不动正文），其余一律忽略。
+    const guarded: api.NoteHarnessHandlers = {}
+    for (const [k, fn] of Object.entries(h) as [keyof api.NoteHarnessHandlers, (...a: unknown[]) => void][]) {
+      guarded[k] = ((...args: unknown[]) => {
+        if (k !== 'onDone' && currentRef.current?.id !== noteId) return
+        fn(...args)
+      }) as never
+    }
+    return guarded
   }
-
   async function runNoteHarness(mode: 'write' | 'polish' = 'write') {
     if (loading === 'note-harness') {
       // 点"停止"时**同时强制复位状态**，不要只 abort 就指望 fetch 的
@@ -1826,6 +1880,9 @@ export default function App() {
     }
     if (!current) return
     const noteId = current.id
+    // 起跑时记一笔发出去的是什么：哪篇、多少字、骨架开头——探针实拍过一次
+    // 「跑在了另一篇上」，没有这条日志只能猜。
+    void api.clientLog('warn', `harness start note=${noteId} title=${current.title.slice(0, 20)} content=${content.length} spine=${spine.slice(0, 30)} beats=${beats.length}`, '', 'harness-start')
     setLoading('note-harness')
     setNoteHarnessStatus('启动中…')
     setHarnessDone(false); harnessDoneRef.current = false
@@ -2305,6 +2362,8 @@ export default function App() {
   }
 
   // ---------------------------------------------------------------- 渲染
+
+  actionsRef.current = { runNoteHarness, runMagicTap }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>

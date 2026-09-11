@@ -111,6 +111,7 @@ class Revise:
         # 「### 4. …」 in the right order and the note ended up with 4 before
         # 3. Any "add two paragraphs in the same place" hits this.
         insert_offsets: dict[str, int] = {}
+        removed_total = 0
         outline_mode = bool(st.bag.get("outline_mode"))
 
         for item in parsed[:max_revisions]:
@@ -142,6 +143,11 @@ class Revise:
                 insert_offset=insert_offsets.get(anchor, 0), anchor_end=anchor_end)
             if updated == st.content:
                 continue
+            destructive = too_destructive(st.content, updated, removed_total)
+            if destructive:
+                yield Event.custom(CUSTOM_DROPPED, {"round": st.round, "detail": destructive})
+                continue
+            removed_total += max(0, len(st.content) - len(updated))
             broke = breakage(st.content, updated)
             if broke:
                 yield Event.custom(CUSTOM_DROPPED, {
@@ -191,3 +197,27 @@ class Revise:
                               st.content)
         st.bag["revisions_applied"] = applied
         st.bag["no_change_rounds"] = 0 if applied else st.bag.get("no_change_rounds", 0) + 1
+
+
+# 一轮修订最多能删掉多少正文。实拍：骨架被另一篇的骨架顶掉之后，修订环节按
+# 「不合骨架就是离题」把 4493 字删到只剩 754——4451 字一轮没了。模型的判断可以
+# 错，删多少必须有硬上限。
+MAX_DELETE_ONE = 0.35      # 单条修订最多删掉正文的 35%
+MAX_DELETE_ROUND = 0.5     # 一轮累计最多删掉 50%
+MIN_DELETE_GUARD = 300     # 短笔记不管——300 字以内的删改本来就是整段重写
+
+
+def too_destructive(before: str, after: str, removed_so_far: int) -> str | None:
+    """这条修订（或加上这轮已删的）是不是删得太狠。返回丢弃理由；None = 放行。"""
+    removed = len(before) - len(after)
+    if removed <= 0 or len(before) < MIN_DELETE_GUARD:
+        return None
+    base = len(before) + removed_so_far          # 这轮开始时的正文长度
+    if removed > MAX_DELETE_ONE * base:
+        return (f"这条修订要删掉 {removed} 字（正文的 {removed * 100 // base}%），"
+                f"超过单条 {int(MAX_DELETE_ONE * 100)}% 的安全线，已丢弃")
+    if removed_so_far + removed > MAX_DELETE_ROUND * base:
+        return (f"这一轮累计要删掉 {removed_so_far + removed} 字（正文的 "
+                f"{(removed_so_far + removed) * 100 // base}%），超过 {int(MAX_DELETE_ROUND * 100)}% 的安全线，"
+                "这条已丢弃")
+    return None

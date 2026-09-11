@@ -163,7 +163,8 @@ def replan_user(title: str, spine: str, beats: list[str], content: str,
 
 def note_harness_continue_user(spine: str, beats: list[str], content: str,
                                facts: list[str], profile: list[str],
-                               outline_note: str = "") -> str:
+                               outline_note: str = "",
+                               sections: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -182,7 +183,25 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
         "请接着往下写，优先覆盖结构节拍里还没被正文实质覆盖的部分。没有给"
         "结构节拍的话，凭正文内容本身判断接下来该写什么。"
     )
+    if sections:
+        parts.append(place_directive_block(sections))
     return "\n\n".join(parts)
+
+
+def place_directive_block(sections: list[str]) -> str:
+    """定向续写：让模型先说这段该放进哪一节。
+
+    正文已经有目录、各节也都有内容之后，「接着往下写」只会把所有新内容堆在
+    最后一节底下（实拍：讲硬件延期的段落离「硬件」隔了两千字）。第一行的
+    指令是确定性可解析的，位置由代码算——不让模型自己重排正文。
+    """
+    listed = "\n".join(f"- {t}" for t in sections[:24])
+    return (
+        "**第一行只写一句放置指令**，格式是「【放到：标题原文】」，标题从下面这些"
+        "现有小节里选（原样照抄，不要改一个字）；实在不属于任何一节才写"
+        "「【放到：文末】」。然后空一行开始正文。正文里不要再写那个小节的标题，"
+        "也不要新开跟现有小节同名的标题。\n" + listed
+    )
 
 
 # 文件夹摘录长度上限——同文件夹笔记只是参考上下文，不是要复述的正文，塞太长

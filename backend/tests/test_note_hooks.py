@@ -298,3 +298,30 @@ def test_追加时也丢掉已经写过的段落并清元话语(monkeypatch):
     _produce(NoteHooks(), st)
     assert st.content.count(重复段) == 1
     assert "新的一段。" in st.content and "不足以说明" not in st.content
+
+
+def test_定向续写按第一行指令插进那一节(monkeypatch):
+    """大纲填完之后所有新内容都堆在最后一节底下（实拍：讲硬件延期的段落离
+    「硬件」隔了两千字）。模型第一行说放哪，位置由代码算，指令行不进正文。"""
+    正文 = ("# 复盘\n\n## 时间线\n\n### APP\n\nAPP 那节已有的正文，足够长足够长足够长足够长足够长足够长。\n\n"
+            "### 硬件\n\n硬件那节已有的正文，足够长足够长足够长足够长足够长足够长足够长。\n\n"
+            "## 团队\n\n团队那节已有的正文，足够长足够长足够长足够长足够长足够长足够长足够长。\n")
+    calls = _stream(monkeypatch, ["【放到：", "硬件】\n\n", "硬件延期的新段落。"])
+    st = _st(正文)
+    out = _produce(NoteHooks(), st)
+    assert "放到" in calls[0][-1]["content"], "提示词里没让它先说放哪"
+    assert out == "硬件延期的新段落。", "指令行不该流到前端"
+    assert st.bag["insert_at"]["section"] == "硬件"
+    assert st.content.index("硬件延期的新段落") < st.content.index("## 团队"), "没插进「硬件」那节"
+
+
+def test_定向续写说文末或没写指令就追加(monkeypatch):
+    正文 = "## 甲\n\n甲的正文足够长足够长足够长足够长足够长足够长足够长。\n\n## 乙\n\n乙的正文足够长足够长足够长足够长足够长足够长。\n"
+    _stream(monkeypatch, ["【放到：文末】\n新段落在末尾。"])
+    st = _st(正文)
+    assert _produce(NoteHooks(), st) == "新段落在末尾。"
+    assert st.bag["insert_at"] is None and st.content.rstrip().endswith("新段落在末尾。")
+    _stream(monkeypatch, ["没有指令行直接写。\n第二行。"])
+    st = _st(正文)
+    assert _produce(NoteHooks(), st) == "没有指令行直接写。\n第二行。"
+    assert st.content.rstrip().endswith("第二行。")

@@ -81,13 +81,25 @@ def tidy_blank_lines(content: str) -> str:
     return "\n".join(out)
 
 
+_LINK = re.compile(r"\[[^\]\n]+\]\([^)\s]+\)")
+_LINK_URL = re.compile(r"\]\([^)\s]+\)|note://[0-9a-f]{12}|https?://")
+
+
+def _dangling_links(text: str) -> int:
+    """链接残骸：有 URL 却没有配对的 ``[文字](url)``。实拍：修订从「另见 [链接测试]」
+    中间切开，正文里留了个孤零零的 ``(note://bb215ab441a2)。``。"""
+    return len(_LINK_URL.findall(text)) - len(_LINK.findall(text))
+
+
 def breakage(before: str, after: str) -> str:
     """这条修订有没有把正文切出破字。只报**新增**的破损，原文本来就有的不算。"""
     was = len(_BROKEN.findall(before))
     now = _BROKEN.findall(after)
-    if len(now) <= was:
-        return ""
-    return "".join(now[-1].split())
+    if len(now) > was:
+        return "".join(now[-1].split())
+    if _dangling_links(after) > _dangling_links(before):
+        return "半截链接"
+    return ""
 
 
 def _locate(content: str, anchor: str, anchor_end: str) -> tuple[int, int]:

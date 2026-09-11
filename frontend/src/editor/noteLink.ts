@@ -34,7 +34,9 @@ async function showPeek(anchor: HTMLElement, id: string, lookup: NoteLookup, sti
     const t = document.createElement('div'); t.className = 'peek-text'; t.textContent = n.title || '未命名'
     const w = document.createElement('div'); w.className = 'peek-when'; w.textContent = n.updated_at.slice(0, 10) + ' · ' + n.content.length + ' 字'
     const b = document.createElement('div'); b.className = 'peek-body'
-    b.textContent = n.content.replace(/^#+\s*/gm, '').trim().slice(0, 240) + (n.content.length > 240 ? '…' : '')
+    // 摘要里把内链折回标题、去掉标题井号——卡片里看到 `](note://…)` 没意义
+    const plain = n.content.replace(/\[([^\]\n]+)\]\(note:\/\/[0-9a-f]{12}\)/g, '$1').replace(/^#+\s*/gm, '').trim()
+    b.textContent = plain.slice(0, 240) + (plain.length > 240 ? '…' : '')
     el.append(w, t, b)
   }
   const r = anchor.getBoundingClientRect()

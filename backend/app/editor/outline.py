@@ -185,6 +185,38 @@ def next_gap(content: str) -> tuple[str, int] | None:
     return None
 
 
+def section_end(content: str, title: str) -> int | None:
+    """标题为 ``title`` 的小节在哪结束：下一个层级不深于它的标题之前；没有就是文末。
+
+    大纲填完之后（``next_gap()`` 为 None）续写一律追加到文末——实测一篇十节的
+    复盘，后面所有新内容都堆在最后一节「反思与展望」底下，讲硬件延期的段落
+    离「硬件」那一节隔了两千字。定向续写要的就是这个位置。
+    """
+    marks = _marks(content)
+    want = (title or "").strip()
+    for i, m in enumerate(marks):
+        if m.group(2).strip() != want:
+            continue
+        level = len(m.group(1))
+        for n in marks[i + 1:]:
+            if len(n.group(1)) <= level:
+                return n.start()
+        return len(content or "")
+    return None
+
+
+PLACE_DIRECTIVE = re.compile(r"^\s*[【\[]\s*放到[:：]\s*(.+?)\s*[】\]]\s*$")
+
+
+def parse_place_directive(first_line: str) -> str | None:
+    """续写输出第一行的「【放到：某标题】」。文末 / 没有这一行 → None。"""
+    m = PLACE_DIRECTIVE.match(first_line or "")
+    if not m:
+        return None
+    target = m.group(1).strip().strip("「」\"'")
+    return None if target in ("文末", "末尾", "最后", "") else target
+
+
 def insert_into(content: str, pos: int, text: str) -> str:
     """把这一轮写的内容插到指定小节标题之后，而不是追加到文末。"""
     body = text.strip()

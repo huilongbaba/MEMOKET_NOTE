@@ -23,7 +23,7 @@ from typing import AsyncIterator, Sequence
 from .checks.rubric import evaluate
 
 from . import adapter as harness_adapter
-from .events import CUSTOM_EVALUATE, CUSTOM_WARNING, Event
+from .events import CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_WARNING, Event
 from .middleware import BASE, verify
 from .state import State
 from .types import Hooks, Middleware
@@ -80,7 +80,15 @@ async def run(st: State, hooks: Hooks,
             st.fresh = ""
             mid = f"r{st.round}"
             yield Event.text_start(mid)
+            announced = False
             async for piece in _wrap_produce(chain, hooks.produce, st):
+                # 定向续写：produce 在第一个 delta 之前就把落点写进 bag，这里先
+                # 告诉前端往哪插，再发正文——不然它只能追加到文末再等轮末对齐跳一下。
+                if not announced:
+                    announced = True
+                    placed = st.bag.get("insert_at")
+                    if placed and placed.get("pos") is not None:
+                        yield Event.custom(CUSTOM_INSERT_AT, placed)
                 st.fresh += piece
                 yield Event.text_content(mid, piece)
             yield Event.text_end(mid)

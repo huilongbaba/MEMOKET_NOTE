@@ -503,3 +503,13 @@ def test_skeleton_is_persisted_with_the_note():
     store.update_note(user, n["id"], "标题", "改过的正文")
     assert store.get_skeleton(user, n["id"])[0] == "核心张力"
     store.delete_note(user, n["id"])
+
+
+def test_breakage_catches_half_deleted_link():
+    """修订从「另见 [链接测试](note://…)」中间切开，留了个 ``(note://…)。``。"""
+    from app.harness.revision import breakage as brk
+    before = "正文。\n\n另见 [链接测试（可删）](note://bb215ab441a2)。"
+    assert brk(before, "正文。\n\n(note://bb215ab441a2)。") == "半截链接"
+    assert brk(before, "正文。\n\n另见 [链接测试（可删）](note://bb215ab441a2)。补一句。") == ""
+    # 整个链接一起删掉是干净的
+    assert brk(before, "正文。") == ""

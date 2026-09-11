@@ -262,3 +262,27 @@ def test_波浪线围栏也算():
     from app.editor import outline
 
     assert outline.headings("## 真标题\n\n~~~\n# 不是标题\n~~~\n") == [(2, "真标题")]
+
+
+# ---------------------------------------------------------------- 定向续写 ---
+
+复盘 = ("# 复盘\n\n## 时间线\n\n### APP\n\nAPP 那节已有的正文，足够长足够长足够长足够长足够长。\n\n"
+        "### 硬件\n\n硬件那节已有的正文，足够长足够长足够长足够长足够长足够长。\n\n"
+        "## 团队\n\n团队那节已有的正文，足够长足够长足够长足够长足够长足够长足够长。\n")
+
+
+def test_section_end_取到下一个不深于它的标题之前():
+    from app.editor import outline
+    assert outline.section_end(复盘, "硬件") == 复盘.index("## 团队")
+    # 二级标题的结束点跳过它自己的三级子节
+    assert outline.section_end(复盘, "时间线") == 复盘.index("## 团队")
+    assert outline.section_end(复盘, "团队") == len(复盘)
+    assert outline.section_end(复盘, "不存在") is None
+
+
+def test_parse_place_directive():
+    from app.editor import outline
+    assert outline.parse_place_directive("【放到：硬件】") == "硬件"
+    assert outline.parse_place_directive("[放到: 「团队」]") == "团队"
+    assert outline.parse_place_directive("【放到：文末】") is None
+    assert outline.parse_place_directive("普通的一行正文") is None

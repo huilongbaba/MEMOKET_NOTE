@@ -230,21 +230,48 @@ class NoteHooks:
             if target:
                 note_block += (f"\n\n**这一轮只写「{target[0]}」这一节的正文**，"
                                "不要写标题、不要碰别的小节。")
+        # 定向续写：正文已有目录、没有待填的空节时，让模型先说这段放哪一节。
+        # 大纲模式下已有 outline_target 的轮次不用——那一轮本来就是定向的。
+        sections = ([t for _lv, t in outline.headings(st.content)]
+                    if (not target and len(outline.headings(st.content)) >= 2) else [])
+        st.bag["insert_at"] = None
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompts.note_harness_continue_user(
                 st.bag.get("spine", ""), st.bag.get("beats") or [],
                 st.content_for_continue(), st.facts, self.profile,
-                outline_note=note_block)},
+                outline_note=note_block, sections=sections)},
         ]
 
         text = ""
         stats: dict = {}
         temp = getattr(policy, "continue_temperature", 0.7)
+        # 有放置指令时先攒到第一个换行再往外吐：指令行不进正文，位置要在第一个
+        # delta 之前就定下来（loop 据 bag["insert_at"] 先发一个 insert_at 事件）。
+        head = ""
+        directive_done = not sections
+        place: str | None = None
         async for piece in llm.stream(messages, max_tokens=CONTINUE_MAX_TOKENS,
                                       temperature=temp, stats=stats):
+            if not directive_done:
+                head += piece
+                if "\n" not in head and len(head) < 120:
+                    continue
+                directive_done = True
+                first, _nl, rest = head.partition("\n")
+                place = outline.parse_place_directive(first)
+                if place is None and not outline.PLACE_DIRECTIVE.match(first):
+                    rest = head                          # 没写指令行：整段都是正文
+                pos = outline.section_end(st.content, place) if place else None
+                st.bag["insert_at"] = ({"section": place, "pos": pos} if pos is not None else None)
+                piece = rest.lstrip("\n")
+                if not piece:
+                    continue
             text += piece
             yield piece
+        if not directive_done and head:                  # 整段没换行的短输出
+            text += head
+            yield head
 
         # Hitting the ceiling truncates mid-sentence -- real output ended on
         # 「这意味着」. **Do not delete the half sentence**: that hides a
@@ -285,6 +312,16 @@ class NoteHooks:
         # Appending repeats too -- just less visibly than in outline mode,
         # where the duplicated sections sit side by side.
         text = outline.drop_already_written(st.content, text) or text
+        placed = st.bag.get("insert_at")
+        if placed and placed.get("pos") is not None:
+            # 定向插进那一节的末尾。模型偶尔还是会把目标标题再写一遍——剥掉。
+            body = text
+            for line in body.split("\n", 1)[:1]:
+                if line.lstrip("# ").strip() == (placed.get("section") or "").strip():
+                    body = body.split("\n", 1)[1] if "\n" in body else ""
+            st.content = grounding_check.scrub_meta_sentences(
+                outline.insert_into(st.content, placed["pos"], body))
+            return
         st.content = grounding_check.scrub_meta_sentences(
             prompts.join_round_text(st.content, text))
 

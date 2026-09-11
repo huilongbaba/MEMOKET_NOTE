@@ -184,7 +184,7 @@ backend/app/
     types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition · Dimension
     state.py                 State：一次 run 的全部状态，middleware 的 bag 也在这
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
-    events.py                AG-UI 事件 + 10 个 CUSTOM 名字 + to_sse()
+    events.py                AG-UI 事件 + 11 个 CUSTOM 名字 + to_sse()
     hooks/                   三组回调
       note · section · block
     middleware/              13 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
@@ -259,7 +259,7 @@ for round:
     facts, trace = hooks.prepare(st)                  # agent 工具循环：模型自己决定查什么
     after_prepare                                     # Facts 累积 · Provenance（工具真的返回了什么）· Skills
     TEXT_MESSAGE_START
-    for piece in hooks.produce(st): TEXT_MESSAGE_CONTENT
+    for piece in hooks.produce(st): TEXT_MESSAGE_CONTENT   # 正文已有目录时先发 CUSTOM insert_at（定向续写，见 §4.1）
     TEXT_MESSAGE_END
     after_produce                                     # Repeats（机械查重）→ Checks（代码判据，命中则 skip_judge）
     before_judge / evaluate / after_judge             # rubric.evaluate（可被 skip_judge 短路）· BestOf · Repair · Runtime · Replan
@@ -281,6 +281,21 @@ RUN_FINISHED(content, reason, run_id?)
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 ---
+
+### 4.1 定向续写：这一轮写到哪一节
+
+正文已经有目录、各节都有内容之后，「接着往下写」只会把所有新内容堆在最后一节底下
+（实拍：讲硬件延期的段落离「硬件」隔了两千字）。现在 `produce()` 在提示词末尾附一张
+现有小节清单，要求模型**第一行**只写 `【放到：标题原文】`（或 `【放到：文末】`）；
+`hooks/note.py` 攒到第一个换行解析这一行，位置由 `editor/outline.section_end()` 算
+（下一个层级不深于它的标题之前），写进 `st.bag["insert_at"]`；`loop.py` 在第一个
+delta 之前发 `CUSTOM insert_at {section, pos}`，前端按自己的正文重算落点、把 delta
+插在那里（`util/sectionEnd.ts` 同一条规则）；轮末 `insert_into()` 落到那一节末尾。
+大纲模式下还有空节时走原来的 `next_gap()` 定向，不用这条。没写指令行就照旧追加。
+
+修订环节的两条硬上限也在这轮加上：单条修订最多删正文 35%、一轮累计 50%
+（`revise.too_destructive()`——骨架被另一篇顶掉时模型按「离题」把 4493 字删到 754）；
+`revision.breakage()` 除了破字还认「半截链接」（从 `[x](note://…)` 中间切开）。
 
 ## 5. 类型
 
@@ -464,6 +479,7 @@ Mode 按需追加的：
 | `replan` | 骨架中途变了 |
 | `phase_delta` | 子步骤（retrieval / edit / write / evaluate）的实时输出，`kind` 分 thinking / output |
 | `warning` | 某个 middleware 失败，run 继续 |
+| `insert_at` | 定向续写：这一轮的正文要插进某一节末尾（`section` · `pos`），在第一个 delta 之前发；没有它就是追加到文末 |
 
 `to_sse()` 把事件翻成 SSE 帧；前端 `api.ts` 一处解析、分发给 `NoteHarnessHandlers`。
 

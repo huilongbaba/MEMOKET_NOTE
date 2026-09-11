@@ -785,6 +785,9 @@ export type NoteHarnessHandlers = {
   onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[] }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
+  /** 定向续写：这一轮的 delta 要插进 `section` 那一节的末尾（后端算的 `pos` 只是兜底，
+   *  前端按自己的正文重算位置），在第一个 delta 之前到达；没有它就追加到文末。 */
+  onInsertAt?: (d: { section: string; pos: number }) => void
   onRoundEnd?: (round: number, content?: string) => void
   onEvaluate?: (d: { scores: Record<string, NoteHarnessDimensionScore>; status: string; weakest: string | null }) => void
   /** `reason` 是 awaiting_review 时带 `runId`：这一轮停下来等你逐条处置，
@@ -911,6 +914,7 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
       else if (payload.name === 'check_hit') handlers.onCheckHit?.(v)
       else if (payload.name === 'warning') handlers.onWarning?.(v)
       else if (payload.name === 'replan') handlers.onReplan?.(v)
+      else if (payload.name === 'insert_at') handlers.onInsertAt?.(v)
     }
   }
 }
