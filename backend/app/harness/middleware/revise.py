@@ -77,7 +77,9 @@ class Revise:
             async for kind, piece in llm.stream_events(
                     [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
-                    max_tokens=1500, temperature=0.1):
+                    # 1500 不够：一轮四五条修订、每条带一段正文，JSON 在第三条
+                    # 中间被截断，后面的全丢（实拍：面板里 JSON 到 "reason": " 戛然而止）
+                    max_tokens=4000, temperature=0.1):
                 if kind == "output":
                     text += piece
                 yield Event.custom(CUSTOM_PHASE_DELTA, {
@@ -95,6 +97,12 @@ class Revise:
         parsed = llm.extract_json(text)
         if not isinstance(parsed, list):
             return
+        if not text.rstrip().rstrip("`").rstrip().endswith("]"):
+            # 输出被截断了：extract_json 会把断尾补上，能解析的完整条目照用，
+            # 但要告诉用户后面那些丢了——不然「修订 2 处」看起来像模型只想改两处
+            yield Event.custom(CUSTOM_DROPPED, {
+                "round": st.round,
+                "detail": f"修订输出被截断（{len(text)} 字），只应用了完整解析出的 {len(parsed)} 条"})
 
         applied = 0
         # How much has already been inserted at each anchor. Two inserts at

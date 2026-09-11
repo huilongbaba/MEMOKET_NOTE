@@ -108,7 +108,7 @@ async def run(st: State, hooks: Hooks,
             async for e in _fire(chain, "after_round", st):
                 yield e
 
-            yield Event.step_finished(st.round)
+            yield Event.step_finished(st.round, st.content)
 
             hit = _stop(st)
             if hit:

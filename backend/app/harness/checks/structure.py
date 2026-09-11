@@ -69,9 +69,8 @@ def tail_clashes(st: State) -> Verdict | None:
         return None
     return Verdict(
         pick_dimension(st, "fits_context", "coherence"),
-        f"This block ends with its own closing section ({clashing[0]!r}) while "
-        "the text below already has one. Drop it -- a block inserted into a "
-        "note is a passage, not a standalone report.",
+        f"这一段自己写了一个收尾小节（{clashing[0]!r}），而下面的正文已经有收尾了。"
+        "去掉——插进笔记里的是一段话，不是一篇独立的报告。",
         fix=lambda text: _drop_tail_sections(text),
     )
 
@@ -99,6 +98,6 @@ def outline_intact(st: State) -> Verdict | None:
         return None
     return Verdict(
         pick_dimension(st, "fits_context", "coherence"),
-        "This note is an outline and its heading hierarchy has been flattened. "
-        "Keep the existing levels: write under them, don't rewrite them.",
+        "这篇是一份大纲，它的标题层级被压平了。保留原来的层级：在标题下面写，"
+        "不要重写标题。",
     )

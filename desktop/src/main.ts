@@ -26,7 +26,10 @@ const forcedTheme = process.argv.includes('--dark') ? 'dark' : process.argv.incl
  *  把窗口内容存成 PNG 然后退出。给截图核对用——比 screencapture 可靠：不依赖窗口
  *  在不在前台、桌面有没有被切走、有没有辅助功能权限。 */
 const shotPath = process.argv.find((a) => a.startsWith('--shot='))?.slice(7)
-const shotDelay = Number(process.argv.find((a) => a.startsWith('--shot-delay='))?.slice(13) ?? 9000)
+// 多个延迟用逗号隔开：`--shot-delay=20000,60000` → 各截一张（文件名加 -1 / -2），
+// 看一个跑几分钟的过程（智能续写）中间长什么样。
+const shotDelays = (process.argv.find((a) => a.startsWith('--shot-delay='))?.slice(13) ?? '9000')
+  .split(',').map((s) => Number(s)).filter((n) => n > 0)
 
 function appUrl(port: number): string {
   const q = new URLSearchParams()
@@ -78,14 +81,17 @@ function createWindow(url: string) {
   if (wantDevTools) win.webContents.openDevTools({ mode: 'detach' })
   if (shotPath) {
     win.webContents.once('did-finish-load', () => {
-      setTimeout(async () => {
-        try {
-          const img = await win!.webContents.capturePage()
-          writeFileSync(shotPath, img.toPNG())
-          process.stdout.write(`[shot] ${shotPath} ${img.getSize().width}x${img.getSize().height}\n`)
-        } catch (e) { process.stderr.write(`[shot] failed: ${e}\n`) }
-        app.quit()
-      }, shotDelay)
+      shotDelays.forEach((delay, i) => {
+        setTimeout(async () => {
+          const file = shotDelays.length === 1 ? shotPath : shotPath.replace(/\.png$/, '') + `-${i + 1}.png`
+          try {
+            const img = await win!.webContents.capturePage()
+            writeFileSync(file, img.toPNG())
+            process.stdout.write(`[shot] ${file} ${img.getSize().width}x${img.getSize().height}\n`)
+          } catch (e) { process.stderr.write(`[shot] failed: ${e}\n`) }
+          if (i === shotDelays.length - 1) app.quit()
+        }, delay)
+      })
     })
   }
 }

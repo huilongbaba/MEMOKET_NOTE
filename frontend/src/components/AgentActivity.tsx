@@ -180,19 +180,19 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             )}
           </div>
 
-          {r.toolCalls.length > 0 && (
+          {(r.toolCalls ?? []).length > 0 && (
             <>
               <div className="muted" style={{ marginBottom: 3 }}>
-                agent 自己决定查了 {r.toolCalls.length} 次
+                agent 自己决定查了 {(r.toolCalls ?? []).length} 次
                 {r.toolTruncated && '（撞上限，还想继续查）'}
               </div>
               <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 6px' }}>
-                {r.toolCalls.map((c, i) => <ToolCallRow key={i} call={c} />)}
+                {(r.toolCalls ?? []).map((c, i) => <ToolCallRow key={i} call={c} />)}
               </ul>
             </>
           )}
 
-          {Object.keys(r.scores).length > 0 && (
+          {Object.keys(r.scores ?? {}).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', margin: '4px 0 6px' }}>
               {Object.entries(r.scores).map(([dim, sc]) => (
                 <span
@@ -217,7 +217,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             </p>
           )}
 
-          {r.policyReasons.length > 0 && (
+          {(r.policyReasons ?? []).length > 0 && (
             <div
               style={{
                 marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--line)',
@@ -235,7 +235,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 )}
               </div>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                {r.policyReasons.map((reason, i) => (
+                {(r.policyReasons ?? []).map((reason, i) => (
                   <li key={i} style={{ display: 'flex', gap: 5, lineHeight: 1.55 }}>
                     <span style={{ color: 'var(--accent)', flexShrink: 0 }}>↻</span>
                     <span>{reason}</span>
@@ -251,7 +251,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 {PHASE_LABEL[ph] ?? ph}
                 {r.phase === ph && <span style={{ color: 'var(--accent)' }}> · 进行中</span>}
                 <span className="muted">
-                  （思考 {txt.thinking.length} 字 · 输出 {txt.output.length} 字）
+                  （思考 {(txt.thinking ?? '').length} 字 · 输出 {(txt.output ?? '').length} 字）
                 </span>
               </summary>
               {txt.thinking && (
@@ -276,7 +276,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
           {r.streamed && (
             <details open style={{ marginTop: 6 }}>
               <summary style={{ cursor: 'pointer', color: 'var(--muted)' }}>
-                本轮写出的正文（{r.streamed.length} 字）
+                本轮写出的正文（{(r.streamed ?? '').length} 字）
               </summary>
               <pre style={{
                 margin: '4px 0 0', padding: '6px 8px', fontSize: 11, lineHeight: 1.7,
@@ -298,14 +298,14 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             </p>
           )}
 
-          {r.dropped.length > 0 && (
+          {(r.dropped ?? []).length > 0 && (
             <details style={{ marginTop: 4 }}>
               <summary style={{ cursor: 'pointer', color: 'var(--muted)' }}>
-                丢弃了 {r.dropped.length} 条修订
+                丢弃了 {(r.dropped ?? []).length} 条修订
                 <span className="muted">（防线拦下的，不是出错）</span>
               </summary>
               <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0 6px' }}>
-                {r.dropped.map((d, i) => (
+                {(r.dropped ?? []).map((d, i) => (
                   <li key={i} className="muted" style={{ display: 'flex', gap: 5, lineHeight: 1.55 }}>
                     <span style={{ flexShrink: 0 }}>✕</span>
                     <span>{d}</span>
@@ -315,7 +315,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             </details>
           )}
 
-          {r.errors.map((e, i) => (
+          {(r.errors ?? []).map((e, i) => (
             <p key={i} style={{ margin: '4px 0 0', color: 'var(--del)', lineHeight: 1.55 }}>
               {e}
             </p>

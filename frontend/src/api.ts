@@ -769,11 +769,11 @@ export type NoteHarnessHandlers = {
   onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[] }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
-  onRoundEnd?: (round: number) => void
+  onRoundEnd?: (round: number, content?: string) => void
   onEvaluate?: (d: { scores: Record<string, NoteHarnessDimensionScore>; status: string; weakest: string | null }) => void
   /** `reason` 是 awaiting_review 时带 `runId`：这一轮停下来等你逐条处置，
    *  处置完把留下来的正文用 resumeHarness(runId, content) 送回去接着跑。 */
-  onDone?: (reason: string, blockedReason?: string, runId?: string) => void
+  onDone?: (reason: string, blockedReason?: string, runId?: string, content?: string) => void
   onError?: (detail: string) => void
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   onPhase?: (d: { round: number; phase: string; label: string }) => void
@@ -872,13 +872,13 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
   for await (const { event, payload } of sseFrames(res)) {
     if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(payload.delta)
     else if (event === 'STEP_STARTED') handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label })
-    else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step)
+    else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step, payload.content)
     else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round: 0, phase: '', label: payload.content })
     else if (event === 'TOOL_CALL_RESULT') {
       handlers.onToolCalls?.({ round: 0, iters: 1, truncated: false,
         calls: [{ tool: payload.toolName, args: payload.args, result: payload.content }] })
     } else if (event === 'RUN_FINISHED') {
-      handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id)
+      handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id, payload.content)
     // **RUN_ERROR 不能 throw**：后端发它的场景都是可恢复的降级（某个工具查
     // 不到、某次调用超时），流还在继续。throw 会把整条 SSE 连接掐断，用户
     // 看到的是「跑到一半没了」。交给 onError 显示，让 harness 继续跑。

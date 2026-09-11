@@ -403,12 +403,12 @@ CUSTOM_DIMS = (_FOLLOWS_PROMPT, _REPLACES_CLEANLY, _NO_FABRICATION)
 
 NOTE = Mode(
     key="note",
-    label="Continue a whole note",
+    label="续写整篇",
     groups=("memory", "skill"),
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
-            citations_exist, material_used),
+            citations_exist, material_used, no_fake_charts, charts_from_tools),
     stop_when=(material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
     extra_mw=(Revise(), Repair(), Runtime(), Replan(), Compact(), Save()),
@@ -418,11 +418,12 @@ NOTE = Mode(
 
 SECTION = Mode(
     key="section",
-    label="Folder-level section",
+    label="分段写作",
     groups=("memory", "skill"),
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
-    checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, material_used),
+    checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, material_used,
+            no_fake_charts, charts_from_tools),
     stop_when=(material_used_up, pause_for_review),
     extra_mw=(Revise(), Repair(), Compact(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
@@ -460,7 +461,7 @@ EDA = Mode(
         '每张图配一到两句话，说这张图看出了什么——不是复述图里的数字，是说这个形状意味着什么。最后给「接下来值得看什么」。\n'
         '**所有数字都来自工具返回，不要自己算，也不要自己写 mermaid 语法。**\n'),
     key="eda",
-    label="Data visualisation",
+    label="数据可视化",
     groups=("data", "chart", "memory", "skill"),
     focus_groups=("chart",),
     skill_scope="block_write",
@@ -476,7 +477,7 @@ CHART = Mode(
         '· 是抽象概念、场景示意、需要视觉表现力的配图 → 用 render_image 文生图。这一次调用要几十秒，只在确实需要「画面」而不是「数据」的时候用。\n'
         '图前面用一句话说明它在讲什么。\n'),
     key="chart",
-    label="Illustrate",
+    label="智能插图",
     groups=("data", "chart", "image", "memory", "skill"),
     skill_scope="block_write",
     dims=CHART_DIMS,
@@ -488,7 +489,7 @@ TABLE = Mode(
     task=(
         '为当前位置整理一张表格。**必须调用 render_table 生成表格**。先想清楚这张表的每一行代表什么、每一列是什么，再填数据。表前面用一句话说明它整理的是什么。\n'),
     key="table",
-    label="Build a table",
+    label="生成表格",
     groups=("data", "table", "memory", "skill"),
     skill_scope="block_write",
     dims=TABLE_DIMS,
@@ -500,7 +501,7 @@ ANALYSIS = Mode(
     task=(
         '回答用户在提示词里问的那个数据问题。用 data 组的工具把数字算出来，**不要自己心算**。结论先给，再给支撑它的数字，最后说这个结论在什么条件下不成立。有对比价值时用 render_chart 配一张图。\n'),
     key="analysis",
-    label="Analyse the data",
+    label="数据分析",
     groups=("data", "chart", "memory", "skill"),
     focus_groups=("chart",),
     skill_scope="block_write",
@@ -513,7 +514,7 @@ PROMPT = Mode(
     task=(
         '按用户的提示词，在当前位置写一段内容。需要用户自己的事实时，用 memory 组的工具去查知识库。\n'),
     key="prompt",
-    label="Write from an instruction",
+    label="按指令生成",
     groups=("memory", "skill"),
     skill_scope="block_prompt",
     dims=PROMPT_DIMS,
@@ -528,7 +529,7 @@ CUSTOM = Mode(
     task=(
         '用户选中了一段文字，按他的提示词处理这一段。**输出的是用来替换这一段的新内容**——不要重复选中之外的正文，不要写「好的」「修改后：」这类话。需要用户自己的事实时，用 memory 组的工具去查知识库。\n'),
     key="custom",
-    label="Rework the selection",
+    label="改写选区",
     groups=("memory", "skill"),
     skill_scope="block_prompt",
     dims=CUSTOM_DIMS,

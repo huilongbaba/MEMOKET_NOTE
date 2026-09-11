@@ -1012,6 +1012,10 @@ export default function App() {
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
       if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
       if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
+      if (probe?.startsWith('harness:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(8))
+        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })() }
+      }
       // 只对截图用户跑：harness 在服务端改笔记，对真实用户跑一次就污染一篇（实拍踩过）。
       // 探针 effect 会因依赖变化跑两次，用 ref 挡住第二次。
       if (probe === 'harness' && notes.length && api.getUser().startsWith('shot-') && !harnessProbeDone.current) {
@@ -1101,8 +1105,9 @@ export default function App() {
 
   async function newNote() {
     await save()
-    const n = await api.createNote('未命名', '')
-    await reload()
+    const n = await api.createNote('', '')
+    // 树也要刷：不刷的话新笔记不在树上，用户以为「没存」（实拍反馈）
+    await Promise.all([reload(), reloadTree()])
     open(n)
   }
 
@@ -1117,7 +1122,7 @@ export default function App() {
       const n = await api.saveNote(current.id, title, content)
       setCurrent(n)
       setSaveStatus({ at: Date.now() })
-      await reload()
+      await Promise.all([reload(), reloadTree()])
     } catch (e) {
       setSaveStatus({ at: Date.now(), error: String(e) })
       throw e
@@ -1491,8 +1496,9 @@ export default function App() {
           liveContentRef.current = next
           return next
     })
-        const sourceNote = r.sources?.length ? `（依据：${r.sources[0].slice(0, 40)}${r.sources.length > 1 ? ' 等' : ''}）` : ''
-        toast(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 60)}${sourceNote}`)
+        // 不弹 toast：一轮修订三四处就在右栏叠四张卡片（实拍），计划面板里有
+        // 完整记录，状态行说一句就够
+        setNoteHarnessStatus(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 50)}`)
       },
       onDelta: (text) => {
         if (currentRef.current?.id !== noteId) return
@@ -1508,8 +1514,17 @@ export default function App() {
           return next
     })
       },
-      onRoundEnd: () => {
+      onRoundEnd: (_round, serverContent) => {
         if (currentRef.current?.id !== noteId) return
+        // 用服务端这一轮结束时的正文对齐。客户端按 anchor 重放修订会跑偏
+        // （引用被改烂、分隔符不一致），服务端的才是真的。
+        if (typeof serverContent === 'string' && serverContent && serverContent !== liveContentRef.current) {
+          // 记一笔：本地重放的正文跟服务端差了多少。差得多说明客户端的重放逻辑
+          // 又跑偏了——这是「agent 输出跟编辑器对不对得上」的证据，不是靠感觉。
+          void api.clientLog('warn', `round ${_round}: 本地正文 ${liveContentRef.current.length} 字 vs 服务端 ${serverContent.length} 字，已用服务端的`, '', 'harness-sync')
+          liveContentRef.current = serverContent
+          setContent(serverContent)
+        }
         // 轮末拿快照跟当前正文做词级 diff，标出这一轮的增删。
         // 修订是自动应用的（不等人工接受），不标出来用户根本不知道
         // 正文被动了哪里。
@@ -1622,7 +1637,12 @@ export default function App() {
           return next
     })
       },
-      onDone: (reason, blockedReason, runId) => {
+      onDone: (reason, blockedReason, runId, serverContent) => {
+        // 跑完（或暂停）时也用服务端的正文对齐——见 onRoundEnd
+        if (typeof serverContent === 'string' && serverContent && serverContent !== liveContentRef.current) {
+          liveContentRef.current = serverContent
+          setContent(serverContent)
+        }
         if (reason === 'awaiting_review' && runId) {
           // 这一轮写完了，等你处置。**正文的最终形态由编辑器说了算**——
           // 逐条接受/撤回都在这儿做，点「接着写」时把当前正文送回去。

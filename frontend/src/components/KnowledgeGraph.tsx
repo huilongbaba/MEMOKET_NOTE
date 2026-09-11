@@ -153,10 +153,12 @@ function endpointId(x: string | GraphNode): string {
 }
 
 export default function KnowledgeGraph(
-  { topics, entities, links, onSelect, width: widthProp = DEFAULT_WIDTH, height = DEFAULT_HEIGHT }: {
+  { topics, entities, links, topicLinks = [], onSelect, width: widthProp = DEFAULT_WIDTH, height = DEFAULT_HEIGHT }: {
     topics: TopicNode[]
     entities: EntityNode[]
     links: TopicEntityLink[]
+    /** 主题↔主题的关联（簇视图里簇之间共享实体），画成虚线 */
+    topicLinks?: { a: string; b: string }[]
     onSelect: (kind: NodeKind, code: string) => void
     width?: number
     height?: number
@@ -239,7 +241,7 @@ export default function KnowledgeGraph(
   // haven't actually changed -- keying the memo on the array reference would
   // rebuild (and the effect below would then restart the whole simulation)
   // on every single poll tick. Key on content instead.
-  const linksKey = links.map((l) => `${l.topic}>${l.entity}`).join(',')
+  const linksKey = links.map((l) => `${l.topic}>${l.entity}`).join(',') + '|' + topicLinks.map((l) => `${l.a}~${l.b}`).join(',')
 
   const graphLinks = useMemo<GraphLink[]>(() => {
     // Both endpoints have to survive the MAX_RENDERED_NODES cap, not just
@@ -255,7 +257,10 @@ export default function KnowledgeGraph(
     const cooccur: GraphLink[] = links
       .filter((l) => topicIds.has(`topic:${l.topic}`) && entityIds.has(`entity:${l.entity}`))
       .map((l) => ({ source: `topic:${l.topic}`, target: `entity:${l.entity}`, kind: 'cooccur' as const }))
-    return [...topicParent, ...entityRel, ...cooccur]
+    const tt: GraphLink[] = topicLinks
+      .filter((l) => topicIds.has(`topic:${l.a}`) && topicIds.has(`topic:${l.b}`))
+      .map((l) => ({ source: `topic:${l.a}`, target: `topic:${l.b}`, kind: 'cooccur' as const }))
+    return [...topicParent, ...entityRel, ...cooccur, ...tt]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesKey, linksKey])
 
@@ -275,6 +280,7 @@ export default function KnowledgeGraph(
     for (const t of topics) if (topicIds.has(`topic:${t.code}`)) for (const p of t.parents) if (topicIds.has(`topic:${p}`)) add(`topic:${p}`, `topic:${t.code}`)
     for (const e of entities) if (entityIds.has(`entity:${e.code}`)) for (const [, other] of e.relations) if (entityIds.has(`entity:${other}`)) add(`entity:${e.code}`, `entity:${other}`)
     for (const l of links) if (topicIds.has(`topic:${l.topic}`) && entityIds.has(`entity:${l.entity}`)) add(`topic:${l.topic}`, `entity:${l.entity}`)
+    for (const l of topicLinks) if (topicIds.has(`topic:${l.a}`) && topicIds.has(`topic:${l.b}`)) add(`topic:${l.a}`, `topic:${l.b}`)
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesKey, linksKey])
@@ -663,7 +669,7 @@ export default function KnowledgeGraph(
           const candidate = n.status === 'candidate'
           const empty = n.factCount === 0
           const r = radiusOf(n.factCount, sizeScale)
-          const label = n.label.length > 12 ? n.label.slice(0, 11) + '…' : n.label
+          const label = n.label.length > 18 ? n.label.slice(0, 17) + '…' : n.label
           const color = n.kind === 'topic' ? 'var(--accent)' : 'var(--ins)'
           return (
             <g
@@ -691,7 +697,7 @@ export default function KnowledgeGraph(
               {n.kind === 'topic' ? (
                 <circle
                   r={r}
-                  fill="var(--panel)"
+                  fill="var(--kg-node-fill)"
                   opacity={empty ? 0.4 : (deprecated ? 0.55 : 1)}
                   stroke={deprecated ? 'var(--muted)' : color}
                   strokeDasharray={candidate ? '4 3' : undefined}
@@ -699,7 +705,7 @@ export default function KnowledgeGraph(
               ) : (
                 <rect
                   x={-r * 0.8} y={-r * 0.8} width={r * 1.6} height={r * 1.6} rx={4}
-                  fill="var(--panel)"
+                  fill="var(--kg-node-fill)"
                   opacity={empty ? 0.4 : 1}
                   stroke={color}
                 />

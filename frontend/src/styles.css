@@ -23,6 +23,7 @@
   /* 行内代码 / 代码块底色（Trilium --inline-code-background-color）。以前是
      个没定义的幽灵变量，亮暗都走 fallback，不跟主题。 */
   --card-alt: rgba(0, 0, 0, .05);
+  --kg-node-fill: color-mix(in srgb, var(--accent) 10%, var(--panel));
   --backdrop-color: rgba(124, 124, 124, .55);
   --menu-bg: rgba(255, 255, 255, .92);
   --floating-btn-bg: #eaeaeacc;
@@ -703,10 +704,13 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 /* ------------------------------------------------ 浮动按钮（正文右上角） */
 /* sticky 而不是 absolute：absolute 会跟着正文一起滚走；sticky 留在滚动区顶部。
    height: 0 + overflow visible = 不占正文的行。 */
+/* 一条带底色的横带：滚动时正文从它下面过，不会跟半透明的胶囊叠在一起
+   （实拍：标题被按钮盖住一半） */
 .floating-buttons {
-  position: sticky; top: 8px; height: 40px; z-index: 7;
-  display: flex; justify-content: flex-end; align-items: flex-start; gap: 6px;
-  margin: 0 0 4px;
+  position: sticky; top: 0; height: 48px; z-index: 7;
+  display: flex; justify-content: flex-end; align-items: center; gap: 6px;
+  margin: 0 calc(-1 * var(--content-margin-inline)) 4px; padding: 0 var(--content-margin-inline);
+  background: linear-gradient(var(--main-bg) 78%, transparent);
 }
 .fb-btn {
   height: 32px; padding: 0 12px; font-size: 13px; border-radius: 16px; line-height: 1; white-space: nowrap;
@@ -822,3 +826,8 @@ input[type=file]:hover { border-color: var(--accent); }
 /* 中栏窄（分屏）时浮动按钮只留图标 */
 .note-body { container-type: inline-size; }
 @container (max-width: 600px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } }
+
+.harness-del-pill {
+  text-decoration: none; font-size: 11px; padding: 0 6px; border-radius: 8px;
+  border: 1px solid var(--del); opacity: .8; cursor: help; margin: 0 2px;
+}

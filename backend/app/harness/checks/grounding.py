@@ -30,10 +30,9 @@ def no_placeholder(st: State) -> Verdict | None:
         return None
     return Verdict(
         pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
-        "There are placeholders standing in for content: "
-        + "; ".join(lines[:3])
-        + ". Either write the thing, or leave it out -- a promise of content "
-          "reads as finished and isn't.",
+        "有占位句代替了内容："
+        + "；".join(lines[:3])
+        + "。要么把它写出来，要么删掉——一句「待补充」读起来像写完了，其实没有。",
     )
 
 
@@ -49,9 +48,9 @@ def no_audit_voice(st: State) -> Verdict | None:
         return None
     return Verdict(
         pick_dimension(st, "style_fit", "coherence", "fits_context"),
-        "Some sentences are about the evidence rather than about the subject: "
-        + "; ".join(lines[:3])
-        + ". If a fact isn't there, leave the claim out; don't narrate the gap.",
+        "有几句话在谈证据够不够，而不是在谈事情本身："
+        + "；".join(lines[:3])
+        + "。没有依据的说法就不写；不要旁白「材料不足以说明」。",
     )
 
 
@@ -72,9 +71,8 @@ def citations_hold(st: State) -> Verdict | None:
         return None
     return Verdict(
         pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
-        f"{len(missing)} cited source(s) don't match anything in the material "
-        f"you were given ({'; '.join(m[:40] for m in missing[:2])}). Cite only "
-        "what you actually retrieved.",
+        f"有 {len(missing)} 条引用对不上给你的材料（{'; '.join(m[:40] for m in missing[:2])}）。"
+        "只引用你真的查到的。",
     )
 
 

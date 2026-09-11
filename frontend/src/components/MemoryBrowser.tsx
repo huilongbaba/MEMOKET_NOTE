@@ -179,6 +179,37 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   const [nodeQuery, setNodeQuery] = useState('')
   // 簇视图：把每个簇画成一个节点。KnowledgeGraph 一个字都不用改——一个簇
   // 就是一个没有父节点的主题，`fact_count` 是它里面所有事实。
+  // 簇之间的边：两个簇共享的实体越多越相关。每个簇取最强的两个邻居，画成虚线
+  // ——没有边的簇视图只是一堆散点，看不出「什么跟什么挨着」（实拍反馈）。
+  const clusterEdges = useMemo<{ a: string; b: string }[]>(() => {
+    const topicCluster = new Map<string, string>()
+    for (const c of clusters) for (const tp of c.topics) topicCluster.set(tp, c.key)
+    const entClusters = new Map<string, Map<string, number>>()
+    for (const l of links) {
+      const ck = topicCluster.get(l.topic)
+      if (!ck) continue
+      const m = entClusters.get(l.entity) ?? new Map<string, number>()
+      m.set(ck, (m.get(ck) ?? 0) + l.weight)
+      entClusters.set(l.entity, m)
+    }
+    const pair = new Map<string, number>()
+    for (const m of entClusters.values()) {
+      const ks = [...m.keys()]
+      for (let i = 0; i < ks.length; i++) for (let j = i + 1; j < ks.length; j++) {
+        const k = ks[i] < ks[j] ? ks[i] + '\u0000' + ks[j] : ks[j] + '\u0000' + ks[i]
+        pair.set(k, (pair.get(k) ?? 0) + Math.min(m.get(ks[i])!, m.get(ks[j])!))
+      }
+    }
+    const best = new Map<string, { key: string; w: number }[]>()
+    for (const [k, w] of pair) {
+      const [a, b] = k.split('\u0000')
+      best.set(a, [...(best.get(a) ?? []), { key: b, w }])
+      best.set(b, [...(best.get(b) ?? []), { key: a, w }])
+    }
+    const out = new Set<string>()
+    for (const [a, list] of best) for (const n of list.sort((x, y) => y.w - x.w).slice(0, 2)) out.add(a < n.key ? a + '\u0000' + n.key : n.key + '\u0000' + a)
+    return [...out].map((k) => { const [a, b] = k.split('\u0000'); return { a, b } })
+  }, [clusters, links])
   const clusterNodes = useMemo<TopicNode[]>(() => clusters.map((c) => ({
     code: c.key, parents: [], status: c.merged ? 'candidate' : 'canonical',
     aliases: c.topics, fact_count: c.facts,
@@ -403,6 +434,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
               topics={graphTopics}
               entities={graphEntities}
               links={graphLinks}
+              topicLinks={drilled === null && clusters.length ? clusterEdges : []}
               onSelect={(kind, code) => {
                 if (kind !== 'topic') return filterByEntity(code)
                 // 簇视图下点一个节点 = 下钻到它里面；已经在簇里了才是"看事实"

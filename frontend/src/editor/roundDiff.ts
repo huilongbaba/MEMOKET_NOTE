@@ -154,8 +154,18 @@ class DeletedWidget extends WidgetType {
   toDOM() {
     const span = document.createElement('span')
     span.className = 'harness-del'
-    span.textContent = this.text
-    span.title = '这一轮删掉的内容'
+    // 删得多（整段大纲被重写）就折成一个小标签，悬停看原文；把几百字划线原文
+    // 塞回正文里，读者看到的是一坨红字，分不清什么是现在的正文（实拍：跑了
+    // 六轮之后正文底部堆着整份被删掉的旧大纲）。
+    const t = this.text.replace(/\s+/g, ' ').trim()
+    if (t.length > 40) {
+      span.classList.add('harness-del-pill')
+      span.textContent = `已删 ${t.length} 字`
+      span.title = '这一轮删掉的内容：\n' + this.text.slice(0, 600) + (this.text.length > 600 ? '…' : '')
+    } else {
+      span.textContent = t
+      span.title = '这一轮删掉的内容'
+    }
     return span
   }
   ignoreEvent() { return true }
@@ -185,7 +195,14 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; decos: Decorati
   update(value, tr) {
     for (const e of tr.effects) {
       if (e.is(setRoundDiff)) {
+        // diff 是拿 liveContentRef 算的，编辑器里的文档可能还没跟上（增量还在
+        // 路上、或者 reload() 刚换成了服务端的正文）——超出文档长度的位置要
+        // 夹住，不然下一次 mapPos 直接抛 RangeError，整棵 React 树被卸掉，
+        // 用户看到一片白（实拍：智能续写跑到第 5 轮白屏）。
+        const len = tr.newDoc.length
         const hunks = toHunks(e.value)
+          .map((h) => ({ ...h, from: Math.min(h.from, len), to: Math.min(h.to, len) }))
+          .filter((h) => h.to > h.from || h.del)
         return { hunks, decos: build(hunks) }
       }
       if (e.is(acceptAllHunks)) return { hunks: [], decos: Decoration.none }
@@ -201,11 +218,13 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; decos: Decorati
       //   to  =1 → 正好插在终点的字排在这处**里面**（在末尾续写算这处的一部分）
       // 第一版 to 取了 -1，注释写的是"让插入落在区间内部"，代码是反的——
       // 在绿色新增末尾补一个字，那个字会被排除出去，改完再接受就接受不全。
+      // 同一个道理：位置超过改动前文档长度的 hunk，mapPos 会抛。先夹到旧文档长度。
+      const oldLen = tr.startState.doc.length
       hunks = hunks
         .map((h) => ({
           ...h,
-          from: tr.changes.mapPos(h.from, 1),
-          to: tr.changes.mapPos(h.to, 1),
+          from: tr.changes.mapPos(Math.min(h.from, oldLen), 1),
+          to: tr.changes.mapPos(Math.min(h.to, oldLen), 1),
         }))
         // 新增被用户整段删光、且没有原文可撤回 —— 这处已经不存在了
         .filter((h) => h.to >= h.from && (h.to > h.from || h.del))

@@ -25,13 +25,11 @@ def no_fake_charts(st: State) -> Verdict | None:
     if not hits:
         return None
     return Verdict(
-        pick_dimension(st, "has_charts", "chart_validity"),
-        "This round did not actually draw anything -- it described charts in "
-        f"prose: {'; '.join(hits)}. Call chart_column / render_chart / "
-        "chart_from_text and paste the ```mermaid block they return verbatim; "
-        "that code is verified to render. Also, mermaid has no scatter plot: "
-        "express a two-column relationship as a correlation coefficient, or "
-        "as two series on a bar/line chart.",
+        pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+        f"这一轮没有真的画图，只是用文字描述了图：{'; '.join(hits)}。"
+        "要画就调 chart_column / render_chart / chart_from_text，把它们返回的 ```mermaid 块"
+        "原样贴进来——那段代码是验证过能渲染的。另外 mermaid 没有散点图：两列的关系"
+        "写成相关系数，或者画成柱/折线图的两个系列。",
     )
 
 
@@ -52,12 +50,9 @@ def charts_from_tools(st: State) -> Verdict | None:
     if not bad:
         return None
     return Verdict(
-        pick_dimension(st, "has_charts", "chart_validity"),
-        f"{len(bad)} mermaid chart(s) here were not produced by a tool "
-        f"({'; '.join(bad)}) -- they were hand-written to imitate tool output. "
-        "Hand-written mermaid is unverified; syntax that fails to render "
-        "(a y-axis range, say) turns the whole chart into an error. You decide "
-        "what to draw; **the code must be exactly what the tool returned**. "
-        "If a tool didn't draw what you wanted, call it again -- don't patch "
-        "the output by hand.",
+        pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+        f"这里有 {len(bad)} 张 mermaid 图不是工具画的（{'; '.join(bad)}），是手写的、模仿工具"
+        "输出。手写的 mermaid 没验证过，一处语法不对（比如 y 轴范围）整张图就变成一段"
+        "报错。画什么由你定，**代码必须是工具原样返回的**；工具没画出你要的，就再调一次，"
+        "别手改它的输出。",
     )

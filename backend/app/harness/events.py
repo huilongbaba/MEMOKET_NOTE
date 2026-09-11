@@ -97,8 +97,11 @@ class Event:
         return Event(EventType.STEP_STARTED, {"step": step, "label": label})
 
     @staticmethod
-    def step_finished(step: int) -> "Event":
-        return Event(EventType.STEP_FINISHED, {"step": step})
+    def step_finished(step: int, content: str = "") -> "Event":
+        # 带上这一轮结束时的**权威正文**。客户端原来靠自己按 anchor 重放修订来
+        # 追平，anchor 一旦有歧义正文就被改烂（实拍：引用 ``[terrence-1848-5F6]``
+        # 变成 ``-1848-5F6]``）。服务端有正文，直接给。
+        return Event(EventType.STEP_FINISHED, {"step": step, "content": content})
 
     @staticmethod
     def text_start(message_id: str) -> "Event":
