@@ -43,7 +43,7 @@ CATEGORIES = [
 # 可视化与配套工具，也长在树上——「打开一张图」跟「打开一篇笔记」是同一个
 # 动作。它们没有子节点，前端按 id 决定画什么（KbNoteView）。
 TOOLS = [
-    ("kb:overview", "总览"),
+    ("kb:facts", "事实表"),
     ("kb:graph", "主题地图"),
     ("kb:digest", "定期回顾"),
 ]

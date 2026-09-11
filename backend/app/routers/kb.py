@@ -7,10 +7,10 @@ coverage figures that say whether the codebook is up to date.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from ..database import store
-from ..database.kb import extract_check, extract_judge, reextract, virtual_tree
+from ..database.kb import extract_check, extract_judge, pages, reextract, virtual_tree
 from ..database.kb.recall import cached
 from ..database.kite.kite_memory import UserMemory
 from .schemas import IngestOut, TreeRow
@@ -30,6 +30,48 @@ def kb_tree(user: str = Depends(current_user)):
 def kb_tree_children(node: str, user: str = Depends(current_user)):
     """展开一个分类节点时才取的事实层。"""
     return virtual_tree.children(UserMemory(user), node)
+
+
+# ---------------------------------------------------------------- 各节点的页面
+# 打开树上一个知识库节点，里面是什么（docs/kb-experience-plan.md）。
+
+@router.get("/dashboard")
+def kb_dashboard(user: str = Depends(current_user)) -> dict:
+    return pages.dashboard(UserMemory(user))
+
+
+@router.get("/topic/{code}")
+def kb_topic(code: str, limit: int = 50, offset: int = 0, user: str = Depends(current_user)) -> dict:
+    page = pages.topic_page(UserMemory(user), code, limit=max(1, min(limit, 200)), offset=max(0, offset))
+    if page is None:
+        raise HTTPException(404, f"没有这个主题：{code}")
+    return page
+
+
+@router.get("/entity/{code}")
+def kb_entity(code: str, limit: int = 50, offset: int = 0, user: str = Depends(current_user)) -> dict:
+    page = pages.entity_page(UserMemory(user), code, limit=max(1, min(limit, 200)), offset=max(0, offset))
+    if page is None:
+        raise HTTPException(404, f"没有这个实体：{code}")
+    return page
+
+
+@router.get("/timeline")
+def kb_timeline(user: str = Depends(current_user)) -> list[dict]:
+    return pages.timeline(UserMemory(user))
+
+
+@router.get("/timeline/{date}")
+def kb_day(date: str, user: str = Depends(current_user)) -> list[dict]:
+    return pages.day_facts(UserMemory(user), date)
+
+
+@router.get("/unit/{unit_id}")
+def kb_unit(unit_id: str, limit: int = 50, offset: int = 0, user: str = Depends(current_user)) -> dict:
+    page = pages.unit_page(UserMemory(user), unit_id, limit=max(1, min(limit, 200)), offset=max(0, offset))
+    if page is None:
+        raise HTTPException(404, f"没有这场会议：{unit_id}")
+    return page
 
 
 @router.get("/clusters")

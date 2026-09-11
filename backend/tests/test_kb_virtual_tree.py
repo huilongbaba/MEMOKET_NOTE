@@ -54,7 +54,7 @@ def test_根和四个分类都在_挂在树根最后(mem):
     assert ids["kb"]["position"] == vt.ROOT_POSITION
     assert {r["note_id"] for r in rows if r["parent_note_id"] == "kb"} == {
         "kb:topics", "kb:entities", "kb:timeline", "kb:recent",
-        "kb:overview", "kb:graph", "kb:digest"}
+        "kb:facts", "kb:graph", "kb:digest"}
     assert ids["kb"]["child_count"] == 7
     # 工具节点没有子节点、排在分类后面
     assert ids["kb:graph"]["child_count"] == 0
