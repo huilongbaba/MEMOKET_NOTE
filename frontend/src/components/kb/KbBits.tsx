@@ -22,24 +22,20 @@ export function StatTile({ value, label, hint }: { value: ReactNode; label: stri
   )
 }
 
-/** 单色条形图：月份 × 数量。hover 显示值；首尾标月份。 */
+/** 单色条形图：月份 × 数量。hover 显示值；首尾标月份。
+ *  用 div 不用 svg：svg 拉伸到容器宽时三根柱子会变成三块大砖；div 给每根柱子
+ *  一个上限宽（28px），少的时候就是几根细柱靠左站着。 */
 export function MiniBars({ data, height = 64, label = '条事实' }: { data: KbMonth[]; height?: number; label?: string }) {
   if (data.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>还没有按月的数据。</p>
   const max = Math.max(1, ...data.map((d) => d.facts))
-  const w = 100 / data.length
   return (
     <div className="mini-bars">
-      <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" style={{ width: '100%', height }}>
-        {data.map((d, i) => {
-          const h = Math.max(2, (d.facts / max) * (height - 4))
-          return (
-            <rect key={d.month} x={i * w + w * 0.15} y={height - h} width={w * 0.7} height={h} rx="1.2"
-                  className="bar">
-              <title>{d.month} · {d.facts} {label}</title>
-            </rect>
-          )
-        })}
-      </svg>
+      <div className="mini-bars-row" style={{ height }}>
+        {data.map((d) => (
+          <div key={d.month} className="mini-bar" title={`${d.month} · ${d.facts} ${label}`}
+               style={{ height: `${Math.max(3, (d.facts / max) * 100)}%` }} />
+        ))}
+      </div>
       <div className="mini-bars-axis muted">
         <span>{data[0].month}</span>
         <span>{data[data.length - 1].month}</span>
