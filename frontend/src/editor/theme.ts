@@ -66,14 +66,14 @@ export const editorTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '.cm-content': {
-    padding: '4px 2px',
+    padding: '0',
     lineHeight: '1.8',
     fontFamily: 'inherit',
     caretColor: 'var(--fg, #111)',
   },
   '.cm-scroller': {
     fontFamily: 'inherit',
-    minHeight: '380px',
+    minHeight: '60vh',
   },
   '&.cm-focused': { outline: 'none' },
   '.cm-syntax-mark': { opacity: 0.35 },

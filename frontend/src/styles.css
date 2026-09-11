@@ -25,6 +25,7 @@
   --card-alt: rgba(0, 0, 0, .05);
   --backdrop-color: rgba(124, 124, 124, .55);
   --menu-bg: rgba(255, 255, 255, .92);
+  --floating-btn-bg: #eaeaeacc;
   --scrollbar-thumb: #0000005c;
   --scrollbar-thumb-hover: #00000080;
   --shadow-opacity: .18;
@@ -46,6 +47,7 @@
     --card-alt: rgba(255, 255, 255, .08);
     --backdrop-color: rgba(0, 0, 0, .6);
     --menu-bg: #222222d9;
+    --floating-btn-bg: #494949d2;
     --scrollbar-thumb: #fdfdfd5c;
     --scrollbar-thumb-hover: #fdfdfd90;
     --shadow-opacity: .55;
@@ -97,16 +99,21 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
    background is load-bearing here, not decoration -- without it, editor
    text scrolling underneath a sticky element shows through. */
 .md-toolbar {
-  gap: 2px; margin-bottom: 6px;
-  position: sticky; top: 0; z-index: 5;
+  gap: 1px; margin: 0 0 14px;
+  position: sticky; top: 46px; z-index: 5;
   background: var(--bg); padding: 4px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--subtle-border);
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; white-space: nowrap;
 }
+.md-toolbar::-webkit-scrollbar { display: none; }
+.row.md-toolbar { flex-wrap: nowrap; }
 .md-toolbar button {
-  font-size: 13px; padding: 3px 9px; min-width: 26px;
-  border-color: transparent; background: transparent; color: var(--muted);
+  height: 28px; min-width: 26px; padding: 0 5px; font-size: 13px; line-height: 1;
+  border-color: transparent; background: transparent; color: var(--muted); border-radius: 6px;
+  flex-shrink: 0;
 }
-.md-toolbar button:hover:not(:disabled) { background: var(--panel); border-color: var(--line); color: var(--fg); }
+.md-toolbar button:hover:not(:disabled) { background: var(--hover-item-bg); color: var(--fg); border-color: transparent; }
+.md-toolbar .tb-sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; flex-shrink: 0; }
 button.primary:hover:not(:disabled) { color: #fff; opacity: .9; }
 
 input, textarea {
@@ -160,10 +167,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 
 /* CodeMirror 6 host: input/textarea's box look (border/padding/bg) doesn't
    apply to a plain div, so it's given explicitly here. */
-.md-editor {
-  border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
-  padding: 2px 4px; width: 100%;
-}
+.md-editor { border: none; background: transparent; padding: 0; width: 100%; }
 
 .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px;
         background: var(--panel); font-size: 13px; }
@@ -675,3 +679,25 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .tree-actions:hover { opacity: 1; }
 .left-pane { position: relative; }
 .embedded-panel { max-width: 720px; }
+
+
+/* ------------------------------------------------ 中栏画布 */
+/* 正文区宽度封顶：一行两百个字没法读。左对齐，跟标题行的内边距对齐。 */
+.note-body { max-width: 880px; }
+/* AI 动作行：钉在顶部，一行放得下；判据 1 的按钮不该随正文滚走 */
+.note-actions { top: -10px; padding: 10px 0 8px; margin: 0 !important; }
+.note-actions > button { padding: 6px 12px; font-size: 13px; }
+/* 正文右上角的浮动按钮（Trilium FloatingButtons）：跟正文相关但不占正文的行 */
+.floating-buttons {
+  position: absolute; top: 12px; inset-inline-end: 14px; z-index: 7;
+  display: flex; gap: 4px;
+}
+.floating-buttons button {
+  height: 30px; padding: 0 10px; font-size: 12px; border-radius: 15px;
+  background: var(--floating-btn-bg); color: var(--muted); border-color: transparent;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.floating-buttons button:hover:not(:disabled) { color: var(--fg); background: var(--hover-item-bg); border-color: transparent; }
+.floating-buttons .row { gap: 4px; }
+.note-scroll { position: relative; }
+.cm-editor .cm-placeholder { color: var(--muted); opacity: .7; }

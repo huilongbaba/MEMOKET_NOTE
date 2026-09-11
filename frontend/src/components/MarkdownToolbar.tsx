@@ -19,8 +19,8 @@ const BUTTONS: { label: string; title: string; cmd: (view: EditorView) => void }
   { label: '🔗', title: '链接 (⌘/Ctrl+K)', cmd: linkCmd },
   { label: '<>', title: '行内代码', cmd: inlineCodeCmd },
   { label: '{ }', title: '代码块', cmd: codeBlockCmd },
-  { label: '表格', title: '插入 3 列空表格', cmd: tableCmd },
-  { label: '流程图', title: '插入 mermaid 图表模板', cmd: mermaidCmd },
+  { label: '▦', title: '表格：插入 3 列空表格', cmd: tableCmd },
+  { label: '⟁', title: '流程图：插入 mermaid 图表模板', cmd: mermaidCmd },
 ]
 
 /**
@@ -65,6 +65,7 @@ export default function MarkdownToolbar(
           {restructuring ? <span className="spinner" /> : '✨ 智能排版'}
         </button>
       )}
+      {(onFormat || onRestructure) && <span className="tb-sep" />}
       {BUTTONS.map((b) => (
         <button
           key={b.label}

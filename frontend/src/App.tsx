@@ -981,6 +981,7 @@ export default function App() {
         setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+      if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
       if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
       if (probe === 'confirm' && tree.length) {
         const parent = tree.find((r) => r.child_count > 0)
@@ -2359,6 +2360,7 @@ export default function App() {
           />
         )}
         <div className="note-scroll">
+        <div className="note-body">
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
@@ -2429,10 +2431,12 @@ export default function App() {
                 />
                 逐轮我来定
               </label>
+            </div>
+            {/* 浮动按钮（Trilium FloatingButtons）：录音跟正文相关，但不该跟
+                magic tap 抢同一行。存入知识库在 ribbon「知识库」标签和 ⋯ 菜单里。 */}
+            <div className="floating-buttons">
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} />
-              <button onClick={ingestCurrentNote} disabled={!content.trim() || loading === 'ingest'}>
-                {loading === 'ingest' ? <span className="spinner" /> : '📥 存入知识库'}
-              </button>
+              {loading === 'ingest' && <span className="muted" style={{ fontSize: 12 }}><span className="spinner" /></span>}
             </div>
             {pausedRun && (
               /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
@@ -2498,11 +2502,9 @@ export default function App() {
               placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点 magic tap，会先查你的知识库再续写。"
               viewRef={editorViewRef}
             />
-            <p className="muted" style={{ fontSize: 11, margin: '4px 2px' }}>
-              {content.length} 字 · 约 {Math.max(1, Math.round(content.length / 400))} 分钟阅读
-            </p>
           </>
         )}
+        </div>{/* note-body */}
         </div>{/* note-scroll */}
         </div>{/* note-pane */}
         {split && (
@@ -2604,6 +2606,7 @@ export default function App() {
         {pausedRun && <span style={{ color: 'var(--accent)' }}>⏸ 等你处置</span>}
         {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto' }}>{healthMsg ? '⚠ ' + healthMsg : ''}</span>
+        {current && <span className="muted">{content.length} 字 · 约 {Math.max(1, Math.round(content.length / 400))} 分钟</span>}
       </div>
     </div>
   )
