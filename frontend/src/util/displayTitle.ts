@@ -8,7 +8,8 @@
  * **只在显示这一层做，不改库里的值**：把它当真标题写回去，就等于替用户
  * 给笔记起了名，而他可能只是还没想好。
  */
-const PLACEHOLDER = new Set(['', '未命名', 'Untitled', 'note'])
+export const PLACEHOLDER = new Set(['', '未命名', 'Untitled', 'note'])
+export const isPlaceholderTitle = (t: string) => PLACEHOLDER.has((t ?? '').trim())
 
 export function displayTitle(n: { title?: string; preview?: string; content?: string }): string {
   const t = (n.title ?? '').trim()

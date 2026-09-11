@@ -46,12 +46,8 @@ export default function RelatedMemory({ content, onInsert }: {
 
   return (
     <div>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>相关记忆</h2>
-        {loading && <span className="spinner" />}
-      </div>
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>
-        跟着你写的内容自动检索，不用手动搜——点一下插入引用。
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
+        跟着你写的内容自动浮现，点一下插入引用。{loading && <span className="spinner" />}
       </p>
       {facts.length === 0 && !loading && (
         <p className="muted" style={{ fontSize: 13 }}>

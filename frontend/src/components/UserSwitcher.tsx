@@ -1,43 +1,27 @@
 import { useState } from 'react'
 import * as api from '../api'
+import { TextPrompt } from './Dialogs'
 
 /**
- * getUser() auto-assigns a random `user-xxxxxx` id to a browser on first
- * visit (see api.ts) and there was previously no UI to change it -- every
- * knowledge base import via API/script (e.g. a named demo user) was
- * permanently invisible from the app itself. A full reload after switching
- * is the simplest correct way to reset every piece of per-note React state
- * without hand-auditing each one.
+ * 启动栏最底下的用户头像（对标 Trilium 启动栏底部的 GlobalMenu）。
+ *
+ * getUser() 第一次访问会随机分一个 `user-xxxxxx`，以前没有任何界面能改它——
+ * 用脚本导进某个具名用户的知识库，从应用里永远看不到。切换后整页 reload，
+ * 是把每一份按笔记的 React 状态一次清干净最省事也最正确的办法。
  */
 export default function UserSwitcher() {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(api.getUser())
-
-  function submit() {
-    api.setUser(value)
-    window.location.reload()
-  }
-
-  if (!editing) {
-    return (
-      <p className="muted" style={{ fontSize: 12 }}>
-        用户 {api.getUser()}{' '}
-        <a className="link" onClick={() => setEditing(true)}>切换</a>
-      </p>
-    )
-  }
-
+  const [asking, setAsking] = useState(false)
+  const user = api.getUser()
   return (
-    <div className="row" style={{ marginBottom: 4 }}>
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        onFocus={(e) => e.target.select()}
-        style={{ fontSize: 12, padding: '4px 6px' }}
-        autoFocus
-      />
-      <button onClick={submit}>确定</button>
-    </div>
+    <>
+      <button className="launcher-btn launcher-user" title={`当前用户：${user}\n点击切换`}
+              onClick={() => setAsking(true)}>
+        <span className="avatar">{(user[0] ?? '?').toUpperCase()}</span>
+      </button>
+      {asking && (
+        <TextPrompt req={{ title: '切换用户（每个用户一个独立的笔记库和知识库）', initial: user,
+          resolve: (v) => { setAsking(false); if (v && v.trim() && v.trim() !== user) { api.setUser(v.trim()); window.location.reload() } } }} />
+      )}
+    </>
   )
 }

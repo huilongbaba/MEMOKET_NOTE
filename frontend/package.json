@@ -21,6 +21,7 @@
     "@lezer/highlight": "^1.2.3",
     "@lezer/markdown": "^1.7.2",
     "@types/d3-zoom": "^3.0.8",
+    "boxicons": "^2.1.4",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",

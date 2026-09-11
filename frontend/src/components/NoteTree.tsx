@@ -36,6 +36,28 @@ type Props = {
 
 export type DropWhere = 'before' | 'after' | 'over'
 
+/** 每种节点一个图标（Boxicons）。真笔记：叶子 = note、有子节点 = folder
+ *  （notes.ts:140-143 的规则）；知识库那棵虚拟子树按节点种类分。 */
+function iconOf(n: { note_id: string; child_count: number }): string {
+  const id = n.note_id
+  if (id === 'kb') return 'bx-brain'
+  if (id === 'kb:topics') return 'bx-hash'
+  if (id === 'kb:entities') return 'bx-group'
+  if (id === 'kb:timeline') return 'bx-calendar'
+  if (id === 'kb:recent') return 'bx-time-five'
+  if (id === 'kb:overview') return 'bx-bar-chart-alt-2'
+  if (id === 'kb:graph') return 'bx-network-chart'
+  if (id === 'kb:digest') return 'bx-history'
+  if (id.startsWith('kb:topic:')) return 'bx-hash'
+  if (id.startsWith('kb:etype:')) return 'bx-category'
+  if (id.startsWith('kb:entity:')) return 'bx-user'
+  if (id.startsWith('kb:month:')) return 'bx-calendar'
+  if (id.startsWith('kb:unit:')) return 'bx-conversation'
+  if (id.startsWith('kb:fact:')) return 'bx-bulb'
+  if (id.startsWith('app:')) return 'bx-cog'
+  return n.child_count > 0 ? 'bx-folder' : 'bx-note'
+}
+
 
 type Node = TreeRow & { depth: number }
 
@@ -200,13 +222,11 @@ export default function NoteTree({
               onClick={(e) => { e.stopPropagation(); if (hasKids) onToggle(n) }}
               aria-hidden={!hasKids}
             >
-              {hasKids ? (n.is_expanded ? '▾' : '▸') : ''}
+              {hasKids && <i className={'bx ' + (n.is_expanded ? 'bx-chevron-down' : 'bx-chevron-right')} />}
             </span>
             {/* 图标：真笔记 叶子 = 文档 / 有子节点 = 文件夹（notes.ts:140-143）；
                 知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
-            <span className="tree-icon" aria-hidden>
-              {virtual ? (isFactId(n.note_id) ? '◆' : '▤') : (hasKids ? '▣' : '▢')}
-            </span>
+            <span className="tree-icon" aria-hidden><i className={'bx ' + iconOf(n)} /></span>
             <span className="tree-title">{displayTitle(n)}</span>
             {n.fact_count > 0 && !isFactId(n.note_id) && (
               <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
@@ -232,7 +252,7 @@ export default function NoteTree({
                 成本太高（note_tree.ts:1875-1941 的 add-note-button）。 */}
             {onNewChild && !virtual && (
               <button className="tree-item-button" title="新建子笔记"
-                      onClick={(e) => { e.stopPropagation(); onNewChild(n) }}>＋</button>
+                      onClick={(e) => { e.stopPropagation(); onNewChild(n) }}><i className="bx bx-plus" /></button>
             )}
           </div>
         )

@@ -116,7 +116,7 @@ export default function ContextMenu({
             onMouseEnter={() => setHi(i)}
             onClick={() => { onClose(); item.onSelect() }}
           >
-            <span className="cm-icon">{item.icon ?? ''}</span>
+            <span className="cm-icon">{item.icon?.startsWith('bx-') ? <i className={'bx ' + item.icon} /> : (item.icon ?? '')}</span>
             <span className="cm-label">{item.label}</span>
             {item.hint && <span className="cm-hint">{item.hint}</span>}
             {item.shortcut && <kbd className="cm-kbd">{item.shortcut}</kbd>}

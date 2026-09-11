@@ -61,7 +61,7 @@ export default function Ribbon({
             className={'ribbon-tab' + (open === t.id ? ' active' : '')}
             onClick={() => setOpen(open === t.id ? undefined : t.id)}
           >
-            {t.icon && <span className="ribbon-icon">{t.icon}</span>}
+            {t.icon && <span className="ribbon-icon">{t.icon.startsWith('bx-') ? <i className={'bx ' + t.icon} /> : t.icon}</span>}
             <span>{t.title}</span>
             {t.badge !== undefined && t.badge !== 0 && (
               <span className="ribbon-badge">{t.badge}</span>

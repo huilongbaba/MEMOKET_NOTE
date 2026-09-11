@@ -26,6 +26,7 @@
   --backdrop-color: rgba(124, 124, 124, .55);
   --menu-bg: rgba(255, 255, 255, .92);
   --floating-btn-bg: #eaeaeacc;
+  --floating-btn-hover-bg: #dcdcdcee;
   --scrollbar-thumb: #0000005c;
   --scrollbar-thumb-hover: #00000080;
   --shadow-opacity: .18;
@@ -48,6 +49,7 @@
     --backdrop-color: rgba(0, 0, 0, .6);
     --menu-bg: #222222d9;
     --floating-btn-bg: #494949d2;
+    --floating-btn-hover-bg: #5a5a5aee;
     --scrollbar-thumb: #fdfdfd5c;
     --scrollbar-thumb-hover: #fdfdfd90;
     --shadow-opacity: .55;
@@ -99,10 +101,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
    background is load-bearing here, not decoration -- without it, editor
    text scrolling underneath a sticky element shows through. */
 .md-toolbar {
-  gap: 1px; margin: 0 0 14px;
-  position: sticky; top: 46px; z-index: 5;
-  background: var(--bg); padding: 4px 0;
-  border-bottom: 1px solid var(--subtle-border);
+  gap: 1px; margin: 0; padding: 0;
   flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; white-space: nowrap;
 }
 .md-toolbar::-webkit-scrollbar { display: none; }
@@ -482,7 +481,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 @keyframes left-pane-item-select { from { box-shadow: none; } }
 
 .tree-expander {
-  flex-shrink: 0; width: 14px; text-align: center;
+  flex-shrink: 0; width: 16px; display: flex; align-items: center; justify-content: center;
   color: var(--muted); font-size: 12px; line-height: 1;
   opacity: .65; transition: opacity 300ms;
   /* 叶子节点也占同样的宽度：不占的话同一层的标题会因为「有没有孩子」
@@ -581,7 +580,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .tree-badge.ingested { color: var(--muted); opacity: .8; }
 
 /* ------------------------------------------------ 知识库：虚拟子树 + 只读笔记 */
-.tree-icon { flex-shrink: 0; font-size: 11px; color: var(--left-pane-icon); width: 14px; margin-inline-end: 3px; text-align: center; }
+.tree-icon { flex-shrink: 0; color: var(--left-pane-icon); width: 18px; margin-inline-end: 4px; display: flex; align-items: center; justify-content: center; }
 
 .kb-note { max-width: 760px; display: flex; flex-direction: column; gap: 14px; }
 .kb-note-meta { display: flex; gap: 6px; align-items: center; font-size: 12px; }
@@ -688,10 +687,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .note-actions { top: -10px; padding: 10px 0 8px; margin: 0 !important; }
 .note-actions > button { padding: 6px 12px; font-size: 13px; }
 /* 正文右上角的浮动按钮（Trilium FloatingButtons）：跟正文相关但不占正文的行 */
-.floating-buttons {
-  position: absolute; top: 12px; inset-inline-end: 14px; z-index: 7;
-  display: flex; gap: 4px;
-}
+
 .floating-buttons button {
   height: 30px; padding: 0 10px; font-size: 12px; border-radius: 15px;
   background: var(--floating-btn-bg); color: var(--muted); border-color: transparent;
@@ -701,3 +697,35 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .floating-buttons .row { gap: 4px; }
 .note-scroll { position: relative; }
 .cm-editor .cm-placeholder { color: var(--muted); opacity: .7; }
+
+
+/* ------------------------------------------------ 浮动按钮（正文右上角） */
+/* sticky 而不是 absolute：absolute 会跟着正文一起滚走；sticky 留在滚动区顶部。
+   height: 0 + overflow visible = 不占正文的行。 */
+.floating-buttons {
+  position: sticky; top: 8px; height: 40px; z-index: 7;
+  display: flex; justify-content: flex-end; align-items: flex-start; gap: 6px;
+  margin: 0 0 4px;
+}
+.fb-btn {
+  height: 32px; padding: 0 12px; font-size: 13px; border-radius: 16px; line-height: 1;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--floating-btn-bg); color: var(--fg); border: 1px solid transparent;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background 120ms, box-shadow 120ms, transform 80ms;
+}
+.fb-btn .bx { font-size: 16px; }
+.fb-btn:hover:not(:disabled) { background: var(--floating-btn-hover-bg); border-color: transparent; color: var(--fg); box-shadow: 0 2px 6px rgba(0,0,0,var(--shadow-opacity)); }
+.fb-btn:active:not(:disabled) { transform: scale(.97); }
+.fb-btn:disabled { opacity: .5; }
+.fb-btn.primary { background: var(--accent); color: var(--accent-fg); }
+.fb-btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
+.fb-btn.primary.running { background: var(--del); }
+.fb-btn.rec { color: var(--del); }
+.fb-caret { font-size: 13px !important; margin-inline-start: -3px; }
+.fb-split { display: inline-flex; }
+.fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; padding-inline-end: 9px; }
+.fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 5px; margin-inline-start: 1px; }
+.floating-buttons .fb-btn:not(.primary) { padding: 0 9px; }
+.harness-line { font-size: 12px; margin: 0 0 8px; display: flex; align-items: center; gap: 4px; }
+.title-icon { font-size: 20px; color: var(--muted); margin-inline-end: 6px; flex-shrink: 0; }

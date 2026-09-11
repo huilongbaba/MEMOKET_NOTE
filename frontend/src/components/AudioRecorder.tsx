@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ingestAudio, transcribeOnly } from '../api'
 import { toast } from '../toast'
+import ContextMenu, { type MenuAt } from './ContextMenu'
 
 type Props = {
   /** 转写结果插到编辑器光标处 */
@@ -17,6 +18,7 @@ type Props = {
 export default function AudioRecorder({ onTranscript, onIngested }: Props) {
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState('')
+  const [menuAt, setMenuAt] = useState<MenuAt | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const target = useRef<'insert' | 'memory'>('insert')
@@ -70,14 +72,23 @@ export default function AudioRecorder({ onTranscript, onIngested }: Props) {
     setRecording(false)
   }
 
-  if (busy) return <span className="muted"><span className="spinner" /> {busy}…</span>
-
-  return recording ? (
-    <button className="rec" onClick={stop}>■ 停止录音</button>
-  ) : (
-    <div className="row">
-      <button onClick={() => start('insert')}>● 录音插入</button>
-      <button onClick={() => start('memory')}>● 录音入库</button>
-    </div>
+  // 一个麦克风钮，两个去处在菜单里（正文右上角的浮动按钮位）。
+  if (busy) return <button className="fb-btn" disabled><span className="spinner" /> {busy}…</button>
+  if (recording) {
+    return <button className="fb-btn rec" onClick={stop} title="停止录音"><i className="bx bx-stop-circle" /> 停止录音</button>
+  }
+  return (
+    <>
+      <button className="fb-btn" title="录音：转写后插入正文，或存进知识库"
+              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.left, y: r.bottom + 4 }) }}>
+        <i className="bx bx-microphone" /><i className="bx bx-chevron-down fb-caret" />
+      </button>
+      {menuAt && (
+        <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} items={[
+          { label: '录音 → 插入正文', icon: 'bx-text', hint: '只转写', onSelect: () => void start('insert') },
+          { label: '录音 → 存入知识库', icon: 'bx-brain', hint: '转写后抽成事实', onSelect: () => void start('memory') },
+        ]} />
+      )}
+    </>
   )
 }

@@ -25,8 +25,10 @@ import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import Gutter from './components/Gutter'
+import Logo from './components/Logo'
+import PreferencesPanel from './components/PreferencesPanel'
 import KbNoteView from './components/KbNoteView'
-import { displayTitle } from './util/displayTitle'
+import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import QuickView from './components/QuickView'
@@ -103,6 +105,8 @@ export default function App() {
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const [locateTick, setLocateTick] = useState(0)
+  const [paneFocus, setPaneFocus] = useState<{ id: string; n: number } | undefined>(undefined)
+  const [fbMenu, setFbMenu] = useState<{ kind: 'harness' | 'more'; at: MenuAt } | null>(null)
   // 树菜单「导入到这里…」用的隐藏文件框；记住要挂到哪个节点下面
   const importInput = useRef<HTMLInputElement>(null)
   const importUnder = useRef<string>(api.ROOT_ID)
@@ -214,6 +218,12 @@ export default function App() {
   const [writingPlanParent, setWritingPlanParent] = useState<TreeRow | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
   const [job, setJob] = useState('')
+
+  // harness 跑起来时右栏切到「计划」：计划 + 每轮判了什么，就在眼前（判据 3）
+  useEffect(() => {
+    if (loading === 'note-harness') setPaneFocus((f) => ({ id: 'plan', n: (f?.n ?? 0) + 1 }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading === 'note-harness'])
 
   /** 正文里引用了哪些事实。跟后端 `store.cited_fact_ids` 用同一条正则——
    *  两边认的不是同一批，ribbon 的角标和树上的 ◆ 就会对不上。 */
@@ -355,9 +365,9 @@ export default function App() {
     const last = i === tabs.length - 1
     const none = closedTabs.current.length === 0
     return [
-      { label: '在右侧分屏打开', icon: '◫', onSelect: () => openInSplit(tab.noteId) },
+      { label: '在右侧分屏打开', icon: 'bx-columns', onSelect: () => openInSplit(tab.noteId) },
       { kind: 'sep' },
-      { label: '关闭', icon: '×', shortcut: '⌘W', onSelect: () => closeTab(tab.id) },
+      { label: '关闭', icon: 'bx-x', shortcut: '⌘W', onSelect: () => closeTab(tab.id) },
       { label: '关闭其他', disabled: only, hint: only ? '只有这一个' : undefined,
         onSelect: () => closeTabsWhere((t) => t.id !== tab.id) },
       { label: '关闭右侧', disabled: last, hint: last ? '已经是最右边' : undefined,
@@ -541,20 +551,20 @@ export default function App() {
     const isFact = api.isFactId(row.note_id)
     const factId = row.note_id.slice('kb:fact:'.length)
     const items: MenuItem[] = [
-      { label: '打开', icon: '↗', onSelect: () => void openVirtual(row.note_id, row.title) },
-      { label: '在右侧分屏打开', icon: '◫', onSelect: () => openInSplit(row.note_id) },
+      { label: '打开', icon: 'bx-link-external', onSelect: () => void openVirtual(row.note_id, row.title) },
+      { label: '在右侧分屏打开', icon: 'bx-columns', onSelect: () => openInSplit(row.note_id) },
     ]
     if (isFact) {
       items.push(
         { kind: 'sep' },
-        { label: '复制引用', icon: '⎘', hint: `[${factId}]`,
+        { label: '复制引用', icon: 'bx-copy', hint: `[${factId}]`,
           onSelect: () => { void navigator.clipboard.writeText(`[${factId}]`) } },
       )
-      if (current) items.push({ label: '引用到当前笔记', icon: '↩', hint: current.title || '未命名',
+      if (current) items.push({ label: '引用到当前笔记', icon: 'bx-link', hint: current.title || '未命名',
                                 onSelect: () => insertAtCursor(`[${factId}]`) })
     } else if (row.child_count > 0) {
       items.push({ kind: 'sep' },
-        { label: row.is_expanded ? '收起' : '展开', icon: row.is_expanded ? '▾' : '▸',
+        { label: row.is_expanded ? '收起' : '展开', icon: row.is_expanded ? 'bx-chevron-down' : 'bx-chevron-right',
           onSelect: () => toggleKbNode(row) })
     }
     return items
@@ -570,39 +580,39 @@ export default function App() {
     const note = notes.find((n) => n.id === row.note_id)
     const isClone = row.branch_count > 1
     return [
-      { label: '打开', icon: '↗', shortcut: '↩', onSelect: () => { if (note) void switchTo(note) } },
-      { label: '在新标签打开', icon: '⧉', onSelect: () => { if (note) { syncTab(note); void switchTo(note) } } },
-      { label: '快速查看', icon: '👁', hint: '⌥点击', onSelect: () => { if (note) setQuick(note) } },
-      { label: '在右侧分屏打开', icon: '◫', hint: '对照着写', onSelect: () => openInSplit(row.note_id) },
+      { label: '打开', icon: 'bx-link-external', shortcut: '↩', onSelect: () => { if (note) void switchTo(note) } },
+      { label: '在新标签打开', icon: 'bx-window-open', onSelect: () => { if (note) { syncTab(note); void switchTo(note) } } },
+      { label: '快速查看', icon: 'bx-show', hint: '⌥点击', onSelect: () => { if (note) setQuick(note) } },
+      { label: '在右侧分屏打开', icon: 'bx-columns', hint: '对照着写', onSelect: () => openInSplit(row.note_id) },
       { kind: 'sep' },
       { kind: 'header', label: '新建' },
-      { label: '插入子笔记', icon: '＋', hint: '成为它的下一级',
+      { label: '插入子笔记', icon: 'bx-plus', hint: '成为它的下一级',
         onSelect: () => void newNoteUnder(row.note_id) },
-      { label: '在后面插入笔记', icon: '↳',
+      { label: '在后面插入笔记', icon: 'bx-subdirectory-right',
         onSelect: () => void newNoteUnder(row.parent_note_id) },
-      { label: '重命名', icon: '✎', shortcut: 'F2', onSelect: () => void renameNode(row) },
-      { label: '导入 .md 到这里…', icon: '⬆', hint: '多个文件成一棵子树',
+      { label: '重命名', icon: 'bx-rename', shortcut: 'F2', onSelect: () => void renameNode(row) },
+      { label: '导入 .md 到这里…', icon: 'bx-import', hint: '多个文件成一棵子树',
         onSelect: () => { importUnder.current = row.note_id; importInput.current?.click() } },
       { kind: 'sep' },
       { kind: 'header', label: 'AI' },
       // ---- 我们自己的：harness 就在这儿，跟结构操作平级
-      { label: '🤖 智能续写这篇', disabled: !note,
+      { label: '智能续写这篇', icon: 'bx-bot', disabled: !note,
         onSelect: () => { if (note) void openAndRun(note, 'write') } },
-      { label: '✨ 打磨这篇', disabled: !note || !(note.content ?? '').trim(),
+      { label: '打磨这篇', icon: 'bx-brush', disabled: !note || !(note.content ?? '').trim(),
         onSelect: () => { if (note) void openAndRun(note, 'polish') } },
-      { label: '🚀 对这棵子树无限续写', disabled: row.child_count === 0,
+      { label: '对这棵子树无限续写', icon: 'bx-rocket', disabled: row.child_count === 0,
         hint: row.child_count === 0 ? '它下面还没有笔记' : undefined,
         onSelect: () => setWritingPlanParent(row) },
       { kind: 'sep' },
-      { label: '克隆到…', icon: '⧉', hint: '同一篇，两处都能看到',
+      { label: '克隆到…', icon: 'bx-duplicate', hint: '同一篇，两处都能看到',
         onSelect: () => void cloneNodeTo(row) },
-      { label: '移动到…', icon: '⇄', onSelect: () => void moveNodeTo(row) },
-      { label: '从这个位置移除', icon: '⊘', disabled: !isClone,
+      { label: '移动到…', icon: 'bx-transfer', onSelect: () => void moveNodeTo(row) },
+      { label: '从这个位置移除', icon: 'bx-unlink', disabled: !isClone,
         hint: isClone ? undefined : '它只在这一个位置',
         onSelect: () => void detachNode(row) },
-      { label: '复制笔记路径', icon: '⌘', onSelect: () => void copyNotePath(row) },
+      { label: '复制笔记路径', icon: 'bx-copy-alt', onSelect: () => void copyNotePath(row) },
       { kind: 'sep' },
-      { label: row.child_count > 0 ? '删除（连同子树）' : '删除', icon: '🗑', danger: true, shortcut: '⌫',
+      { label: row.child_count > 0 ? '删除（连同子树）' : '删除', icon: 'bx-trash', danger: true, shortcut: '⌫',
         hint: row.child_count > 0 ? `会一起删掉 ${row.child_count} 篇` : undefined,
         onSelect: () => { if (note) void removeWithSubtree(note, row) } },
     ]
@@ -981,6 +991,7 @@ export default function App() {
         setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+      if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
       if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
       if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
       if (probe === 'confirm' && tree.length) {
@@ -2080,8 +2091,8 @@ export default function App() {
       <>
         <div className="split-head">
           <span className="split-title" title={title}>{title}</span>
-          {note && <button className="icon-btn" title="在标签里打开" onClick={() => void switchTo(note)}>↗</button>}
-          <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}>×</button>
+          {note && <button className="icon-btn" title="在标签里打开" onClick={() => void switchTo(note)}><i className="bx bx-link-external" /></button>}
+          <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><i className="bx bx-x" /></button>
         </div>
         <div className="split-body">
           {api.isVirtualId(id)
@@ -2186,8 +2197,8 @@ export default function App() {
         <div className="tab-row-left-spacer" />
         {/* 前进后退（TabHistoryNavigationButtons）。跳去看一篇再回来。 */}
         <span className="history-nav">
-          <button className="icon-btn" disabled={!histState.back} title="后退（⌘[）" onClick={() => goHistory(-1)}>‹</button>
-          <button className="icon-btn" disabled={!histState.fwd} title="前进（⌘]）" onClick={() => goHistory(1)}>›</button>
+          <button className="icon-btn" disabled={!histState.back} title="后退（⌘[）" onClick={() => goHistory(-1)}><i className="bx bx-left-arrow-alt" /></button>
+          <button className="icon-btn" disabled={!histState.fwd} title="前进（⌘]）" onClick={() => goHistory(1)}><i className="bx bx-right-arrow-alt" /></button>
         </span>
         <TabBar
           tabs={tabs}
@@ -2204,28 +2215,27 @@ export default function App() {
           知识库、Skill、无限续写、设置、用户。判据见 docs/product-north-star.md：
           记忆是一等公民，不该藏在某个按钮后面的弹层里。 */}
       <div className="launcher-pane">
-        <button className="launcher-btn" title="新建笔记（⌘N）" onClick={newNote}>＋</button>
+        <div className="launcher-logo" title="MEMOKET NOTE"><Logo size={30} /></div>
+        <button className="launcher-btn" title="新建笔记（⌘N）" onClick={newNote}><i className="bx bx-plus" /></button>
         <button className="launcher-btn" title="全局搜索：笔记 + 知识库（⌘K）"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}>⌕</button>
-        <label className="launcher-btn" title="导入 .md 文件为笔记" style={{ cursor: 'pointer' }}>
-          ⬆
-          <input type="file" accept=".md,.markdown,.txt" multiple style={{ display: 'none' }}
-                 onChange={(e) => importMarkdown(e.target.files)} />
-        </label>
+                onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><i className="bx bx-search" /></button>
+        <button className={'launcher-btn' + (virtualId === 'app:import' ? ' active' : '')}
+                title="导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件"
+                onClick={() => void openVirtual('app:import', '导入')}><i className="bx bx-import" /></button>
         <div className="launcher-spacer" />
         {/* 设置和 Skill 是「特殊笔记」：开标签、进中栏，跟别的笔记一样对待
             （照 Trilium：选项是隐藏子树里的笔记，不是弹层）。 */}
         <button className={'launcher-btn' + (virtualId === 'app:skills' ? ' active' : '')} title="写作 Skill"
-                onClick={() => void openVirtual('app:skills', '写作 Skill')}>🧩</button>
+                onClick={() => void openVirtual('app:skills', '写作 Skill')}><i className="bx bx-extension" /></button>
         <button className="launcher-btn" title="无限续写：对着一棵子树自动一段接一段"
-                onClick={openWritingPlan}>🚀</button>
+                onClick={openWritingPlan}><i className="bx bx-rocket" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:settings' ? ' active' : '')} title="设置：LLM 供应商"
-                onClick={() => void openVirtual('app:settings', '设置')}>⚙</button>
+                onClick={() => void openVirtual('app:settings', '设置')}><i className="bx bx-cog" /></button>
         <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
                 title={panes.leftOn ? '收起左栏（⌘\\）' : '展开左栏（⌘\\）'}
-                onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}>«</button>
-        {/* 用户切换放在最底下——对标 Trilium 启动栏底部的 GlobalMenu。 */}
-        <div className="launcher-user"><UserSwitcher /></div>
+                onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}><i className="bx bx-chevrons-left" /></button>
+        {/* 用户头像放在最底下——对标 Trilium 启动栏底部的 GlobalMenu。 */}
+        <UserSwitcher />
       </div>
 
       {/* 专注模式把左栏收起来——但启动栏留着：那是跨笔记的入口，收掉之后
@@ -2237,11 +2247,17 @@ export default function App() {
             导航，跨笔记的入口在启动栏。 */}
         {/* 快速搜索在树的上面——照 Trilium 的位置。 */}
         <div className="left-pane-search">
-        <input
-          placeholder="搜索笔记标题或正文…（⌘K 全局搜索）"
-          value={noteQuery}
-          onChange={(e) => setNoteQuery(e.target.value)}
-        />
+        <div className="quick-search">
+          <i className="bx bx-search" />
+          <input
+            placeholder="快速搜索"
+            title="搜标题和正文；⌘K 是全局搜索（含知识库）"
+            value={noteQuery}
+            onChange={(e) => setNoteQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setNoteQuery('') }}
+          />
+          {noteQuery && <button className="icon-btn" title="清空" onClick={() => setNoteQuery('')}><i className="bx bx-x" /></button>}
+        </div>
         </div>
         {/* 树的滚动容器——笔记一多，没有它树底部就被裁掉且滚不到 */}
         <div className="left-pane-body">
@@ -2268,8 +2284,8 @@ export default function App() {
         {/* 底部浮动工具条（note_tree.ts:113-121）：定位到当前笔记 / 折叠全树。
             「定位」我们尤其需要——克隆意味着同一篇在树上有多处。 */}
         <div className="tree-actions">
-          <button className="icon-btn" title="定位到当前笔记" onClick={() => setLocateTick((v) => v + 1)}>⌖</button>
-          <button className="icon-btn" title="折叠全部" onClick={() => void collapseAll()}>⇈</button>
+          <button className="icon-btn" title="定位到当前笔记" onClick={() => setLocateTick((v) => v + 1)}><i className="bx bx-crosshair" /></button>
+          <button className="icon-btn" title="折叠全部" onClick={() => void collapseAll()}><i className="bx bx-collapse-vertical" /></button>
         </div>
       </div>
       )}
@@ -2281,7 +2297,7 @@ export default function App() {
       <div className="rest-pane">
         {!rightShown && !focusMode && (
           <button className="right-pane-reopen" title="展开右栏（⌘⇧\\）"
-                  onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}>»</button>
+                  onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}><i className="bx bx-chevrons-left" /></button>
         )}
         <div className="center-pane">
         <div className="note-pane">
@@ -2289,11 +2305,14 @@ export default function App() {
             的兄弟，50px）。跟正文一起滚走的标题，滚到下面就不知道在写哪篇。 */}
         {current && (
           <div className="title-row">
+            <i className={'bx title-icon ' + ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note')} />
+            {/* 标题是占位词（「未命名」）时输入框显示空、把正文首行放在占位符里——
+                跟树和标签用同一个 displayTitle，一篇笔记不再有两个名字 */}
             <input
               className="note-title"
-              value={title}
+              value={isPlaceholderTitle(title) ? '' : title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="标题"
+              placeholder={displayTitle({ title: '', content }) === '未命名' ? '标题' : displayTitle({ title: '', content })}
             />
             {saveStatus && (
               <span key={saveStatus.at} className={'save-status' + (saveStatus.error ? ' error' : '')}
@@ -2310,35 +2329,21 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
-            actions={[
-              { label: '分屏对照另一篇…', icon: '◫', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
-              { kind: 'sep' },
-              { label: '导出为 .md', icon: '⬇', onSelect: exportMarkdown },
-              { label: '复制正文', icon: '⧉', onSelect: () => void copyMarkdown() },
-              { label: '存入知识库', icon: '📥', disabled: !content.trim() || loading === 'ingest',
-                hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
-              { kind: 'sep' },
-              { label: focusMode ? '退出专注模式' : '专注模式', icon: '⛶', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },
-              { label: '保存', icon: '💾', shortcut: '⌘S', onSelect: () => void save() },
-            ]}
-            defaultOpen={new URLSearchParams(location.search).get('probe') === 'kb-tab' ? 'kb' : undefined}
+            defaultOpen={new URLSearchParams(location.search).get('probe') === 'kb-tab' ? 'cites' : undefined}
             tabs={[{
-              id: 'skeleton', title: '写作骨架', icon: '◈',
-              badge: beats.length || undefined,
-              activate: beats.length > 0,
+              id: 'format', title: '格式', icon: 'bx-text',
+              activate: true,
               body: (
-                <SkeletonPanel
-                  spine={spine}
-                  beats={beats}
-                  beatCoverage={beatCoverage}
-                  loading={loading === 'skeleton'}
-                  onRun={runSkeleton}
+                <MarkdownToolbar
+                  viewRef={editorViewRef}
+                  onFormat={formatNote}
+                  onRestructure={restructureNote}
+                  restructuring={loading === 'skeleton'}
                 />
               ),
             }, {
-              id: 'kb', title: '知识库', icon: '◆',
+              id: 'cites', title: '引用', icon: 'bx-link',
               badge: citedIds.length || undefined,
-              activate: citedIds.length > 0,
               body: <NoteKbPanel
                 citedIds={citedIds}
                 row={tree.find((r) => r.note_id === current.id)}
@@ -2348,26 +2353,36 @@ export default function App() {
                 ingesting={loading === 'ingest'}
               />,
             }, {
-              id: 'paths', title: '路径', icon: '⌘',
+              id: 'paths', title: '路径', icon: 'bx-git-branch',
               badge: (tree.find((r) => r.note_id === current.id)?.branch_count ?? 1) > 1
                 ? tree.filter((r) => r.note_id === current.id).length : undefined,
               body: <NotePathsPanel noteId={current.id} rows={tree}
                                     onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
             }, {
-              id: 'info', title: '信息', icon: 'ⓘ',
+              id: 'info', title: '信息', icon: 'bx-info-circle',
               body: <NoteInfoPanel note={current} content={content} row={tree.find((r) => r.note_id === current.id)} />,
             }] as RibbonTab[]}
           />
         )}
-        <div className="note-scroll">
+        <div className={'note-scroll' + (current ? ' has-fb' : '')}>
         <div className="note-body">
         {healthMsg && <p className="card" style={{ color: 'var(--del)' }}>{healthMsg}</p>}
 
         {!current ? (
-          virtualId === 'app:settings' ? (
-            <div className="kb-note"><h2 className="kb-note-title">⚙️ 设置</h2><SettingsPanel embedded /></div>
+          virtualId === 'app:import' ? (
+            <div className="kb-note" style={{ maxWidth: 760 }}>
+              <h2 className="kb-note-title"><i className="bx bx-import" /> 导入</h2>
+              <div className="card">
+                <b>Markdown 文件</b>
+                <p className="muted" style={{ margin: '2px 0 8px', fontSize: 12 }}>一个文件一篇；多个文件成一棵子树。想放到某个节点下面，在树上右键那个节点「导入 .md 到这里…」。</p>
+                <input type="file" accept=".md,.markdown,.txt" multiple onChange={(e) => { void importMarkdown(e.target.files); e.target.value = '' }} />
+              </div>
+              <MemoryPanel pendingJob={job} />
+            </div>
+          ) : virtualId === 'app:settings' ? (
+            <div className="kb-note"><h2 className="kb-note-title"><i className="bx bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /></div>
           ) : virtualId === 'app:skills' ? (
-            <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title">🧩 写作 Skill</h2><SkillsPanel embedded /></div>
+            <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><i className="bx bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
           ) : virtualId ? (
             <KbNoteView
               id={virtualId}
@@ -2384,59 +2399,52 @@ export default function App() {
           )
         ) : (
           <>
-            {/* Two tiers, not one flat row of 7 -- content-generation actions
-               (what you came here to do) stay big and prominent; file/view
-               utilities are real but secondary, so they're visually quieter
-               and grouped separately instead of competing for the same
-               attention as "continue writing". */}
-            <div className="row note-actions" style={{ margin: '0 0 6px' }}>
-              <button className="primary" onClick={runMagicTap} disabled={loading === 'note-harness'}>
-                {loading === 'tap' ? '■ 停止' : '✨ magic tap 续写'}
-              </button>
-              <button
-                className="primary"
-                onClick={() => runNoteHarness('write')}
-                disabled={loading === 'tap'}
-                title="自动修订（不用手动接受）+ 自动续写交替进行，直到内容相对结构节拍已经完整才停"
-              >
-                {loading === 'note-harness' ? '■ 停止' : '🤖 智能续写'}
-              </button>
-              <button
-                onClick={() => runNoteHarness('polish')}
-                disabled={loading === 'note-harness' || !content.trim()}
-                title="只修不写：反复修订+打分，直到已写内容自身达标才停——回答「改到什么时候算够」"
-              >
-                ✨ 打磨
-              </button>
-              {/* whiteSpace/flexShrink 是承重的，不是装饰。
-                  这个 label 自己是 flex 容器，里面的中文是个**匿名 flex 项**，
-                  而 CJK 可以在任意两个字之间断行——它的 min-content 宽度只有
-                  一个字。同一行放不下时，浏览器会去压这个能压的项，于是
-                  「逐轮我来定」被挤成一列竖排，复选框还跟文字脱了开。
-                  实拍见用户反馈。nowrap 让它整体换行而不是被拆散。 */}
-              <label
-                className="muted"
-                style={{
-                  fontSize: 12, display: 'flex', alignItems: 'center', gap: 4,
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                }}
-                title="每轮写完停下来等你逐条接受/撤回。关着的话它一口气跑完，而你在中途做的处置会被下一轮盖掉"
-              >
-                <input
-                  type="checkbox"
-                  style={{ flexShrink: 0 }}
-                  checked={reviewEachRound}
-                  onChange={(e) => setReviewEachRound(e.target.checked)}
-                  disabled={loading === 'note-harness'}
-                />
-                逐轮我来定
-              </label>
-            </div>
-            {/* 浮动按钮（Trilium FloatingButtons）：录音跟正文相关，但不该跟
-                magic tap 抢同一行。存入知识库在 ribbon「知识库」标签和 ⋯ 菜单里。 */}
+            {/* 浮动按钮（Trilium FloatingButtons）：AI 能力跟正文在一起、不占正文的行。
+                判据 1「一个能力一个按钮」：续写、智能续写各一个；打磨和「逐轮我来定」是
+                智能续写的参数，收在它的 ▾ 里；录音一个麦克风两个去处；⋯ 是杂项。 */}
             <div className="floating-buttons">
+              <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
+                      disabled={loading === 'note-harness'}
+                      title="magic tap 续写：先查知识库，据此往下写一段（流式）">
+                <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-magic-wand')} />{loading === 'tap' ? '停止' : '续写'}
+              </button>
+              <span className="fb-split">
+                <button className={'fb-btn primary' + (loading === 'note-harness' ? ' running' : '')}
+                        onClick={() => runNoteHarness('write')} disabled={loading === 'tap'}
+                        title="智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停">
+                  <i className={'bx ' + (loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} />{loading === 'note-harness' ? '停止' : '智能续写'}
+                </button>
+                <button className="fb-btn primary fb-caret-btn" title="打磨 / 逐轮我来定"
+                        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
+                  <i className="bx bx-chevron-down" />
+                </button>
+              </span>
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} />
+              <button className="fb-btn" title="更多"
+                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
+                <i className="bx bx-dots-horizontal-rounded" />
+              </button>
               {loading === 'ingest' && <span className="muted" style={{ fontSize: 12 }}><span className="spinner" /></span>}
+              {fbMenu && (
+                <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
+                  { label: '打磨（只修不写）', icon: 'bx-brush', disabled: loading === 'note-harness' || !content.trim(),
+                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => runNoteHarness('polish') },
+                  { kind: 'sep' },
+                  { label: reviewEachRound ? '逐轮我来定：开' : '逐轮我来定：关', icon: reviewEachRound ? 'bx-checkbox-checked' : 'bx-checkbox',
+                    hint: '每轮停下来等你逐条接受/撤回', disabled: loading === 'note-harness',
+                    onSelect: () => setReviewEachRound((v) => !v) },
+                ] : [
+                  { label: '存入知识库', icon: 'bx-brain', disabled: !content.trim() || loading === 'ingest',
+                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
+                  { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
+                  { kind: 'sep' },
+                  { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
+                  { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
+                  { kind: 'sep' },
+                  { label: focusMode ? '退出专注模式' : '专注模式', icon: 'bx-fullscreen', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },
+                  { label: '保存', icon: 'bx-save', shortcut: '⌘S', onSelect: () => void save() },
+                ]} />
+              )}
             </div>
             {pausedRun && (
               /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
@@ -2458,17 +2466,11 @@ export default function App() {
                 「上次写到第 N 轮停下来等你处置」两句话都设了但永远显示不出来。
                 用户只看到两个按钮凭空出现，不知道发生了什么。 */}
             {(loading === 'note-harness' || pausedRun) && noteHarnessStatus && (
-              <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>🤖 {noteHarnessStatus}</p>
+              <p className="muted harness-line"><i className="bx bx-bot" /> {noteHarnessStatus}</p>
             )}
 
             {tapMeta && <TapProvenance meta={tapMeta} />}
 
-            <MarkdownToolbar
-              viewRef={editorViewRef}
-              onFormat={formatNote}
-              onRestructure={restructureNote}
-              restructuring={loading === 'skeleton'}
-            />
             {pendingDiff > 0 && (
               <div
                 className="row"
@@ -2526,25 +2528,38 @@ export default function App() {
         )}
         <RightPane
           onCollapse={() => setPanes((p) => ({ ...p, rightOn: false }))}
-          defaultTab="outline"
-          // 常驻区：边写边浮现的召回。判据 2——点一下标签虽然没离开页面，但那
-          // 是一次**主动检索**，用户得先想起「我该查一下」；被动浮现的召回在
-          // 你需要之前就已经在那儿了。
-          ambient={<RelatedMemory content={content} onInsert={insertAtCursor} />}
+          defaultTab="memory"
+          focusTab={paneFocus}
           tabs={[
-            { id: 'outline', title: '目录', alwaysShown: true,
+            // 记忆是默认标签：边写边浮现的召回（判据 2）。不再是压在所有标签上面的常驻块。
+            { id: 'memory', title: '记忆', icon: 'bx-bulb', alwaysShown: true,
+              body: <RelatedMemory content={content} onInsert={insertAtCursor} /> },
+            { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
-            { id: 'run', title: '运行', alwaysShown: true,
-              badge: agentRounds.length || undefined,
+            // 计划 = 写作骨架（计划）+ 每轮做了什么（执行）。判据 3：计划要看得见——
+            // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
+            { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,
+              badge: agentRounds.length || beats.length || undefined,
               body: (
-                <AgentActivity
-                  rounds={agentRounds}
-                  status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
-                  running={loading === 'note-harness'}
-                />
+                <div className="stack">
+                  {current && (
+                    <SkeletonPanel
+                      spine={spine}
+                      beats={beats}
+                      beatCoverage={beatCoverage}
+                      loading={loading === 'skeleton'}
+                      onRun={runSkeleton}
+                    />
+                  )}
+                  <AgentActivity
+                    rounds={agentRounds}
+                    status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
+                    running={loading === 'note-harness'}
+                  />
+                </div>
               ) },
-            { id: 'revisions', title: '修订', badge: revisions.length || undefined,
-              hasContent: revisions.length > 0,
+            { id: 'revisions', title: '修订', icon: 'bx-edit', badge: revisions.length || undefined,
+              hasContent: revisions.length > 0, emptyHint: '这篇还没有待处置的修订。',
               body: (
                 <RevisionPanel
                   revisions={revisions}
@@ -2555,7 +2570,7 @@ export default function App() {
                   onRun={() => {}}
                 />
               ) },
-            { id: 'trace', title: '来龙去脉', hasContent: !!trace,
+            { id: 'trace', title: '脉络', icon: 'bx-git-commit', hasContent: !!trace,
               badge: trace?.facts.length || undefined,
               body: trace ? (
                 <div className="stack">
@@ -2565,15 +2580,13 @@ export default function App() {
                       <span className="muted">{f.when}</span>
                       <div>{f.text}</div>
                       <button style={{ fontSize: 11, marginTop: 4 }}
-                              onClick={() => insertAtCursor(`[${f.id}] ${f.text}\n`)}>
+                              onClick={() => insertAtCursor(`${f.text} [${f.id}]\n`)}>
                         插入到正文
                       </button>
                     </div>
                   ))}
                 </div>
               ) : null },
-            { id: 'kb', title: '知识库', alwaysShown: true,
-              body: <MemoryPanel pendingJob={job} /> },
           ] as PaneTab[]}
         />
       </div>

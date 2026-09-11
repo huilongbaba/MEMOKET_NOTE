@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  addProfileEntry, cancelJob, deleteProfileEntry, ingestBatch, jobStatus, listProfile,
-  memoryFacts, memoryStats, recall, watchJob,
+  cancelJob, ingestBatch, jobStatus, memoryFacts, memoryStats, watchJob,
   appleAvailable, importApple, importFiles, importNotion,
 } from '../api'
-import type { Fact, FactDetail, JobOut, ProfileEntry } from '../api'
+import type { FactDetail, JobOut } from '../api'
 import { toast } from '../toast'
-import DigestPanel from './DigestPanel'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
@@ -15,32 +13,24 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 /**
- * 知识库面板。两条检索路径的差异在这里直接暴露给用户：
- *   「检索」 —— 零 LLM 符号查询，毫秒级，写作路径用的就是它
- *   时序推理那条能力还在，入口是正文里选中一段右键「来龙去脉」——
- *   问题由后端拼，用户不写 prompt（判据 1）
+ * 导入面板：从其他应用导入 + 批量导入 + 抽取进度。原来是右栏的「知识库」
+ * 面板，还塞着搜索（去 ⌘K）、阶段回顾（去树上「定期回顾」）、个人偏好（去设置）
+ * ——五种不相干的东西叠在 300px 里。现在只剩「把东西导进来」这一件事，
+ * 作为特殊笔记 app:import 占中栏。
  */
 export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [stats, setStats] = useState<{ facts: number; entities: number } | null>(null)
-  const [q, setQ] = useState('')
-  const [facts, setFacts] = useState<Fact[]>([])
-  const [took, setTook] = useState<number | null>(null)
-  const [busy, setBusy] = useState<'' | 'recall'>('')
   const [job, setJob] = useState('')
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
   const batchAbort = useRef<AbortController | null>(null)
   const [notionToken, setNotionToken] = useState('')
   const [importing, setImporting] = useState(false)
   const [apple, setApple] = useState<{ available: boolean; reason: string } | null>(null)
-  const [profile, setProfile] = useState<ProfileEntry[]>([])
-  const [newPref, setNewPref] = useState('')
-  const [addingPref, setAddingPref] = useState(false)
   const [recentFacts, setRecentFacts] = useState<FactDetail[]>([])
   const lastSeenFactCount = useRef(-1)
 
   const refresh = () => memoryStats().then(setStats).catch(() => {})
   useEffect(() => { refresh() }, [])
-  useEffect(() => { listProfile().then(setProfile).catch(() => {}) }, [])
   useEffect(() => () => batchAbort.current?.abort(), [])
 
   /** 抽取是分块跑的（一个 chunk 一次 LLM 调用），每跑完一块 facts 数就会
@@ -74,28 +64,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJob, job])
 
-  async function doRecall() {
-    setBusy('recall')
-    try {
-      const r = await recall(q)
-      setFacts(r.facts); setTook(r.took_ms)
-    } finally { setBusy('') }
-  }
 
-  async function doAddPref() {
-    if (!newPref.trim()) return
-    setAddingPref(true)
-    try {
-      const entry = await addProfileEntry(newPref.trim())
-      setProfile((prev) => [entry, ...prev])
-      setNewPref('')
-    } finally { setAddingPref(false) }
-  }
-
-  async function doDeletePref(id: string) {
-    await deleteProfileEntry(id)
-    setProfile((prev) => prev.filter((p) => p.id !== id))
-  }
 
   async function doBatchIngest(files: FileList | null) {
     if (!files || files.length === 0) return
@@ -162,17 +131,11 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
   return (
     <div>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>知识库</h2>
-        <button onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:overview' }))}
-                title="在标签里打开知识库总览">浏览</button>
-      </div>
-      <p className="muted">
-        {stats ? `${stats.facts} 条事实 · ${stats.entities} 个实体` : '加载中…'}
+      <p className="muted" style={{ fontSize: 12 }}>
+        知识库现在 {stats ? `${stats.facts} 条事实 · ${stats.entities} 个实体` : '…'}
         {working && <> · <span className="spinner" /> 抽取中</>}
+        {' '}· <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:overview' })) }}>看总览</a>
       </p>
-
-      <DigestPanel />
 
       {recentFacts.length > 0 && (
         <div className="stack" style={{ marginBottom: 10 }}>
@@ -184,71 +147,6 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           ))}
         </div>
       )}
-
-      {/* **只剩搜索，「提问」那个框删了。**
-          搜索不是聊天：它的结果是可预期的（匹配的记录）。而问答框要求用户
-          自己组织 prompt，那正是判据 1 要消灭的摩擦——
-          「界面上出现聊天输入框，就是我们没把意图封装好」。
-
-          时序推理那条能力没扔，它是痛点 13（AI 捋不清时间线）的解药，
-          现在的入口是选中一段正文点「来龙去脉」：问题由后端拼，用户一个字
-          都不用写。 */}
-      <div className="stack">
-        <input
-          placeholder="搜索知识库…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && q.trim() && doRecall()}
-        />
-        <div className="row">
-          <button onClick={doRecall} disabled={!q.trim() || !!busy}>
-            {busy === 'recall' ? <span className="spinner" /> : '检索'}
-          </button>
-          {took !== null && <span className="muted">{took} ms</span>}
-        </div>
-        <p className="muted" style={{ fontSize: 12 }}>
-          零 LLM 的符号检索，毫秒级。想知道某件事怎么演进的，在正文里选中
-          那一段，右键「来龙去脉」。
-        </p>
-      </div>
-
-      {facts.map((f) => (
-        <div className="card" key={f.id}>
-          <div>{f.text}</div>
-          {f.when && <span className="badge">{f.when}</span>}
-          {f.sources.map((s, i) => (
-            <p className="muted" key={i} style={{ margin: '6px 0 0' }}>出处：{s}</p>
-          ))}
-        </div>
-      ))}
-
-      <h2>个人偏好</h2>
-      <p className="muted" style={{ fontSize: 12 }}>
-        跟知识库是两回事——这里不走抽取，写完立刻生效。写作骨架/智能编辑/magic tap
-        续写都会读取，让输出贴合这些偏好。
-      </p>
-      <div className="stack">
-        <div className="row">
-          <input
-            placeholder="比如：喜欢简洁的语言、写周报先说结论再列数据…"
-            value={newPref}
-            onChange={(e) => setNewPref(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && doAddPref()}
-            style={{ flex: 1 }}
-          />
-          <button onClick={doAddPref} disabled={!newPref.trim() || addingPref}>
-            {addingPref ? <span className="spinner" /> : '添加'}
-          </button>
-        </div>
-        {profile.map((p) => (
-          <div className="card" key={p.id}>
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <span>{p.text}</span>
-              <a className="link" onClick={() => doDeletePref(p.id)}>✕</a>
-            </div>
-          </div>
-        ))}
-      </div>
 
       <h2>从其他应用导入</h2>
       <div className="stack">

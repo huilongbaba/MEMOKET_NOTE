@@ -42,6 +42,8 @@
   --right-pane-heading: gray;
 
   --gutter-hover: #bfbfbf;
+  --quick-search-bg: rgba(0, 0, 0, .06);
+  --quick-search-hover-bg: rgba(0, 0, 0, .1);
   --inactive-tab-fg: #4e4e4e;
   --active-tab-shadow: 3px 3px 6px rgba(0, 0, 0, .1), -1px -1px 3px rgba(0, 0, 0, .05);
 
@@ -88,6 +90,8 @@
     --tab-close-hover-fg: #ffffff;
     --right-pane-heading: gray;
     --gutter-hover: #626262;
+    --quick-search-bg: rgba(255, 255, 255, .08);
+    --quick-search-hover-bg: rgba(255, 255, 255, .13);
     --inactive-tab-fg: #7c7c7c;
     --active-tab-shadow: none;
   }
@@ -150,7 +154,7 @@
 .left-pane-search { padding: 8px 8px 0; flex-shrink: 0; }
 /* 树的滚动容器。第一版把树塞在 .left-pane-search 里、外层 .shell 又是
    overflow: hidden——笔记一多，树底部直接被裁掉且滚不到。 */
-.left-pane-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 8px 35px; }
+.left-pane-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 8px 52px; }
 
 /* 中栏 */
 .rest-pane {
@@ -191,8 +195,14 @@
 /* 正文的滚动容器。左右边距 --content-margin-inline（scrolling_container.css） */
 .note-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
-  padding: 0 var(--content-margin-inline) 120px;
+  padding: 8px var(--content-margin-inline) 120px;
 }
+/* 有浮动按钮的（真笔记）正文起点往下让一行，别被按钮盖住 */
+.note-scroll.has-fb { padding-top: 8px; }
+/* ribbon 的「格式」标签展开时是一条 36px 的工具栏，不要像别的标签那样有内边距 */
+.ribbon-body:has(.md-toolbar) { padding: 2px 12px 4px; }
+.ribbon-icon .bx { font-size: 14px; vertical-align: -2px; }
+.pane-tab .bx { font-size: 14px; }
 
 /* 右栏 */
 .right-pane {
@@ -242,10 +252,6 @@
   border-top: 1px solid var(--subtle-border);
 }
 
-/* 启动栏底部的用户切换。UserSwitcher 自己带一行文字，这里把它压成一个
-   窄条，跟上面那排图标对齐。 */
-.launcher-user { font-size: 10px; text-align: center; line-height: 1.2; }
-.launcher-user * { font-size: 10px !important; }
 
 /* ---------------------------------------------------------------- ribbon
    标题下面那条可折叠的元数据带。收起是默认——正文才是主角。 */
@@ -368,3 +374,33 @@
 }
 .split-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 16px 40px; }
+
+
+/* ---------------------------------------------------------------- 图标
+   Boxicons 字体图标。尺寸按位置定，不在每个用点上写。 */
+.launcher-btn .bx { font-size: 22px; }
+.launcher-logo { margin: 4px 0 6px; display: flex; justify-content: center; }
+.launcher-logo svg { border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.launcher-user .avatar {
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--accent-fg); font-size: 12px; font-weight: 600;
+}
+.tree-icon .bx { font-size: 16px; }
+.tree-expander .bx { font-size: 16px; }
+.icon-btn .bx { font-size: 16px; }
+.cm-icon .bx { font-size: 15px; vertical-align: -2px; }
+.tree-item-button .bx { font-size: 14px; }
+.note-new-tab .bx { font-size: 16px; }
+.left-pane-toggle .bx { transition: transform 600ms; }
+
+/* 快速搜索：一个带图标的圆角框（theme-next/shell.css:561-640） */
+.quick-search {
+  display: flex; align-items: center; gap: 4px; padding: 0 6px 0 8px;
+  border-radius: 6px; border: 2px solid transparent; background: var(--quick-search-bg);
+  transition: background 75ms, border-color 100ms;
+}
+.quick-search:hover { background: var(--quick-search-hover-bg); }
+.quick-search:focus-within { border-color: var(--focus-ring); background: var(--main-bg); }
+.quick-search > .bx { color: var(--muted); font-size: 16px; flex-shrink: 0; }
+.quick-search input { flex: 1; min-width: 0; border: none !important; background: transparent !important; padding: 6px 4px !important; font-size: 13px; }
+.quick-search input:focus-visible { outline: none; }

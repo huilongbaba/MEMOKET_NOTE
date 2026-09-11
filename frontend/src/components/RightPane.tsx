@@ -1,5 +1,5 @@
 /**
- * 右栏 —— 上面是常驻的「相关记忆」，下面是标签区。
+ * 右栏 —— 只有标签（照 Trilium）。「记忆」是默认标签。
  *
  * **为什么相关记忆常驻，而不是也做成一个标签**（这是我们跟 Trilium 的一处
  * 有意分歧，理由在 docs/product-north-star.md 判据 2）：
@@ -18,11 +18,12 @@
  * **明确不抄它的 SidebarChat。** 那是个聊天框，正是判据 1 要消灭的东西。
  * 我们的「运行」放的是 harness 每一轮做了什么、判了什么——执行记录，不是对话。
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 export type PaneTab = {
   id: string
   title: string
+  icon?: string          // Boxicons 类名
   badge?: string | number
   /** 没内容也留在标签条上。见上面注释里说的「条自己变形」。 */
   alwaysShown?: boolean
@@ -33,17 +34,17 @@ export type PaneTab = {
 }
 
 export default function RightPane({
-  ambient, tabs, defaultTab, onCollapse,
-}: { ambient: ReactNode; tabs: PaneTab[]; defaultTab: string; onCollapse?: () => void }) {
+  tabs, defaultTab, onCollapse, focusTab,
+}: { tabs: PaneTab[]; defaultTab: string; onCollapse?: () => void
+     /** 外部要求切到某个标签（harness 跑起来切「计划」）。变一次切一次。 */
+     focusTab?: { id: string; n: number } }) {
   const shown = tabs.filter((t) => t.alwaysShown || t.hasContent !== false)
   const [active, setActive] = useState(defaultTab)
+  useEffect(() => { if (focusTab) setActive(focusTab.id) }, [focusTab])
   const current = shown.find((t) => t.id === active) ?? shown[0]
 
   return (
     <>
-      {/* 常驻区：边写边浮现，不用先想起「我该查一下」 */}
-      <div className="right-pane-ambient">{ambient}</div>
-
       <div className="right-pane-tabs" role="tablist">
         {shown.map((t) => (
           <button
@@ -53,6 +54,7 @@ export default function RightPane({
             className={'pane-tab' + (current?.id === t.id ? ' active' : '')}
             onClick={() => setActive(t.id)}
           >
+            {t.icon && <i className={'bx ' + t.icon} />}
             {t.title}
             {t.badge !== undefined && t.badge !== 0 && (
               <span className="pane-tab-badge">{t.badge}</span>
@@ -62,7 +64,7 @@ export default function RightPane({
         {/* 右端动作区：任何宽度下都完整可点（RightPanelContainer.css:110-145） */}
         {onCollapse && (
           <span className="right-pane-actions">
-            <button className="icon-btn" title="收起右栏（⌘⇧\\）" onClick={onCollapse}>»</button>
+            <button className="icon-btn" title="收起右栏（⌘⇧\\）" onClick={onCollapse}><i className="bx bx-chevrons-right" /></button>
           </span>
         )}
       </div>

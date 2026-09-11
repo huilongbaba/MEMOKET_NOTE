@@ -100,7 +100,7 @@ export default function TabBar({
         </div>
       ))}
     </div>
-    <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）"><span>＋</span></button>
+    <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）"><span><i className="bx bx-plus" /></span></button>
     <div className="tab-row-filler" />
     </>
   )

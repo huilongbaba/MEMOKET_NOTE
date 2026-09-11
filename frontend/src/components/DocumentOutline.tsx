@@ -57,7 +57,6 @@ export default function DocumentOutline({ content, viewRef }: {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 6px' }}>大纲</h2>
       <div className="stack" style={{ gap: 2 }}>
         {headings.map((h, i) => (
           <a
