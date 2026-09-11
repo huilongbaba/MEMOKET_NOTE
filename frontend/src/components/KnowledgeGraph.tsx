@@ -331,7 +331,13 @@ export default function KnowledgeGraph(
     let settleFitDone = false
     // alpha < 0.25 那次适应是「尽快有个能看的画面」；节点之后还会继续外扩，
     // 布局真正停下来再适应一次，不然外圈的节点留在画布外。
-    simulation.on('end', () => { settledRef.current = true; fitTo() })
+    // 只在这次布局第一次停下来时自动适应一次。拖节点会 restart 模拟、再触发
+    // 'end'——每次都 fitTo 就是用户反馈的「放大了又缩回去」。
+    autoFitDoneRef.current = false
+    simulation.on('end', () => {
+      settledRef.current = true
+      if (!autoFitDoneRef.current && !userZoomedRef.current) { autoFitDoneRef.current = true; fitTo() }
+    })
     simulation.on('tick', () => {
       for (const n of nodes) {
         const el = nodeEls.current.get(n.id)
@@ -390,7 +396,19 @@ export default function KnowledgeGraph(
     // while in it) changes the canvas size, and forceCenter closes over
     // whatever width/height it was built with -- needs a fresh simulation to
     // recenter on the new dimensions.
-  }, [nodes, graphLinks, width, height, sizeScale])
+    // 尺寸不在依赖里：内嵌时 ResizeObserver 一抖、右栏一变宽，整个模拟就重跑、
+    // 节点重新炸开、再自动适应——用户看到的是「图自己跳」。尺寸变化只挪向心力。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, graphLinks, sizeScale])
+
+  useEffect(() => {
+    const sim = simulationRef.current
+    if (!sim) return
+    sim.force('center', forceCenter(width / 2, height / 2))
+    const fx = sim.force('x') as ReturnType<typeof forceX<GraphNode>> | null
+    const fy = sim.force('y') as ReturnType<typeof forceY<GraphNode>> | null
+    fx?.x(width / 2); fy?.y(height / 2)
+  }, [width, height])
 
   // Polling (see MemoryBrowser) refreshes topics/entities every few seconds
   // while a background ingest is adding facts. When the *set* of nodes is
@@ -450,6 +468,8 @@ export default function KnowledgeGraph(
     const zoom = d3zoom<SVGSVGElement, unknown>()
       .scaleExtent([MIN_SCALE, MAX_SCALE])
       .on('zoom', (event) => {
+        // sourceEvent 有值 = 用户的滚轮 / 拖动；程序调的 fitTo / reset 没有
+        if (event.sourceEvent) userZoomedRef.current = true
         zoomGroup.setAttribute('transform', event.transform.toString())
         const overview = !labelsAlwaysRef.current && event.transform.k < LOD_ZOOM_THRESHOLD
         if (overview !== lodOverviewRef.current) {
@@ -495,8 +515,11 @@ export default function KnowledgeGraph(
    * neighbors are rarely distributed evenly around it), and "点击的那个节点
    * 处于中间" means the clicked node itself, not the average of its cluster. */
   const settledRef = useRef(false)
+  const autoFitDoneRef = useRef(false)
+  // 用户自己缩放过之后，尺寸变化也不再替他适应窗口
+  const userZoomedRef = useRef(false)
   useEffect(() => {
-    if (!settledRef.current) return
+    if (!settledRef.current || userZoomedRef.current) return
     const t = setTimeout(() => fitTo(), 50)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps

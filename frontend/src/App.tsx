@@ -1012,6 +1012,16 @@ export default function App() {
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
       if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
       if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
+      if (probe === 'graph-zoom') {
+        setTimeout(() => void openVirtual('kb:graph'), 900)
+        // 布局稳定后模拟用户滚轮放大三档，之后如果图又缩回去 / 跳走，就是有人在抢
+        setTimeout(() => {
+          const svg = document.querySelector('.local-graph svg, .kb-browser svg') as SVGSVGElement | null
+          if (!svg) return
+          const r = svg.getBoundingClientRect()
+          for (let i = 0; i < 3; i++) svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }))
+        }, 12000)
+      }
       if (probe?.startsWith('harness:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(8))
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })() }

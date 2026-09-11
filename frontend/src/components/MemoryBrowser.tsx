@@ -300,12 +300,11 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, embedded])
 
-  const Shell = ({ children }: { children: React.ReactNode }) => embedded
-    ? <div className="kb-browser">{children}</div>
-    : <div className="modal-backdrop"><div className="modal" style={tab === 'topics' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}>{children}</div></div>
-
-  return (
-    <Shell>
+  // **不要把外壳写成 render 里定义的组件**：每次 render 都是新的组件类型，
+  // 整棵子树（含力导向图）每 3 秒轮询一次就重挂一次——图自己跳、放大了缩回去、
+  // 拖过的节点归位，全是这一个原因（client-log 抓到每 1.5s 一次 new simulation）。
+  const body = (
+    <>
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <h2 style={{ margin: 0 }}>知识库</h2>
@@ -553,6 +552,9 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
             )}
           </div>
         )}
-      </Shell>
+      </>
   )
+  return embedded
+    ? <div className="kb-browser">{body}</div>
+    : <div className="modal-backdrop"><div className="modal" style={tab === 'topics' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}>{body}</div></div>
 }
