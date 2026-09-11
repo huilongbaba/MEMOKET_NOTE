@@ -559,7 +559,7 @@ def notes_citing(user_id: str, fact_id: str) -> list[dict]:
     """
     with connect() as c:
         rows = c.execute(
-            "SELECT n.id, n.title, n.updated_at FROM note_citations k"
+            "SELECT n.id, n.title, n.updated_at, substr(n.content,1,80) AS preview FROM note_citations k"
             " JOIN notes n ON n.id = k.note_id"
             " WHERE k.user_id=? AND k.fact_id=? ORDER BY n.updated_at DESC",
             (user_id, fact_id)).fetchall()

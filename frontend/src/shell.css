@@ -270,7 +270,7 @@
   background: var(--accent); color: var(--accent-fg); font-size: 10px;
   padding: 0 5px; border-radius: 8px; line-height: 15px;
 }
-.ribbon-body { padding: 6px 12px 12px; }
+.ribbon-body { padding: 6px 12px 12px; max-height: 40vh; overflow-y: auto; }
 
 /* ------------------------------------------------------------- 右栏内部 */
 .right-pane-ambient {

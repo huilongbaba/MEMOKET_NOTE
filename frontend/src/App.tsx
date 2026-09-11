@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { EditorView } from '@codemirror/view'
+import { EditorView } from '@codemirror/view'
 import * as api from './api'
 import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
 import AudioRecorder from './components/AudioRecorder'
@@ -530,8 +530,10 @@ export default function App() {
   // 送过来（跟 open-command-palette 同一个模式）。
   useEffect(() => {
     const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) void openVirtual(id) }
+    const onNew = () => void newNote()
     window.addEventListener('open-virtual', on)
-    return () => window.removeEventListener('open-virtual', on)
+    window.addEventListener('new-note', onNew)
+    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows])
 
@@ -1041,6 +1043,23 @@ export default function App() {
           for (let i = 0; i < 3; i++) svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }))
         }, 12000)
       }
+      if (probe?.startsWith('tap:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(4))
+        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runMagicTap(), 1500) })() }
+      }
+      if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
+      if (probe === 'selection' && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => (x.content ?? '').length > 80)
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          setTimeout(() => {
+            const view = editorViewRef.current
+            if (!view) return
+            view.dispatch({ selection: { anchor: 10, head: 60 } })
+            setSelectionMenu({ x: 700, y: 420, text: view.state.sliceDoc(10, 60) })
+          }, 1500)
+        })() }
+      }
       if (probe?.startsWith('harness:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(8))
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })() }
@@ -1437,13 +1456,27 @@ export default function App() {
     setTapMeta(null)
     const ctrl = new AbortController()
     abortRef.current = ctrl
+    let first = true
     try {
       await api.magicTap(
         content,
         spine,
         beats,
         setTapMeta,
-        (piece) => setContent((c) => c + piece),
+        (piece) => {
+          // 第一片落下来前先保证跟上一段之间空一行——否则续写会黏在上一段
+          // 末尾，读起来像同一段（r3 实拍）。
+          setContent((c) => {
+            if (first) { first = false; if (c && !/\n\n$/.test(c)) c = c.replace(/\n?$/, '\n\n') }
+            return c + piece
+          })
+          // 续写追加在文末，而用户的视口多半停在上面（r3 实拍：跑完了
+          // 屏幕上什么都没变）——跟着写到哪滚到哪。
+          requestAnimationFrame(() => {
+            const view = editorViewRef.current
+            if (view) view.dispatch({ effects: EditorView.scrollIntoView(view.state.doc.length) })
+          })
+        },
         ctrl.signal,
         // 写完之后的确定性检查：检索到了材料却一条没用上，说明这段写的是
         // 通用内容。magic tap 刻意不套完整闭环（它的定位是点一下几秒出一段），
@@ -2547,7 +2580,7 @@ export default function App() {
               <p className="muted harness-line"><i className="bx bx-bot" /> {noteHarnessStatus}</p>
             )}
 
-            {tapMeta && <TapProvenance meta={tapMeta} />}
+            {tapMeta && <TapProvenance meta={tapMeta} onDismiss={() => setTapMeta(null)} />}
 
             {pendingDiff > 0 && (
               <div

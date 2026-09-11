@@ -8,6 +8,8 @@
  */
 import { useEffect, useState } from 'react'
 
+import { displayTitle } from '../util/displayTitle'
+
 import DigestPanel from './DigestPanel'
 import MemoryBrowser from './MemoryBrowser'
 import EntityPage from './kb/EntityPage'
@@ -137,7 +139,7 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
         {citing.map((n) => (
           <a key={n.id} href="#" className="kb-link"
              onClick={(e) => { e.preventDefault(); onOpenNote(n.id) }}>
-            {n.title || '未命名'}
+            {displayTitle(n)}
             <span className="muted" style={{ marginInlineStart: 8 }}>{n.updated_at.slice(0, 10)}</span>
           </a>
         ))}

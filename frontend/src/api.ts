@@ -487,7 +487,7 @@ export const kbUnit = (id: string, limit = 50, offset = 0) =>
   fetch(`/api/kb/unit/${encodeURIComponent(id)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbUnitPage>)
 
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
-export type CitingNote = { id: string; title: string; updated_at: string }
+export type CitingNote = { id: string; title: string; updated_at: string; preview?: string }
 
 /** **哪些笔记引用了这条事实。** 反查——整个「笔记 × 知识库」融合的关键。
  *  回答的是「这条事实还活着吗、改了它会影响谁」。对标 Trilium 的 Backlinks。 */

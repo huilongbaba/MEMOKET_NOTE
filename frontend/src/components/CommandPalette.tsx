@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import type { Fact, Note } from '../api'
+import { displayTitle } from '../util/displayTitle'
+
+/** 没输入时的快捷命令：Trilium 的 jumpToNote 空态列最近笔记，我们再加几个
+ * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。 */
+const COMMANDS: { label: string; icon: string; run: () => void }[] = [
+  { label: '新建笔记', icon: 'bx-plus', run: () => window.dispatchEvent(new CustomEvent('new-note')) },
+  { label: '知识库总览', icon: 'bx-data', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' })) },
+  { label: '主题地图', icon: 'bx-network-chart', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:graph' })) },
+  { label: '时间线', icon: 'bx-calendar', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:timeline' })) },
+  { label: '导入', icon: 'bx-import', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' })) },
+  { label: '设置', icon: 'bx-cog', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:settings' })) },
+]
 
 /**
  * Cmd/Ctrl+K: one search box over both notes and the knowledge base, instead
@@ -18,6 +30,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   const [notes, setNotes] = useState<Note[]>([])
   const [facts, setFacts] = useState<Fact[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
+  const [recent, setRecent] = useState<Note[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -30,8 +43,15 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
         setOpen(false)
       }
     }
+    // 左栏放大镜按钮 / 探针走这条事件——它曾经只有发送方没有接收方，
+    // 按钮点了没反应（r3 截图实拍）。
+    function onOpenEvent() { setOpen(true) }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('open-command-palette', onOpenEvent)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('open-command-palette', onOpenEvent)
+    }
   }, [])
 
   useEffect(() => {
@@ -41,6 +61,9 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     setFacts([])
     setActiveIndex(0)
     const t = setTimeout(() => inputRef.current?.focus(), 0)
+    api.listNotes('').then((ns) => setRecent(
+      [...ns].sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 6),
+    )).catch(() => {})
     return () => clearTimeout(t)
   }, [open])
 
@@ -55,20 +78,36 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
 
   if (!open) return null
 
-  const items = [
-    ...notes.map((n) => ({ kind: 'note' as const, note: n })),
-    ...facts.map((f) => ({ kind: 'fact' as const, fact: f })),
-  ]
+  const typing = !!q.trim()
+  const cmdHits = typing ? COMMANDS.filter((c) => c.label.includes(q.trim())) : COMMANDS
+  const items = typing
+    ? [
+      ...cmdHits.map((c) => ({ kind: 'cmd' as const, cmd: c })),
+      ...notes.map((n) => ({ kind: 'note' as const, note: n })),
+      ...facts.map((f) => ({ kind: 'fact' as const, fact: f })),
+    ]
+    : [
+      ...recent.map((n) => ({ kind: 'note' as const, note: n })),
+      ...COMMANDS.map((c) => ({ kind: 'cmd' as const, cmd: c })),
+    ]
 
   function choose(i: number) {
     const item = items[i]
     if (!item) return
-    if (item.kind === 'note') {
-      onOpenNote(item.note)
-    } else {
-      onInsertFact(`${item.fact.text} [${item.fact.id}]`)
-    }
+    if (item.kind === 'note') onOpenNote(item.note)
+    else if (item.kind === 'cmd') item.cmd.run()
+    else onInsertFact(`${item.fact.text} [${item.fact.id}]`)
     setOpen(false)
+  }
+
+  let idx = 0
+  function row(key: string, label: React.ReactNode, icon: string) {
+    const i = idx++
+    return (
+      <div key={key} className={'palette-item' + (i === activeIndex ? ' active' : '')} onClick={() => choose(i)}>
+        <i className={'bx ' + icon} /> {label}
+      </div>
+    )
   }
 
   return (
@@ -86,27 +125,17 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
           placeholder="搜索笔记或知识库…（Esc 关闭）"
         />
         <div className="palette-results">
-          {q.trim() && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
+          {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
+          {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
+          {!typing && recent.map((n) => row(n.id, displayTitle(n), 'bx-note'))}
+          {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
+          {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
           {notes.length > 0 && <p className="muted palette-group">笔记</p>}
-          {notes.map((n, i) => (
-            <div
-              key={n.id}
-              className={'palette-item' + (i === activeIndex ? ' active' : '')}
-              onClick={() => choose(i)}
-            >
-              📝 {n.title || '未命名'}
-            </div>
-          ))}
+          {typing && notes.map((n) => row(n.id, displayTitle(n), 'bx-note'))}
           {facts.length > 0 && <p className="muted palette-group">知识库（点击插入引用）</p>}
-          {facts.map((f, i) => (
-            <div
-              key={f.id}
-              className={'palette-item' + (notes.length + i === activeIndex ? ' active' : '')}
-              onClick={() => choose(notes.length + i)}
-            >
-              💡 {f.text.slice(0, 60)}{f.when && <span className="muted"> · {f.when}</span>}
-            </div>
-          ))}
+          {typing && facts.map((f) => row(f.id, <>{f.text.slice(0, 60)}{f.when && <span className="muted"> · {f.when}</span>}</>, 'bx-bulb'))}
+          {!typing && <p className="muted palette-group">前往</p>}
+          {!typing && COMMANDS.map((c) => row('c' + c.label, c.label, c.icon))}
         </div>
       </div>
     </div>

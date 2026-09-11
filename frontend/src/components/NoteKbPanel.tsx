@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 
 import { factPeek, notesCiting, type CitingNote, type FactPeek, type TreeRow } from '../api'
+import { displayTitle } from '../util/displayTitle'
 
 export default function NoteKbPanel({ citedIds, row, noteId, onIngest, ingesting, onOpenNote }: {
   citedIds: string[]
@@ -71,7 +72,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, ingesting
                   也引用于：
                   {(citing[id] ?? []).filter((n) => n.id !== noteId).map((n) => (
                     <a key={n.id} href="#" onClick={(e) => { e.preventDefault(); onOpenNote(n.id) }}
-                       style={{ marginInlineStart: 6 }}>{n.title || '未命名'}</a>
+                       style={{ marginInlineStart: 6 }}>{displayTitle(n)}</a>
                   ))}
                 </div>
               )}

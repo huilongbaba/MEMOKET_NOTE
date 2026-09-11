@@ -180,7 +180,7 @@ async function main() {
   if (hasNode('hobby')) throw new Error('re-clicking the focused node should NOT clear focus, but hobby reappeared')
   console.log('OK: clicking the already-focused node again does not clear focus (only 恢复 does)')
 
-  const restoreBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '恢复')
+  const restoreBtn = Array.from(host.querySelectorAll('button')).find((b) => (b.textContent ?? '').includes('恢复'))
   if (!restoreBtn) throw new Error('no "恢复" button rendered while focused')
   restoreBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await new Promise((r) => setTimeout(r, 450))
@@ -237,7 +237,7 @@ async function main() {
   // since settled and stopped ticking, so nothing else would ever position
   // it. Verify a restored node lands at its real simulated coordinates, not
   // stuck at the SVG origin.
-  const restoreBtn2 = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '恢复')
+  const restoreBtn2 = Array.from(host.querySelectorAll('button')).find((b) => (b.textContent ?? '').includes('恢复'))
   if (!restoreBtn2) throw new Error('no "恢复" button rendered while focused on hobby')
   restoreBtn2.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await new Promise((r) => setTimeout(r, 450))

@@ -185,11 +185,17 @@ backend/app/
     state.py                 State：一次 run 的全部状态，middleware 的 bag 也在这
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
     events.py                AG-UI 事件 + 10 个 CUSTOM 名字 + to_sse()
-    hooks/                   note / section / block 三组回调
+    hooks/                   三组回调
+      note · section · block
     middleware/              13 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
+      skills · facts · history · compact · best_of · checks · provenance
+      · revise · repeats · replan · repair · runtime · save · _order
     checks/                  10 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+      citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
     tools/                   21 个工具 + registry（分组授权）
-    prompts/                 提示词：writing / note / plan / block / selection / skills / fragments
+      memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools · registry
+    prompts/                 提示词
+      writing · note · plan · block · selection · skills · fragments
     skills.py                SKILL.md 目录 + DB 里的配置
     sandbox/                 policy（三档）· limits（资源上限）· runner（Seatbelt / bwrap）
     agent_loop.py            取材料的工具循环（模型自己决定查什么）
@@ -219,13 +225,17 @@ backend/app/
     ingest.py · import_sources.py · skills.py · settings.py · profile.py · assets.py
     client_log.py              前端错误报进后端日志（打包版没有 DevTools）
   util/                      config · llm（stream / stream_events / extract_json）· parent_watch
+```
 
+前端与桌面壳（不是 Python，单独一张）：
+
+```
 frontend/src/
   App.tsx                    外壳 + 所有 harness 事件处理（noteHarnessHandlers）
   api.ts                     类型 + fetch + SSE 解析（runNoteHarness / resumeHarness / watchJob）
   editor/                    CodeMirror 扩展：roundDiff（轮次高亮）· revisions · factCite（行内出处）
                              · recallCompletion（@ 引用）· mermaid · runningBlocks（并发块）…
-  components/                外壳（TabBar · NoteTree · Ribbon · RightPane · ContextMenu …）
+  components/                外壳（TabBar · NoteTree · Ribbon · RightPane · ContextMenu · CommandPalette …）
                              harness 面板（AgentActivity · SkeletonPanel · RevisionPanel · TapProvenance）
                              知识库（KbNoteView · kb/* 各页面 · KnowledgeGraph · MemoryBrowser）
   util/displayTitle.ts       树 / 标签 / 面包屑共用的显示名
@@ -602,5 +612,5 @@ harness 的材料来自这里；设计在 `docs/kb-architecture.md` 与 `docs/kb
 
 ## 20. 变更记录
 
-按批的改动、实拍抓到的 bug、每条根因，全在 `docs/TRACELOG-trilium.md`（[0]–[25]）。
+落地记录——按批的改动、实拍抓到的 bug、每条根因，全在 `docs/TRACELOG-trilium.md`（[0]–[25]）。
 进度台账 `docs/PROGRESS.md`。这份文档只记「现在是什么」，不记「怎么变过来的」。

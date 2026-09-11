@@ -321,6 +321,7 @@ class CitingNoteOut(BaseModel):
     id: str
     title: str
     updated_at: str
+    preview: str = ""      # 标题是「未命名」时前端拿正文首行当显示名
 
 
 class FactPeekOut(BaseModel):
