@@ -307,11 +307,13 @@ export async function magicTap(
    * 一条都没用上时 hint 会给一句诊断——magic tap 刻意不套完整的打分闭环
    * （它的定位是点一下几秒出一段），所以这里只提示，不打断也不重写。 */
   onGrounding?: (g: { facts: number; used: number; hint: string }) => void,
+  /** 光标后面已有的正文：有它就是在中间插一段（接着 content、衔接 following）。 */
+  following = '',
 ) {
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, spine, beats }),
+    body: JSON.stringify({ content, spine, beats, following }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)

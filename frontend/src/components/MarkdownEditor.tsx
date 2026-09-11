@@ -21,6 +21,7 @@ import { tablePreview } from '../editor/tablePreview'
 import { recallSource } from '../editor/recallCompletion'
 import { noteLinkSource } from '../editor/noteLinkCompletion'
 import { noteLinkChips } from '../editor/noteLink'
+import { minimalChange } from '../editor/minimalChange'
 import { getNote } from '../api'
 import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
@@ -188,11 +189,12 @@ export default function MarkdownEditor({
     const view = actualViewRef.current
     if (!view) return
     if (content === lastEmitted.current) return
-    if (content === view.state.doc.toString()) { lastEmitted.current = content; return }
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: content },
-      selection: { anchor: content.length },
-    })
+    const current = view.state.doc.toString()
+    if (content === current) { lastEmitted.current = content; return }
+    // 只改真正变了的那一段（editor/minimalChange.ts）。整篇替换会把光标和视口
+    // 拽到文末，流式往中间插一段时用户根本看不到写在哪；选区交给 CM 映射。
+    const change = minimalChange(current, content)
+    if (change) view.dispatch({ changes: change })
     lastEmitted.current = content
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content])

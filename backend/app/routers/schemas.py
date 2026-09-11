@@ -521,6 +521,9 @@ class MagicTapIn(BaseModel):
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
     max_tokens: int = 1200
+    # 光标后面已有的正文。有它时「续写」是在中间插一段：接着 content 写、能衔接到
+    # following、不重复 following 里已有的。空 = 追加到文末（原来的语义）。
+    following: str = ""
 
 
 # ---------------------------------------------------------------- 选中文本操作

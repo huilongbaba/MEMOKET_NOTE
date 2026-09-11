@@ -447,7 +447,8 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
 
 
 def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
-                   profile: list[str], folder_context: str = "") -> str:
+                   profile: list[str], folder_context: str = "",
+                   following: str = "") -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -459,11 +460,33 @@ def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
         parts.append(folder_context)
     if facts:
         parts.append(facts_block(facts))
+    if following.strip():
+        # 光标在中间：写的这段要嵌进去，不是接在全文最后。只给后面的开头一截——
+        # 够看出下文讲什么就行，全给会让模型把后面的内容再写一遍。
+        # **放在正文块前面、并且在段落边界截断**：模型永远接着它最后看到的东西写，
+        # 实拍把下文放最后、在 600 字处硬切到「…KO」，模型写出来的第一段是「L样机…」。
+        parts.append("【光标后面已有的内容（开头一截，仅供衔接，不要改写它）】\n" + _cut_at_boundary(following.strip(), 600))
     parts.append(content_block(content))
     if "##" not in content:
         parts.append(heading_format_reminder())
-    parts.append("请接着往下写。")
+    if following.strip():
+        parts.append("请接着上面的正文往下写**一段**，写的内容要能自然衔接到「光标后面已有的内容」，"
+                     "不要重复后面已经写了的东西，也不要另起标题。")
+    else:
+        parts.append("请接着往下写。")
     return "\n\n".join(parts)
+
+
+def _cut_at_boundary(text: str, limit: int) -> str:
+    """截到 limit 以内最后一个段落 / 句子边界，别在词中间切。"""
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    for sep in ("\n\n", "\n", "。", "；", "！", "？"):
+        i = head.rfind(sep)
+        if i > limit // 3:
+            return head[: i + len(sep)].rstrip()
+    return head + "…"
 
 
 def join_round_text(content: str, round_text: str) -> str:

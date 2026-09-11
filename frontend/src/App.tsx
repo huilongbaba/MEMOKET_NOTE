@@ -335,6 +335,10 @@ export default function App() {
       localStorage.setItem('memoket-note-tabs:' + api.getUser(), JSON.stringify(tabs))
     } catch { /* 隐私模式下写不了，不值得为它报错 */ }
   }, [tabs])
+  useEffect(() => {
+    if (!current) return
+    try { localStorage.setItem('memoket-note-active:' + api.getUser(), current.id) } catch { /* 同上 */ }
+  }, [current])
 
   /** 打开一篇笔记时同步标签：已经开着就切过去，没开就新开一个。
    *
@@ -1083,7 +1087,15 @@ export default function App() {
       }
       if (probe?.startsWith('tap:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(4))
-        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runMagicTap(), 1500) })() }
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          // 光标放到正文中段（第二个二级标题之前），看「从光标处续写」是不是插在那
+          setTimeout(() => {
+            const v = editorViewRef.current
+            if (v) { const t = v.state.doc.toString(); const i = t.indexOf('\n## ', t.indexOf('\n## ') + 1); v.focus(); v.dispatch({ selection: { anchor: i > 0 ? i : Math.floor(t.length / 2) } }) }
+          }, 1200)
+          setTimeout(() => void actionsRef.current.runMagicTap(), 1500)
+        })() }
       }
       // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
       if ((probe === 'slash' || probe === 'mention' || probe === 'wikilink') && notes.length && !harnessProbeDone.current) {
@@ -1204,7 +1216,12 @@ export default function App() {
 
   useEffect(() => {
     reload().then((list) => {
-      if (list.length) open(list[0])
+      if (!list.length) return
+      // 回到上次看的那篇（标签页已经跨启动保住了，正文也该回到同一篇），
+      // 没记录才退回最近编辑的。探针要的是确定的起点，一律最近编辑的。
+      let last: string | null = null
+      try { if (!new URLSearchParams(location.search).get('probe')) last = localStorage.getItem('memoket-note-active:' + api.getUser()) } catch { /* 无所谓 */ }
+      open(list.find((n) => n.id === last) ?? list[0])
     })
     reloadTree()
     api.health().then((h) => {
@@ -1541,25 +1558,41 @@ export default function App() {
     setTapMeta(null)
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    let first = true
+    // **从光标处续写**（Notion / Craft 的「继续写」都在光标处）。光标在文末或
+    // 根本没进过编辑器就追加；在中间就把光标后面的内容当「下文」送给模型，
+    // 写出来的段插在光标处。光标夹在一段中间时先退到这一段的末尾——在句子
+    // 里硬插一段不是任何人想要的。
+    const view = editorViewRef.current
+    const docLen = view?.state.doc.length ?? content.length
+    let at = view?.hasFocus || (view && view.state.selection.main.head > 0) ? view!.state.selection.main.head : docLen
+    if (at > 0 && at < docLen) {
+      const text = view!.state.doc.toString()
+      const nextBreak = text.indexOf('\n\n', at)
+      at = nextBreak < 0 ? docLen : nextBreak
+    }
+    const middle = at > 0 && at < docLen
+    const full = view ? view.state.doc.toString() : content
+    const before = middle ? full.slice(0, at) : full
+    const following = middle ? full.slice(at) : ''
+    // **不用 setContent 的 updater 算位置**：流式每片一次 updater，闭包里的
+    // 游标跟 state 的先后顺序对不上就会漂（实拍：插进了下一个标题的井号中间）。
+    // 头尾定死、中间只增不改，每片直接算出整篇。
+    const head = middle ? before.replace(/\n*$/, '\n\n') : (before && !/\n\n$/.test(before) ? before.replace(/\n?$/, '\n\n') : before)
+    const tail = middle ? following.replace(/^\n*/, '\n\n') : ''
+    let inserted = ''
     try {
       await api.magicTap(
-        content,
+        before,
         spine,
         beats,
         setTapMeta,
         (piece) => {
-          // 第一片落下来前先保证跟上一段之间空一行——否则续写会黏在上一段
-          // 末尾，读起来像同一段（r3 实拍）。
-          setContent((c) => {
-            if (first) { first = false; if (c && !/\n\n$/.test(c)) c = c.replace(/\n?$/, '\n\n') }
-            return c + piece
-          })
-          // 续写追加在文末，而用户的视口多半停在上面（r3 实拍：跑完了
-          // 屏幕上什么都没变）——跟着写到哪滚到哪。
+          inserted += piece
+          setContent(head + inserted + tail)
+          // 跟着写到哪滚到哪（r3 实拍：追加在文末，跑完了屏幕上什么都没变）。
           requestAnimationFrame(() => {
-            const view = editorViewRef.current
-            if (view) view.dispatch({ effects: EditorView.scrollIntoView(view.state.doc.length) })
+            const v = editorViewRef.current
+            if (v) v.dispatch({ effects: EditorView.scrollIntoView(Math.min(head.length + inserted.length, v.state.doc.length)) })
           })
         },
         ctrl.signal,
@@ -1567,6 +1600,7 @@ export default function App() {
         // 通用内容。magic tap 刻意不套完整闭环（它的定位是点一下几秒出一段），
         // 所以这里不打断也不重写，只提示一句让用户自己决定要不要重来。
         (g) => { if (g.hint) toast(g.hint, 'error') },
+        following,
       )
     } catch (e) {
       if ((e as Error).name !== 'AbortError') toast('续写失败：' + e, 'error')
@@ -1634,11 +1668,12 @@ export default function App() {
         // 分隔，跟后端 prompts.join_round_text() 是同一个道理
         // （TRACELOG [8]/[10]）：折叠 runHarness 那边已经修过的同一个坑，
         // 这里之前漏了，只修了文件夹 harness 那一侧。
-        setContent((c) => {
+        {
+          const c = liveContentRef.current
           const next = c ? c.replace(/\n*$/, '') + '\n\n' : c
           liveContentRef.current = next
-          return next
-    })
+          setContent(next)
+        }
       },
       onRevision: (r) => {
         if (currentRef.current?.id !== noteId) return
@@ -1655,16 +1690,16 @@ export default function App() {
         if (currentRef.current?.id !== noteId) return
         // 落点按本地正文重算（本地可能刚应用过修订、跟服务端差几个字）；
         // 找不到标题才用后端给的 pos。轮初为追加预留的那个空行要收回来。
-        setContent((c) => {
-          const base = c.replace(/\n+$/, '\n')
+        {
+          const base = liveContentRef.current.replace(/\n+$/, '\n')
           const pos = sectionEnd(base, d.section) ?? Math.min(d.pos, base.length)
           const head = base.slice(0, pos).replace(/\n*$/, '\n\n')
           const tail = base.slice(pos).replace(/^\n*/, '\n\n')
           insertCursorRef.current = head.length
           const next = head + tail
           liveContentRef.current = next
-          return next
-        })
+          setContent(next)
+        }
         setNoteHarnessStatus((s) => s.replace(/续写中…$/, `写到「${d.section}」这一节…`))
         requestAnimationFrame(() => {
           const view = editorViewRef.current
@@ -1673,7 +1708,10 @@ export default function App() {
       },
       onDelta: (text) => {
         if (currentRef.current?.id !== noteId) return
-        setContent((c) => {
+        {
+          // 从 liveContentRef 算，不用 updater：updater 的执行时机跟闭包里的游标
+          // 对不上就会漂（magic tap 那边实拍过）
+          const c = liveContentRef.current
           const cur = insertCursorRef.current
           let next: string
           if (cur != null && cur <= c.length) {
@@ -1681,8 +1719,8 @@ export default function App() {
             insertCursorRef.current = cur + text.length
           } else next = c + text
           liveContentRef.current = next
-          return next
-        })
+          setContent(next)
+        }
         // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
         // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
         // 干等的状态文案有用得多。
