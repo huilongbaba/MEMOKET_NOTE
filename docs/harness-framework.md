@@ -206,7 +206,7 @@ backend/app/
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
   database/
-    store.py                 sqlite：notes · branches（树）· note_citations · skills · snapshots · runs
+    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· skills · snapshots · runs
     retrieval.py             零 LLM 关键词检索（工具循环失败时的退路）；format_fact() 给材料带 id
     kite/                    KITE codebook 适配：UserMemory（recall / facts / topics / entities / fact_by_id）
     kb/                      知识库在 KITE 之上的那层：clusters · recall（簇粒度）· search（排序）

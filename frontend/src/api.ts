@@ -489,6 +489,17 @@ export const kbUnit = (id: string, limit = 50, offset = 0) =>
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
 export type CitingNote = { id: string; title: string; updated_at: string; preview?: string }
 
+/** 历史版本（Trilium 的 note revisions）。列表不带正文，点开一版才取。 */
+export type NoteRevision = { id: string; note_id: string; title: string; reason: string; created_at: string; chars: number }
+export const listRevisions = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/revisions`, { headers: headers() }).then(json<NoteRevision[]>)
+export const snapshotNote = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/revisions`, { method: 'POST', headers: headers() }).then(json<NoteRevision>)
+export const getRevision = (noteId: string, revId: string) =>
+  fetch(`/api/notes/${noteId}/revisions/${revId}`, { headers: headers() }).then(json<NoteRevision & { content: string }>)
+export const restoreRevision = (noteId: string, revId: string) =>
+  fetch(`/api/notes/${noteId}/revisions/${revId}/restore`, { method: 'POST', headers: headers() }).then(json<Note>)
+
 /** 笔记之间的链接：这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。 */
 export type NoteLinks = { outgoing: CitingNote[]; backlinks: CitingNote[] }
 export const noteLinks = (noteId: string) =>

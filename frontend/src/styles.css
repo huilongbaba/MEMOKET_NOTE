@@ -906,3 +906,9 @@ kbd {
 }
 .cm-note-link:hover { text-decoration: underline; }
 .cm-note-link .bx { font-size: 14px; }
+
+/* ribbon「历史」 */
+.revision-list { display: flex; flex-direction: column; gap: 2px; }
+.revision-row .kb-link { padding: 5px 8px; border-radius: 6px; gap: 8px; align-items: center; }
+.revision-row .kb-link:hover, .revision-row.open .kb-link { background: var(--hover); }
+.revision-body { margin: 4px 0 8px 26px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-height: 32vh; overflow-y: auto; background: var(--card, var(--bg)); }

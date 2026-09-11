@@ -324,6 +324,20 @@ class CitingNoteOut(BaseModel):
     preview: str = ""      # 标题是「未命名」时前端拿正文首行当显示名
 
 
+class RevisionOut(BaseModel):
+    """一版的摘要（列表用，不带正文）。"""
+    id: str
+    note_id: str
+    title: str
+    reason: str            # auto / manual / before_restore
+    created_at: str
+    chars: int
+
+
+class RevisionFullOut(RevisionOut):
+    content: str
+
+
 class NoteLinksOut(BaseModel):
     """笔记之间的链接：`[标题](note://<id>)`。outgoing 是这篇链出去的，backlinks 是链进来的。"""
     outgoing: list[CitingNoteOut]

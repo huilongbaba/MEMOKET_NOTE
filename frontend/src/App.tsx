@@ -32,6 +32,7 @@ import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import NoteLinksPanel from './components/NoteLinksPanel'
+import RevisionHistoryPanel from './components/RevisionHistoryPanel'
 import QuickView from './components/QuickView'
 import WelcomePane from './components/WelcomePane'
 import ShortcutsPanel from './components/ShortcutsPanel'
@@ -2554,6 +2555,10 @@ export default function App() {
               body: <NoteLinksPanel noteId={current.id} content={content}
                                     onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
             }, {
+              id: 'history', title: '历史', icon: 'bx-history',
+              body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length}
+                                          onRestored={(n) => { setCurrent(n); setTitle(n.title); setContent(n.content); liveContentRef.current = n.content; void reload() }} />,
+            }, {
               id: 'paths', title: '路径', icon: 'bx-git-branch',
               badge: (tree.find((r) => r.note_id === current.id)?.branch_count ?? 1) > 1
                 ? tree.filter((r) => r.note_id === current.id).length : undefined,
@@ -2644,6 +2649,8 @@ export default function App() {
                     hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
                   { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
                   { kind: 'sep' },
+                  { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
+                    onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + e, 'error')) } },
                   { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
                   { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
                   { kind: 'sep' },

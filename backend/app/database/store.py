@@ -158,6 +158,19 @@ CREATE TABLE IF NOT EXISTS harness_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_user ON harness_snapshots(user_id, created_at DESC);
 
+-- 笔记历史版本（Trilium 的 note revisions）。保存时正文变了、且离上一版超过
+-- 间隔就把**旧**正文存一份；恢复某版之前先把当前存一份，恢复永远可逆。
+CREATE TABLE IF NOT EXISTS note_revisions (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    note_id    TEXT NOT NULL,
+    title      TEXT NOT NULL DEFAULT '',
+    content    TEXT NOT NULL DEFAULT '',
+    reason     TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_revisions_note ON note_revisions(user_id, note_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS user_profile (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
@@ -421,8 +434,44 @@ def create_note(user_id: str, title: str, content: str,
     return {**note, "spine": "", "beats": []}
 
 
+REVISION_INTERVAL_S = 600
+"""两次自动快照的最小间隔（Trilium 的 revisionSnapshotTimeInterval 默认也是 600s）。
+自动保存每几秒一次，不设间隔一篇笔记一小时就是几百版。"""
+REVISION_KEEP = 100
+
+
+def _snapshot_locked(c: sqlite3.Connection, user_id: str, note_id: str, title: str,
+                     content: str, reason: str, *, force: bool) -> bool:
+    """在已开的连接里存一版。不强制时受间隔限制；空正文不存。"""
+    if not (content or "").strip():
+        return False
+    if not force:
+        last = c.execute(
+            "SELECT created_at FROM note_revisions WHERE user_id=? AND note_id=?"
+            " ORDER BY created_at DESC, rowid DESC LIMIT 1", (user_id, note_id)).fetchone()
+        if last:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(last["created_at"])).total_seconds()
+            if age < REVISION_INTERVAL_S:
+                return False
+    c.execute("INSERT INTO note_revisions (id,user_id,note_id,title,content,reason,created_at)"
+              " VALUES (?,?,?,?,?,?,?)",
+              (uuid.uuid4().hex[:12], user_id, note_id, title, content, reason, _now()))
+    c.execute("DELETE FROM note_revisions WHERE user_id=? AND note_id=? AND id NOT IN ("
+              "SELECT id FROM note_revisions WHERE user_id=? AND note_id=?"
+              " ORDER BY created_at DESC, rowid DESC LIMIT ?)",
+              (user_id, note_id, user_id, note_id, REVISION_KEEP))
+    return True
+
+
 def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | None:
     with connect() as c:
+        old = c.execute("SELECT title, content FROM notes WHERE user_id=? AND id=?",
+                        (user_id, note_id)).fetchone()
+        if not old:
+            return None
+        # 正文变了才留版本；只改标题不算
+        if old["content"] != content:
+            _snapshot_locked(c, user_id, note_id, old["title"], old["content"], "auto", force=False)
         cur = c.execute(
             "UPDATE notes SET title=?, content=?, updated_at=? "
             "WHERE user_id=? AND id=?",
@@ -432,6 +481,51 @@ def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | 
     # 正文变了就重建引用。**在这里做而不是让调用方记得调**——保存是
     # 唯一会改正文的入口，放这儿就不会漏；漏一次，反查结果就开始不可信。
     sync_citations(user_id, note_id, content)
+    return get_note(user_id, note_id)
+
+
+def snapshot_note(user_id: str, note_id: str, reason: str = "manual") -> dict | None:
+    """手动存一版（不受间隔限制）。返回这一版的摘要，没这篇 / 正文为空返回 None。"""
+    with connect() as c:
+        row = c.execute("SELECT title, content FROM notes WHERE user_id=? AND id=?",
+                        (user_id, note_id)).fetchone()
+        if not row:
+            return None
+        if not _snapshot_locked(c, user_id, note_id, row["title"], row["content"], reason, force=True):
+            return None
+    return list_revisions(user_id, note_id)[0]
+
+
+def list_revisions(user_id: str, note_id: str) -> list[dict]:
+    """新的在前。不带正文——列表只要知道什么时候、多少字。"""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT id, note_id, title, reason, created_at, length(content) AS chars"
+            # 同一秒内可能存两版（恢复前的强制快照紧跟手动版），rowid 兜底定序
+            " FROM note_revisions WHERE user_id=? AND note_id=? ORDER BY created_at DESC, rowid DESC",
+            (user_id, note_id)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
+    with connect() as c:
+        row = c.execute(
+            "SELECT id, note_id, title, content, reason, created_at FROM note_revisions"
+            " WHERE user_id=? AND note_id=? AND id=?", (user_id, note_id, rev_id)).fetchone()
+    return dict(row) if row else None
+
+
+def restore_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
+    """恢复到某一版。先把**现在**的正文强制存一版（reason=before_restore），
+    恢复永远可以再恢复回来。"""
+    rev = get_revision(user_id, note_id, rev_id)
+    if not rev:
+        return None
+    snapshot_note(user_id, note_id, "before_restore")
+    with connect() as c:
+        c.execute("UPDATE notes SET title=?, content=?, updated_at=? WHERE user_id=? AND id=?",
+                  (rev["title"], rev["content"], _now(), user_id, note_id))
+    sync_citations(user_id, note_id, rev["content"])
     return get_note(user_id, note_id)
 
 

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
-from .schemas import CitingNoteOut, Note, NoteCreateIn, NoteIn, NoteLinksOut, SkeletonSaveIn
+from .schemas import CitingNoteOut, Note, NoteCreateIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -46,6 +46,41 @@ def note_links(note_id: str, user: str = Depends(current_user)):
             outgoing.append(CitingNoteOut(id=t["id"], title=t["title"], updated_at=t["updated_at"],
                                           preview=(t["content"] or "")[:80]))
     return NoteLinksOut(outgoing=outgoing, backlinks=[CitingNoteOut(**r) for r in store.backlinks(user, note_id)])
+
+
+@router.get("/{note_id}/revisions", response_model=list[RevisionOut])
+def list_revisions(note_id: str, user: str = Depends(current_user)):
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    return store.list_revisions(user, note_id)
+
+
+@router.post("/{note_id}/revisions", response_model=RevisionOut)
+def snapshot_note(note_id: str, user: str = Depends(current_user)):
+    """手动存一版。正文为空时 409——空版本没有意义。"""
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    r = store.snapshot_note(user, note_id)
+    if not r:
+        raise HTTPException(409, "正文是空的，没什么可存")
+    return r
+
+
+@router.get("/{note_id}/revisions/{rev_id}", response_model=RevisionFullOut)
+def get_revision(note_id: str, rev_id: str, user: str = Depends(current_user)):
+    r = store.get_revision(user, note_id, rev_id)
+    if not r:
+        raise HTTPException(404, "revision not found")
+    r["chars"] = len(r["content"])
+    return r
+
+
+@router.post("/{note_id}/revisions/{rev_id}/restore", response_model=Note)
+def restore_revision(note_id: str, rev_id: str, user: str = Depends(current_user)):
+    n = store.restore_revision(user, note_id, rev_id)
+    if not n:
+        raise HTTPException(404, "revision not found")
+    return n
 
 
 @router.put("/{note_id}", response_model=Note)
