@@ -2415,7 +2415,7 @@ export default function App() {
               <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
                       disabled={loading === 'note-harness'}
                       title="magic tap 续写：先查知识库，据此往下写一段（流式）">
-                <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-magic-wand')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
+                <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
               </button>
               <span className="fb-split">
                 <button className={'fb-btn primary' + (loading === 'note-harness' ? ' running' : '')}
