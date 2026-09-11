@@ -339,7 +339,7 @@ export type WritingSection = {
 }
 
 export type WritingPlan = {
-  id: string; user_id: string; folder_id: string; goal: string
+  id: string; user_id: string; parent_note_id: string; goal: string
   status: 'active' | 'done' | 'abandoned'
   doc_note_id: string; created_at: string; updated_at: string
 }
@@ -347,14 +347,14 @@ export type WritingPlan = {
 export type WritingPlanOut = { plan: WritingPlan | null; sections: WritingSection[] }
 
 export const getWritingPlan = (folderId: string) =>
-  fetch(`/api/writing-plan?folder_id=${encodeURIComponent(folderId)}`, { headers: headers() })
+  fetch(`/api/writing-plan?parent_note_id=${encodeURIComponent(folderId)}`, { headers: headers() })
     .then(json<WritingPlanOut>)
 
 export const startWritingPlan = (folderId: string, goal: string) =>
   fetch('/api/writing-plan/start', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ folder_id: folderId, goal }),
+    body: JSON.stringify({ parent_note_id: folderId, goal }),
   }).then(json<WritingPlanOut>)
 
 /** 放弃当前计划，好在同一个文件夹里换个目标重开。
@@ -384,7 +384,7 @@ export async function runWritingPlan(
   const res = await fetch('/api/writing-plan/run', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ folder_id: folderId }),
+    body: JSON.stringify({ parent_note_id: folderId }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`writing-plan run failed: ${res.status}`)
@@ -636,6 +636,13 @@ export function watchJob(
 }
 
 export const health = () => fetch('/api/health').then(json<any>)
+
+/** 前端错误报给后端日志（打包版没有 DevTools，白屏时这是唯一的线索）。 */
+export const clientLog = (level: 'error' | 'warn', message: string, stack = '', where = '') =>
+  fetch('/api/client-log', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ level, message, stack, where }),
+  }).catch(() => {})
 
 // ---------------------------------------------------------------- Skill 系统
 //

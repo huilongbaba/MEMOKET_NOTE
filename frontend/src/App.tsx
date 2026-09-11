@@ -992,6 +992,10 @@ export default function App() {
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
       if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
+      if (probe === 'harness' && notes.length) {
+        const n = notes.find((x) => (x.content ?? '').trim().length > 200)
+        if (n) void (async () => { await switchTo(n); setTimeout(() => void runNoteHarness('write'), 1500) })()
+      }
       if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
       if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
       if (probe === 'confirm' && tree.length) {
