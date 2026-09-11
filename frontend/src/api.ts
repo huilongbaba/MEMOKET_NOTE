@@ -369,6 +369,9 @@ export type WritingPlanHandlers = {
   onPlanLoaded?: (plan: WritingPlan, sections: WritingSection[]) => void
   onSectionStart?: (d: { section_id: string; title: string; note_id: string; is_new_note: boolean; facts: number }) => void
   onDelta?: (noteId: string, text: string) => void
+  /** 一轮 / 一段结束时服务端的权威正文（STEP_FINISHED / RUN_FINISHED 带 content）——
+   *  跟单篇 harness 的 onRoundEnd 一个道理：本地攒的跟服务端的对齐。 */
+  onNoteContent?: (noteId: string, content: string) => void
   onSectionDone?: (d: { section_id: string; summary: string; forced: boolean; blocked: boolean; blocked_reason: string | null }) => void
   onPlanExtended?: (sections: WritingSection[]) => void
   onPlanDone?: (plan: WritingPlan) => void
@@ -391,10 +394,19 @@ export async function runWritingPlan(
   })
   if (!res.ok || !res.body) throw new Error(`writing-plan run failed: ${res.status}`)
 
+  // section 内的事件是 AG-UI 名字（loop.run 直接 to_sse），外层的计划事件还是
+  // 自定义名。**曾经这里只认老的 'delta'**：后端切到 AG-UI 之后无限续写跟随视图
+  // 一个字都不显示，只有库里有内容（探针实拍，TRACELOG [38]）。note_id 从最近
+  // 一次 section-start 记下来。
+  let noteId = ''
   for await (const { event, payload } of sseFrames(res)) {
     if (event === 'plan-loaded') handlers.onPlanLoaded?.(payload.plan, payload.sections)
-    else if (event === 'section-start') handlers.onSectionStart?.(payload)
-    else if (event === 'delta') handlers.onDelta?.(payload.note_id, payload.text)
+    else if (event === 'section-start') { noteId = payload.note_id; handlers.onSectionStart?.(payload) }
+    else if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(noteId, payload.delta)
+    else if (event === 'delta') handlers.onDelta?.(payload.note_id ?? noteId, payload.text)
+    else if (event === 'STEP_FINISHED' || event === 'RUN_FINISHED') {
+      if (typeof payload.content === 'string' && payload.content) handlers.onNoteContent?.(noteId, payload.content)
+    }
     else if (event === 'section-done') handlers.onSectionDone?.(payload)
     else if (event === 'plan-extended') handlers.onPlanExtended?.(payload.sections)
     else if (event === 'plan-done') handlers.onPlanDone?.(payload.plan)

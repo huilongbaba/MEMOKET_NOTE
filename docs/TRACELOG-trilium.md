@@ -749,3 +749,14 @@ Trilium 的 Note Revisions 之前没有。现在：保存时正文变了、且�
 改叫 `evidence`——AttributeError 在生产里等于整个功能静默消失（用户只看到一个 toast）。
 两个名字都认，`tests/test_kite_ask.py` 用假 Memory 盯住；kite-constraints.md §13 记下。
 顺手：选区「自定义提示」的图标还是 emoji 字符串，`/` 提示框换成 boxicons 后它渲染成空。
+
+## [38] 全量巡检第 15 轮：分段写作跟随视图（2026-09-12）
+
+新探针 `plan-run:<parentId>`：没计划先生成一个，再对这棵子树跑。后端三段一段写完、
+追踪笔记也建了，**但跟随视图里一个字都不显示**，跑完也是 0 字——
+`api.runWritingPlan` 只认老的自定义事件名 `delta`，而 section 内的事件早就是
+loop.run 直出的 AG-UI 名（`TEXT_MESSAGE_CONTENT` / `STEP_FINISHED`）。三条 router
+切 AG-UI 时这一条的前端解析漏改了，又没有测试。现在认两套名字、`note_id` 从最近的
+section-start 记；轮末 / 段末用服务端正文对齐（`onNoteContent`）；
+`runWritingPlan.test.ts` 用假 fetch 回放一段 SSE 盯住映射。
+来龙去脉出结果时右栏自动切到「脉络」（之前只有角标变了）。

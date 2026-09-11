@@ -236,7 +236,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -910,6 +910,10 @@ export default function App() {
           setHarness((h) => (h ? { ...h, waitingFirstToken: false, preview: h.preview + text } : h))
           if (currentRef.current?.id === noteId) setContent((c) => c + text)
         },
+        onNoteContent: (noteId, serverContent) => {
+          // 轮末 / 段末用服务端正文对齐（修订是在服务端应用的，本地只攒了续写增量）
+          if (currentRef.current?.id === noteId) { liveContentRef.current = serverContent; setContent(serverContent) }
+        },
         onSectionDone: (d) => {
           setHarness((h) => (h ? {
             ...h, waitingFirstToken: true,
@@ -1128,6 +1132,15 @@ export default function App() {
       if (probe === 'many-tabs' && notes.length >= 8 && !harnessProbeDone.current) {
         harnessProbeDone.current = true
         void (async () => { for (const n of notes.slice(0, 10)) { syncTab(n); await switchTo(n) } })()
+      }
+      // 分段写作全程：没计划先生成一个，再对这棵子树跑
+      if (probe?.startsWith('plan-run:') && tree.length && !harnessProbeDone.current) {
+        const row = tree.find((r) => r.note_id === probe.slice(9))
+        if (row) { harnessProbeDone.current = true; void (async () => {
+          const got = await api.getWritingPlan(row.note_id)
+          if (!got.plan) await api.startWritingPlan(row.note_id, '把创业一年的硬件、APP、市场三条线各写成一篇，每篇有据可依')
+          setTimeout(() => void actionsRef.current.runHarness(row), 800)
+        })() }
       }
       if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
       if (probe?.startsWith('ribbon:') && notes.length && !harnessProbeDone.current) {
@@ -1398,6 +1411,8 @@ export default function App() {
         // 不是弹层：判据 2，看一条旧记录不该离开这一页。
         const r = await api.traceMemory(selection)
         setTrace({ answer: r.answer, facts: r.facts, at: new Date().toISOString() })
+        // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
+        setPaneFocus({ id: 'trace', n: Date.now() })
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection)
         if (r.revisions.length === 0) toast('模型认为不需要补充上下文。')
@@ -2418,7 +2433,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
