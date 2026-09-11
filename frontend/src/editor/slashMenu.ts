@@ -15,6 +15,7 @@ export type SlashItem = {
   key: string
   label: string
   hint: string
+  /** boxicons 类名，如 `bx-pen` */
   icon: string
   /** 需要用户再输入一段提示词的（智能分析、按提示词写…） */
   needsPrompt?: boolean
@@ -26,17 +27,17 @@ export type SlashItem = {
  * `/` 是"让 AI 干活"的入口，把两类混在一起会让这个菜单越长越难用。
  * 音频和语音留在这里，是因为它们插入之后都要**跑转写**，本身就是 AI 动作。 */
 export const SLASH_ITEMS: SlashItem[] = [
-  { key: 'prompt', icon: '✨', label: '用 AI 写', hint: '描述你想写什么，会结合上下文和你的知识库',
+  { key: 'prompt', icon: 'bx-pen', label: '用 AI 写', hint: '描述你想写什么，会结合上下文和你的知识库',
     needsPrompt: true, placeholder: '例如：把上面几段总结成三条结论' },
-  { key: 'chart', icon: '📈', label: '智能插图', hint: '数据用图表、概念用文生图，自动判断' },
-  { key: 'table', icon: '📋', label: '智能表格', hint: '把上下文整理成表格',
+  { key: 'chart', icon: 'bx-image-add', label: '智能插图', hint: '数据用图表、概念用文生图，自动判断' },
+  { key: 'table', icon: 'bx-table', label: '智能表格', hint: '把上下文整理成表格',
     needsPrompt: true, placeholder: '想整理成什么表？留空则自动判断' },
-  { key: 'table-image', icon: '🖼', label: '图片转表格', hint: '传一张图，识别里面的表格' },
-  { key: 'eda', icon: '📊', label: '数据可视化', hint: '把笔记里的表格画成图：分布、占比、对比' },
-  { key: 'analysis', icon: '🧮', label: '智能数据分析', hint: '问一个数据问题，用工具算出来再回答',
+  { key: 'table-image', icon: 'bx-image-alt', label: '图片转表格', hint: '传一张图，识别里面的表格' },
+  { key: 'eda', icon: 'bx-bar-chart-alt-2', label: '数据可视化', hint: '把笔记里的表格画成图：分布、占比、对比' },
+  { key: 'analysis', icon: 'bx-calculator', label: '智能数据分析', hint: '问一个数据问题，用工具算出来再回答',
     needsPrompt: true, placeholder: '例如：哪个渠道的单位曝光收入最高？' },
-  { key: 'voice', icon: '🎙', label: '语音输入', hint: '录一段话，转写成文字插进来' },
-  { key: 'audio', icon: '🎧', label: '插入音频', hint: '插入音频并自动转写出文字稿' },
+  { key: 'voice', icon: 'bx-microphone', label: '语音输入', hint: '录一段话，转写成文字插进来' },
+  { key: 'audio', icon: 'bx-headphone', label: '插入音频', hint: '插入音频并自动转写出文字稿' },
 ]
 
 export type SlashState = {
@@ -122,9 +123,9 @@ function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElemen
     const row = document.createElement('div')
     row.className = 'slash-item' + (i === st.active ? ' active' : '')
     row.innerHTML = ''
-    const icon = document.createElement('span')
-    icon.className = 'slash-icon'
-    icon.textContent = it.icon
+    // boxicons 名字（跟外壳其它图标一套），不再是 emoji
+    const icon = document.createElement('i')
+    icon.className = 'slash-icon bx ' + it.icon
     const text = document.createElement('span')
     const label = document.createElement('div')
     label.className = 'slash-label'

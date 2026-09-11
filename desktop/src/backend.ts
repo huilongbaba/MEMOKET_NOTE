@@ -22,7 +22,8 @@ export type Backend = { port: number; stop: () => void }
  * localStorage 里的状态每次启动全部清零（实拍：设置里选了深色，重开是浅色）。
  * 所以先试一个冷门的固定端口；真被占了（多开一份、或者上次的进程还没退干净）
  * 再退回随机，这时状态丢一次，总比起不来强。 */
-const PREFERRED_PORT = 47231
+/** 正式版 47231；开发 / 探针实例 47232——两者经常同时开着，各用各的。 */
+const PREFERRED_PORT = { packaged: 47231, dev: 47232 }
 
 function listenFree(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -36,14 +37,15 @@ function listenFree(port: number): Promise<number> {
   })
 }
 
-async function freePort(): Promise<number> {
+async function freePort(isPackaged: boolean): Promise<number> {
+  const preferred = isPackaged ? PREFERRED_PORT.packaged : PREFERRED_PORT.dev
   // 上一份进程 ⌘Q 之后 uvicorn 还要一两秒才真正退出、放开端口；紧接着重开
   // 会撞上它。等一小会儿再放弃，不然「重启一下」就把状态清零了。
   for (let i = 0; i < 20; i++) {
-    try { return await listenFree(PREFERRED_PORT) } catch { await new Promise((r) => setTimeout(r, 250)) }
+    try { return await listenFree(preferred) } catch { await new Promise((r) => setTimeout(r, 250)) }
   }
   const p = await listenFree(0)
-  console.warn(`[desktop] 固定端口 ${PREFERRED_PORT} 一直被占，退回随机端口 ${p}（本次 localStorage 状态会丢）`)
+  console.warn(`[desktop] 固定端口 ${preferred} 一直被占，退回随机端口 ${p}（本次 localStorage 状态会丢）`)
   return p
 }
 
@@ -100,7 +102,7 @@ export async function startBackend(opts: {
   onLog?: (line: string) => void
   timeoutMs?: number
 }): Promise<Backend> {
-  const port = await freePort()
+  const port = await freePort(opts.isPackaged)
   const { kind, exe, cwd } = locate(opts.isPackaged, opts.resourcesPath)
 
   const args = kind === 'dev'

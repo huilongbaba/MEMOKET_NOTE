@@ -49,9 +49,11 @@ function remember(line: string) {
 }
 
 function createWindow(url: string) {
+  // `--win=WxH`：截图核对窄窗口用
+  const winArg = process.argv.find((a) => a.startsWith('--win='))?.slice(6).split('x').map(Number)
   win = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: winArg?.[0] || 1440,
+    height: winArg?.[1] || 900,
     minWidth: 900,
     minHeight: 600,
     // 左上角留出红绿灯的位置——照 Trilium 的做法，标题栏交给界面自己画，

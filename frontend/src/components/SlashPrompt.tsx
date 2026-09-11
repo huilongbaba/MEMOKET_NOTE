@@ -30,7 +30,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 6 }}>
-        <span>{item.icon}</span>
+        <i className={'bx ' + item.icon} />
         <strong style={{ fontSize: 13 }}>{item.label}</strong>
         <span className="muted" style={{ fontSize: 11 }}>{item.hint}</span>
       </div>

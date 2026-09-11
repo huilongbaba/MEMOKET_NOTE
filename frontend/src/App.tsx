@@ -137,6 +137,8 @@ export default function App() {
   // App.tsx，收益不成比例。要改它就点「在标签里打开」。
   const [split, setSplit] = useState<{ id: string; w: number } | null>(() => {
     try {
+      // 探针截图要的是干净的初始布局，不把上次的分屏带进来
+      if (new URLSearchParams(location.search).get('probe')) return null
       const raw = localStorage.getItem('memoket-note-split:' + api.getUser())
       return raw ? (JSON.parse(raw) as { id: string; w: number }) : null
     } catch { return null }
@@ -1059,6 +1061,27 @@ export default function App() {
       if (probe?.startsWith('tap:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(4))
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runMagicTap(), 1500) })() }
+      }
+      // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
+      if ((probe === 'slash' || probe === 'mention') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => (x.content ?? '').length > 80)
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          setTimeout(() => {
+            const view = editorViewRef.current
+            if (!view) return
+            const end = view.state.doc.length
+            view.focus()
+            view.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 }, userEvent: 'input.type' })
+            view.dispatch({ changes: { from: end + 2, insert: probe === 'slash' ? '/' : '@' }, selection: { anchor: end + 3 }, userEvent: 'input.type' })
+            if (probe === 'mention') view.dispatch({ changes: { from: end + 3, insert: '样机' }, selection: { anchor: end + 5 }, userEvent: 'input.type' })
+            view.dispatch({ effects: EditorView.scrollIntoView(end + 3) })
+          }, 1500)
+        })() }
+      }
+      if (probe?.startsWith('pane:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => (x.content ?? '').length > 80)
+        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
       }
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       if (probe === 'selection' && notes.length && !harnessProbeDone.current) {

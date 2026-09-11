@@ -349,6 +349,9 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   flex-shrink: 0;
   text-align: center;
   line-height: 1.4;
+  font-size: 16px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 .slash-label {
   font-size: 13px;
@@ -848,3 +851,22 @@ input[type=file]:hover { border-color: var(--accent); }
 
 /* 设置页几段之间留口气：外观 chips 紧贴着下一段标题（实拍） */
 .stack > .kb-section-title:not(:first-child) { margin-top: 18px; }
+
+/* @ 引用补全：CM6 默认是等宽字 + 无限高的说明面板（实拍：原文列表拉到窗口外）。
+   CM6 的主题选择器带一个生成的类名（.ͼ1.cm-tooltip…），比这里的高一级，所以用
+   !important 才压得住。 */
+.cm-tooltip.cm-tooltip-autocomplete {
+  font-family: inherit !important; border: 1px solid var(--line) !important; border-radius: 8px;
+  background: var(--bg) !important; box-shadow: 0 8px 28px rgba(0,0,0,.14); overflow: hidden;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul { font-family: inherit !important; font-size: 13px !important; max-width: 520px !important; max-height: 320px !important; }
+.cm-tooltip.cm-tooltip-autocomplete > ul > li { padding: 5px 10px !important; line-height: 1.4 !important; }
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--hover) !important; color: inherit !important; }
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionDetail { font-style: normal !important; color: var(--muted); font-size: 11px; margin-inline-start: 8px !important; }
+.cm-tooltip.cm-completionInfo {
+  font-family: inherit; font-size: 12px; line-height: 1.5; max-height: 50vh !important; overflow-y: auto !important;
+  border: 1px solid var(--line) !important; border-radius: 8px; background: var(--bg) !important; box-shadow: 0 8px 28px rgba(0,0,0,.14);
+  padding: 8px 10px !important; width: 340px !important;
+}
+/* 树底部浮动工具条会盖住最后一行（窄窗实拍） */
+.note-tree { padding-bottom: 44px; }
