@@ -2415,13 +2415,13 @@ export default function App() {
               <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
                       disabled={loading === 'note-harness'}
                       title="magic tap 续写：先查知识库，据此往下写一段（流式）">
-                <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-magic-wand')} />{loading === 'tap' ? '停止' : '续写'}
+                <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-magic-wand')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
               </button>
               <span className="fb-split">
                 <button className={'fb-btn primary' + (loading === 'note-harness' ? ' running' : '')}
                         onClick={() => runNoteHarness('write')} disabled={loading === 'tap'}
                         title="智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停">
-                  <i className={'bx ' + (loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} />{loading === 'note-harness' ? '停止' : '智能续写'}
+                  <i className={'bx ' + (loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
                 </button>
                 <button className="fb-btn primary fb-caret-btn" title="打磨 / 逐轮我来定"
                         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>

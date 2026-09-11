@@ -709,7 +709,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   margin: 0 0 4px;
 }
 .fb-btn {
-  height: 32px; padding: 0 12px; font-size: 13px; border-radius: 16px; line-height: 1;
+  height: 32px; padding: 0 12px; font-size: 13px; border-radius: 16px; line-height: 1; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 5px;
   background: var(--floating-btn-bg); color: var(--fg); border: 1px solid transparent;
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -817,3 +817,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .memory-card-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 120ms; }
 .memory-card:hover .memory-card-actions { opacity: 1; }
 .memory-card:hover { border-color: var(--accent); }
+
+/* 中栏窄（分屏）时浮动按钮只留图标 */
+.note-body { container-type: inline-size; }
+@container (max-width: 600px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } }
