@@ -278,7 +278,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
           </div>
         )}
 
-        <div className="row" style={{ margin: '10px 0' }} hidden={embedded}>
+        {!embedded && <div className="row" style={{ margin: '10px 0' }}>
           {(['overview', 'topics', 'timeline', 'facts'] as Tab[]).map((t) => (
             <button
               key={t}
@@ -288,7 +288,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
               {{ overview: '概览', topics: '主题地图', timeline: '时间线', facts: '事实表' }[t]}
             </button>
           ))}
-        </div>
+        </div>}
 
         {/* overview 是默认 tab，stats 请求没回来之前是 null——之前这里直接
            `stats &&` 短路，打开面板的第一瞬间内容区彻底空白，没有任何

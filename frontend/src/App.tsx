@@ -500,7 +500,8 @@ export default function App() {
     pushHistory(id)
     setCurrent(null); setTitle(''); setContent('')
     setVirtualId(id)
-    const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? (id.startsWith('kb:facts') ? '事实表' : id)
+    const label = title ?? allRows.find((r) => r.note_id === id)?.title
+      ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':') : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
       ? prev
       : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
