@@ -260,10 +260,10 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 | **NoteIcon（可点的笔记图标）** | `$T/widgets/note_icon.{tsx,css}`，`--note-icon-size: 30px`（新布局 16px），容器 padding 10px（新布局 6px），点开是图标选择器 — `note_icon.css:1-24,38-74` | 笔记的视觉标识 | 中。树图标做了之后自然要有 | 细节 |
 | **save-status-badge（保存状态）** | `$T/widgets/layout/NoteBadges.css:28-45`：`opacity: .4`，保存成功后 5s 淡出，出错变红且不淡出 | 自动保存的产品里告诉用户「存了」 | **中高**。我们是自动保存 + 一个「保存」按钮，按钮反而暗示「不点就没存」 | 细节 |
 | **StatusBar 的 Breadcrumb（笔记路径面包屑）** | `$T/widgets/layout/Breadcrumb.tsx` + `StatusBar.css:16-19`（`flex-grow: 1`，`--icon-button-size: 23px`） | 当前笔记在树的哪个位置 | **中高**。我们有克隆——同一篇在多处，面包屑是唯一能说清「你现在看的是哪一份」的东西 | **明显** |
-| **shortcut_hints 面板 + 按钮** | `$T/widgets/shortcut_hints/`：`Alt+F1` 开面板，另有可挂在任意 widget 上的浮层 `?` 按钮，**按当前上下文收集快捷键** — `shortcut_hint_button.tsx:22-55` | 快捷键可发现 | 中。我们的快捷键全散在 `title` 属性里 | 细节 |
+| **shortcut_hints 面板 + 按钮** | `$T/widgets/shortcut_hints/`：`Alt+F1` 开面板，另有可挂在任意 widget 上的浮层 `?` 按钮，**按当前上下文收集快捷键** — `shortcut_hint_button.tsx:22-55` | 快捷键可发现 | **已做**（2026-09-12）：`⌘/` 快捷键一览 + 欢迎页常用键，键表在 `shortcuts.ts`，TRACELOG [31] | — |
 | **tree-actions 工具条（折叠全树 / 定位当前笔记）** | `$T/widgets/note_tree.ts:113-121`；收起 40px 圆钮 hover 展开 — `theme-next/shell.css:908-981` | 树导航 | **中高**（见第 2 节） | **明显** |
 | **TabHistoryNavigationButtons（前进后退）** | `$T/widgets/TabHistoryNavigationButtons.tsx:12-37`，右键出历史菜单 | 跳去看一篇再回来 | **高（判据 2 痛点 12）** | **明显** |
-| **Backlinks（反向链接）** | 浮动按钮 `Backlinks` — `$T/widgets/FloatingButtonsDefinitions.tsx:372-437`；面板 `.backlinks-items { width: 400px; top: 50px }` — `FloatingButtons.css:112-158`；侧栏版 `$T/widgets/sidebar/Backlinks.tsx` | 「哪些笔记引用了我」，带**摘录片段** | **中高（判据 2）**。我们有行内出处（`factCite`），但只有正向；反向那半——「这条事实还被哪几篇引用过」——是知识库的核心视角 | **明显** |
+| **Backlinks（反向链接）** | 浮动按钮 `Backlinks` — `$T/widgets/FloatingButtonsDefinitions.tsx:372-437`；面板 `.backlinks-items { width: 400px; top: 50px }` — `FloatingButtons.css:112-158`；侧栏版 `$T/widgets/sidebar/Backlinks.tsx` | 「哪些笔记引用了我」，带**摘录片段** | **已做**（2026-09-12）：事实反链在 ribbon「引用」的「也引用于」；笔记之间的链接 `[[` 补全 + `note://` 标记 + ribbon「链接」（链出 / 链到这篇的），见 TRACELOG [32] | — |
 | **NoteMap / NoteMapGraph** | `$T/widgets/sidebar/NoteMap.tsx` | 笔记关系图 | 低。我们有 `KnowledgeGraph.tsx`（713 行），但它是弹层不是右栏 tab；北极星表里写着该进右栏 | 细节 |
 | **branch_prefix 对话框** | `$T/widgets/dialogs/branch_prefix.tsx`，F2 — `$TS/…:193-200` | 同一篇在不同位置显示不同前缀 | 低。克隆量小的时候用不上 | — |
 | **delete_notes 确认对话框** | `$T/widgets/dialogs/delete_notes.tsx` | 删子树前列出会删掉什么 | 低。我们走的是**乐观删除 + 撤销窗口**（`$M/App.tsx:882` 的注释明说「不用 confirm 对话框」），对单篇比确认框好。**但树菜单的「删除（连同子树）」是例外**——它会连带删掉看不见的东西，用户在点之前不知道会删几篇 | 细节 |
@@ -327,5 +327,5 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 **第四批（长出 Trilium 没有但我们需要的）**
 18. FloatingButtons 化：把 AI 动作从正文流里提到浮层（判据 1）— 9
 19. PopupEditor：不离开当前笔记看另一篇（判据 2）— 9
-20. Backlinks：一条事实还被哪几篇引用过（判据 2）— 9
+20. Backlinks：一条事实还被哪几篇引用过（判据 2）— 9 ✅ 事实反链 + 笔记反链 [32]
 21. 分屏 — 9
