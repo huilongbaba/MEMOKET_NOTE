@@ -36,6 +36,73 @@
                     状态栏（第 N 轮在干什么）
 ```
 
+### 架构图
+
+```mermaid
+flowchart TB
+  subgraph UI["前端 · Electron 外壳"]
+    ED["编辑器 CodeMirror<br/>流式增量 · roundDiff 高亮 · factCite 行内出处"]
+    PLAN["右栏「计划」<br/>骨架 · 每轮打分 · 修订 · 工具调用 · 策略"]
+    TREE["笔记树 + 知识库虚拟子树<br/>◆N 引用数 · ⇡ 已摄入"]
+    KBP["知识库页面<br/>首页 · 主题 · 实体 · 时间线 · 事实表 · 主题地图"]
+  end
+
+  subgraph API["路由 routers/"]
+    NH["note_harness · writing_plan · compose_block<br/>认 Mode · 装 State · 挑 Hooks"]
+    RS["harness/resume<br/>轮末暂停 · 恢复"]
+    KBR["kb · memory · tree · notes<br/>虚拟子树 · 页面数据 · peek · 反查"]
+  end
+
+  subgraph H["harness/ · 不认识 FastAPI 和 sqlite"]
+    LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
+    MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
+    HOOKS["Hooks ×3<br/>prepare / produce / commit"]
+    MW["Middleware ×13<br/>Skills Facts Provenance Repeats Checks BestOf History<br/>Revise Repair Runtime Replan Compact Save"]
+    CHK["checks/ ×10 代码判据<br/>+ rubric 模型打分"]
+    TOOLS["tools/ ×21 · registry 分组授权<br/>memory · data · chart · table · image · skill"]
+    AL["agent_loop<br/>模型自己决定查什么"]
+    SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
+    SNAP["snapshot.py<br/>冻结 / 解冻 State"]
+  end
+
+  subgraph DB["database/"]
+    STORE["store.py sqlite<br/>notes · branches · note_citations · snapshots · runs"]
+    KITE["kite/ UserMemory<br/>codebook.xml · recall · facts · topics · entities"]
+    KB["kb/<br/>clusters · recall · search · virtual_tree · pages"]
+    RET["retrieval.py<br/>零 LLM 兜底 · format_fact 带 id"]
+  end
+
+  ED -- "一个按钮 = 一次 run" --> NH
+  NH --> LOOP
+  LOOP --> MODE
+  LOOP --> HOOKS
+  LOOP --> MW
+  MW --> CHK
+  HOOKS -- prepare --> AL
+  AL --> TOOLS
+  TOOLS --> KITE
+  TOOLS --> KB
+  TOOLS --> SK
+  HOOKS -- 退路 --> RET
+  RET --> KITE
+  MW -- Save 每轮落盘 --> STORE
+  SNAP --> STORE
+  RS --> SNAP
+  LOOP -- "AG-UI 事件 → SSE<br/>STEP_FINISHED 带权威正文" --> ED
+  LOOP -- "evaluate · revision · policy · phase_delta" --> PLAN
+  STORE -- "note_citations → cite_count" --> TREE
+  KBR --> KB
+  KB --> KITE
+  KBP --> KBR
+  TREE --> KBR
+  ED -- "轮末暂停 · 逐条处置 · 接着写" --> RS
+```
+
+读法：一个按钮触发一次 run；`loop.py` 是唯一的循环，`Mode` 说这次跑什么、`Hooks` 说
+三件不同的事怎么做、`Middleware` 是默认全开的能力；材料从工具循环进来（带事实 id），
+判据先代码后模型；每轮结束把**服务端正文**随事件送回编辑器；引用落成
+`note_citations`，树上就能看到每篇引用了几条。
+
 三个词的位置：
 
 | 词 | 是什么 | 在哪 |
