@@ -4,7 +4,7 @@
  * 三件事：起后端、开窗口、退出时收干净。界面本身全在渲染进程里，跟网页版
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
-import { nativeTheme, app, BrowserWindow, Menu, dialog, shell } from 'electron'
+import { nativeTheme, app, BrowserWindow, Menu, dialog, shell, ipcMain, session } from 'electron'
 import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -65,6 +65,7 @@ function createWindow(url: string) {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   })
 
@@ -138,6 +139,11 @@ async function boot() {
 }
 
 if (forcedTheme) nativeTheme.themeSource = forcedTheme
+// 设置页的「外观」：跟随系统 / 浅色 / 深色。截图探针强制的主题优先。
+ipcMain.on('set-theme', (_e, theme: unknown) => {
+  if (forcedTheme) return
+  if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
+})
 
 /** 应用菜单。macOS 上没有它，⌘C/⌘V 这些 role 快捷键在 Electron 里不生效；
  *  缩放三件套（⌘= / ⌘- / ⌘0）也从这里来——照 Trilium 的 zoomIn/Out/Reset。 */
@@ -162,7 +168,22 @@ function installMenu() {
   ]))
 }
 
-app.whenReady().then(() => { installMenu(); return boot() })
+// 开发 / 探针跑的实例用自己的 userData：不然它跟装好的正式版共用一个
+// Local Storage（leveldb 只允许一个进程持锁），正式版开着时探针那份的
+// localStorage 会静默变成内存版——实拍「选了深色重开是浅色」查了三层
+// （端口、刷盘）最后是这个。
+if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + '-dev')
+
+// 单实例（Trilium 同款）：第二份直接把第一份的窗口拉到前面。两份同时跑会
+// 抢同一个 sqlite 和 localStorage，界面看着正常、数据各写各的。
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (win) { if (win.isMinimized()) win.restore(); win.focus() }
+  })
+  app.whenReady().then(() => { installMenu(); return boot() })
+}
 
 app.on('window-all-closed', () => {
   // macOS 的习惯是关窗不退出；但后端是这个 app 的子进程，留着它空跑没有意义
@@ -180,5 +201,11 @@ app.on('activate', () => {
 
 // 退出路径不止一条（⌘Q、关窗、崩溃），每条都要收掉子进程，否则会留下一个
 // 占着端口和 sqlite 的孤儿进程。
-app.on('before-quit', () => backend?.stop())
+// localStorage（标签页 / 分屏 / 外观…）是 Chromium 攒着慢慢落盘的，退出得快
+// 就丢：实拍「设置里选深色 → 重开是浅色」，client-log 证实同一 origin 下
+// 上次存的值没了。退出前强制刷盘。
+app.on('before-quit', () => {
+  try { session.defaultSession.flushStorageData() } catch { /* 没有 session 时无所谓 */ }
+  backend?.stop()
+})
 process.on('exit', () => backend?.stop())

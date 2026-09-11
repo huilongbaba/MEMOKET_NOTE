@@ -11,21 +11,40 @@ import path from 'node:path'
 
 export type Backend = { port: number; stop: () => void }
 
-/** 要一个当前空闲的端口。
+/** 要一个端口：优先固定的那个，被占了才随机。
  *
  * **不写死 8000。** 开发机上经常已经手工跑着一个后端（我自己就撞过），写死
  * 端口的话桌面版要么起不来、要么静悄悄连到那个陈旧进程上——那比起不来更糟，
- * 因为界面看着是好的，跑的却是别人的代码。 */
-function freePort(): Promise<number> {
+ * 因为界面看着是好的，跑的却是别人的代码。
+ *
+ * **但也不能每次都随机。** 页面的 origin 是 `http://127.0.0.1:<port>`，
+ * localStorage 按 origin 隔离——端口一变，标签页、分屏、右栏、外观这些存在
+ * localStorage 里的状态每次启动全部清零（实拍：设置里选了深色，重开是浅色）。
+ * 所以先试一个冷门的固定端口；真被占了（多开一份、或者上次的进程还没退干净）
+ * 再退回随机，这时状态丢一次，总比起不来强。 */
+const PREFERRED_PORT = 47231
+
+function listenFree(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer()
     srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
+    srv.listen(port, '127.0.0.1', () => {
       const addr = srv.address()
       if (addr && typeof addr === 'object') srv.close(() => resolve(addr.port))
       else reject(new Error('拿不到端口'))
     })
   })
+}
+
+async function freePort(): Promise<number> {
+  // 上一份进程 ⌘Q 之后 uvicorn 还要一两秒才真正退出、放开端口；紧接着重开
+  // 会撞上它。等一小会儿再放弃，不然「重启一下」就把状态清零了。
+  for (let i = 0; i < 20; i++) {
+    try { return await listenFree(PREFERRED_PORT) } catch { await new Promise((r) => setTimeout(r, 250)) }
+  }
+  const p = await listenFree(0)
+  console.warn(`[desktop] 固定端口 ${PREFERRED_PORT} 一直被占，退回随机端口 ${p}（本次 localStorage 状态会丢）`)
+  return p
 }
 
 /** 找 python 解释器和 backend 目录。

@@ -3,9 +3,12 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { clientLog } from './api'
+import { restoreTheme } from './theme'
 import 'boxicons/css/boxicons.min.css'   // 图标字体（Trilium 同款，MIT）
 import './shell.css'   // 先：定义令牌
 import './styles.css'  // 后：老变量名指向那些令牌
+
+restoreTheme()
 
 // 没被任何 try 接住的错误也报上去
 window.addEventListener('error', (e) => void clientLog('error', String(e.message), e.error?.stack ?? '', 'window'))

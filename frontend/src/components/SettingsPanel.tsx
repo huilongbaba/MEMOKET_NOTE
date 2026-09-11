@@ -2,6 +2,32 @@ import { useEffect, useState } from 'react'
 import * as api from '../api'
 import type { ProviderConfig } from '../api'
 import { toast } from '../toast'
+import { applyTheme, canSwitchTheme, getTheme, type Theme } from '../theme'
+
+/** 外观三选一。放在 LLM 之前——Trilium 的设置也是 Appearance 打头。 */
+function AppearanceSection() {
+  const [theme, setTheme] = useState<Theme>(getTheme())
+  const options: { v: Theme; label: string; icon: string }[] = [
+    { v: 'system', label: '跟随系统', icon: 'bx-desktop' },
+    { v: 'light', label: '浅色', icon: 'bx-sun' },
+    { v: 'dark', label: '深色', icon: 'bx-moon' },
+  ]
+  return (
+    <>
+      <h3 className="kb-section-title">外观</h3>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {options.map((o) => (
+          <button key={o.v} className={'chip' + (theme === o.v ? ' active' : '')}
+                  disabled={!canSwitchTheme() && o.v !== 'system'}
+                  onClick={() => { setTheme(o.v); applyTheme(o.v) }}>
+            <i className={'bx ' + o.icon} /> {o.label}
+          </button>
+        ))}
+      </div>
+      {!canSwitchTheme() && <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>浏览器里只能跟随系统；桌面版可以固定浅色 / 深色。</p>}
+    </>
+  )
+}
 
 /**
  * LLM 供应商设置：本地模型 or GPT。全局设置，不分用户——切了之后写作
@@ -70,7 +96,8 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
           <p className="muted"><span className="spinner" /> 加载中…</p>
         ) : (
           <div className="stack" style={{ marginTop: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 14 }}>LLM 供应商</h3>
+            {embedded && <AppearanceSection />}
+            <h3 className="kb-section-title">LLM 供应商</h3>
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 8px' }}>
               续写、修订、知识库抽取这些功能背后调用的模型——本地模型免费但慢，
               GPT 需要自己的 API key，通常快很多。

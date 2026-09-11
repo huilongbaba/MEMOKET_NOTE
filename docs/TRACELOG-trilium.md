@@ -613,3 +613,25 @@ render 里定义的 `const Shell = ({children}) => …`，每次 render 都是�
   `test_directory_map` 对 harness-framework.md 第 3 节——middleware / checks / tools
   下 23 个文件没上图，frontend 那段被当成 python 目录树解析出三个幽灵文件。图补全，
   前端 / 桌面拆成第二个围栏。
+
+## [27] 全量巡检第 4 轮：外观设置 + 桌面壳三处根因（2026-09-11）
+
+实拍设置 / Skill / 导入 / 树菜单 / 暗色 / 空笔记。抓到：
+- Skill 页标签写的是 `app:skills`——openVirtual 没人传标题时把 id 当标题。补一张
+  `VIRTUAL_LABELS` 表（app:* 和 kb 各工具节点）。
+- **没有外观设置**，暗色只能跟系统。加「外观：跟随系统 / 浅色 / 深色」（Trilium 的
+  Appearance 打头）。界面暗色全靠 `prefers-color-scheme`，桌面壳里那个值由主进程
+  nativeTheme 决定——加了第一个 preload（只暴露 setTheme 一件事），选择存
+  localStorage，启动时再递一遍。
+- 然后「选了深色、重开是浅色」，查了三层才到根因，每层都是真问题：
+  1. **后端端口每次随机** → 页面 origin 每次不同 → localStorage 按 origin 隔离，
+     标签页 / 分屏 / 右栏 / 知识库展开状态**从来没有跨启动保住过**。改成优先固定端口
+     47231（等上一份 uvicorn 退干净，最多 5 秒），被占才退回随机。
+  2. Chromium 的 DOM storage 是攒着落盘的，退出快就丢：before-quit 里
+     `session.flushStorageData()`。
+  3. client-log 证实同 origin 下存过 `dark` 重开却读到 `system`——leveldb 只允许
+     一个进程持锁，**打包版还开着**，探针那份的 localStorage 静默变成内存版。
+     开发 / 探针实例改用 `userData-dev`；正式版加 `requestSingleInstanceLock`
+     （第二份把第一份窗口拉前台），两份同跑抢 sqlite 和 localStorage 的事从此没有。
+  连拍验证：选深色 → 重开仍是深色，上一次开的「设置」标签也回来了。
+- 设置页段与段之间加间距；选区菜单 / ⌘K 的 emoji 全换 boxicons。

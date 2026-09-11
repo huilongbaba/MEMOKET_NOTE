@@ -83,6 +83,13 @@ export type HarnessState = {
   follow: boolean
 }
 
+/** 不在树上、又没人传标题时标签页显示什么——之前 app:skills 直接把 id 当标题（实拍）。 */
+const VIRTUAL_LABELS: Record<string, string> = {
+  'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入',
+  kb: '知识库', 'kb:graph': '主题地图', 'kb:digest': '定期回顾', 'kb:timeline': '时间线',
+  'kb:topics': '主题', 'kb:entities': '实体', 'kb:recent': '最近摄入',
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
@@ -519,7 +526,7 @@ export default function App() {
     setCurrent(null); setTitle(''); setContent('')
     setVirtualId(id)
 
-    const label = title ?? allRows.find((r) => r.note_id === id)?.title
+    const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
       ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':') : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
       ? prev
@@ -1031,6 +1038,12 @@ export default function App() {
         setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+      if (probe === 'skills') setTimeout(() => void openVirtual('app:skills'), 600)
+      // 外观三选一走 preload → 主进程 nativeTheme；点完再截图看有没有真的变色
+      if (probe === 'theme-dark' || probe === 'theme-system') {
+        setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+        setTimeout(() => (document.querySelector(probe === 'theme-dark' ? '.chip .bx-moon' : '.chip .bx-desktop')?.parentElement as HTMLElement | null)?.click(), 3000)
+      }
       if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
       if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
       if (probe === 'graph-zoom') {

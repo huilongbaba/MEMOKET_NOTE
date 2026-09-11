@@ -845,3 +845,6 @@ input[type=file]:hover { border-color: var(--accent); }
 .tap-prov { margin: 0 2px 6px; }
 .tap-prov .icon-btn.sm { width: 20px; height: 20px; padding: 0; }
 .palette-item .bx { margin-inline-end: 6px; color: var(--muted); vertical-align: -1px; }
+
+/* 设置页几段之间留口气：外观 chips 紧贴着下一段标题（实拍） */
+.stack > .kb-section-title:not(:first-child) { margin-top: 18px; }
