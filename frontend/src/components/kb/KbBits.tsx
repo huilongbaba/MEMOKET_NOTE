@@ -29,7 +29,7 @@ export function MiniBars({ data, height = 64, label = '条事实' }: { data: KbM
   if (data.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>还没有按月的数据。</p>
   const max = Math.max(1, ...data.map((d) => d.facts))
   return (
-    <div className="mini-bars">
+    <div className="mini-bars" style={{ maxWidth: data.length * 31 }}>
       <div className="mini-bars-row" style={{ height }}>
         {data.map((d) => (
           <div key={d.month} className="mini-bar" title={`${d.month} · ${d.facts} ${label}`}
