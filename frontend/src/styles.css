@@ -83,9 +83,10 @@ button {
   color: var(--fg);
   cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:hover:not(:disabled) { background: var(--hover); border-color: var(--main-border); }
+button { transition: background 120ms, border-color 120ms, color 120ms; }
 button:disabled { opacity: .5; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 /* Secondary/utility actions (save/export/copy/focus) shouldn't visually
    compete with the primary "do a thing" buttons above them -- smaller,
    borderless-until-hovered, so the eye lands on magic-tap/存入知识库 first. */
@@ -729,3 +730,18 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .floating-buttons .fb-btn:not(.primary) { padding: 0 9px; }
 .harness-line { font-size: 12px; margin: 0 0 8px; display: flex; align-items: center; gap: 4px; }
 .title-icon { font-size: 20px; color: var(--muted); margin-inline-end: 6px; flex-shrink: 0; }
+
+
+/* ------------------------------------------------ 文件选择框：别用浏览器原生那副样子 */
+input[type=file] {
+  padding: 8px 10px; border: 1px dashed var(--main-border); border-radius: 8px;
+  background: var(--card-alt); color: var(--muted); font-size: 12px; cursor: pointer;
+}
+input[type=file]::file-selector-button {
+  font: inherit; font-size: 13px; padding: 5px 12px; margin-inline-end: 10px;
+  border: 1px solid var(--main-border); border-radius: 6px; background: var(--main-bg); color: var(--fg); cursor: pointer;
+}
+input[type=file]:hover { border-color: var(--accent); }
+/* 右栏各标签里的小标题：section 标题，不是页面标题 */
+.right-pane-body h2 { font-size: 12px; margin: 10px 0 6px; color: var(--muted); }
+.right-pane-body > :first-child h2 { margin-top: 0; }
