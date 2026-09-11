@@ -846,7 +846,7 @@ input[type=file]:hover { border-color: var(--accent); }
 
 /* magic tap 的来源行：一行折叠，展开才列来源 */
 .tap-prov { margin: 0 2px 6px; }
-.tap-prov .icon-btn.sm { width: 20px; height: 20px; padding: 0; }
+.tap-prov .icon-btn.sm, .harness-line .icon-btn.sm { width: 20px; height: 20px; padding: 0; margin-inline-start: 4px; }
 .palette-item .bx { margin-inline-end: 6px; color: var(--muted); vertical-align: -1px; }
 
 /* 设置页几段之间留口气：外观 chips 紧贴着下一段标题（实拍） */

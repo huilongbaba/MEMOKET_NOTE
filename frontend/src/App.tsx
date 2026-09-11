@@ -195,6 +195,7 @@ export default function App() {
    * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
    * 事件流水账看不出所以然。 */
   const [agentRounds, setAgentRounds] = useState<AgentRound[]>([])
+  useEffect(() => { agentRoundsRef.current = agentRounds.length }, [agentRounds])
   /** 这一轮 harness 改了什么（新增/删除），传给编辑器做只读高亮。
    * 自动应用的改动用户否则完全看不见被动了哪里。 */
   const [roundDiff, setRoundDiff] = useState<DiffPart[] | null>(null)
@@ -227,6 +228,11 @@ export default function App() {
   // 轮末直接从 ref 读当前正文。
   const liveContentRef = useRef<string>('')
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
+  // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
+  // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
+  const [harnessDone, setHarnessDone] = useState(false)
+  const harnessDoneRef = useRef(false)
+  const agentRoundsRef = useRef(0)
   // 逐轮处置：开着的话每轮写完就停下来，等你在编辑器里逐条接受/撤回，
   // 处置完再点「接着写」。关着是原来的行为——一口气跑完再处置，而那意味着
   // 你在跑的过程中做的处置会被下一轮盖掉。
@@ -990,6 +996,7 @@ export default function App() {
     setBeats(n.beats ?? [])
     setRevisions([])
     setTapMeta(null)
+    if (loading !== 'note-harness') { setHarnessDone(false); harnessDoneRef.current = false; if (!pausedRef.current) setNoteHarnessStatus('') }
     setPausedRun(null)
     syncTab(n)
     // 找回跑到一半停下来等处置的那次运行。
@@ -1082,6 +1089,11 @@ export default function App() {
       if (probe?.startsWith('pane:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => (x.content ?? '').length > 80)
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
+      }
+      if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
+      if (probe === 'many-tabs' && notes.length >= 8 && !harnessProbeDone.current) {
+        harnessProbeDone.current = true
+        void (async () => { for (const n of notes.slice(0, 10)) { syncTab(n); await switchTo(n) } })()
       }
       if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
       if (probe?.startsWith('ribbon:') && notes.length && !harnessProbeDone.current) {
@@ -1766,7 +1778,11 @@ export default function App() {
           : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
           : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
           : '到达轮数上限，自动停止'
-        setNoteHarnessStatus(label)
+        const delta = liveContentRef.current.length - runBaseRef.current.length
+        const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta >= 0 ? '+' : ''}${delta} 字`
+        setNoteHarnessStatus(summary)
+        harnessDoneRef.current = true
+        setHarnessDone(true)
         toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
       },
     }
@@ -1790,6 +1806,7 @@ export default function App() {
     const noteId = current.id
     setLoading('note-harness')
     setNoteHarnessStatus('启动中…')
+    setHarnessDone(false); harnessDoneRef.current = false
     setBeatCoverage(null)
     setAgentRounds([])
     setRoundDiff(null)
@@ -1814,7 +1831,7 @@ export default function App() {
       setLoading('')
       // 停在「等你处置」时不能清——那句提示刚在 onDone 里设好，清掉就等于
       // 两个按钮凭空出现、没有任何说明。
-      if (!pausedRef.current) setNoteHarnessStatus('')
+      if (!pausedRef.current && !harnessDoneRef.current) setNoteHarnessStatus('')
       abortRef.current = null
       reload()
       // reload() 会用服务端正文替换文档，docChanged 会把装饰清掉——跑完
@@ -2622,8 +2639,10 @@ export default function App() {
                 「这一轮写完了，逐条看过之后点『接着写』」和重开笔记时的
                 「上次写到第 N 轮停下来等你处置」两句话都设了但永远显示不出来。
                 用户只看到两个按钮凭空出现，不知道发生了什么。 */}
-            {(loading === 'note-harness' || pausedRun) && noteHarnessStatus && (
-              <p className="muted harness-line"><i className="bx bx-bot" /> {noteHarnessStatus}</p>
+            {(loading === 'note-harness' || pausedRun || harnessDone) && noteHarnessStatus && (
+              <p className="muted harness-line"><i className="bx bx-bot" /> {noteHarnessStatus}
+                {harnessDone && <button className="icon-btn sm" title="关闭" onClick={() => { setHarnessDone(false); harnessDoneRef.current = false; setNoteHarnessStatus('') }}><i className="bx bx-x" /></button>}
+              </p>
             )}
 
             {tapMeta && <TapProvenance meta={tapMeta} onDismiss={() => setTapMeta(null)} />}
