@@ -1083,6 +1083,15 @@ export default function App() {
         const n = notes.find((x) => (x.content ?? '').length > 80)
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
       }
+      if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+      if (probe?.startsWith('ribbon:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => (x.content ?? '').length > 80)
+        if (n) { harnessProbeDone.current = true; void switchTo(n) }
+      }
+      if (probe?.startsWith('big:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(4))
+        if (n) { harnessProbeDone.current = true; const t0 = performance.now(); void switchTo(n).then(() => requestAnimationFrame(() => void api.clientLog('warn', `big note ${n.content.length} 字 switchTo→paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))) }
+      }
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       if (probe === 'selection' && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => (x.content ?? '').length > 80)
@@ -2477,7 +2486,7 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
-            defaultOpen={new URLSearchParams(location.search).get('probe') === 'kb-tab' ? 'cites' : undefined}
+            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' ? 'cites' : pr.startsWith('ribbon:') ? pr.slice(7) : undefined })()}
             tabs={[{
               id: 'format', title: '格式', icon: 'bx-text',
               activate: true,
@@ -2505,7 +2514,8 @@ export default function App() {
               badge: (tree.find((r) => r.note_id === current.id)?.branch_count ?? 1) > 1
                 ? tree.filter((r) => r.note_id === current.id).length : undefined,
               body: <NotePathsPanel noteId={current.id} rows={tree}
-                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
+                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}
+                                    onClone={() => { const row = tree.find((r) => r.note_id === current.id); if (row) void cloneNodeTo(row) }} />,
             }, {
               id: 'info', title: '信息', icon: 'bx-info-circle',
               body: <NoteInfoPanel note={current} content={content} row={tree.find((r) => r.note_id === current.id)} />,

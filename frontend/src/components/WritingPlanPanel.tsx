@@ -100,7 +100,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>🚀 {parent.title} · 写作计划</h2>
+          <h2 style={{ margin: 0 }}><i className="bx bx-rocket" /> {parent.title} · 写作计划</h2>
           <button onClick={onClose}>✕</button>
         </div>
 

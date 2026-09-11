@@ -26,10 +26,12 @@ export function NoteInfoPanel({ note, content, row }: { note: Note; content: str
   )
 }
 
-export function NotePathsPanel({ noteId, rows, onOpen }: {
+export function NotePathsPanel({ noteId, rows, onOpen, onClone }: {
   noteId: string
   rows: TreeRow[]
   onOpen: (noteId: string) => void
+  /** Trilium 的 note paths 组件在列表底下就带「克隆到新位置」 */
+  onClone?: () => void
 }) {
   const [paths, setPaths] = useState<string[][] | null>(null)
   useEffect(() => {
@@ -63,6 +65,11 @@ export function NotePathsPanel({ noteId, rows, onOpen }: {
           ))}
         </div>
       ))}
+      {onClone && (
+        <div>
+          <button className="chip" onClick={onClone}><i className="bx bx-duplicate" /> 克隆到另一个位置…</button>
+        </div>
+      )}
     </div>
   )
 }
