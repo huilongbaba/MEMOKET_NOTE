@@ -32,6 +32,8 @@ import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import QuickView from './components/QuickView'
+import WelcomePane from './components/WelcomePane'
+import ShortcutsPanel from './components/ShortcutsPanel'
 import type { DropWhere } from './components/NoteTree'
 import NoteKbPanel from './components/NoteKbPanel'
 import NoteTree from './components/NoteTree'
@@ -231,6 +233,7 @@ export default function App() {
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
   const [harnessDone, setHarnessDone] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const harnessDoneRef = useRef(false)
   const agentRoundsRef = useRef(0)
   // 逐轮处置：开着的话每轮写完就停下来，等你在编辑器里逐条接受/撤回，
@@ -546,9 +549,11 @@ export default function App() {
   useEffect(() => {
     const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) void openVirtual(id) }
     const onNew = () => void newNote()
+    const onKeys = () => setShowShortcuts(true)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
-    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew) }
+    window.addEventListener('show-shortcuts', onKeys)
+    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows])
 
@@ -1104,6 +1109,7 @@ export default function App() {
         const n = notes.find((x) => x.id === probe.slice(4))
         if (n) { harnessProbeDone.current = true; const t0 = performance.now(); void switchTo(n).then(() => requestAnimationFrame(() => void api.clientLog('warn', `big note ${n.content.length} 字 switchTo→paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))) }
       }
+      if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       if (probe === 'selection' && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => (x.content ?? '').length > 80)
@@ -1246,6 +1252,7 @@ export default function App() {
       if (key === 's') { e.preventDefault(); save() }
       else if (key === 'n') { e.preventDefault(); newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
+      else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
       else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => ({ ...p, rightOn: !p.rightOn })) }
       else if (key === '\\') { e.preventDefault(); setPanes((p) => ({ ...p, leftOn: !p.leftOn })) }
@@ -2303,6 +2310,7 @@ export default function App() {
       {confirmReq && <ConfirmDialog req={confirmReq} />}
       <Toaster />
       <CommandPalette onOpenNote={switchTo} onInsertFact={insertAtCursor} />
+      {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
       {writingPlanParent && (
         <WritingPlanPanel
           parent={writingPlanParent}
@@ -2566,10 +2574,15 @@ export default function App() {
               onCite={null}
             />
           ) : (
-            <p className="muted">
-              左侧新建一篇笔记开始。<br />
-              导入过的会议、录音抽出来的事实都在树底部的「知识库」里，点开一条就是一篇只读笔记。
-            </p>
+            <WelcomePane
+              notes={notes}
+              factCount={kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0}
+              onNew={() => void newNote()}
+              onImport={() => void openVirtual('app:import', '导入')}
+              onOpen={(id) => void openVirtual(id)}
+              onOpenNote={(n) => void switchTo(n)}
+              onShortcuts={() => setShowShortcuts(true)}
+            />
           )
         ) : (
           <>

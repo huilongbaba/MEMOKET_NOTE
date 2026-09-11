@@ -870,3 +870,30 @@ input[type=file]:hover { border-color: var(--accent); }
 }
 /* 树底部浮动工具条会盖住最后一行（窄窗实拍） */
 .note-tree { padding-bottom: 44px; }
+
+/* ------------------------------------------------ 欢迎页（没打开笔记时的中栏） */
+.welcome { max-width: 760px; display: flex; flex-direction: column; gap: 22px; padding-top: 8px; }
+.welcome-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.welcome-card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: start;
+  padding: 14px 14px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card, var(--bg));
+  cursor: pointer; font-size: 13px; line-height: 1.4; min-height: 120px;
+}
+.welcome-card:hover { border-color: var(--accent); background: var(--hover); }
+.welcome-card > .bx { font-size: 22px; color: var(--accent); }
+.welcome-card > b { font-size: 14px; }
+.welcome-card > kbd { position: absolute; top: 12px; inset-inline-end: 12px; }
+.welcome-recent { display: flex; flex-direction: column; gap: 2px; }
+.welcome-recent .kb-link { padding: 5px 8px; border-radius: 6px; gap: 6px; align-items: center; }
+.welcome-recent .kb-link:hover { background: var(--hover); }
+.welcome-keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 18px; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+kbd {
+  font-family: inherit; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--card-alt); color: var(--muted); white-space: nowrap;
+}
+.shortcut-row { display: flex; align-items: center; gap: 10px; padding: 4px 4px; font-size: 13px; }
+.shortcut-row kbd { min-width: 88px; text-align: center; }
+.palette.shortcuts { width: 640px; max-height: 80vh; }
+.shortcuts-body { padding: 4px 12px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; }
+.shortcuts-body section:last-child { grid-column: 1 / -1; }
