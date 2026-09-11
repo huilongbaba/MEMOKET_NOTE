@@ -21,6 +21,7 @@ import { tablePreview } from '../editor/tablePreview'
 import { recallSource } from '../editor/recallCompletion'
 import { noteLinkSource } from '../editor/noteLinkCompletion'
 import { noteLinkChips } from '../editor/noteLink'
+import { getNote } from '../api'
 import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
 import { pendingHunks, roundDiff as roundDiffExt, setRoundDiff, type DiffPart }
@@ -112,7 +113,7 @@ export default function MarkdownEditor({
         markdown({ codeLanguages: languages, extensions: [GFM] }),
         syntaxHighlighting(markdownHighlight),
         dimSyntaxMarks,
-        noteLinkChips,
+        noteLinkChips(async (id) => { try { return await getNote(id) } catch { return null } }),
         mermaidPreview,
         tablePreview,
         runningBlocks((id) => liveRef.current.onStopRun?.(id)),

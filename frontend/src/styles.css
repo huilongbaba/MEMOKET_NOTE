@@ -912,3 +912,6 @@ kbd {
 .revision-row .kb-link { padding: 5px 8px; border-radius: 6px; gap: 8px; align-items: center; }
 .revision-row .kb-link:hover, .revision-row.open .kb-link { background: var(--hover); }
 .revision-body { margin: 4px 0 8px 26px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-height: 32vh; overflow-y: auto; background: var(--card, var(--bg)); }
+
+.health-bad { color: var(--del); display: inline-flex; align-items: center; gap: 4px; }
+.cm-note-peek .peek-body { color: var(--muted); margin-top: 4px; white-space: pre-wrap; max-height: 160px; overflow: hidden; }

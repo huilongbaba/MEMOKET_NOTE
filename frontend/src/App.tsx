@@ -269,6 +269,7 @@ export default function App() {
   }, [content])
 
   const [healthMsg, setHealthMsg] = useState('')
+  const [asrOffline, setAsrOffline] = useState('')
   const [focusMode, setFocusMode] = useState(false)
   // 左右栏各自可拖宽、可独立折叠，按用户存本机（Trilium 存 leftPaneWidth /
   // rightPaneWidth / leftPaneVisible，我们同一套思路）。focusMode 保留为
@@ -1121,7 +1122,7 @@ export default function App() {
       }
       if (probe?.startsWith('end:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(4))
-        if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t) }) }
+        if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t); setTimeout(() => document.querySelector('.cm-note-link')?.dispatchEvent(new MouseEvent('mouseenter')), 9000) }) }
       }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
@@ -1201,10 +1202,10 @@ export default function App() {
     })
     reloadTree()
     api.health().then((h) => {
-      const bad: string[] = []
-      if (!h.llm?.ok) bad.push('LLM 不可达 (' + h.llm?.base_url + ')')
-      if (!h.asr?.ok) bad.push('语音服务不可达 (' + h.asr?.base_url + ')')
-      setHealthMsg(bad.join(' · '))
+      // LLM 不通是硬伤，红字常驻；语音是可选服务（没配 ASR 的用户是多数），
+      // 只给一个灰色的「语音离线」，悬停看地址——之前一行 ⚠ 长期挂着像出了事故。
+      setHealthMsg(!h.llm?.ok ? 'LLM 不可达 (' + h.llm?.base_url + ')' : '')
+      setAsrOffline(!h.asr?.ok ? (h.asr?.base_url ?? '') : '')
     }).catch(() => setHealthMsg('后端不可达'))
   }, [reload, reloadTree])
 
@@ -2835,7 +2836,10 @@ export default function App() {
         )}
         {pausedRun && <span style={{ color: 'var(--accent)' }}>⏸ 等你处置</span>}
         {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
-        <span style={{ marginInlineStart: 'auto' }}>{healthMsg ? '⚠ ' + healthMsg : ''}</span>
+        <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
+          {healthMsg && <span className="health-bad"><i className="bx bx-error" /> {healthMsg}</span>}
+          {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
+        </span>
         {current && <span className="muted">{content.length} 字 · 约 {Math.max(1, Math.round(content.length / 400))} 分钟</span>}
       </div>
     </div>
