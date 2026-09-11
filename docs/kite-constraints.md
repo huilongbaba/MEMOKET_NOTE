@@ -200,3 +200,14 @@ memory.remember(messages, session_id=..., profile=my_profile)
 这样调用方换规则就是传一个对象，跟 `app/scoring` 传 `dimensions` 是同一个
 模式：**机制在包里，领域知识在调用方**。同时也解决约束 10（root 太宽）和
 约束 11（fact 语言随机）——那两条现在也是靠同一套字符串补丁在打。
+
+## 13. `Answer` 的依据字段叫 `evidence`，不叫 `facts`
+
+`Memory.answer_with_evidence()` 返回的 `Answer` 是 `question / text / evidence / citations`
+四个字段，`evidence` 是 `Fact` 元组。我们这边 `kite_memory.ask()` 早期按 `result.facts` 取——
+上游某次改名之后「来龙去脉」（`POST /api/memory/trace`）直接 500，探针实拍抓到
+（TRACELOG [37]）。现在两个名字都认；`tests/test_kite_ask.py` 用假 `Memory` 盯着这条路，
+不依赖真实模型。
+
+**教训**跟第 12 节一样：对上游对象取属性的地方，要么有测试跑在当前装着的版本上，
+要么 `getattr` 带默认值——AttributeError 在生产里等于整个功能静默消失。

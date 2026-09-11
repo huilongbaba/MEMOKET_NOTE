@@ -740,3 +740,12 @@ Trilium 的 Note Revisions 之前没有。现在：保存时正文变了、且�
   光标挪到文末，流式往中间插一段时视口被拽走、装饰全量重算；现在只 dispatch 变
   了的那一段，选区由 CM 映射。
 - 启动回到上次看的那篇（`memoket-note-active`），不再总是最近编辑的那篇。
+
+## [37] 全量巡检第 14 轮：选区五个动作跑一遍（2026-09-12）
+
+新探针 `sel:<action>`：选一段正文、触发校验 / 来龙去脉 / 润色 / 重写 / 扩展。
+校验（右栏顶部「校验结果」卡：支持 + 依据 + 查看原文）、润色（行内红绿 diff）都对。
+**来龙去脉直接 500**：`kite_memory.ask()` 取 `result.facts`，KITE 的 `Answer` 早已把依据
+改叫 `evidence`——AttributeError 在生产里等于整个功能静默消失（用户只看到一个 toast）。
+两个名字都认，`tests/test_kite_ask.py` 用假 Memory 盯住；kite-constraints.md §13 记下。
+顺手：选区「自定义提示」的图标还是 emoji 字符串，`/` 提示框换成 boxicons 后它渲染成空。

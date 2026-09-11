@@ -236,7 +236,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1144,6 +1144,23 @@ export default function App() {
       }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
+      // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
+      if (probe?.startsWith('sel:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === '5f65df10cad6') ?? notes.find((x) => (x.content ?? '').length > 400)
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          setTimeout(() => {
+            const view = editorViewRef.current
+            if (!view) return
+            const t = view.state.doc.toString()
+            const from = Math.max(0, t.indexOf('\n\n', 300) + 2)
+            const to = Math.min(t.length, t.indexOf('\n\n', from + 50))
+            view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) })
+            setSelectionMenu({ x: 700, y: 420, text: t.slice(from, to) })
+            setTimeout(() => void actionsRef.current.handleSelectionAction(probe.slice(4) as SelectionAction), 400)
+          }, 1500)
+        })() }
+      }
       if (probe === 'selection' && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => (x.content ?? '').length > 80)
         if (n) { harnessProbeDone.current = true; void (async () => {
@@ -1360,7 +1377,7 @@ export default function App() {
       setSelectionMenu(null)
       if (!view || !sel || sel.empty) return
       setSlash({
-        item: { key: 'custom', label: '自定义提示', icon: '💬',
+        item: { key: 'custom', label: '自定义提示', icon: 'bx-message-dots',
                 hint: '对选中的这段做点什么', needsPrompt: true,
                 placeholder: '例如：改写成给投资人看的口吻 / 拆成三条要点' },
         from: sel.from, to: sel.to, ...at,
@@ -2401,7 +2418,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>

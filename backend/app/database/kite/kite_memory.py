@@ -717,10 +717,17 @@ class UserMemory:
         self.ensure()
         memory = Memory.load(self.path, model=cfg["model"])
         result = memory.answer_with_evidence(question, limit=limit)
+        # KITE 的 Answer 把依据叫 ``evidence``（Fact 元组）；早期版本叫 ``facts``。
+        # 实拍：「来龙去脉」直接 500——AttributeError: 'Answer' object has no attribute
+        # 'facts'。两个名字都认，别再跟着上游改名炸一次。
+        evidence = getattr(result, "evidence", None)
+        if evidence is None:
+            evidence = getattr(result, "facts", None) or []
         facts = [{"id": f.id, "text": f.content,
                   "date": getattr(f, "when", ""), "kind": getattr(f, "kind", ""),
-                  "sources": [str(x.get("content", "")) for x in (f.sources or [])]}
-                 for f in (result.facts or [])]
+                  "sources": [str(x.get("content", "")) if isinstance(x, dict) else str(x)
+                              for x in (getattr(f, "sources", None) or [])]}
+                 for f in evidence]
         return result.text, facts
 
     # ------------------------------------------------------------ 实体去重（手动触发）
