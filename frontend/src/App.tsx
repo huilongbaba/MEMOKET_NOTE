@@ -500,16 +500,7 @@ export default function App() {
     pushHistory(id)
     setCurrent(null); setTitle(''); setContent('')
     setVirtualId(id)
-    // 树上把它露出来：从首页 / 图 / chips 点进一个主题时，左栏的树也该展开到它
-    // （Trilium 的树永远跟着当前笔记）。只展开祖先，不展开它自己。
-    setKbExpanded((prev) => {
-      const byNote = new Map<string, TreeRow>()
-      for (const r of allRows) if (!byNote.has(r.note_id)) byNote.set(r.note_id, r)
-      const next = new Set(prev)
-      let cur = byNote.get(id)?.parent_note_id; let guard = 0
-      while (cur && cur !== api.ROOT_ID && guard++ < 50) { next.add(cur); cur = byNote.get(cur)?.parent_note_id }
-      return next.size === prev.size ? prev : next
-    })
+
     const label = title ?? allRows.find((r) => r.note_id === id)?.title
       ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':') : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
@@ -525,6 +516,22 @@ export default function App() {
     return () => window.removeEventListener('open-virtual', on)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows])
+
+  // 树上把当前的虚拟节点露出来：从首页 / 图 / chips 点进一个主题时，左栏的树
+  // 也展开到它（Trilium 的树永远跟着当前笔记）。只展开祖先，不展开它自己。
+  // 挂在 effect 上而不是 openVirtual 里：kbRows 可能比打开动作晚到。
+  useEffect(() => {
+    if (!virtualId || kbRows.length === 0) return
+    setKbExpanded((prev) => {
+      const byNote = new Map<string, TreeRow>()
+      for (const r of allRows) if (!byNote.has(r.note_id)) byNote.set(r.note_id, r)
+      const next = new Set(prev)
+      let cur = byNote.get(virtualId)?.parent_note_id; let guard = 0
+      while (cur && cur !== api.ROOT_ID && guard++ < 50) { next.add(cur); cur = byNote.get(cur)?.parent_note_id }
+      return next.size === prev.size ? prev : next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [virtualId, kbRows])
 
   /** 点标签 / ⌘数字 / 关标签后的回退，都走这一条：真笔记就 switchTo，
    *  虚拟节点就 openVirtual。 */
