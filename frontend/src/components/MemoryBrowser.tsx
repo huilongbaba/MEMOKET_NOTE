@@ -373,60 +373,54 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
               {newTopicError && <span className="muted" style={{ color: 'var(--del)' }}>{newTopicError}</span>}
             </div>}
 
+            {/* 工具栏：一行面包屑（全部簇 › 某簇），一行筛选。簇视图下层级筛选没意义，藏掉 */}
             {clusters.length > 0 && (
-              <div className="filter-row">
-                <button className={drilled === null ? 'primary' : ''} onClick={() => setDrilled(null)}>
-                  全部（{clusters.length} 簇）
+              <div className="filter-row" style={{ gap: 6 }}>
+                <button className={'chip' + (drilled === null ? ' active' : '')} onClick={() => setDrilled(null)}>
+                  <i className="bx bx-network-chart" />全部簇 <span className="chip-count">{clusters.length}</span>
                 </button>
                 {drilled !== null && (
                   <>
-                    <span className="muted">→</span>
-                    <button className="primary" onClick={() => setDrilled(null)}>
-                      {clusters.find((c) => c.key === drilled)?.label ?? drilled}
-                    </button>
+                    <i className="bx bx-chevron-right muted" />
+                    <span className="chip active"><i className="bx bx-hash" />{clusters.find((c) => c.key === drilled)?.label ?? drilled}</span>
                     <span className="muted" style={{ fontSize: 12 }}>
-                      {scopedTopics.length} 个主题 ·
-                      {' '}{clusters.find((c) => c.key === drilled)?.facts ?? 0} 条事实
+                      {scopedTopics.length} 个主题 · {clusters.find((c) => c.key === drilled)?.facts ?? 0} 条事实
                     </span>
                   </>
                 )}
                 {drilled === null && (
                   <span className="muted" style={{ fontSize: 12 }}>
-                    点一个簇看它里面的主题。簇是按「哪些主题老在同一场会议里一起出现」
-                    合出来的，不是按名字——{topics.length} 个主题里一半只有 10 条以内的事实，
-                    平铺出来看不出形状。
+                    点一个簇进去看它的主题和实体。簇 = 老在同一场会议里一起出现的主题；虚线 = 两个簇共享的实体多。
                   </span>
                 )}
               </div>
             )}
 
-            <div className="filter-row" style={{ justifyContent: 'space-between' }}>
-              <div className="row" style={{ flexWrap: 'wrap' }}>
-                <span className="muted" style={{ fontSize: 12 }}>显示到：</span>
-                <button className={maxLevel === null ? 'primary' : ''} onClick={() => setMaxLevel(null)}>全部</button>
-                {Array.from({ length: Math.max(1, ...depths.values()) + 1 }, (_, i) => i + 1).map((lvl) => (
-                  <button key={lvl} className={maxLevel === lvl ? 'primary' : ''} onClick={() => setMaxLevel(lvl)}>
-                    {'一二三四五六七八九十'[lvl - 1] ?? lvl}级
-                  </button>
-                ))}
-                <button className={showEntities ? '' : 'primary'} onClick={() => setShowEntities((v) => !v)}>
-                  {showEntities ? '隐藏实体' : '不显示实体'}
-                </button>
-                <button
-                  className={hideNoiseEntities ? 'primary' : ''}
-                  onClick={() => setHideNoiseEntities((v) => !v)}
-                  title="过滤零引用/过短的噪声实体（转写抽取常见的缩写碎片）"
-                >
-                  {hideNoiseEntities ? '已过滤噪声' : '显示全部实体'}
-                </button>
-                <input
-                  placeholder="搜索节点名字…"
-                  value={nodeQuery}
-                  onChange={(e) => setNodeQuery(e.target.value)}
-                  style={{ width: 140 }}
-                />
-                <button className="chip" onClick={() => setShowCreate((v) => !v)} title="手工加一个主题"><i className="bx bx-plus" />新建主题</button>
+            <div className="filter-row">
+              <div className="quick-search" style={{ minWidth: 200 }}>
+                <i className="bx bx-search" />
+                <input placeholder="找节点…" value={nodeQuery} onChange={(e) => setNodeQuery(e.target.value)} />
+                {nodeQuery && <button className="icon-btn" onClick={() => setNodeQuery('')}><i className="bx bx-x" /></button>}
               </div>
+              {(drilled !== null || clusters.length === 0) && (
+                <>
+                  <span className="muted" style={{ fontSize: 12 }}>层级</span>
+                  <button className={'chip' + (maxLevel === null ? ' active' : '')} onClick={() => setMaxLevel(null)}>全部</button>
+                  {Array.from({ length: Math.max(1, ...depths.values()) + 1 }, (_, i) => i + 1).map((lvl) => (
+                    <button key={lvl} className={'chip' + (maxLevel === lvl ? ' active' : '')} onClick={() => setMaxLevel(lvl)}>
+                      {'一二三四五六七八九十'[lvl - 1] ?? lvl}级
+                    </button>
+                  ))}
+                  <button className={'chip' + (showEntities ? ' active' : '')} onClick={() => setShowEntities((v) => !v)} title="画不画实体节点">
+                    <i className="bx bx-user" />实体
+                  </button>
+                  <button className={'chip' + (hideNoiseEntities ? ' active' : '')} onClick={() => setHideNoiseEntities((v) => !v)}
+                          title="过滤零引用 / 过短的噪声实体（转写抽取常见的缩写碎片）">
+                    <i className="bx bx-filter-alt" />滤噪声
+                  </button>
+                </>
+              )}
+              <button className="chip" onClick={() => setShowCreate((v) => !v)} title="手工加一个主题" style={{ marginInlineStart: 'auto' }}><i className="bx bx-plus" />新建主题</button>
             </div>
 
             <div ref={graphHost} />

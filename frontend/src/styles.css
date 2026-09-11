@@ -785,6 +785,8 @@ input[type=file]:hover { border-color: var(--accent); }
 .chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--panel); }
 .chip:disabled { cursor: default; opacity: 1; }
 .chip-count { color: var(--muted); font-size: 11px; }
+.chip.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.chip.active .bx, .chip.active .chip-count { color: var(--accent-fg); }
 .fact-list { display: flex; flex-direction: column; gap: 2px; }
 .fact-month { font-size: 11px; margin: 10px 0 4px; letter-spacing: .04em; }
 .fact-row {
@@ -831,3 +833,5 @@ input[type=file]:hover { border-color: var(--accent); }
   text-decoration: none; font-size: 11px; padding: 0 6px; border-radius: 8px;
   border: 1px solid var(--del); opacity: .8; cursor: help; margin: 0 2px;
 }
+
+.local-graph { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }

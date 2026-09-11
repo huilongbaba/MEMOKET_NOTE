@@ -591,19 +591,17 @@ export default function KnowledgeGraph(
         </div>
         <div className="row">
           {focusedId
-            ? <button className="primary" onClick={clearFocus} title="退出聚焦，显示全部节点">恢复</button>
+            ? <button className="chip active" onClick={clearFocus} title="退出聚焦，显示全部节点"><i className="bx bx-undo" />恢复全部</button>
             : (
               <>
-                <button onClick={() => fitTo()} title="缩放到刚好容纳所有节点">适应窗口</button>
-                <button onClick={resetZoom} title="回到 100% 缩放，原点居中">重置视图</button>
+                <button className="icon-btn" onClick={() => fitTo()} title="适应窗口：缩放到刚好容纳所有节点"><i className="bx bx-expand" /></button>
+                <button className="icon-btn" onClick={resetZoom} title="重置视图：回到 100%"><i className="bx bx-reset" /></button>
               </>
             )}
         </div>
       </div>
       <p className="muted" style={{ padding: '4px 10px 0', fontSize: 11, margin: 0 }}>
-        节点数量越多，初始点位越小越简化——滚轮缩放到某个区域才会显示标签和细节。
-        鼠标悬停看简介，点节点聚焦它和它的关联节点（其余全部隐藏），点"恢复"回到全部节点；
-        悬停卡片里的"查看详情"才会跳到事实表。
+        滚轮缩放 · 拖动平移 · 悬停看简介 · 点节点聚焦它和它的关联（再点「恢复全部」）· 卡片里「查看详情」进它的页面。
         {cappedCount > 0 && (
           <> 当前只显示按事实数量排序的前 {nodes.length} 个节点（共 {allNodes.length} 个）——
           其余 {cappedCount} 个可以用上面的搜索框按名字找到。</>

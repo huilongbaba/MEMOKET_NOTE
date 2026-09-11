@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { kbEntity, type KbEntityPage } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions } from './KbBits'
+import LocalGraph from './LocalGraph'
 
 export default function EntityPage({ code, actions }: { code: string; actions: KbActions }) {
   const [p, setP] = useState<KbEntityPage | null | undefined>(undefined)
@@ -33,6 +34,17 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
         </KbSection>
       )}
       {p.months.length > 1 && <KbSection title="按月"><MiniBars data={p.months} /></KbSection>}
+      {(p.topics.length > 0 || p.relations.length > 0) && (
+        <KbSection title="周围有什么" extra={<span className="muted" style={{ fontSize: 12 }}>点节点进它的页面</span>}>
+          <LocalGraph actions={actions}
+            topics={p.topics.map((t) => ({ code: t.code, parents: [], status: 'canonical', aliases: [], fact_count: t.facts }))}
+            entities={[
+              { code: p.code, name: p.name, type: p.type, aliases: p.aliases, relations: p.relations.map((r) => [r.rel, r.target] as [string, string]), fact_count: p.facts_total },
+              ...p.relations.map((r) => ({ code: r.target, name: r.target_name, type: '', aliases: [], relations: [], fact_count: 0 })),
+            ]}
+            links={p.topics.map((t) => ({ topic: t.code, entity: p.code, weight: t.facts }))} />
+        </KbSection>
+      )}
       {p.topics.length > 0 && (
         <KbSection title="相关主题">
           <div className="chip-wrap">{p.topics.map((t) => <Chip key={t.code} icon="bx-hash" count={t.facts} onClick={() => actions.onOpen('kb:topic:' + t.code)}>{t.code}</Chip>)}</div>
