@@ -3,7 +3,7 @@
 > 随时打开这个文件就知道跑到哪了。每完成一块就更新，不用问我。
 > 详细的改动和踩坑记在 `docs/TRACELOG-trilium.md`。
 
-**最后更新**：2026-09-11 知识库体验 K1–K5 完成（`docs/kb-experience-plan.md`，TRACELOG [20]）
+**最后更新**：2026-09-11 知识库体验 K1–K6 完成（`docs/kb-experience-plan.md`，TRACELOG [20]–[22]）；dmg 已重打
 
 ## 判据
 
