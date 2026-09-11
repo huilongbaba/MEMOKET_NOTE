@@ -993,6 +993,7 @@ export default function App() {
       }
       if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
       if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
+      if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
       // 只对截图用户跑：harness 在服务端改笔记，对真实用户跑一次就污染一篇（实拍踩过）。
       // 探针 effect 会因依赖变化跑两次，用 ref 挡住第二次。
       if (probe === 'harness' && notes.length && api.getUser().startsWith('shot-') && !harnessProbeDone.current) {
@@ -2106,7 +2107,7 @@ export default function App() {
           {api.isVirtualId(id)
             ? <KbNoteView id={id} rows={allRows} onOpen={(x) => openInSplit(x)}
                           onOpenNote={(nid) => { const n = notes.find((x) => x.id === nid); if (n) void switchTo(n) }}
-                          onCite={current ? (fid) => insertAtCursor(`[${fid}]`) : null} />
+                          onCite={current ? (fid, text) => insertAtCursor(`${text} [${fid}]`) : null} />
             : note
               ? <MarkdownEditor content={note.content} readOnly />
               : <p className="muted">这篇笔记已经不在了。</p>}
@@ -2541,7 +2542,9 @@ export default function App() {
           tabs={[
             // 记忆是默认标签：边写边浮现的召回（判据 2）。不再是压在所有标签上面的常驻块。
             { id: 'memory', title: '记忆', icon: 'bx-bulb', alwaysShown: true,
-              body: <RelatedMemory content={content} onInsert={insertAtCursor} /> },
+              body: current
+                ? <RelatedMemory content={content} onInsert={insertAtCursor} />
+                : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
             // 计划 = 写作骨架（计划）+ 每轮做了什么（执行）。判据 3：计划要看得见——

@@ -112,6 +112,7 @@ def fact_peek(fact_id: str, user: str = Depends(current_user)):
     return FactPeekOut(
         id=fact_id, text=fact.get("text", ""), when=fact.get("when", ""),
         kind=fact.get("kind", ""),
+        topics=list(fact.get("topics") or []), entities=list(fact.get("entities") or []),
         # **每条原话截断。** 实拍发现一条会议记录原文能有几千字，浮层直接
         # 占了半屏、把正文盖住——那反而违背了判据 2（不打断当前这一页）。
         # 浮层是「扫一眼确认对不对」，不是阅读器；要看全文走知识库那一栏。

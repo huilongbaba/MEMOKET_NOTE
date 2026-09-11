@@ -417,6 +417,7 @@ export const recall = (query: string, limit = 8) =>
 /** 一条事实 + 它的原话，给行内出处浮层。 */
 export type FactPeek = {
   id: string; text: string; when: string; kind: string; sources: string[]
+  topics: string[]; entities: string[]
 }
 
 /** 按 id 取一条事实。**找不到会 404**——一条指向不存在事实的引用是个真问题
@@ -445,6 +446,45 @@ export const kbTree = () =>
 export const kbTreeChildren = (node: string) =>
   fetch(`/api/kb/tree/children?node=${encodeURIComponent(node)}`, { headers: headers() })
     .then(json<TreeRow[]>)
+
+// 知识库各节点打开之后的页面数据（docs/kb-experience-plan.md §3）
+export type KbMonth = { month: string; facts: number }
+export type KbDashboard = {
+  stats: { facts: number; topics: number; entities: number; units: number; lines: number; start_date: string; end_date: string }
+  months: KbMonth[]
+  top_topics: { code: string; facts: number; children: number }[]
+  top_entities: { code: string; name: string; facts: number }[]
+  recent_units: { id: string; date: string; title: string; facts: number }[]
+  kinds: { kind: string; facts: number }[]
+  speakers: { who: string; facts: number }[]
+}
+export type KbFactsPage = { facts_total: number; facts: FactDetail[]; limit: number; offset: number }
+export type KbTopicPage = KbFactsPage & {
+  code: string; aliases: string[]; parents: string[]; status: string; months: KbMonth[]
+  children: { code: string; facts: number }[]
+  entities: { code: string; name: string; facts: number }[]
+  kinds: { kind: string; facts: number }[]
+}
+export type KbEntityPage = KbFactsPage & {
+  code: string; name: string; type: string; aliases: string[]; months: KbMonth[]
+  relations: { rel: string; target: string; target_name: string }[]
+  topics: { code: string; facts: number }[]
+}
+export type KbTimelineMonth = { month: string; facts: number; units: number; days: { date: string; facts: number; units: number }[] }
+export type KbUnitPage = KbFactsPage & {
+  id: string; date: string; title: string; speakers: string[]
+  topics: { code: string; facts: number }[]
+  entities: { code: string; name: string; facts: number }[]
+}
+export const kbDashboard = () => fetch('/api/kb/dashboard', { headers: headers() }).then(json<KbDashboard>)
+export const kbTopic = (code: string, limit = 50, offset = 0) =>
+  fetch(`/api/kb/topic/${encodeURIComponent(code)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbTopicPage>)
+export const kbEntity = (code: string, limit = 50, offset = 0) =>
+  fetch(`/api/kb/entity/${encodeURIComponent(code)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbEntityPage>)
+export const kbTimeline = () => fetch('/api/kb/timeline', { headers: headers() }).then(json<KbTimelineMonth[]>)
+export const kbDay = (date: string) => fetch(`/api/kb/timeline/${date}`, { headers: headers() }).then(json<FactDetail[]>)
+export const kbUnit = (id: string, limit = 50, offset = 0) =>
+  fetch(`/api/kb/unit/${encodeURIComponent(id)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbUnitPage>)
 
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
 export type CitingNote = { id: string; title: string; updated_at: string }

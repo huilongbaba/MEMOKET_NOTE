@@ -324,6 +324,8 @@ class CitingNoteOut(BaseModel):
 
 
 class FactPeekOut(BaseModel):
+    topics: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
     """行内出处浮层要的东西：一条事实 + 它的原话。
 
     `sources` 最多三条——浮层是**扫一眼**用的，不是阅读器；要看全部走

@@ -10,6 +10,14 @@ import { useEffect, useState } from 'react'
 
 import DigestPanel from './DigestPanel'
 import MemoryBrowser from './MemoryBrowser'
+import EntityPage from './kb/EntityPage'
+import FactsTable from './kb/FactsTable'
+import { EntitiesIndex, RecentIndex, TopicsIndex } from './kb/IndexPages'
+import KbDashboard from './kb/KbDashboard'
+import TimelinePage from './kb/TimelinePage'
+import TopicPage from './kb/TopicPage'
+import UnitPage from './kb/UnitPage'
+import type { KbActions } from './kb/KbBits'
 
 import {
   factPeek, factSources, kbTreeChildren, notesCiting, recall,
@@ -22,24 +30,36 @@ type Props = {
   rows: TreeRow[]
   onOpen: (id: string) => void
   onOpenNote: (noteId: string) => void
-  /** 把 `[fact-id]` 这条引用送进当前正在写的笔记；没有正在写的就是 null。 */
-  onCite: ((factId: string) => void) | null
+  /** 把 `原文 [fact-id]` 送进当前正在写的笔记；没有正在写的就是 null。 */
+  onCite: ((factId: string, text: string) => void) | null
 }
 
 export default function KbNoteView(props: Props) {
-  if (isFactId(props.id)) return <FactNote {...props} />
-  // 可视化与配套工具，也是树上的节点：打开一张图跟打开一篇笔记是同一个动作
-  if (props.id === 'kb:overview') return <ToolNote title="总览" icon="▤"><MemoryBrowser embedded initialTab="overview" /></ToolNote>
-  if (props.id === 'kb:graph') return <ToolNote title="主题地图" icon="◉"><MemoryBrowser embedded initialTab="topics" /></ToolNote>
-  if (props.id === 'kb:digest') return <ToolNote title="定期回顾" icon="↻"><DigestPanel /></ToolNote>
+  const { id, rows } = props
+  const actions: KbActions = {
+    onOpen: props.onOpen, onOpenNote: props.onOpenNote,
+    onCite: props.onCite ? (f) => props.onCite!(f.id, f.text) : null,
+  }
+  if (isFactId(id)) return <FactNote {...props} />
+  // 每个节点打开都是一页有设计的「只读笔记」（docs/kb-experience-plan.md §2）
+  if (id === 'kb') return <KbDashboard actions={actions} />
+  if (id === 'kb:topics') return <TopicsIndex rows={rows} actions={actions} />
+  if (id === 'kb:entities') return <EntitiesIndex rows={rows} actions={actions} />
+  if (id === 'kb:recent') return <RecentIndex rows={rows} actions={actions} />
+  if (id === 'kb:timeline') return <TimelinePage actions={actions} />
+  if (id === 'kb:facts' || id.startsWith('kb:facts?')) return <FactsTable query={id.split('?')[1] ?? ''} actions={actions} />
+  if (id.startsWith('kb:topic:')) return <TopicPage code={id.slice('kb:topic:'.length)} actions={actions} />
+  if (id.startsWith('kb:entity:')) return <EntityPage code={id.slice('kb:entity:'.length)} actions={actions} />
+  if (id.startsWith('kb:unit:')) return <UnitPage id={id.slice('kb:unit:'.length)} actions={actions} />
+  if (id === 'kb:graph') return <ToolNote title="主题地图" icon="bx-network-chart"><MemoryBrowser embedded initialTab="topics" /></ToolNote>
+  if (id === 'kb:digest') return <ToolNote title="定期回顾" icon="bx-history"><DigestPanel /></ToolNote>
   return <CollectionNote {...props} />
 }
 
 function ToolNote({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
     <div className="kb-note" style={{ maxWidth: 'none' }}>
-      <div className="muted kb-note-meta"><span>{icon} 知识库</span></div>
-      <h2 className="kb-note-title">{title}</h2>
+      <h2 className="kb-note-title"><i className={'bx ' + icon + ' muted'} /> {title}</h2>
       {children}
     </div>
   )
@@ -96,11 +116,17 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
         {fact.kind && <span>· {fact.kind}</span>}
         <code className="kb-note-id">[{factId}]</code>
         <span style={{ marginInlineStart: 'auto' }} className="row">
-          {onCite && <button onClick={() => onCite(factId)} title="把引用插到正在写的笔记里">↩ 引用到笔记</button>}
-          <button onClick={copyCite}>{copied ? '已复制' : '复制引用'}</button>
+          {onCite && <button onClick={() => onCite(factId, fact.text)} title="把引用插到正在写的笔记里"><i className="bx bx-link" /> 引用到笔记</button>}
+          <button onClick={copyCite}><i className={'bx ' + (copied ? 'bx-check' : 'bx-copy')} /> {copied ? '已复制' : '复制引用'}</button>
         </span>
       </div>
       <h2 className="kb-note-title">{fact.text}</h2>
+      {(fact.topics.length > 0 || fact.entities.length > 0) && (
+        <div className="chip-wrap">
+          {fact.topics.map((t) => <button key={t} className="chip" onClick={() => onOpen('kb:topic:' + t)}><i className="bx bx-hash" />{t}</button>)}
+          {fact.entities.map((e) => <button key={e} className="chip" onClick={() => onOpen('kb:entity:' + e)}><i className="bx bx-user" />{e}</button>)}
+        </div>
+      )}
 
       <Section title="原话" empty="这条没有保留原话">
         {sources.map((s) => <Quote key={s.id} line={s} />)}

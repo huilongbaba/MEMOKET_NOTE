@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 
 MONTHS_ON_DASHBOARD = 12
+MONTHS_ON_PAGE = 24
 TOP_N = 8
 FACT_PAGE = 50
 
@@ -99,7 +100,7 @@ def topic_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict 
     return {
         "code": code, "aliases": sorted(t.aliases), "parents": [p for p in sorted(t.parents) if p in vocab.topics],
         "status": t.status, "facts_total": total, "facts": page, "limit": limit, "offset": offset,
-        "months": _months(facts), "children": children,
+        "months": _months(facts, MONTHS_ON_PAGE), "children": children,
         "entities": [{"code": c, "name": _entity_name(vocab, c), "facts": n} for c, n in ents.most_common(TOP_N)],
         "kinds": [{"kind": k or "?", "facts": n} for k, n in Counter(f.kind for f in facts).most_common()],
     }
@@ -119,7 +120,7 @@ def entity_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict
         "code": code, "name": e.name or e.code, "type": e.etype or "", "aliases": sorted(e.aliases),
         "relations": [{"rel": r, "target": tgt, "target_name": _entity_name(vocab, tgt)} for r, tgt in sorted(e.rels)],
         "facts_total": total, "facts": page, "limit": limit, "offset": offset,
-        "months": _months(facts),
+        "months": _months(facts, MONTHS_ON_PAGE),
         "topics": [{"code": c, "facts": n} for c, n in topics.most_common(TOP_N)],
     }
 
