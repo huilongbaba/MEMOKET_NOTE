@@ -19,6 +19,8 @@ import { mermaidPreview } from '../editor/mermaid'
 import { runningBlocks } from '../editor/runningBlocks'
 import { tablePreview } from '../editor/tablePreview'
 import { recallSource } from '../editor/recallCompletion'
+import { noteLinkSource } from '../editor/noteLinkCompletion'
+import { noteLinkChips } from '../editor/noteLink'
 import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
 import { pendingHunks, roundDiff as roundDiffExt, setRoundDiff, type DiffPart }
@@ -106,10 +108,11 @@ export default function MarkdownEditor({
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, ...searchKeymap, indentWithTab]),
         // ⌘F 页内查找（Trilium 的 FindWidget）。长文档没有它是硬伤。
         search({ top: true }),
-        autocompletion({ override: [recallSource], activateOnTyping: true }),
+        autocompletion({ override: [recallSource, noteLinkSource], activateOnTyping: true }),
         markdown({ codeLanguages: languages, extensions: [GFM] }),
         syntaxHighlighting(markdownHighlight),
         dimSyntaxMarks,
+        noteLinkChips,
         mermaidPreview,
         tablePreview,
         runningBlocks((id) => liveRef.current.onStopRun?.(id)),

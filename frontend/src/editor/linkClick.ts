@@ -20,6 +20,9 @@ export const linkClick = EditorView.domEventHandlers({
       },
     })
     if (!url) return false
+    // 笔记内链：`note://<id>` 交给外壳打开那篇，不出窗口
+    const m = /^note:\/\/([0-9a-f]{12})$/.exec(url)
+    if (m) { window.dispatchEvent(new CustomEvent('open-note', { detail: m[1] })); return true }
     window.open(url, '_blank', 'noopener,noreferrer')
     return true
   },

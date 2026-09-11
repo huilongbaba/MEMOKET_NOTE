@@ -897,3 +897,12 @@ kbd {
 .palette.shortcuts { width: 640px; max-height: 80vh; }
 .shortcuts-body { padding: 4px 12px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; }
 .shortcuts-body section:last-child { grid-column: 1 / -1; }
+
+/* 笔记内链标记（editor/noteLink.ts） */
+.cm-note-link {
+  display: inline-flex; align-items: center; gap: 3px; padding: 0 6px 0 4px; margin: 0 1px;
+  border-radius: 6px; background: var(--accent-soft, rgba(96,165,250,.14)); color: var(--accent);
+  cursor: pointer; font-size: .95em; line-height: 1.5; text-decoration: none; vertical-align: baseline;
+}
+.cm-note-link:hover { text-decoration: underline; }
+.cm-note-link .bx { font-size: 14px; }

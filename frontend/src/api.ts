@@ -489,6 +489,11 @@ export const kbUnit = (id: string, limit = 50, offset = 0) =>
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
 export type CitingNote = { id: string; title: string; updated_at: string; preview?: string }
 
+/** 笔记之间的链接：这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。 */
+export type NoteLinks = { outgoing: CitingNote[]; backlinks: CitingNote[] }
+export const noteLinks = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/links`, { headers: headers() }).then(json<NoteLinks>)
+
 /** **哪些笔记引用了这条事实。** 反查——整个「笔记 × 知识库」融合的关键。
  *  回答的是「这条事实还活着吗、改了它会影响谁」。对标 Trilium 的 Backlinks。 */
 export const notesCiting = (factId: string) =>

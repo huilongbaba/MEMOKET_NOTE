@@ -672,3 +672,16 @@ note paths 组件同款）；写作计划标题的 emoji 换 bx-rocket。
 一张「从哪开始」：Logo + 三张入口卡（新建 ⌘N / 导入 / 知识库——空库时引到导入）
 + 最近编辑 6 篇 + 四个最常用的键。快捷键一览 `⌘/`（Trilium Options → Shortcuts
 的只读版），也在 ⌘K 的「前往」里；键表单独放 `shortcuts.ts`，改键要同步它。
+
+## [32] 全量巡检第 9 轮：笔记之间的链接（2026-09-12）
+
+Trilium 的核心之一——内部链接 + Referenced by——之前完全没有。现在：
+- 语法用标准 markdown `[标题](note://<id>)`，导出到别处仍是合法链接；正文里打 `[[`
+  搜标题补全（`editor/noteLinkCompletion.ts`）。
+- 光标不在链接上时折成一枚带图标的标记，点一下打开那篇；光标进去展开成原文可改
+  （`editor/noteLink.ts`）。⌘点击外链的老路保留，`note://` 走 `open-note` 事件。
+- ribbon 新增「链接」标签：链出去的 / 链到这篇的两栏，角标是链出数。后端
+  `GET /api/notes/{id}/links`，反链直接 LIKE 扫正文，不维护会漂的链接表；
+  跨用户不可见（测试盯着）。
+- 顺手抓到：打开一篇没骨架的笔记自动生成骨架时「智能排版」按钮跟着转圈——两个
+  动作共用了 `loading === 'skeleton'`，拆开。

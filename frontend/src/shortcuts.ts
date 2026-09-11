@@ -19,6 +19,7 @@ export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: stri
   { title: '写作', items: [
     { keys: '/', what: '行首唤起 AI 菜单：用 AI 写、插图、表格、可视化、语音' },
     { keys: '@', what: '引用知识库里的一条事实' },
+    { keys: '[[', what: '链接另一篇笔记（⌘点击链接跳过去）' },
     { keys: '⇧⌘F', what: '格式化整篇 Markdown' },
     { keys: '选中后右键', what: '校验 / 重写 / 润色 / 扩展 / 来龙去脉' },
     { keys: '⌥点击', what: '树上快速查看一篇（不切页）' },

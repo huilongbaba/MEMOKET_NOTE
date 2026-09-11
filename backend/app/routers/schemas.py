@@ -324,6 +324,12 @@ class CitingNoteOut(BaseModel):
     preview: str = ""      # 标题是「未命名」时前端拿正文首行当显示名
 
 
+class NoteLinksOut(BaseModel):
+    """笔记之间的链接：`[标题](note://<id>)`。outgoing 是这篇链出去的，backlinks 是链进来的。"""
+    outgoing: list[CitingNoteOut]
+    backlinks: list[CitingNoteOut]
+
+
 class FactPeekOut(BaseModel):
     topics: list[str] = Field(default_factory=list)
     entities: list[str] = Field(default_factory=list)

@@ -566,6 +566,32 @@ def notes_citing(user_id: str, fact_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+_NOTE_LINK = _re.compile(r"\]\(note://([0-9a-f]{12})\)")
+
+
+def note_links_in(content: str) -> list[str]:
+    """正文里链到的笔记 id（`[标题](note://<id>)`），按出现顺序去重。"""
+    seen: list[str] = []
+    for m in _NOTE_LINK.finditer(content or ""):
+        if m.group(1) not in seen:
+            seen.append(m.group(1))
+    return seen
+
+
+def backlinks(user_id: str, note_id: str) -> list[dict]:
+    """哪些笔记链到了这篇（Trilium 的 Referenced by）。
+
+    直接 LIKE 扫正文而不是维护一张链接表：几千篇笔记一次 LIKE 几毫秒，
+    而链接表要在每次保存 / 删除 / 克隆时同步，多一处会漂的状态。
+    """
+    with connect() as c:
+        rows = c.execute(
+            "SELECT id, title, updated_at, substr(content,1,80) AS preview FROM notes"
+            " WHERE user_id=? AND id<>? AND content LIKE ? ORDER BY updated_at DESC",
+            (user_id, note_id, f"%](note://{note_id})%")).fetchall()
+    return [dict(r) for r in rows]
+
+
 def citation_counts(user_id: str) -> dict[str, int]:
     """每篇笔记引用了几条事实。树上画角标用——一次查完，不要每个节点问一次。"""
     with connect() as c:

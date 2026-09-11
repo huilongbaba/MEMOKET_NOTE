@@ -31,6 +31,7 @@ import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
+import NoteLinksPanel from './components/NoteLinksPanel'
 import QuickView from './components/QuickView'
 import WelcomePane from './components/WelcomePane'
 import ShortcutsPanel from './components/ShortcutsPanel'
@@ -192,7 +193,7 @@ export default function App() {
   // 静态清单。
   const [beatCoverage, setBeatCoverage] = useState<{ level: number; note: string } | null>(null)
   const [revisions, setRevisions] = useState<Revision[]>([])
-  const [loading, setLoading] = useState<'' | 'skeleton' | 'edit' | 'tap' | 'ingest' | 'note-harness'>('')
+  const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness'>('')
   /** agent 每一轮干了什么，喂给 AgentActivity 可视化。按轮聚合：用户关心的是
    * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
    * 事件流水账看不出所以然。 */
@@ -550,12 +551,14 @@ export default function App() {
     const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) void openVirtual(id) }
     const onNew = () => void newNote()
     const onKeys = () => setShowShortcuts(true)
+    const onOpenNote = (e: Event) => { const id = (e as CustomEvent<string>).detail; const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else toast('链接指向的笔记不存在了', 'error') }
+    window.addEventListener('open-note', onOpenNote)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys) }
+    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, virtualId, allRows])
+  }, [current, virtualId, allRows, notes])
 
   // 树上把当前的虚拟节点露出来：从首页 / 图 / chips 点进一个主题时，左栏的树
   // 也展开到它（Trilium 的树永远跟着当前笔记）。只展开祖先，不展开它自己。
@@ -1075,7 +1078,7 @@ export default function App() {
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void runMagicTap(), 1500) })() }
       }
       // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
-      if ((probe === 'slash' || probe === 'mention') && notes.length && !harnessProbeDone.current) {
+      if ((probe === 'slash' || probe === 'mention' || probe === 'wikilink') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => (x.content ?? '').length > 80)
         if (n) { harnessProbeDone.current = true; void (async () => {
           await switchTo(n)
@@ -1085,9 +1088,15 @@ export default function App() {
             const end = view.state.doc.length
             view.focus()
             view.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 }, userEvent: 'input.type' })
-            view.dispatch({ changes: { from: end + 2, insert: probe === 'slash' ? '/' : '@' }, selection: { anchor: end + 3 }, userEvent: 'input.type' })
-            if (probe === 'mention') view.dispatch({ changes: { from: end + 3, insert: '样机' }, selection: { anchor: end + 5 }, userEvent: 'input.type' })
+            if (probe === 'wikilink') {
+              view.dispatch({ changes: { from: end + 2, insert: '[[创业' }, selection: { anchor: end + 6 }, userEvent: 'input.type' })
+            } else {
+              view.dispatch({ changes: { from: end + 2, insert: probe === 'slash' ? '/' : '@' }, selection: { anchor: end + 3 }, userEvent: 'input.type' })
+              if (probe === 'mention') view.dispatch({ changes: { from: end + 3, insert: '样机' }, selection: { anchor: end + 5 }, userEvent: 'input.type' })
+            }
             view.dispatch({ effects: EditorView.scrollIntoView(end + 3) })
+            // mermaid / 表格预览晚一点才撑开高度，再滚一次
+            setTimeout(() => editorViewRef.current?.dispatch({ effects: EditorView.scrollIntoView(editorViewRef.current.state.doc.length) }), 2500)
           }, 1500)
         })() }
       }
@@ -1108,6 +1117,10 @@ export default function App() {
       if (probe?.startsWith('big:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(4))
         if (n) { harnessProbeDone.current = true; const t0 = performance.now(); void switchTo(n).then(() => requestAnimationFrame(() => void api.clientLog('warn', `big note ${n.content.length} 字 switchTo→paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))) }
+      }
+      if (probe?.startsWith('end:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(4))
+        if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t) }) }
       }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
@@ -2009,7 +2022,8 @@ export default function App() {
     if (!view || !current) return
     const before = view.state.doc.toString()
     if (!before.trim()) return
-    setLoading('skeleton')                       // 复用同一个忙碌态，按钮转圈
+    // 之前复用 'skeleton'：打开一篇没骨架的笔记自动生成骨架时，「智能排版」也跟着转圈（实拍）
+    setLoading('restructure')
     try {
       const r = await api.restructureNote(current.id, title, before)
       if (r.detail) toast(r.detail, 'error')
@@ -2520,7 +2534,7 @@ export default function App() {
                   viewRef={editorViewRef}
                   onFormat={formatNote}
                   onRestructure={restructureNote}
-                  restructuring={loading === 'skeleton'}
+                  restructuring={loading === 'restructure'}
                 />
               ),
             }, {
@@ -2534,6 +2548,11 @@ export default function App() {
                 onIngest={ingestCurrentNote}
                 ingesting={loading === 'ingest'}
               />,
+            }, {
+              id: 'links', title: '链接', icon: 'bx-link-alt',
+              badge: (content.match(/\]\(note:\/\/[0-9a-f]{12}\)/g) ?? []).length || undefined,
+              body: <NoteLinksPanel noteId={current.id} content={content}
+                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
             }, {
               id: 'paths', title: '路径', icon: 'bx-git-branch',
               badge: (tree.find((r) => r.note_id === current.id)?.branch_count ?? 1) > 1

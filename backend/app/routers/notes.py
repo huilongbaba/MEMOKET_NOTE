@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
-from .schemas import Note, NoteCreateIn, NoteIn, SkeletonSaveIn
+from .schemas import CitingNoteOut, Note, NoteCreateIn, NoteIn, NoteLinksOut, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -31,6 +31,21 @@ def get_note(note_id: str, user: str = Depends(current_user)):
     if not note:
         raise HTTPException(404, "note not found")
     return note
+
+
+@router.get("/{note_id}/links", response_model=NoteLinksOut)
+def note_links(note_id: str, user: str = Depends(current_user)):
+    """这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。"""
+    note = store.get_note(user, note_id)
+    if not note:
+        raise HTTPException(404, "note not found")
+    outgoing = []
+    for target in store.note_links_in(note["content"]):
+        t = store.get_note(user, target)
+        if t:
+            outgoing.append(CitingNoteOut(id=t["id"], title=t["title"], updated_at=t["updated_at"],
+                                          preview=(t["content"] or "")[:80]))
+    return NoteLinksOut(outgoing=outgoing, backlinks=[CitingNoteOut(**r) for r in store.backlinks(user, note_id)])
 
 
 @router.put("/{note_id}", response_model=Note)
