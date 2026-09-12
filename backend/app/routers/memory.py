@@ -156,6 +156,15 @@ class _RelationsIn(TraceIn):
     confirm: bool = True
 
 
+def _has_facts(mem: UserMemory) -> bool:
+    """知识库是空的就不判关系：空库时每一段带数字的都会是「缺依据」，满页灰点全是噪音
+    （第 131 轮实拍 412 篇零事实的用户）。"""
+    try:
+        return mem.stats()["facts"] > 0
+    except Exception:      # noqa: BLE001 — 索引读不出来就当没有
+        return False
+
+
 def _live(mem: UserMemory, rows: list[dict]) -> list[dict]:
     """被取代 / 合并掉的记录不参与关系判断——「合并结果记住，下次不再问」。"""
     gone = mem.fact_attrs("superseded_by")
@@ -171,6 +180,8 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
         return {"relations": [], "took_ms": 0.0}
     t0 = time.perf_counter()
     mem = UserMemory(user)
+    if not _has_facts(mem):
+        return {"relations": [], "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
     rows, _terms, _took = mem.recall(passage, limit=8)
     rows = _live(mem, rows)
     cands = kb_relations.detect(passage, rows)
@@ -209,6 +220,8 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
     每段只回最要紧的一条。最多 80 段。"""
     mem = UserMemory(user)
     t0 = time.perf_counter()
+    if not _has_facts(mem):
+        return {"marks": [None] * len(body.passages[:80]), "took_ms": 0.0}
     out = []
     for p in body.passages[:80]:
         p = (p or "").strip()

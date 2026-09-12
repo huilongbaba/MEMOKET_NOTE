@@ -126,5 +126,9 @@ def test_relations_batch_route(tmp_path, monkeypatch):
     monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8: (rows, [], 0.1))
     from app.main import app
     with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        # 空库：一个点都不亮（不然全是「缺依据」）
+        r = c.post("/api/memory/relations/batch", json={"passages": ["电池容量定在 420mAh。"]}).json()
+        assert r["marks"] == [None]
+        monkeypatch.setattr(UserMemory, "stats", lambda self: {"facts": 1})
         r = c.post("/api/memory/relations/batch", json={"passages": ["电池容量定在 420mAh。", "没有数字的一段", "短"]}).json()
     assert r["marks"][0]["relation"] == "conflict" and r["marks"][1] is None and r["marks"][2] is None
