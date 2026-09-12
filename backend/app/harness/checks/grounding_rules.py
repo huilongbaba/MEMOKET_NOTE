@@ -184,9 +184,30 @@ def audit_voice_lines(content: str, *, limit: int = 5) -> list[str]:
 # 记录」；而"目前 KB 中可核对的记录集中在…"这种句子对用户零价值，是纯噪声。
 
 
+# 「**依赖链：**容量确认」——模型爱把冒号 / 逗号写在粗体**里面**。CommonMark 的
+# 右侧定界规则：闭合 ** 前面是标点、后面紧跟汉字，就不算闭合，整段粗体渲染成
+# 一串裸星号（实拍）。把标点挪到粗体外面，语义不变、渲染就对了。
+# 放在这个纯模块里（不是 editor/textshape）：这里不许依赖 app 内其它包，见 test_layering。
+_BOLD_PUNCT = re.compile(r"\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*")
+
+
+def fix_bold_punct(md: str) -> str:
+    """`**依赖链：**` → `**依赖链**：`。围栏代码块里不动。"""
+    out: list[str] = []
+    fenced = False
+    for line in md.split("\n"):
+        if re.match(r"^\s*(`{3,}|~{3,})", line):
+            fenced = not fenced
+            out.append(line)
+            continue
+        out.append(line if fenced else _BOLD_PUNCT.sub(r"**\1**\2", line))
+    return "\n".join(out)
+
+
 def scrub_meta_sentences(content: str) -> str:
-    """兼容旧调用：只要清理后的正文。"""
-    return scrub_meta_sentences_v(content)[0]
+    """兼容旧调用：只要清理后的正文。落盘前顺手把「**标题：**」这类渲染不出来的
+    粗体修成「**标题**：」——四条落盘路径都经过这里。"""
+    return fix_bold_punct(scrub_meta_sentences_v(content)[0])
 
 
 def scrub_meta_sentences_v(content: str) -> tuple[str, list[str]]:

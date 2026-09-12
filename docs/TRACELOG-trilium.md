@@ -842,3 +842,11 @@ client-log，点「生成骨架」失败才提示。
 
 右栏「目录」之前只是一列可点的标题；现在跟着正文滚动区顶部那一行高亮当前所在的
 那一节（Obsidian outline 的做法），没有标题时给一句提示而不是空白。探针 `outline:<id>`。
+
+## [51] 全量巡检第 29 轮：「**依赖链：**」渲染成裸星号（2026-09-12）
+
+实拍正文里「**依赖链：**容量确认 → …」整段是裸星号：模型把冒号写在粗体里面，
+CommonMark 的右侧定界规则不认这种闭合。确定性修：`fix_bold_punct` 把标点挪到粗体
+外面——后端放在 `checks/grounding_rules.py`（纯模块，四条落盘路径都经过的
+`scrub_meta_sentences` 顺手做），前端「格式化」同一条规则（`editor/format.ts`）。
+第一版放在 editor/textshape 被 test_layering 拦下：grounding_rules 不许依赖 app 内其它包。
