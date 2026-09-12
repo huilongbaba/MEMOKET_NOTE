@@ -1165,3 +1165,10 @@ toast 也不再直接 `${err}`。打包配置补 `NSMicrophoneUsageDescription` 
 三个自绘 tooltip（`/` 菜单、引用预览、接受/撤回条）改成 `.cm-tooltip.xxx` + `!important`
 压回令牌。顺手修 fact-peek 探针：第一条引用常在折叠线下，坐标打过去 CM 什么都不弹，
 改成滚到最后一条再打。
+
+## [100] 全量巡检第 80 轮：⌘F 查找条是 CM 原生皮（2026-09-12）
+
+新探针 `find`（打开 CM 查找面板、填「样机」、findNext）实拍：英文按钮（next / previous /
+match case / by word…）、暗色下浅灰大板、输入框吃了全局 `input { width: 100% }` 撑满整行、
+浏览器默认灰钮。`EditorState.phrases` 汉化全部文案；`.cm-panels / .cm-search` 压回令牌，
+收成两行紧凑条，关闭钮钉右上；命中高亮暗色下改成 warn/accent 半透明。两种模式都拍过。

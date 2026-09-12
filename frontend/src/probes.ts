@@ -293,6 +293,15 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       }, 1500)
     })() }
   }
+  // 编辑器内查找替换条（⌘F，CM 自带面板）——它的皮肤是 CM 默认的，跟 `/` 菜单一样要单独核对暗色
+  if (probe === 'find' && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => (x.content ?? '').length > 80)
+    if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => setTimeout(() => {
+      const view = editorViewRef.current
+      if (!view) return
+      void import('@codemirror/search').then((m) => { m.openSearchPanel(view); const inp = document.querySelector<HTMLInputElement>('.cm-search input[main-field]'); if (inp) { inp.value = '样机'; inp.dispatchEvent(new Event('change', { bubbles: true })); m.findNext(view) } })
+    }, 1500)) }
+  }
   if (probe === 'selection' && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => (x.content ?? '').length > 80)
     if (n) { harnessProbeDone.current = true; void (async () => {

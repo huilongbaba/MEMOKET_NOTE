@@ -118,6 +118,14 @@ export default function MarkdownEditor({
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, ...searchKeymap, indentWithTab]),
         // ⌘F 页内查找（Trilium 的 FindWidget）。长文档没有它是硬伤。
         search({ top: true }),
+        // 查找条的文案：CM 自带的是英文（next / previous / match case…），实拍跟满屏中文
+        // 格格不入。CM 的 phrases facet 就是为这个留的。
+        EditorState.phrases.of({
+          Find: '查找', Replace: '替换', next: '下一个', previous: '上一个', all: '全选中',
+          'match case': '区分大小写', regexp: '正则', 'by word': '整词', replace: '替换', 'replace all': '全部替换',
+          close: '关闭', 'current match': '当前命中', 'replaced $ matches': '替换了 $ 处', 'replaced match on line $': '替换了第 $ 行的命中',
+          'on line': '在第', 'Go to line': '跳到行', go: '跳', 'replace input': '替换内容', 'search input': '查找内容',
+        }),
         autocompletion({ override: [recallSource, noteLinkSource], activateOnTyping: true }),
         markdown({ codeLanguages: languages, extensions: [GFM] }),
         syntaxHighlighting(markdownHighlight),
