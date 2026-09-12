@@ -307,8 +307,20 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('memoket-note-panes:' + api.getUser(), JSON.stringify(panes)) } catch { /* 无所谓 */ }
   }, [panes])
+  // 窗口窄的时候正文优先：两侧栏保持用户设的宽度会把编辑器挤到 300px（900×600
+  // 实拍：ribbon 折三行、工具栏溢出）。中栏不够 520px 就先收右栏（用户的开关不动，
+  // 窗口拉宽自动回来）；左栏最多占窗口 30%。
+  const [winW, setWinW] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const on = () => setWinW(window.innerWidth)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  const leftW = Math.min(panes.leftW, Math.floor(winW * 0.3))
+  const LAUNCHER_W = 80
+  const tooNarrowForRight = panes.leftOn && winW - LAUNCHER_W - leftW - panes.rightW < 520
   const leftShown = !focusMode && panes.leftOn
-  const rightShown = !focusMode && panes.rightOn
+  const rightShown = !focusMode && panes.rightOn && !tooNarrowForRight
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   const [selectionBusy, setSelectionBusy] = useState(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
@@ -1245,6 +1257,7 @@ export default function App() {
           v.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', metaKey: true, bubbles: true, cancelable: true }))
         }, 1500)
       }
+      if (probe === 'focus' && notes.length) setTimeout(() => setFocusMode(true), 1500)
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
@@ -2687,7 +2700,7 @@ export default function App() {
       {/* 专注模式把左栏收起来——但启动栏留着：那是跨笔记的入口，收掉之后
           专注模式就等于「什么都点不到」。 */}
       {leftShown && (
-      <div className="left-pane" style={{ width: panes.leftW }}>
+      <div className="left-pane" style={{ width: leftW }}>
         {/* 左栏只放「找笔记」这一件事：快速搜索 + 树。
             标题、用户切换、新建、导入都挪进了启动栏——照 Trilium：左栏是
             导航，跨笔记的入口在启动栏。 */}
