@@ -32,6 +32,9 @@ try:
     _bk = backup.maybe_backup(store._db_path())
     if _bk:
         print(f"[startup] 笔记库已备份到 {_bk}")
+    _kb = backup.maybe_backup_kb(store._db_path().parent)
+    if _kb:
+        print(f"[startup] 知识库已备份：{len(_kb)} 个用户（一周一份）")
 except Exception as _exc:                                  # noqa: BLE001
     print(f"[startup] 笔记库备份失败：{_exc}")
 

@@ -35,3 +35,17 @@ def test_修剪_留七日加每月第一份(tmp_path, monkeypatch):
     left = sorted(p.name[6:14] for p in d.iterdir())
     # 最近 7 日：0906..0912；每月第一份（最近 3 个月：07/08/09 → 0715 0801 0901）
     assert left == ["20260715", "20260801", "20260901", "20260906", "20260907", "20260908", "20260909", "20260910", "20260911", "20260912"]
+
+
+def test_知识库一周一份留两份(tmp_path, monkeypatch):
+    d = tmp_path / "backups"; d.mkdir()
+    monkeypatch.setattr(backup, "backup_dir", lambda: d)
+    (tmp_path / "u1").mkdir(); (tmp_path / "u1" / "codebook.xml").write_text("<x/>")
+    (tmp_path / "u2").mkdir()                          # 没有知识库的用户跳过
+    made = backup.maybe_backup_kb(tmp_path, date(2026, 9, 12))
+    assert [p.name for p in made] == ["codebook-2026W37.xml"]
+    assert backup.maybe_backup_kb(tmp_path, date(2026, 9, 13)) == []      # 同一周
+    backup.maybe_backup_kb(tmp_path, date(2026, 9, 20))
+    backup.maybe_backup_kb(tmp_path, date(2026, 9, 27))
+    left = sorted(p.name for p in (d / "kb" / "u1").iterdir())
+    assert left == ["codebook-2026W38.xml", "codebook-2026W39.xml"]

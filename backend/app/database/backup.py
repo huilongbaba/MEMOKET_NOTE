@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -71,3 +72,34 @@ def prune(d: Path) -> list[Path]:
             p.unlink(missing_ok=True)
             gone.append(p)
     return gone
+
+
+# ---------------------------------------------------------------- 知识库（KITE codebook）
+
+KEEP_KB_WEEKLY = 2
+_KB_NAME = re.compile(r"^codebook-(\d{4}W\d{2})\.xml$")
+
+
+def maybe_backup_kb(root: Path, today: date | None = None) -> list[Path]:
+    """每个用户的 `codebook.xml` 一周一份：`backups/kb/<user>/codebook-YYYYWww.xml`，
+    留最近 KEEP_KB_WEEKLY 份。十几 MB 一份、每周一次，两份封顶——不会把磁盘吃光。
+    只拷 xml 本体（.lock / .bak-* 这些不是数据）。"""
+    today = today or datetime.now().date()
+    iso = today.isocalendar()
+    stamp = f"{iso[0]}W{iso[1]:02d}"
+    made: list[Path] = []
+    for user_dir in sorted(p for p in root.iterdir() if p.is_dir() and p.name != "backups"):
+        src = user_dir / "codebook.xml"
+        if not src.is_file():
+            continue
+        dst_dir = backup_dir() / "kb" / user_dir.name
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        target = dst_dir / f"codebook-{stamp}.xml"
+        if target.exists():
+            continue
+        shutil.copy2(src, target)
+        made.append(target)
+        olds = sorted(p for p in dst_dir.iterdir() if _KB_NAME.match(p.name))
+        for p in olds[:-KEEP_KB_WEEKLY]:
+            p.unlink(missing_ok=True)
+    return made

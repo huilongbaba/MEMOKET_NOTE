@@ -1041,3 +1041,8 @@ Trilium 有 daily / weekly / monthly 备份，我们一直没有。`database/bac
 启动看一眼，今天没备份就用 sqlite 在线备份 API 拷一份一致快照到 `data/backups/
 notes-YYYYMMDD.sqlite3`，留最近 7 日 + 每月第一份（3 个月）；备份失败不影响启动但会
 打日志。帮助菜单加「打开备份文件夹」。知识库（KITE xml，几十 MB / 用户）下一步再进。
+
+## [81] 全量巡检第 60 轮：知识库也备份（2026-09-12）
+
+每个用户的 `codebook.xml`（KITE 的知识库本体，十几 MB）一周一份到
+`backups/kb/<user>/codebook-YYYYWww.xml`，留两份；.lock / .bak-* 不拷。测试盯周界。
