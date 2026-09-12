@@ -1031,6 +1031,10 @@ export default function App() {
     // 而 harness 下一轮还得重新花一次模型调用生成一份。
     setSpine(n.spine ?? '')
     setBeats(n.beats ?? [])
+    // 已经有骨架的笔记，打开时不要 8 秒后又生成一遍——之前每开一篇就一次模型
+    // 调用，模型连不上时每开一篇弹一个错（实拍）。以打开时的正文为基线，改够
+    // 20 字才重算。
+    lastSkeletonContent.current = n.spine ? n.content : ''
     setRevisions([])
     setTapMeta(null)
     if (loading !== 'note-harness') { setHarnessDone(false); harnessDoneRef.current = false; if (!pausedRef.current) setNoteHarnessStatus('') }
@@ -1553,7 +1557,7 @@ export default function App() {
     const t = setTimeout(() => {
       if (loadingRef.current) return
       lastSkeletonContent.current = content
-      runSkeleton()
+      void runSkeleton(true)
     }, SKELETON_IDLE_MS)
     return () => clearTimeout(t)
     // `loading` isn't read in the body, but it's a dep on purpose: if the
@@ -1624,7 +1628,7 @@ export default function App() {
     } catch { /* 存不上就算了，内存里还在 */ }
   }
 
-  async function runSkeleton() {
+  async function runSkeleton(background = false) {
     setLoading('skeleton')
     try {
       const r = await api.genSkeleton(title, content)
@@ -1632,7 +1636,9 @@ export default function App() {
       setBeats(r.beats)
       await persistSkeleton(r.spine, r.beats)
     } catch (e) {
-      toast('生成骨架失败：' + friendlyError(e), 'error')
+      // 后台自动跑的失败不打扰人（用户没点任何东西）；点「生成骨架」失败才提示
+      if (background) void api.clientLog('warn', '后台骨架生成失败：' + friendlyError(e), '', 'skeleton')
+      else toast('生成骨架失败：' + friendlyError(e), 'error')
     } finally {
       setLoading('')
     }
