@@ -25,6 +25,8 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const batchAbort = useRef<AbortController | null>(null)
   const [notionToken, setNotionToken] = useState('')
   const [importing, setImporting] = useState(false)
+  // 导到哪：一个几百篇的 vault 全抽进知识库要跑很久，得让人选
+  const [importTo, setImportTo] = useState<'both' | 'kb' | 'notes'>('both')
   const [apple, setApple] = useState<{ available: boolean; reason: string } | null>(null)
   const [recentFacts, setRecentFacts] = useState<FactDetail[]>([])
   const lastSeenFactCount = useRef(-1)
@@ -83,7 +85,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     if (!files.length) return
     setImporting(true)
     try {
-      const r = await importFiles(files, source)
+      const r = await importFiles(files, source, importTo)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { refresh(); setRecentFacts([]) })
@@ -97,7 +99,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   async function doImportApple() {
     setImporting(true)
     try {
-      const r = await importApple()
+      const r = await importApple(importTo)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { refresh(); setRecentFacts([]) })
@@ -111,7 +113,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   async function doImportNotion() {
     setImporting(true)
     try {
-      const r = await importNotion(notionToken.trim())
+      const r = await importNotion(notionToken.trim(), importTo)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { refresh(); setRecentFacts([]) })
@@ -157,6 +159,14 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           内容会被跳过，不会翻倍也不会重新花抽取的时间。
         </p>
 
+        <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 88 }}>导入到</span>
+          <select value={importTo} onChange={(e) => setImportTo(e.target.value as 'both' | 'kb' | 'notes')} disabled={importing}>
+            <option value="both">笔记 + 知识库（逐篇抽事实，篇数多会跑很久）</option>
+            <option value="notes">只进笔记（之后可以对单篇「存入知识库」）</option>
+            <option value="kb">只进知识库（不建笔记）</option>
+          </select>
+        </label>
         <label className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>Obsidian</span>
           <input
