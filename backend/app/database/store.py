@@ -587,6 +587,12 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             c.execute("DELETE FROM branches WHERE note_id=? AND user_id=?",
                       (nid, user_id))
             c.execute("DELETE FROM notes WHERE id=? AND user_id=?", (nid, user_id))
+            # 挂在这篇上的东西一起走：引用、历史版本、暂停快照、运行记录。
+            # 留着就是一堆指向不存在笔记的孤儿行，越攒越多。
+            c.execute("DELETE FROM note_citations WHERE user_id=? AND note_id=?", (user_id, nid))
+            c.execute("DELETE FROM note_revisions WHERE user_id=? AND note_id=?", (user_id, nid))
+            c.execute("DELETE FROM harness_snapshots WHERE user_id=? AND note_id=?", (user_id, nid))
+            c.execute("DELETE FROM harness_runs WHERE key=?", (f"note:{nid}",))
             removed.append(nid)
 
         drop(note_id)
@@ -1181,6 +1187,11 @@ def record_harness_run(key: str, status: str, rounds: int,
             (str(uuid.uuid4()), key, status, rounds,
              json.dumps(final_scores, ensure_ascii=False),
              json.dumps(weak_dimensions, ensure_ascii=False), _now()))
+        # 一个 key（一篇笔记 / 一个分段）只留最近 50 次：策略只看最近几次，
+        # 再往前的除了占地方没有用
+        c.execute("DELETE FROM harness_runs WHERE key=? AND id NOT IN ("
+                  "SELECT id FROM harness_runs WHERE key=? ORDER BY created_at DESC, rowid DESC LIMIT 50)",
+                  (key, key))
 
 
 def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
