@@ -1172,3 +1172,11 @@ toast 也不再直接 `${err}`。打包配置补 `NSMicrophoneUsageDescription` 
 match case / by word…）、暗色下浅灰大板、输入框吃了全局 `input { width: 100% }` 撑满整行、
 浏览器默认灰钮。`EditorState.phrases` 汉化全部文案；`.cm-panels / .cm-search` 压回令牌，
 收成两行紧凑条，关闭钮钉右上；命中高亮暗色下改成 warn/accent 半透明。两种模式都拍过。
+
+## [101] 全量巡检第 81 轮：同一篇两个字数（2026-09-12）
+
+实拍信息面板「8449 字 · 约 21 分钟」、状态栏「8874 字 · 约 22 分钟」，同一篇笔记。一个数
+`content.length`（空格换行都算），一个先去空白。`util/wordCount.ts` 一处定义：去空白、
+markdown 记号、`[user-n-hex]` 引用标记后的字符数（同一篇现在两处都是 7760），阅读时间
+400 字/分钟。信息面板「已摄入（日期）」还在 `slice(0,10)` UTC 字符串，第 74 轮漏的，改
+`fmtDate`。vitest 66。

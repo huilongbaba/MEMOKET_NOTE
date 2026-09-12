@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { micError } from './util/micError'
 import { matchSnippet } from './util/snippet'
+import { readingMinutes, wordCount } from './util/wordCount'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -2917,7 +2918,7 @@ export default function App() {
           {healthMsg && <span className="health-bad"><i className="bx bx-error" /> {healthMsg}</span>}
           {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
         </span>
-        {current && <span className="muted">{content.length} 字 · 约 {Math.max(1, Math.round(content.length / 400))} 分钟</span>}
+        {current && <span className="muted">{wordCount(content)} 字 · 约 {readingMinutes(wordCount(content))} 分钟</span>}
       </div>
     </div>
   )
