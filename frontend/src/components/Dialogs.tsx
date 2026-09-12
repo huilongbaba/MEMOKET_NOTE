@@ -129,7 +129,10 @@ export type ConfirmRequest = {
  *  删除走的是乐观删除 + 撤销，比确认框好——别把这个用滥了。 */
 export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
   const btn = useRef<HTMLButtonElement>(null)
-  useEffect(() => { btn.current?.focus() }, [])
+  const cancel = useRef<HTMLButtonElement>(null)
+  // 危险操作（删整棵子树）默认焦点放在「取消」上：顺手一个回车不该删掉几十篇。
+  // 普通确认才把焦点给确定键。
+  useEffect(() => { (req.danger ? cancel : btn).current?.focus() }, [req.danger])
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(false)}>
       <div className="palette" role="alertdialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}
@@ -137,7 +140,7 @@ export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
         <div style={{ fontWeight: 600, padding: '2px 4px 4px' }}>{req.title}</div>
         {req.detail && <div className="muted" style={{ fontSize: 13, padding: '0 4px 8px', whiteSpace: 'pre-wrap' }}>{req.detail}</div>}
         <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
-          <button onClick={() => req.resolve(false)}>取消</button>
+          <button ref={cancel} onClick={() => req.resolve(false)}>取消</button>
           <button ref={btn} className="primary" style={req.danger ? { background: 'var(--del)', borderColor: 'var(--del)' } : undefined}
                   onClick={() => req.resolve(true)}>{req.okLabel ?? '确定'}</button>
         </div>
