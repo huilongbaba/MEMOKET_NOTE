@@ -45,6 +45,19 @@ export default function TabBar({
     el?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeId, tabs.length])
 
+  // 装不下时显形两个滚动按钮（Trilium tab_row.ts:19x：每次滚 ±210px）——只靠滚轮横滚
+  // 没人发现得了，十几个标签时最右那个就一直藏着
+  const [overflow, setOverflow] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setOverflow(el.scrollWidth > el.clientWidth + 2)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [tabs.length])
+
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -60,6 +73,7 @@ export default function TabBar({
 
   return (
     <>
+    {overflow && <button className="tab-scroll" title="往左看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: -210, behavior: 'smooth' }) }}><i className="bx bx-chevron-left" /></button>}
     <div className="tab-strip" ref={ref} role="tablist"
          // 滚轮竖滚转横滚：strip 是横向的，用户的滚轮是竖向的（tab_row.ts:424-466）
          onWheel={(e) => { if (e.deltaY && ref.current) ref.current.scrollLeft += e.deltaY }}>
@@ -107,6 +121,7 @@ export default function TabBar({
         </div>
       ))}
     </div>
+    {overflow && <button className="tab-scroll" title="往右看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: 210, behavior: 'smooth' }) }}><i className="bx bx-chevron-right" /></button>}
     <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）"><span><i className="bx bx-plus" /></span></button>
     {/* 标签行空白处双击开新标签（浏览器约定） */}
     <div className="tab-row-filler" onDoubleClick={onNew} />

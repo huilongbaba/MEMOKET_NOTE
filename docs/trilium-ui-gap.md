@@ -100,7 +100,7 @@ Trilium 的实现在 `$T/widgets/tab_row.ts`（**不是** `.js`），我们的�
 
 | 维度 | Trilium 怎么做 | 我们现在 | 等级 | 建议 |
 |---|---|---|---|---|
-| **放不下时怎么办** | 标签宽度 `clamp(100, 240)`，装不下就**扣掉左右两个 36px 滚动按钮并显形**（`bx bx-chevron-left/right`，每次滚 ±210px），另外支持鼠标滚轮横向滚动 — `$T/widgets/tab_row.ts:19-24,520-557,227-257,325-329,424-466` | 一路缩到 48px 下限，`.tab-strip { overflow: hidden }` — `$M/components/TabBar.tsx:17-41` + `$M/shell.css:221-224`。**标签再多就直接看不见也点不到** | **严重** | 两选一：(a) 抄滚动按钮；(b) 保持缩窄但把下限提到 84px 并让 strip `overflow-x: auto`（配 `scrollbar-width: none`）。(b) 改动小得多 |
+| **放不下时怎么办** | 标签宽度 `clamp(100, 240)`，装不下就**扣掉左右两个 36px 滚动按钮并显形**（`bx bx-chevron-left/right`，每次滚 ±210px），另外支持鼠标滚轮横向滚动 — `$T/widgets/tab_row.ts:19-24,520-557,227-257,325-329,424-466` | 一路缩到 48px 下限，`.tab-strip { overflow: hidden }` — `$M/components/TabBar.tsx:17-41` + `$M/shell.css:221-224`。**标签再多就直接看不见也点不到** | **已做（[85]）：装不下显形 ◀ ▶ 各滚 210px + 滚轮横滚 + 激活标签滚进视野** | — |
 | 宽度区间 | `TAB_CONTAINER_MIN_WIDTH = 100`、`MAX = 240` — `$T/widgets/tab_row.ts:19-20`；分档常量 `TAB_SIZE_SMALL = 84 / SMALLER = 60 / MINI = 48` 写成 `is-small` / `is-smaller` / `is-mini` 属性 — `tab_row.ts:26-28,585-591` | `MAX_W = 240`、`MIN_W = 48`，**没有分档**，只是线性缩到 48 — `$M/components/TabBar.tsx:17-19,40` | **明显** | 加回三档，用 `data-size` 属性驱动样式（关闭按钮显隐、内边距都靠它） |
 | 标签间距 | `MARGIN_WIDTH = 5`（纯间隙，**没有重叠、没有 SVG 背景、没有分隔线**）— `$T/widgets/tab_row.ts:24,565` | `gap: 2px` — `$M/shell.css:222` | 细节 | 改 5px（宽度算法里也要扣 `(n-1)*5`，Trilium 在 `tab_row.ts:536-538` 就是这么算的） |
 | 标签高度 / 圆角 | 36px（`--tab-height`），`padding: 7px 5px 7px 11px`，`border-radius: 8px`（四角全圆，横版布局才把下面两角拉直）— `$T/widgets/tab_row.ts:136-152`、`$T/stylesheets/theme-next/shell.css:1174-1189` | `height: 30px`，`padding: 0 8px`，`border-radius: 6px 6px 0 0` — `$M/shell.css:228` | **明显** | 36px + 全圆角 8px。我们的「上圆下方」是浏览器标签的画法，Trilium 竖版布局是「悬浮的胶囊」 |
@@ -253,21 +253,21 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 
 | 控件 | Trilium 在哪 | 它解决什么 | 对我们的价值 | 等级 |
 |---|---|---|---|---|
-| **FloatingButtons（正文右上角浮层按钮）** | `$T/widgets/FloatingButtons.{tsx,css}`，`position: absolute; top: 14px; inset-inline-end: 10px; z-index: 100`，按钮 `width: 40px`；`--floating-button-height: 34px` — `FloatingButtons.css:6-57`、`theme-next/base.css:62-64`；定义表 `$T/widgets/FloatingButtonsDefinitions.tsx`（DESKTOP_FLOATING_BUTTONS 16 项） | 跟正文相关的动作**浮在正文上**，不占正文的行 | **高（判据 1）**。北极星表里明写「浮动按钮 = 一个动作一个按钮（润色/改写/画图/排版）」。我们现在这些按钮是**正文流里的一行**（`$M/App.tsx:1816-1861`），会随正文滚走，而且跟正文抢宽度 | **明显** |
+| **FloatingButtons（正文右上角浮层按钮）** | `$T/widgets/FloatingButtons.{tsx,css}`，`position: absolute; top: 14px; inset-inline-end: 10px; z-index: 100`，按钮 `width: 40px`；`--floating-button-height: 34px` — `FloatingButtons.css:6-57`、`theme-next/base.css:62-64`；定义表 `$T/widgets/FloatingButtonsDefinitions.tsx`（DESKTOP_FLOATING_BUTTONS 16 项） | 跟正文相关的动作**浮在正文上**，不占正文的行 | **已做：浮动按钮横带（续写 / 智能续写▾ / 🎙▾ / ⋯），粘在正文顶部** | — |
 | **FindWidget（页内查找）** | `$T/widgets/find.ts`，挂在每个 note-split 里 — `$T/layouts/desktop_layout.tsx:166`；⌘F — `$TS/…:823-830` | 长文档里定位 | **高**。CodeMirror 6 自带 `@codemirror/search` | **严重** |
-| **PopupEditor / TreePopupEditor（快速编辑浮层）** | `$T/widgets/dialogs/PopupEditor.tsx:35-60`；入口：树菜单「Quick edit」(`tree_context_menu.ts:146`) 和 **Ctrl+右键树节点**(`note_tree.ts:712-721`) | 不切走当前笔记就能看/改另一篇 | **很高（判据 2 的直接落地）**。「为了看一条旧记录而离开当前页面 = 失败」——右栏的相关记忆解决了「浮现」，但**点进去读全文**目前只能开新标签 | **明显** |
-| **SplitNoteContainer（分屏）** | `$T/widgets/containers/split_note_container.ts` + `CreatePaneButton` / `ClosePaneButton` / `MovePaneButton` — `$T/layouts/desktop_layout.tsx:133-146`；resizer `$T/services/resizer.ts:102-160` | 对照着另一篇写 | **高**。`docs/trilium-migration-plan.md` 里 61–75 轮就写了分屏，标签页做了但分屏没做 | **明显** |
+| **PopupEditor / TreePopupEditor（快速编辑浮层）** | `$T/widgets/dialogs/PopupEditor.tsx:35-60`；入口：树菜单「Quick edit」(`tree_context_menu.ts:146`) 和 **Ctrl+右键树节点**(`note_tree.ts:712-721`) | 不切走当前笔记就能看/改另一篇 | **已做：快速查看（⌥点击 / 树菜单），只读浮层** | — |
+| **SplitNoteContainer（分屏）** | `$T/widgets/containers/split_note_container.ts` + `CreatePaneButton` / `ClosePaneButton` / `MovePaneButton` — `$T/layouts/desktop_layout.tsx:133-146`；resizer `$T/services/resizer.ts:102-160` | 对照着另一篇写 | **已做：右侧分屏（只读，可拖宽、可从树 / 标签 / ⋯ 打开）** | — |
 | **NoteIcon（可点的笔记图标）** | `$T/widgets/note_icon.{tsx,css}`，`--note-icon-size: 30px`（新布局 16px），容器 padding 10px（新布局 6px），点开是图标选择器 — `note_icon.css:1-24,38-74` | 笔记的视觉标识 | 中。树图标做了之后自然要有 | 细节 |
 | **save-status-badge（保存状态）** | `$T/widgets/layout/NoteBadges.css:28-45`：`opacity: .4`，保存成功后 5s 淡出，出错变红且不淡出 | 自动保存的产品里告诉用户「存了」 | **中高**。我们是自动保存 + 一个「保存」按钮，按钮反而暗示「不点就没存」 | 细节 |
-| **StatusBar 的 Breadcrumb（笔记路径面包屑）** | `$T/widgets/layout/Breadcrumb.tsx` + `StatusBar.css:16-19`（`flex-grow: 1`，`--icon-button-size: 23px`） | 当前笔记在树的哪个位置 | **中高**。我们有克隆——同一篇在多处，面包屑是唯一能说清「你现在看的是哪一份」的东西 | **明显** |
+| **StatusBar 的 Breadcrumb（笔记路径面包屑）** | `$T/widgets/layout/Breadcrumb.tsx` + `StatusBar.css:16-19`（`flex-grow: 1`，`--icon-button-size: 23px`） | 当前笔记在树的哪个位置 | **已做：状态栏面包屑 + ribbon「路径」（含克隆多处）** | — |
 | **shortcut_hints 面板 + 按钮** | `$T/widgets/shortcut_hints/`：`Alt+F1` 开面板，另有可挂在任意 widget 上的浮层 `?` 按钮，**按当前上下文收集快捷键** — `shortcut_hint_button.tsx:22-55` | 快捷键可发现 | **已做**（2026-09-12）：`⌘/` 快捷键一览 + 欢迎页常用键，键表在 `shortcuts.ts`，TRACELOG [31] | — |
-| **tree-actions 工具条（折叠全树 / 定位当前笔记）** | `$T/widgets/note_tree.ts:113-121`；收起 40px 圆钮 hover 展开 — `theme-next/shell.css:908-981` | 树导航 | **中高**（见第 2 节） | **明显** |
-| **TabHistoryNavigationButtons（前进后退）** | `$T/widgets/TabHistoryNavigationButtons.tsx:12-37`，右键出历史菜单 | 跳去看一篇再回来 | **高（判据 2 痛点 12）** | **明显** |
+| **tree-actions 工具条（折叠全树 / 定位当前笔记）** | `$T/widgets/note_tree.ts:113-121`；收起 40px 圆钮 hover 展开 — `theme-next/shell.css:908-981` | 树导航 | **已做：树底部浮动工具条（定位 / 折叠全部）** | — |
+| **TabHistoryNavigationButtons（前进后退）** | `$T/widgets/TabHistoryNavigationButtons.tsx:12-37`，右键出历史菜单 | 跳去看一篇再回来 | **已做：标签行 ← →，⌘[ ⌘]（编辑器里也生效）** | — |
 | **Backlinks（反向链接）** | 浮动按钮 `Backlinks` — `$T/widgets/FloatingButtonsDefinitions.tsx:372-437`；面板 `.backlinks-items { width: 400px; top: 50px }` — `FloatingButtons.css:112-158`；侧栏版 `$T/widgets/sidebar/Backlinks.tsx` | 「哪些笔记引用了我」，带**摘录片段** | **已做**（2026-09-12）：事实反链在 ribbon「引用」的「也引用于」；笔记之间的链接 `[[` 补全 + `note://` 标记 + ribbon「链接」（链出 / 链到这篇的），见 TRACELOG [32] | — |
 | **NoteMap / NoteMapGraph** | `$T/widgets/sidebar/NoteMap.tsx` | 笔记关系图 | 低。我们有 `KnowledgeGraph.tsx`（713 行），但它是弹层不是右栏 tab；北极星表里写着该进右栏 | 细节 |
 | **branch_prefix 对话框** | `$T/widgets/dialogs/branch_prefix.tsx`，F2 — `$TS/…:193-200` | 同一篇在不同位置显示不同前缀 | 低。克隆量小的时候用不上 | — |
 | **delete_notes 确认对话框** | `$T/widgets/dialogs/delete_notes.tsx` | 删子树前列出会删掉什么 | 低。我们走的是**乐观删除 + 撤销窗口**（`$M/App.tsx:882` 的注释明说「不用 confirm 对话框」），对单篇比确认框好。**但树菜单的「删除（连同子树）」是例外**——它会连带删掉看不见的东西，用户在点之前不知道会删几篇 | 细节 |
-| **item_picker / clone_to / move_to 对话框** | `$T/widgets/dialogs/{item_picker,clone_to,move_to}.tsx`（带搜索的笔记选择器） | 选目标笔记 | **中高**。我们的 `pickTarget` 是 **`window.prompt` + 把整棵树拍平成编号列表**，让用户输序号（`$M/App.tsx:336-350`，注释自己写着「先做对，再做好看」）。笔记上百篇之后这个 prompt 会长到滚不动；`renameNode`（`:321-322`）同样是 `window.prompt`。而且在 Electron 里 `window.prompt` 是**系统级模态**，样式完全不受主题控制 | **明显** |
+| **item_picker / clone_to / move_to 对话框** | `$T/widgets/dialogs/{item_picker,clone_to,move_to}.tsx`（带搜索的笔记选择器） | 选目标笔记 | **已做：NotePicker（搜索 + ↑↓ 回车）用于克隆到 / 移动到 / 分屏** | — |
 | **ScrollPadding** | `$T/widgets/scroll_padding.ts` — `desktop_layout.tsx:163` | 正文底部留白，最后一行也能滚到视线中间 | 细节。写作时很有感 | 细节 |
 | **note_tooltip（笔记悬浮预览）** | `$T/services/note_tooltip.ts`（菜单开着时抑制 — `note_tooltip.ts:50`） | 悬停链接看摘要 | **中高（判据 2）**。跟 `.cm-fact-peek` 同一类 | 细节 |
 | **shared_info / PromotedAttributes / bulk_actions / OptionsDialog** | — | 分享状态、提升属性、批量操作、设置页 | 低（我们没有这些概念，设置已是独立面板） | — |

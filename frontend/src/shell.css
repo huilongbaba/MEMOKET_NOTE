@@ -404,3 +404,12 @@
 .quick-search > .bx { color: var(--muted); font-size: 16px; flex-shrink: 0; }
 .quick-search input { flex: 1; min-width: 0; border: none !important; background: transparent !important; padding: 6px 4px !important; font-size: 13px; }
 .quick-search input:focus-visible { outline: none; }
+
+/* 标签装不下时的左右滚动钮（Trilium tab_row 的 ◀ ▶） */
+.tab-scroll {
+  flex-shrink: 0; width: 26px; height: 28px; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;
+  -webkit-app-region: no-drag;
+}
+.tab-scroll:hover { background: var(--hover-item-bg); color: var(--main-fg); }
+.tab-scroll .bx { font-size: 18px; }
