@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from .units import part_labels
 
 MONTHS_ON_DASHBOARD = 12
 MONTHS_ON_PAGE = 24
@@ -116,7 +117,8 @@ def dashboard(mem) -> dict:
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
     recent = sorted((u for u in units if u.date), key=lambda u: (u.date, u.id), reverse=True)[:6]
-    recent_units = [{"id": u.id, "date": u.date, "title": u.title or "", "facts": unit_facts.get(u.id, 0)} for u in recent]
+    labels = part_labels(recent)
+    recent_units = [{"id": u.id, "date": u.date, "title": labels.get(u.id) or u.title or "", "facts": unit_facts.get(u.id, 0)} for u in recent]
 
     return {
         "stats": {"facts": len(facts), "topics": len(vocab.topics), "entities": len(vocab.entities),
@@ -248,10 +250,11 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
     facts = [f for f in store.facts.values() if f.unit == unit_id]
     page, total = _page(facts, limit, offset, vocab)
     annotate(mem, page)
+    label = part_labels(list(store.units.values())).get(unit_id) or u.title or ""
     topics = Counter(c for f in facts for c in f.topics)
     ents = Counter(c for f in facts for c in f.entities)
     return {
-        "id": u.id, "date": u.date or "", "title": u.title or "",
+        "id": u.id, "date": u.date or "", "title": label,
         "speakers": sorted({f.who for f in facts if f.who}),
         "facts_total": total, "facts": page, "limit": limit, "offset": offset,
         "topics": [{"code": c, "facts": n} for c, n in topics.most_common(TOP_N)],

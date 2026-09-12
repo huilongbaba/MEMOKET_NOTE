@@ -132,3 +132,17 @@ def test_按月是连续的日历月_错抽的远古日期不拉长横轴(mem):
     rows = pages.topic_page(mem, "work")["months"]
     assert [r["month"] for r in rows] == ["2025-10", "2025-11", "2025-12", "2026-01"]   # 开头空月砍掉，2005 不进来
     assert [r["facts"] for r in rows] == [1, 0, 0, 2]                                   # 中间空月补 0
+
+
+def test_同一份材料切成几段_标题带段号(mem):
+    from memoket_kite.core.algebra import Unit
+    from app.database.kb.units import part_labels
+    store, _ = mem._index()
+    for i in range(3):
+        store.units[f"obsidian-doc1-{i}"] = Unit(id=f"obsidian-doc1-{i}", date="2026-09-12", t="", title="战略讨论", dur_min=0, n_lines=1)
+    labels = part_labels(list(store.units.values()))
+    assert labels["obsidian-doc1-0"] == "战略讨论（1/3）" and labels["obsidian-doc1-2"] == "战略讨论（3/3）"
+    assert labels["s1"] == "周会"                      # 单段的照原样
+    d = pages.dashboard(mem)
+    assert any(r["title"] == "战略讨论（1/3）" for r in d["recent_units"])
+    assert pages.unit_page(mem, "obsidian-doc1-1")["title"] == "战略讨论（2/3）"

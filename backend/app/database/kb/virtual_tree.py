@@ -28,6 +28,7 @@ branch，跟真笔记的克隆一模一样，树上照样标 ⧉。
 from __future__ import annotations
 
 from collections import Counter
+from .units import part_labels
 
 KB_ROOT = "kb"
 ROOT_POSITION = 1_000_000
@@ -144,8 +145,9 @@ def build(mem) -> list[dict]:
     # ---- 最近摄入：最近的几次会议
     units = sorted((u for u in store.units.values() if u.date),
                    key=lambda u: (u.date, u.id), reverse=True)[:RECENT_UNITS]
+    labels = part_labels(units)
     unit_rows = [
-        _row(f"kb:unit:{u.id}", "kb:recent", f"{u.date} · {u.title or u.id}",
+        _row(f"kb:unit:{u.id}", "kb:recent", f"{u.date} · {labels.get(u.id) or u.title or u.id}",
              position=i, child_count=unit_count.get(u.id, 0),
              fact_count=unit_count.get(u.id, 0), updated_at=u.date)
         for i, u in enumerate(units)

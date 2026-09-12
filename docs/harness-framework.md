@@ -213,7 +213,7 @@ backend/app/
     kb/                      知识库在 KITE 之上的那层：clusters · recall（簇粒度）· search（排序）
                              · virtual_tree（树上的虚拟子树）· pages（各节点的页面数据）
                              · extract_check / extract_judge / reextract（摄入质量）
-                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）
+                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）· units（长材料切成的段：标题带 k/n）
     ingest/                  摄入：asr · chunking · extract · importers · feishu（块 → markdown + 最小客户端）
     exporters.py             导回：render_tree（zip 导出 / Obsidian 目录共用）· markdown → Notion / 飞书块 · 最小写客户端
     assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
