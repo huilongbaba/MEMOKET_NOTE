@@ -214,6 +214,7 @@ backend/app/
                              · extract_check / extract_judge / reextract（摄入质量）
     ingest/                  摄入：asr · chunking · extract · importers
     assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
+    backup.py                启动时一天一份笔记库备份（sqlite 在线备份；留 7 日 + 3 月）
   editor/                    既不是 agent 也不是知识库：outline · restructure · textshape · vision · profile
   routers/                   和前端对接：认 Mode、装 State、翻事件
     note_harness.py            POST /api/note-harness/run（单篇：写 / 打磨）

@@ -1034,3 +1034,10 @@ tabs / kb-tab / split / quick-view / tree-menu / settings 六张全拍：
 terrence 20 篇（含两篇 3 万字）252KB / 3ms，整库导出 412 篇 31ms。本机回环下不值得
 为它改成「列表只给摘要、打开再取全文」——那要动 open() / 搜索 / 欢迎页三处，先记着，
 到几千篇再说。历史对比视图暗色实拍正常。
+
+## [80] 全量巡检第 59 轮：笔记库自动备份（2026-09-12）
+
+Trilium 有 daily / weekly / monthly 备份，我们一直没有。`database/backup.py`：后端每次
+启动看一眼，今天没备份就用 sqlite 在线备份 API 拷一份一致快照到 `data/backups/
+notes-YYYYMMDD.sqlite3`，留最近 7 日 + 每月第一份（3 个月）；备份失败不影响启动但会
+打日志。帮助菜单加「打开备份文件夹」。知识库（KITE xml，几十 MB / 用户）下一步再进。

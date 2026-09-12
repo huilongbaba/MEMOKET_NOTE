@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .database import store
+from .database import backup, store
 from .database.ingest import asr
 from .util import parent_watch
 from .util.config import get_settings
@@ -26,6 +26,14 @@ app = FastAPI(title="memoket-NOTE", version="0.1.0",
 _orphans = store.sweep_orphan_jobs()
 if _orphans:
     print(f"[startup] 清理了 {_orphans} 个被中断的入库任务")
+
+# 一天一份笔记库备份（database/backup.py）。备份失败不影响启动——但要说出来。
+try:
+    _bk = backup.maybe_backup(store._db_path())
+    if _bk:
+        print(f"[startup] 笔记库已备份到 {_bk}")
+except Exception as _exc:                                  # noqa: BLE001
+    print(f"[startup] 笔记库备份失败：{_exc}")
 
 
 # 桌面版：父进程（Electron）被强杀时跟着退，别留下占着 sqlite 和端口的孤儿。
