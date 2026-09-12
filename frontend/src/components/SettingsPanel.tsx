@@ -71,6 +71,8 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       setCfg(updated)
       setGptApiKey('')
       toast(`已切换到${updated.provider === 'gpt' ? 'GPT' : '本地模型'}`)
+      // 让外壳重查一次健康状态，状态栏的「LLM 不可达」立刻跟着变
+      window.dispatchEvent(new CustomEvent('provider-changed'))
     } catch (e) {
       toast('保存失败：' + friendlyError(e), 'error')
     } finally {

@@ -284,6 +284,15 @@ export default function App() {
 
   const [healthMsg, setHealthMsg] = useState('')
   const [asrOffline, setAsrOffline] = useState('')
+  async function checkHealth() {
+    try {
+      const h = await api.health()
+      // LLM 不通是硬伤，红字常驻；语音是可选服务（没配 ASR 的用户是多数），
+      // 只给一个灰色的「语音离线」，悬停看地址——之前一行 ⚠ 长期挂着像出了事故。
+      setHealthMsg(!h.llm?.ok ? 'LLM 不可达 (' + h.llm?.base_url + ')' : '')
+      setAsrOffline(!h.asr?.ok ? (h.asr?.base_url ?? '') : '')
+    } catch { setHealthMsg('后端不可达') }
+  }
   const [focusMode, setFocusMode] = useState(false)
   // 左右栏各自可拖宽、可独立折叠，按用户存本机（Trilium 存 leftPaneWidth /
   // rightPaneWidth / leftPaneVisible，我们同一套思路）。focusMode 保留为
@@ -1311,13 +1320,19 @@ export default function App() {
       open(list.find((n) => n.id === last) ?? list[0])
     })
     reloadTree()
-    api.health().then((h) => {
-      // LLM 不通是硬伤，红字常驻；语音是可选服务（没配 ASR 的用户是多数），
-      // 只给一个灰色的「语音离线」，悬停看地址——之前一行 ⚠ 长期挂着像出了事故。
-      setHealthMsg(!h.llm?.ok ? 'LLM 不可达 (' + h.llm?.base_url + ')' : '')
-      setAsrOffline(!h.asr?.ok ? (h.asr?.base_url ?? '') : '')
-    }).catch(() => setHealthMsg('后端不可达'))
+    void checkHealth()
+    // 设置里换了供应商 / 服务恢复了，状态栏那行红字要跟着变：之前只在启动时查一次，
+    // 改完设置还挂着「LLM 不可达」直到重启。改设置立刻查；有红字时每 30 秒再查。
+    const onProvider = () => void checkHealth()
+    window.addEventListener('provider-changed', onProvider)
+    return () => window.removeEventListener('provider-changed', onProvider)
   }, [reload, reloadTree])
+
+  useEffect(() => {
+    if (!healthMsg) return
+    const t = setInterval(() => void checkHealth(), 30000)
+    return () => clearInterval(t)
+  }, [healthMsg])
 
   useEffect(() => {
     if (!noteQuery.trim()) { setSearchResults(null); return }
