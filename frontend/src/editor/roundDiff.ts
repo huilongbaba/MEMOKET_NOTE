@@ -62,13 +62,15 @@ export function diffParts(before: string, after: string): DiffPart[] {
   }
 
   push('keep', a.slice(a.length - tail).join(''))
-  // 只差空白的增删（格式化补的空格 / 空行）不算改动：满屏绿只会淹掉真正改了的地方
+  // 只差空白的增删（格式化补的空格 / 空行）不标绿——但**不能在这里把它改成 keep**：
+  // 一个 del " " 变成 keep 之后，后面所有位置都按「这个空格还在」算，整串 hunk 错位一格，
+  // 撤回还原出来的是错的（check-hunks 随机 2000 例里 15% 还原失败，有的丢字）。
+  // 类型保持精确，「不标绿」放到 toHunks 的 soft 标记上，装饰层跳过它即可。
   const merged: DiffPart[] = []
   for (const part of out) {
-    const type = part.type !== 'keep' && !part.text.trim() ? 'keep' : part.type
     const last = merged[merged.length - 1]
-    if (last && last.type === type) last.text += part.text
-    else merged.push({ type, text: part.text })
+    if (last && last.type === part.type) last.text += part.text
+    else merged.push({ type: part.type, text: part.text })
   }
   return merged
 }
@@ -132,7 +134,11 @@ function diffByLines(before: string, after: string, push: Push) {
 /** 一处改动。``from``/``to`` 是**文档里的活位置**：每次文档变动都跟着映射，
  * 所以用户可以在绿色新增里改字、改完再接受。``del`` 是被删掉的原文
  * （它已经不在文档里，只能靠 widget 补出来；撤回时写回去的也是它）。 */
-export type Hunk = { id: number; from: number; to: number; del: string }
+export type Hunk = {
+  id: number; from: number; to: number; del: string
+  /** 只差空白（格式化补的空格 / 空行）：位置照记、撤回照还原，但不画绿、不给悬停条。 */
+  soft?: boolean
+}
 
 /** 相邻两处改动之间没动过的文字不超过这么多字，就并成一处。
  * 8 个字大约是「改了一个词、隔几个字又改一个词」的距离——再大就会
@@ -165,26 +171,28 @@ export function toHunks(parts: DiffPart[] | null): Hunk[] {
     if (prev && gap.length <= MERGE_GAP && prev.to + gap.length === h.from) {
       prev.to = h.to
       prev.del = prev.del + gap + h.del
+      prev.soft = !!(prev.soft && h.soft)
     } else {
       out.push({ id: id++, ...h })
     }
     gap = ''
   }
+  const soft = (del: string, ins: string) => !del.trim() && !ins.trim()
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i]
     if (p.type === 'keep') { pos += p.text.length; gap += p.text; continue }
     if (p.type === 'del') {
       const next = parts[i + 1]
       if (next?.type === 'ins') {                 // 替换：合成一处
-        push({ from: pos, to: pos + next.text.length, del: p.text })
+        push({ from: pos, to: pos + next.text.length, del: p.text, soft: soft(p.text, next.text) })
         pos += next.text.length
         i++
       } else {
-        push({ from: pos, to: pos, del: p.text })
+        push({ from: pos, to: pos, del: p.text, soft: soft(p.text, '') })
       }
       continue
     }
-    push({ from: pos, to: pos + p.text.length, del: '' })
+    push({ from: pos, to: pos + p.text.length, del: '', soft: soft('', p.text) })
     pos += p.text.length
   }
   return out
@@ -219,6 +227,7 @@ class DeletedWidget extends WidgetType {
 function build(hunks: Hunk[]): DecorationSet {
   const decos: Range<Decoration>[] = []
   for (const h of hunks) {
+    if (h.soft) continue                          // 只差空白：不画
     if (h.del) {
       decos.push(Decoration.widget({ widget: new DeletedWidget(h.del, h.id), side: -1 })
         .range(h.from))
@@ -282,7 +291,7 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; decos: Decorati
 
 /** 还剩几处没处置。给上层显示「本轮 N 处改动」用。 */
 export function pendingHunks(view: EditorView): number {
-  return view.state.field(roundDiffField, false)?.hunks.length ?? 0
+  return view.state.field(roundDiffField, false)?.hunks.filter((h) => !h.soft).length ?? 0
 }
 
 // ---------------------------------------------------------------- 悬停工具条
@@ -406,7 +415,7 @@ const hoverWatcher = EditorView.domEventHandlers({
     const hunks = view.state.field(roundDiffField, false)?.hunks
     if (!hunks?.length) return false
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
-    const hit = pos == null ? null : hunks.find((h) => pos >= h.from - 1 && pos <= h.to + 1)
+    const hit = pos == null ? null : hunks.find((h) => !h.soft && pos >= h.from - 1 && pos <= h.to + 1)
     cancelClear()
     pinned = !!hit
     const next = hit ? hit.id : null
@@ -425,7 +434,7 @@ const hoverWatcher = EditorView.domEventHandlers({
     if (!hunks?.length) return false
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
     // 前后各放宽一个字符：正好停在改动边界上时也算命中，否则边缘很难悬住
-    const hit = pos == null ? null : hunks.find((h) => pos >= h.from - 1 && pos <= h.to + 1)
+    const hit = pos == null ? null : hunks.find((h) => !h.soft && pos >= h.from - 1 && pos <= h.to + 1)
     const next = hit ? hit.id : null
     if (next != null) {
       cancelClear()

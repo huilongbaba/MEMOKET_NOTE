@@ -99,13 +99,23 @@ describe('toHunks', () => {
   })
 })
 
-import { diffParts as _dp } from '../roundDiff'
+import { diffParts as _dp, toHunks as _th } from '../roundDiff'
 describe('只差空白不算改动', () => {
-  it('补空格 / 空行的位置不标绿', () => {
+  it('补空格 / 空行的位置不标绿（hunk 标 soft），但位置照记', () => {
     const parts = _dp('中文English混排。\n段落', '中文 English 混排。\n\n段落')
-    expect(parts.every((p) => p.type === 'keep')).toBe(true)
-    const real = _dp('甲乙丙', '甲丁丙')
-    expect(real.some((p) => p.type === 'ins')).toBe(true)
+    const hunks = _th(parts)
+    expect(hunks.length).toBeGreaterThan(0)
+    expect(hunks.every((h) => h.soft)).toBe(true)
+    const real = _th(_dp('甲乙丙', '甲丁丙'))
+    expect(real.some((h) => !h.soft)).toBe(true)
+  })
+  it('空白改动和真改动混在一起时，撤回能精确还原（之前把空白改成 keep 会错位一格）', () => {
+    const before = ' b 丙丁丙戊b甲。戊\ncb'
+    const after = ' b \n乙\n 丙丁丙戊b甲。戊\nc'
+    const hunks = _th(_dp(before, after))
+    let s = after
+    for (const h of [...hunks].sort((a, b) => b.from - a.from)) s = s.slice(0, h.from) + h.del + s.slice(h.to)
+    expect(s).toBe(before)
   })
 })
 
