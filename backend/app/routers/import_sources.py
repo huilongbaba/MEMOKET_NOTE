@@ -46,7 +46,27 @@ NOTION_VERSION = "2026-03-11"
 def _land(user: str, notes: list[importers.ImportedNote], to: str,
           job_id: str, items: list[dict]) -> None:
     """把洗好的笔记落到笔记列表 / 知识库。每条一个 item，互不拖累。"""
+    # 目录结构：a/b/c 逐层建成嵌套的笔记（有子节点的笔记就是文件夹）。
+    # **文件夹笔记**：`项目/项目.md` 这种「文件名 = 所在目录名」的文件（我们自己的整库
+    # 导出、Obsidian 的 folder notes 都这么摆）是那个文件夹的正文，不另建一篇同名子笔记。
+    # 第一版这里调的 store.create_folder 根本不存在——带目录的导入每条都静默失败。
     folders: dict[str, str] = {}
+    folder_body: dict[str, importers.ImportedNote] = {}
+    for note in notes:
+        if note.folder and note.title == note.folder.rsplit("/", 1)[-1]:
+            folder_body.setdefault(note.folder, note)
+
+    def folder_id(path: str) -> str | None:
+        if not path:
+            return None
+        if path not in folders:
+            parent = folder_id(path.rsplit("/", 1)[0]) if "/" in path else None
+            name = path.rsplit("/", 1)[-1]
+            body = folder_body.get(path)
+            folders[path] = store.create_note(user, name, body.content if body else "",
+                                              parent or store.ROOT_ID)["id"]
+        return folders[path]
+
     for note, item in zip(notes, items):
         item_id = item["id"]
         try:
@@ -56,12 +76,11 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
             store.set_item(item_id, "chunking")
             store.update_job_from_items(job_id)   # 不然 job 一直停在 queued
             if to in ("both", "notes"):
-                fid = None
-                if note.folder:
-                    if note.folder not in folders:
-                        folders[note.folder] = store.create_folder(user, note.folder)["id"]
-                    fid = folders[note.folder]
-                store.create_note(user, note.title, note.content, fid)
+                fid = folder_id(note.folder)
+                if folder_body.get(note.folder) is note:
+                    pass                                   # 已经是那个文件夹的正文
+                else:
+                    store.create_note(user, note.title, note.content, fid or store.ROOT_ID)
             facts, skipped = 0, 0
             if to in ("both", "kb"):
                 mem = UserMemory(user)
