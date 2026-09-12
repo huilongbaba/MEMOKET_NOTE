@@ -34,6 +34,7 @@ from .fragments import (
 )
 from .writing import (
     EDIT_SYSTEM,
+    FINISH_THE_SENTENCE,
     MAGIC_TAP_SYSTEM,
     MAGIC_TAP_SYSTEM_LEAN,
     SKELETON_SYSTEM,
@@ -86,6 +87,7 @@ __all__ = [
     "DIGEST_SYSTEM",
     "EDIT_SYSTEM",
     "EXPAND_SYSTEM",
+    "FINISH_THE_SENTENCE",
     "FOCUS_LABELS",
     "MAGIC_TAP_SYSTEM",
     "MAGIC_TAP_SYSTEM_LEAN",

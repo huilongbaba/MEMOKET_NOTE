@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 
 from ..harness import prompts
 from ..harness.events import sse
+from ..harness.params import CONTINUE_TAIL_TOKENS
 from ..database import retrieval
 from ..editor import profile
 from ..util import llm
@@ -124,6 +125,20 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
                 yield sse("delta", {"text": piece})
         except Exception as exc:
             yield sse("error", {"detail": str(exc)})
+        # 撞上限停在半句：跟单篇 / 分段 harness 一样，让模型把那半句收尾（已写的一字不删），
+        # 收尾还撞上限才把 truncated 报给前端。
+        if stats.get("finish_reason") == "length" and written:
+            tail_stats: dict = {}
+            tail = messages + [{"role": "assistant", "content": written},
+                               {"role": "user", "content": prompts.FINISH_THE_SENTENCE}]
+            try:
+                async for piece in llm.stream(tail, max_tokens=CONTINUE_TAIL_TOKENS,
+                                              temperature=0.7, stats=tail_stats):
+                    written += piece
+                    yield sse("delta", {"text": piece})
+            except Exception as exc:
+                yield sse("error", {"detail": str(exc)})
+            stats = tail_stats
 
         # 写完之后确定性地看一眼：检索到了材料，这段有没有真的用上。
         #

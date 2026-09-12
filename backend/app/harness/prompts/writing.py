@@ -479,6 +479,13 @@ def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
     return "\n\n".join(parts)
 
 
+# 撞 token 上限停在半句时的补尾指令。分段写作 / magic tap 共用；单篇 harness 的那份
+# 还多一句「先把没闭合的 ``` 补完整」，在 hooks/note.py 里拼。
+FINISH_THE_SENTENCE = (
+    "上面这段在句子中间被长度限制切断了。接着最后那半句往下写完，"
+    "**不要重复已经写过的内容**，把当前这个自然段收尾即可。")
+
+
 def _cut_at_boundary(text: str, limit: int) -> str:
     """截到 limit 以内最后一个段落 / 句子边界，别在词中间切。"""
     if len(text) <= limit:

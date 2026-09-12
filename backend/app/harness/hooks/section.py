@@ -24,11 +24,6 @@ from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
 from ...database.retrieval import retrieve as _retrieve
 from ..state import State
 
-_FINISH_THE_SENTENCE = (
-    "上面这段在句子中间被长度限制切断了。接着最后那半句往下写完，"
-    "**不要重复已经写过的内容**，把当前这个自然段收尾即可。")
-
-
 class SectionHooks:
     """One section of a plan. ``st.ctx.note_id`` is the note it writes into."""
 
@@ -115,7 +110,7 @@ class SectionHooks:
         if stats.get("finish_reason") == "length" and text:
             tail = messages + [
                 {"role": "assistant", "content": text},
-                {"role": "user", "content": _FINISH_THE_SENTENCE},
+                {"role": "user", "content": prompts.FINISH_THE_SENTENCE},
             ]
             async for piece in llm.stream(tail, max_tokens=CONTINUE_TAIL_TOKENS):
                 text += piece
