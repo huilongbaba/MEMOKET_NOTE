@@ -1764,3 +1764,9 @@ session、冲突和摄入标记清掉，关系探针的基线不变。没改代�
 perf 的常规上报，唯一一条 traceback 是 9 月 12 日凌晨第 14 轮那次（Answer.evidence，早修了）。
 没改代码。第 121 轮之后又改了 26 轮，按「每约 10 轮重打 dmg」的纪律重打并重开正式版：新包的后端
 带上了 exporters / inbox / units（`/api/kb/dashboard` 有 `conflicts_open`、`/api/export/remotes` 通）。
+
+## [176] 巡检第 148–149 轮：边缘记忆 / 首页深色 / 标签 / 引用页复查，纯函数 fuzz（2026-09-13）
+
+第 148 轮四张截图都正常（引用页那条「找不到 terrence-9999-FFF」是探针故意塞的）。第 149 轮换个
+路子：把关系检测、值抽取、markdown → Notion / 飞书块、编造引用判定、段号、导出文件名这些纯函数
+用随机中英数字标点混合串喂 3000 例，零异常；留 600 例做回归 `tests/test_fuzz_pure.py`。
