@@ -593,6 +593,8 @@ export type TopicEntityLink = { topic: string; entity: string; weight: number }
 export type FactDetail = {
   id: string; text: string; when: string; kind: string; who: string; conf: string
   topics: string[]; entities: string[]; unit: string
+  /** 实体显示名，跟 entities 一一对应（页面接口给；召回接口没有） */
+  entity_names?: string[]
 }
 export type FactsPage = { facts: FactDetail[]; total: number; limit: number; offset: number }
 export type SourceLine = { id: string; unit: string; date: string; who: string; text: string }

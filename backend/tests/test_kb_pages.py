@@ -88,6 +88,14 @@ def test_实体页关系和相关主题(mem):
     assert p["facts_total"] == 2
     assert {t["code"] for t in p["topics"]} == {"hiring", "work"}
     assert pages.entity_page(mem, "nope") is None
+    # 显示名 / 大小写 / 空格写法都能落到同一个实体
+    assert pages.entity_page(mem, "Acme")["code"] == "acme"
+    facts = pages.entity_page(mem, "acme")["facts"]          # 按时间倒序：f2（只有 acme）在前
+    assert [f["entity_names"] for f in facts] == [["Acme"], ["Acme", "Bob"]]
+    assert pages.entity_page(mem, "ACME")["code"] == "acme"
+    vocab_e = mem._index()[1].entities
+    vocab_e["speaker_a"] = type(vocab_e["bob"])("speaker_a", etype="person", name="Speaker A")
+    assert pages.entity_page(mem, "Speaker A")["code"] == "speaker_a"
 
 
 def test_时间线月到日(mem):

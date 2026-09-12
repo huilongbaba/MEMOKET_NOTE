@@ -49,7 +49,6 @@ function iconOf(n: { note_id: string; child_count: number }): string {
   if (id === 'kb:entities') return 'bx-group'
   if (id === 'kb:timeline') return 'bx-calendar'
   if (id === 'kb:recent') return 'bx-time-five'
-  if (id === 'kb:overview') return 'bx-bar-chart-alt-2'
   if (id === 'kb:graph') return 'bx-network-chart'
   if (id === 'kb:digest') return 'bx-history'
   if (id.startsWith('kb:topic:')) return 'bx-hash'

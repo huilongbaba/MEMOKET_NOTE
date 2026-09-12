@@ -135,7 +135,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       <p className="muted" style={{ fontSize: 12 }}>
         知识库现在 {stats ? `${stats.facts} 条事实 · ${stats.entities} 个实体` : '…'}
         {working && <> · <span className="spinner" /> 抽取中</>}
-        {' '}· <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:overview' })) }}>看总览</a>
+        {' '}· <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' })) }}>看总览</a>
       </p>
 
       {recentFacts.length > 0 && (

@@ -17,10 +17,14 @@ TOP_N = 8
 FACT_PAGE = 50
 
 
-def _fact(f) -> dict:
-    return {"id": f.id, "text": f.text, "when": f.when or "", "kind": f.kind or "",
-            "who": f.who or "", "conf": f.conf or "", "topics": list(f.topics),
-            "entities": list(f.entities), "unit": f.unit or ""}
+def _fact(f, vocab=None) -> dict:
+    d = {"id": f.id, "text": f.text, "when": f.when or "", "kind": f.kind or "",
+         "who": f.who or "", "conf": f.conf or "", "topics": list(f.topics),
+         "entities": list(f.entities), "unit": f.unit or ""}
+    # 事实卡上的实体 chip 之前显示的是代码（facebook / speaker_a），带上显示名
+    if vocab is not None:
+        d["entity_names"] = [_entity_name(vocab, c) for c in f.entities]
+    return d
 
 
 def _months(facts, last: int | None = None) -> list[dict]:
@@ -29,9 +33,9 @@ def _months(facts, last: int | None = None) -> list[dict]:
     return rows[-last:] if last else rows
 
 
-def _page(facts, limit: int, offset: int) -> tuple[list[dict], int]:
+def _page(facts, limit: int, offset: int, vocab=None) -> tuple[list[dict], int]:
     rows = sorted(facts, key=lambda f: (f.when or "", f.id), reverse=True)
-    return [_fact(f) for f in rows[offset:offset + limit]], len(rows)
+    return [_fact(f, vocab) for f in rows[offset:offset + limit]], len(rows)
 
 
 def _entity_name(vocab, code: str) -> str:
@@ -96,7 +100,7 @@ def topic_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict 
             children.append({"code": x.code, "facts": sum(direct.get(c, 0) for c in sub)})
     children.sort(key=lambda r: -r["facts"])
     ents = Counter(c for f in facts for c in f.entities)
-    page, total = _page(facts, limit, offset)
+    page, total = _page(facts, limit, offset, vocab)
     return {
         "code": code, "aliases": sorted(t.aliases), "parents": [p for p in sorted(t.parents) if p in vocab.topics],
         "status": t.status, "facts_total": total, "facts": page, "limit": limit, "offset": offset,
@@ -108,14 +112,31 @@ def topic_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict 
 
 # ----------------------------------------------------------------- 实体页
 
+def resolve_entity_code(vocab, code: str) -> str | None:
+    """实体代码容错：`Facebook` / `Speaker A` 这类显示名或大小写不同的写法也能落到
+    `facebook` / `speaker_a`。实拍拿显示名开实体页得到「没有这个实体」。"""
+    if code in vocab.entities:
+        return code
+    norm = code.strip().lower().replace(" ", "_")
+    if norm in vocab.entities:
+        return norm
+    for c, e in vocab.entities.items():
+        if (e.name or "").strip().lower() == code.strip().lower():
+            return c
+        if any(a.strip().lower() == code.strip().lower() for a in (e.aliases or ())):
+            return c
+    return None
+
+
 def entity_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict | None:
     store, vocab = mem._index()
+    code = resolve_entity_code(vocab, code) or code
     e = vocab.entities.get(code)
     if e is None:
         return None
     facts = [f for f in store.facts.values() if code in f.entities]
     topics = Counter(c for f in facts for c in f.topics)
-    page, total = _page(facts, limit, offset)
+    page, total = _page(facts, limit, offset, vocab)
     return {
         "code": code, "name": e.name or e.code, "type": e.etype or "", "aliases": sorted(e.aliases),
         "relations": [{"rel": r, "target": tgt, "target_name": _entity_name(vocab, tgt)} for r, tgt in sorted(e.rels)],
@@ -154,7 +175,7 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
     if u is None:
         return None
     facts = [f for f in store.facts.values() if f.unit == unit_id]
-    page, total = _page(facts, limit, offset)
+    page, total = _page(facts, limit, offset, vocab)
     topics = Counter(c for f in facts for c in f.topics)
     ents = Counter(c for f in facts for c in f.entities)
     return {
@@ -168,6 +189,6 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
 
 def day_facts(mem, date: str, limit: int = FACT_PAGE) -> list[dict]:
     """时间线上点开一天。"""
-    store, _vocab = mem._index()
-    page, _ = _page([f for f in store.facts.values() if f.when == date], limit, 0)
+    store, vocab = mem._index()
+    page, _ = _page([f for f in store.facts.values() if f.when == date], limit, 0, vocab)
     return page

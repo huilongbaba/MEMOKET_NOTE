@@ -86,7 +86,7 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
       {showTopics && (f.topics.length > 0 || f.entities.length > 0) && (
         <div className="fact-tags">
           {f.topics.map((t) => <Chip key={t} icon="bx-hash" onClick={() => actions.onOpen('kb:topic:' + t)}>{t}</Chip>)}
-          {f.entities.map((e) => <Chip key={e} icon="bx-user" onClick={() => actions.onOpen('kb:entity:' + e)}>{e}</Chip>)}
+          {f.entities.map((e, i) => <Chip key={e} icon="bx-user" onClick={() => actions.onOpen('kb:entity:' + e)}>{f.entity_names?.[i] ?? e}</Chip>)}
         </div>
       )}
       <div className="fact-actions">
