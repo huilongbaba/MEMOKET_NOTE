@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, wordCount } from './util/wordCount'
@@ -1265,6 +1266,8 @@ export default function App() {
       else if (key === '\\') { e.preventDefault(); setPanes((p) => ({ ...p, leftOn: !p.leftOn })) }
       // ⌘/Ctrl+⇧+F 一键格式化。加 shift 是为了不跟浏览器/编辑器的「查找」撞
       else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
+      // ⌘F：焦点不在编辑器里（比如刚点过树）时 CM 的 searchKeymap 收不到，这里兜一下
+      else if (key === 'f') { const v = editorViewRef.current; if (v && !v.hasFocus && current) { e.preventDefault(); openSearchPanel(v); v.focus() } }
       // 标签：⌘T 新开、⌘W 关掉当前、⌘1..9 跳到第 n 个。跟浏览器一致，
       // 不需要学。⌘9 是**最后一个**（不是第九个）——同样是浏览器的约定。
       else if (key === 't' && e.shiftKey) { e.preventDefault(); reopenLastTab() }
