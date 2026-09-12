@@ -110,3 +110,21 @@ def test_evolution_chains():
     chains = pages.evolution_chains(facts)
     assert len(chains) == 1 and chains[0]["obj"] == "battery"
     assert [f["id"] for f in chains[0]["facts"]] == ["f1", "f2"]
+
+
+def test_relations_batch_route(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.database.kite import kite_memory
+    from app.database.kite.kite_memory import UserMemory
+
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    fake = SimpleNamespace(kite_data_dir=tmp_path, kite_extract_model="fake", whisper_base_url="http://x")
+    monkeypatch.setattr(kite_memory, "get_settings", lambda: fake)
+    rows = [{"id": "u-1-A1", "text": "电池容量从 300mAh 改到 380mAh。", "date": "2026-05-08"}]
+    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8: (rows, [], 0.1))
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        r = c.post("/api/memory/relations/batch", json={"passages": ["电池容量定在 420mAh。", "没有数字的一段", "短"]}).json()
+    assert r["marks"][0]["relation"] == "conflict" and r["marks"][1] is None and r["marks"][2] is None

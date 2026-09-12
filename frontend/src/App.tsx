@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
+import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, wordCount } from './util/wordCount'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
@@ -342,6 +343,22 @@ export default function App() {
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   // 光标所在段落：右栏「记忆」按它查跟知识库的关系（冲突 / 延续 / 印证 / 缺依据）
   const [cursorPara, setCursorPara] = useState('')
+  // 边缘记忆：停止编辑 1.5s 后把含数字的段落批量拿去判关系，段首行右边亮点（零 LLM）
+  const [marginMarks, setMarginMarks] = useState<MarginMark[]>([])
+  useEffect(() => {
+    if (!current) { setMarginMarks([]); return }
+    const paras = paragraphsWithLines(content).filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8).slice(0, 80)
+    if (paras.length === 0) { setMarginMarks([]); return }
+    const t = setTimeout(() => {
+      api.memoryRelationsBatch(paras.map((p) => p.text)).then((r) => {
+        const marks: MarginMark[] = []
+        r.marks.forEach((m, i) => { if (m) marks.push({ line: paras[i].line, relation: m.relation, say: m.say }) })
+        setMarginMarks(marks)
+      }).catch(() => {})
+    }, 1500)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, current?.id, ingestTick])
   const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
@@ -2913,6 +2930,8 @@ export default function App() {
               onPendingDiff={setPendingDiff}
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
               onCursorParagraph={setCursorPara}
+              marginMarks={marginMarks}
+              onMarginClick={() => setPaneFocus({ id: 'memory', n: Date.now() })}
               onSlash={onSlash}
               onStopRun={stopRun}
               placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点 magic tap，会先查你的知识库再续写。"

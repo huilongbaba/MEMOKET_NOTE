@@ -27,6 +27,7 @@ import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
 import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
   from '../editor/roundDiff'
+import { marginMemory, setMarginMarks, type MarginMark } from '../editor/marginMemory'
 import { slashMenu, type SlashItem } from '../editor/slashMenu'
 import { markdownHighlight, dimSyntaxMarks, editorTheme, syntaxHighlighting } from '../editor/theme'
 
@@ -66,6 +67,9 @@ type Props = {
   onSelectionContextMenu?: (x: number, y: number, text: string) => void
   /** 光标所在的段落（空行之间）变了就回报——右栏「记忆」按它查关系，不按尾部 500 字 */
   onCursorParagraph?: (text: string) => void
+  /** 边缘记忆：哪几段跟知识库有关系，段首行右边亮点 */
+  marginMarks?: MarginMark[]
+  onMarginClick?: (m: MarginMark) => void
   /** `/` 唤起的插入菜单选中了某一项。扩展只负责"选了哪一项、`/` 从哪到哪"，
    * 具体做什么（跑 harness、传图、录音）由上层决定——CM6 扩展里不该出现网络
    * 请求和文件上传。 */
@@ -90,7 +94,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false,
-  roundDiff = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph,
+  roundDiff = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -100,10 +104,10 @@ export default function MarkdownEditor({
   // being torn down/recreated on every prop change -- only `content` and
   // `revisions` need an actual dispatch into CM6 state, callbacks don't.
   const liveRef = useRef({ onChange, onAcceptInline, revisions, onPendingDiff,
-                          onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph })
+                          onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick })
   useEffect(() => {
     liveRef.current = { onChange, onAcceptInline, revisions, onPendingDiff,
-                        onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph }
+                        onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick }
   })
   const lastPara = useRef('')
 
@@ -164,6 +168,7 @@ export default function MarkdownEditor({
           if (r) liveRef.current.onAcceptInline?.(r)
         }),
         editorTheme,
+        marginMemory((m) => liveRef.current.onMarginClick?.(m)),
         cmPlaceholder(placeholder ?? ''),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
@@ -260,6 +265,11 @@ export default function MarkdownEditor({
     if (roundDiff) actualViewRef.current?.dispatch({ effects: addLayer.of({ label: roundDiff.label, parts: roundDiff.parts, replace: roundDiff.replace }) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundDiff])
+
+  useEffect(() => {
+    actualViewRef.current?.dispatch({ effects: setMarginMarks.of(marginMarks ?? []) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marginMarks])
 
   return <div ref={hostRef} className="editor md-editor" />
 }

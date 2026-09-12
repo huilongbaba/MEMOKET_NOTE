@@ -855,6 +855,15 @@ input[type=file]:hover { border-color: var(--accent); }
 .tl-days { margin-inline-start: 16px; border-inline-start: 2px solid var(--line); padding-inline-start: 8px; }
 .tl-facts { padding: 4px 0 8px 8px; }
 
+/* 边缘记忆：正文右缘的记忆带 */
+.cm-memory-gutter { width: 16px; background: transparent !important; border: none !important; }
+.cm-memory-gutter .cm-gutterElement { display: flex; align-items: flex-start; justify-content: center; }
+.mm-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-top: 9px; cursor: pointer; opacity: .85; }
+.mm-dot:hover { transform: scale(1.3); opacity: 1; }
+.mm-conflict { background: var(--warn); }
+.mm-continuation { background: var(--accent); }
+.mm-corroborated { background: var(--ins); }
+.mm-unsupported { background: var(--muted); }
 /* 记忆的关系：左边一条色带说是哪种关系 */
 .rel-card { padding: 8px 10px; border-inline-start: 3px solid var(--line); }
 .rel-card.rel-conflict { border-inline-start-color: var(--warn); }

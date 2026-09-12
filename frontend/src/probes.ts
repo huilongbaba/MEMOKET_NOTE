@@ -106,6 +106,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  // 边缘记忆：打开笔记，等页边圆点算出来
+  if (probe?.startsWith('margin:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(7))
+    if (n) { harnessProbeDone.current = true; void switchTo(n) }
+  }
   // 改动分层：格式化一层 + 探针塞一行当第二层，看右栏「改动」的分层账本
   if (probe?.startsWith('layers:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(7))

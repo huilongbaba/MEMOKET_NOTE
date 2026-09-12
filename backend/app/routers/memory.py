@@ -3,6 +3,7 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..database import store
 from ..database.kb import relations as kb_relations
@@ -186,6 +187,28 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
         "relations": [dict(c, facts=[fmap[i].model_dump() for i in c.get("fact_ids", []) if i in fmap]) for c in cands],
         "took_ms": round((time.perf_counter() - t0) * 1000, 1),
     }
+
+
+class _RelationsBatchIn(BaseModel):
+    passages: list[str]
+
+
+@router.post("/relations/batch")
+def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) -> dict:
+    """页边圆点用：一批段落各自跟知识库是什么关系，只要代码判的候选（零 LLM，每段几毫秒），
+    每段只回最要紧的一条。最多 80 段。"""
+    mem = UserMemory(user)
+    t0 = time.perf_counter()
+    out = []
+    for p in body.passages[:80]:
+        p = (p or "").strip()
+        if len(p) < 8 or not any(ch.isdigit() for ch in p):
+            out.append(None)
+            continue
+        rows, _terms, _took = mem.recall(p, limit=8)
+        cands = kb_relations.detect(p, rows)
+        out.append({"relation": cands[0]["relation"], "say": cands[0]["say"], "fact_ids": cands[0]["fact_ids"]} if cands else None)
+    return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 
 @router.post("/trace", response_model=AskOut)

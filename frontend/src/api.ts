@@ -623,6 +623,12 @@ export const memoryRelations = (passage: string, confirm = true) =>
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ passage, confirm }),
   }).then(json<{ relations: MemoryRelation[]; took_ms: number }>)
+/** 页边圆点：一批段落各自最要紧的一条关系（零 LLM），没有的是 null */
+export const memoryRelationsBatch = (passages: string[]) =>
+  fetch('/api/memory/relations/batch', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ passages }),
+  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[] } | null)[]; took_ms: number }>)
 export const supersedeFact = (oldId: string, newId: string) =>
   fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {
     method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ superseded_by: newId }),

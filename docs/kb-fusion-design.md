@@ -126,6 +126,10 @@ fact_id  TEXT   -- 引用了哪条事实
 「取代」写进事实的 `superseded_by` 属性（loader 忽略自定义属性），实体页多一节「这些事怎么
 变的」（按 KITE 的 obj 串成线）。方案见 agent-native-editor.md §3.3.1。
 
+**边缘记忆**（`editor/marginMemory.ts`）：停止编辑 1.5s 后把含数字的段落批量拿去判关系
+（`POST /api/memory/relations/batch`，零 LLM），段首行右缘亮一个点（黄冲突 / 蓝延续 / 绿印证 /
+灰缺依据），点一下光标落到那段、右栏卡片出来。
+
 ### 3.5 右栏加「反向链接」
 
 打开一条事实时显示「谁引用了我」；打开一篇笔记时显示「哪些笔记引用了这篇
