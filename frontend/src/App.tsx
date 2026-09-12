@@ -2724,7 +2724,7 @@ export default function App() {
                 （实拍：只剩状态栏一个「等你处置」）。 */}
             {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
               <div className="harness-sticky">
-                <p className="muted harness-line"><i className="bx bx-bot" /> {pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}
+                <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>{pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}</span>
                   {loading === 'note-harness' && <span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>· 运行中正文由 AI 接管，停下来再改</span>}
                   {pausedRun && (
                     /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
