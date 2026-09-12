@@ -66,9 +66,10 @@ flowchart TB
   end
 
   subgraph DB["database/"]
-    STORE["store.py sqlite<br/>notes · branches · note_citations · snapshots · runs"]
+    STORE["store.py sqlite<br/>notes · branches · note_citations · note_remotes · kb_conflicts · snapshots · runs"]
     KITE["kite/ UserMemory<br/>codebook.xml · recall · facts · topics · entities"]
-    KB["kb/<br/>clusters · recall · search · virtual_tree · pages"]
+    KB["kb/<br/>clusters · recall · search · virtual_tree · pages · relations · inbox"]
+    EXP["exporters.py<br/>render_tree · 导回 Obsidian / Notion / 飞书"]
     RET["retrieval.py<br/>零 LLM 兜底 · format_fact 带 id"]
   end
 
@@ -206,13 +207,15 @@ backend/app/
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
   database/
-    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· skills · snapshots · runs
+    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· ingest_jobs / ingest_items · skills · snapshots · runs
     retrieval.py             零 LLM 关键词检索（工具循环失败时的退路）；format_fact() 给材料带 id
     kite/                    KITE codebook 适配：UserMemory（recall / facts / topics / entities / fact_by_id）
     kb/                      知识库在 KITE 之上的那层：clusters · recall（簇粒度）· search（排序）
                              · virtual_tree（树上的虚拟子树）· pages（各节点的页面数据）
                              · extract_check / extract_judge / reextract（摄入质量）
-    ingest/                  摄入：asr · chunking · extract · importers
+                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）
+    ingest/                  摄入：asr · chunking · extract · importers · feishu（块 → markdown + 最小客户端）
+    exporters.py             导回：render_tree（zip 导出 / Obsidian 目录共用）· markdown → Notion / 飞书块 · 最小写客户端
     assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
     backup.py                启动时一天一份笔记库备份（sqlite 在线备份；留 7 日 + 3 月）
   editor/                    既不是 agent 也不是知识库：outline · restructure · textshape · vision · profile
