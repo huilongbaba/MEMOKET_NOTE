@@ -1315,6 +1315,23 @@ export default function App() {
           setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, 3500)
         })() }
       }
+      // 拖一张图进编辑器：应该走资产库、正文里是 /api/assets/… 而不是 base64
+      if (probe === 'imgdrop' && notes.length && !harnessProbeDone.current) {
+        harnessProbeDone.current = true
+        setTimeout(() => {
+          const v = editorViewRef.current; if (!v) return
+          const canvas = document.createElement('canvas'); canvas.width = 120; canvas.height = 60
+          const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#3b82f6'; ctx.fillRect(0, 0, 120, 60); ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif'; ctx.fillText('probe', 20, 38)
+          canvas.toBlob((blob) => {
+            if (!blob) return
+            const file = new File([blob], 'probe.png', { type: 'image/png' })
+            const dt = new DataTransfer(); dt.items.add(file)
+            const r = v.contentDOM.getBoundingClientRect()
+            v.contentDOM.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: r.left + 40, clientY: r.top + 40, bubbles: true, cancelable: true }))
+            setTimeout(() => void api.clientLog('warn', 'imgdrop doc has: ' + (/\]\(\/api\/assets\/[a-f0-9]+\.png\)/.test(v.state.doc.toString()) ? 'asset url' : (/data:image/.test(v.state.doc.toString()) ? 'DATA URI' : 'nothing')), '', 'imgdrop'), 2500)
+          }, 'image/png')
+        }, 1500)
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
