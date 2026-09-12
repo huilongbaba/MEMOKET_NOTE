@@ -448,8 +448,10 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
 
 def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
                    profile: list[str], folder_context: str = "",
-                   following: str = "") -> str:
+                   following: str = "", title: str = "") -> str:
     parts = []
+    if title.strip():
+        parts.append(f"【笔记标题】\n{title.strip()}")
     block = profile_block(profile)
     if block:
         parts.append(block)

@@ -109,7 +109,7 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         {"role": "system", "content": system},
         {"role": "user", "content": prompts.magic_tap_user(
             body.spine, body.beats, body.content, facts, _profile(user),
-            following=body.following)},
+            following=body.following, title=body.title)},
     ]
 
     async def gen():

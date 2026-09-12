@@ -31,3 +31,9 @@ def test_内嵌图片不进提示词():
     assert strip_data_uris(md) == "前面 ![截图](内嵌图片) 后面"
     assert "base64" not in content_block(md)
     assert content_block("", "（空）") == "【已写正文】\n（空）"
+
+
+def test_标题进提示词():
+    p = magic_tap_user("", [], "", [], [], title="创业一年回顾")
+    assert p.startswith("【笔记标题】\n创业一年回顾")
+    assert "【笔记标题】" not in magic_tap_user("", [], "x", [], [])

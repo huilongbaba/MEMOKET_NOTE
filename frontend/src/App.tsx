@@ -1397,6 +1397,8 @@ export default function App() {
         if (n) void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runNoteHarness('write'), 1500) })()
       }
       if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
+      // 空笔记上点续写：应该提示先写点东西，而不是让模型编
+      if (probe === 'blank-tap' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600); setTimeout(() => void actionsRef.current.runMagicTap(), 2500) }
       if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
       if (probe === 'confirm' && tree.length) {
         const parent = tree.find((r) => r.child_count > 0)
@@ -1804,6 +1806,8 @@ export default function App() {
       abortRef.current?.abort()
       return
     }
+    // 一个字都没有、标题也空：模型只能编。让用户先给个方向
+    if (!content.trim() && !title.trim()) { toast('先写个标题或几句话，AI 才知道往哪写'); return }
     setLoading('tap')
     setTapMeta(null)
     const ctrl = new AbortController()
@@ -1851,6 +1855,7 @@ export default function App() {
         // 所以这里不打断也不重写，只提示一句让用户自己决定要不要重来。
         (g) => { if (g.hint) toast(g.hint, 'error') },
         following,
+        title,
       )
       // 流完了再统一修一次「**标题：**」这类粗体（后端落盘路径有同样一步，续写是纯客户端拼的）
       const fixed = fixBoldPunct(inserted)
@@ -2172,6 +2177,7 @@ export default function App() {
       return
     }
     if (!current) return
+    if (!content.trim() && !title.trim()) { toast('先写个标题或几句话，智能续写才有东西可接'); return }
     const noteId = current.id
     // 起跑时记一笔发出去的是什么：哪篇、多少字、骨架开头——探针实拍过一次
     // 「跑在了另一篇上」，没有这条日志只能猜。

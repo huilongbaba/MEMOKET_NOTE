@@ -309,11 +309,13 @@ export async function magicTap(
   onGrounding?: (g: { facts: number; used: number; hint: string }) => void,
   /** 光标后面已有的正文：有它就是在中间插一段（接着 content、衔接 following）。 */
   following = '',
+  /** 笔记标题：正文还很短的时候，它是模型唯一知道的方向 */
+  title = '',
 ) {
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, spine, beats, following }),
+    body: JSON.stringify({ content, spine, beats, following, title }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
