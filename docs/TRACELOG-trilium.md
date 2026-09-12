@@ -1248,3 +1248,11 @@ actionsRef）。412 篇大库用户的标签栏 / 知识库树回归正常。
 `truncated`（= length），前端 toast「撞到长度上限，停在半句，光标放末尾再点一次」；
 已写内容一字不删。`tests/test_magic_tap_truncated.py` 假 stream 两种 finish_reason。
 第 90 轮重打 dmg、重开正式版。
+
+## [112] 全量巡检第 92 轮：重写 / 扩展撞上限会把半句当建议（2026-09-12）
+
+顺着上一轮查 `complete()` 的调用方：重写 / 润色 / 扩展都是 JSON 输出，max_tokens 600 /
+500，撞上限时 `extract_json` 很宽容——`{"text": "改到一半就` 被修成一条只有半句的
+replace 修订（测试里实测），用户一点接受整段被换成半句。`complete()` 加 `stats`
+（同 stream），撞上限就清掉建议、`EditOut.note` 带一句「选短一点再试」，前端红 toast。
+`tests/test_rewrite_truncated.py` 三条。pytest 785。

@@ -235,14 +235,14 @@ export const rewriteSelection = (
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection, intent, spine, beats }),
-  }).then(json<{ revisions: Revision[]; took_ms: number }>)
+  }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
 export const expandSelection = (content: string, selection: string) =>
   fetch('/api/expand', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection }),
-  }).then(json<{ revisions: Revision[]; took_ms: number }>)
+  }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
 export type VerifyFinding = {
   verdict: '矛盾' | '支持' | '无法判断'

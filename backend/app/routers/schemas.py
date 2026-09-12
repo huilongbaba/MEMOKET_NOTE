@@ -517,6 +517,9 @@ class EditOut(BaseModel):
 
     revisions: list[Revision]
     took_ms: float
+    # 一条建议都没有时给个原因（比如「撞长度上限 JSON 切了半截」），前端原样提示；
+    # 空 = 模型真的没给建议。
+    note: str = ""
 
 
 class MagicTapIn(BaseModel):

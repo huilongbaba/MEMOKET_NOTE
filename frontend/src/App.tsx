@@ -1350,7 +1350,7 @@ export default function App() {
         setPaneFocus({ id: 'trace', n: Date.now() })
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection)
-        if (r.revisions.length === 0) toast('模型认为不需要补充上下文。')
+        if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
       } else {
         // 到这里只剩 rewrite / polish：custom 在函数最上面提前返回了，
@@ -1359,7 +1359,7 @@ export default function App() {
         // 编译器不报错而线上直接 422（intent 只认 rewrite/polish）。
         const r = await api.rewriteSelection(
           content, selection, action as 'rewrite' | 'polish', spine, beats)
-        if (r.revisions.length === 0) toast('模型没有给出修改建议。')
+        if (r.revisions.length === 0) toast(r.note || '模型没有给出修改建议。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
       }
     } catch (e) {

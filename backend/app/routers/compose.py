@@ -186,11 +186,12 @@ async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
     base = prompts.POLISH_SYSTEM if body.intent == "polish" else prompts.REWRITE_SYSTEM
     scope = "polish" if body.intent == "polish" else "rewrite"
     system = prompts.compose_system(base, scope, user)
+    stats: dict = {}
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.rewrite_user(
              body.content, body.selection, body.spine, body.beats)}],
-        max_tokens=600, temperature=0.4)
+        max_tokens=600, temperature=0.4, stats=stats)
     parsed = llm.extract_json(text)
     revisions: list[Revision] = []
     if isinstance(parsed, dict):
@@ -201,7 +202,18 @@ async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
                 id=uuid.uuid4().hex[:8], op="replace", anchor=body.selection,
                 text=new_text, reason=str(parsed.get("reason") or default_reason),
             ))
-    return EditOut(revisions=revisions, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    note = _truncated_note(stats, revisions)   # 撞上限会把 revisions 清空
+    return EditOut(revisions=revisions, note=note, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+def _truncated_note(stats: dict, revisions: list) -> str:
+    """JSON 撞上限切了半截：extract_json 很宽容，`{"text": "改到一半就` 会被修成一条
+    只有半句的 replace 修订（测试里实测）——用户一点接受，整段被换成半句。所以撞了
+    上限就**清掉建议**、只留一句原因；之前用户看到的是「模型没有给出修改建议」。"""
+    if stats.get("finish_reason") != "length":
+        return ""
+    revisions.clear()
+    return "选中的段落太长，模型改到一半撞了长度上限——选短一点再试"
 
 
 @router.post("/expand", response_model=EditOut)
@@ -218,10 +230,11 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
     # 当线索，跟校验（verify）用同一个思路。
     facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6)
     system = prompts.compose_system(prompts.EXPAND_SYSTEM, "expand", user)
+    stats: dict = {}
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.expand_user(body.content, body.selection, facts)}],
-        max_tokens=500, temperature=0.5)
+        max_tokens=500, temperature=0.5, stats=stats)
     parsed = llm.extract_json(text)
     revisions: list[Revision] = []
     if isinstance(parsed, dict):
@@ -241,7 +254,8 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
                 id=uuid.uuid4().hex[:8], op="insert", anchor=body.selection,
                 text=after, reason="往后补充上下文", sources=sources,
             ))
-    return EditOut(revisions=revisions, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    note = _truncated_note(stats, revisions)   # 撞上限会把 revisions 清空
+    return EditOut(revisions=revisions, note=note, took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 
 @router.post("/verify", response_model=VerifyOut)

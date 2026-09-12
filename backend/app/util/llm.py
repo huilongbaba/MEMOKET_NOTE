@@ -119,8 +119,14 @@ def _rejects_temperature(status_code: int, body: bytes) -> bool:
 
 
 async def complete(messages: list[dict], *, max_tokens: int = 1500,
-                   temperature: float = 0.3, effort: str = "low") -> str:
-    """一次性返回完整文本（用于需要拿到完整 JSON 的场景）。"""
+                   temperature: float = 0.3, effort: str = "low",
+                   stats: dict | None = None) -> str:
+    """一次性返回完整文本（用于需要拿到完整 JSON 的场景）。
+
+    ``stats`` 同 stream()：传个字典进来，跑完填上 ``finish_reason``。要 JSON 的
+    调用方靠它区分「模型没按格式答」和「撞上限 JSON 被切了半截」——后者的正确
+    提示是「选短一点」，不是「模型没给建议」。
+    """
     cfg = store.get_active_llm_config()
     payload = _payload(messages, stream=False, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
@@ -133,6 +139,8 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
                                   headers=_headers(), json=payload)
         r.raise_for_status()
         data = r.json()
+    if stats is not None and data.get("choices") and data["choices"][0].get("finish_reason"):
+        stats["finish_reason"] = data["choices"][0]["finish_reason"]
     return (data["choices"][0]["message"].get("content") or "").strip()
 
 
