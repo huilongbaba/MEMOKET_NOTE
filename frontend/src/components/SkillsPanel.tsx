@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import type { Skill, SkillIn, SkillScope } from '../api'
 import { parseSkillMd } from '../skillImport'
@@ -97,7 +98,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
       const text = await res.text()
       applyImportedText(text)
     } catch (e) {
-      toast(`抓取失败：${e}——大概率是跨域限制，改成手动粘贴 SKILL.md 内容`, 'error')
+      toast(`抓取失败：${friendlyError(e)}——大概率是跨域限制，改成手动粘贴 SKILL.md 内容`, 'error')
     } finally {
       setImportFetching(false)
     }
@@ -120,7 +121,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
       setGenerateGoal('')
       setEditing('new')
     } catch (e) {
-      toast('生成失败：' + e, 'error')
+      toast('生成失败：' + friendlyError(e), 'error')
     } finally {
       setGenerating(false)
     }
@@ -148,7 +149,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
       setEditing(null)
       reload()
     } catch (e) {
-      toast('保存失败：' + e, 'error')
+      toast('保存失败：' + friendlyError(e), 'error')
     } finally {
       setSaving(false)
     }

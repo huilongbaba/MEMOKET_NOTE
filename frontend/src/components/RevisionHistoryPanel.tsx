@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
@@ -31,7 +32,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, onRestored 
   async function snapshot() {
     setBusy(true)
     try { await api.snapshotNote(noteId); await reload(); toast('已存一版') }
-    catch (e) { toast('存版失败：' + e, 'error') }
+    catch (e) { toast('存版失败：' + friendlyError(e), 'error') }
     finally { setBusy(false) }
   }
   async function view(r: api.NoteRevision) {
@@ -44,7 +45,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, onRestored 
       const n = await api.restoreRevision(noteId, r.id)
       onRestored(n); setOpen(null); await reload()
       toast('已恢复到 ' + when(r.created_at) + ' 的版本（恢复前的内容也留了一版）')
-    } catch (e) { toast('恢复失败：' + e, 'error') }
+    } catch (e) { toast('恢复失败：' + friendlyError(e), 'error') }
     finally { setBusy(false) }
   }
 

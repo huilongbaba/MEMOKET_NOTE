@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import type { TreeRow, WritingPlan, WritingSection } from '../api'
 import type { HarnessState } from '../App'
@@ -72,7 +73,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
       setGoal('')
       onNoteChanged()
     } catch (e) {
-      toast('放弃计划失败：' + e, 'error')
+      toast('放弃计划失败：' + friendlyError(e), 'error')
     }
   }
 
@@ -85,7 +86,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
       setLocalSections(r.sections)
       onNoteChanged()
     } catch (e) {
-      toast('生成写作计划失败：' + e, 'error')
+      toast('生成写作计划失败：' + friendlyError(e), 'error')
     } finally {
       setStarting(false)
     }

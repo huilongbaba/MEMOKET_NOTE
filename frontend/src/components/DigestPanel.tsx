@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { friendlyError } from '../util/friendlyError'
 import { digest } from '../api'
 import type { Digest } from '../api'
 import { toast } from '../toast'
@@ -27,7 +28,7 @@ export default function DigestPanel() {
   async function run(days: number) {
     setLoading(days)
     try { setResult(await digest(days)) }
-    catch (e) { toast('生成回顾失败：' + e, 'error') }
+    catch (e) { toast('生成回顾失败：' + friendlyError(e), 'error') }
     finally { setLoading(null) }
   }
 

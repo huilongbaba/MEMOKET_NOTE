@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import type { ProviderConfig } from '../api'
 import { toast } from '../toast'
@@ -71,7 +72,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       setGptApiKey('')
       toast(`已切换到${updated.provider === 'gpt' ? 'GPT' : '本地模型'}`)
     } catch (e) {
-      toast('保存失败：' + e, 'error')
+      toast('保存失败：' + friendlyError(e), 'error')
     } finally {
       setSaving(false)
     }

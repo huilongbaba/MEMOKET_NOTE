@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
 import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
@@ -749,7 +750,7 @@ export default function App() {
       await reload()
       if (current?.id === row.note_id) setTitle(title)
     } catch (e) {
-      toast('改名失败：' + e, 'error')
+      toast('改名失败：' + friendlyError(e), 'error')
       await reloadTree()
     }
   }
@@ -797,7 +798,7 @@ export default function App() {
       await api.cloneNoteTo(row.note_id, to)
       await reloadTree()
       toast('已克隆——两处是同一篇，改一处处处都变')
-    } catch (e) { toast('克隆失败：' + e, 'error') }
+    } catch (e) { toast('克隆失败：' + friendlyError(e), 'error') }
   }
 
   async function moveNodeTo(row: TreeRow) {
@@ -813,7 +814,7 @@ export default function App() {
     try {
       await api.detachBranch(row.note_id, row.parent_note_id)
       await reloadTree()
-    } catch (e) { toast('移除失败：' + e, 'error') }
+    } catch (e) { toast('移除失败：' + friendlyError(e), 'error') }
   }
 
   async function copyNotePath(row: TreeRow) {
@@ -939,7 +940,7 @@ export default function App() {
         },
       }, ctrl.signal)
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') toast('写作运行失败：' + e, 'error')
+      if ((e as Error).name !== 'AbortError') toast('写作运行失败：' + friendlyError(e), 'error')
     } finally {
       setHarness((h) => (h ? { ...h, running: false, waitingFirstToken: false } : h))
       harnessAbortRef.current = null
@@ -1479,7 +1480,7 @@ export default function App() {
         else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
       }
     } catch (e) {
-      toast(`操作失败：${e}`, 'error')
+      toast(`操作失败：${friendlyError(e)}`, 'error')
     } finally {
       setSelectionBusy(false)
       setSelectionMenu(null)
@@ -1631,7 +1632,7 @@ export default function App() {
       setBeats(r.beats)
       await persistSkeleton(r.spine, r.beats)
     } catch (e) {
-      toast('生成骨架失败：' + e, 'error')
+      toast('生成骨架失败：' + friendlyError(e), 'error')
     } finally {
       setLoading('')
     }
@@ -1692,7 +1693,7 @@ export default function App() {
         following,
       )
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') toast('续写失败：' + e, 'error')
+      if ((e as Error).name !== 'AbortError') { if (isLlmUnreachable(e)) toastAction('续写失败：' + friendlyError(e), '打开设置', () => void openVirtual('app:settings', '设置'), 8000); else toast('续写失败：' + friendlyError(e), 'error') }
     } finally {
       setLoading('')
       abortRef.current = null
@@ -1840,7 +1841,9 @@ export default function App() {
         // 且范围只增不减。
         const base = runBaseRef.current
         const cur = liveContentRef.current
-        if (base && cur && base !== cur) setRoundDiff(diffParts(base, cur))
+        // 只差首尾空白（轮初为续写预留的空行、模型没应答）不算改动——不然模型连不上
+        // 也会冒出「这一轮改了 1 处」（实拍）
+        if (base && cur && base.replace(/\s+$/, '') !== cur.replace(/\s+$/, '')) setRoundDiff(diffParts(base, cur))
       },
       onEvaluate: (d) => {
         if (currentRef.current?.id !== noteId) return
@@ -2032,7 +2035,7 @@ export default function App() {
       )
     } catch (e) {
       if ((e as Error).name !== 'AbortError') toast(
-        (mode === 'polish' ? '打磨' : '智能续写') + '失败：' + e, 'error')
+        (mode === 'polish' ? '打磨' : '智能续写') + '失败：' + friendlyError(e), 'error')
     } finally {
       setLoading('')
       // 停在「等你处置」时不能清——那句提示刚在 onDone 里设好，清掉就等于
@@ -2066,7 +2069,7 @@ export default function App() {
       const r = await api.ingestText(content, title || '未命名', 'note', current?.id ?? '')
       setJob(r.job_id)
     } catch (e) {
-      toast('存入知识库失败：' + e, 'error')
+      toast('存入知识库失败：' + friendlyError(e), 'error')
     } finally {
       setLoading('')
     }
@@ -2154,7 +2157,7 @@ export default function App() {
         setNoteHarnessStatus('')
         toast('已按你处置后的正文收尾')
       } catch (e) {
-        toast('收尾失败：' + e, 'error')
+        toast('收尾失败：' + friendlyError(e), 'error')
       }
       setLoading('')
       return
@@ -2170,7 +2173,7 @@ export default function App() {
       await api.resumeHarness(
         run.id, kept, noteHarnessHandlers(run.noteId, run.mode), ctrl.signal)
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') toast('接着写失败：' + e, 'error')
+      if ((e as Error).name !== 'AbortError') toast('接着写失败：' + friendlyError(e), 'error')
     } finally {
       abortRef.current = null
       setLoading('')
@@ -2223,7 +2226,7 @@ export default function App() {
       const skipped = r.skipped.length ? `，跳过 ${r.skipped.length} 处` : ''
       toast(`调整了 ${r.ops} 处结构${skipped}，可以逐处接受或撤回`)
     } catch (e) {
-      toast(`排版失败：${e instanceof Error ? e.message : String(e)}`, 'error')
+      toast(`排版失败：${friendlyError(e)}`, 'error')
     } finally {
       setLoading('')
     }
@@ -2295,7 +2298,7 @@ export default function App() {
         setRoundDiff(diffParts(before, after))
       } catch (e) {
         push(patchRun.of({
-          id, error: `转写失败：${e instanceof Error ? e.message : String(e)}`, expanded: true,
+          id, error: `转写失败：${friendlyError(e)}`, expanded: true,
         }))
       }
     }
@@ -2364,7 +2367,7 @@ export default function App() {
     } catch (e) {
       push(patchRun.of({
         id, expanded: true,
-        error: `处理失败：${e instanceof Error ? e.message : String(e)}`,
+        error: `处理失败：${friendlyError(e)}`,
       }))
     }
   }
@@ -2837,7 +2840,7 @@ export default function App() {
                   { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
                   { kind: 'sep' },
                   { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
-                    onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + e, 'error')) } },
+                    onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + friendlyError(e), 'error')) } },
                   { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
                   { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
                   { kind: 'sep' },
