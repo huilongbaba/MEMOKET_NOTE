@@ -50,3 +50,13 @@ def test_does_not_split_mid_section():
     # the kept verbatim tail should start at a section boundary
     tail = result.split("\n\n")[-1]
     assert tail.startswith("## Section") or "Section" in tail
+
+
+def test_max_summary_chars_caps_the_gist_list():
+    """几百个两行小节：每节梗概跟原文一样长，没有上限时「压缩」等于没压。"""
+    content = "\n\n".join(f"## 第{i}节\n\n讨论第{i}周。" for i in range(600))
+    plain = compact_context(content, keep_last_chars=2000)
+    assert plain == content                          # 老行为：压不小就原样
+    capped = compact_context(content, keep_last_chars=2000, max_summary_chars=500)
+    assert len(capped) < 3000
+    assert "更早的" in capped and "第599节" in capped

@@ -1378,3 +1378,11 @@ dev 实例的 Local Storage 再启动，URL 带 `?user=terrence`。知识库引�
 `prompts.selection.selection_context()`：正文 ≤8000 字原样；否则切选区前后各 3000 字，
 切口对齐段落，两头标「前面 / 后面还有 N 字，略」。三个提示词都走它；测试四条。
 长文分屏正常。
+
+## [130] 全量巡检第 110 轮：magic tap 整篇进提示词（2026-09-12）
+
+接着上一轮：magic tap 的「已写正文」块也是整篇原样给。改走智能续写同一个
+`compact_context`（最近 6000 字原样，前面各节折成一行梗概）。发现它对几百个两行小节
+的长文「压不小就原样」——梗概跟原文一样长；加 `max_summary_chars`（tap 用 2000）：超了
+只留最近几条，前面折成「更早的 N 节略」。test_compaction / test_magic_tap 各加一条。
+pytest 793。

@@ -66,3 +66,26 @@ def test_tail_also_truncated_is_reported(monkeypatch, tmp_path):
 def test_done_not_truncated_when_stop(monkeypatch, tmp_path):
     evs = _run(monkeypatch, tmp_path, "stop")
     assert [p for e, p in evs if e == "done"] == [{"truncated": False}]
+
+
+def test_long_content_is_compacted_in_prompt(monkeypatch, tmp_path):
+    """47k 字的正文只给最近一截 + 前面各节梗概，提示词别跟着整篇线性长。"""
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    seen: list[list[dict]] = []
+
+    async def fake_stream(messages, *, max_tokens=0, temperature=0.0, effort="low", stats=None):
+        seen.append(messages)
+        yield "续。"
+        stats["finish_reason"] = "stop"
+
+    monkeypatch.setattr(compose.llm, "stream", fake_stream)
+    monkeypatch.setattr(compose, "_retrieve", lambda *a, **k: ([], [], 0.0))
+    content = "# 长文\n\n" + "\n\n".join(f"## 第{i}节\n\n这一节讨论第{i}周的排期与样机{i}。" for i in range(600))
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        r = c.post("/api/magic-tap", json={"content": content, "spine": "", "beats": []})
+    assert r.status_code == 200
+    user_msg = seen[0][-1]["content"]
+    assert len(user_msg) < len(content) // 2
+    assert "第599节" in user_msg           # 最近的原样在
+    assert "更早的" in user_msg            # 再早的折成一句

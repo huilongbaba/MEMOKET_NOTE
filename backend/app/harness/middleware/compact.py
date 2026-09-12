@@ -62,6 +62,7 @@ def compact_context(
     keep_last_chars: int,
     section_marker: str = "##",
     summary_preamble: str = DEFAULT_SUMMARY_PREAMBLE,
+    max_summary_chars: int | None = None,
 ) -> str:
     """Return ``content`` unchanged if it's within ``keep_last_chars``.
     Otherwise, keep the last ``keep_last_chars`` verbatim and collapse
@@ -88,6 +89,18 @@ def compact_context(
         if gist:
             gists.append(f"- {gist}")
 
+    # 梗概本身也要有上限（magic tap 用）：几百个只有两行的小节，每节的梗概跟原文一样长，
+    # 「压缩」出来还是几万字。超了就只留最近的几条，前面折成一句「更早的 N 节略」。
+    if max_summary_chars is not None:
+        total = 0
+        kept: list[str] = []
+        for g in reversed(gists):
+            if total + len(g) > max_summary_chars:
+                break
+            kept.append(g)
+            total += len(g)
+        dropped = len(gists) - len(kept)
+        gists = ([f"- …（更早的 {dropped} 节略）"] if dropped else []) + list(reversed(kept))
     summary = summary_preamble + "\n" + "\n".join(gists)
     compacted = summary + "\n\n" + recent.lstrip("\n")
     # Short/terse sections can gist down to nearly their own length (or the

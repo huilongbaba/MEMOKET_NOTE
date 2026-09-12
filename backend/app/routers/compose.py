@@ -16,6 +16,11 @@ from fastapi import APIRouter, Depends
 from ..harness import prompts
 from ..harness.events import sse
 from ..harness.params import CONTINUE_TAIL_TOKENS
+from ..harness.middleware.compact import compact_context
+
+# magic tap 的「已写正文」块最多原样给的字数；再往前的各节折成一行梗概
+TAP_KEEP_LAST = 6000
+TAP_SUMMARY_MAX = 2000
 from ..database import retrieval
 from ..editor import profile
 from ..util import llm
@@ -108,8 +113,10 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompts.magic_tap_user(
-            body.spine, body.beats, body.content, facts, _profile(user),
-            following=body.following, title=body.title)},
+            # 长文只给最近一截 + 前面各节的一行梗概（跟智能续写的 Compact 同一个函数）：
+            # 实拍 47k 字的笔记上点续写，整篇 3 万 token 进提示词，慢且没必要。
+            body.spine, body.beats, compact_context(body.content, keep_last_chars=TAP_KEEP_LAST, max_summary_chars=TAP_SUMMARY_MAX),
+            facts, _profile(user), following=body.following, title=body.title)},
     ]
 
     async def gen():
