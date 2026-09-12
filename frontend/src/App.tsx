@@ -703,7 +703,7 @@ export default function App() {
       detail: names.join('\n') + (kids.length > 8 ? `\n· …还有 ${kids.length - 8} 篇` : ''),
       okLabel: '删除', danger: true,
     })
-    if (ok) remove(note)
+    if (ok) remove(note, new Set([row.note_id, ...kids]))
   }
 
   /** 折叠整棵树（只折真笔记的 branch；知识库那边清本机集合）。 */
@@ -1155,6 +1155,15 @@ export default function App() {
         const n = notes.find((x) => x.id === probe.slice(4))
         if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t); setTimeout(() => document.querySelector('.cm-note-link')?.dispatchEvent(new MouseEvent('mouseenter')), 9000) }) }
       }
+      // 删除：先分屏打开它，再从树上删，看树 / 标签 / 分屏有没有残留（5 秒后才真删）
+      if (probe?.startsWith('delete:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(7))
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          openInSplit(n.id)
+          setTimeout(() => { const row = tree.find((r) => r.note_id === n.id); if (row) void removeWithSubtree(n, row); else remove(n) }, 1500)
+        })() }
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
@@ -1526,23 +1535,29 @@ export default function App() {
    * deletion used to be instant and permanent past a dialog people click
    * through by habit. The note is only actually deleted from the backend
    * after `ms` unless the toast's "撤销" is clicked first. */
-  function remove(n: Note) {
+  function remove(n: Note, ids: Set<string> = new Set([n.id])) {
     const wasCurrent = current?.id === n.id
-    setNotes((prev) => prev.filter((x) => x.id !== n.id))
-    setSearchResults((prev) => (prev ? prev.filter((x) => x.id !== n.id) : prev))
+    setNotes((prev) => prev.filter((x) => !ids.has(x.id)))
+    setSearchResults((prev) => (prev ? prev.filter((x) => !ids.has(x.id)) : prev))
+    // 树上先摘掉（乐观），撤销时 reloadTree 会长回来；不摘的话要等真删之后
+    // 再刷树，中间 5 秒树上还站着一篇已经「删了」的笔记。
+    setTree((prev) => prev.filter((r) => !ids.has(r.note_id)))
+    // 它（和子树）的标签、分屏一起收掉，别留一个点了没反应的标签
+    closeTabsWhere((t) => ids.has(t.noteId))
+    setSplit((sp) => (sp && ids.has(sp.id) ? null : sp))
     if (wasCurrent) {
-      const remaining = notes.filter((x) => x.id !== n.id)
+      const remaining = notes.filter((x) => !ids.has(x.id))
       if (remaining.length) open(remaining[0])
       else { setCurrent(null); setTitle(''); setContent('') }
     }
     let undone = false
     const timer = setTimeout(() => {
-      if (!undone) api.deleteNote(n.id).catch(() => {})
+      if (!undone) api.deleteNote(n.id).then(() => { void reloadTree(); void reload() }).catch(() => { void reloadTree(); void reload() })
     }, 5000)
-    toastAction(`已删除「${n.title || '未命名'}」`, '撤销', () => {
+    toastAction(`已删除「${displayTitle(n)}」${ids.size > 1 ? `和它下面的 ${ids.size - 1} 篇` : ''}`, '撤销', () => {
       undone = true
       clearTimeout(timer)
-      reload()
+      void reload(); void reloadTree()
       if (wasCurrent) open(n)
     })
   }
