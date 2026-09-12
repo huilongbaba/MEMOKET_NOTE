@@ -371,7 +371,10 @@ export default function App() {
     const ids = new Set(list.map((n) => n.id))
     // 虚拟标签也过一遍：不认识的 kb:* id（旧版本留下的 kb:overview）一起收掉
     const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|fact|facts|etype)(:|$)/.test(id) || id.startsWith('app:')
-    setTabs((prev) => prev.filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId))))
+    setTabs((prev) => prev
+      .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
+      // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
+      .map((t) => (t.title === t.noteId && t.noteId.startsWith('kb:fact:') ? { ...t, title: '事实 ' + t.noteId.slice(8) } : t)))
     return list
   }, [])
 
