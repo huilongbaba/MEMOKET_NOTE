@@ -213,6 +213,7 @@ backend/app/
                              · virtual_tree（树上的虚拟子树）· pages（各节点的页面数据）
                              · extract_check / extract_judge / reextract（摄入质量）
     ingest/                  摄入：asr · chunking · extract · importers
+    assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
   editor/                    既不是 agent 也不是知识库：outline · restructure · textshape · vision · profile
   routers/                   和前端对接：认 Mode、装 State、翻事件
     note_harness.py            POST /api/note-harness/run（单篇：写 / 打磨）

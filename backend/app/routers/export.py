@@ -17,11 +17,13 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from ..database import store
+from ..database import assets as _assets_store
 from .deps import current_user
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
 _BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
+_ASSET_REF = re.compile(r"/api/assets/([a-f0-9]{24}\.[a-z0-9]+)")
 
 
 def _display_title(title: str, content: str) -> str:
@@ -62,10 +64,17 @@ def build_export(user: str) -> bytes:
         used.add(path)
         return path
 
+    # 正文里引用的资产（粘贴的图、录音）一起带走，链接改成 zip 内的相对路径——
+    # 不带的话导出的 markdown 里全是指向本机 API 的死链接。
+    assets_needed: set[str] = set()
+
     def note_file(n: dict) -> str:
         front = (f"---\nid: {n['id']}\ntitle: {n['title'] or ''}\n"
                  f"created: {n['created_at']}\nupdated: {n['updated_at']}\n---\n\n")
-        return front + (n["content"] or "")
+        body = n["content"] or ""
+        for name in _ASSET_REF.findall(body):
+            assets_needed.add(name)
+        return front + _ASSET_REF.sub(r"_assets/\1", body)
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         def walk(parent: str, prefix: str) -> None:
@@ -96,12 +105,17 @@ def build_export(user: str) -> bytes:
                 path = unique(f"_未归类/{_safe(_display_title(n['title'], n['content']))}.md")
                 written[nid] = path
                 z.writestr(path, note_file(n))
+        for name in sorted(assets_needed):
+            path = _assets_store.assets_dir() / name   # 运行时取：测试会替换目录
+            if path.is_file():
+                z.write(path, f"_assets/{name}")
         z.writestr("README.txt",
                    f"MEMOKET NOTE 导出 · {datetime.now(timezone.utc).isoformat(timespec='seconds')}\n"
                    f"用户：{user}\n笔记：{len(written)} 篇\n\n"
                    "每个 .md 开头的 front-matter 是这篇笔记的 id / 标题 / 时间；正文是原样的 Markdown。\n"
                    "有子笔记的笔记是一个文件夹，它自己的正文是文件夹里同名的 .md。\n"
-                   "*.link.txt 表示这里原本是一篇克隆，正文在它指向的那个文件。\n")
+                   "*.link.txt 表示这里原本是一篇克隆，正文在它指向的那个文件。\n"
+                   "正文里引用的图片 / 录音在 _assets/ 里，链接已改成相对路径。\n")
     return buf.getvalue()
 
 

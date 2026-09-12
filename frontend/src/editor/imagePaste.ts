@@ -39,7 +39,12 @@ async function insertImage(view: EditorView, file: File, pos: number) {
     }
     src = await fileToDataUrl(file)
   }
-  const md = `![${alt}](${src})`
+  // 图片自己占一段（Notion 也是块级插入）：落在一行中间——尤其是标题行——只会
+  // 显示成一串裸 markdown（实拍：拖进 H1 里）。前后各补一个空行。
+  const line = view.state.doc.lineAt(pos)
+  const before = line.text.slice(0, pos - line.from)
+  const after = line.text.slice(pos - line.from)
+  const md = (before.trim() ? '\n\n' : '') + `![${alt}](${src})` + (after.trim() ? '\n\n' : '')
   view.dispatch({
     changes: { from: pos, to: pos, insert: md },
     selection: { anchor: pos + md.length },

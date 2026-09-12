@@ -47,3 +47,18 @@ def test_query_参数指定用户_文件名带时间(client):
     r = client.get("/api/export/markdown?user=someone-else", headers={})
     assert "甲.md" not in _names(r.content)          # 别人的库里没有这篇
     assert "memoket-note-" in r.headers["content-disposition"]
+
+
+def test_资产一起打包_链接改相对路径(client, tmp_path, monkeypatch):
+    from app.database import assets as assets_store
+    monkeypatch.setattr(assets_store, "assets_dir", lambda: tmp_path / "assets")
+    (tmp_path / "assets").mkdir(exist_ok=True)
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    up = client.post("/api/assets", files={"file": ("p.png", png, "image/png")}).json()
+    name = up["url"].rsplit("/", 1)[-1]
+    client.post("/api/notes", json={"title": "带图", "content": f"看图 ![p]({up['url']}) 完"})
+    r = client.get("/api/export/markdown")
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    assert f"_assets/{name}" in z.namelist()
+    assert z.read(f"_assets/{name}") == png
+    assert f"![p](_assets/{name})" in z.read("带图.md").decode()

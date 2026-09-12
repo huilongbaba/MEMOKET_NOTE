@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from ..util.config import get_settings
+from ..database import assets as assets_store
 from .deps import current_user
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -33,9 +33,7 @@ ALLOWED = {
 
 
 def _dir() -> Path:
-    d = Path(get_settings().kite_data_dir) / "assets"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return assets_store.assets_dir()
 
 
 @router.post("")
