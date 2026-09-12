@@ -2578,6 +2578,7 @@ export default function App() {
             onRename={(row) => void renameNode(row)}
             onNewChild={(row) => void newNoteUnder(row.note_id)}
             onDrop={(d, t, w) => void dropNode(d, t, w)}
+            onFilesDrop={(files, t) => void importMarkdown(files, t?.note_id ?? api.ROOT_ID)}
             onContextMenu={(row, at) => setTreeMenu({ row, at })}
           />
         )}

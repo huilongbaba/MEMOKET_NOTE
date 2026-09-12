@@ -31,6 +31,9 @@ type Props = {
   onNewChild?: (row: TreeRow) => void
   /** 拖拽：把 drag 放到 target 的前面 / 后面 / 里面。只对真笔记生效。 */
   onDrop?: (drag: TreeRow, target: TreeRow, where: DropWhere) => void
+  /** 从系统拖文件进来：落在某一行上 = 导入到它下面，落在空白处 = 导入到根
+   *  （note_tree.ts:584-596 拖进来的文件直接成笔记）。 */
+  onFilesDrop?: (files: FileList, target: TreeRow | null) => void
   /** 底部工具条「定位到当前笔记」：每次 +1 就滚一次（克隆意味着同一篇多处，用户会找不到自己在哪） */
   locateTick?: number
 }
@@ -95,8 +98,9 @@ function flatten(rows: TreeRow[]): Node[] {
 }
 
 export default function NoteTree({
-  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop, locateTick,
+  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop, onFilesDrop, locateTick,
 }: Props) {
+  const hasFiles = (e: React.DragEvent) => !!onFilesDrop && Array.from(e.dataTransfer.types).includes('Files')
   const nodes = useMemo(() => flatten(rows), [rows])
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -162,7 +166,9 @@ export default function NoteTree({
   }
 
   return (
-    <div className="note-tree" role="tree" ref={rootRef} tabIndex={0} onKeyDown={onKeyDown}>
+    <div className="note-tree" role="tree" ref={rootRef} tabIndex={0} onKeyDown={onKeyDown}
+         onDragOver={(e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' } }}
+         onDrop={(e) => { if (hasFiles(e)) { e.preventDefault(); onFilesDrop?.(e.dataTransfer.files, null); setDrop(null) } }}>
       {nodes.map((n) => {
         const active = n.note_id === activeNoteId
         const hasKids = n.child_count > 0
@@ -184,6 +190,11 @@ export default function NoteTree({
               e.dataTransfer.setData('text/plain', n.note_id)
             }}
             onDragOver={(e) => {
+              if (hasFiles(e) && !virtual) {          // 文件：一律放进这一行
+                e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'
+                if (drop?.id !== n.id) setDrop({ id: n.id, where: 'over' })
+                return
+              }
               if (!drag || virtual || drag.id === n.id) return
               e.preventDefault()
               const r = e.currentTarget.getBoundingClientRect()
@@ -200,6 +211,11 @@ export default function NoteTree({
             onDragLeave={() => { if (drop?.id === n.id) { setDrop(null); clearExpandTimer() } }}
             onDrop={(e) => {
               e.preventDefault()
+              if (hasFiles(e)) {
+                e.stopPropagation()
+                if (!virtual) onFilesDrop?.(e.dataTransfer.files, n)
+                setDrop(null); return
+              }
               if (drag && drop && drop.id === n.id && drag.id !== n.id) onDrop?.(drag, n, drop.where)
               setDrag(null); setDrop(null); clearExpandTimer()
             }}

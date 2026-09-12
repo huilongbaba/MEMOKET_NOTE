@@ -210,6 +210,21 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   // 拖一张图进编辑器：应该走资产库、正文里是 /api/assets/… 而不是 base64
+  // 系统文件拖到树上：造一个 .md 文件用 DataTransfer 丢到指定标题的行上（没指定就丢到树空白处）
+  if (probe?.startsWith('filedrop') && tree.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => {
+      const title = probe.slice(9)
+      const rowEl = title
+        ? Array.from(document.querySelectorAll<HTMLElement>('.tree-node')).find((el) => el.textContent?.includes(title))
+        : document.querySelector<HTMLElement>('.note-tree')
+      if (!rowEl) { void api.clientLog('warn', 'filedrop: target not found ' + title, '', 'filedrop'); return }
+      const dt = new DataTransfer()
+      dt.items.add(new File(['# 拖进来的\n\n这篇是从系统拖进树的 .md。\n'], '拖进来的（可删）.md', { type: 'text/markdown' }))
+      rowEl.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }))
+      rowEl.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    }, 1500)
+  }
   if (probe === 'imgdrop' && notes.length && !harnessProbeDone.current) {
     harnessProbeDone.current = true
     setTimeout(() => {
