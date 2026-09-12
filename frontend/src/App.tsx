@@ -2369,6 +2369,8 @@ export default function App() {
       const after = v.state.doc.toString()
       setContent(after)
       setRoundDiff(diffParts(b2, after))
+      // 结果落下来要看得见：跑了 100 秒出的图在折叠线下（实拍），把落点滚到视口上部
+      requestAnimationFrame(() => editorViewRef.current?.dispatch({ effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 80 }) }))
     } catch (e) {
       if (ctrl.signal.aborted) {
         push(endRun.of(id))                          // 用户自己停的，不留残骸
