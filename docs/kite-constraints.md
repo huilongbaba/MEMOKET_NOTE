@@ -224,6 +224,8 @@ memory.remember(messages, session_id=..., profile=my_profile)
 下次用再花 1s 重建；实测 RSS 263MB → 132MB（Python 的 arena 不会全还给系统）。
 `/api/health` 的 `memory` 字段能看到峰值 RSS 和现在抱着几个用户的索引。
 
-真正的解法在包里：倒排表用 `dict[str, array('I')]`（fact id 编成整数）、`_df` 合并进
-posting 长度、`_fact_terms` 惰性计算——预计能砍掉一半以上。这是 memoket-kite 的 PR，
-不在这个仓库里做。
+真正的解法在包里：倒排表用 `dict[str, array('I')]`（文档编成整数下标）、词元 intern、
+`_fact_terms` 惰性计算。已提 PR：<https://github.com/memoket/memoket-kite/pull/8>
+（2026-09-12）——同一份 codebook 加载后 206MB → 75MB（峰值 223 → 92MB），词法通道 20 个
+查询的排序逐字节一致，`by_token.get()/len()/迭代` 契约不变，本仓 826 条测试在分支上全过。
+合并后 `pip install -U` 一次即可（requirements 指的是 main）；合不合由仓库管理员定。

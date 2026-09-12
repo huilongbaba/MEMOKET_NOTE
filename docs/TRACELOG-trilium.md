@@ -1592,3 +1592,14 @@ Notion：`POST /pages` + 子块，再导按记住的 page id `PATCH` 标题、�
 探针的第二层曾「消失」：追加在文末的那段紧贴格式化的最后一处，按「末尾续写算这处一部分」
 被并进了格式化层，关掉格式化就一起收了——层之间重叠的语义就是「后叠在同一处的跟着退」，探针
 改成插在第一行后面。
+
+## [152] 上游 memoket-kite 倒排表瘦身 PR（2026-09-12，优先队列 ⑨ 收尾）
+
+`Store.by_token` 一个词元一个 Python set 装 `("F", id)` 元组，20406 条事实的库是 145k 个 set
+≈ 90MB，是加载后 206MB 的一半；旁边还有每篇自己切的 CJK 双字串副本 35MB、每条事实预建的
+`_fact_terms` frozenset 28MB（只有 `fact_specificity` 读、只对进排序的几条）。改成 `array('I')`
+装文档下标 + `_doc_keys[i]` 回解、词元 intern、term set 按需算；`by_token` 做成惰性视图保住
+`get(stem, ())/len/迭代/in` 契约，`_lexical_scores_v2` 按下标打分只对返回的行解 key。同一份
+codebook：206 → 75MB（峰值 223 → 92MB），加载 2.6 → 3.0s；20 个查询词法通道逐字节一致；包里
+原有 9 条失败在 main 上就失败（harness_cli / speaker）。PR：memoket/memoket-kite#8。本仓后端
+826 条在分支上全过；venv 装回 main 等合并（dist 不能带未合并的包）。
