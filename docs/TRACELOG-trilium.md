@@ -1762,4 +1762,5 @@ session、冲突和摄入标记清掉，关系探针的基线不变。没改代�
 
 四个都正常。把今天所有探针日志里的 `[client:*]` 和后端 traceback 汇总扫了一遍：只有 first-paint /
 perf 的常规上报，唯一一条 traceback 是 9 月 12 日凌晨第 14 轮那次（Answer.evidence，早修了）。
-没改代码。第 121 轮之后又改了 26 轮，按「每约 10 轮重打 dmg」的纪律重打并重开正式版。
+没改代码。第 121 轮之后又改了 26 轮，按「每约 10 轮重打 dmg」的纪律重打并重开正式版：新包的后端
+带上了 exporters / inbox / units（`/api/kb/dashboard` 有 `conflicts_open`、`/api/export/remotes` 通）。
