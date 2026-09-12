@@ -239,12 +239,14 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
   const [harnessDone, setHarnessDone] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  // 摄入完成后让「记忆」重新召回一次：正文没变它不会自己再查，而刚入库的事实正是用户想看到的
+  const [ingestTick, setIngestTick] = useState(0)
   const harnessDoneRef = useRef(false)
   const agentRoundsRef = useRef(0)
   // 逐轮处置：开着的话每轮写完就停下来，等你在编辑器里逐条接受/撤回，
@@ -1173,6 +1175,11 @@ export default function App() {
           setTimeout(() => { const row = tree.find((r) => r.note_id === n.id); if (row) void removeWithSubtree(n, row); else remove(n) }, 1500)
         })() }
       }
+      // 存入知识库：跑摄入任务，看树上的 ⇡ 和「最近摄入」有没有跟上
+      if (probe?.startsWith('ingest:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(7))
+        if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.ingestCurrentNote(), 1200) })() }
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
@@ -1302,7 +1309,7 @@ export default function App() {
   useEffect(() => {
     if (!job) return
     const ctrl = new AbortController()
-    api.watchJob(job, () => {}, () => { void reloadTree(); void reload() }, ctrl.signal)
+    api.watchJob(job, () => {}, () => { void reloadTree(); void reload(); setIngestTick((t) => t + 1) }, ctrl.signal)
     return () => ctrl.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job])
@@ -2466,7 +2473,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
@@ -2907,7 +2914,7 @@ export default function App() {
             // 记忆是默认标签：边写边浮现的召回（判据 2）。不再是压在所有标签上面的常驻块。
             { id: 'memory', title: '记忆', icon: 'bx-bulb', alwaysShown: true,
               body: current
-                ? <RelatedMemory content={content} onInsert={insertAtCursor} />
+                ? <RelatedMemory key={ingestTick} content={content} onInsert={insertAtCursor} />
                 : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
