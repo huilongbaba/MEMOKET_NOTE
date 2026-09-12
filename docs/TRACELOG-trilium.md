@@ -850,3 +850,10 @@ CommonMark 的右侧定界规则不认这种闭合。确定性修：`fix_bold_pu
 外面——后端放在 `checks/grounding_rules.py`（纯模块，四条落盘路径都经过的
 `scrub_meta_sentences` 顺手做），前端「格式化」同一条规则（`editor/format.ts`）。
 第一版放在 editor/textshape 被 test_layering 拦下：grounding_rules 不许依赖 app 内其它包。
+
+## [52] 全量巡检第 30 轮：编辑器里的 ⌘[ / ⌘]（2026-09-12）
+
+⌘[ / ⌘] 是外壳的后退 / 前进，但 CodeMirror 的 defaultKeymap 把它们绑成缩进——光标在
+编辑器里时按了只会缩进一行。编辑器里加一层排在前面的 keymap，把这两个键转成
+`nav-history` 事件交给外壳（探针 `keynav`：切两篇后在编辑器里按 ⌘[，回到上一篇、
+前进箭头亮起）。续写流完之后也过一遍 `fixBoldPunct`；`/` 块生成落盘同样修。

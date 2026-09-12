@@ -17,6 +17,7 @@ from ..agent_loop import ToolTrace
 from .. import prompts
 from ..prompts import BLOCK_SYSTEM
 from ..state import State
+from ..checks.grounding_rules import fix_bold_punct
 
 # Sent into the focus round. The model has already explored by this point;
 # this round exists only to turn what it found into a chart.
@@ -77,7 +78,8 @@ class BlockHooks:
             fresh += piece
             yield piece
         # Replace, don't append: each round rewrites the block from scratch.
-        st.content = fresh.strip() or st.content
+        # 块生成不经过 scrub_meta_sentences，粗体标点那一步在这里单独做。
+        st.content = fix_bold_punct(fresh.strip()) or st.content
 
     # ------------------------------------------------------------ commit --
     async def commit(self, st: State) -> None:

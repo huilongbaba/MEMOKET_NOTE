@@ -9,7 +9,7 @@ import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SlashPrompt from './components/SlashPrompt'
 import { SLASH_ITEMS } from './editor/slashMenu'
-import { formatMarkdown } from './editor/format'
+import { formatMarkdown, fixBoldPunct } from './editor/format'
 import type { SlashItem } from './editor/slashMenu'
 import {
   appendPreview, endRun, logRun, patchRun, runsField, startRun,
@@ -584,12 +584,15 @@ export default function App() {
     const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) void openVirtual(id) }
     const onNew = () => void newNote()
     const onKeys = () => setShowShortcuts(true)
+    // 编辑器里的 ⌘[ / ⌘] 被 CodeMirror 的缩进吃掉了，编辑器自己把它们转成这个事件
+    const onNav = (e: Event) => goHistory((e as CustomEvent<number>).detail < 0 ? -1 : 1)
+    window.addEventListener('nav-history', onNav)
     const onOpenNote = (e: Event) => { const id = (e as CustomEvent<string>).detail; const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else toast('链接指向的笔记不存在了', 'error') }
     window.addEventListener('open-note', onOpenNote)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote) }
+    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 
@@ -1221,6 +1224,18 @@ export default function App() {
           setTimeout(() => { const sc = document.querySelector('.note-scroll'); if (sc) sc.scrollTop = sc.scrollHeight * 0.45 }, 2500)
         })() }
       }
+      // 编辑器里按 ⌘[：应该回到上一篇，而不是缩进
+      if (probe === 'keynav' && notes.length >= 2 && !harnessProbeDone.current) {
+        harnessProbeDone.current = true
+        void (async () => {
+          await switchTo(notes[1]); await switchTo(notes[0])
+          setTimeout(() => {
+            const v = editorViewRef.current; if (!v) return
+            v.focus()
+            v.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: '[', code: 'BracketLeft', metaKey: true, bubbles: true, cancelable: true }))
+          }, 1500)
+        })()
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
@@ -1724,6 +1739,9 @@ export default function App() {
         (g) => { if (g.hint) toast(g.hint, 'error') },
         following,
       )
+      // 流完了再统一修一次「**标题：**」这类粗体（后端落盘路径有同样一步，续写是纯客户端拼的）
+      const fixed = fixBoldPunct(inserted)
+      if (fixed !== inserted) { inserted = fixed; setContent(head + inserted + tail) }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') { if (isLlmUnreachable(e)) toastAction('续写失败：' + friendlyError(e), '打开设置', () => void openVirtual('app:settings', '设置'), 8000); else toast('续写失败：' + friendlyError(e), 'error') }
     } finally {
