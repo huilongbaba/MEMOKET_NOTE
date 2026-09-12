@@ -150,3 +150,21 @@ def test_vote_entity_merges_routes_cjk_and_latin_to_different_prompts(monkeypatc
     assert all("SOUND" in p for p in cjk_prompts)
     assert all("typo" in p for p in latin_prompts)
     assert not any("安克" in p and "granona" in p for p in seen_prompts)
+
+
+def test_evict_idle_drops_only_stale_indexes(tmp_path, monkeypatch):
+    """索引缓存闲置超过 ttl 就放掉（含 fact_attrs 派生缓存），刚用过的留着。"""
+    from types import SimpleNamespace
+    from app.database.kite import kite_memory
+    from app.database.kite.kite_memory import UserMemory
+    fake = SimpleNamespace(kite_data_dir=tmp_path, kite_extract_model="fake", whisper_base_url="http://x")
+    monkeypatch.setattr(kite_memory, "get_settings", lambda: fake)
+    UserMemory._cache.clear(); UserMemory._last_used.clear()
+    a, b = UserMemory("ua"), UserMemory("ub")
+    a._index(); a.fact_attrs("superseded_by"); b._index()
+    assert UserMemory.cache_info()["entries"] == 3
+    UserMemory._last_used[str(a.path)] -= 1000          # a 闲了很久
+    assert UserMemory.evict_idle(ttl_s=300) == 2          # a 的索引 + a 的派生缓存
+    assert UserMemory.cache_info()["users"] == ["ub"]
+    a._index()                                            # 再用就重建
+    assert UserMemory.cache_info()["entries"] == 2

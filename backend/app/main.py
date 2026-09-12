@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import backup, store
 from .database.ingest import asr
+from .database.kite.kite_memory import UserMemory
 from .util import parent_watch
 from .util.config import get_settings
 from .routers import (assets, client_log, compose, compose_block, export, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
@@ -72,6 +73,22 @@ app.include_router(settings_router.router)
 app.include_router(export.router)
 
 
+@app.on_event("startup")
+async def _memory_janitor() -> None:
+    """每分钟放掉闲置 5 分钟的知识库索引：一个 2 万条事实的索引约 200MB，桌面版常驻时不该
+    一直抱着（用户反馈内存占用太高）。放掉之后下次用再花 1s 重建。"""
+    async def loop():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                n = UserMemory.evict_idle()
+                if n:
+                    print(f"[memory] 放掉了 {n} 项闲置索引")
+            except Exception as exc:      # noqa: BLE001
+                print(f"[memory] 清理索引失败：{exc}")
+    asyncio.create_task(loop())
+
+
 @app.get("/api/health")
 async def health():
     """把两个外部依赖的状态一起报出来，方便定位「不是我的锅」。
@@ -95,10 +112,14 @@ async def health():
     # 两个探测并行：实测 LLM 1.6s + 语音（LAN 上没开的机器，等满超时）5s 串起来
     # 6.5s，桌面版每次启动、每次切供应商都要等这一下才知道红不红。
     llm_ok, asr_ok = await asyncio.gather(llm_healthy(), asr.healthy())
+    import resource
+    rss_mb = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024))
     return {
         "status": "ok",
         "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"]},
         "asr": {"ok": asr_ok, "base_url": store.get_asr_base_url()},
+        # 观测用：后端进程峰值 RSS（MB）和现在抱着几个知识库索引
+        "memory": {"rss_peak_mb": rss_mb, **UserMemory.cache_info()},
     }
 
 

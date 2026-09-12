@@ -241,19 +241,48 @@ class UserMemory:
                                  encoding="utf-8")
         return self.path
 
+    # 每个缓存项最后一次被用的时间：符号索引很占内存（20406 条事实的库 ≈ 200MB，大头是
+    # 词元倒排表），桌面版常驻时不该一直抱着——闲置一段时间就放掉，下次用再花 1s 重建。
+    _last_used: dict[str, float] = {}
+    IDLE_TTL_S = 300
+
     def _index(self):
         """加载符号索引，按 mtime 缓存 —— 每次请求重新解析 XML 是浪费。"""
         self.ensure()
         mtime = self.path.stat().st_mtime
-        hit = self._cache.get(str(self.path))
+        key = str(self.path)
+        self._last_used[key] = time.time()
+        hit = self._cache.get(key)
         if hit and hit[0] == mtime:
             return hit[1], hit[2]
-        store, vocab = Store.load([str(self.path)])
-        self._cache[str(self.path)] = (mtime, store, vocab)
+        store, vocab = Store.load([key])
+        self._cache[key] = (mtime, store, vocab)
         return store, vocab
 
     def invalidate(self) -> None:
         self._cache.pop(str(self.path), None)
+
+    @classmethod
+    def evict_idle(cls, ttl_s: float | None = None, now: float | None = None) -> int:
+        """放掉闲置超过 ttl 的索引（含 fact_attrs 那类派生缓存）。main.py 每分钟调一次。
+        返回放掉了几项。"""
+        ttl = cls.IDLE_TTL_S if ttl_s is None else ttl_s
+        now = time.time() if now is None else now
+        gone = 0
+        for key in list(cls._cache):
+            base = key.split("#", 1)[0]
+            last = cls._last_used.get(base, 0.0)
+            if now - last > ttl:
+                cls._cache.pop(key, None)
+                gone += 1
+        if gone:
+            import gc
+            gc.collect()
+        return gone
+
+    @classmethod
+    def cache_info(cls) -> dict:
+        return {"entries": len(cls._cache), "users": sorted({k.split("#", 1)[0].rsplit("/", 2)[-2] for k in cls._cache})}
 
     # ------------------------------------------------------------ 检索（零 LLM）
 
@@ -842,6 +871,7 @@ class UserMemory:
         self.ensure()
         key = f"{self.path}#{name}"
         mtime = self.path.stat().st_mtime
+        self._last_used[str(self.path)] = time.time()
         hit = self._cache.get(key)
         if hit and hit[0] == mtime:
             return hit[1]

@@ -211,3 +211,19 @@ memory.remember(messages, session_id=..., profile=my_profile)
 
 **教训**跟第 12 节一样：对上游对象取属性的地方，要么有测试跑在当前装着的版本上，
 要么 `getattr` 带默认值——AttributeError 在生产里等于整个功能静默消失。
+
+
+## 14. 索引的内存（2026-09-12 实测）
+
+`Store.load()` 把 11MB 的 codebook.xml（20406 条事实、2429 行原文）加载成符号索引后
+常驻约 **225MB**（tracemalloc）：`by_token` 词元倒排表 92MB（145k 个 set，键是
+`("F", id)` 元组）、`_tokens()` 产生的词元字符串 35MB、FactRecord 本身 30MB、
+`_df` / `_doc_tokens` 十几 MB。也就是说内存是 XML 体积的 20 倍，大头在词法通道。
+
+应用层的对策（`UserMemory.evict_idle`，main.py 每分钟扫一次）：索引闲置 5 分钟就放掉，
+下次用再花 1s 重建；实测 RSS 263MB → 132MB（Python 的 arena 不会全还给系统）。
+`/api/health` 的 `memory` 字段能看到峰值 RSS 和现在抱着几个用户的索引。
+
+真正的解法在包里：倒排表用 `dict[str, array('I')]`（fact id 编成整数）、`_df` 合并进
+posting 长度、`_fact_terms` 惰性计算——预计能砍掉一半以上。这是 memoket-kite 的 PR，
+不在这个仓库里做。

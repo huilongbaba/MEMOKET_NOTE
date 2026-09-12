@@ -77,7 +77,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 6 | 笔记侧增量（source / source_id / content_sha） | import-sync-plan §3 | 下一个 |
 | 7 | 飞书导入 | import-sync-plan §1 | |
 | 8 | 导回 Obsidian / Notion / 飞书 | import-sync-plan §2 | |
-| 9 | 内存占用太高（用户点名，2026-09-12 晚）：先量（正式版三个进程 RSS、后端 codebook 索引常驻多大），再砍 | — | 排队 |
+| 9 | 内存占用太高（用户点名，2026-09-12 晚） | TRACELOG [146] | 第一版 ✅：量出后端索引 ≈ 225MB/2 万条事实（大头是 memoket-kite 的词元倒排表 92MB + 词元计数 35MB），闲置 5 分钟自动放掉（回收 ~130MB）；health 带 rss。下一步：给 memoket-kite 提 PR 压倒排表（id → int、postings 用数组）；Electron 侧 375MB 是 Chromium 常态 |
 
 ## 已知欠账（做完会划掉）
 

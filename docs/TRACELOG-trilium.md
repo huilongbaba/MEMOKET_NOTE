@@ -1521,3 +1521,13 @@ vitest 81、pytest 808。
 - 真跑：造一个跑到一半的任务 → 点继续 → 进度条 1/2 块 · 正在处理「导入探针 B2」· 预计 7 秒
   → 完成 3/3 块 · 16 秒 · 约 3288 token。pytest 810。
 - 用户新点名：内存占用太高——进队列 ⑨，先量再砍。
+
+## [146] 内存占用（2026-09-12，用户点名 ⑨，第一版）
+
+先量：正式版 Electron 五个进程闲置 ≈ 375MB（Chromium 常态），后端闲置 40MB；一碰知识库
+（树 / 总览 / 召回）后端 +225MB——tracemalloc 指向 memoket-kite `Store.load()` 的词元
+倒排表（92MB，145k 个 set）+ 词元字符串（35MB）+ FactRecord（30MB），是 XML 体积的
+20 倍。应用层能做的：索引闲置 5 分钟自动放掉（`UserMemory.evict_idle`，main.py 启动
+一个每分钟的 janitor），实测 263 → 132MB；`fact_attrs` 派生缓存一起放；`/api/health`
+带 `memory.rss_peak_mb` 和抱着几个索引。根治要改包（倒排表 id → int、postings 用数组），
+写进 kite-constraints §14 作为下一步。pytest 811。重打 dmg、重开正式版。
