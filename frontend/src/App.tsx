@@ -333,6 +333,8 @@ export default function App() {
   const leftShown = !focusMode && panes.leftOn && !tooNarrowForLeft
   const rightShown = !focusMode && panes.rightOn && !tooNarrowForRight
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
+  // 光标所在段落：右栏「记忆」按它查跟知识库的关系（冲突 / 延续 / 印证 / 缺依据）
+  const [cursorPara, setCursorPara] = useState('')
   const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
@@ -617,7 +619,7 @@ export default function App() {
 
     const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
       ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':')
-        : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id)
+        : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id.startsWith('kb:unit:') ? '会议记录' : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
       ? prev
       : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
@@ -2901,6 +2903,7 @@ export default function App() {
               roundDiff={roundDiff}
               onPendingDiff={setPendingDiff}
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
+              onCursorParagraph={setCursorPara}
               onSlash={onSlash}
               onStopRun={stopRun}
               placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点 magic tap，会先查你的知识库再续写。"
@@ -2936,7 +2939,7 @@ export default function App() {
             // 记忆是默认标签：边写边浮现的召回（判据 2）。不再是压在所有标签上面的常驻块。
             { id: 'memory', title: '记忆', icon: 'bx-bulb', alwaysShown: true,
               body: current
-                ? <RelatedMemory key={ingestTick} content={content} onInsert={insertAtCursor} />
+                ? <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor} />
                 : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },

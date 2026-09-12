@@ -50,6 +50,23 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
           <div className="chip-wrap">{p.topics.map((t) => <Chip key={t.code} icon="bx-hash" count={t.facts} onClick={() => actions.onOpen('kb:topic:' + t.code)}>{t.code}</Chip>)}</div>
         </KbSection>
       )}
+      {(p.chains?.length ?? 0) > 0 && (
+        // 「这些事怎么变的」：20406 条平铺时三条互相矛盾的日期不知道哪条算数；按对象串成线至少看出先后
+        <KbSection title="这些事怎么变的" extra={<span className="muted" style={{ fontSize: 12 }}>按对象串起来的线 · 最新在下</span>}>
+          {p.chains.map((c) => (
+            <div key={c.obj} className="card" style={{ padding: '6px 10px' }}>
+              <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}><i className="bx bx-trending-up" /> {c.obj} · {c.total} 条</div>
+              <ol className="chain">
+                {c.facts.map((f) => (
+                  <li key={f.id} className={f.superseded_by ? 'muted' : ''} onClick={() => actions.onOpen('kb:fact:' + f.id)}>
+                    <span className="chain-when">{f.when}</span> {f.text}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </KbSection>
+      )}
       <KbSection title="事实">
         <FactList facts={p.facts} actions={actions} />
         <Pager total={p.facts_total} limit={p.limit} offset={p.offset} onPage={setOffset} />

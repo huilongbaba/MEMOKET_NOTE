@@ -106,6 +106,19 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  // 记忆的关系：打开笔记，把光标放到含数字的最后一段上，看右栏「记忆」的关系卡
+  if (probe?.startsWith('relations:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(10))
+    if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => setTimeout(() => {
+      const v = editorViewRef.current; if (!v) return
+      const text = v.state.doc.toString()
+      const paras = text.split(/\n\s*\n/)
+      let pos = text.length
+      for (let i = paras.length - 1; i >= 0; i--) { if (/\d/.test(paras[i]) && !paras[i].startsWith('#')) { pos = text.indexOf(paras[i]) + 2; break } }
+      v.dispatch({ selection: { anchor: Math.min(pos, text.length) }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
+      setPaneFocus({ id: 'memory', n: 1 })
+    }, 1500)) }
+  }
   // 笔记 ↔ 知识库：打开指定笔记的「引用」页（贡献的事实、过期标识、同步）
   if (probe?.startsWith('notekb:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(7))

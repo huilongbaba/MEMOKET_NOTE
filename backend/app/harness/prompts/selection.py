@@ -172,5 +172,20 @@ def verify_user(content: str, selection: str, facts: list[str]) -> str:
     return "\n\n".join(parts)
 
 
+RELATIONS_SYSTEM = """你是写作者的记忆助手。给你一段正文和几条知识库里的旧记录，以及代码按数字 / 日期
+初判出来的关系。请逐条确认：这条关系成立吗（是同一件事的同一个量吗）？成立的话用一句
+中文把关系说清楚（先说旧记录的日期和值，再说正文写的是什么）；不成立就丢掉。
+只输出 JSON 数组，每项 {"index": 候选序号, "keep": true|false, "say": "一句话"}。"""
+
+
+def relations_user(passage: str, candidates: list[dict], facts_by_id: dict[str, dict]) -> str:
+    lines = [f"【正文】\n{passage.strip()[:600]}", "【候选关系】"]
+    for i, c in enumerate(candidates):
+        refs = "；".join(f"[{fid}] {facts_by_id[fid].get('date', '')} {facts_by_id[fid].get('text', '')}"
+                        for fid in c.get("fact_ids", []) if fid in facts_by_id)
+        lines.append(f"{i}. {c.get('relation', '')}：{c.get('say', '')}\n   依据：{refs}")
+    return "\n".join(lines)
+
+
 def digest_user(facts: list[str]) -> str:
     return "【事实（按时间顺序）】\n" + "\n".join(facts)

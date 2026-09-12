@@ -96,7 +96,12 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
         {f.who && <span>· {f.who}</span>}
         {f.kind && <span className="fact-kind">{f.kind}</span>}
       </div>
-      <div className="fact-text" onClick={() => actions.onOpen('kb:fact:' + f.id)}>{f.text}</div>
+      <div className={'fact-text' + (f.superseded_by ? ' superseded' : '')} onClick={() => actions.onOpen('kb:fact:' + f.id)}>{f.text}</div>
+      {f.superseded_by && (
+        <div className="fact-tags">
+          <Chip icon="bx-right-arrow-alt" onClick={() => actions.onOpen('kb:fact:' + f.superseded_by)} title="这条已经过时，点开取代它的那条">已被取代</Chip>
+        </div>
+      )}
       {f.note_id && (
         // 从笔记摄入的：反链回那篇（知识库 → 笔记这一向之前是断的）
         <div className="fact-tags">

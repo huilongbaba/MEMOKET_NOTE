@@ -512,6 +512,8 @@ export type KbEntityPage = KbFactsPage & {
   code: string; name: string; type: string; aliases: string[]; months: KbMonth[]
   relations: { rel: string; target: string; target_name: string }[]
   topics: { code: string; facts: number }[]
+  /** 「这些事怎么变的」：按对象类串起来的事实线（有日期、≥2 条） */
+  chains: { obj: string; facts: FactDetail[]; total: number }[]
 }
 export type KbTimelineMonth = { month: string; facts: number; units: number; days: { date: string; facts: number; units: number }[] }
 export type KbUnitPage = KbFactsPage & {
@@ -600,7 +602,31 @@ export type FactDetail = {
   /** 从哪篇笔记摄入的（知识库页面反链回笔记）；手工加的 manual=true */
   note_id?: string
   manual?: boolean
+  /** 被哪条取代了（「新的取代旧的」之后旧的带这个） */
+  superseded_by?: string
 }
+
+// ---------------------------------------------------------- 记忆的关系
+//
+// 一段正文跟知识库是什么关系（docs/agent-native-editor.md §3.3.1）：冲突 / 延续 / 印证 /
+// 缺依据。候选是代码判的，冲突让模型确认一句。
+export type MemoryRelation = {
+  relation: 'conflict' | 'continuation' | 'corroborated' | 'unsupported'
+  say: string
+  unit: string
+  values: string[]
+  fact_ids: string[]
+  facts: Fact[]
+}
+export const memoryRelations = (passage: string, confirm = true) =>
+  fetch('/api/memory/relations', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ passage, confirm }),
+  }).then(json<{ relations: MemoryRelation[]; took_ms: number }>)
+export const supersedeFact = (oldId: string, newId: string) =>
+  fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {
+    method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ superseded_by: newId }),
+  }).then(json<{ id: string; superseded_by: string }>)
 export type FactsPage = { facts: FactDetail[]; total: number; limit: number; offset: number }
 export type SourceLine = { id: string; unit: string; date: string; who: string; text: string }
 export type TimelineBucket = { date: string; units: number; facts: number }

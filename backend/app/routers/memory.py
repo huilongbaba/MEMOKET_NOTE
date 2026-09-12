@@ -5,7 +5,10 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
+from ..database.kb import relations as kb_relations
 from ..database.kite.kite_memory import UserMemory
+from ..harness import prompts
+from ..util import llm
 from .schemas import AskIn, AskOut, CitingNoteOut, FactPeekOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
 from .deps import current_user
 
@@ -143,6 +146,46 @@ def fact_sources(fact_id: str, user: str = Depends(current_user)):
 def timeline(user: str = Depends(current_user)):
     """按日期聚合的 session 数 / fact 数，体现入库节奏。"""
     return TimelineOut(buckets=[TimelineBucket(**b) for b in UserMemory(user).timeline()])
+
+
+class _RelationsIn(TraceIn):
+    confirm: bool = True
+
+
+@router.post("/relations")
+async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> dict:
+    """一段正文跟知识库是什么关系：冲突 / 延续 / 印证 / 缺依据（docs/agent-native-editor.md
+    §3.3.1）。候选是代码判的（毫秒级、零 LLM）；只有冲突候选才让模型确认一遍、写一句人话。"""
+    passage = body.passage.strip()
+    if not passage:
+        return {"relations": [], "took_ms": 0.0}
+    t0 = time.perf_counter()
+    mem = UserMemory(user)
+    rows, _terms, _took = mem.recall(passage, limit=8)
+    cands = kb_relations.detect(passage, rows)
+    by_id = {r["id"]: r for r in rows}
+    if body.confirm and any(c["relation"] == "conflict" for c in cands):
+        try:
+            verdict = await llm.complete_json(
+                [{"role": "system", "content": prompts.RELATIONS_SYSTEM},
+                 {"role": "user", "content": prompts.relations_user(passage, cands, by_id)}],
+                max_tokens=600, temperature=0.1)
+            if isinstance(verdict, list):
+                keep = {}
+                for v in verdict:
+                    if isinstance(v, dict) and isinstance(v.get("index"), int):
+                        keep[v["index"]] = v
+                cands = [dict(c, say=(keep[i].get("say") or c["say"]))
+                         for i, c in enumerate(cands)
+                         if i not in keep or keep[i].get("keep", True)]
+        except Exception:      # noqa: BLE001 — 模型不在就用代码判的那句
+            pass
+    facts = rows_to_facts(mem, rows)
+    fmap = {f.id: f for f in facts}
+    return {
+        "relations": [dict(c, facts=[fmap[i].model_dump() for i in c.get("fact_ids", []) if i in fmap]) for c in cands],
+        "took_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
 
 
 @router.post("/trace", response_model=AskOut)

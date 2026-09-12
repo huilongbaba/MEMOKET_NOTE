@@ -820,6 +820,41 @@ class UserMemory:
         self._rewrite_xml(mutate)
         return hit
 
+    def set_fact_attr(self, fact_id: str, name: str, value: str) -> bool:
+        """给一条事实加 / 改一个自定义属性（loader 忽略不认识的属性，所以安全）。
+        用来记「被哪条取代」：superseded_by。"""
+        hit = False
+
+        def mutate(root):
+            nonlocal hit
+            for fe in root.iter("fact"):
+                if fe.get("id") == fact_id:
+                    if value:
+                        fe.set(name, value)
+                    elif name in fe.attrib:
+                        del fe.attrib[name]
+                    hit = True
+        self._rewrite_xml(mutate)
+        return hit
+
+    def fact_attrs(self, name: str) -> dict[str, str]:
+        """所有带这个自定义属性的事实：id → 值。按 mtime 缓存，跟索引一样。"""
+        self.ensure()
+        key = f"{self.path}#{name}"
+        mtime = self.path.stat().st_mtime
+        hit = self._cache.get(key)
+        if hit and hit[0] == mtime:
+            return hit[1]
+        out: dict[str, str] = {}
+        try:
+            for _ev, el in ET.iterparse(self.path):
+                if el.tag == "fact" and el.get(name):
+                    out[el.get("id") or ""] = el.get(name) or ""
+        except ET.ParseError:
+            out = {}
+        self._cache[key] = (mtime, out, None)
+        return out
+
     def add_manual_fact(self, session_id: str, text: str, *, date: str, title: str,
                         who: str = "") -> dict:
         """往 `<session_id>` 里手工加一条事实；session 不在就建（一条 line 当出处，

@@ -63,6 +63,8 @@ type Props = {
    * 监听就留在了已销毁的旧 DOM 上，右键从此永远没反应。装在 view 自己的挂载
    * effect 里，生命周期天然对齐。 */
   onSelectionContextMenu?: (x: number, y: number, text: string) => void
+  /** 光标所在的段落（空行之间）变了就回报——右栏「记忆」按它查关系，不按尾部 500 字 */
+  onCursorParagraph?: (text: string) => void
   /** `/` 唤起的插入菜单选中了某一项。扩展只负责"选了哪一项、`/` 从哪到哪"，
    * 具体做什么（跑 harness、传图、录音）由上层决定——CM6 扩展里不该出现网络
    * 请求和文件上传。 */
@@ -71,9 +73,23 @@ type Props = {
   onStopRun?: (id: string) => void
 }
 
+/** 光标所在段落：往上往下各找到空行为止。标题行单独算一段。 */
+export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: string }; lines: number; line(n: number): { text: string } }, pos: number): string {
+  const cur = doc.lineAt(pos)
+  if (!cur.text.trim()) return ''
+  if (/^#{1,6}\s/.test(cur.text)) return cur.text.trim()
+  let a = cur.number
+  let b = cur.number
+  while (a > 1 && doc.line(a - 1).text.trim() && !/^#{1,6}\s/.test(doc.line(a - 1).text)) a--
+  while (b < doc.lines && doc.line(b + 1).text.trim() && !/^#{1,6}\s/.test(doc.line(b + 1).text)) b++
+  const out: string[] = []
+  for (let i = a; i <= b; i++) out.push(doc.line(i).text)
+  return out.join('\n').trim()
+}
+
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false,
-  roundDiff = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun,
+  roundDiff = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -83,11 +99,12 @@ export default function MarkdownEditor({
   // being torn down/recreated on every prop change -- only `content` and
   // `revisions` need an actual dispatch into CM6 state, callbacks don't.
   const liveRef = useRef({ onChange, onAcceptInline, revisions, onPendingDiff,
-                          onSelectionContextMenu, onSlash, onStopRun })
+                          onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph })
   useEffect(() => {
     liveRef.current = { onChange, onAcceptInline, revisions, onPendingDiff,
-                        onSelectionContextMenu, onSlash, onStopRun }
+                        onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph }
   })
+  const lastPara = useRef('')
 
   // Tracks the last doc text CM6 itself emitted via onChange, so the
   // content-sync effect below can tell "this update is React echoing our
@@ -160,6 +177,10 @@ export default function MarkdownEditor({
           if (n !== lastPending.current) {
             lastPending.current = n
             liveRef.current.onPendingDiff?.(n)
+          }
+          if ((update.selectionSet || update.docChanged) && liveRef.current.onCursorParagraph) {
+            const para = paragraphAt(update.state.doc, update.state.selection.main.head)
+            if (para !== lastPara.current) { lastPara.current = para; liveRef.current.onCursorParagraph(para) }
           }
         }),
         // 只读放在 Compartment 里：AI 在写的时候把编辑器锁住（改动会被轮末对齐盖掉），

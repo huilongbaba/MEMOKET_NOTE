@@ -855,6 +855,20 @@ input[type=file]:hover { border-color: var(--accent); }
 .tl-days { margin-inline-start: 16px; border-inline-start: 2px solid var(--line); padding-inline-start: 8px; }
 .tl-facts { padding: 4px 0 8px 8px; }
 
+/* 记忆的关系：左边一条色带说是哪种关系 */
+.rel-card { padding: 8px 10px; border-inline-start: 3px solid var(--line); }
+.rel-card.rel-conflict { border-inline-start-color: var(--warn); }
+.rel-card.rel-continuation { border-inline-start-color: var(--accent); }
+.rel-card.rel-corroborated { border-inline-start-color: var(--ins); }
+.rel-card.rel-unsupported { border-inline-start-color: var(--muted); }
+.badge.rel-conflict { color: var(--warn); border-color: var(--warn); }
+.badge.rel-continuation { color: var(--accent); border-color: var(--accent); }
+.badge.rel-corroborated { color: var(--ins); border-color: var(--ins); }
+.fact-text.superseded { text-decoration: line-through; opacity: .6; }
+.chain { margin: 0; padding-inline-start: 18px; font-size: 12px; }
+.chain li { cursor: pointer; margin: 2px 0; }
+.chain li:hover { text-decoration: underline; }
+.chain-when { color: var(--muted); font-size: 11px; margin-inline-end: 4px; }
 .memory-card-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 120ms; }
 .memory-card:hover .memory-card-actions { opacity: 1; }
 .memory-card:hover { border-color: var(--accent); }

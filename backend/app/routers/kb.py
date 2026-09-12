@@ -300,7 +300,9 @@ def _quality_note(user: str, meeting_id: str) -> str:
 # 里的那条（锁内改、校验能读回来、原子替换），改完 mtime 变了索引自动失效。
 
 class FactTextIn(BaseModel):
-    text: str
+    text: str = ""
+    # 「新的取代旧的」：把这条标成被 superseded_by 那条取代（传空串 = 取消）。None = 不动
+    superseded_by: str | None = None
 
 
 class FactAddIn(BaseModel):
@@ -311,13 +313,20 @@ class FactAddIn(BaseModel):
 
 @router.patch("/fact/{fact_id}")
 def kb_fact_edit(fact_id: str, body: FactTextIn, user: str = Depends(current_user)) -> dict:
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(400, "text is empty")
     mem = UserMemory(user)
-    if not mem.set_fact_text(fact_id, text):
+    text = body.text.strip()
+    if body.superseded_by is None and not text:
+        raise HTTPException(400, "text is empty")
+    if text and not mem.set_fact_text(fact_id, text):
         raise HTTPException(404, f"没有这条事实：{fact_id}")
-    return mem.fact_by_id(fact_id) or {"id": fact_id, "text": text}
+    if body.superseded_by is not None:
+        if body.superseded_by and mem.fact_by_id(body.superseded_by) is None:
+            raise HTTPException(404, f"没有这条事实：{body.superseded_by}")
+        if not mem.set_fact_attr(fact_id, "superseded_by", body.superseded_by):
+            raise HTTPException(404, f"没有这条事实：{fact_id}")
+    out = mem.fact_by_id(fact_id) or {"id": fact_id, "text": text}
+    out["superseded_by"] = mem.fact_attrs("superseded_by").get(fact_id, "")
+    return out
 
 
 @router.delete("/fact/{fact_id}")

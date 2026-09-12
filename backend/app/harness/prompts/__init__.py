@@ -46,6 +46,7 @@ from .writing import (
 from .selection import (
     DIGEST_SYSTEM,
     EXPAND_SYSTEM,
+    RELATIONS_SYSTEM,
     POLISH_SYSTEM,
     REWRITE_SYSTEM,
     VERIFY_SYSTEM,
@@ -53,6 +54,7 @@ from .selection import (
     expand_user,
     rewrite_user,
     verify_user,
+    relations_user,
 )
 from .note import (
     REPLAN_SYSTEM,
@@ -82,6 +84,7 @@ from .block import (
 
 __all__ = [
     "content_block",
+    "relations_user",
     "facts_block",
     "BLOCK_SYSTEM",
     "DIGEST_SYSTEM",
@@ -94,6 +97,7 @@ __all__ = [
     "MORE_SECTIONS_SYSTEM",
     "PLAN_SYSTEM",
     "POLISH_SYSTEM",
+    "RELATIONS_SYSTEM",
     "REPLAN_SYSTEM",
     "RETRIEVAL_PLAN_SYSTEM",
     "REWRITE_SYSTEM",

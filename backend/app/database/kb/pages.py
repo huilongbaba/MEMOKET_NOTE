@@ -142,6 +142,26 @@ def resolve_entity_code(vocab, code: str) -> str | None:
     return None
 
 
+def evolution_chains(facts, vocab=None, *, min_len: int = 2, top: int = 5) -> list[dict]:
+    """「这些事怎么变的」：按 obj（KITE 抽取给的对象类）把有日期的事实串成线，只留 ≥ min_len
+    条的，按长度排。实体页 / 主题页用——20406 条平铺时用户看到的是三条互相矛盾的日期，
+    不知道哪条算数；串成线至少能看出先后。"""
+    by_obj: dict[str, list] = defaultdict(list)
+    for f in facts:
+        if not f.when:
+            continue
+        for o in f.obj:
+            by_obj[o].append(f)
+    chains = []
+    for o, fs in by_obj.items():
+        if len(fs) < min_len:
+            continue
+        fs = sorted(fs, key=lambda f: (f.when, f.id))
+        chains.append({"obj": o, "facts": [_fact(f, vocab) for f in fs[-8:]], "total": len(fs)})
+    chains.sort(key=lambda c: -c["total"])
+    return chains[:top]
+
+
 def entity_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict | None:
     store, vocab = mem._index()
     code = resolve_entity_code(vocab, code) or code
@@ -151,10 +171,15 @@ def entity_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict
     facts = [f for f in store.facts.values() if code in f.entities]
     topics = Counter(c for f in facts for c in f.topics)
     page, total = _page(facts, limit, offset, vocab)
+    superseded = mem.fact_attrs("superseded_by") if hasattr(mem, "fact_attrs") else {}
+    for row in page:
+        if row["id"] in superseded:
+            row["superseded_by"] = superseded[row["id"]]
     return {
         "code": code, "name": e.name or e.code, "type": e.etype or "", "aliases": sorted(e.aliases),
         "relations": [{"rel": r, "target": tgt, "target_name": _entity_name(vocab, tgt)} for r, tgt in sorted(e.rels)],
         "facts_total": total, "facts": page, "limit": limit, "offset": offset,
+        "chains": evolution_chains(facts, vocab),
         "months": _months(facts, MONTHS_ON_PAGE),
         "topics": [{"code": c, "facts": n} for c, n in topics.most_common(TOP_N)],
     }
