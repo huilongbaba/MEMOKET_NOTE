@@ -100,14 +100,76 @@ function lcs(am: string[], bm: string[], push: Push) {
   while (j < m) { push('ins', bm[j]); j++ }
 }
 
-/** 先按行 LCS，变了的行对（一删一增等量成对）再逐词比；行数也太多就整段删+增。 */
+/** 先按行对齐，变了的行对（一删一增等量成对）再逐词比。
+ *
+ * 行数一多（1500 行 × 1500 行 = 225 万格）之前直接放弃成「整段删 + 整段增」——实拍 47k 字
+ * 的长文格式化后满屏绿。现在先拿**两边都只出现一次的行**当锚点（patience diff 的思路：
+ * 锚点用最长递增子序列对齐，O(k log k)），锚点之间的小块再走 LCS；块还是太大且行数相等
+ * 就逐行配对；实在不行才整块删增。 */
 function diffByLines(before: string, after: string, push: Push) {
   const al = before.split('\n').map((l, i, arr) => (i < arr.length - 1 ? l + '\n' : l))
   const bl = after.split('\n').map((l, i, arr) => (i < arr.length - 1 ? l + '\n' : l))
-  if (al.length * bl.length > 400_000) { push('del', before); push('ins', after); return }
-  const ops: DiffPart[] = []
-  lcs(al, bl, (type, text) => ops.push({ type, text }))
-  // 把「连续的 del 行」和紧跟的「连续的 ins 行」配对：数量相等就逐行逐词比
+  diffLineRange(al, 0, al.length, bl, 0, bl.length, push)
+}
+
+const LINE_LCS_CELLS = 400_000
+
+function diffLineRange(al: string[], a0: number, a1: number, bl: string[], b0: number, b1: number, push: Push) {
+  const n = a1 - a0
+  const m = b1 - b0
+  if (n === 0 && m === 0) return
+  if (n * m <= LINE_LCS_CELLS) {
+    const ops: DiffPart[] = []
+    lcs(al.slice(a0, a1), bl.slice(b0, b1), (type, text) => ops.push({ type, text }))
+    pairLineOps(ops, push)
+    return
+  }
+  // 锚点：这一段里两边都恰好出现一次的行
+  const ca = new Map<string, number>()
+  const cb = new Map<string, number>()
+  for (let i = a0; i < a1; i++) ca.set(al[i], (ca.get(al[i]) ?? 0) + 1)
+  for (let j = b0; j < b1; j++) cb.set(bl[j], (cb.get(bl[j]) ?? 0) + 1)
+  const posB = new Map<string, number>()
+  for (let j = b0; j < b1; j++) if (cb.get(bl[j]) === 1 && ca.get(bl[j]) === 1) posB.set(bl[j], j)
+  const cand: { ia: number; ib: number }[] = []
+  for (let i = a0; i < a1; i++) { const ib = posB.get(al[i]); if (ib !== undefined && ca.get(al[i]) === 1) cand.push({ ia: i, ib }) }
+  const anchors = longestIncreasing(cand)
+  if (anchors.length === 0) {
+    if (n === m) {                                  // 行数一样：逐行配对逐词比
+      for (let r = 0; r < n; r++) pairLineOps([{ type: 'del', text: al[a0 + r] }, { type: 'ins', text: bl[b0 + r] }], push)
+    } else {
+      push('del', al.slice(a0, a1).join('')); push('ins', bl.slice(b0, b1).join(''))
+    }
+    return
+  }
+  let pa = a0
+  let pb = b0
+  for (const { ia, ib } of anchors) {
+    diffLineRange(al, pa, ia, bl, pb, ib, push)
+    push('keep', al[ia])
+    pa = ia + 1; pb = ib + 1
+  }
+  diffLineRange(al, pa, a1, bl, pb, b1, push)
+}
+
+/** 候选按 ia 递增给进来，取 ib 也递增的最长子序列（标准 LIS，O(k log k)）。 */
+function longestIncreasing(cand: { ia: number; ib: number }[]): { ia: number; ib: number }[] {
+  const tails: number[] = []          // tails[len-1] = 长度为 len 的递增序列里最小的末尾 ib 所在下标
+  const prev = new Array<number>(cand.length).fill(-1)
+  for (let k = 0; k < cand.length; k++) {
+    let lo = 0
+    let hi = tails.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cand[tails[mid]].ib < cand[k].ib) lo = mid + 1; else hi = mid }
+    if (lo > 0) prev[k] = tails[lo - 1]
+    tails[lo] = k
+  }
+  const out: { ia: number; ib: number }[] = []
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) out.push(cand[k])
+  return out.reverse()
+}
+
+/** 把「连续的 del 行」和紧跟的「连续的 ins 行」配对：数量相等就逐行逐词比 */
+function pairLineOps(ops: DiffPart[], push: Push) {
   let k = 0
   while (k < ops.length) {
     if (ops[k].type !== 'del') { push(ops[k].type, ops[k].text); k++; continue }
@@ -119,7 +181,7 @@ function diffByLines(before: string, after: string, push: Push) {
       for (let r = 0; r < dels.length; r++) {
         const sa = segment(dels[r])
         const sb = segment(inss[r])
-        if (sa.length * sb.length > 400_000) { push('del', dels[r]); push('ins', inss[r]) }
+        if (sa.length * sb.length > LINE_LCS_CELLS) { push('del', dels[r]); push('ins', inss[r]) }
         else lcs(sa, sb, push)
       }
     } else {

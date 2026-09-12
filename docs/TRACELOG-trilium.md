@@ -1357,3 +1357,11 @@ dev 实例的 Local Storage 再启动，URL 带 `?user=terrence`。知识库引�
 树 413 行 fetch 67ms / paint 86ms，都不卡。目录探针滚到第 136 节时右栏目录还停在第 1～23
 节——当前节高亮了但没滚进视野。activePos 变了就把 `.outline-item.active` scrollIntoView
 （nearest）。
+
+## [127] 全量巡检第 107 轮：长文格式化又是满屏绿（2026-09-12）
+
+47k 字 / 1500 行的笔记格式化实拍：整篇绿。`diffByLines` 行数乘积超过 40 万格就直接
+「整段删 + 整段增」（1500×1500 = 225 万）。改成 patience 思路：两边都只出现一次的行当
+锚点（LIS 对齐，O(k log k)），锚点之间的小块再 LCS；块还是太大且行数相等就逐行配对。
+实测同一篇：6002 个 part、1201 个 hunk 全是 soft、29ms。vitest 加两条（1500 行补空格
+全 soft 且可精确撤回；1500 行改一句只标那一句）。

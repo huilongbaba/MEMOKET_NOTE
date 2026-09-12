@@ -137,3 +137,29 @@ describe('大文档按行再逐词', () => {
     expect(parts.filter((p) => p.type === 'del').map((p) => p.text)).toEqual(['排期'])
   })
 })
+
+describe('超长文按行对齐（锚点）', () => {
+  it('1500 行、每行补空格：没有一处真改动，也不能退化成整段删增', () => {
+    const paras: string[] = []
+    for (let i = 0; i < 300; i++) paras.push(`## 第${i + 1}节 里程碑\n\n这一节讨论第${i + 1}周的排期。\n\n- 计划时间：第${i + 1}周\n- 当前状态：待验证\n`)
+    const before = paras.join('\n')
+    const after = before.replace(/第(\d+)/g, '第 $1').replace(/(\d+)周/g, '$1 周').replace(/(\d+)节/g, '$1 节')
+    const t0 = performance.now()
+    const hunks = _th(_dp(before, after))
+    expect(performance.now() - t0).toBeLessThan(500)
+    expect(hunks.length).toBeGreaterThan(100)
+    expect(hunks.every((h) => h.soft)).toBe(true)
+    // 撤回全部还原精确
+    let s = after
+    for (const h of [...hunks].sort((a, b) => b.from - a.from)) s = s.slice(0, h.from) + h.del + s.slice(h.to)
+    expect(s).toBe(before)
+  })
+  it('1500 行里真改了一句：只标那一句', () => {
+    const lines = Array.from({ length: 1500 }, (_, i) => `第${i}行：讨论了排期和样机${i}。`)
+    const before = lines.join('\n')
+    const after = lines.map((l, i) => (i === 777 ? l.replace('排期', '预算') : l)).join('\n')
+    const hunks = _th(_dp(before, after)).filter((h) => !h.soft)
+    expect(hunks.length).toBe(1)
+    expect(hunks[0].del).toBe('排期')
+  })
+})
