@@ -324,8 +324,12 @@ export default function App() {
   }, [])
   const leftW = Math.min(panes.leftW, Math.floor(winW * 0.3))
   const LAUNCHER_W = 80
-  const tooNarrowForRight = panes.leftOn && winW - LAUNCHER_W - leftW - panes.rightW < 520
-  const leftShown = !focusMode && panes.leftOn
+  // 分屏也算进去：1000×700 开分屏实拍，中栏被挤到 250px，ribbon 折两行、工具栏只剩 B。
+  // 分屏最多占窗口 45%；右栏先收，还不够就连左栏也收（关掉分屏自动回来）。
+  const splitW = split ? Math.min(split.w, Math.floor(winW * 0.45)) : 0
+  const tooNarrowForRight = panes.leftOn && winW - LAUNCHER_W - leftW - panes.rightW - splitW < 520
+  const tooNarrowForLeft = !!split && winW - LAUNCHER_W - leftW - splitW < 520
+  const leftShown = !focusMode && panes.leftOn && !tooNarrowForLeft
   const rightShown = !focusMode && panes.rightOn && !tooNarrowForRight
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   const [selectionBusy, setSelectionBusy] = useState(false)
@@ -2828,7 +2832,7 @@ export default function App() {
         {split && (
           <>
             <Gutter side="right" onResize={(dx) => setSplit((s) => s && ({ ...s, w: Math.max(260, Math.min(900, s.w + dx)) }))} />
-            <div className="split-pane" style={{ width: split.w }}>
+            <div className="split-pane" style={{ width: splitW }}>
               {renderSplit(split.id)}
             </div>
           </>
