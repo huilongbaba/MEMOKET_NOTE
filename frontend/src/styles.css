@@ -213,7 +213,8 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .link:hover { text-decoration: underline; }
 
 .toaster {
-  position: fixed; bottom: 16px; right: 16px; z-index: 300;
+  /* 44px = 状态栏 28px + 留白：toast 之前盖在状态栏的字数/语音离线上（实拍） */
+  position: fixed; bottom: 44px; right: 16px; z-index: 300;
   display: flex; flex-direction: column; gap: 8px; max-width: 360px;
 }
 .toast {

@@ -58,7 +58,7 @@ export default function DigestPanel() {
       <div className="row" style={{ flexWrap: 'wrap' }}>
         {RANGES.map((r) => (
           <button key={r.days} onClick={() => run(r.days)} disabled={loading !== null}>
-            {loading === r.days ? <span className="spinner" /> : r.label}
+            {loading === r.days ? <><span className="spinner" /> {r.label}</> : r.label}
           </button>
         ))}
       </div>
