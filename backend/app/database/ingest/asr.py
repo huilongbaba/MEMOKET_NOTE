@@ -27,9 +27,10 @@ async def transcribe(data: bytes, filename: str = "audio.wav",
 
 
 async def healthy() -> bool:
+    # 2s 够了：语音服务要么在本机/局域网秒回，要么根本没开——5s 只是让健康检查多等 3s
     s = get_settings()
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=2.0) as client:
             r = await client.get(f"{s.whisper_base_url}/health")
             return r.status_code == 200
     except Exception:

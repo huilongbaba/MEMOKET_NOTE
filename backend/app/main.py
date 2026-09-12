@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import pathlib
 
@@ -81,19 +82,23 @@ async def health():
     """
     active = store.get_active_llm_config()
     s = get_settings()
-    llm_ok = False
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{active['base_url']}/models",
-                                 headers={"Authorization": f"Bearer {active['api_key']}"})
-            llm_ok = r.status_code == 200
-    except Exception:
-        llm_ok = False
 
+    async def llm_healthy() -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(f"{active['base_url']}/models",
+                                     headers={"Authorization": f"Bearer {active['api_key']}"})
+                return r.status_code == 200
+        except Exception:
+            return False
+
+    # 两个探测并行：实测 LLM 1.6s + 语音（LAN 上没开的机器，等满超时）5s 串起来
+    # 6.5s，桌面版每次启动、每次切供应商都要等这一下才知道红不红。
+    llm_ok, asr_ok = await asyncio.gather(llm_healthy(), asr.healthy())
     return {
         "status": "ok",
         "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"]},
-        "asr": {"ok": await asr.healthy(), "base_url": s.whisper_base_url},
+        "asr": {"ok": asr_ok, "base_url": s.whisper_base_url},
     }
 
 
