@@ -301,6 +301,27 @@ def unsupported_numbers(text: str, values: list[float], *, rel: float = 0.005) -
 # 「4 台服务器，每台 8 卡」拆开就看不出这两个数是一回事了。
 _SENT_END = re.compile(r"[。！？；!?;]+|\n+")
 
+# 「有数字」不等于「有可画的数」：引用 id（[terrence-1462-9F5]）、日期（8 月 5 日、2026-08-05）、
+# 序数（第 5 位）、链接里的数字都不是量。实拍数据可视化把「第 5、10、15 位用户」画成柱子，
+# 就是因为这一层没过滤（第 153 轮）。
+_NOT_A_QUANTITY = (
+    re.compile(r"\[[A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]"),   # 引用 id
+    re.compile(r"https?://\S+"),
+    re.compile(r"\d{4}\s*[-/年.]\s*\d{1,2}(?:\s*[-/月.]\s*\d{1,2}\s*日?)?"),        # 2026-08-05 / 2026 年 8 月
+    re.compile(r"\d{1,2}\s*月\s*\d{1,2}\s*[日号]?"),                                # 8 月 5 日
+    re.compile(r"\d{1,2}\s*[日号]\b|\d{1,2}\s*[日号](?=[^\d])"),                    # 5 号
+    re.compile(r"第\s*\d+(?:\s*[、,，/和及]\s*\d+)*"),                              # 第 5 位 / 第 5、10、15 位
+    re.compile(r"[A-Za-z]+\d+[A-Za-z0-9]*"),                                        # Q3、iOS16、F1
+)
+
+
+def has_quantity(sentence: str) -> bool:
+    """去掉引用 id / 日期 / 序数 / 链接 / 型号之后还剩数字，才算「这句里有可画的数」。"""
+    s = sentence
+    for pat in _NOT_A_QUANTITY:
+        s = pat.sub(" ", s)
+    return any(ch.isdigit() for ch in s)
+
 
 def sentences_with_numbers(text: str, cursor: int, radius: int = 1200) -> list[str]:
     """光标前后 ``radius`` 字以内、**含数字的句子**，按到光标的距离排序。
@@ -331,7 +352,7 @@ def sentences_with_numbers(text: str, cursor: int, radius: int = 1200) -> list[s
         if b <= a:
             continue
         s = text[a:b].strip()
-        if len(s) < 6 or not any(ch.isdigit() for ch in s):
+        if len(s) < 6 or not has_quantity(s):
             continue
         if any(ts <= a <= te for ts, te in spans):     # 表格内部的行不算正文
             continue

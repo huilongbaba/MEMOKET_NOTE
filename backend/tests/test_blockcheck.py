@@ -234,3 +234,16 @@ def test_数据可视化的门槛_光标附近没数据就不跑():
     # 表在一万字外、还隔着标题：不算旁边
     far = "光标在这。\n\n" + "x" * 3000 + "\n\n## 别的话题\n\n" + table
     assert modes._eda_has_data(st(far, 3)) is not None
+
+
+def test_引用id_日期_序数不算可画的数():
+    from app.harness.tools import tabular
+    assert not tabular.has_quantity("另有记录表示可以执行服务器数据删除 [terrence-1462-9F5]。")
+    assert not tabular.has_quantity("DVT 原计划 6 月 3 日，后调整到 2026-08-05。")
+    assert not tabular.has_quantity("继续向第 5、10、15 位用户发放新版本")
+    assert not tabular.has_quantity("登录流程在 iOS16 上偶发白屏，见 https://x.y/z?id=42")
+    assert tabular.has_quantity("昇腾 38%，浪潮 22.4%")
+    assert tabular.has_quantity("EVT 准备 4 台主机、15 套 PCBA")
+    text = "光标在这。曾提出向第 5 位用户发放 [terrence-1462-9F1]。另外 EVT 准备 4 台主机。"
+    hits = tabular.sentences_with_numbers(text, 3)
+    assert hits == ["另外 EVT 准备 4 台主机。"]
