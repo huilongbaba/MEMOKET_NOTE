@@ -1343,3 +1343,10 @@ dev 实例的 Local Storage 再启动，URL 带 `?user=terrence`。知识库引�
 导入到它下面（行高亮 drop-over），落在空白处 = 导入到根，走同一个 importMarkdown（多文件
 成子树）；知识库虚拟行不收。新探针 `filedrop[:标题]` 用 DataTransfer 造一个 .md 丢上去，
 实拍落在「链接测试」下面并打开。
+
+## [125] 全量巡检第 105 轮：笔记链接悬停卡（2026-09-12）
+
+对着 gap 清单的 note_tooltip 一项复核：链接悬停卡早就有（`.cm-note-peek`），只是 end 探针
+之前 10s 截图赶在 300ms 悬停 + 拉笔记之前。两处小修：卡上的字数用 `content.length`
+（8890）跟信息面板 / 状态栏（7760）不是一个口径，改走 wordCount；摘要里连续空行折成一行
+——卡只有 160px 高，实拍前四行里两行是空的。
