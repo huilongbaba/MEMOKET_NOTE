@@ -248,7 +248,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -623,7 +623,13 @@ export default function App() {
     const onExport = () => { void save(); window.location.href = `/api/export/markdown?user=${encodeURIComponent(api.getUser())}` }
     window.addEventListener('export-all', onExport)
     // 桌面壳退出前问一声：存完回 flushed（存失败也回，别卡住退出——草稿已经落本机）
-    const onFlush = () => { save().catch(() => {}).finally(() => window.memoketDesktop?.flushed?.()) }
+    // 退出时刚建、一个字没写的「未命名」也收掉——切走时会收，退出时之前不收，demo 库里
+    // 攒了四篇空「未命名」（实拍）。走 actionsRef 拿最新闭包，这个 effect 的 current 是旧的。
+    const onFlush = () => {
+      save().catch(() => {})
+        .then(() => actionsRef.current.dropIfStillEmpty(currentRef.current)).catch(() => {})
+        .finally(() => window.memoketDesktop?.flushed?.())
+    }
     window.addEventListener('flush-save', onFlush)
     const onOpenNote = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
@@ -2379,7 +2385,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>

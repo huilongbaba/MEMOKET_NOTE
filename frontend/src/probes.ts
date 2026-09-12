@@ -334,7 +334,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     const n = notes.find((x) => (x.content ?? '').trim().length > 200) ?? notes[0]
     if (n) void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runNoteHarness('write'), 1500) })()
   }
-  if (probe === 'blank') setTimeout(() => void newNote(), 600)   // 用一个专门的截图用户跑，别污染真实库
+  // 用一个专门的截图用户跑，别污染真实库。要 harnessProbeDone 守着：runProbe 随 notes/tree 刷新
+  // 会再进来，之前一轮建了三篇空「未命名」（实拍 demo 库攒了一堆）。
+  if (probe === 'blank' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600) }
   // 空笔记上点续写：应该提示先写点东西，而不是让模型编
   if (probe === 'blank-tap' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600); setTimeout(() => void actionsRef.current.runMagicTap(), 2500) }
   if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)

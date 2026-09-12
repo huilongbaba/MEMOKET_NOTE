@@ -1220,3 +1220,10 @@ markdown 记号、`[user-n-hex]` 引用标记后的字符数（同一篇现在�
 写作 Skill / 写作计划弹窗 / 定期回顾暗色回归正常。toast 固定在 bottom:16px，正好盖在
 状态栏的字数和「语音离线」上（实拍），抬到状态栏之上。定期回顾按钮加载时只剩一个
 spinner、按钮缩窄跳一下，改成 spinner + 原文案。
+
+## [108] 全量巡检第 88 轮：退出时空「未命名」留下来（2026-09-12）
+
+demo 库攒了四篇空「未命名」。两个原因：`blank` 探针没有 harnessProbeDone 守着，runProbe
+随 notes/tree 刷新再进来就又建一篇（一轮三篇）；退出时的 flush 只 save 不收空笔记（切走
+时会收）。探针加守卫；flush 之后走 `dropIfStillEmpty(currentRef.current)`（经 actionsRef 拿
+最新闭包），实测退出前多了一条 DELETE。
