@@ -106,6 +106,17 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  // 导入断点续跑：打开导入页，点「上次没跑完的导入」里的「继续」，看进度条 / 预估 / 用量
+  if (probe === 'import-resume' && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => void openVirtual('app:import'), 600)
+    setTimeout(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '继续')
+      if (btn) btn.click(); else void api.clientLog('warn', 'import-resume: no 继续 button', '', 'probe')
+    }, 3000)
+    // 进度卡在页面底部的「批量导入」一节，截图前滚到底
+    for (const t of [2000, 4000, 11000, 30000]) setTimeout(() => { const sc = document.querySelector('.note-scroll'); if (sc) sc.scrollTop = sc.scrollHeight }, t)
+  }
   // 边缘记忆：打开笔记，等页边圆点算出来
   if (probe?.startsWith('margin:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(7))

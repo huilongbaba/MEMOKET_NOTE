@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import hashlib
+import time
 import uuid
 from datetime import date as _date
 
@@ -161,6 +162,7 @@ def _extract_item_text(filename: str, kind: str, data: bytes, language: str) -> 
 def _batch_job(job_id: str, user_id: str, items: list[dict],
                payloads: dict[str, bytes], language: str) -> None:
     store.set_job(job_id, "running")
+    store.mark_job_started(job_id)
     mem = UserMemory(user_id)
     for item in items:
         item_id, filename, kind = item["id"], item["filename"], item["kind"]
@@ -183,7 +185,7 @@ def _batch_job(job_id: str, user_id: str, items: list[dict],
             chunks = _chunks_for(text, kind)
             file_date = _date.today().isoformat()
 
-            store.set_item(item_id, "remembering")
+            store.set_item(item_id, "remembering", chunks_total=len(chunks), chunks_done=0)
             store.update_job_from_items(job_id)
             total = 0
             cancelled_mid_file = False
@@ -198,6 +200,7 @@ def _batch_job(job_id: str, user_id: str, items: list[dict],
                 if store.is_cancel_requested(job_id):
                     cancelled_mid_file = True
                     break
+                t_chunk = time.perf_counter()
                 total += mem.remember(
                     [{"role": "user", "content": chunk}],
                     # 用**内容哈希**而不是 item_id：item_id 是每次任务新生成的，
@@ -207,10 +210,11 @@ def _batch_job(job_id: str, user_id: str, items: list[dict],
                     date=file_date,
                     title=filename,
                 )
+                store.bump_job_chunk(job_id, int((time.perf_counter() - t_chunk) * 1000), len(chunk))
                 # 同一个文件常常切成好几个 chunk，每个 chunk 一次独立的 LLM
                 # 调用——每块跑完就落一次库，SSE 才能把 facts 数逐块往上涨
                 # 推给前端，而不是等一整个文件的所有 chunk 都跑完才跳一次。
-                store.set_item(item_id, "remembering", facts=total)
+                store.set_item(item_id, "remembering", facts=total, chunks_done=i + 1)
                 store.update_job_from_items(job_id)
             if cancelled_mid_file:
                 store.set_item(item_id, "cancelled", facts=total,
@@ -265,7 +269,8 @@ def list_jobs(user: str = Depends(current_user), limit: int = 20):
     return [
         IngestOut(job_id=j["id"], status=j["status"], facts=j["facts"],
                   detail=j["detail"],
-                  items=[IngestItemOut(**it) for it in store.get_items(j["id"])])
+                  items=[IngestItemOut(**it) for it in store.get_items(j["id"])],
+                  **store.job_progress(j["id"]))
         for j in jobs
     ]
 
@@ -302,6 +307,7 @@ async def job_events(job_id: str, user: str = Depends(current_user)):
             snap = {
                 "job_id": j["id"], "status": j["status"], "facts": j["facts"],
                 "detail": j["detail"], "items": store.get_items(job_id),
+                **store.job_progress(job_id),
             }
             # 这一份序列化只用来比对「有没有变」，不上线——上线的那一帧由
             # sse() 统一生成，免得帧格式在这里再手写一遍。
@@ -324,4 +330,5 @@ def job_status(job_id: str):
         raise HTTPException(404, "job not found")
     return IngestOut(job_id=job["id"], status=job["status"], facts=job["facts"],
                      detail=job["detail"], items=[
-                         IngestItemOut(**it) for it in store.get_items(job_id)])
+                         IngestItemOut(**it) for it in store.get_items(job_id)],
+                     **store.job_progress(job_id))

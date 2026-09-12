@@ -459,11 +459,13 @@ class IngestItemOut(BaseModel):
     status: str
     facts: int = 0
     detail: str = ""
+    chunks_total: int = 0
+    chunks_done: int = 0
 
 
 # job 的合法状态。"cancelling" = 收到取消但后台还没停干净（可能卡在一次 LLM
 # 调用或 KITE 写锁里），界面要如实说「正在停止」而不是「处理中」。
-JOB_STATUSES = ("queued", "running", "cancelling", "done", "error", "cancelled")
+JOB_STATUSES = ("queued", "running", "cancelling", "done", "error", "cancelled", "interrupted")
 
 
 class IngestOut(BaseModel):
@@ -475,6 +477,17 @@ class IngestOut(BaseModel):
     facts: int = 0
     detail: str = ""
     items: list[IngestItemOut] = Field(default_factory=list)
+    # 进度 / 预估 / 用量（store.job_progress）：块数、还要多久、跑了多久、估计花了多少 token、
+    # 当前在做哪个文件；resumable = 服务重启中断了但 payload 还在，能继续
+    chunks_total: int = 0
+    chunks_done: int = 0
+    eta_s: int = 0
+    elapsed_s: int = 0
+    tokens_est: int = 0
+    current: str = ""
+    resumable: bool = False
+    # 开始前的预估（_queue 给）：这一批一共多少块、大概多久、多少 token
+    estimate: dict = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- 写作

@@ -262,6 +262,15 @@ _ADDED_COLUMNS = (
     ("provider_config", "asr_base_url", "TEXT NOT NULL DEFAULT ''"),
     # 笔记改动后自动同步进知识库的开关（默认关：每次同步是一次抽取调用）
     ("provider_config", "auto_sync_notes", "INTEGER NOT NULL DEFAULT 0"),
+    # 导入进度按块走（一篇 40 块的会议记录和一篇 2 块的随手记权重不一样）；
+    # job 级记每块耗时 / 字数，算预估时间和 token 用量；payload 落盘的 job 能断点续跑。
+    ("ingest_items", "chunks_total", "INTEGER NOT NULL DEFAULT 0"),
+    ("ingest_items", "chunks_done", "INTEGER NOT NULL DEFAULT 0"),
+    ("ingest_jobs", "payload_path", "TEXT NOT NULL DEFAULT ''"),
+    ("ingest_jobs", "chunk_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("ingest_jobs", "chunks_done", "INTEGER NOT NULL DEFAULT 0"),
+    ("ingest_jobs", "chars_done", "INTEGER NOT NULL DEFAULT 0"),
+    ("ingest_jobs", "started_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -1074,18 +1083,90 @@ def create_batch_job(user_id: str, files: list[dict]) -> tuple[str, list[dict]]:
                     "filename": f["filename"], "kind": f["kind"], "status": "queued",
                     "facts": 0, "detail": "", "updated_at": _now()}
             c.execute(
-                "INSERT INTO ingest_items VALUES "
+                "INSERT INTO ingest_items (id,job_id,idx,filename,kind,status,facts,detail,updated_at) VALUES "
                 "(:id,:job_id,:idx,:filename,:kind,:status,:facts,:detail,:updated_at)",
                 item)
             items.append(item)
     return job_id, items
 
 
-def set_item(item_id: str, status: str, facts: int = 0, detail: str = "") -> None:
+def set_item(item_id: str, status: str, facts: int = 0, detail: str = "",
+             chunks_total: int | None = None, chunks_done: int | None = None) -> None:
     with connect() as c:
         c.execute(
             "UPDATE ingest_items SET status=?, facts=?, detail=?, updated_at=? WHERE id=?",
             (status, facts, detail[:500], _now(), item_id))
+        if chunks_total is not None:
+            c.execute("UPDATE ingest_items SET chunks_total=? WHERE id=?", (chunks_total, item_id))
+        if chunks_done is not None:
+            c.execute("UPDATE ingest_items SET chunks_done=? WHERE id=?", (chunks_done, item_id))
+
+
+# 没有历史数据时每块按这个估（GPT 实测 ~13s / 块）；token 按「固定提示 + 正文 / 1.5 + 输出」估
+DEFAULT_CHUNK_MS = 13000
+TOKENS_PER_CHUNK_FIXED = 1600
+
+
+def bump_job_chunk(job_id: str, ms: int, chars: int) -> None:
+    """一块抽完：累计耗时 / 字数 / 块数，预估时间和用量从这里算。"""
+    with connect() as c:
+        c.execute("UPDATE ingest_jobs SET chunk_ms=chunk_ms+?, chars_done=chars_done+?, chunks_done=chunks_done+?"
+                  " WHERE id=?", (int(ms), int(chars), 1, job_id))
+
+
+def mark_job_started(job_id: str) -> None:
+    with connect() as c:
+        c.execute("UPDATE ingest_jobs SET started_at=? WHERE id=? AND started_at=''", (_now(), job_id))
+
+
+def set_job_payload(job_id: str, path: str) -> None:
+    with connect() as c:
+        c.execute("UPDATE ingest_jobs SET payload_path=? WHERE id=?", (path, job_id))
+
+
+def avg_chunk_ms(user_id: str) -> int:
+    """这个用户最近几个任务每块平均多少毫秒；没跑过就用默认值。开始前的预估靠它。"""
+    with connect() as c:
+        row = c.execute(
+            "SELECT SUM(chunk_ms) AS ms, SUM(chunks_done) AS n FROM ("
+            "  SELECT chunk_ms, chunks_done FROM ingest_jobs WHERE user_id=? AND chunks_done>0"
+            "  ORDER BY created_at DESC LIMIT 5)", (user_id,)).fetchone()
+    if row and row["n"]:
+        return max(1000, int(row["ms"] / row["n"]))
+    return DEFAULT_CHUNK_MS
+
+
+def estimate(chunks: int, chars: int, chunk_ms: int = DEFAULT_CHUNK_MS) -> dict:
+    """开始前 / 跑的时候都用这个：剩多少块、大概多久、大概多少 token。"""
+    return {"chunks": chunks, "seconds": int(chunks * chunk_ms / 1000),
+            "tokens": int(chunks * TOKENS_PER_CHUNK_FIXED + chars / 1.5)}
+
+
+def job_progress(job_id: str) -> dict:
+    """进度 / 预估 / 用量，全从已有的表算：块数看 items，耗时看 job 累计。"""
+    job = get_job(job_id)
+    if not job:
+        return {}
+    items = get_items(job_id)
+    total = sum(int(i.get("chunks_total") or 0) for i in items)
+    done = sum(int(i.get("chunks_done") or 0) for i in items)
+    n = int(job.get("chunks_done") or 0)
+    per = int(job["chunk_ms"] / n) if n and job.get("chunk_ms") else avg_chunk_ms(job["user_id"])
+    remaining = max(0, total - done)
+    elapsed = 0
+    if job.get("started_at"):
+        try:
+            elapsed = int((datetime.now(timezone.utc) - datetime.fromisoformat(job["started_at"])).total_seconds())
+        except ValueError:
+            elapsed = 0
+    est = estimate(remaining, 0, per)
+    return {
+        "chunks_total": total, "chunks_done": done, "eta_s": est["seconds"] if job["status"] in ("queued", "running") else 0,
+        "elapsed_s": elapsed,
+        "tokens_est": int(n * TOKENS_PER_CHUNK_FIXED + int(job.get("chars_done") or 0) / 1.5),
+        "resumable": bool(job.get("payload_path")) and job["status"] == "interrupted",
+        "current": next((i["filename"] for i in items if i["status"] not in _TERMINAL_ITEM_STATUSES and i["status"] != "queued"), ""),
+    }
 
 
 def get_items(job_id: str) -> list[dict]:
@@ -1265,13 +1346,23 @@ def sweep_orphan_jobs() -> int:
     导入任务"的检查会认为一直有任务在跑，**用户再也导不进任何东西**。
     """
     with connect() as c:
-        n = c.execute(
+        # 有 payload 落盘的（导入任务）能断点续跑：没跑完的 item 回到 queued，job 标 interrupted，
+        # 界面上给「继续」。其它的（批量上传的字节没落盘）只能标失败。
+        resumable = [r["id"] for r in c.execute(
+            "SELECT id FROM ingest_jobs WHERE payload_path<>'' AND status NOT IN ('done','error','cancelled','interrupted')")]
+        n = 0
+        for jid in resumable:
+            n += c.execute("UPDATE ingest_items SET status='queued', detail='' WHERE job_id=? AND status NOT IN ('done','failed','cancelled')",
+                           (jid,)).rowcount
+            c.execute("UPDATE ingest_jobs SET status='interrupted', detail='服务重启，任务中断——可以继续' WHERE id=?", (jid,))
+        n += c.execute(
             "UPDATE ingest_items SET status='failed', "
             "detail='服务重启，任务中断' WHERE status NOT IN ('done','failed','cancelled')"
+            " AND job_id NOT IN (SELECT id FROM ingest_jobs WHERE status='interrupted')"
         ).rowcount
         c.execute("UPDATE ingest_jobs SET status='error', "
                   "detail='服务重启，任务中断' "
-                  "WHERE status NOT IN ('done','error','cancelled')")
+                  "WHERE status NOT IN ('done','error','cancelled','interrupted')")
     return n
 
 

@@ -18,15 +18,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import subprocess
 import sys
 import time
 
 import httpx
+from dataclasses import asdict
+from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 
 from ..database import store
+from ..util.config import get_settings
 from ..database.ingest import importers
 from memoket_kite import StorageError
 
@@ -75,6 +79,7 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                 continue
             store.set_item(item_id, "chunking")
             store.update_job_from_items(job_id)   # 不然 job 一直停在 queued
+            store.mark_job_started(job_id)
             if to in ("both", "notes"):
                 fid = folder_id(note.folder)
                 if folder_body.get(note.folder) is note:
@@ -88,13 +93,17 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                 # KITE 直接跳过已有的，不花 LLM 调用，等于自动增量。
                 stem = f"{note.source}-{note.source_id}"
                 when = note.date or importers.today()
-                for i, chunk in enumerate(_chunks(note.content)):
+                chunks = _chunks(note.content)
+                store.set_item(item_id, "remembering", chunks_total=len(chunks), chunks_done=0)
+                for i, chunk in enumerate(chunks):
                     if store.is_cancel_requested(job_id):
                         break
                     try:
+                        t_chunk = time.perf_counter()
                         facts += mem.remember([{"role": "user", "content": chunk}],
                                               session_id=f"{stem}-{i}", date=when,
                                               title=note.title)
+                        store.bump_job_chunk(job_id, int((time.perf_counter() - t_chunk) * 1000), len(chunk))
                     except StorageError as exc:
                         # **"已存在" 是成功信号，不是失败。** 稳定 session_id 的
                         # 全部意义就是重跑时让 KITE 认出已导入的内容并跳过（不花
@@ -103,8 +112,9 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                         if "already exists" not in str(exc):
                             raise
                         skipped += 1
+                        store.set_item(item_id, "remembering", facts=facts, chunks_done=i + 1)
                         continue
-                    store.set_item(item_id, "remembering", facts=facts)
+                    store.set_item(item_id, "remembering", facts=facts, chunks_done=i + 1)
                     store.update_job_from_items(job_id)
             store.set_item(item_id, "done", facts=facts,
                            detail=f"已导入过，跳过 {skipped} 块" if skipped and not facts
@@ -115,7 +125,7 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
     store.update_job_from_items(job_id)
 
 
-def _reject_if_busy(user: str) -> None:
+def _reject_if_busy(user: str, except_job: str = "") -> None:
     """同一个用户同时只跑一个导入任务。
 
     KITE 的写入是串行的，第二个任务会**阻塞在写锁里**——它连自己的取消检查点
@@ -124,6 +134,8 @@ def _reject_if_busy(user: str) -> None:
     不如直接说清楚上一个还没跑完。
     """
     for j in store.list_jobs(user, 10):
+        if j["id"] == except_job:
+            continue
         # **看 item 而不是 job 状态。** update_job_from_items 只要有一条 item
         # 失败就把 job 标成 error，无论其余的跑没跑完——用 job 状态判断会
         # 把"带着一条失败跑完了"和"出错了还在跑"混为一谈。真正的判据是
@@ -134,15 +146,60 @@ def _reject_if_busy(user: str) -> None:
                      "或者先点取消。")
 
 
+def _payload_dir() -> Path:
+    d = Path(get_settings().kite_data_dir) / "jobs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _queue(user: str, notes: list[importers.ImportedNote], to: str,
            bg: BackgroundTasks) -> IngestOut:
     if not notes:
         raise HTTPException(400, "没有可导入的内容（文件为空、或者全被最小长度过滤掉了）")
     job_id, items = store.create_batch_job(
         user, [{"filename": n.title[:80], "kind": n.source} for n in notes])
+    # 清洗好的笔记落盘：进程重启后 job 还在，能从没跑完的 item 继续（docs/import-sync-plan.md §4.1）
+    payload = _payload_dir() / f"{job_id}.json"
+    payload.write_text(json.dumps({"user": user, "to": to, "notes": [asdict(n) for n in notes],
+                                   "items": [it["id"] for it in items]}, ensure_ascii=False),
+                       encoding="utf-8")
+    store.set_job_payload(job_id, str(payload))
+    # 开始前就说清这一批要跑多久、大概多少 token：412 篇的用户点下去之前应该知道这是一小时的事
+    n_chunks = sum(len(_chunks(n.content)) for n in notes)
+    est = store.estimate(n_chunks, sum(len(n.content) for n in notes), store.avg_chunk_ms(user))
     bg.add_task(_land, user, notes, to, job_id, items)
     return IngestOut(job_id=job_id, status="queued",
-                     items=[IngestItemOut(**it) for it in items])
+                     items=[IngestItemOut(**it) for it in items], estimate=est)
+
+
+@router.post("/jobs/{job_id}/resume", response_model=IngestOut)
+def resume_job(job_id: str, bg: BackgroundTasks, user: str = Depends(current_user)):
+    """断点续跑：只跑还没到终态的 item。已经 done 的 item 的 session 本来就在，KITE 会拒重复
+    ——所以块级也是天然断点，一篇导到第 3 块崩了，前 2 块被跳过、不花钱。"""
+    job = store.get_job(job_id)
+    if not job or job["user_id"] != user:
+        raise HTTPException(404, "job not found")
+    if not job.get("payload_path") or not Path(job["payload_path"]).exists():
+        raise HTTPException(400, "这个任务没有落盘的内容，续不了（批量上传的文件不落盘）")
+    if job["status"] in ("queued", "running", "cancelling"):
+        raise HTTPException(409, "这个任务正在跑")          # 连点两次「继续」不能起两个后台任务
+    _reject_if_busy(user, except_job=job_id)
+    data = json.loads(Path(job["payload_path"]).read_text(encoding="utf-8"))
+    notes = [importers.ImportedNote(**n) for n in data["notes"]]
+    by_id = {it["id"]: it for it in store.get_items(job_id)}
+    todo_notes, todo_items = [], []
+    for n, item_id in zip(notes, data["items"]):
+        it = by_id.get(item_id)
+        if it and it["status"] not in ("done", "cancelled"):
+            store.set_item(item_id, "queued", detail="")
+            todo_notes.append(n)
+            todo_items.append(it)
+    if not todo_notes:
+        store.update_job_from_items(job_id)
+        raise HTTPException(400, "没有需要继续的条目")
+    store.set_job(job_id, "running", facts=job["facts"])
+    bg.add_task(_land, user, todo_notes, data["to"], job_id, todo_items)
+    return IngestOut(job_id=job_id, status="running", items=[IngestItemOut(**it) for it in todo_items])
 
 
 @router.post("/files", response_model=IngestOut)

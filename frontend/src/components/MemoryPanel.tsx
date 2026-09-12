@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  cancelJob, ingestBatch, jobStatus, memoryFacts, memoryStats, watchJob,
+  cancelJob, ingestBatch, jobStatus, listJobs, memoryFacts, memoryStats, resumeImportJob, watchJob,
   appleAvailable, importApple, importFiles, importNotion,
 } from '../api'
 import type { FactDetail, JobOut } from '../api'
@@ -9,7 +9,31 @@ import { toast } from '../toast'
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
   chunking: '切块', remembering: '抽取入库', done: '完成',
-  failed: '失败', cancelled: '已取消', cancelling: '正在停止…',
+  failed: '失败', cancelled: '已取消', cancelling: '正在停止…', interrupted: '被打断（可继续）',
+}
+
+const fmtDur = (s: number) => (s < 60 ? `${s} 秒` : s < 3600 ? `${Math.round(s / 60)} 分钟` : `${(s / 3600).toFixed(1)} 小时`)
+const fmtTokens = (n: number) => (n >= 10000 ? `${(n / 10000).toFixed(1)} 万` : String(n))
+
+/** 进度条 + 预估 + 用量。批量导入是小时级的活，用户点下去之前、跑的过程中都该知道要多久、花多少。 */
+function JobProgress({ j }: { j: JobOut }) {
+  const total = j.chunks_total ?? 0
+  const done = j.chunks_done ?? 0
+  const running = j.status === 'running' || j.status === 'queued' || j.status === 'cancelling'
+  return (
+    <div className="stack" style={{ gap: 4, marginTop: 6 }}>
+      {total > 0 && (
+        <div className="progress" title={`${done}/${total} 块`}><div className="progress-bar" style={{ width: `${Math.min(100, Math.round(done / total * 100))}%` }} /></div>
+      )}
+      <div className="muted" style={{ fontSize: 12 }}>
+        {total > 0 && <>{done}/{total} 块</>}
+        {running && j.current && <> · 正在处理「{j.current}」</>}
+        {running && (j.eta_s ?? 0) > 0 && <> · 预计还要 {fmtDur(j.eta_s!)}</>}
+        {(j.elapsed_s ?? 0) > 0 && <> · 已用 {fmtDur(j.elapsed_s!)}</>}
+        {(j.tokens_est ?? 0) > 0 && <> · 约 {fmtTokens(j.tokens_est!)} token</>}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -33,6 +57,23 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
   const refresh = () => memoryStats().then(setStats).catch(() => {})
   useEffect(() => { refresh() }, [])
+  // 被服务重启打断、但内容落了盘的导入：列出来给「继续」
+  const [interrupted, setInterrupted] = useState<JobOut[]>([])
+  const loadInterrupted = () => listJobs(20).then((js) => setInterrupted(js.filter((j) => j.status === 'interrupted' && j.resumable))).catch(() => {})
+  useEffect(() => { loadInterrupted() }, [])
+  async function doResume(j: JobOut) {
+    try {
+      const r = await resumeImportJob(j.job_id)
+      setInterrupted((xs) => xs.filter((x) => x.job_id !== j.job_id))
+      setBatchJob(r)
+      watchJob(r.job_id, (x) => { setBatchJob(x); pollRecentFacts(x.facts) }, () => { refresh(); setRecentFacts([]); loadInterrupted() })
+    } catch (e) { toast('继续不了：' + (e instanceof Error ? e.message : String(e)), 'error') }
+  }
+  // 开始前的预估：这一批要跑多久、大概多少 token
+  function announceEstimate(r: JobOut) {
+    const e = r.estimate
+    if (e && e.chunks > 0) toast(`${r.items.length} 篇 · ${e.chunks} 块 · 预计 ${fmtDur(e.seconds)} · 约 ${fmtTokens(e.tokens)} token`)
+  }
   useEffect(() => () => batchAbort.current?.abort(), [])
 
   /** 抽取是分块跑的（一个 chunk 一次 LLM 调用），每跑完一块 facts 数就会
@@ -85,6 +126,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     setImporting(true)
     try {
       const r = await importFiles(files, source, importTo)
+      announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { refresh(); setRecentFacts([]) })
@@ -99,6 +141,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     setImporting(true)
     try {
       const r = await importApple(importTo)
+      announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { refresh(); setRecentFacts([]) })
@@ -113,6 +156,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     setImporting(true)
     try {
       const r = await importNotion(notionToken.trim(), importTo)
+      announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { refresh(); setRecentFacts([]) })
@@ -232,6 +276,19 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
       <h2>批量导入</h2>
       <div className="stack">
+        {interrupted.length > 0 && (
+          <div className="card" style={{ borderColor: 'var(--warn)' }}>
+            <strong style={{ fontSize: 13 }}>上次没跑完的导入</strong>
+            {interrupted.map((j) => (
+              <div key={j.job_id} className="row" style={{ justifyContent: 'space-between', marginTop: 6, gap: 8 }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {j.items.length} 篇 · 完成 {j.items.filter((it) => it.status === 'done').length} 篇 · {j.facts} 条事实{j.detail ? ` · ${j.detail}` : ''}
+                </span>
+                <button onClick={() => void doResume(j)} style={{ fontSize: 12, padding: '2px 10px' }}>继续</button>
+              </div>
+            ))}
+          </div>
+        )}
         <input
           type="file"
           multiple
@@ -254,11 +311,13 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
                 <button onClick={doCancelBatch}>取消</button>
               )}
             </div>
+            <JobProgress j={batchJob} />
             {batchJob.items.map((it) => (
               <div key={it.id} className="row" style={{ justifyContent: 'space-between', marginTop: 6 }}>
                 <span>{it.filename}</span>
                 <span className="muted">
                   {STATUS_LABEL[it.status] ?? it.status}
+                  {it.status === 'remembering' && (it.chunks_total ?? 0) > 0 && ` ${it.chunks_done ?? 0}/${it.chunks_total} 块`}
                   {(it.status === 'remembering' || it.status === 'done') && it.facts > 0 && ` · 已抽取 ${it.facts} 条`}
                   {it.status === 'failed' && it.detail && ` · ${it.detail}`}
                 </span>

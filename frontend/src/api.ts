@@ -759,21 +759,40 @@ export type IngestItem = {
     | 'done' | 'failed' | 'cancelled'
   facts: number
   detail: string
+  chunks_total?: number
+  chunks_done?: number
 }
 
 export type JobOut = {
   job_id: string
   // cancelling：收到取消但后台还没停干净（可能卡在一次 LLM 调用或 KITE 写锁里），
   // 这段时间要如实显示「正在停止…」，不能还写着「处理中」——否则跟没点一样。
-  status: 'queued' | 'running' | 'cancelling' | 'done' | 'error' | 'cancelled'
+  // interrupted：服务重启把它打断了，但清洗好的内容落了盘，能「继续」。
+  status: 'queued' | 'running' | 'cancelling' | 'done' | 'error' | 'cancelled' | 'interrupted'
   facts: number
   detail: string
   items: IngestItem[]
+  /** 进度按块（一篇 40 块的会议记录和一篇 2 块的随手记权重不一样）、预估还要多久、
+   *  跑了多久、估计花了多少 token、当前在做哪个文件、能不能继续 */
+  chunks_total?: number
+  chunks_done?: number
+  eta_s?: number
+  elapsed_s?: number
+  tokens_est?: number
+  current?: string
+  resumable?: boolean
+  /** 开始前的预估（导入接口给）：一共多少块、大概多久、多少 token */
+  estimate?: { chunks: number; seconds: number; tokens: number }
 }
 
 export const jobStatus = (jobId: string) =>
   fetch(`/api/ingest/jobs/${jobId}`, { headers: headers() }).then(json<JobOut>)
 
+export const listJobs = (limit = 20) =>
+  fetch(`/api/ingest/jobs?limit=${limit}`, { headers: headers() }).then(json<JobOut[]>)
+/** 断点续跑：只跑还没到终态的条目（服务重启打断的导入） */
+export const resumeImportJob = (jobId: string) =>
+  fetch(`/api/import/jobs/${jobId}/resume`, { method: 'POST', headers: headers() }).then(json<JobOut>)
 export const cancelJob = (jobId: string) =>
   fetch(`/api/ingest/jobs/${jobId}/cancel`, { method: 'POST', headers: headers() }).then(json)
 

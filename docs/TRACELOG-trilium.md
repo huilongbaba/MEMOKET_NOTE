@@ -1507,3 +1507,17 @@ agent-native-editor.md §3.3.1（六种关系 + 事实生命周期）。这一�
 段首行右边亮一个点：黄冲突 / 蓝延续 / 绿印证 / 灰缺依据；行号跟着文档改动映射；点一下
 光标落到那段、右栏「记忆」的关系卡出来。实拍 demo 复盘三段：两黄一绿。
 vitest 81、pytest 808。
+
+## [145] 导入：进度 / 预估 / 用量 / 断点续跑（2026-09-12，优先队列 ⑤）
+
+- 进度按块：item 加 `chunks_total / chunks_done`，job 累计每块耗时 / 字数 / 块数
+  （`bump_job_chunk`），SSE 帧带 `job_progress()`：块数、当前在做哪个文件、预计还要多久
+  （用本任务的每块中位耗时，没有就用历史平均 / 13s）、已用、token 估算（1600/块 + 字数/1.5）。
+- 开始前预估：`_queue` 回 `estimate`，前端 toast「3 篇 · 3 块 · 预计 39 秒 · 约 4910 token」。
+- 断点续跑：`_queue` 把清洗好的笔记落盘 `data/jobs/<job>.json`；启动时 `sweep_orphan_jobs`
+  把有 payload 的任务标 `interrupted`（没跑完的 item 回 queued）而不是一律失败；
+  `POST /api/import/jobs/{id}/resume` 只跑没到终态的 item；导入页顶上「上次没跑完的导入 ·
+  继续」。连点两次「继续」409。发现并修：`create_batch_job` 位置式 INSERT 加列后就炸。
+- 真跑：造一个跑到一半的任务 → 点继续 → 进度条 1/2 块 · 正在处理「导入探针 B2」· 预计 7 秒
+  → 完成 3/3 块 · 16 秒 · 约 3288 token。pytest 810。
+- 用户新点名：内存占用太高——进队列 ⑨，先量再砍。

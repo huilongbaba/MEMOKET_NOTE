@@ -855,6 +855,9 @@ input[type=file]:hover { border-color: var(--accent); }
 .tl-days { margin-inline-start: 16px; border-inline-start: 2px solid var(--line); padding-inline-start: 8px; }
 .tl-facts { padding: 4px 0 8px 8px; }
 
+/* 导入进度条 */
+.progress { height: 6px; border-radius: 3px; background: var(--hover-item-bg); overflow: hidden; }
+.progress-bar { height: 100%; background: var(--accent); transition: width 300ms; }
 /* 边缘记忆：正文右缘的记忆带 */
 .cm-memory-gutter { width: 16px; background: transparent !important; border: none !important; }
 .cm-memory-gutter .cm-gutterElement { display: flex; align-items: flex-start; justify-content: center; }

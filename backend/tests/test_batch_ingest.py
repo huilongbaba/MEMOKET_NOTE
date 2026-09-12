@@ -250,10 +250,10 @@ def test_batch_job_reports_item_facts_incrementally_across_chunks(isolated_store
     seen_facts: list[int] = []
     real_set_item = store.set_item
 
-    def spy_set_item(item_id_, status, facts=0, detail=""):
+    def spy_set_item(item_id_, status, facts=0, detail="", **kw):
         if item_id_ == item_id:
             seen_facts.append(facts)
-        real_set_item(item_id_, status, facts=facts, detail=detail)
+        real_set_item(item_id_, status, facts=facts, detail=detail, **kw)
     monkeypatch.setattr(store, "set_item", spy_set_item)
 
     ingest._batch_job(job_id, "u1", items, {item_id: text.encode()}, "auto")
