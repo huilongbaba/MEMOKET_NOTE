@@ -52,29 +52,13 @@ export function diffParts(before: string, after: string): DiffPart[] {
 
   push('keep', a.slice(0, head).join(''))
 
-  // 中间段太大时不做 LCS，直接整段标成删+增。真实场景里这意味着这一轮
-  // 几乎重写了全文，逐词对比也没有阅读价值，还会卡住 UI。
+  // 中间段太大时逐词 LCS 会卡住 UI（8000 字 ≈ 8000×8000 的表）。先按**行**对齐，
+  // 只在真正变了的行对里再逐词比——格式化这种「每行补几个空格」的改动，之前会
+  // 退化成整篇删+增，满屏绿；现在只有变了的词标出来。
   if (am.length * bm.length > 400_000) {
-    push('del', am.join(''))
-    push('ins', bm.join(''))
+    diffByLines(am.join(''), bm.join(''), push)
   } else {
-    const n = am.length
-    const m = bm.length
-    const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
-    for (let i = n - 1; i >= 0; i--) {
-      for (let j = m - 1; j >= 0; j--) {
-        dp[i][j] = am[i] === bm[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
-      }
-    }
-    let i = 0
-    let j = 0
-    while (i < n && j < m) {
-      if (am[i] === bm[j]) { push('keep', am[i]); i++; j++ }
-      else if (dp[i + 1][j] >= dp[i][j + 1]) { push('del', am[i]); i++ }
-      else { push('ins', bm[j]); j++ }
-    }
-    while (i < n) { push('del', am[i]); i++ }
-    while (j < m) { push('ins', bm[j]); j++ }
+    lcs(am, bm, push)
   }
 
   push('keep', a.slice(a.length - tail).join(''))
@@ -89,6 +73,59 @@ export function diffParts(before: string, after: string): DiffPart[] {
   return merged
 }
 
+
+
+type Push = (type: DiffPart['type'], text: string) => void
+
+/** 标准 LCS 逐 token 对比。调用方保证 a.length * b.length 在可算的范围内。 */
+function lcs(am: string[], bm: string[], push: Push) {
+  const n = am.length
+  const m = bm.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = am[i] === bm[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    if (am[i] === bm[j]) { push('keep', am[i]); i++; j++ }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { push('del', am[i]); i++ }
+    else { push('ins', bm[j]); j++ }
+  }
+  while (i < n) { push('del', am[i]); i++ }
+  while (j < m) { push('ins', bm[j]); j++ }
+}
+
+/** 先按行 LCS，变了的行对（一删一增等量成对）再逐词比；行数也太多就整段删+增。 */
+function diffByLines(before: string, after: string, push: Push) {
+  const al = before.split('\n').map((l, i, arr) => (i < arr.length - 1 ? l + '\n' : l))
+  const bl = after.split('\n').map((l, i, arr) => (i < arr.length - 1 ? l + '\n' : l))
+  if (al.length * bl.length > 400_000) { push('del', before); push('ins', after); return }
+  const ops: DiffPart[] = []
+  lcs(al, bl, (type, text) => ops.push({ type, text }))
+  // 把「连续的 del 行」和紧跟的「连续的 ins 行」配对：数量相等就逐行逐词比
+  let k = 0
+  while (k < ops.length) {
+    if (ops[k].type !== 'del') { push(ops[k].type, ops[k].text); k++; continue }
+    const dels: string[] = []
+    while (k < ops.length && ops[k].type === 'del') dels.push(ops[k++].text)
+    const inss: string[] = []
+    while (k < ops.length && ops[k].type === 'ins') inss.push(ops[k++].text)
+    if (dels.length === inss.length) {
+      for (let r = 0; r < dels.length; r++) {
+        const sa = segment(dels[r])
+        const sb = segment(inss[r])
+        if (sa.length * sb.length > 400_000) { push('del', dels[r]); push('ins', inss[r]) }
+        else lcs(sa, sb, push)
+      }
+    } else {
+      for (const d of dels) push('del', d)
+      for (const x of inss) push('ins', x)
+    }
+  }
+}
 
 // ---------------------------------------------------------------- hunk 模型
 

@@ -108,3 +108,22 @@ describe('只差空白不算改动', () => {
     expect(real.some((p) => p.type === 'ins')).toBe(true)
   })
 })
+
+describe('大文档按行再逐词', () => {
+  it('八千字只补空格：几乎没有绿', () => {
+    const lines = Array.from({ length: 400 }, (_, i) => `第${i}段：中文English混排，讨论了排期和样机${i}。`)
+    const before = lines.join('\n')
+    const after = lines.map((l) => l.replace('中文English混排', '中文 English 混排')).join('\n')
+    const parts = _dp(before, after)
+    const changed = parts.filter((p) => p.type !== 'keep').map((p) => p.text).join('')
+    expect(changed.trim()).toBe('')
+  })
+  it('八千字里真改了一个词：只标那个词', () => {
+    const lines = Array.from({ length: 400 }, (_, i) => `第${i}段：中文English混排，讨论了排期和样机${i}。`)
+    const before = lines.join('\n')
+    const after = lines.map((l, i) => (i === 123 ? l.replace('排期', '预算') : l)).join('\n')
+    const parts = _dp(before, after)
+    expect(parts.filter((p) => p.type === 'ins').map((p) => p.text)).toEqual(['预算'])
+    expect(parts.filter((p) => p.type === 'del').map((p) => p.text)).toEqual(['排期'])
+  })
+})
