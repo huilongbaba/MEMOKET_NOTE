@@ -368,6 +368,11 @@ export default function App() {
     if (!current) return
     try { localStorage.setItem('memoket-note-active:' + api.getUser(), current.id) } catch { /* 同上 */ }
   }, [current])
+  // 窗口标题跟着当前笔记走（Mission Control / 窗口切换 / 任务栏里认得出是哪篇）
+  useEffect(() => {
+    const what = current ? displayTitle({ title, content }) : (virtualId ? (VIRTUAL_LABELS[virtualId] ?? tabs.find((t) => t.noteId === virtualId)?.title ?? '') : '')
+    document.title = what ? `${what} · MEMOKET NOTE` : 'MEMOKET NOTE'
+  }, [current, title, content, virtualId, tabs])
 
   /** 打开一篇笔记时同步标签：已经开着就切过去，没开就新开一个。
    *
