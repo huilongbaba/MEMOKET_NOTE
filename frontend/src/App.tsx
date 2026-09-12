@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { micError } from './util/micError'
+import { matchSnippet } from './util/snippet'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -1013,7 +1014,10 @@ export default function App() {
         <div className="t">{displayTitle(n)}</div>
         {n.content.trim() && (
           <div className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {previewLine(n.content, displayTitle(n))}
+            {(() => {
+              const s = searchResults !== null ? matchSnippet(n.content, noteQuery) : null
+              return s ? <>{s.before}<mark>{s.hit}</mark>{s.after}</> : previewLine(n.content, displayTitle(n))
+            })()}
           </div>
         )}
         {/* flex 而不是几个 float: right 堆在一起——三个控件（文件夹选择/
@@ -2544,10 +2548,12 @@ export default function App() {
         </div>
         {/* 底部浮动工具条（note_tree.ts:113-121）：定位到当前笔记 / 折叠全树。
             「定位」我们尤其需要——克隆意味着同一篇在树上有多处。 */}
+        {searchResults === null && !noteQuery && (
         <div className="tree-actions">
           <button className="icon-btn" title="定位到当前笔记" onClick={() => setLocateTick((v) => v + 1)}><i className="bx bx-crosshair" /></button>
           <button className="icon-btn" title="折叠全部" onClick={() => void collapseAll()}><i className="bx bx-collapse-vertical" /></button>
         </div>
+        )}
       </div>
       )}
 

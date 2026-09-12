@@ -75,6 +75,11 @@ body {
   font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
+/* 链接跟主题走：之前没定义，深色下是浏览器默认的深蓝，导入页「看总览」
+   在黑底上几乎看不见。 */
+a { color: var(--accent); }
+mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+
 button {
   font: inherit;
   padding: 6px 12px;
