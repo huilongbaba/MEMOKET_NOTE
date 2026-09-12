@@ -35,6 +35,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [notes, setNotes] = useState<Note[]>([])
+  const [notesTotal, setNotesTotal] = useState(0)
   const [facts, setFacts] = useState<Fact[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [recent, setRecent] = useState<Note[]>([])
@@ -75,7 +76,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   }, [open])
 
   useEffect(() => {
-    if (!open || !q.trim()) { setNotes([]); setFacts([]); return }
+    if (!open || !q.trim()) { setNotes([]); setNotesTotal(0); setFacts([]); return }
     const t = setTimeout(() => {
       // 标题命中的排前面，正文命中的排后面、最多给 8 条——「设」这种字几乎每篇正文
       // 都有，全列出来跟没搜一样
@@ -84,6 +85,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
         const byTitle = list.filter((n) => displayTitle(n).toLowerCase().includes(needle))
         const byBody = list.filter((n) => !byTitle.includes(n))
         setNotes([...byTitle, ...byBody].slice(0, 8))
+        setNotesTotal(list.length)
       }).catch(() => {})
       api.recall(q, 6).then((r) => setFacts(r.facts)).catch(() => {})
     }, 200)
@@ -155,6 +157,8 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
               {s && <span className="muted palette-snip">{s.before}<mark>{s.hit}</mark>{s.after}</span>}</span>
               <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note')
           })}
+          {/* 412 篇「会议纪要」搜「会议」只列 8 条，得说清后面还有多少（实拍大库用户） */}
+          {typing && notesTotal > notes.length && <p className="muted palette-group" style={{ marginTop: 2 }}>还有 {notesTotal - notes.length} 篇没列出——多打几个字缩小范围</p>}
           {facts.length > 0 && <p className="muted palette-group">知识库（点击插入引用）</p>}
           {/* 日期单独一格不被截：之前拼在正文后面，长一点的事实日期先被省略号吃掉，
               一列里有的有日期有的没有。 */}
