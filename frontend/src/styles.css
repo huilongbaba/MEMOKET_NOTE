@@ -915,3 +915,8 @@ kbd {
 
 .health-bad { color: var(--del); display: inline-flex; align-items: center; gap: 4px; }
 .cm-note-peek .peek-body { color: var(--muted); margin-top: 4px; white-space: pre-wrap; max-height: 160px; overflow: hidden; }
+
+/* harness 状态条：粘在浮动按钮横带（48px）下面，滚到哪都看得见 */
+.harness-sticky { position: sticky; top: 48px; z-index: 6; background: var(--main-bg); margin: 0 calc(-1 * var(--content-margin-inline)); padding: 2px var(--content-margin-inline) 4px; }
+.harness-sticky .harness-line { margin: 0; flex-wrap: wrap; }
+.harness-sticky .harness-line button.primary, .harness-sticky .harness-line button { height: 26px; padding: 0 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }

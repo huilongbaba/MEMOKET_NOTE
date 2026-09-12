@@ -1195,6 +1195,15 @@ export default function App() {
           }, 1500)
         })() }
       }
+      // 打磨模式 / 逐轮我来定（轮末暂停等处置）
+      if ((probe?.startsWith('polish:') || probe?.startsWith('review:')) && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(probe.indexOf(':') + 1))
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          if (probe.startsWith('review:')) setReviewEachRound(true)
+          setTimeout(() => void actionsRef.current.runNoteHarness(probe.startsWith('polish:') ? 'polish' : 'write'), 1500)
+        })() }
+      }
       if (probe?.startsWith('harness:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(8))
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.runNoteHarness('write'), 1500) })() }
@@ -1929,7 +1938,7 @@ export default function App() {
           : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
           : '到达轮数上限，自动停止'
         const delta = liveContentRef.current.length - runBaseRef.current.length
-        const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta >= 0 ? '+' : ''}${delta} 字`
+        const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`
         setNoteHarnessStatus(summary)
         harnessDoneRef.current = true
         setHarnessDone(true)
@@ -2804,29 +2813,24 @@ export default function App() {
                 ]} />
               )}
             </div>
-            {pausedRun && (
-              /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
-                 关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
-                 你在跑的过程中做的处置会被下一轮盖掉。 */
-              <div className="row" style={{ margin: '0 0 8px', flexWrap: 'wrap' }}>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  这一轮写完了，逐条看过之后：
-                </span>
-                <button className="primary" onClick={() => resumePausedRun()}>
-                  ▶ 接着写
-                </button>
-                <button onClick={() => resumePausedRun(true)}>到此为止</button>
+            {/* 暂停 / 运行 / 结果 一条粘在浮动按钮下面的横条：轮末暂停时用户多半已经
+                滚到正文底部看新写的内容，两个按钮和那句话如果留在正文顶部就等于没有
+                （实拍：只剩状态栏一个「等你处置」）。 */}
+            {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
+              <div className="harness-sticky">
+                <p className="muted harness-line"><i className="bx bx-bot" /> {pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}
+                  {pausedRun && (
+                    /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
+                       关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
+                       你在跑的过程中做的处置会被下一轮盖掉。 */
+                    <span className="row" style={{ gap: 6, marginInlineStart: 8 }}>
+                      <button className="primary" onClick={() => resumePausedRun()}><i className="bx bx-play" /> 接着写</button>
+                      <button onClick={() => resumePausedRun(true)}>到此为止</button>
+                    </span>
+                  )}
+                  {harnessDone && !pausedRun && <button className="icon-btn sm" title="关闭" onClick={() => { setHarnessDone(false); harnessDoneRef.current = false; setNoteHarnessStatus('') }}><i className="bx bx-x" /></button>}
+                </p>
               </div>
-            )}
-            {/* **暂停时也要显示。** 原来这里只写了 `loading === 'note-harness'`，
-                而轮末暂停恰恰是 loading 已经复位成 '' 的时刻——于是
-                「这一轮写完了，逐条看过之后点『接着写』」和重开笔记时的
-                「上次写到第 N 轮停下来等你处置」两句话都设了但永远显示不出来。
-                用户只看到两个按钮凭空出现，不知道发生了什么。 */}
-            {(loading === 'note-harness' || pausedRun || harnessDone) && noteHarnessStatus && (
-              <p className="muted harness-line"><i className="bx bx-bot" /> {noteHarnessStatus}
-                {harnessDone && <button className="icon-btn sm" title="关闭" onClick={() => { setHarnessDone(false); harnessDoneRef.current = false; setNoteHarnessStatus('') }}><i className="bx bx-x" /></button>}
-              </p>
             )}
 
             {tapMeta && <TapProvenance meta={tapMeta} onDismiss={() => setTapMeta(null)} />}
