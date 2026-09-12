@@ -136,11 +136,11 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
         <div className="palette-results">
           {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
           {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
-          {!typing && recent.map((n) => row(n.id, displayTitle(n), 'bx-note'))}
+          {!typing && recent.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{n.updated_at.slice(0, 10)}</span></>, 'bx-note'))}
           {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
           {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
           {notes.length > 0 && <p className="muted palette-group">笔记</p>}
-          {typing && notes.map((n) => row(n.id, displayTitle(n), 'bx-note'))}
+          {typing && notes.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{n.updated_at.slice(0, 10)}</span></>, 'bx-note'))}
           {facts.length > 0 && <p className="muted palette-group">知识库（点击插入引用）</p>}
           {typing && facts.map((f) => row(f.id, <>{f.text.slice(0, 60)}{f.when && <span className="muted"> · {f.when}</span>}</>, 'bx-bulb'))}
           {!typing && <p className="muted palette-group">前往</p>}
