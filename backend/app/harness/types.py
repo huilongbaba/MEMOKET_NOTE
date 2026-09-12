@@ -152,6 +152,8 @@ class Mode:
     key: str
     label: str
     task: str = ""
+    # 产出阶段活动条上的动词：实拍「智能插图：在写…」——画图不是写。默认「在写」。
+    verb: str = "在写"
 
     # Tool authorisation. A ``group`` bundles tools by domain; ``exclude``
     # removes individual ones. If the same tool keeps getting excluded by

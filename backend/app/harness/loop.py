@@ -76,7 +76,7 @@ async def run(st: State, hooks: Hooks,
             # the old one (deltas already sent can't be taken back).
             async for e in _fire(chain, "before_produce", st):
                 yield e
-            yield Event.activity(f"{st.mode.label}：在写…")
+            yield Event.activity(f"{st.mode.label}：{st.mode.verb}…")
             st.fresh = ""
             mid = f"r{st.round}"
             yield Event.text_start(mid)

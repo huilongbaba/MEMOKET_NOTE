@@ -305,7 +305,7 @@ delta 之前发 `CUSTOM insert_at {section, pos}`，前端按自己的正文重�
 # harness/types.py
 @dataclass(frozen=True)
 class Mode:
-    key: str; label: str; task: str
+    key: str; label: str; task: str; verb: str = "在写"   # 活动条动词：画图类是「在画」
     groups: tuple[str, ...]        # 授权的工具组
     focus_groups / exclude         # 组为主，工具为辅
     dims: tuple[Dimension, ...]    # 模型打分的维度（note / section 由 for_run 按 profile、polish 塑形）
@@ -466,7 +466,7 @@ Mode 按需追加的：
 | `STEP_STARTED` / `STEP_FINISHED` | 后者带 `content`——**这一轮结束时的权威正文** |
 | `TEXT_MESSAGE_START/CONTENT/END` | 一轮一个 message，严格配对（AG-UI 有状态机校验） |
 | `TOOL_CALL_RESULT` | 工具名、参数、结果 |
-| `ACTIVITY_SNAPSHOT` | 「在看要用哪些材料…」「在写…」「在核对…」 |
+| `ACTIVITY_SNAPSHOT` | 「在看要用哪些材料…」「在写…」（画图类 Mode 是「在画…」，见 `Mode.verb`）「在核对…」 |
 | `RUN_ERROR` | 可恢复的降级，**前端不能 throw** |
 
 | CUSTOM 名 | 什么时候 |
