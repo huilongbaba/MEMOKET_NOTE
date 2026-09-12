@@ -46,6 +46,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
   const [gptApiKey, setGptApiKey] = useState('')
   const [gptModel, setGptModel] = useState('gpt-4.1-mini')
   const [gptBaseUrl, setGptBaseUrl] = useState('https://api.openai.com/v1')
+  const [asrBaseUrl, setAsrBaseUrl] = useState('')
 
   useEffect(() => {
     api.getProviderConfig().then((c) => {
@@ -53,6 +54,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       setProvider(c.provider)
       setGptModel(c.gpt_model)
       setGptBaseUrl(c.gpt_base_url)
+      setAsrBaseUrl(c.asr_base_url)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -62,6 +64,8 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
     try {
       const body: Parameters<typeof api.setProviderConfig>[0] = {
         provider, gpt_model: gptModel, gpt_base_url: gptBaseUrl,
+        // 语音地址传空串就是「清掉、退回默认」——跟 key 不同，这里空是合法值
+        asr_base_url: asrBaseUrl.trim(),
       }
       // 空字符串不传——传了会被当成"清空 key"（后端语义：不传=保留原值，
       // 传空字符串=真的清空），用户只是切换 provider 没重新填 key 时
@@ -142,6 +146,18 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                 )}
               </div>
             )}
+
+            {/* 语音服务地址。之前只能改 .env 重启；状态栏挂着「语音离线」、录音钮
+                提示「在设置里检查语音服务地址」，设置里却没这一项。 */}
+            <p className="kb-section-title" style={{ marginTop: 18 }}>语音服务</p>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+              录音转写用的 whisper.cpp server 地址。留空用默认；改完保存，状态栏的「语音离线」会立刻重查。
+            </p>
+            <input
+              placeholder={`默认 ${cfg?.asr_default_url ?? ''}`}
+              value={asrBaseUrl}
+              onChange={(e) => setAsrBaseUrl(e.target.value)}
+            />
 
             <button className="primary" onClick={save} disabled={saving} style={{ marginTop: 8 }}>
               {saving ? <span className="spinner" /> : '保存'}

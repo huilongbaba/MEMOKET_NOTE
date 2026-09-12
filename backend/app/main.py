@@ -98,7 +98,7 @@ async def health():
     return {
         "status": "ok",
         "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"]},
-        "asr": {"ok": asr_ok, "base_url": s.whisper_base_url},
+        "asr": {"ok": asr_ok, "base_url": store.get_asr_base_url()},
     }
 
 

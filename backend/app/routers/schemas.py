@@ -255,12 +255,15 @@ class ProviderConfigIn(BaseModel):
     gpt_api_key: str | None = None  # 不传就保留原值，见 store.set_provider_config
     gpt_model: str | None = None
     gpt_base_url: str | None = None
+    asr_base_url: str | None = None  # 空串 = 清掉、退回 .env 默认
 
 
 class ProviderConfigOut(BaseModel):
     provider: str
     gpt_model: str
     gpt_base_url: str
+    asr_base_url: str        # 用户填的（空 = 没填，在用默认）
+    asr_default_url: str     # .env 默认，界面当 placeholder
     # 不把真实 key 传回前端——只告诉它"存了没"和"末尾几位"，用来在界面上
     # 显示"已设置 sk-...ab12"这种确认状态，不需要也不该把完整 key 露出来
     gpt_api_key_set: bool

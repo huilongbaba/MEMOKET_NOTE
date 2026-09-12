@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from ..database import store
+from ..util.config import get_settings
 from .schemas import ProviderConfigIn, ProviderConfigOut
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -21,6 +22,8 @@ def _to_out(cfg: dict) -> ProviderConfigOut:
         gpt_base_url=cfg["gpt_base_url"],
         gpt_api_key_set=bool(key),
         gpt_api_key_preview=f"...{key[-4:]}" if key else "",
+        asr_base_url=cfg["asr_base_url"],
+        asr_default_url=get_settings().whisper_base_url,
     )
 
 
@@ -35,5 +38,6 @@ def set_provider(body: ProviderConfigIn):
         raise HTTPException(400, "provider must be 'local' or 'gpt'")
     cfg = store.set_provider_config(
         body.provider, gpt_api_key=body.gpt_api_key,
-        gpt_model=body.gpt_model, gpt_base_url=body.gpt_base_url)
+        gpt_model=body.gpt_model, gpt_base_url=body.gpt_base_url,
+        asr_base_url=body.asr_base_url)
     return _to_out(cfg)

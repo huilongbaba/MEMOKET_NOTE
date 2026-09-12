@@ -956,6 +956,9 @@ export type ProviderConfig = {
   gpt_base_url: string
   gpt_api_key_set: boolean
   gpt_api_key_preview: string
+  /** 用户填的语音服务地址（空 = 用默认） */
+  asr_base_url: string
+  asr_default_url: string
 }
 
 export const getProviderConfig = () =>
@@ -966,6 +969,7 @@ export const setProviderConfig = (body: {
   gpt_api_key?: string
   gpt_model?: string
   gpt_base_url?: string
+  asr_base_url?: string
 }) =>
   fetch('/api/settings/provider', {
     method: 'POST',

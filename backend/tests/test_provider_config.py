@@ -83,3 +83,17 @@ def test_get_active_llm_config_falls_back_when_gpt_selected_but_no_key_yet(isola
     isolated_store.set_provider_config("gpt")  # 没传 gpt_api_key
     active = isolated_store.get_active_llm_config()
     assert active["base_url"] == "http://local-model:8080/v1"
+
+
+def test_asr_base_url_round_trip_and_fallback(isolated_store):
+    """语音服务地址：没填退回 .env 默认；填了用填的（去掉尾部 /）；传空串清掉退回默认。"""
+    from app.util.config import get_settings
+
+    assert isolated_store.get_asr_base_url() == get_settings().whisper_base_url
+    isolated_store.set_provider_config("local", asr_base_url="http://127.0.0.1:8081/")
+    assert isolated_store.get_asr_base_url() == "http://127.0.0.1:8081"
+    # 只改别的字段不动它
+    isolated_store.set_provider_config("gpt", gpt_api_key="sk-x")
+    assert isolated_store.get_asr_base_url() == "http://127.0.0.1:8081"
+    isolated_store.set_provider_config("gpt", asr_base_url="")
+    assert isolated_store.get_asr_base_url() == get_settings().whisper_base_url

@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import httpx
 
-from ...util.config import get_settings
+from .. import store
 
 
 async def transcribe(data: bytes, filename: str = "audio.wav",
                      language: str = "auto") -> str:
-    s = get_settings()
+    base = store.get_asr_base_url()
     async with httpx.AsyncClient(timeout=1800.0) as client:
         r = await client.post(
-            f"{s.whisper_base_url}/v1/audio/transcriptions",
+            f"{base}/v1/audio/transcriptions",
             files={"file": (filename, data)},
             data={"response_format": "json", "language": language,
                   "temperature": "0.0"},
@@ -28,10 +28,9 @@ async def transcribe(data: bytes, filename: str = "audio.wav",
 
 async def healthy() -> bool:
     # 2s 够了：语音服务要么在本机/局域网秒回，要么根本没开——5s 只是让健康检查多等 3s
-    s = get_settings()
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get(f"{s.whisper_base_url}/health")
+            r = await client.get(f"{store.get_asr_base_url()}/health")
             return r.status_code == 200
     except Exception:
         return False

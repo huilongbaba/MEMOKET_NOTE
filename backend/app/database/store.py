@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS provider_config (
     gpt_api_key  TEXT NOT NULL DEFAULT '',
     gpt_model    TEXT NOT NULL DEFAULT 'gpt-4.1-mini',
     gpt_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+    asr_base_url TEXT NOT NULL DEFAULT '',
     updated_at   TEXT NOT NULL
 );
 
@@ -255,6 +256,9 @@ _ADDED_COLUMNS = (
     # 这篇笔记什么时候被摄入进知识库的。空 = 没摄入过。树上据此标 ⇡，
     # 一眼看出哪些笔记「有据可依」、哪些还只是草稿。
     ("notes", "ingested_at", "TEXT NOT NULL DEFAULT ''"),
+    # 语音服务地址进设置页：之前只能改 .env 重启，状态栏挂着「语音离线」用户却没处改。
+    # 空 = 用 .env 的默认值。
+    ("provider_config", "asr_base_url", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -1147,7 +1151,7 @@ def delete_profile_entry(user_id: str, entry_id: str) -> bool:
 _PROVIDER_CONFIG_ID = "default"
 _PROVIDER_CONFIG_DEFAULTS = {
     "provider": "local", "gpt_api_key": "", "gpt_model": "gpt-4.1-mini",
-    "gpt_base_url": "https://api.openai.com/v1",
+    "gpt_base_url": "https://api.openai.com/v1", "asr_base_url": "",
 }
 
 
@@ -1164,7 +1168,8 @@ def get_provider_config() -> dict:
 
 
 def set_provider_config(provider: str, gpt_api_key: str | None = None,
-                        gpt_model: str | None = None, gpt_base_url: str | None = None) -> dict:
+                        gpt_model: str | None = None, gpt_base_url: str | None = None,
+                        asr_base_url: str | None = None) -> dict:
     """更新全局供应商配置。gpt_api_key/gpt_model/gpt_base_url 传 None（不传）
     时保留原值——比如只是把 provider 从 'gpt' 切回 'local' 再切回来，不用
     重新填一遍已经存过的 key。"""
@@ -1176,12 +1181,14 @@ def set_provider_config(provider: str, gpt_api_key: str | None = None,
         "gpt_api_key": current["gpt_api_key"] if gpt_api_key is None else gpt_api_key,
         "gpt_model": current["gpt_model"] if gpt_model is None else (gpt_model or current["gpt_model"]),
         "gpt_base_url": current["gpt_base_url"] if gpt_base_url is None else (gpt_base_url or current["gpt_base_url"]),
+        # 语音地址跟 key 一样：不传=保留；传空串=清掉、退回 .env 默认
+        "asr_base_url": current["asr_base_url"] if asr_base_url is None else asr_base_url.strip().rstrip("/"),
     }
     with connect() as c:
         c.execute(
             "INSERT OR REPLACE INTO provider_config "
-            "(id, provider, gpt_api_key, gpt_model, gpt_base_url, updated_at) "
-            "VALUES (:id,:provider,:gpt_api_key,:gpt_model,:gpt_base_url,:updated_at)",
+            "(id, provider, gpt_api_key, gpt_model, gpt_base_url, asr_base_url, updated_at) "
+            "VALUES (:id,:provider,:gpt_api_key,:gpt_model,:gpt_base_url,:asr_base_url,:updated_at)",
             {"id": _PROVIDER_CONFIG_ID, "updated_at": _now(), **merged})
     return merged
 
@@ -1200,6 +1207,11 @@ def get_active_llm_config() -> dict:
         return {"base_url": cfg["gpt_base_url"], "api_key": cfg["gpt_api_key"], "model": cfg["gpt_model"]}
     s = get_settings()
     return {"base_url": s.llm_base_url, "api_key": s.llm_api_key, "model": s.llm_model}
+
+
+def get_asr_base_url() -> str:
+    """实际生效的语音服务地址：设置页填了就用它，没填退回 .env（同 get_active_llm_config 的思路）。"""
+    return get_provider_config()["asr_base_url"] or get_settings().whisper_base_url
 
 
 # ---------------------------------------------------------------- harness 的 run 历史
