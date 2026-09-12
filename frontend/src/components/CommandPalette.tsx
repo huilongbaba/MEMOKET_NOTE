@@ -13,6 +13,7 @@ const COMMANDS: { label: string; icon: string; run: () => void }[] = [
   { label: '导入', icon: 'bx-import', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' })) },
   { label: '设置', icon: 'bx-cog', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:settings' })) },
   { label: '快捷键', icon: 'bx-command', run: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
+  { label: '导出全部笔记（Markdown zip）', icon: 'bx-export', run: () => window.dispatchEvent(new CustomEvent('export-all')) },
 ]
 
 /**

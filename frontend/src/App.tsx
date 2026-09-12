@@ -599,12 +599,15 @@ export default function App() {
     // 编辑器里的 ⌘[ / ⌘] 被 CodeMirror 的缩进吃掉了，编辑器自己把它们转成这个事件
     const onNav = (e: Event) => goHistory((e as CustomEvent<number>).detail < 0 ? -1 : 1)
     window.addEventListener('nav-history', onNav)
+    // 整库导出：导航到接口地址就是下载（Electron 走系统的保存对话框）
+    const onExport = () => { void save(); window.location.href = `/api/export/markdown?user=${encodeURIComponent(api.getUser())}` }
+    window.addEventListener('export-all', onExport)
     const onOpenNote = (e: Event) => { const id = (e as CustomEvent<string>).detail; const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else toast('链接指向的笔记不存在了', 'error') }
     window.addEventListener('open-note', onOpenNote)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav) }
+    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('export-all', onExport) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 
@@ -2914,6 +2917,7 @@ export default function App() {
                   { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
                     onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + friendlyError(e), 'error')) } },
                   { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
+                  { label: '导出全部笔记…', icon: 'bx-package', hint: '整库打成 Markdown zip', onSelect: () => window.dispatchEvent(new CustomEvent('export-all')) },
                   { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
                   { kind: 'sep' },
                   { label: focusMode ? '退出专注模式' : '专注模式', icon: 'bx-fullscreen', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },

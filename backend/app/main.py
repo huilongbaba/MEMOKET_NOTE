@@ -14,7 +14,7 @@ from .database import store
 from .database.ingest import asr
 from .util import parent_watch
 from .util.config import get_settings
-from .routers import (assets, client_log, compose, compose_block, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
+from .routers import (assets, client_log, compose, compose_block, export, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
                       settings as settings_router, skills, tree, writing_plan)
 
 app = FastAPI(title="memoket-NOTE", version="0.1.0",
@@ -57,6 +57,7 @@ app.include_router(compose.router)
 app.include_router(compose_block.router)
 app.include_router(profile.router)
 app.include_router(settings_router.router)
+app.include_router(export.router)
 
 
 @app.get("/api/health")
