@@ -10,6 +10,9 @@ type Props = {
   onTranscript: (text: string) => void
   /** 录音入库后返回 job id，由上层轮询 */
   onIngested: (jobId: string) => void
+  /** 语音服务不可达时的地址（空串 = 在线）。离线时录音钮变成「离线」态：点了先说明，
+   *  不让用户录完一段才在转写那一步失败。 */
+  offline?: string
 }
 
 /**
@@ -17,7 +20,7 @@ type Props = {
  *   插入正文 —— 只转写，当语音输入用
  *   存入知识库 —— 转写后后台抽取成 fact
  */
-export default function AudioRecorder({ onTranscript, onIngested }: Props) {
+export default function AudioRecorder({ onTranscript, onIngested, offline = '' }: Props) {
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState('')
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null)
@@ -78,6 +81,14 @@ export default function AudioRecorder({ onTranscript, onIngested }: Props) {
   if (busy) return <button className="fb-btn" disabled><span className="spinner" /> {busy}…</button>
   if (recording) {
     return <button className="fb-btn rec" onClick={stop} title="停止录音"><i className="bx bx-stop-circle" /> 停止录音</button>
+  }
+  if (offline) {
+    return (
+      <button className="fb-btn" title={`语音服务不可达（${offline}）：录音转写用不了。在设置里检查语音服务地址`}
+              onClick={() => toast(`语音服务不可达（${offline}），录音转写用不了；其它功能不受影响`, 'error')}>
+        <i className="bx bx-microphone-off" style={{ opacity: .6 }} />
+      </button>
+    )
   }
   return (
     <>

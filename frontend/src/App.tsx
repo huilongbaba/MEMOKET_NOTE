@@ -589,6 +589,12 @@ export default function App() {
   /** 打开一个虚拟节点：一条事实 = 一篇只读笔记，占中栏、开标签，跟真笔记
    *  一样的肌肉记忆。离开正在写的那篇之前先落盘——跟 switchTo 同一条纪律。 */
   async function openVirtual(id: string, title?: string) {
+    // 传进来的是普通笔记 id（探针 open:<noteId>、旧标签页残留）就走笔记那条路——
+    // 实拍：一个笔记 id 会被当成实体名渲染成「别名：<正文前 100 字>」的知识库页。
+    if (!api.isVirtualId(id)) {
+      const n = notes.find((x) => x.id === id)
+      if (n) { await switchTo(n); return }
+    }
     if (virtualId === id && !current) return
     await save()
     const leaving = current
@@ -2119,7 +2125,12 @@ export default function App() {
       filePick.current?.click()
       return
     }
-    if (item.key === 'voice') { setSlash(null); void runVoice(from, to); return }
+    if (item.key === 'voice') {
+      setSlash(null)
+      // 语音服务离线时别让用户录完一段才发现转不了：录音前就说
+      if (asrOffline) { toast(`语音服务不可达（${asrOffline}），转写用不了；其它功能不受影响`, 'error'); return }
+      void runVoice(from, to); return
+    }
     // 其余（chart / eda）不需要提示词，直接跑
     setSlash({ item, from, to, ...at })
     void runBlock(item, from, to, '')
@@ -2701,7 +2712,7 @@ export default function App() {
                   <i className="bx bx-chevron-down" />
                 </button>
               </span>
-              <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} />
+              <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
               <button className="fb-btn" title="更多"
                       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
                 <i className="bx bx-dots-horizontal-rounded" />
