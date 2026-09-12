@@ -72,7 +72,14 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   useEffect(() => {
     if (!open || !q.trim()) { setNotes([]); setFacts([]); return }
     const t = setTimeout(() => {
-      api.listNotes(q).then(setNotes).catch(() => {})
+      // 标题命中的排前面，正文命中的排后面、最多给 8 条——「设」这种字几乎每篇正文
+      // 都有，全列出来跟没搜一样
+      api.listNotes(q).then((list) => {
+        const needle = q.trim().toLowerCase()
+        const byTitle = list.filter((n) => displayTitle(n).toLowerCase().includes(needle))
+        const byBody = list.filter((n) => !byTitle.includes(n))
+        setNotes([...byTitle, ...byBody].slice(0, 8))
+      }).catch(() => {})
       api.recall(q, 6).then((r) => setFacts(r.facts)).catch(() => {})
     }, 200)
     return () => clearTimeout(t)

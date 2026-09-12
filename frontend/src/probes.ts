@@ -264,7 +264,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     }, 1500)
   }
   if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
-  if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
+  if (probe === 'palette' || probe?.startsWith('palette:')) {
+    setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
+    // palette:<q> → 往输入框里打字（走 React 认的 input 事件）
+    const q = probe.includes(':') ? decodeURIComponent(probe.slice(8)) : ''
+    if (q) setTimeout(() => {
+      const input = document.querySelector('.palette input') as HTMLInputElement | null
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, q)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }, 1600)
+  }
   // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
   if (probe?.startsWith('sel:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === '5f65df10cad6') ?? notes.find((x) => (x.content ?? '').length > 400)
