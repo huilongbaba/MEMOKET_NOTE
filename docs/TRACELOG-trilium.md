@@ -1531,3 +1531,13 @@ vitest 81、pytest 808。
 一个每分钟的 janitor），实测 263 → 132MB；`fact_attrs` 派生缓存一起放；`/api/health`
 带 `memory.rss_peak_mb` 和抱着几个索引。根治要改包（倒排表 id → int、postings 用数组），
 写进 kite-constraints §14 作为下一步。pytest 811。重打 dmg、重开正式版。
+
+## [147] 笔记侧增量（2026-09-12，优先队列 ⑥）
+
+「同一份材料导十次，笔记里还是一篇、LLM 只花一次」之前只做到了知识库那一半——重导会再
+建一篇同名笔记，源侧改过的内容永远进不来。`notes` 加 `source / source_id / source_sha /
+imported_at`：导入时按 (source, source_id) 找旧篇，sha 没变整篇跳过（item detail「内容没
+变」）；变了更新正文并刷新 sha；本地 `updated_at > imported_at`（改过）就不覆盖，只在
+detail 说「本地也改过」；知识库侧内容变了先删 `<源>-<源侧 id>-*` session 再重抽（不删的话
+稳定 id 会让改过的内容被当已导入跳过）。信息面板加「来源：Obsidian · 何时导入 · 本地改过」。
+`tests/test_import_incremental.py` 三条。pytest 814。

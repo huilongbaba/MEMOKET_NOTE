@@ -80,15 +80,32 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
             store.set_item(item_id, "chunking")
             store.update_job_from_items(job_id)   # 不然 job 一直停在 queued
             store.mark_job_started(job_id)
+            sha = store.content_sha(note.content)
+            existing = store.find_note_by_source(user, note.source, note.source_id)
+            note_state = "new"        # new / same / updated / local-modified
             if to in ("both", "notes"):
                 fid = folder_id(note.folder)
                 if folder_body.get(note.folder) is note:
                     pass                                   # 已经是那个文件夹的正文
+                elif existing is None:
+                    n = store.create_note(user, note.title, note.content, fid or store.ROOT_ID)
+                    store.set_note_source(user, n["id"], note.source, note.source_id, sha)
+                elif existing.get("source_sha") == sha:
+                    note_state = "same"                    # 同一份导第二次：不再建一篇
+                elif (existing.get("updated_at") or "") > (existing.get("imported_at") or ""):
+                    note_state = "local-modified"          # 本地改过：不动，说清楚
                 else:
-                    store.create_note(user, note.title, note.content, fid or store.ROOT_ID)
+                    store.update_note_from_source(user, existing["id"], note.title, note.content, sha)
+                    note_state = "updated"
             facts, skipped = 0, 0
             if to in ("both", "kb"):
                 mem = UserMemory(user)
+                # 源侧改过：先删这份上次抽的 session 再重抽，不然稳定 id 会让改过的内容被当「已导入」跳过。
+                # 本地改过的那种也按源侧重抽（知识库跟源走，正文留给用户），并把 sha 记成源侧的。
+                if note_state in ("updated", "local-modified"):
+                    mem.remove_sessions(f"{note.source}-{note.source_id}-")
+                    if note_state == "local-modified" and existing:
+                        store.set_note_source(user, existing["id"], note.source, note.source_id, sha)
                 # source_id 是源侧稳定的，所以 session_id 也稳定 —— 重跑导入时
                 # KITE 直接跳过已有的，不花 LLM 调用，等于自动增量。
                 stem = f"{note.source}-{note.source_id}"
@@ -116,9 +133,12 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                         continue
                     store.set_item(item_id, "remembering", facts=facts, chunks_done=i + 1)
                     store.update_job_from_items(job_id)
+            state_note = {"same": "这篇之前导过、内容没变", "updated": "源侧改过，正文已更新",
+                          "local-modified": "源侧改过，但本地也改过——正文没动，知识库按源侧重抽"}.get(note_state, "")
+            kb_note = (f"已导入过，跳过 {skipped} 块" if skipped and not facts
+                       else (f"新增 {facts} 条，另有 {skipped} 块此前已导入" if skipped else ""))
             store.set_item(item_id, "done", facts=facts,
-                           detail=f"已导入过，跳过 {skipped} 块" if skipped and not facts
-                           else (f"新增 {facts} 条，另有 {skipped} 块此前已导入" if skipped else ""))
+                           detail="；".join(x for x in (state_note, kb_note) if x))
         except Exception as exc:              # noqa: BLE001 — 单条失败不能拖垮整批
             store.set_item(item_id, "failed", detail=f"{type(exc).__name__}: {exc}")
         store.update_job_from_items(job_id)

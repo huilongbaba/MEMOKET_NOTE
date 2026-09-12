@@ -271,6 +271,12 @@ _ADDED_COLUMNS = (
     ("ingest_jobs", "chunks_done", "INTEGER NOT NULL DEFAULT 0"),
     ("ingest_jobs", "chars_done", "INTEGER NOT NULL DEFAULT 0"),
     ("ingest_jobs", "started_at", "TEXT NOT NULL DEFAULT ''"),
+    # 笔记侧增量（docs/import-sync-plan.md §3）：这篇是从哪导来的、源侧稳定 id、上次导入时
+    # 的正文哈希、上次导入时间。重导同一份：sha 没变整篇跳过；变了更新正文（本地没改过的话）。
+    ("notes", "source", "TEXT NOT NULL DEFAULT ''"),
+    ("notes", "source_id", "TEXT NOT NULL DEFAULT ''"),
+    ("notes", "source_sha", "TEXT NOT NULL DEFAULT ''"),
+    ("notes", "imported_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -447,6 +453,34 @@ def get_note(user_id: str, note_id: str) -> dict | None:
         row = c.execute("SELECT * FROM notes WHERE user_id=? AND id=?",
                         (user_id, note_id)).fetchone()
     return _note(row) if row else None
+
+
+def content_sha(content: str) -> str:
+    import hashlib
+    return hashlib.sha1(content.encode("utf-8")).hexdigest()[:16]
+
+
+def find_note_by_source(user_id: str, source: str, source_id: str) -> dict | None:
+    """这份源侧内容之前导成过哪篇笔记。"""
+    if not source or not source_id:
+        return None
+    with connect() as c:
+        row = c.execute("SELECT * FROM notes WHERE user_id=? AND source=? AND source_id=? ORDER BY created_at LIMIT 1",
+                        (user_id, source, source_id)).fetchone()
+    return _note(row) if row else None
+
+
+def set_note_source(user_id: str, note_id: str, source: str, source_id: str, sha: str) -> None:
+    with connect() as c:
+        c.execute("UPDATE notes SET source=?, source_id=?, source_sha=?, imported_at=? WHERE id=? AND user_id=?",
+                  (source, source_id, sha, _now(), note_id, user_id))
+
+
+def update_note_from_source(user_id: str, note_id: str, title: str, content: str, sha: str) -> None:
+    """源侧改了 → 更新正文（调用方已经确认本地没改过）。updated_at 也刷新。"""
+    with connect() as c:
+        c.execute("UPDATE notes SET title=?, content=?, source_sha=?, imported_at=?, updated_at=? WHERE id=? AND user_id=?",
+                  (title, content, sha, _now(), _now(), note_id, user_id))
 
 
 def create_note(user_id: str, title: str, content: str,

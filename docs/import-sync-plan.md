@@ -146,7 +146,7 @@ sha 不变就整篇跳过（一次文件读取，零 LLM），变了才删旧 se
    摄入进去的事实**没法被引用**。
 2. §4.2 进度（块数 + 当前文件）和 §4.4 预估：只加两列一个计算，收益最直接。✅ 2026-09-12
 3. §4.1 断点续传（payload 落盘 + interrupted + resume）。✅ 2026-09-12（导入任务；批量上传的字节不落盘，只标失败）
-4. §3 笔记侧增量（`notes.source / source_id / content_sha`）。
+4. §3 笔记侧增量（`notes.source / source_id / content_sha`）。✅ 2026-09-12：`find_note_by_source` 按 (source, source_id) 找旧篇；sha 没变整篇跳过；变了更新正文，本地 `updated_at > imported_at` 就不动只说明；知识库侧变了先 `remove_sessions` 再重抽。
 5. §1 飞书导入。
 6. §2 导回（Obsidian 目录写入最先，Notion / 飞书 API 其次）。
 7. §4.3 用量记账（先估算，后钩子）；§4.5 并发。

@@ -114,12 +114,18 @@ async def health():
     llm_ok, asr_ok = await asyncio.gather(llm_healthy(), asr.healthy())
     import resource
     rss_mb = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024))
+    # 当前 RSS：macOS 没有 /proc，问一次 ps（健康检查本来就是秒级的接口，不在乎这几毫秒）
+    try:
+        import subprocess
+        rss_now_mb = int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(os.getpid())], timeout=2).strip()) // 1024
+    except Exception:      # noqa: BLE001
+        rss_now_mb = 0
     return {
         "status": "ok",
         "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"]},
         "asr": {"ok": asr_ok, "base_url": store.get_asr_base_url()},
         # 观测用：后端进程峰值 RSS（MB）和现在抱着几个知识库索引
-        "memory": {"rss_peak_mb": rss_mb, **UserMemory.cache_info()},
+        "memory": {"rss_peak_mb": rss_mb, "rss_mb": rss_now_mb, **UserMemory.cache_info()},
     }
 
 

@@ -8,6 +8,10 @@ export type Note = {
   pinned: boolean
   /** 摄入进知识库的时间（空 = 没摄入过） */
   ingested_at?: string
+  /** 从哪导来的、源侧 id、上次导入时间（空 = 本地写的） */
+  source?: string
+  source_id?: string
+  imported_at?: string
   /** 写作骨架跟着笔记走。之前只活在前端内存里，换一篇/刷新/无限续写自动
    * 跟随切页就没了——而 harness 每轮都拿它当主线依据。 */
   spine: string

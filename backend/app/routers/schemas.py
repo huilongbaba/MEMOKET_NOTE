@@ -17,6 +17,10 @@ class NoteIn(BaseModel):
 class Note(BaseModel):
     # 摄入过没有（空 = 没有）。前端拿它判「改过没同步」、决定要不要自动同步。
     ingested_at: str = ""
+    # 从哪导来的（obsidian / notion / apple / evernote / feishu…）、源侧稳定 id、上次导入时间
+    source: str = ""
+    source_id: str = ""
+    imported_at: str = ""
 
     id: str
     user_id: str

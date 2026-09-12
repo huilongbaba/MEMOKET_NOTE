@@ -12,6 +12,8 @@ import { displayTitle } from '../util/displayTitle'
 import { fmtDate, fmtDateTime } from '../util/time'
 import { readingMinutes, wordCount } from '../util/wordCount'
 
+const SOURCE_LABEL: Record<string, string> = { obsidian: 'Obsidian', notion: 'Notion', apple: 'Apple 备忘录', evernote: 'Evernote', feishu: '飞书', import: '导入' }
+
 export function NoteInfoPanel({ note, content, row }: { note: Note; content: string; row?: TreeRow }) {
   const words = wordCount(content)
   return (
@@ -21,6 +23,7 @@ export function NoteInfoPanel({ note, content, row }: { note: Note; content: str
       <dt>字数</dt><dd>{words} · 约 {readingMinutes(words)} 分钟阅读</dd>
       <dt>引用</dt><dd>{row?.cite_count ? `${row.cite_count} 条知识库记录` : '无'}</dd>
       <dt>摄入</dt><dd>{row?.ingested_at ? `已摄入（${fmtDate(row.ingested_at)}）` : '未摄入'}</dd>
+      {note.source && <><dt>来源</dt><dd>{SOURCE_LABEL[note.source] ?? note.source}{note.imported_at ? ` · ${fmtDate(note.imported_at)} 导入` : ''}{note.imported_at && note.updated_at > note.imported_at ? ' · 本地改过' : ''}</dd></>}
       <dt>位置</dt><dd>{row?.branch_count && row.branch_count > 1 ? `${row.branch_count} 处（克隆）` : '1 处'}</dd>
       <dt>id</dt><dd><code style={{ fontSize: 11 }}>{note.id}</code></dd>
     </dl>
