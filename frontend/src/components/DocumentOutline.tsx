@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { EditorView } from '@codemirror/view'
 
@@ -46,6 +46,7 @@ export default function DocumentOutline({ content, viewRef }: {
   // 正在看哪一节：跟着正文滚动区顶部那一行走（Obsidian 的 outline 也这么做）。
   // 滚动的是 .note-scroll 不是 CM 自己，所以听它。
   const [activePos, setActivePos] = useState(-1)
+  const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const view = viewRef.current
     const scroller = view?.scrollDOM.closest('.note-scroll') as HTMLElement | null
@@ -61,6 +62,10 @@ export default function DocumentOutline({ content, viewRef }: {
     scroller.addEventListener('scroll', update, { passive: true })
     return () => scroller.removeEventListener('scroll', update)
   }, [headings, viewRef])
+  // 当前节在目录里也要看得见：300 个标题的长文滚到第 136 节时，目录还停在第 1～23 节（实拍）
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>('.outline-item.active')?.scrollIntoView({ block: 'nearest' })
+  }, [activePos])
   if (headings.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>正文里的 <code>#</code> 标题会列在这里，点一下跳过去。</p>
 
   function jump(pos: number) {
@@ -75,7 +80,7 @@ export default function DocumentOutline({ content, viewRef }: {
 
   return (
     <div>
-      <div className="stack" style={{ gap: 2 }}>
+      <div className="stack" style={{ gap: 2 }} ref={listRef}>
         {headings.map((h, i) => (
           <a
             key={i}

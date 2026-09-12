@@ -1350,3 +1350,10 @@ dev 实例的 Local Storage 再启动，URL 带 `?user=terrence`。知识库引�
 之前 10s 截图赶在 300ms 悬停 + 拉笔记之前。两处小修：卡上的字数用 `content.length`
 （8890）跟信息面板 / 状态栏（7760）不是一个口径，改走 wordCount；摘要里连续空行折成一行
 ——卡只有 160px 高，实拍前四行里两行是空的。
+
+## [126] 全量巡检第 106 轮：超长笔记 + 目录跟不上（2026-09-12）
+
+给 shot-perf 造一篇 47k 字、300 个标题的笔记（`a4cf66fca44f`，留着当性能探针）：打开、
+树 413 行 fetch 67ms / paint 86ms，都不卡。目录探针滚到第 136 节时右栏目录还停在第 1～23
+节——当前节高亮了但没滚进视野。activePos 变了就把 `.outline-item.active` scrollIntoView
+（nearest）。
