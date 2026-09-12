@@ -9,6 +9,8 @@ import './shell.css'   // 先：定义令牌
 import './styles.css'  // 后：老变量名指向那些令牌
 
 restoreTheme()
+// 应用菜单「帮助 › 快捷键一览」→ 跟 ⌘/ 同一条路
+window.memoketDesktop?.onMenu?.((name) => { if (name === 'shortcuts') window.dispatchEvent(new CustomEvent('show-shortcuts')) })
 
 // 没被任何 try 接住的错误也报上去
 window.addEventListener('error', (e) => void clientLog('error', String(e.message), e.error?.stack ?? '', 'window'))

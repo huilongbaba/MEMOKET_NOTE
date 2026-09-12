@@ -167,6 +167,22 @@ function installMenu() {
       ],
     },
     { role: 'windowMenu' as const },
+    {
+      // Trilium 的 Help 菜单：快捷键、数据在哪、日志在哪、去哪报问题
+      label: '帮助',
+      submenu: [
+        { label: '快捷键一览', accelerator: 'CommandOrControl+/', click: () => win?.webContents.send('menu', 'shortcuts') },
+        { type: 'separator' as const },
+        { label: '打开数据文件夹', click: () => { void shell.openPath(app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.resolve(__dirname, '..', '..', 'backend', 'data')) } },
+        { label: '导出后端日志…', click: () => {
+          const file = path.join(app.getPath('logs'), `memoket-note-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.log`)
+          try { writeFileSync(file, logs.join('\n') + '\n', 'utf8'); shell.showItemInFolder(file) }
+          catch (e) { dialog.showErrorBox('导出失败', String(e)) }
+        } },
+        { type: 'separator' as const },
+        { label: '报告问题', click: () => { void shell.openExternal('https://github.com/huilongbaba/MEMOKET_NOTE/issues') } },
+      ],
+    },
   ]))
 }
 

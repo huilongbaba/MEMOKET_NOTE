@@ -7,4 +7,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('memoketDesktop', {
   setTheme(theme: 'system' | 'light' | 'dark') { ipcRenderer.send('set-theme', theme) },
+  /** 应用菜单里点了「帮助 › 快捷键」这类要界面响应的项 */
+  onMenu(cb: (name: string) => void) { ipcRenderer.on('menu', (_e, name: string) => cb(name)) },
 })
