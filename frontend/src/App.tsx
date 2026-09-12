@@ -2424,6 +2424,7 @@ export default function App() {
     const before = view.state.doc.toString()
     const push = (fx: StateEffect<unknown>) => editorViewRef.current?.dispatch({ effects: fx })
 
+    let lastError = ''
     try {
       const block = await api.composeBlock(
         { note_id: current.id, title, content: before, cursor: from,
@@ -2450,7 +2451,7 @@ export default function App() {
                 : weak.map(([k, v]) => `${k}：${v.note}`).join('；') || status,
             }))
           },
-          onError: (d) => push(logRun.of({ id, at: '出错', text: d })),
+          onError: (d) => { lastError = d; push(logRun.of({ id, at: '出错', text: d })) },
         },
         ctrl.signal)
 
@@ -2458,7 +2459,8 @@ export default function App() {
       if (!v) return
       const text = (block || '').trim()
       if (!text) {
-        push(patchRun.of({ id, error: '没有产出内容', expanded: true }))
+        // 门槛拦下的（光标附近没数据）把原因写在占位块上，别只说「没有产出内容」
+        push(patchRun.of({ id, error: lastError || '没有产出内容', expanded: true }))
         return                                       // 占位块留着，让用户看到为什么
       }
       const run = v.state.field(runsField, false)?.find((r) => r.id === id)

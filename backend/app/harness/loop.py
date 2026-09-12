@@ -46,13 +46,19 @@ async def run(st: State, hooks: Hooks,
     try:
         async for e in _fire(chain, "before_run", st):
             yield e
+        # 门槛：规则就能判「现在做不了」的，别让模型试三轮
+        pre_blocked = ""
+        if st.round == 0 and st.mode.precheck is not None:
+            pre_blocked = st.mode.precheck(st) or ""
+        if pre_blocked:
+            reason = "blocked"
 
         # **Counts on from where the run left off**, not from 1. ``st.round``
         # is rounds completed, which is zero for a fresh State and non-zero
         # for a resumed one. Restarting at 1 would re-arm every guard that
         # asks "is this the first round" -- Revise skips round 1 because
         # nothing is written yet, and on a resumed run that is false.
-        for st.round in range(st.round + 1, st.mode.max_rounds + 1):
+        for st.round in range(st.round + 1, 0 if pre_blocked else st.mode.max_rounds + 1):
             if st.request is not None and await st.request.is_disconnected():
                 raise asyncio.CancelledError
             yield Event.step_started(st.round, st.mode.label)
@@ -152,7 +158,7 @@ async def run(st: State, hooks: Hooks,
             yield e
         yield Event.run_finished(
             st.content, reason,
-            st.ev.blocked_reason if st.ev and reason == "blocked" else "",
+            pre_blocked or (st.ev.blocked_reason if st.ev and reason == "blocked" else ""),
             _pause(st, reason))
 
     except asyncio.CancelledError:

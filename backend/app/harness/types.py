@@ -183,6 +183,9 @@ class Mode:
 
     stop_when: tuple[StopCondition, ...] = ()
     extra_mw: tuple[Middleware, ...] = ()
+    # 跑之前的确定性门槛：返回一句「为什么现在做不了」就直接 blocked，一次模型调用都不花。
+    # 实拍数据可视化：光标那段没有数字也没有表，模型硬画了三轮用户序号 / 0-1 状态图，89 秒。
+    precheck: Callable[["State"], str | None] | None = None
 
     # Turning off a BASE capability has to be written down. Not because it is
     # never right, but because the four times a harness ended up missing one,

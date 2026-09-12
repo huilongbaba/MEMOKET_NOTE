@@ -26,7 +26,7 @@
               │    before_judge  ─▶ rubric.evaluate（模型打分，可被 Checks 短路）
               │    after_judge   ─▶ BestOf / Repair / Runtime / Replan
               │    after_round   ─▶ Save（落盘）· STEP_FINISHED（带权威正文）
-              │    _stop(st)     ─▶ 内置 3 条 OR Mode.stop_when                 │
+              │    _stop(st)     ─▶ 内置 4 条 OR Mode.stop_when                 │
               │  hooks.commit()  ─▶ RUN_FINISHED（带最终正文、run_id）          │
               └──────────────────────────────────────────────────────┘
                           │ AG-UI 事件 → SSE
@@ -315,6 +315,7 @@ class Mode:
     checks: tuple[Check, ...]      # 代码判据
     skill_scope: str               # 哪些 skill 进上下文
     stop_when: tuple[StopCondition, ...]
+    precheck: Callable[[State], str | None] | None   # 跑之前的确定性门槛：返回一句原因就直接 blocked，一次模型调用不花（EDA：光标附近没数字没表）
     extra_mw: tuple[Middleware, ...]
     rails_off: tuple[str, ...]     # 关掉哪些非必需 middleware
     max_rounds: int

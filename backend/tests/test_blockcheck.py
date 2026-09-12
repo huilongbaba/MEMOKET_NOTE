@@ -219,3 +219,18 @@ def test_生成表格没有表就不打分():
     assert v and v.dimension == "table_validity" and "render_table" in v.message
     st.content = "说明\n\n| a | b |\n|---|---|\n| 1 | 2 |"
     assert table_present(st) is None
+
+
+def test_数据可视化的门槛_光标附近没数据就不跑():
+    from app.harness import modes
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+    def st(content, cursor):
+        return State(mode=modes.EDA, ctx=ToolContext(user="u", note_id="n", content=content, cursor=cursor), request=None)
+    assert "没有可画的数据" in modes._eda_has_data(st("这段没有数字。\n\n就是一段话。", 5))
+    assert modes._eda_has_data(st("昇腾 38%，浪潮 22.4%，寒武纪 43%。", 3)) is None
+    table = "| a | b |\n|---|---|\n| 1 | 2 |\n"
+    assert modes._eda_has_data(st("说明\n\n" + table, 2)) is None
+    # 表在一万字外、还隔着标题：不算旁边
+    far = "光标在这。\n\n" + "x" * 3000 + "\n\n## 别的话题\n\n" + table
+    assert modes._eda_has_data(st(far, 3)) is not None

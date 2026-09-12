@@ -436,6 +436,20 @@ SECTION = Mode(
 # own group, so drawing modes stop being handed a table builder and the table
 # mode stops being handed three chart builders.
 
+def _eda_has_data(st) -> str | None:
+    """光标附近既没有写着数字的句子、也没有（不隔标题的）表：没东西可画。"""
+    from .tools import tabular
+    from .tools.data_tools import NEAR_CHARS
+    text = st.ctx.content or ""
+    cur = st.ctx.cursor or 0
+    if tabular.sentences_with_numbers(text, cur, radius=1200):
+        return None
+    for t in tabular.find_tables(text):
+        if tabular.distance(t, cur) <= NEAR_CHARS and not tabular.headings_between(text, cur, t.start, t.end):
+            return None
+    return "光标附近没有可画的数据：这段里没有数字，旁边也没有表格。把光标放到有数字的段落或表格旁边再试。"
+
+
 EDA = Mode(
     task=(
         '对笔记里的数据做一次探索性分析。\n'
@@ -468,6 +482,7 @@ EDA = Mode(
     skill_scope="block_write",
     dims=EDA_DIMS,
     checks=(no_fake_charts, charts_from_tools, heading_fits, tail_clashes),
+    precheck=_eda_has_data,
     max_rounds=3,
 )
 

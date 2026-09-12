@@ -351,3 +351,22 @@ def test_regressed_does_not_fire_when_the_best_was_far_from_the_bar():
     st = _state(_mode(dims=(Dimension("d0", "."), Dimension("d1", "."), Dimension("d2", ".")), max_rounds=3))
     events = asyncio.run(_drive(st, hooks, _scorer([[2, 1, 1], [0, 1, 1], [2, 2, 2]]), mw=BASE))
     assert _finished(events).data["reason"] == "complete" and st.round == 3
+
+
+def test_precheck_blocks_before_spending_a_single_call():
+    """A deterministic gate says "can't do this here": no prepare, no produce,
+    no scoring -- RUN_FINISHED with reason=blocked and the gate's sentence."""
+    hooks = FakeHooks(["never"])
+    st = _state(_mode(precheck=lambda st: "光标附近没有可画的数据", max_rounds=3))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2, 2]]), mw=BASE))
+    done = _finished(events)
+    assert done.data["reason"] == "blocked" and done.data["blocked_reason"] == "光标附近没有可画的数据"
+    assert hooks.prepared == 0 and st.round == 0
+    assert not any(e.type.value == "STEP_STARTED" for e in events)
+
+
+def test_precheck_that_passes_changes_nothing():
+    hooks = FakeHooks(["a"])
+    st = _state(_mode(precheck=lambda st: None))
+    done = _finished(asyncio.run(_drive(st, hooks, _scorer([[2]]), mw=BASE)))
+    assert done.data["reason"] == "complete" and hooks.prepared == 1

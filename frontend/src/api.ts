@@ -1234,7 +1234,11 @@ export async function composeBlock(
       on.onEvaluate?.(String(v.status ?? ''),
         v.scores as Record<string, NoteHarnessDimensionScore>)
     } else if (event === 'RUN_ERROR') on.onError?.(String(p.message ?? ''))
-    else if (event === 'RUN_FINISHED') block = String(p.content ?? block)
+    else if (event === 'RUN_FINISHED') {
+      block = String(p.content ?? block)
+      // 门槛判「现在做不了」（光标附近没数据）：一个字都没写，原因在 blocked_reason 里
+      if (p.reason === 'blocked' && p.blocked_reason) on.onError?.(String(p.blocked_reason))
+    }
   }
   return block
 }
