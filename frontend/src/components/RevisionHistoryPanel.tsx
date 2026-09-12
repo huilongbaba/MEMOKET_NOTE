@@ -3,6 +3,7 @@ import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
+import { diffParts } from '../editor/roundDiff'
 
 const REASON: Record<string, string> = { auto: '自动', manual: '手动', before_restore: '恢复前' }
 
@@ -17,11 +18,14 @@ function when(iso: string) {
  * 且离上一版超过十分钟就自动留一版；也可以手动「存一版」。点一版看内容，
  * 「恢复到这一版」之前后端会把现在的正文再存一版，所以恢复永远可逆。
  */
-export default function RevisionHistoryPanel({ noteId, currentChars, onRestored }: {
+export default function RevisionHistoryPanel({ noteId, currentChars, currentContent = '', onRestored }: {
   noteId: string
   currentChars: number
+  /** 现在的正文：展开一版时默认给「与当前对比」（删了什么、加了什么），而不是只看旧版全文 */
+  currentContent?: string
   onRestored: (n: api.Note) => void
 }) {
+  const [mode, setMode] = useState<'diff' | 'raw'>('diff')
   const [revs, setRevs] = useState<api.NoteRevision[] | null>(null)
   const [open, setOpen] = useState<(api.NoteRevision & { content: string }) | null>(null)
   const [busy, setBusy] = useState(false)
@@ -73,13 +77,43 @@ export default function RevisionHistoryPanel({ noteId, currentChars, onRestored 
               </a>
               {open?.id === r.id && (
                 <div className="revision-body">
-                  <MarkdownEditor content={open.content} readOnly />
+                  <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+                    <button className={'chip' + (mode === 'diff' ? ' active' : '')} onClick={() => setMode('diff')}>与当前对比</button>
+                    <button className={'chip' + (mode === 'raw' ? ' active' : '')} onClick={() => setMode('raw')}>这一版全文</button>
+                  </div>
+                  {mode === 'raw'
+                    ? <MarkdownEditor content={open.content} readOnly />
+                    : <RevisionDiff from={open.content} to={currentContent} />}
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+
+/** 旧版 → 当前 的词级 diff：红的是那一版有、现在没了的；绿的是现在新加的。
+ *  同一套 diffParts（大文档先按行再逐词），跟编辑器里的轮次高亮是同一种语义。 */
+function RevisionDiff({ from, to }: { from: string; to: string }) {
+  const parts = diffParts(from, to)
+  const changed = parts.filter((p) => p.type !== 'keep')
+  if (changed.length === 0) return <p className="muted" style={{ margin: 0, fontSize: 12 }}>跟现在的正文一模一样（只差空白）。</p>
+  // 没变的长段折起来（只留改动前后各 120 字的上下文）：改动往往在几千字的中间，
+  // 全文摊开时第一屏看到的全是没变的（实拍）
+  const CTX = 120
+  return (
+    <div className="revision-diff">
+      {parts.map((p, i) => {
+        if (p.type !== 'keep') return <span key={i} className={p.type === 'ins' ? 'rd-ins' : 'rd-del'}>{p.text}</span>
+        if (p.text.length <= CTX * 2 + 40) return <span key={i}>{p.text}</span>
+        const head = i === 0 ? '' : p.text.slice(0, CTX)
+        const tail = i === parts.length - 1 ? '' : p.text.slice(-CTX)
+        const hidden = p.text.length - head.length - tail.length
+        return <span key={i}>{head}<span className="rd-skip">… 中间 {hidden} 字没变 …</span>{tail}</span>
+      })}
     </div>
   )
 }

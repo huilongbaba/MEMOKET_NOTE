@@ -1345,6 +1345,8 @@ export default function App() {
           setTimeout(() => formatNote(), 3000)
         })() }
       }
+      // 历史：打开 ribbon 历史后展开第一版（看「与当前对比」）
+      if (probe === 'history-open') setTimeout(() => (document.querySelector('.revision-row .kb-link') as HTMLElement | null)?.click(), 3000)
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
@@ -2892,7 +2894,7 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
-            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' ? 'cites' : pr.startsWith('ribbon:') ? pr.slice(7) : undefined })()}
+            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : undefined })()}
             tabs={[{
               id: 'format', title: '格式', icon: 'bx-text',
               activate: true,
@@ -2922,7 +2924,7 @@ export default function App() {
                                     onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
             }, {
               id: 'history', title: '历史', icon: 'bx-history',
-              body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length}
+              body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length} currentContent={content}
                                           onRestored={(n) => { setCurrent(n); setTitle(n.title); setContent(n.content); liveContentRef.current = n.content; void reload() }} />,
             }, {
               id: 'paths', title: '路径', icon: 'bx-git-branch',
