@@ -168,6 +168,7 @@ textarea { resize: vertical; }
 
 h1 { font-size: 16px; margin: 0 0 4px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+  /* 段标题全大写是给「批量导入」这类固定标签用的；标题里嵌的笔记名（Notes → NOTES）不能跟着变 */
      color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
 .muted { color: var(--muted); font-size: 13px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -1034,3 +1035,5 @@ kbd {
 .switch.on { background: var(--ins-bg); border-color: var(--ins); }
 .switch.on span { left: 16px; background: var(--ins); }
 .layer-card.off { opacity: .6; }
+
+.plain-case { text-transform: none; letter-spacing: 0; }
