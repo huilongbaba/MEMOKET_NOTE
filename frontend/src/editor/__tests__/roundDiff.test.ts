@@ -98,3 +98,13 @@ describe('toHunks', () => {
     }
   })
 })
+
+import { diffParts as _dp } from '../roundDiff'
+describe('只差空白不算改动', () => {
+  it('补空格 / 空行的位置不标绿', () => {
+    const parts = _dp('中文English混排。\n段落', '中文 English 混排。\n\n段落')
+    expect(parts.every((p) => p.type === 'keep')).toBe(true)
+    const real = _dp('甲乙丙', '甲丁丙')
+    expect(real.some((p) => p.type === 'ins')).toBe(true)
+  })
+})

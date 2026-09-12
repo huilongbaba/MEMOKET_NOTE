@@ -612,8 +612,11 @@ harness 的材料来自这里；设计在 `docs/kb-architecture.md` 与 `docs/kb
 | 快照 | `test_harness_resume.py` | 冻结 / 解冻 / 只能恢复一次 |
 | 沙箱 | `test_sandbox.py` | 资源上限、路径白名单、平台差异如实报告 |
 | 文档 | `test_doc_counts.py` · `test_api_contract.py` | 这份文档里的数字；README 里的端点；前端没有死导出 |
-| 前端 | `vitest` + 11 条检查脚本 | roundDiff · factCite · 树扁平化 · SSE 解析 · mermaid 回退 |
-| 真跑 | `--probe=harness:<id>` 连拍 | 引用完整、无 client 错误、`harness-sync` 无差异 |
+| 笔记 | `test_note_links.py` · `test_note_revisions.py` · `test_delete_cleanup.py` | 内链 / 反链；历史版本间隔、可逆恢复；删笔记不留孤儿行 |
+| 导入导出 | `test_export.py` · `test_export_roundtrip.py` | 层级 / 克隆 / 孤儿 / 资产；导出再导入树长回原样 |
+| 出口 | `test_llm_sanitize.py` · `test_bold_punct.py` · `test_kite_ask.py` | 提示词不带 base64；粗体标点；KITE Answer 字段漂移 |
+| 前端 | `vitest` + 11 条检查脚本 | roundDiff · factCite · 树扁平化 · SSE 解析 · mermaid 回退 · minimalChange · sectionEnd · friendlyError · runWritingPlan 事件映射 |
+| 真跑 | `--probe=<name>` 连拍（`scratchpad/shot.sh`） | harness / tap / plan-run / sel:* / ingest / delete / draft / imgdrop … 每个探针一张图 + 一份后端日志（client-log 和 traceback 都在里面） |
 
 **反向验证**：新断言先注入违规看它变不变红，再落。**日志优于猜**：主题地图「放大了
 缩回去」猜了三轮，一条 client-log（`new simulation` 每 1.5s 一次）一轮定位。

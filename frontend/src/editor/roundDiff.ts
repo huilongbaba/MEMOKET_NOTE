@@ -78,7 +78,15 @@ export function diffParts(before: string, after: string): DiffPart[] {
   }
 
   push('keep', a.slice(a.length - tail).join(''))
-  return out
+  // 只差空白的增删（格式化补的空格 / 空行）不算改动：满屏绿只会淹掉真正改了的地方
+  const merged: DiffPart[] = []
+  for (const part of out) {
+    const type = part.type !== 'keep' && !part.text.trim() ? 'keep' : part.type
+    const last = merged[merged.length - 1]
+    if (last && last.type === type) last.text += part.text
+    else merged.push({ type, text: part.text })
+  }
+  return merged
 }
 
 
