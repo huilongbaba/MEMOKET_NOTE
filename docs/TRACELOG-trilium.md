@@ -1046,3 +1046,9 @@ notes-YYYYMMDD.sqlite3`，留最近 7 日 + 每月第一份（3 个月）；备�
 
 每个用户的 `codebook.xml`（KITE 的知识库本体，十几 MB）一周一份到
 `backups/kb/<user>/codebook-YYYYWww.xml`，留两份；.lock / .bak-* 不拷。测试盯周界。
+
+## [82] 全量巡检第 61 轮：错误体里的 detail（2026-09-12）
+
+Skill 页 toggle 没接错误（后端不在就静默失败）——补 toast。`api.ts` 的 `json()` 之前把
+整个错误体拼进错误信息，FastAPI 的 `{"detail": "…"}` 在 toast 里就是一坨 JSON；现在
+把 detail（字符串或 422 的字段列表）拿出来。

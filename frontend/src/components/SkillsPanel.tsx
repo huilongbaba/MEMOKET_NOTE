@@ -47,8 +47,10 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
   }
 
   async function toggle(skill: Skill) {
-    const updated = await api.toggleSkill(skill.id)
-    setSkills((prev) => prev.map((s) => (s.id === skill.id ? updated : s)))
+    try {
+      const updated = await api.toggleSkill(skill.id)
+      setSkills((prev) => prev.map((s) => (s.id === skill.id ? updated : s)))
+    } catch (e) { toast('切换失败：' + friendlyError(e), 'error') }
   }
 
   async function move(skill: Skill, dir: -1 | 1) {

@@ -93,7 +93,17 @@ function headers(extra: Record<string, string> = {}) {
 }
 
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  if (!res.ok) {
+    // FastAPI 的错误体是 {"detail": "…"}：把那句人话拿出来，别让 toast 里出现一坨 JSON
+    const text = await res.text()
+    let detail = text
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown }
+      if (typeof parsed.detail === 'string') detail = parsed.detail
+      else if (Array.isArray(parsed.detail)) detail = parsed.detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join('；')
+    } catch { /* 不是 JSON 就原样 */ }
+    throw new Error(`${res.status} ${detail}`)
+  }
   return res.json() as Promise<T>
 }
 

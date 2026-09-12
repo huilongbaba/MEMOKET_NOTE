@@ -152,6 +152,20 @@ diff 状态层、`/` 菜单、表格预览、图谱/编辑器/skill 导入 smoke
 `backend/tests/test_api_contract.py` 盯着「每个检查脚本都被 npm test 跑到」
 ——写了却不执行的检查比没写还糟，读的人会以为这块被守着。
 
+### 实拍探针（界面级回归）
+
+界面的每个状态都能用 `--probe=<name>` 把桌面版驱动到那里、`--shot=` 自截图（capturePage，
+不依赖系统截屏），后端日志和前端 client-log 一起落到同名 `.log`：
+
+```bash
+cd desktop && env -u ELECTRON_RUN_AS_NODE npx electron . --user=<用户> --probe=tabs --shot=/tmp/tabs.png --shot-delay=6000
+```
+
+探针清单在 `frontend/src/App.tsx` 的探针 effect 里（palette / shortcuts / slash / mention / wikilink /
+sel:* / ribbon:<tab> / harness:<id> / tap:<id> / plan-run:<id> / delete:<id> / draft:<id> / imgdrop …），
+`--dark` 看暗色，`--win=900x600` 看窄窗。探针模式下 `save()` 被拦截，截图不会污染真实笔记；
+`harness:` / `tap:` 会在服务端改笔记，只对草稿笔记跑。
+
 ## 配置
 
 默认指向内网 DGX Spark 上的服务。切商用 API 只改 `.env`：
