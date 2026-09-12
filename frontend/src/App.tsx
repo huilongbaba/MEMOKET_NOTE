@@ -1063,8 +1063,21 @@ export default function App() {
     pushHistory(n.id)
     setVirtualId(null)
     setCurrent(n)
-    setTitle(n.title)
-    setContent(n.content)
+    // 上次没存上的草稿（见 save() 的 catch）：比库里的新就放回来，并提示一句
+    let draft: { title: string; content: string; at: number } | null = null
+    try {
+      const raw = localStorage.getItem('memoket-note-draft:' + n.id)
+      if (raw) draft = JSON.parse(raw) as { title: string; content: string; at: number }
+    } catch { draft = null }
+    if (draft && draft.content !== n.content && draft.at > Date.parse(n.updated_at)) {
+      setTitle(draft.title || n.title)
+      setContent(draft.content)
+      toast('上次没存上的内容已恢复到这篇里，会在下一次自动保存时存回去')
+    } else {
+      setTitle(n.title)
+      setContent(n.content)
+      if (draft) { try { localStorage.removeItem('memoket-note-draft:' + n.id) } catch { /* 无所谓 */ } }
+    }
     // 骨架跟着笔记读回来，**不是清空**。清空那版的后果是「一会儿就没了」：
     // 换一篇、刷新页面、甚至无限续写开着「跟随」自动切到下一段，骨架都没了，
     // 而 harness 下一轮还得重新花一次模型调用生成一份。
@@ -1273,7 +1286,8 @@ export default function App() {
       }
       if (probe === 'focus' && notes.length) setTimeout(() => setFocusMode(true), 1500)
       // 定期回顾：打开工具页后点「最近 N 天」
-      if (probe?.startsWith('digest:')) {
+      if (probe?.startsWith('digest:') && !harnessProbeDone.current) {
+        harnessProbeDone.current = true   // 存为笔记后 notes 变了，effect 会再跑一次——别再点一遍
         setTimeout(() => void openVirtual('kb:digest'), 600)
         setTimeout(() => { const days = probe.slice(7).split(':')[0]; const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === `最近 ${days} 天`); btn?.click() }, 2500)
         // digest:7:save → 结果出来后点「存为笔记」
@@ -1289,6 +1303,17 @@ export default function App() {
           const key = (k: string) => t.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }))
           key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('Enter')
         }, 1500)
+      }
+      // 没存上的草稿恢复：先往 localStorage 塞一份比库里新的草稿，再切走切回来
+      if (probe?.startsWith('draft:') && notes.length >= 2 && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(6))
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          const other = notes.find((x) => x.id !== n.id)!
+          await switchTo(other)
+          try { localStorage.setItem('memoket-note-draft:' + n.id, JSON.stringify({ title: n.title, content: n.content + '\n\n（这一段是上次没存上的草稿）', at: Date.now() })) } catch { /* 无所谓 */ }
+          setTimeout(() => void switchTo(n), 800)
+          setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, 3500)
+        })() }
       }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
@@ -1453,9 +1478,13 @@ export default function App() {
       const n = await api.saveNote(current.id, title, content)
       setCurrent(n)
       setSaveStatus({ at: Date.now() })
+      try { localStorage.removeItem('memoket-note-draft:' + current.id) } catch { /* 无所谓 */ }
       await Promise.all([reload(), reloadTree()])
     } catch (e) {
       setSaveStatus({ at: Date.now(), error: String(e) })
+      // **没存上的正文先落到本机**：后端崩了 / 网断了的那几秒里用户还在写，
+      // 这时关掉应用就全没了。下次打开这篇如果库里的版本更旧，把草稿放回去。
+      try { localStorage.setItem('memoket-note-draft:' + current.id, JSON.stringify({ title, content, at: Date.now() })) } catch { /* 无所谓 */ }
       throw e
     }
   }
