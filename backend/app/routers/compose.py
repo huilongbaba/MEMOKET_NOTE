@@ -25,6 +25,7 @@ from ..database import retrieval
 from ..editor import profile
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
+from ..harness.checks import citations as citation_check
 from ..database.kite.kite_memory import UserMemory
 from .schemas import DigestIn, DigestOut, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
 from .deps import current_user, sse_response
@@ -60,6 +61,18 @@ def _profile(user: str) -> list[str]:
 # 结论：稳定锚点（标题/spine/beats）才是主题信号，正文越长越是噪声源，
 # 加更多正文治不好，得让锚点主导、正文让位。
 TAIL_CHARS_FOR_HARNESS = 300
+
+
+def _fact_exists(user: str):
+    """给 fake_citations 用的 exists(id)：查一次知识库。测试里替换成集合。"""
+    mem = UserMemory(user)
+
+    def exists(fid: str) -> bool:
+        try:
+            return mem.fact_by_id(fid) is not None
+        except Exception:      # noqa: BLE001 — 索引读不出来就当不存在，宁可多摘一个
+            return False
+    return exists
 
 
 def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8,
@@ -161,9 +174,12 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
             "hint": ("" if used or not facts else
                      "这段没用上检索到的记录，写的是通用内容——"
                      "重新点一次，或者先补一句具体的再续写")})
+        # 编造的引用（查不到的 id、或者 `[terrence-23F3-4F3]` 这种格式就不对的）：流已经送出去了，
+        # 这里只报 id，前端从刚插入的那段里摘掉——跟单篇 harness 的 grounding 判据同一个口径。
+        fake = citation_check.fake_citations(written, facts, _fact_exists(user)) if written else []
         # 撞 token 上限被切断（实拍一段停在「…写成事项已经完成」没句号）要说出来：
         # 已写的不删（删是拿丢内容掩盖截断），只告诉用户再点一次接着写。
-        yield sse("done", {"truncated": stats.get("finish_reason") == "length"})
+        yield sse("done", {"truncated": stats.get("finish_reason") == "length", "fake_citations": fake})
 
     return sse_response(gen())
 

@@ -115,6 +115,27 @@ def dangling_citations(text: str, facts: list[str], exists) -> list[str]:
     return [fid for fid in cited_ids(text) if fid not in have and not exists(fid)]
 
 
+# 「长得像引用」：`[前缀-xxx-yyy]` 至少两段短横，不跟着 `(`（那是 markdown 链接）、前面不是 `[`
+# （那是 [[wiki 链接]]）。模型偶尔编出 `[terrence-23F3-4F3]` 这种段落顺序不对的 id——它不匹配
+# CITE，于是既不被当引用检查、也不画成引用，就那么留在正文里（第 139 轮实拍 magic tap）。
+_LOOSE = _re.compile(r"(?<!\[)\[([A-Za-z][A-Za-z0-9_]*(?:-[0-9A-Za-z]+){2,})\](?!\()")
+
+
+def malformed_citations(text: str) -> list[str]:
+    """正文里长得像引用、但不是合法 id 的方括号。"""
+    valid = set(cited_ids(text))
+    out: dict[str, None] = {}
+    for m in _LOOSE.finditer(text or ""):
+        if m.group(1) not in valid:
+            out.setdefault(m.group(1), None)
+    return list(out)
+
+
+def fake_citations(text: str, facts: list[str], exists) -> list[str]:
+    """编造的引用 = 合法格式但查不到的（dangling）+ 格式就不对的（malformed）。"""
+    return dangling_citations(text, facts, exists) + malformed_citations(text)
+
+
 def strip_citations(text: str, ids: list[str]) -> str:
     """把指定的 ``[id]`` 从正文里摘掉（连同它前面的空格）。给 Verdict.fix 用：
     去掉一个编造的引用不需要任何语义判断。"""

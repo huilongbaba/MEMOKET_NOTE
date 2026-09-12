@@ -1624,7 +1624,7 @@ export default function App() {
     const tail = middle ? following.replace(/^\n*/, '\n\n') : ''
     let inserted = ''
     try {
-      const { truncated } = await api.magicTap(
+      const { truncated, fakeCitations } = await api.magicTap(
         before,
         spine,
         beats,
@@ -1647,7 +1647,13 @@ export default function App() {
         title,
       )
       // 流完了再统一修一次「**标题：**」这类粗体（后端落盘路径有同样一步，续写是纯客户端拼的）
-      const fixed = fixBoldPunct(inserted)
+      let fixed = fixBoldPunct(inserted)
+      // 编造的引用（查不到的、或 [terrence-23F3-4F3] 这种格式就不对的）只从刚写的这段里摘——
+      // 跟单篇 harness 的 grounding 判据同一个口径（第 139 轮实拍）
+      if (fakeCitations.length) {
+        for (const fid of fakeCitations) fixed = fixed.replace(new RegExp('\\s*\\[' + fid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\]', 'g'), '')
+        toast(`摘掉了 ${fakeCitations.length} 个知识库里查不到的引用`)
+      }
       if (fixed !== inserted) { inserted = fixed; setContent(head + inserted + tail) }
       // 撞 token 上限停在句中（实拍「…写成事项已经完成」没句号）：已写的留着，说一声
       if (truncated) toast('这段撞到长度上限，补了一次尾还没收住——把光标放在末尾再点一次接着写', 'error')

@@ -339,7 +339,7 @@ export async function magicTap(
   following = '',
   /** 笔记标题：正文还很短的时候，它是模型唯一知道的方向 */
   title = '',
-): Promise<{ truncated: boolean }> {
+): Promise<{ truncated: boolean; fakeCitations: string[] }> {
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
@@ -349,14 +349,15 @@ export async function magicTap(
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
 
   let truncated = false
+  let fakeCitations: string[] = []
   for await (const { event, payload } of sseFrames(res)) {
     if (event === 'meta') onMeta(payload as TapMeta)
     else if (event === 'delta') onDelta(payload.text as string)
     else if (event === 'grounding') onGrounding?.(payload)
-    else if (event === 'done') truncated = !!payload.truncated
+    else if (event === 'done') { truncated = !!payload.truncated; fakeCitations = (payload.fake_citations as string[] | undefined) ?? [] }
     else if (event === 'error') throw new Error(payload.detail)
   }
-  return { truncated }
+  return { truncated, fakeCitations }
 }
 
 // ---------------------------------------------------------------- 无限续写计划

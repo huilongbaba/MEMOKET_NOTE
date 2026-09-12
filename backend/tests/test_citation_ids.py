@@ -69,3 +69,11 @@ def test_方括号里的日期不是引用():
     assert c.cited_ids("[2026-01-01] 开会") == []
     assert c.supplied_ids(["[2026-01-01] 甲"]) == set()
     assert "引用规则" not in facts_block(["[2026-01-01] 甲"])
+
+
+def test_格式就不对的引用也算编造():
+    text = "样机安排 [terrence-23F3-4F3]，另见 [u-1-A]、[2026-06-01]、[[wiki-link-x]] 和 [link-a-b](http://x)。"
+    assert c.malformed_citations(text) == ["terrence-23F3-4F3"]
+    bad = c.fake_citations(text, [], exists=lambda fid: fid == "u-1-A")
+    assert bad == ["terrence-23F3-4F3"]
+    assert "[terrence-23F3-4F3]" not in c.strip_citations(text, bad) and "[u-1-A]" in c.strip_citations(text, bad)

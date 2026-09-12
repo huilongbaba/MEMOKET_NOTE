@@ -43,6 +43,7 @@ def _run(monkeypatch, tmp_path, finish_reason: str, tail_reason: str = "stop"):
 
     monkeypatch.setattr(compose.llm, "stream", fake_stream)
     monkeypatch.setattr(compose, "_retrieve", lambda *a, **k: ([], [], 0.0))
+    monkeypatch.setattr(compose, "_fact_exists", lambda user: (lambda fid: False))
     from app.main import app
     with TestClient(app, headers={"X-User-Id": "u1"}) as c:
         r = c.post("/api/magic-tap", json={"content": "# 标题\n\n正文。", "spine": "", "beats": []})
@@ -55,17 +56,17 @@ def test_length_gets_a_finishing_tail(monkeypatch, tmp_path):
     evs = _run(monkeypatch, tmp_path, "length")
     deltas = "".join(p["text"] for e, p in evs if e == "delta")
     assert deltas == "团队建设部分先不按静态分工，而按变更顺序回写。"
-    assert [p for e, p in evs if e == "done"] == [{"truncated": False}]
+    assert [p for e, p in evs if e == "done"] == [{"truncated": False, "fake_citations": []}]
 
 
 def test_tail_also_truncated_is_reported(monkeypatch, tmp_path):
     evs = _run(monkeypatch, tmp_path, "length", tail_reason="length")
-    assert [p for e, p in evs if e == "done"] == [{"truncated": True}]
+    assert [p for e, p in evs if e == "done"] == [{"truncated": True, "fake_citations": []}]
 
 
 def test_done_not_truncated_when_stop(monkeypatch, tmp_path):
     evs = _run(monkeypatch, tmp_path, "stop")
-    assert [p for e, p in evs if e == "done"] == [{"truncated": False}]
+    assert [p for e, p in evs if e == "done"] == [{"truncated": False, "fake_citations": []}]
 
 
 def test_long_content_is_compacted_in_prompt(monkeypatch, tmp_path):
@@ -80,6 +81,7 @@ def test_long_content_is_compacted_in_prompt(monkeypatch, tmp_path):
 
     monkeypatch.setattr(compose.llm, "stream", fake_stream)
     monkeypatch.setattr(compose, "_retrieve", lambda *a, **k: ([], [], 0.0))
+    monkeypatch.setattr(compose, "_fact_exists", lambda user: (lambda fid: False))
     content = "# 长文\n\n" + "\n\n".join(f"## 第{i}节\n\n这一节讨论第{i}周的排期与样机{i}。" for i in range(600))
     from app.main import app
     with TestClient(app, headers={"X-User-Id": "u1"}) as c:
@@ -89,3 +91,19 @@ def test_long_content_is_compacted_in_prompt(monkeypatch, tmp_path):
     assert len(user_msg) < len(content) // 2
     assert "第599节" in user_msg           # 最近的原样在
     assert "更早的" in user_msg            # 再早的折成一句
+
+
+def test_编造的引用在_done_里报出来(monkeypatch, tmp_path):
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+
+    async def fake_stream(messages, *, max_tokens=0, temperature=0.0, effort="low", stats=None):
+        yield "样机安排 [terrence-23F3-4F3]，另见 [u-1-A] 和 [u-9-FF]。"
+        stats["finish_reason"] = "stop"
+    monkeypatch.setattr(compose.llm, "stream", fake_stream)
+    monkeypatch.setattr(compose, "_retrieve", lambda *a, **k: (["[u-1-A] [2026-06] 材料"], ["u-1-A"], 0.0))
+    monkeypatch.setattr(compose, "_fact_exists", lambda user: (lambda fid: False))
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        r = c.post("/api/magic-tap", json={"content": "# 标题\n\n正文。", "spine": "", "beats": []})
+    done = [p for e, p in _events(r.text) if e == "done"][0]
+    assert done["fake_citations"] == ["u-9-FF", "terrence-23F3-4F3"]
