@@ -7,6 +7,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SlashPrompt from './components/SlashPrompt'
+import { SLASH_ITEMS } from './editor/slashMenu'
 import { formatMarkdown } from './editor/format'
 import type { SlashItem } from './editor/slashMenu'
 import {
@@ -239,7 +240,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1179,6 +1180,22 @@ export default function App() {
       if (probe?.startsWith('ingest:') && notes.length && !harnessProbeDone.current) {
         const n = notes.find((x) => x.id === probe.slice(7))
         if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => void actionsRef.current.ingestCurrentNote(), 1200) })() }
+      }
+      // `/` 块生成：在文末跑「用 AI 写」/「智能表格」等，看占位块 → 结果落下来
+      if (probe?.startsWith('block:') && notes.length && !harnessProbeDone.current) {
+        const [, key, noteId] = probe.split(':')
+        const n = notes.find((x) => x.id === noteId)
+        const item = SLASH_ITEMS.find((i) => i.key === key)
+        if (n && item) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          setTimeout(() => {
+            const v = editorViewRef.current
+            if (!v) return
+            const end = v.state.doc.length
+            v.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 }, effects: EditorView.scrollIntoView(end + 2, { y: 'center' }) })
+            void actionsRef.current.runBlock(item, end + 2, end + 2, key === 'prompt' ? '把上面几段总结成三条结论' : '')
+          }, 1500)
+        })() }
       }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
@@ -2473,7 +2490,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
