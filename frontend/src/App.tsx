@@ -2989,6 +2989,7 @@ export default function App() {
             {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
               <div className="harness-sticky">
                 <p className="muted harness-line"><i className="bx bx-bot" /> {pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}
+                  {loading === 'note-harness' && <span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>· 运行中正文由 AI 接管，停下来再改</span>}
                   {pausedRun && (
                     /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
                        关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
@@ -3028,6 +3029,9 @@ export default function App() {
             <MarkdownEditor
               content={content}
               onChange={setContent}
+              // AI 在写的时候锁住编辑器：这时手改的字会被轮末的服务端正文盖掉（同步是
+              // 服务端权威）。逐轮暂停、跑完、停止都会解锁。
+              readOnly={loading === 'note-harness' || loading === 'tap'}
               revisions={revisions}
               onAcceptInline={acceptRevision}
               roundDiff={roundDiff}

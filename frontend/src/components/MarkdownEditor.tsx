@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
-import { EditorState } from '@codemirror/state'
+import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
@@ -94,6 +94,7 @@ export default function MarkdownEditor({
   // own edit back" apart from "this is a genuinely external change" (note
   // switch, magic-tap streaming, revision accepted) without a feedback loop.
   const lastEmitted = useRef(content)
+  const readOnlyComp = useRef(new Compartment())
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -153,7 +154,9 @@ export default function MarkdownEditor({
             liveRef.current.onPendingDiff?.(n)
           }
         }),
-        ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+        // 只读放在 Compartment 里：AI 在写的时候把编辑器锁住（改动会被轮末对齐盖掉），
+        // 停下来再解锁——所以它得能在运行中切换
+        readOnlyComp.current.of(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
       ],
     })
     const view = new EditorView({ state, parent: hostRef.current })
@@ -210,6 +213,12 @@ export default function MarkdownEditor({
     actualViewRef.current?.dispatch({ effects: setRevisions.of(revisions) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revisions])
+
+  useEffect(() => {
+    actualViewRef.current?.dispatch({
+      effects: readOnlyComp.current.reconfigure(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+    })
+  }, [readOnly])
 
   useEffect(() => {
     // 必须排在 content 那个 effect 之后：diff 的位置是针对新正文算的，
