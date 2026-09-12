@@ -100,12 +100,44 @@ VERIFY_SYSTEM = """你是事实核查助手。给你一段被选中的正文（�
 """
 
 
+# 「完整正文」块最多给这么多字；再长就只给选区周围的一段。实拍 47k 字的长文上
+# 校验一句话，整篇 3 万 token 跟着进提示词——慢、贵，而且离选区两万字远的内容对
+# 「这句对不对 / 怎么改」没有帮助。
+_CONTEXT_MAX_CHARS = 8000
+_CONTEXT_RADIUS = 3000
+
+
+def selection_context(content: str, selection: str,
+                      max_chars: int = _CONTEXT_MAX_CHARS, radius: int = _CONTEXT_RADIUS) -> str:
+    """正文不长就原样给；长了就切选区前后各 radius 字的一段，切口对齐到段落，
+    两头标出省掉了多少字。找不到选区（理论上不会）就给开头 max_chars 字。"""
+    if len(content) <= max_chars:
+        return content
+    idx = content.find(selection) if selection else -1
+    if idx < 0:
+        return content[:max_chars] + f"\n\n…（后面还有 {len(content) - max_chars} 字，略）"
+    start = max(0, idx - radius)
+    end = min(len(content), idx + len(selection) + radius)
+    # 切口对齐到段落边界（往外找最近的空行），别在句子中间断
+    if start > 0:
+        cut = content.rfind("\n\n", max(0, start - 400), start)
+        if cut >= 0:
+            start = cut + 2
+    if end < len(content):
+        cut = content.find("\n\n", end, min(len(content), end + 400))
+        if cut >= 0:
+            end = cut
+    head = f"…（前面还有 {start} 字，略）\n\n" if start > 0 else ""
+    tail = f"\n\n…（后面还有 {len(content) - end} 字，略）" if end < len(content) else ""
+    return head + content[start:end] + tail
+
+
 def rewrite_user(content: str, selection: str, spine: str, beats: list[str]) -> str:
     parts = []
     spine_block = spine_beats_block(spine, beats)
     if spine_block:
         parts.append(spine_block)
-    parts.append("【完整正文】\n" + content)
+    parts.append("【完整正文】\n" + selection_context(content, selection))
     parts.append("【被选中要处理的片段】\n" + selection)
     return "\n\n".join(parts)
 
@@ -116,7 +148,7 @@ _EXPAND_NEIGHBOR_CHARS = 150
 
 
 def expand_user(content: str, selection: str, facts: list[str] | None = None) -> str:
-    parts = [f"【完整正文】\n{content}", f"【被选中的片段（要在它前后补上下文）】\n{selection}"]
+    parts = [f"【完整正文】\n{selection_context(content, selection)}", f"【被选中的片段（要在它前后补上下文）】\n{selection}"]
     idx = content.find(selection)
     if idx >= 0:
         before_ctx = content[max(0, idx - _EXPAND_NEIGHBOR_CHARS):idx].strip()
@@ -131,7 +163,7 @@ def expand_user(content: str, selection: str, facts: list[str] | None = None) ->
 
 
 def verify_user(content: str, selection: str, facts: list[str]) -> str:
-    parts = ["【笔记完整正文】\n" + content, "【待核查内容】\n" + selection]
+    parts = ["【笔记完整正文】\n" + selection_context(content, selection), "【待核查内容】\n" + selection]
     if facts:
         numbered = "\n".join(f"[{i}] {f}" for i, f in enumerate(facts))
         parts.append("【知识库检索到的相关事实】\n" + numbered)
