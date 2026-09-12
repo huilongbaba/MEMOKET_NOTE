@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   cancelJob, ingestBatch, jobStatus, listJobs, memoryFacts, memoryStats, resumeImportJob, watchJob,
-  appleAvailable, importApple, importFiles, importNotion,
+  appleAvailable, importApple, importFeishu, importFiles, importNotion,
 } from '../api'
 import type { FactDetail, JobOut } from '../api'
 import { toast } from '../toast'
@@ -48,6 +48,9 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
   const batchAbort = useRef<AbortController | null>(null)
   const [notionToken, setNotionToken] = useState('')
+  const [feishuAppId, setFeishuAppId] = useState('')
+  const [feishuSecret, setFeishuSecret] = useState('')
+  const [feishuScope, setFeishuScope] = useState<'wiki' | 'drive'>('wiki')
   const [importing, setImporting] = useState(false)
   // 导到哪：一个几百篇的 vault 全抽进知识库要跑很久，得让人选
   const [importTo, setImportTo] = useState<'both' | 'kb' | 'notes'>('both')
@@ -167,6 +170,21 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     }
   }
 
+  async function doImportFeishu() {
+    setImporting(true)
+    try {
+      const r = await importFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuScope, importTo)
+      announceEstimate(r)
+      setBatchJob(r)
+      watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
+        () => { refresh(); setRecentFacts([]) })
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function doCancelBatch() {
     if (!batchJob) return
     await cancelJob(batchJob.job_id)
@@ -259,6 +277,22 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
           要先在 Notion 里把目标页面 <strong>Connect 给这个 integration</strong>，
           否则会一条都取不到——这是最常见的「导了但是空的」原因。
+        </p>
+
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 88 }}>飞书</span>
+          <input placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <input type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <select value={feishuScope} onChange={(e) => setFeishuScope(e.target.value as 'wiki' | 'drive')}>
+            <option value="wiki">知识库</option>
+            <option value="drive">云空间</option>
+          </select>
+          <button onClick={doImportFeishu} disabled={!feishuAppId.trim() || !feishuSecret.trim() || importing}>
+            {importing ? <span className="spinner" /> : '导入'}
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+          飞书开放平台建一个自建应用，开 docx / wiki / drive 的只读权限，再把要导的知识库或文档<strong>添加协作者</strong>给这个应用。凭证不会存下来。
         </p>
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>

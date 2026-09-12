@@ -1541,3 +1541,13 @@ imported_at`：导入时按 (source, source_id) 找旧篇，sha 没变整篇跳�
 detail 说「本地也改过」；知识库侧内容变了先删 `<源>-<源侧 id>-*` session 再重抽（不删的话
 稳定 id 会让改过的内容被当已导入跳过）。信息面板加「来源：Obsidian · 何时导入 · 本地改过」。
 `tests/test_import_incremental.py` 三条。pytest 814。
+
+## [148] 飞书导入（2026-09-12，优先队列 ⑦）
+
+`database/ingest/feishu.py`：docx v1 的块结构 → markdown（标题 / 段落 / 加粗斜体链接 /
+列表嵌套 / 有序 / 代码 / 引用 / 待办 / 表格 / 图片占位 / 分割线，页标题不进正文）是纯函数；
+`FeishuClient` 包 tenant_access_token、知识库 space → nodes 递归、云空间递归子文件夹、取块，
+`get/post` 可注入。`POST /api/import/feishu`（app_id / app_secret / scope / to），走同一条
+item 流水线，`source_id = document_id`。导入页多一行「飞书」。凭证不落库。测试用手造的块
+JSON 和假 get/post 跑通整条路（列两篇、跳过 sheet、payload 里 source=feishu）。
+**没有真账号，块类型表按官方文档写，实测有出入再调。** pytest 816。

@@ -1125,6 +1125,18 @@ export const importNotion = (token: string, to: 'both' | 'kb' | 'notes' = 'both'
     .then(json<JobOut>)
 }
 
+/** 飞书云文档 / 知识库：自建应用的 app_id / app_secret（不落库，每次填），scope = wiki（知识库）
+ *  或 drive（云空间）。文档要把应用加为协作者。 */
+export const importFeishu = (appId: string, appSecret: string, scope: 'wiki' | 'drive', to: 'both' | 'kb' | 'notes' = 'both') => {
+  const fd = new FormData()
+  fd.append('app_id', appId)
+  fd.append('app_secret', appSecret)
+  fd.append('scope', scope)
+  fd.append('to', to)
+  return fetch('/api/import/feishu', { method: 'POST', headers: headers(), body: fd })
+    .then(json<JobOut>)
+}
+
 /** Apple Notes 没有公开 API，只能靠 AppleScript 在本机导出——而这个后端就跑在
  * 用户自己的 Mac 上，所以服务端能直接调 osascript。部署到远端时不可用，先问
  * available 再决定给不给按钮，别让用户点一个必然失败的东西。 */

@@ -269,3 +269,14 @@ for note in ET.parse("笔记本.enex").getroot().iter("note"):
 - [MacMost — Export All Of The Notes On Your Mac Using a Script](https://macmost.com/export-all-of-the-notes-on-your-mac-using-a-script.html)
 - [vzhd1701/evernote-backup](https://github.com/vzhd1701/evernote-backup)
 - [Evernote 论坛 — 命令行导出 ENEX 的讨论](https://discussion.evernote.com/forums/topic/147854-export-enex-via-commandline-in-evernote-10x/)
+
+
+## 8. 飞书（2026-09-12 加）
+
+设计见 `import-sync-plan.md` §1，落地在 `database/ingest/feishu.py` + `routers/import_sources.py`
+的 `/api/import/feishu`。要点：自建应用 + 只读权限（docx:document:readonly、wiki:wiki:readonly、
+drive:drive:readonly）+ 把知识库 / 文档「添加协作者」给应用；`tenant_access_token` 走
+`/auth/v3/tenant_access_token/internal`；知识库按 space → nodes 递归（只收 `obj_type=docx`），
+云空间按 `/drive/v1/files` 递归子文件夹；正文用 `/docx/v1/documents/{id}/blocks` 的块结构还原
+成 markdown（标题 / 段落 / 列表嵌套 / 有序 / 代码 / 引用 / 待办 / 表格 / 图片占位 / 分割线）。
+`source_id = document_id`，重导走增量。凭证不落库，跟 Notion token 一个做法。

@@ -31,7 +31,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 
 from ..database import store
 from ..util.config import get_settings
-from ..database.ingest import importers
+from ..database.ingest import feishu, importers
 from memoket_kite import StorageError
 
 from ..database.kite.kite_memory import UserMemory
@@ -337,6 +337,52 @@ def import_notion(bg: BackgroundTasks, token: str = Form(...), to: str = Form("b
     if not notes and skipped:
         raise HTTPException(400, f"{skipped} 个页面都取不到内容——通常是没有在 Notion 里"
                                  "把它们 Connect 给这个 integration")
+    return _queue(user, notes, to, bg)
+
+
+@router.post("/feishu", response_model=IngestOut)
+def import_feishu(bg: BackgroundTasks, app_id: str = Form(...), app_secret: str = Form(...),
+                  scope: str = Form("wiki"), to: str = Form("both"), limit: int = Form(0),
+                  user: str = Depends(current_user)):
+    """飞书云文档 / 知识库（docs/import-sync-plan.md §1）：自建应用的 app_id / app_secret，
+    列出应用能看到的 docx，逐篇取块转成 markdown，走同一条 item 流水线。
+    source_id = document_id（稳定 → 重导增量）。凭证不落库：跟 Notion token 一样每次填。"""
+    _reject_if_busy(user)
+    if scope not in ("wiki", "drive"):
+        raise HTTPException(400, "scope 只能是 wiki 或 drive")
+    client = feishu.FeishuClient(app_id, app_secret)
+    try:
+        client.token()
+        docs = client.list_wiki_docs(limit) if scope == "wiki" else client.list_drive_docs(limit)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(400, f"飞书拒绝了请求：{exc.response.status_code}") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"连不上飞书：{exc}") from exc
+    if not docs:
+        raise HTTPException(400, "这个应用看不到任何文档——要把文档 / 知识库「添加协作者」给应用，"
+                                 "或者换 scope（wiki = 知识库，drive = 云空间）")
+    notes: list[importers.ImportedNote] = []
+    skipped = 0
+    for i, d in enumerate(docs):
+        try:
+            blocks = client.document_blocks(d["document_id"])
+        except (RuntimeError, httpx.HTTPError):
+            skipped += 1
+            continue
+        md = feishu.blocks_to_markdown(blocks).strip()
+        if not md:
+            skipped += 1
+            continue
+        notes.append(importers.ImportedNote(
+            title=d.get("title") or feishu.page_title(blocks) or "无标题", content=md,
+            date=feishu.epoch_to_date(d.get("created")), source="feishu", source_id=d["document_id"]))
+        if i % 5 == 4:
+            time.sleep(0.2)
+    if not notes:
+        raise HTTPException(400, f"{skipped} 篇都取不到内容——通常是应用没有 docx:document:readonly 权限，"
+                                 "或者文档没有加应用为协作者")
     return _queue(user, notes, to, bg)
 
 
