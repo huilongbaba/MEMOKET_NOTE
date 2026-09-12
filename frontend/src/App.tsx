@@ -62,10 +62,13 @@ const SKELETON_MIN_DELTA = 20
 /** First non-empty line of a note's content, syntax markers stripped, for
  * the sidebar preview -- strip rather than render so it stays plain text
  * in a one-line ellipsis instead of showing raw "## " or "- " noise. */
-function previewLine(content: string): string {
-  const line = content.split('\n').find((l) => l.trim())
-  if (!line) return ''
-  return line.replace(/^#{1,6}\s+/, '').replace(/^[-*>]\s+/, '').trim()
+function previewLine(content: string, skip = ''): string {
+  // 第一行常常就是标题本身（「# 会议纪要 10」）——搜索卡上再印一遍没意义，
+  // 跳过跟标题一样的那行，取下一行
+  const clean = (l: string) => l.replace(/^#{1,6}\s+/, '').replace(/^[-*>]\s+/, '').trim()
+  const lines = content.split('\n').map(clean).filter((l) => l)
+  const skipNorm = skip.trim().replace(/\s+/g, '')
+  return lines.find((l) => l.replace(/\s+/g, '') !== skipNorm) ?? lines[0] ?? ''
 }
 
 /** 无限续写 harness 的运行状态——挂在 App 这一级而不是 WritingPlanPanel
@@ -453,8 +456,12 @@ export default function App() {
   }
 
   const reloadTree = useCallback(async () => {
+    const t0 = performance.now()
     const rows = await api.getTree()
+    const fetched = performance.now() - t0
     setTree(rows)
+    // 大库量一眼：几百篇时树的取数和首帧各花多久（探针看 client-log）
+    if (rows.length >= 200) requestAnimationFrame(() => void api.clientLog('warn', `tree ${rows.length} rows: fetch ${Math.round(fetched)} ms, paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))
     // 知识库子树跟着一起刷：摄入完新事实，主题/月份的计数要跟上。
     // 取不到（KITE 还没建库）就当没有，不影响真笔记。
     api.kbTree().then(setKbRows).catch(() => setKbRows([]))
@@ -949,10 +956,10 @@ export default function App() {
         className={'note-item ' + (current?.id === n.id ? 'active' : '')}
         onClick={() => switchTo(n)}
       >
-        <div className="t">{n.title || '未命名'}</div>
+        <div className="t">{displayTitle(n)}</div>
         {n.content.trim() && (
           <div className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {previewLine(n.content)}
+            {previewLine(n.content, displayTitle(n))}
           </div>
         )}
         {/* flex 而不是几个 float: right 堆在一起——三个控件（文件夹选择/
@@ -963,7 +970,9 @@ export default function App() {
            大小不被挤压。 */}
         <div className="muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {n.updated_at.slice(0, 16).replace('T', ' ')}
+            {/* 在哪个文件夹下：搜索命中几十条时，这是区分同名笔记的唯一线索 */}
+            {(() => { const row = tree.find((r) => r.note_id === n.id); const parent = row && row.parent_note_id !== api.ROOT_ID ? tree.find((r) => r.note_id === row.parent_note_id) : undefined; return parent ? displayTitle(parent) + ' · ' : '' })()}
+            {n.updated_at.slice(0, 10)}
           </span>
           {/* 「移动到文件夹」的下拉没了：树上靠拖拽和右键菜单移动，一个
               只能选一层的下拉表达不了任意深度的树。 */}
@@ -972,14 +981,14 @@ export default function App() {
             title={n.pinned ? '取消置顶' : '置顶'}
             onClick={(e) => { e.stopPropagation(); togglePin(n) }}
           >
-            📌
+            <i className={'bx ' + (n.pinned ? 'bxs-pin' : 'bx-pin')} />
           </span>
           <span
             style={{ flexShrink: 0 }}
             title="删除（5 秒内可在提示里撤销）"
             onClick={(e) => { e.stopPropagation(); remove(n) }}
           >
-            ✕
+            <i className="bx bx-x" />
           </span>
         </div>
       </div>
