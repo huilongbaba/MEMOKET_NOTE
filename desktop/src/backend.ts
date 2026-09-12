@@ -101,6 +101,8 @@ export async function startBackend(opts: {
   dataDir?: string
   onLog?: (line: string) => void
   timeoutMs?: number
+  /** 子进程**不是我们叫停的**却退出了（崩了、被系统杀了）。主进程据此决定要不要拉起一个新的。 */
+  onCrash?: (info: string) => void
 }): Promise<Backend> {
   const port = await freePort(opts.isPackaged)
   const { kind, exe, cwd } = locate(opts.isPackaged, opts.resourcesPath)
@@ -132,13 +134,18 @@ export async function startBackend(opts: {
   child.stderr?.on('data', (b) => log(`[backend] ${b}`))
 
   let exited: string | null = null
+  let stopping = false
+  let healthy = false
   child.on('exit', (code, signal) => {
     exited = `退出码 ${code}${signal ? ` 信号 ${signal}` : ''}`
     log(`[backend] 进程结束：${exited}`)
+    // 起来过、又不是我们叫停的 → 崩了。启动阶段的失败走 waitHealthy 那条错误路径。
+    if (healthy && !stopping) opts.onCrash?.(exited)
   })
 
   try {
     await waitHealthy(port, opts.timeoutMs ?? 60_000)
+    healthy = true
   } catch (e) {
     child.kill('SIGKILL')
     throw new Error(`${(e as Error).message}${exited ? `；子进程已${exited}` : ''}`)
@@ -147,6 +154,7 @@ export async function startBackend(opts: {
   return {
     port,
     stop: () => {
+      stopping = true
       // 先好好说，不听再强制。SIGTERM 让 uvicorn 有机会关掉 sqlite 连接。
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGTERM')

@@ -99,6 +99,44 @@ function createWindow(url: string) {
   }
 }
 
+let quitting = false
+let restarts = 0
+
+/** 拉起后端；崩了自动再拉一次并刷新窗口（端口固定，地址不变）。
+ *  连崩两次就不再硬撑——那多半是数据或环境的问题，弹框把日志给用户。 */
+async function launchBackend(webDir: string): Promise<Backend> {
+  return startBackend({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    webDir,
+    // 打包之后数据落在系统的用户数据目录（macOS 上是
+    // ~/Library/Application Support/<appName>）。开发时不传，后端保持
+    // 相对 ./data，跟手工起后端时用的是同一个库。
+    dataDir: app.isPackaged ? path.join(app.getPath('userData'), 'data') : undefined,
+    onLog: remember,
+    onCrash: (info) => {
+      if (quitting) return
+      remember(`[desktop] 后端崩了（${info}），${restarts < 2 ? '重新拉起' : '不再重试'}`)
+      if (restarts >= 2) {
+        dialog.showErrorBox('后端反复崩溃',
+          `已经自动重启过两次，不再重试。\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}`)
+        return
+      }
+      restarts += 1
+      backend = null
+      setTimeout(() => {
+        void launchBackend(webDir).then((b) => {
+          backend = b
+          win?.webContents.reload()
+        }).catch((e) => {
+          dialog.showErrorBox('后端没能重新启动',
+            `${(e as Error).message}\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}`)
+        })
+      }, 800)
+    },
+  })
+}
+
 async function boot() {
   const webDir = app.isPackaged
     ? path.join(process.resourcesPath, 'web')
@@ -118,16 +156,7 @@ async function boot() {
   }
 
   try {
-    backend = await startBackend({
-      isPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      webDir,
-      // 打包之后数据落在系统的用户数据目录（macOS 上是
-      // ~/Library/Application Support/<appName>）。开发时不传，后端保持
-      // 相对 ./data，跟手工起后端时用的是同一个库。
-      dataDir: app.isPackaged ? path.join(app.getPath('userData'), 'data') : undefined,
-      onLog: remember,
-    })
+    backend = await launchBackend(webDir)
   } catch (e) {
     // **起不来要说清是什么原因。** 一个白窗口或者静默退出，用户除了重装
     // 什么都做不了；后端最后几行日志几乎总能指出真正的毛病。
@@ -224,6 +253,7 @@ app.on('activate', () => {
 // 就丢：实拍「设置里选深色 → 重开是浅色」，client-log 证实同一 origin 下
 // 上次存的值没了。退出前强制刷盘。
 app.on('before-quit', () => {
+  quitting = true
   try { session.defaultSession.flushStorageData() } catch { /* 没有 session 时无所谓 */ }
   backend?.stop()
 })
