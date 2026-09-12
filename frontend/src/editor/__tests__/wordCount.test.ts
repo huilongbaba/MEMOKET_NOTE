@@ -18,3 +18,9 @@ describe('wordCount', () => {
     expect(readingMinutes(4000)).toBe(10)
   })
 })
+
+it('图片不算字数、链接只算显示文字', () => {
+  const img = '![' + '为一篇公司汇报制作一张插图'.repeat(50) + '](/api/assets/abc.png)'
+  expect(wordCount('正文十个字正文十个字' + img)).toBe(10)
+  expect(wordCount('看[官网](https://example.com/very/long/path)')).toBe(3)
+})
