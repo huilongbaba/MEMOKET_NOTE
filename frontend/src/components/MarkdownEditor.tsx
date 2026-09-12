@@ -226,6 +226,8 @@ export default function MarkdownEditor({
     actualViewRef.current?.dispatch({
       effects: readOnlyComp.current.reconfigure(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
     })
+    // actualViewRef 是 ref，不进依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly])
 
   useEffect(() => {

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * 探针：`?probe=xxx` 把界面驱动到某个状态，供截图核对。
  *

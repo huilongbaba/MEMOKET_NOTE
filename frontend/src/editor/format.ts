@@ -196,7 +196,7 @@ export function formatMarkdown(src: string): string {
       // 表格：连续的 | 开头的行整块处理
       if (/^\s*\|/.test(line)) {
         const rows: string[] = []
-        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i].trim()), i++
+        while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(lines[i].trim()); i++ }
         if (rows.length >= 2 && isSep(rows[1])) push('table', formatTable(rows))
         else push('para', rows)                  // 不是合法表格就别乱动
         continue

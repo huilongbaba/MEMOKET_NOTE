@@ -63,7 +63,6 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       } catch { clearInterval(timer) }
     }, 3000)
     return () => clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJob, job])
 
 

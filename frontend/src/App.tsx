@@ -1165,7 +1165,9 @@ export default function App() {
     return () => clearTimeout(timer)
     // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
     // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针
-    // 一个都没开出来，查了两轮才发现是这个。
+    // 一个都没开出来，查了两轮才发现是这个。探针体里的其它闭包故意不进依赖：
+    // 每次它们变都重跑探针会重复开标签 / 重复建笔记。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tree, notes])
 
   useEffect(() => {
@@ -1184,6 +1186,8 @@ export default function App() {
     const onProvider = () => void checkHealth()
     window.addEventListener('provider-changed', onProvider)
     return () => window.removeEventListener('provider-changed', onProvider)
+    // open 只在启动时用一次，进依赖会在每次切笔记时重跑这段启动逻辑
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload, reloadTree])
 
   useEffect(() => {

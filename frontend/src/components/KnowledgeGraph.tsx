@@ -486,9 +486,10 @@ export default function KnowledgeGraph(
     // the tick handler above), not a guessed scale here -- it frames
     // whatever extent the graph actually spread out to, which a formula
     // based only on node count can't know in advance.
+    const svgEl = svgRef.current
     return () => {
       if (interactingTimer) clearTimeout(interactingTimer)
-      d3select(svgRef.current!).on('.zoom', null)
+      if (svgEl) d3select(svgEl).on('.zoom', null)
     }
   }, [hasNodes])
 

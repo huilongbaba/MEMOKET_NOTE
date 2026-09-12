@@ -1284,3 +1284,11 @@ imgdrop 探针实拍：拖进「# 创业一年回顾」，光标在「# 」之�
 标题被切成「#」+ 图 + 裸文字「创业一年回顾」。`imageInsertion()` 纯函数：非空行一律插到
 这一行末尾之后自成一段，空行原地放；vitest 两条。顺手：格式化把表格分隔行对齐补宽后
 字数从 7760 跳到 8241——`|---|` 整行是记号，wordCount 不再算它。vitest 69。
+
+## [117] 全量巡检第 97 轮：前端补上 ESLint（2026-09-12）
+
+欠账清单里挂了很久的一条。eslint 9 + typescript-eslint + react-hooks，只开抓 bug 的规则
+（hooks 用法 / 依赖、未用变量、eqeqeq、恒真表达式），风格一条不开。首跑 7 条：format.ts
+里一个逗号表达式（改成块）、KnowledgeGraph 清理函数里读 ref.current（先拷一份）、两个
+故意不全的依赖数组加说明 + disable、两条失效的 disable 删掉。`npm test` 里加了 lint。
+草稿恢复 / 窄窗标签栏 / 快速查看暗色回归正常。
