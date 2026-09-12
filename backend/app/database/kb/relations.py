@@ -6,6 +6,8 @@
   continuation   延续    同一个量在知识库里有一条随时间变的线（150 → 200 → 300），你写的是下一个点
   corroborated   印证    同一个量、同一个值
   unsupported    缺依据  正文里有具体的数字 / 日期，知识库里找不到沾边的记录
+  accumulation   叠加    同一件事，知识库里还有你没写的条件（别的单位的量 / 日期）
+  merge          合并    知识库里有两条说的是同一件事（词面高度重合），提议合成一条
 
 这一层是**纯代码、毫秒级**：只产出候选和一句人话；要不要再让模型确认一遍由调用方
 决定（routers/memory.py 只对 conflict 候选打一次 LLM）。不依赖 app 的其它模块。
@@ -76,14 +78,17 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> lis
     延续报整条线。没有具体的量（数字 / 日期）就不报缺依据——空话没法核。
     """
     pv = extract_values(passage)
-    if not pv["nums"] and not pv["dates"]:
-        return []
     scored = []
     for f in facts:
         text = f.get("text") or ""
         s = overlap(passage, text)
         scored.append((s, f, extract_values(text)))
     related = [(s, f, fv) for s, f, fv in scored if s >= min_overlap]
+    if not pv["nums"] and not pv["dates"]:
+        # 没有具体的量就没法核冲突 / 印证；但「两条记录说的是同一件事」跟正文有没有数字无关，
+        # 只要这段跟它们都沾边（阈值抬高，免得空话也触发）
+        m = _merge_candidate([(s, f) for s, f, _fv in related if s >= max(min_overlap, 0.3)])
+        return [m] if m else []
     out: list[dict] = []
 
     # 同一个单位的量：冲突 / 印证 / 延续
@@ -145,6 +150,34 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> lis
                         "fact_ids": [f["id"]], "values": sorted(f_md) + sorted(p_md)})
             break
 
+    # 叠加：同一件事，知识库里还有你没写的条件——别的单位的量、或你这段没写日期而它有。
+    # 跟正文同单位的量走上面的冲突 / 印证 / 延续，这里只看正文**没提**的维度。
+    p_units = {u for _v, u in pv["nums"]}
+    extras: list[tuple[float, dict, list[str]]] = []
+    for s, f, fv in related:
+        if s < max(min_overlap, 0.2):
+            continue
+        missing = [_fmt(v) + u for v, u in fv["nums"] if u not in p_units]
+        if not pv["dates"]:
+            missing += [d for d in fv["dates"]]
+        if missing:
+            extras.append((s, f, missing))
+    if extras:
+        extras.sort(key=lambda r: -r[0])
+        values: list[str] = []
+        for _s, _f, miss in extras[:3]:
+            for m in miss:
+                if m not in values:
+                    values.append(m)
+        out.append({"relation": "accumulation", "unit": "",
+                    "say": f"知识库里关于这个还有 {len(values)} 个条件你没写：{'、'.join(values[:4])}{'…' if len(values) > 4 else ''}",
+                    "fact_ids": [f["id"] for _s, f, _m in extras[:3]], "values": values})
+
+    # 合并：召回的记录里有两条说的是同一件事
+    m = _merge_candidate([(s, f) for s, f, _fv in related])
+    if m:
+        out.append(m)
+
     # 缺依据：有具体的量，却没有一条沾边的记录
     if not related:
         out.append({"relation": "unsupported", "unit": "",
@@ -159,6 +192,36 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> lis
             continue
         seen.add(key)
         uniq.append(r)
-    order = {"conflict": 0, "continuation": 1, "unsupported": 2, "corroborated": 3}
+    order = {"conflict": 0, "continuation": 1, "unsupported": 2, "accumulation": 3, "merge": 4, "corroborated": 5}
     uniq.sort(key=lambda r: order.get(r["relation"], 9))
     return uniq
+
+
+def _merge_candidate(related: list[tuple[float, dict]], *, min_pair: float = 0.5) -> dict | None:
+    """两条记录词面重合 ≥ min_pair 且不是同一条 → 合并候选。只报最像的一对，早的在前。
+    去重是写作者的活，不是抽取器的（docs/agent-native-editor.md §3.3.1）——这里只提议。"""
+    best: tuple[float, dict, dict] | None = None
+    for i in range(len(related)):
+        for j in range(i + 1, len(related)):
+            a, b = related[i][1], related[j][1]
+            if a["id"] == b["id"]:
+                continue
+            ta, tb = a.get("text") or "", b.get("text") or ""
+            if ta == tb:
+                s = 1.0
+            else:
+                s = overlap(ta, tb)
+                # 短句的 min-归一化容易虚高：还要求双向都过半
+                if s >= min_pair:
+                    ta_, tb_ = _terms(ta), _terms(tb)
+                    if len(ta_ & tb_) / max(len(ta_), len(tb_)) < 0.35:
+                        continue
+            if s >= min_pair and (best is None or s > best[0]):
+                best = (s, a, b)
+    if not best:
+        return None
+    _s, a, b = best
+    a, b = sorted((a, b), key=lambda f: f.get("date") or "")
+    return {"relation": "merge", "unit": "",
+            "say": f"知识库里 {a.get('date') or '某天'} 和 {b.get('date') or '某天'} 这两条说的像是同一件事，合成一条？",
+            "fact_ids": [a["id"], b["id"]], "values": []}

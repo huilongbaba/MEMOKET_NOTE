@@ -41,6 +41,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => (document.querySelector(probe === 'theme-dark' ? '.chip .bx-moon' : '.chip .bx-desktop')?.parentElement as HTMLElement | null)?.click(), 3000)
   }
   if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
+  if (probe === 'conflicts') setTimeout(() => void openVirtual('kb', '知识库'), 600)
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)
   if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)

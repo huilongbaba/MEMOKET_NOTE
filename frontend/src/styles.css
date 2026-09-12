@@ -867,15 +867,24 @@ input[type=file]:hover { border-color: var(--accent); }
 .mm-continuation { background: var(--accent); }
 .mm-corroborated { background: var(--ins); }
 .mm-unsupported { background: var(--muted); }
+.mm-accumulation { background: var(--accent); opacity: .6; }
+.mm-merge { background: var(--muted); opacity: .6; }
 /* 记忆的关系：左边一条色带说是哪种关系 */
 .rel-card { padding: 8px 10px; border-inline-start: 3px solid var(--line); }
 .rel-card.rel-conflict { border-inline-start-color: var(--warn); }
 .rel-card.rel-continuation { border-inline-start-color: var(--accent); }
 .rel-card.rel-corroborated { border-inline-start-color: var(--ins); }
 .rel-card.rel-unsupported { border-inline-start-color: var(--muted); }
+.rel-card.rel-accumulation { border-inline-start-color: var(--accent); }
+.rel-card.rel-merge { border-inline-start-color: var(--muted); }
 .badge.rel-conflict { color: var(--warn); border-color: var(--warn); }
 .badge.rel-continuation { color: var(--accent); border-color: var(--accent); }
 .badge.rel-corroborated { color: var(--ins); border-color: var(--ins); }
+.badge.rel-accumulation { color: var(--accent); border-color: var(--accent); }
+.conflict-inbox .card { border-inline-start: 3px solid var(--warn); }
+.conflict-inbox .cf-side { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.conflict-inbox .cf-side > div { font-size: 12px; }
+@media (max-width: 720px) { .conflict-inbox .cf-side { grid-template-columns: 1fr; } }
 .fact-text.superseded { text-decoration: line-through; opacity: .6; }
 .chain { margin: 0; padding-inline-start: 18px; font-size: 12px; }
 .chain li { cursor: pointer; margin: 2px 0; }

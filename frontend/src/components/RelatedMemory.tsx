@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { memoryRelations, recall, supersedeFact } from '../api'
+import { memoryRelations, mergeFacts, recall, supersedeFact } from '../api'
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
 
@@ -8,6 +8,8 @@ const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string;
   continuation: { text: '延续', cls: 'rel-continuation', icon: 'bx-trending-up' },
   corroborated: { text: '印证', cls: 'rel-corroborated', icon: 'bx-check-shield' },
   unsupported: { text: '缺依据', cls: 'rel-unsupported', icon: 'bx-question-mark' },
+  accumulation: { text: '叠加', cls: 'rel-accumulation', icon: 'bx-layer-plus' },
+  merge: { text: '合并', cls: 'rel-merge', icon: 'bx-git-merge' },
 }
 const IGNORED_KEY = 'memoket-note-ignored-relations'
 function ignoredSet(): Set<string> {
@@ -65,6 +67,18 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
     try { await supersedeFact(old.id, latest.id); toast('已标记：旧记录被新的取代'); ignore(rel.relation + ':' + rel.fact_ids.join(',')) }
     catch (e) { toast('标不上：' + String(e), 'error') }
   }
+  async function merge(rel: MemoryRelation) {
+    // 「合成一条」：留晚的那条，早的标成被它取代（merged）；结果记住，下次不再提这一对
+    const [a, b] = rel.facts
+    if (!a || !b) return
+    try { await mergeFacts(b.id, a.id); toast('已合成一条：留下了 ' + (b.when || '晚的那条')); ignore(rel.relation + ':' + rel.fact_ids.join(',')) }
+    catch (e) { toast('合不了：' + String(e), 'error') }
+  }
+  function fillIn(rel: MemoryRelation) {
+    // 「补进来」：把知识库里那几个条件带引用插进正文
+    onInsert(rel.facts.map((f) => `${f.text} [${f.id}]`).join('\n'))
+    ignore(rel.relation + ':' + rel.fact_ids.join(','))
+  }
   const visibleRels = rels.filter((r) => !ignored.has(r.relation + ':' + r.fact_ids.join(',')))
 
   useEffect(() => {
@@ -119,6 +133,8 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
                 <div className="row" style={{ gap: 4, marginTop: 6 }}>
                   {r.facts.length > 0 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => onInsert(`${r.facts[r.facts.length - 1].text} [${r.facts[r.facts.length - 1].id}]`)}>引用这条</button>}
                   {r.relation === 'conflict' && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void supersede(r)}>新的取代旧的</button>}
+                  {r.relation === 'accumulation' && r.facts.length > 0 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => fillIn(r)}>补进来</button>}
+                  {r.relation === 'merge' && r.facts.length === 2 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void merge(r)}>合成一条</button>}
                   <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => ignore(key)}>忽略</button>
                 </div>
               </div>

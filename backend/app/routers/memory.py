@@ -153,6 +153,12 @@ class _RelationsIn(TraceIn):
     confirm: bool = True
 
 
+def _live(mem: UserMemory, rows: list[dict]) -> list[dict]:
+    """被取代 / 合并掉的记录不参与关系判断——「合并结果记住，下次不再问」。"""
+    gone = mem.fact_attrs("superseded_by")
+    return [r for r in rows if r["id"] not in gone]
+
+
 @router.post("/relations")
 async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> dict:
     """一段正文跟知识库是什么关系：冲突 / 延续 / 印证 / 缺依据（docs/agent-native-editor.md
@@ -163,6 +169,7 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
     t0 = time.perf_counter()
     mem = UserMemory(user)
     rows, _terms, _took = mem.recall(passage, limit=8)
+    rows = _live(mem, rows)
     cands = kb_relations.detect(passage, rows)
     by_id = {r["id"]: r for r in rows}
     if body.confirm and any(c["relation"] == "conflict" for c in cands):
@@ -206,7 +213,7 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
             out.append(None)
             continue
         rows, _terms, _took = mem.recall(p, limit=8)
-        cands = kb_relations.detect(p, rows)
+        cands = kb_relations.detect(p, _live(mem, rows))
         out.append({"relation": cands[0]["relation"], "say": cands[0]["say"], "fact_ids": cands[0]["fact_ids"]} if cands else None)
     return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
 

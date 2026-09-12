@@ -171,6 +171,21 @@ CREATE TABLE IF NOT EXISTS note_remotes (
     PRIMARY KEY (user_id, note_id, platform)
 );
 
+-- 冲突收件箱：摄入时新事实跟旧事实撞上的（docs/agent-native-editor.md §3.3.1）
+CREATE TABLE IF NOT EXISTS kb_conflicts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    new_fact_id TEXT NOT NULL,
+    old_fact_id TEXT NOT NULL,
+    unit        TEXT NOT NULL DEFAULT '',
+    say         TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'open',
+    resolution  TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    UNIQUE (user_id, new_fact_id, old_fact_id)
+);
+
 CREATE TABLE IF NOT EXISTS note_revisions (
     id         TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL,
@@ -464,6 +479,49 @@ def get_note(user_id: str, note_id: str) -> dict | None:
         row = c.execute("SELECT * FROM notes WHERE user_id=? AND id=?",
                         (user_id, note_id)).fetchone()
     return _note(row) if row else None
+
+
+def add_conflict(user_id: str, new_fact_id: str, old_fact_id: str, unit: str, say: str, source: str = "") -> bool:
+    """同一对只记一次（重抽 / 重扫不会堆出重复的待办）。"""
+    with connect() as c:
+        cur = c.execute("INSERT OR IGNORE INTO kb_conflicts (user_id,new_fact_id,old_fact_id,unit,say,source,created_at) VALUES (?,?,?,?,?,?,?)",
+                        (user_id, new_fact_id, old_fact_id, unit, say, source, _now()))
+        return cur.rowcount > 0
+
+
+def list_conflicts(user_id: str, status: str = "open", limit: int = 100) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM kb_conflicts WHERE user_id=? AND status=? ORDER BY id DESC LIMIT ?",
+                         (user_id, status, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_open_conflicts(user_id: str) -> int:
+    with connect() as c:
+        return int(c.execute("SELECT COUNT(*) FROM kb_conflicts WHERE user_id=? AND status='open'", (user_id,)).fetchone()[0])
+
+
+def resolve_conflict(user_id: str, conflict_id: int, resolution: str) -> dict | None:
+    with connect() as c:
+        c.execute("UPDATE kb_conflicts SET status='resolved', resolution=? WHERE user_id=? AND id=?",
+                  (resolution, user_id, conflict_id))
+        row = c.execute("SELECT * FROM kb_conflicts WHERE user_id=? AND id=?", (user_id, conflict_id)).fetchone()
+    return dict(row) if row else None
+
+
+def drop_conflicts_for_facts(user_id: str, fact_ids: set[str]) -> int:
+    """事实删了 / session 重抽了：指着它的待办一起收掉。"""
+    if not fact_ids:
+        return 0
+    ids = list(fact_ids)
+    with connect() as c:
+        n = 0
+        for i in range(0, len(ids), 400):
+            part = ids[i:i + 400]
+            q = ",".join("?" * len(part))
+            n += c.execute(f"DELETE FROM kb_conflicts WHERE user_id=? AND (new_fact_id IN ({q}) OR old_fact_id IN ({q}))",
+                           [user_id, *part, *part]).rowcount
+        return n
 
 
 def record_remote(user_id: str, note_id: str, platform: str, remote_id: str = "", remote_path: str = "") -> None:

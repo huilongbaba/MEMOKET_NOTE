@@ -1,14 +1,15 @@
 /** 边缘记忆（docs/agent-native-editor.md §3.3）：正文右缘一条「记忆带」——哪一段跟知识库
- *  有关系（冲突 / 延续 / 印证 / 缺依据）就在那一段的第一行右边亮一个点，颜色 = 关系。
+ *  有关系（冲突 / 延续 / 叠加 / 合并 / 印证 / 缺依据）就在那一段的第一行右边亮一个点，颜色 = 关系。
  *  点一下：光标落到那段，右栏「记忆」的关系卡就出来了。数据由上层批量算好塞进来
  *  （零 LLM 的代码候选），这里只管画和跟着文档改动映射行号。 */
 import { StateEffect, StateField, type Extension } from '@codemirror/state'
 import { EditorView, gutter, GutterMarker } from '@codemirror/view'
+import type { MemoryRelationKind } from '../api'
 
 export type MarginMark = {
   /** 1 起的行号（段落第一行） */
   line: number
-  relation: 'conflict' | 'continuation' | 'corroborated' | 'unsupported'
+  relation: MemoryRelationKind
   say: string
 }
 

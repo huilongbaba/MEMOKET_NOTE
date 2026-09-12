@@ -504,6 +504,7 @@ export type KbDashboard = {
   recent_units: { id: string; date: string; title: string; facts: number }[]
   kinds: { kind: string; facts: number }[]
   speakers: { who: string; facts: number }[]
+  conflicts_open?: number
 }
 export type KbFactsPage = { facts_total: number; facts: FactDetail[]; limit: number; offset: number }
 export type KbTopicPage = KbFactsPage & {
@@ -614,8 +615,9 @@ export type FactDetail = {
 //
 // 一段正文跟知识库是什么关系（docs/agent-native-editor.md §3.3.1）：冲突 / 延续 / 印证 /
 // 缺依据。候选是代码判的，冲突让模型确认一句。
+export type MemoryRelationKind = 'conflict' | 'continuation' | 'corroborated' | 'unsupported' | 'accumulation' | 'merge'
 export type MemoryRelation = {
-  relation: 'conflict' | 'continuation' | 'corroborated' | 'unsupported'
+  relation: MemoryRelationKind
   say: string
   unit: string
   values: string[]
@@ -637,6 +639,19 @@ export const supersedeFact = (oldId: string, newId: string) =>
   fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {
     method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ superseded_by: newId }),
   }).then(json<{ id: string; superseded_by: string }>)
+/** 「合成一条」：drop 标成被 keep 取代（merged），keep 的正文可顺手改；合并结果记住 */
+export const mergeFacts = (keep: string, drop: string, text = '') =>
+  fetch('/api/kb/fact/merge', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ keep, drop, text }),
+  }).then(json<{ id: string; text: string; merged_from: string }>)
+/** 冲突收件箱：摄入时检出的「新事实 vs 旧事实」 */
+export type KbConflictFact = { id: string; text: string; when: string; note_id: string; unit: string }
+export type KbConflict = { id: number; new_fact_id: string; old_fact_id: string; unit: string; say: string; source: string; status: string; resolution: string; created_at: string; new: KbConflictFact; old: KbConflictFact }
+export const kbConflicts = () => fetch('/api/kb/conflicts', { headers: headers() }).then(json<{ conflicts: KbConflict[]; open: number }>)
+export const resolveConflict = (id: number, action: 'new_wins' | 'old_wins' | 'keep_both') =>
+  fetch(`/api/kb/conflicts/${id}/resolve`, {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ action }),
+  }).then(json<KbConflict>)
 export type FactsPage = { facts: FactDetail[]; total: number; limit: number; offset: number }
 export type SourceLine = { id: string; unit: string; date: string; who: string; text: string }
 export type TimelineBucket = { date: string; units: number; facts: number }

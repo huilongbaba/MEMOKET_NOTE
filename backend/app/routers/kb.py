@@ -38,7 +38,9 @@ def kb_tree_children(node: str, user: str = Depends(current_user)):
 
 @router.get("/dashboard")
 def kb_dashboard(user: str = Depends(current_user)) -> dict:
-    return pages.dashboard(UserMemory(user))
+    d = pages.dashboard(UserMemory(user))
+    d["conflicts_open"] = store.count_open_conflicts(user)
+    return d
 
 
 @router.get("/topic/{code}")
@@ -354,3 +356,69 @@ def kb_fact_add(body: FactAddIn, user: str = Depends(current_user)) -> dict:
     if not n.get("ingested_at"):
         store.mark_ingested(user, body.note_id)
     return fact
+
+
+# ---------------------------------------------------------------- 合并 / 冲突收件箱
+
+class FactMergeIn(BaseModel):
+    keep: str
+    drop: str
+    text: str = ""       # 合成后的正文（空 = 保留 keep 的原文）
+
+
+@router.post("/fact/merge")
+def kb_fact_merge(body: FactMergeIn, user: str = Depends(current_user)) -> dict:
+    """「合成一条」：drop 标成被 keep 取代（merged=1），keep 的正文可以顺手改。合并结果记住了，
+    页面默认不再显示 drop，关系检测也不再提这一对（docs/agent-native-editor.md §3.3.1）。"""
+    if body.keep == body.drop:
+        raise HTTPException(400, "同一条没法合并")
+    mem = UserMemory(user)
+    if mem.fact_by_id(body.keep) is None or mem.fact_by_id(body.drop) is None:
+        raise HTTPException(404, "有一条不存在")
+    text = body.text.strip()
+    if text:
+        mem.set_fact_text(body.keep, text)
+    mem.set_fact_attr(body.drop, "superseded_by", body.keep)
+    mem.set_fact_attr(body.drop, "merged", "1")
+    store.drop_conflicts_for_facts(user, {body.drop})
+    out = mem.fact_by_id(body.keep) or {"id": body.keep}
+    out["merged_from"] = body.drop
+    return out
+
+
+@router.get("/conflicts")
+def kb_conflicts(user: str = Depends(current_user), status: str = "open") -> dict:
+    """待处理的冲突：摄入时检出的「新事实 vs 旧事实」，带两条的正文 / 日期 / 来源笔记。"""
+    mem = UserMemory(user)
+    out = []
+    for c in store.list_conflicts(user, status=status):
+        new, old = mem.fact_by_id(c["new_fact_id"]), mem.fact_by_id(c["old_fact_id"])
+        if new is None or old is None:
+            store.drop_conflicts_for_facts(user, {c["new_fact_id"], c["old_fact_id"]})
+            continue
+        out.append({**c, "new": _brief(new), "old": _brief(old)})
+    return {"conflicts": out, "open": store.count_open_conflicts(user)}
+
+
+def _brief(f: dict) -> dict:
+    return {"id": f["id"], "text": f.get("text", ""), "when": f.get("when") or f.get("date", ""),
+            "note_id": pages.note_id_of_unit(f.get("unit") or ""), "unit": f.get("unit") or ""}
+
+
+class ConflictResolveIn(BaseModel):
+    action: str        # new_wins | old_wins | keep_both
+
+
+@router.post("/conflicts/{conflict_id}/resolve")
+def kb_conflict_resolve(conflict_id: int, body: ConflictResolveIn, user: str = Depends(current_user)) -> dict:
+    if body.action not in ("new_wins", "old_wins", "keep_both"):
+        raise HTTPException(400, "action 只能是 new_wins / old_wins / keep_both")
+    row = next((c for c in store.list_conflicts(user, status="open", limit=10000) if c["id"] == conflict_id), None)
+    if row is None:
+        raise HTTPException(404, "没有这条待办")
+    mem = UserMemory(user)
+    if body.action == "new_wins":
+        mem.set_fact_attr(row["old_fact_id"], "superseded_by", row["new_fact_id"])
+    elif body.action == "old_wins":
+        mem.set_fact_attr(row["new_fact_id"], "superseded_by", row["old_fact_id"])
+    return store.resolve_conflict(user, conflict_id, body.action) or {}

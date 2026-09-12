@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { kbDashboard, recall, type Fact, type FactDetail, type KbDashboard as Data } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, StatTile, type KbActions } from './KbBits'
 import { isSpeakerTag } from '../../util/kbNoise'
+import ConflictInbox from './ConflictInbox'
 
 const toDetail = (f: Fact): FactDetail => ({ id: f.id, text: f.text, when: f.when, kind: f.kind, who: '', conf: '', topics: [], entities: [], unit: '' })
 
@@ -63,6 +64,8 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             <StatTile value={data.stats.units.toLocaleString()} label="场会议" />
             <StatTile value={<span style={{ fontSize: 15 }}>{data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}</span>} label="跨度（按事实里的日期）" />
           </div>
+
+          <ConflictInbox actions={actions} />
 
           <KbSection title="近 12 个月（按事实里的日期，计划里的未来日期也算）" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:timeline') }}>全部时间线 →</a>}>
             <MiniBars data={data.months} />

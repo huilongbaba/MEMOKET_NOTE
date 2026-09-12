@@ -19,6 +19,7 @@ from ..database import store
 from ..database.ingest import asr, extract
 from ..database.ingest.chunking import chunks as _chunks, chunks_for as _chunks_for
 from ..database.kite.kite_memory import UserMemory
+from ..database.kb import inbox
 from memoket_kite.errors import StorageError
 from .schemas import IngestItemOut, IngestOut, IngestTextIn
 from ..harness.events import sse
@@ -31,6 +32,14 @@ BATCH_MAX_FILES = 50
 
 
 
+def _scan_conflicts(mem: UserMemory, user_id: str, session_id: str, source: str) -> None:
+    """摄入完一块就扫一遍冲突进收件箱；扫不动不能拖垮摄入。"""
+    try:
+        inbox.scan_session(mem, user_id, session_id, source=source)
+    except Exception as exc:      # noqa: BLE001
+        print(f"[ingest] 冲突扫描跳过 {session_id}: {type(exc).__name__}: {exc}")
+
+
 def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
                 date: str = "", source_id: str = "", replace: bool = False) -> None:
     store.set_job(job_id, "running")
@@ -41,7 +50,9 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
         # 同步 = 先删这篇上次摄入的 session（手工加的那个留着），再重抽。
         # 不删的话稳定 session_id 会让 KITE 把改过的内容当「已导入」跳过——改过的东西永远进不来。
         if replace and source == "note" and source_id:
+            gone = {f["id"] for f in mem.facts_for_prefix(UserMemory.note_prefix(source_id))}
             mem.remove_sessions(UserMemory.note_prefix(source_id))
+            store.drop_conflicts_for_facts(user_id, gone)
         # 有稳定 source_id 就用它拼 session_id：KITE 拒绝重复的 session_id
         # 且不花 LLM 调用，于是重跑导入自动变成增量同步。没有就退回随机 id
         # （手工粘贴一段文字这种场景，本来也没有可稳定的标识）。
@@ -66,6 +77,7 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
             # 每个 chunk 单独一次 LLM 调用（~13s），落一次库让前端轮询能看见
             # facts 数逐块往上涨，而不是等全部 chunk 跑完才一次性跳到最终值。
             store.set_job(job_id, "running", facts=total)
+            _scan_conflicts(mem, user_id, f"{stem}-{i}", source)
         store.set_job(job_id, "done", facts=total,
                       detail=(f"内容没变，{skipped} 块此前已摄入" if skipped and not total else ""))
         # 摄入的是一篇笔记 → 记下来，树上据此标 ⇡（docs/kb-fusion-design.md）。
