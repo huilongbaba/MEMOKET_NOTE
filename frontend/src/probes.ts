@@ -353,13 +353,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     // hoverTooltip 只认真实的 mousemove。
     setContent((c: string) => c + '\n\n据 [terrence-1872-5F8] 所述。\n')
     setTimeout(() => {
-      const el = document.querySelector('.cm-fact-cite')
+      // 取屏幕里能看见的那条：第一条常在折叠线下面，坐标打过去 CM 什么都不弹
+      const all = Array.from(document.querySelectorAll('.cm-fact-cite'))
+      const el = all[all.length - 1]
       if (!el) return
-      const r = el.getBoundingClientRect()
-      const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }
-      el.dispatchEvent(new MouseEvent('mousemove', { ...at, bubbles: true }))
-      document.querySelector('.cm-content')?.dispatchEvent(
-        new MouseEvent('mousemove', { ...at, bubbles: true }))
+      el.scrollIntoView({ block: 'center' })
+      setTimeout(() => {
+        const r = el.getBoundingClientRect()
+        const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }
+        el.dispatchEvent(new MouseEvent('mousemove', { ...at, bubbles: true }))
+        document.querySelector('.cm-content')?.dispatchEvent(
+          new MouseEvent('mousemove', { ...at, bubbles: true }))
+      }, 500)
     }, 1200)
     return
   }

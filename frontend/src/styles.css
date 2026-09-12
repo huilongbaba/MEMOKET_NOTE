@@ -290,9 +290,13 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
    为什么不是塞进正文的 inline 元素靠 CSS 相邻选择器显示：CM6 会在不可编辑的
    inline widget 两侧插 <img class="cm-widgetBuffer">，相邻选择器永远匹配不上
    ——第一版就是这么写的，按钮一个都没出来。 */
-.cm-tooltip:has(.harness-actions) {
-  border: none;
-  background: transparent;
+/* showTooltip 返回的 dom 本身就是 .cm-tooltip（CM 直接给它加类，不再包一层），
+   所以之前的 `.cm-tooltip:has(.harness-actions)` 永远匹配不上；而 CM 的
+   `&light .cm-tooltip` 底色（#f5f5f5）带生成类名，比这里高一级——实拍暗色下
+   `/` 菜单是白板灰字。三个自绘 tooltip 统一 !important 压回令牌。 */
+.cm-tooltip.harness-actions {
+  border: none !important;
+  background: transparent !important;
 }
 .harness-actions {
   display: flex;
@@ -328,9 +332,10 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 
 /* `/` 唤起的插入菜单。定位交给 CM6 的 tooltip（.cm-tooltip 已经处理了坐标和
    边界翻转），这里只管长相。 */
-.cm-tooltip:has(.slash-menu) {
-  border: none;
-  background: transparent;
+.cm-tooltip.slash-menu, .cm-tooltip.cm-fact-peek {
+  background: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--fg) !important;
 }
 .slash-menu {
   width: 300px;

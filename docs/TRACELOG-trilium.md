@@ -1156,3 +1156,12 @@ toast 也不再直接 `${err}`。打包配置补 `NSMicrophoneUsageDescription` 
 看不出为什么在这。行改成 flex 三段（正文省略 / 命中片段 / 日期固定右侧），命中处
 `<mark>`（`components/Highlight.tsx`，搜索卡同款）。空态「最近编辑」长标题溢出面板一并
 收进省略。
+
+## [99] 全量巡检第 79 轮：暗色下 `/` 菜单是白板（2026-09-12）
+
+实拍 `--dark` 打 `/`：菜单白底灰字。查因（往 client-log 打 computedStyle）：showTooltip
+返回的 dom 本身就被 CM 加上 `.cm-tooltip`，不再包一层，所以 `.cm-tooltip:has(.slash-menu)`
+从来没匹配上；而 CM `&light .cm-tooltip` 的 #f5f5f5 带生成类名，比 `.slash-menu` 高一级。
+三个自绘 tooltip（`/` 菜单、引用预览、接受/撤回条）改成 `.cm-tooltip.xxx` + `!important`
+压回令牌。顺手修 fact-peek 探针：第一条引用常在折叠线下，坐标打过去 CM 什么都不弹，
+改成滚到最后一条再打。
