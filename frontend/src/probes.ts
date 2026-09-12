@@ -238,6 +238,31 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   }
   // 历史：打开 ribbon 历史后展开第一版（看「与当前对比」）
   if (probe === 'history-open') setTimeout(() => (document.querySelector('.revision-row .kb-link') as HTMLElement | null)?.click(), 3000)
+  // 树上拖拽：把 dragId 拖到 targetId 上（over → 成为它的子节点）。合成 DragEvent 走的是
+  // 真实的 onDragStart/onDragOver/onDrop，dragover 之后要等一帧让 React 把落点状态渲染出来
+  if (probe?.startsWith('dnd:') && tree.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const [, dragId, targetId] = probe.split(':')
+    setTimeout(() => {
+      const rowOf = (id: string) => {
+        const row = tree.find((r) => r.note_id === id)
+        if (!row) return null
+        const title = (row.title || '').trim()
+        return Array.from(document.querySelectorAll('.tree-node')).find((el) => (el.textContent ?? '').includes(title)) as HTMLElement | undefined
+      }
+      const a = rowOf(dragId); const b = rowOf(targetId)
+      if (!a || !b) { void api.clientLog('warn', `dnd probe: rows not found ${!!a} ${!!b}`, '', 'dnd'); return }
+      const dt = new DataTransfer()
+      a.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true, cancelable: true }))
+      const r = b.getBoundingClientRect()
+      const mid = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }
+      b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, ...mid }))
+      setTimeout(() => {
+        b.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, ...mid }))
+        setTimeout(() => b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, ...mid })), 150)
+      }, 150)
+    }, 1500)
+  }
   if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
   if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
   // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand

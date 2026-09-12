@@ -1070,3 +1070,10 @@ tabs / kb-tab / palette 三个探针回归正常。
 trilium-ui-gap §3「放不下时怎么办」还标着明显：十几个标签时最右那个一直藏着，只靠
 滚轮横滚没人发现得了。现在 strip 装不下就显形左右两个 ◀ ▶（每次滚 210px），
 ResizeObserver 盯着宽度变化。
+
+## [86] 全量巡检第 65 轮：树上拖拽走一遍（2026-09-12）
+
+新探针 `dnd:<dragId>:<targetId>`：合成 DragEvent 走真实的 onDragStart / onDragOver / onDrop
+（dragover 之后要等一帧让 React 把落点状态渲染出来）。把一篇根笔记拖到「Notes」上：
+`PATCH /api/tree/branches/move` 200，库里 parent 变了、树上进了文件夹。最近 25 次探针
+的日志里没有一条 client:error。重新打 dmg 并重开正式版。
