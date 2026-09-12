@@ -32,6 +32,7 @@ import PreferencesPanel from './components/PreferencesPanel'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { sectionEnd } from './util/sectionEnd'
+import { setIngestActive } from './util/ingestActive'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import NoteLinksPanel from './components/NoteLinksPanel'
@@ -1329,9 +1330,10 @@ export default function App() {
   // 摄入是后台任务。任务结束时刷一次树——不刷的话「已入库」的 ⇡ 要等下次
   // 打开应用才出现，用户会以为存入没成功、再存一遍。
   useEffect(() => {
+    setIngestActive(!!job)
     if (!job) return
     const ctrl = new AbortController()
-    api.watchJob(job, () => {}, () => { void reloadTree(); void reload(); setIngestTick((t) => t + 1) }, ctrl.signal)
+    api.watchJob(job, () => {}, () => { void reloadTree(); void reload(); setIngestTick((t) => t + 1); setIngestActive(false) }, ctrl.signal)
     return () => ctrl.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job])

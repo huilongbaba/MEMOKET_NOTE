@@ -181,7 +181,10 @@ async def stream(messages: list[dict], *, max_tokens: int = 1200,
         # 同一个兜底逻辑，只是流式响应不能像普通响应那样先拿到完整结果
         # 再决定要不要重试，得在真正开始消费 SSE 流之前就判断好。
         async with client.stream("POST", url, headers=_headers(), json=payload) as probe:
-            if _rejects_temperature(probe.status_code, await probe.aread()):
+            # **只有 400 才把 body 读完**。之前无条件 ``await probe.aread()``——那会把整个
+            # 流式响应先攒完再交给 _consume_sse，于是"流式"是假的：实测 88 个 delta 全在
+            # 最后 0.7 秒里到，第一个字要等 3.5 秒。
+            if probe.status_code == 400 and _rejects_temperature(400, await probe.aread()):
                 payload.pop("temperature", None)
             else:
                 probe.raise_for_status()
@@ -214,7 +217,7 @@ async def stream_events(messages: list[dict], *, max_tokens: int = 1200,
     async with httpx.AsyncClient(timeout=300.0) as client:
         url = f"{cfg['base_url']}/chat/completions"
         async with client.stream("POST", url, headers=_headers(), json=payload) as probe:
-            if _rejects_temperature(probe.status_code, await probe.aread()):
+            if probe.status_code == 400 and _rejects_temperature(400, await probe.aread()):
                 payload.pop("temperature", None)
             else:
                 probe.raise_for_status()

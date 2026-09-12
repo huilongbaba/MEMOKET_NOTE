@@ -815,3 +815,12 @@ connection attempts failed」「生成骨架失败：Error: 500 Internal Server 
 笔记，8 秒后都再生成一遍**——一次模型调用白花，模型连不上时每开一篇弹一个错。
 现在有骨架的笔记以打开时的正文为基线、改够 20 字才重算；后台跑失败只记
 client-log，点「生成骨架」失败才提示。
+
+## [47] 全量巡检第 25 轮：流式是假的（2026-09-12）
+
+用带时间戳的脚本打 magic-tap：88 个 delta 全在最后 0.7 秒里到，第一个字要等 3.5 秒。
+根因在 `util/llm.py`：为了识别「模型不支持 temperature」那种 400，`stream()` 无条件
+`await probe.aread()`——把整个流式响应先攒完再交给 `_consume_sse`。现在只有 400 才
+读 body；改完 181 个 delta 铺在 2.4 秒里，真的在流。`stream_events` 同一处一起改。
+顺手：主题地图 / 时间线 / 事实表三个 3 秒定时器常开，改成只在摄入任务跑着时轮询
+（`util/ingestActive.ts`，App 在任务开始 / 结束时设）。

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useIngestActive } from '../util/ingestActive'
 import {
   createTopic, factSources, listClusters, memoryEntities, memoryFacts, memoryStats,
   memoryTimeline, memoryTopics, topicEntityLinks,
@@ -47,6 +48,8 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   initialTab?: Tab
 }) {
   const [tab, setTab] = useState<Tab>(initialTab)
+  // 只在摄入任务跑着的时候轮询（util/ingestActive.ts）——之前三个 3 秒定时器常开
+  const live = useIngestActive()
   const [showCreate, setShowCreate] = useState(false)
   // 内嵌进中栏时图随容器宽——写死 900 在窄栏里会横向溢出、在宽屏上又留一大块白
   const graphHost = useRef<HTMLDivElement>(null)
@@ -104,17 +107,19 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
       topicEntityLinks().then(setLinks).catch(() => {})
     }
     fetchAll()
+    if (!live) return
     const timer = setInterval(fetchAll, 3000)
     return () => clearInterval(timer)
-  }, [tab])
+  }, [tab, live])
 
   useEffect(() => {
     if (tab !== 'timeline') return
     const fetchTimeline = () => memoryTimeline().then((r) => setTimeline(r.buckets)).catch(() => {})
     fetchTimeline()
+    if (!live) return
     const timer = setInterval(fetchTimeline, 3000)
     return () => clearInterval(timer)
-  }, [tab])
+  }, [tab, live])
 
   // 事实是分块抽取的，入库任务跑在后台的时候新 fact 会不断往库里落——这里
   // 开着事实表就跟着轮询，边抽边多地刷出来，不用手动切一下筛选才能看到最新
@@ -126,11 +131,12 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
       .then((r) => { setFacts(r.facts); setFactsTotal(r.total) })
       .finally(() => setLoading(false))
 
+    if (!live) return
     const timer = setInterval(() => {
       memoryFacts(factsFilter).then((r) => { setFacts(r.facts); setFactsTotal(r.total) }).catch(() => {})
     }, 3000)
     return () => clearInterval(timer)
-  }, [tab, factsFilter])
+  }, [tab, factsFilter, live])
 
   // 大语料下抽取会把 ASR 噪声碎片（单/双字母缩写、纯数字、0 引用的孤儿实体）
   // 一起当实体提出来——实测 terrence 语料到 1864 个实体时，95% type 为空，
