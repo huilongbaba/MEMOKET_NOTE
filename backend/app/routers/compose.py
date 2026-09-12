@@ -69,12 +69,11 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     """线 1：生成核心张力（spine）+ 结构节拍（beats）。"""
     t0 = time.perf_counter()
     system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user)
-    text = await llm.complete(
+    parsed, text = await llm.complete_json_raw(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.skeleton_user(
              body.title, body.content, _profile(user))}],
         max_tokens=800, temperature=0.4)
-    parsed = llm.extract_json(text)
     spine = ""
     beats: list[str] = []
     if isinstance(parsed, dict):

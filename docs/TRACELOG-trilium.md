@@ -1255,4 +1255,12 @@ actionsRef）。412 篇大库用户的标签栏 / 知识库树回归正常。
 500，撞上限时 `extract_json` 很宽容——`{"text": "改到一半就` 被修成一条只有半句的
 replace 修订（测试里实测），用户一点接受整段被换成半句。`complete()` 加 `stats`
 （同 stream），撞上限就清掉建议、`EditOut.note` 带一句「选短一点再试」，前端红 toast。
-`tests/test_rewrite_truncated.py` 三条。pytest 785。
+`tests/test_rewrite_truncated.py` 三条。pytest 784。
+
+## [113] 全量巡检第 93 轮：要 JSON 的调用撞上限会安静地少几项（2026-09-12）
+
+接着查 `complete()` 的其它调用方：分段计划（600）、「还有没有更多」（400）、骨架
+（800）、AI 生成 skill（500）、replan（600）全是 JSON 输出，撞上限时 `extract_json` 把
+断尾修成合法但少了几项的列表——用户拿到的是六节变三节的计划，没有任何提示。
+`llm.complete_json[_raw]()`：撞上限就把预算翻倍（封顶 4000）再要一次，六处调用改走它；
+骨架那条路要原文做按行退化，用 `_raw` 版。test_llm 加两条。pytest 786。

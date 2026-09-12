@@ -144,6 +144,38 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
     return (data["choices"][0]["message"].get("content") or "").strip()
 
 
+async def complete_json(messages: list[dict], *, max_tokens: int = 1500,
+                        temperature: float = 0.3, effort: str = "low",
+                        cap: int = 4000) -> dict | list | None:
+    """要 JSON 的调用统一走这里：撞 token 上限就把预算翻倍再要一次，然后 extract_json。
+
+    为什么不能直接 complete + extract_json：extract_json 修断尾很宽容——
+    `["第一节", "第二节", "第三` 会被修成两节的合法列表，`{"text": "改到一半` 会被修成
+    一条半句的修订。分段计划、骨架、修订建议全是这条路，撞上限时用户拿到的是
+    **安静地少了几项**的结果，而不是错误。预算翻一倍（封顶 cap）重试一次，还不够就
+    原样交给 extract_json——这时至少 stats 里知道是切了。
+    """
+    parsed, _text = await complete_json_raw(messages, max_tokens=max_tokens,
+                                            temperature=temperature, effort=effort, cap=cap)
+    return parsed
+
+
+async def complete_json_raw(messages: list[dict], *, max_tokens: int = 1500,
+                            temperature: float = 0.3, effort: str = "low",
+                            cap: int = 4000) -> tuple[dict | list | None, str]:
+    """同 complete_json，但把原文也给回来——骨架那条路在 JSON 解析不出时按行退化解析。"""
+    budget = max_tokens
+    text = ""
+    for _attempt in range(2):
+        stats: dict = {}
+        text = await complete(messages, max_tokens=budget, temperature=temperature,
+                              effort=effort, stats=stats)
+        if stats.get("finish_reason") != "length" or budget >= cap:
+            break
+        budget = min(budget * 2, cap)
+    return extract_json(text), text
+
+
 async def complete_raw(messages: list[dict], *, max_tokens: int = 1500,
                        temperature: float = 0.3, effort: str = "low",
                        tools: list[dict] | None = None) -> dict:

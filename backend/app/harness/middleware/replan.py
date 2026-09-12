@@ -54,12 +54,11 @@ class Replan:
 
         spine = st.bag.get("spine", "")
         try:
-            text = await llm.complete(
+            ops = await llm.complete_json(
                 [{"role": "system", "content": prompts.REPLAN_SYSTEM},
                  {"role": "user", "content": prompts.replan_user(
                      st.ctx.note_title, spine, beats, st.content, st.facts, why)}],
                 max_tokens=600, temperature=0.2)
-            ops = llm.extract_json(text)
         except Exception as exc:                       # noqa: BLE001
             yield Event.custom(CUSTOM_POLICY,
                                {"round": st.round, "reasons": [f"replan failed: {exc}"[:200]]})

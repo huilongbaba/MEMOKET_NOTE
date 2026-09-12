@@ -68,11 +68,10 @@ async def generate_skill(body: SkillGenerateIn, user: str = Depends(current_user
     goal = body.goal.strip()
     if not goal:
         raise HTTPException(400, "goal required")
-    text = await llm.complete(
+    parsed = await llm.complete_json(
         [{"role": "system", "content": prompts.skill_generate_system()},
          {"role": "user", "content": prompts.skill_generate_user(goal, body.scope_hint)}],
         max_tokens=500, temperature=0.5)
-    parsed = llm.extract_json(text)
     if not isinstance(parsed, dict):
         raise HTTPException(502, "模型没能生成有效的技能内容，换个描述再试试")
     content = str(parsed.get("content") or "").strip()

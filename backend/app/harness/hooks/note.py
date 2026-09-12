@@ -81,12 +81,11 @@ class NoteHooks:
             system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton",
                                             st.ctx.user)
             try:
-                text = await llm.complete(
+                parsed = await llm.complete_json(
                     [{"role": "system", "content": system},
                      {"role": "user", "content": prompts.skeleton_user(
                          st.ctx.note_title, content, self.profile)}],
                     max_tokens=800, temperature=0.4)
-                parsed = llm.extract_json(text)
                 if isinstance(parsed, dict):
                     self.spine = str(parsed.get("spine") or "").strip()
                     raw = parsed.get("beats")

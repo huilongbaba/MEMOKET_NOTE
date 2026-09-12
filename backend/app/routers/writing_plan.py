@@ -130,11 +130,10 @@ async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)
     folder_ctx = prompts.folder_context_block(sibling_notes)
 
     plan_system = prompts.compose_system(prompts.PLAN_SYSTEM, "plan_generate", user)
-    text = await llm.complete(
+    parsed = await llm.complete_json(
         [{"role": "system", "content": plan_system},
          {"role": "user", "content": prompts.plan_user(goal, facts, folder_ctx)}],
         max_tokens=600, temperature=0.4)
-    parsed = llm.extract_json(text)
     titles = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
     if not titles:
         raise HTTPException(502, "模型没能生成有效的分段列表，换个目标描述再试试")
@@ -182,12 +181,11 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                 more_system = prompts.compose_system(
                     prompts.MORE_SECTIONS_SYSTEM, "more_sections", user)
                 try:
-                    text = await llm.complete(
+                    parsed = await llm.complete_json(
                         [{"role": "system", "content": more_system},
                          {"role": "user", "content": prompts.more_sections_user(
                              plan["goal"], done_summaries, facts, folder_ctx)}],
                         max_tokens=400, temperature=0.4)
-                    parsed = llm.extract_json(text)
                     more = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else []
                 except Exception as exc:
                     # 调用失败不能当成"没有更多分段了"处理——那会把一次

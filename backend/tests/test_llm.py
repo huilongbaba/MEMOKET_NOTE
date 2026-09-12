@@ -134,3 +134,44 @@ def test_思考过程和正文分开标出来():
     assert _drain(_consume_tagged(_FakeResponse(lines))) == [
         ("thinking", "先想一想"), ("output", "再写出来"),
         ("thinking", "又想了想"), ("output", "接着写")]
+
+
+def test_complete_json_撞上限就翻倍预算再要一次(monkeypatch):
+    """extract_json 修断尾很宽容：`["第一节", "第二节", "第三` 会被修成两节的合法列表——
+    分段计划撞上限时用户拿到的是安静地少了几节的计划。所以要 JSON 的调用撞上限
+    要翻倍预算重试，而不是把断尾修一修就当结果。"""
+    import asyncio
+
+    from app.util import llm
+
+    calls: list[int] = []
+
+    async def fake_complete(messages, *, max_tokens=0, temperature=0.0, effort="low", stats=None):
+        calls.append(max_tokens)
+        if len(calls) == 1:
+            stats["finish_reason"] = "length"
+            return '["第一节", "第二节", "第三'
+        stats["finish_reason"] = "stop"
+        return '["第一节", "第二节", "第三节"]'
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+    out = asyncio.run(llm.complete_json([{"role": "user", "content": "x"}], max_tokens=600))
+    assert calls == [600, 1200]
+    assert out == ["第一节", "第二节", "第三节"]
+
+
+def test_complete_json_没撞上限只要一次(monkeypatch):
+    import asyncio
+
+    from app.util import llm
+
+    calls: list[int] = []
+
+    async def fake_complete(messages, *, max_tokens=0, temperature=0.0, effort="low", stats=None):
+        calls.append(max_tokens)
+        stats["finish_reason"] = "stop"
+        return '{"a": 1}'
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+    assert asyncio.run(llm.complete_json([{"role": "user", "content": "x"}], max_tokens=300)) == {"a": 1}
+    assert calls == [300]

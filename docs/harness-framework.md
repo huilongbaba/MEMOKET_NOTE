@@ -226,7 +226,7 @@ backend/app/
     kb.py · memory.py          知识库虚拟子树、各节点页面、检索、事实 peek / 反查
     ingest.py · import_sources.py · skills.py · settings.py · profile.py · assets.py · export.py
     client_log.py              前端错误报进后端日志（打包版没有 DevTools）
-  util/                      config · llm（stream / stream_events / extract_json）· parent_watch
+  util/                      config · llm（stream / stream_events / complete_json / extract_json）· parent_watch
 ```
 
 前端与桌面壳（不是 Python，单独一张）：
