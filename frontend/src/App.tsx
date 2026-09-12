@@ -2841,7 +2841,7 @@ export default function App() {
             <div className="floating-buttons">
               <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
                       disabled={loading === 'note-harness'}
-                      title="magic tap 续写：先查知识库，据此往下写一段（流式）">
+                      title="续写：先查知识库，据此往下写一段（流式）">
                 <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
               </button>
               <span className="fb-split">
@@ -2952,7 +2952,7 @@ export default function App() {
               onMarginClick={() => setPaneFocus({ id: 'memory', n: Date.now() })}
               onSlash={onSlash}
               onStopRun={stopRun}
-              placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点 magic tap，会先查你的知识库再续写。"
+              placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点右上角「续写」，会先查你的知识库再往下写。"
               viewRef={editorViewRef}
             />
           </>
