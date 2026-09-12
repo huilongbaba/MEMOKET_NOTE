@@ -1283,8 +1283,13 @@ def delete_skill_config(user_id: str, slug: str) -> None:
 
 def save_snapshot(user_id: str, note_id: str, mode: str, round_idx: int,
                   state: str) -> str:
+    """存一份轮末暂停。**同一篇只留最新的一份**：正文已经往前走了，旧的那份
+    恢复出来只会把新内容盖掉；探针实拍两次「逐轮我来定」就攒了两份。"""
     run_id = uuid.uuid4().hex[:12]
     with connect() as c:
+        if note_id:
+            c.execute("DELETE FROM harness_snapshots WHERE user_id=? AND note_id=?",
+                      (user_id, note_id))
         c.execute(
             "INSERT INTO harness_snapshots (id,user_id,note_id,mode,round,state,created_at) "
             "VALUES (?,?,?,?,?,?,?)",

@@ -228,3 +228,14 @@ def test_轮数预算是整个run的不是每次恢复重新给(db, monkeypatch)
     st.round = 3
     asyncio.run(_collect(loop.run(st, _Hooks(), mw=())))
     assert st.round == 3, "预算已经用完，不该再跑"
+
+
+def test_同一篇只留最新的一份暂停快照(tmp_path, monkeypatch):
+    from app.database import store
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    a = store.save_snapshot("u", "n1", "note", 1, "{}")
+    b = store.save_snapshot("u", "n1", "note", 2, "{}")
+    other = store.save_snapshot("u", "n2", "note", 1, "{}")
+    ids = {r["id"] for r in store.list_snapshots("u")}
+    assert ids == {b, other} and a not in ids
+    assert store.get_snapshot("u", a) is None
