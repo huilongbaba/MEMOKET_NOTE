@@ -40,7 +40,10 @@ def test_merge_when_two_facts_say_the_same_thing_even_without_numbers():
     ]
     rels = relations.detect("王工负责通信模块的测试报告。", facts)
     assert [r["relation"] for r in rels] == ["merge"]
-    assert rels[0]["fact_ids"] == ["u-1-A1", "u-2-A1"]
+    assert rels[0]["fact_ids"] == ["u-1-A1", "u-2-A1"] and "2026-05-08 和 2026-05-12 这两条" in rels[0]["say"]
+    # 同一天的两条不说「X 和 X」
+    same_day = [_f(1, "王工负责补通信模块的测试报告。", "2026-05-08"), _f(2, "王工负责补通信模块测试报告，下周三给。", "2026-05-08")]
+    assert "2026-05-08 有两条" in relations.detect("王工负责通信模块的测试报告。", same_day)[0]["say"]
     # 不沾边的两条不会被凑成一对
     assert relations.detect("这个方向可以再想想。", facts) == []
 

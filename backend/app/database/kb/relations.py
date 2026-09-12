@@ -222,6 +222,9 @@ def _merge_candidate(related: list[tuple[float, dict]], *, min_pair: float = 0.5
         return None
     _s, a, b = best
     a, b = sorted((a, b), key=lambda f: f.get("date") or "")
+    da, db = a.get("date") or "某天", b.get("date") or "某天"
+    # 同一天的两条别说成「3-10 和 3-10」（第 134 轮实拍）
+    when = f"{da} 有两条" if da == db else f"{da} 和 {db} 这两条"
     return {"relation": "merge", "unit": "",
-            "say": f"知识库里 {a.get('date') or '某天'} 和 {b.get('date') or '某天'} 这两条说的像是同一件事，合成一条？",
+            "say": f"知识库里 {when}说的像是同一件事，合成一条？",
             "fact_ids": [a["id"], b["id"]], "values": []}
