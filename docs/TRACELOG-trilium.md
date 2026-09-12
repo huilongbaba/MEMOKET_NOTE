@@ -1240,3 +1240,11 @@ actionsRef）。412 篇大库用户的标签栏 / 知识库树回归正常。
 1000×700 开分屏实拍：中栏 250px，ribbon 折两行、工具栏只剩 B。分屏宽度现在算进窄窗
 逻辑：分屏最多占窗口 45%；右栏先收，中栏还不到 520px 就连左栏也收（关掉分屏自动回
 来）。同尺寸复拍中栏 ~700px，ribbon 单行。树右键菜单 / 键盘导航暗色回归正常。
+
+## [111] 全量巡检第 91 轮：magic tap 停在半句没人说（2026-09-12）
+
+真跑一次 tap（实拍）：一段停在「…也不能把“有人跟进”写成事项已经完成」，没有句号。
+`llm.stream` 早就能回 `finish_reason`，magic-tap 没接。现在 `done` 事件带
+`truncated`（= length），前端 toast「撞到长度上限，停在半句，光标放末尾再点一次」；
+已写内容一字不删。`tests/test_magic_tap_truncated.py` 假 stream 两种 finish_reason。
+第 90 轮重打 dmg、重开正式版。

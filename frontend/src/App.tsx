@@ -1558,7 +1558,7 @@ export default function App() {
     const tail = middle ? following.replace(/^\n*/, '\n\n') : ''
     let inserted = ''
     try {
-      await api.magicTap(
+      const { truncated } = await api.magicTap(
         before,
         spine,
         beats,
@@ -1583,6 +1583,8 @@ export default function App() {
       // 流完了再统一修一次「**标题：**」这类粗体（后端落盘路径有同样一步，续写是纯客户端拼的）
       const fixed = fixBoldPunct(inserted)
       if (fixed !== inserted) { inserted = fixed; setContent(head + inserted + tail) }
+      // 撞 token 上限停在句中（实拍「…写成事项已经完成」没句号）：已写的留着，说一声
+      if (truncated) toast('这段撞到长度上限，停在半句——把光标放在末尾再点一次接着写', 'error')
     } catch (e) {
       if ((e as Error).name !== 'AbortError') { if (isLlmUnreachable(e)) toastAction('续写失败：' + friendlyError(e), '打开设置', () => void openVirtual('app:settings', '设置'), 8000); else toast('续写失败：' + friendlyError(e), 'error') }
     } finally {

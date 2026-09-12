@@ -117,9 +117,10 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
                 "grounded": bool(facts), "sources": facts[:6], "fact_ids": ids[:6]}
         yield sse("meta", meta)
         written = ""
+        stats: dict = {}
         try:
             async for piece in llm.stream(messages, max_tokens=body.max_tokens,
-                                          temperature=0.7):
+                                          temperature=0.7, stats=stats):
                 written += piece
                 yield sse("delta", {"text": piece})
         except Exception as exc:
@@ -139,7 +140,9 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
             "hint": ("" if used or not facts else
                      "这段没用上检索到的记录，写的是通用内容——"
                      "重新点一次，或者先补一句具体的再续写")})
-        yield sse("done", {})
+        # 撞 token 上限被切断（实拍一段停在「…写成事项已经完成」没句号）要说出来：
+        # 已写的不删（删是拿丢内容掩盖截断），只告诉用户再点一次接着写。
+        yield sse("done", {"truncated": stats.get("finish_reason") == "length"})
 
     return sse_response(gen())
 
