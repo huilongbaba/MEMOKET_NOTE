@@ -56,6 +56,7 @@ import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
 import { fmtDate } from './util/time'
+import { notifyIfHidden } from './util/notify'
 
 // 后台自动生成的节流参数。骨架/编辑都是真实 LLM 调用（本地模型上约 8-15s），
 // 不能跟着每次按键触发——用"停止输入 N 秒 + 内容变化够多"两条门槛，既保证
@@ -984,6 +985,7 @@ export default function App() {
         onPlanDone: (p) => {
           setHarness((h) => (h ? { ...h, plan: p } : h))
           toast(`「${parent.title}」的写作计划已完成`)
+          notifyIfHidden('MEMOKET NOTE · 分段写作', `「${parent.title}」的写作计划已完成`)
         },
       }, ctrl.signal)
     } catch (e) {
@@ -1177,7 +1179,7 @@ export default function App() {
     setIngestActive(!!job)
     if (!job) return
     const ctrl = new AbortController()
-    api.watchJob(job, () => {}, () => { void reloadTree(); void reload(); setIngestTick((t) => t + 1); setIngestActive(false) }, ctrl.signal)
+    api.watchJob(job, () => {}, () => { void reloadTree(); void reload(); setIngestTick((t) => t + 1); setIngestActive(false); notifyIfHidden('MEMOKET NOTE · 知识库', '摄入完成') }, ctrl.signal)
     return () => ctrl.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job])
@@ -1841,6 +1843,7 @@ export default function App() {
         harnessDoneRef.current = true
         setHarnessDone(true)
         toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
+        notifyIfHidden('MEMOKET NOTE · 智能续写', `${notes.find((x) => x.id === noteId)?.title || '笔记'}：${label}`)
       },
     }
     // **统一挡一层**：run 属于 noteId 那篇，用户切走之后它的每个事件都不该碰
