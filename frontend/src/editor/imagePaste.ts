@@ -39,16 +39,20 @@ async function insertImage(view: EditorView, file: File, pos: number) {
     }
     src = await fileToDataUrl(file)
   }
-  // 图片自己占一段（Notion 也是块级插入）：落在一行中间——尤其是标题行——只会
-  // 显示成一串裸 markdown（实拍：拖进 H1 里）。前后各补一个空行。
   const line = view.state.doc.lineAt(pos)
-  const before = line.text.slice(0, pos - line.from)
-  const after = line.text.slice(pos - line.from)
-  const md = (before.trim() ? '\n\n' : '') + `![${alt}](${src})` + (after.trim() ? '\n\n' : '')
+  const { at, text } = imageInsertion(line.text, line.to, pos, `![${alt}](${src})`)
   view.dispatch({
-    changes: { from: pos, to: pos, insert: md },
-    selection: { anchor: pos + md.length },
+    changes: { from: at, to: at, insert: text },
+    selection: { anchor: at + text.length },
   })
+}
+
+/** 图片自己占一段（Notion 也是块级插入）。光标落在一行中间——尤其是标题行——
+ *  不能在光标处切开：实拍拖进「# 创业一年回顾」，标题被切成「#」+ 图 + 裸文字。
+ *  非空行一律插到**这一行末尾**之后，自成一段；空行就原地放。 */
+export function imageInsertion(lineText: string, lineTo: number, pos: number, md: string): { at: number; text: string } {
+  if (!lineText.trim()) return { at: pos, text: md }
+  return { at: lineTo, text: `\n\n${md}\n` }
 }
 
 export const imagePaste = EditorView.domEventHandlers({
