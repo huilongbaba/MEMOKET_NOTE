@@ -332,7 +332,7 @@ export default function App() {
   const leftShown = !focusMode && panes.leftOn && !tooNarrowForLeft
   const rightShown = !focusMode && panes.rightOn && !tooNarrowForRight
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
-  const [selectionBusy, setSelectionBusy] = useState(false)
+  const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
    *  不该离开这一页，弹层要么盖住正文、要么关掉就没了。 */
@@ -1339,7 +1339,7 @@ export default function App() {
     // Keep the menu open (showing a spinner via selectionBusy) instead of
     // closing it immediately -- otherwise a slow LLM call leaves no
     // indication anything is happening at the spot the user right-clicked.
-    setSelectionBusy(true)
+    setSelectionBusy(action)
     try {
       if (action === 'verify') {
         const r = await api.verifySelection(content, selection)
