@@ -1207,11 +1207,27 @@ export default function App() {
 
   // 摄入是后台任务。任务结束时刷一次树——不刷的话「已入库」的 ⇡ 要等下次
   // 打开应用才出现，用户会以为存入没成功、再存一遍。
+  // 跑的过程要看得见：实拍点「存入知识库」后 4 秒界面上什么都没有（只有引用页里
+  // 有一行），跑完也只有树上多个 ⇡。状态栏挂一个「存入知识库中… 已抽出 N 条」，结束
+  // 给一条 toast（错误也说）。
+  const [jobInfo, setJobInfo] = useState<{ status: string; facts: number; detail: string } | null>(null)
   useEffect(() => {
     setIngestActive(!!job)
-    if (!job) return
+    if (!job) { setJobInfo(null); return }
     const ctrl = new AbortController()
-    api.watchJob(job, () => {}, () => { void reloadTree(); void reload(); setIngestTick((t) => t + 1); setIngestActive(false); notifyIfHidden('MEMOKET NOTE · 知识库', '摄入完成') }, ctrl.signal)
+    let last: { status: string; facts: number; detail: string } = { status: 'queued', facts: 0, detail: '' }
+    setJobInfo(last)
+    api.watchJob(job, (j) => {
+      last = { status: String(j.status ?? ''), facts: Number(j.facts ?? 0), detail: String(j.detail ?? '') }
+      setJobInfo(last)
+    }, () => {
+      void reloadTree(); void reload(); setIngestTick((t) => t + 1); setIngestActive(false); setJobInfo(null); setJob('')
+      if (last.status === 'error') toast('存入知识库失败：' + (last.detail || '未知错误'), 'error')
+      else if (last.status === 'cancelled') toast('已取消存入知识库')
+      else if (last.facts > 0) toastAction(`已存入知识库：抽出 ${last.facts} 条记录`, '看看', () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:recent' })), 8000)
+      else toast('已存入知识库，但这篇没抽出可记的事实')
+      notifyIfHidden('MEMOKET NOTE · 知识库', last.status === 'error' ? '摄入失败' : `摄入完成，${last.facts} 条记录`)
+    }, ctrl.signal)
     return () => ctrl.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job])
@@ -2951,6 +2967,7 @@ export default function App() {
         {pausedRun && <span style={{ color: 'var(--accent)' }}>⏸ 等你处置</span>}
         {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
+          {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.facts > 0 ? ` 已抽出 ${jobInfo.facts} 条` : ''}</span>}
           {healthMsg && <span className="health-bad"><i className="bx bx-error" /> {healthMsg}</span>}
           {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
         </span>
