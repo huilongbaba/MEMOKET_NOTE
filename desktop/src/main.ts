@@ -4,8 +4,8 @@
  * 三件事：起后端、开窗口、退出时收干净。界面本身全在渲染进程里，跟网页版
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
-import { nativeTheme, app, BrowserWindow, Menu, dialog, shell, ipcMain, session } from 'electron'
-import { existsSync, writeFileSync } from 'node:fs'
+import { nativeTheme, app, BrowserWindow, Menu, dialog, shell, ipcMain, session, screen } from 'electron'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { startBackend, type Backend } from './backend.js'
@@ -48,12 +48,52 @@ function remember(line: string) {
   process.stdout.write(line)
 }
 
+const boundsFile = () => path.join(app.getPath('userData'), 'window.json')
+
+function loadBounds(): { x?: number; y?: number; width: number; height: number } | null {
+  try {
+    const b = JSON.parse(readFileSync(boundsFile(), 'utf8')) as { x?: number; y?: number; width: number; height: number }
+    if (!b || !b.width || !b.height) return null
+    // 显示器换了（外接屏拔了）就别把窗口放到看不见的地方
+    const onScreen = screen.getAllDisplays().some((d) => {
+      const a = d.workArea
+      return b.x !== undefined && b.y !== undefined && b.x >= a.x - 50 && b.y >= a.y - 50
+        && b.x < a.x + a.width - 100 && b.y < a.y + a.height - 100
+    })
+    return onScreen ? b : { width: b.width, height: b.height }
+  } catch { return null }
+}
+
+let boundsTimer: NodeJS.Timeout | null = null
+function rememberBounds(w: BrowserWindow) {
+  if (boundsTimer) clearTimeout(boundsTimer)
+  boundsTimer = setTimeout(() => {
+    try { if (!w.isDestroyed() && !w.isFullScreen()) writeFileSync(boundsFile(), JSON.stringify(w.getBounds())) } catch { /* 无所谓 */ }
+  }, 400)
+}
+
+// 退出前让界面把没存的正文存完：自动保存有 1.5 秒防抖，⌘Q 正好卡在这 1.5 秒里
+// 就丢最后几句。主进程先拦一次退出，问界面一声，存完（或 800ms 没回音）再真退。
+let flushed = false
+function flushThenQuit(e: Electron.Event) {
+  if (flushed || !win || win.isDestroyed()) return
+  e.preventDefault()
+  const started = Date.now()
+  const done = () => { if (flushed) return; flushed = true; remember(`[desktop] 退出前保存：界面 ${Date.now() - started}ms 后回应`); app.quit() }
+  ipcMain.once('flushed', done)
+  win.webContents.send('flush')
+  setTimeout(done, 800)
+}
+
 function createWindow(url: string) {
   // `--win=WxH`：截图核对窄窗口用
   const winArg = process.argv.find((a) => a.startsWith('--win='))?.slice(6).split('x').map(Number)
+  // 上次的窗口位置和大小（Trilium 也记）。探针传了 --win 就不用。
+  const saved = (winArg || probe) ? null : loadBounds()   // 探针要固定尺寸的截图
   win = new BrowserWindow({
-    width: winArg?.[0] || 1440,
-    height: winArg?.[1] || 900,
+    ...(saved ?? {}),
+    width: winArg?.[0] || saved?.width || 1440,
+    height: winArg?.[1] || saved?.height || 900,
     minWidth: 900,
     minHeight: 600,
     // 左上角留出红绿灯的位置——照 Trilium 的做法，标题栏交给界面自己画，
@@ -80,6 +120,8 @@ function createWindow(url: string) {
     return { action: 'deny' }
   })
 
+  win.on('resize', () => win && rememberBounds(win))
+  win.on('move', () => win && rememberBounds(win))
   win.loadURL(url)
   if (wantDevTools) win.webContents.openDevTools({ mode: 'detach' })
   if (shotPath) {
@@ -252,7 +294,9 @@ app.on('activate', () => {
 // localStorage（标签页 / 分屏 / 外观…）是 Chromium 攒着慢慢落盘的，退出得快
 // 就丢：实拍「设置里选深色 → 重开是浅色」，client-log 证实同一 origin 下
 // 上次存的值没了。退出前强制刷盘。
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  flushThenQuit(e)
+  if (!flushed) return
   quitting = true
   try { session.defaultSession.flushStorageData() } catch { /* 没有 session 时无所谓 */ }
   backend?.stop()

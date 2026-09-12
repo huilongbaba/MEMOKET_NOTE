@@ -608,6 +608,9 @@ export default function App() {
     // 整库导出：导航到接口地址就是下载（Electron 走系统的保存对话框）
     const onExport = () => { void save(); window.location.href = `/api/export/markdown?user=${encodeURIComponent(api.getUser())}` }
     window.addEventListener('export-all', onExport)
+    // 桌面壳退出前问一声：存完回 flushed（存失败也回，别卡住退出——草稿已经落本机）
+    const onFlush = () => { save().catch(() => {}).finally(() => window.memoketDesktop?.flushed?.()) }
+    window.addEventListener('flush-save', onFlush)
     const onOpenNote = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
       const n = notes.find((x) => x.id === id)
@@ -619,7 +622,7 @@ export default function App() {
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('export-all', onExport) }
+    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 

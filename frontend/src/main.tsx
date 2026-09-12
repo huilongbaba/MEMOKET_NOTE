@@ -10,6 +10,8 @@ import './styles.css'  // 后：老变量名指向那些令牌
 
 restoreTheme()
 // 应用菜单「帮助 › 快捷键一览」→ 跟 ⌘/ 同一条路
+// 退出前把没存的正文存完（App 里监听 flush-save，存完回 flushed）
+window.memoketDesktop?.onFlush?.(() => window.dispatchEvent(new CustomEvent('flush-save')))
 window.memoketDesktop?.onMenu?.((name) => {
   if (name === 'shortcuts') window.dispatchEvent(new CustomEvent('show-shortcuts'))
   if (name === 'export-all') window.dispatchEvent(new CustomEvent('export-all'))
