@@ -79,6 +79,16 @@ def facts_block(facts: list[str]) -> str:
     return block
 
 
+_DATA_URI = re.compile(r"\]\(data:[a-zA-Z0-9.+/-]+;base64,[^)\s]{16,}\)")
+
+
+def strip_data_uris(content: str) -> str:
+    """把内嵌的 base64 图片 / 音频换成一个占位：一张截图就是几十 KB 的 base64，
+    原样进提示词等于把 token 全烧在一串没有任何语义的字母上，还可能把正文挤出
+    上下文。占位保留了「这里有张图」这个事实。"""
+    return _DATA_URI.sub("](内嵌图片)", content or "")
+
+
 def content_block(content: str, empty: str = "") -> str:
     """已写正文那一块。``empty`` 是正文为空时替代它的那句话——
 
@@ -86,4 +96,4 @@ def content_block(content: str, empty: str = "") -> str:
     以及干脆原样给空），这个差别是有意的：模型据此知道自己在什么处境。
     所以留成参数，不统一。
     """
-    return "【已写正文】\n" + (content or empty)
+    return "【已写正文】\n" + (strip_data_uris(content) or empty)

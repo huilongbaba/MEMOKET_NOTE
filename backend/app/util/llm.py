@@ -26,6 +26,8 @@ store.get_active_llm_config()）。几个必须处理的模型特性：
 
 from __future__ import annotations
 
+import re
+
 import json
 from typing import AsyncIterator
 
@@ -44,13 +46,31 @@ def _headers() -> dict[str, str]:
 REASONING_RESERVE = 600
 
 
+_DATA_URI = re.compile(r"\]\(data:[a-zA-Z0-9.+/-]+;base64,[^)\s]{16,}\)")
+
+
+def sanitize_messages(messages: list[dict]) -> list[dict]:
+    """文本消息里内嵌的 base64（`![x](data:image/png;base64,…)`）换成占位。
+
+    一张截图几十 KB 的 base64 进提示词等于把 token 烧在没有语义的字母上，还会把
+    正文挤出上下文。放在这一层而不是各个 prompt 函数里：出口只有一个。**列表型
+    content（vision 的 image_url 分块）不动**——那是有意送图的。"""
+    out = []
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, str) and "data:" in c:
+            m = {**m, "content": _DATA_URI.sub("](内嵌图片)", c)}
+        out.append(m)
+    return out
+
+
 def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
              temperature: float, effort: str,
              tools: list[dict] | None = None) -> dict:
     cfg = store.get_active_llm_config()
     body = {
         "model": cfg["model"],
-        "messages": messages,
+        "messages": sanitize_messages(messages),
         # max_tokens 是调用方想要的正文长度，这里补上思考的开销。用
         # max_completion_tokens 而不是 max_tokens——见模块文档字符串第 3 条。
         "max_completion_tokens": max_tokens + REASONING_RESERVE,

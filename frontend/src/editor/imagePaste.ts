@@ -1,5 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import { toast } from '../toast'
+import { uploadAsset } from '../api'
 
 // Not a hard cap -- large images still get inlined, just with a heads-up,
 // since the doc has no separate asset store to reject into. Base64 runs
@@ -24,17 +25,24 @@ function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
-function insertImage(view: EditorView, file: File, pos: number) {
-  if (file.size > WARN_BYTES) {
-    toast(`「${file.name}」有点大（${(file.size / 1024 / 1024).toFixed(1)}MB），会让这篇笔记变重，但还是会插入`)
+/** 先传到后端的资产库（/api/assets，按内容哈希去重），正文里只留一个短地址；
+ *  传不上去（后端不在）才退回 data: URI——之前一律内嵌 base64，一张截图就让
+ *  笔记胖几 MB，续写时整段 base64 还会跟着正文进提示词。 */
+async function insertImage(view: EditorView, file: File, pos: number) {
+  const alt = file.name.replace(/\.[^.]+$/, '') || 'image'
+  let src: string
+  try {
+    src = (await uploadAsset(file)).url
+  } catch {
+    if (file.size > WARN_BYTES) {
+      toast(`「${file.name}」有点大（${(file.size / 1024 / 1024).toFixed(1)}MB），后端没接上只能内嵌，这篇笔记会变重`)
+    }
+    src = await fileToDataUrl(file)
   }
-  fileToDataUrl(file).then((dataUrl) => {
-    const alt = file.name.replace(/\.[^.]+$/, '') || 'image'
-    const md = `![${alt}](${dataUrl})`
-    view.dispatch({
-      changes: { from: pos, to: pos, insert: md },
-      selection: { anchor: pos + md.length },
-    })
+  const md = `![${alt}](${src})`
+  view.dispatch({
+    changes: { from: pos, to: pos, insert: md },
+    selection: { anchor: pos + md.length },
   })
 }
 
@@ -47,7 +55,7 @@ export const imagePaste = EditorView.domEventHandlers({
         const file = item.getAsFile()
         if (file) {
           event.preventDefault()
-          insertImage(view, file, view.state.selection.main.from)
+          void insertImage(view, file, view.state.selection.main.from)
           return true
         }
       }
@@ -61,7 +69,7 @@ export const imagePaste = EditorView.domEventHandlers({
     if (!imageFile) return false
     event.preventDefault()
     const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.from
-    insertImage(view, imageFile, pos)
+    void insertImage(view, imageFile, pos)
     return true
   },
 })

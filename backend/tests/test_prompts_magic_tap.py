@@ -23,3 +23,11 @@ def test_后文在段落边界截断不在词中间切():
 def test_没后文就是原来的追加语义():
     p = magic_tap_user("", [], "前面的正文。", [], [])
     assert p.rstrip().endswith("请接着往下写。") and "光标后面" not in p
+
+
+def test_内嵌图片不进提示词():
+    from app.harness.prompts.fragments import content_block, strip_data_uris
+    md = "前面 ![截图](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==) 后面"
+    assert strip_data_uris(md) == "前面 ![截图](内嵌图片) 后面"
+    assert "base64" not in content_block(md)
+    assert content_block("", "（空）") == "【已写正文】\n（空）"
