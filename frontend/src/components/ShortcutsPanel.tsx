@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { SHORTCUT_GROUPS } from '../shortcuts'
+import { fmtShortcut } from '../util/keys'
 
 /** ⌘/ 弹出的快捷键一览（Trilium 的 Options → Shortcuts 那张表的只读版）。 */
 export default function ShortcutsPanel({ onClose }: { onClose: () => void }) {
@@ -22,7 +23,7 @@ export default function ShortcutsPanel({ onClose }: { onClose: () => void }) {
               <p className="muted palette-group">{g.title}</p>
               {g.items.map((it) => (
                 <div key={it.keys} className="shortcut-row">
-                  <kbd>{it.keys}</kbd><span>{it.what}</span>
+                  <kbd>{fmtShortcut(it.keys)}</kbd><span>{it.what}</span>
                 </div>
               ))}
             </section>

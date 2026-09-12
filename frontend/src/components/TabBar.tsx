@@ -11,6 +11,7 @@
  * 下来的注意力。
  */
 import { useEffect, useRef, useState } from 'react'
+import { fmtShortcut } from '../util/keys'
 
 export type Tab = { id: string; noteId: string; title: string }
 
@@ -84,7 +85,7 @@ export default function TabBar({
           aria-selected={t.id === activeId}
           className={'note-tab' + (t.id === activeId ? ' active' : '')
             + (dragId === t.id ? ' dragging' : '') + (overIndex === i && dragId !== t.id ? ' drop-before' : '')}
-          title={`${t.title || '未命名'}${i < 9 ? `　⌘${i + 1}` : ''}`}
+          title={`${t.title || '未命名'}${i < 9 ? `　${fmtShortcut('⌘' + (i + 1))}` : ''}`}
           onClick={() => onSelect(t.id)}
           // 同行内拖拽排序（Trilium 用 Draggabilly；HTML5 dnd 够用）
           draggable={!!onReorder}
@@ -122,7 +123,7 @@ export default function TabBar({
       ))}
     </div>
     {overflow && <button className="tab-scroll" title="往右看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: 210, behavior: 'smooth' }) }}><i className="bx bx-chevron-right" /></button>}
-    <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）"><span><i className="bx bx-plus" /></span></button>
+    <button className="note-new-tab" onClick={onNew} title={`新建笔记（${fmtShortcut('⌘T')}）`}><span><i className="bx bx-plus" /></span></button>
     {/* 标签行空白处双击开新标签（浏览器约定） */}
     <div className="tab-row-filler" onDoubleClick={onNew} />
     </>

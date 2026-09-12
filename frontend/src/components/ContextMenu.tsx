@@ -15,6 +15,7 @@
  *   混用一个槽位以后加快捷键就撞了。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { fmtShortcut } from '../util/keys'
 
 export type MenuItem =
   | { kind: 'sep' }
@@ -119,7 +120,7 @@ export default function ContextMenu({
             <span className="cm-icon">{item.icon?.startsWith('bx-') ? <i className={'bx ' + item.icon} /> : (item.icon ?? '')}</span>
             <span className="cm-label">{item.label}</span>
             {item.hint && <span className="cm-hint">{item.hint}</span>}
-            {item.shortcut && <kbd className="cm-kbd">{item.shortcut}</kbd>}
+            {item.shortcut && <kbd className="cm-kbd">{fmtShortcut(item.shortcut)}</kbd>}
           </button>
         )
       })}

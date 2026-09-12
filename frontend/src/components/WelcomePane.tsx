@@ -2,6 +2,7 @@ import Logo from './Logo'
 import type { Note } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { SHORTCUT_GROUPS } from '../shortcuts'
+import { fmtShortcut } from '../util/keys'
 
 /**
  * 没打开任何笔记时中栏放什么。之前是两行灰字（实拍：新用户第一眼就是一片白）。
@@ -35,7 +36,7 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
           <i className="bx bx-plus" />
           <b>新建笔记</b>
           <span className="muted">写到一半点「续写」，会先查你的知识库再往下写。</span>
-          <kbd>⌘N</kbd>
+          <kbd>{fmtShortcut('⌘N')}</kbd>
         </button>
         <button className="welcome-card" onClick={onImport}>
           <i className="bx bx-import" />
@@ -64,9 +65,9 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
       )}
 
       <section>
-        <p className="muted palette-group" style={{ marginInline: 0 }}>常用键 <a className="link" onClick={onShortcuts}>全部 ⌘/</a></p>
+        <p className="muted palette-group" style={{ marginInline: 0 }}>常用键 <a className="link" onClick={onShortcuts}>全部 {fmtShortcut('⌘/')}</a></p>
         <div className="welcome-keys">
-          {keys.map((k) => <div key={k.keys} className="shortcut-row"><kbd>{k.keys}</kbd><span>{k.what}</span></div>)}
+          {keys.map((k) => <div key={k.keys} className="shortcut-row"><kbd>{fmtShortcut(k.keys)}</kbd><span>{k.what}</span></div>)}
         </div>
       </section>
     </div>
