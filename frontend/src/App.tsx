@@ -369,7 +369,9 @@ export default function App() {
     setNotes(list)
     // 库里已经没有的笔记（别处删的、导入回滚的）标签也收掉——留着点了只会「找不到」
     const ids = new Set(list.map((n) => n.id))
-    setTabs((prev) => prev.filter((t) => api.isVirtualId(t.noteId) || ids.has(t.noteId)))
+    // 虚拟标签也过一遍：不认识的 kb:* id（旧版本留下的 kb:overview）一起收掉
+    const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|fact|facts|etype)(:|$)/.test(id) || id.startsWith('app:')
+    setTabs((prev) => prev.filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId))))
     return list
   }, [])
 
@@ -600,6 +602,8 @@ export default function App() {
       const n = notes.find((x) => x.id === id)
       if (n) { await switchTo(n); return }
     }
+    // 不认识的 kb:* id（比如早年的 kb:overview）落到总览，别开一页只有裸 id 的空页
+    if (id.startsWith('kb:') && !VIRTUAL_LABELS[id] && !/^kb:(topic|entity|unit|fact|facts|etype)(:|$)/.test(id)) id = 'kb'
     if (virtualId === id && !current) return
     await save()
     const leaving = current
@@ -609,7 +613,8 @@ export default function App() {
     setVirtualId(id)
 
     const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
-      ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':') : id)
+      ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':')
+        : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
       ? prev
       : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])

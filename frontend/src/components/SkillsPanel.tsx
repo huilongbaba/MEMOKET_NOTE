@@ -306,20 +306,22 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
             </div>
             {skills.map((sk, i) => (
               <div key={sk.id} className="card">
-                <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <div className="row" style={{ gap: 6 }}>
+                {/* 标题长（「先想读者会追问什么（受 doc-coauthoring 的语境收集启发）」）窄窗时
+                    按钮组整个被挤到下一行（实拍 1000px）：标题可省略，按钮不缩 */}
+                <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', gap: 8 }}>
+                  <div className="row" style={{ gap: 6, minWidth: 0, flexWrap: 'nowrap' }}>
                     <button
                       title={sk.enabled ? '点击关闭' : '点击启用'}
                       onClick={() => toggle(sk)}
-                      style={{ padding: '2px 8px', borderColor: sk.enabled ? 'var(--ins)' : undefined,
+                      style={{ padding: '2px 8px', flexShrink: 0, borderColor: sk.enabled ? 'var(--ins)' : undefined,
                               color: sk.enabled ? 'var(--ins)' : 'var(--muted)' }}
                     >
                       {sk.enabled ? '● 已启用' : '○ 已关闭'}
                     </button>
-                    <strong>{sk.name}</strong>
-                    {sk.builtin && <span className="muted" style={{ fontSize: 11 }}>内置</span>}
+                    <strong title={sk.name} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sk.name}</strong>
+                    {sk.builtin && <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>内置</span>}
                   </div>
-                  <div className="row" style={{ gap: 2 }}>
+                  <div className="row" style={{ gap: 2, flexShrink: 0, flexWrap: 'nowrap' }}>
                     <button onClick={() => move(sk, -1)} disabled={i === 0} title="上移">↑</button>
                     <button onClick={() => move(sk, 1)} disabled={i === skills.length - 1} title="下移">↓</button>
                     <button onClick={() => startEdit(sk)} title="编辑">✎</button>
