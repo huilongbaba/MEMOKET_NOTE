@@ -29,6 +29,21 @@ _TAIL_WORDS = ("next steps", "what to look at next", "summary", "conclusion",
                "接下来", "下一步", "总结", "小结")
 
 
+def table_present(st: State) -> Verdict | None:
+    """生成表格那条路的产出里得有一张表。
+
+    实拍（第 152 轮）：第 1 轮调了 render_table 出了一张好表，第 2、3 轮模型写了句
+    「[tool call needed]」就交卷——没表。之前这种轮次还要再花一次打分调用才发现 table_validity=0；
+    表有没有是规则能判的，这里先判，判不过就不打分、下一轮的提示直接说清楚。"""
+    if blockcheck.has_table(st.content):
+        return None
+    return Verdict(
+        pick_dimension(st, "table_validity", "coherence"),
+        "这一轮没有表格。必须**调用 render_table** 生成一张 markdown 表并把它原样贴进来——"
+        "写「需要调用工具」不算，工具要真的调。",
+    )
+
+
 def heading_fits(st: State) -> Verdict | None:
     """Headings must sit *below* the surrounding section, not beside it."""
     gap = blockcheck.heading_gap(st.before, st.content)

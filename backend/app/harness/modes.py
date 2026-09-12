@@ -18,7 +18,7 @@ from .types import Dimension
 from .checks import grounding_rules as grounding_check
 from .checks import (charts_from_tools, citations_exist, citations_hold, heading_fits,
                      material_used, no_audit_voice, no_fake_charts,
-                     no_placeholder, outline_intact, tail_clashes)
+                     no_placeholder, outline_intact, table_present, tail_clashes)
 from .middleware import Compact, Repair, Replan, Runtime, Save
 from .middleware.revise import Revise
 from .state import State
@@ -496,7 +496,7 @@ TABLE = Mode(
     groups=("data", "table", "memory", "skill"),
     skill_scope="block_write",
     dims=TABLE_DIMS,
-    checks=(heading_fits,),
+    checks=(table_present, heading_fits),
     max_rounds=3,
 )
 

@@ -1944,6 +1944,7 @@ export default function App() {
           : reason === 'complete' ? (mode === 'polish' ? '已写内容都达标了，打磨完成' : '内容已完整，自动停止')
           : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
           : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
+          : reason === 'regressed' ? '再改反而更差，留下了最好的那轮'
           : '到达轮数上限，自动停止'
         const delta = liveContentRef.current.length - runBaseRef.current.length
         const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`

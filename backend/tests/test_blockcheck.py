@@ -200,3 +200,22 @@ def test_检查命中时构造的评价是合法的():
     assert ev.scores[ev.weakest].note == "没有真的画图"
     # 下游 ③：状态是 continue，循环会继续
     assert ev.status == "continue"
+
+
+def test_有没有表格():
+    from app.harness.checks import blockcheck
+    assert blockcheck.has_table("说明\n\n| a | b |\n|---|---|\n| 1 | 2 |\n")
+    assert blockcheck.has_table("| 阶段 | 内容 |\n|:---|---:|\n| x | y |")
+    assert not blockcheck.has_table("### 记录回填矩阵\n\n下表按阶段整理。\n\n[tool call needed]")
+    assert not blockcheck.has_table("---\n分隔线不是表\n")
+
+
+def test_生成表格没有表就不打分():
+    from types import SimpleNamespace
+    from app.harness.checks import table_present
+    from app.harness.modes import TABLE
+    st = SimpleNamespace(mode=TABLE, content="### 矩阵\n\n[tool call needed]", before="", after="")
+    v = table_present(st)
+    assert v and v.dimension == "table_validity" and "render_table" in v.message
+    st.content = "说明\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+    assert table_present(st) is None

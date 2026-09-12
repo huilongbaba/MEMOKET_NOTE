@@ -329,3 +329,25 @@ def test_wrap_produce_能改写流出去的内容():
                      if e.type.value == "TEXT_MESSAGE_CONTENT")
     assert deltas == "ABC", f"流出去的是 {deltas!r}"
     assert _finished(events).data["content"] == "ABC"
+
+
+def test_regressed_stops_early_and_ships_the_best():
+    """Round 1 nearly meets the bar (one dimension short), round 2 is worse:
+    stop right there and ship round 1 -- don't burn round 3. Observed for
+    real with 智能表格: round 1 had a good table, rounds 2 and 3 wrote
+    "[tool call needed]" and no table."""
+    hooks = FakeHooks(["good", "worse", "never"])
+    st = _state(_mode(dims=(Dimension("d0", "."), Dimension("d1", "."), Dimension("d2", ".")), max_rounds=3))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2, 2, 1], [0, 2, 1], [2, 2, 2]]), mw=BASE))
+    done = _finished(events)
+    assert done.data["reason"] == "regressed"
+    assert done.data["content"] == "good"
+    assert st.round == 2 and hooks.prepared == 2
+
+
+def test_regressed_does_not_fire_when_the_best_was_far_from_the_bar():
+    """Two dimensions short is not "nearly there": a worse round is just noise, keep going."""
+    hooks = FakeHooks(["a", "b", "c"])
+    st = _state(_mode(dims=(Dimension("d0", "."), Dimension("d1", "."), Dimension("d2", ".")), max_rounds=3))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2, 1, 1], [0, 1, 1], [2, 2, 2]]), mw=BASE))
+    assert _finished(events).data["reason"] == "complete" and st.round == 3

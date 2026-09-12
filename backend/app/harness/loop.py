@@ -121,6 +121,9 @@ async def run(st: State, hooks: Hooks,
             hit = _stop(st)
             if hit:
                 reason = hit
+                # 这一轮比最好的那轮差、提前停：交的得是最好的那轮，不是这一轮
+                if hit == "regressed" and st.best is not None:
+                    st.content = st.best[1]
                 break
             st.steer = _steer(st)
             # The next round needs last round's diagnosis, and ``st.ev`` is
@@ -276,7 +279,23 @@ def _no_progress(st: State) -> str | None:
     return "no_progress"
 
 
-BUILTIN_STOPS = (_complete, _blocked, _no_progress)
+def _regressed(st: State) -> str | None:
+    """已经接近合格，这一轮反而更差：别再跑了，交最好的那轮。
+
+    实拍生成表格：第 1 轮出了一张完整的表（三个维度两个达标），第 2 轮模型写了句「[tool call
+    needed]」没表，第 3 轮还是没表——后两轮各花一次模型调用，最后交的仍是第 1 轮。规则：最好的一轮
+    只差一个维度没达标、且这一轮排名比它低，就停（reason=regressed，best_of 会把最好的那轮交出去）。
+    第一轮不会触发（还没有「最好」可比）。"""
+    best = st.best
+    if best is None or not st.mode.dims or st.round >= st.mode.max_rounds:
+        return None                      # 最后一轮本来就要交最好的，不用另起一个理由
+    best_rank, _content = best
+    if best_rank[0] < max(1, len(st.mode.dims) - 1):
+        return None
+    return "regressed" if st.rank() < best_rank else None
+
+
+BUILTIN_STOPS = (_complete, _blocked, _no_progress, _regressed)
 
 
 def _stop(st: State) -> str | None:

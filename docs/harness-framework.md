@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 10 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 11 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -270,7 +270,7 @@ for round:
     before_judge / evaluate / after_judge             # rubric.evaluate（可被 skip_judge 短路）· BestOf · Repair · Runtime · Replan
     after_round                                       # Save · History
     STEP_FINISHED(round, content)                     # ← 权威正文
-    reason = _stop(st)                                # 内置：complete / blocked / no_progress；再 OR Mode.stop_when
+    reason = _stop(st)                                # 内置：complete / blocked / no_progress / regressed；再 OR Mode.stop_when
     if reason: break
 hooks.commit(st)
 after_run
@@ -282,7 +282,7 @@ RUN_FINISHED(content, reason, run_id?)
 给打分用，`Checks` 可能判定不合格直接跳过打分。② `Revise` 在 `before_round` 改已有
 正文，必须在 `Compact` 压缩之前。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（10 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（11 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 ---
@@ -364,7 +364,8 @@ State: mode · ctx(user/note/cursor) · request · round
 - Mode 的停止条件（`modes.py`）：`material_used_up`（材料用完就停，不然覆盖维度会
   逼它编）· `stalled`（连续几轮没变化）· `nothing_left_to_fix`（打磨模式一轮零修订）·
   `pause_for_review`（每轮停下等用户）。内置三条在 `loop.py`：`complete` / `blocked` /
-  `no_progress`。
+  `no_progress`。**`regressed`**：最好的一轮只差一个维度没达标、这一轮排名反而更低——别再跑了，
+  best_of 交最好的那轮（实拍生成表格：第 1 轮好表，第 2、3 轮「[tool call needed]」没表，白花两次调用）。
 - 加一个功能 = `modes.py` 加一个实例；路由不动。
 
 ---
@@ -398,7 +399,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 10 条 check（代码判据）
+## 8. 11 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -412,6 +413,7 @@ Mode 按需追加的：
 | `tail_clashes` | fits_context / coherence | ✔ 去掉收尾小节 | 插入块自己写了「总结」而下文已有 |
 | `no_fake_charts` | has_charts / chart_validity / coherence | | 用文字描述的图（`[柱状图：…]`） |
 | `charts_from_tools` | has_charts / chart_validity / coherence | | 手写的 mermaid——不是工具原样返回的 |
+| `table_present` | table_validity / coherence | | 生成表格那条路的产出里没有 markdown 表（模型写「[tool call needed]」交卷） |
 
 - `pick_dimension(st, *candidates)`：一条 check 被多个 Mode 共用，打翻的维度按当前
   Mode 实际有的挑；`tests/test_harness_modes.py` 断言每条 check 在一段「踩满所有毛病

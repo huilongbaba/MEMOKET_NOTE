@@ -111,3 +111,16 @@ def heading_gap(before: str, block: str, *, max_new: int = 3) -> str:
             f"不是一篇独立报告。最多 {max_new} 个，图配一两句话就够，"
             f"不用每张图都起一个标题。")
     return " ".join(problems)
+
+
+_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$", re.M)
+
+
+def has_table(block: str) -> bool:
+    """有没有一张 markdown 表：一行表头 + 紧跟的分隔行（`|---|---|`）。"""
+    for m in _TABLE_SEP.finditer(block or ""):
+        head_end = m.start()
+        prev = (block[:head_end].rstrip("\n").split("\n") or [""])[-1]
+        if "|" in prev:
+            return True
+    return False

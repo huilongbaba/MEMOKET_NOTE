@@ -18,7 +18,7 @@ from .charts import charts_from_tools, no_fake_charts
 from .grounding import (citations_exist, citations_hold, material_used,
                         no_audit_voice, no_placeholder)
 from .pick import pick_dimension
-from .structure import heading_fits, outline_intact, tail_clashes
+from .structure import heading_fits, outline_intact, table_present, tail_clashes
 
 __all__ = [
     "pick_dimension",
@@ -26,6 +26,7 @@ __all__ = [
     "citations_exist",
     "citations_hold",
     "heading_fits",
+    "table_present",
     "material_used",
     "no_audit_voice",
     "no_fake_charts",
