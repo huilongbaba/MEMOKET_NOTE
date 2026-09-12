@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { isSpeakerTag } from '../../util/kbNoise'
 
 import { kbTopic, type KbTopicPage } from '../../api'
-import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions } from './KbBits'
+import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions, MissingPage } from './KbBits'
 import LocalGraph from './LocalGraph'
 
 export default function TopicPage({ code, actions }: { code: string; actions: KbActions }) {
@@ -15,7 +15,7 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
     return () => { alive = false }
   }, [code, offset])
   if (p === undefined) return <p className="muted"><span className="spinner" /> 加载中…</p>
-  if (p === null) return <p className="muted">没有这个主题：{code}</p>
+  if (p === null) return <MissingPage what="主题" id={code} actions={actions} back="kb:topics" backLabel="回主题列表" />
   return (
     <div className="kb-page">
       <div className="kb-head">

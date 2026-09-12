@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { kbUnit, type KbUnitPage } from '../../api'
-import { Chip, FactList, KbSection, Pager, type KbActions } from './KbBits'
+import { Chip, FactList, KbSection, Pager, type KbActions, MissingPage } from './KbBits'
 
 /** 一场会议（KITE 的 unit）：这场会抽出来的事实。 */
 export default function UnitPage({ id, actions }: { id: string; actions: KbActions }) {
@@ -14,7 +14,7 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
     return () => { alive = false }
   }, [id, offset])
   if (p === undefined) return <p className="muted"><span className="spinner" /> 加载中…</p>
-  if (p === null) return <p className="muted">没有这场会议：{id}</p>
+  if (p === null) return <MissingPage what="会议" id={id} actions={actions} back="kb:recent" backLabel="回最近摄入" />
   return (
     <div className="kb-page">
       <div className="kb-head">

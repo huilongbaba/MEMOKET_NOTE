@@ -6,6 +6,20 @@ import { useState, type ReactNode } from 'react'
 
 import type { FactDetail, KbMonth } from '../../api'
 
+/** 虚拟节点指向的东西已经没了（旧标签、改名过的实体、重建过的知识库）：说清是什么、
+ *  给条回去的路。之前三个页各写一行灰字，没有出口（实拍）。 */
+export function MissingPage({ what, id, actions, back = 'kb', backLabel = '回知识库总览' }: {
+  what: string; id: string; actions: KbActions; back?: string; backLabel?: string
+}) {
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <h3 style={{ margin: 0 }}>没有这个{what}</h3>
+      <p className="muted" style={{ margin: 0 }}><code>{id}</code> 在知识库里不存在——可能是旧标签、改过名，或者知识库重建过。</p>
+      <div><button onClick={() => actions.onOpen(back)}><i className="bx bx-left-arrow-alt" /> {backLabel}</button></div>
+    </div>
+  )
+}
+
 export type KbActions = {
   onOpen: (id: string) => void                 // 虚拟节点 kb:…
   onOpenNote: (noteId: string) => void

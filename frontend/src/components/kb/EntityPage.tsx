@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { kbEntity, type KbEntityPage } from '../../api'
-import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions } from './KbBits'
+import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions, MissingPage } from './KbBits'
 import LocalGraph from './LocalGraph'
 
 export default function EntityPage({ code, actions }: { code: string; actions: KbActions }) {
@@ -14,7 +14,7 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
     return () => { alive = false }
   }, [code, offset])
   if (p === undefined) return <p className="muted"><span className="spinner" /> 加载中…</p>
-  if (p === null) return <p className="muted">没有这个实体：{code}</p>
+  if (p === null) return <MissingPage what="实体" id={code} actions={actions} back="kb:entities" backLabel="回实体列表" />
   return (
     <div className="kb-page">
       <div className="kb-head">
