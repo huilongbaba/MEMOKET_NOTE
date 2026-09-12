@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('memoketDesktop', {
   flushed() { ipcRenderer.send('flushed') },
   /** 界面定下了当前身份：主进程记进 identity.json，localStorage 丢了也认得回来 */
   rememberUser(user: string) { ipcRenderer.send('remember-user', user) },
+  /** 弹系统的选文件夹对话框（导回 Obsidian 选 vault）；取消返回空串 */
+  pickDirectory(title: string): Promise<string> { return ipcRenderer.invoke('pick-directory', title) },
 })

@@ -1137,6 +1137,21 @@ export const importFeishu = (appId: string, appSecret: string, scope: 'wiki' | '
     .then(json<JobOut>)
 }
 
+// ---- 导回（docs/import-sync-plan.md §2）：这里是真相，按 memoket_id 覆盖远端副本 ----
+export type ExportBackOut = { created?: number; updated?: number; written?: number; skipped?: number; conflicts?: string[]; failed?: string[]; files?: string[] }
+export type NoteRemote = { platform: string; remote_id: string; remote_path: string; exported_at: string }
+export const exportObsidian = (vaultDir: string, noteIds: string[] = [], force = false) =>
+  fetch('/api/export/obsidian', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ vault_dir: vaultDir, note_ids: noteIds, force }) })
+    .then(json<ExportBackOut>)
+export const exportNotion = (token: string, parentPageId: string, noteIds: string[] = []) =>
+  fetch('/api/export/notion', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ token, parent_page_id: parentPageId, note_ids: noteIds }) })
+    .then(json<ExportBackOut>)
+export const exportFeishu = (appId: string, appSecret: string, folderToken: string, noteIds: string[] = []) =>
+  fetch('/api/export/feishu', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ app_id: appId, app_secret: appSecret, folder_token: folderToken, note_ids: noteIds }) })
+    .then(json<ExportBackOut>)
+export const noteRemotes = (noteId: string) =>
+  fetch(`/api/export/remotes/${noteId}`, { headers: headers() }).then(json<NoteRemote[]>)
+
 /** Apple Notes 没有公开 API，只能靠 AppleScript 在本机导出——而这个后端就跑在
  * 用户自己的 Mac 上，所以服务端能直接调 osascript。部署到远端时不可用，先问
  * available 再决定给不给按钮，别让用户点一个必然失败的东西。 */

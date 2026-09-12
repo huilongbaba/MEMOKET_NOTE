@@ -237,6 +237,11 @@ ipcMain.on('remember-user', (_e, user: unknown) => {
     remember(`[desktop] 记住身份 ${user}`)
   }
 })
+// 导回 Obsidian 要选 vault 目录：网页拿不到本机路径，只能主进程弹系统对话框
+ipcMain.handle('pick-directory', async (_e, title: unknown) => {
+  const r = await dialog.showOpenDialog({ title: typeof title === 'string' ? title : '选择文件夹', properties: ['openDirectory', 'createDirectory'] })
+  return r.canceled ? '' : (r.filePaths[0] || '')
+})
 ipcMain.on('set-theme', (_e, theme: unknown) => {
   if (forcedTheme) return
   if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme

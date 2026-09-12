@@ -5,6 +5,7 @@ import {
 } from '../api'
 import type { FactDetail, JobOut } from '../api'
 import { toast } from '../toast'
+import ExportBack from './ExportBack'
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
@@ -360,6 +361,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           </div>
         )}
       </div>
+      <ExportBack />
     </div>
   )
 }

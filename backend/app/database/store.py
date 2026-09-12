@@ -160,6 +160,17 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user ON harness_snapshots(user_id, crea
 
 -- 笔记历史版本（Trilium 的 note revisions）。保存时正文变了、且离上一版超过
 -- 间隔就把**旧**正文存一份；恢复某版之前先把当前存一份，恢复永远可逆。
+-- 导回记录：这篇在哪个平台有副本、远端 id / 路径、上次导回时间（docs/import-sync-plan.md §2）
+CREATE TABLE IF NOT EXISTS note_remotes (
+    user_id     TEXT NOT NULL,
+    note_id     TEXT NOT NULL,
+    platform    TEXT NOT NULL,
+    remote_id   TEXT NOT NULL DEFAULT '',
+    remote_path TEXT NOT NULL DEFAULT '',
+    exported_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, note_id, platform)
+);
+
 CREATE TABLE IF NOT EXISTS note_revisions (
     id         TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL,
@@ -453,6 +464,26 @@ def get_note(user_id: str, note_id: str) -> dict | None:
         row = c.execute("SELECT * FROM notes WHERE user_id=? AND id=?",
                         (user_id, note_id)).fetchone()
     return _note(row) if row else None
+
+
+def record_remote(user_id: str, note_id: str, platform: str, remote_id: str = "", remote_path: str = "") -> None:
+    with connect() as c:
+        c.execute("INSERT OR REPLACE INTO note_remotes (user_id,note_id,platform,remote_id,remote_path,exported_at) VALUES (?,?,?,?,?,?)",
+                  (user_id, note_id, platform, remote_id, remote_path, _now()))
+
+
+def get_remote(user_id: str, note_id: str, platform: str) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM note_remotes WHERE user_id=? AND note_id=? AND platform=?",
+                        (user_id, note_id, platform)).fetchone()
+    return dict(row) if row else None
+
+
+def list_remotes(user_id: str, note_id: str) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM note_remotes WHERE user_id=? AND note_id=? ORDER BY platform",
+                         (user_id, note_id)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def content_sha(content: str) -> str:

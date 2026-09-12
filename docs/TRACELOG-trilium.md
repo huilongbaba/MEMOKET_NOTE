@@ -1551,3 +1551,16 @@ detail 说「本地也改过」；知识库侧内容变了先删 `<源>-<源侧 
 item 流水线，`source_id = document_id`。导入页多一行「飞书」。凭证不落库。测试用手造的块
 JSON 和假 get/post 跑通整条路（列两篇、跳过 sheet、payload 里 source=feishu）。
 **没有真账号，块类型表按官方文档写，实测有出入再调。** pytest 816。
+
+## [149] 导回 Obsidian / Notion / 飞书（2026-09-12，优先队列 ⑧）
+
+原则照 import-sync-plan §2：导回是视图不是双向同步。`build_export` 拆成 `exporters.render_tree`
+（路径 / 正文 / 资产 / note_id，zip 导出和目录写入共用，`only=` 可只出几篇），front-matter 加
+`memoket_id`。Obsidian：写 vault 目录，`note_remotes` 记路径 + 写出内容的 sha；再导时内容相同跳过、
+文件被对方改过（sha 对不上上次写的）报 `conflicts` 不覆盖、勾「覆盖对方改过的」才写——第一版用
+mtime 判「对方改过」，自己刚写的文件 mtime 就比 exported_at 新，本地改一次就被当冲突，改成 sha。
+Notion：`POST /pages` + 子块，再导按记住的 page id `PATCH` 标题、删旧块、写新块；飞书：建文档 +
+`batch_delete` 旧块 + 50 个一批写 children。markdown → 块是粗粒度纯函数（标题 / 段落 / 列表 /
+有序 / 代码 / 引用，2000 字切段）。凭证不落库。桌面壳加 `pick-directory` IPC；导入页底部多「导回」
+区；信息面板「副本」行（Obsidian · 何时导回 · 之后改过）。terrence 真库跑过：20 篇写出、第二次
+全部跳过、资产复制、克隆按 id 只写一次。`tests/test_export_back.py` 五条（假客户端）。pytest 821。

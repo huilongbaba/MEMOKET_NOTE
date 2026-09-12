@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react'
 
-import { notePaths, type Note, type TreeRow } from '../api'
+import { notePaths, noteRemotes, type Note, type NoteRemote, type TreeRow } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate, fmtDateTime } from '../util/time'
 import { readingMinutes, wordCount } from '../util/wordCount'
@@ -16,6 +16,15 @@ const SOURCE_LABEL: Record<string, string> = { obsidian: 'Obsidian', notion: 'No
 
 export function NoteInfoPanel({ note, content, row }: { note: Note; content: string; row?: TreeRow }) {
   const words = wordCount(content)
+  // 导回副本（docs/import-sync-plan.md §2）：这篇在哪些平台有副本、上次导回是什么时候
+  const [remotes, setRemotes] = useState<NoteRemote[]>([])
+  useEffect(() => {
+    let alive = true
+    const load = () => { noteRemotes(note.id).then((r) => { if (alive) setRemotes(r) }).catch(() => { /* 没有就没有 */ }) }
+    load()
+    window.addEventListener('note-remotes-changed', load)
+    return () => { alive = false; window.removeEventListener('note-remotes-changed', load) }
+  }, [note.id])
   return (
     <dl className="kv">
       <dt>创建</dt><dd>{fmtDateTime(note.created_at)}</dd>
@@ -24,6 +33,7 @@ export function NoteInfoPanel({ note, content, row }: { note: Note; content: str
       <dt>引用</dt><dd>{row?.cite_count ? `${row.cite_count} 条知识库记录` : '无'}</dd>
       <dt>摄入</dt><dd>{row?.ingested_at ? `已摄入（${fmtDate(row.ingested_at)}）` : '未摄入'}</dd>
       {note.source && <><dt>来源</dt><dd>{SOURCE_LABEL[note.source] ?? note.source}{note.imported_at ? ` · ${fmtDate(note.imported_at)} 导入` : ''}{note.imported_at && note.updated_at > note.imported_at ? ' · 本地改过' : ''}</dd></>}
+      {remotes.length > 0 && <><dt>副本</dt><dd>{remotes.map((r) => `${SOURCE_LABEL[r.platform] ?? r.platform} · ${fmtDate(r.exported_at)} 导回${r.exported_at < note.updated_at ? '（之后改过）' : ''}`).join('；')}</dd></>}
       <dt>位置</dt><dd>{row?.branch_count && row.branch_count > 1 ? `${row.branch_count} 处（克隆）` : '1 处'}</dd>
       <dt>id</dt><dd><code style={{ fontSize: 11 }}>{note.id}</code></dd>
     </dl>

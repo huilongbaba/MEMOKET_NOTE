@@ -8,7 +8,7 @@ export type Theme = 'system' | 'light' | 'dark'
 const KEY = 'memoket.theme'
 
 declare global {
-  interface Window { memoketDesktop?: { setTheme(theme: Theme): void; onMenu?(cb: (name: string) => void): void; onFlush?(cb: () => void): void; flushed?(): void; rememberUser?(user: string): void } }
+  interface Window { memoketDesktop?: { setTheme(theme: Theme): void; onMenu?(cb: (name: string) => void): void; onFlush?(cb: () => void): void; flushed?(): void; rememberUser?(user: string): void; pickDirectory?(title: string): Promise<string> } }
 }
 
 export function getTheme(): Theme {
