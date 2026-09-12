@@ -1212,6 +1212,15 @@ export default function App() {
           }, 1500)
         })() }
       }
+      // 目录：打开右栏目录、把正文滚到中段，看当前所在的那一节有没有高亮
+      if (probe?.startsWith('outline:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(8))
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          setTimeout(() => setPaneFocus({ id: 'outline', n: 1 }), 800)
+          setTimeout(() => { const sc = document.querySelector('.note-scroll'); if (sc) sc.scrollTop = sc.scrollHeight * 0.45 }, 2500)
+        })() }
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand

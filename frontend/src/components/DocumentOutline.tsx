@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { RefObject } from 'react'
 import { EditorView } from '@codemirror/view'
 
@@ -43,7 +43,25 @@ export default function DocumentOutline({ content, viewRef }: {
   viewRef: RefObject<EditorView | null>
 }) {
   const headings = useMemo(() => parseHeadings(content), [content])
-  if (headings.length === 0) return null
+  // 正在看哪一节：跟着正文滚动区顶部那一行走（Obsidian 的 outline 也这么做）。
+  // 滚动的是 .note-scroll 不是 CM 自己，所以听它。
+  const [activePos, setActivePos] = useState(-1)
+  useEffect(() => {
+    const view = viewRef.current
+    const scroller = view?.scrollDOM.closest('.note-scroll') as HTMLElement | null
+    if (!view || !scroller || headings.length === 0) return
+    const update = () => {
+      const r = scroller.getBoundingClientRect()
+      const pos = view.posAtCoords({ x: r.left + 60, y: r.top + 90 }) ?? view.posAtCoords({ x: r.left + 60, y: r.top + 90 }, false)
+      let active = -1
+      for (const h of headings) if (h.pos <= pos) active = h.pos
+      setActivePos(active)
+    }
+    update()
+    scroller.addEventListener('scroll', update, { passive: true })
+    return () => scroller.removeEventListener('scroll', update)
+  }, [headings, viewRef])
+  if (headings.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>正文里的 <code>#</code> 标题会列在这里，点一下跳过去。</p>
 
   function jump(pos: number) {
     const view = viewRef.current
@@ -61,10 +79,10 @@ export default function DocumentOutline({ content, viewRef }: {
         {headings.map((h, i) => (
           <a
             key={i}
-            className="link"
+            className={'link outline-item' + (h.pos === activePos ? ' active' : '')}
             style={{
               display: 'block', fontSize: 12,
-              paddingLeft: (h.level - 1) * 12,
+              paddingLeft: 6 + (h.level - 1) * 12,
               textDecoration: 'none',
             }}
             onClick={() => jump(h.pos)}

@@ -920,3 +920,8 @@ kbd {
 .harness-sticky { position: sticky; top: 48px; z-index: 6; background: var(--main-bg); margin: 0 calc(-1 * var(--content-margin-inline)); padding: 2px var(--content-margin-inline) 4px; }
 .harness-sticky .harness-line { margin: 0; flex-wrap: wrap; }
 .harness-sticky .harness-line button.primary, .harness-sticky .harness-line button { height: 26px; padding: 0 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+
+/* 右栏目录：当前所在的那一节 */
+.outline-item { padding: 3px 6px 3px 0; border-radius: 6px; border-inline-start: 2px solid transparent; color: var(--muted); }
+.outline-item:hover { color: var(--fg); background: var(--hover); }
+.outline-item.active { color: var(--accent); border-inline-start-color: var(--accent); font-weight: 600; }
