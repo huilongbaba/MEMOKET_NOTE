@@ -227,7 +227,8 @@ export default function NoteTree({
             {/* 图标：真笔记 叶子 = 文档 / 有子节点 = 文件夹（notes.ts:140-143）；
                 知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
             <span className="tree-icon" aria-hidden><i className={'bx ' + iconOf(n)} /></span>
-            <span className="tree-title">{displayTitle(n)}</span>
+            {/* 标题被截断时悬停能看全；同名的几篇靠日期分 */}
+            <span className="tree-title" title={displayTitle(n) + (n.updated_at ? `\n修改于 ${n.updated_at.slice(0, 10)}` : '')}>{displayTitle(n)}</span>
             {n.fact_count > 0 && !isFactId(n.note_id) && (
               <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
             )}
