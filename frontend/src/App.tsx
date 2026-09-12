@@ -1146,6 +1146,9 @@ export default function App() {
       setTitle(draft.title || n.title)
       setContent(draft.content)
       toast('上次没存上的内容已恢复到这篇里，会在下一次自动保存时存回去')
+      // 探针模式下 save() 被拦，这份草稿永远「存不回去」，会留在 dev 实例的 localStorage 里，
+      // 下一次不带探针启动就被当真草稿存进真实笔记（第 136 轮：测试笔记末尾多了一行探针文案）
+      if (new URLSearchParams(location.search).get('probe')) { try { localStorage.removeItem('memoket-note-draft:' + n.id) } catch { /* 无所谓 */ } }
     } else {
       setTitle(n.title)
       setContent(n.content)
