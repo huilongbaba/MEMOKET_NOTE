@@ -64,7 +64,11 @@ export default function RelatedMemory({ content, onInsert }: {
         >
           <div style={{ fontSize: 13 }}>{f.text}</div>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-            {f.when ? <span className="badge">{f.when}</span> : <span />}
+            <span className="row" style={{ gap: 4 }}>
+              {f.when ? <span className="badge">{f.when}</span> : null}
+              {/* 正文里已经引过的标出来——不然同一条会被插两次（实拍：一段里两个同样的出处） */}
+              {content.includes(`[${f.id}]`) && <span className="badge ok" title="正文里已经引用了这条">已引用</span>}
+            </span>
             <span className="memory-card-actions">
               <button className="icon-btn" title="打开这条事实"
                       onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })) }}>

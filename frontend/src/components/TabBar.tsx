@@ -101,7 +101,8 @@ export default function TabBar({
       ))}
     </div>
     <button className="note-new-tab" onClick={onNew} title="新建笔记（⌘T）"><span><i className="bx bx-plus" /></span></button>
-    <div className="tab-row-filler" />
+    {/* 标签行空白处双击开新标签（浏览器约定） */}
+    <div className="tab-row-filler" onDoubleClick={onNew} />
     </>
   )
 }
