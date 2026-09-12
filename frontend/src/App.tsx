@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { micError } from './util/micError'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -2132,8 +2133,8 @@ export default function App() {
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      toast('拿不到麦克风权限', 'error')
+    } catch (e) {
+      toast(micError(e), 'error')
       return
     }
     const chunks: Blob[] = []

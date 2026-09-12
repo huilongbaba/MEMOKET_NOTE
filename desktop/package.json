@@ -50,7 +50,10 @@
         }
       ],
       "identity": null,
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "MEMOKET NOTE 需要用麦克风录音，用来语音输入和把录音转写进知识库。"
+      }
     },
     "linux": {
       "target": [

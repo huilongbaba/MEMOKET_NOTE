@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { ingestAudio, transcribeOnly } from '../api'
 import { toast } from '../toast'
+import { friendlyError } from '../util/friendlyError'
+import { micError } from '../util/micError'
 import ContextMenu, { type MenuAt } from './ContextMenu'
 
 type Props = {
@@ -54,7 +56,7 @@ export default function AudioRecorder({ onTranscript, onIngested }: Props) {
             else toast(detail || '录音处理失败', 'error')
           }
         } catch (err) {
-          toast(`语音处理失败：${err}`, 'error')
+          toast(`语音处理失败：${friendlyError(err)}`, 'error')
         } finally {
           setBusy('')
         }
@@ -62,8 +64,8 @@ export default function AudioRecorder({ onTranscript, onIngested }: Props) {
       mr.start()
       recorder.current = mr
       setRecording(true)
-    } catch {
-      toast('无法访问麦克风。浏览器要求 HTTPS 或 localhost 才允许录音。', 'error')
+    } catch (e) {
+      toast(micError(e), 'error')
     }
   }
 
