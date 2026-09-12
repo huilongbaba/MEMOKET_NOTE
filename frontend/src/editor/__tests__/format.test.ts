@@ -12,3 +12,11 @@ describe('fixBoldPunct', () => {
     expect(out).toContain('**a：**')
   })
 })
+
+describe('formatMarkdown 幂等', () => {
+  it('格式化两次结果不变', () => {
+    const src = '# 标题\n段落中文English混排。\n- 列表1\n- 列表2\n|a|b|\n|-|-|\n|1|2|\n```py\nx=1\n```\n> 引用\n**粗体：**后面'
+    const once = formatMarkdown(src)
+    expect(formatMarkdown(once)).toBe(once)
+  })
+})

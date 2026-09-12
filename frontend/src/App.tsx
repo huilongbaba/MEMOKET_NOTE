@@ -32,6 +32,7 @@ import PreferencesPanel from './components/PreferencesPanel'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { sectionEnd } from './util/sectionEnd'
+import { minimalChange } from './editor/minimalChange'
 import { setIngestActive } from './util/ingestActive'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
 import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
@@ -1332,6 +1333,15 @@ export default function App() {
           }, 'image/png')
         }, 1500)
       }
+      // 格式化：滚到中段再 ⇧⌘F，视口不该被拽走
+      if (probe?.startsWith('format:') && notes.length && !harnessProbeDone.current) {
+        const n = notes.find((x) => x.id === probe.slice(7))
+        if (n) { harnessProbeDone.current = true; void (async () => {
+          await switchTo(n)
+          setTimeout(() => { const sc = document.querySelector('.note-scroll'); if (sc) sc.scrollTop = sc.scrollHeight * 0.4 }, 2000)
+          setTimeout(() => formatNote(), 3000)
+        })() }
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand
@@ -2343,9 +2353,12 @@ export default function App() {
     const before = view.state.doc.toString()
     const after = formatMarkdown(before)
     if (after === before) { toast('已经是规范格式了，没有需要改的'); return }
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: after } })
+    // 只换真正变了的那一段：整篇替换会把光标和视口拽到文末（跟外部更新走同一条路）
+    const change = minimalChange(before, after)
+    if (change) view.dispatch({ changes: change })
     setContent(after)
     setRoundDiff(diffParts(before, after))
+    toast(`格式化：改动 ${Math.abs(after.length - before.length)} 字（空行 / 空格 / 表格对齐）`)
   }
 
   /** 智能排版。跟一键格式化是**互补**的两件事：
