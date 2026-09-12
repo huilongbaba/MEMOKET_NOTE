@@ -71,9 +71,10 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
         <div className="palette-list">
           {items.map((it, k) => (
             <div key={it.id} className={'palette-item' + (k === i ? ' active' : '')}
-                 onMouseEnter={() => setI(k)} onClick={() => choose(k)}>
-              {it.label}
-              {it.path && <span className="muted" style={{ marginInlineStart: 8, fontSize: 12 }}>{it.path}</span>}
+                 onMouseEnter={() => setI(k)} onClick={() => choose(k)} title={it.path ? `${it.label} · ${it.path}` : it.label}>
+              {/* 长标题（首行当标题的那种一句话）不能顶出去：省略号，完整的放 title（第 135 轮实拍） */}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: '0 1 auto' }}>{it.label}</span>
+              {it.path && <span className="muted" style={{ marginInlineStart: 8, fontSize: 12, flex: 'none' }}>{it.path}</span>}
             </div>
           ))}
         </div>
