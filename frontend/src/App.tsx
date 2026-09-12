@@ -2807,7 +2807,11 @@ export default function App() {
             title="搜标题和正文；⌘K 是全局搜索（含知识库）"
             value={noteQuery}
             onChange={(e) => setNoteQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setNoteQuery('') }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setNoteQuery('')
+              // 回车开第一条命中（Trilium 的快速搜索也是），不用再伸手去点
+              else if (e.key === 'Enter' && visibleNotes.length && noteQuery.trim()) { void switchTo(visibleNotes[0]); setNoteQuery('') }
+            }}
           />
           {noteQuery && <button className="icon-btn" title="清空" onClick={() => setNoteQuery('')}><i className="bx bx-x" /></button>}
         </div>

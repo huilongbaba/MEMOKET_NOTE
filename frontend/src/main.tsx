@@ -9,6 +9,8 @@ import './shell.css'   // 先：定义令牌
 import './styles.css'  // 后：老变量名指向那些令牌
 
 restoreTheme()
+// 探针下报一次首帧耗时（从文档开始加载到 React 首次渲染完成）——包体瘦身有没有效，看这个数
+if (new URLSearchParams(location.search).get('probe')) requestAnimationFrame(() => void clientLog('warn', `first paint ${Math.round(performance.now())} ms · js ${Math.round((performance.getEntriesByType('resource') as PerformanceResourceTiming[]).filter((r) => r.name.endsWith('.js')).reduce((a, r) => a + (r.transferSize || r.encodedBodySize || 0), 0) / 1024)} KB`, '', 'first-paint'))
 // 应用菜单「帮助 › 快捷键一览」→ 跟 ⌘/ 同一条路
 // 退出前把没存的正文存完（App 里监听 flush-save，存完回 flushed）
 window.memoketDesktop?.onFlush?.(() => window.dispatchEvent(new CustomEvent('flush-save')))
