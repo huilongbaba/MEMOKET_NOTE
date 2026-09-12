@@ -2128,6 +2128,7 @@ export default function App() {
       .sort((a, b) => b.from - a.from)
     if (!hunks.length) return
     for (const h of hunks) {
+      if (h.off) { view.dispatch({ effects: dropHunk.of(h.id) }); continue }   // 关着的层：正文已是原文
       view.dispatch({ changes: { from: h.from, to: h.to, insert: h.del },
                       effects: dropHunk.of(h.id) })
     }

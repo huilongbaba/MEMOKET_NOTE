@@ -1025,3 +1025,10 @@ kbd {
 .harness-sticky .harness-line { flex-wrap: nowrap; align-items: flex-start; }
 .harness-sticky .harness-line > .bx { flex-shrink: 0; margin-top: 2px; }
 .harness-sticky .harness-line > span.row { flex-shrink: 0; }
+
+/* 提案层的开关（ChangeLayersPanel）：关着的层卡片变淡 */
+.switch { width: 30px; height: 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--card-alt); padding: 0; position: relative; cursor: pointer; flex: none; }
+.switch span { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: left .12s, background .12s; }
+.switch.on { background: var(--ins-bg); border-color: var(--ins); }
+.switch.on span { left: 16px; background: var(--ins); }
+.layer-card.off { opacity: .6; }

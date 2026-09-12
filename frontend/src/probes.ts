@@ -10,6 +10,7 @@
  * ctx 就是 App 里那些闭包（函数和 setState），探针要什么就从里面拿。
  */
 import { EditorView } from '@codemirror/view'
+import { layersOf, turnLayerOff } from './editor/roundDiff'
 import * as api from './api'
 import { SLASH_ITEMS } from './editor/slashMenu'
 import type { SelectionAction } from './components/SelectionMenu'
@@ -133,12 +134,21 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       setTimeout(() => {
         const v = editorViewRef.current; if (!v) return
         const before = v.state.doc.toString()
-        v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n探针塞进来的一段：第二层提案。\n' } })
+        // 插在第一行标题后面，不追加到文末：格式化的最后一处常贴着文末，追加的文字会按
+        // 「末尾续写算这处一部分」并进那一层，关掉格式化就把它一起收了（第 151 轮实拍）
+        const firstLineEnd = v.state.doc.line(1).to
+        v.dispatch({ changes: { from: firstLineEnd, insert: '\n\n探针塞进来的一段：第二层提案。' } })
         const after = v.state.doc.toString()
         setContent(after)
         actionsRef.current.pushDiff('探针', before, after)
         setPaneFocus({ id: 'changes', n: 1 })
-      }, 2500)
+      }, 4000)                                   // 格式化大文要 2s 多；早了 setContent 会把探针那段冲掉
+      // 第四步：把第一层（格式化）关掉——截图里应看到它的卡片变淡、正文回到格式化前
+      setTimeout(() => {
+        const v = editorViewRef.current; if (!v) return
+        const first = layersOf(v)[0]
+        if (first) turnLayerOff(v, first.id)
+      }, 6000)
     }) }
   }
   // 记忆的关系：打开笔记，把光标放到含数字的最后一段上，看右栏「记忆」的关系卡

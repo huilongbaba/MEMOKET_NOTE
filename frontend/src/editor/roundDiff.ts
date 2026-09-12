@@ -1,4 +1,4 @@
-import { StateEffect, StateField, type Range } from '@codemirror/state'
+import { StateEffect, StateField, type EditorState, type Range, type TransactionSpec } from '@codemirror/state'
 import {
   Decoration, EditorView, WidgetType, showTooltip,
   type DecorationSet, type Tooltip,
@@ -202,6 +202,10 @@ export type Hunk = {
   soft?: boolean
   /** 属于哪一层提案（见 Layer）。toHunks 给 0，进 field 时按当前层改写。 */
   layer?: number
+  /** 关掉的层：这处已经还原成原文（from..to 现在装的是 del），ins 是关掉时摘下来的新文字，
+   *  再打开时按位置写回去。关着的不画、不给悬停条、不算待处置。 */
+  off?: boolean
+  ins?: string
 }
 
 /** 提案层：一次 AI 动作产生的一批改动（润色 ①、格式化、第 3 轮…）。层可以整层接受 /
@@ -223,6 +227,10 @@ export const setRoundDiff = StateEffect.define<DiffPart[] | null>()
 export const addLayer = StateEffect.define<{ label: string; parts: DiffPart[]; replace?: boolean }>()
 /** 整层接受：这层的 hunk 全摘掉，正文保持现状。整层撤回由调用方逐处 dispatch 改动 + dropHunk。 */
 export const acceptLayer = StateEffect.define<number>()
+/** 关掉一处（跟还原改动同一个事务）：位置直接给定，不走映射——这次事务改的就是它自己。 */
+export const shelveHunk = StateEffect.define<{ id: number; from: number; ins: string }>()
+/** 再打开一处（跟写回改动同一个事务）。 */
+export const unshelveHunk = StateEffect.define<{ id: number; from: number }>()
 /** 接受：只是把这一处从待处置列表里去掉，正文保持现状。 */
 export const acceptHunk = StateEffect.define<number>()
 /** 撤回：连同一次文档改动一起 dispatch（把 from..to 换回 del），这里只负责摘掉标记。 */
@@ -305,7 +313,7 @@ function build(hunks: Hunk[], layers: Layer[] = []): DecorationSet {
   const decos: Range<Decoration>[] = []
   const label = (h: Hunk) => layers.find((l) => l.id === h.layer)?.label ?? '这一轮'
   for (const h of hunks) {
-    if (h.soft) continue                          // 只差空白：不画
+    if (h.soft || h.off) continue                 // 只差空白 / 关着的层：不画
     if (h.del) {
       decos.push(Decoration.widget({ widget: new DeletedWidget(h.del, h.id), side: -1 })
         .range(h.from))
@@ -347,9 +355,23 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]
     }
     let hunks = value.hunks
     let layers = value.layers
+    const shelve = new Map<number, { from: number; ins: string }>()
+    const unshelve = new Map<number, number>()
     for (const e of tr.effects) {
       if (e.is(acceptHunk) || e.is(dropHunk)) hunks = hunks.filter((h) => h.id !== e.value)
       if (e.is(acceptLayer)) hunks = hunks.filter((h) => h.layer !== e.value)
+      if (e.is(shelveHunk)) shelve.set(e.value.id, e.value)
+      if (e.is(unshelveHunk)) unshelve.set(e.value.id, e.value.from)
+    }
+    if (shelve.size || unshelve.size) {
+      // 关 / 开的那一处：这次事务改的就是它自己，位置按效果里给的算，不走映射
+      hunks = hunks.map((h) => {
+        const s = shelve.get(h.id)
+        if (s) return { ...h, from: s.from, to: s.from + h.del.length, off: true, ins: s.ins }
+        const u = unshelve.get(h.id)
+        if (u !== undefined) return { ...h, from: u, to: u + (h.ins ?? '').length, off: false, ins: undefined }
+        return h
+      })
     }
     if (tr.docChanged && hunks.length) {
       // **跟着文档改动映射，而不是把高亮丢掉。** 用户在绿色新增里打字时这一处
@@ -361,13 +383,13 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]
       // 同一个道理：位置超过改动前文档长度的 hunk，mapPos 会抛。先夹到旧文档长度。
       const oldLen = tr.startState.doc.length
       hunks = hunks
-        .map((h) => ({
+        .map((h) => (shelve.has(h.id) || unshelve.has(h.id) ? h : {
           ...h,
           from: tr.changes.mapPos(Math.min(h.from, oldLen), 1),
           to: tr.changes.mapPos(Math.min(h.to, oldLen), 1),
         }))
-        // 新增被用户整段删光、且没有原文可撤回 —— 这处已经不存在了
-        .filter((h) => h.to >= h.from && (h.to > h.from || h.del))
+        // 新增被用户整段删光、且没有原文可撤回 —— 这处已经不存在了（关着的层留着：它的 ins 还能写回）
+        .filter((h) => h.to >= h.from && (h.to > h.from || h.del || h.off))
     }
     // 加层：放在文档映射之后——新层的位置是针对这次事务之后的文档算的，旧层刚映射过，
     // 两边坐标一致。replace = 智能续写那种累积 diff，先清掉再加。
@@ -388,28 +410,69 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]
   provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
 })
 
-/** 还剩几处没处置。给上层显示「本轮 N 处改动」用。 */
+/** 还剩几处没处置。给上层显示「本轮 N 处改动」用。关着的层也算——它还等着接受 / 丢弃，
+ *  不算的话整层一关「改动」标签就没了，用户找不到地方再打开。 */
 export function pendingHunks(view: EditorView): number {
   return view.state.field(roundDiffField, false)?.hunks.filter((h) => !h.soft).length ?? 0
 }
 
-/** 各层及每层还剩几处（不算只差空白的）。右栏「改动」标签用。 */
-export function layersOf(view: EditorView): (Layer & { count: number })[] {
-  const st = view.state.field(roundDiffField, false)
+/** 各层及每层还剩几处（不算只差空白的）；off = 整层关着（每一处都还原了、随时能再打开）。 */
+export function layersOf(host: Host): (Layer & { count: number; off: boolean })[] {
+  const st = host.state.field(roundDiffField, false)
   if (!st) return []
-  return st.layers.map((l) => ({ ...l, count: st.hunks.filter((h) => h.layer === l.id && !h.soft).length }))
+  return st.layers.map((l) => {
+    const mine = st.hunks.filter((h) => h.layer === l.id)
+    return { ...l, count: mine.filter((h) => !h.soft).length, off: mine.length > 0 && mine.every((h) => h.off) }
+  })
 }
 
+/** 能 dispatch 的东西：EditorView，或测试里一个只有 state 的壳。 */
+export type Host = { state: EditorState; dispatch: (spec: TransactionSpec) => void }
+
 /** 整层撤回：把这层的每一处都还原（从后往前，位置才不会错位）。 */
-export function dropLayer(view: EditorView, layerId: number) {
-  const st = view.state.field(roundDiffField, false)
+export function dropLayer(host: Host, layerId: number) {
+  const st = host.state.field(roundDiffField, false)
   if (!st) return
   const hunks = st.hunks.filter((h) => h.layer === layerId).sort((a, b) => b.from - a.from)
   for (const h of hunks) {
-    const cur = view.state.field(roundDiffField).hunks.find((x) => x.id === h.id)
+    const cur = host.state.field(roundDiffField).hunks.find((x) => x.id === h.id)
     if (!cur) continue
-    view.dispatch({ changes: { from: cur.from, to: cur.to, insert: cur.del }, effects: dropHunk.of(h.id) })
+    if (cur.off) { host.dispatch({ effects: dropHunk.of(h.id) }); continue }   // 关着的：正文已是原文，忘掉即可
+    host.dispatch({ changes: { from: cur.from, to: cur.to, insert: cur.del }, effects: dropHunk.of(h.id) })
   }
+}
+
+/** 关掉一层：每一处还原成原文，但记住它改成了什么——「关掉再打开」（agent-native-editor §3.2：
+ *  提案是可开关的层，不是一次性的接受 / 撤回）。 */
+export function turnLayerOff(host: Host, layerId: number) {
+  const st = host.state.field(roundDiffField, false)
+  if (!st) return
+  const hunks = st.hunks.filter((h) => h.layer === layerId && !h.off).sort((a, b) => b.from - a.from)
+  for (const h of hunks) {
+    const cur = host.state.field(roundDiffField).hunks.find((x) => x.id === h.id)
+    if (!cur || cur.off) continue
+    const ins = host.state.doc.sliceString(cur.from, cur.to)
+    host.dispatch({ changes: { from: cur.from, to: cur.to, insert: cur.del }, effects: shelveHunk.of({ id: h.id, from: cur.from, ins }) })
+  }
+}
+
+/** 再打开一层：每一处把记住的新文字写回去。原文那段被用户改过（对不上 del）的那处就
+ *  重放不了，丢掉并计数——调用方据此提示「N 处因为原文改过没能重放」。 */
+export function turnLayerOn(host: Host, layerId: number): { replayed: number; lost: number } {
+  const st = host.state.field(roundDiffField, false)
+  if (!st) return { replayed: 0, lost: 0 }
+  const hunks = st.hunks.filter((h) => h.layer === layerId && h.off).sort((a, b) => b.from - a.from)
+  let replayed = 0
+  let lost = 0
+  for (const h of hunks) {
+    const cur = host.state.field(roundDiffField).hunks.find((x) => x.id === h.id)
+    if (!cur || !cur.off) continue
+    const ok = cur.to <= host.state.doc.length && host.state.doc.sliceString(cur.from, cur.to) === cur.del
+    if (!ok) { host.dispatch({ effects: dropHunk.of(h.id) }); lost++; continue }
+    host.dispatch({ changes: { from: cur.from, to: cur.to, insert: cur.ins ?? '' }, effects: unshelveHunk.of({ id: h.id, from: cur.from }) })
+    replayed++
+  }
+  return { replayed, lost }
 }
 
 // ---------------------------------------------------------------- 悬停工具条
@@ -533,7 +596,7 @@ const hoverWatcher = EditorView.domEventHandlers({
     const hunks = view.state.field(roundDiffField, false)?.hunks
     if (!hunks?.length) return false
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
-    const hit = pos == null ? null : hunks.find((h) => !h.soft && pos >= h.from - 1 && pos <= h.to + 1)
+    const hit = pos == null ? null : hunks.find((h) => !h.soft && !h.off && pos >= h.from - 1 && pos <= h.to + 1)
     cancelClear()
     pinned = !!hit
     const next = hit ? hit.id : null
@@ -552,7 +615,7 @@ const hoverWatcher = EditorView.domEventHandlers({
     if (!hunks?.length) return false
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
     // 前后各放宽一个字符：正好停在改动边界上时也算命中，否则边缘很难悬住
-    const hit = pos == null ? null : hunks.find((h) => !h.soft && pos >= h.from - 1 && pos <= h.to + 1)
+    const hit = pos == null ? null : hunks.find((h) => !h.soft && !h.off && pos >= h.from - 1 && pos <= h.to + 1)
     const next = hit ? hit.id : null
     if (next != null) {
       cancelClear()
