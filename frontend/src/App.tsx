@@ -632,7 +632,8 @@ export default function App() {
       if (n) { await switchTo(n); return }
     }
     // 不认识的 kb:* id（比如早年的 kb:overview）落到总览，别开一页只有裸 id 的空页
-    if (id.startsWith('kb:') && !VIRTUAL_LABELS[id] && !/^kb:(topic|entity|unit|fact|facts|etype)(:|$)/.test(id)) id = 'kb'
+    // 事实表带查询串（kb:facts?kind=plan，首页类型 / 说话人 chip 点进来的）也是认识的——第 132 轮实拍点 chip 落回了总览
+    if (id.startsWith('kb:') && !VIRTUAL_LABELS[id] && !/^kb:(topic|entity|unit|fact|facts|etype)(:|\?|$)/.test(id)) id = 'kb'
     if (virtualId === id && !current) return
     await save()
     const leaving = current
