@@ -1052,3 +1052,9 @@ notes-YYYYMMDD.sqlite3`，留最近 7 日 + 每月第一份（3 个月）；备�
 Skill 页 toggle 没接错误（后端不在就静默失败）——补 toast。`api.ts` 的 `json()` 之前把
 整个错误体拼进错误信息，FastAPI 的 `{"detail": "…"}` 在 toast 里就是一坨 JSON；现在
 把 detail（字符串或 422 的字段列表）拿出来。
+
+## [83] 全量巡检第 62 轮：探针搬出 App.tsx（2026-09-12）
+
+探针 effect 长到了 330 行，测试用的代码跟产品代码挤在一个 3200 行的文件里。搬到
+`src/probes.ts`（`runProbe(probe, ctx)`，ctx 就是 App 里那些闭包），App.tsx 减到 2900 行；
+tabs / kb-tab / palette 三个探针回归正常。
