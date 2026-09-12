@@ -1450,3 +1450,22 @@ chip 显示名。主题页 work 暗色回归正常。pytest 793。
 后端 793、前端 tsc + eslint + vitest 72 + 11 个检查脚本全过。这 20 轮的主线：长文
 （47k 字 / 300 标题）把 diff、目录、引用页、提示词长度都拉出了毛病；块生成和摄入的
 「跑的过程看得见」；知识库缺页 / 旧标签 / 实体代码这类边角。
+
+## [141] 笔记 ↔ 知识库链接层（2026-09-12，用户点名优先）
+
+用户：「一个笔记 contribute 了什么到知识库应该能增删改；笔记更新了要能自动 / 手动同步，
+要同步时要有标识；自动同步是设置项；知识库的显示也要链接回笔记。」查现状发现两个真
+bug：① 摄入的 session 叫 `note-<id>-<n>`，KITE 拒重复 id，对摄入过的笔记点「重新摄入」
+整个 job 报 StorageError（改过的内容永远进不来）；② 笔记摄入出来的事实 id
+`note-f5e34e385aac-0F1` 不匹配五处引用正则，摄入进去的事实没法被引用。
+
+做了：`UserMemory` 加 `facts_for_prefix / delete_facts / set_fact_text / add_manual_fact /
+remove_sessions`（锁内改 XML、校验、原子替换）；`GET /api/notes/{id}/kb`（贡献 + stale）；
+`PATCH/DELETE /api/kb/fact/{id}`、`POST /api/kb/fact`（手工事实进 `-manual` session，同步
+时保留）；`POST /api/ingest/note/{id}/sync`（服务端读最新正文，删旧 session 重抽）；
+`_ingest_job` 的「已存在」按 `_land` 的规矩当跳过；`provider_config.auto_sync_notes`
++ 设置页开关；前端「引用」页：过期黄条 + 同步钮 + 贡献列表（改 / 删 / 补一条）；树上
+改过没同步的黄 ⇡；知识库事实卡「来自笔记」反链；自动同步 = 停止编辑 2 分钟或切走时。
+真跑：shot-demo 一篇加一句后同步，12s 重抽出 7 条（新句进来了），手工补的那条保留。
+pytest 798（新 5 条）、vitest 74（引用正则 2 条）。方案文档：agent-native-editor.md、
+import-sync-plan.md；优先队列写进 PROGRESS。

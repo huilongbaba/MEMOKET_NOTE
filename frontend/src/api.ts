@@ -6,6 +6,8 @@ export type Note = {
   title: string
   content: string
   pinned: boolean
+  /** 摄入进知识库的时间（空 = 没摄入过） */
+  ingested_at?: string
   /** 写作骨架跟着笔记走。之前只活在前端内存里，换一篇/刷新/无限续写自动
    * 跟随切页就没了——而 harness 每轮都拿它当主线依据。 */
   spine: string
@@ -595,6 +597,9 @@ export type FactDetail = {
   topics: string[]; entities: string[]; unit: string
   /** 实体显示名，跟 entities 一一对应（页面接口给；召回接口没有） */
   entity_names?: string[]
+  /** 从哪篇笔记摄入的（知识库页面反链回笔记）；手工加的 manual=true */
+  note_id?: string
+  manual?: boolean
 }
 export type FactsPage = { facts: FactDetail[]; total: number; limit: number; offset: number }
 export type SourceLine = { id: string; unit: string; date: string; who: string; text: string }
@@ -653,12 +658,48 @@ export const memoryTimeline = () =>
 /** `source_id`：摄入的是哪篇笔记。**摄笔记时必须传**——后端据此在摄入完成
  *  后给那篇打上「已入库」标记，树上才看得见 ⇡；同时 KITE 用它拼稳定的
  *  session_id，同一篇重复摄入不会重复入库。 */
-export const ingestText = (content: string, title = '', source = 'doc', source_id = '') =>
+export const ingestText = (content: string, title = '', source = 'doc', source_id = '', replace = false) =>
   fetch('/api/ingest/text', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, title, source, source_id }),
+    body: JSON.stringify({ content, title, source, source_id, replace }),
   }).then(json<{ job_id: string; status: string; detail: string }>)
+
+// ---------------------------------------------------------- 笔记 ↔ 知识库链接层
+//
+// 这篇贡献了哪些事实（摄入时的 session 叫 note-<id>-<块号>）、改过没同步（stale）、
+// 事实的增删改、同步（服务端读最新正文，删旧 session 重抽，手工加的留着）。
+
+export type NoteKbFact = {
+  id: string; text: string; when: string; kind: string; who: string; conf: string
+  topics: string[]; entities: string[]; unit: string
+  /** 用户手工加的（在 note-<id>-manual 里，同步时不会被删） */
+  manual: boolean
+}
+export type NoteKb = {
+  note_id: string; ingested_at: string; updated_at: string
+  /** 摄入之后正文又改过：知识库里还是旧版 */
+  stale: boolean
+  facts: NoteKbFact[]
+  manual_session: string
+}
+export const noteKb = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/kb`, { headers: headers() }).then(json<NoteKb>)
+export const syncNoteToKb = (noteId: string) =>
+  fetch(`/api/ingest/note/${noteId}/sync`, { method: 'POST', headers: headers() })
+    .then(json<{ job_id: string; status: string }>)
+export const updateFact = (factId: string, text: string) =>
+  fetch(`/api/kb/fact/${encodeURIComponent(factId)}`, {
+    method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ text }),
+  }).then(json<NoteKbFact>)
+export const deleteFact = (factId: string) =>
+  fetch(`/api/kb/fact/${encodeURIComponent(factId)}`, { method: 'DELETE', headers: headers() })
+    .then(json<{ ok: boolean; removed: number }>)
+export const addFact = (noteId: string, text: string, when = '') =>
+  fetch('/api/kb/fact', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ note_id: noteId, text, when }),
+  }).then(json<NoteKbFact>)
 
 export const ingestAudio = (file: Blob, filename = 'recording.webm', title = '') => {
   const fd = new FormData()
@@ -976,6 +1017,8 @@ export type ProviderConfig = {
   /** 用户填的语音服务地址（空 = 用默认） */
   asr_base_url: string
   asr_default_url: string
+  /** 笔记改动后自动同步进知识库 */
+  auto_sync_notes: boolean
 }
 
 export const getProviderConfig = () =>
@@ -987,6 +1030,7 @@ export const setProviderConfig = (body: {
   gpt_model?: string
   gpt_base_url?: string
   asr_base_url?: string
+  auto_sync_notes?: boolean
 }) =>
   fetch('/api/settings/provider', {
     method: 'POST',

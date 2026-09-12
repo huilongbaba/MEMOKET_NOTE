@@ -106,6 +106,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  // 笔记 ↔ 知识库：打开指定笔记的「引用」页（贡献的事实、过期标识、同步）
+  if (probe?.startsWith('notekb:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(7))
+    if (n) { harnessProbeDone.current = true; void switchTo(n) }
+  }
   if (probe?.startsWith('ribbon:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => (x.content ?? '').length > 80)
     if (n) { harnessProbeDone.current = true; void switchTo(n) }

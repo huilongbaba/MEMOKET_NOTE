@@ -56,7 +56,7 @@ def heading_format_reminder() -> str:
 
 
 # 材料开头的事实 id：``[terrence-2046-2F3] …``。跟 store._CITE / 前端 factCite 同一形状。
-_FACT_ID = re.compile(r"^\[[A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+\]")
+_FACT_ID = re.compile(r"^\[[A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]")
 
 
 def facts_block(facts: list[str]) -> str:

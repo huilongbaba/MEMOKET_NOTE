@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
+from ..database.kite.kite_memory import UserMemory
 from .schemas import CitingNoteOut, Note, NoteCreateIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
 from .deps import current_user
 
@@ -129,3 +130,24 @@ def pin_note(note_id: str, user: str = Depends(current_user)):
     if not updated:
         raise HTTPException(404, "note not found")
     return updated
+
+
+@router.get("/{note_id}/kb")
+def note_kb(note_id: str, user: str = Depends(current_user)) -> dict:
+    """这篇笔记跟知识库的关系：贡献了哪些事实、上次摄入是什么时候、正文之后改过没
+    （stale = 改过，知识库里还是旧版）。"""
+    n = store.get_note(user, note_id)
+    if not n:
+        raise HTTPException(404, "note not found")
+    ingested_at = n.get("ingested_at") or ""
+    updated_at = n.get("updated_at") or ""
+    facts = UserMemory(user).facts_for_prefix(UserMemory.note_prefix(note_id)) if ingested_at else []
+    return {
+        "note_id": note_id,
+        "ingested_at": ingested_at,
+        "updated_at": updated_at,
+        # ISO UTC 字符串按字典序就是时间序
+        "stale": bool(ingested_at) and updated_at > ingested_at,
+        "facts": facts,
+        "manual_session": f"note-{note_id}-manual",
+    }

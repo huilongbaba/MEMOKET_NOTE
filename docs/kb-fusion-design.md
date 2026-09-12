@@ -97,6 +97,25 @@ fact_id  TEXT   -- 引用了哪条事实
 - 摄入过没有、抽出了多少条事实
 - 有没有引用了**已经不存在**的事实（模型编的、或者知识库重建过）
 
+#### 3.4.1 链接层（2026-09-12 落地）
+
+「引用」页现在是双向的：
+
+- **这篇贡献的事实**：摄入时的 session 叫 `note-<noteId>-<块号>`，所以贡献 = unit 以它
+  开头的事实（`GET /api/notes/{id}/kb`）。每条可改（`PATCH /api/kb/fact/{id}`）、可删
+  （`DELETE`）、可补（`POST /api/kb/fact`，落在 `note-<noteId>-manual` 里）。改的是
+  codebook.xml 里的那条：锁内改、校验能读回来、原子替换（`UserMemory._rewrite_xml`）。
+- **过期标识**：`updated_at > ingested_at` = 摄入之后又改过。树上黄 ⇡，「引用」页黄条。
+- **同步**：`POST /api/ingest/note/{id}/sync`——服务端读最新正文，先 `remove_sessions
+  ("note-<id>-")`（`-manual` 留着）再重抽。不删的话稳定 session_id 会让 KITE 把改过的
+  内容当「已导入」跳过，改过的东西永远进不来。
+- **自动同步**：设置里的开关（`provider_config.auto_sync_notes`）。开了之后摄入过的
+  笔记停止编辑 2 分钟、或切到别的笔记时自动同步。默认关：每次同步是一次抽取调用。
+- **反链**：知识库页面上从笔记摄入的事实带「来自笔记」chip（`_fact()` 的 `note_id`）。
+- 顺手修的真 bug：笔记摄入的事实 id 形如 `note-f5e34e385aac-0F1`，五处引用正则
+  （`store._CITE` / `checks/citations` / `prompts/fragments` / `factCite.ts` / `App.tsx`）
+  之前只认 `<user>-<数字>-<hex>`——摄入进去的事实**没法被引用**。
+
 ### 3.5 右栏加「反向链接」
 
 打开一条事实时显示「谁引用了我」；打开一篇笔记时显示「哪些笔记引用了这篇

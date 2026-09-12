@@ -24,7 +24,21 @@ def _fact(f, vocab=None) -> dict:
     # 事实卡上的实体 chip 之前显示的是代码（facebook / speaker_a），带上显示名
     if vocab is not None:
         d["entity_names"] = [_entity_name(vocab, c) for c in f.entities]
+    # 从笔记摄入的：知识库页面反链回那篇（session 命名见 routers/ingest.py）
+    nid = note_id_of_unit(f.unit)
+    if nid:
+        d["note_id"] = nid
+        d["manual"] = f.unit.endswith("-manual")
     return d
+
+
+def note_id_of_unit(unit: str) -> str:
+    """`note-<noteId>-<块号|manual>` → noteId；不是笔记来的给空串。"""
+    if not unit.startswith("note-"):
+        return ""
+    rest = unit[5:]
+    return rest.rsplit("-", 1)[0] if "-" in rest else ""
+
 
 
 def _months(facts, last: int | None = None) -> list[dict]:

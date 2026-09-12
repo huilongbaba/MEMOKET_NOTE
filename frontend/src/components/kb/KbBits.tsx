@@ -97,6 +97,12 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
         {f.kind && <span className="fact-kind">{f.kind}</span>}
       </div>
       <div className="fact-text" onClick={() => actions.onOpen('kb:fact:' + f.id)}>{f.text}</div>
+      {f.note_id && (
+        // 从笔记摄入的：反链回那篇（知识库 → 笔记这一向之前是断的）
+        <div className="fact-tags">
+          <Chip icon="bx-note" onClick={() => actions.onOpenNote(f.note_id!)} title="打开摄入它的那篇笔记">{f.manual ? '手工加在笔记里' : '来自笔记'}</Chip>
+        </div>
+      )}
       {showTopics && (f.topics.length > 0 || f.entities.length > 0) && (
         <div className="fact-tags">
           {f.topics.map((t) => <Chip key={t} icon="bx-hash" onClick={() => actions.onOpen('kb:topic:' + t)}>{t}</Chip>)}

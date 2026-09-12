@@ -18,6 +18,7 @@ from ..database import store
 from ..database.ingest import asr, extract
 from ..database.ingest.chunking import chunks as _chunks, chunks_for as _chunks_for
 from ..database.kite.kite_memory import UserMemory
+from memoket_kite.errors import StorageError
 from .schemas import IngestItemOut, IngestOut, IngestTextIn
 from ..harness.events import sse
 from .deps import current_user, sse_response
@@ -30,27 +31,42 @@ BATCH_MAX_FILES = 50
 
 
 def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
-                date: str = "", source_id: str = "") -> None:
+                date: str = "", source_id: str = "", replace: bool = False) -> None:
     store.set_job(job_id, "running")
     try:
         mem = UserMemory(user_id)
         total = 0
+        skipped = 0
+        # 同步 = 先删这篇上次摄入的 session（手工加的那个留着），再重抽。
+        # 不删的话稳定 session_id 会让 KITE 把改过的内容当「已导入」跳过——改过的东西永远进不来。
+        if replace and source == "note" and source_id:
+            mem.remove_sessions(UserMemory.note_prefix(source_id))
         # 有稳定 source_id 就用它拼 session_id：KITE 拒绝重复的 session_id
         # 且不花 LLM 调用，于是重跑导入自动变成增量同步。没有就退回随机 id
         # （手工粘贴一段文字这种场景，本来也没有可稳定的标识）。
         stem = f"{source}-{source_id}" if source_id else f"{source}-{uuid.uuid4().hex[:8]}"
         when = date or _date.today().isoformat()
         for i, chunk in enumerate(_chunks(text)):
-            total += mem.remember(
-                [{"role": "user", "content": chunk}],
-                session_id=f"{stem}-{i}",
-                date=when,
-                title=title,
-            )
+            try:
+                total += mem.remember(
+                    [{"role": "user", "content": chunk}],
+                    session_id=f"{stem}-{i}",
+                    date=when,
+                    title=title,
+                )
+            except StorageError as exc:
+                # 「已存在」是成功信号（跟 import_sources._land 同一条规矩）：稳定 id 的
+                # 意义就是重跑时跳过、不花钱。实拍：对已摄入过的笔记点「重新摄入」整个
+                # job 报 StorageError。
+                if "already exists" not in str(exc):
+                    raise
+                skipped += 1
+                continue
             # 每个 chunk 单独一次 LLM 调用（~13s），落一次库让前端轮询能看见
             # facts 数逐块往上涨，而不是等全部 chunk 跑完才一次性跳到最终值。
             store.set_job(job_id, "running", facts=total)
-        store.set_job(job_id, "done", facts=total)
+        store.set_job(job_id, "done", facts=total,
+                      detail=(f"内容没变，{skipped} 块此前已摄入" if skipped and not total else ""))
         # 摄入的是一篇笔记 → 记下来，树上据此标 ⇡（docs/kb-fusion-design.md）。
         # 放在 done 之后：摄到一半失败的不算摄入过，否则树上会有一个「已入库」
         # 的标记指着一篇其实没进去的笔记。
@@ -67,7 +83,22 @@ def ingest_text(body: IngestTextIn, bg: BackgroundTasks,
         raise HTTPException(400, "content is empty")
     job_id = store.create_job(user)
     bg.add_task(_ingest_job, job_id, user, body.content, body.title, body.source,
-                body.date, body.source_id)
+                body.date, body.source_id, body.replace)
+    return IngestOut(job_id=job_id, status="queued")
+
+
+@router.post("/note/{note_id}/sync", response_model=IngestOut)
+def sync_note(note_id: str, bg: BackgroundTasks, user: str = Depends(current_user)):
+    """把一篇笔记**现在的正文**同步进知识库：删旧 session 重抽，手工加的事实保留。
+    正文从库里读，不靠前端传——自动同步的定时器触发时前端手里的可能不是最新的。"""
+    n = store.get_note(user, note_id)
+    if not n:
+        raise HTTPException(404, "note not found")
+    if not (n.get("content") or "").strip():
+        raise HTTPException(400, "content is empty")
+    job_id = store.create_job(user)
+    bg.add_task(_ingest_job, job_id, user, n["content"], n.get("title") or "未命名", "note",
+                "", note_id, True)
     return IngestOut(job_id=job_id, status="queued")
 
 

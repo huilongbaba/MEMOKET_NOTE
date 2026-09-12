@@ -47,6 +47,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
   const [gptModel, setGptModel] = useState('gpt-4.1-mini')
   const [gptBaseUrl, setGptBaseUrl] = useState('https://api.openai.com/v1')
   const [asrBaseUrl, setAsrBaseUrl] = useState('')
+  const [autoSync, setAutoSync] = useState(false)
 
   useEffect(() => {
     api.getProviderConfig().then((c) => {
@@ -55,6 +56,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       setGptModel(c.gpt_model)
       setGptBaseUrl(c.gpt_base_url)
       setAsrBaseUrl(c.asr_base_url)
+      setAutoSync(!!c.auto_sync_notes)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -66,6 +68,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
         provider, gpt_model: gptModel, gpt_base_url: gptBaseUrl,
         // 语音地址传空串就是「清掉、退回默认」——跟 key 不同，这里空是合法值
         asr_base_url: asrBaseUrl.trim(),
+        auto_sync_notes: autoSync,
       }
       // 空字符串不传——传了会被当成"清空 key"（后端语义：不传=保留原值，
       // 传空字符串=真的清空），用户只是切换 provider 没重新填 key 时
@@ -158,6 +161,15 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
               value={asrBaseUrl}
               onChange={(e) => setAsrBaseUrl(e.target.value)}
             />
+
+            <p className="kb-section-title" style={{ marginTop: 18 }}>笔记 ↔ 知识库</p>
+            <label className="row" style={{ gap: 8, fontSize: 13, alignItems: 'center' }}>
+              <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
+              笔记改动后自动同步到知识库
+            </label>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+              只对摄入过的笔记生效：停止编辑 2 分钟后、或切到别的笔记时，自动删掉上次抽的事实重新抽（你手工加的留着）。每次同步是一次模型调用。关着的话树上会用黄色 ⇡ 提醒你哪些改过没同步。
+            </p>
 
             <button className="primary" onClick={save} disabled={saving} style={{ marginTop: 8 }}>
               {saving ? <span className="spinner" /> : '保存'}

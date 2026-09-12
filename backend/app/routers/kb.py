@@ -8,6 +8,7 @@ coverage figures that say whether the codebook is up to date.
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..database import store
 from ..database.kb import extract_check, extract_judge, pages, reextract, virtual_tree
@@ -291,3 +292,56 @@ def _quality_note(user: str, meeting_id: str) -> str:
         # A quality note is a nicety. It must never be able to turn a
         # successful extraction into a failed item.
         return ""
+
+
+# ---------------------------------------------------------------- 事实增删改
+#
+# 笔记贡献的事实用户要能改：抽取器抽错了、想补一条没抽出来的。改的是 codebook.xml
+# 里的那条（锁内改、校验能读回来、原子替换），改完 mtime 变了索引自动失效。
+
+class FactTextIn(BaseModel):
+    text: str
+
+
+class FactAddIn(BaseModel):
+    note_id: str
+    text: str
+    when: str = ""
+
+
+@router.patch("/fact/{fact_id}")
+def kb_fact_edit(fact_id: str, body: FactTextIn, user: str = Depends(current_user)) -> dict:
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "text is empty")
+    mem = UserMemory(user)
+    if not mem.set_fact_text(fact_id, text):
+        raise HTTPException(404, f"没有这条事实：{fact_id}")
+    return mem.fact_by_id(fact_id) or {"id": fact_id, "text": text}
+
+
+@router.delete("/fact/{fact_id}")
+def kb_fact_delete(fact_id: str, user: str = Depends(current_user)) -> dict:
+    removed = UserMemory(user).delete_facts({fact_id})
+    if not removed:
+        raise HTTPException(404, f"没有这条事实：{fact_id}")
+    return {"ok": True, "removed": removed}
+
+
+@router.post("/fact")
+def kb_fact_add(body: FactAddIn, user: str = Depends(current_user)) -> dict:
+    """给一篇笔记手工补一条事实。落在 `note-<id>-manual` 这个 session 里，同步时不会被删。"""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "text is empty")
+    n = store.get_note(user, body.note_id)
+    if not n:
+        raise HTTPException(404, "note not found")
+    from datetime import date as _date
+    when = body.when or _date.today().isoformat()
+    mem = UserMemory(user)
+    fact = mem.add_manual_fact(f"note-{body.note_id}-manual", text, date=when,
+                               title=n.get("title") or "未命名")
+    if not n.get("ingested_at"):
+        store.mark_ingested(user, body.note_id)
+    return fact

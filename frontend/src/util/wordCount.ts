@@ -4,7 +4,7 @@
  * 引用标记后的字符数；阅读速度按中文 400 字/分钟。 */
 export function wordCount(content: string): number {
   return content
-    .replace(/\[[A-Za-z][\w-]*-\d+-[0-9A-Fa-f]+\]/g, '')
+    .replace(/\[[A-Za-z][\w-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]/g, '')
     // 表格分隔行 |---|:--:| 整行是记号（格式化把它们对齐补宽之后字数曾从 7760 跳到 8241）
     .replace(/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/gm, '')
     .replace(/^\s*(#{1,6}|[-*>+]|\d+\.)\s+/gm, '')

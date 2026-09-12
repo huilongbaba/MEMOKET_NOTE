@@ -215,6 +215,12 @@ def _vote_entity_merges(vocabulary, candidates: list[tuple[str, str]], model: st
     return entity_rewrites
 
 
+def _fact_seq(fact_id: str) -> int:
+    """`…-0F12` → 12：同一个 session 里按抽取顺序排。"""
+    m = re.search(r"F(\d+)$", fact_id)
+    return int(m.group(1)) if m else 0
+
+
 class UserMemory:
     """单个用户的 codebook。每人一个 XML 文件。"""
 
@@ -744,6 +750,120 @@ class UserMemory:
         candidates = vocab.entity_merge_candidates(min_len=min_len)
         staged = copy.deepcopy(vocab)
         return _vote_entity_merges(staged, candidates, cfg["model"], batch_size)
+
+    # ------------------------------------------------------------ 笔记 ↔ 知识库链接层
+    #
+    # 一篇笔记摄入时的 session 叫 `note-<noteId>-<块号>`（routers/ingest.py），所以
+    # 「这篇贡献了哪些事实」= unit 以 `note-<noteId>-` 开头的事实。用户手工加的事实
+    # 放在 `note-<noteId>-manual` 这个 session 里：同步（删旧 session 重抽）时它被保留。
+
+    @staticmethod
+    def note_prefix(note_id: str) -> str:
+        return f"note-{note_id}-"
+
+    def facts_for_prefix(self, prefix: str) -> list[dict]:
+        store_, _vocab = self._index()
+        rows = [f for f in store_.facts.values() if f.unit.startswith(prefix)]
+        rows.sort(key=lambda f: (f.unit, _fact_seq(f.id)))
+        out = []
+        for f in rows:
+            d = self._fact_dict(f)
+            d["manual"] = f.unit.endswith("-manual")
+            out.append(d)
+        return out
+
+    def _rewrite_xml(self, mutate) -> None:
+        """锁内改 XML 树、校验能读回来、原子替换。增删改事实都走这一条。"""
+        self.ensure()
+        with write_lock(self.path):
+            tree = ET.parse(self.path)
+            root = tree.getroot()
+            mutate(root)
+            ET.indent(tree, space="  ")
+            with tempfile.NamedTemporaryFile(
+                mode="wb", suffix=".xml", prefix=f".{self.path.stem}-",
+                dir=self.path.parent, delete=False,
+            ) as handle:
+                temp_path = Path(handle.name)
+                tree.write(handle, encoding="utf-8", xml_declaration=True)
+            try:
+                _verify_loadable(temp_path)
+            except Exception:
+                temp_path.unlink(missing_ok=True)
+                raise
+            os.replace(temp_path, self.path)
+        self.invalidate()
+
+    def delete_facts(self, ids: set[str]) -> int:
+        removed = 0
+
+        def mutate(root):
+            nonlocal removed
+            for sess in root.iter("session"):
+                for fe in list(sess.findall("fact")):
+                    if fe.get("id") in ids:
+                        sess.remove(fe)
+                        removed += 1
+        if ids:
+            self._rewrite_xml(mutate)
+        return removed
+
+    def set_fact_text(self, fact_id: str, text: str) -> bool:
+        hit = False
+
+        def mutate(root):
+            nonlocal hit
+            for fe in root.iter("fact"):
+                if fe.get("id") == fact_id:
+                    fe.text = text
+                    hit = True
+        self._rewrite_xml(mutate)
+        return hit
+
+    def add_manual_fact(self, session_id: str, text: str, *, date: str, title: str,
+                        who: str = "") -> dict:
+        """往 `<session_id>` 里手工加一条事实；session 不在就建（一条 line 当出处，
+        loader 要求 fact.src 指向存在的 line）。返回新事实。"""
+        new_id = ""
+
+        def mutate(root):
+            nonlocal new_id
+            timeline = root.find("timeline")
+            if timeline is None:
+                timeline = ET.SubElement(root, "timeline")
+            sess = next((s for s in timeline.findall("session") if s.get("id") == session_id), None)
+            if sess is None:
+                sess = ET.SubElement(timeline, "session", {"id": session_id, "t": "", "date": date,
+                                                            "dur": "", "title": title})
+            n = len(sess.findall("fact")) + 1
+            line_id = f"{session_id}L{n}"
+            fe = ET.SubElement(sess, "fact", {"id": f"{session_id}F{n}", "kind": "statement", "who": who,
+                                              "t": "", "conf": "high", "topics": "", "entities": "",
+                                              "src": line_id, "manual": "1"})
+            fe.text = text
+            le = ET.SubElement(sess, "line", {"id": line_id, "who": who or "user", "t": ""})
+            le.text = text
+            new_id = fe.get("id")
+        self._rewrite_xml(mutate)
+        return self.fact_by_id(new_id) or {"id": new_id, "text": text}
+
+    def remove_sessions(self, prefix: str, keep_suffix: str = "-manual") -> int:
+        """删掉 id 以 prefix 开头的 session（连同里面的事实和出处行）。手工加的那个
+        session（`…-manual`）留着。同步 = 删旧的再重抽。"""
+        removed = 0
+
+        def mutate(root):
+            nonlocal removed
+            timeline = root.find("timeline")
+            if timeline is None:
+                return
+            for sess in list(timeline.findall("session")):
+                sid = sess.get("id") or ""
+                if sid.startswith(prefix) and not (keep_suffix and sid.endswith(keep_suffix)):
+                    timeline.remove(sess)
+                    removed += 1
+        self._rewrite_xml(mutate)
+        return removed
 
     def apply_entity_consolidation(self, rewrites: dict[str, str]) -> Path:
         """真的执行：备份 codebook.xml，把 rewrites 应用到真实 vocab 和

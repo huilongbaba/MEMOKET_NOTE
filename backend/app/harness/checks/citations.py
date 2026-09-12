@@ -82,8 +82,8 @@ def check_citations(
 
 import re as _re
 
-CITE = _re.compile(r"\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]")
-_HEAD_ID = _re.compile(r"^\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]")
+CITE = _re.compile(r"\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]")
+_HEAD_ID = _re.compile(r"^\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]")
 
 
 def cited_ids(text: str) -> list[str]:

@@ -15,6 +15,9 @@ class NoteIn(BaseModel):
 
 
 class Note(BaseModel):
+    # 摄入过没有（空 = 没有）。前端拿它判「改过没同步」、决定要不要自动同步。
+    ingested_at: str = ""
+
     id: str
     user_id: str
     title: str
@@ -256,6 +259,7 @@ class ProviderConfigIn(BaseModel):
     gpt_model: str | None = None
     gpt_base_url: str | None = None
     asr_base_url: str | None = None  # 空串 = 清掉、退回 .env 默认
+    auto_sync_notes: bool | None = None
 
 
 class ProviderConfigOut(BaseModel):
@@ -264,6 +268,7 @@ class ProviderConfigOut(BaseModel):
     gpt_base_url: str
     asr_base_url: str        # 用户填的（空 = 没填，在用默认）
     asr_default_url: str     # .env 默认，界面当 placeholder
+    auto_sync_notes: bool = False
     # 不把真实 key 传回前端——只告诉它"存了没"和"末尾几位"，用来在界面上
     # 显示"已设置 sk-...ab12"这种确认状态，不需要也不该把完整 key 露出来
     gpt_api_key_set: bool
@@ -430,6 +435,8 @@ class IngestTextIn(BaseModel):
     # **重跑导入自动变成增量同步**；不给就退回随机 id，同一批内容导两次会在
     # 知识库里存两份，第二份还要重新花一遍抽取的钱。
     source_id: str = ""
+    # 同步：先删这篇上次摄入的 session 再重抽（只对 source="note" 有意义）
+    replace: bool = False
 
 
 # item 的合法状态。给前端做标签映射用，也是写入侧的白名单（见

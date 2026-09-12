@@ -283,7 +283,7 @@ export default function App() {
   /** 正文里引用了哪些事实。跟后端 `store.cited_fact_ids` 用同一条正则——
    *  两边认的不是同一批，ribbon 的角标和树上的 ◆ 就会对不上。 */
   const citedIds = useMemo(() => {
-    const re = /\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]/g
+    const re = /\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]/g
     const seen = new Set<string>()
     for (const m of content.matchAll(re)) seen.add(m[1])
     return [...seen]
@@ -1436,6 +1436,11 @@ export default function App() {
     if (current?.id === n.id) return
     await save()
     const leaving = current
+    // 自动同步：改过还没同步的那篇，切走时马上同步（不等 2 分钟防抖）
+    if (leaving && autoSync && dirtySinceIngest.current === leaving.id && !job) {
+      dirtySinceIngest.current = ''
+      api.syncNoteToKb(leaving.id).then((r) => setJob(r.job_id)).catch(() => {})
+    }
     open(n)
     void dropIfStillEmpty(leaving)
     // 手动点了别的笔记 = 明确表示现在想看别的东西，无限续写继续在后台跑，
@@ -1988,6 +1993,45 @@ export default function App() {
    * to it would re-ingest the whole note repeatedly while the user is still
    * writing -- wasting LLM calls and producing a pile of near-duplicate
    * facts. */
+  /** 同步：服务端读这篇最新正文，删旧 session 重抽。跟摄入一样是后台 job，状态栏 / toast 同一套。 */
+  async function syncNoteToKb(noteId: string) {
+    if (job) return                                    // 一次只跑一个
+    try {
+      await save()
+      const r = await api.syncNoteToKb(noteId)
+      setJob(r.job_id)
+    } catch (e) {
+      toast('同步失败：' + friendlyError(e), 'error')
+    }
+  }
+
+  // 自动同步：设置里开了的话，摄入过的笔记改完 2 分钟没再动就同步一次；切走时马上同步。
+  // 每次同步是一次抽取调用，所以默认关、要防抖。
+  const [autoSync, setAutoSync] = useState(false)
+  useEffect(() => {
+    const load = () => api.getProviderConfig().then((c) => setAutoSync(!!c.auto_sync_notes)).catch(() => {})
+    load()
+    window.addEventListener('provider-changed', load)
+    return () => window.removeEventListener('provider-changed', load)
+  }, [])
+  const autoSyncTimer = useRef<number | null>(null)
+  const dirtySinceIngest = useRef<string>('')          // 哪篇改过还没同步
+  useEffect(() => {
+    if (!autoSync || !current?.ingested_at) return
+    if (content === current.content) return           // 没改
+    dirtySinceIngest.current = current.id
+    if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current)
+    const id = current.id
+    autoSyncTimer.current = window.setTimeout(() => {
+      if (dirtySinceIngest.current === id && currentRef.current?.id === id && !new URLSearchParams(location.search).get('probe')) {
+        dirtySinceIngest.current = ''
+        void syncNoteToKb(id)
+      }
+    }, 120_000)
+    return () => { if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, autoSync, current?.id])
+
   async function ingestCurrentNote() {
     if (!content.trim()) return
     setLoading('ingest')
@@ -2659,7 +2703,7 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
-            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : undefined })()}
+            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' || pr.startsWith('notekb:') ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : undefined })()}
             tabs={[{
               id: 'format', title: '格式', icon: 'bx-text',
               activate: true,
@@ -2680,7 +2724,9 @@ export default function App() {
                 noteId={current.id}
                 onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}
                 onIngest={ingestCurrentNote}
-                ingesting={loading === 'ingest'}
+                onSync={() => void syncNoteToKb(current.id)}
+                ingesting={loading === 'ingest' || !!job}
+                refreshTick={ingestTick}
               />,
             }, {
               id: 'links', title: '链接', icon: 'bx-link-alt',

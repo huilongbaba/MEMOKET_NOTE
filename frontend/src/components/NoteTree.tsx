@@ -251,8 +251,12 @@ export default function NoteTree({
             {/* 跟知识库的连接，树上直接看得见（docs/kb-fusion-design.md）。
                 一眼分出「有据可依的」和「还只是草稿的」。 */}
             {n.ingested_at && (
-              <span className="tree-badge ingested"
-                    title={`已摄入知识库（${fmtDate(n.ingested_at)}）`}>⇡</span>
+              // 摄入之后又改过（updated_at 比 ingested_at 新）：黄 ⇡，知识库里还是旧版
+              n.updated_at > n.ingested_at
+                ? <span className="tree-badge ingested stale"
+                        title={`摄入过（${fmtDate(n.ingested_at)}），之后又改过，知识库里还是旧版——在「引用」页同步`}>⇡</span>
+                : <span className="tree-badge ingested"
+                        title={`已摄入知识库（${fmtDate(n.ingested_at)}）`}>⇡</span>
             )}
             {n.cite_count > 0 && (
               <span className="tree-badge cited"

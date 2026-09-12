@@ -24,6 +24,7 @@ def _to_out(cfg: dict) -> ProviderConfigOut:
         gpt_api_key_preview=f"...{key[-4:]}" if key else "",
         asr_base_url=cfg["asr_base_url"],
         asr_default_url=get_settings().whisper_base_url,
+        auto_sync_notes=bool(cfg.get("auto_sync_notes")),
     )
 
 
@@ -39,5 +40,5 @@ def set_provider(body: ProviderConfigIn):
     cfg = store.set_provider_config(
         body.provider, gpt_api_key=body.gpt_api_key,
         gpt_model=body.gpt_model, gpt_base_url=body.gpt_base_url,
-        asr_base_url=body.asr_base_url)
+        asr_base_url=body.asr_base_url, auto_sync_notes=body.auto_sync_notes)
     return _to_out(cfg)

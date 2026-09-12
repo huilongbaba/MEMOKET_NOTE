@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS provider_config (
     gpt_model    TEXT NOT NULL DEFAULT 'gpt-4.1-mini',
     gpt_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
     asr_base_url TEXT NOT NULL DEFAULT '',
+    auto_sync_notes INTEGER NOT NULL DEFAULT 0,
     updated_at   TEXT NOT NULL
 );
 
@@ -259,6 +260,8 @@ _ADDED_COLUMNS = (
     # 语音服务地址进设置页：之前只能改 .env 重启，状态栏挂着「语音离线」用户却没处改。
     # 空 = 用 .env 的默认值。
     ("provider_config", "asr_base_url", "TEXT NOT NULL DEFAULT ''"),
+    # 笔记改动后自动同步进知识库的开关（默认关：每次同步是一次抽取调用）
+    ("provider_config", "auto_sync_notes", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
@@ -654,7 +657,7 @@ import re as _re
 # 事实 id 的形状：`<用户>-<数字>-<十六进制>`。跟前端 editor/factCite.ts 里那条
 # **必须一致**——两边认的不是同一批引用的话，树上的角标和正文里的高亮会对不上。
 # 用户名段以字母开头：不然 [2026-01-01] 这种日期也会被当成引用（01 是合法十六进制）。
-_CITE = _re.compile(r"\[([A-Za-z][A-Za-z0-9_-]*-\d+-[0-9A-Fa-f]+)\]")
+_CITE = _re.compile(r"\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]")
 
 
 def cited_fact_ids(content: str) -> list[str]:
@@ -1151,7 +1154,7 @@ def delete_profile_entry(user_id: str, entry_id: str) -> bool:
 _PROVIDER_CONFIG_ID = "default"
 _PROVIDER_CONFIG_DEFAULTS = {
     "provider": "local", "gpt_api_key": "", "gpt_model": "gpt-4.1-mini",
-    "gpt_base_url": "https://api.openai.com/v1", "asr_base_url": "",
+    "gpt_base_url": "https://api.openai.com/v1", "asr_base_url": "", "auto_sync_notes": 0,
 }
 
 
@@ -1169,7 +1172,7 @@ def get_provider_config() -> dict:
 
 def set_provider_config(provider: str, gpt_api_key: str | None = None,
                         gpt_model: str | None = None, gpt_base_url: str | None = None,
-                        asr_base_url: str | None = None) -> dict:
+                        asr_base_url: str | None = None, auto_sync_notes: bool | None = None) -> dict:
     """更新全局供应商配置。gpt_api_key/gpt_model/gpt_base_url 传 None（不传）
     时保留原值——比如只是把 provider 从 'gpt' 切回 'local' 再切回来，不用
     重新填一遍已经存过的 key。"""
@@ -1183,12 +1186,13 @@ def set_provider_config(provider: str, gpt_api_key: str | None = None,
         "gpt_base_url": current["gpt_base_url"] if gpt_base_url is None else (gpt_base_url or current["gpt_base_url"]),
         # 语音地址跟 key 一样：不传=保留；传空串=清掉、退回 .env 默认
         "asr_base_url": current["asr_base_url"] if asr_base_url is None else asr_base_url.strip().rstrip("/"),
+        "auto_sync_notes": int(current["auto_sync_notes"]) if auto_sync_notes is None else int(bool(auto_sync_notes)),
     }
     with connect() as c:
         c.execute(
             "INSERT OR REPLACE INTO provider_config "
-            "(id, provider, gpt_api_key, gpt_model, gpt_base_url, asr_base_url, updated_at) "
-            "VALUES (:id,:provider,:gpt_api_key,:gpt_model,:gpt_base_url,:asr_base_url,:updated_at)",
+            "(id, provider, gpt_api_key, gpt_model, gpt_base_url, asr_base_url, auto_sync_notes, updated_at) "
+            "VALUES (:id,:provider,:gpt_api_key,:gpt_model,:gpt_base_url,:asr_base_url,:auto_sync_notes,:updated_at)",
             {"id": _PROVIDER_CONFIG_ID, "updated_at": _now(), **merged})
     return merged
 
