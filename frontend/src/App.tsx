@@ -400,7 +400,8 @@ export default function App() {
     setTabs((prev) => prev
       .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
       // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
-      .map((t) => (t.title === t.noteId && t.noteId.startsWith('kb:fact:') ? { ...t, title: '事实 ' + t.noteId.slice(8) } : t)))
+      .map((t) => (t.title === t.noteId && t.noteId.startsWith('kb:fact:') ? { ...t, title: '事实 ' + t.noteId.slice(8) }
+        : t.noteId.startsWith('kb:unit:') && t.title === t.noteId.slice(8) ? { ...t, title: '会议记录' } : t)))
     return list
   }, [])
 
@@ -643,8 +644,8 @@ export default function App() {
     setVirtualId(id)
 
     const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
-      ?? (id.startsWith('kb:facts') ? '事实表' : /^kb:(topic|entity|unit):/.test(id) ? id.split(':').slice(2).join(':')
-        : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id.startsWith('kb:unit:') ? '会议记录' : id)
+      ?? (id.startsWith('kb:facts') ? '事实表' : id.startsWith('kb:unit:') ? '会议记录' : /^kb:(topic|entity):/.test(id) ? id.split(':').slice(2).join(':')
+        : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
       ? prev
       : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
@@ -683,11 +684,17 @@ export default function App() {
       // 刚建的（比如「存为笔记」）还不在列表里：拉一次再开，别急着说不存在
       void api.getNote(id).then((fresh) => { void reload(); void reloadTree(); void switchTo(fresh) }).catch(() => toast('链接指向的笔记不存在了', 'error'))
     }
+    // 虚拟页面加载完才知道真名（会议页的标题）：把标签改过来
+    const onTitle = (e: Event) => {
+      const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail
+      setTabs((prev) => prev.map((t) => (t.noteId === id && t.title !== title ? { ...t, title } : t)))
+    }
+    window.addEventListener('virtual-title', onTitle)
     window.addEventListener('open-note', onOpenNote)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
+    return () => { window.removeEventListener('virtual-title', onTitle); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 

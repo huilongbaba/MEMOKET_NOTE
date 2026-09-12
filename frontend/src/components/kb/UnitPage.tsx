@@ -10,7 +10,12 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
   useEffect(() => { setOffset(0) }, [id])
   useEffect(() => {
     let alive = true
-    kbUnit(id, 50, offset).then((d) => { if (alive) setP(d) }).catch(() => { if (alive) setP(null) })
+    kbUnit(id, 50, offset).then((d) => {
+      if (!alive) return
+      setP(d)
+      // 标签一开始只知道 id（note-674aa9a1b4b7-0 这种裸 id 挂在标签栏上，第 142 轮实拍）：页面拿到标题后改过去
+      window.dispatchEvent(new CustomEvent('virtual-title', { detail: { id: 'kb:unit:' + id, title: d.title || '会议记录' } }))
+    }).catch(() => { if (alive) setP(null) })
     return () => { alive = false }
   }, [id, offset])
   if (p === undefined) return <p className="muted"><span className="spinner" /> 加载中…</p>

@@ -93,9 +93,11 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             <KbSection title="最近摄入" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:recent') }}>全部 →</a>}>
               <div className="stack" style={{ gap: 4 }}>
                 {data.recent_units.map((u) => (
-                  <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:unit:' + u.id) }}>
-                    <i className="bx bx-conversation muted" /> <span className="muted">{u.date}</span> {u.title || u.id}
-                    <span className="muted" style={{ marginInlineStart: 'auto' }}>{u.facts} 条</span>
+                  <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:unit:' + u.id) }} title={u.title || u.id}>
+                    <i className="bx bx-conversation muted" /> <span className="muted" style={{ flex: 'none' }}>{u.date}</span>
+                    {/* 标题长了省略，日期 / 条数不换行（第 142 轮实拍：日期折成两行、「4 条」竖排） */}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{u.title || u.id}</span>
+                    <span className="muted" style={{ marginInlineStart: 'auto', flex: 'none', whiteSpace: 'nowrap' }}>{u.facts} 条</span>
                   </a>
                 ))}
               </div>
