@@ -9,6 +9,7 @@ import type {
   TopicEntityLink, TopicNode,
 } from '../api'
 import KnowledgeGraph from './KnowledgeGraph'
+import { isSpeakerTag } from '../util/kbNoise'
 
 type Tab = 'overview' | 'topics' | 'timeline' | 'facts'
 
@@ -147,7 +148,8 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   const cleanEntities = useMemo(() => {
     if (!hideNoiseEntities) return entities
     return entities.filter((e) => e.fact_count > 0
-      && e.code.replace(/[^a-zA-Z0-9一-龥]/g, '').length > 1)
+      && e.code.replace(/[^a-zA-Z0-9一-龥]/g, '').length > 1
+      && !isSpeakerTag(e.name ?? e.code))                    // 录音转写的说话人标签不是实体
   }, [entities, hideNoiseEntities])
   const cleanEntityCodes = useMemo(() => new Set(cleanEntities.map((e) => e.code)), [cleanEntities])
   const cleanLinks = useMemo(

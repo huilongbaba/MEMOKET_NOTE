@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { kbDashboard, recall, type Fact, type FactDetail, type KbDashboard as Data } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, StatTile, type KbActions } from './KbBits'
+import { isSpeakerTag } from '../../util/kbNoise'
 
 const toDetail = (f: Fact): FactDetail => ({ id: f.id, text: f.text, when: f.when, kind: f.kind, who: '', conf: '', topics: [], entities: [], unit: '' })
 
@@ -78,7 +79,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             </KbSection>
             <KbSection title="实体" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>全部 →</a>}>
               <div className="chip-wrap">
-                {data.top_entities.map((t) => (
+                {data.top_entities.filter((t) => !isSpeakerTag(t.name)).map((t) => (
                   <Chip key={t.code} icon="bx-user" count={t.facts} onClick={() => actions.onOpen('kb:entity:' + t.code)}>{t.name}</Chip>
                 ))}
               </div>

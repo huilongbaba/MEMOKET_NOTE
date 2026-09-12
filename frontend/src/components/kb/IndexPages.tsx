@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 
 import type { TreeRow } from '../../api'
 import { Chip, KbSection, type KbActions } from './KbBits'
+import { isSpeakerTag } from '../../util/kbNoise'
 
 export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbActions }) {
   const roots = rows.filter((r) => r.parent_note_id === 'kb:topics').sort((a, b) => b.fact_count - a.fact_count)
@@ -33,16 +34,15 @@ export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
   )
 }
 
-/** ASR 的说话人标签（Speaker A / speaker_c…）会被抽成「实体」，而且事实数最多——
- *  实体页前二十个全是它们。默认藏掉，一个开关放出来。 */
-const SPEAKER_TAG = /^speaker[\s_-]?[a-z]$/i
+// ASR 的说话人标签（Speaker A / speaker_c…）会被抽成「实体」，而且事实数最多——
+// 实体页前二十个全是它们。默认藏掉，一个开关放出来（util/kbNoise.ts）。
 
 export function EntitiesIndex({ rows, actions }: { rows: TreeRow[]; actions: KbActions }) {
   const [q, setQ] = useState('')
   const [showSpeakers, setShowSpeakers] = useState(false)
   const all = useMemo(() => rows.filter((r) => r.note_id.startsWith('kb:entity:')).sort((a, b) => b.fact_count - a.fact_count), [rows])
-  const speakers = useMemo(() => all.filter((r) => SPEAKER_TAG.test(r.title.trim())).length, [all])
-  const base = showSpeakers ? all : all.filter((r) => !SPEAKER_TAG.test(r.title.trim()))
+  const speakers = useMemo(() => all.filter((r) => isSpeakerTag(r.title)).length, [all])
+  const base = showSpeakers ? all : all.filter((r) => !isSpeakerTag(r.title))
   const list = q ? base.filter((r) => (r.title + ' ' + r.preview).toLowerCase().includes(q.toLowerCase())) : base.slice(0, 200)
   return (
     <div className="kb-page">

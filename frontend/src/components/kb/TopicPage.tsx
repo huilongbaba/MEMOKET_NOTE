@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isSpeakerTag } from '../../util/kbNoise'
 
 import { kbTopic, type KbTopicPage } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions } from './KbBits'
@@ -39,8 +40,8 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
               // 一个一级主题有七八十个子主题，全画就是一团小点（实拍 work）——只画最强的 12 个
               ...p.children.slice(0, 12).map((c) => ({ code: c.code, parents: [p.code], status: 'canonical', aliases: [], fact_count: c.facts })),
             ]}
-            entities={p.entities.slice(0, 8).map((e) => ({ code: e.code, name: e.name, type: '', aliases: [], relations: [], fact_count: e.facts }))}
-            links={p.entities.slice(0, 8).map((e) => ({ topic: p.code, entity: e.code, weight: e.facts }))} />
+            entities={p.entities.filter((e) => !isSpeakerTag(e.name)).slice(0, 8).map((e) => ({ code: e.code, name: e.name, type: '', aliases: [], relations: [], fact_count: e.facts }))}
+            links={p.entities.filter((e) => !isSpeakerTag(e.name)).slice(0, 8).map((e) => ({ topic: p.code, entity: e.code, weight: e.facts }))} />
         </KbSection>
       )}
       {p.children.length > 0 && (
@@ -50,7 +51,7 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
       )}
       {p.entities.length > 0 && (
         <KbSection title="常一起出现的实体">
-          <div className="chip-wrap">{p.entities.map((e) => <Chip key={e.code} icon="bx-user" count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}</div>
+          <div className="chip-wrap">{p.entities.filter((e) => !isSpeakerTag(e.name)).map((e) => <Chip key={e.code} icon="bx-user" count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}</div>
         </KbSection>
       )}
       <KbSection title="事实" extra={<span className="muted" style={{ fontSize: 12 }}>含子主题 · 新的在前</span>}>
