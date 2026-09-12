@@ -53,7 +53,8 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, ingesting
       {missing.length > 0 && (
         // **找不到的要醒目。** 这是一篇笔记建立在不存在的依据上。
         <div className="card" style={{ borderColor: 'var(--del)', color: 'var(--del)' }}>
-          {missing.length} 条引用在知识库里找不到：{missing.join('、')}
+          {/* 只列前 8 个：300 条找不到时（实拍造的长文）整块红字把面板撑满一屏 */}
+          {missing.length} 条引用在知识库里找不到：{missing.slice(0, 8).join('、')}{missing.length > 8 ? `…还有 ${missing.length - 8} 个` : ''}
           <div className="muted" style={{ fontSize: 12 }}>可能是引用写错了，或者知识库重建过</div>
         </div>
       )}
