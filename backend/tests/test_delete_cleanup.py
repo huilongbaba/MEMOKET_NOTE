@@ -46,3 +46,14 @@ def test_老库里的孤儿行一次清掉(db):
     with db.connect() as c:                    # 重新 connect 会再跑一次迁移
         assert c.execute("SELECT COUNT(*) FROM note_citations WHERE note_id='gone000000'").fetchone()[0] == 0
         assert c.execute("SELECT COUNT(*) FROM note_citations WHERE note_id=?", (n["id"],)).fetchone()[0] == 1
+
+
+def test_老库里的运行记录一次修剪到每key50条(db):
+    with db.connect() as c:
+        for i in range(70):
+            c.execute("INSERT INTO harness_runs (id,key,status,rounds,final_scores,weak_dimensions,created_at)"
+                      " VALUES (?,?,?,?,?,?,?)", (f"r{i}", "note:z", "complete", i, "{}", "[]", f"2026-01-01T00:00:{i % 60:02d}+00:00"))
+        c.execute("DELETE FROM meta WHERE key='prune-runs-v1'")
+        c.commit()
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM harness_runs WHERE key='note:z'").fetchone()[0] == 50

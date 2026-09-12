@@ -273,6 +273,16 @@ def _drop_orphans(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM harness_runs WHERE key LIKE 'note:%' AND substr(key, 6) NOT IN (SELECT id FROM notes)")
 
 
+def _prune_runs(conn: sqlite3.Connection) -> None:
+    """运行记录每个 key 只留最近 50 条。`record_harness_run` 以后每次写都会修剪，
+    这里把老库里攒下的（实测一个开发库 4000 条）一次清掉。"""
+    conn.execute(
+        "DELETE FROM harness_runs WHERE rowid NOT IN ("
+        " SELECT rowid FROM ("
+        "  SELECT rowid, ROW_NUMBER() OVER (PARTITION BY key ORDER BY created_at DESC, rowid DESC) AS rn"
+        "  FROM harness_runs) WHERE rn <= 50)")
+
+
 def _migrate_once(conn: sqlite3.Connection, key: str, run) -> bool:
     """只跑一次的数据搬运。跑过了返回 False。
 
@@ -379,6 +389,7 @@ def connect() -> sqlite3.Connection:
     _migrate_once(conn, "plan-folder-to-parent-v1", _plan_folder_to_parent)
     _migrate_once(conn, "drop-folder-remnants-v1", _drop_folder_remnants)
     _migrate_once(conn, "drop-orphans-v1", _drop_orphans)
+    _migrate_once(conn, "prune-runs-v1", _prune_runs)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_writing_plans_parent"
                  " ON writing_plans(user_id, parent_note_id, status)")
     return conn
