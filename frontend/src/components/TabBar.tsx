@@ -38,6 +38,13 @@ export default function TabBar({
 
   // 标签多到放不下时按比例缩。宽度算在这儿而不是交给 flex，是因为要保证
   // 每个标签**至少**看得出是个标签（Trilium 的下限是 48px）。
+  // 激活的标签滚进视野：十几个标签时 ⌘9 / 后退切到的那个可能在看不见的地方
+  useEffect(() => {
+    if (!activeId) return
+    const el = ref.current?.querySelector('.note-tab.active') as HTMLElement | null
+    el?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [activeId, tabs.length])
+
   useEffect(() => {
     const el = ref.current
     if (!el) return
