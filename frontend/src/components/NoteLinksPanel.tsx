@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { fmtDate } from '../util/time'
 
 /** ribbon「链接」：这篇链出去的笔记 + 链进来的笔记。`[[` 打字即可插链接。 */
 export default function NoteLinksPanel({ noteId, content, onOpen }: {
@@ -22,7 +23,7 @@ export default function NoteLinksPanel({ noteId, content, onOpen }: {
     : rows.map((n) => (
       <a key={n.id} className="kb-link" onClick={() => onOpen(n.id)}>
         <i className="bx bx-note" /> <span className="ellipsis">{displayTitle(n)}</span>
-        <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{n.updated_at.slice(0, 10)}</span>
+        <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
       </a>
     ))
   return (

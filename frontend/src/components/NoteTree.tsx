@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TreeRow } from '../api'
 import { ROOT_ID, isFactId, isVirtualId } from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { fmtDate } from '../util/time'
 
 type Props = {
   rows: TreeRow[]
@@ -228,7 +229,7 @@ export default function NoteTree({
                 知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
             <span className="tree-icon" aria-hidden><i className={'bx ' + iconOf(n)} /></span>
             {/* 标题被截断时悬停能看全；同名的几篇靠日期分 */}
-            <span className="tree-title" title={displayTitle(n) + (n.updated_at ? `\n修改于 ${n.updated_at.slice(0, 10)}` : '')}>{displayTitle(n)}</span>
+            <span className="tree-title" title={displayTitle(n) + (n.updated_at ? `\n修改于 ${fmtDate(n.updated_at)}` : '')}>{displayTitle(n)}</span>
             {n.fact_count > 0 && !isFactId(n.note_id) && (
               <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
             )}

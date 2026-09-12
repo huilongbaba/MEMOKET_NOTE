@@ -55,6 +55,7 @@ import Toaster from './components/Toaster'
 import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
+import { fmtDate } from './util/time'
 
 // 后台自动生成的节流参数。骨架/编辑都是真实 LLM 调用（本地模型上约 8-15s），
 // 不能跟着每次按键触发——用"停止输入 N 秒 + 内容变化够多"两条门槛，既保证
@@ -1022,7 +1023,7 @@ export default function App() {
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {/* 在哪个文件夹下：搜索命中几十条时，这是区分同名笔记的唯一线索 */}
             {(() => { const row = tree.find((r) => r.note_id === n.id); const parent = row && row.parent_note_id !== api.ROOT_ID ? tree.find((r) => r.note_id === row.parent_note_id) : undefined; return parent ? displayTitle(parent) + ' · ' : '' })()}
-            {n.updated_at.slice(0, 10)}
+            {fmtDate(n.updated_at)}
           </span>
           {/* 「移动到文件夹」的下拉没了：树上靠拖拽和右键菜单移动，一个
               只能选一层的下拉表达不了任意深度的树。 */}

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import type { Fact, Note } from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { fmtDate } from '../util/time'
 
 /** 没输入时的快捷命令：Trilium 的 jumpToNote 空态列最近笔记，我们再加几个
  * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。 */
@@ -136,11 +137,11 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
         <div className="palette-results">
           {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
           {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
-          {!typing && recent.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{n.updated_at.slice(0, 10)}</span></>, 'bx-note'))}
+          {!typing && recent.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{fmtDate(n.updated_at)}</span></>, 'bx-note'))}
           {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
           {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
           {notes.length > 0 && <p className="muted palette-group">笔记</p>}
-          {typing && notes.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{n.updated_at.slice(0, 10)}</span></>, 'bx-note'))}
+          {typing && notes.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{fmtDate(n.updated_at)}</span></>, 'bx-note'))}
           {facts.length > 0 && <p className="muted palette-group">知识库（点击插入引用）</p>}
           {typing && facts.map((f) => row(f.id, <>{f.text.slice(0, 60)}{f.when && <span className="muted"> · {f.when}</span>}</>, 'bx-bulb'))}
           {!typing && <p className="muted palette-group">前往</p>}

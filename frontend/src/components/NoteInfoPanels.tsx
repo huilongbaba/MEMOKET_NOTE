@@ -9,14 +9,14 @@ import { useEffect, useState } from 'react'
 
 import { notePaths, type Note, type TreeRow } from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { fmtDateTime } from '../util/time'
 
 export function NoteInfoPanel({ note, content, row }: { note: Note; content: string; row?: TreeRow }) {
   const words = content.replace(/\s+/g, '').length
-  const fmt = (s: string) => (s ? s.replace('T', ' ').slice(0, 16) : '—')
   return (
     <dl className="kv">
-      <dt>创建</dt><dd>{fmt(note.created_at)}</dd>
-      <dt>修改</dt><dd>{fmt(note.updated_at)}</dd>
+      <dt>创建</dt><dd>{fmtDateTime(note.created_at)}</dd>
+      <dt>修改</dt><dd>{fmtDateTime(note.updated_at)}</dd>
       <dt>字数</dt><dd>{words} · 约 {Math.max(1, Math.round(words / 400))} 分钟阅读</dd>
       <dt>引用</dt><dd>{row?.cite_count ? `${row.cite_count} 条知识库记录` : '无'}</dd>
       <dt>摄入</dt><dd>{row?.ingested_at ? `已摄入（${row.ingested_at.slice(0, 10)}）` : '未摄入'}</dd>

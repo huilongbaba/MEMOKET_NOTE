@@ -1,6 +1,7 @@
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete'
 import * as api from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { fmtDate } from '../util/time'
 
 /**
  * `[[` + 几个字 → 搜笔记标题，选中插成 `[标题](note://<id>)`。
@@ -31,7 +32,7 @@ export async function noteLinkSource(context: CompletionContext): Promise<Comple
     filter: false,
     options: hits.map((n) => ({
       label: displayTitle(n),
-      detail: n.updated_at.slice(0, 10),
+      detail: fmtDate(n.updated_at),
       apply: (view, _c, from, to) => {
         const text = `[${displayTitle(n)}](note://${n.id})`
         view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } })

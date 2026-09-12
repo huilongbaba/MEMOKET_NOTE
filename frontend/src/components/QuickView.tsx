@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import type { Note } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import MarkdownEditor from './MarkdownEditor'
+import { fmtDate } from '../util/time'
 
 export default function QuickView({ note, onClose, onOpen }: {
   note: Note
@@ -26,7 +27,7 @@ export default function QuickView({ note, onClose, onOpen }: {
       <div className="modal quick-view" onMouseDown={(e) => e.stopPropagation()}>
         <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <b style={{ flex: 1, fontSize: 16 }}>{displayTitle(note)}</b>
-          <span className="muted" style={{ fontSize: 12 }}>{note.updated_at.slice(0, 10)}</span>
+          <span className="muted" style={{ fontSize: 12 }}>{fmtDate(note.updated_at)}</span>
           <button onClick={() => { onClose(); onOpen(note) }}>在标签里打开</button>
           <button className="icon-btn" title="关闭（Esc）" onClick={onClose}>×</button>
         </div>

@@ -3,6 +3,7 @@ import type { Note } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { SHORTCUT_GROUPS } from '../shortcuts'
 import { fmtShortcut } from '../util/keys'
+import { fmtDate } from '../util/time'
 
 /**
  * 没打开任何笔记时中栏放什么。之前是两行灰字（实拍：新用户第一眼就是一片白）。
@@ -57,7 +58,7 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
             {recent.map((n) => (
               <a key={n.id} className="kb-link" onClick={() => onOpenNote(n)}>
                 <i className="bx bx-note" /> <span className="ellipsis">{displayTitle(n)}</span>
-                <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{n.updated_at.slice(0, 10)}</span>
+                <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
               </a>
             ))}
           </div>

@@ -25,6 +25,7 @@ import {
   factPeek, factSources, kbTreeChildren, notesCiting, recall,
   isFactId, type CitingNote, type Fact, type FactPeek, type SourceLine, type TreeRow,
 } from '../api'
+import { fmtDate } from '../util/time'
 
 type Props = {
   id: string
@@ -140,7 +141,7 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
           <a key={n.id} href="#" className="kb-link"
              onClick={(e) => { e.preventDefault(); onOpenNote(n.id) }}>
             {displayTitle(n)}
-            <span className="muted" style={{ marginInlineStart: 8 }}>{n.updated_at.slice(0, 10)}</span>
+            <span className="muted" style={{ marginInlineStart: 8 }}>{fmtDate(n.updated_at)}</span>
           </a>
         ))}
       </Section>
