@@ -738,9 +738,11 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 /* 一条带底色的横带：滚动时正文从它下面过，不会跟半透明的胶囊叠在一起
    （实拍：标题被按钮盖住一半） */
 .floating-buttons {
-  position: sticky; top: 0; height: 48px; z-index: 7;
+  /* top:-8px + 上补 8px：滚动区顶部有 8px 内边距，钉在 top:0 时那 8px 露出下面滚过的正文
+     （实拍：ribbon 下面一条引用的蓝色虚线）。 */
+  position: sticky; top: -8px; height: 56px; z-index: 7; box-sizing: border-box;
   display: flex; justify-content: flex-end; align-items: center; gap: 6px;
-  margin: 0 calc(-1 * var(--content-margin-inline)) 4px; padding: 0 var(--content-margin-inline);
+  margin: -8px calc(-1 * var(--content-margin-inline)) 4px; padding: 8px var(--content-margin-inline) 0;
   background: linear-gradient(var(--main-bg) 86%, transparent);
 }
 .fb-btn {

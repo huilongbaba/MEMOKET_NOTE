@@ -1271,3 +1271,9 @@ replace 修订（测试里实测），用户一点接受整段被换成半句。
 magic tap 补上同一套：撞上限就带着已写的半段再要一次（CONTINUE_TAIL_TOKENS），补尾还
 撞上限才报 truncated。补尾指令 `FINISH_THE_SENTENCE` 搬进 prompts.writing，分段写作
 共用。测试改成「补尾成功 / 补尾仍截断」两条。pytest 787。
+
+## [115] 全量巡检第 95 轮：ribbon 下面一条蓝虚线（2026-09-12）
+
+目录探针（正文滚到中段）实拍：工具栏底下露出一截引用的蓝色虚线。用 elementsFromPoint
+查：滚动区顶部有 8px 内边距，浮动按钮条 sticky 在 top:0 时钉在内边距下面，那 8px 露出
+滚过去的正文。按钮条改 top:-8px + 上补 8px 内边距，复查那几个像素全落在按钮条上。
