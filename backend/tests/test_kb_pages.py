@@ -123,3 +123,12 @@ def test_各页都带取代与合并标注(mem, monkeypatch):
         assert f1["superseded_by"] == "f2" and f1["merged"] is True
         f2 = next((r for r in rows if r["id"] == "f2"), None)   # 某一天那页没有 f2
         assert f2 is None or "superseded_by" not in f2
+
+
+def test_按月是连续的日历月_错抽的远古日期不拉长横轴(mem):
+    store, _ = mem._index()
+    store.facts["old"] = _fact("old", "错抽", "2005-11-03", topics=["work"])
+    store.facts["mid"] = _fact("mid", "x", "2025-10-01", topics=["work"])
+    rows = pages.topic_page(mem, "work")["months"]
+    assert [r["month"] for r in rows] == ["2025-10", "2025-11", "2025-12", "2026-01"]   # 开头空月砍掉，2005 不进来
+    assert [r["facts"] for r in rows] == [1, 0, 0, 2]                                   # 中间空月补 0

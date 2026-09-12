@@ -43,16 +43,16 @@ export function MiniBars({ data, height = 64, label = '条事实' }: { data: KbM
   if (data.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>还没有按月的数据。</p>
   const max = Math.max(1, ...data.map((d) => d.facts))
   return (
-    <div className="mini-bars" style={{ maxWidth: data.length * 31 }}>
+    <div className="mini-bars" style={{ maxWidth: Math.max(data.length * 31, 132) }}>{/* 只有一两个月时也要放得下两个「2026-03」标签，不然标签折成两行 */}
       <div className="mini-bars-row" style={{ height }}>
         {data.map((d) => (
           <div key={d.month} className="mini-bar" title={`${d.month} · ${d.facts} ${label}`}
-               style={{ height: `${Math.max(3, (d.facts / max) * 100)}%` }} />
+               style={{ height: d.facts ? `${Math.max(3, (d.facts / max) * 100)}%` : 0, opacity: d.facts ? undefined : 0 }} />
         ))}
       </div>
       <div className="mini-bars-axis muted">
         <span>{data[0].month}</span>
-        <span>{data[data.length - 1].month}</span>
+        {data.length > 1 && <span>{data[data.length - 1].month}</span>}
       </div>
     </div>
   )

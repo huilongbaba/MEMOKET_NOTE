@@ -42,9 +42,27 @@ def note_id_of_unit(unit: str) -> str:
 
 
 def _months(facts, last: int | None = None) -> list[dict]:
+    """按月计数。``last`` 给了就是**连续的**最近 N 个日历月（没数据的月份补 0），而不是「有数据
+    的最近 N 个月」——后者会把一条 2005 年的错抽日期和 2026 年并排画成等宽的条，横轴写着
+    2005-11 → 2026-12，看不出任何形状（第 124 轮实拍 work 主题页）。不给 ``last`` = 全部有数据的月。"""
     c = Counter(f.when[:7] for f in facts if f.when)
-    rows = [{"month": m, "facts": n} for m, n in sorted(c.items())]
-    return rows[-last:] if last else rows
+    if not c:
+        return []
+    if not last:
+        return [{"month": m, "facts": n} for m, n in sorted(c.items())]
+    y, m = (int(x) for x in max(c).split("-"))
+    months = []
+    for _ in range(last):
+        months.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    months.reverse()
+    rows = [{"month": mo, "facts": c.get(mo, 0)} for mo in months]
+    # 开头一串空月份砍掉：一个只有近三个月数据的主题不该画 21 根空条
+    while rows and rows[0]["facts"] == 0:
+        rows.pop(0)
+    return rows
 
 
 def _page(facts, limit: int, offset: int, vocab=None) -> tuple[list[dict], int]:
