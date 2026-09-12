@@ -122,6 +122,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .md-toolbar .tb-sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; flex-shrink: 0; }
 button.primary:hover:not(:disabled) { color: #fff; opacity: .9; }
 
+/* 原生 <select>（事实表筛选、导入页「导入到」）没跟 input 一起定义过，暗色下是白底
+   黑字一块（实拍）。跟 input 同一套令牌；`color-scheme` 让系统画的下拉列表本身也跟主题。 */
+select {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+}
+:root { color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
+
 input, textarea {
   font: inherit;
   color: var(--fg);
