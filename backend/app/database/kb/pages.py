@@ -52,6 +52,22 @@ def _page(facts, limit: int, offset: int, vocab=None) -> tuple[list[dict], int]:
     return [_fact(f, vocab) for f in rows[offset:offset + limit]], len(rows)
 
 
+def annotate(mem, rows: list[dict]) -> list[dict]:
+    """给一页事实带上生命周期：被哪条取代（superseded_by）、是不是合并进去的（merged）。
+    之前只有实体页带，主题页 / 会议页 / 某一天 / 事实表上一条已被取代的记录看着跟现行的一样。"""
+    if not rows or not hasattr(mem, "fact_attrs"):
+        return rows
+    superseded = mem.fact_attrs("superseded_by")
+    merged = mem.fact_attrs("merged")
+    for row in rows:
+        by = superseded.get(row["id"])
+        if by:
+            row["superseded_by"] = by
+            if merged.get(row["id"]):
+                row["merged"] = True
+    return rows
+
+
 def _entity_name(vocab, code: str) -> str:
     e = vocab.entities.get(code)
     return (e.name or e.code) if e else code
@@ -115,6 +131,7 @@ def topic_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict 
     children.sort(key=lambda r: -r["facts"])
     ents = Counter(c for f in facts for c in f.entities)
     page, total = _page(facts, limit, offset, vocab)
+    annotate(mem, page)
     return {
         "code": code, "aliases": sorted(t.aliases), "parents": [p for p in sorted(t.parents) if p in vocab.topics],
         "status": t.status, "facts_total": total, "facts": page, "limit": limit, "offset": offset,
@@ -171,10 +188,7 @@ def entity_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict
     facts = [f for f in store.facts.values() if code in f.entities]
     topics = Counter(c for f in facts for c in f.topics)
     page, total = _page(facts, limit, offset, vocab)
-    superseded = mem.fact_attrs("superseded_by") if hasattr(mem, "fact_attrs") else {}
-    for row in page:
-        if row["id"] in superseded:
-            row["superseded_by"] = superseded[row["id"]]
+    annotate(mem, page)
     return {
         "code": code, "name": e.name or e.code, "type": e.etype or "", "aliases": sorted(e.aliases),
         "relations": [{"rel": r, "target": tgt, "target_name": _entity_name(vocab, tgt)} for r, tgt in sorted(e.rels)],
@@ -215,6 +229,7 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
         return None
     facts = [f for f in store.facts.values() if f.unit == unit_id]
     page, total = _page(facts, limit, offset, vocab)
+    annotate(mem, page)
     topics = Counter(c for f in facts for c in f.topics)
     ents = Counter(c for f in facts for c in f.entities)
     return {
@@ -230,4 +245,4 @@ def day_facts(mem, date: str, limit: int = FACT_PAGE) -> list[dict]:
     """时间线上点开一天。"""
     store, vocab = mem._index()
     page, _ = _page([f for f in store.facts.values() if f.when == date], limit, 0, vocab)
-    return page
+    return annotate(mem, page)

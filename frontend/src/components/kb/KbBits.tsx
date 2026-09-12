@@ -99,7 +99,7 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
       <div className={'fact-text' + (f.superseded_by ? ' superseded' : '')} onClick={() => actions.onOpen('kb:fact:' + f.id)}>{f.text}</div>
       {f.superseded_by && (
         <div className="fact-tags">
-          <Chip icon="bx-right-arrow-alt" onClick={() => actions.onOpen('kb:fact:' + f.superseded_by)} title="这条已经过时，点开取代它的那条">已被取代</Chip>
+          <Chip icon={f.merged ? 'bx-git-merge' : 'bx-right-arrow-alt'} onClick={() => actions.onOpen('kb:fact:' + f.superseded_by)} title={f.merged ? '这条已经合并进另一条，点开合并后的那条' : '这条已经过时，点开取代它的那条'}>{f.merged ? '已合并' : '已被取代'}</Chip>
         </div>
       )}
       {f.note_id && (

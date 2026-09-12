@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..database import store
+from ..database.kb import pages
 from ..database.kb import relations as kb_relations
 from ..database.kite.kite_memory import UserMemory
 from ..harness import prompts
@@ -79,9 +80,11 @@ def facts(kind: str = "", who: str = "", topic: str = "", entity: str = "",
     """事实表：分页 + 过滤。topic 过滤含子主题闭包，跟 /recall 语义一致。"""
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    rows, total = UserMemory(user).facts_page(
+    mem = UserMemory(user)
+    rows, total = mem.facts_page(
         kind=kind, who=who, topic=topic, entity=entity, conf_min=conf_min,
         limit=limit, offset=offset)
+    pages.annotate(mem, rows)
     return FactsPageOut(facts=[FactDetailOut(**r) for r in rows], total=total,
                         limit=limit, offset=offset)
 

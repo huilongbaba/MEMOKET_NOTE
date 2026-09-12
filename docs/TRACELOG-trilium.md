@@ -1603,3 +1603,12 @@ Notion：`POST /pages` + 子块，再导按记住的 page id `PATCH` 标题、�
 codebook：206 → 75MB（峰值 223 → 92MB），加载 2.6 → 3.0s；20 个查询词法通道逐字节一致；包里
 原有 9 条失败在 main 上就失败（harness_cli / speaker）。PR：memoket/memoket-kite#8。本仓后端
 826 条在分支上全过；venv 装回 main 等合并（dist 不能带未合并的包）。
+
+## [153] 巡检第 122 轮：导回窄窗、取代标注补全（2026-09-12）
+
+优先队列做完，从第 122 轮接着巡检（第 121 轮之后重打过 dmg、正式版已重开，health 正常）。
+实拍窄窗（1000×700）导入页：导回区 Notion / 飞书的占位文字被截断（「Integration token（ntn_… /
+sec」「文件夹 token（可空」）——占位缩短，说明挪到 title。引用页 / 事实表（深色）没问题。顺手
+查了一个口径漏洞：`superseded_by` 只在实体页带，主题页 / 会议页 / 某一天 / 事实表上一条已被取代
+或已合并的记录看着跟现行的一样——`pages.annotate()` 统一给四种页面和 `/api/memory/facts` 带
+`superseded_by` + `merged`，事实卡 chip 分「已被取代」/「已合并」。pytest 827。

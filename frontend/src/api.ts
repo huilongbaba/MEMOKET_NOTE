@@ -607,8 +607,9 @@ export type FactDetail = {
   /** 从哪篇笔记摄入的（知识库页面反链回笔记）；手工加的 manual=true */
   note_id?: string
   manual?: boolean
-  /** 被哪条取代了（「新的取代旧的」之后旧的带这个） */
+  /** 被哪条取代了（「新的取代旧的」之后旧的带这个）；merged = 是「合成一条」并进去的 */
   superseded_by?: string
+  merged?: boolean
 }
 
 // ---------------------------------------------------------- 记忆的关系

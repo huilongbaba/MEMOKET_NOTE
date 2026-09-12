@@ -383,6 +383,8 @@ class FactDetailOut(BaseModel):
     topics: list[str] = Field(default_factory=list)
     entities: list[str] = Field(default_factory=list)
     unit: str = ""
+    superseded_by: str = ""
+    merged: bool = False
 
 
 class FactsPageOut(BaseModel):

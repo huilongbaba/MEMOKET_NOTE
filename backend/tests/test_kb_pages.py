@@ -113,3 +113,13 @@ def test_会议页和某一天(mem):
     assert u["entities"][0]["name"] == "Acme"
     assert pages.unit_page(mem, "nope") is None
     assert [f["id"] for f in pages.day_facts(mem, "2026-01-05")] == ["f1"]
+
+
+def test_各页都带取代与合并标注(mem, monkeypatch):
+    monkeypatch.setattr(mem, "fact_attrs", lambda name: {"superseded_by": {"f1": "f2"}, "merged": {"f1": "1"}}.get(name, {}))
+    for rows in (pages.topic_page(mem, "work")["facts"], pages.unit_page(mem, "s1")["facts"],
+                 pages.day_facts(mem, "2026-01-05"), pages.entity_page(mem, "acme")["facts"]):
+        f1 = next(r for r in rows if r["id"] == "f1")
+        assert f1["superseded_by"] == "f2" and f1["merged"] is True
+        f2 = next((r for r in rows if r["id"] == "f2"), None)   # 某一天那页没有 f2
+        assert f2 is None or "superseded_by" not in f2
