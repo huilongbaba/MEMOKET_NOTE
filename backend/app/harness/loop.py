@@ -64,7 +64,7 @@ async def run(st: State, hooks: Hooks,
             # each take tens of seconds, and without this the label sits on
             # "writing" through all of it -- the interface looks hung exactly
             # when the run is doing its slowest work.
-            yield Event.activity(f"{st.mode.label}：在看要用哪些材料…")
+            yield Event.activity(f"{_who(st)}：在看要用哪些材料…")
             st.facts_new, st.trace = await _wrap_prepare(chain, hooks.prepare, st)
             async for e in _fire(chain, "after_prepare", st):
                 yield e
@@ -76,7 +76,7 @@ async def run(st: State, hooks: Hooks,
             # the old one (deltas already sent can't be taken back).
             async for e in _fire(chain, "before_produce", st):
                 yield e
-            yield Event.activity(f"{st.mode.label}：{st.mode.verb}…")
+            yield Event.activity(f"{_who(st)}：{st.mode.verb}…")
             st.fresh = ""
             mid = f"r{st.round}"
             yield Event.text_start(mid)
@@ -102,7 +102,7 @@ async def run(st: State, hooks: Hooks,
             async for e in _fire(chain, "before_judge", st):
                 yield e
             if not st.skip_judge:
-                yield Event.activity(f"{st.mode.label}：在核对…")
+                yield Event.activity(f"{_who(st)}：在核对…")
                 st.ev = await _score(st)
                 if st.ev is None:
                     # An unjudged round counts towards the stall net. A
@@ -167,6 +167,12 @@ async def run(st: State, hooks: Hooks,
 
 async def _commit(hooks: Hooks, st: State) -> None:
     await hooks.commit(st)
+
+
+def _who(st) -> str:
+    """活动条的主语：第二轮起带轮次。实拍数据可视化跑到第 2 轮又显示「在看要用哪些材料…」，
+    看起来像卡在开头没动。"""
+    return st.mode.label if st.round <= 1 else f"{st.mode.label} · 第 {st.round} 轮"
 
 
 def _pause(st: State, reason: str) -> str:
