@@ -237,7 +237,7 @@ export default function NoteTree({
                 一眼分出「有据可依的」和「还只是草稿的」。 */}
             {n.ingested_at && (
               <span className="tree-badge ingested"
-                    title={`已摄入知识库（${n.ingested_at.slice(0, 10)}）`}>⇡</span>
+                    title={`已摄入知识库（${fmtDate(n.ingested_at)}）`}>⇡</span>
             )}
             {n.cite_count > 0 && (
               <span className="tree-badge cited"

@@ -1976,7 +1976,7 @@ export default function App() {
       await reload(); await reloadTree()
       open(n); return
     }
-    const parent = await api.createNote(`导入 ${new Date().toISOString().slice(0, 10)}`, `从 ${list.length} 个文件导入。`, under)
+    const parent = await api.createNote(`导入 ${fmtDate(new Date().toISOString())}`, `从 ${list.length} 个文件导入。`, under)
     let first: Note | null = null
     for (const f of list) {
       const n = await api.createNote(strip(f.name), await f.text(), parent.id)

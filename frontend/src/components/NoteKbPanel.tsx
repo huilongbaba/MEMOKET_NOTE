@@ -7,6 +7,7 @@
  * 等于让一篇笔记建立在不存在的依据上。
  */
 import { useEffect, useState } from 'react'
+import { fmtDate } from '../util/time'
 
 import { factPeek, notesCiting, type CitingNote, type FactPeek, type TreeRow } from '../api'
 import { displayTitle } from '../util/displayTitle'
@@ -42,7 +43,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, ingesting
     <div className="stack" style={{ fontSize: 13 }}>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
         {row?.ingested_at
-          ? <span className="muted">⇡ 已摄入知识库 · {row.ingested_at.slice(0, 10)}</span>
+          ? <span className="muted">⇡ 已摄入知识库 · {fmtDate(row.ingested_at)}</span>
           : <span className="muted">还没摄入知识库</span>}
         <button onClick={onIngest} disabled={ingesting} style={{ marginInlineStart: 'auto' }}>
           {ingesting ? <span className="spinner" /> : (row?.ingested_at ? '重新摄入' : '📥 存入知识库')}
