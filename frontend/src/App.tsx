@@ -607,7 +607,13 @@ export default function App() {
     // 整库导出：导航到接口地址就是下载（Electron 走系统的保存对话框）
     const onExport = () => { void save(); window.location.href = `/api/export/markdown?user=${encodeURIComponent(api.getUser())}` }
     window.addEventListener('export-all', onExport)
-    const onOpenNote = (e: Event) => { const id = (e as CustomEvent<string>).detail; const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else toast('链接指向的笔记不存在了', 'error') }
+    const onOpenNote = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      const n = notes.find((x) => x.id === id)
+      if (n) { void switchTo(n); return }
+      // 刚建的（比如「存为笔记」）还不在列表里：拉一次再开，别急着说不存在
+      void api.getNote(id).then((fresh) => { void reload(); void reloadTree(); void switchTo(fresh) }).catch(() => toast('链接指向的笔记不存在了', 'error'))
+    }
     window.addEventListener('open-note', onOpenNote)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
@@ -1266,6 +1272,24 @@ export default function App() {
         }, 1500)
       }
       if (probe === 'focus' && notes.length) setTimeout(() => setFocusMode(true), 1500)
+      // 定期回顾：打开工具页后点「最近 N 天」
+      if (probe?.startsWith('digest:')) {
+        setTimeout(() => void openVirtual('kb:digest'), 600)
+        setTimeout(() => { const days = probe.slice(7).split(':')[0]; const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === `最近 ${days} 天`); btn?.click() }, 2500)
+        // digest:7:save → 结果出来后点「存为笔记」
+        if (probe.endsWith(':save')) setTimeout(() => (Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('存为笔记')) as HTMLElement | undefined)?.click(), 55000)
+      }
+      // 树的键盘导航：聚焦树，往下三格、回车打开
+      if (probe === 'treekeys' && tree.length && !harnessProbeDone.current) {
+        harnessProbeDone.current = true
+        setTimeout(() => {
+          const t = document.querySelector('.note-tree') as HTMLElement | null
+          if (!t) return
+          t.focus()
+          const key = (k: string) => t.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }))
+          key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('Enter')
+        }, 1500)
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand

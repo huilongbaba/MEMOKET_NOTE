@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { friendlyError } from '../util/friendlyError'
-import { digest } from '../api'
+import { createNote, digest } from '../api'
 import type { Digest } from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
@@ -24,6 +24,21 @@ export default function DigestPanel() {
   // 完成，之前三个按钮共用一个 loading 布尔值，点了"最近 7 天"之后三个
   // 按钮会一起转圈，用户分不清自己点的是哪个。
   const [loading, setLoading] = useState<number | null>(null)
+
+  const [saving, setSaving] = useState(false)
+  async function saveAsNote() {
+    if (!result) return
+    setSaving(true)
+    try {
+      const title = `回顾 ${result.date_from} ~ ${result.date_to}`
+      const body = `# ${title}\n\n> 由「定期回顾」生成 · ${result.fact_count} 条事实\n\n${result.summary.trim()}\n`
+      const n = await createNote(title, body)
+      toast('已存为笔记「' + title + '」')
+      window.dispatchEvent(new CustomEvent('open-note', { detail: n.id }))
+      window.dispatchEvent(new CustomEvent('notes-changed'))
+    } catch (e) { toast('存笔记失败：' + friendlyError(e), 'error') }
+    finally { setSaving(false) }
+  }
 
   async function run(days: number) {
     setLoading(days)
@@ -49,9 +64,14 @@ export default function DigestPanel() {
       </div>
       {result && (
         <div className="card" style={{ marginTop: 8 }}>
-          <p className="muted" style={{ fontSize: 12, margin: '0 0 6px' }}>
-            {result.date_from} ~ {result.date_to} · {result.fact_count} 条事实
-          </p>
+          <div className="row" style={{ alignItems: 'center', gap: 8, margin: '0 0 6px' }}>
+            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+              {result.date_from} ~ {result.date_to} · {result.fact_count} 条事实
+            </p>
+            <span style={{ flex: 1 }} />
+            {/* 回顾是一次性的，关掉页就没了——想留就存成一篇笔记，之后还能续写、引用 */}
+            <button className="chip" disabled={saving} onClick={() => void saveAsNote()}><i className="bx bx-save" /> 存为笔记</button>
+          </div>
           <MarkdownEditor content={result.summary} readOnly />
         </div>
       )}
