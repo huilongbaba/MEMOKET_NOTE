@@ -703,8 +703,11 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .tree-actions {
   position: absolute; bottom: 8px; inset-inline-end: 10px; display: flex; gap: 2px;
   padding: 2px; border-radius: 20px; background: var(--left-pane-bg);
-  box-shadow: 0 1px 4px rgba(0,0,0,var(--shadow-opacity)); opacity: .55; transition: opacity 200ms;
+  box-shadow: 0 1px 4px rgba(0,0,0,var(--shadow-opacity)); opacity: 0; transition: opacity 200ms;
 }
+/* 鼠标进左栏才现身：常驻时它正好压在最后一行的数量角标上（实拍多轮：learning 2293、
+   项目 10 27 都被盖住一半）。不用鼠标的走 ⌘K 里的「定位到当前笔记」「折叠整棵树」。 */
+.left-pane:hover .tree-actions, .tree-actions:focus-within { opacity: .55; }
 .tree-actions:hover { opacity: 1; }
 .left-pane { position: relative; }
 .embedded-panel { max-width: 720px; }

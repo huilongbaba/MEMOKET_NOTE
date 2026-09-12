@@ -1227,3 +1227,10 @@ demo 库攒了四篇空「未命名」。两个原因：`blank` 探针没有 har
 随 notes/tree 刷新再进来就又建一篇（一轮三篇）；退出时的 flush 只 save 不收空笔记（切走
 时会收）。探针加守卫；flush 之后走 `dropIfStillEmpty(currentRef.current)`（经 actionsRef 拿
 最新闭包），实测退出前多了一条 DELETE。
+
+## [109] 全量巡检第 89 轮：树底工具钮压住数量角标（2026-09-12）
+
+多轮实拍都撞到：树底部「定位 / 折叠」两个浮钮常驻，正好压在最后一行的数量角标上
+（learning 2293、项目 10 27）。改成鼠标进左栏才现身（focus-within 也现身）；不用鼠标的
+在 ⌘K 里加「定位到当前笔记」「折叠整棵树」两条命令（走 window 事件，collapseAll 经
+actionsRef）。412 篇大库用户的标签栏 / 知识库树回归正常。
