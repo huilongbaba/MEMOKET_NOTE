@@ -8,7 +8,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SlashPrompt from './components/SlashPrompt'
-import { formatMarkdown, fixBoldPunct } from './editor/format'
+import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import type { SlashItem } from './editor/slashMenu'
 import {
   appendPreview, endRun, logRun, patchRun, runsField, startRun,
@@ -2741,6 +2741,14 @@ export default function App() {
             )}
 
             {tapMeta && <TapProvenance meta={tapMeta} onDismiss={() => setTapMeta(null)} />}
+            {/* 整篇缩进了 4 格以上（从别处粘来的常见）：markdown 会把它整个当成代码块，
+                标题不是标题、一片等宽字。给一键去缩进，别让人自己猜为什么渲染不对。 */}
+            {current && content.length > 40 && stripCommonIndent(content) !== content && (
+              <p className="muted harness-line" style={{ marginBottom: 8 }}>
+                <i className="bx bx-info-circle" /> 这篇整体缩进了，Markdown 会把它当成一整块代码，标题和列表都显示不出来。
+                <button className="chip" style={{ marginInlineStart: 8 }} onClick={formatNote}><i className="bx bx-align-left" /> 去掉缩进</button>
+              </p>
+            )}
 
             {pendingDiff > 0 && (
               <div
