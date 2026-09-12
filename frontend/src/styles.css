@@ -254,6 +254,11 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .palette-group { font-size: 11px; margin: 8px 4px 4px; padding: 0 4px; }
 .palette-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette-item:hover, .palette-item.active { background: var(--hover); }
+.palette-item { display: flex; align-items: center; }
+.palette-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
+.palette-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-snip { margin-inline-start: 8px; font-size: 11px; }
+.palette-when { flex-shrink: 0; font-size: 11px; }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: var(--backdrop-color); z-index: 100;

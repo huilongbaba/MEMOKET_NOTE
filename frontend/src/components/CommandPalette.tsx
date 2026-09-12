@@ -3,6 +3,8 @@ import * as api from '../api'
 import type { Fact, Note } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
+import { matchSnippet } from '../util/snippet'
+import Highlight from './Highlight'
 
 /** 没输入时的快捷命令：Trilium 的 jumpToNote 空态列最近笔记，我们再加几个
  * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。 */
@@ -137,13 +139,25 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
         <div className="palette-results">
           {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
           {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
-          {!typing && recent.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{fmtDate(n.updated_at)}</span></>, 'bx-note'))}
+          {!typing && recent.map((n) => row(n.id, <span className="palette-line"><span className="palette-main">{displayTitle(n)}</span>
+            <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note'))}
           {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
           {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
           {notes.length > 0 && <p className="muted palette-group">笔记</p>}
-          {typing && notes.map((n) => row(n.id, <>{displayTitle(n)}<span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>{fmtDate(n.updated_at)}</span></>, 'bx-note'))}
+          {typing && notes.map((n) => {
+            // 标题里没命中的（靠正文命中进来的）给一截命中片段——实拍搜「创业」，
+            // 「harness 测试」混在一排「创业一年回顾」里，看不出为什么在这。
+            const title = displayTitle(n)
+            const s = title.toLowerCase().includes(q.trim().toLowerCase()) ? null : matchSnippet(n.content, q, 18)
+            return row(n.id, <span className="palette-line"><span className="palette-main"><Highlight text={title} q={q} />
+              {s && <span className="muted palette-snip">{s.before}<mark>{s.hit}</mark>{s.after}</span>}</span>
+              <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note')
+          })}
           {facts.length > 0 && <p className="muted palette-group">知识库（点击插入引用）</p>}
-          {typing && facts.map((f) => row(f.id, <>{f.text.slice(0, 60)}{f.when && <span className="muted"> · {f.when}</span>}</>, 'bx-bulb'))}
+          {/* 日期单独一格不被截：之前拼在正文后面，长一点的事实日期先被省略号吃掉，
+              一列里有的有日期有的没有。 */}
+          {typing && facts.map((f) => row(f.id, <span className="palette-line"><span className="palette-main"><Highlight text={f.text} q={q} /></span>
+            {f.when && <span className="muted palette-when">{f.when}</span>}</span>, 'bx-bulb'))}
           {!typing && <p className="muted palette-group">前往</p>}
           {!typing && COMMANDS.map((c) => row('c' + c.label, c.label, c.icon))}
         </div>
