@@ -20,3 +20,17 @@ describe('formatMarkdown 幂等', () => {
     expect(formatMarkdown(once)).toBe(once)
   })
 })
+
+import { stripCommonIndent } from '../format'
+describe('stripCommonIndent', () => {
+  it('整篇缩进 4 格的去掉公共缩进', () => {
+    expect(stripCommonIndent('    # 标题\n\n    ## 二级\n        - 子项')).toBe('# 标题\n\n## 二级\n    - 子项')
+  })
+  it('有围栏或缩进不一致就不动', () => {
+    expect(stripCommonIndent('    a\nb')).toBe('    a\nb')
+    expect(stripCommonIndent('    ```\n    x\n    ```')).toBe('    ```\n    x\n    ```')
+  })
+  it('格式化整篇时生效', () => {
+    expect(formatMarkdown('    ## 标题\n    正文')).toBe('## 标题\n\n正文\n')
+  })
+})

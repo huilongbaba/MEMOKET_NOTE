@@ -142,9 +142,29 @@ type Kind = 'blank' | 'heading' | 'para' | 'ul' | 'ol' | 'quote' | 'table' | 'co
 
 const HTML_BLOCK = /^\s*<\/?[a-zA-Z][^>]*>/
 
+/** 整篇都缩进了 4 格以上（从别处粘过来常见）：markdown 会把它整个当成代码块——
+ *  标题不是标题、列表不是列表，编辑器里一片等宽字（实拍）。没有围栏、每个非空行
+ *  都带同样的公共缩进时，把公共缩进去掉。 */
+export function stripCommonIndent(src: string): string {
+  const lines = src.split('\n')
+  if (lines.some((l) => /^\s*(`{3,}|~{3,})/.test(l))) return src
+  const nonBlank = lines.filter((l) => l.trim())
+  if (nonBlank.length < 2) return src
+  const indents = nonBlank.map((l) => (l.match(/^[ \t]*/)?.[0] ?? '').replace(/\t/g, '    ').length)
+  const common = Math.min(...indents)
+  if (common < 4) return src
+  return lines.map((l) => {
+    const lead = (l.match(/^[ \t]*/)?.[0] ?? '')
+    let width = 0; let cut = 0
+    for (const ch of lead) { if (width >= common) break; width += ch === '\t' ? 4 : 1; cut++ }
+    return l.slice(cut)
+  }).join('\n')
+}
+
 export function formatMarkdown(src: string): string {
   const out: string[] = []
   let prev = 'blank' as Kind
+  src = stripCommonIndent(src ?? '')
 
   /** 推一个块进去，需要的话先补一个空行。 */
   const push = (kind: Kind, lines: string[]) => {

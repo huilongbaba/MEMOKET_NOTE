@@ -357,6 +357,9 @@ export default function App() {
   const reload = useCallback(async () => {
     const list = await api.listNotes()
     setNotes(list)
+    // 库里已经没有的笔记（别处删的、导入回滚的）标签也收掉——留着点了只会「找不到」
+    const ids = new Set(list.map((n) => n.id))
+    setTabs((prev) => prev.filter((t) => api.isVirtualId(t.noteId) || ids.has(t.noteId)))
     return list
   }, [])
 
