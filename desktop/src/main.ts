@@ -31,9 +31,26 @@ const shotPath = process.argv.find((a) => a.startsWith('--shot='))?.slice(7)
 const shotDelays = (process.argv.find((a) => a.startsWith('--shot-delay='))?.slice(13) ?? '9000')
   .split(',').map((s) => Number(s)).filter((n) => n > 0)
 
+/** 身份落在主进程的文件里，不只靠渲染进程的 localStorage。
+ *  实拍：localStorage 丢过一次（端口变了 / leveldb 锁），界面随手生成了 user-4u6jzn，
+ *  用户打开看到一个空库——23 篇笔记都在 terrence 名下好好的，只是身份换了。
+ *  渲染进程每次定下身份就回报一次（remember-user），主进程写进 identity.json；
+ *  下次启动把它塞进 ?user=，localStorage 再丢也认得回来。探针 / --user 强制时不写。 */
+const identityFile = () => path.join(app.getPath('userData'), 'identity.json')
+function loadIdentity(): string | undefined {
+  try {
+    const u = (JSON.parse(readFileSync(identityFile(), 'utf8')) as { user?: string }).user
+    return typeof u === 'string' && /^[\w.-]{1,64}$/.test(u) ? u : undefined
+  } catch { return undefined }
+}
+function saveIdentity(user: string) {
+  try { writeFileSync(identityFile(), JSON.stringify({ user, saved_at: new Date().toISOString() })) } catch { /* 写不了就下次再说 */ }
+}
+
 function appUrl(port: number): string {
   const q = new URLSearchParams()
-  if (forcedUser) q.set('user', forcedUser)
+  const user = forcedUser ?? (probe ? undefined : loadIdentity())
+  if (user) q.set('user', user)
   if (probe) q.set('probe', probe)
   const s = q.toString()
   return `http://127.0.0.1:${port}/` + (s ? `?${s}` : '')
@@ -213,6 +230,13 @@ async function boot() {
 
 if (forcedTheme) nativeTheme.themeSource = forcedTheme
 // 设置页的「外观」：跟随系统 / 浅色 / 深色。截图探针强制的主题优先。
+ipcMain.on('remember-user', (_e, user: unknown) => {
+  if (forcedUser || probe) return
+  if (typeof user === 'string' && /^[\w.-]{1,64}$/.test(user) && user !== loadIdentity()) {
+    saveIdentity(user)
+    remember(`[desktop] 记住身份 ${user}`)
+  }
+})
 ipcMain.on('set-theme', (_e, theme: unknown) => {
   if (forcedTheme) return
   if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme

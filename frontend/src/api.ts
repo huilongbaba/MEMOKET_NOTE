@@ -74,6 +74,7 @@ export function getUser(): string {
   const fromUrl = new URLSearchParams(location.search).get('user')?.trim()
   if (fromUrl) {
     localStorage.setItem(USER_KEY, fromUrl)
+    rememberOnce(fromUrl)
     return fromUrl
   }
   let u = localStorage.getItem(USER_KEY)
@@ -81,11 +82,22 @@ export function getUser(): string {
     u = 'user-' + Math.random().toString(36).slice(2, 8)
     localStorage.setItem(USER_KEY, u)
   }
+  rememberOnce(u)
   return u
+}
+
+/** 把定下的身份告诉桌面壳一次（它写进 identity.json）。getUser 每个请求都会调，
+ *  只回报一次；切身份（setUser）再回报。 */
+let remembered = ''
+function rememberOnce(u: string) {
+  if (u === remembered) return
+  remembered = u
+  try { (window as Window & { memoketDesktop?: { rememberUser?: (u: string) => void } }).memoketDesktop?.rememberUser?.(u) } catch { /* 网页版没有壳 */ }
 }
 
 export function setUser(u: string) {
   localStorage.setItem(USER_KEY, u.trim() || 'default')
+  rememberOnce(u.trim() || 'default')
 }
 
 function headers(extra: Record<string, string> = {}) {

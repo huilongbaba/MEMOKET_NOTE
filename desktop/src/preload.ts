@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('memoketDesktop', {
   /** 退出前主进程问一句「还有没存的吗」；界面存完回 flushed() */
   onFlush(cb: () => void) { ipcRenderer.on('flush', () => cb()) },
   flushed() { ipcRenderer.send('flushed') },
+  /** 界面定下了当前身份：主进程记进 identity.json，localStorage 丢了也认得回来 */
+  rememberUser(user: string) { ipcRenderer.send('remember-user', user) },
 })

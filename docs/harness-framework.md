@@ -575,7 +575,9 @@ harness 的材料来自这里；设计在 `docs/kb-architecture.md` 与 `docs/kb
 ## 16. 桌面外壳（简述）
 
 `desktop/`：Electron 拉起 PyInstaller 打包的后端（`backend.ts`：找空闲端口、等健康检查、
-父进程看门狗），数据落在系统用户数据目录（不在 .app 里）。`--user=<id>` 固定用户，
+父进程看门狗），数据落在系统用户数据目录（不在 .app 里）。身份也落在那里的
+`identity.json`（渲染进程定下身份就回报主进程，下次启动塞进 `?user=`）——只靠
+localStorage 的话，它一丢用户就会拿到一个随机新身份、看到空库。`--user=<id>` 固定用户，
 `--probe=<name>` 把界面驱动到某个状态（`harness:<noteId>` 对一篇笔记跑智能续写、
 `open:<虚拟节点>`、`graph-zoom` …），`--shot=path --shot-delay=a,b,c` 用
 `capturePage` 连拍——比 `screencapture` 可靠，不依赖前台和辅助功能权限。每批改动
