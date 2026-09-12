@@ -857,3 +857,10 @@ CommonMark 的右侧定界规则不认这种闭合。确定性修：`fix_bold_pu
 编辑器里时按了只会缩进一行。编辑器里加一层排在前面的 keymap，把这两个键转成
 `nav-history` 事件交给外壳（探针 `keynav`：切两篇后在编辑器里按 ⌘[，回到上一篇、
 前进箭头亮起）。续写流完之后也过一遍 `fixBoldPunct`；`/` 块生成落盘同样修。
+
+## [53] 全量巡检第 31 轮：编辑器里的 ⌘K / ⌘/（2026-09-12）
+
+把 CodeMirror 各 keymap 的 Mod- 绑定列了一遍跟外壳的对：`markdownCommands` 把 ⌘K 绑成
+插链接——光标在编辑器里按 ⌘K 会**同时**插一个链接并打开搜索面板；defaultKeymap 的
+⌘/ 是 toggleComment，markdown 有 HTML 注释符，会真的插 `<!-- -->`。插链接让位到 ⇧⌘K，
+⌘/ 在编辑器里也转成快捷键表；快捷键表补一行「⌘B / ⌘I / ⇧⌘K」。探针 `keypalette`。

@@ -1236,6 +1236,15 @@ export default function App() {
           }, 1500)
         })()
       }
+      // 编辑器里按 ⌘K：应该开搜索面板，而不是插一个链接
+      if (probe === 'keypalette' && notes.length && !harnessProbeDone.current) {
+        harnessProbeDone.current = true
+        setTimeout(() => {
+          const v = editorViewRef.current; if (!v) return
+          v.focus(); v.dispatch({ selection: { anchor: Math.min(20, v.state.doc.length) } })
+          v.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', metaKey: true, bubbles: true, cancelable: true }))
+        }, 1500)
+      }
       if (probe === 'shortcuts') setTimeout(() => setShowShortcuts(true), 900)
       if (probe === 'palette') setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
       // 选区动作跑一遍：sel:verify / sel:trace / sel:polish / sel:rewrite / sel:expand

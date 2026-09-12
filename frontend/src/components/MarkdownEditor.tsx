@@ -111,6 +111,8 @@ export default function MarkdownEditor({
         keymap.of([
           { key: 'Mod-[', run: () => { window.dispatchEvent(new CustomEvent('nav-history', { detail: -1 })); return true } },
           { key: 'Mod-]', run: () => { window.dispatchEvent(new CustomEvent('nav-history', { detail: 1 })); return true } },
+          // ⌘/ 是快捷键表；defaultKeymap 把它绑成 toggleComment，markdown 有 HTML 注释符，会真的插 <!-- -->
+          { key: 'Mod-/', run: () => { window.dispatchEvent(new CustomEvent('show-shortcuts')); return true } },
         ]),
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, ...searchKeymap, indentWithTab]),
         // ⌘F 页内查找（Trilium 的 FindWidget）。长文档没有它是硬伤。

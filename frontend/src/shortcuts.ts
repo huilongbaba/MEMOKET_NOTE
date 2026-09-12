@@ -21,6 +21,7 @@ export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: stri
     { keys: '@', what: '引用知识库里的一条事实' },
     { keys: '[[', what: '链接另一篇笔记（⌘点击链接跳过去）' },
     { keys: '⇧⌘F', what: '格式化整篇 Markdown' },
+    { keys: '⌘B / ⌘I / ⇧⌘K', what: '粗体 / 斜体 / 插入链接' },
     { keys: '选中后右键', what: '校验 / 重写 / 润色 / 扩展 / 来龙去脉' },
     { keys: '⌥点击', what: '树上快速查看一篇（不切页）' },
     { keys: '⌘/', what: '这张表' },

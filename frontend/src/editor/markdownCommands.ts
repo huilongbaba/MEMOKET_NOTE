@@ -192,5 +192,6 @@ export function mermaidCmd(view: EditorView) {
 export const markdownKeymap = [
   { key: 'Mod-b', run: (view: EditorView) => { boldCmd(view); return true } },
   { key: 'Mod-i', run: (view: EditorView) => { italicCmd(view); return true } },
-  { key: 'Mod-k', run: (view: EditorView) => { linkCmd(view); return true } },
+  // ⌘K 是外壳的搜索 / 跳转（Notion、VSCode 的约定），插链接让位到 ⇧⌘K
+  { key: 'Mod-Shift-k', run: (view: EditorView) => { linkCmd(view); return true } },
 ]
