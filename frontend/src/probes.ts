@@ -106,6 +106,22 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  // 改动分层：格式化一层 + 探针塞一行当第二层，看右栏「改动」的分层账本
+  if (probe?.startsWith('layers:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(7))
+    if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => {
+      setTimeout(() => formatNote(), 1200)
+      setTimeout(() => {
+        const v = editorViewRef.current; if (!v) return
+        const before = v.state.doc.toString()
+        v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n探针塞进来的一段：第二层提案。\n' } })
+        const after = v.state.doc.toString()
+        setContent(after)
+        actionsRef.current.pushDiff('探针', before, after)
+        setPaneFocus({ id: 'changes', n: 1 })
+      }, 2500)
+    }) }
+  }
   // 记忆的关系：打开笔记，把光标放到含数字的最后一段上，看右栏「记忆」的关系卡
   if (probe?.startsWith('relations:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(10))

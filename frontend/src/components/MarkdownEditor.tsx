@@ -25,7 +25,7 @@ import { minimalChange } from '../editor/minimalChange'
 import { getNote } from '../api'
 import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
-import { pendingHunks, roundDiff as roundDiffExt, setRoundDiff, type DiffPart }
+import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
   from '../editor/roundDiff'
 import { slashMenu, type SlashItem } from '../editor/slashMenu'
 import { markdownHighlight, dimSyntaxMarks, editorTheme, syntaxHighlighting } from '../editor/theme'
@@ -53,7 +53,8 @@ type Props = {
   /** 「这一轮 harness 改了什么」的只读高亮：新增标绿、删掉的原文以删除线
    * 就地补出来。跟 revisions 不是一回事——那个是待接受的建议，这个是已经
    * 自动应用完的改动，用户否则完全不知道正文被动了哪里。 */
-  roundDiff?: DiffPart[] | null
+  /** 往编辑器塞一层提案（seq 变了才 dispatch）。null = 不动。 */
+  roundDiff?: DiffPush | null
   /** 还剩几处 harness 改动没被接受/撤回。用来在编辑器上方显示「N 处改动 ·
    * 全部接受」——逐处点是主路径，但改动多的时候必须有个一次性收尾的出口。 */
   onPendingDiff?: (n: number) => void
@@ -256,7 +257,7 @@ export default function MarkdownEditor({
     // 文档还没换上去就 dispatch 会标到旧位置上（而且 roundDiffField 一见
     // docChanged 就会把高亮丢掉）。React 按 effect 声明顺序执行，这里靠
     // 声明位置保证顺序。
-    actualViewRef.current?.dispatch({ effects: setRoundDiff.of(roundDiff) })
+    if (roundDiff) actualViewRef.current?.dispatch({ effects: addLayer.of({ label: roundDiff.label, parts: roundDiff.parts, replace: roundDiff.replace }) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundDiff])
 

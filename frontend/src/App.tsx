@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
+import ChangeLayersPanel from './components/ChangeLayersPanel'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, wordCount } from './util/wordCount'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
@@ -26,7 +27,7 @@ import RevisionPanel, { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
 import AgentActivity, { type AgentRound } from './components/AgentActivity'
-import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPart }
+import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPush }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import Gutter from './components/Gutter'
@@ -216,7 +217,13 @@ export default function App() {
   useEffect(() => { agentRoundsRef.current = agentRounds.length }, [agentRounds])
   /** 这一轮 harness 改了什么（新增/删除），传给编辑器做只读高亮。
    * 自动应用的改动用户否则完全看不见被动了哪里。 */
-  const [roundDiff, setRoundDiff] = useState<DiffPart[] | null>(null)
+  const [roundDiff, setRoundDiff] = useState<DiffPush | null>(null)
+  const diffSeq = useRef(0)
+  /** 把一次 AI 动作的改动作为一层提案标出来（agent-native-editor §3.2：按层接受 / 撤回）。 */
+  function pushDiff(label: string, before: string, after: string, replace = false) {
+    if (before === after) return
+    setRoundDiff({ label, parts: diffParts(before, after), seq: ++diffSeq.current, replace })
+  }
   // 还剩几处 harness 改动没被处置。由编辑器上报——逐处接受/撤回、用户自己
   // 编辑、下一轮写入都会让它变，React 这边只是拿来决定要不要显示那条工具栏。
   const [pendingDiff, setPendingDiff] = useState(0)
@@ -249,7 +256,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {} })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1330,7 +1337,7 @@ export default function App() {
    *
    * 现在跟 harness 自动改动走同一套：先应用，正文里绿/红标出来，鼠标移上去
    * 接受或撤回，也可以先改几个字再接受。两套交互合成一套，用户不用记两种。 */
-  function applyAsDiff(list: Revision[]): number {
+  function applyAsDiff(list: Revision[], label = '修订'): number {
     if (!list.length) return 0
     // 从编辑器的实时文档读，不要读 liveContentRef —— 那个只在 harness 跑的
     // 过程中维护，平时停在上一轮结束时的内容，拿它当基准会把用户之后手打的
@@ -1341,7 +1348,7 @@ export default function App() {
     for (const r of list) next = applyRevision(next, r)
     if (next === before) return 0
     setContent(next)
-    setRoundDiff(diffParts(before, next))
+    pushDiff(label, before, next)
     return list.length
   }
 
@@ -1384,7 +1391,7 @@ export default function App() {
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection)
         if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
-        else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
+        else if (!applyAsDiff(r.revisions, '扩展上下文')) toast('建议对不上正文（锚点找不到），没有改动。')
       } else {
         // 到这里只剩 rewrite / polish：custom 在函数最上面提前返回了，
         // verify / expand 在前面的分支里处理完了。
@@ -1393,7 +1400,7 @@ export default function App() {
         const r = await api.rewriteSelection(
           content, selection, action as 'rewrite' | 'polish', spine, beats)
         if (r.revisions.length === 0) toast(r.note || '模型没有给出修改建议。', r.note ? 'error' : undefined)
-        else if (!applyAsDiff(r.revisions)) toast('建议对不上正文（锚点找不到），没有改动。')
+        else if (!applyAsDiff(r.revisions, action === 'polish' ? '润色' : '重写')) toast('建议对不上正文（锚点找不到），没有改动。')
       }
     } catch (e) {
       toast(`操作失败：${friendlyError(e)}`, 'error')
@@ -1774,7 +1781,7 @@ export default function App() {
         const cur = liveContentRef.current
         // 只差首尾空白（轮初为续写预留的空行、模型没应答）不算改动——不然模型连不上
         // 也会冒出「这一轮改了 1 处」（实拍）
-        if (base && cur && base.replace(/\s+$/, '') !== cur.replace(/\s+$/, '')) setRoundDiff(diffParts(base, cur))
+        if (base && cur && base.replace(/\s+$/, '') !== cur.replace(/\s+$/, '')) pushDiff('智能续写', base, cur, true)
       },
       onEvaluate: (d) => {
         if (currentRef.current?.id !== noteId) return
@@ -1981,7 +1988,7 @@ export default function App() {
       // 有绿色"的第二个原因）。
       const base = runBaseRef.current
       const cur = liveContentRef.current
-      if (base && cur && base !== cur) setRoundDiff(diffParts(base, cur))
+      if (base && cur && base !== cur) pushDiff('智能续写', base, cur, true)
     }
   }
 
@@ -2169,7 +2176,7 @@ export default function App() {
     const change = minimalChange(before, after)
     if (change) view.dispatch({ changes: change })
     setContent(after)
-    setRoundDiff(diffParts(before, after))
+    pushDiff('格式化', before, after)
     toast(`格式化：改动 ${Math.abs(after.length - before.length)} 字（空行 / 空格 / 表格对齐）`)
   }
 
@@ -2195,9 +2202,11 @@ export default function App() {
       const after = formatMarkdown(r.content)
       const v = editorViewRef.current
       if (!v) return
-      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: after } })
+      // 只换变了的那一段：整篇替换会把之前各层提案的位置全映射到一个点上，账本就空了
+      const change = minimalChange(before, after)
+      if (change) v.dispatch({ changes: change })
       setContent(after)
-      setRoundDiff(diffParts(before, after))
+      pushDiff('智能排版', before, after)
       const skipped = r.skipped.length ? `，跳过 ${r.skipped.length} 处` : ''
       toast(`调整了 ${r.ops} 处结构${skipped}，可以逐处接受或撤回`)
     } catch (e) {
@@ -2275,7 +2284,7 @@ export default function App() {
         v.dispatch({ changes: { from: at, insert: text }, effects: endRun.of(id) })
         const after = v.state.doc.toString()
         setContent(after)
-        setRoundDiff(diffParts(before, after))
+        pushDiff('语音输入', before, after)
       } catch (e) {
         push(patchRun.of({
           id, error: `转写失败：${friendlyError(e)}`, expanded: true,
@@ -2323,7 +2332,7 @@ export default function App() {
         v.dispatch({ changes: { from: at(), insert: `\n${r.table}\n\n` }, effects: endRun.of(id) })
         const after = v.state.doc.toString()
         setContent(after)
-        setRoundDiff(diffParts(before, after))       // 识别结果一样可以接受/撤回
+        pushDiff('图片转表格', before, after)       // 识别结果一样可以接受/撤回
         return
       }
       // 音频：先传上去插一个播放器，再转写出文字稿
@@ -2342,7 +2351,7 @@ export default function App() {
       })
       const after = v.state.doc.toString()
       setContent(after)
-      setRoundDiff(diffParts(before, after))
+      pushDiff('插入音频', before, after)
       if (!text) toast('音频已插入，但转写没有出内容')
     } catch (e) {
       push(patchRun.of({
@@ -2422,7 +2431,7 @@ export default function App() {
       v.dispatch({ changes: { from: at, insert: text + '\n\n' }, effects: endRun.of(id) })
       const after = v.state.doc.toString()
       setContent(after)
-      setRoundDiff(diffParts(b2, after))
+      pushDiff(item.label, b2, after)
       // 结果落下来要看得见：跑了 100 秒出的图在折叠线下（实拍），把落点滚到视口上部
       requestAnimationFrame(() => editorViewRef.current?.dispatch({ effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 80 }) }))
     } catch (e) {
@@ -2475,7 +2484,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
@@ -2882,8 +2891,8 @@ export default function App() {
                 }}
               >
                 <span style={{ color: 'var(--ins)' }}>●</span>
-                <span>这一轮改了 {pendingDiff} 处</span>
-                <span className="muted">鼠标移到改动上（或点一下钉住）可以逐处接受、撤回，也可以先改再接受</span>
+                <span>改了 {pendingDiff} 处</span>
+                <span className="muted">鼠标移到改动上可以逐处接受、撤回；<a href="#" onClick={(e) => { e.preventDefault(); setPaneFocus({ id: 'changes', n: Date.now() }) }}>按层处置</a>（保留第一次改的、放弃第三次的）</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button onClick={acceptAllDiff}>全部接受</button>
                   <button onClick={rejectAllDiff} title="把这一轮改的全部还原成改之前的样子">
@@ -2943,6 +2952,9 @@ export default function App() {
                 : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
+            // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
+            { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0,
+              body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff} /> },
             // 计划 = 写作骨架（计划）+ 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
             { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,

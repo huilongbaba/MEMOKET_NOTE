@@ -200,14 +200,29 @@ export type Hunk = {
   id: number; from: number; to: number; del: string
   /** 只差空白（格式化补的空格 / 空行）：位置照记、撤回照还原，但不画绿、不给悬停条。 */
   soft?: boolean
+  /** 属于哪一层提案（见 Layer）。toHunks 给 0，进 field 时按当前层改写。 */
+  layer?: number
 }
+
+/** 提案层：一次 AI 动作产生的一批改动（润色 ①、格式化、第 3 轮…）。层可以整层接受 /
+ *  撤回——痛点 8「保留第一次改的、放弃第三次改的」就是按层操作（agent-native-editor §3.2）。 */
+export type Layer = { id: number; label: string; at: number }
+
+/** 上层往编辑器塞一层新提案用的值：seq 变了才 dispatch（React 的 prop 比较）。
+ *  replace = 先清掉已有的层再加（智能续写每轮都拿整次 run 的起点重算，是累积的，不能叠层）。 */
+export type DiffPush = { label: string; parts: DiffPart[]; seq: number; replace?: boolean }
 
 /** 相邻两处改动之间没动过的文字不超过这么多字，就并成一处。
  * 8 个字大约是「改了一个词、隔几个字又改一个词」的距离——再大就会
  * 把两件不相干的修改捆在一起，用户想只接受其中一处都做不到。 */
 const MERGE_GAP = 8
 
+/** 老接口：清掉所有层，用这批 diff 建一层「改动」。 */
 export const setRoundDiff = StateEffect.define<DiffPart[] | null>()
+/** 加一层提案（不动已有的层；已有层的位置由这次事务之前的文档改动映射过了）。 */
+export const addLayer = StateEffect.define<{ label: string; parts: DiffPart[]; replace?: boolean }>()
+/** 整层接受：这层的 hunk 全摘掉，正文保持现状。整层撤回由调用方逐处 dispatch 改动 + dropHunk。 */
+export const acceptLayer = StateEffect.define<number>()
 /** 接受：只是把这一处从待处置列表里去掉，正文保持现状。 */
 export const acceptHunk = StateEffect.define<number>()
 /** 撤回：连同一次文档改动一起 dispatch（把 from..to 换回 del），这里只负责摘掉标记。 */
@@ -286,8 +301,9 @@ class DeletedWidget extends WidgetType {
   ignoreEvent() { return true }
 }
 
-function build(hunks: Hunk[]): DecorationSet {
+function build(hunks: Hunk[], layers: Layer[] = []): DecorationSet {
   const decos: Range<Decoration>[] = []
+  const label = (h: Hunk) => layers.find((l) => l.id === h.layer)?.label ?? '这一轮'
   for (const h of hunks) {
     if (h.soft) continue                          // 只差空白：不画
     if (h.del) {
@@ -297,35 +313,43 @@ function build(hunks: Hunk[]): DecorationSet {
     if (h.to > h.from) {
       decos.push(Decoration.mark({
         class: 'harness-ins',
-        attributes: { title: '这一轮新增的内容' },
+        attributes: { title: `${label(h)} · 新增的内容` },
       }).range(h.from, h.to))
     }
   }
   return Decoration.set(decos, true)
 }
 
+let nextHunkId = 1
+let nextLayerId = 1
+
+/** 把一批 diff 建成带层号的 hunk：位置夹到文档长度内（diff 是拿 liveContentRef 算的，
+ *  编辑器可能还没跟上——越界的位置下一次 mapPos 直接抛 RangeError，整棵 React 树被卸掉，
+ *  用户看到一片白），id 用全局计数（几层的 hunk 混在一起，不能各自从 0 起）。 */
+function hunksForLayer(parts: DiffPart[] | null, layer: number, docLen: number): Hunk[] {
+  return toHunks(parts)
+    .map((h) => ({ ...h, id: nextHunkId++, layer, from: Math.min(h.from, docLen), to: Math.min(h.to, docLen) }))
+    .filter((h) => h.to > h.from || h.del)
+}
+
 // ---------------------------------------------------------------- state
 
-export const roundDiffField = StateField.define<{ hunks: Hunk[]; decos: DecorationSet }>({
-  create() { return { hunks: [], decos: Decoration.none } },
+export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]; decos: DecorationSet }>({
+  create() { return { hunks: [], layers: [], decos: Decoration.none } },
   update(value, tr) {
     for (const e of tr.effects) {
       if (e.is(setRoundDiff)) {
-        // diff 是拿 liveContentRef 算的，编辑器里的文档可能还没跟上（增量还在
-        // 路上、或者 reload() 刚换成了服务端的正文）——超出文档长度的位置要
-        // 夹住，不然下一次 mapPos 直接抛 RangeError，整棵 React 树被卸掉，
-        // 用户看到一片白（实拍：智能续写跑到第 5 轮白屏）。
-        const len = tr.newDoc.length
-        const hunks = toHunks(e.value)
-          .map((h) => ({ ...h, from: Math.min(h.from, len), to: Math.min(h.to, len) }))
-          .filter((h) => h.to > h.from || h.del)
-        return { hunks, decos: build(hunks) }
+        const layer: Layer = { id: nextLayerId++, label: '改动', at: Date.now() }
+        const hunks = hunksForLayer(e.value, layer.id, tr.newDoc.length)
+        return { hunks, layers: hunks.length ? [layer] : [], decos: build(hunks, [layer]) }
       }
-      if (e.is(acceptAllHunks)) return { hunks: [], decos: Decoration.none }
+      if (e.is(acceptAllHunks)) return { hunks: [], layers: [], decos: Decoration.none }
     }
     let hunks = value.hunks
+    let layers = value.layers
     for (const e of tr.effects) {
       if (e.is(acceptHunk) || e.is(dropHunk)) hunks = hunks.filter((h) => h.id !== e.value)
+      if (e.is(acceptLayer)) hunks = hunks.filter((h) => h.layer !== e.value)
     }
     if (tr.docChanged && hunks.length) {
       // **跟着文档改动映射，而不是把高亮丢掉。** 用户在绿色新增里打字时这一处
@@ -345,8 +369,21 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; decos: Decorati
         // 新增被用户整段删光、且没有原文可撤回 —— 这处已经不存在了
         .filter((h) => h.to >= h.from && (h.to > h.from || h.del))
     }
-    if (hunks === value.hunks) return value
-    return { hunks, decos: build(hunks) }
+    // 加层：放在文档映射之后——新层的位置是针对这次事务之后的文档算的，旧层刚映射过，
+    // 两边坐标一致。replace = 智能续写那种累积 diff，先清掉再加。
+    for (const e of tr.effects) {
+      if (e.is(addLayer)) {
+        if (e.value.replace) { hunks = []; layers = [] }
+        const layer: Layer = { id: nextLayerId++, label: e.value.label, at: Date.now() }
+        const fresh = hunksForLayer(e.value.parts, layer.id, tr.newDoc.length)
+        if (fresh.length) { hunks = [...hunks, ...fresh]; layers = [...layers, layer] }
+      }
+    }
+    // 一处都不剩的层收掉
+    const live = new Set(hunks.map((h) => h.layer))
+    if (layers.some((l) => !live.has(l.id))) layers = layers.filter((l) => live.has(l.id))
+    if (hunks === value.hunks && layers === value.layers) return value
+    return { hunks, layers, decos: build(hunks, layers) }
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
 })
@@ -354,6 +391,25 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; decos: Decorati
 /** 还剩几处没处置。给上层显示「本轮 N 处改动」用。 */
 export function pendingHunks(view: EditorView): number {
   return view.state.field(roundDiffField, false)?.hunks.filter((h) => !h.soft).length ?? 0
+}
+
+/** 各层及每层还剩几处（不算只差空白的）。右栏「改动」标签用。 */
+export function layersOf(view: EditorView): (Layer & { count: number })[] {
+  const st = view.state.field(roundDiffField, false)
+  if (!st) return []
+  return st.layers.map((l) => ({ ...l, count: st.hunks.filter((h) => h.layer === l.id && !h.soft).length }))
+}
+
+/** 整层撤回：把这层的每一处都还原（从后往前，位置才不会错位）。 */
+export function dropLayer(view: EditorView, layerId: number) {
+  const st = view.state.field(roundDiffField, false)
+  if (!st) return
+  const hunks = st.hunks.filter((h) => h.layer === layerId).sort((a, b) => b.from - a.from)
+  for (const h of hunks) {
+    const cur = view.state.field(roundDiffField).hunks.find((x) => x.id === h.id)
+    if (!cur) continue
+    view.dispatch({ changes: { from: cur.from, to: cur.to, insert: cur.del }, effects: dropHunk.of(h.id) })
+  }
 }
 
 // ---------------------------------------------------------------- 悬停工具条
@@ -381,7 +437,7 @@ const hoverField = StateField.define<number | null>({
     for (const e of tr.effects) {
       if ((e.is(acceptHunk) || e.is(dropHunk)) && e.value === v) return null
     }
-    if (tr.effects.some((e) => e.is(setRoundDiff) || e.is(acceptAllHunks))) return null
+    if (tr.effects.some((e) => e.is(setRoundDiff) || e.is(acceptAllHunks) || e.is(acceptLayer))) return null
     return v
   },
 })

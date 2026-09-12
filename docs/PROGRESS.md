@@ -71,8 +71,8 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 |---|---|---|---|
 | 1 | 笔记 ↔ 知识库链接层：贡献列表增删改、过期标识、同步、自动同步开关、知识库反链笔记 | kb-fusion-design §3.4.1 | ✅ 2026-09-12 |
 | 2 | 记忆的六种关系：冲突 / 延续 / 叠加 / 合并 / 印证 / 缺依据；事实取代、演进线、冲突收件箱 | agent-native-editor §3.3.1 | 第一版 ✅（冲突/延续/印证/缺依据 + 取代 + 演进线）；叠加/合并/收件箱待做 |
-| 3 | 提案分层账本（hunk 带 layer，按层开关） | agent-native-editor §3.2 | 下一个 |
-| 4 | 边缘记忆（段落级 recall + gutter 圆点） | agent-native-editor §3.3 | |
+| 3 | 提案分层账本（hunk 带 layer，按层开关） | agent-native-editor §3.2 | ✅ 2026-09-12（整层接受 / 撤回；「开关」式的重放待做） |
+| 4 | 边缘记忆（段落级 recall + gutter 圆点） | agent-native-editor §3.3 | 下一个 |
 | 5 | 导入：块级进度 / 预估时间 / 用量 / 断点续传 | import-sync-plan §4 | |
 | 6 | 笔记侧增量（source / source_id / content_sha） | import-sync-plan §3 | |
 | 7 | 飞书导入 | import-sync-plan §1 | |
