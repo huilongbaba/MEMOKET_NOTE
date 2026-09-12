@@ -19,6 +19,9 @@ const COMMANDS: { label: string; icon: string; run: () => void }[] = [
   { label: '折叠整棵树', icon: 'bx-collapse-vertical', run: () => window.dispatchEvent(new CustomEvent('tree-collapse')) },
   { label: '快捷键', icon: 'bx-command', run: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
   { label: '导出全部笔记（Markdown zip）', icon: 'bx-export', run: () => window.dispatchEvent(new CustomEvent('export-all')) },
+  // 导回住在导入页最底下（第 128 轮实拍：⌘K 搜「导」只有导入 / 导出，找不到导回）
+  { label: '导回到 Obsidian / Notion / 飞书…', icon: 'bx-share',
+    run: () => { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' })); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 700) } },
 ]
 
 /**
