@@ -262,6 +262,17 @@ ROOT_ID = "root"
 """树根。Trilium 里也是这个字面量——它不是一条真笔记，是「没有父节点」的写法。"""
 
 
+def _drop_orphans(conn: sqlite3.Connection) -> None:
+    """删掉指向已不存在笔记的引用 / 历史版本 / 暂停快照 / 运行记录。
+
+    `delete_note` 以前只删 notes 和 branches，这些行在老库里已经攒了一批。只跑
+    一次：从此以后 delete_note 自己会带走它们。"""
+    conn.execute("DELETE FROM note_citations WHERE note_id NOT IN (SELECT id FROM notes)")
+    conn.execute("DELETE FROM note_revisions WHERE note_id NOT IN (SELECT id FROM notes)")
+    conn.execute("DELETE FROM harness_snapshots WHERE note_id<>'' AND note_id NOT IN (SELECT id FROM notes)")
+    conn.execute("DELETE FROM harness_runs WHERE key LIKE 'note:%' AND substr(key, 6) NOT IN (SELECT id FROM notes)")
+
+
 def _migrate_once(conn: sqlite3.Connection, key: str, run) -> bool:
     """只跑一次的数据搬运。跑过了返回 False。
 
@@ -367,6 +378,7 @@ def connect() -> sqlite3.Connection:
     _migrate_once(conn, "folders-into-tree-v1", _folders_into_tree)
     _migrate_once(conn, "plan-folder-to-parent-v1", _plan_folder_to_parent)
     _migrate_once(conn, "drop-folder-remnants-v1", _drop_folder_remnants)
+    _migrate_once(conn, "drop-orphans-v1", _drop_orphans)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_writing_plans_parent"
                  " ON writing_plans(user_id, parent_note_id, status)")
     return conn
@@ -431,6 +443,10 @@ def create_note(user_id: str, title: str, content: str,
                   (uuid.uuid4().hex[:12], user_id, note["id"], parent_id, pos,
                    note["created_at"]))
         c.commit()
+    # 带着引用建出来的笔记（导入、回顾存为笔记）也要进反查表——之前只有
+    # update_note 会同步，这类笔记在下次保存前反查不到。
+    if content:
+        sync_citations(user_id, note["id"], content)
     return {**note, "spine": "", "beats": []}
 
 

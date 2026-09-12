@@ -30,3 +30,19 @@ def test_运行记录每个key只留50条(db):
     with db.connect() as c:
         assert c.execute("SELECT COUNT(*) FROM harness_runs WHERE key='note:x'").fetchone()[0] == 50
     assert db.recent_harness_runs("note:x", 1)[0]["rounds"] == 59
+
+
+def test_建笔记时引用就进反查表(db):
+    n = db.create_note("u", "甲", "据 [u-7-B] 所述")
+    assert [x["id"] for x in db.notes_citing("u", "u-7-B")] == [n["id"]]
+
+
+def test_老库里的孤儿行一次清掉(db):
+    n = db.create_note("u", "甲", "据 [u-1-A] 所述")
+    with db.connect() as c:
+        c.execute("INSERT INTO note_citations (user_id, note_id, fact_id) VALUES ('u', 'gone000000', 'u-2-C')")
+        c.execute("DELETE FROM meta WHERE key='drop-orphans-v1'")
+        c.commit()
+    with db.connect() as c:                    # 重新 connect 会再跑一次迁移
+        assert c.execute("SELECT COUNT(*) FROM note_citations WHERE note_id='gone000000'").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM note_citations WHERE note_id=?", (n["id"],)).fetchone()[0] == 1
