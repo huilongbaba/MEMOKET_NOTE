@@ -114,6 +114,8 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
       <div className="kb-note">
         <h2 className="kb-note-title" style={{ color: 'var(--del)' }}>找不到这条事实</h2>
         <p className="muted">{factId} 在知识库里不存在——可能是引用写错了，或者知识库重建过。</p>
+        {/* 上次开着的标签恢复回来时它指的事实已经没了（重建过 / 探针残留）：别让它一直占着标签行 */}
+        <p><button className="chip chip-action" onClick={() => window.dispatchEvent(new CustomEvent('virtual-gone', { detail: 'kb:fact:' + factId }))}><i className="bx bx-x" /> 收掉这个标签</button></p>
       </div>
     )
   }

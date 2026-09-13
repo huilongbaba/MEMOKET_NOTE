@@ -31,6 +31,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })()
     return
   }
+  // 打开一条不存在的事实，点「收掉这个标签」：标签应该没了、切到旁边那个
+  if (probe === 'badfact:close') {
+    setTimeout(() => void openVirtual('kb:fact:terrence-9999-FFF', '事实 terrence-9999-FFF'), 800)
+    setTimeout(() => { const b = Array.from(document.querySelectorAll('.kb-note .chip-action')).find((x) => x.textContent?.includes('收掉')) as HTMLElement | undefined; b?.click() }, 3000)
+    setTimeout(() => void api.clientLog('warn', `badfact:close tabs=${Array.from(document.querySelectorAll('.note-tab-title'), (el) => el.textContent?.slice(0, 8)).filter((t) => t?.includes('9999')).length} status=${document.querySelector('.statusbar, .status-bar')?.textContent?.slice(0, 30) ?? '?'}`, '', 'probe'), 4000)
+    return
+  }
   // 标签装不下时右边的 ▾：列出全部标签
   if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)
