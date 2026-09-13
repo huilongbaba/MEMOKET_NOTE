@@ -146,6 +146,7 @@ export default function App() {
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const [iconPicker, setIconPicker] = useState(false)
+  const iconBtnRef = useRef<HTMLButtonElement>(null)   // 选择器关掉后焦点回到这个钮（键盘用户不至于掉到 body 上）
   const [locateTick, setLocateTick] = useState(0)
   const [paneFocus, setPaneFocus] = useState<{ id: string; n: number } | undefined>(undefined)
   const [fbMenu, setFbMenu] = useState<{ kind: 'harness' | 'more'; at: MenuAt } | null>(null)
@@ -2888,12 +2889,12 @@ export default function App() {
         {current && (
           <div className="title-row">
             {/* 图标可点：挑一个当这篇的标识（Trilium 的 NoteIcon）。树、标签、标题行三处同一个 */}
-            <button type="button" className="title-icon-btn" title="换个图标" onClick={() => setIconPicker((v) => !v)}>
+            <button type="button" className="title-icon-btn" title="换个图标" ref={iconBtnRef} onClick={() => setIconPicker((v) => !v)}>
               <i className={'bx title-icon ' + (current.icon || ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note'))} />
             </button>
             {iconPicker && (
-              <IconPicker current={current.icon ?? ''} onClose={() => setIconPicker(false)}
-                          onPick={(ic) => { setIconPicker(false); void api.setNoteIcon(current.id, ic).then((n) => {
+              <IconPicker current={current.icon ?? ''} onClose={() => { setIconPicker(false); iconBtnRef.current?.focus() }}
+                          onPick={(ic) => { setIconPicker(false); iconBtnRef.current?.focus(); void api.setNoteIcon(current.id, ic).then((n) => {
                             setCurrent((c) => (c && c.id === n.id ? { ...c, icon: n.icon } : c))
                             setNotes((prev) => prev.map((x) => (x.id === n.id ? { ...x, icon: n.icon } : x)))
                             void reloadTree(false)

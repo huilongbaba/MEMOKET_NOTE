@@ -3241,3 +3241,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [467] 第 441 轮：图标选择器的方向键（2026-09-14）
 
 - 选择器只能 Tab 一格格走。加：打开时焦点落在当前图标（没有就第一格），方向键在 8 列的格子里上下左右走，回车 / 空格选（原生 button）。探针 `icon-picker:keys`：右、右、下之后焦点在第 11 格「task」，日志实证。r43x / r44x 探针日志 0 份有 client:error。前端 107。
+
+## [468] 第 442 轮：选择器关掉后焦点回到图标钮（2026-09-14）
+
+- 之前 Esc / 选完之后焦点掉到 body，键盘用户得重新 Tab 到位。App 给标题行图标钮一个 ref，选择器 onClose / onPick 之后 focus 回去。探针 `icon-picker:esc`：Esc 之后 picker=closed、activeElement=title-icon-btn。前端 107。
