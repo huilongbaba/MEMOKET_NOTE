@@ -31,6 +31,20 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })()
     return
   }
+  // 连开三篇，关掉中间那个，再 ⌘⇧T 找回来：应该回到原位（第 2 个），不是追加到最右
+  if (probe === 'tabs:reopen' && notes.length >= 3) {
+    void (async () => {
+      for (const n of notes.slice(0, 3)) { await switchTo(n) }
+      const titles = () => Array.from(document.querySelectorAll('.note-tab-title'), (el) => el.textContent?.slice(0, 6)).join(' | ')
+      // 关的是第 2 个标签：中键（onAuxClick）不挑是不是当前标签、× 有没有渲染
+      setTimeout(() => { void api.clientLog('warn', `tabs before: ${titles()}`, '', 'probe')
+        document.querySelectorAll('.note-tab')[1]?.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true })) }, 2500)
+      setTimeout(() => { void api.clientLog('warn', `tabs closed: ${titles()}`, '', 'probe')
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'T', metaKey: true, shiftKey: true, bubbles: true })) }, 4000)
+      setTimeout(() => void api.clientLog('warn', `tabs reopened: ${titles()}`, '', 'probe'), 5500)
+    })()
+    return
+  }
   if (probe === 'kb-tab') {
     // 一条真、一条假（FFF 是合法十六进制，正则认得）——看「找不到」的红提示
     setContent((c: string) => c + '\n\n据 [terrence-1872-5F8] 所述，另见 [terrence-9999-FFF]。\n')

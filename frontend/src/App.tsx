@@ -173,7 +173,9 @@ export default function App() {
   // 出错变红不淡出。自动保存的产品里留一个「保存」按钮反而暗示「不点就没存」。
   const [saveStatus, setSaveStatus] = useState<{ at: number; error?: string } | null>(null)
   // 关掉的标签留一个栈，⌘⇧T 找回来（reopenLastTab）。关错标签不该无法挽回。
-  const closedTabs = useRef<Tab[]>([])
+  // 连原来的位置一起记：找回来要放回原位（Chrome 的 ⌘⇧T 就是这样），不是追加到最右边——
+  // 关错中间一个再找回，标签顺序就乱了。
+  const closedTabs = useRef<{ tab: Tab; at: number }[]>([])
   // 前进/后退：跳去看一篇旧笔记后要能一键回来（判据 2 的痛点 12）。
   // 记的是 note id / 虚拟节点 id；navigating 为真时 open 不再入栈。
   const hist = useRef<{ list: string[]; idx: number; navigating: boolean }>({ list: [], idx: -1, navigating: false })
@@ -458,15 +460,20 @@ export default function App() {
   }, [current, virtualId, tabs, activeTabId])
 
   function reopenLastTab() {
-    const t = closedTabs.current.pop()
-    if (!t) return
-    setTabs((prev) => (prev.find((x) => x.noteId === t.noteId) ? prev : [...prev, t]))
+    const c = closedTabs.current.pop()
+    if (!c) return
+    const t = c.tab
+    setTabs((prev) => {
+      if (prev.find((x) => x.noteId === t.noteId)) return prev
+      const at = Math.min(c.at, prev.length)
+      return [...prev.slice(0, at), t, ...prev.slice(at)]
+    })
     activateTab(tabs.find((x) => x.noteId === t.noteId) ?? t)
   }
   function closeTabsWhere(pred: (t: Tab, i: number) => boolean) {
     const gone = tabs.filter(pred)
     if (gone.length === 0) return
-    closedTabs.current = [...closedTabs.current, ...gone].slice(-20)
+    closedTabs.current = [...closedTabs.current, ...gone.map((tab) => ({ tab, at: tabs.indexOf(tab) }))].slice(-20)
     const next = tabs.filter((t, i) => !pred(t, i))
     setTabs(next)
     if (activeTabId && gone.some((t) => t.id === activeTabId)) {
@@ -512,7 +519,7 @@ export default function App() {
     if (current && tabs[i].noteId === current.id && freshEmpty.current.has(current.id) && !title.trim() && !content.trim()) {
       void dropIfStillEmpty(current)
     }
-    closedTabs.current = [...closedTabs.current, tabs[i]].slice(-20)
+    closedTabs.current = [...closedTabs.current, { tab: tabs[i], at: i }].slice(-20)
     const next = tabs.filter((x) => x.id !== id)
     setTabs(next)
     if (id !== activeTabId) return
