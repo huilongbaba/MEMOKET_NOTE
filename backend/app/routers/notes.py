@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, Note, NoteBriefPage, NoteCreateIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
+from .schemas import CitingNoteOut, Note, NoteBriefPage, NoteCreateIn, NoteIconIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -156,6 +156,15 @@ def delete_note(note_id: str, user: str = Depends(current_user)):
     if not removed:
         raise HTTPException(404, "note not found")
     return {"deleted": removed}
+
+
+@router.post("/{note_id}/icon", response_model=Note)
+def set_icon(note_id: str, body: NoteIconIn, user: str = Depends(current_user)):
+    """给笔记设图标（Trilium 的 NoteIcon）。空串 = 清掉。"""
+    updated = store.set_icon(user, note_id, body.icon)
+    if not updated:
+        raise HTTPException(404, "note not found")
+    return updated
 
 
 @router.post("/{note_id}/pin", response_model=Note)

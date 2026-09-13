@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+import re
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -40,12 +42,27 @@ class Note(BaseModel):
     title: str
     content: str
     pinned: bool = False
+    # 笔记图标（boxicons 类名，空 = 默认）
+    icon: str = ""
     # 写作骨架跟着笔记走。之前只活在前端内存里，换一篇/刷新/无限续写自动
     # 跟随切页，骨架就没了——而 harness 每轮都要拿它当主线依据。
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
     created_at: str
     updated_at: str
+
+
+class NoteIconIn(BaseModel):
+    """boxicons 的类名（bx-rocket 这种）或空串。只认这一种形状：图标名会原样进 className。"""
+    icon: str = ""
+
+    @field_validator("icon")
+    @classmethod
+    def _shape(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v and not re.fullmatch(r"bxs?-[a-z0-9-]{1,40}", v):
+            raise ValueError("图标名只能是 boxicons 的类名，如 bx-rocket")
+        return v
 
 
 class ComposeBlockIn(BaseModel):
@@ -91,6 +108,7 @@ class TreeRow(BaseModel):
     cite_count: int = 0
     ingested_at: str = ""
     pinned: bool = False
+    icon: str = ""
     updated_at: str
     child_count: int = 0
     # 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道

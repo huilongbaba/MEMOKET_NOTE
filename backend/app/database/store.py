@@ -294,6 +294,9 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 _ADDED_COLUMNS = (
     ("ingest_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
+    # 笔记图标（boxicons 的类名，如 bx-rocket；空 = 按文件夹 / 笔记默认）。Trilium 的 NoteIcon，
+    # 那边存成 #iconClass 属性，我们没有属性系统就直接一列。
+    ("notes", "icon", "TEXT NOT NULL DEFAULT ''"),
     # 写作骨架（核心张力 + 结构节拍）跟着笔记走。
     #
     # 之前它只活在前端内存里，`open()` 一进新笔记就清空——换一篇、刷新页面、
@@ -833,6 +836,15 @@ def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
     return get_note(user_id, note_id)
 
 
+def set_icon(user_id: str, note_id: str, icon: str) -> dict | None:
+    """给笔记设图标（boxicons 类名）。空串 = 清掉，回到默认。"""
+    with connect() as c:
+        cur = c.execute("UPDATE notes SET icon=? WHERE user_id=? AND id=?", (icon, user_id, note_id))
+        if cur.rowcount == 0:
+            return None
+    return get_note(user_id, note_id)
+
+
 def delete_note(user_id: str, note_id: str) -> list[str]:
     """删一篇笔记**以及它的整棵子树**，返回被删掉的所有 id。
 
@@ -1313,7 +1325,7 @@ def tree(user_id: str) -> list[dict]:
     with connect() as c:
         rows = c.execute(
             "SELECT b.id, b.note_id, b.parent_note_id, b.position, b.is_expanded,"
-            "       n.title, n.pinned, n.updated_at,"
+            "       n.title, n.pinned, n.icon, n.updated_at,"
             # 正文开头。**树上标题为空或还是占位符时拿它当显示名**——真实
             # 库里 18 篇有 15 篇标题字面就是「未命名」（旧界面建笔记时的
             # 默认值），一列二十个「未命名」的树是没法用的。

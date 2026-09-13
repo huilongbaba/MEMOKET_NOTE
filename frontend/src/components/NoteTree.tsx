@@ -42,8 +42,9 @@ export type DropWhere = 'before' | 'after' | 'over'
 
 /** 每种节点一个图标（Boxicons）。真笔记：叶子 = note、有子节点 = folder
  *  （notes.ts:140-143 的规则）；知识库那棵虚拟子树按节点种类分。 */
-function iconOf(n: { note_id: string; child_count: number }): string {
+function iconOf(n: { note_id: string; child_count: number; icon?: string }): string {
   const id = n.note_id
+  if (n.icon) return n.icon              // 用户自己挑的图标优先（Trilium 的 NoteIcon）
   if (id === 'kb') return 'bx-brain'
   if (id === 'kb:topics') return 'bx-hash'
   if (id === 'kb:entities') return 'bx-group'

@@ -6,6 +6,8 @@ export type Note = {
   title: string
   content: string
   pinned: boolean
+  /** 笔记图标（boxicons 类名，空 = 默认） */
+  icon?: string
   /** 摄入进知识库的时间（空 = 没摄入过） */
   ingested_at?: string
   /** 从哪导来的、源侧 id、上次导入时间（空 = 本地写的） */
@@ -35,6 +37,8 @@ export type TreeRow = {
   /** 正文开头。标题为空或还是占位符时，树上拿它当显示名。 */
   preview: string
   pinned: boolean
+  /** 笔记图标（boxicons 类名，空 = 按文件夹 / 笔记默认） */
+  icon?: string
   updated_at: string
   child_count: number
   /** 这篇引用了几条事实。树上画角标——一眼看出哪些笔记「有据可依」、
@@ -158,6 +162,10 @@ export const saveNote = (id: string, title: string, content: string) =>
 
 export const deleteNote = (id: string) =>
   fetch(`/api/notes/${id}`, { method: 'DELETE', headers: headers() }).then(json)
+
+/** 给笔记设图标（Trilium 的 NoteIcon）；空串 = 清掉 */
+export const setNoteIcon = (id: string, icon: string) =>
+  fetch(`/api/notes/${id}/icon`, { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ icon }) }).then(json<Note>)
 
 export const togglePin = (id: string) =>
   fetch(`/api/notes/${id}/pin`, { method: 'POST', headers: headers() }).then(json<Note>)

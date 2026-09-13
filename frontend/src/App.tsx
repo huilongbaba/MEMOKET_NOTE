@@ -16,6 +16,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
+import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import type { SlashItem } from './editor/slashMenu'
@@ -134,6 +135,7 @@ export default function App() {
   const [picker, setPicker] = useState<PickerRequest | null>(null)
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
+  const [iconPicker, setIconPicker] = useState(false)
   const [locateTick, setLocateTick] = useState(0)
   const [paneFocus, setPaneFocus] = useState<{ id: string; n: number } | undefined>(undefined)
   const [fbMenu, setFbMenu] = useState<{ kind: 'harness' | 'more'; at: MenuAt } | null>(null)
@@ -2805,7 +2807,18 @@ export default function App() {
             的兄弟，50px）。跟正文一起滚走的标题，滚到下面就不知道在写哪篇。 */}
         {current && (
           <div className="title-row">
-            <i className={'bx title-icon ' + ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note')} />
+            {/* 图标可点：挑一个当这篇的标识（Trilium 的 NoteIcon）。树、标签、标题行三处同一个 */}
+            <button type="button" className="title-icon-btn" title="换个图标" onClick={() => setIconPicker((v) => !v)}>
+              <i className={'bx title-icon ' + (current.icon || ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note'))} />
+            </button>
+            {iconPicker && (
+              <IconPicker current={current.icon ?? ''} onClose={() => setIconPicker(false)}
+                          onPick={(ic) => { setIconPicker(false); void api.setNoteIcon(current.id, ic).then((n) => {
+                            setCurrent((c) => (c && c.id === n.id ? { ...c, icon: n.icon } : c))
+                            setNotes((prev) => prev.map((x) => (x.id === n.id ? { ...x, icon: n.icon } : x)))
+                            void reloadTree(false)
+                          }).catch((e) => toast('换图标失败：' + friendlyError(e), 'error')) }} />
+            )}
             {/* 标题是占位词（「未命名」）时输入框显示空、把正文首行放在占位符里——
                 跟树和标签用同一个 displayTitle，一篇笔记不再有两个名字 */}
             <input

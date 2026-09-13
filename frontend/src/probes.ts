@@ -474,6 +474,14 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 空笔记上点续写：应该提示先写点东西，而不是让模型编
   if (probe === 'blank-tap' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600); setTimeout(() => void actionsRef.current.runMagicTap(), 2500) }
   if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
+  // 标题行图标点开选择器
+  if (probe === 'icon-picker' && notes.length) setTimeout(() => (document.querySelector('.title-icon-btn') as HTMLButtonElement | null)?.click(), 1500)
+  // 点开选择器再挑「rocket」：标题行 / 树上的图标都该变（真落库，跑完用 setNoteIcon(id, '') 清回去）
+  if (probe === 'icon-picker:pick' && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => (document.querySelector('.title-icon-btn') as HTMLButtonElement | null)?.click(), 1500)
+    setTimeout(() => (document.querySelector('.icon-picker-cell[title="rocket"]') as HTMLButtonElement | null)?.click(), 2500)
+  }
   // 主栏正开着的那篇放进分屏：应该是只读 + 一行提示
   if (probe === 'split:same' && notes.length) setTimeout(() => openInSplit(notes[0].id), 800)
   // 分屏第二栏里写字：找到那一栏的 CM 视图，文末插一句，看正文变了 + 底下出「已保存」（探针模式不落库）

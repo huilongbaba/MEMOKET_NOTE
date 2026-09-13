@@ -2783,3 +2783,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [360] 巡检第 332 轮：空笔记上「存入知识库」「现在存一版」（2026-09-13）
 
 - 第 331 轮那四张里两个钮在空笔记上都能点：「存入知识库」点了什么都不发生（App 那边 `!content.trim()` 直接 return，没任何反馈）；「现在存一版」点了后端 409「正文是空的」只能靠 toast。都改成 disabled + 悬停说明「正文是空的，先写点东西 / 没什么可存」。实拍两个钮发灰。前端 95。
+
+## [361] 第 333 轮：笔记图标（Trilium 的 NoteIcon）（2026-09-13）
+
+- trilium-ui-gap §9 剩下的「中」级项。做法：`notes.icon` 一列（boxicons 类名，空 = 默认）+ `POST /api/notes/{id}/icon`（只认 `bxs?-[a-z0-9-]{1,40}`，否则 422——图标名会原样进 className）；树行 / 笔记都带 icon；标题行的图标变成按钮，点开 `IconPicker`（8×6 一组 48 个常用 boxicons + 「默认」清掉），点外面 / Esc 关；树上的 `iconOf` 用户挑的优先。
+- 实拍：第一版选择器第 8 列画到框外——全局 button 的 padding 把格子撑宽了，格子加 `padding: 0; min-width: 0; width: 100%` 后放得下。`icon-picker:pick` 探针真点了「rocket」：标题行图标变火箭、后端 POST 200，拍完清回空。
+- 后端 903（新增 test_note_icon 2 条）/ 前端 95；README API 表加一行，harness-framework 路由说明同步。
