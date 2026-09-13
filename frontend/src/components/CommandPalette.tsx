@@ -15,6 +15,7 @@ const COMMANDS: { label: string; icon: string; run: () => void }[] = [
   { label: '时间线', icon: 'bx-calendar', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:timeline' })) },
   { label: '导入', icon: 'bx-import', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' })) },
   { label: '设置', icon: 'bx-cog', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:settings' })) },
+  { label: '换个图标（当前笔记）', icon: 'bx-smile', run: () => window.dispatchEvent(new CustomEvent('open-icon-picker')) },
   { label: '定位到当前笔记（树上）', icon: 'bx-crosshair', run: () => window.dispatchEvent(new CustomEvent('tree-locate')) },
   { label: '折叠整棵树', icon: 'bx-collapse-vertical', run: () => window.dispatchEvent(new CustomEvent('tree-collapse')) },
   { label: '快捷键', icon: 'bx-command', run: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },

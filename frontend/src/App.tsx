@@ -717,7 +717,10 @@ export default function App() {
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
+    // ⌘K「换个图标」/ 树菜单「换个图标…」：只对主栏正开着的那篇；没开笔记就提示
+    const onIconPicker = () => { if (current) setIconPicker(true); else toast('先打开一篇笔记再换图标') }
+    window.addEventListener('open-icon-picker', onIconPicker)
+    return () => { window.removeEventListener('open-icon-picker', onIconPicker); window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 
@@ -824,6 +827,8 @@ export default function App() {
       { label: '在后面插入笔记', icon: 'bx-subdirectory-right',
         onSelect: () => void newNoteUnder(row.parent_note_id) },
       { label: '重命名', icon: 'bx-rename', shortcut: 'F2', onSelect: () => void renameNode(row) },
+      { label: '换个图标…', icon: 'bx-smile', hint: '树 / 标签 / 标题行同一个',
+        onSelect: () => { const n = notes.find((x) => x.id === row.note_id); if (n) void switchTo(n).then(() => setTimeout(() => window.dispatchEvent(new CustomEvent('open-icon-picker')), 50)) } },
       { label: '导入 .md 到这里…', icon: 'bx-import', hint: '多个文件成一棵子树',
         onSelect: () => { importUnder.current = row.note_id; importInput.current?.click() } },
       { kind: 'sep' },

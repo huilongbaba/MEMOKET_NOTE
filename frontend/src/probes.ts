@@ -479,6 +479,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 空笔记上点续写：应该提示先写点东西，而不是让模型编
   if (probe === 'blank-tap' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600); setTimeout(() => void actionsRef.current.runMagicTap(), 2500) }
   if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
+  // ⌘K 命令「换个图标」→ 选择器该弹在标题行下
+  if (probe === 'icon-cmd' && notes.length) setTimeout(() => window.dispatchEvent(new CustomEvent('open-icon-picker')), 1500)
   // 标题行图标点开选择器
   if (probe === 'icon-picker' && notes.length) setTimeout(() => (document.querySelector('.title-icon-btn') as HTMLButtonElement | null)?.click(), 1500)
   // 点开选择器再挑「rocket」：标题行 / 树上的图标都该变（真落库，跑完用 setNoteIcon(id, '') 清回去）

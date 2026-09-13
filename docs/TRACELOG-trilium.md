@@ -2821,3 +2821,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 3 秒、health ok、后端 rss 81MB（空库）、kb/tree 8 行、css 里有 `.icon-picker`；日志目录里正式版 `memoket-note.log` 与 dev 的 `memoket-note-dev.log` 已分开。
 - 顺手核了 dev 数据目录：没有残留的 fresh-* 用户目录，git 工作区干净。
+
+## [369] 第 341 轮：换图标的另外两个入口（2026-09-13）
+
+- 图标只能从标题行那个小图标点开，⌘K 和树菜单都不知道有这回事。加：⌘K 命令「换个图标（当前笔记）」、树右键「换个图标…」（先切到那篇再弹，树 / 标签 / 标题行同一个），都走 `open-icon-picker` 事件；没开笔记时 toast「先打开一篇笔记再换图标」。探针 `icon-cmd`。实拍：命令在列表里、事件弹出选择器。前端 95。
