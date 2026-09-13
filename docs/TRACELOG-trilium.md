@@ -2899,3 +2899,11 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [386] 第 359 轮：重打 dmg 前的全量门（2026-09-13）
 
 - 后端 907 通过；前端 tsc + eslint + vitest 95 + 12 条 check / smoke 全过。
+
+## [387] 巡检第 358 轮：1000×700 下分屏里的事实表（2026-09-13）
+
+- `splitv:kb:facts?topic=work --win=1000x700`：右栏按规则自动收起，分屏头「事实表 · work」，筛选条折成两行、分页正常。没抓到问题。
+
+## [388] 第 360 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 2 秒、health ok、后端 rss 81MB、空库 kb/tree 8 行、css 里有 `.kb-link-inline`。
