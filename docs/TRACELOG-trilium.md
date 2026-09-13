@@ -3359,3 +3359,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [496] 第 471 轮：面包屑搬出 App.tsx（2026-09-14）
 
 - 状态栏面包屑的父链推导（真笔记沿树往上 / 尾巴行进来的事实表末尾改页面名 / 懒加载虚拟页按 id 形状拼「知识库 / 实体 / 叶子」/ app:* 不冠知识库 / 知识库根不重复）搬到 `util/crumbs.ts` 的 `buildCrumbs(id, rows, tabTitle, isVirtual)`，父分类表抽成 `virtualParentOf`；App.tsx 3249 → 3228 行。新测试 crumbs.test.ts 4 条。实拍 `open:kb:facts?topic=work` 面包屑「知识库 / 主题 / work / 事实表 · work」照旧。前端 116。
+
+## [497] 第 472 轮：引用 id 正则前端三份合一（2026-09-14）
+
+- 之前 App.tsx 的 citedIds、factCite.ts 的高亮、wordCount.ts 的 `CITATION_RE` 各抄一份（写法还不完全一样：`[\w-]*` 对 `[A-Za-z0-9_-]*`，语义相同但改一处容易漏另两处）。现在 `util/wordCount.ts` 是唯一源：`CITE_RE_SOURCE` / `CITATION_RE` / `citedFactIds()`，factCite 从这里拿，App 只剩一行 `useMemo(() => citedFactIds(content))`；App.tsx 3228 → 3222 行。后端三处（store / checks/citations / prompts/fragments）照旧手动同步，注释改成「一处源，四处同步」。新测试 2 条（去重按首次顺序、数字 / 12 位 hex 两种 unit、普通方括号不算）。实拍 `open:5f65df10cad6`：引用角标 31、树上 ◆31、正文高亮照旧；`npm test` 全过，前端 118。

@@ -14,6 +14,7 @@
  */
 import { syntaxTree } from '@codemirror/language'
 import { RangeSetBuilder, type Extension } from '@codemirror/state'
+import { CITE_RE_SOURCE } from '../util/wordCount'
 import {
   Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate,
   hoverTooltip,
@@ -22,9 +23,9 @@ import {
 /** 事实 id 的形状：`<用户>-<数字>-<十六进制>`（KITE 的 fact id），或者笔记摄入的
  *  `note-<12 位 hex 笔记 id>-<块号>F<n>`——后一种之前不认，摄入进去的事实没法被引用。
  *  写死这个形状而不是「任何 [xxx]」，是为了不把普通的方括号引用误标成出处。
- *  跟后端 store._CITE / checks/citations / prompts/fragments、App.tsx citedIds 五处同步。 */
-export const CITE_RE_SOURCE = String.raw`\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]`
-const CITE = /\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]/g
+ *  跟后端 store._CITE / checks/citations / prompts/fragments、util/wordCount 一处源，四处同步。 */
+export { CITE_RE_SOURCE }
+const CITE = new RegExp(CITE_RE_SOURCE, 'g')
 
 /** 取一条事实的详情。调用方注入，编辑器这一层不认识 api 模块——它要能被
  *  单独测试，也要能在别的宿主里复用。 */

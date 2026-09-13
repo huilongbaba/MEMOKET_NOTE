@@ -4,7 +4,13 @@
  * 引用标记后的字符数；阅读速度按中文 400 字/分钟。 */
 /** `[user-n-hex]` 引用标记。相关记忆的字数门槛也要先去掉它：实拍「据 [terrence-1872-5F8] 所述。」
  * 4 个字被 id 撑过 8 字门槛，右栏召回了五条不相干的事实。 */
-export const CITATION_RE = /\[[A-Za-z][\w-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]/g
+/** 引用 id 正则的唯一源（带捕获组）。跟后端 store._CITE / checks/citations / prompts/fragments 三处同步；
+ *  前端 factCite.ts 的高亮和 App 的「引用了哪些事实」都从这里拿，不再各抄一份。 */
+export const CITE_RE_SOURCE = String.raw`\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]`
+export const CITATION_RE = new RegExp(CITE_RE_SOURCE, 'g')
+/** 正文里引用了哪些事实 id（去重、按首次出现顺序）。跟后端 `store.cited_fact_ids` 同一条正则——
+ *  两边认的不是同一批，ribbon 的角标和树上的 ◆ 就会对不上。 */
+export const citedFactIds = (s: string): string[] => Array.from(new Set(Array.from(s.matchAll(CITATION_RE), (m) => m[1])))
 export const stripCitations = (s: string) => s.replace(CITATION_RE, '').replace(/[ \t]{2,}/g, ' ')
 
 /** 拿去召回 / 判关系之前的正文：去掉引用标记、整条图片、链接地址（只留链接文字）。

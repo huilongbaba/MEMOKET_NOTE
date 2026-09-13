@@ -5,7 +5,7 @@ import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
-import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges } from './util/wordCount'
+import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
@@ -283,14 +283,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading === 'note-harness'])
 
-  /** 正文里引用了哪些事实。跟后端 `store.cited_fact_ids` 用同一条正则——
-   *  两边认的不是同一批，ribbon 的角标和树上的 ◆ 就会对不上。 */
-  const citedIds = useMemo(() => {
-    const re = /\[([A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+)\]/g
-    const seen = new Set<string>()
-    for (const m of content.matchAll(re)) seen.add(m[1])
-    return [...seen]
-  }, [content])
+  /** 正文里引用了哪些事实（正则见 util/wordCount）。 */
+  const citedIds = useMemo(() => citedFactIds(content), [content])
 
   const [healthMsg, setHealthMsg] = useState('')
   const [asrOffline, setAsrOffline] = useState('')

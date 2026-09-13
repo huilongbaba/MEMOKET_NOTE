@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readingMinutes, wordCount } from '../../util/wordCount'
+import { citedFactIds, readingMinutes, wordCount } from '../../util/wordCount'
 
 describe('wordCount', () => {
   it('不算空白、井号、引用标记、强调星号', () => {
@@ -23,4 +23,14 @@ it('图片不算字数、链接只算显示文字', () => {
   const img = '![' + '为一篇公司汇报制作一张插图'.repeat(50) + '](/api/assets/abc.png)'
   expect(wordCount('正文十个字正文十个字' + img)).toBe(10)
   expect(wordCount('看[官网](https://example.com/very/long/path)')).toBe(3)
+})
+
+describe('citedFactIds', () => {
+  it('去重、按首次出现顺序，认数字和 12 位 hex 两种 unit', () => {
+    expect(citedFactIds('据 [terrence-12-AB] 和 [u-9-F]，又见 [terrence-12-AB]；[t-0123456789ab-1f] 也是。'))
+      .toEqual(['terrence-12-AB', 'u-9-F', 't-0123456789ab-1f'])
+  })
+  it('普通方括号 / 链接不算', () => {
+    expect(citedFactIds('[链接](note://0123456789ab) [备注] [x-y-]')).toEqual([])
+  })
 })
