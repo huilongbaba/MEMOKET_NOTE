@@ -16,7 +16,8 @@ export function friendlyError(e: unknown): string {
     return '模型服务拒绝了请求：API key 不对或没权限，去设置里改'
   }
   if (/\b429\b|rate limit/i.test(msg)) return '模型服务限流了，等一会儿再试'
-  return msg || '未知错误'
+  // 后端 4xx 带着一句人话（「400 模型地址要以 http:// 开头」）：状态码对用户没意义，只留那句话
+  return msg.replace(/^4\d\d\s+(?=\S)/, '') || '未知错误'
 }
 
 /** 这条错误是不是「模型连不上」这一类——调用方据此决定要不要带「打开设置」按钮。 */
