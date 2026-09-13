@@ -47,6 +47,14 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   const inputRef = useRef<HTMLInputElement>(null)
   const openRef = useRef(false)
   openRef.current = open
+  // 关掉之后焦点回到打开之前的地方（多半是编辑器）：面板一直挂着，不能用 useRestoreFocus 那套挂载 / 卸载
+  const prevFocus = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (open) { prevFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; return }
+    const el = prevFocus.current
+    if (el && el.isConnected) el.focus()
+    prevFocus.current = null
+  }, [open])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {

@@ -3250,3 +3250,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 确认框 / 文本输入 / 笔记选择器 / 快速查看 / 快捷键表关掉后焦点都掉到 body。新 `util/restoreFocus.useRestoreFocus`：挂载时记下 activeElement，卸载时它还在页面上就 focus 回去；五个弹层各一行。
 - 探针 `plan-panel:abandon-esc` 的 esc 日志加 `active=`：第一版看到焦点回到了面板容器——程序 `click()` 不像真人鼠标那样把焦点给按钮，探针先 `focus()` 再 `click()` 才测得对；之后 Esc 关掉确认框，焦点回到「换个目标」。前端 107。
+
+## [470] 第 444 轮：⌘K 关掉后焦点回编辑器（2026-09-14）
+
+- ⌘K 面板一直挂着（open 状态切换），不能用挂载 / 卸载那套：open 变 true 时记下 activeElement，变 false 时 focus 回去。探针 `keypalette:esc`：从编辑器 ⌘K 打开、Esc 关掉，activeElement=cm-content。前端 107。

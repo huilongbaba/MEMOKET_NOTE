@@ -301,8 +301,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })()
   }
   // 编辑器里按 ⌘K：应该开搜索面板，而不是插一个链接
-  if (probe === 'keypalette' && notes.length && !harnessProbeDone.current) {
+  if ((probe === 'keypalette' || probe === 'keypalette:esc') && notes.length && !harnessProbeDone.current) {
     harnessProbeDone.current = true
+    // `:esc` → 开了再 Esc 关掉，看焦点是不是回到编辑器
+    if (probe === 'keypalette:esc') {
+      setTimeout(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })), 3000)
+      setTimeout(() => void api.clientLog('warn', `keypalette:esc palette=${document.querySelector('.palette-backdrop') ? 'open' : 'closed'} active=${(document.activeElement as HTMLElement | null)?.className.split(' ')[0] ?? '?'}`, '', 'probe'), 3500)
+    }
     setTimeout(() => {
       const v = editorViewRef.current; if (!v) return
       v.focus(); v.dispatch({ selection: { anchor: Math.min(20, v.state.doc.length) } })
