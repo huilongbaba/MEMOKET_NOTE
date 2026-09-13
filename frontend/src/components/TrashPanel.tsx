@@ -1,5 +1,5 @@
 /** 最近删除：删掉的笔记 30 天内能找回（Trilium 的删除也是可撤销的）。5 秒撤销窗口过了之后，
- *  这里是唯一的后悔药。恢复 = id 不变、放回原位（父节点没了就挂到树根）、历史版本一起回来。 */
+ *  这里是唯一的后悔药。恢复 = id 不变、放回原位（父节点也在这里的先一起放回去，父节点真没了才挂到树根）、历史版本一起回来。 */
 import { useEffect, useState } from 'react'
 
 import { listTrash, purgeTrash, restoreTrash, type TrashItem } from '../api'

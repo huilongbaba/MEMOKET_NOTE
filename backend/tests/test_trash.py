@@ -32,16 +32,28 @@ def test_删了能在最近删除里找回_位置和历史版本都在(client):
     assert client.get(f"/api/notes/{a['id']}/revisions").status_code == 200
 
 
-def test_父节点也删了_恢复到树根_子树逐篇可恢复(client):
+def test_父节点也在最近删除里_恢复子节点时父链一起回来落回原位(client):
+    p = client.post("/api/notes", json={"title": "日记", "content": ""}).json()
+    y = client.post("/api/notes", json={"title": "2026", "content": "", "parent_note_id": p["id"]}).json()
+    a = client.post("/api/notes", json={"title": "09-13 周日", "content": "y", "parent_note_id": y["id"]}).json()
+    deleted = client.delete(f"/api/notes/{p['id']}").json()["deleted"]
+    assert set(deleted) == {p["id"], y["id"], a["id"]}
+    assert {x["note_id"] for x in client.get("/api/notes/trash").json()} == {p["id"], y["id"], a["id"]}
+    assert client.post(f"/api/notes/trash/{a['id']}/restore").json()["id"] == a["id"]
+    tree = {row["note_id"]: row["parent_note_id"] for row in client.get("/api/tree").json()}
+    assert tree[a["id"]] == y["id"] and tree[y["id"]] == p["id"] and tree[p["id"]] == "root"
+    assert client.get("/api/notes/trash").json() == []          # 父链三篇都回来了，回收站清空
+    assert client.get(f"/api/notes/{p['id']}").json()["title"] == "日记"
+
+
+def test_父节点已经彻底删了_子节点恢复到树根(client):
     p = client.post("/api/notes", json={"title": "项目", "content": "x"}).json()
     a = client.post("/api/notes", json={"title": "子", "content": "y", "parent_note_id": p["id"]}).json()
-    deleted = client.delete(f"/api/notes/{p['id']}").json()["deleted"]
-    assert set(deleted) == {p["id"], a["id"]}
-    assert {x["note_id"] for x in client.get("/api/notes/trash").json()} == {p["id"], a["id"]}
+    client.delete(f"/api/notes/{p['id']}")
+    assert client.delete(f"/api/notes/trash/{p['id']}").json() == {"ok": True}
     client.post(f"/api/notes/trash/{a['id']}/restore")
     tree = client.get("/api/tree").json()
     assert any(row["note_id"] == a["id"] and row["parent_note_id"] == "root" for row in tree)
-    assert client.delete(f"/api/notes/trash/{p['id']}").json() == {"ok": True}
     assert client.get("/api/notes/trash").json() == []
     assert client.post(f"/api/notes/trash/{p['id']}/restore").status_code == 404
 

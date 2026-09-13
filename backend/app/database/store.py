@@ -968,37 +968,50 @@ def list_trash(user_id: str) -> list[dict]:
 
 
 def restore_from_trash(user_id: str, note_id: str) -> dict | None:
-    """把一篇从「最近删除」放回去：笔记行原样、branches 原位（父节点已经不在了就挂到树根）、
-    历史版本一起回来。id 不变，所以别的笔记里的 [[链接]] 和知识库反链都还认得它。"""
+    """把一篇从「最近删除」放回去：笔记行原样、branches 原位、历史版本一起回来。
+    父节点也在「最近删除」里（整棵子树一起删的）就先把父链恢复回来，笔记落回原位；
+    父节点真没了才挂到树根。id 不变，所以别的笔记里的 [[链接]] 和知识库反链都还认得它。"""
     with connect() as c:
-        row = c.execute("SELECT payload FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id)).fetchone()
-        if row is None:
+        if not _restore_one(c, user_id, note_id, set()):
             return None
-        payload = json.loads(row["payload"])
-        nd = payload["note"]
-        if c.execute("SELECT 1 FROM notes WHERE id=?", (note_id,)).fetchone():
-            c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id))
-            return get_note(user_id, note_id)          # 已经在了（撤销窗口里恢复过）：只清掉快照
-        cols = [k for k in nd.keys()]
-        c.execute(f"INSERT INTO notes ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", [nd[k] for k in cols])
-        branches = payload.get("branches") or []
-        if not branches:
-            branches = [{"note_id": note_id, "parent_note_id": ROOT_ID, "user_id": user_id}]
-        for b in branches:
-            parent = b.get("parent_note_id") or ROOT_ID
-            if parent != ROOT_ID and not c.execute("SELECT 1 FROM notes WHERE id=?", (parent,)).fetchone():
-                parent = ROOT_ID
-            if c.execute("SELECT 1 FROM branches WHERE note_id=? AND parent_note_id=?", (note_id, parent)).fetchone():
-                continue
-            bcols = [k for k in b.keys() if k != "parent_note_id"]
-            vals = [b[k] for k in bcols]
-            c.execute(f"INSERT INTO branches ({','.join(bcols)},parent_note_id) VALUES ({','.join('?' * len(bcols))},?)", [*vals, parent])
-        for r in payload.get("revisions") or []:
-            rcols = list(r.keys())
-            c.execute(f"INSERT OR IGNORE INTO note_revisions ({','.join(rcols)}) VALUES ({','.join('?' * len(rcols))})", [r[k] for k in rcols])
-        c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id))
         c.commit()
     return get_note(user_id, note_id)
+
+
+def _restore_one(c, user_id: str, note_id: str, seen: set[str]) -> bool:
+    """在同一个连接里恢复一篇（递归先恢复还在回收站里的父节点）。返回是否找到了快照。"""
+    if note_id in seen:
+        return False
+    seen.add(note_id)
+    row = c.execute("SELECT payload FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id)).fetchone()
+    if row is None:
+        return False
+    payload = json.loads(row["payload"])
+    nd = payload["note"]
+    if c.execute("SELECT 1 FROM notes WHERE id=?", (note_id,)).fetchone():
+        c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id))
+        return True          # 已经在了（撤销窗口里恢复过）：只清掉快照
+    cols = [k for k in nd.keys()]
+    c.execute(f"INSERT INTO notes ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", [nd[k] for k in cols])
+    branches = payload.get("branches") or []
+    if not branches:
+        branches = [{"note_id": note_id, "parent_note_id": ROOT_ID, "user_id": user_id}]
+    for b in branches:
+        parent = b.get("parent_note_id") or ROOT_ID
+        if parent != ROOT_ID and not c.execute("SELECT 1 FROM notes WHERE id=?", (parent,)).fetchone():
+            # 父节点跟它一起被删的：先把父链放回来（一路递归到还在的祖先），这篇才能落回原位
+            if not _restore_one(c, user_id, parent, seen):
+                parent = ROOT_ID
+        if c.execute("SELECT 1 FROM branches WHERE note_id=? AND parent_note_id=?", (note_id, parent)).fetchone():
+            continue
+        bcols = [k for k in b.keys() if k != "parent_note_id"]
+        vals = [b[k] for k in bcols]
+        c.execute(f"INSERT INTO branches ({','.join(bcols)},parent_note_id) VALUES ({','.join('?' * len(bcols))},?)", [*vals, parent])
+    for r in payload.get("revisions") or []:
+        rcols = list(r.keys())
+        c.execute(f"INSERT OR IGNORE INTO note_revisions ({','.join(rcols)}) VALUES ({','.join('?' * len(rcols))})", [r[k] for k in rcols])
+    c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id))
+    return True
 
 
 def purge_trash(user_id: str, note_id: str) -> bool:
