@@ -295,6 +295,18 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
     return EditOut(revisions=revisions, note=note, took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 
+def _cited_near(content: str, selection: str) -> list[str]:
+    """选区所在段落（找不到选区就整篇）里引用的事实 id，保持出现顺序。"""
+    i = content.find(selection) if selection else -1
+    if i < 0:
+        scope = selection
+    else:
+        start = content.rfind("\n\n", 0, i) + 2 if content.rfind("\n\n", 0, i) >= 0 else 0
+        end = content.find("\n\n", i + len(selection))
+        scope = content[start:end if end >= 0 else len(content)]
+    return citation_check.cited_ids(scope)[:6]
+
+
 @router.post("/verify", response_model=VerifyOut)
 async def verify(body: VerifyIn, user: str = Depends(current_user)):
     """选中文本 -> 核对笔记内部一致性 + 知识库事实，返回带证据引用的判断。
@@ -302,8 +314,18 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
     "快检索 + 一次 LLM 调用"节奏，不是 KITE 的 ask()/planning 那条慢路径。"""
     t0 = time.perf_counter()
     mem = UserMemory(user)
+    # 用户已经在这段旁边引了的事实，是最直接的证据：先按 id 取，再补词法召回。
+    # 实拍：选中「4 月 16 日的 EVT 准备 4 台主机 15 套 PCBA」，同一段紧跟着 [terrence-2046-12F1]
+    # 这些引用，词法召回却没把它们捞回来，模型只能答「知识库没有记录」。
+    hits: list[dict] = []
+    for fid in _cited_near(body.content, body.selection):
+        f = mem.fact_by_id(fid)
+        if f and f.get("text"):
+            f = dict(f, date=f.get("date") or f.get("when", ""))
+            hits.append(f)
     rows, _terms, _took = mem.recall(body.selection, limit=6)
-    hits = [r for r in rows if r.get("text")]
+    seen = {h["id"] for h in hits}
+    hits += [r for r in rows if r.get("text") and r["id"] not in seen]
     facts = [r["text"] for r in hits]
 
     system = prompts.compose_system(prompts.VERIFY_SYSTEM, "verify", user)
