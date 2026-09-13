@@ -66,8 +66,10 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     }, 900)
     // 把那个节点滚到树的可视区顶部，不然截图里看不到展开的那一层
     setTimeout(() => {
-      const label = ({ 'kb:entities': '实体', 'kb:topics': '主题', 'kb:recent': '最近摄入' } as Record<string, string>)[id] ?? id.split(':').pop()
-      const el = Array.from(document.querySelectorAll('.tree-node')).find((n) => new RegExp('^' + (label ?? '') + '\\s*\\d*$', 'i').test(n.textContent?.trim() ?? ''))
+      const NAMES = { 'kb:entities': '实体', 'kb:topics': '主题', 'kb:recent': '最近摄入', 'kb:timeline': '时间线' } as Record<string, string>
+      const find = (label: string) => Array.from(document.querySelectorAll('.tree-node')).find((n) => new RegExp('^' + label + '\\s*\\d*$', 'i').test(n.textContent?.trim() ?? ''))
+      // 会议 / 月份行的文字不是 id（「03-10 · 产品计划会…」）：找不到就滚到它的父分类
+      const el = find(NAMES[id] ?? id.split(':').pop() ?? '') ?? (parent ? find(NAMES[parent] ?? parent) : undefined)
       el?.scrollIntoView({ block: 'start' })
     }, 2500)
   }
