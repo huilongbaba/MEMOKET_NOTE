@@ -563,7 +563,7 @@ export default function App() {
     const fetched = performance.now() - t0
     setTree(rows)
     // 大库量一眼：几百篇时树的取数和首帧各花多久（探针看 client-log）
-    if (rows.length >= 200) requestAnimationFrame(() => void api.clientLog('warn', `tree ${rows.length} rows: fetch ${Math.round(fetched)} ms, paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))
+    if (rows.length >= 200) requestAnimationFrame(() => void api.clientLog('info', `tree ${rows.length} rows: fetch ${Math.round(fetched)} ms, paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))
     // 知识库子树跟着一起刷：摄入完新事实，主题/月份的计数要跟上。
     // 取不到（KITE 还没建库）就当没有，不影响真笔记。
     // 保存正文不动知识库（引用计数在 notes 树那边）：save() 传 false，别每敲一段就重拉一次知识库树。
@@ -2093,7 +2093,7 @@ export default function App() {
     const noteId = current.id
     // 起跑时记一笔发出去的是什么：哪篇、多少字、骨架开头——探针实拍过一次
     // 「跑在了另一篇上」，没有这条日志只能猜。
-    void api.clientLog('warn', `harness start note=${noteId} title=${current.title.slice(0, 20)} content=${content.length} spine=${spine.slice(0, 30)} beats=${beats.length}`, '', 'harness-start')
+    void api.clientLog('info', `harness start note=${noteId} title=${current.title.slice(0, 20)} content=${content.length} spine=${spine.slice(0, 30)} beats=${beats.length}`, '', 'harness-start')
     setLoading('note-harness')
     setNoteHarnessStatus('启动中…')
     setHarnessDone(false); harnessDoneRef.current = false

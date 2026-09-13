@@ -31,5 +31,6 @@ def client_log(body: ClientLogIn, user: str = Depends(current_user)) -> dict:
     if body.stack:
         text += "\n" + body.stack[:4000]
     print(text, flush=True)
-    log.error(text) if body.level == "error" else log.warning(text)
+    # info 是纯观测（首屏耗时、树大小、harness 开跑）：不该混在 warn 里，不然扫 warn 找问题时全是它
+    (log.error if body.level == "error" else log.warning if body.level == "warn" else log.info)(text)
     return {"ok": True}

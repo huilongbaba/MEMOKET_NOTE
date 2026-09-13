@@ -903,7 +903,7 @@ export function watchJob(
 export const health = () => fetch('/api/health').then(json<any>)
 
 /** 前端错误报给后端日志（打包版没有 DevTools，白屏时这是唯一的线索）。 */
-export const clientLog = (level: 'error' | 'warn', message: string, stack = '', where = '') =>
+export const clientLog = (level: 'error' | 'warn' | 'info', message: string, stack = '', where = '') =>
   fetch('/api/client-log', {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ level, message, stack, where }),
