@@ -34,3 +34,13 @@ describe('citationRanges', () => {
     expect(citationRanges(t, ['nope'])).toEqual([])
   })
 })
+
+import { noteLinkRanges } from '../../util/wordCount'
+
+describe('noteLinkRanges', () => {
+  it('链到指定笔记的链接改成标题文本，别的链接不动', () => {
+    const t = '见 [甲](note://aaaaaaaaaaaa) 和 [乙](note://bbbbbbbbbbbb)。'
+    const r = noteLinkRanges(t, ['bbbbbbbbbbbb'])
+    expect(r).toEqual([{ from: t.indexOf('[乙]'), to: t.indexOf('[乙]') + '[乙](note://bbbbbbbbbbbb)'.length, insert: '乙' }])
+  })
+})

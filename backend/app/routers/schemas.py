@@ -427,6 +427,8 @@ class NoteLinksOut(BaseModel):
     """笔记之间的链接：`[标题](note://<id>)`。outgoing 是这篇链出去的，backlinks 是链进来的。"""
     outgoing: list[CitingNoteOut]
     backlinks: list[CitingNoteOut]
+    # 正文里链到的、已经不在的笔记 id（删了 / 从别的库导来的）：面板要列出来，能一键改成纯文本
+    dangling: list[str] = Field(default_factory=list)
 
 
 class FactPeekOut(BaseModel):

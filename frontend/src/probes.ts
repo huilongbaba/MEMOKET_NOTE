@@ -63,6 +63,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       // `…:ribbon:<tab>:end` → 把 ribbon 体滚到底（看面板末尾的东西，比如引用页最后的局部图）
       if (probe.endsWith(':end')) setTimeout(() => { const el = document.querySelector('.ribbon-body'); if (el) el.scrollTop = el.scrollHeight }, 5500)
       // `…:ribbon:cites:strip` → 文末塞一条指向不存在事实的引用（探针不落库），5 秒后点「清掉这些引用」
+      // `…:ribbon:links:unlink` → 文末塞一条链到不存在笔记的链接（不落库），6 秒后点「改成纯文本」
+      if (probe.endsWith(':unlink')) {
+        setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n另见 [早就删掉的那篇](note://000000000000)。' } }) }, 2500)
+        setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '改成纯文本') { b.click(); break } }, 6000)
+      }
       if (probe.endsWith(':strip')) {
         setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n这句的依据早没了 [terrence-9999-FF]。' } }) }, 2500)
         setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '清掉这些引用') { b.click(); break } }, 6000)

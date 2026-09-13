@@ -44,3 +44,15 @@ export function citationRanges(text: string, ids: string[]): { from: number; to:
   }
   return out
 }
+
+/** 正文里链到某几篇笔记的 `[标题](note://id)`：区间 + 替换成的纯文本（标题）。链到的笔记没了，
+ *  链接改成纯文本，字留着。 */
+export function noteLinkRanges(text: string, ids: string[]): { from: number; to: number; insert: string }[] {
+  const want = new Set(ids)
+  const out: { from: number; to: number; insert: string }[] = []
+  for (const m of text.matchAll(/\[([^\]\n]*)\]\(note:\/\/([0-9a-f]{12})\)/g)) {
+    if (!want.has(m[2])) continue
+    out.push({ from: m.index, to: m.index + m[0].length, insert: m[1] })
+  }
+  return out
+}

@@ -609,7 +609,7 @@ export type NoteGraph = { facts: number; topics: TopicNode[]; entities: EntityNo
 export const noteGraph = (noteId: string) =>
   fetch(`/api/notes/${noteId}/graph`, { headers: headers() }).then(json<NoteGraph>)
 
-export type NoteLinks = { outgoing: CitingNote[]; backlinks: CitingNote[] }
+export type NoteLinks = { outgoing: CitingNote[]; backlinks: CitingNote[]; /** 链到的、已经不在的笔记 id */ dangling?: string[] }
 export const noteLinks = (noteId: string) =>
   fetch(`/api/notes/${noteId}/links`, { headers: headers() }).then(json<NoteLinks>)
 

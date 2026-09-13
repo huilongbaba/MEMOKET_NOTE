@@ -5,7 +5,7 @@ import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
-import { readingMinutes, stripForRecall, wordCount, citationRanges } from './util/wordCount'
+import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
@@ -2211,6 +2211,23 @@ export default function App() {
     })
   }
 
+  /** 链到已删笔记的 `[标题](note://id)` 改成纯文本：跟 stripCitationIds 一条路 */
+  function unlinkNotes(ids: string[]) {
+    if (!ids.length) return
+    const view = editorViewRef.current
+    if (view) {
+      const ranges = noteLinkRanges(view.state.doc.toString(), ids)
+      if (ranges.length) view.dispatch({ changes: ranges })
+      toast(`已把 ${ranges.length} 条链接改成纯文本`)
+      return
+    }
+    setContent((c) => {
+      let out = c
+      for (const r of [...noteLinkRanges(c, ids)].reverse()) out = out.slice(0, r.from) + r.insert + out.slice(r.to)
+      return out
+    })
+  }
+
   function insertAtCursor(text: string) {
     if (!text) return
     const view = editorViewRef.current
@@ -2935,7 +2952,7 @@ export default function App() {
               id: 'links', title: '链接', icon: 'bx-link-alt',
               badge: (content.match(/\]\(note:\/\/[0-9a-f]{12}\)/g) ?? []).length || undefined,
               body: <NoteLinksPanel noteId={current.id} content={content}
-                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }} />,
+                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} />,
             }, {
               id: 'history', title: '历史', icon: 'bx-history',
               body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length} currentContent={content}

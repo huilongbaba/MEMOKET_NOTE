@@ -77,13 +77,16 @@ def note_links(note_id: str, user: str = Depends(current_user)):
     note = store.get_note(user, note_id)
     if not note:
         raise HTTPException(404, "note not found")
-    outgoing = []
+    outgoing, dangling = [], []
     for target in store.note_links_in(note["content"]):
         t = store.get_note(user, target)
         if t:
             outgoing.append(CitingNoteOut(id=t["id"], title=t["title"], updated_at=t["updated_at"],
                                           preview=(t["content"] or "")[:80], icon=t.get("icon") or ""))
-    return NoteLinksOut(outgoing=outgoing, backlinks=[CitingNoteOut(**r) for r in store.backlinks(user, note_id)])
+        else:
+            dangling.append(target)       # 链到的笔记不在了：之前静默丢掉，面板上看不出正文里有坏链接
+    return NoteLinksOut(outgoing=outgoing, backlinks=[CitingNoteOut(**r) for r in store.backlinks(user, note_id)],
+                        dangling=dangling)
 
 
 @router.get("/{note_id}/graph", response_model=NoteGraphOut)

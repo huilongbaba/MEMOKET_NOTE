@@ -45,3 +45,14 @@ def test_链接面板和反向链接的行也带图标(client):
     assert links_b["outgoing"][0]["icon"] == "bx-star"
     links_a = client.get(f"/api/notes/{a['id']}/links").json()
     assert links_a["backlinks"][0]["icon"] == "bx-heart"
+
+
+def test_链到已删笔记的_面板列成_dangling(client):
+    a = client.post("/api/notes", json={"title": "甲", "content": "x"}).json()
+    b = client.post("/api/notes", json={"title": "乙", "content": f"链到 [甲](note://{a['id']}) 和 [没了](note://000000000000)"}).json()
+    links = client.get(f"/api/notes/{b['id']}/links").json()
+    assert [x["id"] for x in links["outgoing"]] == [a["id"]]
+    assert links["dangling"] == ["000000000000"]
+    client.delete(f"/api/notes/{a['id']}")
+    links = client.get(f"/api/notes/{b['id']}/links").json()
+    assert links["outgoing"] == [] and links["dangling"] == [a["id"], "000000000000"]
