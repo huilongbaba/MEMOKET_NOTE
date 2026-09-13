@@ -29,6 +29,9 @@ app = FastAPI(title="memoket-NOTE", version="0.1.0",
 # 还停在 queued/running。不清理的话进度面板永远显示「处理中…」，而且"同时只跑
 # 一个导入任务"的检查会认为一直有任务在跑，用户再也导不进任何东西。
 _orphans = store.sweep_orphan_jobs()
+_stale_pauses = store.sweep_stale_snapshots()
+if _stale_pauses:
+    print(f"[startup] 清理了 {_stale_pauses} 个超过 {store.SNAPSHOT_MAX_AGE_DAYS} 天没处置的轮末暂停")
 _orphan_plans = store.sweep_orphan_plans()
 _payloads = store.prune_job_payloads(pathlib.Path(get_settings().kite_data_dir) / "jobs")
 if _payloads:

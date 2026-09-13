@@ -239,3 +239,16 @@ def test_同一篇只留最新的一份暂停快照(tmp_path, monkeypatch):
     ids = {r["id"] for r in store.list_snapshots("u")}
     assert ids == {b, other} and a not in ids
     assert store.get_snapshot("u", a) is None
+
+
+def test_超过七天没处置的暂停启动时清掉():
+    """第 222 轮：暂停快照永远不过期，隔一个月打开那篇还提示「等你处置」。"""
+    from datetime import datetime, timedelta, timezone
+    fresh = store.save_snapshot("u", "n-fresh", "note", 1, "{}")
+    old = store.save_snapshot("u", "n-old", "note", 2, "{}")
+    with store.connect() as c:
+        c.execute("UPDATE harness_snapshots SET created_at=? WHERE id=?",
+                  ((datetime.now(timezone.utc) - timedelta(days=8)).isoformat(), old))
+        c.commit()
+    assert store.sweep_stale_snapshots() == 1
+    assert [s["id"] for s in store.list_snapshots("u")] == [fresh]

@@ -1219,8 +1219,9 @@ export default function App() {
           // 暂停，恢复之后所有提示都说成「智能续写」。
           const mode = mine.mode === 'polish' ? 'polish' : 'write'
           setPausedRun({ id: mine.id, noteId: n.id, mode })
+          // 带上日期：隔了几天再打开，得知道这份暂停是哪天的（7 天没处置的启动时会清掉）
           setNoteHarnessStatus(
-            `上次${mode === 'polish' ? '打磨' : '智能续写'}写到第 ${mine.round} 轮停下来等你处置`)
+            `${fmtDate(mine.created_at)} ${mode === 'polish' ? '打磨' : '智能续写'}写到第 ${mine.round} 轮停下来等你处置`)
         }
       })
       .catch(() => {})

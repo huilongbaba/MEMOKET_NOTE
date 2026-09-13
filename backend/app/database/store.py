@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from ..util.config import get_settings
@@ -1819,6 +1819,20 @@ def delete_snapshot(user_id: str, run_id: str) -> None:
         c.execute("DELETE FROM harness_snapshots WHERE id=? AND user_id=?",
                   (run_id, user_id))
         c.commit()
+
+
+SNAPSHOT_MAX_AGE_DAYS = 7
+
+
+def sweep_stale_snapshots(days: int = SNAPSHOT_MAX_AGE_DAYS) -> int:
+    """启动时清掉所有用户超过 N 天没人来处置的轮末暂停。留着的话每次打开那篇都提示
+    「上次写到第 N 轮停下来等你处置」，而恢复它等于把一周前的材料盖到已经改过的正文上
+    （第 222 轮）。"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with connect() as c:
+        n = c.execute("DELETE FROM harness_snapshots WHERE created_at < ?", (cutoff,)).rowcount
+        c.commit()
+    return n
 
 
 def prune_snapshots(user_id: str, keep: int = 20) -> int:
