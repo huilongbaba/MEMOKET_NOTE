@@ -2527,3 +2527,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `MemoryBrowser` 只在 `KbNoteView` 里以 embedded + topics 挂载，但文件里还留着概览 / 时间线 / 事实表三个 tab、弹层外壳、Esc 关闭、事实翻页——那些早就各自是知识库的一页了；而且它每次挂载还多发一次 `/api/memory/stats`（概览 tab 的）。
 - **改**：删到只剩主题地图（568 → 330 行），点主题 / 实体一律走 `open-virtual`。tsc / eslint / vitest 全绿；`open:kb:graph` 浅色、`graph-zoom` 深色实拍不变。
+
+## [309] 第 280 轮：重打 dmg（2026-09-13）
+
+- 含 271–279 轮：架构文档同步、README API 表、事实表 / 单条事实带实体显示名、MemoryBrowser 瘦身到只剩主题地图、若干实拍核对。
+- `npm run dist` → 183MB。杀第 270 轮那份起新的：`/api/health` ok；正式版 `memory/facts?entity=Facebook` 带 `entity_names: ['Facebook']`。
