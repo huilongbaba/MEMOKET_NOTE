@@ -115,6 +115,22 @@ def _norm(text: str) -> str:
     return _WS.sub("", (text or "").lower())
 
 
+def _hits(terms: list[str], text: str) -> list[str]:
+    """查询词里哪些真的出现在这条事实里。ASCII 词按整词匹配（`md` 不能靠 SMDowner / B2ECMD
+    得分——第 224 轮实拍拖一篇 .md 进来右栏全是不相干的英文事实；`ai` 不能靠 said 得分），
+    比对时保留空格；中文 n-gram 和数字去空白后子串匹配（事实原文写成「4 月 16 号」）。"""
+    low = (text or "").lower()
+    squeezed = _WS.sub("", low)
+    out = []
+    for t in terms:
+        if t.isascii() and t[0].isalpha():
+            if re.search(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9])", low):
+                out.append(t)
+        elif t in squeezed:
+            out.append(t)
+    return out
+
+
 def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
     """The query terms that actually appear in the results.
 
@@ -125,9 +141,11 @@ def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
     table happened to recognise.
     """
     terms = _terms(memory, query)
-    texts = [_norm(store.facts.get(r.get("id")).text if store.facts.get(r.get("id")) else "")
-             for r in rows]
-    return [t for t in terms if any(t in x for x in texts)][:8]
+    texts = [(store.facts.get(r.get("id")).text if store.facts.get(r.get("id")) else "") or "" for r in rows]
+    hit: set[str] = set()
+    for x in texts:
+        hit.update(_hits(terms, x))
+    return [t for t in terms if t in hit][:8]
 
 
 def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dict]:
@@ -146,9 +164,12 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
 
     def score(row: dict) -> tuple[int, str]:
         fact = store.facts.get(row.get("id"))
-        text = _norm(fact.text if fact else "")
+        text = (fact.text if fact else "") or ""
         # 数字命中比同长度的字词更硬（「4月16」几乎就是在指那一天），多给 2 分
-        return (sum(len(t) + (2 if t[0].isdigit() else 0) for t in terms if t in text),
+        return (sum(len(t) + (2 if t[0].isdigit() else 0) for t in _hits(terms, text)),
                 row.get("date") or "")
 
-    return sorted(rows, key=score, reverse=True)[:limit]
+    # 一个查询词都没命中的候选不要：它们只是 grep 通道子串撞进来的（`md` 撞 SMD），
+    # 排在后面照样会被当成「相关记忆」显示出来（第 224 轮实拍）
+    scored = [(score(r), r) for r in rows]
+    return [r for s, r in sorted(scored, key=lambda x: x[0], reverse=True) if s[0] > 0][:limit]

@@ -69,7 +69,8 @@ def test_排序按查询词的覆盖量而不是日期():
             {"id": "b", "date": "2026-01-01"},
             {"id": "c", "date": "2026-08-01"}]
     out = search.rank(rows, "录音设备的电量和佩戴体验", _FakeMemory(), store, limit=3)
-    assert [r["id"] for r in out] == ["b", "c", "a"], \
+    # 一个词都没命中的 a 不再返回（第 224 轮）：它只是候选池里撞进来的
+    assert [r["id"] for r in out] == ["b", "c"], \
         "最贴题的那条要排最前，哪怕它最旧"
 
 
@@ -119,3 +120,22 @@ def test_数字也是查询词_但光秃秃的一两位数不算():
     mem._cjk_terms = lambda text: []
     out = search.rank(rows, "4月16日的EVT准备4台主机和15套PCBA", mem, store, limit=2)
     assert [r["id"] for r in out] == ["date", "pcba"]
+
+
+def test_英文短词整词匹配_不靠子串得分():
+    """第 224 轮：拖一篇 .md 进来，`md` 子串命中 SMDowner / B2ECMD，右栏全是不相干的事实。"""
+    store = _store({
+        "smd": "当他是SMDowner，给他B2ECMD的指令",
+        "real": "把笔记导出成 md 文件",
+        "said": "he said the ai model is fine",
+        "none": "无关",
+    })
+    rows = [{"id": k, "date": "2026-01-01"} for k in ("smd", "real", "said", "none")]
+    mem = _FakeMemory()
+    mem._candidate_terms = lambda text: ["md"]
+    mem._cjk_terms = lambda text: []
+    out = search.rank(rows, "拖进树的 .md", mem, store, limit=1)
+    assert out[0]["id"] == "real"
+    assert search.matched_terms([rows[0]], "md", mem, store) == []
+    mem._candidate_terms = lambda text: ["ai"]
+    assert search._hits(["ai"], "he said the ai model") == ["ai"] and search._hits(["ai"], "he said") == []

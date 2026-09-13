@@ -474,7 +474,9 @@ class UserMemory:
         if not terms:
             return []
 
-        units: list[str] = []
+        # 一个 unit 要被至少两个不同的词各命中一次才算：「这篇是」这种三字组几乎哪场会都有一行，
+        # 单靠它把整场会的事实都拉出来，右栏就是一堆不相干的（第 224 轮实拍拖一篇 .md 进来）
+        hits: dict[str, set[str]] = {}
         for term in terms[:12]:
             rows, _t = execute_plan(
                 store, vocab,
@@ -483,10 +485,9 @@ class UserMemory:
                 budget=limit)
             for r in rows:
                 unit = r.get("unit")
-                if unit and unit not in units:
-                    units.append(unit)
-            if len(units) >= 4:
-                break
+                if unit:
+                    hits.setdefault(unit, set()).add(term)
+        units = [u for u, ts in sorted(hits.items(), key=lambda kv: -len(kv[1])) if len(ts) >= 2][:4]
 
         if not units:
             return []
