@@ -140,7 +140,7 @@ cd backend
 pip install -r requirements.txt -r requirements-dev.txt
 PYTHONPATH=. pytest -q                     # 950 条，约 42 秒，不需要模型
 
-cd ../frontend && npm test                 # tsc + eslint + vitest + 16 个检查脚本
+cd ../frontend && npm test                 # tsc + eslint + vitest + 18 个检查脚本
 ```
 
 两道闸门都在 `.github/workflows/ci.yml` 里，每次 push 和 PR 自动跑。
@@ -149,11 +149,11 @@ cd ../frontend && npm test                 # tsc + eslint + vitest + 16 个检�
 所以跑得起来、跑得快。真实模型只在 `backend/scripts/` 下的 bench 里用。
 
 前端 `npm test` 串起四样：类型检查、ESLint（只开抓 bug 的规则）、`src/editor/__tests__/` 下的单元测试、
-以及 `frontend/scripts/` 下的十六个检查脚本（格式化幂等性、撤回可逆性、
+以及 `frontend/scripts/` 下的十八个检查脚本（格式化幂等性、撤回可逆性、
 diff 状态层、`/` 菜单、表格预览、图谱/编辑器/skill 导入 smoke、文档里的 mermaid 能不能画、
-TSX 用到的类名 CSS 里得有 + 反向查死样式）。其中四个是**前后端对拍**：客户端在轮内镜像服务端
+TSX 用到的类名 CSS 里得有 + 反向查死样式、可点的 div 键盘也能按）。其中五个是**前后端对拍**：客户端在轮内镜像服务端
 的正文变换（修订重放 `check-revision-parity`、引用 / 链接正则 `check-regex-parity`、
-删元话语句子 `check-scrub-parity`、空行归一 + 定向插入 `check-stream-parity`），
+删元话语句子 `check-scrub-parity`、空行归一 + 定向插入 `check-stream-parity`、同名消歧的正文首行 / 显示名 `check-preview-parity`），
 样本同时喂 TypeScript 和 Python 两份实现，结果不一样就红——两份实现是有意的（服务端
 要在没人审核时自动应用），代价就是会漂，靠这四个盯着。
 `backend/tests/test_api_contract.py` 盯着「每个检查脚本都被 npm test 跑到」
