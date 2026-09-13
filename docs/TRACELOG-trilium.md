@@ -2493,3 +2493,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [300] 巡检第 271 轮：材料页（深色）、最后一段（1000 宽）（2026-09-13）
 
 - `open:kb:material:terrence-2046-0 --dark`：打开的是第 1/24 段，段钮一排在深色下对；`open:kb:unit:terrence-2046-23 --win=1000x700`：第 24/24 段高亮、段钮两行排开。没改代码。
+
+## [301] 第 272 轮：架构文档同步（2026-09-13）
+
+- `docs/harness-framework.md` 目录图和第 15 节补上这几十轮新加的：`kb/units.py`（materials / parts_of）、`kb/who.py`、`store.list_notes_brief` 与四个启动清理、`kb:material`、搜索排序规则、记忆范围贯穿的入口；README 的 API 表补 `GET /api/notes/brief`。变更记录一节把 TRACELOG 范围写到 [300]。
