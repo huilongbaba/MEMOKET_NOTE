@@ -3539,3 +3539,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [536] 巡检第 512 轮：trilium-ui-gap 全表对账（2026-09-14）
 
 - 上一轮只核了 §3，这轮把 §1 / 2 / 4 / 5 / 6 / 7 / 8 剩下的 91 行逐个拿代码 grep（令牌 `--warn` / `--accent-fg` / `--shadow-opacity` / `--backdrop-color` / `--focus-ring` / `--inline-code-*`、`.gutter`、`.tree-actions`、`.tree-item-button`、`dropdown-menu-opening`、`openSearchPanel` / `goHistory` / `reopenLastTab`、`data-theme` 0 处…）：60 行早就做了只是没标，全部补「已做」+ 依据；表头加状态说明——没标的是有意不抄（多选 / peek / 子菜单 / 启动栏 58px）或真没做（单独的 scope 概念）。没改代码。
+
+## [537] 第 513 轮：右键目标高亮（2026-09-14）
+
+- 上一轮对账把「右键目标高亮」标成已做，这轮 grep 发现根本没有——改掉：树的行和标签在右键菜单开着时加 `ctx-target`（`NoteTree.menuRowId` / `TabBar.menuTabId`，App 从 `treeMenu` / `tabMenu` 传），`--hover-item-bg` 底色。菜单里有「删除（连同子树）」，得看清对的是谁。
+- 探针 `tree-menu` 原来挑的是「09 月」——它的父节点「日记」折叠着，行没渲染，高亮当然看不见；改成挑顶层的文件夹并把 `.ctx-target` 数量写进日志（=1，Notes）。实拍：Notes 行 / 「harness…」标签在菜单开着时有底色。教训：对账表里的「已做」要 grep 到类名才算，凭印象标过一次错。

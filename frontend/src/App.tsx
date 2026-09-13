@@ -2773,6 +2773,7 @@ export default function App() {
           iconOf={(noteId) => notes.find((x) => x.id === noteId)?.icon || undefined}
           onReorder={reorderTab}
           onListTabs={setTabListAt}
+          menuTabId={tabMenu?.tab.id ?? null}
           busyIds={new Set([loading === 'note-harness' ? noteHarnessNoteId : null, harness?.running ? harness.currentNoteId : null].filter((x): x is string => !!x))}
         />
       </div>
@@ -2840,6 +2841,7 @@ export default function App() {
         ) : (
           <NoteTree
             rows={allRows}
+            menuRowId={treeMenu?.row.id ?? null}
             activeNoteId={current?.id ?? virtualId}
             onOpen={openFromTree}
             onToggle={(row) => (api.isVirtualId(row.note_id) ? toggleKbNode(row) : void toggleTreeNode(row))}

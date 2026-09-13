@@ -25,6 +25,8 @@ type Props = {
   onOpen: (noteId: string, mods?: { alt: boolean }) => void
   onToggle: (row: TreeRow) => void
   onContextMenu?: (row: TreeRow, at: { x: number; y: number }) => void
+  /** 右键菜单开着时是哪一行（branch id）：那行高亮——菜单里有「删除（连同子树）」，得看清对的是哪一行 */
+  menuRowId?: string | null
   /** 键盘：Delete 删除、F2 改名；hover 出现的「＋」建子笔记。只对真笔记生效。 */
   onDelete?: (row: TreeRow) => void
   onRename?: (row: TreeRow) => void
@@ -100,7 +102,7 @@ function flatten(rows: TreeRow[]): Node[] {
 }
 
 export default function NoteTree({
-  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop, onFilesDrop, locateTick,
+  rows, activeNoteId, onOpen, onToggle, onContextMenu, onDelete, onRename, onNewChild, onDrop, onFilesDrop, locateTick, menuRowId,
 }: Props) {
   const hasFiles = (e: React.DragEvent) => !!onFilesDrop && Array.from(e.dataTransfer.types).includes('Files')
   const nodes = useMemo(() => flatten(rows), [rows])
@@ -181,7 +183,7 @@ export default function NoteTree({
             role="treeitem"
             aria-expanded={hasKids ? n.is_expanded : undefined}
             aria-selected={active}
-            className={'tree-node' + (active ? ' active' : '') + (focused?.id === n.id ? ' focused' : '')
+            className={'tree-node' + (active ? ' active' : '') + (focused?.id === n.id ? ' focused' : '') + (menuRowId === n.id ? ' ctx-target' : '')
               + (drag?.id === n.id ? ' dragging' : '') + (drop?.id === n.id ? ' drop-' + drop.where : '')}
             // 每级 10px、根再让 12px（theme-next/shell.css:716-723）
             style={{ paddingInlineStart: 12 + n.depth * 10 }}

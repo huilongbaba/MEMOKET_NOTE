@@ -1038,3 +1038,6 @@ kbd {
 /* 段落里的一小截可点文字（「去事实表筛」这种） */
 .kb-link-inline { color: var(--accent); text-decoration: none; }
 .kb-link-inline:hover { text-decoration: underline; }
+
+/* 右键菜单开着时目标行 / 标签高亮（第 513 轮，trilium-ui-gap §6「右键目标高亮」）：菜单里有「删除（连同子树）」，得看清对的是谁 */
+.tree-node.ctx-target, .note-tab.ctx-target:not(.active) { background: var(--hover-item-bg); }

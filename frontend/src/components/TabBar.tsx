@@ -22,7 +22,7 @@ const MIN_W = 84
 const MARGIN_W = 5
 
 export default function TabBar({
-  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf, onListTabs, busyIds,
+  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf, onListTabs, busyIds, menuTabId,
 }: {
   tabs: Tab[]
   activeId: string | null
@@ -38,6 +38,8 @@ export default function TabBar({
   onListTabs?: (at: { x: number; y: number }) => void
   /** harness 正在写的那几篇：标签顶上一道色条。切去别的标签时唯一能看出「还在跑、跑的是哪篇」的地方 */
   busyIds?: Set<string>
+  /** 右键菜单开着时是哪个标签：高亮它（Trilium tab_row 右键时也这样） */
+  menuTabId?: string | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -90,7 +92,7 @@ export default function TabBar({
           key={t.id}
           role="tab"
           aria-selected={t.id === activeId}
-          className={'note-tab' + (t.id === activeId ? ' active' : '') + (busyIds?.has(t.noteId) ? ' busy' : '')
+          className={'note-tab' + (t.id === activeId ? ' active' : '') + (busyIds?.has(t.noteId) ? ' busy' : '') + (menuTabId === t.id ? ' ctx-target' : '')
             + (dragId === t.id ? ' dragging' : '') + (overIndex === i && dragId !== t.id ? ' drop-before' : '')}
           title={`${t.title || '未命名'}${busyIds?.has(t.noteId) ? '（正在写）' : ''}${i < 9 ? `　${fmtShortcut('⌘' + (i + 1))}` : ''}`}
           onClick={() => onSelect(t.id)}

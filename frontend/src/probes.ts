@@ -650,7 +650,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     return
   }
   if (probe === 'tree-menu' && tree.length) {
-    const row = tree.find((r) => r.child_count > 0) ?? tree[0]
+    // 挑一个**画在树上**的文件夹（顶层的）：折叠着的父节点下面的行没渲染，右键高亮看不出来（第 513 轮）
+    const row = tree.find((r) => r.child_count > 0 && r.parent_note_id === api.ROOT_ID) ?? tree.find((r) => r.child_count > 0) ?? tree[0]
     setTreeMenu({ row, at: { x: 260, y: 180 } })
+    setTimeout(() => void api.clientLog('warn', `tree-menu row=${row.title} ctx-target=${document.querySelectorAll('.tree-node.ctx-target').length} title=${(document.querySelector('.tree-node.ctx-target .tree-title') as HTMLElement | null)?.textContent ?? '-'}`, '', 'probe'), 1500)
   }
 }
