@@ -178,7 +178,7 @@ def test_README里写的端点后端都有():
 
 
 def test_前端每个检查脚本都被npm_test跑到():
-    """`frontend/scripts/` 下躺着十个检查脚本——格式化幂等性、撤回可逆性、
+    """`frontend/scripts/` 下躺着十几个检查脚本——格式化幂等性、撤回可逆性、
     diff 状态层、占位块、`/` 菜单、表格预览、文档里的 mermaid、编辑器/图谱/
     skill 导入三个 smoke。**它们全都通过，而且没有任何地方跑它们**：
     package.json 里没有，仓库里没有 CI，后端套件也不碰。

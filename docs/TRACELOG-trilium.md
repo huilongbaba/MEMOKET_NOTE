@@ -3460,3 +3460,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `scripts/check-stream-parity.mts`（第 16 条 check）：4 组样本喂 `tidy_blank_lines` vs `tidyBlankLines`；5 组「底稿 + 插入点 + 续写文字切成 1–5 块」——本地 `prepareInsert` 腾位置再 `insertStreamed` 逐块拼，服务端 `outline.insert_into` 一次插——尾部空白除外全等。首跑全绿。
 - `prepareInsert` 从 App.tsx 的 onInsertAt 里搬出来，顺手补上服务端有、本地一直没有的一条：紧跟插入点后面的孤立标点（「…成果。**，而要按**…」那种残留）去掉。vitest 1 条。harness-framework 同步。前端 129 + 16 check。
+
+## [519] 第 494 轮：README 的测试段跟上（2026-09-14）
+
+- README 还写着「649 条 / 11 个检查脚本 / 十个」：改成 950 条、16 个，补一段说明四个前后端对拍脚本各盯什么、为什么两份实现是有意的。合约测试的 docstring 不再写死数字。
