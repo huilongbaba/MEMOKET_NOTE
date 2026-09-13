@@ -3562,3 +3562,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 设置页 / 最近删除页实拍无错。用量那行「今天 219 次」跟「全部 219 次」一样——查了 `usage_summary`：四个窗口都是从现在往回数的滚动窗口（today = 24 小时），服务端还是 UTC；本地凌晨 4 点（UTC+8）「今天」这两个字就说不通。标签改成「24 小时」，注释写明键名 `today` 不动；顺手把 `__import__("datetime").timedelta` 换成文件头已 import 的 `timedelta`。后端 4 条用量测试照旧。
 - 顺带记：`ingest_jobs` 4 条 error 都是 9 月 7–9 日的（`session_id already exists` 是 cancel-test 用户重复摄入、另一条是服务重启中断），没有新的。
+
+## [542] 第 518 轮：mermaid 按需加载，主包 −648KB（2026-09-14）
+
+- 主包 1870KB，`editor/mermaid.ts` 静态 `import mermaid` 把 mermaid 核心整个塞了进去，而多数笔记一张图都没有。改成 `loadMermaid()`：第一次真要画图时 `import('mermaid')` + initialize 一次，之后复用。主包 1870 → 1222KB，`mermaid.core` 成了 643KB 的独立 chunk；探针首帧 js 1818 → 1223KB。
+- 验证：vitest 129、smoke-editor 的 5 条 mermaid 断言、check-doc-mermaid 照旧；新探针 `mermaid:<noteId>`（打开、把第一个 ```mermaid 块滚进视野——CM6 只渲染视口附近的 widget，第一版用 `open:` 看到 0 个 widget 就是这个原因——6.5 秒后报状态）：widgets=1 svg=1 error=0，后端日志里 `mermaid.core` chunk 恰好被请求 1 次。

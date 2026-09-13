@@ -60,6 +60,14 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => (document.querySelector('.toast button') as HTMLElement | null)?.focus(), 2200)
     return
   }
+  // mermaid:<noteId> → 打开这篇，把第一个 ```mermaid 块滚进视野（CM6 只渲染视口附近的 widget），6.5 秒后报渲染状态
+  if (probe?.startsWith('mermaid:')) {
+    const id = probe.slice(8)
+    setTimeout(() => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }, 900)
+    setTimeout(() => { const v = editorViewRef.current; if (!v) return; const at = v.state.doc.toString().indexOf('```mermaid'); if (at >= 0) v.dispatch({ effects: EditorView.scrollIntoView(at + 200, { y: 'center' }) }) }, 3000)
+    setTimeout(() => { const ws = document.querySelectorAll('.cm-mermaid-widget'); void api.clientLog('warn', `mermaid widgets=${ws.length} svg=${Array.from(ws).filter((w) => w.querySelector('svg')).length} error=${document.querySelectorAll('.cm-mermaid-error').length}`, '', 'probe') }, 6500)
+    return
+  }
   // 标签装不下时右边的 ▾：列出全部标签
   if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)
@@ -104,7 +112,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe === 'today' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => window.dispatchEvent(new CustomEvent('open-today')), 800) }   // 这个 hook 每次 notes 变都跑，不挡会连点四次
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)
-  if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
+  if (probe?.startsWith('open:')) {
+    setTimeout(() => void openVirtual(probe.slice(5)), 900)
+    // 页里有 mermaid 块的话报一下渲染状态：按需加载 mermaid 之后（第 518 轮）得确认真的画出来了
+    setTimeout(() => { const ws = document.querySelectorAll('.cm-mermaid-widget'); if (ws.length) void api.clientLog('warn', `mermaid widgets=${ws.length} svg=${Array.from(ws).filter((w) => w.querySelector('svg')).length} error=${document.querySelectorAll('.cm-mermaid-error').length}`, '', 'probe') }, 6000)
+  }
   // openend:<id> → 打开虚拟页并把正文滚到底（看页面尾部的小节 / 分页器）
   if (probe?.startsWith('openend:')) { setTimeout(() => void openVirtual(probe.slice(8)), 900); setTimeout(() => { const el = document.querySelector('.note-scroll'); if (el) el.scrollTop = el.scrollHeight }, 5000) }
   // note:<id>[:ribbon:<tab>] → 按 id 打开某篇真笔记（ribbon 标签由 App 的 defaultOpen 从 probe 串里读）

@@ -1,19 +1,30 @@
 import { syntaxTree } from '@codemirror/language'
 import { StateField, type EditorState, type Range } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
-import mermaid from 'mermaid'
+import type { Mermaid } from 'mermaid'
 
+// mermaid 按需加载（第 518 轮）：静态 import 把它整个塞进主包——主包 1.87MB 里它占了一大块，
+// 而多数笔记一张图都没有。第一次真要画图时再 import，之后复用同一个实例。
 // styles.css themes the whole app off prefers-color-scheme (no manual
 // toggle) -- mermaid needs the same signal or its diagrams render with a
 // light-mode palette on a dark background, which looks broken rather than
 // merely mismatched (white diagram boxes on a near-black page).
-const prefersDark = typeof window !== 'undefined'
-  && window.matchMedia?.('(prefers-color-scheme: dark)').matches
-mermaid.initialize({
-  startOnLoad: false,
-  theme: prefersDark ? 'dark' : 'default',
-  securityLevel: 'strict',
-})
+let mermaidP: Promise<Mermaid> | null = null
+function loadMermaid(): Promise<Mermaid> {
+  if (!mermaidP) {
+    mermaidP = import('mermaid').then((m) => {
+      const prefersDark = typeof window !== 'undefined'
+        && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      m.default.initialize({
+        startOnLoad: false,
+        theme: prefersDark ? 'dark' : 'default',
+        securityLevel: 'strict',
+      })
+      return m.default
+    })
+  }
+  return mermaidP
+}
 
 // Same source text is re-scanned into a fresh widget on every doc edit
 // elsewhere in the file -- cache by source so retyping a line above a
@@ -50,6 +61,7 @@ export function autoFixMermaid(code: string): string {
 // ```mermaid source instead of a dead end.
 async function renderOnce(code: string, id: string): Promise<string | null> {
   try {
+    const mermaid = await loadMermaid()
     await mermaid.parse(code)
     return (await mermaid.render(id, code)).svg
   } catch {
