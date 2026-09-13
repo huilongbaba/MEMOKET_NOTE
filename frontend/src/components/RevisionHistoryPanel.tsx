@@ -61,7 +61,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
           {revs.length === 0 ? '还没有历史版本——正文改动后每隔十分钟自动留一版。' : `${revs.length} 个版本 · 当前 ${currentChars} 字符`}
         </span>
         <span style={{ flex: 1 }} />
-        <button className="chip chip-action" disabled={busy} onClick={snapshot}><i className="bx bx-bookmark-plus" /> 现在存一版</button>
+        <button className="chip chip-action" disabled={busy || !currentContent.trim()} title={!currentContent.trim() ? '正文是空的，没什么可存' : undefined} onClick={snapshot}><i className="bx bx-bookmark-plus" /> 现在存一版</button>
       </div>
       {revs.length > 0 && (
         <div className="revision-list">

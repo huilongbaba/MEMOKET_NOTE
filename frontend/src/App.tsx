@@ -2852,6 +2852,7 @@ export default function App() {
                 onIngest={ingestCurrentNote}
                 onSync={() => void syncNoteToKb(current.id)}
                 ingesting={loading === 'ingest' || !!job}
+                empty={!content.trim()}
                 refreshTick={ingestTick}
               />,
             }, {

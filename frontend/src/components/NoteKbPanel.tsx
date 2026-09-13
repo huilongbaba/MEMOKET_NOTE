@@ -13,8 +13,10 @@ import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type Ci
 import { displayTitle } from '../util/displayTitle'
 import { toast } from '../toast'
 
-export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, ingesting, onOpenNote, refreshTick = 0 }: {
+export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, ingesting, onOpenNote, refreshTick = 0, empty = false }: {
   citedIds: string[]
+  /** 正文是空的：「存入知识库」点了什么都不会发生（App 那边直接 return），不如灰掉说清楚 */
+  empty?: boolean
   row: TreeRow | undefined
   noteId: string
   onIngest: () => void
@@ -91,7 +93,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
           ? <button onClick={onSync} disabled={ingesting} style={{ marginInlineStart: 'auto' }} title="服务端读最新正文，删掉上次抽出来的事实重新抽；你手工加的留着">
               {ingesting ? <span className="spinner" /> : (kb?.stale ? '同步到知识库' : '重新同步')}
             </button>
-          : <button onClick={onIngest} disabled={ingesting} style={{ marginInlineStart: 'auto' }}>
+          : <button onClick={onIngest} disabled={ingesting || empty} style={{ marginInlineStart: 'auto' }} title={empty ? '正文是空的，先写点东西' : undefined}>
               {ingesting ? <span className="spinner" /> : '📥 存入知识库'}
             </button>}
       </div>
