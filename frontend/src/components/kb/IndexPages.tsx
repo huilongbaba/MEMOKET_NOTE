@@ -49,7 +49,10 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
   const etype = node.startsWith('kb:etype:') ? node.slice(9) : ''
   // 类型节点的标签页一开始只知道裸 id（「kb:etype:…」挂在标签栏上，第 296 轮实拍）：给个名字
   useEffect(() => {
-    if (etype) window.dispatchEvent(new CustomEvent('virtual-title', { detail: { id: node, title: `实体 · ${ETYPE_LABELS[etype] ?? etype}` } }))
+    if (!etype) return
+    // 标签页是 openVirtual 里稍后才加上的：同一帧发事件会扑空（第 296 轮实拍还是裸 id），下一拍再发
+    const t = setTimeout(() => window.dispatchEvent(new CustomEvent('virtual-title', { detail: { id: node, title: `实体 · ${ETYPE_LABELS[etype] ?? etype}` } })), 0)
+    return () => clearTimeout(t)
   }, [etype, node])
   const fromTree = useMemo(() => rows.filter((r) => r.note_id.startsWith('kb:entity:') && (!etype || r.parent_note_id === node)), [rows, etype, node])
   // 实体超过 200 个的库树里不带它们（每次刷树 358KB 太重）：这页自己取一次
