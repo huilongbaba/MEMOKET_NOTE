@@ -3266,3 +3266,11 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [473] 第 447 轮：图标钮的 aria（2026-09-14）
 
 - 标题行图标钮补 `aria-label` / `aria-haspopup="dialog"` / `aria-expanded`（读屏能知道它会弹东西、现在开没开）。前端 107。
+
+## [474] 巡检第 448 轮：标签条 / ribbon / 右栏的 role（2026-09-14）
+
+- 三处标签条早就是 `tablist` / `tab` + `aria-selected` / `tabpanel`，不用补。没改代码。
+
+## [475] 第 449 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 916 通过；前端 tsc + eslint + vitest 107 + 12 条 check / smoke 全过。
