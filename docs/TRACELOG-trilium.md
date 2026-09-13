@@ -3197,3 +3197,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [456] 第 428–429 轮：重打 dmg 前的全量门（2026-09-14）
 
 - 后端 916 通过（6 warnings）；前端 tsc + eslint + vitest 107 + 12 条 check / smoke 全过（依赖更新之后跑的）。
+
+## [457] 第 430 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB，前端依赖更新后的包）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行；正式版日志：上一实例「Shutting down」干净、新实例启动 VACUUM 行照旧。
