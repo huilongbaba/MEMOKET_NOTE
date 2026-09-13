@@ -47,7 +47,7 @@ export default function IconPicker({ current, onPick, onClose }: {
         ))}
       </div>
       <div className="icon-picker-foot">
-        <button type="button" className="chip chip-action" disabled={!current} onClick={() => onPick('')}><i className="bx bx-reset" /> 默认</button>
+        <button type="button" className="chip chip-action" disabled={!current} title={current ? '清掉图标，回到默认' : '已经是默认图标'} onClick={() => onPick('')}><i className="bx bx-reset" /> 默认</button>
       </div>
     </div>
   )

@@ -252,7 +252,7 @@ export default function MemoryBrowser() {
                   <option key={t.code} value={t.code}>{t.code}</option>
                 ))}
               </select>
-              <button onClick={submitNewTopic} disabled={!newTopicCode.trim() || creatingTopic}>
+              <button onClick={submitNewTopic} disabled={!newTopicCode.trim() || creatingTopic} title={!newTopicCode.trim() ? '先填主题名' : undefined}>
                 {creatingTopic ? <span className="spinner" /> : '+ 新建主题'}
               </button>
               {newTopicError && <span className="muted" style={{ color: 'var(--del)' }}>{newTopicError}</span>}

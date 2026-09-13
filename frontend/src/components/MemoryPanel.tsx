@@ -269,7 +269,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             onChange={(e) => setNotionToken(e.target.value)}
             style={{ flex: 1, minWidth: 0 }}
           />
-          <button onClick={doImportNotion} disabled={!notionToken.trim() || importing}>
+          <button onClick={doImportNotion} disabled={!notionToken.trim() || importing} title={!notionToken.trim() ? '先填 Notion 的 integration token' : undefined}>
             {importing ? <span className="spinner" /> : '导入'}
           </button>
         </div>
@@ -286,7 +286,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             <option value="wiki">知识库</option>
             <option value="drive">云空间</option>
           </select>
-          <button onClick={doImportFeishu} disabled={!feishuAppId.trim() || !feishuSecret.trim() || importing}>
+          <button onClick={doImportFeishu} disabled={!feishuAppId.trim() || !feishuSecret.trim() || importing} title={!feishuAppId.trim() || !feishuSecret.trim() ? '先填飞书自建应用的 App ID 和 Secret' : undefined}>
             {importing ? <span className="spinner" /> : '导入'}
           </button>
         </div>
@@ -296,7 +296,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>Apple Notes</span>
-          <button onClick={doImportApple} disabled={!apple?.available || importing}>
+          <button onClick={doImportApple} disabled={!apple?.available || importing} title={!apple?.available ? `这台机器上不可用：${apple?.reason || '检测中…'}` : undefined}>
             {importing ? <span className="spinner" /> : '导入全部备忘录'}
           </button>
         </div>

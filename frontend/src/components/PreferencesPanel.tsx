@@ -42,7 +42,7 @@ export default function PreferencesPanel() {
             onKeyDown={(e) => e.key === 'Enter' && doAddPref()}
             style={{ flex: 1 }}
           />
-          <button onClick={doAddPref} disabled={!newPref.trim() || addingPref}>
+          <button onClick={doAddPref} disabled={!newPref.trim() || addingPref} title={!newPref.trim() ? '先写一条偏好' : undefined}>
             {addingPref ? <span className="spinner" /> : '添加'}
           </button>
         </div>

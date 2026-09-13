@@ -54,7 +54,7 @@ function AppearanceSection() {
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
         {options.map((o) => (
           <button key={o.v} className={'chip' + (theme === o.v ? ' active' : '')}
-                  disabled={!canSwitchTheme() && o.v !== 'system'}
+                  disabled={!canSwitchTheme() && o.v !== 'system'} title={!canSwitchTheme() && o.v !== 'system' ? '网页版只能跟随系统，桌面版才能手动选' : undefined}
                   onClick={() => { setTheme(o.v); applyTheme(o.v) }}>
             <i className={'bx ' + o.icon} /> {o.label}
           </button>

@@ -131,7 +131,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
             />
-            <button className="primary" onClick={start} disabled={starting || !goal.trim()}>
+            <button className="primary" onClick={start} disabled={starting || !goal.trim()} title={!goal.trim() ? '先写这个文件夹要写成什么' : undefined}>
               {starting ? <span className="spinner" /> : '生成写作计划'}
             </button>
           </div>

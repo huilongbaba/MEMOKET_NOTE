@@ -258,7 +258,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                 onChange={(e) => setImportUrl(e.target.value)}
                 style={{ flex: 1 }}
               />
-              <button onClick={fetchImportUrl} disabled={importFetching || !importUrl.trim()}>
+              <button onClick={fetchImportUrl} disabled={importFetching || !importUrl.trim()} title={!importUrl.trim() ? '先填 SKILL.md 的地址' : undefined}>
                 {importFetching ? <span className="spinner" /> : '抓取'}
               </button>
             </div>
@@ -290,7 +290,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
               onChange={(e) => setGenerateGoal(e.target.value)}
             />
             <div className="row">
-              <button className="primary" onClick={generate} disabled={generating || !generateGoal.trim()}>
+              <button className="primary" onClick={generate} disabled={generating || !generateGoal.trim()} title={!generateGoal.trim() ? '先写想要的写法' : undefined}>
                 {generating ? <span className="spinner" /> : '生成'}
               </button>
               <button onClick={() => { setShowGenerate(false); setGenerateGoal('') }}>取消</button>
