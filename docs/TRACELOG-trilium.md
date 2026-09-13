@@ -2769,3 +2769,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [357] 第 329 轮：重打 dmg 前的全量门（2026-09-13）
 
 - 后端 901 通过；前端 tsc + eslint + vitest 95 + 12 条 check / smoke 全过。
+
+## [358] 第 330 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 3 秒、health ok、空库 kb/tree 8 行、css 里有 `.chip-action`。
+- 第 322 轮的日志落盘在正式版实测：写到 `~/Library/Logs/memoket-note-desktop/memoket-note.log`——`app.getPath('logs')` 用的是 package.json 的 name 不是 productName，正式版和 dev / 探针实例落同一个目录。dev 实例改写 `memoket-note-dev.log`，两边不互相插行（下次打包生效）。

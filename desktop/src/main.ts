@@ -75,7 +75,9 @@ function persistLog(line: string) {
     if (logFile === null) {
       const dir = app.getPath('logs')
       mkdirSync(dir, { recursive: true })
-      logFile = path.join(dir, 'memoket-note.log')
+      // app.getPath('logs') 用的是 package.json 的 name（memoket-note-desktop），正式版和 dev / 探针实例同一个目录——
+      // 文件名分开，别互相插行
+      logFile = path.join(dir, app.isPackaged ? 'memoket-note.log' : 'memoket-note-dev.log')
     }
     if (existsSync(logFile) && statSync(logFile).size > LOG_MAX_BYTES) renameSync(logFile, logFile + '.1')
     appendFileSync(logFile, line.endsWith('\n') ? line : line + '\n', 'utf8')
