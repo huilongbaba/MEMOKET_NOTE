@@ -3286,3 +3286,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [478] 第 452 轮：观测日志降到 info（2026-09-14）
 
 - 前端 `clientLog` 只有 error / warn 两档，首屏耗时、大树计时、harness 开跑这些纯观测的都是 warn——扫 warn 找问题时全是它们。加 info 档：后端 `[client:info]` 走 log.info；四处观测改 info（harness-sync / 骨架失败仍是 warn）。探针实拍日志里首屏那行已是 `[client:info]`。后端 916 / 前端 107。
+
+## [479] 第 453 轮：client-log 的测试与文档（2026-09-14）
+
+- 之前 client-log 一条测试都没有。补 2 条：三档都打成 `[client:<level>]` 一行、stack 截 4000 字。harness-framework 的 client_log 一行补三档说明。后端 918 / 前端 107 + 12 条 check。
