@@ -19,7 +19,8 @@ def part_labels(units) -> dict[str, str]:
         groups[(stem, u.date or "", u.title or "")].append((idx, u.id))
     out: dict[str, str] = {}
     for (stem, _date, title), members in groups.items():
-        base = title or stem
+        # 没标题的材料（纯音频转写 / 没首行的文本）：标签和页头别挂裸 id「note-674aa9a1b4b7-0」，用日期说人话
+        base = title or (f"会议记录 · {_date}" if _date else stem)
         if len(members) == 1:
             out[members[0][1]] = base
             continue

@@ -148,6 +148,11 @@ def test_同一份材料切成几段_标题带段号(mem):
     up = pages.unit_page(mem, "obsidian-doc1-1")
     assert up["part_index"] == 2 and up["part_total"] == 3 and [x["id"] for x in up["parts"]] == ["obsidian-doc1-0", "obsidian-doc1-1", "obsidian-doc1-2"]
     assert pages.unit_page(mem, "obsidian-doc1-1")["title"] == "战略讨论（2/3）"
+    # 没标题的材料：有日期用「会议记录 · 日期」，连日期都没有才退回裸 id（第 491 轮）
+    store.units["audio-x-0"] = Unit(id="audio-x-0", date="2026-09-14", t="", title="", dur_min=0, n_lines=1)
+    store.units["blob-0"] = Unit(id="blob-0", date="", t="", title="", dur_min=0, n_lines=1)
+    labels = part_labels(list(store.units.values()))
+    assert labels["audio-x-0"] == "会议记录 · 2026-09-14" and labels["blob-0"] == "blob"   # 裸 id 去掉块号
 
 
 def test_首页主题计数是不同事实的条数(mem):
