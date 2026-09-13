@@ -258,7 +258,7 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 | **PopupEditor / TreePopupEditor（快速编辑浮层）** | `$T/widgets/dialogs/PopupEditor.tsx:35-60`；入口：树菜单「Quick edit」(`tree_context_menu.ts:146`) 和 **Ctrl+右键树节点**(`note_tree.ts:712-721`) | 不切走当前笔记就能看/改另一篇 | **已做：快速查看（⌥点击 / 树菜单），只读浮层** | — |
 | **SplitNoteContainer（分屏）** | `$T/widgets/containers/split_note_container.ts` + `CreatePaneButton` / `ClosePaneButton` / `MovePaneButton` — `$T/layouts/desktop_layout.tsx:133-146`；resizer `$T/services/resizer.ts:102-160` | 对照着另一篇写 | **已做：右侧分屏（可编辑——第 309 轮 SplitEditor 自己持正文 + 防抖自动保存；主栏正开着的那篇只读；可拖宽、可从树 / 标签 / ⋯ 打开）** | — |
 | **NoteIcon（可点的笔记图标）** | `$T/widgets/note_icon.{tsx,css}`，`--note-icon-size: 30px`（新布局 16px），容器 padding 10px（新布局 6px），点开是图标选择器 — `note_icon.css:1-24,38-74` | 笔记的视觉标识 | 中。树图标做了之后自然要有 | 细节 |
-| **save-status-badge（保存状态）** | `$T/widgets/layout/NoteBadges.css:28-45`：`opacity: .4`，保存成功后 5s 淡出，出错变红且不淡出 | 自动保存的产品里告诉用户「存了」 | **中高**。我们是自动保存 + 一个「保存」按钮，按钮反而暗示「不点就没存」 | 细节 |
+| **save-status-badge（保存状态）** | `$T/widgets/layout/NoteBadges.css:28-45`：`opacity: .4`，保存成功后 5s 淡出，出错变红且不淡出 | 自动保存的产品里告诉用户「存了」 | **已做**：标题行右侧 `save-status`（已保存 / 出错红字），分屏第二栏右下角同款（第 309 轮） | — |
 | **StatusBar 的 Breadcrumb（笔记路径面包屑）** | `$T/widgets/layout/Breadcrumb.tsx` + `StatusBar.css:16-19`（`flex-grow: 1`，`--icon-button-size: 23px`） | 当前笔记在树的哪个位置 | **已做：状态栏面包屑 + ribbon「路径」（含克隆多处）** | — |
 | **shortcut_hints 面板 + 按钮** | `$T/widgets/shortcut_hints/`：`Alt+F1` 开面板，另有可挂在任意 widget 上的浮层 `?` 按钮，**按当前上下文收集快捷键** — `shortcut_hint_button.tsx:22-55` | 快捷键可发现 | **已做**（2026-09-12）：`⌘/` 快捷键一览 + 欢迎页常用键，键表在 `shortcuts.ts`，TRACELOG [31] | — |
 | **tree-actions 工具条（折叠全树 / 定位当前笔记）** | `$T/widgets/note_tree.ts:113-121`；收起 40px 圆钮 hover 展开 — `theme-next/shell.css:908-981` | 树导航 | **已做：树底部浮动工具条（定位 / 折叠全部）** | — |
@@ -269,7 +269,7 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 | **delete_notes 确认对话框** | `$T/widgets/dialogs/delete_notes.tsx` | 删子树前列出会删掉什么 | **已做**：单篇仍是乐观删除 + 撤销；删子树走 App 的 `askConfirm`（列出前 8 篇，危险态焦点在取消）；放弃写作计划也走它（第 306 轮），确认框渲染在写作计划面板之后 | — |
 | **item_picker / clone_to / move_to 对话框** | `$T/widgets/dialogs/{item_picker,clone_to,move_to}.tsx`（带搜索的笔记选择器） | 选目标笔记 | **已做：NotePicker（搜索 + ↑↓ 回车）用于克隆到 / 移动到 / 分屏** | — |
 | **ScrollPadding** | `$T/widgets/scroll_padding.ts` — `desktop_layout.tsx:163` | 正文底部留白，最后一行也能滚到视线中间 | **已做（第 301 轮）：主编辑器 `.cm-content` 底部垫 30vh（`editor/theme.ts` scrollPadding），只读小窗不垫** | — |
-| **note_tooltip（笔记悬浮预览）** | `$T/services/note_tooltip.ts`（菜单开着时抑制 — `note_tooltip.ts:50`） | 悬停链接看摘要 | **中高（判据 2）**。跟 `.cm-fact-peek` 同一类 | 细节 |
+| **note_tooltip（笔记悬浮预览）** | `$T/services/note_tooltip.ts`（菜单开着时抑制 — `note_tooltip.ts:50`） | 悬停链接看摘要 | **已做**：`[[链接]]` 悬停出摘要浮层（第 9–11 轮），跟 `.cm-fact-peek` 同一套 | — |
 | **shared_info / PromotedAttributes / bulk_actions / OptionsDialog** | — | 分享状态、提升属性、批量操作、设置页 | 低（我们没有这些概念，设置已是独立面板） | — |
 
 ---
