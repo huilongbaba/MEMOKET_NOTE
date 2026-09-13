@@ -74,12 +74,15 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
     <div className="kb-page">
       <div className="kb-head">
         <h2 className="kb-note-title"><i className="bx bx-group muted" /> {etype ? `实体 · ${ETYPE_LABELS[etype] ?? etype}` : '实体'}</h2>
-        <div className="muted" style={{ fontSize: 13 }}>{all.length} 个。按事实数排序{!q && all.length > 200 ? '，先给前 200 个——搜一下能找到其余的' : ''}。{etype && fetched !== null && all.length === 0 ? '这个库的实体没有按类型分组——去「实体」看全部。' : ''}</div>
+        <div className="muted" style={{ fontSize: 13 }}>{!etype && all.length === 0 ? '还没有实体。' : `${all.length} 个。按事实数排序${!q && all.length > 200 ? '，先给前 200 个——搜一下能找到其余的' : ''}。`}{etype && fetched !== null && all.length === 0 ? '这个库的实体没有按类型分组——去「实体」看全部。' : ''}</div>
       </div>
-      <div className="kb-search">
+      {!etype && all.length === 0 && (
+        <p className="muted" style={{ fontSize: 13 }}>导入会议记录或把笔记存入知识库之后，事实里提到的人、公司、产品会自动收在这里。</p>
+      )}
+      {all.length > 0 && <div className="kb-search">
         <i className="bx bx-search" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜实体名或别名…" />
-      </div>
+      </div>}
       {speakers > 0 && (
         <label className="row muted" style={{ gap: 6, fontSize: 12, alignItems: 'center', margin: '-2px 0 8px' }}>
           <input type="checkbox" checked={showSpeakers} onChange={(e) => setShowSpeakers(e.target.checked)} />
