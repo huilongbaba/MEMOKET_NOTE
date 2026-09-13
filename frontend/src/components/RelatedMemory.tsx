@@ -144,7 +144,9 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
                   </div>
                 )}
                 <div className="row" style={{ gap: 4, marginTop: 6 }}>
-                  {r.facts.length > 0 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => onInsert(`${r.facts[r.facts.length - 1].text} [${r.facts[r.facts.length - 1].id}]`)}>引用这条</button>}
+                  {r.facts.length > 0 && (content.includes(`[${r.facts[r.facts.length - 1].id}]`)
+                    ? <span className="badge ok" title="正文里已经引用了这条">已引用</span>
+                    : <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => onInsert(`${r.facts[r.facts.length - 1].text} [${r.facts[r.facts.length - 1].id}]`)}>引用这条</button>)}
                   {r.relation === 'conflict' && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void supersede(r)}>新的取代旧的</button>}
                   {r.relation === 'accumulation' && r.facts.length > 0 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => fillIn(r)}>补进来</button>}
                   {r.relation === 'merge' && r.facts.length === 2 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void merge(r)}>合成一条</button>}
