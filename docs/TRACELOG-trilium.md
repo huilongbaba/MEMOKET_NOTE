@@ -2977,3 +2977,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [404] 第 376 轮：流式续写的接缝空行（2026-09-13）
 
 - 第 375 轮那两类里便宜的一类：模型的流里一段结束多吐两个换行，服务端 `join_round_text` / `tidy_blank_lines` 压掉、客户端逐块拼进去不压。新 `editor/streamJoin.ts`：增量落进正文后只在接缝附近（插入点前两个字到增量末尾）把 `\n{3,}` 压成 `\n\n`，跨块拆开的换行也压，正文别处不碰；onDelta 改走它。5 条单测，前端 101。
+
+## [405] 第 377 轮：修订事件不再走 updater（2026-09-13）
+
+- 第 375 轮第 3 轮那 267 字的错位：客户端的 `locate` 跟服务端 `_locate` 逐行对过，一样（最小跨度那一对、结尾标记找不到退回只用 anchor）。差别在别处——`onRevision` 用的是 `setContent(updater)`，updater 要等 React 下一拍才跑；同一批 SSE 里紧跟着的 delta 已经按旧的 `liveContentRef` 拼过了，updater 跑起来又把 ref 盖成「有修订没增量」的版本，两边各丢一半（onDelta 那条注释早就写着「updater 的执行时机跟闭包里的游标对不上就会漂」，onRevision 漏了同样的改法）。改成跟 onDelta 一样从 ref 算、直接 setContent(next)。下次真跑看 harness-sync 还报不报大差异。前端 101。

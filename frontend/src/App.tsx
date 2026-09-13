@@ -1824,11 +1824,12 @@ export default function App() {
       },
       onRevision: (r) => {
         if (currentRef.current?.id !== noteId) return
-        setContent((c) => {
-          const next = applyRevision(c, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] })
-          liveContentRef.current = next
-          return next
-    })
+        // 从 liveContentRef 算，不用 updater（跟 onDelta 一样）：updater 要等 React 下一拍才跑，
+        // 同一批事件里紧跟着的 delta 已经按旧的 ref 拼过了，updater 再把 ref 盖成「有修订没增量」的版本，
+        // 两边各丢一半——第 375 轮真跑第 3 轮那 267 字的错位多半是这么来的
+        const next = applyRevision(liveContentRef.current, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] })
+        liveContentRef.current = next
+        setContent(next)
         // 不弹 toast：一轮修订三四处就在右栏叠四张卡片（实拍），计划面板里有
         // 完整记录，状态行说一句就够
         setNoteHarnessStatus(`已自动${r.op === 'delete' ? '删除' : '修订'}一处：${r.reason.slice(0, 50)}`)
