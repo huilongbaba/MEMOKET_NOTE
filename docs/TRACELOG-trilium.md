@@ -2441,3 +2441,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [290] 巡检第 261 轮：导入页（深色窄窗）、导回区（820 宽）（2026-09-13）
 
 - `open:app:import --dark --win=1000x700`：Markdown / Obsidian / Evernote 三个文件框、说明、导入到下拉在深色下都对；`exportback --win=820x600`：Obsidian / Notion / 飞书三行各自换到一行、飞书三个输入框挤但都在。没改代码。
+
+## [291] 巡检第 262 轮：Notion / 飞书导入的坏凭据（2026-09-13）
+
+- `apple/available` 15ms 返回可用；Notion 给假 token → 400「Notion 拒绝了这个 token：401」（975ms）；飞书给假 app id / secret → 400「飞书拒绝了这个应用：10003 invalid param」（579ms）。都是同步先验证凭据再排队，不会建一个注定失败的任务。没改代码。
