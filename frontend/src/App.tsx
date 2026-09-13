@@ -664,11 +664,16 @@ export default function App() {
     setCurrent(null); setTitle(''); setContent('')
     setVirtualId(id)
 
-    const label = title ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
-      ?? (id.startsWith('kb:facts') ? '事实表' : id.startsWith('kb:unit:') ? '会议记录' : /^kb:(topic|entity):/.test(id) ? id.split(':').slice(2).join(':')
+    // 带筛选的事实表：标签叫「事实表 · work」而不是树上那行「还有 N 条 · 去事实表看」（那是入口的话，不是页面的名字）
+    const factsLabel = id.startsWith('kb:facts')
+      ? '事实表' + (id.includes('?') ? ' · ' + Array.from(new URLSearchParams(id.split('?')[1]).values()).filter(Boolean).join(' · ') : '')
+      : undefined
+    const label = title ?? factsLabel ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
+      ?? (id.startsWith('kb:unit:') ? '会议记录' : /^kb:(topic|entity):/.test(id) ? id.split(':').slice(2).join(':')
         : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
-      ? prev
+      // 已经开着：名字按现在的规则刷一遍（标签落 localStorage，老规则起的名会一直留着——实拍带筛选的事实表标签还叫「事实表」）
+      ? prev.map((x) => (x.noteId === id && x.title !== label ? { ...x, title: label } : x))
       : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
   }
 
