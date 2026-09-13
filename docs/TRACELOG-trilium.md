@@ -2596,3 +2596,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [323] 巡检第 295 轮：去重之后各种写法进实体页（2026-09-13）
 
 - `/api/kb/entity/{memocat | memo_cat | MemoCat | applewatch | Apple Watch}` 都落到代表（memo_cat 169 条、apple_watch 59 条），带 `variants`；实体索引页的 chip 悬停能看到其它写法（preview）。没改代码。
+
+## [324] 巡检第 296 轮：旧写法的实体标签页、类型节点标签名（2026-09-13）
+
+- `open:kb:entity:memocat`：页面落到代表 memo cat，标签、面包屑「知识库 / 实体 / memo cat」都用代表名。标签栏上还挂着一个「kb:etype:…」裸 id——类型节点页没发 virtual-title。补上「实体 · 其他」。前端 87。
