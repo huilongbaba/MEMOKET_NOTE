@@ -277,7 +277,7 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
     # 实据的背景（审查中实测到："团队把电池容量、功耗优化和充电策略一起
     # 纳入关键路径评审"这类具体但没有任何依据的细节）。查询用选中片段本身
     # 当线索，跟校验（verify）用同一个思路。
-    facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6)
+    facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6, scope=body.scope)
     system = prompts.compose_system(prompts.EXPAND_SYSTEM, "expand", user)
     stats: dict = {}
     text = await llm.complete(
@@ -337,7 +337,7 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
         if f and f.get("text"):
             f = dict(f, date=f.get("date") or f.get("when", ""))
             hits.append(f)
-    rows, _terms, _took = mem.recall(body.selection, limit=6)
+    rows, _terms, _took = mem.recall(body.selection, limit=6, scope=body.scope)
     seen = {h["id"] for h in hits}
     hits += [r for r in rows if r.get("text") and r["id"] not in seen]
     facts = [r["text"] for r in hits]

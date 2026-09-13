@@ -259,7 +259,7 @@ export const expandSelection = (content: string, selection: string) =>
   fetch('/api/expand', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection }),
+    body: JSON.stringify({ content, selection, scope: memoryScope() }),
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
 export type VerifyFinding = {
@@ -274,7 +274,7 @@ export const verifySelection = (content: string, selection: string) =>
   fetch('/api/verify', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection }),
+    body: JSON.stringify({ content, selection, scope: memoryScope() }),
   }).then(json<{ findings: VerifyFinding[]; took_ms: number }>)
 
 export type TapMeta = {
@@ -390,7 +390,7 @@ export const startWritingPlan = (folderId: string, goal: string) =>
   fetch('/api/writing-plan/start', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ parent_note_id: folderId, goal }),
+    body: JSON.stringify({ parent_note_id: folderId, goal, scope: memoryScope() }),
   }).then(json<WritingPlanOut>)
 
 /** 放弃当前计划，好在同一个文件夹里换个目标重开。
@@ -423,7 +423,7 @@ export async function runWritingPlan(
   const res = await fetch('/api/writing-plan/run', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ parent_note_id: folderId }),
+    body: JSON.stringify({ parent_note_id: folderId, scope: memoryScope() }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`writing-plan run failed: ${res.status}`)

@@ -125,7 +125,7 @@ async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)
     if not goal:
         raise HTTPException(400, "goal required")
 
-    facts, _ids, _took = _retrieve(user, goal, "", [], limit=8)
+    facts, _ids, _took = _retrieve(user, goal, "", [], limit=8, scope=body.scope)
     sibling_notes = store.child_notes(user, body.parent_note_id, limit=8)
     folder_ctx = prompts.folder_context_block(sibling_notes)
 
@@ -175,7 +175,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
 
             if target is None:
                 done_summaries = [s["summary"] for s in sections if s["summary"]]
-                facts, _ids, _took = _retrieve(user, plan["goal"], "", [], limit=8)
+                facts, _ids, _took = _retrieve(user, plan["goal"], "", [], limit=8, scope=body.scope)
                 sibling_notes = store.child_notes(user, body.parent_note_id, limit=8)
                 folder_ctx = prompts.folder_context_block(sibling_notes)
                 more_system = prompts.compose_system(
@@ -227,7 +227,7 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             st = State(
                 mode=modes.for_run(modes.SECTION, has_profile=bool(_profile(user))),
                 ctx=tools.ToolContext(user=user, note_id=note["id"],
-                                      note_title=target["title"]),
+                                      note_title=target["title"], scope=body.scope),
                 request=request,
                 content=note["content"],
             )

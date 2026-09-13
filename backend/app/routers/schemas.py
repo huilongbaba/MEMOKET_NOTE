@@ -125,6 +125,7 @@ class BranchExpandIn(BaseModel):
 class WritingPlanStartIn(BaseModel):
     parent_note_id: str
     goal: str = ""
+    scope: str = "all"      # 记忆范围（database/kb/scope.py）
 
 
 class WritingSection(BaseModel):
@@ -156,6 +157,7 @@ class WritingPlanOut(BaseModel):
 
 class WritingPlanRunIn(BaseModel):
     parent_note_id: str
+    scope: str = "all"      # 记忆范围：每节取材料只看这一档
 
 
 # ---------------------------------------------------------------- 单篇笔记 harness
@@ -580,11 +582,13 @@ class RewriteIn(BaseModel):
 class ExpandIn(BaseModel):
     content: str
     selection: str
+    scope: str = "all"      # 记忆范围（database/kb/scope.py）
 
 
 class VerifyIn(BaseModel):
     content: str
     selection: str
+    scope: str = "all"      # 记忆范围：词法召回只看这一档；正文里显式引用的事实不受限
 
 
 class VerifyFinding(BaseModel):

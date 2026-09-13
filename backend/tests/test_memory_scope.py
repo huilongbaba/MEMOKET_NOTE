@@ -93,3 +93,43 @@ def test_回顾空结果提示带范围(tmp_path, monkeypatch):
     with TestClient(app, headers={"X-User-Id": "u1"}) as c:
         assert c.post("/api/digest", json={"days": 7}).json()["summary"] == "这段时间没有记录。"
         assert "只看笔记" in c.post("/api/digest", json={"days": 7, "scope": "notes"}).json()["summary"]
+
+
+def test_校验和写作计划的召回也带范围(monkeypatch, tmp_path):
+    """第 185 轮：/verify 与 /writing-plan/start 之前不收 scope，切了范围照样全库召回。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.routers import compose, writing_plan
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    seen: dict = {}
+
+    class FakeMem:
+        def __init__(self, user): pass
+        def fact_by_id(self, fid): return None
+        def recall(self, q, limit=8, scope="all"):
+            seen["verify_scope"] = scope
+            return ([], [], 0.1)
+    monkeypatch.setattr(compose, "UserMemory", FakeMem)
+
+    async def fake_complete(messages, **kw):
+        return "[]"
+    monkeypatch.setattr(compose.llm, "complete", fake_complete)
+
+    def fake_retrieve(user, content, spine, beats, limit=8, title="", anchor_first=False, scope="all"):
+        seen["plan_scope"] = scope
+        return ([], [], 0.1)
+    monkeypatch.setattr(writing_plan, "_retrieve", fake_retrieve)
+    monkeypatch.setattr(compose, "_retrieve", fake_retrieve)
+
+    async def fake_plan_complete(messages, **kw):
+        return '{"sections": [{"title": "一", "brief": "x"}]}'
+    monkeypatch.setattr(writing_plan.llm, "complete", fake_plan_complete)
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        c.post("/api/verify", json={"content": "a", "selection": "a", "scope": "meetings"})
+        assert seen["verify_scope"] == "meetings"
+        c.post("/api/expand", json={"content": "a b", "selection": "a", "scope": "notes"})
+        assert seen["plan_scope"] == "notes"
+        folder = c.post("/api/notes", json={"title": "文件夹", "content": ""}).json()["id"]
+        c.post("/api/writing-plan/start", json={"parent_note_id": folder, "goal": "写个复盘", "scope": "imports"})
+        assert seen["plan_scope"] == "imports"
