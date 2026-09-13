@@ -1642,6 +1642,21 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
     ]
 
 
+def prune_job_payloads(jobs_dir: Path) -> int:
+    """导入任务的 payload（清洗好的笔记列表落盘，给断点续跑用）跑完就没用了：
+    done / error / cancelled 的、以及库里已经没有这个 job 的文件删掉，只留 interrupted 的。"""
+    if not jobs_dir.is_dir():
+        return 0
+    with connect() as c:
+        keep = {r[0] for r in c.execute("SELECT payload_path FROM ingest_jobs WHERE status IN ('interrupted','queued','running','cancelling') AND payload_path<>''")}
+    n = 0
+    for f in jobs_dir.glob("*.json"):
+        if str(f) not in keep and f.name[:-5] not in {Path(k).name[:-5] for k in keep}:
+            f.unlink(missing_ok=True)
+            n += 1
+    return n
+
+
 def sweep_orphan_plans() -> int:
     """父节点已经不在的 active 计划标成 abandoned；非活跃计划里指着已删笔记的 section 行、
     既不在笔记也不在回收站的导回记录，一起清掉。启动时扫一遍（dev 库里攒了 261 行这样的 section）。"""

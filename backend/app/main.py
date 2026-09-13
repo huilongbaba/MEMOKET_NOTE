@@ -30,6 +30,9 @@ app = FastAPI(title="memoket-NOTE", version="0.1.0",
 # 一个导入任务"的检查会认为一直有任务在跑，用户再也导不进任何东西。
 _orphans = store.sweep_orphan_jobs()
 _orphan_plans = store.sweep_orphan_plans()
+_payloads = store.prune_job_payloads(pathlib.Path(get_settings().kite_data_dir) / "jobs")
+if _payloads:
+    print(f"[startup] 清理了 {_payloads} 个跑完的导入 payload")
 if _orphan_plans:
     print(f"[startup] 作废 {_orphan_plans} 个父节点已删的写作计划")
 if _orphans:

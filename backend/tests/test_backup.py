@@ -49,3 +49,14 @@ def test_知识库一周一份留两份(tmp_path, monkeypatch):
     backup.maybe_backup_kb(tmp_path, date(2026, 9, 27))
     left = sorted(p.name for p in (d / "kb" / "u1").iterdir())
     assert left == ["codebook-2026W38.xml", "codebook-2026W39.xml"]
+
+
+def test_用户目录没了的知识库备份一起清(tmp_path, monkeypatch):
+    from datetime import date
+    from app.database import backup
+    monkeypatch.setattr(backup, "backup_dir", lambda: tmp_path / "backups")
+    (tmp_path / "alice").mkdir(); (tmp_path / "alice" / "codebook.xml").write_text("<memory/>")
+    gone = tmp_path / "backups" / "kb" / "cancel-test"; gone.mkdir(parents=True); (gone / "codebook-2026W37.xml").write_text("x")
+    made = backup.maybe_backup_kb(tmp_path, date(2026, 9, 13))
+    assert [p.name for p in made] == ["codebook-2026W37.xml"]
+    assert (tmp_path / "backups" / "kb" / "alice").is_dir() and not gone.exists()

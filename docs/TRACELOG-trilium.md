@@ -1990,3 +1990,10 @@ app 模块 import 之前把 `KITE_DATA_DIR` 指到临时目录（skills / assets
 `reloadTree` 在 22 处被调，每次都顺带重拉知识库树；其中 `save()` 那一处是每次自动保存都走的——
 正文变了知识库不会变（引用计数在笔记树那边）。`reloadTree(kb=true)` 加个开关，`save()` 传 false。
 配合第 175 轮的懒加载，自动保存的开销从「树 + 391KB 知识库树」变成只有 9KB 的笔记树。
+
+## [206] 巡检第 177 轮：磁盘上的遗留（2026-09-13）
+
+`data/jobs` 里 36 个导入 payload（跑完的也留着）、`data/backups/kb` 下 24 个用户目录里 20 个是测试 /
+探针留下的（cancel-test、shot-fresh-*、u9…）。启动时 `prune_job_payloads` 删掉 done / error /
+cancelled 和无主的 payload（interrupted 的留着断点续跑）；`maybe_backup_kb` 顺手把用户目录已经不在
+的备份清掉。这次清掉 34 个 payload、20 个备份目录。pytest 862。

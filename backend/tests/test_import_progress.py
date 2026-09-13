@@ -85,3 +85,16 @@ def test_queue_writes_payload_and_resume_runs_only_unfinished(iso, monkeypatch):
     j2 = store.create_job("u1")
     with TestClient(app, headers={"X-User-Id": "u1"}) as c:
         assert c.post(f"/api/import/jobs/{j2}/resume").status_code == 400
+
+
+def test_跑完的导入_payload_清掉_中断的留着(tmp_path):
+    from app.database import store
+    jobs = tmp_path / "jobs"; jobs.mkdir()
+    done_job = store.create_job("u1")
+    interrupted_job = store.create_job("u1")
+    for jid, status in ((done_job, "done"), (interrupted_job, "interrupted")):
+        path = jobs / f"{jid}.json"; path.write_text("{}")
+        store.set_job_payload(jid, str(path)); store.set_job(jid, status)
+    (jobs / "nobody.json").write_text("{}")
+    assert store.prune_job_payloads(jobs) == 2
+    assert sorted(p.name for p in jobs.iterdir()) == [f"{interrupted_job}.json"]

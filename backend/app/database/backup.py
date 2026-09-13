@@ -102,4 +102,12 @@ def maybe_backup_kb(root: Path, today: date | None = None) -> list[Path]:
         olds = sorted(p for p in dst_dir.iterdir() if _KB_NAME.match(p.name))
         for p in olds[:-KEEP_KB_WEEKLY]:
             p.unlink(missing_ok=True)
+    # 用户目录已经没了的备份一起清：测试 / 探针留下的 cancel-test、shot-fresh-* 这类
+    # 在 backups/kb 下攒了 24 个（第 177 轮实拍）。真用户的目录在，备份就在。
+    kb_root = backup_dir() / "kb"
+    if kb_root.is_dir():
+        alive = {p.name for p in root.iterdir() if p.is_dir()}
+        for d in kb_root.iterdir():
+            if d.is_dir() and d.name not in alive:
+                shutil.rmtree(d, ignore_errors=True)
     return made
