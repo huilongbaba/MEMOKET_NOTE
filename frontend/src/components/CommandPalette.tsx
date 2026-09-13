@@ -74,8 +74,11 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     setFacts([])
     setActiveIndex(0)
     const t = setTimeout(() => inputRef.current?.focus(), 0)
+    // 「最近编辑」只列写过字的：空的文件夹壳（日记 / 2026 / 09 月 这种脚手架）建出来那天
+    // 会把六个位子占掉四个（第 236 轮实拍）
     api.listNotes('').then((ns) => setRecent(
-      [...ns].sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 6),
+      [...ns].filter((n) => (n.content ?? '').trim().length > 0)
+        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 6),
     )).catch(() => {})
     return () => clearTimeout(t)
   }, [open])
