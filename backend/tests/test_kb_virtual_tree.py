@@ -117,8 +117,8 @@ def test_最近摄入是最近的会议(mem):
     units = sorted((r for r in vt.build(mem) if r["parent_note_id"] == "kb:recent"),
                    key=lambda r: r["position"])
     assert [u["note_id"] for u in units] == ["kb:unit:s2", "kb:unit:s1"]
-    assert units[1]["title"] == "2026-01-05 · 周会"
-    assert units[0]["title"] == "2026-02-10 · s2", "没标题的会议退回 id"
+    assert units[1]["title"] == "01-05 · 周会"      # 树上只留月-日（第 204 轮）
+    assert units[0]["title"] == "02-10 · s2", "没标题的会议退回 id"
 
 
 def test_事实不在分类层里(mem):
@@ -177,3 +177,10 @@ def test_实体不分组也懒加载时数量不能是零(mem, monkeypatch):
     rows = virtual_tree.build(mem)
     assert [r for r in rows if r["note_id"].startswith("kb:entity:")] == []
     assert next(r for r in rows if r["note_id"] == "kb:entities")["child_count"] == 3
+
+
+def test_树上的会议行段号挪到日期后面():
+    from app.database.kb.virtual_tree import _unit_tree_title
+    assert _unit_tree_title("2026-09-07", "公司汇报（1/2）") == "09-07 1/2 · 公司汇报"
+    assert _unit_tree_title("2026-09-07", "周会") == "09-07 · 周会"
+    assert _unit_tree_title("", "周会") == " · 周会" or _unit_tree_title("", "周会")

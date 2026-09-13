@@ -55,11 +55,17 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.startsWith('kbexpand:') && !harnessProbeDone.current) {
     harnessProbeDone.current = true
     const id = probe.slice(9)
-    setTimeout(() => { setKbExpanded(new Set(['kb', id])); void loadKbChildren(id) }, 900)   // 只展开这一个，别的收起
+    // 父链也要展开（kb:entity:x 挂在 kb:entities 下，那层是懒加载的，也要取）
+    const parent = ({ entity: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', etype: 'kb:entities' } as Record<string, string>)[id.split(':')[1]]
+    setTimeout(() => {
+      setKbExpanded(new Set(['kb', ...(parent ? [parent] : []), id]))   // 只展开这一条链，别的收起
+      if (parent) void loadKbChildren(parent)
+      void loadKbChildren(id)
+    }, 900)
     // 把那个节点滚到树的可视区顶部，不然截图里看不到展开的那一层
     setTimeout(() => {
       const label = ({ 'kb:entities': '实体', 'kb:topics': '主题', 'kb:recent': '最近摄入' } as Record<string, string>)[id] ?? id.split(':').pop()
-      const el = Array.from(document.querySelectorAll('.tree-node')).find((n) => new RegExp('^' + (label ?? '') + '\\s*\\d*$').test(n.textContent?.trim() ?? ''))
+      const el = Array.from(document.querySelectorAll('.tree-node')).find((n) => new RegExp('^' + (label ?? '') + '\\s*\\d*$', 'i').test(n.textContent?.trim() ?? ''))
       el?.scrollIntoView({ block: 'start' })
     }, 2500)
   }

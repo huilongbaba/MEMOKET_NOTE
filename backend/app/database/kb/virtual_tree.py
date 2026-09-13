@@ -27,6 +27,8 @@ branch，跟真笔记的克隆一模一样，树上照样标 ⧉。
 
 from __future__ import annotations
 
+import re
+
 from collections import Counter
 from .units import part_labels
 
@@ -140,7 +142,7 @@ def build(mem) -> list[dict]:
                    key=lambda u: (u.date, u.id), reverse=True)[:RECENT_UNITS]
     labels = part_labels(units)
     unit_rows = [
-        _row(f"kb:unit:{u.id}", "kb:recent", f"{u.date} · {labels.get(u.id) or u.title or u.id}",
+        _row(f"kb:unit:{u.id}", "kb:recent", _unit_tree_title(u.date, labels.get(u.id) or u.title or u.id),
              position=i, child_count=unit_count.get(u.id, 0),
              fact_count=unit_count.get(u.id, 0), updated_at=u.date)
         for i, u in enumerate(units)
@@ -161,6 +163,20 @@ def build(mem) -> list[dict]:
         rows.append(_row(cid, KB_ROOT, label, position=len(CATEGORIES) + i))
     rows += topic_rows + etype_rows + entity_rows + month_rows + unit_rows
     return rows
+
+
+_PART_SUFFIX = re.compile(r"（\d+/\d+）$")
+
+
+def _unit_tree_title(date: str, label: str) -> str:
+    """树上的会议行：日期只留月-日，段号（半角）紧跟其后，再是标题。树只有 220px 宽，
+    「2026-09-07 · 公司汇报（1/2）」截成「2026-09-07 · 公司汇…」，两段看起来一模一样；
+    把「（1/2）」挪到日期后面又把标题挤没了（第 204 轮实拍两次）。完整日期在会议页上。"""
+    short = date[5:] if len(date) == 10 else date
+    m = _PART_SUFFIX.search(label)
+    if m:
+        return f"{short} {m.group(0)[1:-1]} · {label[:m.start()]}"
+    return f"{short} · {label}"
 
 
 def _entity_rows(vocab, entity_count) -> tuple[list[dict], list[dict], bool]:
