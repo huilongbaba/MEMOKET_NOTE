@@ -1825,3 +1825,11 @@ perf 的常规上报，唯一一条 traceback 是 9 月 12 日凌晨第 14 轮�
 选区所在段落里引用的事实按 id 取出来放在材料最前面，再补召回。再跑：三条「支持」各带事实 id
 （纯主机 / 4 台主机 15 套 PCBA / 手板），8.7 秒。`/api/expand` 选半句会回空修订，合理。
 `tests/test_verify_cited.py`。pytest 842。
+
+## [184] 巡检第 156 轮：来龙去脉的英文拒答、骨架真跑（2026-09-13）
+
+`POST /api/memory/trace` 两段：DVT 那段 23.6 秒答出带引用的三条演进，好；电池那段（terrence 的库里
+本来没有）17.7 秒回了一行英文「No information」，下面却还列着 10 条召回的记录——KITE 的拒答常量。
+路由里把 `No / Not enough / Insufficient information` 换成中文「知识库里的记录串不出这件事的来龙
+去脉——下面是最相关的几条，可能只是沾边」。骨架（`/api/skeleton`）10 秒，一句核心张力 + 六个节拍，
+质量对得上正文。pytest 843。

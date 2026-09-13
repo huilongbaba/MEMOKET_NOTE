@@ -1,5 +1,6 @@
 """记忆检索与调试。检索路径零 LLM 调用，亚毫秒返回。"""
 
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -234,6 +235,17 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
     return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 
+_NO_INFO = re.compile(r"^\s*(no|not enough|insufficient)\s+information\b.*$", re.I | re.S)
+
+
+def _no_info_to_chinese(text: str) -> str:
+    """KITE 的拒答是英文一句「No information」（第 156 轮实拍：右栏「脉络」顶着一行英文，下面却列着
+    10 条召回的记录）。换成中文、并说清楚下面那几条是什么。"""
+    if _NO_INFO.match(text or ""):
+        return "知识库里的记录串不出这件事的来龙去脉——下面是最相关的几条，可能只是沾边。"
+    return text
+
+
 @router.post("/trace", response_model=AskOut)
 def trace(body: TraceIn, user: str = Depends(current_user)):
     """**来龙去脉**：给一段正文，回它涉及的事情按时间怎么演进的。
@@ -260,6 +272,7 @@ def trace(body: TraceIn, user: str = Depends(current_user)):
                 f"每条都要带上日期：\n\n{head}")
     t0 = time.perf_counter()
     text, facts = UserMemory(user).ask(question, limit=body.limit)
+    text = _no_info_to_chinese(text)
     return AskOut(
         answer=text,
         facts=[FactOut(id=f["id"], text=f["text"], when=f["date"],

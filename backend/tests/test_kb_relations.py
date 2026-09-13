@@ -132,3 +132,10 @@ def test_relations_batch_route(tmp_path, monkeypatch):
         monkeypatch.setattr(UserMemory, "stats", lambda self: {"facts": 1})
         r = c.post("/api/memory/relations/batch", json={"passages": ["电池容量定在 420mAh。", "没有数字的一段", "短"]}).json()
     assert r["marks"][0]["relation"] == "conflict" and r["marks"][1] is None and r["marks"][2] is None
+
+
+def test_trace_把_KITE_的英文拒答换成中文():
+    from app.routers.memory import _no_info_to_chinese
+    assert _no_info_to_chinese("No information").startswith("知识库里的记录串不出")
+    assert _no_info_to_chinese("Not enough information to answer.").startswith("知识库里")
+    assert _no_info_to_chinese("证据显示：2026-02-27 …") == "证据显示：2026-02-27 …"
