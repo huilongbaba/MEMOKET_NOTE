@@ -40,6 +40,9 @@ if _stale_pauses:
     print(f"[startup] 清理了 {_stale_pauses} 个超过 {store.SNAPSHOT_MAX_AGE_DAYS} 天没处置的轮末暂停")
 _orphan_plans = store.sweep_orphan_plans()
 _payloads = store.prune_job_payloads(pathlib.Path(get_settings().kite_data_dir) / "jobs")
+_vac = store.vacuum_if_bloated()
+if _vac.get("vacuumed"):
+    print(f"[startup] 笔记库 VACUUM：{_vac['before_mb']}MB → {_vac['after_mb']}MB（空页 {_vac['free_mb']}MB）")
 if _payloads:
     print(f"[startup] 清理了 {_payloads} 个跑完的导入 payload")
 if _orphan_plans:

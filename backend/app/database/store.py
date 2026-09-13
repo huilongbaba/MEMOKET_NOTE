@@ -1951,6 +1951,29 @@ JOB_KEEP_DAYS = 30          # 跑完的导入 / 入库任务：面板只列最�
 PLAN_KEEP_DAYS = 30         # 作废 / 写完的写作计划：只有活跃的那个会被用到
 
 
+def vacuum_if_bloated(min_free_mb: float = 4.0, min_ratio: float = 0.25) -> dict:
+    """启动时把删掉的页还给文件系统。sqlite 删行不缩文件，只把页挂到 freelist 上再复用：
+    dev 库表里的数据 1.6MB，文件 10.1MB，81% 是空页（第 415 轮实测，历次清理 / 删测试用户攒的）。
+    备份是整文件拷，跟着一起胖。空页 ≥ min_free_mb 且占比 ≥ min_ratio 才 VACUUM——小库没必要，
+    大库一次 VACUUM 要重写整个文件，只在真的胖了才做。"""
+    with connect() as c:
+        page_size = c.execute("PRAGMA page_size").fetchone()[0]
+        pages = c.execute("PRAGMA page_count").fetchone()[0]
+        free = c.execute("PRAGMA freelist_count").fetchone()[0]
+    before_mb = pages * page_size / 1024 / 1024
+    free_mb = free * page_size / 1024 / 1024
+    if pages == 0 or free_mb < min_free_mb or free / pages < min_ratio:
+        return {"vacuumed": False, "before_mb": round(before_mb, 1), "free_mb": round(free_mb, 1)}
+    conn = sqlite3.connect(_db_path())
+    try:
+        conn.isolation_level = None          # VACUUM 不能在事务里
+        conn.execute("VACUUM")
+        after = conn.execute("PRAGMA page_count").fetchone()[0] * page_size / 1024 / 1024
+    finally:
+        conn.close()
+    return {"vacuumed": True, "before_mb": round(before_mb, 1), "after_mb": round(after, 1), "free_mb": round(free_mb, 1)}
+
+
 def sweep_old_rows(now: datetime | None = None) -> dict:
     """启动时清掉只增不减的流水：用量账本、跑完的入库任务（连同它的 items）、非活跃的写作计划
     （连同 sections）。都是没有界面再回看的历史（第 264 轮：dev 库 27 个任务 201 个 item、18 个旧计划、
