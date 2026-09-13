@@ -1890,4 +1890,4 @@ Trilium 的 day note 一直没有：`POST /api/notes/today` 按标题沿 `日记
 这条路没记块数和每块耗时（批量导入早就有）。`_ingest_job` 加 `set_job_chunks_total` +
 `mark_job_started` + 每块 `bump_job_chunk`（`ingest_jobs` 加 `chunks_total` 列，没有 item 的任务
 自己记），`job_progress` 没 item 时按 job 自己的数算；状态栏改成「存入知识库中… 第 2/5 块 · 还要约
-40 秒 · 已抽出 3 条」。
+40 秒 · 已抽出 3 条」。实拍（关系探针那篇点存入）：状态栏「存入知识库中… 第 1/1 块 · 还要约 7 秒」；跑完照旧把那篇的 session 清掉。
