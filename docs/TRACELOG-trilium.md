@@ -2510,3 +2510,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 接口扫了 11 种组合：实体给显示名 / 代码 / 中文都能落到同一个（Facebook 211、苹果手表 27）、主题不分大小写走闭包（Work 6034、work_marketing 1609）、置信度 high 2358 / 非法值忽略、三个筛选叠加 74、limit 5000 封顶 200、offset 负数当 0、limit 0 当 1；首次 182ms 之后 3ms。`kb:facts?entity=Facebook --dark` 实体框填上、211 条。没改代码。
 - 追加：事实表卡片的实体 chip 显示的是代码（facebook），首页 / 筛选框显示的是 Facebook——`/api/memory/facts` 和 `/api/memory/facts/{id}` 之前不带 `entity_names`（知识库各页早就带）。两个接口补上，卡片 / 浮层 / 事实页都用显示名。实拍 chip 变成 Facebook。测试 +1，后端 894。README 的 API 表那行写成 `/brief?q=` 让契约测试对不上端点，改回 `/brief`。
+
+## [305] 巡检第 276 轮：出处浮层、静态检查（2026-09-13）
+
+- `fact-peek`：悬停 `[terrence-1590-2F3]` → 日期 / 要点 / 原话三段（原话截到 220 字），浮层不带实体 chip（设计如此，扫一眼用）。pyflakes / eslint 干净。没改代码。
