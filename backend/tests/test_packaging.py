@@ -51,7 +51,11 @@ def test_打包配置把前后端都装进去():
     """两样少一样，装出来的应用就是废的：少前端 = 白屏，少后端 = 起不来。"""
     pkg = json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))
     dests = {r["to"] for r in pkg["build"]["extraResources"]}
-    assert dests == {"web", "backend"}, f"打包资源不对：{dests}"
+    # LICENSE 和第三方声明随包分发（AGPL 要求，第 215 轮）；来源文件必须真的在
+    assert dests == {"web", "backend", "LICENSE", "third-party-notices.md"}, f"打包资源不对：{dests}"
+    for r in pkg["build"]["extraResources"]:
+        if r["to"] in ("LICENSE", "third-party-notices.md"):
+            assert (ROOT / "desktop" / r["from"]).resolve().exists(), f"随包文件不存在：{r['from']}"
 
 
 def test_打包入口存在且不是靠模块路径起服务():
