@@ -50,7 +50,7 @@ function listenFree(port: number): Promise<number> {
   })
 }
 
-async function freePort(isPackaged: boolean): Promise<number> {
+async function freePort(isPackaged: boolean, log: (line: string) => void = () => {}): Promise<number> {
   const preferred = isPackaged ? PREFERRED_PORT.packaged : PREFERRED_PORT.dev
   // 上一份进程 ⌘Q 之后 uvicorn 还要一两秒才真正退出、放开端口；紧接着重开
   // 会撞上它。等一小会儿再放弃，不然「重启一下」就把状态清零了。
@@ -58,7 +58,8 @@ async function freePort(isPackaged: boolean): Promise<number> {
     try { return await listenFree(preferred) } catch { await new Promise((r) => setTimeout(r, 250)) }
   }
   const p = await listenFree(0)
-  console.warn(`[desktop] 固定端口 ${preferred} 一直被占，退回随机端口 ${p}（本次 localStorage 状态会丢）`)
+  // 走 onLog 而不是 console.warn：这句要进落盘日志（用户报「设置全没了」时，唯一的线索就是它）
+  log(`[desktop] 固定端口 ${preferred} 一直被占，退回随机端口 ${p}（本次 localStorage 状态会丢）\n`)
   return p
 }
 
@@ -117,7 +118,8 @@ export async function startBackend(opts: {
   /** 子进程**不是我们叫停的**却退出了（崩了、被系统杀了）。主进程据此决定要不要拉起一个新的。 */
   onCrash?: (info: string) => void
 }): Promise<Backend> {
-  const port = await freePort(opts.isPackaged)
+  const log = opts.onLog ?? (() => {})
+  const port = await freePort(opts.isPackaged, log)
   const { kind, exe, cwd } = locate(opts.isPackaged, opts.resourcesPath)
 
   const args = kind === 'dev'
@@ -142,7 +144,6 @@ export async function startBackend(opts: {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-  const log = opts.onLog ?? (() => {})
   // 按行打 [backend] 标：一个 data 块常常带好几行（uvicorn 启动那几句一起来），原来只给块首那行
   // 加前缀，落盘日志里就有一堆裸的「INFO: Waiting for application startup.」（第 481 轮翻日志 117 行）。
   // 半行留到下一块再拼，别把一行拆成两条。
