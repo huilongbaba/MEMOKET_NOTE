@@ -79,6 +79,10 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     }
   }, [])
 
+  // 结果区最高 60vh 内部滚：↑↓ 高亮走到看不见的地方要跟着滚（第 483 轮横扫）
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { (listRef.current?.querySelector('.palette-item.active') as HTMLElement | null)?.scrollIntoView({ block: 'nearest' }) }, [activeIndex])
+
   useEffect(() => {
     if (!open) return
     setQ('')
@@ -166,7 +170,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
           }}
           placeholder="搜索笔记或知识库…（Esc 关闭）"
         />
-        <div className="palette-results">
+        <div className="palette-results" ref={listRef}>
           {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
           {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
           {!typing && recent.map((n) => row(n.id, <span className="palette-line"><span className="palette-main">{displayTitle(n)}{dupRecent.has(displayTitle(n)) && firstBody(n)}</span>

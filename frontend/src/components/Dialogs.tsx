@@ -55,6 +55,9 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
   }, [rows, q, req.exclude, paths])
 
   const choose = (k: number) => { const it = items[k]; if (it) req.resolve(it.note_id) }
+  // 列表能有 200 项、容器最高 60vh：↑↓ 走到看不见的地方要跟着滚（第 483 轮横扫）
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { (listRef.current?.querySelector('.palette-item.active') as HTMLElement | null)?.scrollIntoView({ block: 'nearest' }) }, [i])
 
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(null)}>
@@ -70,7 +73,7 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
             else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(null) }
           }}
         />
-        <div className="palette-list">
+        <div className="palette-results" ref={listRef}>
           {items.map((it, k) => (
             <div key={it.id} className={'palette-item' + (k === i ? ' active' : '')}
                  onMouseEnter={() => setI(k)} onClick={() => choose(k)} title={it.path ? `${it.label} · ${it.path}` : it.label}>

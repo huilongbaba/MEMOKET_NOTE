@@ -3408,3 +3408,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [507] 第 482 轮：内部滚动的菜单里 ↑↓ 高亮跟着滚（2026-09-14）
 
 - 第 478 轮让 ContextMenu 超高时内部滚，键盘 ↑↓ 走到看不见的项时不会跟着滚（scrollIntoView 只给了树和标签行）。补一个 `hi` 变化时 `.context-menu-item.hi` `scrollIntoView({block:'nearest'})`。探针 `tabs:list:keys`（按 40 下 ↓）；实拍高亮在第 40 项「实体 · 其他」、列表滚到了它。探针备忘：一个 tick 里连发 40 个 keydown 没用——菜单的 keydown 闭包里 `hi` 是同一个值，要隔 30ms 发。
+
+## [508] 第 483 轮：横扫「键盘高亮要滚进视野」（2026-09-14）
+
+- 有 ↑↓ 的列表六个：树 / 标签行 / ContextMenu 有 scrollIntoView，图标挑选器走 focus() 浏览器自己滚，斜杠菜单 8 项 320px 放得下；**⌘K 和「移动到…」选择器没有**。两个都补 `.palette-item.active` `scrollIntoView({block:'nearest'})`。
+- 「移动到…」还有一处更糟：列表容器叫 `.palette-list`，CSS 里根本没这个类——外层 `.palette` 是 `max-height:60vh; overflow:hidden`，笔记多的人超出 60vh 的那截**根本滚不到**（200 项上限形同虚设）。改用现成的 `.palette-results`（overflow-y:auto）。
+- 探针 `palette:keys`（12 下 ↓）/ `picker:keys`（25 下 ↓）。实拍：⌘K 高亮走到最底「设置」列表跟着滚；选择器高亮在第 25 项「日记」、滚动条在下半截。

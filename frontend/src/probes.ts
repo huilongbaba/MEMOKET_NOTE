@@ -445,6 +445,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => window.dispatchEvent(new CustomEvent('open-command-palette')), 900)
     // palette:<q> → 往输入框里打字（走 React 认的 input 事件）
     const q = probe.includes(':') ? decodeURIComponent(probe.slice(8)) : ''
+    // palette:keys → 不打字，往输入框按 12 下 ↓（最近编辑 6 + 命令若干），高亮要滚进视野
+    if (q === 'keys') { setTimeout(() => { const input = document.querySelector('.palette input') as HTMLInputElement | null; let n = 0
+      const t = setInterval(() => { input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); if (++n >= 12) clearInterval(t) }, 30) }, 1800); return }
     if (q) setTimeout(() => {
       const input = document.querySelector('.palette input') as HTMLInputElement | null
       if (!input) return
@@ -584,9 +587,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe === 'quick-view' && notes.length) {
     setTimeout(() => setQuick(notes[0]), 800)
   }
-  if (probe === 'picker' && tree.length) {
-    // 「移动到…」的选择器
+  if ((probe === 'picker' || probe === 'picker:keys') && tree.length) {
+    // 「移动到…」的选择器；:keys → 往输入框按 25 下 ↓，高亮要滚进视野
     setTimeout(() => void moveNodeTo(tree[0]), 600)
+    if (probe === 'picker:keys') setTimeout(() => { const input = document.querySelector('.palette input') as HTMLInputElement | null; let n = 0
+      const t = setInterval(() => { input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); if (++n >= 25) clearInterval(t) }, 30) }, 1800)
   }
   if (probe === 'tab-menu' && notes.length >= 2) {
     void (async () => {
