@@ -28,6 +28,7 @@ export default function SplitEditor({ note, onSaved, flushRef }: {
   // 探针模式不落库：跟主编辑器 save() 同一条纪律（探针塞的假内容曾污染真笔记三次）
   const probing = useMemo(() => !!new URLSearchParams(location.search).get('probe'), [])
 
+  const saverRef = useRef<ReturnType<typeof createAutosave> | null>(null)
   const saver = useMemo(() => createAutosave({
     delay: SAVE_DELAY_MS,
     save: async (c) => {
@@ -37,8 +38,13 @@ export default function SplitEditor({ note, onSaved, flushRef }: {
       live.current.onSaved(n)
       setStatus('saved')
     },
-    onError: (e) => { setStatus('error'); toast('分屏这篇没存上：' + friendlyError(e), 'error') },
+    onError: (e) => {
+      // 404 = 这篇已经被删了（树上删掉、或另一处彻底删除）：没有可存的对象，静默丢掉，别报「没存上」吓人
+      if (/^404\b/.test(e instanceof Error ? e.message : String(e))) { saverRef.current?.dispose(); setStatus(''); return }
+      setStatus('error'); toast('分屏这篇没存上：' + friendlyError(e), 'error')
+    },
   }), [probing])
+  saverRef.current = saver
 
   // App 用 key={note.id} 挂这个组件：换一篇 = 重挂，正文从 useState 初始值来。
   // 卸载（关分屏 / 换篇）时把没存的冲掉再丢。
