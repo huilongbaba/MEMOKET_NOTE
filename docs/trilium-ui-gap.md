@@ -256,7 +256,7 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 | **FloatingButtons（正文右上角浮层按钮）** | `$T/widgets/FloatingButtons.{tsx,css}`，`position: absolute; top: 14px; inset-inline-end: 10px; z-index: 100`，按钮 `width: 40px`；`--floating-button-height: 34px` — `FloatingButtons.css:6-57`、`theme-next/base.css:62-64`；定义表 `$T/widgets/FloatingButtonsDefinitions.tsx`（DESKTOP_FLOATING_BUTTONS 16 项） | 跟正文相关的动作**浮在正文上**，不占正文的行 | **已做：浮动按钮横带（续写 / 智能续写▾ / 🎙▾ / ⋯），粘在正文顶部** | — |
 | **FindWidget（页内查找）** | `$T/widgets/find.ts`，挂在每个 note-split 里 — `$T/layouts/desktop_layout.tsx:166`；⌘F — `$TS/…:823-830` | 长文档里定位 | **高**。CodeMirror 6 自带 `@codemirror/search` | **严重** |
 | **PopupEditor / TreePopupEditor（快速编辑浮层）** | `$T/widgets/dialogs/PopupEditor.tsx:35-60`；入口：树菜单「Quick edit」(`tree_context_menu.ts:146`) 和 **Ctrl+右键树节点**(`note_tree.ts:712-721`) | 不切走当前笔记就能看/改另一篇 | **已做：快速查看（⌥点击 / 树菜单），只读浮层** | — |
-| **SplitNoteContainer（分屏）** | `$T/widgets/containers/split_note_container.ts` + `CreatePaneButton` / `ClosePaneButton` / `MovePaneButton` — `$T/layouts/desktop_layout.tsx:133-146`；resizer `$T/services/resizer.ts:102-160` | 对照着另一篇写 | **已做：右侧分屏（只读，可拖宽、可从树 / 标签 / ⋯ 打开）** | — |
+| **SplitNoteContainer（分屏）** | `$T/widgets/containers/split_note_container.ts` + `CreatePaneButton` / `ClosePaneButton` / `MovePaneButton` — `$T/layouts/desktop_layout.tsx:133-146`；resizer `$T/services/resizer.ts:102-160` | 对照着另一篇写 | **已做：右侧分屏（可编辑——第 309 轮 SplitEditor 自己持正文 + 防抖自动保存；主栏正开着的那篇只读；可拖宽、可从树 / 标签 / ⋯ 打开）** | — |
 | **NoteIcon（可点的笔记图标）** | `$T/widgets/note_icon.{tsx,css}`，`--note-icon-size: 30px`（新布局 16px），容器 padding 10px（新布局 6px），点开是图标选择器 — `note_icon.css:1-24,38-74` | 笔记的视觉标识 | 中。树图标做了之后自然要有 | 细节 |
 | **save-status-badge（保存状态）** | `$T/widgets/layout/NoteBadges.css:28-45`：`opacity: .4`，保存成功后 5s 淡出，出错变红且不淡出 | 自动保存的产品里告诉用户「存了」 | **中高**。我们是自动保存 + 一个「保存」按钮，按钮反而暗示「不点就没存」 | 细节 |
 | **StatusBar 的 Breadcrumb（笔记路径面包屑）** | `$T/widgets/layout/Breadcrumb.tsx` + `StatusBar.css:16-19`（`flex-grow: 1`，`--icon-button-size: 23px`） | 当前笔记在树的哪个位置 | **已做：状态栏面包屑 + ribbon「路径」（含克隆多处）** | — |
@@ -266,9 +266,9 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 | **Backlinks（反向链接）** | 浮动按钮 `Backlinks` — `$T/widgets/FloatingButtonsDefinitions.tsx:372-437`；面板 `.backlinks-items { width: 400px; top: 50px }` — `FloatingButtons.css:112-158`；侧栏版 `$T/widgets/sidebar/Backlinks.tsx` | 「哪些笔记引用了我」，带**摘录片段** | **已做**（2026-09-12）：事实反链在 ribbon「引用」的「也引用于」；笔记之间的链接 `[[` 补全 + `note://` 标记 + ribbon「链接」（链出 / 链到这篇的），见 TRACELOG [32] | — |
 | **NoteMap / NoteMapGraph** | `$T/widgets/sidebar/NoteMap.tsx` | 笔记关系图 | 低。我们有 `KnowledgeGraph.tsx`（713 行），但它是弹层不是右栏 tab；北极星表里写着该进右栏 | 细节 |
 | **branch_prefix 对话框** | `$T/widgets/dialogs/branch_prefix.tsx`，F2 — `$TS/…:193-200` | 同一篇在不同位置显示不同前缀 | 低。克隆量小的时候用不上 | — |
-| **delete_notes 确认对话框** | `$T/widgets/dialogs/delete_notes.tsx` | 删子树前列出会删掉什么 | 低。我们走的是**乐观删除 + 撤销窗口**（`$M/App.tsx:882` 的注释明说「不用 confirm 对话框」），对单篇比确认框好。**但树菜单的「删除（连同子树）」是例外**——它会连带删掉看不见的东西，用户在点之前不知道会删几篇 | 细节 |
+| **delete_notes 确认对话框** | `$T/widgets/dialogs/delete_notes.tsx` | 删子树前列出会删掉什么 | **已做**：单篇仍是乐观删除 + 撤销；删子树走 App 的 `askConfirm`（列出前 8 篇，危险态焦点在取消）；放弃写作计划也走它（第 306 轮），确认框渲染在写作计划面板之后 | — |
 | **item_picker / clone_to / move_to 对话框** | `$T/widgets/dialogs/{item_picker,clone_to,move_to}.tsx`（带搜索的笔记选择器） | 选目标笔记 | **已做：NotePicker（搜索 + ↑↓ 回车）用于克隆到 / 移动到 / 分屏** | — |
-| **ScrollPadding** | `$T/widgets/scroll_padding.ts` — `desktop_layout.tsx:163` | 正文底部留白，最后一行也能滚到视线中间 | 细节。写作时很有感 | 细节 |
+| **ScrollPadding** | `$T/widgets/scroll_padding.ts` — `desktop_layout.tsx:163` | 正文底部留白，最后一行也能滚到视线中间 | **已做（第 301 轮）：主编辑器 `.cm-content` 底部垫 30vh（`editor/theme.ts` scrollPadding），只读小窗不垫** | — |
 | **note_tooltip（笔记悬浮预览）** | `$T/services/note_tooltip.ts`（菜单开着时抑制 — `note_tooltip.ts:50`） | 悬停链接看摘要 | **中高（判据 2）**。跟 `.cm-fact-peek` 同一类 | 细节 |
 | **shared_info / PromotedAttributes / bulk_actions / OptionsDialog** | — | 分享状态、提升属性、批量操作、设置页 | 低（我们没有这些概念，设置已是独立面板） | — |
 

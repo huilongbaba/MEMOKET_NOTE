@@ -242,7 +242,7 @@ frontend/src/
   api.ts                     类型 + fetch + SSE 解析（runNoteHarness / resumeHarness / watchJob）
   editor/                    CodeMirror 扩展：roundDiff（轮次高亮）· revisions · factCite（行内出处）
                              · recallCompletion（@ 引用）· mermaid · runningBlocks（并发块）…
-  components/                外壳（TabBar · NoteTree · Ribbon · RightPane · ContextMenu · CommandPalette …）
+  components/                外壳（TabBar · NoteTree · Ribbon · RightPane · ContextMenu · CommandPalette · SplitEditor（分屏第二栏，自己持正文 + util/autosave 防抖保存）…）
                              harness 面板（AgentActivity · SkeletonPanel · RevisionPanel · TapProvenance）
                              知识库（KbNoteView · kb/* 各页面 · KnowledgeGraph · MemoryBrowser）
   util/displayTitle.ts       树 / 标签 / 面包屑共用的显示名
