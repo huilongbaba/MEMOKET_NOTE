@@ -2981,3 +2981,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [405] 第 377 轮：修订事件不再走 updater（2026-09-13）
 
 - 第 375 轮第 3 轮那 267 字的错位：客户端的 `locate` 跟服务端 `_locate` 逐行对过，一样（最小跨度那一对、结尾标记找不到退回只用 anchor）。差别在别处——`onRevision` 用的是 `setContent(updater)`，updater 要等 React 下一拍才跑；同一批 SSE 里紧跟着的 delta 已经按旧的 `liveContentRef` 拼过了，updater 跑起来又把 ref 盖成「有修订没增量」的版本，两边各丢一半（onDelta 那条注释早就写着「updater 的执行时机跟闭包里的游标对不上就会漂」，onRevision 漏了同样的改法）。改成跟 onDelta 一样从 ref 算、直接 setContent(next)。下次真跑看 harness-sync 还报不报大差异。前端 101。
+
+## [406] 第 378 轮：修订事件给全量、本地重放后也压空行（2026-09-13）
+
+- 再往下挖第 375 轮那 267 字：服务端发出去的 `revision` 事件把 `text` 截到 300 字、`anchor` 截到 120 字（当初是给面板看的），客户端拿它本地重放——长一点的 replace 只插进前 300 字，后面接着旧尾巴，正好是实拍里「结构评和对应决策，而不是继续增加计划日期。对8」那种断在半句的样子；长 anchor 则直接定位失败、整条漏掉。改：事件给全量（面板要短的自己截）。
+- 服务端每应用一条修订还会 `tidy_blank_lines`，客户端没有对应动作——delete 留下的三个空行两边就差开了。`editor/streamJoin.ts` 照抄一份 `tidyBlankLines`（围栏内不动、围栏外剥行尾空白），onRevision 应用完跑一遍。
+- 后端 909（新增：修订事件带全量）/ 前端 104。下次真跑看 harness-sync 还剩什么。

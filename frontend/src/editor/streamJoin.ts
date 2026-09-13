@@ -11,3 +11,21 @@ export function insertStreamed(content: string, cursor: number | null, text: str
   const window = joined.slice(from, to).replace(/\n{3,}/g, '\n\n')
   return { next: joined.slice(0, from) + window + joined.slice(to), cursor: from + window.length }
 }
+
+/** 连续空行压回一个（照抄后端 `revision.tidy_blank_lines`）：服务端每应用一条修订就跑一遍，
+ *  delete 留下的「前段\n\n」+「\n\n后段」会并成三个空行；客户端本地重放修订之后也得跑，
+ *  不然到轮末两边差几个换行。代码块（``` 围栏）里的空行是内容，跳过；围栏外的行尾空白也剥。 */
+export function tidyBlankLines(content: string): string {
+  const out: string[] = []
+  let inFence = false
+  let blanks = 0
+  for (const line of content.split('\n')) {
+    if (line.trimStart().startsWith('```')) inFence = !inFence
+    if (!inFence && !line.trim()) {
+      blanks += 1
+      if (blanks > 1) continue
+    } else blanks = 0
+    out.push(inFence ? line : line.replace(/\s+$/, ''))
+  }
+  return out.join('\n')
+}

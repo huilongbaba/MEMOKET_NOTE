@@ -16,7 +16,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
-import { insertStreamed } from './editor/streamJoin'
+import { insertStreamed, tidyBlankLines } from './editor/streamJoin'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
@@ -1827,7 +1827,8 @@ export default function App() {
         // 从 liveContentRef 算，不用 updater（跟 onDelta 一样）：updater 要等 React 下一拍才跑，
         // 同一批事件里紧跟着的 delta 已经按旧的 ref 拼过了，updater 再把 ref 盖成「有修订没增量」的版本，
         // 两边各丢一半——第 375 轮真跑第 3 轮那 267 字的错位多半是这么来的
-        const next = applyRevision(liveContentRef.current, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] })
+        // 应用完照服务端一样压一遍空行（服务端每条修订后 tidy_blank_lines），不然 delete 留下的三个空行两边不一样
+        const next = tidyBlankLines(applyRevision(liveContentRef.current, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] }))
         liveContentRef.current = next
         setContent(next)
         // 不弹 toast：一轮修订三四处就在右栏叠四张卡片（实拍），计划面板里有

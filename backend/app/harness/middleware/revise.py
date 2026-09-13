@@ -170,11 +170,14 @@ class Revise:
             if op in ("replace", "delete"):
                 edited.add(key)
             applied += 1
+            # anchor / text 给全量：客户端拿这条事件在本地重放同一条修订，截断的 text 会让它只插前 300 字、
+            # 截断的 anchor 会让它定位失败——第 375 轮真跑第 3 轮本地跟服务端差 267 字就是这么来的。
+            # 面板上要短的自己截。
             yield Event.custom(CUSTOM_REVISION, {
                 "op": op,
-                "anchor": anchor[:120],
-                "anchor_end": anchor_end[:120],
-                "text": body[:300],
+                "anchor": anchor,
+                "anchor_end": anchor_end,
+                "text": body,
                 "reason": reason,
                 # EDIT_SYSTEM already asks the model to report which facts a
                 # revision rests on. The one-shot endpoint read them and this

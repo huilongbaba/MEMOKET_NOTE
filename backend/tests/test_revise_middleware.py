@@ -255,3 +255,16 @@ def test_被防线丢弃的修订不能用错误事件报(monkeypatch):
     assert _named(events, "dropped"), "防线该报丢弃"
     assert not [e for e in events if e.type.value == "RUN_ERROR"], \
         "丢弃被当成错误报了"
+
+
+def test_修订事件带全量的_anchor_和_text(monkeypatch, _no_db):
+    """客户端拿这条事件在本地重放同一条修订：text 截到 300 字它就只插前 300 字、anchor 截到 120 字
+    它就定位失败——第 375 轮真跑第 3 轮本地跟服务端差 267 字。面板要短的自己截。"""
+    long_anchor = "锚" * 150
+    long_text = "新" * 400
+    _stub_llm(monkeypatch, [{"op": "replace", "anchor": long_anchor, "text": long_text, "reason": "长"}])
+    st = _st("前面。" + long_anchor + "。后面。")
+    events = _drive(st)
+    (rev,) = _named(events, "revision")
+    assert rev["anchor"] == long_anchor and rev["text"] == long_text
+    assert long_text in st.content

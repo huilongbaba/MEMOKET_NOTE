@@ -26,3 +26,18 @@ describe('insertStreamed', () => {
     expect(r.next).toBe('x\n\n\n\nyz')
   })
 })
+
+import { tidyBlankLines } from '../streamJoin'
+
+describe('tidyBlankLines（照抄后端）', () => {
+  it('三个空行压成一个，行尾空白剥掉', () => {
+    expect(tidyBlankLines('a  \n\n\n\nb')).toBe('a\n\nb')
+  })
+  it('代码块里的空行和空白原样', () => {
+    const s = 'x\n```\nline  \n\n\n\nend\n```\ny'
+    expect(tidyBlankLines(s)).toBe(s)
+  })
+  it('没有多余空行的不动', () => {
+    expect(tidyBlankLines('a\n\nb\nc')).toBe('a\n\nb\nc')
+  })
+})
