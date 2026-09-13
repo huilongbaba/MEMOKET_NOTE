@@ -2437,3 +2437,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 含 251–259 轮：供应商设置校验、toast 只留人话、LIKE 通配符转义、`/api/notes/brief` 轻量列表（⌘K / `[[` 补全）、⌘K 同名带首句、侧栏搜索本地过滤。
 - `npm run dist` → 183MB。杀第 250 轮那份起新的：`/api/health` ok；正式版 `notes/brief?q=EVT` 3 篇带片段、`notes?q=_` 0 篇（不再当通配符）。
+
+## [290] 巡检第 261 轮：导入页（深色窄窗）、导回区（820 宽）（2026-09-13）
+
+- `open:app:import --dark --win=1000x700`：Markdown / Obsidian / Evernote 三个文件框、说明、导入到下拉在深色下都对；`exportback --win=820x600`：Obsidian / Notion / 飞书三行各自换到一行、飞书三个输入框挤但都在。没改代码。
