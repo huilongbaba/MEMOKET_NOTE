@@ -406,7 +406,7 @@ export default function App() {
     // 库里已经没有的笔记（别处删的、导入回滚的）标签也收掉——留着点了只会「找不到」
     const ids = new Set(list.map((n) => n.id))
     // 虚拟标签也过一遍：不认识的 kb:* id（旧版本留下的 kb:overview）一起收掉
-    const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|fact|facts|etype)(:|$)/.test(id) || id.startsWith('app:')
+    const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|material|fact|facts|etype)(:|$)/.test(id) || id.startsWith('app:')
     setTabs((prev) => prev
       .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
       // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
@@ -568,7 +568,7 @@ export default function App() {
   const notSpeakerEntity = (r: TreeRow) => !(r.note_id.startsWith('kb:entity:') && isSpeakerTag(r.title))
   /** 事实是按需取的：展开一个主题/实体/月份/会议时才去拿它名下那一层。
    *  实体多的库（>200）树里不带实体节点，展开「实体」/「某类实体」时也是这条路取。 */
-  const needsFacts = (id: string) => /^kb:(topic|entity|month|unit|etype):/.test(id) || id === 'kb:entities'
+  const needsFacts = (id: string) => /^kb:(topic|entity|month|unit|etype|material):/.test(id) || id === 'kb:entities'
   const loadKbChildren = useCallback(async (id: string) => {
     if (!needsFacts(id)) return
     // 小库的实体本来就随树来了：树里已经有它的孩子就别再取一份，不然 allRows 里每个实体出现两次
@@ -651,7 +651,7 @@ export default function App() {
     }
     // 不认识的 kb:* id（比如早年的 kb:overview）落到总览，别开一页只有裸 id 的空页
     // 事实表带查询串（kb:facts?kind=plan，首页类型 / 说话人 chip 点进来的）也是认识的——第 132 轮实拍点 chip 落回了总览
-    if (id.startsWith('kb:') && !VIRTUAL_LABELS[id] && !/^kb:(topic|entity|unit|fact|facts|etype)(:|\?|$)/.test(id)) id = 'kb'
+    if (id.startsWith('kb:') && !VIRTUAL_LABELS[id] && !/^kb:(topic|entity|unit|material|fact|facts|etype)(:|\?|$)/.test(id)) id = 'kb'
     if (virtualId === id && !current) return
     await save()
     const leaving = current
@@ -764,7 +764,7 @@ export default function App() {
     // 懒加载的那几层（实体 / 某个主题下的事实…）不在 allRows 里，之前状态栏就退回「23 篇笔记」
     // （第 207 轮实拍实体页）——按 id 的形状把父链拼出来，名字用标签页上的
     if (out.length === 0 && api.isVirtualId(id)) {
-      const parent = ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
+      const parent = ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
       // app:* 那些页（最近删除 / 写作 Skill / 设置…）不在知识库下面，别给它们冠「知识库 /」
       const chain = id.startsWith('app:') ? [id] : ['kb', ...(parent ? [parent] : []), id]
       const leaf = tabs.find((t) => t.noteId === id)?.title ?? VIRTUAL_LABELS[id] ?? id.split(':').pop() ?? id

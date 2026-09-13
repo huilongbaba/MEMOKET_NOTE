@@ -18,7 +18,7 @@
 
     kb                 根
     kb:topics / kb:entities / kb:timeline / kb:recent
-    kb:topic:<code>    kb:etype:<type>   kb:entity:<code>
+    kb:topic:<code>    kb:etype:<type>   kb:entity:<code>   kb:material:<第一段 unit id>（多段材料）
     kb:month:<YYYY-MM> kb:unit:<id>      kb:fact:<id>
 
 branch id 跟 note id 分开（`kbb:…`）——一个 topic 有几个父主题就有几条
@@ -152,7 +152,10 @@ def build(mem) -> list[dict]:
         first, n = m["parts"][0], len(m["parts"])
         total = sum(unit_count.get(p.id, 0) for p in m["parts"])
         label = f"{m['title']}（{n} 段）" if n > 1 else m["title"]
-        unit_rows.append(_row(f"kb:unit:{first.id}", "kb:recent", _unit_tree_title(m["date"], label),
+        # 多段材料用 kb:material:<第一段 id>：不能跟第一段的 kb:unit:<id> 同名——树按 note_id 挂父子，
+        # 同名会让各段同时挂在材料行和第一段下面（第 267 轮实拍「第 1/24 段」下面套着 2..24）
+        nid = f"kb:material:{first.id}" if n > 1 else f"kb:unit:{first.id}"
+        unit_rows.append(_row(nid, "kb:recent", _unit_tree_title(m["date"], label),
                               position=i, child_count=n if n > 1 else total,
                               fact_count=total, updated_at=m["date"]))
 
@@ -234,14 +237,14 @@ def children(mem, node: str) -> list[dict]:
         picked = [f for f in facts if key in f.entities]
     elif kind == "month":
         picked = [f for f in facts if (f.when or "").startswith(key)]
-    elif kind == "unit":
-        # 多段材料的第一段在树上代表整份材料：展开先给各段（每段再展开才是事实）
+    elif kind == "material":
+        # 多段材料：展开先给各段（每段再展开才是事实）
         parts = parts_of(store.units.values(), key)
-        if len(parts) > 1 and parts[0] == key:
-            cnt = Counter(f.unit for f in facts if f.unit)
-            return [_row(f"kb:unit:{pid}", node, f"第 {k}/{len(parts)} 段", position=k - 1,
-                         child_count=cnt.get(pid, 0), fact_count=cnt.get(pid, 0))
-                    for k, pid in enumerate(parts, 1)]
+        cnt = Counter(f.unit for f in facts if f.unit)
+        return [_row(f"kb:unit:{pid}", node, f"第 {k}/{len(parts)} 段", position=k - 1,
+                     child_count=cnt.get(pid, 0), fact_count=cnt.get(pid, 0))
+                for k, pid in enumerate(parts, 1)]
+    elif kind == "unit":
         picked = [f for f in facts if f.unit == key]
     else:
         return []

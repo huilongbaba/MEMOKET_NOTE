@@ -58,7 +58,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     harnessProbeDone.current = true
     const id = probe.slice(9)
     // 父链也要展开（kb:entity:x 挂在 kb:entities 下，那层是懒加载的，也要取）
-    const parent = ({ entity: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', etype: 'kb:entities' } as Record<string, string>)[id.split(':')[1]]
+    const parent = ({ entity: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent', etype: 'kb:entities' } as Record<string, string>)[id.split(':')[1]]
     setTimeout(() => {
       setKbExpanded(new Set(['kb', ...(parent ? [parent] : []), id]))   // 只展开这一条链，别的收起
       if (parent) void loadKbChildren(parent)

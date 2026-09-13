@@ -195,13 +195,14 @@ def test_同一天切段的会议按段号正序(mem):
         store.units[f"obsidian-doc9-{i}"] = Unit(id=f"obsidian-doc9-{i}", date="2026-09-07", t="", title="公司汇报", dur_min=0, n_lines=1)
     for i in range(2):
         store.units[f"obsidian-doc8-{i}"] = Unit(id=f"obsidian-doc8-{i}", date="2026-09-07", t="", title="另一份", dur_min=0, n_lines=1)
-    rows = [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:unit:obsidian-doc")]
+    rows = [r for r in virtual_tree.build(mem) if r["note_id"].startswith(("kb:unit:obsidian-doc", "kb:material:obsidian-doc"))]
     # 第 267 轮起按材料列：一份材料一行（第一段代表），展开才是各段
-    assert sorted(r["note_id"] for r in rows) == ["kb:unit:obsidian-doc8-0", "kb:unit:obsidian-doc9-0"]
+    assert sorted(r["note_id"] for r in rows) == ["kb:material:obsidian-doc8-0", "kb:material:obsidian-doc9-0"]
     assert next(r["title"] for r in rows if r["note_id"].endswith("doc9-0")).endswith("公司汇报（3 段）")
-    kids = virtual_tree.children(mem, "kb:unit:obsidian-doc9-0")
+    kids = virtual_tree.children(mem, "kb:material:obsidian-doc9-0")
     assert [k["title"] for k in kids] == ["第 1/3 段", "第 2/3 段", "第 3/3 段"]
-    assert all(k["parent_note_id"] == "kb:unit:obsidian-doc9-0" for k in kids)
+    assert [k["note_id"] for k in kids] == [f"kb:unit:obsidian-doc9-{i}" for i in range(3)]
+    assert all(k["parent_note_id"] == "kb:material:obsidian-doc9-0" for k in kids)
     assert all(k["note_id"].startswith("kb:fact:") for k in virtual_tree.children(mem, "kb:unit:obsidian-doc9-1"))
     recent = [u for u in pages.dashboard(mem)["recent_units"] if u["id"].startswith("obsidian-doc9-")]
     assert [u["id"] for u in recent] == ["obsidian-doc9-0"] and recent[0]["title"] == "公司汇报（3 段）"   # 首页也按材料列
