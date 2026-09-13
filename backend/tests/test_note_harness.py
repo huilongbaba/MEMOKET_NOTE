@@ -493,7 +493,8 @@ def test_skeleton_is_persisted_with_the_note():
     n = store.create_note(user, "标题", "正文")
     assert n["spine"] == "" and n["beats"] == []
     store.set_skeleton(user, n["id"], "核心张力", ["起", "承", "转"])
-    assert store.get_skeleton(user, n["id"]) == ("核心张力", ["起", "承", "转"])
+    got0 = store.get_note(user, n["id"])
+    assert (got0["spine"], got0["beats"]) == ("核心张力", ["起", "承", "转"])
     # 出参必须是数组：库里存的是 JSON 字符串，不转的话 Note 响应模型会校验失败、
     # 整个笔记接口 500
     got = store.get_note(user, n["id"])
@@ -501,7 +502,7 @@ def test_skeleton_is_persisted_with_the_note():
     assert isinstance(store.list_notes(user)[0]["beats"], list)
     # 改正文不能顺手把骨架抹掉
     store.update_note(user, n["id"], "标题", "改过的正文")
-    assert store.get_skeleton(user, n["id"])[0] == "核心张力"
+    assert store.get_note(user, n["id"])["spine"] == "核心张力"
     store.delete_note(user, n["id"])
 
 

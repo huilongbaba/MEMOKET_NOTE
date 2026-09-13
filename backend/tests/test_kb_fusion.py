@@ -95,7 +95,8 @@ def test_引用计数一次查完(db):
     b = db.create_note("u", "乙", "")
     db.update_note("u", a["id"], "甲", "[f-1-A]")
     db.update_note("u", b["id"], "乙", "[f-1-A] [g-2-B]")
-    counts = db.citation_counts("u")
+    # 树接口一趟 SQL 就带 cite_count，不再有单独的 citation_counts()
+    counts = {r["note_id"]: r["cite_count"] for r in db.tree("u") if r["note_id"] in (a["id"], b["id"])}
     assert counts == {a["id"]: 1, b["id"]: 2}
 
 

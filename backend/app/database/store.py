@@ -819,13 +819,6 @@ def set_skeleton(user_id: str, note_id: str, spine: str, beats: list[str]) -> No
                   (spine, json.dumps(beats, ensure_ascii=False), user_id, note_id))
 
 
-def get_skeleton(user_id: str, note_id: str) -> tuple[str, list[str]]:
-    note = get_note(user_id, note_id)
-    if not note:
-        return "", []
-    return note["spine"], [str(b) for b in note["beats"] if str(b).strip()]
-
-
 def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
     with connect() as c:
         cur = c.execute(
@@ -1171,15 +1164,6 @@ def backlinks(user_id: str, note_id: str) -> list[dict]:
             " WHERE user_id=? AND id<>? AND content LIKE ? ORDER BY updated_at DESC",
             (user_id, note_id, f"%](note://{note_id})%")).fetchall()
     return [dict(r) for r in rows]
-
-
-def citation_counts(user_id: str) -> dict[str, int]:
-    """每篇笔记引用了几条事实。树上画角标用——一次查完，不要每个节点问一次。"""
-    with connect() as c:
-        rows = c.execute(
-            "SELECT note_id, COUNT(*) AS n FROM note_citations WHERE user_id=?"
-            " GROUP BY note_id", (user_id,)).fetchall()
-    return {r["note_id"]: r["n"] for r in rows}
 
 
 def mark_ingested(user_id: str, note_id: str) -> None:

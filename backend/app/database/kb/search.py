@@ -120,10 +120,6 @@ def _number_terms(query: str) -> list[str]:
 _WS = re.compile(r"\s+")
 
 
-def _norm(text: str) -> str:
-    return _WS.sub("", (text or "").lower())
-
-
 def _hits(terms: list[str], text: str) -> list[str]:
     """查询词里哪些真的出现在这条事实里。ASCII 词按整词匹配（`md` 不能靠 SMDowner / B2ECMD
     得分——第 224 轮实拍拖一篇 .md 进来右栏全是不相干的英文事实；`ai` 不能靠 said 得分），

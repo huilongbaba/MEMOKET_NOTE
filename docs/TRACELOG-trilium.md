@@ -3423,3 +3423,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - check-css-classes 加反向：CSS 里定义了、代码里一个字都没提到的类算死样式（`drop-*` 这种代码里拼出来的按前缀放过）。首跑抓到 5 个早就没人用的：`.note-actions`（两处，旧的 AI 动作行）、`.sidebar-footer`（旧侧栏底部工具条）、`.toolbar-secondary`、`.right-pane-heading`、`.right-pane-ambient`，连同它们的注释一起删（37 行）。实拍 `open:5f65df10cad6` 布局不变。
 - 教训：用「上一个空行」当删除起点会把前面的规则一起切掉（第一版把 `.app` 和 `button {}` 也删了，靠打印片段发现、git checkout 重来）——删 CSS 块要用块自己的注释首行做起点。
+
+## [511] 第 486 轮：前后端死代码扫（2026-09-14）
+
+- 前端「export 了却没别的文件 import」53 个：全是类型导出、本文件内在用、或 scripts/ 里的 check 在用（roundDiff / mermaid 的几个），没有真正的死代码，不做成 check（噪声大）。
+- 后端「def 了没人调」10 个：`kb/search._norm` 真死（连 `_WS` 都另有用处）——删；`store.get_skeleton` / `store.citation_counts` 只有测试在用（树接口一趟 SQL 早就带 `cite_count`）——删，测试改走 `get_note` / `tree`；`chart_gap` / `dropped_keys` / `is_virtual` / registry 的三个 `_reset_for_tests` 类是测试用的公共小工具，留着。后端 950 照旧。
