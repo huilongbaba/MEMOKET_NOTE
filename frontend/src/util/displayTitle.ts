@@ -16,7 +16,7 @@ export function displayTitle(n: { title?: string; preview?: string; content?: st
   if (!PLACEHOLDER.has(t)) return t
   const firstLine = (n.preview ?? n.content ?? '')
     .split('\n')
-    .map((l) => l.replace(/^#+\s*/, '').trim())
+    .map((l) => l.trim().replace(/^#+\s*/, '').trim())     // 先 trim：整篇缩进的笔记「    # 标题」不然会显示成「# 标题」
     .find((l) => l.length > 0)
   return firstLine ? clipTitle(firstLine) : '未命名'
 }

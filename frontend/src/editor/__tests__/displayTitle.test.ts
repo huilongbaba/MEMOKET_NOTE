@@ -14,6 +14,9 @@ describe('displayTitle', () => {
     expect(clipTitle('好的，那就这么定了')).toBe('好的，那就这么定了')     // 句读太靠前不截
     expect(clipTitle('x'.repeat(80))).toHaveLength(60)
   })
+  it('整篇缩进的笔记：首行前的空格和 # 都剥掉', () => {
+    expect(displayTitle({ title: '', content: '    # 创业一年回顾\n    ## 时间线' })).toBe('创业一年回顾')
+  })
   it('全空是未命名', () => {
     expect(displayTitle({ title: 'Untitled', content: '   \n  ' })).toBe('未命名')
   })
