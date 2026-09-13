@@ -2727,3 +2727,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [347] 第 319 轮：文档同步（2026-09-13）
 
 - trilium-ui-gap.md 三行改成现状：分屏（可编辑）、ScrollPadding（已做）、delete_notes 确认框（已做，含放弃写作计划）；harness-framework.md 的 components 列表加 SplitEditor。
+
+## [348] 第 320 轮：重打 dmg（2026-09-13）
+
+- 后端 901 / 前端 95 全绿后 `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 3 秒、health ok、Resources 带 LICENSE / notices、前端 css 里有第 317 轮的 `.linklike`、一个后端子进程；空库的 kb/tree 从 14 行变 8 行（第 313 轮把没有事实的六个根主题滤掉了）。
