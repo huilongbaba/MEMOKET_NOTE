@@ -26,6 +26,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
   return (
     <div
       className="palette"
+      role="dialog" aria-label="AI 块生成"
       style={{ position: 'fixed', left, top, width: 400, padding: 10, zIndex: 260 }}
       onMouseDown={(e) => e.stopPropagation()}
     >

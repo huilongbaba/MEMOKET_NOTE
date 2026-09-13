@@ -146,7 +146,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
 
   return (
     <div className="palette-backdrop" onClick={() => setOpen(false)}>
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
+      <div className="palette" role="dialog" aria-label="搜索与命令" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           value={q}

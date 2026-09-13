@@ -52,6 +52,7 @@ export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
     <div
       ref={ref}
       className="palette"
+      role="menu" aria-label="选中文本的操作"
       style={{ position: 'fixed', left, top, width: 160, padding: 4, zIndex: 250 }}
     >
       {busy ? (

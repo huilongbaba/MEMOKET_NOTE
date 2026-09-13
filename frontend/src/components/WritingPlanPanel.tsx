@@ -109,6 +109,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
     <div className="palette-backdrop" onClick={onClose}>
       <div
         className="modal"
+        role="dialog" aria-label="写作计划"
         style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
                 maxWidth: 640, width: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: 24 }}
         onClick={(e) => e.stopPropagation()}

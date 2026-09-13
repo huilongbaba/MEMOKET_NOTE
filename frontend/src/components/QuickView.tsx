@@ -24,7 +24,7 @@ export default function QuickView({ note, onClose, onOpen }: {
   }, [onClose])
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal quick-view" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal quick-view" role="dialog" aria-label="快速查看" onMouseDown={(e) => e.stopPropagation()}>
         <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <b style={{ flex: 1, fontSize: 16 }}>{displayTitle(note)}</b>
           <span className="muted" style={{ fontSize: 12 }}>{fmtDate(note.updated_at)}</span>

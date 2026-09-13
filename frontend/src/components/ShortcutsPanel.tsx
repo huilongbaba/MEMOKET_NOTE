@@ -12,7 +12,7 @@ export default function ShortcutsPanel({ onClose }: { onClose: () => void }) {
   }, [onClose])
   return (
     <div className="palette-backdrop" onClick={onClose}>
-      <div className="palette shortcuts" onClick={(e) => e.stopPropagation()}>
+      <div className="palette shortcuts" role="dialog" aria-label="快捷键" onClick={(e) => e.stopPropagation()}>
         <div className="row" style={{ justifyContent: 'space-between', padding: '14px 16px 6px' }}>
           <h3 style={{ margin: 0 }}><i className="bx bx-command" /> 快捷键</h3>
           <button className="icon-btn" title="关闭（Esc）" onClick={onClose}><i className="bx bx-x" /></button>
