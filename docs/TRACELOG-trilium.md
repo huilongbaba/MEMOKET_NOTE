@@ -2497,3 +2497,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [301] 第 272 轮：架构文档同步（2026-09-13）
 
 - `docs/harness-framework.md` 目录图和第 15 节补上这几十轮新加的：`kb/units.py`（materials / parts_of）、`kb/who.py`、`store.list_notes_brief` 与四个启动清理、`kb:material`、搜索排序规则、记忆范围贯穿的入口；README 的 API 表补 `GET /api/notes/brief`。变更记录一节把 TRACELOG 范围写到 [300]。
+
+## [302] 巡检第 273 轮：最近删除（深色 820）、定期回顾（820）（2026-09-13）
+
+- 最近删除空态「最近 30 天没有删过笔记」（探针垃圾都清干净了）；定期回顾三个按钮一行排开。树上「03-09 · Single-utteranc…」没有箭头没有计数——那场会零条事实，本来就没得展开。没改代码。
