@@ -3414,3 +3414,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 有 ↑↓ 的列表六个：树 / 标签行 / ContextMenu 有 scrollIntoView，图标挑选器走 focus() 浏览器自己滚，斜杠菜单 8 项 320px 放得下；**⌘K 和「移动到…」选择器没有**。两个都补 `.palette-item.active` `scrollIntoView({block:'nearest'})`。
 - 「移动到…」还有一处更糟：列表容器叫 `.palette-list`，CSS 里根本没这个类——外层 `.palette` 是 `max-height:60vh; overflow:hidden`，笔记多的人超出 60vh 的那截**根本滚不到**（200 项上限形同虚设）。改用现成的 `.palette-results`（overflow-y:auto）。
 - 探针 `palette:keys`（12 下 ↓）/ `picker:keys`（25 下 ↓）。实拍：⌘K 高亮走到最底「设置」列表跟着滚；选择器高亮在第 25 项「日记」、滚动条在下半截。
+
+## [509] 第 484 轮：「用了的类名 CSS 里得有」做成 check（2026-09-14）
+
+- 上一轮 `.palette-list` 那种错 tsc / eslint / vitest 都不管。写 `scripts/check-css-classes.mts`（第 14 条 check）：扫 TSX / TS 的 className（字面量 / 模板 / `+ ' xxx'` 拼接 / `el.className = `），跟所有 css 里的 `.xxx` 对；`bx*` / `cm-*` / `mm-*` 前缀放过；纯锚点类（子元素有样式、自己不需要）进 HOOK_ONLY 名单，名单里的类有了定义或没人用了也报。首跑 223 个类名全有定义，名单 6 个（app-logo / export-back / export-back-result / mini-bars / tab-list / tl-month）——逐个看过都是容器或探针锚点，不是漏样式。
