@@ -81,7 +81,9 @@ const SKELETON_MIN_DELTA = 20
 function previewLine(content: string, skip = ''): string {
   // 第一行常常就是标题本身（「# 会议纪要 10」）——搜索卡上再印一遍没意义，
   // 跳过跟标题一样的那行，取下一行
-  const clean = (l: string) => l.replace(/^#{1,6}\s+/, '').replace(/^[-*>]\s+/, '').trim()
+  // 先 trim 再剥记号：整篇缩进的笔记（「    ## 时间线」，第 362 轮实拍）不然会露出「## 」；
+  // `#` 后面没空格的也剥（后端 _first_body_line 是 strip 后 \s*，两边一致）
+  const clean = (l: string) => l.trim().replace(/^#{1,6}\s*/, '').replace(/^[-*>]\s+/, '').trim()
   const lines = content.split('\n').map(clean).filter((l) => l)
   const skipNorm = skip.trim().replace(/\s+/g, '')
   return lines.find((l) => l.replace(/\s+/g, '') !== skipNorm) ?? lines[0] ?? ''
@@ -1135,7 +1137,10 @@ export default function App() {
         {n.content.trim() && (
           <div className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {(() => {
-              const s = searchResults !== null ? matchSnippet(n.content, noteQuery, 40, 8) : null
+              // 标题本身就命中的（三篇「创业一年回顾」搜「创业」），片段再给一遍 H1 是重复的，
+              // 换成第一行正文——同名的几篇靠这一行分辨（跟 ⌘K 的 first_body 一个思路）
+              const titleHit = noteQuery.trim() && displayTitle(n).toLowerCase().includes(noteQuery.trim().toLowerCase())
+              const s = searchResults !== null && !titleHit ? matchSnippet(n.content, noteQuery, 40, 8) : null
               return s ? <>{s.before}<mark>{s.hit}</mark>{s.after}</> : previewLine(n.content, displayTitle(n))
             })()}
           </div>
