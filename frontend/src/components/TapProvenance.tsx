@@ -37,7 +37,7 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
   return (
     <div className="muted tap-prov" style={{ fontSize: 12 }}>
       <p style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span className="badge ok">引用知识库</span> 检索到 {meta.facts} 条事实（{meta.recall_ms} ms）
+        <span className="badge ok">引用知识库</span> 检索到 {meta.facts} 条事实（{Math.round(meta.recall_ms)} ms）
         <a className="link" onClick={() => setExpanded((v) => !v)}>
           {expanded ? '收起来源' : '查看来源'} <i className={'bx ' + (expanded ? 'bx-chevron-up' : 'bx-chevron-down')} />
         </a>
