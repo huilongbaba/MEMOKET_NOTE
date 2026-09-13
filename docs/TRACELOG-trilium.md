@@ -2549,3 +2549,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 写了个一致性检查：每篇正文里的 `[user-n-hex]` vs `note_citations` 表。terrence 23 篇里 2 篇「未命名（创业一年回顾）」正文一条引用都没有、表里却各挂三条——树上那两行的 ◆6 就是这么来的（幽灵引用，反查也会把它们列出来）。改正文的入口里 `update_note_from_source`（源侧同步）没重建引用；那两篇的历史原因查不到了（可能是早期没有 sync_citations 的版本写的）。
 - **改**：源侧同步也 `sync_citations`；启动时 `reindex_citations()` 按正文重建对不上的那几篇（dev 库启动打出「重建了 2 篇」，树上 ◆6 消失，只剩 harness 测试 ◆31）。顺手：第 279 轮删掉 MemoryBrowser 的 tab 之后 `memoryTimeline` / `TimelineBucket` 成了没人用的导出（契约测试抓到），删了。测试 +1，后端 895。
+
+## [314] 巡检第 285 轮：库里其它反查表的一致性（2026-09-13）
+
+- 照第 284 轮的思路把 dev 库其它几张关联表全查了一遍：branches → 不存在的笔记 / 父节点 0、note_remotes / writing_sections / note_revisions / harness_snapshots 指向已删笔记的 0、活跃计划的父节点都在、没有一篇笔记不在树上、没有重复 branch。只有引用表那一处对不上，已修。没改代码。
