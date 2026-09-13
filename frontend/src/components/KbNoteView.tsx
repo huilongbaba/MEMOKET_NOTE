@@ -49,6 +49,7 @@ export default function KbNoteView(props: Props) {
   if (id === 'kb') return <KbDashboard actions={actions} />
   if (id === 'kb:topics') return <TopicsIndex rows={rows} actions={actions} />
   if (id === 'kb:entities') return <EntitiesIndex rows={rows} actions={actions} />
+  if (id.startsWith('kb:etype:')) return <EntitiesIndex rows={rows} actions={actions} node={id} />
   if (id === 'kb:recent') return <RecentIndex rows={rows} actions={actions} />
   if (id === 'kb:timeline') return <TimelinePage actions={actions} />
   if (id === 'kb:facts' || id.startsWith('kb:facts?')) return <FactsTable query={id.split('?')[1] ?? ''} actions={actions} />

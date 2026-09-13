@@ -38,18 +38,24 @@ export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
 // ASR 的说话人标签（Speaker A / speaker_c…）会被抽成「实体」，而且事实数最多——
 // 实体页前二十个全是它们。默认藏掉，一个开关放出来（util/kbNoise.ts）。
 
-export function EntitiesIndex({ rows, actions }: { rows: TreeRow[]; actions: KbActions }) {
+/** 实体类型节点的中文名（跟后端 virtual_tree.ETYPE_LABELS 一致） */
+const ETYPE_LABELS: Record<string, string> = { person: '人', org: '组织', product: '产品', place: '地点', event: '事件', project: '项目', other: '其他' }
+
+/** `node` 默认是全部实体；传 `kb:etype:<type>` 就只列那一类（树上分了类的库点类型节点进来，
+ *  之前这种 id 没有页面，中栏只显示一行裸 id——第 235 轮实拍）。 */
+export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: TreeRow[]; actions: KbActions; node?: string }) {
   const [q, setQ] = useState('')
   const [showSpeakers, setShowSpeakers] = useState(false)
-  const fromTree = useMemo(() => rows.filter((r) => r.note_id.startsWith('kb:entity:')), [rows])
+  const etype = node.startsWith('kb:etype:') ? node.slice(9) : ''
+  const fromTree = useMemo(() => rows.filter((r) => r.note_id.startsWith('kb:entity:') && (!etype || r.parent_note_id === node)), [rows, etype, node])
   // 实体超过 200 个的库树里不带它们（每次刷树 358KB 太重）：这页自己取一次
   const [fetched, setFetched] = useState<TreeRow[] | null>(null)
   useEffect(() => {
     if (fromTree.length > 0) { setFetched(null); return }
     let alive = true
-    kbTreeChildren('kb:entities').then((r) => { if (alive) setFetched(r) }).catch(() => { if (alive) setFetched([]) })
+    kbTreeChildren(node).then((r) => { if (alive) setFetched(r) }).catch(() => { if (alive) setFetched([]) })
     return () => { alive = false }
-  }, [fromTree.length])
+  }, [fromTree.length, node])
   const all = useMemo(() => [...(fromTree.length ? fromTree : (fetched ?? []))].sort((a, b) => b.fact_count - a.fact_count), [fromTree, fetched])
   const speakers = useMemo(() => all.filter((r) => isSpeakerTag(r.title)).length, [all])
   const base = showSpeakers ? all : all.filter((r) => !isSpeakerTag(r.title))
@@ -57,8 +63,8 @@ export function EntitiesIndex({ rows, actions }: { rows: TreeRow[]; actions: KbA
   return (
     <div className="kb-page">
       <div className="kb-head">
-        <h2 className="kb-note-title"><i className="bx bx-group muted" /> 实体</h2>
-        <div className="muted" style={{ fontSize: 13 }}>{all.length} 个。按事实数排序{!q && all.length > 200 ? '，先给前 200 个——搜一下能找到其余的' : ''}。</div>
+        <h2 className="kb-note-title"><i className="bx bx-group muted" /> {etype ? `实体 · ${ETYPE_LABELS[etype] ?? etype}` : '实体'}</h2>
+        <div className="muted" style={{ fontSize: 13 }}>{all.length} 个。按事实数排序{!q && all.length > 200 ? '，先给前 200 个——搜一下能找到其余的' : ''}。{etype && fetched !== null && all.length === 0 ? '这个库的实体没有按类型分组——去「实体」看全部。' : ''}</div>
       </div>
       <div className="kb-search">
         <i className="bx bx-search" />
