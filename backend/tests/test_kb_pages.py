@@ -146,3 +146,16 @@ def test_同一份材料切成几段_标题带段号(mem):
     d = pages.dashboard(mem)
     assert any(r["title"] == "战略讨论（1/3）" for r in d["recent_units"])
     assert pages.unit_page(mem, "obsidian-doc1-1")["title"] == "战略讨论（2/3）"
+
+
+def test_首页主题计数是不同事实的条数(mem):
+    """第 207 轮：一条事实同时挂父主题和子主题，首页闭包计数把它加了两次，跟主题页对不上。"""
+    store, vocab = mem._index()
+    root = next(t.code for t in vocab.topics.values() if not any(p in vocab.topics for p in t.parents))
+    kids = [t.code for t in vocab.topics.values() if root in t.parents]
+    if not kids:
+        import pytest; pytest.skip("夹具里没有子主题")
+    store.facts["dup1"] = _fact("dup1", "两个主题都挂", "2026-01-05", topics=[root, kids[0]])
+    d = pages.dashboard(mem)
+    n_dash = next(t["facts"] for t in d["top_topics"] if t["code"] == root)
+    assert n_dash == pages.topic_page(mem, root, limit=1, offset=0)["facts_total"]

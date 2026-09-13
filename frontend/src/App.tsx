@@ -761,8 +761,16 @@ export default function App() {
     const out: TreeRow[] = []
     let cur = byNote.get(id); let guard = 0
     while (cur && guard++ < 50) { out.unshift(cur); cur = byNote.get(cur.parent_note_id) }
+    // 懒加载的那几层（实体 / 某个主题下的事实…）不在 allRows 里，之前状态栏就退回「23 篇笔记」
+    // （第 207 轮实拍实体页）——按 id 的形状把父链拼出来，名字用标签页上的
+    if (out.length === 0 && api.isVirtualId(id)) {
+      const parent = ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
+      const chain = ['kb', ...(parent ? [parent] : []), id]
+      const leaf = tabs.find((t) => t.noteId === id)?.title ?? VIRTUAL_LABELS[id] ?? id.split(':').pop() ?? id
+      return chain.map((x) => byNote.get(x) ?? ({ id: x, note_id: x, parent_note_id: '', title: x === id ? leaf : (VIRTUAL_LABELS[x] ?? x), position: 0, is_expanded: false, preview: '', cite_count: 0, ingested_at: '', pinned: false, updated_at: '', child_count: 0, branch_count: 0, fact_count: 0 } as TreeRow))
+    }
     return out
-  }, [current, virtualId, allRows])
+  }, [current, virtualId, allRows, tabs])
 
   /** 虚拟节点的右键菜单——没有「删除」「移动」这些：它们不是笔记，是知识库
    *  的一个视角。有的是把它带进笔记的动作。 */

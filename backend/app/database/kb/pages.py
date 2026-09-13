@@ -101,12 +101,17 @@ def dashboard(mem) -> dict:
     dates = sorted(f.when for f in facts if f.when)
 
     # 主题 Top 用闭包计数（含子主题），只看一级主题——126 个主题平铺出来看不出形状
-    direct = Counter(c for f in facts for c in f.topics)
+    # 按「有多少条不同的事实」数，不是把闭包里每个主题的直接计数加起来：一条事实同时挂
+    # work 和 work_marketing 会被加两次，首页 work 6151、主题页 6034（第 207 轮实拍）
+    by_topic: dict[str, set[str]] = defaultdict(set)
+    for f in facts:
+        for c in f.topics:
+            by_topic[c].add(f.id)
     roots = [t for t in vocab.topics.values() if not any(p in vocab.topics for p in t.parents)]
     top_topics = []
     for t in roots:
         closure = vocab.downset(t.code, include_candidates=True) or {t.code}
-        n = sum(direct.get(c, 0) for c in closure)
+        n = len(set().union(*(by_topic.get(c, set()) for c in closure)))
         if n:
             top_topics.append({"code": t.code, "facts": n,
                                "children": sum(1 for x in vocab.topics.values() if t.code in x.parents)})
