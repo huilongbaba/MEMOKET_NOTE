@@ -29,13 +29,16 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
 
   return (
     <div className="kb-page">
-      <div className="kb-search">
-        <i className="bx bx-search" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜知识库：人、事、数字、日期…"
-               autoFocus onKeyDown={(e) => { if (e.key === 'Escape') setQ('') }} />
-        {searching && <span className="spinner" />}
-        {q && <button className="icon-btn" onClick={() => setQ('')}><i className="bx bx-x" /></button>}
-      </div>
+      {/* 空库不摆搜索框：一条事实都没有，搜出来只能是空，autoFocus 的光标停在那里像在等你输入 */}
+      {!(data && data.stats.facts === 0) && (
+        <div className="kb-search">
+          <i className="bx bx-search" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜知识库：人、事、数字、日期…"
+                 autoFocus onKeyDown={(e) => { if (e.key === 'Escape') setQ('') }} />
+          {searching && <span className="spinner" />}
+          {q && <button className="icon-btn" onClick={() => setQ('')}><i className="bx bx-x" /></button>}
+        </div>
+      )}
 
       {hits ? (
         <KbSection title={`${hits.facts.length} 条结果`}
