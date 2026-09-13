@@ -3306,3 +3306,15 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [483] 第 457 轮：技能重排的测试（2026-09-14）
 
 - `POST /api/skills/reorder` 之前没测试：建两个 skill、反过来 reorder、GET 列表按新顺序回来（顺序是配置——两个 skill 矛盾时以模型最后读到的为准）。没被测试碰过的路径剩 14 个，全是要模型 / 录音 / 第三方账号的。
+
+## [484] 第 458 轮：前端 util 哪些没测试（2026-09-14）
+
+- 13 个 util 里 4 个没测试：kbNoise（说话人伪实体正则）、ingestActive、notify、restoreFocus。kbNoise 是纯正则、跟后端 `is_speaker_tag` 同一条，补 2 条（正 / 反各一组）；另外三个是浏览器 API 包装，单测意义不大。前端 109。
+
+## [485] 第 459 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 938 通过；前端 tsc + eslint + vitest 109 + 12 条 check / smoke 全过。
+
+## [486] 第 460 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行；往 `/api/client-log` 发一条 info，正式版日志里是 `[client:info] user=terrence smoke smoke`。
