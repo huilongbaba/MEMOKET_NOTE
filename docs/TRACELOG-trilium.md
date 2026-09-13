@@ -3592,3 +3592,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [548] 第 524 轮：虚拟页上右栏「计划」不再顶着上一篇的角标（2026-09-14）
 
 - 第 517 轮事实表页实拍右栏是「计划 5」：openVirtual 清了 current / 正文，但 beats / agentRounds 还是上一篇的，角标拿旧骨架充数。角标改成 `agentRounds.length || (current ? beats.length : 0)`；面板里的 AgentActivity 只在有笔记打开、或 harness（单篇 / 文件夹）正在跑时画——后台跑着的运行仍然看得见，这是原来的设计。实拍事实表页右栏三个标签都没角标。
+
+## [549] 巡检第 525 轮：树键盘导航回归（2026-09-14）
+
+- 第 506 / 513 轮给树行加了 clickable / ctx-target 之后跑 `treekeys`：↓ 走到「日记」行有焦点环、无 client error；`keynav` 无错。没改代码。
