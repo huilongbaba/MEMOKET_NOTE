@@ -105,6 +105,10 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
 
   const typing = !!q.trim()
   const cmdHits = typing ? COMMANDS.filter((c) => c.label.includes(q.trim())) : COMMANDS
+  // 同名的（三篇「创业一年回顾」）光看标题和日期分不开：给一截正文第一行（服务端算好的 first_body）
+  const dupName = (list: NoteBrief[]) => { const names = list.map(displayTitle); return new Set(names.filter((t, i) => names.indexOf(t) !== i)) }
+  const dupNotes = dupName(notes); const dupRecent = dupName(recent)
+  const firstBody = (n: NoteBrief) => n.first_body ? <span className="muted palette-snip">{n.first_body.slice(0, 40)}{n.first_body.length > 40 ? '…' : ''}</span> : null
   const items = typing
     ? [
       ...cmdHits.map((c) => ({ kind: 'cmd' as const, cmd: c })),
@@ -152,7 +156,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
         <div className="palette-results">
           {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
           {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
-          {!typing && recent.map((n) => row(n.id, <span className="palette-line"><span className="palette-main">{displayTitle(n)}</span>
+          {!typing && recent.map((n) => row(n.id, <span className="palette-line"><span className="palette-main">{displayTitle(n)}{dupRecent.has(displayTitle(n)) && firstBody(n)}</span>
             <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note'))}
           {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
           {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
@@ -163,7 +167,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
             const title = displayTitle(n)
             const s = title.toLowerCase().includes(q.trim().toLowerCase()) ? null : n.snippet   // 片段在服务端算好了
             return row(n.id, <span className="palette-line"><span className="palette-main"><Highlight text={title} q={q} />
-              {s && <span className="muted palette-snip">{s.before}<mark>{s.hit}</mark>{s.after}</span>}</span>
+              {s ? <span className="muted palette-snip">{s.before}<mark>{s.hit}</mark>{s.after}</span> : (dupNotes.has(title) && firstBody(n))}</span>
               <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note')
           })}
           {/* 412 篇「会议纪要」搜「会议」只列 8 条，得说清后面还有多少（实拍大库用户） */}
