@@ -3659,3 +3659,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [563] 第 539 轮：重打 dmg 前的全量门（2026-09-14）
 
 - 后端 954 通过；前端 tsc + eslint + vitest 129 + 17 条 check / smoke 全过。
+
+## [564] 第 540 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree 正常；`POST /api/memory/recall` 命中词只剩 `['ideas']`——第 530 轮那条「speaker b」在正式版也没了；日志新增 21 行裸 `INFO:` 0 行。PROGRESS 补 531–540 行。
