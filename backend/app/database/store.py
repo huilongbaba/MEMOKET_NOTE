@@ -535,8 +535,12 @@ def _first_body_line(content: str, title: str = "", limit: int = 60) -> str:
     if shown in ("", "未命名", "Untitled", "note"):
         shown = next((clean(ln) for ln in lines if ln), "")
     body, heads = [], []
+    fenced = False
     for s in lines:
-        if not s or s.startswith("```") or s.startswith("!["):
+        if s.startswith("```"):          # 围栏里的是代码不是正文（第 544 轮：预览印出了 `code`）
+            fenced = not fenced
+            continue
+        if fenced or not s or s.startswith("!["):
             continue
         c = clean(s)
         if len(c) <= 1 or c.lower() == shown.lower():

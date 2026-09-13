@@ -26,14 +26,25 @@ export function factsLabel(id: string): string | undefined {
  * the sidebar preview -- strip rather than render so it stays plain text
  * in a one-line ellipsis instead of showing raw "## " or "- " noise. */
 export function previewLine(content: string, skip = ''): string {
-  // 第一行常常就是标题本身（「# 会议纪要 10」）——搜索卡上再印一遍没意义，
-  // 跳过跟标题一样的那行，取下一行
-  // 先 trim 再剥记号：整篇缩进的笔记（「    ## 时间线」，第 362 轮实拍）不然会露出「## 」；
-  // `#` 后面没空格的也剥（后端 _first_body_line 是 strip 后 \s*，两边一致）
-  const clean = (l: string) => l.trim().replace(/^#{1,6}\s*/, '').replace(/^[-*>]\s+/, '').trim()
-  const lines = content.split('\n').map(clean).filter((l) => l)
-  const skipNorm = skip.trim().replace(/\s+/g, '')
-  return lines.find((l) => l.replace(/\s+/g, '') !== skipNorm) ?? lines[0] ?? ''
+  // 照抄后端 store._first_body_line（第 544 轮对齐，scripts/check-preview-parity 拿样本对拍）：
+  // 跳过跟显示名一样的那一行（占位标题的笔记显示名就是正文第一行）；代码围栏 / 图片行不算；
+  // 剥列表符 / 井号 / 强调记号；一个字的行不算；优先正文行，一行正文都没有才退回第一个小标题；60 字。
+  // 之前前端只是「第一行不等于标题的」，`# 小标题` 和 `![图](…)` 都会被当预览印出来，
+  // ⌘K 笔记组（服务端 first_body）和标签组（本地算）同名消歧给的还不是同一截。
+  const lines = (content || '').split('\n').slice(0, 60).map((l) => l.trim())
+  const clean = (t: string) => t.replace(/^([-*>+]|\d+\.|#{1,6})\s*/, '').replace(/[*_`[\]]/g, '').trim()
+  let shown = (skip || '').trim()
+  if (shown === '' || shown === '未命名' || shown === 'Untitled' || shown === 'note') shown = clean(lines.find((l) => l) ?? '')
+  const body: string[] = []; const heads: string[] = []
+  let fenced = false
+  for (const l of lines) {
+    if (l.startsWith('```')) { fenced = !fenced; continue }   // 围栏里的是代码不是正文
+    if (fenced || !l || l.startsWith('![')) continue
+    const c = clean(l)
+    if (c.length <= 1 || c.toLowerCase() === shown.toLowerCase()) continue
+    ;(l.startsWith('#') ? heads : body).push(c)
+  }
+  return (body[0] ?? heads[0] ?? '').slice(0, 60)
 }
 
 /** 懒加载的虚拟节点在树上挂在哪个分类下（面包屑拼父链用） */
