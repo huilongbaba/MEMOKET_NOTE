@@ -3351,3 +3351,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [494] 第 468–469 轮：重打 dmg 前的全量门（2026-09-14）
 
 - 后端 950 通过；前端 tsc + eslint + vitest 112 + 12 条 check / smoke 全过。
+
+## [495] 第 470 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行、1220 个实体里按新正则 9 个说话人标签（跟 dev 一致）。
