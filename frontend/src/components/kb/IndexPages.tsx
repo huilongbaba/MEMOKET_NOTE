@@ -96,7 +96,7 @@ export function RecentIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
           {units.map((u) => (
             <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen(u.note_id) }}>
               <i className="bx bx-conversation muted" /> {u.title}
-              <span className="muted" style={{ marginInlineStart: 'auto' }}>{u.fact_count} 条</span>
+              <span className="muted" style={{ marginInlineStart: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}>{u.fact_count} 条</span>
             </a>
           ))}
         </div>

@@ -61,12 +61,15 @@ FACT_TITLE_CHARS = 60
 MAX_CHILDREN = 300
 
 
-def _neg_id(uid: str):
-    """排序用：日期倒序的同时让同一份材料的段号正序（09-07 1/2 在 2/2 前面，第 266 轮实拍反了）。
-    段号是 id 末尾的 -<n>，取负数；没有段号的原样。"""
-    import re as _re
-    m = _re.search(r"-(\d+)$", uid)
-    return (-int(m.group(1)), uid[:m.start()]) if m else (0, uid)
+def _part_key(uid: str):
+    """(材料, 段号)：同一份材料切的几段挨在一起、段号正序。段号是 id 末尾的 -<n>。"""
+    m = re.search(r"-(\d+)$", uid)
+    return (uid[:m.start()], int(m.group(1))) if m else (uid, 0)
+
+
+def recent_first(units):
+    """日期新的在前；同一天里同一份材料的几段挨着、段号正序（第 266 轮实拍：1/7、1/6、2/7 交错）。"""
+    return sorted(sorted(units, key=lambda u: _part_key(u.id)), key=lambda u: u.date or "", reverse=True)
 
 
 def _row(note_id: str, parent: str, title: str, *, position: int = 0,
@@ -151,8 +154,7 @@ def build(mem) -> list[dict]:
     ]
 
     # ---- 最近摄入：最近的几次会议
-    units = sorted((u for u in store.units.values() if u.date),
-                   key=lambda u: (u.date, _neg_id(u.id)), reverse=True)[:RECENT_UNITS]
+    units = recent_first(u for u in store.units.values() if u.date)[:RECENT_UNITS]
     labels = part_labels(units)
     unit_rows = [
         _row(f"kb:unit:{u.id}", "kb:recent", _unit_tree_title(u.date, labels.get(u.id) or u.title or u.id),

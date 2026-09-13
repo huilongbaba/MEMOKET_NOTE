@@ -193,7 +193,10 @@ def test_同一天切段的会议按段号正序(mem):
     store, _ = mem._index()
     for i in range(3):
         store.units[f"obsidian-doc9-{i}"] = Unit(id=f"obsidian-doc9-{i}", date="2026-09-07", t="", title="公司汇报", dur_min=0, n_lines=1)
-    rows = [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:unit:obsidian-doc9-")]
-    assert [r["note_id"][-1] for r in sorted(rows, key=lambda r: r["position"])] == ["0", "1", "2"]
+    for i in range(2):
+        store.units[f"obsidian-doc8-{i}"] = Unit(id=f"obsidian-doc8-{i}", date="2026-09-07", t="", title="另一份", dur_min=0, n_lines=1)
+    rows = [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:unit:obsidian-doc")]
+    order = [r["note_id"][len("kb:unit:obsidian-"):] for r in sorted(rows, key=lambda r: r["position"])]
+    assert order == ["doc8-0", "doc8-1", "doc9-0", "doc9-1", "doc9-2"], "同一份材料的几段挨着、段号正序，不同材料不交错"
     recent = [u["id"] for u in pages.dashboard(mem)["recent_units"] if u["id"].startswith("obsidian-doc9-")]
     assert recent == ["obsidian-doc9-0", "obsidian-doc9-1", "obsidian-doc9-2"]
