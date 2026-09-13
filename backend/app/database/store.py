@@ -811,6 +811,21 @@ def record_llm_usage(user_id: str, feature: str, model: str, prompt_tokens: int,
                   (user_id, feature[:60], model[:80], int(prompt_tokens or 0), int(completion_tokens or 0), int(ms or 0), _now()))
 
 
+EXTRACT_PROMPT_FIXED_TOKENS = 1200      # KITE 抽取 prompt 的固定开销（规则 + 词表）
+EXTRACT_TOKENS_PER_FACT = 60            # 每条事实的 JSON 输出
+
+
+def record_extract_estimate(user_id: str, chars: int, facts: int, ms: int) -> None:
+    """KITE 抽取走它自己的 provider，拿不到 usage：按字数估一笔（中文约 1.5 字 / token），
+    功能名带 `~` 表示估算，设置页单独标出来。"""
+    try:
+        model = get_active_llm_config().get("model", "")
+    except Exception:      # noqa: BLE001
+        model = ""
+    record_llm_usage(user_id, "kb/extract~", model,
+                     EXTRACT_PROMPT_FIXED_TOKENS + int(chars / 1.5), EXTRACT_TOKENS_PER_FACT * max(0, int(facts)), ms)
+
+
 def usage_summary(user_id: str) -> dict:
     """今天 / 7 天 / 30 天 / 全部：调用次数、token；再按功能列前几个（30 天内）。"""
     now = datetime.now(timezone.utc)

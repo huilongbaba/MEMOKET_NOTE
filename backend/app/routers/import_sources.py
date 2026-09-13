@@ -118,10 +118,13 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                         break
                     try:
                         t_chunk = time.perf_counter()
+                        before_chunk = facts
                         facts += mem.remember([{"role": "user", "content": chunk}],
                                               session_id=f"{stem}-{i}", date=when,
                                               title=note.title)
-                        store.bump_job_chunk(job_id, int((time.perf_counter() - t_chunk) * 1000), len(chunk))
+                        ms = int((time.perf_counter() - t_chunk) * 1000)
+                        store.bump_job_chunk(job_id, ms, len(chunk))
+                        store.record_extract_estimate(user, len(chunk), facts - before_chunk, ms)
                     except StorageError as exc:
                         # **"已存在" 是成功信号，不是失败。** 稳定 session_id 的
                         # 全部意义就是重跑时让 KITE 认出已导入的内容并跳过（不花

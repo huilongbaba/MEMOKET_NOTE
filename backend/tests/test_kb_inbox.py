@@ -138,3 +138,7 @@ def test_笔记摄入也报块进度(env, monkeypatch):
     ingest._ingest_job(job, "u1", n["content"], "T", "note", source_id=n["id"])
     p = store.job_progress(job)
     assert p["chunks_total"] >= 2 and p["chunks_done"] == p["chunks_total"] and p["elapsed_s"] >= 0
+    # 抽取按字数估一笔用量，功能名带 ~
+    u = store.usage_summary("u1")
+    assert u["all"]["calls"] == p["chunks_total"] and u["by_feature"][0]["feature"] == "kb/extract~"
+    assert u["all"]["prompt_tokens"] > store.EXTRACT_PROMPT_FIXED_TOKENS * p["chunks_total"]

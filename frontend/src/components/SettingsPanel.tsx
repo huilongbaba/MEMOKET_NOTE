@@ -9,7 +9,7 @@ const FEATURE_LABEL: Record<string, string> = {
   'magic-tap': '续写', 'note-harness/run': '智能续写', 'note-harness/resume': '智能续写', 'writing-plan/run': '无限续写',
   'compose/block': '/ 块生成', 'compose/restructure': '智能排版', skeleton: '骨架', rewrite: '重写 / 润色', expand: '扩写',
   verify: '校验', digest: '定期回顾', 'memory/trace': '来龙去脉', 'memory/relations': '记忆关系', 'skills/generate': 'Skill 生成',
-  'kb/quality/judged': '抽取质量', 'ingest/text': '存入知识库',
+  'kb/quality/judged': '抽取质量', 'ingest/text': '存入知识库', 'kb/extract~': '知识库抽取（估算）',
 }
 const fmtTok = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 
@@ -34,7 +34,7 @@ function UsageSection() {
         </div>
       )}
       <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-        token 数取自供应商响应，按 30 天内的功能排；知识库抽取走 KITE 自己的调用，那部分在导入任务里按字数估算。{u.models.length ? ` 模型：${u.models.join('、')}` : ''}
+        token 数取自供应商响应，按 30 天内的功能排；「知识库抽取（估算）」走 KITE 自己的调用，拿不到 usage，按字数估。{u.models.length ? ` 模型：${u.models.join('、')}` : ''}
       </p>
     </>
   )

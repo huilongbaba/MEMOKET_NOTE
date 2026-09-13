@@ -64,6 +64,7 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
         store.mark_job_started(job_id)
         for i, chunk in enumerate(chunks):
             t_chunk = time.perf_counter()
+            before_chunk = total
             try:
                 total += mem.remember(
                     [{"role": "user", "content": chunk}],
@@ -81,7 +82,9 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
                 continue
             # 每个 chunk 单独一次 LLM 调用（~13s），落一次库让前端轮询能看见
             # facts 数逐块往上涨，而不是等全部 chunk 跑完才一次性跳到最终值。
-            store.bump_job_chunk(job_id, int((time.perf_counter() - t_chunk) * 1000), len(chunk))
+            ms = int((time.perf_counter() - t_chunk) * 1000)
+            store.bump_job_chunk(job_id, ms, len(chunk))
+            store.record_extract_estimate(user_id, len(chunk), total - before_chunk, ms)
             store.set_job(job_id, "running", facts=total)
             _scan_conflicts(mem, user_id, f"{stem}-{i}", source)
         store.set_job(job_id, "done", facts=total,

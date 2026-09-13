@@ -298,6 +298,7 @@ async def stream_events(messages: list[dict], *, max_tokens: int = 1200,
     解析必须等完整文本。
     """
     cfg = store.get_active_llm_config()
+    t0 = time.perf_counter()
     payload = _payload(messages, stream=True, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
     async with httpx.AsyncClient(timeout=300.0) as client:
@@ -307,16 +308,18 @@ async def stream_events(messages: list[dict], *, max_tokens: int = 1200,
                 payload.pop("temperature", None)
             else:
                 probe.raise_for_status()
-                async for ev in _consume_tagged(probe):
+                async for ev in _consume_tagged(probe, model=cfg["model"], t0=t0):
                     yield ev
                 return
         async with client.stream("POST", url, headers=_headers(), json=payload) as r:
             r.raise_for_status()
-            async for ev in _consume_tagged(r):
+            async for ev in _consume_tagged(r, model=cfg["model"], t0=t0):
                 yield ev
 
 
-async def _consume_tagged(r: httpx.Response) -> AsyncIterator[tuple[str, str]]:
+async def _consume_tagged(r: httpx.Response, *, model: str = "",
+                          t0: float | None = None) -> AsyncIterator[tuple[str, str]]:
+    usage: dict | None = None
     async for line in r.aiter_lines():
         if not line.startswith("data: "):
             continue
@@ -327,6 +330,8 @@ async def _consume_tagged(r: httpx.Response) -> AsyncIterator[tuple[str, str]]:
             obj = json.loads(chunk)
         except json.JSONDecodeError:
             continue
+        if obj.get("usage"):
+            usage = obj["usage"]
         choices = obj.get("choices") or []
         if not choices:
             continue
@@ -337,6 +342,8 @@ async def _consume_tagged(r: httpx.Response) -> AsyncIterator[tuple[str, str]]:
         piece = delta.get("content")
         if piece:
             yield ("output", piece)
+    if t0 is not None:
+        _record(usage, model, t0)
 
 
 async def _consume_sse(r: httpx.Response, stats: dict | None = None, *,

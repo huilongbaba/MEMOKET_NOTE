@@ -61,3 +61,14 @@ def test_功能名去掉id段():
     from app.main import app  # noqa: F401 —— 中间件在 main 里
     parts = [p for p in "/api/notes/5f65df10cad6/sync".split("/") if p and p != "api"]
     assert "/".join(p for p in parts if not (len(p) >= 12 and all(ch in "0123456789abcdef" for ch in p))) == "notes/sync"
+
+
+def test_带思考的流也记账(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    lines = ["data: " + json.dumps({"choices": [{"delta": {"reasoning_content": "想"}}]}),
+             "data: " + json.dumps({"choices": [{"delta": {"content": "写"}}]}),
+             "data: " + json.dumps({"choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3}}),
+             "data: [DONE]"]
+    llm.ctx_user.set("u2"); llm.ctx_feature.set("note-harness/run")
+    assert _drain(llm._consume_tagged(_FakeResponse(lines), model="m2", t0=0.0)) == [("thinking", "想"), ("output", "写")]
+    assert store.usage_summary("u2")["all"]["calls"] == 1
