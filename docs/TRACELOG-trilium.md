@@ -2617,3 +2617,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [327] 第 299 轮：重打 dmg 前的全量门（2026-09-13）
 
 - 后端 900 通过；前端 tsc + eslint + vitest 87 + 12 条 check / smoke 脚本全过；`npm run build` ✓。最近删除面板恢复后自己重拉列表，父链跟着从列表里消失，不用改。
+
+## [328] 第 300 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB），Resources 里带 LICENSE 与 third-party-notices.md。
+- 装好的包冒烟：health ok（LLM 通、ASR 主机不通是环境）；`POST /api/notes/today` 建出「日记 / 2026 / 09 月 / 09-13 周日」；brief 搜「日记」命中；kb/tree 14 行；最近删除空。冒烟建的四篇日记随手删了并从最近删除清掉，装好的库跟之前一样。
+- 两个测法上的坑，记下免得下次再绕：① `curl -m 1` 探 health 永远失败——health 自己要去探 ASR 主机，2 秒才回，探就绪该用 `/api/notes/trash` 这种不出网的接口（冷启动到就绪 0.6 秒）；② curl 请求行里直接写中文 query 会被后端 400，浏览器会编码，不是 app 的问题。
