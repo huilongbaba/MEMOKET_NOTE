@@ -3343,3 +3343,11 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [492] 第 466 轮：虚拟页的几条纯规则搬出 App.tsx（2026-09-14）
 
 - `VIRTUAL_LABELS` / 认不认识的虚拟 id（原来两处各写一遍正则）/ `factsLabel` / `previewLine` 搬到 `util/virtual.ts`，App.tsx 3272 → 3249 行；新测试 virtual.test.ts 3 条（带查询串的事实表命名、认识 / 不认识的 id、预览行剥记号）。前端 112。
+
+## [493] 巡检第 467 轮：搬完之后的实拍（2026-09-14）
+
+- `open:kb:facts?topic=work`：标签「事实…」、面包屑「知识库 / 主题 / work / 事实表 · work」照旧；dev 实例起停无错。没改代码。
+
+## [494] 第 468–469 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 950 通过；前端 tsc + eslint + vitest 112 + 12 条 check / smoke 全过。
