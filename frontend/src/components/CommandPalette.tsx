@@ -44,6 +44,8 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   const [activeIndex, setActiveIndex] = useState(0)
   const [recent, setRecent] = useState<NoteBrief[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const openRef = useRef(false)
+  openRef.current = open
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -51,7 +53,9 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'j')) {
         e.preventDefault()
         setOpen((v) => !v)
-      } else if (e.key === 'Escape') {
+      } else if (e.key === 'Escape' && openRef.current) {
+        // 只在开着的时候吃掉 Esc：下面叠着写作计划面板时，Esc 只关最上面这一层
+        e.preventDefault()
         setOpen(false)
       }
     }

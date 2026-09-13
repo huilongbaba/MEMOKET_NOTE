@@ -138,10 +138,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
   // 写作计划面板上点「换个目标」，看放弃计划的确认框（要那个文件夹上有计划）
-  if (probe === 'plan-panel:abandon' && tree.length && !harnessProbeDone.current) {
+  // `:abandon-esc` 再按一次 Esc——只该关掉确认框，面板留着；`plan-panel:esc` 只开面板然后 Esc——面板该关掉
+  if ((probe === 'plan-panel:abandon' || probe === 'plan-panel:abandon-esc' || probe === 'plan-panel:esc') && tree.length && !harnessProbeDone.current) {
     harnessProbeDone.current = true
     setTimeout(() => openWritingPlan(), 1200)
-    setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '换个目标') { b.click(); break } }, 5000)
+    const esc = () => {
+      const target = document.activeElement ?? window
+      const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      target.dispatchEvent(ev)
+      void api.clientLog('warn', `esc → ${(target as HTMLElement).tagName ?? 'window'}.${(target as HTMLElement).className ?? ''} prevented=${ev.defaultPrevented} backdrops=${document.querySelectorAll('.palette-backdrop').length}`, '', 'probe')
+    }
+    if (probe !== 'plan-panel:esc') setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '换个目标') { b.click(); break } }, 5000)
+    if (probe !== 'plan-panel:abandon') setTimeout(esc, 6500)
   }
   // 导入断点续跑：打开导入页，点「上次没跑完的导入」里的「继续」，看进度条 / 预估 / 用量
   if (probe === 'import-resume' && !harnessProbeDone.current) {

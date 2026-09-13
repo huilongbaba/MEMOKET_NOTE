@@ -44,6 +44,14 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
   const sections = isActive ? harness.sections : localSections
   const running = isActive && harness.running
 
+  // Esc 关面板（Trilium 的对话框都是 Esc 关）。上面叠着确认框时 Esc 只关确认框：
+  // 确认框自己拦住了事件，这里看到的 defaultPrevented 就是 true。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   useEffect(() => {
     api.getWritingPlan(parent.note_id).then((r) => {
       setLocalPlan(r.plan)

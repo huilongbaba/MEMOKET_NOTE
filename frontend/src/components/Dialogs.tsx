@@ -65,7 +65,7 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
             if (e.key === 'ArrowDown') { e.preventDefault(); setI((v) => Math.min(v + 1, items.length - 1)) }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setI((v) => Math.max(v - 1, 0)) }
             else if (e.key === 'Enter') { e.preventDefault(); choose(i) }
-            else if (e.key === 'Escape') { e.preventDefault(); req.resolve(null) }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(null) }
           }}
         />
         <div className="palette-list">
@@ -103,7 +103,7 @@ export function TextPrompt({ req }: { req: PromptRequest }) {
           ref={input} value={v} onChange={(e) => setV(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); req.resolve(v) }
-            else if (e.key === 'Escape') { e.preventDefault(); req.resolve(null) }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(null) }
           }}
         />
         <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
@@ -137,7 +137,7 @@ export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(false)}>
       <div className="palette" role="alertdialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}
-           onKeyDown={(e) => { if (e.key === 'Escape') req.resolve(false) }}>
+           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(false) } }}>
         <div style={{ fontWeight: 600, padding: '2px 4px 4px' }}>{req.title}</div>
         {req.detail && <div className="muted" style={{ fontSize: 13, padding: '0 4px 8px', whiteSpace: 'pre-wrap' }}>{req.detail}</div>}
         <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>

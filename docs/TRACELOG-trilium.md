@@ -2655,3 +2655,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 静态扫：前端只剩一处 `window.confirm`——写作计划面板的「换个目标」，Electron 里弹的是系统原生框，跟整套界面不是一个风格。改走 App 的 `askConfirm`（跟删子树同一个框，危险态焦点在取消），面板多一个 `confirm` prop。`console.log` 零处，后端 print 都带 `[模块]` 前缀。
 - 接上之后实拍没弹出来：确认框和写作计划面板用的是同一个 `.palette-backdrop`（z-index 200），确认框在 DOM 里排在面板前面，被面板盖住了。挪到面板之后渲染，加了注释说明为什么顺序不能动。
 - 新探针 `plan-panel:abandon`：开面板后 5 秒点「换个目标」（要那个文件夹上有 active 计划——dev 库现在没有，我临时插一行 `probe-r306-*` 拍完即删）。第三张实拍：「放弃「…」这份计划?」+ 取消 / 红色「放弃计划」浮在面板之上。前端 87。
+
+## [335] 巡检第 307 轮：叠着的浮层谁吃 Esc（2026-09-13）
+
+- 第 306 轮把确认框叠到写作计划面板上之后顺着查 Esc：面板本来**没有** Esc（只能点 × 或点外面），确认框的 Esc 在元素上处理但不拦事件，⌘K 面板的 window 监听不管开没开都吃 Esc 也不拦。
+- 改：面板加 window 级 Esc（`defaultPrevented` 的跳过）；确认框 / 文本输入框 / 选择器的 Esc `preventDefault + stopPropagation`；⌘K 只在开着时拦 Esc。规则一句话：Esc 只关最上面一层。
+- 探针 `plan-panel:abandon-esc`（确认框上按 Esc → 只关确认框，面板留着）、`plan-panel:esc`（面板上按 Esc → 面板关掉），都拍到了预期结果；探针日志会写 `esc → 目标 prevented= backdrops=`。注意快门要 10 秒：8.5 秒时按键还没到，拍的是按之前，白查了一轮。前端 87。
