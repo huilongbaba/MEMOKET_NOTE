@@ -3611,3 +3611,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 上一轮在 search.py 里又写了一条 `_SPEAKER_TERM`——后端 who.py、前端 kbNoise.ts 已经各有一条同样的了。改成复用 `who.is_speaker_tag`（光秃秃的「speaker / 说话人」另算）。测试 21 条过，自召回 60/60 不变。`recall_selfcheck.py terrence 20 3` 也跑通（20/19）。
 - scratchpad 清了第 470 轮之前的截图 / 日志（13 张）；剩下 334MB 里 186MB 是 Trilium 源码快照、104MB 是 memoket-kite 克隆，都是比对要用的，留着。
+
+## [553] 第 529 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 952 通过；前端 tsc + eslint + vitest 129 + 17 条 check / smoke 全过。
