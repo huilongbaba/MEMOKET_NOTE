@@ -1966,3 +1966,10 @@ localStorage 取）→ hooks/note.py 两处 `_retrieve(scope=)`、memory_tools �
 对 dev 库跑了一遍孤儿查询：branches / 引用 / 历史版本都干净（删笔记时一起走），但作废计划下
 指着已删笔记的 `writing_sections` 有 261 行、导回记录有 1 行指着既不在笔记也不在回收站的 id。
 `sweep_orphan_plans` 顺手清这两类；启动扫一遍。
+
+## [203] 巡检第 174 轮：测试往开发库写东西（2026-09-13）
+
+`harness_runs` 里有 `t:n` / `chart:n` 各 50 行——是 `test_harness_loop` 带 BASE 中间件跑循环时
+Save / RunHistory 写进了**开发库**：96 个测试文件里只有 47 个记得 monkeypatch `store._db_path`。
+加 `tests/conftest.py` 的 autouse 夹具：每个测试默认用自己的临时 sqlite；跑完整套开发库的 mtime
+不变。顺手清掉那 100 行。pytest 859。
