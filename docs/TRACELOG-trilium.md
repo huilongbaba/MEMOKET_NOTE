@@ -2592,3 +2592,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [322] 巡检第 294 轮：去重之后实拍树与首页（2026-09-13）
 
 - `kbexpand:kb:entities`：实体层「memo cat 169」一行（不再有 MemoCat），Facebook 211 / app 190 …；首页实体 chip 走同一套组。架构文档补上 `kb/entities.py`。没改代码。
+
+## [323] 巡检第 295 轮：去重之后各种写法进实体页（2026-09-13）
+
+- `/api/kb/entity/{memocat | memo_cat | MemoCat | applewatch | Apple Watch}` 都落到代表（memo_cat 169 条、apple_watch 59 条），带 `variants`；实体索引页的 chip 悬停能看到其它写法（preview）。没改代码。
