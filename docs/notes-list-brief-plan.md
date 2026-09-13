@@ -22,9 +22,9 @@
 
 ## 改法（三步，每步都能单独发）
 
-1. **服务端**：`GET /api/notes` 加 `?fields=brief`，返回 `list_notes_brief` 那套字段（id / title / icon /
-   updated_at / created_at / has_body / first_body / chars / spine? 不带），不带 `content`。默认行为不变，
-   老客户端不受影响。契约测试加一条。
+1. **服务端**：其实已经有了——`GET /api/notes/brief`（`NoteBriefPage`：id / title / updated_at / pinned /
+   icon / preview / has_body / first_body / snippet），⌘K 和 `[[` 补全在用。要补的只有列表页可能用到的
+   `created_at` / `chars`（信息面板拿 `current` 算，不一定需要）。`GET /api/notes` 全文版先留着不删。
 2. **前端类型**：`Note` 拆成 `NoteHead`（列表用）和 `Note`（= NoteHead + content + spine + beats）。`notes`
    状态改成 `NoteHead[]`；`open(n)` / `openInSplit` / `QuickView` 先 `api.getNote(id)` 再进编辑器
    （一次 GET，几 ms；探针里多一个 await）。`previewLine(n.content)` 的四处换成 `n.first_body`；
