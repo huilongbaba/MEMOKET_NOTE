@@ -82,7 +82,7 @@ def note_links(note_id: str, user: str = Depends(current_user)):
         t = store.get_note(user, target)
         if t:
             outgoing.append(CitingNoteOut(id=t["id"], title=t["title"], updated_at=t["updated_at"],
-                                          preview=(t["content"] or "")[:80]))
+                                          preview=(t["content"] or "")[:80], icon=t.get("icon") or ""))
     return NoteLinksOut(outgoing=outgoing, backlinks=[CitingNoteOut(**r) for r in store.backlinks(user, note_id)])
 
 

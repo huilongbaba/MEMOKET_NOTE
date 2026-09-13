@@ -1138,7 +1138,7 @@ def notes_citing(user_id: str, fact_id: str) -> list[dict]:
     """
     with connect() as c:
         rows = c.execute(
-            "SELECT n.id, n.title, n.updated_at, substr(n.content,1,80) AS preview FROM note_citations k"
+            "SELECT n.id, n.title, n.updated_at, n.icon, substr(n.content,1,80) AS preview FROM note_citations k"
             " JOIN notes n ON n.id = k.note_id"
             " WHERE k.user_id=? AND k.fact_id=? ORDER BY n.updated_at DESC",
             (user_id, fact_id)).fetchall()
@@ -1165,7 +1165,7 @@ def backlinks(user_id: str, note_id: str) -> list[dict]:
     """
     with connect() as c:
         rows = c.execute(
-            "SELECT id, title, updated_at, substr(content,1,80) AS preview FROM notes"
+            "SELECT id, title, updated_at, icon, substr(content,1,80) AS preview FROM notes"
             " WHERE user_id=? AND id<>? AND content LIKE ? ORDER BY updated_at DESC",
             (user_id, note_id, f"%](note://{note_id})%")).fetchall()
     return [dict(r) for r in rows]

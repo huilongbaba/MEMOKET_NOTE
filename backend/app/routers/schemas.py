@@ -398,6 +398,7 @@ class CitingNoteOut(BaseModel):
     title: str
     updated_at: str
     preview: str = ""      # 标题是「未命名」时前端拿正文首行当显示名
+    icon: str = ""         # 笔记图标（boxicons 类名，空 = 默认）
 
 
 class RevisionOut(BaseModel):

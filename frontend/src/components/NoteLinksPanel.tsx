@@ -22,7 +22,7 @@ export default function NoteLinksPanel({ noteId, content, onOpen }: {
     ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>{empty}</p>
     : rows.map((n) => (
       <a key={n.id} className="kb-link" onClick={() => onOpen(n.id)}>
-        <i className="bx bx-note" /> <span className="ellipsis">{displayTitle(n)}</span>
+        <i className={'bx ' + (n.icon || 'bx-note')} /> <span className="ellipsis">{displayTitle(n)}</span>
         <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
       </a>
     ))

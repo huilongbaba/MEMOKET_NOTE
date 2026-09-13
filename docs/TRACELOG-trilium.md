@@ -2799,3 +2799,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [363] 第 335 轮：⌘K 行带笔记图标（2026-09-13）
 
 - 笔记图标做了之后 ⌘K 的笔记行还是清一色 bx-note。`/api/notes/brief` 两条 SELECT 加 icon、NoteBrief 加字段，前端行图标 `n.icon || 'bx-note'`。实拍 `palette:harness`：那篇带火箭（拍前设、拍完清）。后端 904 / 前端 95。
+
+## [364] 第 336 轮：欢迎页最近列表、链接面板、反向链接的行也带图标（2026-09-13）
+
+- 扫了一遍前端里写死 bx-note 的地方：欢迎页最近笔记（Note 对象本来就有 icon，直接用）、ribbon「链接」的链出 / 链入行（CitingNoteOut 加 icon；backlinks / notes_citing 两条 SELECT 带 icon；outgoing 从笔记取）。`[[链接]]` 行内小图标和知识库里「打开摄入它的那篇」的 chip 保持 bx-note——那两个是「这是一篇笔记」的类型标记，不是某篇的标识。
+- 测试：链接面板链出行 / 反向链接行都带图标。后端 905 / 前端 95。

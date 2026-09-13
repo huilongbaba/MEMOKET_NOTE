@@ -590,7 +590,7 @@ export const restoreTrash = (id: string) => fetch(`/api/notes/trash/${id}/restor
 export const purgeTrash = (id: string) => fetch(`/api/notes/trash/${id}`, { method: 'DELETE', headers: headers() }).then(json<{ ok: boolean }>)
 
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
-export type CitingNote = { id: string; title: string; updated_at: string; preview?: string }
+export type CitingNote = { id: string; title: string; updated_at: string; preview?: string; icon?: string }
 
 /** 历史版本（Trilium 的 note revisions）。列表不带正文，点开一版才取。 */
 export type NoteRevision = { id: string; note_id: string; title: string; reason: string; created_at: string; chars: number }

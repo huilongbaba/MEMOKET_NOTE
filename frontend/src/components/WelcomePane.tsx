@@ -57,7 +57,7 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
           <div className="welcome-recent">
             {recent.map((n) => (
               <a key={n.id} className="kb-link" onClick={() => onOpenNote(n)}>
-                <i className="bx bx-note" /> <span className="ellipsis">{displayTitle(n)}</span>
+                <i className={'bx ' + (n.icon || 'bx-note')} /> <span className="ellipsis">{displayTitle(n)}</span>
                 <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
               </a>
             ))}

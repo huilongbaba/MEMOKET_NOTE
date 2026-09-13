@@ -34,3 +34,14 @@ def test_图标名只认_boxicons_类名(client):
         assert client.post(f"/api/notes/{n['id']}/icon", json={"icon": bad}).status_code == 422, bad
     assert client.post(f"/api/notes/{n['id']}/icon", json={"icon": "bxs-star"}).status_code == 200
     assert client.post("/api/notes/nope/icon", json={"icon": "bx-rocket"}).status_code == 404
+
+
+def test_链接面板和反向链接的行也带图标(client):
+    a = client.post("/api/notes", json={"title": "甲", "content": "x"}).json()
+    client.post(f"/api/notes/{a['id']}/icon", json={"icon": "bx-star"})
+    b = client.post("/api/notes", json={"title": "乙", "content": f"链到 [甲](note://{a['id']})"}).json()
+    client.post(f"/api/notes/{b['id']}/icon", json={"icon": "bx-heart"})
+    links_b = client.get(f"/api/notes/{b['id']}/links").json()
+    assert links_b["outgoing"][0]["icon"] == "bx-star"
+    links_a = client.get(f"/api/notes/{a['id']}/links").json()
+    assert links_a["backlinks"][0]["icon"] == "bx-heart"
