@@ -1332,7 +1332,9 @@ def tree(user_id: str) -> list[dict]:
             # 库里 18 篇有 15 篇标题字面就是「未命名」（旧界面建笔记时的
             # 默认值），一列二十个「未命名」的树是没法用的。
             # 只取前 80 字：树是导航，不是预览器。
-            "       substr(n.content, 1, 80) AS preview,"
+            # preview 只有占位标题（「未命名」那几种）的笔记才用得上——树 / 标签拿它当显示名；
+            # 起了名的笔记 80 字白带：shot-perf 413 篇树 208KB，一半是这个（第 437 轮）
+            "       CASE WHEN n.title IN ('', '未命名', 'Untitled', 'note') THEN substr(n.content, 1, 80) ELSE '' END AS preview,"
             # 跟知识库的连接，树上直接看得见：引用了几条、摄入过没有。
             # 一次查完，不要每个节点问一次。
             "       n.ingested_at,"
