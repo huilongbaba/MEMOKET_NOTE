@@ -74,7 +74,8 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
       )}
       <KbSection title="事实">
         <FactList facts={p.facts} actions={actions} />
-        <Pager total={p.facts_total} limit={p.limit} offset={p.offset} onPage={setOffset} />
+        <Pager total={p.facts_total} limit={p.limit} offset={p.offset} onPage={setOffset}
+               tail={<a href="#" className="kb-link-inline" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:facts?entity=' + p.code) }}>去事实表按类型 / 说话人 / 主题筛</a>} />
       </KbSection>
     </div>
   )

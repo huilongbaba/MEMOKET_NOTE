@@ -147,7 +147,7 @@ export function FactList({ facts, actions, showTopics }: { facts: FactDetail[]; 
   )
 }
 
-export function Pager({ total, limit, offset, onPage }: { total: number; limit: number; offset: number; onPage: (o: number) => void }) {
+export function Pager({ total, limit, offset, onPage, tail }: { total: number; limit: number; offset: number; onPage: (o: number) => void; tail?: ReactNode }) {
   if (total <= limit) return null
   const page = Math.floor(offset / limit) + 1, pages = Math.ceil(total / limit)
   return (
@@ -155,6 +155,8 @@ export function Pager({ total, limit, offset, onPage }: { total: number; limit: 
       <button className="icon-btn" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}><i className="bx bx-chevron-left" /></button>
       <span className="muted" style={{ fontSize: 12 }}>{page} / {pages} · 共 {total} 条</span>
       <button className="icon-btn" disabled={offset + limit >= total} onClick={() => onPage(offset + limit)}><i className="bx bx-chevron-right" /></button>
+      {/* 一页页翻 121 页没人翻得动：翻页器旁边给一条「去事实表筛」的出口（主题 / 实体页传进来） */}
+      {tail && <span className="muted" style={{ fontSize: 12 }}>· {tail}</span>}
     </div>
   )
 }

@@ -1058,3 +1058,7 @@ kbd {
 .icon-picker-cell:hover { background: var(--hover, rgba(127,127,127,.15)); }
 .icon-picker-cell.active { background: var(--accent); color: var(--accent-fg); }
 .icon-picker-foot { display: flex; justify-content: flex-end; padding-top: 6px; }
+
+/* 段落里的一小截可点文字（「去事实表筛」这种） */
+.kb-link-inline { color: var(--accent); text-decoration: none; }
+.kb-link-inline:hover { text-decoration: underline; }
