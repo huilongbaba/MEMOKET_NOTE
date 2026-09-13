@@ -132,7 +132,6 @@ async def health():
     之后这里也要跟着显示 GPT，不然这个健康检查在切换之后就是在撒谎。
     """
     active = store.get_active_llm_config()
-    s = get_settings()
 
     async def llm_healthy() -> bool:
         try:
