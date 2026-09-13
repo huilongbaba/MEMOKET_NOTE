@@ -2907,3 +2907,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [388] 第 360 轮：重打 dmg（2026-09-13）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 2 秒、health ok、后端 rss 81MB、空库 kb/tree 8 行、css 里有 `.kb-link-inline`。
+
+## [389] 巡检第 361 轮：侧栏快速搜索里的三篇同名（2026-09-13）
+
+- `search:创业 --dark --win=820x600`：三篇「创业一年回顾」各自带一行命中片段 + 日期，分得开。Agent 运行面板长在右栏「计划」标签的骨架下面，只有跑过才有内容，单测（harnessStreamRounds）盯着轮次顺序，不另拍。没改代码。
