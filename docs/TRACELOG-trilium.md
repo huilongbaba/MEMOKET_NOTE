@@ -3189,3 +3189,11 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [454] 巡检第 426 轮：.gitignore（2026-09-14）
 
 - backend/data · frontend/dist · desktop/out · 两个 node_modules · .venv · backend/dist 都在忽略里，仓库 465 个文件里没有一个来自这些目录。没改代码。
+
+## [455] 巡检第 427 轮：剩下的 6 条测试 warning、依赖更新后的编辑器（2026-09-14）
+
+- 6 条 warning：starlette testclient 的 httpx 弃用提示（环境层面）、swig（pdf 库）、test_batch_ingest 读 pdf 的 4 条——都不在我们代码里。CodeMirror 6.43.11 之后 `find`（查找 / 替换条、高亮）实拍照旧；主包 1.86 → 1.82MB。没改代码。
+
+## [456] 第 428–429 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 916 通过（6 warnings）；前端 tsc + eslint + vitest 107 + 12 条 check / smoke 全过（依赖更新之后跑的）。
