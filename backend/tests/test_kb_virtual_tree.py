@@ -231,3 +231,18 @@ def test_闭包里没有事实的主题不上树(mem):
     assert {"kb:topic:work", "kb:topic:life", "kb:topic:balance"} <= ids
     topics_row = next(r for r in vt.build(m) if r["note_id"] == "kb:topics")
     assert topics_row["child_count"] == 2          # work / life，不算空的 finance
+
+
+def test_一个分类超过_300_条时树上尾巴给一行去事实表(mem, monkeypatch):
+    m = mem
+    store, _ = m._index()
+    for i in range(305):
+        store.facts[f"big{i}"] = _fact(f"big{i}", f"第 {i} 条", "2026-03-01", topics=["work"])
+    rows = vt.children(m, "kb:topic:work")
+    facts = [r for r in rows if r["note_id"].startswith("kb:fact:")]
+    tail = [r for r in rows if r["note_id"].startswith("kb:facts?")]
+    assert len(facts) == vt.MAX_CHILDREN and len(tail) == 1
+    assert tail[0]["note_id"] == "kb:facts?topic=work" and tail[0]["title"] == "还有 7 条 · 去事实表看"   # 307 - 300：305 条新的 + f1（work）+ f2（balance 是 work 的子主题，闭包算进来）
+    assert tail[0]["child_count"] == 0 and tail[0]["position"] == vt.MAX_CHILDREN
+    # 没超的不加尾巴
+    assert not any(r["note_id"].startswith("kb:facts?") for r in vt.children(m, "kb:topic:life"))

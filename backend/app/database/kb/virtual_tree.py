@@ -273,7 +273,13 @@ def children(mem, node: str) -> list[dict]:
     else:
         return []
     picked.sort(key=lambda f: (f.when or "", f.id), reverse=True)
-    return [_fact_row(f, node, i) for i, f in enumerate(picked[:MAX_CHILDREN])]
+    rows = [_fact_row(f, node, i) for i, f in enumerate(picked[:MAX_CHILDREN])]
+    # 超过 MAX_CHILDREN 的不再往树上堆，尾巴给一行「还有 N 条 · 去事实表看」（terrence 库 work 主题 6034 条，
+    # 树上只见 300 条却没人告诉你还有 5700 条）。事实表能按主题 / 实体筛，月份 / 会议自己的页面会分页，不加尾巴。
+    if len(picked) > MAX_CHILDREN and kind in ("topic", "entity"):
+        rows.append(_row(f"kb:facts?{kind}={key}", node,
+                         f"还有 {len(picked) - MAX_CHILDREN} 条 · 去事实表看", position=MAX_CHILDREN))
+    return rows
 
 
 def is_virtual(note_id: str) -> bool:

@@ -61,7 +61,10 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // kbexpand:<id> → 把树上的某个知识库分类展开（看懒加载的那一层长什么样）
   if (probe?.startsWith('kbexpand:') && !harnessProbeDone.current) {
     harnessProbeDone.current = true
-    const id = probe.slice(9)
+    // `kbexpand:<id>:end` → 展开后把左栏滚到底（看 300 条之后的尾巴行）
+    const toEnd = probe.endsWith(':end')
+    const id = toEnd ? probe.slice(9, -4) : probe.slice(9)
+    if (toEnd) setTimeout(() => { const el = document.querySelector('.left-pane-body'); if (el) el.scrollTop = el.scrollHeight }, 4500)
     // 父链也要展开（kb:entity:x 挂在 kb:entities 下，那层是懒加载的，也要取）
     const parent = ({ entity: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent', etype: 'kb:entities' } as Record<string, string>)[id.split(':')[1]]
     setTimeout(() => {

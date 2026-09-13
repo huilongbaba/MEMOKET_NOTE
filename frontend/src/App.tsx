@@ -410,7 +410,7 @@ export default function App() {
     // 库里已经没有的笔记（别处删的、导入回滚的）标签也收掉——留着点了只会「找不到」
     const ids = new Set(list.map((n) => n.id))
     // 虚拟标签也过一遍：不认识的 kb:* id（旧版本留下的 kb:overview）一起收掉
-    const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|material|fact|facts|etype)(:|$)/.test(id) || id.startsWith('app:')
+    const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|material|fact|facts|etype)(:|\?|$)/.test(id) || id.startsWith('app:')
     setTabs((prev) => prev
       .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
       // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
