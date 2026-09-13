@@ -3075,3 +3075,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [427] 第 399 轮：重打 dmg 前的全量门（2026-09-13）
 
 - 后端 911 通过；前端 tsc + eslint + vitest 104 + 12 条 check / smoke 全过。
+
+## [428] 第 400 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟这次带 `X-User-Id: terrence`（正式版的真身份）：kb/tree 180 行 / 20406 条事实、23 篇笔记、health ok、`/docs` 200——正式版的库跟 dev 一样满，前 39 次冒烟看到的「空库」都是 default 用户。
