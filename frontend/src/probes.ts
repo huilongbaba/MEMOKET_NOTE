@@ -137,6 +137,12 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  // 写作计划面板上点「换个目标」，看放弃计划的确认框（要那个文件夹上有计划）
+  if (probe === 'plan-panel:abandon' && tree.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => openWritingPlan(), 1200)
+    setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '换个目标') { b.click(); break } }, 5000)
+  }
   // 导入断点续跑：打开导入页，点「上次没跑完的导入」里的「继续」，看进度条 / 预估 / 用量
   if (probe === 'import-resume' && !harnessProbeDone.current) {
     harnessProbeDone.current = true

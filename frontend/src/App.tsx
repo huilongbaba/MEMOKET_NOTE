@@ -2596,7 +2596,6 @@ export default function App() {
              onChange={(e) => { void importMarkdown(e.target.files, importUnder.current); e.target.value = '' }} />
       {quick && <QuickView note={quick} onClose={() => setQuick(null)} onOpen={(n) => void switchTo(n)} />}
       {prompt && <TextPrompt req={prompt} />}
-      {confirmReq && <ConfirmDialog req={confirmReq} />}
       <Toaster />
       <CommandPalette onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else void api.getNote(id).then((fresh) => switchTo(fresh)).catch(() => toast('这篇笔记不在了', 'error')) }} onInsertFact={insertAtCursor} />
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
@@ -2608,8 +2607,12 @@ export default function App() {
           harness={harness}
           onRun={() => runHarness(writingPlanParent)}
           onToggleFollow={() => setHarness((h) => (h ? { ...h, follow: !h.follow } : h))}
+          confirm={askConfirm}
         />
       )}
+      {/* 确认框必须排在写作计划面板之后：两者的遮罩同一层（z-index 200），谁在 DOM 里靠后谁在上面。
+         排前面的话，面板上点「换个目标」弹出的确认框会被面板自己盖住（第 306 轮实拍）。 */}
+      {confirmReq && <ConfirmDialog req={confirmReq} />}
       {/* 关掉面板不再停止 harness（见 HarnessState 注释）——这块是面板关着
          的时候唯一能看到"还在跑"的地方，点了直接重新打开对应文件夹的面板。 */}
       {harness?.running && !writingPlanParent && (

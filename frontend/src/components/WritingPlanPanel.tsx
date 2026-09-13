@@ -22,13 +22,15 @@ const STATUS_LABEL: Record<WritingSection['status'], string> = {
  * harness（或者活跃的是别的文件夹）时，本地拉一份这个文件夹当前的
  * plan/sections 做"静止"展示。
  */
-export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harness, onRun, onToggleFollow }: {
+export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harness, onRun, onToggleFollow, confirm }: {
   parent: TreeRow
   onClose: () => void
   onNoteChanged: () => void
   harness: HarnessState | null
   onRun: () => void
   onToggleFollow: () => void
+  /** App 的确认框（跟删子树同一个）；原来这里是 window.confirm，Electron 里弹的是系统原生框，跟整套界面不是一个风格，深色下尤其突兀。 */
+  confirm: (req: { title: string; detail?: string; okLabel?: string; danger?: boolean }) => Promise<boolean>
 }) {
   const [localPlan, setLocalPlan] = useState<WritingPlan | null>(null)
   const [localSections, setLocalSections] = useState<WritingSection[]>([])
@@ -68,7 +70,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
    * 已经写出来的笔记**一篇都不动**——放弃的是这份计划，不是它的产出。 */
   async function abandon() {
     if (!plan) return
-    if (!window.confirm(`放弃「${plan.goal}」这份计划？已经写出来的笔记会保留，只是不再按这个目标往下写。`)) return
+    if (!await confirm({ title: `放弃「${plan.goal}」这份计划？`, detail: '已经写出来的笔记会保留，只是不再按这个目标往下写。', okLabel: '放弃计划', danger: true })) return
     try {
       await api.abandonWritingPlan(parent.note_id)
       setLocalPlan({ ...plan, status: 'abandoned' })
