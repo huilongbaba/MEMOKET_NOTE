@@ -160,6 +160,19 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user ON harness_snapshots(user_id, crea
 
 -- 笔记历史版本（Trilium 的 note revisions）。保存时正文变了、且离上一版超过
 -- 间隔就把**旧**正文存一份；恢复某版之前先把当前存一份，恢复永远可逆。
+-- 模型用量账本：每次调用一行（谁、哪个功能、哪个模型、token、耗时）。设置页「用量」看的就是它。
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           TEXT NOT NULL DEFAULT '',
+    feature           TEXT NOT NULL DEFAULT '',
+    model             TEXT NOT NULL DEFAULT '',
+    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    ms                INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_user_time ON llm_usage(user_id, created_at);
+
 -- 最近删除（Trilium 的删除是可找回的）：删掉的笔记连同它的 branches 存一份快照，30 天内可恢复
 CREATE TABLE IF NOT EXISTS note_trash (
     user_id     TEXT NOT NULL,
@@ -792,6 +805,35 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
         drop(note_id)
         c.commit()
     return removed
+def record_llm_usage(user_id: str, feature: str, model: str, prompt_tokens: int, completion_tokens: int, ms: int) -> None:
+    with connect() as c:
+        c.execute("INSERT INTO llm_usage (user_id,feature,model,prompt_tokens,completion_tokens,ms,created_at) VALUES (?,?,?,?,?,?,?)",
+                  (user_id, feature[:60], model[:80], int(prompt_tokens or 0), int(completion_tokens or 0), int(ms or 0), _now()))
+
+
+def usage_summary(user_id: str) -> dict:
+    """今天 / 7 天 / 30 天 / 全部：调用次数、token；再按功能列前几个（30 天内）。"""
+    now = datetime.now(timezone.utc)
+    out: dict = {}
+    with connect() as c:
+        for key, days in (("today", 1), ("week", 7), ("month", 30), ("all", None)):
+            if days is None:
+                row = c.execute("SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), COALESCE(SUM(ms),0)"
+                                " FROM llm_usage WHERE user_id=?", (user_id,)).fetchone()
+            else:
+                since = (now - __import__("datetime").timedelta(days=days)).isoformat(timespec="seconds")
+                row = c.execute("SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), COALESCE(SUM(ms),0)"
+                                " FROM llm_usage WHERE user_id=? AND created_at>=?", (user_id, since)).fetchone()
+            out[key] = {"calls": row[0], "prompt_tokens": row[1], "completion_tokens": row[2], "ms": row[3]}
+        since = (now - __import__("datetime").timedelta(days=30)).isoformat(timespec="seconds")
+        rows = c.execute("SELECT feature, COUNT(*), COALESCE(SUM(prompt_tokens+completion_tokens),0)"
+                         " FROM llm_usage WHERE user_id=? AND created_at>=? GROUP BY feature ORDER BY 3 DESC LIMIT 8",
+                         (user_id, since)).fetchall()
+        out["by_feature"] = [{"feature": r[0], "calls": r[1], "tokens": r[2]} for r in rows]
+        out["models"] = [r[0] for r in c.execute("SELECT DISTINCT model FROM llm_usage WHERE user_id=? AND created_at>=?", (user_id, since)).fetchall()]
+    return out
+
+
 TRASH_KEEP_DAYS = 30
 
 

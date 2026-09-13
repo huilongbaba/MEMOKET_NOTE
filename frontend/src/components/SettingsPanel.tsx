@@ -5,6 +5,41 @@ import type { ProviderConfig } from '../api'
 import { toast } from '../toast'
 import { applyTheme, canSwitchTheme, getTheme, type Theme } from '../theme'
 
+const FEATURE_LABEL: Record<string, string> = {
+  'magic-tap': '续写', 'note-harness/run': '智能续写', 'note-harness/resume': '智能续写', 'writing-plan/run': '无限续写',
+  'compose/block': '/ 块生成', 'compose/restructure': '智能排版', skeleton: '骨架', rewrite: '重写 / 润色', expand: '扩写',
+  verify: '校验', digest: '定期回顾', 'memory/trace': '来龙去脉', 'memory/relations': '记忆关系', 'skills/generate': 'Skill 生成',
+  'kb/quality/judged': '抽取质量', 'ingest/text': '存入知识库',
+}
+const fmtTok = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+/** 模型用量：今天 / 7 天 / 30 天 / 全部，按功能分。付费 API 的用户得知道钱花在哪儿了。 */
+function UsageSection() {
+  const [u, setU] = useState<api.UsageSummary | null>(null)
+  useEffect(() => { api.usageSummary().then(setU).catch(() => setU(null)) }, [])
+  if (!u) return null
+  const cell = (b: api.UsageBucket) => `${b.calls} 次 · ${fmtTok(b.prompt_tokens + b.completion_tokens)} token`
+  return (
+    <>
+      <p className="kb-section-title" style={{ marginTop: 18 }}>模型用量</p>
+      <div className="row" style={{ gap: 14, flexWrap: 'wrap', fontSize: 13 }}>
+        <span><span className="muted">今天</span> {cell(u.today)}</span>
+        <span><span className="muted">7 天</span> {cell(u.week)}</span>
+        <span><span className="muted">30 天</span> {cell(u.month)}</span>
+        <span><span className="muted">全部</span> {cell(u.all)}</span>
+      </div>
+      {u.by_feature.length > 0 && (
+        <div className="chip-wrap" style={{ marginTop: 6 }}>
+          {u.by_feature.map((f) => <span key={f.feature} className="badge" title={`${f.feature} · ${f.calls} 次`}>{FEATURE_LABEL[f.feature] ?? f.feature} {fmtTok(f.tokens)}</span>)}
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+        token 数取自供应商响应，按 30 天内的功能排；知识库抽取走 KITE 自己的调用，那部分在导入任务里按字数估算。{u.models.length ? ` 模型：${u.models.join('、')}` : ''}
+      </p>
+    </>
+  )
+}
+
 /** 外观三选一。放在 LLM 之前——Trilium 的设置也是 Appearance 打头。 */
 function AppearanceSection() {
   const [theme, setTheme] = useState<Theme>(getTheme())
@@ -174,6 +209,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
             <button className="primary" onClick={save} disabled={saving} style={{ marginTop: 8 }}>
               {saving ? <span className="spinner" /> : '保存'}
             </button>
+            {embedded && <UsageSection />}
           </div>
         )}
       </div>

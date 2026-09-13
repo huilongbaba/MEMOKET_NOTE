@@ -1926,3 +1926,13 @@ KITE 的 ask() 在空库上照样跑一次规划调用再答「No information」
 四条路进门先看一眼：空正文且空标题、空选区直接 400（「先写点内容再生成骨架」「没有选中内容」），
 一次模型调用不花；关系 / 召回在空库上本来就是 0 秒。`tests/test_input_guards.py` 用打桩的模型断言
 一次都没调。
+
+## [198] 巡检第 169 轮：模型用量账本（2026-09-13）
+
+用 GPT 的用户不知道钱花在哪儿：`util/llm.py` 没有任何用量记录。加 `llm_usage` 表：非流式从响应体
+的 usage 取，流式给 `stream_options.include_usage` 让最后一帧带 usage，`_consume_sse` 收完记一笔；
+「谁、哪个功能」由请求中间件按 X-User-Id 和路径（去掉 /api/ 和 id 段：notes/abc/sync → notes/sync）
+放进 contextvar，后台任务里是空。`GET /api/settings/usage`：今天 / 7 天 / 30 天 / 全部的次数和
+token，按功能列前 8，用过的模型。设置页多一节「模型用量」，功能名映射成中文（续写 / 智能续写 /
+块生成 / 校验…）。KITE 抽取那部分仍按字数估（import-sync-plan §4.3 更新）。批量关系判定
+80 段 0.93 秒、记账失败不影响调用。

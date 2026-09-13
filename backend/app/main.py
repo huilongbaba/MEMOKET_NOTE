@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from .database import backup, store
 from .database.ingest import asr
 from .database.kite.kite_memory import UserMemory
-from .util import parent_watch
+from .util import llm, parent_watch
 from .util.config import get_settings
 from .routers import (assets, client_log, compose, compose_block, export, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
                       settings as settings_router, skills, tree, writing_plan)
@@ -59,6 +59,10 @@ _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 @app.middleware("http")
 async def _reject_cross_site_writes(request: Request, call_next):
+    # 顺手给模型用量账本记下「谁、哪个功能」：路径去掉 /api/ 和 id 段（/api/notes/abc/sync → notes/sync）
+    llm.ctx_user.set((request.headers.get("x-user-id") or "default").strip()[:64])
+    parts = [p for p in request.url.path.split("/") if p and p != "api"]
+    llm.ctx_feature.set("/".join(p for p in parts if not (len(p) >= 12 and all(ch in "0123456789abcdef" for ch in p)))[:60])
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin", "")
         if request.headers.get("sec-fetch-site", "") == "cross-site" or \

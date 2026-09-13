@@ -149,4 +149,4 @@ sha 不变就整篇跳过（一次文件读取，零 LLM），变了才删旧 se
 4. §3 笔记侧增量（`notes.source / source_id / content_sha`）。✅ 2026-09-12：`find_note_by_source` 按 (source, source_id) 找旧篇；sha 没变整篇跳过；变了更新正文，本地 `updated_at > imported_at` 就不动只说明；知识库侧变了先 `remove_sessions` 再重抽。
 5. §1 飞书导入。✅ 2026-09-12：`database/ingest/feishu.py`（块 → markdown 纯函数 + 最小客户端）、`POST /api/import/feishu`（app_id / app_secret 每次填、不落库；scope = wiki / drive）。**还没拿真账号跑过**——块类型表按官方文档写，实测有出入再调。
 6. §2 导回（Obsidian 目录写入最先，Notion / 飞书 API 其次）。✅ 2026-09-12：`database/exporters.py`（`render_tree` 是 zip 导出和目录写入共用的渲染；markdown → Notion / 飞书块是纯函数；`NotionWriter` / `FeishuWriter` 最小客户端）、`POST /api/export/{obsidian,notion,feishu}`、`note_remotes` 表（Obsidian 的 remote_id 记写出内容的 sha，「对方改过」= 文件内容不是我们写的那份，比 mtime 稳）、`GET /api/export/remotes/{id}`。导入页多一个「导回」区，信息面板多一行「副本」。桌面壳加 `pick-directory` IPC 选 vault。Notion / 飞书没真账号跑过。
-7. §4.3 用量记账（先估算，后钩子）；§4.5 并发。
+7. §4.3 用量记账（先估算，后钩子）；§4.5 并发。✅ 2026-09-13 记账部分：`util/llm.py` 每次调用把供应商响应里的 usage 记进 `llm_usage`（流式靠 `stream_options.include_usage` 的最后一帧），中间件按 X-User-Id / 路径标「谁、哪个功能」，`GET /api/settings/usage` 汇总今天 / 7 天 / 30 天 / 全部 + 按功能，设置页「模型用量」一节。KITE 抽取那部分仍是导入任务里的字数估算（钩子等上游）。§4.5 并发未做。

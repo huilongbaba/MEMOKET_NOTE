@@ -537,6 +537,11 @@ export const kbDay = (date: string) => fetch(`/api/kb/timeline/${date}`, { heade
 export const kbUnit = (id: string, limit = 50, offset = 0) =>
   fetch(`/api/kb/unit/${encodeURIComponent(id)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbUnitPage>)
 
+/** 模型用量（只记本仓 util/llm 的调用；KITE 抽取在导入任务里按字数估） */
+export type UsageBucket = { calls: number; prompt_tokens: number; completion_tokens: number; ms: number }
+export type UsageSummary = { today: UsageBucket; week: UsageBucket; month: UsageBucket; all: UsageBucket; by_feature: { feature: string; calls: number; tokens: number }[]; models: string[] }
+export const usageSummary = () => fetch('/api/settings/usage', { headers: headers() }).then(json<UsageSummary>)
+
 /** 今天的日记：`日记 / 年 / 月 / 日` 没有就建、有就打开（Trilium 的 day note） */
 export const todayNote = () => fetch('/api/notes/today', { method: 'POST', headers: headers() }).then(json<Note>)
 

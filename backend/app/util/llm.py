@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import re
 
+import contextvars
 import json
+import time
 from typing import AsyncIterator
 
 import httpx
@@ -64,6 +66,23 @@ def sanitize_messages(messages: list[dict]) -> list[dict]:
     return out
 
 
+# 谁在调、为了哪个功能：请求中间件（main.py）按 X-User-Id 和路径设进来，后台任务里是空。
+# 用量账本按这两个字段分组；token 数取供应商响应里的 usage（流式要 stream_options.include_usage）。
+ctx_user: contextvars.ContextVar[str] = contextvars.ContextVar("llm_user", default="")
+ctx_feature: contextvars.ContextVar[str] = contextvars.ContextVar("llm_feature", default="")
+
+
+def _record(usage: dict | None, model: str, t0: float) -> None:
+    """记一笔用量。记账失败不能影响调用本身。"""
+    try:
+        u = usage or {}
+        store.record_llm_usage(ctx_user.get() or "", ctx_feature.get() or "", model,
+                               int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0),
+                               int((time.perf_counter() - t0) * 1000))
+    except Exception:      # noqa: BLE001
+        pass
+
+
 def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
              temperature: float, effort: str,
              tools: list[dict] | None = None) -> dict:
@@ -79,6 +98,8 @@ def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
     }
     # 本地 llama.cpp 与 OpenAI 都认这个字段；商用端点不认时会被忽略。
     body["reasoning_effort"] = effort
+    if stream:
+        body["stream_options"] = {"include_usage": True}   # 流的最后一帧带 usage（OpenAI / llama.cpp 都认）
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
@@ -130,6 +151,7 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
     cfg = store.get_active_llm_config()
     payload = _payload(messages, stream=False, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
+    t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=300.0) as client:
         r = await client.post(f"{cfg['base_url']}/chat/completions",
                               headers=_headers(), json=payload)
@@ -139,6 +161,7 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
                                   headers=_headers(), json=payload)
         r.raise_for_status()
         data = r.json()
+    _record(data.get("usage"), cfg["model"], t0)
     if stats is not None and data.get("choices") and data["choices"][0].get("finish_reason"):
         stats["finish_reason"] = data["choices"][0]["finish_reason"]
     return (data["choices"][0]["message"].get("content") or "").strip()
@@ -190,6 +213,7 @@ async def complete_raw(messages: list[dict], *, max_tokens: int = 1500,
     cfg = store.get_active_llm_config()
     payload = _payload(messages, stream=False, max_tokens=max_tokens,
                        temperature=temperature, effort=effort, tools=tools)
+    t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=300.0) as client:
         r = await client.post(f"{cfg['base_url']}/chat/completions",
                               headers=_headers(), json=payload)
@@ -211,6 +235,7 @@ async def complete_raw(messages: list[dict], *, max_tokens: int = 1500,
                                   headers=_headers(), json=payload)
         r.raise_for_status()
         data = r.json()
+    _record(data.get("usage"), cfg["model"], t0)
     msg = data["choices"][0]["message"]
     # 规整成可以直接 append 回 messages 的形状：content 缺失时补空字符串
     # （有的端点在纯工具调用时干脆不返回 content 字段），并且只保留协议
@@ -233,6 +258,7 @@ async def stream(messages: list[dict], *, max_tokens: int = 1200,
     cfg = store.get_active_llm_config()
     payload = _payload(messages, stream=True, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
+    t0 = time.perf_counter()
     async with httpx.AsyncClient(timeout=600.0) as client:
         url = f"{cfg['base_url']}/chat/completions"
         # 先按原样发一次；如果撞上"这个模型不支持自定义 temperature"，把
@@ -248,12 +274,12 @@ async def stream(messages: list[dict], *, max_tokens: int = 1200,
                 payload.pop("temperature", None)
             else:
                 probe.raise_for_status()
-                async for piece in _consume_sse(probe, stats):
+                async for piece in _consume_sse(probe, stats, model=cfg["model"], t0=t0):
                     yield piece
                 return
         async with client.stream("POST", url, headers=_headers(), json=payload) as r:
             r.raise_for_status()
-            async for piece in _consume_sse(r, stats):
+            async for piece in _consume_sse(r, stats, model=cfg["model"], t0=t0):
                 yield piece
 
 
@@ -313,7 +339,9 @@ async def _consume_tagged(r: httpx.Response) -> AsyncIterator[tuple[str, str]]:
             yield ("output", piece)
 
 
-async def _consume_sse(r: httpx.Response, stats: dict | None = None) -> AsyncIterator[str]:
+async def _consume_sse(r: httpx.Response, stats: dict | None = None, *,
+                       model: str = "", t0: float | None = None) -> AsyncIterator[str]:
+    usage: dict | None = None
     async for line in r.aiter_lines():
         if not line.startswith("data: "):
             continue
@@ -324,6 +352,8 @@ async def _consume_sse(r: httpx.Response, stats: dict | None = None) -> AsyncIte
             obj = json.loads(chunk)
         except json.JSONDecodeError:
             continue
+        if obj.get("usage"):
+            usage = obj["usage"]        # include_usage：最后一帧 choices 为空、只带 usage
         choices = obj.get("choices") or []
         if not choices:
             continue
@@ -332,6 +362,8 @@ async def _consume_sse(r: httpx.Response, stats: dict | None = None) -> AsyncIte
         piece = (choices[0].get("delta") or {}).get("content")
         if piece:
             yield piece
+    if t0 is not None:
+        _record(usage, model, t0)
 
 
 def extract_json(text: str) -> dict | list | None:
