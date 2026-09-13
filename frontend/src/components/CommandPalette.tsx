@@ -82,19 +82,21 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
 
   useEffect(() => {
     if (!open || !q.trim()) { setNotes([]); setNotesTotal(0); setFacts([]); return }
+    let stale = false   // 快速连敲时，上一个字的结果可能比这个字的晚回来，别让它盖掉
     const t = setTimeout(() => {
       // 标题命中的排前面，正文命中的排后面、最多给 8 条——「设」这种字几乎每篇正文
       // 都有，全列出来跟没搜一样
       api.listNotes(q).then((list) => {
+        if (stale) return
         const needle = q.trim().toLowerCase()
         const byTitle = list.filter((n) => displayTitle(n).toLowerCase().includes(needle))
         const byBody = list.filter((n) => !byTitle.includes(n))
         setNotes([...byTitle, ...byBody].slice(0, 8))
         setNotesTotal(list.length)
       }).catch(() => {})
-      api.recall(q, 6).then((r) => setFacts(r.facts)).catch(() => {})
+      api.recall(q, 6).then((r) => { if (!stale) setFacts(r.facts) }).catch(() => {})
     }, 200)
-    return () => clearTimeout(t)
+    return () => { stale = true; clearTimeout(t) }
   }, [q, open])
 
   if (!open) return null

@@ -32,7 +32,7 @@ export default function QuickView({ note, onClose, onOpen }: {
           <button className="icon-btn" title="关闭（Esc）" onClick={onClose}>×</button>
         </div>
         <div className="quick-view-body">
-          <MarkdownEditor content={note.content} readOnly />
+          {note.content.trim() ? <MarkdownEditor content={note.content} readOnly /> : <p className="muted" style={{ margin: '8px 0' }}>这篇还是空的。</p>}
         </div>
       </div>
     </div>

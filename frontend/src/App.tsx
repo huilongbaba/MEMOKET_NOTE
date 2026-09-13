@@ -1260,10 +1260,11 @@ export default function App() {
 
   useEffect(() => {
     if (!noteQuery.trim()) { setSearchResults(null); return }
+    let stale = false
     const t = setTimeout(() => {
-      api.listNotes(noteQuery).then(setSearchResults).catch(() => {})
+      api.listNotes(noteQuery).then((r) => { if (!stale) setSearchResults(r) }).catch(() => {})
     }, 300)
-    return () => clearTimeout(t)
+    return () => { stale = true; clearTimeout(t) }
   }, [noteQuery])
 
   // 摄入是后台任务。任务结束时刷一次树——不刷的话「已入库」的 ⇡ 要等下次
@@ -2538,6 +2539,10 @@ export default function App() {
           <span className="split-title" title={title}>{title}</span>
           {note && <button className="icon-btn" title="在标签里打开" onClick={() => void switchTo(note)}><i className="bx bx-link-external" /></button>}
           <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><i className="bx bx-x" /></button>
+          {/* 右栏收起时那个「展开右栏」小钮是绝对定位在中栏右上角的，分屏一开正好压在「关闭分屏」上（第 198 轮实拍）——分屏时挪进这一行 */}
+          {!rightShown && !focusMode && (
+            <button className="icon-btn" title="展开右栏（⌘⇧\\）" onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}><i className="bx bx-chevrons-left" /></button>
+          )}
         </div>
         <div className="split-body">
           {api.isVirtualId(id)
@@ -2545,7 +2550,7 @@ export default function App() {
                           onOpenNote={(nid) => { const n = notes.find((x) => x.id === nid); if (n) void switchTo(n) }}
                           onCite={current ? (fid, text) => insertAtCursor(`${text} [${fid}]`) : null} />
             : note
-              ? <MarkdownEditor content={note.content} readOnly />
+              ? (note.content.trim() ? <MarkdownEditor content={note.content} readOnly /> : <p className="muted">这篇还是空的。</p>)
               : <p className="muted">这篇笔记已经不在了。</p>}
         </div>
       </>
@@ -2751,7 +2756,7 @@ export default function App() {
       )}
 
       <div className="rest-pane">
-        {!rightShown && !focusMode && (
+        {!rightShown && !focusMode && !split && (
           <button className="right-pane-reopen" title="展开右栏（⌘⇧\\）"
                   onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}><i className="bx bx-chevrons-left" /></button>
         )}
