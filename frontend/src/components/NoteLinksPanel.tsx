@@ -4,12 +4,14 @@ import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
 
 /** ribbon「链接」：这篇链出去的笔记 + 链进来的笔记。`[[` 打字即可插链接。 */
-export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink }: {
+export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, knownIds }: {
   noteId: string
   content: string
   onOpen: (noteId: string) => void
   /** 把链到已删笔记的链接改成纯文本（标题留着） */
   onUnlink?: (ids: string[]) => void
+  /** 库里现有的笔记 id：坏链接在本地按正文算（服务端那份 dangling 要等自动保存落库才更新，晚 1.5 秒） */
+  knownIds?: Set<string>
 }) {
   const [links, setLinks] = useState<api.NoteLinks | null>(null)
   // 正文里链接的数量变了才重查——每个字都查一次没必要
@@ -28,7 +30,9 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink }: {
         <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
       </a>
     ))
-  const dangling = links.dangling ?? []
+  const dangling = knownIds
+    ? Array.from(new Set(Array.from(content.matchAll(/\]\(note:\/\/([0-9a-f]{12})\)/g), (m) => m[1]))).filter((id) => !knownIds.has(id))
+    : (links.dangling ?? [])
   return (
     <div className="stack" style={{ gap: 8 }}>
     {dangling.length > 0 && (

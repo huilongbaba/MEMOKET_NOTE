@@ -772,6 +772,7 @@ export default function App() {
   }
 
   /** 当前在看的东西在树上的路径（面包屑）。克隆时取第一条。 */
+  const noteIdSet = useMemo(() => new Set(notes.map((n) => n.id)), [notes])
   const crumbs = useMemo(() => {
     const id = current?.id ?? virtualId
     if (!id) return [] as TreeRow[]
@@ -2952,7 +2953,7 @@ export default function App() {
               id: 'links', title: '链接', icon: 'bx-link-alt',
               badge: (content.match(/\]\(note:\/\/[0-9a-f]{12}\)/g) ?? []).length || undefined,
               body: <NoteLinksPanel noteId={current.id} content={content}
-                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} />,
+                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} knownIds={noteIdSet} />,
             }, {
               id: 'history', title: '历史', icon: 'bx-history',
               body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length} currentContent={content}

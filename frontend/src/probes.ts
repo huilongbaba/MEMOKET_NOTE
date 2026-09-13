@@ -65,8 +65,10 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       // `…:ribbon:cites:strip` → 文末塞一条指向不存在事实的引用（探针不落库），5 秒后点「清掉这些引用」
       // `…:ribbon:links:unlink` → 文末塞一条链到不存在笔记的链接（不落库），6 秒后点「改成纯文本」
       if (probe.endsWith(':unlink')) {
-        setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n另见 [早就删掉的那篇](note://000000000000)。' } }) }, 2500)
-        setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '改成纯文本') { b.click(); break } }, 6000)
+        // 编辑器可能 2.5 秒时还没挂上（end: 探针也是这么重试的）：没插进去就再试一次
+        const ins = () => { const v = editorViewRef.current; if (v && !v.state.doc.toString().includes('note://000000000000')) v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n另见 [早就删掉的那篇](note://000000000000)。' } }) }
+        setTimeout(ins, 2500); setTimeout(ins, 4000)
+        setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '改成纯文本') { b.click(); break } }, 7000)
       }
       if (probe.endsWith(':strip')) {
         setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n这句的依据早没了 [terrence-9999-FF]。' } }) }, 2500)
