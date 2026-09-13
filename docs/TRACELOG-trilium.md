@@ -2765,3 +2765,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [356] 巡检第 328 轮：列表接口计时（terrence 库，2 万条事实）（2026-09-13）
 
 - 热索引后三次取最小：kb/tree 15ms / 55KB（第 313 轮多算一遍主题闭包没变慢）、tree 1.5ms、brief 1.4ms / 9KB、memory/topics 2ms、memory/entities 3ms / 108KB、stats 0.7ms。没抓到问题。
+
+## [357] 第 329 轮：重打 dmg 前的全量门（2026-09-13）
+
+- 后端 901 通过；前端 tsc + eslint + vitest 95 + 12 条 check / smoke 全过。
