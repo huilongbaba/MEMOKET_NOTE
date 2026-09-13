@@ -157,6 +157,9 @@ def test_元话语在修订之后也要清掉(monkeypatch):
     events = _drive(st)
     assert "不足以说明" not in st.content
     assert any("元话语" in d["detail"] for d in _named(events, "dropped"))
+    # 客户端要在本地删同一句：scrub 事件带全量整句（dropped 那条是给面板看的、截过）
+    (sc,) = _named(events, "scrub")
+    assert sc["why"] == "元话语" and "不足以说明" in sc["sentence"] and sc["sentence"].strip() == sc["sentence"]
 
 
 # -------------------------------------------------------------------- 降级 ---

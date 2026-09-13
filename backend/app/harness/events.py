@@ -49,6 +49,7 @@ class EventType(str, Enum):
 CUSTOM_EVALUATE = "evaluate"
 CUSTOM_REVISION = "revision"
 CUSTOM_DROPPED = "dropped"          # a revision the guards rejected
+CUSTOM_SCRUB = "scrub"              # a whole sentence the server removed mid-round; client mirrors it
 CUSTOM_CHECK_HIT = "check_hit"      # a deterministic Check fired
 CUSTOM_POLICY = "policy"            # runtime policy / replan / plan extended
 CUSTOM_WARNING = "warning"          # one middleware failed, run continues

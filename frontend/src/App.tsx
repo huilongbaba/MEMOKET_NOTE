@@ -1964,6 +1964,18 @@ export default function App() {
         // 挂到第 1 轮上；其余挂在产生它的那一轮
         patchRound(Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
       },
+      onScrub: ({ sentence }) => {
+        // 服务端在轮内把一整句删了（元话语 / 审计腔）：本地同一句也删掉，不然到轮末两边差一整句（第 381 轮真跑）。
+        // 找不到就算了——轮末服务端的正文会对齐回来
+        if (currentRef.current?.id !== noteId || !sentence) return
+        const c = liveContentRef.current
+        const at = c.indexOf(sentence)
+        if (at < 0) return
+        const next = tidyBlankLines(c.slice(0, at) + c.slice(at + sentence.length))
+        if (insertCursorRef.current != null && insertCursorRef.current > at) insertCursorRef.current = Math.max(at, insertCursorRef.current - sentence.length)
+        liveContentRef.current = next
+        setContent(next)
+      },
       onDropped: (detail) => {
         // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
         if (currentRef.current?.id !== noteId) return

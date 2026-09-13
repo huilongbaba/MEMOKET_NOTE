@@ -1010,6 +1010,8 @@ export type NoteHarnessHandlers = {
    * 会动到用户自己写的标题，这四类都是防线正常起作用，一轮能丢好几条。
    * 用 onError 渲染的话界面会变成一片红。 */
   onDropped?: (detail: string) => void
+  /** 服务端在轮内从正文里整句删掉的（元话语 / 没依据的引用句）：客户端要把同一句从本地正文里删掉，不然到轮末两边差一整句 */
+  onScrub?: (v: { sentence: string; why: string }) => void
   /** 代码判据当场判这一轮不合格。命中时跳过模型打分，分数就是这条判据给的。 */
   onCheckHit?: (d: { dimension: string; note: string }) => void
   /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
@@ -1119,6 +1121,7 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
       else if (payload.name === 'phase_delta') handlers.onPhaseDelta?.(v)
       else if (payload.name === 'policy') handlers.onPolicy?.(v)
       else if (payload.name === 'dropped') handlers.onDropped?.(v.detail)
+      else if (payload.name === 'scrub') handlers.onScrub?.(v)
       else if (payload.name === 'check_hit') handlers.onCheckHit?.(v)
       else if (payload.name === 'warning') handlers.onWarning?.(v)
       else if (payload.name === 'replan') handlers.onReplan?.(v)

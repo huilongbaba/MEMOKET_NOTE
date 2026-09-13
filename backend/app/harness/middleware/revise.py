@@ -23,7 +23,7 @@ from ...database import store
 from ...util import llm
 from ...editor import outline
 from ..checks import grounding_rules as grounding_check
-from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, Event
+from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, CUSTOM_SCRUB, Event
 from ..revision import apply_revision, breakage, expand_sources, tidy_blank_lines, reject_revision
 from ..state import State
 
@@ -190,6 +190,9 @@ class Revise:
         # straight back into the text -- measured on the folder path after
         # the continuation-side scrub was already in place.
         st.content, meta_gone = grounding_check.scrub_meta_sentences_v(st.content)
+        for sentence in meta_gone:
+            # 全量整句给客户端：它要把同一句从本地正文里删掉，不然到轮末两边差一整句（第 381 轮真跑）
+            yield Event.custom(CUSTOM_SCRUB, {"round": st.round, "sentence": sentence, "why": "元话语"})
         for sentence in meta_gone[:3]:
             yield Event.custom(CUSTOM_DROPPED, {
                 "round": st.round,
