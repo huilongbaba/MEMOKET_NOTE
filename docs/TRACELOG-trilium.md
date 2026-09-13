@@ -3294,3 +3294,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [480] 第 454 轮：按 openapi 反查没被测试碰过的路径（2026-09-14）
 
 - 104 个 `/api` 路径里 35 个没有任何测试碰过（页面逻辑在 pages 层测过，路由 + 响应模型这一层没有；另一些要模型 / 录音 / 第三方账号）。补 `test_kb_routers_smoke`：知识库树 / 展开 / 主题页 / 实体页 / 时间线 / 某一天 / 会议页 / 记忆主题 / 实体 / 主题实体连线 / 记忆时间线 11 个只读接口 200 + JSON、树里的节点、闭包展开、三个 404、树的展开 / 重排两个 PATCH（写错 payload 形状 422 当场抓住——`expanded` 要 note_id + parent_note_id，`reorder` 要 `order`）。前端唯一真的 `<img>`（图片嵌入）带 alt。后端 932。
+
+## [481] 第 455 轮：再补五个只读接口的冒烟（2026-09-14）
+
+- `/api/kb/clusters` `/api/kb/quality` `/api/kb/rebuild/pending` `/api/skills/scopes` `/api/import/apple/available` 进同一组参数化冒烟，都 200 + JSON。

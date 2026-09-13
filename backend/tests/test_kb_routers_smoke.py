@@ -52,6 +52,11 @@ def client(tmp_path, monkeypatch):
     "/api/memory/entities",
     "/api/memory/topic-entity-links",
     "/api/memory/timeline",
+    "/api/kb/clusters",
+    "/api/kb/quality",
+    "/api/kb/rebuild/pending",
+    "/api/skills/scopes",
+    "/api/import/apple/available",
 ])
 def test_只读接口都_200_且是_JSON(client, path):
     r = client.get(path)
