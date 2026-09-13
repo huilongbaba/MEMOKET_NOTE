@@ -80,7 +80,10 @@ def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
             "pipe": [{"op": "sort", "key": "t", "desc": True},
                      {"op": "head", "n": pool}],
         })
-    for term in memory._candidate_terms(query)[:WORD_GREPS]:
+    # grep 的英文词也先剔虚词 / 说话人标签：英文事实前三个候选词常常是 it / speaker a / says，
+    # 三个 grep 槽全浪费在它们身上，事实根本进不了候选池（第 527 轮自召回三条 miss 都不在池里）
+    words = [t for t in memory._candidate_terms(query) if t.lower() not in _EN_STOP and not _SPEAKER_TERM.match(t.lower())]
+    for term in (words or memory._candidate_terms(query))[:WORD_GREPS]:
         queries.append({"select": "facts", "where": {"grep": term},
                         "pipe": [{"op": "head", "n": pool}]})
     # **The change that mattered most.** These n-grams were being computed
@@ -103,7 +106,23 @@ def _terms(memory, query: str) -> list[str]:
         t = (t or "").lower()
         if t and t not in out:
             out.append(t)
-    return out
+    # 英文虚词和「speaker a」这种说话人标签不当查询词：英文事实几乎每条都是「Speaker B says …」，
+    # 这些词一人一分把真正的内容词稀释掉——第 527 轮自召回复测三条 miss 全是这个样子
+    # （terms= ['it', 'speaker a', 'speaker', 'says', 'can', …]）。全是虚词时退回原样，别搜不出东西。
+    kept = [t for t in out if t not in _EN_STOP and not _SPEAKER_TERM.match(t)]
+    return kept or out
+
+
+_EN_STOP = frozenset("""
+a an the it its is are was were be been being can could will would shall should may might must
+they them their he she his her we us our you your i me my this that these those there here
+have has had having do does did done not no yes but and or so if then than too very really just
+also about after before again against all any because both each few for from into of on off over
+under to up down out with without at by as in what which who whom when where why how
+say says said saying talk talks talking know knows knew think thinks like likes want wants
+now later still already only ever never always some more most much many other another such
+""".split())
+_SPEAKER_TERM = re.compile(r"^(speaker|说话人|发言人)(\s?[a-z]|\s?\d{1,2})?$")
 
 
 _NUM = re.compile(r"\d+月\d+|\d+(?:\.\d+)?[台套个件人次轮版元万亿%]|\d{3,}(?:\.\d+)?")

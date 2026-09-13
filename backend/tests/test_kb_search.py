@@ -139,3 +139,15 @@ def test_英文短词整词匹配_不靠子串得分():
     assert search.matched_terms([rows[0]], "md", mem, store) == []
     mem._candidate_terms = lambda text: ["ai"]
     assert search._hits(["ai"], "he said the ai model") == ["ai"] and search._hits(["ai"], "he said") == []
+
+
+def test_英文虚词和说话人标签不当查询词():
+    """「Speaker B says they have no ideas now」：speaker b / says / they / have 一人一分把内容词稀释掉（第 527 轮）。"""
+    mem = _FakeMemory()
+    mem._candidate_terms = lambda text: ["speaker b", "speaker", "says", "they", "have", "ideas", "later"]
+    mem._cjk_terms = lambda text: []
+    terms = search._terms(mem, "Speaker B says they have no ideas now but will have ideas later")
+    assert terms == ["ideas"]
+    # 全是虚词时退回原样，别搜不出东西
+    mem._candidate_terms = lambda text: ["speaker a", "says", "it"]
+    assert search._terms(mem, "speaker a says it") == ["speaker a", "says", "it"]
