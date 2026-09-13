@@ -6,6 +6,7 @@
  * 一个浮层：读完关掉，正文和光标都还在原地。
  */
 import { useEffect } from 'react'
+import { useRestoreFocus } from '../util/restoreFocus'
 
 import type { Note } from '../api'
 import { displayTitle } from '../util/displayTitle'
@@ -17,6 +18,7 @@ export default function QuickView({ note, onClose, onOpen }: {
   onClose: () => void
   onOpen: (n: Note) => void
 }) {
+  useRestoreFocus()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
     window.addEventListener('keydown', onKey, true)

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { ROOT_ID, isVirtualId, type TreeRow } from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { useRestoreFocus } from '../util/restoreFocus'
 
 // ------------------------------------------------------------ 选一个节点
 
@@ -24,6 +25,7 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
   const [q, setQ] = useState('')
   const [i, setI] = useState(0)
   const input = useRef<HTMLInputElement>(null)
+  useRestoreFocus()
   useEffect(() => { input.current?.focus() }, [])
 
   // 路径给用户认位置：克隆之后同名笔记会出现在多处，光看标题分不清
@@ -94,6 +96,7 @@ export type PromptRequest = {
 export function TextPrompt({ req }: { req: PromptRequest }) {
   const [v, setV] = useState(req.initial)
   const input = useRef<HTMLInputElement>(null)
+  useRestoreFocus()
   useEffect(() => { input.current?.focus(); input.current?.select() }, [])
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(null)}>
@@ -133,6 +136,7 @@ export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
   const cancel = useRef<HTMLButtonElement>(null)
   // 危险操作（删整棵子树）默认焦点放在「取消」上：顺手一个回车不该删掉几十篇。
   // 普通确认才把焦点给确定键。
+  useRestoreFocus()
   useEffect(() => { (req.danger ? cancel : btn).current?.focus() }, [req.danger])
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(false)}>

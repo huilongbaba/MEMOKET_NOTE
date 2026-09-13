@@ -172,9 +172,10 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       const target = document.activeElement ?? window
       const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
       target.dispatchEvent(ev)
-      void api.clientLog('warn', `esc → ${(target as HTMLElement).tagName ?? 'window'}.${(target as HTMLElement).className ?? ''} prevented=${ev.defaultPrevented} backdrops=${document.querySelectorAll('.palette-backdrop').length}`, '', 'probe')
+      setTimeout(() => void api.clientLog('warn', `esc → ${(target as HTMLElement).tagName ?? 'window'}.${(target as HTMLElement).className ?? ''} prevented=${ev.defaultPrevented} backdrops=${document.querySelectorAll('.palette-backdrop').length} active=${(document.activeElement as HTMLElement | null)?.textContent?.trim().slice(0, 12) ?? '?'}`, '', 'probe'), 300)
     }
-    if (probe !== 'plan-panel:esc') setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '换个目标') { b.click(); break } }, 5000)
+    // 先 focus 再 click：真人鼠标点按钮会把焦点给它，程序 click() 不会——不 focus 的话「关掉后焦点回去」测的是面板容器
+    if (probe !== 'plan-panel:esc') setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '换个目标') { b.focus(); b.click(); break } }, 5000)
     if (probe !== 'plan-panel:abandon') setTimeout(esc, 6500)
   }
   // 导入断点续跑：打开导入页，点「上次没跑完的导入」里的「继续」，看进度条 / 预估 / 用量

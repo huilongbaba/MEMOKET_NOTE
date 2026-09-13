@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
+import { useRestoreFocus } from '../util/restoreFocus'
 import { SHORTCUT_GROUPS } from '../shortcuts'
 import { fmtShortcut } from '../util/keys'
 
 /** ⌘/ 弹出的快捷键一览（Trilium 的 Options → Shortcuts 那张表的只读版）。 */
 export default function ShortcutsPanel({ onClose }: { onClose: () => void }) {
   // Esc 关掉（capture 阶段，别让编辑器先吃掉）
+  useRestoreFocus()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
     window.addEventListener('keydown', onKey, true)

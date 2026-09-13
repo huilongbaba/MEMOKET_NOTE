@@ -3245,3 +3245,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [468] 第 442 轮：选择器关掉后焦点回到图标钮（2026-09-14）
 
 - 之前 Esc / 选完之后焦点掉到 body，键盘用户得重新 Tab 到位。App 给标题行图标钮一个 ref，选择器 onClose / onPick 之后 focus 回去。探针 `icon-picker:esc`：Esc 之后 picker=closed、activeElement=title-icon-btn。前端 107。
+
+## [469] 第 443 轮：弹层关掉后焦点回原位（2026-09-14）
+
+- 确认框 / 文本输入 / 笔记选择器 / 快速查看 / 快捷键表关掉后焦点都掉到 body。新 `util/restoreFocus.useRestoreFocus`：挂载时记下 activeElement，卸载时它还在页面上就 focus 回去；五个弹层各一行。
+- 探针 `plan-panel:abandon-esc` 的 esc 日志加 `active=`：第一版看到焦点回到了面板容器——程序 `click()` 不像真人鼠标那样把焦点给按钮，探针先 `focus()` 再 `click()` 才测得对；之后 Esc 关掉确认框，焦点回到「换个目标」。前端 107。
