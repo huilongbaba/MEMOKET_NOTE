@@ -2649,10 +2649,16 @@ export default function App() {
       {tabListAt && (
         <ContextMenu at={tabListAt} onClose={() => setTabListAt(null)} items={[
           { kind: 'header', label: `打开的标签 · ${tabs.length}` },
-          ...tabs.map((t): MenuItem => ({
-            label: ellipsize(t.title || '未命名', 36), icon: notes.find((x) => x.id === t.noteId)?.icon || (api.isVirtualId(t.noteId) ? 'bx-hash' : 'bx-note'),
-            hint: t.id === activeTabId ? '当前' : undefined, onSelect: () => activateTab(t),
-          })),
+          ...tabs.map((t): MenuItem => {
+            const n = notes.find((x) => x.id === t.noteId)
+            // 同名标签（三个「创业一年回顾」）光看名字分不开：给一截正文首行，跟 ⌘K 一样
+            const dup = tabs.some((o) => o !== t && o.title === t.title)
+            const snip = dup && n ? previewLine(n.content ?? '', t.title) : ''
+            return {
+              label: ellipsize(t.title || '未命名', 36) + (snip ? ' · ' + ellipsize(snip, 24) : ''), icon: n?.icon || (api.isVirtualId(t.noteId) ? 'bx-hash' : 'bx-note'),
+              hint: t.id === activeTabId ? '当前' : undefined, onSelect: () => activateTab(t),
+            }
+          }),
           { kind: 'sep' },
           { label: '关闭其他', icon: 'bx-x', disabled: tabs.length <= 1, onSelect: () => closeTabsWhere((t) => t.id !== activeTabId) },
         ]} />
