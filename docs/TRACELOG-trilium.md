@@ -3522,3 +3522,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [532] 第 508 轮：toast「撤销」实拍补色（2026-09-14）
 
 - 探针 `toast:action`（发一条带「撤销」的 toast 并把焦点给按钮）。第一拍「撤销」是黑字：`.linklike` 的 `color: inherit` 写在 `.link` 后面，把蓝色盖了。加 `.linklike.link { color: var(--accent) }`，第二拍蓝了。合约测试（每个 check 脚本都被 npm test 跑到）6 条过。
+
+## [533] 第 509 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 950 通过；前端 tsc + eslint + vitest 129 + 17 条 check / smoke 全过（含 check-a11y）。
