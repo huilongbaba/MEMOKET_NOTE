@@ -1854,3 +1854,8 @@ KOL 样机那段只给叠加（terrence 库里没有台数记录，对的）。`
 `X-User-Id` 原样拼进 `data/<user>/codebook.xml`，`../x` 这种能走到文件系统别处。`deps.current_user`
 只认 `[A-Za-z0-9_.-]{1,64}`（HTTP 头只能 ASCII，中文名本来就发不出来；跟桌面壳 identity.json 一条
 正则），不合规 400；切换用户的输入框同一条正则先拦一道。pytest 845。
+
+## [188] 第 160 轮：重打 dmg、正式版核对（2026-09-13）
+
+第 147 轮之后又改了 13 轮（段号、表格判据、precheck、校验证据、跨站写请求、user id 校验），重打
+dmg 重开正式版：health 200、同源 POST 200、跨站 POST 403、`X-User-Id: ../x` 400。
