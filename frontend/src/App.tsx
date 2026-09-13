@@ -3161,7 +3161,12 @@ export default function App() {
         {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
           {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.total > 0 ? ` 第 ${Math.min(jobInfo.done + 1, jobInfo.total)}/${jobInfo.total} 块` : ''}{jobInfo.eta > 0 ? ` · 还要约 ${jobInfo.eta < 90 ? `${jobInfo.eta} 秒` : `${Math.round(jobInfo.eta / 60)} 分钟`}` : ''}{jobInfo.facts > 0 ? ` · 已抽出 ${jobInfo.facts} 条` : ''}</span>}
-          {healthMsg && <span className="health-bad"><i className="bx bx-error" /> {healthMsg}</span>}
+          {/* 红字可点：装好的包第一次开、或换了台机器没填模型，红字只说「不可达」用户不知道去哪修 */}
+          {healthMsg && (
+            <button className="health-bad linklike" title="点开设置页填模型地址 / 密钥" onClick={() => void openVirtual('app:settings', '设置')}>
+              <i className="bx bx-error" /> {healthMsg} · 去设置
+            </button>
+          )}
           {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
         </span>
         {current && <span className="muted">{wordCount(content)} 字{wordCount(content) > 0 && <> · 约 {readingMinutes(wordCount(content))} 分钟</>}</span>}

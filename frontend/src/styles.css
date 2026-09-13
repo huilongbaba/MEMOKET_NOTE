@@ -1041,3 +1041,7 @@ kbd {
 .layer-card.off { opacity: .6; }
 
 .plain-case { text-transform: none; letter-spacing: 0; }
+
+/* 长得像文字的按钮（状态栏红字这种「一行字可点」的地方） */
+.linklike { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.linklike:hover { text-decoration: underline; }
