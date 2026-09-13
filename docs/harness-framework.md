@@ -528,7 +528,7 @@ Mode 按需追加的：
 不定，一张卡片字段没到齐就 `undefined.length`，那是白屏根因之二。
 
 `ErrorBoundary` + `window.error` / `unhandledrejection` → `POST /api/client-log` →
-Electron 日志。打包版没有 DevTools，白屏时这是唯一的线索。
+Electron 日志。打包版没有 DevTools，白屏时这是唯一的线索。主进程把每行同时追加到 `app.getPath('logs')/memoket-note.log`（macOS：~/Library/Logs/memoket-note-desktop/，dev 实例是 memoket-note-dev.log；2MB 滚一代），帮助菜单「打开日志文件夹」；崩溃对话框末尾带这个路径。
 
 ---
 

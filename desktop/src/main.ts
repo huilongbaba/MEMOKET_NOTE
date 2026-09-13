@@ -197,7 +197,7 @@ async function launchBackend(webDir: string): Promise<Backend> {
       remember(`[desktop] 后端崩了（${info}），${restarts < 2 ? '重新拉起' : '不再重试'}`)
       if (restarts >= 2) {
         dialog.showErrorBox('后端反复崩溃',
-          `已经自动重启过两次，不再重试。\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}`)
+          `已经自动重启过两次，不再重试。\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
         return
       }
       restarts += 1
@@ -208,7 +208,7 @@ async function launchBackend(webDir: string): Promise<Backend> {
           win?.webContents.reload()
         }).catch((e) => {
           dialog.showErrorBox('后端没能重新启动',
-            `${(e as Error).message}\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}`)
+            `${(e as Error).message}\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
         })
       }, 800)
     },
