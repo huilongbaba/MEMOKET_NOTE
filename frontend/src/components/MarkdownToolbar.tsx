@@ -44,8 +44,7 @@ export default function MarkdownToolbar(
     <div className="row md-toolbar">
       {onFormat && (
         <button
-          title="一键格式化整篇（⌘/Ctrl+⇧+F）：标题、列表、表格对齐、中西文空格。
-纯规则不走模型，结果可以逐处接受或撤回。"
+          title="一键格式化整篇（⌘/Ctrl+⇧+F）：标题、列表、表格对齐、中西文空格。纯规则不走模型，结果可以逐处接受或撤回。"
           style={{ marginRight: 6 }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={onFormat}
@@ -55,8 +54,7 @@ export default function MarkdownToolbar(
       )}
       {onRestructure && (
         <button
-          title="智能排版：判断哪行该是标题、哪几行该是列表——规则算不出来的语义判断。
-模型只决定结构，原文由代码搬运，改不到内容。"
+          title="智能排版：判断哪行该是标题、哪几行该是列表——规则算不出来的语义判断。模型只决定结构，原文由代码搬运，改不到内容。"
           disabled={restructuring}
           style={{ marginRight: 6 }}
           onMouseDown={(e) => e.preventDefault()}

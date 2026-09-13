@@ -249,8 +249,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
         ) : showImport ? (
           <div className="stack">
             <p className="muted" style={{ fontSize: 12 }}>
-              导入 Claude Skill 的 SKILL.md（yaml frontmatter + markdown 正文）——只会用到 name/description/正文，
-              技能包常带的脚本/参考文件用不上（MEMOKET_NOTE 调的是原始接口，没法"运行"那些）。
+              导入 Claude Skill 的 SKILL.md（yaml frontmatter + markdown 正文）——只会用到 name/description/正文，技能包常带的脚本/参考文件用不上（MEMOKET_NOTE 调的是原始接口，没法"运行"那些）。
             </p>
             <div className="row">
               <input
