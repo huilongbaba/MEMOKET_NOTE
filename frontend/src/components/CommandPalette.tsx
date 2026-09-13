@@ -33,9 +33,12 @@ const COMMANDS: { label: string; icon: string; run: () => void }[] = [
  * format @-mention completion and RelatedMemory already use, so all three
  * "find and cite a fact" paths in the app behave identically.
  */
-export default function CommandPalette({ onOpenNote, onInsertFact }: {
+export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], onOpenTab }: {
   onOpenNote: (id: string) => void
   onInsertFact: (text: string) => void
+  /** 开着的标签（含知识库的虚拟页）：打字时先列命中的标签——50 个标签靠标签行找不到，靠名字找（第 502 轮） */
+  tabs?: { noteId: string; title: string; snip?: string }[]
+  onOpenTab?: (noteId: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -126,10 +129,16 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   const dupName = (list: NoteBrief[]) => { const names = list.map(displayTitle); return new Set(names.filter((t, i) => names.indexOf(t) !== i)) }
   const dupNotes = dupName(notes); const dupRecent = dupName(recent)
   const firstBody = (n: NoteBrief) => n.first_body ? <span className="muted palette-snip">{n.first_body.slice(0, 40)}{n.first_body.length > 40 ? '…' : ''}</span> : null
+  const needle = q.trim().toLowerCase()
+  const tabHits = typing ? tabs.filter((t) => (t.title || '').toLowerCase().includes(needle)).slice(0, 6) : []
+  // 已经作为标签列出来的笔记，笔记组里不再重复一遍
+  const noteHits = notes.filter((n) => !tabHits.some((t) => t.noteId === n.id))
+  const dupTabs = new Set(tabHits.map((t) => t.title).filter((t, i, arr) => arr.indexOf(t) !== i))
   const items = typing
     ? [
       ...cmdHits.map((c) => ({ kind: 'cmd' as const, cmd: c })),
-      ...notes.map((n) => ({ kind: 'note' as const, note: n })),
+      ...tabHits.map((t) => ({ kind: 'tab' as const, tab: t })),
+      ...noteHits.map((n) => ({ kind: 'note' as const, note: n })),
       ...facts.map((f) => ({ kind: 'fact' as const, fact: f })),
     ]
     : [
@@ -141,6 +150,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     const item = items[i]
     if (!item) return
     if (item.kind === 'note') onOpenNote(item.note.id)
+    else if (item.kind === 'tab') (onOpenTab ?? onOpenNote)(item.tab.noteId)
     else if (item.kind === 'cmd') item.cmd.run()
     else onInsertFact(`${item.fact.text} [${item.fact.id}]`)
     setOpen(false)
@@ -177,8 +187,13 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
             <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, n.icon || 'bx-note'))}
           {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
           {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
-          {notes.length > 0 && <p className="muted palette-group">笔记</p>}
-          {typing && notes.map((n) => {
+          {typing && tabHits.length > 0 && <p className="muted palette-group">打开的标签</p>}
+          {typing && tabHits.map((t) => row('t' + t.noteId, <span className="palette-line"><span className="palette-main"><Highlight text={t.title || '未命名'} q={q} />
+            {/* 同名的三个「创业一年回顾」标签光看名字分不开：给一截正文（跟笔记组一样） */}
+            {dupTabs.has(t.title) && t.snip && <span className="muted palette-snip">{t.snip.slice(0, 40)}{t.snip.length > 40 ? '…' : ''}</span>}</span>
+            <span className="muted palette-when">标签</span></span>, t.noteId.startsWith('kb') || t.noteId.startsWith('app:') ? 'bx-hash' : 'bx-window-alt'))}
+          {noteHits.length > 0 && <p className="muted palette-group">笔记</p>}
+          {typing && noteHits.map((n) => {
             // 标题里没命中的（靠正文命中进来的）给一截命中片段——实拍搜「创业」，
             // 「harness 测试」混在一排「创业一年回顾」里，看不出为什么在这。
             const title = displayTitle(n)

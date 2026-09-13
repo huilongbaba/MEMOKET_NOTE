@@ -2663,7 +2663,9 @@ export default function App() {
       {quick && <QuickView note={quick} onClose={() => setQuick(null)} onOpen={(n) => void switchTo(n)} />}
       {prompt && <TextPrompt req={prompt} />}
       <Toaster />
-      <CommandPalette onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else void api.getNote(id).then((fresh) => switchTo(fresh)).catch(() => toast('这篇笔记不在了', 'error')) }} onInsertFact={insertAtCursor} />
+      <CommandPalette onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else void api.getNote(id).then((fresh) => switchTo(fresh)).catch(() => toast('这篇笔记不在了', 'error')) }} onInsertFact={insertAtCursor}
+                      tabs={tabs.map((t) => ({ noteId: t.noteId, title: t.title, snip: previewLine(notes.find((n) => n.id === t.noteId)?.content ?? '', t.title) }))}
+                      onOpenTab={(id) => activateTab(tabs.find((t) => t.noteId === id))} />
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
       {writingPlanParent && (
         <WritingPlanPanel
