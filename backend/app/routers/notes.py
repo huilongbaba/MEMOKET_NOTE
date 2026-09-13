@@ -23,6 +23,9 @@ def create_note(body: NoteCreateIn, user: str = Depends(current_user)):
     有子节点的笔记就是文件夹。所以建一个空笔记再往里面建东西，那个空笔记
     自然就成了文件夹。
     """
+    # 父节点不在（删了、id 拼错）就 404：挂到一个不存在的节点下等于建了一篇树上看不见的笔记
+    if body.parent_note_id != store.ROOT_ID and not store.get_note(user, body.parent_note_id):
+        raise HTTPException(404, "父节点不在")
     return store.create_note(user, body.title, body.content, body.parent_note_id)
 
 

@@ -25,3 +25,17 @@ def test_空输入直接_400_不打模型(tmp_path, monkeypatch):
         assert c.post("/api/expand", json={"content": "一段话。", "selection": ""}).status_code == 400
         assert c.post("/api/verify", json={"content": "一段话。", "selection": ""}).status_code == 400
     assert calls == []
+
+
+def test_标题一行_父节点要存在(tmp_path, monkeypatch):
+    """第 244 轮实测：带换行的一万字标题照收；parent_note_id 给个不存在的 id 也 200（树上看不见）。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.main import app
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        n = c.post("/api/notes", json={"title": "  a\nb\t c  " + "x" * 500, "content": ""}).json()
+        assert n["title"].startswith("a b c x") and "\n" not in n["title"] and len(n["title"]) == 200
+        assert c.post("/api/notes", json={"title": "p", "content": "", "parent_note_id": "nope"}).status_code == 404
+        m = c.put(f"/api/notes/{n['id']}", json={"title": "改\n名", "content": "x"}).json()
+        assert m["title"] == "改 名"

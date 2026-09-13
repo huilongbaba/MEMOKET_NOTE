@@ -4,14 +4,27 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------- 笔记
 
+# 标题是一行字：树、标签页、面包屑都按一行画。接口曾照收带换行的和一万字的标题（第 244 轮实测）。
+TITLE_MAX = 200
+
+
+def _one_line_title(v: str) -> str:
+    return " ".join((v or "").split())[:TITLE_MAX]
+
+
 class NoteIn(BaseModel):
     title: str = ""
     content: str = ""
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, v: str) -> str:
+        return _one_line_title(v)
 
 
 class Note(BaseModel):
@@ -91,6 +104,11 @@ class TreeRow(BaseModel):
 class NoteCreateIn(BaseModel):
     title: str = ""
     content: str = ""
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, v: str) -> str:
+        return _one_line_title(v)
     # 建在哪个父节点下。笔记总是创建在树上的某个位置，没有「先建了再说」
     # 这个中间态——不挂的话它存在于库里但用户看不见。
     parent_note_id: str = "root"
