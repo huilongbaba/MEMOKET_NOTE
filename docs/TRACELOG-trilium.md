@@ -2532,3 +2532,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 含 271–279 轮：架构文档同步、README API 表、事实表 / 单条事实带实体显示名、MemoryBrowser 瘦身到只剩主题地图、若干实拍核对。
 - `npm run dist` → 183MB。杀第 270 轮那份起新的：`/api/health` ok；正式版 `memory/facts?entity=Facebook` 带 `entity_names: ['Facebook']`。
+
+## [310] 巡检第 281 轮：主题页（820 宽）、实体页（深色）（2026-09-13）
+
+- `open:kb:topic:finance --win=820x600`：别名、按月、周围图谱都排得开；`open:kb:entity:elisa --dark`：149 条、按月、图谱、相关主题、演进线。没改代码。
