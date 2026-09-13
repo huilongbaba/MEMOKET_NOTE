@@ -5,7 +5,7 @@ import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
-import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds } from './util/wordCount'
+import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
@@ -2902,7 +2902,7 @@ export default function App() {
               />,
             }, {
               id: 'links', title: '链接', icon: 'bx-link-alt',
-              badge: (content.match(/\]\(note:\/\/[0-9a-f]{12}\)/g) ?? []).length || undefined,
+              badge: linkedNoteIds(content).length || undefined,
               body: <NoteLinksPanel noteId={current.id} content={content}
                                     onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} knownIds={noteIdSet} knownNotes={notes} updatedAt={current.updated_at} />,
             }, {

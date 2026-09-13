@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { linkedNoteIds } from '../util/wordCount'
 import * as api from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
@@ -20,7 +21,8 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
 }) {
   const [links, setLinks] = useState<api.NoteLinks | null>(null)
   // 正文里链接的数量变了才重查——每个字都查一次没必要
-  const outgoingKey = (content.match(/\]\(note:\/\/[0-9a-f]{12}\)/g) ?? []).join(',')
+  const linked = linkedNoteIds(content)
+  const outgoingKey = linked.join(',')
   useEffect(() => {
     let alive = true
     api.noteLinks(noteId).then((r) => { if (alive) setLinks(r) }).catch(() => { if (alive) setLinks({ outgoing: [], backlinks: [] }) })
@@ -37,12 +39,11 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
     ))
   // 链出去的：有 notes 就本地算（按正文里出现的顺序，去重，只留还在的）
   const outgoing: api.CitingNote[] = knownNotes
-    ? Array.from(new Set(Array.from(content.matchAll(/\]\(note:\/\/([0-9a-f]{12})\)/g), (m) => m[1])))
-        .map((id) => knownNotes.find((n) => n.id === id)).filter((n): n is api.Note => !!n)
+    ? linked.map((id) => knownNotes.find((n) => n.id === id)).filter((n): n is api.Note => !!n)
         .map((n) => ({ id: n.id, title: n.title, updated_at: n.updated_at, preview: (n.content || '').slice(0, 80), icon: n.icon }))
     : links.outgoing
   const dangling = knownIds
-    ? Array.from(new Set(Array.from(content.matchAll(/\]\(note:\/\/([0-9a-f]{12})\)/g), (m) => m[1]))).filter((id) => !knownIds.has(id))
+    ? linked.filter((id) => !knownIds.has(id))
     : (links.dangling ?? [])
   return (
     <div className="stack" style={{ gap: 8 }}>

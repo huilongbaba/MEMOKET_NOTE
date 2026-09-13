@@ -51,12 +51,17 @@ export function citationRanges(text: string, ids: string[]): { from: number; to:
   return out
 }
 
+/** `[标题](note://id)` 笔记链接的唯一源（m[1] 标题、m[2] id）。跟后端 store._NOTE_LINK 同步。 */
+export const NOTE_LINK_RE = /\[([^\]\n]*)\]\(note:\/\/([0-9a-f]{12})\)/g
+/** 正文链到了哪些笔记 id（去重、按首次出现顺序）。链接面板的「链出去」「链到的不在了」和 ribbon 角标都从这算。 */
+export const linkedNoteIds = (s: string): string[] => Array.from(new Set(Array.from(s.matchAll(NOTE_LINK_RE), (m) => m[2])))
+
 /** 正文里链到某几篇笔记的 `[标题](note://id)`：区间 + 替换成的纯文本（标题）。链到的笔记没了，
  *  链接改成纯文本，字留着。 */
 export function noteLinkRanges(text: string, ids: string[]): { from: number; to: number; insert: string }[] {
   const want = new Set(ids)
   const out: { from: number; to: number; insert: string }[] = []
-  for (const m of text.matchAll(/\[([^\]\n]*)\]\(note:\/\/([0-9a-f]{12})\)/g)) {
+  for (const m of text.matchAll(NOTE_LINK_RE)) {
     if (!want.has(m[2])) continue
     out.push({ from: m.index, to: m.index + m[0].length, insert: m[1] })
   }

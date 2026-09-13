@@ -3363,3 +3363,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [497] 第 472 轮：引用 id 正则前端三份合一（2026-09-14）
 
 - 之前 App.tsx 的 citedIds、factCite.ts 的高亮、wordCount.ts 的 `CITATION_RE` 各抄一份（写法还不完全一样：`[\w-]*` 对 `[A-Za-z0-9_-]*`，语义相同但改一处容易漏另两处）。现在 `util/wordCount.ts` 是唯一源：`CITE_RE_SOURCE` / `CITATION_RE` / `citedFactIds()`，factCite 从这里拿，App 只剩一行 `useMemo(() => citedFactIds(content))`；App.tsx 3228 → 3222 行。后端三处（store / checks/citations / prompts/fragments）照旧手动同步，注释改成「一处源，四处同步」。新测试 2 条（去重按首次顺序、数字 / 12 位 hex 两种 unit、普通方括号不算）。实拍 `open:5f65df10cad6`：引用角标 31、树上 ◆31、正文高亮照旧；`npm test` 全过，前端 118。
+
+## [498] 第 473 轮：笔记链接正则前端也合成一份（2026-09-14）
+
+- `[标题](note://id)` 的正则散在 App.tsx 角标、NoteLinksPanel 三处、wordCount.ts `noteLinkRanges` 四份。现在 `util/wordCount.ts` 是唯一源：`NOTE_LINK_RE` / `linkedNoteIds()`（去重按首次顺序），面板的「链出去」「链到的不在了」和重查 key 都用它，App 的角标改成 `linkedNoteIds(content).length`——顺手把角标口径从「链接出现次数」改成「链到几篇」，跟面板列表的数对上（同一篇链两次原来角标 2、列表 1）。新测试 1 条。实拍 `note:bb215ab441a2:ribbon:links`：角标 1、「链到的笔记 · 1」。前端 119。探针备忘：ribbon 标签用 id（cites/links/history/paths/info），不是中文名。

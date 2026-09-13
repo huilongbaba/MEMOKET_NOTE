@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { citedFactIds, readingMinutes, wordCount } from '../../util/wordCount'
+import { citedFactIds, linkedNoteIds, readingMinutes, wordCount } from '../../util/wordCount'
 
 describe('wordCount', () => {
   it('不算空白、井号、引用标记、强调星号', () => {
@@ -32,5 +32,13 @@ describe('citedFactIds', () => {
   })
   it('普通方括号 / 链接不算', () => {
     expect(citedFactIds('[链接](note://0123456789ab) [备注] [x-y-]')).toEqual([])
+  })
+})
+
+describe('linkedNoteIds', () => {
+  it('去重、按首次出现顺序；普通链接和图片不算', () => {
+    expect(linkedNoteIds('见 [甲](note://aaaaaaaaaaaa)、[乙](note://bbbbbbbbbbbb)，再 [甲](note://aaaaaaaaaaaa)；[站](https://x.y) ![图](/api/assets/a.png)'))
+      .toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb'])
+    expect(linkedNoteIds('[短](note://abc)')).toEqual([])
   })
 })
