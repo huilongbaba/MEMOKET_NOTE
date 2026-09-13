@@ -23,7 +23,7 @@ from typing import AsyncIterator, Sequence
 from .checks.rubric import evaluate
 
 from . import adapter as harness_adapter
-from .events import CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_WARNING, Event
+from .events import CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_WARNING, Event, CUSTOM_SCRUB
 from .middleware import BASE, verify
 from .state import State
 from .types import Hooks, Middleware
@@ -98,6 +98,9 @@ async def run(st: State, hooks: Hooks,
                 st.fresh += piece
                 yield Event.text_content(mid, piece)
             yield Event.text_end(mid)
+            # 续写收尾时服务端删掉的元话语句子（hooks/note._scrub_and_record）：告诉客户端，它本地也删同一句
+            for sentence in st.bag.pop("scrubbed", None) or []:
+                yield Event.custom(CUSTOM_SCRUB, {"round": st.round, "sentence": sentence, "why": "元话语"})
             async for e in _fire(chain, "after_produce", st):
                 yield e
 

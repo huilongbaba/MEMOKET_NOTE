@@ -3730,3 +3730,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 召回改完做一次真跑回归：第 2 轮差 52 字、再跑一次第 3 轮差 102 字，都是**服务端少一整句**、本地多一句。先给客户端补两条诊断日志（`scrub miss` / `revision no-op`：本地找不到那句 / 锚点没定位到），第二次真跑两条都没触发——说明不是客户端没对上，是**服务端删了句子却没发事件**。
 - 查到：`hooks/note.py` 续写收尾时对整篇跑 `scrub_meta_sentences`（三处：大纲插入 / 定向插入 / 追加），删掉的元话语句子只有修订中间件那一路会发 `scrub` 事件，这一路不发。修法见下一轮。跑完正文都从 `r492-before.json` 还原。
+
+## [581] 第 557 轮：续写收尾的 scrub 也发事件（2026-09-14）
+
+- `hooks/note.py` 三处 `scrub_meta_sentences(...)` 换成 `_scrub_and_record`：用 `_v` 版拿到删掉的句子记进 `st.bag["scrubbed"]`（`fix_bold_punct` 照旧）；`loop.py` 在 `TEXT_MESSAGE_END` 之后把它们发成 `scrub` 事件并清掉。测试一条（发了、顺序在 text_end 之后、bag 清空）；后端 957。真跑一次 harness-sync 0 条（这一跑有没有碰到元话语不确定，机制靠单测兜）。harness-framework 同步。

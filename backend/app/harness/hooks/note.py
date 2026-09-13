@@ -35,6 +35,15 @@ from ..state import State
 MAX_OUTLINE_BEATS = 12
 
 
+
+def _scrub_and_record(st, content: str) -> str:
+    """续写收尾的整篇 scrub：删掉的元话语句子记到 st.bag["scrubbed"]，loop 在 text_end 之后发成 `scrub` 事件——
+    修订那一路早就发了，这一路一直没发，客户端本地多一整句、轮末才对齐（第 556 轮真跑差 52 / 102 字）。"""
+    out, removed = grounding_check.scrub_meta_sentences_v(content)
+    if removed:
+        st.bag.setdefault("scrubbed", []).extend(removed)
+    return grounding_check.fix_bold_punct(out)
+
 class NoteHooks:
     """``polish`` only repairs; it never continues."""
 
@@ -304,7 +313,7 @@ class NoteHooks:
             body = outline.drop_already_written(
                 st.content, outline.strip_headings(text))
             if body:
-                st.content = grounding_check.scrub_meta_sentences(
+                st.content = _scrub_and_record(st, 
                     outline.insert_into(st.content, target[1], body))
             return
 
@@ -318,10 +327,10 @@ class NoteHooks:
             for line in body.split("\n", 1)[:1]:
                 if line.lstrip("# ").strip() == (placed.get("section") or "").strip():
                     body = body.split("\n", 1)[1] if "\n" in body else ""
-            st.content = grounding_check.scrub_meta_sentences(
+            st.content = _scrub_and_record(st, 
                 outline.insert_into(st.content, placed["pos"], body))
             return
-        st.content = grounding_check.scrub_meta_sentences(
+        st.content = _scrub_and_record(st, 
             prompts.join_round_text(st.content, text))
 
     # ------------------------------------------------------------ commit --

@@ -370,3 +370,22 @@ def test_precheck_that_passes_changes_nothing():
     st = _state(_mode(precheck=lambda st: None))
     done = _finished(asyncio.run(_drive(st, hooks, _scorer([[2]]), mw=BASE)))
     assert done.data["reason"] == "complete" and hooks.prepared == 1
+
+
+def test_produce_里记下的_scrubbed_句子在_text_end_之后发成_scrub_事件():
+    """续写收尾的整篇 scrub 删掉的元话语句子要告诉客户端（hooks/note._scrub_and_record 记到 st.bag["scrubbed"]，
+    loop 在 TEXT_MESSAGE_END 之后发 `scrub`）——修订那一路早就发了，这一路第 556 轮真跑才发现没发，客户端本地多一整句。"""
+    class ScrubHooks(FakeHooks):
+        async def produce(self, st):
+            async for ch in super().produce(st):
+                yield ch
+            st.bag.setdefault("scrubbed", []).append("这一点不能据此判断。")
+
+    hooks = ScrubHooks(["ab"])
+    st = _state(_mode(max_rounds=1))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2]]), mw=BASE))
+    scrubs = [e.data["value"] for e in events if e.data.get("name") == "scrub"]
+    assert scrubs and scrubs[0]["sentence"] == "这一点不能据此判断。"
+    assert "scrubbed" not in st.bag, "发完要清掉，不然下一轮重复发"
+    order = [e.data.get("name") or e.type.value for e in events]
+    assert order.index("scrub") > order.index("TEXT_MESSAGE_END")
