@@ -276,3 +276,17 @@ def test_菜单只放名字和描述不放正文(env):
     block = skills.menu_block([(s.name, s.description) for s in listed])
     assert "highlight-deltas-digest" in block
     assert listed[0].body not in block, "菜单是目录，正文等模型自己调 load_skill"
+
+
+def test_技能接口拒绝空名字_未知作用域_超长正文(tmp_path, monkeypatch):
+    """第 243 轮实测：空名字 200（随机 slug）、bogus 作用域照收、6 万字正文照收。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.main import app
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    with TestClient(app, headers={"X-User-Id": "u9"}) as c:
+        ok = {"name": "n", "description": "d", "content": "c", "scopes": ["magic_tap"]}
+        assert c.post("/api/skills", json={**ok, "name": "  "}).status_code == 400
+        assert c.post("/api/skills", json={**ok, "scopes": ["bogus"]}).status_code == 400
+        assert c.post("/api/skills", json={**ok, "content": "x" * 20001}).status_code == 400
+        assert c.post("/api/skills", json=ok).status_code == 200

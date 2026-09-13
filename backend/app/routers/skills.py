@@ -87,10 +87,26 @@ async def generate_skill(body: SkillGenerateIn, user: str = Depends(current_user
     )
 
 
-@router.post("", response_model=Skill)
-def create_skill(body: SkillIn, user: str = Depends(current_user)):
+# 一个 Skill 会整段拼进提示词。2 万字够放一份很长的 SKILL.md；6 万字的一条接口照收
+# （第 243 轮实测），那不是技能是文档。
+MAX_CONTENT_CHARS = 20000
+
+
+def _validate(body: SkillIn) -> None:
+    if not body.name.strip():
+        raise HTTPException(400, "技能要有名字")
     if not body.content.strip():
         raise HTTPException(400, "skill content required")
+    if len(body.content) > MAX_CONTENT_CHARS:
+        raise HTTPException(400, f"技能正文最多 {MAX_CONTENT_CHARS} 字——太长的拆成几个")
+    bad = [s for s in body.scopes if s not in prompts.SKILL_SCOPES]
+    if bad:
+        raise HTTPException(400, f"不认识的作用域：{'、'.join(bad)}（可选：{'、'.join(prompts.SKILL_SCOPES)}）")
+
+
+@router.post("", response_model=Skill)
+def create_skill(body: SkillIn, user: str = Depends(current_user)):
+    _validate(body)
     slug = skills_store.slugify(body.slug or body.name)
     if not slug:
         raise HTTPException(400, "skill name must yield a usable identifier")
@@ -106,6 +122,7 @@ def create_skill(body: SkillIn, user: str = Depends(current_user)):
 
 @router.put("/{slug}", response_model=Skill)
 def update_skill(slug: str, body: SkillIn, user: str = Depends(current_user)):
+    _validate(body)
     existing = _find(user, slug)
     try:
         skill = skills_store.install(
