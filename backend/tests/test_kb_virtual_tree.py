@@ -217,3 +217,17 @@ def test_段号的分母按整个库算_不按窗口(mem, monkeypatch):
     monkeypatch.setattr(virtual_tree, "RECENT_UNITS", 3)
     rows = [r for r in virtual_tree.build(mem) if r["parent_note_id"] == "kb:recent"]
     assert any("长材料（6 段）" in r["title"] for r in rows)
+
+
+def test_闭包里没有事实的主题不上树(mem):
+    """空库里词表自带的根主题（finance / health / …）会摆一排空节点（第 313 轮全新用户实拍）。
+    有事实的主题的父链一定也有事实，所以过滤不会留下孤儿。"""
+    m = mem
+    _, vocab = m._index()
+    vocab.topics["finance"] = Topic("finance", parents=set(), status="canonical")
+    vocab.topics["tax"] = Topic("tax", parents={"finance"}, status="canonical")
+    ids = {r["note_id"] for r in vt.build(m)}
+    assert "kb:topic:finance" not in ids and "kb:topic:tax" not in ids
+    assert {"kb:topic:work", "kb:topic:life", "kb:topic:balance"} <= ids
+    topics_row = next(r for r in vt.build(m) if r["note_id"] == "kb:topics")
+    assert topics_row["child_count"] == 2          # work / life，不算空的 finance

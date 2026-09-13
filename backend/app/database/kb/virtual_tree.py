@@ -109,15 +109,26 @@ def build(mem) -> list[dict]:
 
     # ---- 主题：多个父主题 = 多条 branch = 克隆
     topic_rows: list[dict] = []
+    # 闭包里一条事实都没有的主题不上树：空库里词表自带的六个根主题（finance / health / …）
+    # 摆一排空节点，点进去什么都没有（第 313 轮全新用户实拍）。有事实的主题的父链一定
+    # 也有事实（闭包含子），所以过滤不会把父节点滤掉、留下孤儿。
+    n_in_closure: dict[str, int] = {}
+    for t in vocab.topics.values():
+        closure = vocab.downset(t.code, include_candidates=True) or {t.code}
+        n_in_closure[t.code] = len(set().union(*(by_topic.get(c, set()) for c in closure)))
+    live = {code for code, n in n_in_closure.items() if n > 0}
     children_of: Counter = Counter()
     for t in vocab.topics.values():
-        parents = [p for p in sorted(t.parents) if p in vocab.topics] or [""]
+        if t.code not in live:
+            continue
+        parents = [p for p in sorted(t.parents) if p in live] or [""]
         for p in parents:
             children_of[p] += 1
     for t in sorted(vocab.topics.values(), key=lambda t: t.code):
-        parents = [p for p in sorted(t.parents) if p in vocab.topics] or [""]
-        closure = vocab.downset(t.code, include_candidates=True) or {t.code}
-        n_facts = len(set().union(*(by_topic.get(c, set()) for c in closure)))
+        if t.code not in live:
+            continue
+        parents = [p for p in sorted(t.parents) if p in live] or [""]
+        n_facts = n_in_closure[t.code]
         for p in parents:
             parent_id = f"kb:topic:{p}" if p else "kb:topics"
             topic_rows.append(_row(
