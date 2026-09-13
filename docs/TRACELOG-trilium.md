@@ -3172,3 +3172,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [450] 巡检第 422 轮：知识库备份的保留策略、台账头（2026-09-14）
 
 - `maybe_backup_kb`：每用户每周一份 codebook.xml，留最近 2 份，用户目录没了的备份一起删——没问题。PROGRESS 的「最后更新」还停在 9 月 11 日，刷成当前轮次。没改代码。
+
+## [451] 巡检第 423 轮：依赖体检（2026-09-14）
+
+- `npm audit --omit=dev` 前端 / 桌面都是 0 个漏洞；`pip check` 没有坏依赖；`pip list --outdated` 只有 anyio / lxml / pydantic / pyinstaller / setuptools 的补丁级更新，不动。没改代码。
