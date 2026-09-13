@@ -46,9 +46,10 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     return
   }
   // 键盘走可点的 div：事实表第一条 .fact-text 聚焦后按 Enter，应该打开那条事实
-  if (probe === 'factkeys') {
+  if (probe === 'factkeys' || probe === 'factkeys:focus') {
     setTimeout(() => void openVirtual('kb:facts', '事实表'), 800)
-    setTimeout(() => { const el = document.querySelector('.fact-text') as HTMLElement | null; el?.focus(); el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) }, 4000)
+    // :focus → 只聚焦不按 Enter，看焦点环
+    setTimeout(() => { const el = document.querySelector('.fact-text') as HTMLElement | null; el?.focus(); if (probe === 'factkeys') el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) }, 4000)
     setTimeout(() => void api.clientLog('warn', `factkeys active=${document.querySelector('.note-tab.active .note-tab-title')?.textContent?.slice(0, 12) ?? '?'}`, '', 'probe'), 5500)
     return
   }

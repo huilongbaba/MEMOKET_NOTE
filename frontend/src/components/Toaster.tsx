@@ -11,10 +11,11 @@ export default function Toaster() {
           <span onClick={() => dismissToast(t.id)} title="点击关闭" style={{ cursor: 'pointer' }}>
             {t.message}
           </span>
+          {/* 真按钮：没有 href 的 <a> Tab 走不到，「撤销」这种 5 秒窗口的动作键盘用户按不着（第 507 轮） */}
           {t.action && (
-            <a className="link" style={{ marginLeft: 10 }} onClick={t.action.onClick}>
+            <button className="linklike" style={{ marginLeft: 10 }} onClick={t.action.onClick}>
               {t.action.label}
-            </a>
+            </button>
           )}
         </div>
       ))}

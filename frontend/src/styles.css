@@ -1036,6 +1036,3 @@ kbd {
 /* 段落里的一小截可点文字（「去事实表筛」这种） */
 .kb-link-inline { color: var(--accent); text-decoration: none; }
 .kb-link-inline:hover { text-decoration: underline; }
-
-/* div / span 做的按钮（util/clickable）：键盘走到时要看得见（第 506 轮） */
-[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }

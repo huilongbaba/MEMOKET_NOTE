@@ -3512,3 +3512,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 横扫：只带 onClick 的 div / span 18 处，去掉遮罩层（palette-backdrop 那种）剩 8 处真交互：侧栏笔记项 + 置顶 / 删除、右下角「harness 还在跑」卡片、相关记忆的事实卡 / 事实行、冲突收件箱的事实、事实表的 `.fact-text`、时间线的月 / 日行。图标按钮 0 处漏 title。
 - `util/clickable.ts`：`{...clickable(handler)}` 给 role=button + tabIndex + Enter / 空格；时间线的行再带 aria-expanded；`[role="button"]:focus-visible` 焦点环。探针 `factkeys`：事实表第一条聚焦按 Enter → 打开了那条（日志 active=那条事实的前几个字）。check-css-classes 照旧全绿。
+
+## [531] 第 507 轮：a11y 扫描做成 check + toast 的「撤销」变真按钮（2026-09-14）
+
+- `scripts/check-a11y.mts`（第 17 条 check）：带 onClick 的 div / span 必须有 role 或 onKeyDown（遮罩 / modal 容器、树的展开三角、toast 正文点一下关掉不算）；只有一个 `<i class="bx …">` 的按钮必须有 title / aria-label。第一版把标签在 `onClick={() =>` 的箭头处截断了，改成花括号外数 `>`。
+- 抓到一处：toast 里的动作（「撤销」删除那种 5 秒窗口）是没有 href 的 `<a>`，Tab 走不到——改成 `<button class="linklike">`。上一轮加的 `[role=button]:focus-visible` 撤掉——全局 `:focus-visible` 早就有一条（`--focus-ring`）。焦点环没法用探针实拍：程序 `focus()` 不触发 `:focus-visible`。
+- 查了下第 506 轮以为没人用的 `renderNoteItem`：`visibleNotes.map(renderNoteItem)` 在用（grep 带括号漏了），差点删掉，git checkout 回来。
