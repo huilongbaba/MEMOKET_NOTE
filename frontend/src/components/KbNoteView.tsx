@@ -85,6 +85,8 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
       if (!alive) return
       setFact(f)
       if (!f) return
+      // 标签一开始叫「事实 terrence-2046-12F8」：拿到正文后改成前几个字
+      window.dispatchEvent(new CustomEvent('virtual-title', { detail: { id: 'kb:fact:' + factId, title: (f.text || '').slice(0, 18) || '事实' } }))
       // 邻居：拿这条的原文去召回，去掉自己。同一次会议/同一主题的事实
       // 天然靠前——这是「相关事实」最便宜也最准的实现。
       void recall(f.text, 7).then((r) => {
@@ -150,7 +152,7 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
         {related.map((f) => (
           <a key={f.id} href="#" className="kb-link"
              onClick={(e) => { e.preventDefault(); onOpen('kb:fact:' + f.id) }}>
-            <span className="muted" style={{ marginInlineEnd: 8 }}>{f.when}</span>{f.text}
+            <span className="muted" style={{ marginInlineEnd: 8, flex: 'none', whiteSpace: 'nowrap' }}>{f.when}</span><span>{f.text}</span>
           </a>
         ))}
       </Section>
