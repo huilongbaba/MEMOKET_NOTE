@@ -1996,4 +1996,4 @@ app 模块 import 之前把 `KITE_DATA_DIR` 指到临时目录（skills / assets
 `data/jobs` 里 36 个导入 payload（跑完的也留着）、`data/backups/kb` 下 24 个用户目录里 20 个是测试 /
 探针留下的（cancel-test、shot-fresh-*、u9…）。启动时 `prune_job_payloads` 删掉 done / error /
 cancelled 和无主的 payload（interrupted 的留着断点续跑）；`maybe_backup_kb` 顺手把用户目录已经不在
-的备份清掉。这次清掉 34 个 payload、20 个备份目录。pytest 862。
+的备份清掉。这次清掉 35 个 payload、20 个备份目录。pytest 862。
