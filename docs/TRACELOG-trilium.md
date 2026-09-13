@@ -3185,3 +3185,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [453] 巡检第 425 轮：lifespan 之后起一次 dev 实例、台账旧行（2026-09-14）
 
 - dev 实例起停各一次：启动只有托管前端一行，退出「Shutting down」干净，没有 pending task 的告警。PROGRESS 那张 300 轮计划表里「116–125 特殊笔记 ⬜」早就做完了（第 211–235 轮），勾上。没改代码。
+
+## [454] 巡检第 426 轮：.gitignore（2026-09-14）
+
+- backend/data · frontend/dist · desktop/out · 两个 node_modules · .venv · backend/dist 都在忽略里，仓库 465 个文件里没有一个来自这些目录。没改代码。
