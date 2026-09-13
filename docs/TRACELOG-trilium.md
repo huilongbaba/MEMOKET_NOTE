@@ -2661,3 +2661,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 第 306 轮把确认框叠到写作计划面板上之后顺着查 Esc：面板本来**没有** Esc（只能点 × 或点外面），确认框的 Esc 在元素上处理但不拦事件，⌘K 面板的 window 监听不管开没开都吃 Esc 也不拦。
 - 改：面板加 window 级 Esc（`defaultPrevented` 的跳过）；确认框 / 文本输入框 / 选择器的 Esc `preventDefault + stopPropagation`；⌘K 只在开着时拦 Esc。规则一句话：Esc 只关最上面一层。
 - 探针 `plan-panel:abandon-esc`（确认框上按 Esc → 只关确认框，面板留着）、`plan-panel:esc`（面板上按 Esc → 面板关掉），都拍到了预期结果；探针日志会写 `esc → 目标 prevented= backdrops=`。注意快门要 10 秒：8.5 秒时按键还没到，拍的是按之前，白查了一轮。前端 87。
+
+## [336] 巡检第 308 轮：深色 1000×700 下写作 Skill / 导入 / ⌘K（2026-09-13）
+
+- `skills`：卡片一列，启用标 / 标题 / 来源 / 用途 / 上下移 / 编辑 / 删除都在；`import`：Markdown / Obsidian / Evernote / Notion 分块，「导入到」下拉一行放下；`palette:创业`：三篇同名「创业一年回顾」各自带首句区分，知识库两条带高亮。没抓到问题。
