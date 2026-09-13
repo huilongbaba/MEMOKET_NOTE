@@ -43,6 +43,7 @@ import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
+import { layoutPanes } from './util/layoutPanes'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { runProbe } from './probes'
@@ -320,15 +321,7 @@ export default function App() {
     window.addEventListener('resize', on)
     return () => window.removeEventListener('resize', on)
   }, [])
-  const leftW = Math.min(panes.leftW, Math.floor(winW * 0.3))
-  const LAUNCHER_W = 80
-  // 分屏也算进去：1000×700 开分屏实拍，中栏被挤到 250px，ribbon 折两行、工具栏只剩 B。
-  // 分屏最多占窗口 45%；右栏先收，还不够就连左栏也收（关掉分屏自动回来）。
-  const splitW = split ? Math.min(split.w, Math.floor(winW * 0.45)) : 0
-  const tooNarrowForRight = panes.leftOn && winW - LAUNCHER_W - leftW - panes.rightW - splitW < 520
-  const tooNarrowForLeft = !!split && winW - LAUNCHER_W - leftW - splitW < 520
-  const leftShown = !focusMode && panes.leftOn && !tooNarrowForLeft
-  const rightShown = !focusMode && panes.rightOn && !tooNarrowForRight
+  const { leftW, splitW, leftShown, rightShown } = layoutPanes({ winW, panes, splitW: split?.w ?? null, focusMode })
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   // 光标所在段落：右栏「记忆」按它查跟知识库的关系（冲突 / 延续 / 印证 / 缺依据）
   const [cursorPara, setCursorPara] = useState('')

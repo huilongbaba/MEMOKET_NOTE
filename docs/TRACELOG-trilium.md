@@ -3372,3 +3372,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 新 `scripts/check-regex-parity.mts`（挂进 `npm test`，第 13 条 check）：4 组样本同时喂前端 `citedFactIds` / `linkedNoteIds` / `^CITE_RE_SOURCE` 和后端 `store._CITE` / `checks/citations.CITE` / `store._NOTE_LINK` / `prompts/fragments._FACT_ID`，比的是行为不是字面（Python / JS 写法允许不同）。后端 venv 不在就跳过。
 - 第一次跑就红了一条：第 473 轮我让 `linkedNoteIds` 用带标题的完整正则，标题里夹换行的 `[标题\n换行](note://id)` 后端（只看 `](note://id)` 尾巴）算链接、前端不算——面板列表和反链会对不上。改回跟后端同口径的 `NOTE_LINK_TAIL_RE`，`noteLinkRanges`（要拿标题替换）照旧用完整版。vitest 补这条样本。前端 119 + 13 条 check 全过。
+
+## [500] 第 475 轮：三栏 + 分屏的宽度裁决搬出 App.tsx（2026-09-14）
+
+- 「窗口窄时正文优先」那段算术（左栏封顶 30%、分屏封顶 45%、中栏不够 520 先收右栏再收左栏、专注模式两边都收）搬到 `util/layoutPanes.ts` 的 `layoutPanes({winW, panes, splitW, focusMode})`，常量 `LAUNCHER_W` / `MIN_EDITOR_W` 挂出来；App.tsx 3222 → 3215 行。新测试 4 条，样本就是当年实拍的两个窗口：900×600（右栏收、左栏留、800 宽时左栏压到 240）、1000×700 开分屏（分屏 450、两侧都收）。实拍 `--win=900x600` 和 `split:same --win=1000x700` 跟搬之前一样。前端 123。
