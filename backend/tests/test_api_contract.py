@@ -83,7 +83,6 @@ def test_后端发的每个CUSTOM事件前端都接得住():
 _DELIBERATELY_IGNORED = {
     "RUN_STARTED": "前端自己发起的请求，它早就知道跑起来了",
     "TEXT_MESSAGE_START": "正文按轮累积、轮次由 STEP_STARTED 划分，消息边界是冗余的",
-    "TEXT_MESSAGE_END": "同上",
 }
 
 

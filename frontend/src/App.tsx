@@ -1958,6 +1958,17 @@ export default function App() {
         liveContentRef.current = next
         setContent(next)
       },
+      onDedup: ({ paragraph }) => {
+        // 服务端落进正文前剥掉的段 / 行（重复、模型自己写的标题）：本地也删——它们已经流进编辑器了
+        if (currentRef.current?.id !== noteId || !paragraph) return
+        const c = liveContentRef.current
+        const at = c.indexOf(paragraph)
+        if (at < 0) { void api.clientLog('warn', `dedup miss: ${JSON.stringify(paragraph.slice(0, 60))}`, '', 'harness-sync'); return }
+        const next = tidyBlankLines(c.slice(0, at) + c.slice(at + paragraph.length))
+        if (insertCursorRef.current != null && insertCursorRef.current > at) insertCursorRef.current = Math.max(at, insertCursorRef.current - (c.length - next.length))
+        liveContentRef.current = next
+        setContent(next)
+      },
       onDropped: (detail) => {
         // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
         if (currentRef.current?.id !== noteId) return

@@ -15,6 +15,8 @@ Two things live here that no other harness has:
 
 from __future__ import annotations
 
+import re
+
 import os
 from typing import AsyncIterator
 
@@ -43,6 +45,28 @@ def _scrub_and_record(st, content: str) -> str:
     if removed:
         st.bag.setdefault("scrubbed", []).extend(removed)
     return grounding_check.fix_bold_punct(out)
+
+def _record_dropped(st, streamed: str, kept: str) -> None:
+    """流给客户端的这一轮文字，服务端落进正文前又剥了什么（模型自己写的标题 / 跟已有正文重复的段落 /
+    重写了一遍的小节标题）：按段落（空行切）和行两级找「流里有、留下的里没有」的，记到 st.bag["dedup"]，
+    loop 在 TEXT_MESSAGE_END 之后发成 `dedup` 事件——客户端已经把它们插进编辑器了，得知道删哪些（第 561 轮）。"""
+    def paras(t: str) -> list[str]:
+        return [p.strip() for p in re.split(r"\n\s*\n", t or "") if p.strip()]
+    kept_paras = set(paras(kept))
+    kept_lines = {ln.strip() for ln in (kept or "").split("\n") if ln.strip()}
+    gone: list[str] = []
+    for p in paras(streamed):
+        if p in kept_paras:
+            continue
+        # 整段没了 → 报整段；段还在但少了几行（标题被剥）→ 报那几行
+        lines = [ln.strip() for ln in p.split("\n") if ln.strip()]
+        if not any(ln in kept_lines for ln in lines):
+            gone.append(p)
+        else:
+            gone.extend(ln for ln in lines if ln not in kept_lines)
+    if gone:
+        st.bag.setdefault("dedup", []).extend(gone)
+
 
 class NoteHooks:
     """``polish`` only repairs; it never continues."""
@@ -312,6 +336,7 @@ class NoteHooks:
             # it writes them anyway, flattening the user's ### into ##.
             body = outline.drop_already_written(
                 st.content, outline.strip_headings(text))
+            _record_dropped(st, text, body)
             if body:
                 st.content = _scrub_and_record(st, 
                     outline.insert_into(st.content, target[1], body))
@@ -319,6 +344,7 @@ class NoteHooks:
 
         # Appending repeats too -- just less visibly than in outline mode,
         # where the duplicated sections sit side by side.
+        streamed = text
         text = outline.drop_already_written(st.content, text) or text
         placed = st.bag.get("insert_at")
         if placed and placed.get("pos") is not None:
@@ -327,9 +353,11 @@ class NoteHooks:
             for line in body.split("\n", 1)[:1]:
                 if line.lstrip("# ").strip() == (placed.get("section") or "").strip():
                     body = body.split("\n", 1)[1] if "\n" in body else ""
+            _record_dropped(st, streamed, body)
             st.content = _scrub_and_record(st, 
                 outline.insert_into(st.content, placed["pos"], body))
             return
+        _record_dropped(st, streamed, text)
         st.content = _scrub_and_record(st, 
             prompts.join_round_text(st.content, text))
 

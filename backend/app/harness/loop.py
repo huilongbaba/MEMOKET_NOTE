@@ -23,7 +23,7 @@ from typing import AsyncIterator, Sequence
 from .checks.rubric import evaluate
 
 from . import adapter as harness_adapter
-from .events import CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_WARNING, Event, CUSTOM_SCRUB
+from .events import CUSTOM_DEDUP, CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_SCRUB, CUSTOM_WARNING, Event
 from .middleware import BASE, verify
 from .state import State
 from .types import Hooks, Middleware
@@ -101,6 +101,9 @@ async def run(st: State, hooks: Hooks,
             # 续写收尾时服务端删掉的元话语句子（hooks/note._scrub_and_record）：告诉客户端，它本地也删同一句
             for sentence in st.bag.pop("scrubbed", None) or []:
                 yield Event.custom(CUSTOM_SCRUB, {"round": st.round, "sentence": sentence, "why": "元话语"})
+            # 流给客户端之后又被剥掉的段落 / 标题行（重复、模型自己写的标题）：客户端删同一段
+            for para in st.bag.pop("dedup", None) or []:
+                yield Event.custom(CUSTOM_DEDUP, {"round": st.round, "paragraph": para})
             async for e in _fire(chain, "after_produce", st):
                 yield e
 

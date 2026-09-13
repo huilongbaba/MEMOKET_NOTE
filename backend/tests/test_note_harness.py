@@ -514,3 +514,17 @@ def test_breakage_catches_half_deleted_link():
     assert brk(before, "正文。\n\n另见 [链接测试（可删）](note://bb215ab441a2)。补一句。") == ""
     # 整个链接一起删掉是干净的
     assert brk(before, "正文。") == ""
+
+
+def test_record_dropped_按段和行找流里有留下的没有的():
+    """_record_dropped：整段没了报整段，段还在只少了标题行就报那一行（第 561 轮）。"""
+    from types import SimpleNamespace
+    from app.harness.hooks.note import _record_dropped
+    st = SimpleNamespace(bag={})
+    streamed = "## 市场\n第一段正文。\n\n重复的一段重复的一段重复的一段重复的一段重复的一段重复的一段。\n\n第三段。"
+    kept = "第一段正文。\n\n第三段。"
+    _record_dropped(st, streamed, kept)
+    assert st.bag["dedup"] == ["## 市场", "重复的一段重复的一段重复的一段重复的一段重复的一段重复的一段。"]
+    st2 = SimpleNamespace(bag={})
+    _record_dropped(st2, "a\n\nb", "a\n\nb")
+    assert "dedup" not in st2.bag

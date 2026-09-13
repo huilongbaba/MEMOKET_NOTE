@@ -389,3 +389,19 @@ def test_produce_里记下的_scrubbed_句子在_text_end_之后发成_scrub_事
     assert "scrubbed" not in st.bag, "发完要清掉，不然下一轮重复发"
     order = [e.data.get("name") or e.type.value for e in events]
     assert order.index("scrub") > order.index("TEXT_MESSAGE_END")
+
+
+def test_produce_里记下的_dedup_段落在_text_end_之后发成_dedup_事件():
+    """流给客户端之后服务端又剥掉的段落（重复 / 模型自己写的标题）要告诉客户端（第 561 轮）。"""
+    class DedupHooks(FakeHooks):
+        async def produce(self, st):
+            async for ch in super().produce(st):
+                yield ch
+            st.bag.setdefault("dedup", []).append("## 模型自己写的标题")
+
+    hooks = DedupHooks(["ab"])
+    st = _state(_mode(max_rounds=1))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2]]), mw=BASE))
+    dd = [e.data["value"] for e in events if e.data.get("name") == "dedup"]
+    assert dd and dd[0]["paragraph"] == "## 模型自己写的标题"
+    assert "dedup" not in st.bag

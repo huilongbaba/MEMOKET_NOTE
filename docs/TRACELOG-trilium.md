@@ -3746,3 +3746,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [584] 第 560 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree 正常、kb/tree「实体」child_count 1201、stats 1211（正式版 userData 是早期快照，比 dev 的 1204 / 1214 少几个是数据不同）；日志新增 9 行裸 `INFO:` 0 行。PROGRESS 补 551–560 行。
+
+## [585] 第 561 轮：服务端剥掉的段落 / 标题行也发事件（`dedup`）（2026-09-14）
+
+- 同一类没镜像的变换还剩一处：续写文字流给客户端之后，服务端落进正文前还会 `strip_headings`（大纲模式剥模型自己写的标题）、`drop_already_written`（剥跟已有正文重复的段）、剥重写了一遍的小节标题——客户端已经把这些插进编辑器了。`hooks/note._record_dropped(st, streamed, kept)` 按段和行两级找「流里有、留下的里没有」记进 `st.bag["dedup"]`，loop 在 TEXT_MESSAGE_END 之后发 `dedup` 事件；客户端 `onDedup` 删同一段（找不到记 `dedup miss`）。
+- 合约测试提醒 TEXT_MESSAGE_END 已经接上了、从「故意不接」名单里删掉。测试加两条（record_dropped 的段 / 行两级、loop 发事件）；后端 959。真跑一次 harness-sync 0 条（这一跑有没有触发 dedup 不确定，机制靠单测）。harness-framework 事件表加一行。
