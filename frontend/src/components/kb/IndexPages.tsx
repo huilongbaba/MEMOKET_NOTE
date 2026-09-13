@@ -96,9 +96,12 @@ export function RecentIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
     <div className="kb-page">
       <div className="kb-head">
         <h2 className="kb-note-title"><i className="bx bx-time-five muted" /> 最近摄入</h2>
-        <div className="muted" style={{ fontSize: 13 }}>最近 {units.length} 场会议。点开看这场会抽出来的事实。</div>
+        <div className="muted" style={{ fontSize: 13 }}>{units.length ? `最近 ${units.length} 场会议。点开看这场会抽出来的事实。` : '还没有摄入过。'}</div>
       </div>
-      <KbSection title="会议">
+      {units.length === 0 && (
+        <p className="muted" style={{ fontSize: 13 }}>导入一场会议录音、一批笔记，或把一篇写好的笔记「存入知识库」——之后每一份材料都会列在这里。</p>
+      )}
+      {units.length > 0 && <KbSection title="会议">
         <div className="stack" style={{ gap: 4 }}>
           {units.map((u) => (
             <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen(u.note_id) }}>
@@ -107,7 +110,7 @@ export function RecentIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
             </a>
           ))}
         </div>
-      </KbSection>
+      </KbSection>}
     </div>
   )
 }

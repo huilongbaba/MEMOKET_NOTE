@@ -50,6 +50,7 @@ export default function MemoryBrowser() {
     return () => ro.disconnect()
   }, [])
   const [topics, setTopics] = useState<TopicNode[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [entities, setEntities] = useState<EntityNode[]>([])
   const [links, setLinks] = useState<TopicEntityLink[]>([])
   const [newTopicCode, setNewTopicCode] = useState('')
@@ -71,7 +72,7 @@ export default function MemoryBrowser() {
   // tab 抽取新内容，图上永远不会长出新节点。改成跟事实表一样轮询。
   useEffect(() => {
     const fetchAll = () => {
-      memoryTopics().then(setTopics).catch(() => {})
+      memoryTopics().then((t) => { setTopics(t); setLoaded(true) }).catch(() => {})
       memoryEntities().then(setEntities).catch(() => {})
       topicEntityLinks().then(setLinks).catch(() => {})
     }
@@ -228,7 +229,12 @@ export default function MemoryBrowser() {
   // **不要把外壳写成 render 里定义的组件**：每次 render 都是新的组件类型，
   // 整棵子树（含力导向图）每 3 秒轮询一次就重挂一次——图自己跳、放大了缩回去、
   // 拖过的节点归位，全是这一个原因（client-log 抓到每 1.5s 一次 new simulation）。
-  const body = (
+  // 空库：词表自带的六个根主题一条事实都没有，画成图就是六个孤零零的圆（第 314 轮全新用户实拍）。
+  // 一条事实都没有就不画，给一句话。
+  const libraryEmpty = loaded && topics.every((t) => t.fact_count === 0) && entities.length === 0
+  const body = libraryEmpty ? (
+    <p className="muted" style={{ fontSize: 13 }}>还没有事实。导入会议记录或把笔记存入知识库之后，这里会长出主题和实体的关系图。</p>
+  ) : (
     <>
         {(
           <div className="stack">
