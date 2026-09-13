@@ -12,6 +12,8 @@ describe('displayTitle', () => {
   it('首行当标题截到第一个句读', () => {
     expect(clipTitle('今天跟供应商确认了 PCBA 样品的交期，4 月 10 日拿到手板之后再定下一步')).toBe('今天跟供应商确认了 PCBA 样品的交期')
     expect(clipTitle('好的，那就这么定了')).toBe('好的，那就这么定了')     // 句读太靠前不截
+    expect(clipTitle('APP定义：先锚定范围，避免后续招聘和排期漂移')).toBe('APP定义：先锚定范围')   // 冒号太靠前跳过，逗号够远
+    expect(clipTitle('我们产品当前遇到的挑战：四项核心挑战归纳为验证框架')).toBe('我们产品当前遇到的挑战')
     expect(clipTitle('x'.repeat(80))).toHaveLength(60)
   })
   it('整篇缩进的笔记：首行前的空格和 # 都剥掉', () => {

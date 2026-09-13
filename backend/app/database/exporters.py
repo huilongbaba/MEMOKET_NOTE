@@ -23,14 +23,32 @@ _BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 ASSET_REF = re.compile(r"/api/assets/([a-f0-9]{24}\.[a-z0-9]+)")
 
 
+_SENTENCE_END = "。！？"
+_PAUSE = "；，,：:"
+
+
+def clip_title(line: str, max_len: int = 60) -> str:
+    """正文首行当名字时截到第一个够格的句读——跟前端 `displayTitle.clipTitle` 同一条规则：
+    句号（。！？）不在开头一两个字就截；逗号 / 分号 / 冒号要 ≥ 8 字（「APP定义：先锚定范围」的冒号太靠前，
+    截出来不成标题）；都没有才硬截。导出的文件名之前是 80 字硬截，一行「我们产品当前遇到的挑战：四项核心
+    挑战归纳为验证框架：录制信任、关联即时反馈…」整句进文件名。"""
+    for i, ch in enumerate(line):
+        if ch in _SENTENCE_END and i >= 2:
+            return line[:min(i, max_len)]
+        if ch in _PAUSE and i >= 8:
+            return line[:min(i, max_len)]
+    return line[:max_len]
+
+
 def display_title(title: str, content: str) -> str:
     t = (title or "").strip()
     if t and t not in ("未命名", "Untitled", "note"):
         return t
     for line in (content or "").split("\n"):
-        line = re.sub(r"^#+\s*", "", line).strip()
+        # 先 strip 再剥 #：整篇缩进的「    # 标题」不然会变成「# 标题」（跟前端 displayTitle 一致）
+        line = re.sub(r"^#+\s*", "", line.strip()).strip()
         if line:
-            return line[:60]
+            return clip_title(line)
     return "未命名"
 
 

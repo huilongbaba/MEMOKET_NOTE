@@ -67,3 +67,14 @@ def test_笔记图标跟着导出再导回(client):
     assert notes["会议 A"]["icon"] == "bx-rocket"
     assert notes["项目"]["icon"] == "bx-briefcase"          # 文件夹笔记的图标也回到它自己身上
     assert "icon:" not in notes["会议 A"]["content"]
+
+
+def test_导出文件名_正文首行截到句读_整篇缩进也剥干净():
+    from app.database.exporters import clip_title, display_title
+    assert display_title("未命名", "    # 创业一年回顾\n    ## 时间线") == "创业一年回顾"
+    assert display_title("", "我们产品当前遇到的挑战：四项核心挑战归纳为验证框架：录制信任") == "我们产品当前遇到的挑战"
+    assert clip_title("APP定义：先锚定范围，避免后续招聘和排期漂移") == "APP定义：先锚定范围"
+    assert clip_title("好的，那就这么定了") == "好的，那就这么定了"
+    assert clip_title("第一句。第二句") == "第一句"
+    assert len(clip_title("x" * 90)) == 60
+    assert display_title("真标题：不动", "正文") == "真标题：不动"

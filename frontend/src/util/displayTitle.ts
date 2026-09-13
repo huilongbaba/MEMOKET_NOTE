@@ -25,8 +25,8 @@ export function displayTitle(n: { title?: string; preview?: string; content?: st
  *  标签页上读起来像一句话不像标题（第 316 轮实拍）。句读太靠前（< 8 字）就不在那里截，退回 60 字硬截。 */
 export function clipTitle(line: string, max = 60): string {
   // 按出现顺序找第一个「够格」的句读：句号（。！？）只要不在开头一两个字就算；
-  // 逗号 / 分号太靠前（< 8 字）截出来不成标题（「好的，那就这么定了」），跳过找下一个
-  for (const m of line.matchAll(/[。！？；，,]/g)) {
+  // 逗号 / 分号 / 冒号太靠前（< 8 字）截出来不成标题（「好的，那就这么定了」「APP定义：先锚定范围」），跳过找下一个
+  for (const m of line.matchAll(/[。！？；，,：:]/g)) {
     const min = /[。！？]/.test(m[0]) ? 2 : 8
     if (m.index >= min) return line.slice(0, Math.min(m.index, max))
   }
