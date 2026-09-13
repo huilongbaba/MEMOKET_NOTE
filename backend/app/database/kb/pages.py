@@ -20,6 +20,14 @@ TOP_N = 8
 FACT_PAGE = 50
 
 
+def _neg_id(uid: str):
+    """排序用：日期倒序的同时让同一份材料的段号正序（09-07 1/2 在 2/2 前面，第 266 轮实拍反了）。
+    段号是 id 末尾的 -<n>，取负数；没有段号的原样。"""
+    import re as _re
+    m = _re.search(r"-(\d+)$", uid)
+    return (-int(m.group(1)), uid[:m.start()]) if m else (0, uid)
+
+
 def _speakers(facts, top_n: int) -> list[dict]:
     """按归一化后的说话人分组计数，显示最常见的原写法（kb/who.py）。"""
     by_key: Counter = Counter()
@@ -134,7 +142,7 @@ def dashboard(mem) -> dict:
     top_entities = [{"code": c, "name": _entity_name(vocab, c), "facts": n} for c, n in ent.most_common(TOP_N)]
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
-    recent = sorted((u for u in units if u.date), key=lambda u: (u.date, u.id), reverse=True)[:6]
+    recent = sorted((u for u in units if u.date), key=lambda u: (u.date, _neg_id(u.id)), reverse=True)[:6]
     labels = part_labels(recent)
     recent_units = [{"id": u.id, "date": u.date, "title": labels.get(u.id) or u.title or "", "facts": unit_facts.get(u.id, 0)} for u in recent]
 

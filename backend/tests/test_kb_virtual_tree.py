@@ -184,3 +184,16 @@ def test_树上的会议行段号挪到日期后面():
     assert _unit_tree_title("2026-09-07", "公司汇报（1/2）") == "09-07 1/2 · 公司汇报"
     assert _unit_tree_title("2026-09-07", "周会") == "09-07 · 周会"
     assert _unit_tree_title("", "周会") == " · 周会" or _unit_tree_title("", "周会")
+
+
+def test_同一天切段的会议按段号正序(mem):
+    """第 266 轮实拍：最近摄入里「09-07 2/2」排在「1/2」前面。"""
+    from memoket_kite.core.algebra import Unit
+    from app.database.kb import virtual_tree, pages
+    store, _ = mem._index()
+    for i in range(3):
+        store.units[f"obsidian-doc9-{i}"] = Unit(id=f"obsidian-doc9-{i}", date="2026-09-07", t="", title="公司汇报", dur_min=0, n_lines=1)
+    rows = [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:unit:obsidian-doc9-")]
+    assert [r["note_id"][-1] for r in sorted(rows, key=lambda r: r["position"])] == ["0", "1", "2"]
+    recent = [u["id"] for u in pages.dashboard(mem)["recent_units"] if u["id"].startswith("obsidian-doc9-")]
+    assert recent == ["obsidian-doc9-0", "obsidian-doc9-1", "obsidian-doc9-2"]
