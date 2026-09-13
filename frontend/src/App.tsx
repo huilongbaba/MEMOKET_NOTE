@@ -44,6 +44,7 @@ import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
 import { layoutPanes } from './util/layoutPanes'
+import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { runProbe } from './probes'
@@ -1150,23 +1151,11 @@ export default function App() {
     setVirtualId(null)
     setCurrent(n)
     // 上次没存上的草稿（见 save() 的 catch）：比库里的新就放回来，并提示一句
-    let draft: { title: string; content: string; at: number } | null = null
-    try {
-      const raw = localStorage.getItem('memoket-note-draft:' + n.id)
-      if (raw) draft = JSON.parse(raw) as { title: string; content: string; at: number }
-    } catch { draft = null }
-    if (draft && draft.content !== n.content && draft.at > Date.parse(n.updated_at)) {
-      setTitle(draft.title || n.title)
-      setContent(draft.content)
-      toast('上次没存上的内容已恢复到这篇里，会在下一次自动保存时存回去')
-      // 探针模式下 save() 被拦，这份草稿永远「存不回去」，会留在 dev 实例的 localStorage 里，
-      // 下一次不带探针启动就被当真草稿存进真实笔记（第 136 轮：测试笔记末尾多了一行探针文案）
-      if (new URLSearchParams(location.search).get('probe')) { try { localStorage.removeItem('memoket-note-draft:' + n.id) } catch { /* 无所谓 */ } }
-    } else {
-      setTitle(n.title)
-      setContent(n.content)
-      if (draft) { try { localStorage.removeItem('memoket-note-draft:' + n.id) } catch { /* 无所谓 */ } }
-    }
+    const d = resolveDraft(n, readDraft(n.id), !!new URLSearchParams(location.search).get('probe'))
+    setTitle(d.title)
+    setContent(d.content)
+    if (d.restored) toast('上次没存上的内容已恢复到这篇里，会在下一次自动保存时存回去')
+    if (d.clear) clearDraft(n.id)
     // 骨架跟着笔记读回来，**不是清空**。清空那版的后果是「一会儿就没了」：
     // 换一篇、刷新页面、甚至无限续写开着「跟随」自动切到下一段，骨架都没了，
     // 而 harness 下一轮还得重新花一次模型调用生成一份。
@@ -1318,7 +1307,7 @@ export default function App() {
       const n = await api.saveNote(current.id, title, content)
       setCurrent(n)
       setSaveStatus({ at: Date.now() })
-      try { localStorage.removeItem('memoket-note-draft:' + current.id) } catch { /* 无所谓 */ }
+      clearDraft(current.id)
       // 列表接口带全文（terrence 23 篇 250KB、shot-perf 413 篇 580KB）：每次自动保存都重拉一遍整个库
       // 太浪费——保存只改这一篇，用返回的那篇就地替换；增删移动那些路径照旧 reload()
       setNotes((prev) => (prev.some((x) => x.id === n.id) ? prev.map((x) => (x.id === n.id ? n : x)) : [n, ...prev]))
@@ -1327,7 +1316,7 @@ export default function App() {
       setSaveStatus({ at: Date.now(), error: String(e) })
       // **没存上的正文先落到本机**：后端崩了 / 网断了的那几秒里用户还在写，
       // 这时关掉应用就全没了。下次打开这篇如果库里的版本更旧，把草稿放回去。
-      try { localStorage.setItem('memoket-note-draft:' + current.id, JSON.stringify({ title, content, at: Date.now() })) } catch { /* 无所谓 */ }
+      writeDraft(current.id, title, content)
       throw e
     }
   }

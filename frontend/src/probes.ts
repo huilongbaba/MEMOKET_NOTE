@@ -10,6 +10,7 @@
  * ctx 就是 App 里那些闭包（函数和 setState），探针要什么就从里面拿。
  */
 import { EditorView } from '@codemirror/view'
+import { writeDraft } from './util/draft'
 import { layersOf, turnLayerOff } from './editor/roundDiff'
 import * as api from './api'
 import { SLASH_ITEMS } from './editor/slashMenu'
@@ -344,7 +345,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     if (n) { harnessProbeDone.current = true; void (async () => {
       const other = notes.find((x) => x.id !== n.id)!
       await switchTo(other)
-      try { localStorage.setItem('memoket-note-draft:' + n.id, JSON.stringify({ title: n.title, content: n.content + '\n\n（这一段是上次没存上的草稿）', at: Date.now() })) } catch { /* 无所谓 */ }
+      writeDraft(n.id, n.title, n.content + '\n\n（这一段是上次没存上的草稿）')
       setTimeout(() => void switchTo(n), 800)
       setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, 3500)
     })() }
