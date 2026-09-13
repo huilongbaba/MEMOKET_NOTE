@@ -42,7 +42,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
 
       {hits ? (
         <KbSection title={`${hits.facts.length} 条结果`}
-                   extra={<span className="muted" style={{ fontSize: 12 }}>{hits.took} ms{hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}</span>}>
+                   extra={<span className="muted" style={{ fontSize: 12 }}>{Math.round(hits.took)} ms{hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}</span>}>
           <FactList facts={hits.facts} actions={actions} />
           {hits.facts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>换个说法，或者到「事实表」按主题 / 实体筛。</p>}
         </KbSection>

@@ -68,6 +68,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => { const ws = document.querySelectorAll('.cm-mermaid-widget'); void api.clientLog('warn', `mermaid widgets=${ws.length} svg=${Array.from(ws).filter((w) => w.querySelector('svg')).length} error=${document.querySelectorAll('.cm-mermaid-error').length}`, '', 'probe') }, 6500)
     return
   }
+  // kbsearch:<q> → 知识库首页的搜索框打字，看命中词 / 结果（第 541 轮：命中词只在这里显示）
+  if (probe?.startsWith('kbsearch:')) {
+    const q = decodeURIComponent(probe.slice(9))
+    setTimeout(() => void openVirtual('kb', '知识库'), 800)
+    setTimeout(() => {
+      const input = document.querySelector('.kb-page input, .kb-dashboard input, input[placeholder^="搜知识库"]') as HTMLInputElement | null
+      if (!input) { void api.clientLog('warn', 'kbsearch: input not found', '', 'probe'); return }
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, q); input.dispatchEvent(new Event('input', { bubbles: true }))
+    }, 3000)
+    return
+  }
   // 标签装不下时右边的 ▾：列出全部标签
   if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)

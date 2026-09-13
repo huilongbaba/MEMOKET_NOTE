@@ -3663,3 +3663,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [564] 第 540 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree 正常；`POST /api/memory/recall` 命中词只剩 `['ideas']`——第 530 轮那条「speaker b」在正式版也没了；日志新增 21 行裸 `INFO:` 0 行。PROGRESS 补 531–540 行。
+
+## [565] 第 541 轮：知识库首页搜索实拍——命中词对了，毫秒数太长（2026-09-14）
+
+- 新探针 `kbsearch:<q>`（开知识库首页、往搜索框打字）。搜「speaker b ideas」：命中词只剩「ideas」（说话人标签没了），20 条里第二条就是那条「no ideas now but will have ideas later」。
+- 顺带看到耗时显示「87.903 ms」——三位小数在界面上没意义，`Math.round`，现在「69 ms」。
