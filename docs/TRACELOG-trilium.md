@@ -3428,3 +3428,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 前端「export 了却没别的文件 import」53 个：全是类型导出、本文件内在用、或 scripts/ 里的 check 在用（roundDiff / mermaid 的几个），没有真正的死代码，不做成 check（噪声大）。
 - 后端「def 了没人调」10 个：`kb/search._norm` 真死（连 `_WS` 都另有用处）——删；`store.get_skeleton` / `store.citation_counts` 只有测试在用（树接口一趟 SQL 早就带 `cite_count`）——删，测试改走 `get_note` / `tree`；`chart_gap` / `dropped_keys` / `is_virtual` / registry 的三个 `_reset_for_tests` 类是测试用的公共小工具，留着。后端 950 照旧。
+
+## [512] 巡检第 487 轮：标签列表的深色 / 窄窗实拍（2026-09-14）
+
+- `tabs:list --dark`：菜单底色、表头、「当前」提示都跟深色令牌走；`--win=900x600`：菜单贴窗口右缘、高度封顶到窗口、内部滚。没改代码。
