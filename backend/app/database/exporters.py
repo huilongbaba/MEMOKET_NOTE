@@ -35,7 +35,7 @@ def display_title(title: str, content: str) -> str:
 
 
 def safe_name(name: str) -> str:
-    name = _BAD.sub(" ", name).strip().strip(".")
+    name = _BAD.sub(" ", name).strip(" .")   # 「../../evil」之前变成「 .. evil」——先去点再去空格得循环，一次去掉两种
     return (name or "未命名")[:80]
 
 

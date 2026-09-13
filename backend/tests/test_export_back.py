@@ -142,3 +142,17 @@ def test_飞书_第二次是覆盖_凭据不落库(client, monkeypatch):
     with store.connect() as c:
         rows = c.execute("SELECT * FROM provider_config").fetchall()
     assert all("s3" not in str(dict(r)) for r in rows)
+
+
+def test_obsidian_目录写不进去给400_文件名不带路径分隔(client, tmp_path, monkeypatch):
+    """第 248 轮：vault 选到 /etc 这种目录之前是 500；标题「../../evil」写出来叫「 .. evil」。"""
+    import os
+    from app.database import exporters
+    assert exporters.safe_name("../../evil") == "evil" and exporters.safe_name("sub/dir:name?") == "sub dir name"
+    client.post("/api/notes", json={"title": "t", "content": "x"})
+    ro = tmp_path / "ro"; ro.mkdir(); os.chmod(ro, 0o500)
+    try:
+        r = client.post("/api/export/obsidian", json={"vault_dir": str(ro), "note_ids": [], "force": False})
+        assert r.status_code == 400 and "写不进去" in r.text
+    finally:
+        os.chmod(ro, 0o700)

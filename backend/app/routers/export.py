@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import zipfile
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 
 import httpx
@@ -77,6 +78,8 @@ def export_obsidian(body: ObsidianOut, user: str = Depends(current_user)) -> dic
     vault = Path(body.vault_dir).expanduser()
     if not vault.is_dir():
         raise HTTPException(400, f"目录不存在：{vault}")
+    if not os.access(vault, os.W_OK):
+        raise HTTPException(400, f"这个目录写不进去：{vault}")   # 选到 /etc 这种目录之前是 500（第 248 轮实测）
     only = set(body.note_ids) or None
     files = exporters.render_tree(user, only)
     written, skipped, conflicts = [], [], []
@@ -94,8 +97,11 @@ def export_obsidian(body: ObsidianOut, user: str = Depends(current_user)) -> dic
             if current is not None and prev and prev.get("remote_id") and store.content_sha(current) != prev["remote_id"] and not body.force:
                 conflicts.append(f.path)
                 continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(f.content, encoding="utf-8")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(f.content, encoding="utf-8")
+        except OSError as exc:
+            raise HTTPException(400, f"写不进 {f.path}：{exc.strerror or exc}")
         written.append(f.path)
         assets |= f.assets
         if f.note_id:
