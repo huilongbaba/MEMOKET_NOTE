@@ -3392,3 +3392,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 50 个标签靠 ◀ ▶ 一格 210px 地滚是找不到的（Chrome 有标签搜索、VS Code 有「打开的编辑器」）。TabBar 溢出时在 ▶ 右边多一个 ▾（title「列出全部 N 个标签」），弹 ContextMenu：表头「打开的标签 · N」、每项带笔记图标（虚拟页 #）、当前那个右侧标「当前」、点了切过去；末尾「关闭其他」。
 - 连带两处修：ContextMenu 比窗口还高时原来把头顶到窗口外（第一版实拍表头看不见）——`y` 也钳到 ≥ 5px，`.context-menu` 加 `max-height: calc(100vh - 10px); overflow-y: auto`，里面滚；菜单里的标签名硬截 36 字加省略号（不用 `clipTitle`，那个按句读截，「产品计划会：APP/硬件…」会只剩前半）。
 - 新探针 `tabs:list`。实拍：表头在、「当前」在、长标题带 …、列表内滚。
+
+## [504] 第 479 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 950 通过；前端 tsc + eslint + vitest 126 + 13 条 check / smoke 全过（含新加的 check-regex-parity）。
