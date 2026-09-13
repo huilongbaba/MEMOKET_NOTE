@@ -171,3 +171,16 @@ def test_树上的主题计数也是不同事实的条数(mem):
     store.facts["dup2"] = _fact("dup2", "两个主题都挂", "2026-01-05", topics=[root, kids[0]])
     row = next(r for r in virtual_tree.build(mem) if r["note_id"] == f"kb:topic:{root}")
     assert row["fact_count"] == pages.topic_page(mem, root, limit=1, offset=0)["facts_total"]
+
+
+def test_说话人不同写法算同一个人(mem):
+    """第 217 轮：首页 speaker a 6185 和 speaker_a 1106 并排；事实表按说话人筛只能筛到一种写法。"""
+    store, _ = mem._index()
+    store.facts["w1"] = _fact("w1", "甲说的", "2026-01-05", who="speaker_a")
+    store.facts["w2"] = _fact("w2", "甲又说", "2026-01-06", who="speaker a")
+    store.facts["w3"] = _fact("w3", "甲再说", "2026-01-07", who="Speaker A")
+    sp = {s["who"]: s["facts"] for s in pages.dashboard(mem)["speakers"]}
+    assert sum(1 for k in sp if k.lower().replace("_", " ") == "speaker a") == 1
+    assert [v for k, v in sp.items() if k.lower().replace("_", " ") == "speaker a"] == [3]
+    rows, total = mem.facts_page(who="speaker a", limit=50, offset=0)[:2]
+    assert {r["id"] for r in rows} >= {"w1", "w2", "w3"}

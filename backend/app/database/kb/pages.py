@@ -10,12 +10,25 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+
+from .who import norm_who
 from .units import part_labels
 
 MONTHS_ON_DASHBOARD = 12
 MONTHS_ON_PAGE = 24
 TOP_N = 8
 FACT_PAGE = 50
+
+
+def _speakers(facts, top_n: int) -> list[dict]:
+    """按归一化后的说话人分组计数，显示最常见的原写法（kb/who.py）。"""
+    by_key: Counter = Counter()
+    spelling: dict[str, Counter] = defaultdict(Counter)
+    for f in facts:
+        k = norm_who(f.who)
+        by_key[k] += 1
+        spelling[k][f.who or ""] += 1
+    return [{"who": (spelling[k].most_common(1)[0][0] or "?"), "facts": n} for k, n in by_key.most_common(top_n)]
 
 
 def _fact(f, vocab=None) -> dict:
@@ -134,7 +147,7 @@ def dashboard(mem) -> dict:
         "top_entities": top_entities,
         "recent_units": recent_units,
         "kinds": [{"kind": k or "?", "facts": n} for k, n in Counter(f.kind for f in facts).most_common()],
-        "speakers": [{"who": w or "?", "facts": n} for w, n in Counter(f.who for f in facts).most_common(6)],
+        "speakers": _speakers(facts, 6),
     }
 
 
@@ -260,7 +273,7 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
     ents = Counter(c for f in facts for c in f.entities)
     return {
         "id": u.id, "date": u.date or "", "title": label,
-        "speakers": sorted({f.who for f in facts if f.who}),
+        "speakers": sorted(s["who"] for s in _speakers([f for f in facts if f.who], 50)),
         "facts_total": total, "facts": page, "limit": limit, "offset": offset,
         "topics": [{"code": c, "facts": n} for c, n in topics.most_common(TOP_N)],
         "entities": [{"code": c, "name": _entity_name(vocab, c), "facts": n} for c, n in ents.most_common(TOP_N)],

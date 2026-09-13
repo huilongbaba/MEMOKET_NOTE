@@ -17,6 +17,8 @@ from __future__ import annotations
 import copy
 import os
 import re
+
+from ..kb.who import norm_who
 import shutil
 import tempfile
 import time
@@ -583,7 +585,7 @@ class UserMemory:
         def match(f) -> bool:
             if kind and f.kind != kind:
                 return False
-            if who and f.who != who:
+            if who and norm_who(f.who) != norm_who(who):    # speaker a / speaker_a 是同一个人
                 return False
             if conf_floor and CONF_ORDER.get(f.conf, 1) < conf_floor:
                 return False
