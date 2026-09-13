@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import * as api from '../api'
+import { toast } from '../toast'
 import { TextPrompt } from './Dialogs'
 
 /**
@@ -20,7 +21,14 @@ export default function UserSwitcher() {
       </button>
       {asking && (
         <TextPrompt req={{ title: '切换用户（每个用户一个独立的笔记库和知识库）', initial: user,
-          resolve: (v) => { setAsking(false); if (v && v.trim() && v.trim() !== user) { api.setUser(v.trim()); window.location.reload() } } }} />
+          resolve: (v) => {
+            setAsking(false)
+            const next = (v ?? '').trim()
+            if (!next || next === user) return
+            // 用户名要拼进后端的数据目录、还要塞进 HTTP 头：只认字母数字 _ . -（后端同一条正则，不然 400）
+            if (!/^[A-Za-z0-9_.-]{1,64}$/.test(next)) { toast('用户名只能用字母、数字、_ . -，最长 64 个字符', 'error'); return }
+            api.setUser(next); window.location.reload()
+          } }} />
       )}
     </>
   )

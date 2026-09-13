@@ -1853,4 +1853,4 @@ KOL 样机那段只给叠加（terrence 库里没有台数记录，对的）。`
 
 `X-User-Id` 原样拼进 `data/<user>/codebook.xml`，`../x` 这种能走到文件系统别处。`deps.current_user`
 只认 `[A-Za-z0-9_.-]{1,64}`（HTTP 头只能 ASCII，中文名本来就发不出来；跟桌面壳 identity.json 一条
-正则），不合规 400。pytest 845。
+正则），不合规 400；切换用户的输入框同一条正则先拦一道。pytest 845。
