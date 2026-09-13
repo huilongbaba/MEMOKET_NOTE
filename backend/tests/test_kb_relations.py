@@ -138,4 +138,5 @@ def test_trace_把_KITE_的英文拒答换成中文():
     from app.routers.memory import _no_info_to_chinese
     assert _no_info_to_chinese("No information").startswith("知识库里的记录串不出")
     assert _no_info_to_chinese("Not enough information to answer.").startswith("知识库里")
+    assert _no_info_to_chinese("No information", has_facts=False) == "知识库里没有跟这段沾边的记录。"
     assert _no_info_to_chinese("证据显示：2026-02-27 …") == "证据显示：2026-02-27 …"

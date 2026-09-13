@@ -238,10 +238,12 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
 _NO_INFO = re.compile(r"^\s*(no|not enough|insufficient)\s+information\b.*$", re.I | re.S)
 
 
-def _no_info_to_chinese(text: str) -> str:
+def _no_info_to_chinese(text: str, has_facts: bool = True) -> str:
     """KITE 的拒答是英文一句「No information」（第 156 轮实拍：右栏「脉络」顶着一行英文，下面却列着
-    10 条召回的记录）。换成中文、并说清楚下面那几条是什么。"""
+    10 条召回的记录）。换成中文、并说清楚下面那几条是什么；一条都没召回就别说「下面几条」。"""
     if _NO_INFO.match(text or ""):
+        if not has_facts:
+            return "知识库里没有跟这段沾边的记录。"
         return "知识库里的记录串不出这件事的来龙去脉——下面是最相关的几条，可能只是沾边。"
     return text
 
@@ -271,8 +273,13 @@ def trace(body: TraceIn, user: str = Depends(current_user)):
     question = (f"围绕下面这段内容涉及的事情，按时间顺序说明它是怎么演进的，"
                 f"每条都要带上日期：\n\n{head}")
     t0 = time.perf_counter()
-    text, facts = UserMemory(user).ask(question, limit=body.limit)
-    text = _no_info_to_chinese(text)
+    mem = UserMemory(user)
+    if not _has_facts(mem):
+        # 空库：KITE 的 ask() 照样会花一次规划调用（实拍 12 秒）然后答「No information」
+        return AskOut(answer="知识库还是空的——先导入一些记录，或者把写好的笔记「存入知识库」。",
+                      facts=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    text, facts = mem.ask(question, limit=body.limit)
+    text = _no_info_to_chinese(text, bool(facts))
     return AskOut(
         answer=text,
         facts=[FactOut(id=f["id"], text=f["text"], when=f["date"],
