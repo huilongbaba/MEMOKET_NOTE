@@ -1797,6 +1797,8 @@ export default function App() {
         // 两边各丢一半——第 375 轮真跑第 3 轮那 267 字的错位多半是这么来的
         // 应用完照服务端一样压一遍空行（服务端每条修订后 tidy_blank_lines），不然 delete 留下的三个空行两边不一样
         const next = tidyBlankLines(applyRevision(liveContentRef.current, { id: '', op: r.op as Revision['op'], anchor: r.anchor, anchor_end: r.anchor_end, text: r.text, reason: r.reason, sources: r.sources ?? [] }))
+        // 本地重放没改动任何字 = 锚点没定位到：记下来，轮末的「差 N 字」才有下文
+        if (next === liveContentRef.current) void api.clientLog('warn', `revision no-op (${r.op}): anchor ${JSON.stringify((r.anchor ?? '').slice(0, 50))}`, '', 'harness-sync')
         liveContentRef.current = next
         setContent(next)
         // 不弹 toast：一轮修订三四处就在右栏叠四张卡片（实拍），计划面板里有
@@ -1941,9 +1943,11 @@ export default function App() {
         if (currentRef.current?.id !== noteId || !sentence) return
         const c = liveContentRef.current
         const at = c.indexOf(sentence)
-        if (at < 0) return
+        // 本地找不到那句：记下来——轮末对齐会报「差 N 字」，但不记这条就不知道是 scrub 没对上还是别的（第 556 轮真跑差 52 字）
+        if (at < 0) { void api.clientLog('warn', `scrub miss: ${JSON.stringify(sentence.slice(0, 60))}`, '', 'harness-sync'); return }
         // 规则照抄服务端（同段其它句子也会被 strip），见 editor/streamJoin.applyScrub
         const next = tidyBlankLines(applyScrub(c, sentence))
+        if (next === c) void api.clientLog('warn', `scrub no-op: ${JSON.stringify(sentence.slice(0, 60))}`, '', 'harness-sync')
         if (insertCursorRef.current != null && insertCursorRef.current > at) insertCursorRef.current = Math.max(at, insertCursorRef.current - (c.length - next.length))
         liveContentRef.current = next
         setContent(next)
