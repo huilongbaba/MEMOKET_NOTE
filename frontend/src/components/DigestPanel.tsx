@@ -30,7 +30,7 @@ export default function DigestPanel() {
     window.addEventListener('memory-scope-changed', on)
     return () => window.removeEventListener('memory-scope-changed', on)
   }, [])
-  const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope]
+  const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope].replace(/^只看/, '')   // 提示里已经有「只看」了，别写成「只看『只看会议记录』」（第 234 轮实拍）
   // 跑的时候页面除了一个转圈什么都没有（第 127 轮实拍）：这是一次几十秒的模型调用，
   // 得告诉人在做什么、已经等了多久
   const [elapsed, setElapsed] = useState(0)

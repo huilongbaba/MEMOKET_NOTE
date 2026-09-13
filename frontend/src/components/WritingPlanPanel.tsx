@@ -34,7 +34,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
   const [localSections, setLocalSections] = useState<WritingSection[]>([])
   const [goal, setGoal] = useState('')
   const scope = memoryScope()   // 对话框打开时读一次就够：范围在右栏切，切完再开
-  const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope]
+  const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope].replace(/^只看/, '')
   const [starting, setStarting] = useState(false)
 
   const isActive = harness?.folderId === parent.note_id
