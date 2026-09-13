@@ -221,7 +221,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
         <label className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>导入到</span>
-          <select value={importTo} onChange={(e) => setImportTo(e.target.value as 'both' | 'kb' | 'notes')} disabled={importing}>
+          <select aria-label="导入到" value={importTo} onChange={(e) => setImportTo(e.target.value as 'both' | 'kb' | 'notes')} disabled={importing}>
             <option value="both">笔记 + 知识库（逐篇抽事实，篇数多会跑很久）</option>
             <option value="notes">只进笔记（之后可以对单篇「存入知识库」）</option>
             <option value="kb">只进知识库（不建笔记）</option>
@@ -282,7 +282,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           <span style={{ width: 88 }}>飞书</span>
           <input placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <select value={feishuScope} onChange={(e) => setFeishuScope(e.target.value as 'wiki' | 'drive')}>
+          <select aria-label="飞书范围" value={feishuScope} onChange={(e) => setFeishuScope(e.target.value as 'wiki' | 'drive')}>
             <option value="wiki">知识库</option>
             <option value="drive">云空间</option>
           </select>

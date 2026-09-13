@@ -246,7 +246,7 @@ export default function MemoryBrowser() {
                 onKeyDown={(e) => e.key === 'Enter' && submitNewTopic()}
                 style={{ width: 160 }}
               />
-              <select value={newTopicParent} onChange={(e) => setNewTopicParent(e.target.value)}>
+              <select aria-label="父主题" value={newTopicParent} onChange={(e) => setNewTopicParent(e.target.value)}>
                 <option value="">（作为根主题）</option>
                 {topics.map((t) => (
                   <option key={t.code} value={t.code}>{t.code}</option>
