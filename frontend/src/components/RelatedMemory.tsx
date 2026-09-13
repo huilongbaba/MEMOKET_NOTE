@@ -114,10 +114,12 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
   return (
     <div>
       <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
-        跟着正文自动浮现，点一下插入引用。{loading && <span className="spinner" />}
+        {/* 转圈 + 下拉一起挤上来时这句会折成两行把头部撑高（第 216 轮实拍）：文字可截断，别折行 */}
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>跟着正文自动浮现，点一下插入引用。</span>
+        {loading && <span className="spinner" style={{ flexShrink: 0 }} />}
         {/* 记忆范围：一个库里混着会议记录 / 笔记 / 导入的，写自家复盘时别让别家汇报串进来 */}
         <select value={scope} onChange={(e) => setMemoryScope(e.target.value as MemoryScope)} title="召回、关系、续写、扩写、校验、回顾、写作计划取材料都只看这一档"
-                style={{ marginInlineStart: 'auto', fontSize: 11, padding: '1px 4px' }}>
+                style={{ marginInlineStart: 'auto', fontSize: 11, padding: '1px 4px', flexShrink: 0 }}>
           {(Object.keys(SCOPE_LABEL) as MemoryScope[]).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
         </select>
       </p>

@@ -2221,3 +2221,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 扫了 17 份 docs 里反引号引用的仓库路径，两处指向不存在的文件：TRACELOG 里的 `scripts/check-layers.mts`（历史记录，实际在 frontend/scripts/，不改）；`docs/desktop-plan.md` 引用的 `docs/third-party-notices.md` 从来没写过——而那份计划已经明确「本仓库必须以 AGPL-3.0 发布、复用的文件要保留出处」，仓库里却没有 LICENSE、package.json 没有 license 字段、README 一个字没提。
 - **补**：根目录 `LICENSE`（AGPL-3.0 全文，34.5KB，取自 gnu.org）；`docs/third-party-notices.md`（复用 Trilium 的是什么、在哪；后端 9 个 / 前端 33 个 / 桌面 4 个依赖的许可证逐个核过——PyMuPDF 是 AGPL 双许可，跟本项目一致）；frontend / desktop `package.json` 加 `"license": "AGPL-3.0-only"`；README 加「许可证」一节；dmg 的 extraResources 随附 LICENSE 与声明（下次 `npm run dist` 生效）；设置页底部一行出处 + 仓库地址（AGPL §13 的源码提供）。
+
+## [245] 巡检第 216 轮：计划面板（深色）、信息页（2026-09-13）
+
+- `pane:plan --dark`：骨架 + 六条节拍在深色下对；`ribbon:info`：创建 / 修改 / 字数 / 引用 / 摄入 / 副本 / 位置 / id 八行都对。
+- 小改：右栏「记忆」头部那句「跟着正文自动浮现…」在转圈和范围下拉一起挤上来时折成两行把头部撑高——文字改成可截断不折行，转圈和下拉不收缩。
+- 前端 87 tests。
