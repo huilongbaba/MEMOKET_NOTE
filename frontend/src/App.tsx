@@ -1276,12 +1276,11 @@ export default function App() {
 
   useEffect(() => {
     if (!noteQuery.trim()) { setSearchResults(null); return }
-    let stale = false
-    const t = setTimeout(() => {
-      api.listNotes(noteQuery).then((r) => { if (!stale) setSearchResults(r) }).catch(() => {})
-    }, 300)
-    return () => { stale = true; clearTimeout(t) }
-  }, [noteQuery])
+    // 侧栏搜索在本地过滤：全文列表启动时已经在内存里（notes），每敲一个字再去拉一遍带全文的列表
+    // （413 篇 580KB）没有意义。规则跟服务端一样：标题或正文包含、不分大小写；顺序沿用 notes（置顶在前、新的在前）。
+    const needle = noteQuery.trim().toLowerCase()
+    setSearchResults(notes.filter((n) => (n.title ?? '').toLowerCase().includes(needle) || (n.content ?? '').toLowerCase().includes(needle)))
+  }, [noteQuery, notes])
 
   // 摄入是后台任务。任务结束时刷一次树——不刷的话「已入库」的 ⇡ 要等下次
   // 打开应用才出现，用户会以为存入没成功、再存一遍。
