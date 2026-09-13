@@ -1833,3 +1833,9 @@ perf 的常规上报，唯一一条 traceback 是 9 月 12 日凌晨第 14 轮�
 路由里把 `No / Not enough / Insufficient information` 换成中文「知识库里的记录串不出这件事的来龙
 去脉——下面是最相关的几条，可能只是沾边」。骨架（`/api/skeleton`）10 秒，一句核心张力 + 六个节拍，
 质量对得上正文。pytest 843。
+
+## [185] 巡检第 157 轮：关系确认、智能排版真跑（2026-09-13）
+
+`/api/memory/relations` 带模型确认：DVT 8-5 vs 库里 6-3 判成冲突并写出一句人话（5.2 秒）；
+KOL 样机那段只给叠加（terrence 库里没有台数记录，对的）。`/api/compose/restructure` 7.2 秒，
+标题层级和 mermaid 都保住了。没改代码。
