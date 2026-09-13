@@ -2045,3 +2045,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - **改**：四个入参各加 `scope="all"`，透传到 `retrieve()` / `recall()` / `ToolContext.scope`；前端四个调用自动带 `memoryScope()`。校验里正文显式引用的事实不受范围限制（用户自己引的，永远算证据），只有词法召回受限。
 - 范围下拉的提示改成列全受影响的功能。
 - 测试：test_memory_scope +1（假 recall / retrieve 记录收到的 scope），后端 865 passed；前端全绿。纯参数透传，没有可见 UI 变化，没截图。
+
+## [215] 巡检第 186 轮：真库跑校验 / 扩写带范围（2026-09-13）
+
+- terrence 的「harness 测试」那篇，选「矩阵不能只保留 4月16日EVT…」一句：校验 all 8.0s「支持」（判据来自笔记内部，fact_index=-1，fact_id 为空是对的）、notes 3.8s「无法判断」、meetings 5.7s「支持」——范围真的换了证据来源。扩写 all / notes 各 4 秒，模型判前后都已经写过、返回空 before/after（finish_reason=stop，不是撞上限），前端会提示「模型认为不需要补充上下文」。
+- 没改代码。顺手发现 dev 库里还躺着隔离之前的测试用户（cancel-test*/cleanup-test/harness-test-2/search-test/test-skeleton/apple-test/import-test/quality-sample），下一轮清。
