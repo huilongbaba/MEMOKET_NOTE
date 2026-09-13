@@ -76,6 +76,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 371–380 | 无障碍：图标按钮 / 弹层 / 输入框 / 下拉框补 title、role、aria-label；智能续写真跑定位出两类同步差异并修：接缝空行本地也压（streamJoin）、onRevision 不走 updater、revision 事件给全量 anchor / text、本地重放后 tidyBlankLines；重打 dmg（第 380 轮） |
 | 381–390 | 真跑三次复核轮内同步（只剩落盘清理一类，轮末对齐）；scrub 事件 + 客户端镜像删句；文档补同步规则；README 接口表补齐 + /docs；自召回复测 58/57；仓库 / scratch 体检；重打 dmg（第 390 轮） |
 | 391–400 | **「这篇周围有什么」笔记级局部图**（`GET /api/notes/{id}/graph` + ribbon 引用面板末尾的 LocalGraph，gap 表 NoteMap 勾掉）；探针 `note:…:ribbon:<tab>:end`；正式版冒烟改带真身份；重打 dmg（第 400 轮） |
+| 401–410 | 坏依据 / 坏链接可一键清理：找不到的引用「清掉这些引用」、链到已删笔记的「改成纯文本」（都只改正文记号，可撤销）；坏链接 / 链出列表本地按正文算，链入 / stale / 局部图跟落库的 updated_at 重查（不再拿保存前的旧版）；重打 dmg（第 410 轮） |
 
 ## 当前优先队列（2026-09-12 晚，用户点名：这些排在巡检之前）
 
