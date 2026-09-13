@@ -539,7 +539,7 @@ export default function App() {
     }
   }
 
-  const reloadTree = useCallback(async () => {
+  const reloadTree = useCallback(async (kb = true) => {
     const t0 = performance.now()
     const rows = await api.getTree()
     const fetched = performance.now() - t0
@@ -548,7 +548,8 @@ export default function App() {
     if (rows.length >= 200) requestAnimationFrame(() => void api.clientLog('warn', `tree ${rows.length} rows: fetch ${Math.round(fetched)} ms, paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))
     // 知识库子树跟着一起刷：摄入完新事实，主题/月份的计数要跟上。
     // 取不到（KITE 还没建库）就当没有，不影响真笔记。
-    api.kbTree().then(setKbRows).catch(() => setKbRows([]))
+    // 保存正文不动知识库（引用计数在 notes 树那边）：save() 传 false，别每敲一段就重拉一次知识库树。
+    if (kb) api.kbTree().then(setKbRows).catch(() => setKbRows([]))
     return rows
   }, [])
 
@@ -1324,7 +1325,7 @@ export default function App() {
       setCurrent(n)
       setSaveStatus({ at: Date.now() })
       try { localStorage.removeItem('memoket-note-draft:' + current.id) } catch { /* 无所谓 */ }
-      await Promise.all([reload(), reloadTree()])
+      await Promise.all([reload(), reloadTree(false)])
     } catch (e) {
       setSaveStatus({ at: Date.now(), error: String(e) })
       // **没存上的正文先落到本机**：后端崩了 / 网断了的那几秒里用户还在写，
