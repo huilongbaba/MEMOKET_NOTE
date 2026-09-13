@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { clickable } from '../util/clickable'
 import { memoryRelations, mergeFacts, memoryScope, recall, SCOPE_LABEL, setMemoryScope, supersedeFact, type MemoryScope } from '../api'
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
@@ -141,7 +142,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
                   <div className="stack" style={{ gap: 2, marginTop: 4 }}>
                     {r.facts.map((f) => (
                       <div key={f.id} className="muted" style={{ fontSize: 12, cursor: 'pointer' }} title="打开这条"
-                           onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id }))}>
+                           {...clickable(() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })))}>
                         <span className="badge" style={{ marginInlineEnd: 4 }}>{f.when || '—'}</span>{f.text}
                       </div>
                     ))}
@@ -172,7 +173,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           className="card memory-card"
           key={f.id}
           style={{ cursor: 'pointer' }}
-          onClick={() => onInsert(`${f.text} [${f.id}]`)}
+          {...clickable(() => onInsert(`${f.text} [${f.id}]`))}
           title="点击插入引用到光标处"
         >
           <div style={{ fontSize: 13 }}>{f.text}</div>

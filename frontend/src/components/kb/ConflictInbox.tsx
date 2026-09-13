@@ -1,6 +1,7 @@
 /** 冲突收件箱（docs/agent-native-editor.md §3.3.1）：摄入时检出的「新事实 vs 旧事实」，
  *  用户点一下「新的取代旧的」/「旧的算数」/「两条都留」，不是静默入库。 */
 import { useEffect, useState } from 'react'
+import { clickable } from '../../util/clickable'
 
 import { kbConflicts, resolveConflict, type KbConflict } from '../../api'
 import { toast } from '../../toast'
@@ -25,7 +26,7 @@ export default function ConflictInbox({ actions, onCount }: { actions: KbActions
   const Side = ({ f, label }: { f: KbConflict['new']; label: string }) => (
     <div>
       <div className="muted" style={{ fontSize: 11 }}>{label} · {f.when || '—'}{f.note_id ? <> · <a href="#" onClick={(e) => { e.preventDefault(); actions.onOpenNote(f.note_id) }}>来自笔记</a></> : null}</div>
-      <div style={{ cursor: 'pointer' }} onClick={() => actions.onOpen('kb:fact:' + f.id)} title="打开这条">{f.text}</div>
+      <div style={{ cursor: 'pointer' }} {...clickable(() => actions.onOpen('kb:fact:' + f.id))} title="打开这条">{f.text}</div>
     </div>
   )
   return (

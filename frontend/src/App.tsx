@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { clickable } from './util/clickable'
 import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
@@ -1108,7 +1109,7 @@ export default function App() {
       <div
         key={n.id}
         className={'note-item ' + (current?.id === n.id ? 'active' : '')}
-        onClick={() => switchTo(n)}
+        {...clickable(() => void switchTo(n))}
       >
         <div className="t">{displayTitle(n)}</div>
         {n.content.trim() && (
@@ -1139,14 +1140,14 @@ export default function App() {
           <span
             style={{ flexShrink: 0, opacity: n.pinned ? 1 : 0.35 }}
             title={n.pinned ? '取消置顶' : '置顶'}
-            onClick={(e) => { e.stopPropagation(); void togglePin(n) }}
+            {...clickable((e) => { e.stopPropagation(); void togglePin(n) })}
           >
             <i className={'bx ' + (n.pinned ? 'bxs-pin' : 'bx-pin')} />
           </span>
           <span
             style={{ flexShrink: 0 }}
             title="删除（5 秒内可在提示里撤销）"
-            onClick={(e) => { e.stopPropagation(); remove(n) }}
+            {...clickable((e) => { e.stopPropagation(); remove(n) })}
           >
             <i className="bx bx-x" />
           </span>
@@ -2705,12 +2706,12 @@ export default function App() {
         <div
           className="card"
           style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, width: 260, cursor: 'pointer' }}
-          onClick={() => {
+          {...clickable(() => {
             // 从树里找回那一行——正在跑的 harness 只记了 id 和标题，而面板
             // 要的是完整的 TreeRow。找不到就不开（子树可能已经被删了）。
             const row = tree.find((r) => r.note_id === harness.folderId)
             if (row) setWritingPlanParent(row)
-          }}
+          })}
           title="点击打开写作计划面板"
         >
           <div className="row" style={{ gap: 6 }}>

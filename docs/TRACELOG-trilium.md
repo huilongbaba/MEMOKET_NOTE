@@ -3507,3 +3507,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [529] 巡检第 505 轮：README 桌面版一行补标签相关（2026-09-14）
 
 - README 功能表「桌面版」一行补上第 477–504 轮加的：⇧⌘T 回原位、▾ 列表、⌘K 找开着的标签、菜单栏「标签」。没改代码。
+
+## [530] 第 506 轮：可点的 div 键盘也能按（2026-09-14）
+
+- 横扫：只带 onClick 的 div / span 18 处，去掉遮罩层（palette-backdrop 那种）剩 8 处真交互：侧栏笔记项 + 置顶 / 删除、右下角「harness 还在跑」卡片、相关记忆的事实卡 / 事实行、冲突收件箱的事实、事实表的 `.fact-text`、时间线的月 / 日行。图标按钮 0 处漏 title。
+- `util/clickable.ts`：`{...clickable(handler)}` 给 role=button + tabIndex + Enter / 空格；时间线的行再带 aria-expanded；`[role="button"]:focus-visible` 焦点环。探针 `factkeys`：事实表第一条聚焦按 Enter → 打开了那条（日志 active=那条事实的前几个字）。check-css-classes 照旧全绿。

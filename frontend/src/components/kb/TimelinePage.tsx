@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { clickable } from '../../util/clickable'
 
 import { kbDay, kbTimeline, type FactDetail, type KbTimelineMonth } from '../../api'
 import { FactList, type KbActions } from './KbBits'
@@ -48,7 +49,7 @@ export default function TimelinePage({ actions }: { actions: KbActions }) {
             const dmax = Math.max(1, ...m.days.map((d) => sq(d.facts)))
             return (
               <div key={m.month} className={'tl-month' + (open ? ' open' : '')}>
-                <div className="tl-row" onClick={() => setOpenMonth(open ? null : m.month)}>
+                <div className="tl-row" {...clickable(() => setOpenMonth(open ? null : m.month))} aria-expanded={open}>
                   <span className="tl-label">{m.month.slice(5)} 月</span>
                   <span className="tl-bar"><span style={{ width: `${(sq(m.facts) / max) * 100}%` }} /></span>
                   <span className="tl-num muted">{m.facts} 条 · {m.units} 场</span>
@@ -57,7 +58,7 @@ export default function TimelinePage({ actions }: { actions: KbActions }) {
                   <div className="tl-days">
                     {m.days.map((d) => (
                       <div key={d.date}>
-                        <div className={'tl-row day' + (openDay === d.date ? ' open' : '')} onClick={() => setOpenDay(openDay === d.date ? null : d.date)}>
+                        <div className={'tl-row day' + (openDay === d.date ? ' open' : '')} {...clickable(() => setOpenDay(openDay === d.date ? null : d.date))} aria-expanded={openDay === d.date}>
                           <span className="tl-label">{d.date.length >= 10 ? d.date.slice(8) + ' 日' : '不详'}</span>
                           <span className="tl-bar"><span style={{ width: `${(sq(d.facts) / dmax) * 100}%` }} /></span>
                           <span className="tl-num muted">{d.facts} 条{d.units ? ` · ${d.units} 场` : ''}</span>

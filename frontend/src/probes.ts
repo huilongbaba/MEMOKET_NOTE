@@ -45,6 +45,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => void api.clientLog('warn', `tabaction:${a} active=${document.querySelector('.note-tab.active .note-tab-title')?.textContent?.slice(0, 8) ?? '?'} menu=${!!document.querySelector('.context-menu')}`, '', 'probe'), 3500)
     return
   }
+  // 键盘走可点的 div：事实表第一条 .fact-text 聚焦后按 Enter，应该打开那条事实
+  if (probe === 'factkeys') {
+    setTimeout(() => void openVirtual('kb:facts', '事实表'), 800)
+    setTimeout(() => { const el = document.querySelector('.fact-text') as HTMLElement | null; el?.focus(); el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) }, 4000)
+    setTimeout(() => void api.clientLog('warn', `factkeys active=${document.querySelector('.note-tab.active .note-tab-title')?.textContent?.slice(0, 12) ?? '?'}`, '', 'probe'), 5500)
+    return
+  }
   // 标签装不下时右边的 ▾：列出全部标签
   if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)
