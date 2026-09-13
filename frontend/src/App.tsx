@@ -1885,7 +1885,12 @@ export default function App() {
         if (typeof serverContent === 'string' && serverContent && serverContent !== liveContentRef.current) {
           // 记一笔：本地重放的正文跟服务端差了多少。差得多说明客户端的重放逻辑
           // 又跑偏了——这是「agent 输出跟编辑器对不对得上」的证据，不是靠感觉。
-          void api.clientLog('warn', `round ${_round}: 本地正文 ${liveContentRef.current.length} 字 vs 服务端 ${serverContent.length} 字，已用服务端的`, '', 'harness-sync')
+          // 带上第一处不同的位置和前后 20 字：光看字数差 4 个字不知道是哪里跑偏的（第 351 轮实拍）
+          const local = liveContentRef.current
+          let at = 0
+          while (at < local.length && at < serverContent.length && local[at] === serverContent[at]) at++
+          const win = (t: string) => JSON.stringify(t.slice(Math.max(0, at - 20), at + 20))
+          void api.clientLog('warn', `round ${_round}: 本地正文 ${local.length} 字 vs 服务端 ${serverContent.length} 字，已用服务端的；第一处不同在 ${at}：本地 ${win(local)} / 服务端 ${win(serverContent)}`, '', 'harness-sync')
           liveContentRef.current = serverContent
           setContent(serverContent)
         }
