@@ -33,7 +33,14 @@ async function insertImage(view: EditorView, file: File, pos: number) {
   let src: string
   try {
     src = (await uploadAsset(file)).url
-  } catch {
+  } catch (e) {
+    // 只有「后端没接上」（fetch 本身失败，TypeError）才退回内嵌。后端明确拒了的
+    // （太大 / 不支持的类型，4xx）就照它说的办——不然一张 40MB 的图会被转成 53MB 的
+    // base64 塞进正文（第 161 轮巡检）。
+    if (!(e instanceof TypeError)) {
+      toast(`图片没插进来：${e instanceof Error ? e.message.replace(/^\d{3} /, '') : String(e)}`, 'error')
+      return
+    }
     if (file.size > WARN_BYTES) {
       toast(`「${file.name}」有点大（${(file.size / 1024 / 1024).toFixed(1)}MB），后端没接上只能内嵌，这篇笔记会变重`)
     }
