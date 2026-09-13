@@ -3477,3 +3477,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 试开 typescript-eslint 带类型信息的 `no-floating-promises`（`ignoreVoid`）：27 处。多数是 fire-and-forget 的 `reload()` / `save()` / `refresh()`（自己 catch 过）——标 `void` 表示有意不接；4 处 `.then()` 没 `.catch`：写作计划面板读计划、skill 页读列表（接口一失败就永远「加载中」）、启动时 `reload().then(open…)`、mermaid widget 的渲染链（意外抛出就停在「渲染图表…」）——补 catch（toast / 错误态）。`provider-changed` 事件监听原来直接挂的 async 函数，改成同步包一层。
 - 规则进 `eslint.config.mjs`（只对 src，带 `project: tsconfig.json`），eslint 全量仍 2.4 秒；探针文件验证过规则真在抓。`no-misused-promises` 没开（4 处都是事件回调惯用法）。前端 129 全绿，skills / plan-panel 实拍照旧。
+
+## [523] 第 498 轮：桌面壳的三处没人接的 Promise（2026-09-14）
+
+- 拿前端那套 typed eslint 临时扫 desktop/src：3 处。`shell.openExternal` 标 void；`win.loadURL(url)` 失败原来是一片白什么都不说——加 catch 记日志；`app.whenReady().then(boot)` 里 boot 没兜住的意外原来是 unhandled rejection（进程活着、窗口没有）——加 catch：记日志 + 错误框带日志路径 + 退出。desktop 没有 eslint 工程配置，不为 3 处新增一套工具链，记在这里下次重扫。dev 实例实拍启动照旧。

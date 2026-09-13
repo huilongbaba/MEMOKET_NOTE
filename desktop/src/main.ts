@@ -152,13 +152,14 @@ function createWindow(url: string) {
 
   // 外链走系统浏览器，不在应用里开一个没有地址栏的窗口。
   win.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:/.test(target)) shell.openExternal(target)
+    if (/^https?:/.test(target)) void shell.openExternal(target)
     return { action: 'deny' }
   })
 
   win.on('resize', () => win && rememberBounds(win))
   win.on('move', () => win && rememberBounds(win))
-  win.loadURL(url)
+  // 加载失败（后端端口被占 / 页面没打包进去）原来是一片白、什么都不说：记日志
+  win.loadURL(url).catch((e) => remember(`[desktop] 页面加载失败 ${url}：${e}\n`))
   if (wantDevTools) win.webContents.openDevTools({ mode: 'detach' })
   if (shotPath) {
     win.webContents.once('did-finish-load', () => {
@@ -338,7 +339,12 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => {
     if (win) { if (win.isMinimized()) win.restore(); win.focus() }
   })
-  app.whenReady().then(() => { installMenu(); return boot() })
+  // boot() 里没兜住的意外（起窗口 / 读身份文件抛出来的）原来是 unhandled rejection：进程活着、窗口没有。
+  app.whenReady().then(() => { installMenu(); return boot() }).catch((e) => {
+    remember(`[desktop] 启动失败：${e instanceof Error ? e.stack ?? e.message : String(e)}\n`)
+    dialog.showErrorBox('启动失败', `${e instanceof Error ? e.message : String(e)}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
+    app.quit()
+  })
 }
 
 app.on('window-all-closed', () => {
