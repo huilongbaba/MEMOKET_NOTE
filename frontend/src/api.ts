@@ -478,6 +478,7 @@ export const recall = (query: string, limit = 8) =>
 export type FactPeek = {
   id: string; text: string; when: string; kind: string; sources: string[]
   topics: string[]; entities: string[]
+  entity_names?: string[]   // 单条事实接口目前不带，事实页退回代码
 }
 
 /** 按 id 取一条事实。**找不到会 404**——一条指向不存在事实的引用是个真问题
