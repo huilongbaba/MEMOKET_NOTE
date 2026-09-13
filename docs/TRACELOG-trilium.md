@@ -3254,3 +3254,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [470] 第 444 轮：⌘K 关掉后焦点回编辑器（2026-09-14）
 
 - ⌘K 面板一直挂着（open 状态切换），不能用挂载 / 卸载那套：open 变 true 时记下 activeElement，变 false 时 focus 回去。探针 `keypalette:esc`：从编辑器 ⌘K 打开、Esc 关掉，activeElement=cm-content。前端 107。
+
+## [471] 第 445 轮：右键菜单 / 选中文本菜单 / `/` 输入框也还焦点（2026-09-14）
+
+- 三个按打开 / 关闭挂载卸载的弹层补 `useRestoreFocus()`。脚本往组件里插那一行时两次插错位置（一次插进 props 类型块、一次插进旁边的纯函数 tidyMenu），tsc 和 rules-of-hooks 都当场报了——插到签名 `}) {` 之后才对。前端 107。

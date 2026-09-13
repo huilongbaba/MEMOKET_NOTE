@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useRestoreFocus } from '../util/restoreFocus'
 
 export type SelectionAction = 'verify' | 'rewrite' | 'polish' | 'expand' | 'trace' | 'custom'
 
@@ -21,6 +22,7 @@ export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
   onAction: (action: SelectionAction) => void
   onClose: () => void
 }) {
+  useRestoreFocus()   // 关掉之后焦点回到打开之前的地方（编辑器 / 树行）
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

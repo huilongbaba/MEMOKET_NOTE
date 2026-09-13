@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useRestoreFocus } from '../util/restoreFocus'
 import type { SlashItem } from '../editor/slashMenu'
 
 /** `/` 选中一个需要提示词的功能之后，就地弹出的输入框。
@@ -15,6 +16,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
   onRun: (prompt: string) => void
   onCancel: () => void
 }) {
+  useRestoreFocus()   // 关掉之后焦点回到打开之前的地方（编辑器 / 树行）
   const [value, setValue] = useState('')
   const ref = useRef<HTMLInputElement>(null)
 

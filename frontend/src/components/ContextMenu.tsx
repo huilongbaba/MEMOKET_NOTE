@@ -15,6 +15,7 @@
  *   混用一个槽位以后加快捷键就撞了。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useRestoreFocus } from '../util/restoreFocus'
 import { fmtShortcut } from '../util/keys'
 
 export type MenuItem =
@@ -49,6 +50,7 @@ export function tidyMenu(items: MenuItem[]): MenuItem[] {
 export default function ContextMenu({
   at, items, onClose,
 }: { at: MenuAt; items: MenuItem[]; onClose: () => void }) {
+  useRestoreFocus()   // 关掉之后焦点回到打开之前的地方（编辑器 / 树行）
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<MenuAt>(at)
   const [hi, setHi] = useState(-1)
