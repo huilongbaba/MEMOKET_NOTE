@@ -6,6 +6,7 @@ import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount } from './util/wordCount'
+import { isSpeakerTag } from './util/kbNoise'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -551,7 +552,7 @@ export default function App() {
     // 知识库子树跟着一起刷：摄入完新事实，主题/月份的计数要跟上。
     // 取不到（KITE 还没建库）就当没有，不影响真笔记。
     // 保存正文不动知识库（引用计数在 notes 树那边）：save() 传 false，别每敲一段就重拉一次知识库树。
-    if (kb) api.kbTree().then(setKbRows).catch(() => setKbRows([]))
+    if (kb) api.kbTree().then((rows) => setKbRows(rows.filter(notSpeakerEntity))).catch(() => setKbRows([]))
     return rows
   }, [])
 
@@ -562,6 +563,9 @@ export default function App() {
     } catch { /* 存不上就下次全收起，不致命 */ }
   }, [kbExpanded])
 
+  /** 树上不列录音转写的说话人标签（Speaker A / speaker_c…）：它们是「实体」里事实最多的前五个，
+   *  展开「实体」头一屏全是它们（第 203 轮真库实测 2858 / 2296 / 1318…）。索引页默认也藏着，那里有开关能看。 */
+  const notSpeakerEntity = (r: TreeRow) => !(r.note_id.startsWith('kb:entity:') && isSpeakerTag(r.title))
   /** 事实是按需取的：展开一个主题/实体/月份/会议时才去拿它名下那一层。
    *  实体多的库（>200）树里不带实体节点，展开「实体」/「某类实体」时也是这条路取。 */
   const needsFacts = (id: string) => /^kb:(topic|entity|month|unit|etype):/.test(id) || id === 'kb:entities'
@@ -570,7 +574,7 @@ export default function App() {
     // 小库的实体本来就随树来了：树里已经有它的孩子就别再取一份，不然 allRows 里每个实体出现两次
     if (kbRows.some((r) => r.parent_note_id === id)) return
     try {
-      const rows = await api.kbTreeChildren(id)
+      const rows = (await api.kbTreeChildren(id)).filter(notSpeakerEntity)
       setKbChildren((m) => ({ ...m, [id]: rows }))
     } catch { /* 展开了但没内容，树上就是空的，比报错好 */ }
   }, [kbRows])
@@ -1225,7 +1229,7 @@ export default function App() {
   useEffect(() => {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
-    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo }), 800)
+    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setKbExpanded, loadKbChildren }), 800)
     return () => clearTimeout(timer)
     // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
     // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针

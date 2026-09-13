@@ -165,3 +165,15 @@ def test_实体多了不随树下发_展开时再取(mem, monkeypatch):
     assert [r["note_id"] for r in lazy] and all(r["note_id"].startswith("kb:entity:") for r in lazy)
     monkeypatch.setattr(virtual_tree, "ENTITY_EAGER_MAX", 200)
     assert [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:entity:")]   # 小库照旧随树下发
+
+
+def test_实体不分组也懒加载时数量不能是零(mem, monkeypatch):
+    """第 203 轮真库实拍：1220 个实体全没标类型（不分组），懒加载把 entity_rows 清空之后才数，
+    「实体」child_count=0，树上没有展开箭头，永远点不开。"""
+    from app.database.kb import virtual_tree
+    monkeypatch.setattr(virtual_tree, "ENTITY_EAGER_MAX", 1)
+    fake = [virtual_tree._row(f"kb:entity:e{i}", "kb:entities", f"E{i}", position=i, child_count=1, fact_count=1) for i in range(3)]
+    monkeypatch.setattr(virtual_tree, "_entity_rows", lambda vocab, cnt: ([], fake, False))
+    rows = virtual_tree.build(mem)
+    assert [r for r in rows if r["note_id"].startswith("kb:entity:")] == []
+    assert next(r for r in rows if r["note_id"] == "kb:entities")["child_count"] == 3

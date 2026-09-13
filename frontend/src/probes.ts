@@ -21,7 +21,7 @@ export type ProbeCtx = Record<string, any>
 export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
-  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
+  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setKbExpanded, loadKbChildren } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
   if (!harnessProbeDone.current && !/:(notes|meetings|imports)(:|$)/.test(probe) && api.memoryScope() !== 'all') api.setMemoryScope('all')
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
@@ -51,6 +51,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)
   if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
+  // kbexpand:<id> → 把树上的某个知识库分类展开（看懒加载的那一层长什么样）
+  if (probe?.startsWith('kbexpand:') && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const id = probe.slice(9)
+    setTimeout(() => { setKbExpanded(new Set(['kb', id])); void loadKbChildren(id) }, 900)   // 只展开这一个，别的收起
+    // 把那个节点滚到树的可视区顶部，不然截图里看不到展开的那一层
+    setTimeout(() => {
+      const label = ({ 'kb:entities': '实体', 'kb:topics': '主题', 'kb:recent': '最近摄入' } as Record<string, string>)[id] ?? id.split(':').pop()
+      const el = Array.from(document.querySelectorAll('.tree-node')).find((n) => new RegExp('^' + (label ?? '') + '\\s*\\d*$').test(n.textContent?.trim() ?? ''))
+      el?.scrollIntoView({ block: 'start' })
+    }, 2500)
+  }
   if (probe === 'graph-zoom') {
     setTimeout(() => void openVirtual('kb:graph'), 900)
     // 布局稳定后模拟用户滚轮放大三档，之后如果图又缩回去 / 跳走，就是有人在抢

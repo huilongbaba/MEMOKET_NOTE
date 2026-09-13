@@ -124,7 +124,8 @@ def build(mem) -> list[dict]:
     # 实体多了就不随树一起下发：1220 个实体 = 358KB，每次保存后刷树都要重拉一遍（第 175 轮实测）。
     # 超过阈值只给分类节点和数量，展开「实体」时再按 children(kb:entities) 取。
     lazy_entities = len(entity_rows) > ENTITY_EAGER_MAX
-    if lazy_entities:
+    n_entities = len(entity_rows)     # 数量要在清空之前记下：之前清完再数，「实体」child_count=0，
+    if lazy_entities:                 # 树上没有展开箭头，1220 个实体在树里永远点不开（第 203 轮实拍）
         entity_rows = []
 
     # ---- 时间线：按月，新的在前
@@ -150,7 +151,7 @@ def build(mem) -> list[dict]:
                      branch_id="kbb:root"))
     counts = {
         "kb:topics": children_of.get("", 0),
-        "kb:entities": len(etype_rows) if grouped else len(entity_rows),
+        "kb:entities": len(etype_rows) if grouped else n_entities,
         "kb:timeline": len(month_rows),
         "kb:recent": len(unit_rows),
     }
