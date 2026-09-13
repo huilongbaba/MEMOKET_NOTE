@@ -3032,3 +3032,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [417] 第 389 轮：重打 dmg 前的全量门（2026-09-13）
 
 - 后端 909 通过；前端 tsc + eslint + vitest 104 + 12 条 check / smoke 全过。
+
+## [418] 第 390 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 3 秒、health ok、`/docs` 200。
+- health 里后端 rss 从之前的 81MB 变成 319MB，查了一下不是回归：`memory.users` 是 `['default', 'terrence']`——正式版的界面身份是 terrence，它的知识库索引装进内存就是这个量（dev 实例一样）；我冒烟用的 curl 不带 X-User-Id，落的是 default 这个空用户，所以之前一直以为「装好的库是空的」、rss 才 81MB。以后看正式版的真库要带 identity.json 里的用户。
