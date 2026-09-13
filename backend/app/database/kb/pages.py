@@ -9,28 +9,17 @@
 
 from __future__ import annotations
 
-import re
 
 from collections import Counter, defaultdict
 
 from .who import norm_who
-from .units import part_labels
+from .units import materials, part_labels, parts_of
 
 MONTHS_ON_DASHBOARD = 12
 MONTHS_ON_PAGE = 24
 TOP_N = 8
 FACT_PAGE = 50
 
-
-def _part_key(uid: str):
-    """(材料, 段号)：同一份材料切的几段挨在一起、段号正序。段号是 id 末尾的 -<n>。"""
-    m = re.search(r"-(\d+)$", uid)
-    return (uid[:m.start()], int(m.group(1))) if m else (uid, 0)
-
-
-def recent_first(units):
-    """日期新的在前；同一天里同一份材料的几段挨着、段号正序（第 266 轮实拍：1/7、1/6、2/7 交错）。"""
-    return sorted(sorted(units, key=lambda u: _part_key(u.id)), key=lambda u: u.date or "", reverse=True)
 
 
 def _speakers(facts, top_n: int) -> list[dict]:
@@ -147,9 +136,12 @@ def dashboard(mem) -> dict:
     top_entities = [{"code": c, "name": _entity_name(vocab, c), "facts": n} for c, n in ent.most_common(TOP_N)]
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
-    recent = recent_first(u for u in units if u.date)[:6]
-    labels = part_labels(units)   # n 按整个库算，不按最近几场（第 266 轮）
-    recent_units = [{"id": u.id, "date": u.date, "title": labels.get(u.id) or u.title or "", "facts": unit_facts.get(u.id, 0)} for u in recent]
+    recent_units = []
+    for m in materials(u for u in units if u.date)[:6]:      # 按材料列，跟树一致（第 267 轮）
+        n = len(m["parts"])
+        recent_units.append({"id": m["parts"][0].id, "date": m["date"],
+                             "title": f"{m['title']}（{n} 段）" if n > 1 else m["title"],
+                             "facts": sum(unit_facts.get(p.id, 0) for p in m["parts"])})
 
     return {
         "stats": {"facts": len(facts), "topics": len(vocab.topics), "entities": len(vocab.entities),
@@ -284,8 +276,12 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
     label = part_labels(list(store.units.values())).get(unit_id) or u.title or ""
     topics = Counter(c for f in facts for c in f.topics)
     ents = Counter(c for f in facts for c in f.entities)
+    parts = parts_of(store.units.values(), unit_id)
     return {
         "id": u.id, "date": u.date or "", "title": label,
+        # 分段导航：同一份材料的各段（第 267 轮）
+        "parts": [{"id": pid, "k": k} for k, pid in enumerate(parts, 1)],
+        "part_index": parts.index(unit_id) + 1, "part_total": len(parts),
         "speakers": sorted(s["who"] for s in _speakers([f for f in facts if f.who], 50)),
         "facts_total": total, "facts": page, "limit": limit, "offset": offset,
         "topics": [{"code": c, "facts": n} for c, n in topics.most_common(TOP_N)],

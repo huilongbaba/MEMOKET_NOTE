@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 
 from collections import Counter, defaultdict
-from .units import part_labels
+from .units import materials, parts_of
 
 KB_ROOT = "kb"
 ROOT_POSITION = 1_000_000
@@ -60,16 +60,6 @@ RECENT_UNITS = 15
 FACT_TITLE_CHARS = 60
 MAX_CHILDREN = 300
 
-
-def _part_key(uid: str):
-    """(材料, 段号)：同一份材料切的几段挨在一起、段号正序。段号是 id 末尾的 -<n>。"""
-    m = re.search(r"-(\d+)$", uid)
-    return (uid[:m.start()], int(m.group(1))) if m else (uid, 0)
-
-
-def recent_first(units):
-    """日期新的在前；同一天里同一份材料的几段挨着、段号正序（第 266 轮实拍：1/7、1/6、2/7 交错）。"""
-    return sorted(sorted(units, key=lambda u: _part_key(u.id)), key=lambda u: u.date or "", reverse=True)
 
 
 def _row(note_id: str, parent: str, title: str, *, position: int = 0,
@@ -154,15 +144,17 @@ def build(mem) -> list[dict]:
     ]
 
     # ---- 最近摄入：最近的几次会议
-    units = recent_first(u for u in store.units.values() if u.date)[:RECENT_UNITS]
-    # 段号 k/n 的 n 要按整个库算：只按最近 15 场算，一份 13 段的材料截进窗口 6 段就显示成「1/6」（第 266 轮实拍）
-    labels = part_labels(store.units.values())
-    unit_rows = [
-        _row(f"kb:unit:{u.id}", "kb:recent", _unit_tree_title(u.date, labels.get(u.id) or u.title or u.id),
-             position=i, child_count=unit_count.get(u.id, 0),
-             fact_count=unit_count.get(u.id, 0), updated_at=u.date)
-        for i, u in enumerate(units)
-    ]
+    # 按材料列：一行一份材料，多段的标「（n 段）」，展开时先给段、再给事实（children）。
+    # 之前按段列，一份 13 段的材料把最近 15 场全占掉（第 267 轮实拍）。
+    mats = materials(u for u in store.units.values() if u.date)[:RECENT_UNITS]
+    unit_rows = []
+    for i, m in enumerate(mats):
+        first, n = m["parts"][0], len(m["parts"])
+        total = sum(unit_count.get(p.id, 0) for p in m["parts"])
+        label = f"{m['title']}（{n} 段）" if n > 1 else m["title"]
+        unit_rows.append(_row(f"kb:unit:{first.id}", "kb:recent", _unit_tree_title(m["date"], label),
+                              position=i, child_count=n if n > 1 else total,
+                              fact_count=total, updated_at=m["date"]))
 
     rows.append(_row(KB_ROOT, "root", "知识库", position=ROOT_POSITION,
                      child_count=len(CATEGORIES) + len(TOOLS), fact_count=len(facts),
@@ -243,6 +235,13 @@ def children(mem, node: str) -> list[dict]:
     elif kind == "month":
         picked = [f for f in facts if (f.when or "").startswith(key)]
     elif kind == "unit":
+        # 多段材料的第一段在树上代表整份材料：展开先给各段（每段再展开才是事实）
+        parts = parts_of(store.units.values(), key)
+        if len(parts) > 1 and parts[0] == key:
+            cnt = Counter(f.unit for f in facts if f.unit)
+            return [_row(f"kb:unit:{pid}", node, f"第 {k}/{len(parts)} 段", position=k - 1,
+                         child_count=cnt.get(pid, 0), fact_count=cnt.get(pid, 0))
+                    for k, pid in enumerate(parts, 1)]
         picked = [f for f in facts if f.unit == key]
     else:
         return []

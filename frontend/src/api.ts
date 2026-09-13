@@ -546,6 +546,8 @@ export type KbEntityPage = KbFactsPage & {
 export type KbTimelineMonth = { month: string; facts: number; units: number; days: { date: string; facts: number; units: number }[] }
 export type KbUnitPage = KbFactsPage & {
   id: string; date: string; title: string; speakers: string[]
+  /** 同一份材料的各段（多段材料才有意义）：分段导航 */
+  parts?: { id: string; k: number }[]; part_index?: number; part_total?: number
   topics: { code: string; facts: number }[]
   entities: { code: string; name: string; facts: number }[]
 }

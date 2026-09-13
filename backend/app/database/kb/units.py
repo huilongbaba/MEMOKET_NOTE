@@ -28,3 +28,37 @@ def part_labels(units) -> dict[str, str]:
         for k, (_idx, uid) in enumerate(members, 1):
             out[uid] = f"{base}（{k}/{n}）"
     return out
+
+
+def material_key(u) -> tuple:
+    """同一份材料的几段：id 去掉末尾 -<块号> 相同、标题日期相同。"""
+    m = _PART.match(u.id)
+    return ((m.group(1) if m else u.id), u.date or "", u.title or "")
+
+
+def part_index(uid: str) -> int:
+    m = _PART.match(uid)
+    return int(m.group(2)) if m else 0
+
+
+def materials(units) -> list[dict]:
+    """把 unit 按材料归组：[{"key", "date", "title", "parts": [unit, …按段号]}]，新的材料在前。
+    最近摄入按材料列而不是按段列——一份 13 段的材料会把最近 15 场全占掉（第 267 轮实拍）。"""
+    groups: dict[tuple, list] = defaultdict(list)
+    for u in units:
+        groups[material_key(u)].append(u)
+    out = []
+    for key, members in groups.items():
+        members.sort(key=lambda u: part_index(u.id))
+        out.append({"key": key, "date": key[1], "title": key[2] or key[0], "parts": members})
+    out.sort(key=lambda m: (m["date"], m["key"][0]), reverse=True)
+    return out
+
+
+def parts_of(units, unit_id: str) -> list[str]:
+    """跟 unit_id 同一份材料的所有段 id，按段号。找不到就只有它自己。"""
+    me = next((u for u in units if u.id == unit_id), None)
+    if me is None:
+        return [unit_id]
+    k = material_key(me)
+    return [u.id for u in sorted((u for u in units if material_key(u) == k), key=lambda u: part_index(u.id))]

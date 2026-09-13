@@ -144,7 +144,9 @@ def test_同一份材料切成几段_标题带段号(mem):
     assert labels["obsidian-doc1-0"] == "战略讨论（1/3）" and labels["obsidian-doc1-2"] == "战略讨论（3/3）"
     assert labels["s1"] == "周会"                      # 单段的照原样
     d = pages.dashboard(mem)
-    assert any(r["title"] == "战略讨论（1/3）" for r in d["recent_units"])
+    assert any(r["title"] == "战略讨论（3 段）" for r in d["recent_units"])   # 首页按材料列（第 267 轮）
+    up = pages.unit_page(mem, "obsidian-doc1-1")
+    assert up["part_index"] == 2 and up["part_total"] == 3 and [x["id"] for x in up["parts"]] == ["obsidian-doc1-0", "obsidian-doc1-1", "obsidian-doc1-2"]
     assert pages.unit_page(mem, "obsidian-doc1-1")["title"] == "战略讨论（2/3）"
 
 
