@@ -39,6 +39,8 @@ from __future__ import annotations
 
 import re
 
+from .who import is_speaker_tag
+
 # How many candidates each channel contributes before ranking. Measured to
 # saturate here: 400 gives 62% self-retrieval, 800 gives 63%, 1500 gives 63%.
 POOL = 800
@@ -82,7 +84,7 @@ def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
         })
     # grep 的英文词也先剔虚词 / 说话人标签：英文事实前三个候选词常常是 it / speaker a / says，
     # 三个 grep 槽全浪费在它们身上，事实根本进不了候选池（第 527 轮自召回三条 miss 都不在池里）
-    words = [t for t in memory._candidate_terms(query) if t.lower() not in _EN_STOP and not _SPEAKER_TERM.match(t.lower())]
+    words = [t for t in memory._candidate_terms(query) if t.lower() not in _EN_STOP and not _is_speaker_word(t.lower())]
     for term in (words or memory._candidate_terms(query))[:WORD_GREPS]:
         queries.append({"select": "facts", "where": {"grep": term},
                         "pipe": [{"op": "head", "n": pool}]})
@@ -109,7 +111,7 @@ def _terms(memory, query: str) -> list[str]:
     # 英文虚词和「speaker a」这种说话人标签不当查询词：英文事实几乎每条都是「Speaker B says …」，
     # 这些词一人一分把真正的内容词稀释掉——第 527 轮自召回复测三条 miss 全是这个样子
     # （terms= ['it', 'speaker a', 'speaker', 'says', 'can', …]）。全是虚词时退回原样，别搜不出东西。
-    kept = [t for t in out if t not in _EN_STOP and not _SPEAKER_TERM.match(t)]
+    kept = [t for t in out if t not in _EN_STOP and not _is_speaker_word(t)]
     return kept or out
 
 
@@ -122,7 +124,11 @@ under to up down out with without at by as in what which who whom when where why
 say says said saying talk talks talking know knows knew think thinks like likes want wants
 now later still already only ever never always some more most much many other another such
 """.split())
-_SPEAKER_TERM = re.compile(r"^(speaker|说话人|发言人)(\s?[a-z]|\s?\d{1,2})?$")
+
+
+def _is_speaker_word(t: str) -> bool:
+    """「speaker a」「说话人 2」走 who.is_speaker_tag（跟前端 kbNoise.SPEAKER_TAG 同一条正则），光秃秃的「speaker」也算。"""
+    return t in ("speaker", "说话人", "发言人") or is_speaker_tag(t)
 
 
 _NUM = re.compile(r"\d+月\d+|\d+(?:\.\d+)?[台套个件人次轮版元万亿%]|\d{3,}(?:\.\d+)?")
