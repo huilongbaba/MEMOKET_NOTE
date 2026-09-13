@@ -1643,10 +1643,16 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
 
 
 def sweep_orphan_plans() -> int:
-    """父节点已经不在的 active 计划标成 abandoned。启动时扫一遍（老库里的历史垃圾）。"""
+    """父节点已经不在的 active 计划标成 abandoned；非活跃计划里指着已删笔记的 section 行、
+    既不在笔记也不在回收站的导回记录，一起清掉。启动时扫一遍（dev 库里攒了 261 行这样的 section）。"""
     with connect() as c:
-        return c.execute("UPDATE writing_plans SET status='abandoned' WHERE status='active'"
-                         " AND parent_note_id NOT IN (SELECT id FROM notes)").rowcount
+        n = c.execute("UPDATE writing_plans SET status='abandoned' WHERE status='active'"
+                      " AND parent_note_id NOT IN (SELECT id FROM notes)").rowcount
+        n += c.execute("DELETE FROM writing_sections WHERE note_id<>'' AND note_id NOT IN (SELECT id FROM notes)"
+                       " AND plan_id IN (SELECT id FROM writing_plans WHERE status<>'active')").rowcount
+        n += c.execute("DELETE FROM note_remotes WHERE note_id NOT IN (SELECT id FROM notes)"
+                       " AND note_id NOT IN (SELECT note_id FROM note_trash)").rowcount
+        return n
 
 
 def sweep_orphan_jobs() -> int:

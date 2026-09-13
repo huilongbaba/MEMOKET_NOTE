@@ -64,3 +64,8 @@ def test_删子树时挂在上面的写作计划作废_孤儿计划启动时扫�
     with store.connect() as c:
         c.execute("UPDATE writing_plans SET status='active' WHERE id=?", (plan["id"],))
     assert store.sweep_orphan_plans() == 1 and store.get_active_plan("t-trash", p["id"]) is None
+    # 作废计划下指着已删笔记的 section、既不在笔记也不在回收站的导回记录，一起扫掉
+    with store.connect() as c:
+        c.execute("INSERT INTO writing_sections (id,plan_id,idx,title,status,note_id,created_at) VALUES ('s1',?,0,'x','done','gone-note','2026-01-01')", (plan["id"],))
+        c.execute("INSERT INTO note_remotes (user_id,note_id,platform,remote_id,remote_path,exported_at) VALUES ('t-trash','gone-note','obsidian','','a.md','2026-01-01')")
+    assert store.sweep_orphan_plans() == 2

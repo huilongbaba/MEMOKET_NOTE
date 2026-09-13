@@ -1960,3 +1960,9 @@ localStorage 取）→ hooks/note.py 两处 `_retrieve(scope=)`、memory_tools �
 看了一眼 dev 库：`writing_plans` 里 15 个 active 计划，父节点全都已删——探针跑完删掉子树，计划
 永远 active、指着不存在的节点。`delete_note` 把挂在被删子树上的 active 计划标 abandoned；启动时
 `sweep_orphan_plans` 扫一遍老库（这次扫掉 15 个）。`tests/test_trash.py` 加一条。pytest 859。
+
+## [202] 巡检第 173 轮：库里的孤儿行（2026-09-13）
+
+对 dev 库跑了一遍孤儿查询：branches / 引用 / 历史版本都干净（删笔记时一起走），但作废计划下
+指着已删笔记的 `writing_sections` 有 261 行、导回记录有 1 行指着既不在笔记也不在回收站的 id。
+`sweep_orphan_plans` 顺手清这两类；启动扫一遍。
