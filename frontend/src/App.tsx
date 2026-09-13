@@ -3170,7 +3170,8 @@ export default function App() {
             // 计划 = 写作骨架（计划）+ 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
             { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,
-              badge: agentRounds.length || beats.length || undefined,
+              // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats / agentRounds 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
+              badge: agentRounds.length || (current ? beats.length : 0) || undefined,
               body: (
                 <div className="stack">
                   {current && (
@@ -3182,11 +3183,11 @@ export default function App() {
                       onRun={runSkeleton}
                     />
                   )}
-                  <AgentActivity
+                  {(current || loading === 'note-harness' || harness?.running) && <AgentActivity
                     rounds={agentRounds}
                     status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
                     running={loading === 'note-harness'}
-                  />
+                  />}
                 </div>
               ) },
             { id: 'revisions', title: '修订', icon: 'bx-edit', badge: revisions.length || undefined,

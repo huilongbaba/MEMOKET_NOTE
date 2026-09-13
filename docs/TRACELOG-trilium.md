@@ -3588,3 +3588,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [547] 第 523 轮：桌面壳端口退回那句进落盘日志（2026-09-14）
 
 - 前端 src 0 处 console.*，后端 app 里的 print 都是有意的（桌面壳把 stdout 当日志收）。桌面壳 `backend.ts` 唯一一处 `console.warn`——固定端口被占退回随机端口（localStorage 状态会丢）——只进 stderr 不进落盘日志，而用户报「设置全没了」时唯一的线索就是它：改走 onLog。dev 实例实拍启动照旧。
+
+## [548] 第 524 轮：虚拟页上右栏「计划」不再顶着上一篇的角标（2026-09-14）
+
+- 第 517 轮事实表页实拍右栏是「计划 5」：openVirtual 清了 current / 正文，但 beats / agentRounds 还是上一篇的，角标拿旧骨架充数。角标改成 `agentRounds.length || (current ? beats.length : 0)`；面板里的 AgentActivity 只在有笔记打开、或 harness（单篇 / 文件夹）正在跑时画——后台跑着的运行仍然看得见，这是原来的设计。实拍事实表页右栏三个标签都没角标。
