@@ -3630,3 +3630,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - seed 11 剩三条 miss：「Speaker A: Okay.」「I don't think it would be that much」——剔完虚词没有内容词，本来就搜不到，不算退化；「never thought about mental energy as a t…」是 mental energy 撞上一堆同话题的。不再往这三条上花功夫。
 - 右栏「记忆」实拍（harness 测试那篇的 APP 段）：卡片照常，第二张换成了「Speaker B 表示硬件与 APP 能连上…」——比之前更贴段落。RelatedMemory 不画命中词 chip，说话人标签的过滤只影响 MemoryPanel 那边的显示。没改代码。
+
+## [557] 第 533 轮：第三个召回口径 + 伪相关反馈（2026-09-14）
+
+- `recall_selfcheck.py` 加第三个口径（search.py 文档里那 53% 那条）：拿前 40 字查、排除它自己，前 5 里有没有同主题的别的事实。基线 seed 7 27/60、seed 11 73/200。
+- 试了给「查询里认出的主题」加 TOPIC_BONUS：零效果——40 字片段几乎认不出主题，撤了。换伪相关反馈：词面排前两名的事实挂什么主题，其余候选挂同一主题的 +1 再排一次。seed 11 同主题 73 → **98/200**，seed 7 27 → 28；自召回两个口径不变（60/60、197/195），中位 63ms。测试加一条；后端 954。kb-architecture P6 / harness-framework 补一段。

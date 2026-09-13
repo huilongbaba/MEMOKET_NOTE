@@ -166,3 +166,22 @@ def test_同一个词出现两次的排在只出现一次的前面():
     mem._cjk_terms = lambda text: []
     out = search.rank(rows, "ideas", mem, store, limit=3)
     assert [r["id"] for r in out] == ["twice", "once"]
+
+
+def test_伪相关反馈_跟词面前两名同主题的候选往前挪():
+    """给一个片段找同主题的别的事实：查询片段本身很少能认出主题，拿词面前两名挂的主题回头给其它候选 +1（第 533 轮：seed 11 同主题口径 73 → 98/200）。"""
+    store = _store({
+        "a": "EVT 样机 4 月 16 日交付，PCBA 15 套",
+        "b": "EVT 的大节点是 4 月 16 号",
+        "same": "样机节奏要跟 PCBA 供应商对齐",
+        "other": "样机节奏与量产风险评审",
+    })
+    for fid, topics in (("a", ["work_hardware"]), ("b", ["work_hardware"]), ("same", ["work_hardware"]), ("other", ["finance"])):
+        store.facts[fid].topics = topics
+    rows = [{"id": "other", "date": "2026-09-09"}, {"id": "same", "date": "2026-09-01"}, {"id": "a", "date": "2026-05-01"}, {"id": "b", "date": "2026-04-01"}]
+    mem = _FakeMemory()
+    mem._candidate_terms = lambda text: ["evt", "pcba", "样机"]
+    mem._cjk_terms = lambda text: []
+    out = [r["id"] for r in search.rank(rows, "EVT PCBA 样机", mem, store, limit=4)]
+    # 词面：a(evt+pcba+样机) > b(evt) ≈ same(pcba+样机) / other(样机)；反馈之后 same（同主题）压过 other（日期更新但主题不同）
+    assert out.index("same") < out.index("other")

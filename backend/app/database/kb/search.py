@@ -225,5 +225,19 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
 
     # 一个查询词都没命中的候选不要：它们只是 grep 通道子串撞进来的（`md` 撞 SMD），
     # 排在后面照样会被当成「相关记忆」显示出来（第 224 轮实拍）
-    scored = [(score(r), r) for r in rows]
-    return [r for s, r in sorted(scored, key=lambda x: x[0], reverse=True) if s[0] > 0][:limit]
+    scored = [(score(r), r) for r in rows if score(r)[0] > 0]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    # 伪相关反馈（第 533 轮实验）：词面排前两名的事实挂着什么主题，其余候选挂同一主题的 +1 再排一次——
+    # 「给一个片段找同主题的别的事实」这条口径靠它；查询片段本身很少能直接认出主题（TOPIC_BONUS 试过零效果）
+    if len(scored) > 2:
+        lead: set[str] = set()
+        for (_s, r) in scored[:2]:
+            f = store.facts.get(r.get("id"))
+            lead |= set(getattr(f, "topics", ()) or ()) if f is not None else set()
+        if lead:
+            def bump(item):
+                (sc, d), r = item
+                f = store.facts.get(r.get("id"))
+                return ((sc + (1 if f is not None and lead & set(getattr(f, "topics", ()) or ()) else 0), d), r)
+            scored = sorted((bump(x) for x in scored), key=lambda x: x[0], reverse=True)
+    return [r for _s, r in scored][:limit]

@@ -28,7 +28,7 @@ def main(user: str = "terrence", n: int = 60, seed: int = 7) -> None:
         ids = [(r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) for r in rows]
         return fid in ids, took
 
-    full = short = 0
+    full = short = topic = 0
     times: list[float] = []
     misses: list[str] = []
     for f in sample:
@@ -39,7 +39,13 @@ def main(user: str = "terrence", n: int = 60, seed: int = 7) -> None:
             misses.append(f"{f.id} {f.text[:60]!r}")
         h2, _ = hit(f.text[:40], f.id)
         short += h2
-    print(f"user={user} seed={seed} n={len(sample)}: full {full}/{len(sample)}  short40 {short}/{len(sample)}  median {statistics.median(times):.0f} ms")
+        # 第三个口径（search.py 文档里那 53% 那条）：排除它自己，前 5 里有没有同主题的别的事实
+        rows, _terms, _took = m.recall(f.text[:40], limit=6)
+        mine = set(getattr(f, "topics", ()) or ())
+        others = [r for r in rows if (r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) != f.id][:5]
+        if mine and any(mine & set((store.facts.get(r.get("id") if isinstance(r, dict) else getattr(r, "id", "")) or f).topics or ()) for r in others):
+            topic += 1
+    print(f"user={user} seed={seed} n={len(sample)}: full {full}/{len(sample)}  short40 {short}/{len(sample)}  sametopic(excl self, short40) {topic}/{len(sample)}  median {statistics.median(times):.0f} ms")
     for line in misses:
         print("MISS", line)
 
