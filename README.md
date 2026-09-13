@@ -187,6 +187,15 @@ LLM_MODEL=gpt-4.1-mini
 | `GET /api/kb/tree` · `GET /api/kb/tree/children` | 知识库的虚拟子树：分类层一次给全，展开一个分类时才取它名下的事实（实体超过 200 个、多段材料的各段也是展开时才取） |
 | `GET /api/notes/brief` | 轻量笔记列表（不带全文，`?q=` 搜）：⌘K 和 `[[` 补全每敲一个字用的；正文命中带片段和第一行正文 |
 | `POST /api/notes/{id}/icon` | 给笔记设图标（boxicons 类名如 `bx-rocket`，空串清掉）；树、标签、标题行同一个图标 |
+| `POST /api/notes/today` · `GET /api/notes/trash` · `POST /api/notes/trash/{id}/restore` | 今天的日记（日记 / 年 / 月 / 日，没有就建）；最近删除（软删 30 天，恢复时父链一起回来） |
+| `GET /api/notes/{id}/revisions` · `POST /api/notes/{id}/revisions` · `GET /api/notes/{id}/links` · `POST /api/notes/{id}/pin` · `PUT /api/notes/{id}/skeleton` | 历史版本（自动 + 手动，可恢复）、笔记之间的链接（链出 / 链入）、置顶、写作骨架 |
+| `GET /api/export/markdown` · `POST /api/export/obsidian` · `POST /api/import/files` · `POST /api/import/notion` · `POST /api/import/feishu` · `POST /api/import/apple` | 整库导出 zip / 导回 Obsidian 目录；从 Obsidian / Evernote / Notion / 飞书 / Apple 备忘录导入（可断点续跑 `POST /api/import/jobs/{id}/resume`） |
+| `POST /api/kb/fact` · `PATCH /api/kb/fact/{id}` · `DELETE /api/kb/fact/{id}` · `POST /api/kb/fact/merge` · `GET /api/kb/conflicts` · `POST /api/kb/conflicts/{id}/resolve` | 手工加 / 改 / 删 / 合并事实；冲突收件箱 |
+| `GET /api/kb/dashboard` · `GET /api/kb/topic/{code}` · `GET /api/kb/entity/{code}` · `GET /api/kb/unit/{id}` · `GET /api/kb/timeline` · `GET /api/kb/quality` · `POST /api/kb/rebuild` | 知识库各页的数据；抽取质量；重建索引 |
+| `POST /api/digest` · `POST /api/verify` · `POST /api/expand` · `POST /api/rewrite` | 定期回顾、选中文本校验 / 扩写 / 重写 |
+| `GET/POST /api/skills` · `PUT/DELETE /api/skills/{id}` · `POST /api/skills/generate` · `GET/POST /api/profile` · `GET/POST /api/settings/provider` · `GET /api/settings/usage` | 写作 Skill、个人偏好、LLM / 语音供应商、模型用量 |
+
+完整接口清单看后端自带的 Swagger：应用跑起来后开 `http://127.0.0.1:47231/docs`（开发实例 47232）。上表只列了读代码前该知道的那些。
 | `GET /api/memory/facts/{id}` · `.../citing` | 一条事实（行内出处浮层用，找不到 404）· 哪些笔记引用了它（反向链接） |
 | `POST /api/skeleton` | 线 1：生成写作骨架 |
 | `POST /api/magic-tap` | 续写，SSE 流式（`meta` / `delta` / `done`） |
