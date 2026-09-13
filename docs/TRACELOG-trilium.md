@@ -3734,3 +3734,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [581] 第 557 轮：续写收尾的 scrub 也发事件（2026-09-14）
 
 - `hooks/note.py` 三处 `scrub_meta_sentences(...)` 换成 `_scrub_and_record`：用 `_v` 版拿到删掉的句子记进 `st.bag["scrubbed"]`（`fix_bold_punct` 照旧）；`loop.py` 在 `TEXT_MESSAGE_END` 之后把它们发成 `scrub` 事件并清掉。测试一条（发了、顺序在 text_end 之后、bag 清空）；后端 957。真跑一次 harness-sync 0 条（这一跑有没有碰到元话语不确定，机制靠单测兜）。harness-framework 同步。
+
+## [582] 第 558 轮：客户端也做 fix_bold_punct（2026-09-14）
+
+- 服务端续写收尾除了 scrub 还对整篇做 `fix_bold_punct`（`**依赖链：**` → `**依赖链**：`），客户端没有这一步——模型一写这种加粗轮末就差字。api.ts 的 harness 流加 `onTextEnd`（TEXT_MESSAGE_END），App 在那一刻对本地正文做同一遍。前端本来就有 `editor/format.fixBoldPunct`（格式化和插入续写在用），复用它——差点又抄第三份（streamJoin 里写了一遍，tsc 报重名才发现）。对拍抓到它不跳围栏代码块，服务端跳：补上。注释里说的「后端 editor/textshape」早没了，改指 grounding_rules。check-scrub-parity 加 6 组 fixBoldPunct 样本；vitest 129、check-format 照旧。

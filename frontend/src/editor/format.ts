@@ -126,9 +126,16 @@ function cjkSpacing(s: string): string {
 
 /** 「**依赖链：**容量」→「**依赖链**：容量」。闭合 ** 前面是标点、后面紧跟汉字时
  *  CommonMark 不认它是闭合，整段渲染成裸星号（实拍）。跟后端
- *  editor/textshape.fix_bold_punct 同一条规则。 */
+ *  harness/checks/grounding_rules.fix_bold_punct 同一条规则（scripts/check-scrub-parity 对拍）：
+ *  围栏代码块里不动——第 558 轮对拍抓到的差异。 */
 export function fixBoldPunct(s: string): string {
-  return s.replace(/\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*/g, '**$1**$2')
+  const out: string[] = []
+  let fenced = false
+  for (const line of s.split('\n')) {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) { fenced = !fenced; out.push(line); continue }
+    out.push(fenced ? line : line.replace(/\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*/g, '**$1**$2'))
+  }
+  return out.join('\n')
 }
 
 /** 一个块属于哪一类。**markdown 的块级结构靠空行分隔**——类型一变就必须

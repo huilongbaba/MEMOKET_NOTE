@@ -1848,6 +1848,12 @@ export default function App() {
           return next
     })
       },
+      onTextEnd: () => {
+        if (currentRef.current?.id !== noteId) return
+        // 服务端续写收尾会对整篇 fix_bold_punct（**x：** → **x**：），本地同一遍（editor/format.fixBoldPunct，check-scrub-parity 对拍），不然轮末对齐报差字
+        const next = fixBoldPunct(liveContentRef.current)
+        if (next !== liveContentRef.current) { liveContentRef.current = next; setContent(next) }
+      },
       onRoundEnd: (_round, serverContent) => {
         if (currentRef.current?.id !== noteId) return
         // 用服务端这一轮结束时的正文对齐。客户端按 anchor 重放修订会跑偏

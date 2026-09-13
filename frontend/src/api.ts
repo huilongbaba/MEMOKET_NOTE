@@ -994,6 +994,8 @@ export type NoteHarnessHandlers = {
   onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[] }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
+  /** 这一轮的续写流结束（TEXT_MESSAGE_END）：客户端在这里做服务端收尾时也做的归一化（fixBoldPunct） */
+  onTextEnd?: () => void
   /** 定向续写：这一轮的 delta 要插进 `section` 那一节的末尾（后端算的 `pos` 只是兜底，
    *  前端按自己的正文重算位置），在第一个 delta 之前到达；没有它就追加到文末。 */
   onInsertAt?: (d: { section: string; pos: number }) => void
@@ -1105,6 +1107,7 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
   let round = 0
   for await (const { event, payload } of sseFrames(res)) {
     if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(payload.delta)
+    else if (event === 'TEXT_MESSAGE_END') handlers.onTextEnd?.()
     else if (event === 'STEP_STARTED') { round = payload.step; handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label }) }
     else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step, payload.content)
     else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round, phase: '', label: payload.content })
