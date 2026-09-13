@@ -92,3 +92,30 @@ def test_报出来的命中词是真的出现在结果里的():
                                _FakeMemory(), store)
     assert got, "命中词不该是空的"
     assert all(t in "录音设备的电量" for t in got)
+
+
+def test_英文词不分大小写也不重复计分():
+    """第 191 轮真库实测：英文候选词是小写的，事实原文里 EVT / PCBA 大写，之前永远不得分。"""
+    store = _store({
+        "up": "EVT 的大节点是 4 月 16 号，PCBA 15 套。",
+        "low": "然后再到evtdvt对对他这个不可能兼职的",
+        "none": "跟查询无关。",
+    })
+    rows = [{"id": "none", "date": "2026-09-01"}, {"id": "low", "date": "2026-08-01"}, {"id": "up", "date": "2026-01-01"}]
+    mem = _FakeMemory()
+    mem._candidate_terms = lambda text: ["evt", "pcba", "evt"]
+    mem._cjk_terms = lambda text: []
+    out = search.rank(rows, "EVT 准备 PCBA evt", mem, store, limit=3)
+    assert [r["id"] for r in out][0] == "up"
+    assert search.matched_terms(out, "EVT PCBA", mem, store) == ["evt", "pcba"]
+
+
+def test_数字也是查询词_但光秃秃的一两位数不算():
+    assert search._number_terms("4月16日的 EVT 准备 4 台主机和 15 套 PCBA，电池 380mAh，成本 2026") == ["4月16", "4台", "15套", "380", "2026"]
+    store = _store({"date": "EVT 的大节点是 4 月 16 号", "pcba": "板子就 PCBA 肯定还是要，KIO 有 15 台"})
+    rows = [{"id": "pcba", "date": "2026-09-01"}, {"id": "date", "date": "2026-01-01"}]
+    mem = _FakeMemory()
+    mem._candidate_terms = lambda text: ["evt", "pcba"]
+    mem._cjk_terms = lambda text: []
+    out = search.rank(rows, "4月16日的EVT准备4台主机和15套PCBA", mem, store, limit=2)
+    assert [r["id"] for r in out] == ["date", "pcba"]
