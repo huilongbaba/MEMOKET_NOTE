@@ -694,7 +694,6 @@ export const resolveConflict = (id: number, action: 'new_wins' | 'old_wins' | 'k
   }).then(json<KbConflict>)
 export type FactsPage = { facts: FactDetail[]; total: number; limit: number; offset: number }
 export type SourceLine = { id: string; unit: string; date: string; who: string; text: string }
-export type TimelineBucket = { date: string; units: number; facts: number }
 
 export const memoryTopics = () =>
   fetch('/api/memory/topics', { headers: headers() }).then(json<TopicNode[]>)
@@ -740,9 +739,6 @@ export const memoryFacts = (filter: FactsFilter = {}) => {
 
 export const factSources = (factId: string) =>
   fetch(`/api/memory/facts/${factId}/sources`, { headers: headers() }).then(json<SourceLine[]>)
-
-export const memoryTimeline = () =>
-  fetch('/api/memory/timeline', { headers: headers() }).then(json<{ buckets: TimelineBucket[] }>)
 
 // ---------------------------------------------------------------- 入库
 

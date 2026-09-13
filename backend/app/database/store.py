@@ -682,6 +682,7 @@ def update_note_from_source(user_id: str, note_id: str, title: str, content: str
     with connect() as c:
         c.execute("UPDATE notes SET title=?, content=?, source_sha=?, imported_at=?, updated_at=? WHERE id=? AND user_id=?",
                   (title, content, sha, _now(), _now(), note_id, user_id))
+    sync_citations(user_id, note_id, content)   # 改正文的入口都要重建引用（第 284 轮：这条路漏了）
 
 
 def create_note(user_id: str, title: str, content: str,
@@ -1084,6 +1085,24 @@ def sync_citations(user_id: str, note_id: str, content: str) -> list[str]:
             " VALUES (?,?,?)", [(note_id, f, user_id) for f in ids])
         c.commit()
     return ids
+
+
+def reindex_citations() -> int:
+    """启动时按正文重建每篇的引用表，返回修正了几篇。dev 库实拍两篇正文里一条引用都没有、
+    表里却各挂着三条（历史上某条写正文的路没重建），树上就一直显示 ◆6（第 284 轮）。"""
+    fixed = 0
+    with connect() as c:
+        rows = c.execute("SELECT id, user_id, content FROM notes").fetchall()
+        for r in rows:
+            want = set(cited_fact_ids(r["content"] or ""))
+            have = {x["fact_id"] for x in c.execute("SELECT fact_id FROM note_citations WHERE note_id=? AND user_id=?", (r["id"], r["user_id"]))}
+            if want != have:
+                c.execute("DELETE FROM note_citations WHERE note_id=? AND user_id=?", (r["id"], r["user_id"]))
+                c.executemany("INSERT OR IGNORE INTO note_citations (note_id, fact_id, user_id) VALUES (?,?,?)",
+                              [(r["id"], f, r["user_id"]) for f in want])
+                fixed += 1
+        c.commit()
+    return fixed
 
 
 def notes_citing(user_id: str, fact_id: str) -> list[dict]:

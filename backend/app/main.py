@@ -31,6 +31,9 @@ app = FastAPI(title="memoket-NOTE", version="0.1.0",
 _orphans = store.sweep_orphan_jobs()
 _stale_pauses = store.sweep_stale_snapshots()
 _old_rows = store.sweep_old_rows()
+_recited = store.reindex_citations()
+if _recited:
+    print(f"[startup] 重建了 {_recited} 篇笔记的引用表")
 if any(_old_rows.values()):
     print(f"[startup] 清理了过期流水：{_old_rows}")
 if _stale_pauses:

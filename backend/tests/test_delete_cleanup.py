@@ -99,3 +99,15 @@ def test_过期流水启动时清掉_新的留着(db):
         assert {r[0] for r in c.execute("SELECT job_id FROM ingest_items")} == {"j-run", "j-new"}
         assert {r[0] for r in c.execute("SELECT id FROM writing_plans")} == {"p-act", "p-new"}
         assert {r[0] for r in c.execute("SELECT plan_id FROM writing_sections")} == {"p-act", "p-new"}
+
+
+def test_引用表跟正文对不上时启动重建_源侧同步也重建(db):
+    """第 284 轮：两篇正文没引用、表里各挂三条（树上 ◆6）；update_note_from_source 那条路没重建引用。"""
+    n = db.create_note("u", "甲", "据 [u-1-A] 所述")
+    with db.connect() as c:
+        c.execute("INSERT OR IGNORE INTO note_citations (note_id, fact_id, user_id) VALUES (?,?,?)", (n["id"], "u-9-Z", "u"))
+        c.commit()
+    assert db.reindex_citations() == 1
+    assert [x["id"] for x in db.notes_citing("u", "u-9-Z")] == [] and [x["id"] for x in db.notes_citing("u", "u-1-A")] == [n["id"]]
+    db.update_note_from_source("u", n["id"], "甲", "换成 [u-2-B] 了", "sha")
+    assert [x["id"] for x in db.notes_citing("u", "u-1-A")] == [] and [x["id"] for x in db.notes_citing("u", "u-2-B")] == [n["id"]]
