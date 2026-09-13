@@ -53,6 +53,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)
   if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)
+  // note:<id>[:ribbon:<tab>] → 按 id 打开某篇真笔记（ribbon 标签由 App 的 defaultOpen 从 probe 串里读）
+  if (probe?.startsWith('note:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.split(':')[1])
+    if (n) { harnessProbeDone.current = true; void switchTo(n) }
+  }
   // kbexpand:<id> → 把树上的某个知识库分类展开（看懒加载的那一层长什么样）
   if (probe?.startsWith('kbexpand:') && !harnessProbeDone.current) {
     harnessProbeDone.current = true
