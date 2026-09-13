@@ -253,7 +253,23 @@ function installMenu() {
   const isMac = process.platform === 'darwin'
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
-    { role: 'fileMenu' as const },
+    {
+      // Trilium 的 File 菜单：新建 / 日记 / 导入 / 导出都在这儿，不只一个「关闭窗口」（第 167 轮）。
+      // 快捷键只是显示：真正的按键在渲染进程里处理，这里 click 发同名事件。
+      label: '文件',
+      submenu: [
+        // registerAccelerator: false = 菜单上只显示快捷键、不向系统注册——按键还是渲染进程处理，
+        // 否则 ⌘N 会被菜单吃掉再发一次事件（或者两边各建一篇）
+        { label: '新建笔记', accelerator: 'CommandOrControl+N', registerAccelerator: false, click: () => win?.webContents.send('menu', 'new-note') },
+        { label: '今天的日记', accelerator: 'CommandOrControl+Shift+D', registerAccelerator: false, click: () => win?.webContents.send('menu', 'today') },
+        { type: 'separator' as const },
+        { label: '导入…', click: () => win?.webContents.send('menu', 'import') },
+        { label: '导出全部笔记…', click: () => win?.webContents.send('menu', 'export-all') },
+        { label: '最近删除', click: () => win?.webContents.send('menu', 'trash') },
+        { type: 'separator' as const },
+        { role: 'close' as const, label: '关闭窗口' },
+      ],
+    },
     { role: 'editMenu' as const },
     {
       label: '视图',

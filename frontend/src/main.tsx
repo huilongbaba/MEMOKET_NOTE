@@ -17,6 +17,10 @@ window.memoketDesktop?.onFlush?.(() => window.dispatchEvent(new CustomEvent('flu
 window.memoketDesktop?.onMenu?.((name) => {
   if (name === 'shortcuts') window.dispatchEvent(new CustomEvent('show-shortcuts'))
   if (name === 'export-all') window.dispatchEvent(new CustomEvent('export-all'))
+  if (name === 'new-note') window.dispatchEvent(new CustomEvent('new-note'))
+  if (name === 'today') window.dispatchEvent(new CustomEvent('open-today'))
+  if (name === 'import') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))
+  if (name === 'trash') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:trash' }))
 })
 
 // 没被任何 try 接住的错误也报上去

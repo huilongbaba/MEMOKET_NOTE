@@ -1904,3 +1904,10 @@ Trilium 的 day note 一直没有：`POST /api/notes/today` 按标题沿 `日记
 
 `dnd:` 探针把「5 月 22 日复盘」拖到「4 月 10 日产品周会」上：`PATCH /api/tree/branches/move` 200，
 目标变成带 1 的文件夹、被拖的进去了。没改代码；跑完 `move_branch` 挪回根节点原位置。
+
+## [195] 巡检第 167 轮：「文件」菜单（2026-09-13）
+
+应用菜单的「文件」是 Electron 默认的 fileMenu（只有关闭窗口），Trilium 的 File 菜单有新建 / 日记 /
+导入 / 导出。换成自己的：新建笔记 ⌘N、今天的日记 ⌘⇧D、导入…、导出全部笔记…、最近删除、关闭窗口。
+快捷键用 `registerAccelerator: false` 只显示不注册——按键仍由渲染进程处理，免得 ⌘N 被菜单吃掉
+再发一次事件建两篇。渲染进程的 onMenu 多认 new-note / today / import / trash 四个名字。
