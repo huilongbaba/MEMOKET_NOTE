@@ -459,6 +459,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 用一个专门的截图用户跑，别污染真实库。要 harnessProbeDone 守着：runProbe 随 notes/tree 刷新
   // 会再进来，之前一轮建了三篇空「未命名」（实拍 demo 库攒了一堆）。
   if (probe === 'blank' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600) }
+  // 新建一篇空笔记并打开 ribbon 的某个标签（引用 / 链接 / 历史 / 路径 / 信息）：看全新一篇上这些标签的空状态
+  if (probe?.startsWith('blank:ribbon:') && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600) }
   // 新建一篇然后往正文里写一段（不落库）：看右栏「记忆」在空库 / 有库时各说什么
   if (probe === 'blank:write' && !harnessProbeDone.current) {
     harnessProbeDone.current = true

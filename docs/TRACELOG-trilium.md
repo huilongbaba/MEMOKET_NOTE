@@ -2774,3 +2774,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 3 秒、health ok、空库 kb/tree 8 行、css 里有 `.chip-action`。
 - 第 322 轮的日志落盘在正式版实测：写到 `~/Library/Logs/memoket-note-desktop/memoket-note.log`——`app.getPath('logs')` 用的是 package.json 的 name 不是 productName，正式版和 dev / 探针实例落同一个目录。dev 实例改写 `memoket-note-dev.log`，两边不互相插行（下次打包生效）。
+
+## [359] 巡检第 331 轮：全新一篇上 ribbon 四个标签的空状态（2026-09-13）
+
+- 新探针 `blank:ribbon:<tab>`：新建空笔记并打开 ribbon 某标签。引用「还没摄入知识库 / 这篇还没有引用知识库里的记录」、链接「正文里打 [[ … / 还没有别的笔记链到这篇」、历史「还没有历史版本——正文改动后每隔十分钟自动留一版」、路径「树根 / 未命名 + 克隆到另一个位置」，四张都有话说，没有空白。
+- 顺手核了 64 份今天的探针日志：没有一条 `client:error`。terrence 库历史版本 15 条 / 23 篇（harness 测试篇 13 条），KEEP 100 / 间隔 600 秒。
