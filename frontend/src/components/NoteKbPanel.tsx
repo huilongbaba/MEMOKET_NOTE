@@ -88,11 +88,13 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
 
   // 这篇周围有什么：引用的 + 贡献的事实挂在哪些主题 / 实体上（Trilium 的 NoteMap 在我们这儿的样子）
   const [graph, setGraph] = useState<NoteGraph | null>(null)
+  // 图从服务端**落库的**正文算：跟着 row.updated_at（自动保存落库后树行会刷）重查，而不是跟着本地引用数——
+  // 后者会在保存之前就查一次，拿到的是上一版（坏链接那边第 404 轮踩过同样的坑）
   useEffect(() => {
     let alive = true
     noteGraph(noteId).then((g) => { if (alive) setGraph(g) }).catch(() => {})
     return () => { alive = false }
-  }, [noteId, refreshTick, citedIds.length, row?.ingested_at])
+  }, [noteId, refreshTick, row?.updated_at, row?.ingested_at])
 
   return (
     <div className="stack" style={{ fontSize: 13 }}>
