@@ -3518,3 +3518,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - `scripts/check-a11y.mts`（第 17 条 check）：带 onClick 的 div / span 必须有 role 或 onKeyDown（遮罩 / modal 容器、树的展开三角、toast 正文点一下关掉不算）；只有一个 `<i class="bx …">` 的按钮必须有 title / aria-label。第一版把标签在 `onClick={() =>` 的箭头处截断了，改成花括号外数 `>`。
 - 抓到一处：toast 里的动作（「撤销」删除那种 5 秒窗口）是没有 href 的 `<a>`，Tab 走不到——改成 `<button class="linklike">`。上一轮加的 `[role=button]:focus-visible` 撤掉——全局 `:focus-visible` 早就有一条（`--focus-ring`）。焦点环没法用探针实拍：程序 `focus()` 不触发 `:focus-visible`。
 - 查了下第 506 轮以为没人用的 `renderNoteItem`：`visibleNotes.map(renderNoteItem)` 在用（grep 带括号漏了），差点删掉，git checkout 回来。
+
+## [532] 第 508 轮：toast「撤销」实拍补色（2026-09-14）
+
+- 探针 `toast:action`（发一条带「撤销」的 toast 并把焦点给按钮）。第一拍「撤销」是黑字：`.linklike` 的 `color: inherit` 写在 `.link` 后面，把蓝色盖了。加 `.linklike.link { color: var(--accent) }`，第二拍蓝了。合约测试（每个 check 脚本都被 npm test 跑到）6 条过。

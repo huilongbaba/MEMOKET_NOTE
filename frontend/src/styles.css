@@ -1020,6 +1020,8 @@ kbd {
 /* 长得像文字的按钮（状态栏红字这种「一行字可点」的地方） */
 .linklike { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .linklike:hover { text-decoration: underline; }
+/* 既像链接又是真按钮（toast 里的「撤销」）：.linklike 的 color: inherit 排在 .link 后面会盖掉蓝色 */
+.linklike.link { color: var(--accent); }
 
 /* 标题行图标按钮 + 图标选择器（Trilium NoteIcon） */
 .title-row { position: relative; }

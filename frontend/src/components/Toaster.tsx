@@ -13,7 +13,7 @@ export default function Toaster() {
           </span>
           {/* 真按钮：没有 href 的 <a> Tab 走不到，「撤销」这种 5 秒窗口的动作键盘用户按不着（第 507 轮） */}
           {t.action && (
-            <button className="linklike" style={{ marginLeft: 10 }} onClick={t.action.onClick}>
+            <button className="linklike link" style={{ marginLeft: 10 }} onClick={t.action.onClick}>
               {t.action.label}
             </button>
           )}

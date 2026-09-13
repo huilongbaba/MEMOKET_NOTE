@@ -10,6 +10,7 @@
  * ctx 就是 App 里那些闭包（函数和 setState），探针要什么就从里面拿。
  */
 import { EditorView } from '@codemirror/view'
+import { toastAction } from './toast'
 import { writeDraft } from './util/draft'
 import { layersOf, turnLayerOff } from './editor/roundDiff'
 import * as api from './api'
@@ -51,6 +52,12 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     // :focus → 只聚焦不按 Enter，看焦点环
     setTimeout(() => { const el = document.querySelector('.fact-text') as HTMLElement | null; el?.focus(); if (probe === 'factkeys') el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) }, 4000)
     setTimeout(() => void api.clientLog('warn', `factkeys active=${document.querySelector('.note-tab.active .note-tab-title')?.textContent?.slice(0, 12) ?? '?'}`, '', 'probe'), 5500)
+    return
+  }
+  // 带动作的 toast（删除后的「撤销」那种）：看按钮长得像不像链接、Tab 能不能走到
+  if (probe === 'toast:action') {
+    setTimeout(() => toastAction('已删除「样例」（30 天内可在「最近删除」找回）', '撤销', () => {}), 1500)
+    setTimeout(() => (document.querySelector('.toast button') as HTMLElement | null)?.focus(), 2200)
     return
   }
   // 标签装不下时右边的 ▾：列出全部标签
