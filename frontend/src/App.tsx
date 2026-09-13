@@ -148,7 +148,8 @@ export default function App() {
   const freshEmpty = useRef(new Set<string>())
   async function dropIfStillEmpty(n: Note | null) {
     if (!n || !freshEmpty.current.has(n.id)) return
-    if (title.trim() || content.trim()) { freshEmpty.current.delete(n.id); return }
+    // 写了标题 / 正文、或者挑过图标（挑图标也是「我要这篇」的表态），就不是没动过的空笔记
+    if (title.trim() || content.trim() || n.icon) { freshEmpty.current.delete(n.id); return }
     freshEmpty.current.delete(n.id)
     try {
       await api.deleteNote(n.id)
@@ -157,9 +158,8 @@ export default function App() {
     } catch { /* 删不掉就留着，不值得报错 */ }
   }
   // 分屏：中栏右侧再开一栏看另一篇（Trilium 的 SplitNoteContainer）。
-  // **第二栏是只读的**——「对照着另一篇写」要的是看得见，不是两个光标；
-  // 编辑器的状态（正文/骨架/修订/harness）是单实例的，做成可编辑要重构一半的
-  // App.tsx，收益不成比例。要改它就点「在标签里打开」。
+  // 第二栏可编辑（SplitEditor 自己持正文 + 自动保存，第 309 轮起），但 harness / 续写 /
+  // 提案层那些只长在主编辑器上；主栏正开着的那篇在分屏里只读。
   const splitFlush = useRef<(() => Promise<void>) | null>(null)
   const [split, setSplit] = useState<{ id: string; w: number } | null>(() => {
     try {
