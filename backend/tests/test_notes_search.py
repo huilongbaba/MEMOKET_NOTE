@@ -93,3 +93,23 @@ def test_搜索里的百分号和下划线不是通配符(tmp_path, monkeypatch)
     assert [n["title"] for n in store.list_notes("u", "_")] == ["下划线_x"]
     assert [n["title"] for n in store.list_notes("u", "a_b")] == ["下划线_x"]
     assert [n["title"] for n in store.list_notes("u", "\\")] == []
+
+
+def test_轻量列表_不带全文_正文命中带片段(tmp_path, monkeypatch):
+    """第 257 轮：⌘K / [[ 每敲一个字拉一次列表，带全文的在 413 篇库上一次 580KB。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.main import app
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        c.post("/api/notes", json={"title": "创业一年回顾", "content": "# 创业一年回顾\n\n" + "正文" * 500})
+        c.post("/api/notes", json={"title": "harness 测试", "content": "前面很长" * 30 + "矩阵不能只保留4月16日EVT" + "后面" * 20})
+        c.post("/api/notes", json={"title": "空壳", "content": ""})
+        page = c.get("/api/notes/brief").json(); rows = page["notes"]
+        assert page["total"] == 3 and all("content" not in r for r in rows) and max(len(r["preview"]) for r in rows) <= 80
+        assert {r["title"]: r["has_body"] for r in rows} == {"创业一年回顾": True, "harness 测试": True, "空壳": False}
+        hits = c.get("/api/notes/brief", params={"q": "EVT"}).json()["notes"]
+        assert [r["title"] for r in hits] == ["harness 测试"] and hits[0]["snippet"]["hit"] == "EVT"
+        assert len(hits[0]["snippet"]["before"].lstrip("…")) <= 18
+        by_title = c.get("/api/notes/brief", params={"q": "创业"}).json()["notes"]
+        assert by_title[0]["snippet"] is None, "标题命中的不用给片段"

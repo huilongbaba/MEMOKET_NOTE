@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -499,6 +500,53 @@ def _note(row) -> dict:
 def _like(q: str) -> str:
     """用户输入拼进 LIKE：`%` `_` 是通配符，搜「_」「%」会把全库都匹配上（第 255 轮实测）。"""
     return "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+PREVIEW_CHARS = 80      # 占位标题退回正文首行、重名补全带首句，80 字够；240 字在 413 篇的库上一次 300KB
+BRIEF_MAX = 50          # 面板只画前 8 条，多给几十条让它排序就够；总数另给
+_MD_MARK = re.compile(r"^\s*(#{1,6}|[-*>]|\d+\.)\s+", re.M)
+
+
+def match_snippet(content: str, query: str, span: int = 40, before: int = 18) -> dict | None:
+    """跟前端 util/snippet.ts 同一条规则：去掉标题井号 / 列表符，命中处前 `before` 后 `span` 字。"""
+    q = (query or "").strip()
+    if not q:
+        return None
+    text = re.sub(r"\s+", " ", _MD_MARK.sub("", content or ""))
+    i = text.lower().find(q.lower())
+    if i < 0:
+        return None
+    start, end = max(0, i - before), min(len(text), i + len(q) + span)
+    return {"before": ("…" if start > 0 else "") + text[start:i], "hit": text[i:i + len(q)],
+            "after": text[i + len(q):end] + ("…" if end < len(text) else "")}
+
+
+def list_notes_brief(user_id: str, q: str = "") -> dict:
+    """⌘K 和 `[[` 补全每敲一个字就拉一次列表：带全文的 `list_notes` 在 413 篇的库上是 580KB
+    一次（第 197 轮量的）。这里只给标题 / 日期 / 前 240 字 / 有没有正文，正文命中的再附一截命中片段
+    （在服务端算，只对命中的那几篇读全文）。"""
+    with connect() as c:
+        if q:
+            like = _like(q)
+            rows = c.execute(
+                "SELECT id, title, updated_at, pinned, content FROM notes WHERE user_id=? AND "
+                "(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') ORDER BY pinned DESC, updated_at DESC",
+                (user_id, like, like)).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT id, title, updated_at, pinned, substr(content, 1, ?) AS content, "
+                "length(trim(content)) > 0 AS has_body FROM notes WHERE user_id=? ORDER BY pinned DESC, updated_at DESC",
+                (PREVIEW_CHARS, user_id)).fetchall()
+    out = []
+    for r in rows[:BRIEF_MAX]:
+        content = r["content"] or ""
+        d = {"id": r["id"], "title": r["title"] or "", "updated_at": r["updated_at"], "pinned": bool(r["pinned"]),
+             "preview": content[:PREVIEW_CHARS], "has_body": bool(r["has_body"]) if "has_body" in r.keys() else bool(content.strip()),
+             "snippet": None}
+        if q and q.lower() not in (r["title"] or "").lower():
+            d["snippet"] = match_snippet(content, q)
+        out.append(d)
+    return {"notes": out, "total": len(rows)}
 
 
 def list_notes(user_id: str, q: str = "") -> list[dict]:

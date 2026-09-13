@@ -127,6 +127,15 @@ async function json<T>(res: Response): Promise<T> {
 
 // ---------------------------------------------------------------- 笔记
 
+/** ⌘K / `[[` 补全用的轻量行：不带全文（413 篇的库带全文一次 580KB，每敲一个字拉一次）。 */
+export type NoteBrief = {
+  id: string; title: string; updated_at: string; pinned: boolean
+  preview: string; has_body: boolean
+  snippet: { before: string; hit: string; after: string } | null
+}
+export const listNotesBrief = (q = '') =>
+  fetch(`/api/notes/brief${q ? `?q=${encodeURIComponent(q)}` : ''}`, { headers: headers() }).then(json<{ notes: NoteBrief[]; total: number }>)
+
 export const listNotes = (q = '') =>
   fetch(`/api/notes${q ? `?q=${encodeURIComponent(q)}` : ''}`, { headers: headers() }).then(json<Note[]>)
 

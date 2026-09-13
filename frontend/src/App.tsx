@@ -2598,7 +2598,7 @@ export default function App() {
       {prompt && <TextPrompt req={prompt} />}
       {confirmReq && <ConfirmDialog req={confirmReq} />}
       <Toaster />
-      <CommandPalette onOpenNote={switchTo} onInsertFact={insertAtCursor} />
+      <CommandPalette onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else void api.getNote(id).then((fresh) => switchTo(fresh)).catch(() => toast('这篇笔记不在了', 'error')) }} onInsertFact={insertAtCursor} />
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
       {writingPlanParent && (
         <WritingPlanPanel

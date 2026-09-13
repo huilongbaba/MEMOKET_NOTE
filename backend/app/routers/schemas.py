@@ -101,6 +101,28 @@ class TreeRow(BaseModel):
     fact_count: int = 0
 
 
+class Snippet(BaseModel):
+    before: str
+    hit: str
+    after: str
+
+
+class NoteBrief(BaseModel):
+    """⌘K / `[[` 补全用的轻量行：不带全文。"""
+    id: str
+    title: str
+    updated_at: str
+    pinned: bool = False
+    preview: str = ""
+    has_body: bool = True
+    snippet: Snippet | None = None
+
+
+class NoteBriefPage(BaseModel):
+    notes: list[NoteBrief]
+    total: int
+
+
 class NoteCreateIn(BaseModel):
     title: str = ""
     content: str = ""

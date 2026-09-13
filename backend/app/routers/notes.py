@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, Note, NoteCreateIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
+from .schemas import CitingNoteOut, Note, NoteBriefPage, NoteCreateIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -27,6 +27,12 @@ def create_note(body: NoteCreateIn, user: str = Depends(current_user)):
     if body.parent_note_id != store.ROOT_ID and not store.get_note(user, body.parent_note_id):
         raise HTTPException(404, "父节点不在")
     return store.create_note(user, body.title, body.content, body.parent_note_id)
+
+
+@router.get("/brief", response_model=NoteBriefPage)
+def list_notes_brief(q: str = "", user: str = Depends(current_user)):
+    """轻量列表：⌘K 和 `[[` 补全每敲一个字拉一次，带全文的那个在大库上一次几百 KB。"""
+    return store.list_notes_brief(user, q)
 
 
 @router.post("/today", response_model=Note)

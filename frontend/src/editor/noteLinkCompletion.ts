@@ -11,16 +11,19 @@ import { fmtDate } from '../util/time'
  * Trilium 的内部链接（`~` / 链接对话框）对应的就是这条路。
  */
 /** 同名笔记只靠日期分不开（实拍三篇「创业一年回顾」并排）：重名的补一截正文首句。 */
-export function disambiguate(hits: { title?: string; content?: string; updated_at: string }[]): string[] {
+export function disambiguate(hits: { title?: string; content?: string; preview?: string; updated_at: string }[]): string[] {
   const names = hits.map(displayTitle)
   const dup = new Set(names.filter((t, i) => names.indexOf(t) !== i))
   return hits.map((n, i) => {
     const date = fmtDate(n.updated_at)
     if (!dup.has(names[i])) return date
     // 小标题（「时间线与里程碑」）几篇都一样，分不开——优先取正文行，标题行只兜底
-    const lines = (n.content ?? '').split('\n')
-    const clean = (l: string) => l.replace(/^\s*(#{1,6}|[-*>]|\d+\.)\s+/, '').replace(/[*_`\[\]]/g, '').trim()
-    const pick = (ls: string[]) => ls.map(clean).filter((l) => l.length > 0 && l !== names[i])
+    // 只有 preview（前 80 字）时最后一行可能被截在半截（「## 时间线」剩个「#」）：整行去掉
+    const src = n.content ?? n.preview ?? ''
+    const lines = src.split('\n')
+    if (n.content == null && lines.length > 1) lines.pop()
+    const clean = (l: string) => l.replace(/^\s*(#{1,6}|[-*>]|\d+\.)\s+/, '').replace(/[*_`\[\]#]/g, '').trim()
+    const pick = (ls: string[]) => ls.map(clean).filter((l) => l.length > 1 && l !== names[i])
     const body = pick(lines.filter((l) => !/^\s*#{1,6}\s/.test(l)))
     const heads = pick(lines.filter((l) => /^\s*#{1,6}\s/.test(l)))
     const first = body.find((l) => l.length > 6) ?? body[0] ?? heads[0] ?? ''
@@ -32,8 +35,8 @@ export async function noteLinkSource(context: CompletionContext): Promise<Comple
   const match = context.matchBefore(/\[\[([^\]\n]{0,40})$/)
   if (!match) return null
   const query = match.text.slice(2).trim()
-  let notes: api.Note[]
-  try { notes = await api.listNotes(query) } catch { return null }
+  let notes: api.NoteBrief[]
+  try { notes = (await api.listNotesBrief(query)).notes } catch { return null }
   if (context.aborted) return null
   // 只按标题（或无标题时的正文首行）匹配，别把正文命中也混进来——链接的是「一篇」
   const q = query.toLowerCase()

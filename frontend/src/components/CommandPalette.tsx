@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as api from '../api'
-import type { Fact, Note } from '../api'
+import type { Fact, NoteBrief } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
-import { matchSnippet } from '../util/snippet'
 import Highlight from './Highlight'
 
 /** 没输入时的快捷命令：Trilium 的 jumpToNote 空态列最近笔记，我们再加几个
@@ -34,16 +33,16 @@ const COMMANDS: { label: string; icon: string; run: () => void }[] = [
  * "find and cite a fact" paths in the app behave identically.
  */
 export default function CommandPalette({ onOpenNote, onInsertFact }: {
-  onOpenNote: (n: Note) => void
+  onOpenNote: (id: string) => void
   onInsertFact: (text: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
-  const [notes, setNotes] = useState<Note[]>([])
+  const [notes, setNotes] = useState<NoteBrief[]>([])
   const [notesTotal, setNotesTotal] = useState(0)
   const [facts, setFacts] = useState<Fact[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
-  const [recent, setRecent] = useState<Note[]>([])
+  const [recent, setRecent] = useState<NoteBrief[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -76,8 +75,8 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     // 「最近编辑」只列写过字的：空的文件夹壳（日记 / 2026 / 09 月 这种脚手架）建出来那天
     // 会把六个位子占掉四个（第 236 轮实拍）
-    api.listNotes('').then((ns) => setRecent(
-      [...ns].filter((n) => (n.content ?? '').trim().length > 0)
+    api.listNotesBrief('').then(({ notes: ns }) => setRecent(
+      [...ns].filter((n) => n.has_body)
         .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 6),
     )).catch(() => {})
     return () => clearTimeout(t)
@@ -89,13 +88,13 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
     const t = setTimeout(() => {
       // 标题命中的排前面，正文命中的排后面、最多给 8 条——「设」这种字几乎每篇正文
       // 都有，全列出来跟没搜一样
-      api.listNotes(q).then((list) => {
+      api.listNotesBrief(q).then(({ notes: list, total }) => {
         if (stale) return
         const needle = q.trim().toLowerCase()
         const byTitle = list.filter((n) => displayTitle(n).toLowerCase().includes(needle))
         const byBody = list.filter((n) => !byTitle.includes(n))
         setNotes([...byTitle, ...byBody].slice(0, 8))
-        setNotesTotal(list.length)
+        setNotesTotal(total)
       }).catch(() => {})
       api.recall(q, 6).then((r) => { if (!stale) setFacts(r.facts) }).catch(() => {})
     }, 200)
@@ -120,7 +119,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
   function choose(i: number) {
     const item = items[i]
     if (!item) return
-    if (item.kind === 'note') onOpenNote(item.note)
+    if (item.kind === 'note') onOpenNote(item.note.id)
     else if (item.kind === 'cmd') item.cmd.run()
     else onInsertFact(`${item.fact.text} [${item.fact.id}]`)
     setOpen(false)
@@ -162,7 +161,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
             // 标题里没命中的（靠正文命中进来的）给一截命中片段——实拍搜「创业」，
             // 「harness 测试」混在一排「创业一年回顾」里，看不出为什么在这。
             const title = displayTitle(n)
-            const s = title.toLowerCase().includes(q.trim().toLowerCase()) ? null : matchSnippet(n.content, q, 18)
+            const s = title.toLowerCase().includes(q.trim().toLowerCase()) ? null : n.snippet   // 片段在服务端算好了
             return row(n.id, <span className="palette-line"><span className="palette-main"><Highlight text={title} q={q} />
               {s && <span className="muted palette-snip">{s.before}<mark>{s.hit}</mark>{s.after}</span>}</span>
               <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note')
