@@ -3437,3 +3437,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 标签列表里那个「事实 terrence-9999-FFF」是探针留下的：真笔记没了标签会在 reload 时收掉，虚拟标签只按 id 形状认，事实 404 的标签会一直恢复回来、点开是「找不到这条事实」就完了。不在启动时逐个探（50 个标签 50 个请求），改成页面自己给出口：「找不到这条事实」下面加「收掉这个标签」chip，发 `virtual-gone` 事件，App 关掉那个标签（走 tabsRef / closeTabRef 拿最新闭包）。
 - 探针 `badfact:close`：打开坏事实 → 点 chip → 日志 `tabs=0 status=知识库 / 时间线`（标签没了、切到旁边那个）。实拍页面带 chip。
+
+## [514] 第 489 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 950 通过；前端 tsc + eslint + vitest 126 + 14 条 check / smoke 全过（含 check-regex-parity、check-css-classes）。
