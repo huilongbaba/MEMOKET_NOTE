@@ -73,6 +73,15 @@ function AppearanceSection() {
  * API key、按量计费，但通常快很多——两者的取舍留给用户自己判断，这里
  * 只负责让切换这件事简单、随时能切回去。
  */
+/** 设置页最底下的出处行：AGPL §13 要求向使用者提供源码，仓库地址就放在这。 */
+export function AboutLine() {
+  return (
+    <p className="muted" style={{ fontSize: 11, marginTop: 28 }}>
+      MEMOKET NOTE · AGPL-3.0 · 源码 <a href="https://github.com/huilongbaba/MEMOKET_NOTE" target="_blank" rel="noreferrer">github.com/huilongbaba/MEMOKET_NOTE</a> · 复用了 Trilium 的设计与主题（AGPL-3.0），依赖清单见仓库 docs/third-party-notices.md
+    </p>
+  )
+}
+
 export default function SettingsPanel({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -210,11 +219,6 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
               {saving ? <span className="spinner" /> : '保存'}
             </button>
             {embedded && <UsageSection />}
-            {embedded && (
-              <p className="muted" style={{ fontSize: 11, marginTop: 24 }}>
-                MEMOKET NOTE · AGPL-3.0 · 源码 <a href="https://github.com/huilongbaba/MEMOKET_NOTE" target="_blank" rel="noreferrer">github.com/huilongbaba/MEMOKET_NOTE</a> · 复用了 Trilium 的设计与主题（AGPL-3.0），依赖清单见仓库 docs/third-party-notices.md
-              </p>
-            )}
           </div>
         )}
       </div>

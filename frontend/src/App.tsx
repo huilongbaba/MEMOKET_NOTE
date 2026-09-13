@@ -56,7 +56,7 @@ import TabBar, { type Tab } from './components/TabBar'
 import Ribbon, { type RibbonTab } from './components/Ribbon'
 import RightPane, { type PaneTab } from './components/RightPane'
 import SkeletonPanel from './components/SkeletonPanel'
-import SettingsPanel from './components/SettingsPanel'
+import SettingsPanel, { AboutLine } from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
 import TapProvenance from './components/TapProvenance'
 import Toaster from './components/Toaster'
@@ -2867,7 +2867,7 @@ export default function App() {
               <MemoryPanel pendingJob={job} />
             </div>
           ) : virtualId === 'app:settings' ? (
-            <div className="kb-note"><h2 className="kb-note-title"><i className="bx bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /></div>
+            <div className="kb-note"><h2 className="kb-note-title"><i className="bx bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /><AboutLine /></div>
           ) : virtualId === 'app:skills' ? (
             <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><i className="bx bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
           ) : virtualId === 'app:trash' ? (

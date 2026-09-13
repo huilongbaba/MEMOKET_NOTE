@@ -37,7 +37,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe === 'kb-graph' || probe === 'kb-overview') {
     setTimeout(() => void openVirtual('kb:' + probe.slice(3)), 800)
   }
-  if (probe === 'settings') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+  if (probe === 'settings' || probe === 'settings:bottom') setTimeout(() => void openVirtual('app:settings', '设置'), 600)
+  // settings:bottom → 滚到设置页底部（用量账本 / 出处行在最下面）
+  if (probe === 'settings:bottom') setTimeout(() => { for (const el of Array.from(document.querySelectorAll<HTMLElement>('.note-scroll, .embedded-panel, main'))) el.scrollTo(0, 1e6) }, 3000)
   if (probe === 'skills') setTimeout(() => void openVirtual('app:skills'), 600)
   // 外观三选一走 preload → 主进程 nativeTheme；点完再截图看有没有真的变色
   if (probe === 'theme-dark' || probe === 'theme-system') {
