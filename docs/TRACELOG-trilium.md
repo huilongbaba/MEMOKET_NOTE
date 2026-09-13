@@ -1937,3 +1937,13 @@ token，按功能列前 8，用过的模型。设置页多一节「模型用量�
 块生成 / 校验…）。带思考的流（`stream_events`，修订轮用）同样记。KITE 抽取拿不到 usage：每块按
 字数估一笔（1200 固定 + 字数 / 1.5，每条事实 60），功能名 `kb/extract~` 带波浪号、设置页标「估算」。
 批量关系判定 80 段 0.93 秒、记账失败不影响调用。
+
+## [199] 巡检第 170 轮：记忆范围（2026-09-13）
+
+第 165 轮那个「硬件线里混进华为 950 超节点」的根子是一个库三种来源混着召回。第一版缓解：
+`database/kb/scope.py` 按 session id 前缀分三档（`note-` 笔记摄入 / `obsidian- notion- feishu-
+apple- evernote-` 导入 / 其余是会议记录），`UserMemory.recall(scope=)` 限范围时多取 4 倍再滤，
+`recall_clustered` / `retrieval.retrieve` / 召回 / 关系 / 批量关系 / magic tap 全带 `scope`。前端
+右栏「记忆」顶上一个下拉「全部记忆 / 只看笔记 / 只看会议记录 / 只看导入的」，存 localStorage，
+api 层自己带上，换了范围召回、关系卡、页边圆点都重算。智能续写 harness 那条路和真正分库仍在欠账。
+`tests/test_memory_scope.py`。pytest 857。

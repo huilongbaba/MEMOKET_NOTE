@@ -377,7 +377,7 @@ class UserMemory:
 
         return topics[:4], entities[:4], hit_surfaces
 
-    def recall(self, query: str, limit: int = 8) -> tuple[list[dict], list[str], float]:
+    def recall(self, query: str, limit: int = 8, scope: str = "all") -> tuple[list[dict], list[str], float]:
         """符号检索。返回 (fact 行, 命中的表层词, 耗时毫秒)。
 
         **先撒网再排序**，不是「命中主题后按时间取前 8」。原来那个写法等于
@@ -396,7 +396,7 @@ class UserMemory:
             rows, _trace = execute_plan(store, vocab, {"queries": queries},
                                         budget=search.POOL * 2)
             facts = [r for r in rows if r.get("type") == "fact"]
-        facts = search.rank(facts, query, self, store, limit=limit)
+        facts = search.rank(facts, query, self, store, limit=limit if scope in ('', 'all') else limit * 4)
 
         if not facts:
             facts = self._recall_via_lines(store, vocab, query, limit)
@@ -405,6 +405,9 @@ class UserMemory:
             surfaces = surfaces + [t for t in search.matched_terms(
                 facts, query, self, store) if t not in surfaces]
 
+        if scope not in ("", "all"):
+            from ..kb.scope import filter_rows
+            facts = filter_rows(facts, scope)
         return facts[:limit], surfaces, (time.perf_counter() - t0) * 1000
 
     def recall_multihop(self, question: str, limit: int = 8) -> tuple[list[dict], bool, float]:

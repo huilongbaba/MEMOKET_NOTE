@@ -30,14 +30,14 @@ PER_CLUSTER = 8
 
 
 def recall_clustered(memory, query: str, *, limit: int = 12,
-                     seed_limit: int = SEED_LIMIT,
+                     seed_limit: int = SEED_LIMIT, scope: str = "all",
                      per_cluster: int = PER_CLUSTER) -> tuple[list[dict], list[str], float]:
     """``(fact rows, matched surface terms, milliseconds)`` -- recall's shape.
 
     Same tuple as ``UserMemory.recall`` on purpose: the caller decides which
     view it wants, and nothing downstream has to know which one it got.
     """
-    seeds, terms, took = memory.recall(query, limit=seed_limit)
+    seeds, terms, took = memory.recall(query, limit=seed_limit, scope=scope)
     store, _vocab = memory._index()
     groups = cached(memory)
 

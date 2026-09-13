@@ -346,6 +346,12 @@ export default function App() {
   const [cursorPara, setCursorPara] = useState('')
   // 边缘记忆：停止编辑 1.5s 后把含数字的段落批量拿去判关系，段首行右边亮点（零 LLM）
   const [marginMarks, setMarginMarks] = useState<MarginMark[]>([])
+  const [scopeTick, setScopeTick] = useState(0)
+  useEffect(() => {
+    const on = () => setScopeTick((t) => t + 1)
+    window.addEventListener('memory-scope-changed', on)
+    return () => window.removeEventListener('memory-scope-changed', on)
+  }, [])
   useEffect(() => {
     if (!current) { setMarginMarks([]); return }
     const paras = paragraphsWithLines(content).filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8).slice(0, 80)
@@ -359,7 +365,7 @@ export default function App() {
     }, 1500)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, current?.id, ingestTick])
+  }, [content, current?.id, ingestTick, scopeTick])
   const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录

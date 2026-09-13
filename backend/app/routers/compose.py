@@ -76,11 +76,11 @@ def _fact_exists(user: str):
 
 
 def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8,
-              title: str = "", anchor_first: bool = False):
+              title: str = "", anchor_first: bool = False, scope: str = "all"):
     """Thin alias while the routers migrate; implementation moved to
     ``app/retrieval.py`` so routers stop importing each other."""
     return retrieval.retrieve(user, content, spine, beats, limit=limit,
-                              title=title, anchor_first=anchor_first)
+                              title=title, anchor_first=anchor_first, scope=scope)
 
 
 @router.post("/skeleton", response_model=SkeletonOut)
@@ -122,7 +122,7 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         event: delta  —— 正文增量
         event: done
     """
-    facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6)
+    facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6, scope=body.scope)
 
     system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
     messages = [

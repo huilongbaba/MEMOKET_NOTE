@@ -343,7 +343,7 @@ export async function magicTap(
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, spine, beats, following, title }),
+    body: JSON.stringify({ content, spine, beats, following, title, scope: memoryScope() }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
@@ -450,11 +450,23 @@ export async function runWritingPlan(
 
 // ---------------------------------------------------------------- 记忆
 
+/** 记忆范围（database/kb/scope.py）：全部 / 只看笔记摄入的 / 只看会议记录 / 只看导入的。
+ *  存在 localStorage，召回 / 关系 / 续写都带上；右栏「记忆」顶上切。 */
+export type MemoryScope = 'all' | 'notes' | 'meetings' | 'imports'
+export const MEMORY_SCOPE_KEY = 'memoket-note:memory-scope'
+export const SCOPE_LABEL: Record<MemoryScope, string> = { all: '全部记忆', notes: '只看笔记', meetings: '只看会议记录', imports: '只看导入的' }
+export function memoryScope(): MemoryScope {
+  try { const v = localStorage.getItem(MEMORY_SCOPE_KEY); return v === 'notes' || v === 'meetings' || v === 'imports' ? v : 'all' } catch { return 'all' }
+}
+export function setMemoryScope(s: MemoryScope) {
+  try { localStorage.setItem(MEMORY_SCOPE_KEY, s) } catch { /* 无所谓 */ }
+  window.dispatchEvent(new CustomEvent('memory-scope-changed', { detail: s }))
+}
 export const recall = (query: string, limit = 8) =>
   fetch('/api/memory/recall', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ query, limit }),
+    body: JSON.stringify({ query, limit, scope: memoryScope() }),
   }).then(json<{ facts: Fact[]; took_ms: number; terms: string[] }>)
 
 /** 「来龙去脉」：给一段正文，回它涉及的事情按时间怎么演进的。
@@ -643,13 +655,13 @@ export type MemoryRelation = {
 export const memoryRelations = (passage: string, confirm = true) =>
   fetch('/api/memory/relations', {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ passage, confirm }),
+    body: JSON.stringify({ passage, confirm, scope: memoryScope() }),
   }).then(json<{ relations: MemoryRelation[]; took_ms: number }>)
 /** 页边圆点：一批段落各自最要紧的一条关系（零 LLM），没有的是 null */
 export const memoryRelationsBatch = (passages: string[]) =>
   fetch('/api/memory/relations/batch', {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ passages }),
+    body: JSON.stringify({ passages, scope: memoryScope() }),
   }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[] } | null)[]; took_ms: number }>)
 export const supersedeFact = (oldId: string, newId: string) =>
   fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {

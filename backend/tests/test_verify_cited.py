@@ -22,7 +22,7 @@ def test_verify_feeds_cited_facts_first(monkeypatch, tmp_path):
     class FakeMem:
         def __init__(self, user): pass
         def fact_by_id(self, fid): return facts.get(fid)
-        def recall(self, q, limit=8): return ([{"id": "u-7-X1", "text": "无关的一条", "date": ""}], [], 0.1)
+        def recall(self, q, limit=8, scope="all"): return ([{"id": "u-7-X1", "text": "无关的一条", "date": ""}], [], 0.1)
         def source_lines(self, row): return ["原话"]
     monkeypatch.setattr(compose, "UserMemory", FakeMem)
     seen = {}

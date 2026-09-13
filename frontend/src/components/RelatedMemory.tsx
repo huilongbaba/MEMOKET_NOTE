@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { memoryRelations, mergeFacts, recall, supersedeFact } from '../api'
+import { memoryRelations, mergeFacts, memoryScope, recall, SCOPE_LABEL, setMemoryScope, supersedeFact, type MemoryScope } from '../api'
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
 
@@ -37,6 +37,13 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
   const [facts, setFacts] = useState<Fact[]>([])
   const [loading, setLoading] = useState(false)
   const lastQueried = useRef('')
+  // 记忆范围：换了就把两个缓存键清掉，让召回和关系都重来
+  const [scope, setScope] = useState<MemoryScope>(() => memoryScope())
+  useEffect(() => {
+    const on = (e: Event) => { setScope((e as CustomEvent<MemoryScope>).detail); lastQueried.current = ''; lastPara.current = ''; setFacts([]); setRels([]) }
+    window.addEventListener('memory-scope-changed', on)
+    return () => window.removeEventListener('memory-scope-changed', on)
+  }, [])
 
   // 关系：光标停在一段上 900ms 就查一次。只对有具体数字 / 日期的段落有意义（后端没量就回空）。
   const [rels, setRels] = useState<MemoryRelation[]>([])
@@ -53,7 +60,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
       memoryRelations(p).then((r) => setRels(r.relations)).catch(() => {}).finally(() => setRelBusy(false))
     }, IDLE_MS)
     return () => clearTimeout(t)
-  }, [paragraph])
+  }, [paragraph, scope])
   function ignore(key: string) {
     const next = new Set(ignored); next.add(key); setIgnored(next)
     try { localStorage.setItem(IGNORED_KEY, JSON.stringify([...next].slice(-200))) } catch { /* 无所谓 */ }
@@ -94,7 +101,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
         .finally(() => setLoading(false))
     }, IDLE_MS)
     return () => clearTimeout(t)
-  }, [content])
+  }, [content, scope])
 
   // 之前 facts 是空的时候整个组件（连带标题）直接 return null——这是这个
   // 面板在"写作"/"相关记忆"/"知识库" 三个 tab 里唯一的内容，点进"相关记忆"
@@ -107,6 +114,11 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
     <div>
       <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
         跟着你写的内容自动浮现，点一下插入引用。{loading && <span className="spinner" />}
+        {/* 记忆范围：一个库里混着会议记录 / 笔记 / 导入的，写自家复盘时别让别家汇报串进来 */}
+        <select value={scope} onChange={(e) => setMemoryScope(e.target.value as MemoryScope)} title="召回、关系、续写都只看这一档"
+                style={{ marginInlineStart: 'auto', fontSize: 11, padding: '1px 4px' }}>
+          {(Object.keys(SCOPE_LABEL) as MemoryScope[]).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
+        </select>
       </p>
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>

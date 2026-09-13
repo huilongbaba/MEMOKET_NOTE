@@ -419,6 +419,7 @@ class StatsOut(BaseModel):
 class RecallIn(BaseModel):
     query: str
     limit: int = 8
+    scope: str = "all"      # 记忆范围：all / notes / meetings / imports（database/kb/scope.py）
 
 
 class RecallOut(BaseModel):
@@ -558,6 +559,7 @@ class MagicTapIn(BaseModel):
     following: str = ""
     # 标题：正文还很短时它是模型唯一知道的方向（智能续写走 ctx.note_title，续写这条路之前没带）
     title: str = ""
+    scope: str = "all"      # 记忆范围（同 RecallIn.scope）
 
 
 # ---------------------------------------------------------------- 选中文本操作

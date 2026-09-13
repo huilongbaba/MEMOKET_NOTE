@@ -79,7 +79,7 @@ def test_relations_route_and_supersede(tmp_path, monkeypatch):
     a = mem.add_manual_fact("note-n1-0", "电池容量从 300mAh 改到 380mAh。", date="2026-05-08", title="T")
     b = mem.add_manual_fact("note-n1-0", "电池容量再改到 420mAh。", date="2026-06-01", title="T")
     rows = [{"id": a["id"], "text": a["text"], "date": "2026-05-08"}]
-    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8: (rows, [], 0.1))
+    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8, scope="all": (rows, [], 0.1))
     seen = {}
 
     async def fake_json(messages, **kw):
@@ -123,7 +123,7 @@ def test_relations_batch_route(tmp_path, monkeypatch):
     fake = SimpleNamespace(kite_data_dir=tmp_path, kite_extract_model="fake", whisper_base_url="http://x")
     monkeypatch.setattr(kite_memory, "get_settings", lambda: fake)
     rows = [{"id": "u-1-A1", "text": "电池容量从 300mAh 改到 380mAh。", "date": "2026-05-08"}]
-    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8: (rows, [], 0.1))
+    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8, scope="all": (rows, [], 0.1))
     from app.main import app
     with TestClient(app, headers={"X-User-Id": "u1"}) as c:
         # 空库：一个点都不亮（不然全是「缺依据」）

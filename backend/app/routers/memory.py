@@ -34,7 +34,7 @@ def rows_to_facts(mem: UserMemory, rows: list[dict]) -> list[FactOut]:
 @router.post("/recall", response_model=RecallOut)
 def recall(body: RecallIn, user: str = Depends(current_user)):
     mem = UserMemory(user)
-    rows, terms, took = mem.recall(body.query, limit=body.limit)
+    rows, terms, took = mem.recall(body.query, limit=body.limit, scope=body.scope)
     return RecallOut(facts=rows_to_facts(mem, rows), took_ms=round(took, 3),
                      terms=terms)
 
@@ -155,6 +155,7 @@ def timeline(user: str = Depends(current_user)):
 
 class _RelationsIn(TraceIn):
     confirm: bool = True
+    scope: str = "all"
 
 
 def _has_facts(mem: UserMemory) -> bool:
@@ -183,7 +184,7 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
     mem = UserMemory(user)
     if not _has_facts(mem):
         return {"relations": [], "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
-    rows, _terms, _took = mem.recall(passage, limit=8)
+    rows, _terms, _took = mem.recall(passage, limit=8, scope=body.scope)
     rows = _live(mem, rows)
     cands = kb_relations.detect(passage, rows)
     by_id = {r["id"]: r for r in rows}
@@ -213,6 +214,7 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
 
 class _RelationsBatchIn(BaseModel):
     passages: list[str]
+    scope: str = "all"
 
 
 @router.post("/relations/batch")
@@ -229,7 +231,7 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
         if len(p) < 8 or not any(ch.isdigit() for ch in p):
             out.append(None)
             continue
-        rows, _terms, _took = mem.recall(p, limit=8)
+        rows, _terms, _took = mem.recall(p, limit=8, scope=body.scope)
         cands = kb_relations.detect(p, _live(mem, rows))
         out.append({"relation": cands[0]["relation"], "say": cands[0]["say"], "fact_ids": cands[0]["fact_ids"]} if cands else None)
     return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
