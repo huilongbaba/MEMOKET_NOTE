@@ -496,12 +496,17 @@ def _note(row) -> dict:
     return d
 
 
+def _like(q: str) -> str:
+    """用户输入拼进 LIKE：`%` `_` 是通配符，搜「_」「%」会把全库都匹配上（第 255 轮实测）。"""
+    return "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
 def list_notes(user_id: str, q: str = "") -> list[dict]:
     with connect() as c:
         if q:
-            like = f"%{q}%"
+            like = _like(q)
             rows = c.execute(
-                "SELECT * FROM notes WHERE user_id=? AND (title LIKE ? OR content LIKE ?) "
+                "SELECT * FROM notes WHERE user_id=? AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') "
                 "ORDER BY pinned DESC, updated_at DESC",
                 (user_id, like, like)).fetchall()
         else:

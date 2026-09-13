@@ -80,3 +80,16 @@ def test_set_pinned_wrong_user_is_noop(isolated_store):
     n = isolated_store.create_note("u1", "笔记A", "正文")
     assert isolated_store.set_pinned("u2", n["id"], True) is None
     assert isolated_store.get_note("u1", n["id"])["pinned"] == 0
+
+
+def test_搜索里的百分号和下划线不是通配符(tmp_path, monkeypatch):
+    """第 255 轮实测：搜「_」「%」全库都命中。"""
+    from app.database import store
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    store.create_note("u", "有百分号", "涨了 50%")
+    store.create_note("u", "没有", "纯文字")
+    store.create_note("u", "下划线_x", "a_b")
+    assert [n["title"] for n in store.list_notes("u", "%")] == ["有百分号"]
+    assert [n["title"] for n in store.list_notes("u", "_")] == ["下划线_x"]
+    assert [n["title"] for n in store.list_notes("u", "a_b")] == ["下划线_x"]
+    assert [n["title"] for n in store.list_notes("u", "\\")] == []
