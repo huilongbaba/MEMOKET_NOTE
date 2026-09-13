@@ -3685,3 +3685,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [569] 第 545 轮：显示名也对拍；README 数字跟上（2026-09-14）
 
 - check-preview-parity 加第二段：占位标题拿正文首行截句读的 `display_title` / `clip_title` vs `displayTitle` / `clipTitle`，7 组样本（句号 ≥2 字、逗号冒号 ≥8 字、整篇缩进、真标题优先、空、60 字硬截）全等。合约测试 6 条过（新 check 在 npm test 里）。README：18 个检查脚本、五个对拍。
+
+## [570] 第 546 轮：说话人标签正则也进对拍（2026-09-14）
+
+- check-regex-parity 加 18 个样本喂 `kbNoise.isSpeakerTag` 和 `who.is_speaker_tag`（speaker a / Speaker B / speaker_c / 说话人2 / 发言人 10 算，speakers / speaker phone / 光秃秃的 speaker / 两个空格的不算）：全等。这条正则现在树、图、召回三处都靠它，两边漂了树上会冒出「speaker b」实体。

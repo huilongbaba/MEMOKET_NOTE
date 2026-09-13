@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { CITE_RE_SOURCE, NOTE_LINK_RE, citedFactIds, linkedNoteIds } from '../src/util/wordCount.ts'
+import { isSpeakerTag } from '../src/util/kbNoise.ts'
 
 const SAMPLES = [
   '据 [terrence-12-AB] 和 [u-9-F]，又见 [terrence-12-AB]；[t-0123456789ab-1f] 也是。',
@@ -57,7 +58,20 @@ print(json.dumps(out))
     ok(head === res[i].fragments_head, `样本 ${i + 1} 开头是引用 id：前端 ${head} == prompts/fragments._FACT_ID`)
   })
 }
+// 说话人标签（kbNoise.SPEAKER_TAG vs who._SPEAKER_TAG）：树 / 图 / 召回三处都靠它认「speaker b」不是实体
+const SPK = ['speaker a', 'Speaker B', 'speaker_c', 'speaker-d', 'speaker 12', 'speaker3', '说话人 a', '说话人2', '发言人 B', '发言人 10',
+  'speakers', 'speaker phone', 'speaker', '说话人', 'speaker abc', 'speaker 123', 'loudspeaker a', 'speaker  a']
+if (existsSync(py)) {
+  const script2 = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(backend)})
+from app.database.kb.who import is_speaker_tag
+print(json.dumps([bool(is_speaker_tag(x)) for x in json.loads(sys.stdin.read())]))
+`
+  const res2 = JSON.parse(execFileSync(py, ['-c', script2], { input: JSON.stringify(SPK), encoding: 'utf8' })) as boolean[]
+  SPK.forEach((x, i) => ok(isSpeakerTag(x) === res2[i], `说话人标签 ${JSON.stringify(x)}：前端 ${isSpeakerTag(x)} == 后端 ${res2[i]}`))
+}
 // 前端自己：NOTE_LINK_RE 是 g 正则，lastIndex 不能被谁遗留（matchAll 会克隆，但 .test/.exec 直接用会踩坑）
 ok(NOTE_LINK_RE.lastIndex === 0, 'NOTE_LINK_RE.lastIndex 没被污染')
 if (bad) { console.error(`${bad} 处不一致`); process.exit(1) }
-console.log('OK: 前后端引用 / 链接正则行为一致')
+console.log('OK: 前后端引用 / 链接 / 说话人标签正则行为一致')
