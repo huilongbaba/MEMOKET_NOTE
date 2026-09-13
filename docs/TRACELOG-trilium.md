@@ -1971,5 +1971,8 @@ localStorage 取）→ hooks/note.py 两处 `_retrieve(scope=)`、memory_tools �
 
 `harness_runs` 里有 `t:n` / `chart:n` 各 50 行——是 `test_harness_loop` 带 BASE 中间件跑循环时
 Save / RunHistory 写进了**开发库**：96 个测试文件里只有 47 个记得 monkeypatch `store._db_path`。
-加 `tests/conftest.py` 的 autouse 夹具：每个测试默认用自己的临时 sqlite；跑完整套开发库的 mtime
-不变。顺手清掉那 100 行。pytest 859。
+加 `tests/conftest.py`：autouse 夹具让每个测试默认用自己的临时 sqlite 和临时 codebook 目录，并在任何
+app 模块 import 之前把 `KITE_DATA_DIR` 指到临时目录（skills / assets / backups / jobs 是按名字绑的
+`get_settings`，事后 monkeypatch 够不着——实拍 test_endpoints 在 data/ 下长出 `u1/skills`），退出时
+删掉。跑完整套：开发库 mtime 不变、data/ 目录列表不变。顺手清掉那 100 行运行记录和 13 个测试留下的
+用户目录（cancel-test / smoke-user / u9…）。pytest 859。

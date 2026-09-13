@@ -4,12 +4,29 @@
 
 from __future__ import annotations
 
-import pytest
+import atexit
+import os
+import shutil
+import tempfile
+
+# 在任何 app 模块 import 之前把数据目录指到临时目录：skills / assets / backups / jobs 这些模块是
+# `from ..util.config import get_settings` 按名字绑的，事后 monkeypatch 模块属性够不着它们
+# （实拍 test_endpoints 在 backend/data/ 下长出 u1/skills）。环境变量优先级高于 .env。
+_TMP_DATA = tempfile.mkdtemp(prefix="memoket-tests-")
+os.environ.setdefault("KITE_DATA_DIR", _TMP_DATA)
+atexit.register(lambda: shutil.rmtree(_TMP_DATA, ignore_errors=True))
+
+import pytest  # noqa: E402
 
 from app.database import store
+from app.database.kite import kite_memory
+from app.util.config import get_settings
 
 
 @pytest.fixture(autouse=True)
 def _isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    # codebook 也进临时目录：不然 UserMemory("u1") 会在 backend/data/ 下长出 u1 / cancel-test 这种目录
+    real = get_settings()
+    monkeypatch.setattr(kite_memory, "get_settings", lambda: real.model_copy(update={"kite_data_dir": tmp_path / "kite"}))
     yield
