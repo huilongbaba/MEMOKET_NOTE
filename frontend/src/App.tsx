@@ -16,7 +16,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
-import { insertStreamed, tidyBlankLines, applyScrub } from './editor/streamJoin'
+import { insertStreamed, tidyBlankLines, applyScrub, prepareInsert } from './editor/streamJoin'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
@@ -1794,12 +1794,11 @@ export default function App() {
         {
           const base = liveContentRef.current.replace(/\n+$/, '\n')
           const pos = sectionEnd(base, d.section) ?? Math.min(d.pos, base.length)
-          const head = base.slice(0, pos).replace(/\n*$/, '\n\n')
-          const tail = base.slice(pos).replace(/^\n*/, '\n\n')
-          insertCursorRef.current = head.length
-          const next = head + tail
-          liveContentRef.current = next
-          setContent(next)
+          // 腾位置的规则照服务端 outline.insert_into（editor/streamJoin.prepareInsert，check-stream-parity 对拍）
+          const r = prepareInsert(base, pos)
+          insertCursorRef.current = r.cursor
+          liveContentRef.current = r.next
+          setContent(r.next)
         }
         setNoteHarnessStatus((s) => s.replace(/续写中…$/, `写到「${d.section}」这一节…`))
         requestAnimationFrame(() => {

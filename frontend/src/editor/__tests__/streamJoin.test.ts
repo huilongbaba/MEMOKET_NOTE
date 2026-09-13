@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertStreamed, applyScrub } from '../streamJoin'
+import { insertStreamed, applyScrub, prepareInsert } from '../streamJoin'
 
 describe('insertStreamed', () => {
   it('增量里三个以上换行压成段落分隔', () => {
@@ -53,5 +53,12 @@ describe('applyScrub（照服务端 scrub_meta_sentences_v）', () => {
   it('找不到那句 / 在表格代码块里就原样', () => {
     expect(applyScrub('a。 b。', '没有')).toBe('a。 b。')
     expect(applyScrub('| x | 不能据此。 |', '不能据此。')).toBe('| x | 不能据此。 |')
+  })
+})
+
+describe('prepareInsert（照服务端 outline.insert_into）', () => {
+  it('前后各收成一个空行；文末预留的空行先收回；紧跟插入点的孤立标点去掉', () => {
+    expect(prepareInsert('## A\n正文。\n\n\n## B\n乙\n\n\n', 9)).toEqual({ next: '## A\n正文。\n\n\n\n## B\n乙\n', cursor: 10 })
+    expect(prepareInsert('甲。，后半句', 2)).toEqual({ next: '甲。\n\n\n\n后半句', cursor: 4 })
   })
 })

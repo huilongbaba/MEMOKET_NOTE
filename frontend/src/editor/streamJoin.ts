@@ -57,3 +57,14 @@ export function applyScrub(content: string, sentence: string): string {
   if (!any) return content
   return out.join('').replace(/\n{3,}/g, '\n\n').trim()
 }
+
+/** `insert_at` 事件到了：在本地正文的 pos 处为这一轮续写腾位置（照服务端 `outline.insert_into`：
+ *  前面收成一个空行、后面以一个空行开头，紧跟在插入点后的孤立标点去掉），返回新正文和之后 delta 该落的游标。
+ *  文末为追加预留的空行先收回来。 */
+export function prepareInsert(content: string, pos: number): { next: string; cursor: number } {
+  const base = content.replace(/\n+$/, '\n')
+  const at = Math.min(pos, base.length)
+  const head = base.slice(0, at).replace(/\n*$/, '\n\n')
+  const tail = base.slice(at).replace(/^\n*/, '').replace(/^[，、。；：,;:]+\s*/, '')
+  return { next: head + '\n\n' + tail, cursor: head.length }
+}
