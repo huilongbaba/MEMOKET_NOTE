@@ -3481,3 +3481,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [523] 第 498 轮：桌面壳的三处没人接的 Promise（2026-09-14）
 
 - 拿前端那套 typed eslint 临时扫 desktop/src：3 处。`shell.openExternal` 标 void；`win.loadURL(url)` 失败原来是一片白什么都不说——加 catch 记日志；`app.whenReady().then(boot)` 里 boot 没兜住的意外原来是 unhandled rejection（进程活着、窗口没有）——加 catch：记日志 + 错误框带日志路径 + 退出。desktop 没有 eslint 工程配置，不为 3 处新增一套工具链，记在这里下次重扫。dev 实例实拍启动照旧。
+
+## [524] 第 499 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 950 通过；前端 tsc + eslint（含 no-floating-promises）+ vitest 129 + 16 条 check / smoke 全过。
