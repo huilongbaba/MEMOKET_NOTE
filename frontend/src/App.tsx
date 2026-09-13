@@ -2886,7 +2886,7 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
-            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' || pr.startsWith('notekb:') ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : pr.startsWith('blank:ribbon:') ? pr.slice(13) : (/^note:[^:]+:ribbon:(.+)$/.exec(pr)?.[1]) })()}
+            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' || pr.startsWith('notekb:') ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : pr.startsWith('blank:ribbon:') ? pr.slice(13) : (/^note:[^:]+:ribbon:([^:]+)/.exec(pr)?.[1]) })()}
             tabs={[{
               id: 'format', title: '格式', icon: 'bx-text',
               activate: true,

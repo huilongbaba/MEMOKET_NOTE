@@ -58,7 +58,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // note:<id>[:ribbon:<tab>] → 按 id 打开某篇真笔记（ribbon 标签由 App 的 defaultOpen 从 probe 串里读）
   if (probe?.startsWith('note:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.split(':')[1])
-    if (n) { harnessProbeDone.current = true; void switchTo(n) }
+    if (n) {
+      harnessProbeDone.current = true; void switchTo(n)
+      // `…:ribbon:<tab>:end` → 把 ribbon 体滚到底（看面板末尾的东西，比如引用页最后的局部图）
+      if (probe.endsWith(':end')) setTimeout(() => { const el = document.querySelector('.ribbon-body'); if (el) el.scrollTop = el.scrollHeight }, 5500)
+    }
   }
   // kbexpand:<id> → 把树上的某个知识库分类展开（看懒加载的那一层长什么样）
   if (probe?.startsWith('kbexpand:') && !harnessProbeDone.current) {
