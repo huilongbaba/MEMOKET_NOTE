@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { clickable } from './util/clickable'
 import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
@@ -40,7 +40,8 @@ import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMen
 import Gutter from './components/Gutter'
 import Logo from './components/Logo'
 import PreferencesPanel from './components/PreferencesPanel'
-import KbNoteView from './components/KbNoteView'
+// 知识库那一整套页面（含 d3 的图）按需加载：只写笔记的人不该为它多下 300KB（第 519 轮）
+const KbNoteView = lazy(() => import('./components/KbNoteView'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
@@ -2625,9 +2626,9 @@ export default function App() {
         </div>
         <div className="split-body">
           {api.isVirtualId(id)
-            ? <KbNoteView id={id} rows={allRows} onOpen={(x) => openInSplit(x)}
+            ? <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}><KbNoteView id={id} rows={allRows} onOpen={(x) => openInSplit(x)}
                           onOpenNote={(nid) => { const n = notes.find((x) => x.id === nid); if (n) void switchTo(n) }}
-                          onCite={current ? (fid, text) => insertAtCursor(`${text} [${fid}]`) : null} />
+                          onCite={current ? (fid, text) => insertAtCursor(`${text} [${fid}]`) : null} /></Suspense>
             : note
               ? (current?.id === note.id
                   // 同一篇在主栏也开着：这里只读，不然两边各存各的互相盖
@@ -2987,13 +2988,13 @@ export default function App() {
             <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><i className="bx bx-trash" /> 最近删除</h2>
               <TrashPanel onRestored={(id) => { void reload(); void reloadTree(); void api.getNote(id).then((n) => switchTo(n)).catch(() => {}) }} /></div>
           ) : virtualId ? (
-            <KbNoteView
+            <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}><KbNoteView
               id={virtualId}
               rows={allRows}
               onOpen={(id) => void openVirtual(id)}
               onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}
               onCite={null}
-            />
+            /></Suspense>
           ) : (
             <WelcomePane
               notes={notes}

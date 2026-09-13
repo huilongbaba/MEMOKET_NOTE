@@ -6,8 +6,9 @@
  * 的事实——最后这条是真问题（模型编的、或者知识库重建过 id 变了），藏起来
  * 等于让一篇笔记建立在不存在的依据上。
  */
-import { useEffect, useState } from 'react'
-import LocalGraph from './kb/LocalGraph'
+import { useEffect, useState, lazy, Suspense } from 'react'
+// 局部图带着 d3：ribbon 每篇都装，但图在面板末尾、多数时候滚不到——按需加载（第 519 轮）
+const LocalGraph = lazy(() => import('./kb/LocalGraph'))
 import { fmtDate } from '../util/time'
 
 import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type CitingNote, type FactPeek, type NoteKb, type TreeRow, noteGraph, type NoteGraph } from '../api'
@@ -208,8 +209,8 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
       {graph && graph.topics.length + graph.entities.length >= 2 && (
         <div className="stack" style={{ gap: 4 }}>
           <strong style={{ fontSize: 12 }}>这篇周围有什么 <span className="muted" style={{ fontWeight: 400 }}>· {graph.facts} 条事实牵出的主题和实体，点节点进它的页面</span></strong>
-          <LocalGraph topics={graph.topics} entities={graph.entities} links={graph.links} height={200}
-                      actions={{ onOpen: (id) => window.dispatchEvent(new CustomEvent('open-virtual', { detail: id })), onOpenNote, onCite: null }} />
+          <Suspense fallback={<p className="muted">…</p>}>          <LocalGraph topics={graph.topics} entities={graph.entities} links={graph.links} height={200}
+                      actions={{ onOpen: (id) => window.dispatchEvent(new CustomEvent('open-virtual', { detail: id })), onOpenNote, onCite: null }} /></Suspense>
         </div>
       )}
     </div>

@@ -3567,3 +3567,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 主包 1870KB，`editor/mermaid.ts` 静态 `import mermaid` 把 mermaid 核心整个塞了进去，而多数笔记一张图都没有。改成 `loadMermaid()`：第一次真要画图时 `import('mermaid')` + initialize 一次，之后复用。主包 1870 → 1222KB，`mermaid.core` 成了 643KB 的独立 chunk；探针首帧 js 1818 → 1223KB。
 - 验证：vitest 129、smoke-editor 的 5 条 mermaid 断言、check-doc-mermaid 照旧；新探针 `mermaid:<noteId>`（打开、把第一个 ```mermaid 块滚进视野——CM6 只渲染视口附近的 widget，第一版用 `open:` 看到 0 个 widget 就是这个原因——6.5 秒后报状态）：widgets=1 svg=1 error=0，后端日志里 `mermaid.core` chunk 恰好被请求 1 次。
+
+## [543] 第 519 轮：知识库页面和局部图按需加载 + 重打 dmg 前的全量门（2026-09-14）
+
+- `KbNoteView`（知识库整套页面，含 MemoryBrowser → KnowledgeGraph 的 d3）和 ribbon 引用页末尾的 `LocalGraph` 改 `React.lazy` + Suspense（fallback 一个「…」）。主包 1222 → 1103KB，主包里 `forceSimulation` 0 处。实拍：事实表页、引用页末尾的局部图照常，后端日志能看到 KbNoteView / LocalGraph 的 chunk 被按需请求。
+- 全量门：后端 950；前端 tsc + eslint + vitest 129 + 17 条 check / smoke 全过。
