@@ -206,7 +206,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   }
   if (probe?.startsWith('end:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(4))
-    if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t); setTimeout(() => document.querySelector('.cm-note-link')?.dispatchEvent(new MouseEvent('mouseenter')), 9000) }) }
+    if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t); setTimeout(() => { const c = document.querySelector('.note-scroll'); if (c) c.scrollTop = c.scrollHeight }, 8500); setTimeout(() => document.querySelector('.cm-note-link')?.dispatchEvent(new MouseEvent('mouseenter')), 9000) }) }
   }
   // 删除：先分屏打开它，再从树上删，看树 / 标签 / 分屏有没有残留（5 秒后才真删）
   if (probe?.startsWith('delete:') && notes.length && !harnessProbeDone.current) {

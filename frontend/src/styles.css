@@ -101,7 +101,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   background: transparent; color: var(--muted);
 }
 .toolbar-secondary button:hover:not(:disabled) { border-color: var(--line); color: var(--fg); }
-/* Sticky, not inline -- .col is the scrolling ancestor (overflow-y: auto),
+/* Sticky, not inline -- .note-scroll is the scrolling ancestor (overflow-y: auto),
    so on a long note the toolbar would otherwise scroll away with the title
    the moment you scroll past the first screenful, which defeats the point
    of a toolbar (asked directly: "不用悬浮吗，一直在上面吗？"). Opaque
@@ -150,8 +150,6 @@ textarea { resize: vertical; }
    EditorView.lineWrapping against the actually-visible width, so text just
    ran off the right edge un-wrapped -- lineWrapping was never the bug,
    the column never got small enough to force it to wrap there. */
-.col { overflow-y: auto; overflow-x: hidden; min-width: 0; padding: 14px; }
-.col + .col { border-left: 1px solid var(--line); }
 .sidebar { background: var(--panel); }
 /* 侧栏之前把"写作 Skill"/"无限续写"这两个不常用的工具类入口堆在顶部，
    跟"+新建笔记"这个最高频操作抢视觉权重——新用户一打开先看到一堆按钮，

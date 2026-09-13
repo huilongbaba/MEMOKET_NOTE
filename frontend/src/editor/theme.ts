@@ -66,7 +66,9 @@ export const editorTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '.cm-content': {
-    padding: '0',
+    // 底部留一大截空白（Trilium 的 ScrollPadding）：最后一行也能滚到视线中间，
+    // 写到文末时光标不贴着状态栏；点空白处光标落到文末。
+    padding: '0 0 30vh',
     lineHeight: '1.8',
     fontFamily: 'inherit',
     caretColor: 'var(--fg, #111)',
