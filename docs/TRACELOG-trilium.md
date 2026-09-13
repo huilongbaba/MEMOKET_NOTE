@@ -1848,3 +1848,9 @@ KOL 样机那段只给叠加（terrence 库里没有台数记录，对的）。`
 `main.py` 加一层：非 GET 请求带着非本机的 `Origin`、或 `Sec-Fetch-Site: cross-site`，403。Electron 页面
 同源、Vite 页在 localhost、测试客户端不带 Origin，都不受影响（探针实测 POST 全 200）。README 记了
 一段。`tests/test_cross_site.py`。pytest 844。
+
+## [187] 巡检第 159 轮：user id 直接拼路径（2026-09-13）
+
+`X-User-Id` 原样拼进 `data/<user>/codebook.xml`，`../x` 这种能走到文件系统别处。`deps.current_user`
+只认 `[A-Za-z0-9_.-]{1,64}`（HTTP 头只能 ASCII，中文名本来就发不出来；跟桌面壳 identity.json 一条
+正则），不合规 400。pytest 845。
