@@ -2706,6 +2706,7 @@ export default function App() {
           onClose={closeTab}
           onNew={newNote}
           onContextMenu={(tab, at) => setTabMenu({ tab, at })}
+          iconOf={(noteId) => notes.find((x) => x.id === noteId)?.icon || undefined}
           onReorder={reorderTab}
         />
       </div>

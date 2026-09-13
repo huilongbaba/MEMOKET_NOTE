@@ -22,10 +22,12 @@ const MIN_W = 84
 const MARGIN_W = 5
 
 export default function TabBar({
-  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder,
+  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf,
 }: {
   tabs: Tab[]
   activeId: string | null
+  /** 某个标签的笔记图标（用户挑过的才有；Trilium 的标签也带 NoteIcon）。不进 Tab 模型——那个落 localStorage，图标改了会留旧值 */
+  iconOf?: (noteId: string) => string | undefined
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onNew: () => void
@@ -69,7 +71,8 @@ export default function TabBar({
     const each = Math.floor(avail / Math.max(1, tabs.length))
     const w = Math.max(MIN_W, Math.min(each, MAX_W))
     el.style.setProperty('--tab-w', `${w}px`)
-    el.dataset.size = w <= 84 ? 'small' : ''
+    // narrow：图标会把本来就短的标题再吃掉一截（实拍 84px 的标签只剩「h…」），120 以下不画图标
+    el.dataset.size = w <= 84 ? 'small' : w < 120 ? 'narrow' : ''
   }, [tabs.length])
 
   return (
@@ -111,6 +114,7 @@ export default function TabBar({
             onContextMenu(t, { x: e.clientX, y: e.clientY })
           }}
         >
+          {iconOf?.(t.noteId) && <i className={'bx note-tab-icon ' + iconOf(t.noteId)} aria-hidden />}
           <span className="note-tab-title">{t.title || '未命名'}</span>
           <span
             className="note-tab-close"

@@ -326,6 +326,8 @@
   background: var(--active-tab-bg); color: var(--main-fg);
   box-shadow: var(--active-tab-shadow);
 }
+.note-tab-icon { font-size: 14px; flex-shrink: 0; margin-inline-end: 4px; opacity: .85; }
+.tab-strip[data-size="small"] .note-tab-icon, .tab-strip[data-size="narrow"] .note-tab-icon { display: none; }
 .note-tab-title {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
