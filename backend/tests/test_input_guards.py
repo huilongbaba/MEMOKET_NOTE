@@ -52,3 +52,21 @@ def test_移动到不存在的父节点404_克隆成环400(tmp_path, monkeypatch
         assert c.patch("/api/tree/branches/move", json={"note_id": b["id"], "from_parent_id": a["id"], "to_parent_id": "nope"}).status_code == 404
         assert c.post("/api/tree/branches", json={"note_id": a["id"], "parent_note_id": b["id"]}).status_code == 400
         assert [t["parent_note_id"] for t in c.get("/api/tree").json() if t["note_id"] == b["id"]] == [a["id"]]
+
+
+def test_空正文续写400_计划起在不存在的文件夹404(tmp_path, monkeypatch):
+    """第 265 轮：magic-tap 空正文空标题照样开流；写作计划 start 先调模型再发现父节点不在。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.main import app
+    from app.routers import writing_plan
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    called = []
+
+    async def boom(*a, **k):
+        called.append(1); return "{}"
+    monkeypatch.setattr(writing_plan.llm, "complete", boom)
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        assert c.post("/api/magic-tap", json={"content": "  ", "title": ""}).status_code == 400
+        assert c.post("/api/writing-plan/start", json={"parent_note_id": "nope", "goal": "g"}).status_code == 404
+        assert not called, "父节点不在就不该花模型调用"

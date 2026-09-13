@@ -124,6 +124,8 @@ async def start_plan(body: WritingPlanStartIn, user: str = Depends(current_user)
     goal = body.goal.strip()
     if not goal:
         raise HTTPException(400, "goal required")
+    if body.parent_note_id != store.ROOT_ID and not store.get_note(user, body.parent_note_id):
+        raise HTTPException(404, "父节点不在")   # 之前先去调模型拆分段、最后才发现文件夹不存在（第 265 轮实测）
 
     facts, _ids, _took = _retrieve(user, goal, "", [], limit=8, scope=body.scope)
     sibling_notes = store.child_notes(user, body.parent_note_id, limit=8)

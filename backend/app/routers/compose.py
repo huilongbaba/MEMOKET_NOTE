@@ -122,6 +122,8 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         event: delta  —— 正文增量
         event: done
     """
+    if not body.content.strip() and not body.title.strip():
+        raise HTTPException(400, "先写点内容（或标题）再续写")   # 空正文空标题照样开流、白花一次模型调用（第 265 轮实测）
     facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6, scope=body.scope)
 
     system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
