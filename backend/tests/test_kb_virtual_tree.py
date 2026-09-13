@@ -151,3 +151,17 @@ def test_不认识的节点返回空(mem):
 def test_is_virtual():
     assert vt.is_virtual("kb") and vt.is_virtual("kb:fact:f1")
     assert not vt.is_virtual("kbabc") and not vt.is_virtual("13d06e717afa")
+
+
+def test_实体多了不随树下发_展开时再取(mem, monkeypatch):
+    from app.database.kb import virtual_tree
+    monkeypatch.setattr(virtual_tree, "ENTITY_EAGER_MAX", 1)
+    rows = virtual_tree.build(mem)
+    ents = [r for r in rows if r["note_id"].startswith("kb:entity:")]
+    assert ents == []                                              # 超过阈值：树里没有实体节点
+    root = next(r for r in rows if r["note_id"] == "kb:entities")
+    assert root["child_count"] >= 2                                # 但数量还在，树上能画展开箭头
+    lazy = virtual_tree.children(mem, "kb:entities")
+    assert [r["note_id"] for r in lazy] and all(r["note_id"].startswith("kb:entity:") for r in lazy)
+    monkeypatch.setattr(virtual_tree, "ENTITY_EAGER_MAX", 200)
+    assert [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:entity:")]   # 小库照旧随树下发

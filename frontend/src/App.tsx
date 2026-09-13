@@ -559,15 +559,18 @@ export default function App() {
     } catch { /* 存不上就下次全收起，不致命 */ }
   }, [kbExpanded])
 
-  /** 事实是按需取的：展开一个主题/实体/月份/会议时才去拿它名下那一层。 */
-  const needsFacts = (id: string) => /^kb:(topic|entity|month|unit):/.test(id)
+  /** 事实是按需取的：展开一个主题/实体/月份/会议时才去拿它名下那一层。
+   *  实体多的库（>200）树里不带实体节点，展开「实体」/「某类实体」时也是这条路取。 */
+  const needsFacts = (id: string) => /^kb:(topic|entity|month|unit|etype):/.test(id) || id === 'kb:entities'
   const loadKbChildren = useCallback(async (id: string) => {
     if (!needsFacts(id)) return
+    // 小库的实体本来就随树来了：树里已经有它的孩子就别再取一份，不然 allRows 里每个实体出现两次
+    if (kbRows.some((r) => r.parent_note_id === id)) return
     try {
       const rows = await api.kbTreeChildren(id)
       setKbChildren((m) => ({ ...m, [id]: rows }))
     } catch { /* 展开了但没内容，树上就是空的，比报错好 */ }
-  }, [])
+  }, [kbRows])
 
   // 刷新后已经展开着的分类，把事实层补回来。
   useEffect(() => {

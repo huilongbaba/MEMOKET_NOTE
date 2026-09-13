@@ -1,7 +1,8 @@
-/** 三个分类页：主题 / 实体 / 最近摄入。数据就是树上那些行——不再请求一次。 */
-import { useMemo, useState } from 'react'
+/** 三个分类页：主题 / 实体 / 最近摄入。数据就是树上那些行——不再请求一次
+ *  （实体多的库树里不带实体，实体页自己取一次）。 */
+import { useEffect, useMemo, useState } from 'react'
 
-import type { TreeRow } from '../../api'
+import { kbTreeChildren, type TreeRow } from '../../api'
 import { Chip, KbSection, type KbActions } from './KbBits'
 import { isSpeakerTag } from '../../util/kbNoise'
 
@@ -40,7 +41,16 @@ export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
 export function EntitiesIndex({ rows, actions }: { rows: TreeRow[]; actions: KbActions }) {
   const [q, setQ] = useState('')
   const [showSpeakers, setShowSpeakers] = useState(false)
-  const all = useMemo(() => rows.filter((r) => r.note_id.startsWith('kb:entity:')).sort((a, b) => b.fact_count - a.fact_count), [rows])
+  const fromTree = useMemo(() => rows.filter((r) => r.note_id.startsWith('kb:entity:')), [rows])
+  // 实体超过 200 个的库树里不带它们（每次刷树 358KB 太重）：这页自己取一次
+  const [fetched, setFetched] = useState<TreeRow[] | null>(null)
+  useEffect(() => {
+    if (fromTree.length > 0) { setFetched(null); return }
+    let alive = true
+    kbTreeChildren('kb:entities').then((r) => { if (alive) setFetched(r) }).catch(() => { if (alive) setFetched([]) })
+    return () => { alive = false }
+  }, [fromTree.length])
+  const all = useMemo(() => [...(fromTree.length ? fromTree : (fetched ?? []))].sort((a, b) => b.fact_count - a.fact_count), [fromTree, fetched])
   const speakers = useMemo(() => all.filter((r) => isSpeakerTag(r.title)).length, [all])
   const base = showSpeakers ? all : all.filter((r) => !isSpeakerTag(r.title))
   const list = q ? base.filter((r) => (r.title + ' ' + r.preview).toLowerCase().includes(q.toLowerCase())) : base.slice(0, 200)

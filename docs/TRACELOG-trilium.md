@@ -1976,3 +1976,11 @@ app 模块 import 之前把 `KITE_DATA_DIR` 指到临时目录（skills / assets
 `get_settings`，事后 monkeypatch 够不着——实拍 test_endpoints 在 data/ 下长出 `u1/skills`），退出时
 删掉。跑完整套：开发库 mtime 不变、data/ 目录列表不变。顺手清掉那 100 行运行记录和 13 个测试留下的
 用户目录（cancel-test / smoke-user / u9…）。pytest 859。
+
+## [204] 巡检第 175 轮：知识库树 391KB，每次保存都重拉（2026-09-13）
+
+量了几个重端点：首页冷 761ms（索引加载）热 12ms，`/api/kb/tree` 10ms 但 391KB——1220 个实体节点占
+358KB，而 `reloadTree` 在每次保存后都重拉一遍。实体超过 200 个就不随树下发（`ENTITY_EAGER_MAX`），
+「实体」/「某类实体」节点只带数量，展开时走 `children?node=kb:entities` 取（13ms 333KB，只在展开
+时一次）；实体索引页自己取一次；实体页加载到名字后把标签从代码改成真名（`virtual-title`）。树降到
+57KB / 189 行。小库（≤200）照旧随树下发，前端展开时看树里有没有孩子、不重复取。pytest 860。

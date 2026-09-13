@@ -83,6 +83,9 @@ def _fact_row(f, parent: str, position: int) -> dict:
                 branch_id=f"kbb:fact:{f.id}:{parent}")
 
 
+ENTITY_EAGER_MAX = 200     # 实体超过这个数就不随树下发，展开时再取
+
+
 def build(mem) -> list[dict]:
     """分类层：根 + 四个分类 + 主题树 + 实体（按类型）+ 月份 + 最近的会议。"""
     store, vocab = mem._index()
@@ -117,23 +120,12 @@ def build(mem) -> list[dict]:
 
     # ---- 实体：按类型分组。**类型只有一种时不分组**——真实库里 1220 个实体
     # 全没标类型，分出来是一层只有「其他」的空壳，多点一下什么都没得到。
-    entity_rows: list[dict] = []
-    by_type: dict[str, list] = {}
-    for e in vocab.entities.values():
-        by_type.setdefault(e.etype or "", []).append(e)
-    etype_rows: list[dict] = []
-    grouped = len(by_type) > 1
-    for i, (etype, ents) in enumerate(sorted(by_type.items(), key=lambda kv: -len(kv[1]))):
-        eid = f"kb:etype:{etype or 'other'}" if grouped else "kb:entities"
-        if grouped:
-            etype_rows.append(_row(eid, "kb:entities", ETYPE_LABELS.get(etype, etype),
-                                   position=i, child_count=len(ents)))
-        for j, e in enumerate(sorted(ents, key=lambda e: (-entity_count.get(e.code, 0), e.code))):
-            entity_rows.append(_row(
-                f"kb:entity:{e.code}", eid, e.name or e.code, position=j,
-                preview=" / ".join(sorted(e.aliases)),
-                child_count=entity_count.get(e.code, 0),
-                fact_count=entity_count.get(e.code, 0)))
+    etype_rows, entity_rows, grouped = _entity_rows(vocab, entity_count)
+    # 实体多了就不随树一起下发：1220 个实体 = 358KB，每次保存后刷树都要重拉一遍（第 175 轮实测）。
+    # 超过阈值只给分类节点和数量，展开「实体」时再按 children(kb:entities) 取。
+    lazy_entities = len(entity_rows) > ENTITY_EAGER_MAX
+    if lazy_entities:
+        entity_rows = []
 
     # ---- 时间线：按月，新的在前
     month_rows = [
@@ -170,16 +162,46 @@ def build(mem) -> list[dict]:
     return rows
 
 
+def _entity_rows(vocab, entity_count) -> tuple[list[dict], list[dict], bool]:
+    """实体这一层：(类型节点, 实体节点, 有没有分组)。build 和 children 共用。"""
+    by_type: dict[str, list] = {}
+    for e in vocab.entities.values():
+        by_type.setdefault(e.etype or "", []).append(e)
+    etype_rows: list[dict] = []
+    entity_rows: list[dict] = []
+    grouped = len(by_type) > 1
+    for i, (etype, ents) in enumerate(sorted(by_type.items(), key=lambda kv: -len(kv[1]))):
+        eid = f"kb:etype:{etype or 'other'}" if grouped else "kb:entities"
+        if grouped:
+            etype_rows.append(_row(eid, "kb:entities", ETYPE_LABELS.get(etype, etype),
+                                   position=i, child_count=len(ents)))
+        for j, e in enumerate(sorted(ents, key=lambda e: (-entity_count.get(e.code, 0), e.code))):
+            entity_rows.append(_row(
+                f"kb:entity:{e.code}", eid, e.name or e.code, position=j,
+                preview=" / ".join(sorted(e.aliases)),
+                child_count=entity_count.get(e.code, 0),
+                fact_count=entity_count.get(e.code, 0)))
+    return etype_rows, entity_rows, grouped
+
+
 def children(mem, node: str) -> list[dict]:
     """展开一个分类节点时才取的那一层：它名下的事实。
 
     主题走闭包（含子主题），跟 recall / facts_page 的语义一致——一个主题
     「有多少条」不该因为是在树上看还是在表里看而不一样。
+    「实体」/「某一类实体」展开时给实体节点（实体多的库树里不带它们，见 build）。
     """
     store, vocab = mem._index()
     kind, _, key = node.partition(":")[2].partition(":")
     facts = store.facts.values()
 
+    if kind == "entities" or kind == "etype":
+        entity_count = Counter(c for f in facts for c in f.entities)
+        _etypes, entity_rows, grouped = _entity_rows(vocab, entity_count)
+        if kind == "entities":
+            # 不分组时它们直接挂在 kb:entities 下；分组时给全部（索引页要一张全表）
+            return entity_rows
+        return [r for r in entity_rows if r["parent_note_id"] == node]
     if kind == "topic":
         closure = vocab.downset(key, include_candidates=True) or {key}
         picked = [f for f in facts if set(f.topics) & closure]

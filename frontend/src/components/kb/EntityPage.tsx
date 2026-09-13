@@ -10,7 +10,12 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
   useEffect(() => { setOffset(0) }, [code])
   useEffect(() => {
     let alive = true
-    kbEntity(code, 50, offset).then((d) => { if (alive) setP(d) }).catch(() => { if (alive) setP(null) })
+    kbEntity(code, 50, offset).then((d) => {
+      if (!alive) return
+      setP(d)
+      // 从页面 / 引用打开的实体标签只知道代码（facebook）：拿到名字后把标签改过来
+      window.dispatchEvent(new CustomEvent('virtual-title', { detail: { id: 'kb:entity:' + code, title: d.name || code } }))
+    }).catch(() => { if (alive) setP(null) })
     return () => { alive = false }
   }, [code, offset])
   if (p === undefined) return <p className="muted"><span className="spinner" /> 加载中…</p>
