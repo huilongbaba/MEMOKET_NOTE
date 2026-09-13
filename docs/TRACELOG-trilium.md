@@ -3544,3 +3544,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 上一轮对账把「右键目标高亮」标成已做，这轮 grep 发现根本没有——改掉：树的行和标签在右键菜单开着时加 `ctx-target`（`NoteTree.menuRowId` / `TabBar.menuTabId`，App 从 `treeMenu` / `tabMenu` 传），`--hover-item-bg` 底色。菜单里有「删除（连同子树）」，得看清对的是谁。
 - 探针 `tree-menu` 原来挑的是「09 月」——它的父节点「日记」折叠着，行没渲染，高亮当然看不见；改成挑顶层的文件夹并把 `.ctx-target` 数量写进日志（=1，Notes）。实拍：Notes 行 / 「harness…」标签在菜单开着时有底色。教训：对账表里的「已做」要 grep 到类名才算，凭印象标过一次错。
+
+## [538] 巡检第 514 轮：对账表二次核 + 数据体检（2026-09-14）
+
+- 第 512 轮那 60 个「已做」里凭印象写的再 grep 一遍：只剩「状态栏高度」写得含糊，核到 `.status-bar { min-height: 28px; background: var(--left-pane-bg) }`，依据补上；其余都有类名 / 令牌 / 函数名对得上。
+- 数据体检：dev 库 2.0MB、496 页里空 10 页（2%，远不到 VACUUM 阈值）；日志 dev 374KB / 正式 45KB（2MB 滚动）；`data/terrence` 36MB（含那 25MB codebook 副本，仍等用户点头）；`data/` 下还有 `default`（dev 实例不带 X-User-Id 的请求落的空用户）、`editing-bench` / `quality-sample` / `terrence-rewrite`（bench 数据）——不动。没改代码。
