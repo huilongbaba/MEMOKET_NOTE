@@ -29,11 +29,13 @@ const MIN_CHARS = 8
  * is a zero-LLM keyword lookup (observed ~30ms), unlike skeleton/edit/magic-tap
  * which hit the LLM and need long debounce windows.
  */
-export default function RelatedMemory({ content, paragraph = '', onInsert }: {
+export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmpty = false }: {
   /** 光标所在段落：按它查关系（不是尾部 500 字） */
   paragraph?: string
   content: string
   onInsert: (text: string) => void
+  /** 知识库一条事实都没有：「没找到相关内容」会让第一次用的人以为坏了，换成指引 */
+  kbEmpty?: boolean
 }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const [loading, setLoading] = useState(false)
@@ -161,7 +163,8 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
       )}
       {facts.length === 0 && !loading && (
         <p className="muted" style={{ fontSize: 13 }}>
-          {tooShort ? '再多写几个字就会开始自动检索。' : '知识库里暂时没有找到相关内容。'}
+          {kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
+            : tooShort ? '再多写几个字就会开始自动检索。' : '知识库里暂时没有找到相关内容。'}
         </p>
       )}
       {facts.map((f) => (

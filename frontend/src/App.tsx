@@ -3069,7 +3069,8 @@ export default function App() {
             // 记忆是默认标签：边写边浮现的召回（判据 2）。不再是压在所有标签上面的常驻块。
             { id: 'memory', title: '记忆', icon: 'bx-bulb', alwaysShown: true,
               body: current
-                ? <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor} />
+                ? <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor}
+                                 kbEmpty={kbRows.length > 0 && (kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0) === 0} />
                 : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
