@@ -229,6 +229,12 @@ CORS 只管读，跨站网页用 `<form>` / multipart 发的 POST 不预检、�
 - **anchor 必须逐字匹配**。修订建议里模型给的 anchor 如果不在正文中出现，前端
   定位不到，后端会直接丢弃这条。
 
+## 许可证
+
+AGPL-3.0-only，全文在 `LICENSE`。桌面壳与外观复用了 Trilium（AGPL-3.0），PDF 导入依赖 PyMuPDF（AGPL），
+派生作品必须同一许可证；复用了什么、每个依赖的许可证见 `docs/third-party-notices.md`。
+以网络服务方式提供本软件时，要向使用者提供对应源码（AGPL §13）。
+
 ## 已知限制
 
 - 修订建议基于纯文本 anchor，不是富文本编辑器的 diff 引擎。用户改动 anchor 所在

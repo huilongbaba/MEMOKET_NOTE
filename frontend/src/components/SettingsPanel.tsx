@@ -210,6 +210,11 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
               {saving ? <span className="spinner" /> : '保存'}
             </button>
             {embedded && <UsageSection />}
+            {embedded && (
+              <p className="muted" style={{ fontSize: 11, marginTop: 24 }}>
+                MEMOKET NOTE · AGPL-3.0 · 源码 <a href="https://github.com/huilongbaba/MEMOKET_NOTE" target="_blank" rel="noreferrer">github.com/huilongbaba/MEMOKET_NOTE</a> · 复用了 Trilium 的设计与主题（AGPL-3.0），依赖清单见仓库 docs/third-party-notices.md
+              </p>
+            )}
           </div>
         )}
       </div>

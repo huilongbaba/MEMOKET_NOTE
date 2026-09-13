@@ -2216,3 +2216,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [243] 巡检第 214 轮：导出 zip 真跑（2026-09-13）
 
 - `GET /api/export/markdown`：terrence 23 篇 → 27 个条目 5.2MB / 136ms（三张生成的 PNG 占 5.1MB，正文 23 个 .md + 一个克隆说明 .txt）；shot-perf 413 篇 121KB / 18ms。文件名：占位标题的退回正文首行、截到 60 字，非法字符换空格，长标题最长 80 字——都在设计内。没改代码。
+
+## [244] 巡检第 215 轮：文档引用核对 → 许可证缺口（2026-09-13）
+
+- 扫了 17 份 docs 里反引号引用的仓库路径，两处指向不存在的文件：TRACELOG 里的 `scripts/check-layers.mts`（历史记录，实际在 frontend/scripts/，不改）；`docs/desktop-plan.md` 引用的 `docs/third-party-notices.md` 从来没写过——而那份计划已经明确「本仓库必须以 AGPL-3.0 发布、复用的文件要保留出处」，仓库里却没有 LICENSE、package.json 没有 license 字段、README 一个字没提。
+- **补**：根目录 `LICENSE`（AGPL-3.0 全文，34.5KB，取自 gnu.org）；`docs/third-party-notices.md`（复用 Trilium 的是什么、在哪；后端 9 个 / 前端 33 个 / 桌面 4 个依赖的许可证逐个核过——PyMuPDF 是 AGPL 双许可，跟本项目一致）；frontend / desktop `package.json` 加 `"license": "AGPL-3.0-only"`；README 加「许可证」一节；dmg 的 extraResources 随附 LICENSE 与声明（下次 `npm run dist` 生效）；设置页底部一行出处 + 仓库地址（AGPL §13 的源码提供）。

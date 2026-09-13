@@ -1,6 +1,7 @@
 {
   "name": "memoket-note-desktop",
   "private": true,
+  "license": "AGPL-3.0-only",
   "version": "0.1.0",
   "description": "MEMOKET NOTE 桌面版：Electron 外壳，把 FastAPI 后端当子进程拉起来",
   "main": "dist/main.js",
@@ -30,6 +31,8 @@
       "package.json"
     ],
     "extraResources": [
+      { "from": "../LICENSE", "to": "LICENSE" },
+      { "from": "../docs/third-party-notices.md", "to": "third-party-notices.md" },
       {
         "from": "../frontend/dist",
         "to": "web"
