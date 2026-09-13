@@ -5,7 +5,7 @@ import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
-import { readingMinutes, stripForRecall, wordCount } from './util/wordCount'
+import { readingMinutes, stripForRecall, wordCount, citationRanges } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
@@ -2193,6 +2193,24 @@ export default function App() {
     }
   }
 
+  /** 把找不到的引用从正文里删掉：走 CM 的 changes（可撤销、跟敲键一条路），没有编辑器时直接改 content */
+  function stripCitationIds(ids: string[]) {
+    if (!ids.length) return
+    const view = editorViewRef.current
+    if (view) {
+      const ranges = citationRanges(view.state.doc.toString(), ids)
+      if (ranges.length) view.dispatch({ changes: ranges.map((r) => ({ from: r.from, to: r.to, insert: '' })) })
+      toast(`已清掉 ${ranges.length} 处引用`)
+      return
+    }
+    setContent((c) => {
+      const ranges = citationRanges(c, ids)
+      let out = c
+      for (const r of [...ranges].reverse()) out = out.slice(0, r.from) + out.slice(r.to)
+      return out
+    })
+  }
+
   function insertAtCursor(text: string) {
     if (!text) return
     const view = editorViewRef.current
@@ -2910,6 +2928,7 @@ export default function App() {
                 onSync={() => void syncNoteToKb(current.id)}
                 ingesting={loading === 'ingest' || !!job}
                 empty={!content.trim()}
+                onStripMissing={stripCitationIds}
                 refreshTick={ingestTick}
               />,
             }, {

@@ -62,6 +62,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       harnessProbeDone.current = true; void switchTo(n)
       // `…:ribbon:<tab>:end` → 把 ribbon 体滚到底（看面板末尾的东西，比如引用页最后的局部图）
       if (probe.endsWith(':end')) setTimeout(() => { const el = document.querySelector('.ribbon-body'); if (el) el.scrollTop = el.scrollHeight }, 5500)
+      // `…:ribbon:cites:strip` → 文末塞一条指向不存在事实的引用（探针不落库），5 秒后点「清掉这些引用」
+      if (probe.endsWith(':strip')) {
+        setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n这句的依据早没了 [terrence-9999-FF]。' } }) }, 2500)
+        setTimeout(() => { for (const b of Array.from(document.querySelectorAll('button'))) if (b.textContent?.trim() === '清掉这些引用') { b.click(); break } }, 6000)
+      }
     }
   }
   // kbexpand:<id> → 把树上的某个知识库分类展开（看懒加载的那一层长什么样）

@@ -14,8 +14,10 @@ import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type Ci
 import { displayTitle } from '../util/displayTitle'
 import { toast } from '../toast'
 
-export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, ingesting, onOpenNote, refreshTick = 0, empty = false }: {
+export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, ingesting, onOpenNote, refreshTick = 0, empty = false, onStripMissing }: {
   citedIds: string[]
+  /** 把找不到的那几条引用从正文里删掉（只删 `[id]`，句子留着） */
+  onStripMissing?: (ids: string[]) => void
   /** 正文是空的：「存入知识库」点了什么都不会发生（App 那边直接 return），不如灰掉说清楚 */
   empty?: boolean
   row: TreeRow | undefined
@@ -165,7 +167,13 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
         <div className="card" style={{ borderColor: 'var(--del)', color: 'var(--del)' }}>
           {/* 只列前 8 个：300 条找不到时（实拍造的长文）整块红字把面板撑满一屏 */}
           {missing.length} 条引用在知识库里找不到：{missing.slice(0, 8).join('、')}{missing.length > 8 ? `…还有 ${missing.length - 8} 个` : ''}
-          <div className="muted" style={{ fontSize: 12 }}>可能是引用写错了，或者知识库重建过</div>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <span className="muted" style={{ fontSize: 12 }}>可能是引用写错了，或者知识库重建过</span>
+            {onStripMissing && (
+              <button style={{ fontSize: 12, padding: '2px 8px', marginInlineStart: 'auto' }} title="只删掉正文里这几个 [id]，句子留着"
+                      onClick={() => onStripMissing(missing)}>清掉这些引用</button>
+            )}
+          </div>
         </div>
       )}
 

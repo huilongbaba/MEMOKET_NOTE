@@ -30,3 +30,17 @@ export function wordCount(content: string): number {
 export function readingMinutes(words: number): number {
   return Math.max(1, Math.round(words / 400))
 }
+
+/** 正文里某几条引用（`[id]` 连同它前面那个空格）的位置区间，给编辑器一次性删掉用——
+ *  只删括号里的 id，句子留着（句子本身没错，错的是依据没了）。区间按位置正序、互不重叠。 */
+export function citationRanges(text: string, ids: string[]): { from: number; to: number }[] {
+  const want = new Set(ids)
+  const out: { from: number; to: number }[] = []
+  for (const m of text.matchAll(CITATION_RE)) {
+    if (!want.has(m[0].slice(1, -1))) continue
+    let from = m.index
+    if (from > 0 && text[from - 1] === ' ') from -= 1
+    out.push({ from, to: m.index + m[0].length })
+  }
+  return out
+}
