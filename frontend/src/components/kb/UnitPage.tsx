@@ -46,10 +46,20 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
           </div>
         </KbSection>
       )}
-      <KbSection title="事实">
-        <FactList facts={p.facts} actions={actions} showTopics />
-        <Pager total={p.facts_total} limit={p.limit} offset={p.offset} onPage={setOffset} />
-      </KbSection>
+      {p.facts_total === 0 && p.lines && p.lines.length > 0 ? (
+        <KbSection title={`这段没抽出事实 · 原话 ${p.lines.length} 行`}>
+          <div className="stack" style={{ gap: 6 }}>
+            {p.lines.map((l, i) => (
+              <p key={i} className="muted" style={{ margin: 0, fontSize: 13 }}>{l.who ? <b style={{ marginInlineEnd: 6 }}>{l.who}</b> : null}{l.text}</p>
+            ))}
+          </div>
+        </KbSection>
+      ) : (
+        <KbSection title="事实">
+          <FactList facts={p.facts} actions={actions} showTopics />
+          <Pager total={p.facts_total} limit={p.limit} offset={p.offset} onPage={setOffset} />
+        </KbSection>
+      )}
     </div>
   )
 }

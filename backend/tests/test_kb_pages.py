@@ -203,3 +203,14 @@ def test_事实表和单条事实都带实体显示名(mem, monkeypatch, tmp_pat
         assert rows and rows[0]["entity_names"] and rows[0]["entity_names"][rows[0]["entities"].index("acme")] == "Acme"
         one = c.get(f"/api/memory/facts/{rows[0]['id']}").json()
         assert one["entity_names"] == rows[0]["entity_names"]
+
+
+def test_没抽出事实的会议页带原话(mem):
+    """第 287 轮：零事实的段页面只有一句「没有事实」。"""
+    from memoket_kite.core.algebra import Line, Unit
+    store, _ = mem._index()
+    store.units["s-empty"] = Unit(id="s-empty", date="2026-03-12", t="", title="短录音", dur_min=0, n_lines=1)
+    store.lines["ln-empty"] = Line(id="ln-empty", unit="s-empty", unit_date="2026-03-12", who="A", text="就说了一句")
+    page = pages.unit_page(mem, "s-empty")
+    assert page["facts_total"] == 0 and page["lines"] == [{"who": "A", "text": "就说了一句"}]
+    assert pages.unit_page(mem, "s1")["lines"] == []

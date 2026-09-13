@@ -548,6 +548,8 @@ export type KbUnitPage = KbFactsPage & {
   id: string; date: string; title: string; speakers: string[]
   /** 同一份材料的各段（多段材料才有意义）：分段导航 */
   parts?: { id: string; k: number }[]; part_index?: number; part_total?: number
+  /** 一条事实都没抽出来的段才带：原话 */
+  lines?: { who: string; text: string }[]
   topics: { code: string; facts: number }[]
   entities: { code: string; name: string; facts: number }[]
 }

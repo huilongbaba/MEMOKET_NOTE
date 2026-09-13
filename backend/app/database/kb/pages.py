@@ -277,8 +277,15 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
     topics = Counter(c for f in facts for c in f.topics)
     ents = Counter(c for f in facts for c in f.entities)
     parts = parts_of(store.units.values(), unit_id)
+    # 一条事实都没抽出来的段（短录音 / 单句，第 287 轮实拍「没有事实。」一片空）：把原话给出来，
+    # 页面上至少看得到这段说了什么。有事实的段原话走每条事实自己的「原话」，这里不重复给。
+    raw_lines = []
+    if total == 0:
+        raw_lines = [{"who": getattr(ln, "who", "") or "", "text": getattr(ln, "text", "") or ""}
+                     for ln in store.lines.values() if getattr(ln, "unit", "") == unit_id][:50]
     return {
         "id": u.id, "date": u.date or "", "title": label,
+        "lines": raw_lines,
         # 分段导航：同一份材料的各段（第 267 轮）
         "parts": [{"id": pid, "k": k} for k, pid in enumerate(parts, 1)],
         "part_index": parts.index(unit_id) + 1, "part_total": len(parts),
