@@ -22,7 +22,7 @@ const MIN_W = 84
 const MARGIN_W = 5
 
 export default function TabBar({
-  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf,
+  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf, onListTabs,
 }: {
   tabs: Tab[]
   activeId: string | null
@@ -34,6 +34,8 @@ export default function TabBar({
   onContextMenu?: (tab: Tab, at: { x: number; y: number }) => void
   /** 拖拽排序：把 id 挪到第 index 位 */
   onReorder?: (id: string, index: number) => void
+  /** 装不下时多一个 ▾：列出所有标签（Chrome 的标签搜索 / VS Code 的「打开的编辑器」）。50 个标签靠 ◀ ▶ 一格格滚是找不到的 */
+  onListTabs?: (at: { x: number; y: number }) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -127,6 +129,12 @@ export default function TabBar({
       ))}
     </div>
     {overflow && <button className="tab-scroll" title="往右看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: 210, behavior: 'smooth' }) }}><i className="bx bx-chevron-right" /></button>}
+    {overflow && onListTabs && (
+      <button className="tab-scroll tab-list" title={`列出全部 ${tabs.length} 个标签`}
+              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onListTabs({ x: r.left, y: r.bottom + 2 }) }}>
+        <i className="bx bx-chevron-down" />
+      </button>
+    )}
     <button className="note-new-tab" onClick={onNew} title={`新建笔记（${fmtShortcut('⌘T')}）`}><span><i className="bx bx-plus" /></span></button>
     {/* 标签行空白处双击开新标签（浏览器约定） */}
     <div className="tab-row-filler" onDoubleClick={onNew} />

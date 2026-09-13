@@ -31,6 +31,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })()
     return
   }
+  // 标签装不下时右边的 ▾：列出全部标签
+  if (probe === 'tabs:list') {
+    setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)
+    return
+  }
   // 连开三篇，关掉中间那个，再 ⌘⇧T 找回来：应该回到原位（第 2 个），不是追加到最右
   if (probe === 'tabs:reopen' && notes.length >= 3) {
     void (async () => {

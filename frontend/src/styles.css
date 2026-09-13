@@ -557,6 +557,8 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   backdrop-filter: blur(20px) saturate(6); -webkit-backdrop-filter: blur(20px) saturate(6);
   box-shadow: 0 10px 20px rgba(0,0,0,var(--shadow-opacity));
   font-size: 13px;
+  /* 项数不定（标签列表能有 50 项）：封顶到窗口高度，里面滚 */
+  max-height: calc(100vh - 10px); overflow-y: auto; box-sizing: border-box;
   animation: dropdown-menu-opening 100ms ease-in;
 }
 @keyframes dropdown-menu-opening { from { opacity: 0; } }

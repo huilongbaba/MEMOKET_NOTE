@@ -104,6 +104,9 @@ export type HarnessState = {
 /** 不在树上、又没人传标题时标签页显示什么——之前 app:skills 直接把 id 当标题（实拍）。 */
 
 
+/** 菜单里的标签名：硬截 + 省略号（不用 clipTitle——那个按句读截，「产品计划会：APP/硬件…」会只剩前半） */
+const ellipsize = (t: string, max: number) => (t.length > max ? t.slice(0, max - 1) + '…' : t)
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
@@ -168,6 +171,7 @@ export default function App() {
   }, [split])
   const openInSplit = (id: string) => setSplit((s) => ({ id, w: s?.w ?? 420 }))
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; at: MenuAt } | null>(null)
+  const [tabListAt, setTabListAt] = useState<MenuAt | null>(null)
   const [quick, setQuick] = useState<Note | null>(null)
   // 保存状态角标（Trilium 的 save-status-badge）：存了就说一声、5s 淡出；
   // 出错变红不淡出。自动保存的产品里留一个「保存」按钮反而暗示「不点就没存」。
@@ -2630,6 +2634,17 @@ export default function App() {
       {tabMenu && (
         <ContextMenu at={tabMenu.at} items={tabMenuItems(tabMenu.tab)} onClose={() => setTabMenu(null)} />
       )}
+      {tabListAt && (
+        <ContextMenu at={tabListAt} onClose={() => setTabListAt(null)} items={[
+          { kind: 'header', label: `打开的标签 · ${tabs.length}` },
+          ...tabs.map((t): MenuItem => ({
+            label: ellipsize(t.title || '未命名', 36), icon: notes.find((x) => x.id === t.noteId)?.icon || (api.isVirtualId(t.noteId) ? 'bx-hash' : 'bx-note'),
+            hint: t.id === activeTabId ? '当前' : undefined, onSelect: () => activateTab(t),
+          })),
+          { kind: 'sep' },
+          { label: '关闭其他', icon: 'bx-x', disabled: tabs.length <= 1, onSelect: () => closeTabsWhere((t) => t.id !== activeTabId) },
+        ]} />
+      )}
       {picker && <NotePicker req={picker} rows={tree} />}
       <input ref={importInput} type="file" accept=".md,.markdown,.txt" multiple style={{ display: 'none' }}
              onChange={(e) => { void importMarkdown(e.target.files, importUnder.current); e.target.value = '' }} />
@@ -2722,6 +2737,7 @@ export default function App() {
           onContextMenu={(tab, at) => setTabMenu({ tab, at })}
           iconOf={(noteId) => notes.find((x) => x.id === noteId)?.icon || undefined}
           onReorder={reorderTab}
+          onListTabs={setTabListAt}
         />
       </div>
       <div className="shell-main">

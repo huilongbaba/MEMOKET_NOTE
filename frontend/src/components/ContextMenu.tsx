@@ -63,8 +63,9 @@ export default function ContextMenu({
     const { width, height } = el.getBoundingClientRect()
     const pad = 5
     setPos({
-      x: Math.min(at.x, window.innerWidth - width - pad),
-      y: Math.min(at.y, window.innerHeight - height - pad),
+      x: Math.max(pad, Math.min(at.x, window.innerWidth - width - pad)),
+      // 比窗口还高的菜单（50 个标签的列表）：贴顶，靠 CSS 的 max-height 内部滚，别把头顶到窗口外面
+      y: Math.max(pad, Math.min(at.y, window.innerHeight - height - pad)),
     })
   }, [at.x, at.y, list.length])
 
