@@ -3485,3 +3485,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [524] 第 499 轮：重打 dmg 前的全量门（2026-09-14）
 
 - 后端 950 通过；前端 tsc + eslint（含 no-floating-promises）+ vitest 129 + 16 条 check / smoke 全过。
+
+## [525] 第 500 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree（180 行）正常、`/api/nope` 回 404 不回 index.html；正式版日志新增 22 行裸 `INFO:` 0 行。PROGRESS 补 491–500 行。半程（500/1000）到此。
