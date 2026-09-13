@@ -208,12 +208,14 @@ backend/app/
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
   database/
     store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· llm_usage（模型用量）· ingest_jobs / ingest_items · skills · snapshots · runs
+                             启动清理：sweep_orphan_jobs / sweep_orphan_plans / sweep_stale_snapshots（7 天）/ sweep_old_rows（用量 90 天、跑完的任务 30 天、非活跃计划 30 天）/ prune_job_payloads
+                             轻量列表 list_notes_brief（⌘K / `[[` 补全用：不带全文，正文命中带片段 + first_body）；搜索的 LIKE 通配符已转义
     retrieval.py             零 LLM 关键词检索（工具循环失败时的退路）；format_fact() 给材料带 id
     kite/                    KITE codebook 适配：UserMemory（recall / facts / topics / entities / fact_by_id）
     kb/                      知识库在 KITE 之上的那层：clusters · recall（簇粒度）· search（排序）
                              · virtual_tree（树上的虚拟子树）· pages（各节点的页面数据）
                              · extract_check / extract_judge / reextract（摄入质量）
-                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）· units（长材料切成的段：标题带 k/n）· scope（记忆范围：按 session 前缀分 笔记 / 会议记录 / 导入）
+                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）· units（长材料切成的段：part_labels 带 k/n · materials() 按材料归组 · parts_of() 分段导航）· scope（记忆范围：按 session 前缀分 笔记 / 会议记录 / 导入）· who（说话人写法归一：speaker a / speaker_a / Speaker A 算一个人）
     ingest/                  摄入：asr · chunking · extract · importers · feishu（块 → markdown + 最小客户端）
     exporters.py             导回：render_tree（zip 导出 / Obsidian 目录共用）· markdown → Notion / 飞书块 · 最小写客户端
     assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
@@ -225,7 +227,7 @@ backend/app/
     compose_block.py           `/` 块生成
     harness.py                 GET /paused · POST /{run_id}/resume
     compose.py                 单点动作：skeleton · magic-tap · rewrite · expand · verify · digest
-    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径）· 笔记 CRUD · 最近删除（note_trash，30 天可恢复）· 今天的日记（日记/年/月/日）
+    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径；克隆 / 移动都判环，目标父节点要存在）· 笔记 CRUD（标题压成一行 ≤200 字）· GET /brief 轻量列表 · 最近删除（note_trash，30 天可恢复；空的未命名不进）· 今天的日记（日记/年/月/日）
     kb.py · memory.py          知识库虚拟子树、各节点页面、检索、事实 peek / 反查
     ingest.py · import_sources.py · skills.py · settings.py · profile.py · assets.py · export.py
     client_log.py              前端错误报进后端日志（打包版没有 DevTools）
@@ -570,11 +572,15 @@ harness 的材料来自这里；设计在 `docs/kb-architecture.md` 与 `docs/kb
 
 - 笔记树照 Trilium：`notes` 没有父子，边在 `branches`（多条 = 克隆），没有文件夹。
 - 知识库是树底部的**虚拟子树**（`kb/virtual_tree.py`，`GET /api/kb/tree`）：主题 / 实体 /
-  时间线 / 最近摄入 / 事实表 / 主题地图 / 定期回顾；展开分类时才取事实。
+  时间线 / 最近摄入 / 事实表 / 主题地图 / 定期回顾；展开分类时才取事实。实体超过 200 个不随树下发
+  （展开「实体」再取；说话人伪实体不进树）；最近摄入按**材料**列，多段材料是 `kb:material:<第一段 id>`，
+  展开给「第 k/n 段」的 `kb:unit:` 行；主题计数三处（首页 / 树 / 主题页）都按不同事实数。
 - 每个节点打开是一页（`kb/pages.py`：首页 / 主题页 / 实体页 / 会议页 / 时间线 / 某一天），
   一条事实是一篇只读笔记（原话 · 被哪些笔记引用 · 相关事实）。
-- 检索三条路：`kb/recall.py`（簇粒度，给写作）· `kb/search.py`（零 LLM 排序）·
-  `memory/trace`（来龙去脉：问题由后端拼，用户不写 prompt）。
+- 检索三条路：`kb/recall.py`（簇粒度，给写作）· `kb/search.py`（零 LLM 排序：ASCII 词整词、不分大小写，
+  数字 / 月日 / 量词也是查询词，一个词都没命中的候选不返回；行级回退要同一行两个词命中）·
+  `memory/trace`（来龙去脉：问题由后端拼，用户不写 prompt）。记忆范围 `scope` 贯穿召回 / 关系 / 续写 /
+  扩写 / 校验 / 回顾 / 写作计划取材料；前端召回前先剥掉引用 id、图片、链接地址。
 
 ---
 
@@ -644,5 +650,5 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 
 ## 20. 变更记录
 
-落地记录——按批的改动、实拍抓到的 bug、每条根因，全在 `docs/TRACELOG-trilium.md`（[0]–[25]）。
+落地记录——按批的改动、实拍抓到的 bug、每条根因，全在 `docs/TRACELOG-trilium.md`（[0]–[25] 是改造期，[26]+ 是巡检循环，到 2026-09-13 已到 [300]）。
 进度台账 `docs/PROGRESS.md`。这份文档只记「现在是什么」，不记「怎么变过来的」。
