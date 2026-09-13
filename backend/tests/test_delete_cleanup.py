@@ -57,3 +57,20 @@ def test_老库里的运行记录一次修剪到每key50条(db):
         c.commit()
     with db.connect() as c:
         assert c.execute("SELECT COUNT(*) FROM harness_runs WHERE key='note:z'").fetchone()[0] == 50
+
+
+def test_运行记录孤儿不止note前缀一种(db):
+    """第 187 轮：section:/prompt:/裸 id 的 key 指向已删笔记也要清；删笔记时也要一起带走。"""
+    n = db.create_note("u", "甲", "x")
+    with db.connect() as c:
+        for i, key in enumerate(("gone000000", "section:gone000000", "prompt:gone000000",
+                                 n["id"], f"section:{n['id']}", f"note:{n['id']}")):
+            c.execute("INSERT INTO harness_runs (id,key,status,rounds,final_scores,weak_dimensions,created_at)"
+                      " VALUES (?,?,?,?,?,?,?)", (f"o{i}", key, "complete", 1, "{}", "[]", "2026-01-01T00:00:00+00:00"))
+        c.execute("DELETE FROM meta WHERE key='drop-orphan-runs-v2'")
+        c.commit()
+    with db.connect() as c:
+        assert sorted(r[0] for r in c.execute("SELECT key FROM harness_runs")) == sorted([n["id"], f"section:{n['id']}", f"note:{n['id']}"])
+    db.delete_note("u", n["id"])
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM harness_runs").fetchone()[0] == 0

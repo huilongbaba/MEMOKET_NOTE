@@ -346,6 +346,17 @@ def _drop_orphans(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM harness_runs WHERE key LIKE 'note:%' AND substr(key, 6) NOT IN (SELECT id FROM notes)")
 
 
+def _drop_orphan_runs(conn: sqlite3.Connection) -> None:
+    """运行记录的 key 是 `<模式>:<笔记 id>`（note: / section: / prompt: / table: …），
+    更早的版本就是光秃秃的笔记 id。v1 只认 `note:` 前缀，结果一个开发库里
+    3858 条指向已删笔记的裸 id 行一直躺着（第 187 轮实测）。按「冒号后面那截
+    （没冒号就整个）不在 notes 里」一次清掉。"""
+    conn.execute(
+        "DELETE FROM harness_runs WHERE "
+        "(CASE WHEN instr(key, ':') > 0 THEN substr(key, instr(key, ':') + 1) ELSE key END) "
+        "NOT IN (SELECT id FROM notes)")
+
+
 def _prune_runs(conn: sqlite3.Connection) -> None:
     """运行记录每个 key 只留最近 50 条。`record_harness_run` 以后每次写都会修剪，
     这里把老库里攒下的（实测一个开发库 4000 条）一次清掉。"""
@@ -463,6 +474,7 @@ def connect() -> sqlite3.Connection:
     _migrate_once(conn, "drop-folder-remnants-v1", _drop_folder_remnants)
     _migrate_once(conn, "drop-orphans-v1", _drop_orphans)
     _migrate_once(conn, "prune-runs-v1", _prune_runs)
+    _migrate_once(conn, "drop-orphan-runs-v2", _drop_orphan_runs)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_writing_plans_parent"
                  " ON writing_plans(user_id, parent_note_id, status)")
     return conn
@@ -799,7 +811,8 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             c.execute("DELETE FROM note_citations WHERE user_id=? AND note_id=?", (user_id, nid))
             c.execute("DELETE FROM note_revisions WHERE user_id=? AND note_id=?", (user_id, nid))
             c.execute("DELETE FROM harness_snapshots WHERE user_id=? AND note_id=?", (user_id, nid))
-            c.execute("DELETE FROM harness_runs WHERE key=?", (f"note:{nid}",))
+            # key 是 `<模式>:<id>`，不止 note: 一种（section: / prompt: / table:），老行还有裸 id
+            c.execute("DELETE FROM harness_runs WHERE key=? OR key LIKE ?", (nid, f"%:{nid}"))
             removed.append(nid)
 
         drop(note_id)

@@ -2050,3 +2050,10 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - terrence 的「harness 测试」那篇，选「矩阵不能只保留 4月16日EVT…」一句：校验 all 8.0s「支持」（判据来自笔记内部，fact_index=-1，fact_id 为空是对的）、notes 3.8s「无法判断」、meetings 5.7s「支持」——范围真的换了证据来源。扩写 all / notes 各 4 秒，模型判前后都已经写过、返回空 before/after（finish_reason=stop，不是撞上限），前端会提示「模型认为不需要补充上下文」。
 - 没改代码。顺手发现 dev 库里还躺着隔离之前的测试用户（cancel-test*/cleanup-test/harness-test-2/search-test/test-skeleton/apple-test/import-test/quality-sample），下一轮清。
+
+## [216] 巡检第 187 轮：运行记录的孤儿只清了 note: 一种（2026-09-13）
+
+- **问题**：`harness_runs.key` 是 `<模式>:<笔记 id>`（note: / section: / prompt: / table:），更早的行是裸笔记 id。`drop-orphans-v1` 只认 `note:` 前缀，dev 库里 3899 条运行记录有 3858 条裸 id 指向早已删掉的测试笔记（9 月 3–8 日隔离之前的测试留下的）；`delete_note` 也只删 `note:<id>`，分段模式跑出来的 `section:<id>` 会留下来。
+- **改**：新迁移 `drop-orphan-runs-v2`——冒号后那截（没冒号就整个 key）不在 notes 里就删；`delete_note` 改成 `key=<id> OR key LIKE '%:<id>'`。下次起后端自动跑。
+- 测试：test_delete_cleanup +1，后端 866 passed。
+- 没做的：dev 库里隔离前的测试用户（cancel-test*/cleanup-test/harness-test-2/search-test/test-skeleton/apple-test/import-test/quality-sample/skilltest/u/writing-bench/harness-smoke-test）批量 DELETE 被自动模式拦下了（不可逆的本地删除）。库已备份到 scratchpad `notes-before-r187.sqlite3`，等用户点头再清；对产品没影响（每个用户各看各的）。
