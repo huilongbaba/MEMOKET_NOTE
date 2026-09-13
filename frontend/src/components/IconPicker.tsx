@@ -19,6 +19,10 @@ export default function IconPicker({ current, onPick, onClose }: {
 }) {
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
+    const cur = box.current?.querySelector<HTMLButtonElement>('.icon-picker-cell.active') ?? box.current?.querySelector<HTMLButtonElement>('.icon-picker-cell')
+    cur?.focus()
+  }, [])
+  useEffect(() => {
     const onDown = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) onClose() }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose() } }
     document.addEventListener('mousedown', onDown, true)
@@ -27,7 +31,16 @@ export default function IconPicker({ current, onPick, onClose }: {
   }, [onClose])
   return (
     <div ref={box} className="icon-picker" role="dialog" aria-label="选图标">
-      <div className="icon-picker-grid">
+      {/* 键盘：方向键在 8 列的格子里走，回车 / 空格选（原生 button）；Tab 仍按 DOM 顺序 */}
+      <div className="icon-picker-grid" onKeyDown={(e) => {
+        const cells = Array.from(box.current?.querySelectorAll<HTMLButtonElement>('.icon-picker-cell') ?? [])
+        const i = cells.indexOf(document.activeElement as HTMLButtonElement)
+        if (i < 0) return
+        const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 8, ArrowUp: -8 }[e.key]
+        if (step === undefined) return
+        e.preventDefault()
+        cells[Math.max(0, Math.min(cells.length - 1, i + step))]?.focus()
+      }}>
         {NOTE_ICONS.map((ic) => (
           <button key={ic} type="button" className={'icon-picker-cell' + (ic === current ? ' active' : '')} title={ic.replace(/^bxs?-/, '')}
                   onClick={() => onPick(ic)}><i className={'bx ' + ic} /></button>

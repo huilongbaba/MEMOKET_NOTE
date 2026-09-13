@@ -511,6 +511,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => (document.querySelector('.title-icon-btn') as HTMLButtonElement | null)?.click(), 2500)
     setTimeout(() => (document.querySelector('.icon-picker-cell[title="rocket"]') as HTMLButtonElement | null)?.click(), 3500)
   }
+  // 选择器里用方向键走：右、右、下 → 从第 1 格走到第 11 格（task），把焦点所在格子的名字写进日志
+  if (probe === 'icon-picker:keys' && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => (document.querySelector('.title-icon-btn') as HTMLButtonElement | null)?.click(), 1500)
+    setTimeout(() => { for (const k of ['ArrowRight', 'ArrowRight', 'ArrowDown']) document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })) }, 3000)
+    setTimeout(() => void api.clientLog('warn', `icon-picker:keys active=${(document.activeElement as HTMLElement | null)?.title ?? '?'}`, '', 'probe'), 3500)
+  }
   // 标题行图标点开选择器
   if (probe === 'icon-picker' && notes.length) setTimeout(() => (document.querySelector('.title-icon-btn') as HTMLButtonElement | null)?.click(), 1500)
   // 点开选择器再挑「rocket」：标题行 / 树上的图标都该变（真落库，跑完用 setNoteIcon(id, '') 清回去）
