@@ -9,6 +9,19 @@ import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import path from 'node:path'
 
+/** 把流的 data 块切成整行再交给 emit；半行留到下一块再拼，流结束时 flush 剩下的。 */
+export function lineTagger(emit: (line: string) => void) {
+  let rest = ''
+  const push = (b: Buffer | string) => {
+    rest += String(b)
+    const parts = rest.split(/\r?\n/)
+    rest = parts.pop() ?? ''
+    for (const l of parts) emit(l)
+  }
+  const flush = () => { if (rest) { emit(rest); rest = '' } }
+  return { push, flush }
+}
+
 export type Backend = { port: number; stop: () => void }
 
 /** 要一个端口：优先固定的那个，被占了才随机。
@@ -130,8 +143,14 @@ export async function startBackend(opts: {
   })
 
   const log = opts.onLog ?? (() => {})
-  child.stdout?.on('data', (b) => log(`[backend] ${b}`))
-  child.stderr?.on('data', (b) => log(`[backend] ${b}`))
+  // 按行打 [backend] 标：一个 data 块常常带好几行（uvicorn 启动那几句一起来），原来只给块首那行
+  // 加前缀，落盘日志里就有一堆裸的「INFO: Waiting for application startup.」（第 481 轮翻日志 117 行）。
+  // 半行留到下一块再拼，别把一行拆成两条。
+  const out = lineTagger((l) => log(`[backend] ${l}\n`)); const err = lineTagger((l) => log(`[backend] ${l}\n`))
+  child.stdout?.on('data', out.push)
+  child.stderr?.on('data', err.push)
+  child.stdout?.on('end', out.flush)
+  child.stderr?.on('end', err.flush)
 
   let exited: string | null = null
   let stopping = false

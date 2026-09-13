@@ -3400,3 +3400,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [505] 第 480 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 2 秒、tree / kb/tree 正常。正式版 userData 是独立库（只 1 篇笔记），拿 dev 库的 id 查链接接口是 404，属正常——冒烟别混用两边的 id。PROGRESS 补 471–480 行。
+
+## [506] 第 481 轮：翻正式版日志——后端输出按行打标（2026-09-14）
+
+- 翻 `~/Library/Logs/memoket-note-desktop/memoket-note.log`：117 行裸的「INFO:     Waiting for application startup.」没有 `[backend]` 前缀——子进程一个 data 块常带好几行，原来只给块首加前缀。`desktop/src/backend.ts` 抽出 `lineTagger(emit)`：按行切、半行留到下一块再拼、流结束 flush；stdout / stderr 各一个。node 直接验过拼接（跨块半行、\r\n）；dev 实例实拍日志裸 INFO 0 行、带前缀 21 行。正式版下次（第 490 轮）重打时带上。
