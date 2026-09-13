@@ -313,6 +313,24 @@ class FactAddIn(BaseModel):
     when: str = ""
 
 
+FACT_MAX_CHARS = 2000
+
+
+def _no_supersede_cycle(mem: UserMemory, old: str, new: str) -> None:
+    """old 被 new 取代：new 自己不能已经（直接或间接）被 old 取代，否则两条互指、都标成
+    merged 之后页面上两条都不显示（第 246 轮实测 a→b 再 b→a 两个 200）。自指同理。"""
+    if old == new:
+        raise HTTPException(400, "一条事实不能被它自己取代")
+    chain = mem.fact_attrs("superseded_by")
+    cur, hops = new, 0
+    while cur and hops < 50:
+        if cur == old:
+            raise HTTPException(400, "这两条已经是反过来的取代关系了——先在事实页撤掉那一条")
+        cur, hops = chain.get(cur, ""), hops + 1
+    if chain.get(new):
+        raise HTTPException(400, "被指向的那条自己已经被取代了，指到最新的那条去")
+
+
 @router.patch("/fact/{fact_id}")
 def kb_fact_edit(fact_id: str, body: FactTextIn, user: str = Depends(current_user)) -> dict:
     mem = UserMemory(user)
@@ -324,6 +342,8 @@ def kb_fact_edit(fact_id: str, body: FactTextIn, user: str = Depends(current_use
     if body.superseded_by is not None:
         if body.superseded_by and mem.fact_by_id(body.superseded_by) is None:
             raise HTTPException(404, f"没有这条事实：{body.superseded_by}")
+        if body.superseded_by:
+            _no_supersede_cycle(mem, fact_id, body.superseded_by)
         if not mem.set_fact_attr(fact_id, "superseded_by", body.superseded_by):
             raise HTTPException(404, f"没有这条事实：{fact_id}")
     out = mem.fact_by_id(fact_id) or {"id": fact_id, "text": text}
@@ -345,6 +365,8 @@ def kb_fact_add(body: FactAddIn, user: str = Depends(current_user)) -> dict:
     text = body.text.strip()
     if not text:
         raise HTTPException(400, "text is empty")
+    if len(text) > FACT_MAX_CHARS:
+        raise HTTPException(400, f"一条事实最多 {FACT_MAX_CHARS} 字——那是一段正文，存入知识库让它自己抽")
     n = store.get_note(user, body.note_id)
     if not n:
         raise HTTPException(404, "note not found")
@@ -375,6 +397,7 @@ def kb_fact_merge(body: FactMergeIn, user: str = Depends(current_user)) -> dict:
     mem = UserMemory(user)
     if mem.fact_by_id(body.keep) is None or mem.fact_by_id(body.drop) is None:
         raise HTTPException(404, "有一条不存在")
+    _no_supersede_cycle(mem, body.drop, body.keep)
     text = body.text.strip()
     if text:
         mem.set_fact_text(body.keep, text)
