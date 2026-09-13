@@ -3557,3 +3557,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [540] 巡检第 516 轮：杀掉的 harness 有没有留尾巴（2026-09-14）
 
 - 第 511 / 515 轮都是跑到一半杀进程：`data/jobs` 0 个文件、`harness_snapshots` 0 条、计划已按 t0 删，启动时 `sweep_orphan_jobs / plans` 也在。标签列表里的坏事实标签「terrence-9999-FFF」现在没了（第 488 轮收掉之后又被我截图那一趟重新打开过，之后 tabaction:close 关的就是它）。没改代码。
+
+## [541] 第 517 轮：设置页实拍——「今天」其实是 24 小时（2026-09-14）
+
+- 设置页 / 最近删除页实拍无错。用量那行「今天 219 次」跟「全部 219 次」一样——查了 `usage_summary`：四个窗口都是从现在往回数的滚动窗口（today = 24 小时），服务端还是 UTC；本地凌晨 4 点（UTC+8）「今天」这两个字就说不通。标签改成「24 小时」，注释写明键名 `today` 不动；顺手把 `__import__("datetime").timedelta` 换成文件头已 import 的 `timedelta`。后端 4 条用量测试照旧。
+- 顺带记：`ingest_jobs` 4 条 error 都是 9 月 7–9 日的（`session_id already exists` 是 cancel-test 用户重复摄入、另一条是服务重启中断），没有新的。

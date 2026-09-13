@@ -13,7 +13,7 @@ const FEATURE_LABEL: Record<string, string> = {
 }
 const fmtTok = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 
-/** 模型用量：今天 / 7 天 / 30 天 / 全部，按功能分。付费 API 的用户得知道钱花在哪儿了。 */
+/** 模型用量：24 小时 / 7 天 / 30 天 / 全部，按功能分（都是滚动窗口，不是日历天——服务端按 UTC 算，「今天」在 UTC+8 的凌晨会对不上）。付费 API 的用户得知道钱花在哪儿了。 */
 function UsageSection() {
   const [u, setU] = useState<api.UsageSummary | null>(null)
   useEffect(() => { api.usageSummary().then(setU).catch(() => setU(null)) }, [])
@@ -23,7 +23,7 @@ function UsageSection() {
     <>
       <p className="kb-section-title" style={{ marginTop: 18 }}>模型用量</p>
       <div className="row" style={{ gap: 14, flexWrap: 'wrap', fontSize: 13 }}>
-        <span><span className="muted">今天</span> {cell(u.today)}</span>
+        <span><span className="muted">24 小时</span> {cell(u.today)}</span>
         <span><span className="muted">7 天</span> {cell(u.week)}</span>
         <span><span className="muted">30 天</span> {cell(u.month)}</span>
         <span><span className="muted">全部</span> {cell(u.all)}</span>

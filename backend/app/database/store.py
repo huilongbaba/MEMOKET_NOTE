@@ -932,7 +932,7 @@ def record_extract_estimate(user_id: str, chars: int, facts: int, ms: int) -> No
 
 
 def usage_summary(user_id: str) -> dict:
-    """今天 / 7 天 / 30 天 / 全部：调用次数、token；再按功能列前几个（30 天内）。"""
+    """24 小时 / 7 天 / 30 天 / 全部（都是滚动窗口；键名 today 留着不改）：调用次数、token；再按功能列前几个（30 天内）。"""
     now = datetime.now(timezone.utc)
     out: dict = {}
     with connect() as c:
@@ -941,11 +941,11 @@ def usage_summary(user_id: str) -> dict:
                 row = c.execute("SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), COALESCE(SUM(ms),0)"
                                 " FROM llm_usage WHERE user_id=?", (user_id,)).fetchone()
             else:
-                since = (now - __import__("datetime").timedelta(days=days)).isoformat(timespec="seconds")
+                since = (now - timedelta(days=days)).isoformat(timespec="seconds")
                 row = c.execute("SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), COALESCE(SUM(ms),0)"
                                 " FROM llm_usage WHERE user_id=? AND created_at>=?", (user_id, since)).fetchone()
             out[key] = {"calls": row[0], "prompt_tokens": row[1], "completion_tokens": row[2], "ms": row[3]}
-        since = (now - __import__("datetime").timedelta(days=30)).isoformat(timespec="seconds")
+        since = (now - timedelta(days=30)).isoformat(timespec="seconds")
         rows = c.execute("SELECT feature, COUNT(*), COALESCE(SUM(prompt_tokens+completion_tokens),0)"
                          " FROM llm_usage WHERE user_id=? AND created_at>=? GROUP BY feature ORDER BY 3 DESC LIMIT 8",
                          (user_id, since)).fetchall()
