@@ -108,6 +108,13 @@ export type HarnessState = {
 }
 
 /** 不在树上、又没人传标题时标签页显示什么——之前 app:skills 直接把 id 当标题（实拍）。 */
+/** 带筛选的事实表叫什么：「事实表 · work」（查询串的值拼上）。标签 / 分屏头 / 面包屑三处用同一个，
+ *  不然从树上尾巴行「还有 N 条 · 去事实表看」进来的页面会顶着那句入口的话当名字。 */
+function factsLabel(id: string): string | undefined {
+  if (!id.startsWith('kb:facts')) return undefined
+  return '事实表' + (id.includes('?') ? ' · ' + Array.from(new URLSearchParams(id.split('?')[1]).values()).filter(Boolean).join(' · ') : '')
+}
+
 const VIRTUAL_LABELS: Record<string, string> = {
   'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入', 'app:trash': '最近删除',
   kb: '知识库', 'kb:graph': '主题地图', 'kb:digest': '定期回顾', 'kb:timeline': '时间线',
@@ -665,10 +672,7 @@ export default function App() {
     setVirtualId(id)
 
     // 带筛选的事实表：标签叫「事实表 · work」而不是树上那行「还有 N 条 · 去事实表看」（那是入口的话，不是页面的名字）
-    const factsLabel = id.startsWith('kb:facts')
-      ? '事实表' + (id.includes('?') ? ' · ' + Array.from(new URLSearchParams(id.split('?')[1]).values()).filter(Boolean).join(' · ') : '')
-      : undefined
-    const label = title ?? factsLabel ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
+    const label = title ?? factsLabel(id) ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
       ?? (id.startsWith('kb:unit:') ? '会议记录' : /^kb:(topic|entity):/.test(id) ? id.split(':').slice(2).join(':')
         : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id)
     setTabs((prev) => prev.find((x) => x.noteId === id)
@@ -776,7 +780,7 @@ export default function App() {
     // 从树上尾巴行「还有 N 条 · 去事实表看」进来的事实表：面包屑末尾用页面的名字（跟标签一样「事实表 · work」），不是那句入口的话
     if (out.length && out[out.length - 1].note_id.startsWith('kb:facts')) {
       const last = out[out.length - 1]
-      out[out.length - 1] = { ...last, title: tabs.find((t) => t.noteId === last.note_id)?.title ?? '事实表' }
+      out[out.length - 1] = { ...last, title: factsLabel(last.note_id) ?? '事实表' }
     }
     // 懒加载的那几层（实体 / 某个主题下的事实…）不在 allRows 里，之前状态栏就退回「23 篇笔记」
     // （第 207 轮实拍实体页）——按 id 的形状把父链拼出来，名字用标签页上的
@@ -797,7 +801,7 @@ export default function App() {
     const isFact = api.isFactId(row.note_id)
     const factId = row.note_id.slice('kb:fact:'.length)
     const items: MenuItem[] = [
-      { label: '打开', icon: 'bx-link-external', onSelect: () => void openVirtual(row.note_id, row.title) },
+      { label: '打开', icon: 'bx-link-external', onSelect: () => void openVirtual(row.note_id, factsLabel(row.note_id) ?? row.title) },   // 尾巴行的名字是入口的话，标签用页面名
       { label: '在右侧分屏打开', icon: 'bx-columns', onSelect: () => openInSplit(row.note_id) },
     ]
     if (isFact) {
@@ -2577,7 +2581,7 @@ export default function App() {
   function renderSplit(id: string) {
     const note = notes.find((n) => n.id === id)
     const row = allRows.find((r) => r.note_id === id)
-    const title = note ? displayTitle(note) : (row?.title ?? id)
+    const title = note ? displayTitle(note) : (factsLabel(id) ?? row?.title ?? id)
     return (
       <>
         <div className="split-head">

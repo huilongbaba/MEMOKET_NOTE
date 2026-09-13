@@ -484,6 +484,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 空笔记上点续写：应该提示先写点东西，而不是让模型编
   if (probe === 'blank-tap' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600); setTimeout(() => void actionsRef.current.runMagicTap(), 2500) }
   if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
+  // splitv:<id> → 把某个虚拟页（kb:facts?topic=work 这种）放进分屏
+  if (probe?.startsWith('splitv:')) setTimeout(() => openInSplit(probe.slice(7)), 800)
   // ⌘K 命令「换个图标」→ 选择器该弹在标题行下
   if (probe === 'icon-cmd' && notes.length) setTimeout(() => window.dispatchEvent(new CustomEvent('open-icon-picker')), 1500)
   // 空库：新建一篇、点开选择器挑「rocket」——只有一个标签、够宽，标签上该有图标（真落库，用户跑完删）
