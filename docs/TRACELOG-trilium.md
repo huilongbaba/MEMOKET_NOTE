@@ -3705,3 +3705,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [574] 第 550 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree / trash 正常；日志新增 9 行裸 `INFO:` 0 行。PROGRESS 补 541–550 行。
+
+## [575] 巡检第 551 轮：快速查看 / 历史 / 导入页回归（2026-09-14）
+
+- `quick-view`（⌥点击浮层）、`history-open`（历史面板展开第一版「与当前对比」——现在每行都是「8330 字」，差值 -567 / -901 跟状态栏同一口径）、`import`（Markdown / Obsidian / Evernote / Notion / 飞书 / Apple Notes 六段）实拍无错。没改代码。
