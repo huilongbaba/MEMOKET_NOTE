@@ -39,7 +39,8 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
     setKb(null)
     noteKb(noteId).then((k) => { if (alive) setKb(k) }).catch(() => {})
     return () => { alive = false }
-  }, [noteId, refreshTick, row?.ingested_at])
+    // stale（改过没同步）是服务端按 updated_at vs ingested_at 判的：落库之后要重查，不然黄字要等重开这篇才出现
+  }, [noteId, refreshTick, row?.ingested_at, row?.updated_at])
 
   async function saveEdit() {
     if (!editing) return

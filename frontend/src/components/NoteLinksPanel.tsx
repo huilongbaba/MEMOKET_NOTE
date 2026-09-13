@@ -4,7 +4,7 @@ import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
 
 /** ribbon「链接」：这篇链出去的笔记 + 链进来的笔记。`[[` 打字即可插链接。 */
-export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, knownIds }: {
+export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, knownIds, knownNotes, updatedAt }: {
   noteId: string
   content: string
   onOpen: (noteId: string) => void
@@ -12,6 +12,11 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
   onUnlink?: (ids: string[]) => void
   /** 库里现有的笔记 id：坏链接在本地按正文算（服务端那份 dangling 要等自动保存落库才更新，晚 1.5 秒） */
   knownIds?: Set<string>
+  /** 库里的笔记（App 的 notes）：链出去的列表也在本地按正文算——刚打完 [[ 链接就该出现在这里，不等落库；
+   *  链进来的还得问服务端（别的笔记的正文在服务端） */
+  knownNotes?: api.Note[]
+  /** 这篇最近一次落库的时间：链进来的列表跟着它重查 */
+  updatedAt?: string
 }) {
   const [links, setLinks] = useState<api.NoteLinks | null>(null)
   // 正文里链接的数量变了才重查——每个字都查一次没必要
@@ -20,7 +25,7 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
     let alive = true
     api.noteLinks(noteId).then((r) => { if (alive) setLinks(r) }).catch(() => { if (alive) setLinks({ outgoing: [], backlinks: [] }) })
     return () => { alive = false }
-  }, [noteId, outgoingKey])
+  }, [noteId, outgoingKey, updatedAt])
   if (!links) return <p className="muted" style={{ margin: 0 }}>…</p>
   const list = (rows: api.CitingNote[], empty: string) => rows.length === 0
     ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>{empty}</p>
@@ -30,6 +35,12 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
         <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
       </a>
     ))
+  // 链出去的：有 notes 就本地算（按正文里出现的顺序，去重，只留还在的）
+  const outgoing: api.CitingNote[] = knownNotes
+    ? Array.from(new Set(Array.from(content.matchAll(/\]\(note:\/\/([0-9a-f]{12})\)/g), (m) => m[1])))
+        .map((id) => knownNotes.find((n) => n.id === id)).filter((n): n is api.Note => !!n)
+        .map((n) => ({ id: n.id, title: n.title, updated_at: n.updated_at, preview: (n.content || '').slice(0, 80), icon: n.icon }))
+    : links.outgoing
   const dangling = knownIds
     ? Array.from(new Set(Array.from(content.matchAll(/\]\(note:\/\/([0-9a-f]{12})\)/g), (m) => m[1]))).filter((id) => !knownIds.has(id))
     : (links.dangling ?? [])
@@ -47,8 +58,8 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
     )}
     <div className="row" style={{ gap: 24, alignItems: 'flex-start', fontSize: 13 }}>
       <section style={{ flex: 1, minWidth: 0 }}>
-        <p className="muted palette-group" style={{ marginInline: 0 }}>链到的笔记 {links.outgoing.length > 0 && `· ${links.outgoing.length}`}</p>
-        {list(links.outgoing, '正文里打 [[ 搜标题即可链接另一篇。')}
+        <p className="muted palette-group" style={{ marginInline: 0 }}>链到的笔记 {outgoing.length > 0 && `· ${outgoing.length}`}</p>
+        {list(outgoing, '正文里打 [[ 搜标题即可链接另一篇。')}
       </section>
       <section style={{ flex: 1, minWidth: 0 }}>
         <p className="muted palette-group" style={{ marginInline: 0 }}>链到这篇的 {links.backlinks.length > 0 && `· ${links.backlinks.length}`}</p>

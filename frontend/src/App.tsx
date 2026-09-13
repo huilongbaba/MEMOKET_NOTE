@@ -2953,7 +2953,7 @@ export default function App() {
               id: 'links', title: '链接', icon: 'bx-link-alt',
               badge: (content.match(/\]\(note:\/\/[0-9a-f]{12}\)/g) ?? []).length || undefined,
               body: <NoteLinksPanel noteId={current.id} content={content}
-                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} knownIds={noteIdSet} />,
+                                    onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} knownIds={noteIdSet} knownNotes={notes} updatedAt={current.updated_at} />,
             }, {
               id: 'history', title: '历史', icon: 'bx-history',
               body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length} currentContent={content}
