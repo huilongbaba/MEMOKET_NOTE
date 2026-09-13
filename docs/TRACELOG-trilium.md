@@ -3176,3 +3176,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [451] 巡检第 423 轮：依赖体检（2026-09-14）
 
 - `npm audit --omit=dev` 前端 / 桌面都是 0 个漏洞；`pip check` 没有坏依赖；`pip list --outdated` 只有 anyio / lxml / pydantic / pyinstaller / setuptools 的补丁级更新，不动。没改代码。
+
+## [452] 第 424 轮：on_event → lifespan；前端依赖到 wanted 版本（2026-09-14）
+
+- 后端唯一一处 `@app.on_event("startup")`（放闲置索引的后台循环）改成 lifespan：进去起任务，退出时 cancel 并等它收掉。每次起后端 / 跑测试刷的那条 DeprecationWarning 没了（8 → 6 条 warnings，剩下的是 httpx / swig 那两种）。后端 916。
+- 前端 `npm update` 到 semver 允许的版本（@codemirror/state 6.7.4、view 6.43.11、react 19.3.0、tsx 4.23.13 等；major 的 eslint 10 / mermaid 12 / plugin-react 6 不动）：tsc + eslint + vitest 107 + 12 条 check 全过。

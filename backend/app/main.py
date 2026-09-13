@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from contextlib import asynccontextmanager
 import os
 import pathlib
 
@@ -22,7 +24,33 @@ from .util.config import get_settings
 from .routers import (assets, client_log, compose, compose_block, export, harness, import_sources, ingest, kb, memory, note_harness, notes, profile,
                       settings as settings_router, skills, tree, writing_plan)
 
-app = FastAPI(title="memoket-NOTE", version="0.1.0",
+async def _memory_janitor_loop() -> None:
+    """每分钟放掉闲置 5 分钟的知识库索引：一个 2 万条事实的索引约 200MB，桌面版常驻时不该
+    一直抱着（用户反馈内存占用太高）。放掉之后下次用再花 1s 重建。"""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            n = UserMemory.evict_idle()
+            if n:
+                print(f"[memory] 放掉了 {n} 项闲置索引")
+        except Exception as exc:      # noqa: BLE001
+            print(f"[memory] 清理索引失败：{exc}")
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # FastAPI 的 on_event 已弃用（每次起后端 / 跑测试都刷一条 DeprecationWarning）；lifespan 一进一出，
+    # 退出时把后台任务收掉，不留「Task was destroyed but it is pending」
+    task = asyncio.create_task(_memory_janitor_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="memoket-NOTE", version="0.1.0", lifespan=_lifespan,
               description="AI 编辑器 + 知识库，长期记忆由 KITE 提供")
 
 # 上次进程退出时没跑完的入库/导入任务：后台任务随进程消失，但数据库里的状态
@@ -119,20 +147,6 @@ app.include_router(settings_router.router)
 app.include_router(export.router)
 
 
-@app.on_event("startup")
-async def _memory_janitor() -> None:
-    """每分钟放掉闲置 5 分钟的知识库索引：一个 2 万条事实的索引约 200MB，桌面版常驻时不该
-    一直抱着（用户反馈内存占用太高）。放掉之后下次用再花 1s 重建。"""
-    async def loop():
-        while True:
-            await asyncio.sleep(60)
-            try:
-                n = UserMemory.evict_idle()
-                if n:
-                    print(f"[memory] 放掉了 {n} 项闲置索引")
-            except Exception as exc:      # noqa: BLE001
-                print(f"[memory] 清理索引失败：{exc}")
-    asyncio.create_task(loop())
 
 
 @app.get("/api/health")
