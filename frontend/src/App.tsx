@@ -41,6 +41,7 @@ import Logo from './components/Logo'
 import PreferencesPanel from './components/PreferencesPanel'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
+import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { runProbe } from './probes'
@@ -76,19 +77,6 @@ const SKELETON_IDLE_MS = 8000
 const SKELETON_MIN_CHARS = 30
 const SKELETON_MIN_DELTA = 20
 
-/** First non-empty line of a note's content, syntax markers stripped, for
- * the sidebar preview -- strip rather than render so it stays plain text
- * in a one-line ellipsis instead of showing raw "## " or "- " noise. */
-function previewLine(content: string, skip = ''): string {
-  // 第一行常常就是标题本身（「# 会议纪要 10」）——搜索卡上再印一遍没意义，
-  // 跳过跟标题一样的那行，取下一行
-  // 先 trim 再剥记号：整篇缩进的笔记（「    ## 时间线」，第 362 轮实拍）不然会露出「## 」；
-  // `#` 后面没空格的也剥（后端 _first_body_line 是 strip 后 \s*，两边一致）
-  const clean = (l: string) => l.trim().replace(/^#{1,6}\s*/, '').replace(/^[-*>]\s+/, '').trim()
-  const lines = content.split('\n').map(clean).filter((l) => l)
-  const skipNorm = skip.trim().replace(/\s+/g, '')
-  return lines.find((l) => l.replace(/\s+/g, '') !== skipNorm) ?? lines[0] ?? ''
-}
 
 /** 无限续写 harness 的运行状态——挂在 App 这一级而不是 WritingPlanPanel
  * 里，是直接回应"必须要写作计划那一页吗？？不能在后台吗？"：状态生命周期
@@ -111,18 +99,7 @@ export type HarnessState = {
 }
 
 /** 不在树上、又没人传标题时标签页显示什么——之前 app:skills 直接把 id 当标题（实拍）。 */
-/** 带筛选的事实表叫什么：「事实表 · work」（查询串的值拼上）。标签 / 分屏头 / 面包屑三处用同一个，
- *  不然从树上尾巴行「还有 N 条 · 去事实表看」进来的页面会顶着那句入口的话当名字。 */
-function factsLabel(id: string): string | undefined {
-  if (!id.startsWith('kb:facts')) return undefined
-  return '事实表' + (id.includes('?') ? ' · ' + Array.from(new URLSearchParams(id.split('?')[1]).values()).filter(Boolean).join(' · ') : '')
-}
 
-const VIRTUAL_LABELS: Record<string, string> = {
-  'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入', 'app:trash': '最近删除',
-  kb: '知识库', 'kb:graph': '主题地图', 'kb:digest': '定期回顾', 'kb:timeline': '时间线',
-  'kb:topics': '主题', 'kb:entities': '实体', 'kb:recent': '最近摄入',
-}
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
@@ -421,7 +398,7 @@ export default function App() {
     // 库里已经没有的笔记（别处删的、导入回滚的）标签也收掉——留着点了只会「找不到」
     const ids = new Set(list.map((n) => n.id))
     // 虚拟标签也过一遍：不认识的 kb:* id（旧版本留下的 kb:overview）一起收掉
-    const knownVirtual = (id: string) => !!VIRTUAL_LABELS[id] || /^kb:(topic|entity|unit|material|fact|facts|etype)(:|\?|$)/.test(id) || id.startsWith('app:')
+    const knownVirtual = isKnownVirtual
     setTabs((prev) => prev
       .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
       // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
@@ -666,7 +643,7 @@ export default function App() {
     }
     // 不认识的 kb:* id（比如早年的 kb:overview）落到总览，别开一页只有裸 id 的空页
     // 事实表带查询串（kb:facts?kind=plan，首页类型 / 说话人 chip 点进来的）也是认识的——第 132 轮实拍点 chip 落回了总览
-    if (id.startsWith('kb:') && !VIRTUAL_LABELS[id] && !/^kb:(topic|entity|unit|material|fact|facts|etype)(:|\?|$)/.test(id)) id = 'kb'
+    if (id.startsWith('kb:') && !isKnownVirtual(id)) id = 'kb'
     if (virtualId === id && !current) return
     await save()
     const leaving = current
