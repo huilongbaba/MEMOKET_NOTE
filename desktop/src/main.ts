@@ -291,6 +291,22 @@ function installMenu() {
       ],
     },
     { role: 'editMenu' as const },
+    // 标签菜单（浏览器 / Trilium 都有）：快捷键渲染层自己接（registerAccelerator: false 只是把键显示在菜单上），
+    // 点菜单走 'menu' 通道→ main.tsx → window 'tab-action' 事件
+    {
+      label: '标签',
+      submenu: [
+        { label: '新建标签', accelerator: 'CommandOrControl+T', registerAccelerator: false, click: () => win?.webContents.send('menu', 'new-note') },
+        { label: '关闭标签', accelerator: 'CommandOrControl+W', registerAccelerator: false, click: () => win?.webContents.send('menu', 'tab:close') },
+        { label: '重新打开刚关的', accelerator: 'CommandOrControl+Shift+T', registerAccelerator: false, click: () => win?.webContents.send('menu', 'tab:reopen') },
+        { type: 'separator' as const },
+        { label: '下一个标签', accelerator: 'Control+Tab', registerAccelerator: false, click: () => win?.webContents.send('menu', 'tab:next') },
+        { label: '上一个标签', accelerator: 'Control+Shift+Tab', registerAccelerator: false, click: () => win?.webContents.send('menu', 'tab:prev') },
+        { label: '列出全部标签', click: () => win?.webContents.send('menu', 'tab:list') },
+        { type: 'separator' as const },
+        { label: '关闭其他标签', click: () => win?.webContents.send('menu', 'tab:close-others') },
+      ],
+    },
     {
       label: '视图',
       submenu: [

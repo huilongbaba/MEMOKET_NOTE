@@ -21,6 +21,7 @@ window.memoketDesktop?.onMenu?.((name) => {
   if (name === 'today') window.dispatchEvent(new CustomEvent('open-today'))
   if (name === 'import') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))
   if (name === 'trash') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:trash' }))
+  if (name.startsWith('tab:')) window.dispatchEvent(new CustomEvent('tab-action', { detail: name.slice(4) }))
 })
 
 // 没被任何 try 接住的错误也报上去

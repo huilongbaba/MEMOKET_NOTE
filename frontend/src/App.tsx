@@ -174,6 +174,7 @@ export default function App() {
   const [tabListAt, setTabListAt] = useState<MenuAt | null>(null)
   const tabsRef = useRef<Tab[]>([])
   const closeTabRef = useRef<(id: string) => void>(() => {})
+  const tabActionRef = useRef<(action: string) => void>(() => {})
   const [quick, setQuick] = useState<Note | null>(null)
   // 保存状态角标（Trilium 的 save-status-badge）：存了就说一声、5s 淡出；
   // 出错变红不淡出。自动保存的产品里留一个「保存」按钮反而暗示「不点就没存」。
@@ -521,6 +522,15 @@ export default function App() {
    *  一致。跳回列表第一篇会让用户失去位置感。 */
   tabsRef.current = tabs
   closeTabRef.current = closeTab
+  // 应用菜单「标签」（main.tsx 把 menu 事件转成 window 'tab-action'）：每次渲染刷一份最新闭包
+  tabActionRef.current = (action) => {
+    const i = tabs.findIndex((t) => t.id === activeTabId)
+    if (action === 'close') { if (activeTabId) closeTab(activeTabId) }
+    else if (action === 'reopen') reopenLastTab()
+    else if (action === 'next' || action === 'prev') { if (tabs.length > 1) activateTab(tabs[(i + (action === 'next' ? 1 : -1) + tabs.length) % tabs.length]) }
+    else if (action === 'list') setTabListAt({ x: Math.max(8, window.innerWidth - 420), y: 44 })
+    else if (action === 'close-others') closeTabsWhere((t) => t.id !== activeTabId)
+  }
   function closeTab(id: string) {
     const i = tabs.findIndex((x) => x.id === id)
     if (i < 0) return
@@ -710,6 +720,8 @@ export default function App() {
     // 虚拟页自己说「我指的东西不在了」（事实 404）：收掉它的标签。走 closeTabRef 拿最新闭包
     const onGone = (e: Event) => { const id = (e as CustomEvent<string>).detail; const t = tabsRef.current.find((x) => x.noteId === id); if (t) closeTabRef.current(t.id) }
     window.addEventListener('virtual-gone', onGone)
+    const onTabAction = (e: Event) => tabActionRef.current((e as CustomEvent<string>).detail)
+    window.addEventListener('tab-action', onTabAction)
     window.addEventListener('open-note', onOpenNote)
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
@@ -717,7 +729,7 @@ export default function App() {
     // ⌘K「换个图标」/ 树菜单「换个图标…」：只对主栏正开着的那篇；没开笔记就提示
     const onIconPicker = () => { if (current) setIconPicker(true); else toast('先打开一篇笔记再换图标') }
     window.addEventListener('open-icon-picker', onIconPicker)
-    return () => { window.removeEventListener('open-icon-picker', onIconPicker); window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('virtual-gone', onGone); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
+    return () => { window.removeEventListener('open-icon-picker', onIconPicker); window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('virtual-gone', onGone); window.removeEventListener('tab-action', onTabAction); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 

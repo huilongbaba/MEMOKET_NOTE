@@ -38,6 +38,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTimeout(() => void api.clientLog('warn', `badfact:close tabs=${Array.from(document.querySelectorAll('.note-tab-title'), (el) => el.textContent?.slice(0, 8)).filter((t) => t?.includes('9999')).length} status=${document.querySelector('.statusbar, .status-bar')?.textContent?.slice(0, 30) ?? '?'}`, '', 'probe'), 4000)
     return
   }
+  // 应用菜单「标签 › …」走的那条事件：tabaction:<close|reopen|next|prev|list|close-others>
+  if (probe?.startsWith('tabaction:')) {
+    const a = probe.slice(10)
+    setTimeout(() => window.dispatchEvent(new CustomEvent('tab-action', { detail: a })), 2500)
+    setTimeout(() => void api.clientLog('warn', `tabaction:${a} active=${document.querySelector('.note-tab.active .note-tab-title')?.textContent?.slice(0, 8) ?? '?'} menu=${!!document.querySelector('.context-menu')}`, '', 'probe'), 3500)
+    return
+  }
   // 标签装不下时右边的 ▾：列出全部标签
   if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)
