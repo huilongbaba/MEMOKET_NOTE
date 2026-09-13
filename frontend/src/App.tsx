@@ -16,6 +16,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
+import { insertStreamed } from './editor/streamJoin'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
@@ -1857,13 +1858,11 @@ export default function App() {
         {
           // 从 liveContentRef 算，不用 updater：updater 的执行时机跟闭包里的游标
           // 对不上就会漂（magic tap 那边实拍过）
-          const c = liveContentRef.current
-          const cur = insertCursorRef.current
-          let next: string
-          if (cur != null && cur <= c.length) {
-            next = c.slice(0, cur) + text + c.slice(cur)
-            insertCursorRef.current = cur + text.length
-          } else next = c + text
+          // 接缝处的多余空行在这里压掉（第 375 轮真跑：模型一段结束多吐两个换行，服务端会压、本地不压，
+          // 一轮差 2–4 字）——规则在 editor/streamJoin.ts，有单测
+          const r = insertStreamed(liveContentRef.current, insertCursorRef.current, text)
+          if (insertCursorRef.current != null) insertCursorRef.current = r.cursor
+          const next = r.next
           liveContentRef.current = next
           setContent(next)
         }
