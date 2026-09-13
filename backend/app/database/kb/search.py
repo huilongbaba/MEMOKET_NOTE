@@ -63,6 +63,15 @@ def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
     nothing.
     """
     topics, entities, _surfaces = memory._match_vocab(query, vocab)
+    # 查询里认出的实体扩到同一组的所有写法：问「MemoCat」也要拿到挂在 memo_cat 上的事实（kb/entities.py）
+    if entities and hasattr(memory, "_index"):
+        try:
+            from . import entities as entities_mod
+            store, _ = memory._index()
+            g = entities_mod.for_store(store, vocab)
+            entities = list(dict.fromkeys(m for e in entities for m in g.members(e)))
+        except Exception:      # noqa: BLE001 — 假的 memory / 没索引就按原样
+            pass
     queries: list[dict] = []
     if topics or entities:
         queries.append({

@@ -6,6 +6,7 @@ from collections import Counter
 from types import SimpleNamespace
 
 from app.database.kb import entities
+from test_kb_pages import mem  # noqa: F401  夹具
 
 
 def _vocab(*ents):
@@ -26,3 +27,19 @@ def test_归组规则_大小写_分隔符_别名():
     assert g.canon("fb") == "facebook", "别名里写了 facebook 就并进去"
     assert g.canon("苹果手表") == "苹果手表" and g.canon("apple_watch") == "apple_watch", "中英文对译不碰"
     assert sorted(g.members("memocat")) == ["memo_cat", "memocat"]
+
+
+def test_召回的符号通道把实体扩到同一组(mem):
+    """问「MemoCat」也要拿到挂在 memo_cat 上的事实：plan 里的 entities 扩到全组。"""
+    from app.database.kb import search
+    store, vocab = mem._index()
+    acme = vocab.entities["acme"]
+    vocab.entities["acme_inc"] = type(acme)(code="acme_inc", name="ACME", etype=acme.etype, aliases=set(), rels=set())
+    orig = mem._match_vocab
+    mem._match_vocab = lambda text, v: ([], ["acme_inc"], ["acme"])
+    try:
+        plan = search.plan(mem, "acme", vocab)
+        ents = next(q["where"]["entities"] for q in plan if "entities" in q.get("where", {}))
+        assert sorted(ents) == ["acme", "acme_inc"]
+    finally:
+        mem._match_vocab = orig

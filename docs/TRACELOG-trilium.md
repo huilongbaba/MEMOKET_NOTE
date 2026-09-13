@@ -2586,3 +2586,4 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 接进去的地方：树 / 实体索引只列代表行（事实数按不同事实算、preview 列出其它写法）；首页实体 chip 按组计数；实体页任何一种写法进来都落到代表、事实合并、标题下「同一实体的写法：MemoCat」；事实表 `entity=` 筛选和树上实体节点展开都取全组；事实卡 / 浮层的 chip 显示代表名（`annotate()` 统一改）。
 - 真库效果：1223 个实体 → 1213 组，归并了 10 组（memo cat + MemoCat 169 条、Apple Watch + AppleWatch 60、ChatGPT + chat gpt 56、Hui Long + Huilong、open ai + OpenAI、AppStore + App Store、MemoKit + memo_kit、T0 + T 0、T1 + T 1、SamAltman + Sam Altman）。实拍三页都对（索引 1213 个、memo cat 169、事实表按 MemoCat 筛出 169）。
 - 测试：新文件 test_kb_entities.py + test_kb_pages 合并用例（实体页 / 树 / 事实表 / 展开），后端 898；前端 87。
+- 追加（第 293 轮）：主题页 / 会议页的实体 chip 计数按组算（不再出现 memo cat 和 MemoCat 两个 chip）；召回的符号通道把认出的实体扩到同一组的所有写法。测试 +1，后端 899。

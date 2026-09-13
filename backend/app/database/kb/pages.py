@@ -187,7 +187,8 @@ def topic_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict 
             sub = vocab.downset(x.code, include_candidates=True) or {x.code}
             children.append({"code": x.code, "facts": sum(direct.get(c, 0) for c in sub)})
     children.sort(key=lambda r: -r["facts"])
-    ents = Counter(c for f in facts for c in f.entities)
+    _g = entities_mod.for_store(store, vocab)
+    ents = Counter(c for f in facts for c in {_g.canon(x) for x in f.entities})   # 同一实体的几种写法算一个
     page, total = _page(facts, limit, offset, vocab)
     annotate(mem, page)
     return {
@@ -295,7 +296,8 @@ def unit_page(mem, unit_id: str, limit: int = FACT_PAGE, offset: int = 0) -> dic
     annotate(mem, page)
     label = part_labels(list(store.units.values())).get(unit_id) or u.title or ""
     topics = Counter(c for f in facts for c in f.topics)
-    ents = Counter(c for f in facts for c in f.entities)
+    _g = entities_mod.for_store(store, vocab)
+    ents = Counter(c for f in facts for c in {_g.canon(x) for x in f.entities})   # 同一实体的几种写法算一个
     parts = parts_of(store.units.values(), unit_id)
     # 一条事实都没抽出来的段（短录音 / 单句，第 287 轮实拍「没有事实。」一片空）：把原话给出来，
     # 页面上至少看得到这段说了什么。有事实的段原话走每条事实自己的「原话」，这里不重复给。
