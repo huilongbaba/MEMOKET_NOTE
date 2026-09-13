@@ -61,7 +61,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
           {revs.length === 0 ? '还没有历史版本——正文改动后每隔十分钟自动留一版。' : `${revs.length} 个版本 · 当前 ${currentChars} 字符`}
         </span>
         <span style={{ flex: 1 }} />
-        <button className="chip" disabled={busy} onClick={snapshot}><i className="bx bx-bookmark-plus" /> 现在存一版</button>
+        <button className="chip chip-action" disabled={busy} onClick={snapshot}><i className="bx bx-bookmark-plus" /> 现在存一版</button>
       </div>
       {revs.length > 0 && (
         <div className="revision-list">
@@ -73,7 +73,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
                 <span className="muted" style={{ fontSize: 11 }}>{REASON[r.reason] ?? r.reason} · {r.chars} 字符
                   {r.chars !== currentChars && <> · {r.chars > currentChars ? '+' : ''}{r.chars - currentChars}</>}</span>
                 <span style={{ flex: 1 }} />
-                <button className="chip" disabled={busy} onClick={(e) => { e.stopPropagation(); void restore(r) }}><i className="bx bx-undo" /> 恢复到这一版</button>
+                <button className="chip chip-action" disabled={busy} onClick={(e) => { e.stopPropagation(); void restore(r) }}><i className="bx bx-undo" /> 恢复到这一版</button>
               </a>
               {open?.id === r.id && (
                 <div className="revision-body">

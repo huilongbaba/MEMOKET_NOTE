@@ -819,10 +819,11 @@ input[type=file]:hover { border-color: var(--accent); }
 .chip {
   display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px;
   border: 1px solid var(--line); border-radius: 13px; background: var(--panel); color: var(--fg);
-  font-size: 12px; line-height: 1; cursor: pointer; text-decoration: none;; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }   /* 窄栏里「speaker a」折成两行（第 268 轮实拍首页深色） */
+  font-size: 12px; line-height: 1; cursor: pointer; text-decoration: none; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }   /* 窄栏里「speaker a」折成两行（第 268 轮实拍首页深色） */
 .chip .bx { font-size: 13px; color: var(--muted); }
 .chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--panel); }
-.chip:disabled { cursor: default; opacity: 1; }
+.chip:disabled { cursor: default; opacity: 1; }           /* 展示用的 chip（KbBits）disabled = 不可点，不该发灰 */
+.chip.chip-action:disabled { opacity: .5; }               /* 动作 chip（存为笔记 / 现在存一版）disabled 就是不能点，要发灰 */
 .chip-count { color: var(--muted); font-size: 11px; }
 .chip.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .chip.active .bx, .chip.active .chip-count { color: var(--accent-fg); }
