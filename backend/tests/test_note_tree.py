@@ -35,7 +35,7 @@ def test_新建的笔记挂在树根(db):
 
 def test_有子节点的笔记就是文件夹(db):
     parent = db.create_note("u", "父", "")
-    child = db.create_note("u", "子", "", parent["id"])
+    db.create_note("u", "子", "", parent["id"])
     (p,) = [r for r in db.tree("u") if r["note_id"] == parent["id"]]
     assert p["child_count"] == 1, "没有单独的『文件夹』类型，有孩子就是文件夹"
 

@@ -3468,3 +3468,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [520] 第 495 轮：文件夹 harness 真跑回归（2026-09-14）
 
 - `plan-run:2f73294746f0`（110 秒）：计划 done、写出 3 篇 + 「📋 写作追踪」，harness-sync 0 条、client 无 error、后端无 traceback。跑完按 t0 把这 4 篇（notes / branches / 引用 / 历史 / 回收站）和这份计划（writing_plans / writing_sections）删干净，文件夹下回到 1 篇。没改代码。
+
+## [521] 第 496 轮：拿 ruff 的 F 类规则扫一遍后端（2026-09-14）
+
+- 仓库自己有 `test_no_undefined_names`（pyflakes 未定义名 / 残留 import）。用 ruff `--select F,E9,B006,B008` 再扫 app + tests：真问题只有测试里两个没用的局部变量（F841）——删；`F811 mem` 是 pytest 夹具的 import 再当参数，误报；`B008 File(...)` 是 FastAPI 惯用法。不引入 ruff 进 CI（pyflakes 那条测试已经把 F 类里要紧的盖住了，再加一个工具链不值）。

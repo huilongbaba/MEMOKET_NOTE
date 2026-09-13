@@ -126,7 +126,6 @@ def test_ingest_sync_scans_conflicts(env, monkeypatch):
 
 
 def test_笔记摄入也报块进度(env, monkeypatch):
-    mem = env
     n = store.create_note("u1", title="T", content=("这是一段很长的正文。" * 60 + "\n\n") * 4)
 
     def fake_remember(self, messages, *, session_id, date=None, title="", profile=None):
