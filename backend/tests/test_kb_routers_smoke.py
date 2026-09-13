@@ -90,3 +90,17 @@ def test_树的展开与重排接口(client):
     rows = client.get("/api/tree").json()
     pos = {x["note_id"]: x["position"] for x in rows if x["parent_note_id"] == "root"}
     assert pos[b["id"]] < pos[a["id"]]                       # 乙排到甲前面
+
+
+def test_技能重排是配置不是展示(client):
+    """两个 skill 互相矛盾时以模型最后读到的为准，所以顺序要落库、要按 reorder 给的顺序回来。"""
+    a = client.post("/api/skills", json={"name": "alpha-rule", "content": "先写结论", "scopes": []})
+    b = client.post("/api/skills", json={"name": "beta-rule", "content": "多给例子", "scopes": []})
+    assert a.status_code == 200 and b.status_code == 200, (a.text[:120], b.text[:120])
+    sa, sb = a.json()["slug"], b.json()["slug"]
+    before = [s["slug"] for s in client.get("/api/skills").json() if s["slug"] in (sa, sb)]
+    assert before == [sa, sb]
+    r = client.post("/api/skills/reorder", json={"ordered_ids": [sb, sa]})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    after = [s["slug"] for s in client.get("/api/skills").json() if s["slug"] in (sa, sb)]
+    assert after == [sb, sa]
