@@ -2518,3 +2518,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [306] 巡检第 277 轮：空笔记上点续写（2026-09-13）
 
 - `blank-tap`：新建空笔记后点续写——前端就拦了，日志里一次 `/api/magic-tap` 都没发；空笔记切走后自动扔掉，笔记数仍是 23。第 265 轮加的后端 400 是第二道。没改代码。
+
+## [307] 巡检第 278 轮：有没有没人用的前端模块（2026-09-13）
+
+- 扫了 `src/components` / `src/editor` / `src/util` 所有模块的引用：没有一个是没人 import 的（MemoryBrowser 走 KbNoteView 的主题地图页，KnowledgeGraph 走 LocalGraph）。没改代码。
