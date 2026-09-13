@@ -2795,3 +2795,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - `icon-picker:pick` 再拍一张看树：树行图标也变成火箭（拍完清回空）。
 - 图标是笔记的一部分，整库导出的 front-matter 加 `icon:`；导入（`/api/import/files`，我们自己的 zip 走 obsidian 洗法）认 front-matter 里的 icon——只认 boxicons 类名，别的当没有；文件夹笔记（`项目/项目.md`）的图标也回到文件夹本身。最近删除的快照是 `SELECT *`，恢复时图标自然在。
 - 测试：导出再导回图标都在、front-matter 剥干净。后端 904。
+
+## [363] 第 335 轮：⌘K 行带笔记图标（2026-09-13）
+
+- 笔记图标做了之后 ⌘K 的笔记行还是清一色 bx-note。`/api/notes/brief` 两条 SELECT 加 icon、NoteBrief 加字段，前端行图标 `n.icon || 'bx-note'`。实拍 `palette:harness`：那篇带火箭（拍前设、拍完清）。后端 904 / 前端 95。

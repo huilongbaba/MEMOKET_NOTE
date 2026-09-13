@@ -161,7 +161,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
           {typing && items.length === 0 && <p className="muted" style={{ padding: 8 }}>没有匹配结果</p>}
           {!typing && recent.length > 0 && <p className="muted palette-group">最近编辑</p>}
           {!typing && recent.map((n) => row(n.id, <span className="palette-line"><span className="palette-main">{displayTitle(n)}{dupRecent.has(displayTitle(n)) && firstBody(n)}</span>
-            <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note'))}
+            <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, n.icon || 'bx-note'))}
           {typing && cmdHits.length > 0 && <p className="muted palette-group">命令</p>}
           {typing && cmdHits.map((c) => row('c' + c.label, c.label, c.icon))}
           {notes.length > 0 && <p className="muted palette-group">笔记</p>}
@@ -172,7 +172,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact }: {
             const s = title.toLowerCase().includes(q.trim().toLowerCase()) ? null : n.snippet   // 片段在服务端算好了
             return row(n.id, <span className="palette-line"><span className="palette-main"><Highlight text={title} q={q} />
               {s ? <span className="muted palette-snip">{s.before}<mark>{s.hit}</mark>{s.after}</span> : (dupNotes.has(title) && firstBody(n))}</span>
-              <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, 'bx-note')
+              <span className="muted palette-when">{fmtDate(n.updated_at)}</span></span>, n.icon || 'bx-note')
           })}
           {/* 412 篇「会议纪要」搜「会议」只列 8 条，得说清后面还有多少（实拍大库用户） */}
           {typing && notesTotal > notes.length && <p className="muted palette-group" style={{ marginTop: 2 }}>还有 {notesTotal - notes.length} 篇没列出——多打几个字缩小范围</p>}

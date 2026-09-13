@@ -24,6 +24,7 @@ def test_设图标_树行和笔记都带_清掉回空(client):
     row = next(x for x in client.get("/api/tree").json() if x["note_id"] == n["id"])
     assert row["icon"] == "bx-rocket"
     assert client.get(f"/api/notes/{n['id']}").json()["icon"] == "bx-rocket"
+    assert client.get("/api/notes/brief", params={"q": "火箭"}).json()["notes"][0]["icon"] == "bx-rocket"   # ⌘K 行也带
     assert client.post(f"/api/notes/{n['id']}/icon", json={"icon": ""}).json()["icon"] == ""
 
 

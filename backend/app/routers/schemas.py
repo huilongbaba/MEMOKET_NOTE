@@ -131,6 +131,7 @@ class NoteBrief(BaseModel):
     title: str
     updated_at: str
     pinned: bool = False
+    icon: str = ""           # 笔记图标（boxicons 类名，空 = 默认）
     preview: str = ""
     has_body: bool = True
     first_body: str = ""      # 第一行非标题正文，同名笔记靠它分辨

@@ -554,18 +554,18 @@ def list_notes_brief(user_id: str, q: str = "") -> dict:
         if q:
             like = _like(q)
             rows = c.execute(
-                "SELECT id, title, updated_at, pinned, content FROM notes WHERE user_id=? AND "
+                "SELECT id, title, updated_at, pinned, icon, content FROM notes WHERE user_id=? AND "
                 "(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') ORDER BY pinned DESC, updated_at DESC",
                 (user_id, like, like)).fetchall()
         else:
             rows = c.execute(
-                "SELECT id, title, updated_at, pinned, substr(content, 1, ?) AS content, "
+                "SELECT id, title, updated_at, pinned, icon, substr(content, 1, ?) AS content, "
                 "length(trim(content)) > 0 AS has_body FROM notes WHERE user_id=? ORDER BY pinned DESC, updated_at DESC",
                 (PREVIEW_CHARS * 8, user_id)).fetchall()   # 多取几行算 first_body，返回的 preview 仍只 80 字
     out = []
     for r in rows[:BRIEF_MAX]:
         content = r["content"] or ""
-        d = {"id": r["id"], "title": r["title"] or "", "updated_at": r["updated_at"], "pinned": bool(r["pinned"]),
+        d = {"id": r["id"], "title": r["title"] or "", "updated_at": r["updated_at"], "pinned": bool(r["pinned"]), "icon": r["icon"] or "",
              "preview": content[:PREVIEW_CHARS], "has_body": bool(r["has_body"]) if "has_body" in r.keys() else bool(content.strip()),
              "first_body": _first_body_line(content, r["title"] or ""), "snippet": None}
         if q and q.lower() not in (r["title"] or "").lower():
