@@ -18,8 +18,10 @@ function when(iso: string) {
  * 且离上一版超过十分钟就自动留一版；也可以手动「存一版」。点一版看内容，
  * 「恢复到这一版」之前后端会把现在的正文再存一版，所以恢复永远可逆。
  */
-export default function RevisionHistoryPanel({ noteId, currentChars, currentContent = '', onRestored }: {
+export default function RevisionHistoryPanel({ noteId, currentChars, currentContent = '', onRestored, updatedAt }: {
   noteId: string
+  /** 这篇最近一次落库的时间：自动版本是保存时服务端留的，落库后要重查列表，不然要重开这篇才看到新的一版 */
+  updatedAt?: string
   currentChars: number
   /** 现在的正文：展开一版时默认给「与当前对比」（删了什么、加了什么），而不是只看旧版全文 */
   currentContent?: string
@@ -32,6 +34,8 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
 
   const reload = () => api.listRevisions(noteId).then(setRevs).catch(() => setRevs([]))
   useEffect(() => { setOpen(null); void reload() }, [noteId])  // eslint-disable-line react-hooks/exhaustive-deps
+  // 落库了就重查列表；展开着的那一版不动（用户可能正在看对比）
+  useEffect(() => { if (updatedAt) void reload() }, [updatedAt])  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function snapshot() {
     setBusy(true)

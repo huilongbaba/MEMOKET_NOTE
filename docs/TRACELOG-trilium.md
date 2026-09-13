@@ -3122,3 +3122,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [438] 第 410 轮：重打 dmg（2026-09-13）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行、`/links` 带 `dangling` 字段（真库两篇带引用的笔记都没坏链接）。
+
+## [439] 第 411 轮：历史版本列表跟着落库刷（2026-09-14）
+
+- 同一类的第四处：ribbon「历史」只在换笔记时查一次，保存时服务端留的自动版本要重开这篇才看到。加 `updatedAt` prop（落库后 `current.updated_at` 变）重查列表，展开着的那一版不动。前端 107。
