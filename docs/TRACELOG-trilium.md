@@ -2761,3 +2761,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 820×600 + 模型不可达：状态栏「⚠ LLM 不可达 (http://…) · 去设置 · 语音离线 · 8330 字」一行放下，不折。
 - 「存为笔记」在 0 条事实时带 disabled 但看着跟能点一样：`.chip:disabled { opacity: 1 }` 是给展示用的 chip（KbBits，disabled = 不可点）留的。动作 chip 加 `.chip-action`（存为笔记 / 现在存一版 / 恢复），disabled 发灰。顺手修 styles.css 里一个 `;;`。前端 95，修订语义 check 9 条过。
+
+## [356] 巡检第 328 轮：列表接口计时（terrence 库，2 万条事实）（2026-09-13）
+
+- 热索引后三次取最小：kb/tree 15ms / 55KB（第 313 轮多算一遍主题闭包没变慢）、tree 1.5ms、brief 1.4ms / 9KB、memory/topics 2ms、memory/entities 3ms / 108KB、stats 0.7ms。没抓到问题。
