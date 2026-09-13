@@ -2344,3 +2344,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 含 231–239 轮：静态检查清理、范围提示去重、实体类型节点页面、⌘K 最近编辑不列空壳、克隆 / 摄入 / 校验 / tap 真跑核对。
 - `npm run dist` → 183MB。杀第 230 轮那份起新的：`/api/health` ok，`tree/children?node=kb:etype:other` 空表（未分组库）、`harness/paused` 空。
+
+## [270] 巡检第 241 轮：事实表带查询串（2026-09-13）
+
+- `kb:facts?topic=finance`：主题框填上 finance、706 条按月分组、卡片悬停两个动作；`kb:facts?kind=decision`：这个库没有 decision 这种类型，0 条——下拉退回「全部类型」显示，跟 0 条对不上，但首页 chip 只会给出真实存在的类型，用户到不了这个组合，不改。
