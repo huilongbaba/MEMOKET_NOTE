@@ -43,7 +43,10 @@ def attach(body: BranchAttachIn, user: str = Depends(current_user)):
         raise HTTPException(404, "父节点不在")
     if body.note_id == body.parent_note_id:
         raise HTTPException(400, "不能把笔记挂到它自己下面")
-    store.attach(user, body.note_id, body.parent_note_id)
+    try:
+        store.attach(user, body.note_id, body.parent_note_id)
+    except ValueError as exc:
+        raise HTTPException(400, f"克隆不过去：{exc}")
     row = next((r for r in store.tree(user)
                 if r["note_id"] == body.note_id
                 and r["parent_note_id"] == body.parent_note_id), None)
@@ -79,6 +82,9 @@ def move(body: BranchMoveIn, user: str = Depends(current_user)):
     拒绝成环：树里一旦成环，任何一次深度遍历（渲染树、算路径、删子树）都会
     无限转下去，症状是界面直接卡死而不是报一个错。
     """
+    # 目标父节点不在（删了、id 拼错）就 404：移过去等于把这篇挂到树上看不见的地方（第 245 轮实测 200）
+    if body.to_parent_id != store.ROOT_ID and not store.get_note(user, body.to_parent_id):
+        raise HTTPException(404, "目标父节点不在")
     ok = store.move_branch(user, body.note_id, body.from_parent_id,
                            body.to_parent_id, body.position)
     if not ok:

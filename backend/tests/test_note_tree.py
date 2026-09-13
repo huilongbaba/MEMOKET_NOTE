@@ -275,3 +275,13 @@ def test_重排只动这个父节点下面的(db):
     rows = {r["note_id"]: r for r in db.tree("u")}
     assert rows[y["id"]]["position"] < rows[x["id"]]["position"]
     assert rows[top["id"]]["parent_note_id"] == db.ROOT_ID
+
+
+def test_克隆到自己的子树里会成环_拒绝(db):
+    import pytest
+    a = db.create_note("u", "A", "")
+    b = db.create_note("u", "B", "", a["id"])
+    c_ = db.create_note("u", "C", "", b["id"])
+    with pytest.raises(ValueError):
+        db.attach("u", a["id"], c_["id"])
+    assert [r for r in db.tree("u") if r["note_id"] == a["id"]] and all(r["parent_note_id"] == "root" for r in db.tree("u") if r["note_id"] == a["id"])

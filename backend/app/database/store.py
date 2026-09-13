@@ -1094,6 +1094,9 @@ def attach(user_id: str, note_id: str, parent_id: str = ROOT_ID,
     两个看起来一样、删一个另一个还在的节点。
     """
     with connect() as c:
+        # 克隆到自己的子树里同样成环（move 早就拒了，attach 没拒——第 245 轮实测 200）
+        if note_id == parent_id or _would_cycle(c, note_id, parent_id):
+            raise ValueError("目标在这棵笔记自己的子树里，会成环")
         row = c.execute("SELECT * FROM branches WHERE note_id=? AND parent_note_id=?",
                         (note_id, parent_id)).fetchone()
         if row:

@@ -39,3 +39,16 @@ def test_标题一行_父节点要存在(tmp_path, monkeypatch):
         assert c.post("/api/notes", json={"title": "p", "content": "", "parent_note_id": "nope"}).status_code == 404
         m = c.put(f"/api/notes/{n['id']}", json={"title": "改\n名", "content": "x"}).json()
         assert m["title"] == "改 名"
+
+
+def test_移动到不存在的父节点404_克隆成环400(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.main import app
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        a = c.post("/api/notes", json={"title": "A", "content": ""}).json()
+        b = c.post("/api/notes", json={"title": "B", "content": "", "parent_note_id": a["id"]}).json()
+        assert c.patch("/api/tree/branches/move", json={"note_id": b["id"], "from_parent_id": a["id"], "to_parent_id": "nope"}).status_code == 404
+        assert c.post("/api/tree/branches", json={"note_id": a["id"], "parent_note_id": b["id"]}).status_code == 400
+        assert [t["parent_note_id"] for t in c.get("/api/tree").json() if t["note_id"] == b["id"]] == [a["id"]]
