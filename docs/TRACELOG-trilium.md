@@ -1997,3 +1997,8 @@ app 模块 import 之前把 `KITE_DATA_DIR` 指到临时目录（skills / assets
 探针留下的（cancel-test、shot-fresh-*、u9…）。启动时 `prune_job_payloads` 删掉 done / error /
 cancelled 和无主的 payload（interrupted 的留着断点续跑）；`maybe_backup_kb` 顺手把用户目录已经不在
 的备份清掉。这次清掉 35 个 payload、20 个备份目录。pytest 862。
+
+## [207] 巡检第 178 轮：懒加载之后的树 / 键盘 / 引用页复查（2026-09-13）
+
+知识库首页、树的键盘导航（深色）、引用页都正常，client-log 无错。右栏「记忆」的说明文字加了范围
+下拉之后折成两行，缩短成「跟着正文自动浮现，点一下插入引用。」。
