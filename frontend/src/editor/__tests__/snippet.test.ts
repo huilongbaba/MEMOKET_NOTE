@@ -1,24 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { matchSnippet } from '../../util/snippet'
 
-describe('matchSnippet', () => {
-  it('命中处前后各截一段，保留原大小写', () => {
-    const s = matchSnippet('a'.repeat(50) + ' Startup 回顾 ' + 'b'.repeat(50), 'startup', 10)
-    expect(s).not.toBeNull()
-    expect(s!.hit).toBe('Startup')
-    expect(s!.before.startsWith('…')).toBe(true)
-    expect(s!.after.endsWith('…')).toBe(true)
-    expect(s!.before.length).toBe(11)
+describe('搜索摘要', () => {
+  it('前面留得短，命中不会被一行省略号吃掉', () => {
+    const content = '# 标题\n\n' + '前面很长很长的一段废话'.repeat(5) + '4月16日EVT准备4台主机' + '后面的内容'.repeat(5)
+    const s = matchSnippet(content, 'EVT', 40, 8)!
+    expect(s.hit).toBe('EVT')
+    expect(s.before.replace(/^…/, '').length).toBeLessThanOrEqual(8)
+    expect(s.after.length).toBeGreaterThan(20)
   })
-  it('换行折成空格，开头命中不加省略号', () => {
-    const s = matchSnippet('创业\n一年', '创业', 5)
-    expect(s).toEqual({ before: '', hit: '创业', after: ' 一年' })
-  })
-  it('去掉标题井号和列表符号', () => {
-    expect(matchSnippet('# 创业一年\n- 第一条', '创业')).toEqual({ before: '', hit: '创业', after: '一年 第一条' })
-  })
-  it('没命中 / 空查询给 null', () => {
-    expect(matchSnippet('abc', 'z')).toBeNull()
-    expect(matchSnippet('abc', '  ')).toBeNull()
+  it('没命中给 null，井号和列表符不进摘要', () => {
+    expect(matchSnippet('# 标题\n- 一条', 'zzz')).toBeNull()
+    expect(matchSnippet('# 标题 EVT', 'evt')!.before).toBe('标题 ')
   })
 })

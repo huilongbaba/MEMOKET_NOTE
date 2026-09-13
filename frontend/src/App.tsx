@@ -1111,7 +1111,7 @@ export default function App() {
         {n.content.trim() && (
           <div className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {(() => {
-              const s = searchResults !== null ? matchSnippet(n.content, noteQuery) : null
+              const s = searchResults !== null ? matchSnippet(n.content, noteQuery, 40, 8) : null
               return s ? <>{s.before}<mark>{s.hit}</mark>{s.after}</> : previewLine(n.content, displayTitle(n))
             })()}
           </div>
