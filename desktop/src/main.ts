@@ -5,7 +5,7 @@
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
 import { nativeTheme, app, BrowserWindow, Menu, dialog, shell, ipcMain, session, screen } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { startBackend, type Backend } from './backend.js'
@@ -63,6 +63,23 @@ function remember(line: string) {
   logs.push(line.trimEnd())
   if (logs.length > 400) logs.shift()      // 只留最近的，别把内存吃光
   process.stdout.write(line)
+  persistLog(line)
+}
+
+/** 日志同时落盘（~/Library/Logs/<app>/memoket-note.log）：内存里那 400 行在应用崩了 / 起不来的时候
+ *  正是最需要的时候看不到（「导出后端日志」要应用活着才能点）。超过 2MB 滚成 .1，只留一代。 */
+const LOG_MAX_BYTES = 2 * 1024 * 1024
+let logFile: string | null = null
+function persistLog(line: string) {
+  try {
+    if (logFile === null) {
+      const dir = app.getPath('logs')
+      mkdirSync(dir, { recursive: true })
+      logFile = path.join(dir, 'memoket-note.log')
+    }
+    if (existsSync(logFile) && statSync(logFile).size > LOG_MAX_BYTES) renameSync(logFile, logFile + '.1')
+    appendFileSync(logFile, line.endsWith('\n') ? line : line + '\n', 'utf8')
+  } catch { /* 日志写不了不能影响正事 */ }
 }
 
 const boundsFile = () => path.join(app.getPath('userData'), 'window.json')
@@ -292,6 +309,7 @@ function installMenu() {
         { label: '导出全部笔记…', click: () => win?.webContents.send('menu', 'export-all') },
         { label: '打开备份文件夹', click: () => { void shell.openPath(path.join(app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.resolve(__dirname, '..', '..', 'backend', 'data'), 'backups')) } },
         { label: '打开数据文件夹', click: () => { void shell.openPath(app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.resolve(__dirname, '..', '..', 'backend', 'data')) } },
+        { label: '打开日志文件夹', click: () => { void shell.openPath(app.getPath('logs')) } },
         { label: '导出后端日志…', click: () => {
           const file = path.join(app.getPath('logs'), `memoket-note-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.log`)
           try { writeFileSync(file, logs.join('\n') + '\n', 'utf8'); shell.showItemInFolder(file) }
