@@ -462,6 +462,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 空笔记上点续写：应该提示先写点东西，而不是让模型编
   if (probe === 'blank-tap' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => void newNote(), 600); setTimeout(() => void actionsRef.current.runMagicTap(), 2500) }
   if (probe === 'split' && notes.length >= 2) setTimeout(() => openInSplit(notes[1].id), 800)
+  // 分屏第二栏里写字：找到那一栏的 CM 视图，文末插一句，看正文变了 + 底下出「已保存」（探针模式不落库）
+  if (probe === 'split:edit' && notes.length >= 2 && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => openInSplit(notes[1].id), 800)
+    setTimeout(() => {
+      const el = document.querySelector('.split-body .cm-content')
+      const v = el && EditorView.findFromDOM(el as HTMLElement)
+      if (!v) { void api.clientLog('warn', 'split:edit: no editor in split', '', 'probe'); return }
+      v.dispatch({ changes: { from: v.state.doc.length, insert: '\n\n（这一句是在分屏里写的）' } })
+    }, 3000)
+    setTimeout(() => void api.clientLog('warn', `split:edit status=${JSON.stringify(document.querySelector('.split-save-status')?.textContent ?? null)} editors=${document.querySelectorAll('.split-body .cm-content').length}`, '', 'probe'), 5500)
+  }
   if (probe === 'confirm' && tree.length) {
     const parent = tree.find((r) => r.child_count > 0)
     const n = parent && notes.find((x) => x.id === parent.note_id)

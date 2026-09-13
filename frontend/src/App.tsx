@@ -15,6 +15,7 @@ import AudioRecorder from './components/AudioRecorder'
 import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
+import SplitEditor from './components/SplitEditor'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import type { SlashItem } from './editor/slashMenu'
@@ -2544,7 +2545,7 @@ export default function App() {
     editorViewRef.current?.dispatch({ effects: endRun.of(id) })
   }
 
-  /** 分屏的第二栏。真笔记只读渲染；虚拟节点走 KbNoteView。
+  /** 分屏的第二栏。真笔记可编辑（SplitEditor，自己自动保存）；主栏正开着的那篇只读；虚拟节点走 KbNoteView。
    *  **是函数不是组件**：写成 App 内部的组件的话每次 render 都是新类型，
    *  里面的 MarkdownEditor 会跟着重挂，滚动位置全丢。 */
   function renderSplit(id: string) {
@@ -2568,7 +2569,16 @@ export default function App() {
                           onOpenNote={(nid) => { const n = notes.find((x) => x.id === nid); if (n) void switchTo(n) }}
                           onCite={current ? (fid, text) => insertAtCursor(`${text} [${fid}]`) : null} />
             : note
-              ? (note.content.trim() ? <MarkdownEditor content={note.content} readOnly /> : <p className="muted">这篇还是空的。</p>)
+              ? (current?.id === note.id
+                  // 同一篇在主栏也开着：这里只读，不然两边各存各的互相盖
+                  ? <>
+                      <p className="muted split-hint">这篇在主栏正开着，这里只看不改。</p>
+                      {note.content.trim() ? <MarkdownEditor content={content} readOnly /> : <p className="muted">这篇还是空的。</p>}
+                    </>
+                  : <SplitEditor key={note.id} note={note} onSaved={(n) => {
+                      setNotes((prev) => prev.map((x) => (x.id === n.id ? n : x)))
+                      void reloadTree(false)
+                    }} />)
               : <p className="muted">这篇笔记已经不在了。</p>}
         </div>
       </>
