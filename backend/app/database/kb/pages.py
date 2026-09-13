@@ -148,7 +148,7 @@ def dashboard(mem) -> dict:
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
     recent = recent_first(u for u in units if u.date)[:6]
-    labels = part_labels(recent)
+    labels = part_labels(units)   # n 按整个库算，不按最近几场（第 266 轮）
     recent_units = [{"id": u.id, "date": u.date, "title": labels.get(u.id) or u.title or "", "facts": unit_facts.get(u.id, 0)} for u in recent]
 
     return {

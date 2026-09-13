@@ -155,7 +155,8 @@ def build(mem) -> list[dict]:
 
     # ---- 最近摄入：最近的几次会议
     units = recent_first(u for u in store.units.values() if u.date)[:RECENT_UNITS]
-    labels = part_labels(units)
+    # 段号 k/n 的 n 要按整个库算：只按最近 15 场算，一份 13 段的材料截进窗口 6 段就显示成「1/6」（第 266 轮实拍）
+    labels = part_labels(store.units.values())
     unit_rows = [
         _row(f"kb:unit:{u.id}", "kb:recent", _unit_tree_title(u.date, labels.get(u.id) or u.title or u.id),
              position=i, child_count=unit_count.get(u.id, 0),

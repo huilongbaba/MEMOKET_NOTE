@@ -200,3 +200,14 @@ def test_同一天切段的会议按段号正序(mem):
     assert order == ["doc8-0", "doc8-1", "doc9-0", "doc9-1", "doc9-2"], "同一份材料的几段挨着、段号正序，不同材料不交错"
     recent = [u["id"] for u in pages.dashboard(mem)["recent_units"] if u["id"].startswith("obsidian-doc9-")]
     assert recent == ["obsidian-doc9-0", "obsidian-doc9-1", "obsidian-doc9-2"]
+
+
+def test_段号的分母按整个库算_不按窗口(mem, monkeypatch):
+    from memoket_kite.core.algebra import Unit
+    from app.database.kb import virtual_tree
+    store, _ = mem._index()
+    for i in range(6):
+        store.units[f"obsidian-long-{i}"] = Unit(id=f"obsidian-long-{i}", date="2026-01-01", t="", title="长材料", dur_min=0, n_lines=1)
+    monkeypatch.setattr(virtual_tree, "RECENT_UNITS", 3)
+    rows = [r for r in virtual_tree.build(mem) if r["parent_note_id"] == "kb:recent"]
+    assert any("/6 · 长材料" in r["title"] for r in rows) and not any("/3 " in r["title"] for r in rows)
