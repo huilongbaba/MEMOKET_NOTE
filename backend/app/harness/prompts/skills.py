@@ -20,7 +20,7 @@ from __future__ import annotations
 # 每个 scope 对应代码里实际的一个生成调用点，不是随便起的分类——新增调用
 # 点时要同步在这里加一条，否则那个调用点的 skill 面板选项会找不到对应位置。
 SKILL_SCOPES = {
-    "magic_tap": "续写（magic tap）",
+    "magic_tap": "续写",
     "section_write": "无限续写 · 分段写作",
     "plan_generate": "无限续写 · 生成分段计划",
     "more_sections": "无限续写 · 判断还有更多",
