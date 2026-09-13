@@ -83,6 +83,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 441–450 | 键盘 / 读屏：图标选择器方向键、弹层关掉后焦点回原位（useRestoreFocus，确认框 / 选择器 / 快速查看 / 快捷键表 / 右键菜单 / 选中菜单 / 斜杠输入框；⌘K 单独处理）、图标钮 aria；重打 dmg（第 450 轮） |
 | 451–460 | 前端观测日志加 info 档；client-log 测试；按 openapi 反查没被测试碰过的路径 35 → 14（知识库 / 记忆只读接口路由层冒烟、树展开 / 重排、技能重排）；kbNoise 测试；重打 dmg（第 460 轮） |
 | 461–470 | 噪声正则测试覆盖核对 + 说话人标签正则收紧（speakers / speaker phone 不再算）；北极星三条判据 + 13 个痛点逐条核对（PPT 记为债、10 个禁用按钮补说明）；虚拟页纯规则搬到 util/virtual.ts；重打 dmg（第 470 轮） |
+| 471–480 | App.tsx 继续瘦身（面包屑 `util/crumbs`、引用 / 链接正则合成一份 `util/wordCount`、三栏宽度裁决 `util/layoutPanes`、草稿 `util/draft`，3249 → ~3210 行，+14 条单测）；`check-regex-parity` 前后端正则行为对拍（第一次就抓到自己的口径回归）；⌘⇧T 重开标签回原位；标签溢出 ▾ 列出全部 + ContextMenu 超高钳顶内部滚；重打 dmg（第 480 轮） |
 
 ## 当前优先队列（2026-09-12 晚，用户点名：这些排在巡检之前）
 

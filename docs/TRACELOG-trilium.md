@@ -3396,3 +3396,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [504] 第 479 轮：重打 dmg 前的全量门（2026-09-14）
 
 - 后端 950 通过；前端 tsc + eslint + vitest 126 + 13 条 check / smoke 全过（含新加的 check-regex-parity）。
+
+## [505] 第 480 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 2 秒、tree / kb/tree 正常。正式版 userData 是独立库（只 1 篇笔记），拿 dev 库的 id 查链接接口是 404，属正常——冒烟别混用两边的 id。PROGRESS 补 471–480 行。
