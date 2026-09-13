@@ -3530,3 +3530,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [534] 第 510 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree（180 行）正常；正式版日志新增 8 行裸 `INFO:` 0 行。PROGRESS 补 501–510 行。
+
+## [535] 第 511 轮：标签顶上的「正在写」色条（2026-09-14）
+
+- 对着 trilium-ui-gap §3（标签页）逐行核对：14 行里除「工作区色条」全都早就做了，只是表里没标——补上「已做」。剩那一行按当时的建议落地：Trilium 工作区色条的位置（标签顶部 3px）用来表达「这篇 harness 正在写」——切去别的标签时唯一能看出还在跑、跑的是哪篇的地方。`.note-tab.busy::after` + 1.6s 呼吸；title 后缀「（正在写）」。App 新增 `noteHarnessNoteId`（单篇 harness 起 / 续跑时记、finally 清），文件夹 harness 用 `harness.currentNoteId`；TabBar 收 `busyIds`。
+- 实拍：真跑 26 秒时截，「harne…」标签顶上蓝条。跑完把正文从 `r492-before.json` 还原、没留快照。

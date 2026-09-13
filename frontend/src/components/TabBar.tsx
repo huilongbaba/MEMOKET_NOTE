@@ -22,7 +22,7 @@ const MIN_W = 84
 const MARGIN_W = 5
 
 export default function TabBar({
-  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf, onListTabs,
+  tabs, activeId, onSelect, onClose, onNew, onContextMenu, onReorder, iconOf, onListTabs, busyIds,
 }: {
   tabs: Tab[]
   activeId: string | null
@@ -36,6 +36,8 @@ export default function TabBar({
   onReorder?: (id: string, index: number) => void
   /** 装不下时多一个 ▾：列出所有标签（Chrome 的标签搜索 / VS Code 的「打开的编辑器」）。50 个标签靠 ◀ ▶ 一格格滚是找不到的 */
   onListTabs?: (at: { x: number; y: number }) => void
+  /** harness 正在写的那几篇：标签顶上一道色条。切去别的标签时唯一能看出「还在跑、跑的是哪篇」的地方 */
+  busyIds?: Set<string>
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -88,9 +90,9 @@ export default function TabBar({
           key={t.id}
           role="tab"
           aria-selected={t.id === activeId}
-          className={'note-tab' + (t.id === activeId ? ' active' : '')
+          className={'note-tab' + (t.id === activeId ? ' active' : '') + (busyIds?.has(t.noteId) ? ' busy' : '')
             + (dragId === t.id ? ' dragging' : '') + (overIndex === i && dragId !== t.id ? ' drop-before' : '')}
-          title={`${t.title || '未命名'}${i < 9 ? `　${fmtShortcut('⌘' + (i + 1))}` : ''}`}
+          title={`${t.title || '未命名'}${busyIds?.has(t.noteId) ? '（正在写）' : ''}${i < 9 ? `　${fmtShortcut('⌘' + (i + 1))}` : ''}`}
           onClick={() => onSelect(t.id)}
           // 同行内拖拽排序（Trilium 用 Draggabilly；HTML5 dnd 够用）
           draggable={!!onReorder}

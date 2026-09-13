@@ -218,6 +218,8 @@ export default function App() {
   const [beatCoverage, setBeatCoverage] = useState<{ level: number; note: string } | null>(null)
   const [revisions, setRevisions] = useState<Revision[]>([])
   const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness'>('')
+  // 单篇 harness 正在写哪篇：标签行给那个标签顶上一道 3px 色条（Trilium 工作区色条的位置，第 511 轮）
+  const [noteHarnessNoteId, setNoteHarnessNoteId] = useState<string | null>(null)
   /** agent 每一轮干了什么，喂给 AgentActivity 可视化。按轮聚合：用户关心的是
    * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
    * 事件流水账看不出所以然。 */
@@ -2061,7 +2063,7 @@ export default function App() {
     // 起跑时记一笔发出去的是什么：哪篇、多少字、骨架开头——探针实拍过一次
     // 「跑在了另一篇上」，没有这条日志只能猜。
     void api.clientLog('info', `harness start note=${noteId} title=${current.title.slice(0, 20)} content=${content.length} spine=${spine.slice(0, 30)} beats=${beats.length}`, '', 'harness-start')
-    setLoading('note-harness')
+    setLoading('note-harness'); setNoteHarnessNoteId(noteId)
     setNoteHarnessStatus('启动中…')
     setHarnessDone(false); harnessDoneRef.current = false
     setBeatCoverage(null)
@@ -2085,7 +2087,7 @@ export default function App() {
       if ((e as Error).name !== 'AbortError') toast(
         (mode === 'polish' ? '打磨' : '智能续写') + '失败：' + friendlyError(e), 'error')
     } finally {
-      setLoading('')
+      setLoading(''); setNoteHarnessNoteId(null)
       // 停在「等你处置」时不能清——那句提示刚在 onDone 里设好，清掉就等于
       // 两个按钮凭空出现、没有任何说明。
       if (!pausedRef.current && !harnessDoneRef.current) setNoteHarnessStatus('')
@@ -2287,7 +2289,7 @@ export default function App() {
       setLoading('')
       return
     }
-    setLoading('note-harness')
+    setLoading('note-harness'); setNoteHarnessNoteId(run.noteId)
     setNoteHarnessStatus('接着写…')
     runBaseRef.current = kept
     liveContentRef.current = kept
@@ -2358,7 +2360,7 @@ export default function App() {
     } catch (e) {
       toast(`排版失败：${friendlyError(e)}`, 'error')
     } finally {
-      setLoading('')
+      setLoading(''); setNoteHarnessNoteId(null)
     }
   }
 
@@ -2771,6 +2773,7 @@ export default function App() {
           iconOf={(noteId) => notes.find((x) => x.id === noteId)?.icon || undefined}
           onReorder={reorderTab}
           onListTabs={setTabListAt}
+          busyIds={new Set([loading === 'note-harness' ? noteHarnessNoteId : null, harness?.running ? harness.currentNoteId : null].filter((x): x is string => !!x))}
         />
       </div>
       <div className="shell-main">

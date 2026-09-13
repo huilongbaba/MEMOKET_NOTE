@@ -310,7 +310,16 @@
   font-size: 12px; cursor: pointer; user-select: none;
   /* 新标签入场：从上方 10px 落下来，120ms（tab_row.ts:131-134） */
   animation: note-tab-was-just-added 120ms ease-out;
+  position: relative;
 }
+/* harness 正在写的那篇：顶上 3px 色条（Trilium 工作区色条 shell.css:1191-1203 的位置，我们没有工作区，
+   这个位置正好表达「这个标签在跑」——切去别的标签时唯一能看见的地方） */
+.note-tab.busy::after {
+  content: ''; position: absolute; top: 0; left: 10px; right: 10px; height: 3px;
+  border-radius: 0 0 3px 3px; background: var(--accent);
+  animation: note-tab-busy 1.6s ease-in-out infinite;
+}
+@keyframes note-tab-busy { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @keyframes note-tab-was-just-added { from { transform: translateY(10px); opacity: 0; } }
 .note-tab:hover { background: var(--hover-item-bg); }
 .note-tab.active {
