@@ -227,7 +227,7 @@ backend/app/
     compose_block.py           `/` 块生成
     harness.py                 GET /paused · POST /{run_id}/resume
     compose.py                 单点动作：skeleton · magic-tap · rewrite · expand · verify · digest
-    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径；克隆 / 移动都判环，目标父节点要存在）· 笔记 CRUD（标题压成一行 ≤200 字）· POST /{id}/icon 笔记图标（boxicons 类名，Trilium 的 NoteIcon）· GET /{id}/graph 这篇周围有什么（引用 + 贡献的事实 → 主题 / 实体局部图）· /links 带 dangling（链到已删笔记的）——前端「清掉这些引用」「改成纯文本」都只改正文里的记号（`util/wordCount.citationRanges / noteLinkRanges`，走 CM changes 可撤销）· GET /brief 轻量列表 · 最近删除（note_trash，30 天可恢复；空的未命名不进；恢复时父链也在回收站的先一起回来）· 启动时空页 ≥1MB 且 ≥25% 就 VACUUM（sqlite 删行不缩文件）· 今天的日记（日记/年/月/日）
+    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径；克隆 / 移动都判环，目标父节点要存在）· 笔记 CRUD（标题压成一行 ≤200 字）· POST /{id}/icon 笔记图标（boxicons 类名，Trilium 的 NoteIcon）· GET /{id}/graph 这篇周围有什么（引用 + 贡献的事实 → 主题 / 实体局部图）· /links 带 dangling（链到已删笔记的）——前端「清掉这些引用」「改成纯文本」都只改正文里的记号（`util/wordCount.citationRanges / noteLinkRanges`，走 CM changes 可撤销）· GET /brief 轻量列表 · 最近删除（note_trash，30 天可恢复；空的未命名不进；恢复时父链也在回收站的先一起回来）· 启动时空页 ≥1MB 且 ≥25% 就 VACUUM（sqlite 删行不缩文件）· 启动时删掉没有任何笔记 / 历史版本 / 最近删除引用且超过 7 天的图（`sweep_orphan_assets`）· 今天的日记（日记/年/月/日）
     kb.py · memory.py          知识库虚拟子树、各节点页面、检索、事实 peek / 反查
     ingest.py · import_sources.py · skills.py · settings.py · profile.py · assets.py · export.py
     client_log.py              前端错误报进后端日志（打包版没有 DevTools）

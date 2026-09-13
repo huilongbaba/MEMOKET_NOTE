@@ -40,6 +40,9 @@ if _stale_pauses:
     print(f"[startup] 清理了 {_stale_pauses} 个超过 {store.SNAPSHOT_MAX_AGE_DAYS} 天没处置的轮末暂停")
 _orphan_plans = store.sweep_orphan_plans()
 _payloads = store.prune_job_payloads(pathlib.Path(get_settings().kite_data_dir) / "jobs")
+_orphan_assets = store.sweep_orphan_assets(pathlib.Path(get_settings().kite_data_dir) / "assets")
+if _orphan_assets["removed"]:
+    print(f"[startup] 清掉 {_orphan_assets['removed']} 张没人引用的图（{_orphan_assets['bytes'] / 1024 / 1024:.1f}MB，超过 7 天）")
 _vac = store.vacuum_if_bloated()
 if _vac.get("vacuumed"):
     print(f"[startup] 笔记库 VACUUM：{_vac['before_mb']}MB → {_vac['after_mb']}MB（空页 {_vac['free_mb']}MB）")

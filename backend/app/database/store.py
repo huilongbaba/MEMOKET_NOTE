@@ -1784,6 +1784,37 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
     ]
 
 
+def sweep_orphan_assets(assets_dir: Path, min_age_days: int = 7) -> dict:
+    """资产库里没有任何笔记 / 历史版本 / 最近删除引用的图删掉。dev 库 10 张里 6 张（6.6MB）是探针拖图、
+    删掉的笔记留下的，之前没有任何清理机制（第 417 轮）。7 天宽限：刚贴进来还没自动保存的图不能误删；
+    引用按文件名 LIKE 扫三张表，笔记里的图片链接是 `/api/assets/<名字>`。"""
+    if not assets_dir.is_dir():
+        return {"removed": 0, "bytes": 0}
+    now = datetime.now(timezone.utc).timestamp()
+    removed = 0
+    freed = 0
+    with connect() as c:
+        for entry in sorted(assets_dir.iterdir()):
+            if not entry.is_file() or entry.name.startswith("."):
+                continue
+            if now - entry.stat().st_mtime < min_age_days * 86400:
+                continue
+            pat = f"%{entry.name}%"
+            used = any(
+                c.execute(f"SELECT 1 FROM {t} WHERE {col} LIKE ? LIMIT 1", (pat,)).fetchone()
+                for t, col in (("notes", "content"), ("note_revisions", "content"), ("note_trash", "payload")))
+            if used:
+                continue
+            try:
+                size = entry.stat().st_size
+                entry.unlink()
+                removed += 1
+                freed += size
+            except OSError:
+                pass
+    return {"removed": removed, "bytes": freed}
+
+
 def prune_job_payloads(jobs_dir: Path) -> int:
     """导入任务的 payload（清洗好的笔记列表落盘，给断点续跑用）跑完就没用了：
     done / error / cancelled 的、以及库里已经没有这个 job 的文件删掉，只留 interrupted 的。"""
