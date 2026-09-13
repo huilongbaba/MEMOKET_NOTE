@@ -2860,3 +2860,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [377] 第 349 轮：重打 dmg 前的全量门（2026-09-13）
 
 - 后端 906 通过；前端 tsc + eslint + vitest 95 + 12 条 check / smoke 全过。
+
+## [378] 第 350 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 2 秒、health ok、后端 rss 81MB、空库 kb/tree 8 行、css 里有 `.note-tab-icon`、日志文件在写。
