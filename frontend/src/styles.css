@@ -803,8 +803,10 @@ input[type=file]:hover { border-color: var(--accent); }
 .kb-search input:focus-visible { outline: none; }
 /* 五张卡固定五列在 820px 窗口里每张只剩 130px，「1996-03 → 2026-12」折成三行把卡撑高（第 206 轮实拍）——
    放不下就换行 */
-.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat-row > .stat-tile { flex: 1 1 118px; min-width: 0; }   /* 正常宽度一行五张；窄了最后一张换到下一行占整行（grid auto-fit 在正常宽度也会挤成 4+1，第 212 轮实拍） */
 .stat-span { white-space: nowrap; }
+.stat-row > .stat-tile:has(.stat-span) { flex-basis: 168px; }   /* 「1996-03 → 2026-12」不折行要这么宽 */
 .stat-tile { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .stat-value { font-size: 22px; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; }
 .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
