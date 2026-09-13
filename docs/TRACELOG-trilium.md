@@ -2245,3 +2245,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 根因三个：① `consumeHarnessStream` 里 AG-UI 的 `ACTIVITY_SNAPSHOT` / `TOOL_CALL_RESULT` 自己不带轮次，前端写死 `round: 0`——于是凭空多出一张「第 0 轮」，所有阶段标签、工具结果全堆进去；② 卡片按事件到达顺序建（开跑前的初始策略先到、挂到第 1 轮；快照后到、建了第 0 轮），面板按数组顺序画，就成了 1 在 0 上面；③ RUN_FINISHED 时没摘阶段标签。
 - **改**：解析器记住最近一次 `STEP_STARTED` / `round_summary` 的轮次，快照和工具结果跟着它走；面板按轮次升序画，轮 0（如果有，比如断点续跑）标成「开跑前」；跑完 / 暂停时把所有卡片的阶段标签摘掉。
 - 单测 `harnessStreamRounds.test.ts`：快照跟着 STEP_STARTED 的轮次（0,1,1,2,2）、工具结果归第 1 轮。前端 88 tests。
+
+## [249] 第 220 轮：重打 dmg（2026-09-13）
+
+- 含 201–219 轮：召回前剥图片 / 链接、树上实体懒加载点得开、说话人伪实体不进树 / chip、会议行「月-日 k/n」、首页 / 树的主题计数一致、懒加载节点面包屑、空笔记不进回收站、统计卡换行、LICENSE + 第三方声明随包、说话人写法归一、用户报的 Agent 运行轮次顺序。
+- `npm run dist` → 183MB。`Contents/Resources/` 里有 `LICENSE`（AGPL 全文）和 `third-party-notices.md`。杀第 200 轮那份起新的：`/api/health` ok，`facts?who=speaker_a` 7291 条（归一在正式版生效）。打磨那一轮的状态行「到达轮数上限 · 1 轮」跟面板一张卡对上了。
