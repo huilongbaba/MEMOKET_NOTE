@@ -35,3 +35,8 @@ export function previewLine(content: string, skip = ''): string {
   const skipNorm = skip.trim().replace(/\s+/g, '')
   return lines.find((l) => l.replace(/\s+/g, '') !== skipNorm) ?? lines[0] ?? ''
 }
+
+/** 懒加载的虚拟节点在树上挂在哪个分类下（面包屑拼父链用） */
+export function virtualParentOf(id: string): string | undefined {
+  return ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
+}

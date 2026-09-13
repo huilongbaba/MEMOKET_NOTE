@@ -42,6 +42,7 @@ import PreferencesPanel from './components/PreferencesPanel'
 import KbNoteView from './components/KbNoteView'
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
+import { buildCrumbs } from './util/crumbs'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { runProbe } from './probes'
@@ -751,31 +752,9 @@ export default function App() {
 
   /** 当前在看的东西在树上的路径（面包屑）。克隆时取第一条。 */
   const noteIdSet = useMemo(() => new Set(notes.map((n) => n.id)), [notes])
-  const crumbs = useMemo(() => {
-    const id = current?.id ?? virtualId
-    if (!id) return [] as TreeRow[]
-    const byNote = new Map<string, TreeRow>()
-    for (const r of allRows) if (!byNote.has(r.note_id)) byNote.set(r.note_id, r)
-    const out: TreeRow[] = []
-    let cur = byNote.get(id); let guard = 0
-    while (cur && guard++ < 50) { out.unshift(cur); cur = byNote.get(cur.parent_note_id) }
-    // 从树上尾巴行「还有 N 条 · 去事实表看」进来的事实表：面包屑末尾用页面的名字（跟标签一样「事实表 · work」），不是那句入口的话
-    if (out.length && out[out.length - 1].note_id.startsWith('kb:facts')) {
-      const last = out[out.length - 1]
-      out[out.length - 1] = { ...last, title: factsLabel(last.note_id) ?? '事实表' }
-    }
-    // 懒加载的那几层（实体 / 某个主题下的事实…）不在 allRows 里，之前状态栏就退回「23 篇笔记」
-    // （第 207 轮实拍实体页）——按 id 的形状把父链拼出来，名字用标签页上的
-    if (out.length === 0 && api.isVirtualId(id)) {
-      const parent = ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
-      // app:* 那些页（最近删除 / 写作 Skill / 设置…）不在知识库下面，别给它们冠「知识库 /」
-      // 知识库根本身（id === 'kb'）在 kbRows 到之前也走这条：别拼成「知识库知识库」（第 269 轮实拍）
-      const chain = id.startsWith('app:') ? [id] : Array.from(new Set(['kb', ...(parent ? [parent] : []), id]))
-      const leaf = tabs.find((t) => t.noteId === id)?.title ?? VIRTUAL_LABELS[id] ?? id.split(':').pop() ?? id
-      return chain.map((x) => byNote.get(x) ?? ({ id: x, note_id: x, parent_note_id: '', title: x === id ? leaf : (VIRTUAL_LABELS[x] ?? x), position: 0, is_expanded: false, preview: '', cite_count: 0, ingested_at: '', pinned: false, updated_at: '', child_count: 0, branch_count: 0, fact_count: 0 } as TreeRow))
-    }
-    return out
-  }, [current, virtualId, allRows, tabs])
+  const crumbs = useMemo(
+    () => buildCrumbs(current?.id ?? virtualId, allRows, (id) => tabs.find((t) => t.noteId === id)?.title, api.isVirtualId),
+    [current, virtualId, allRows, tabs])
 
   /** 虚拟节点的右键菜单——没有「删除」「移动」这些：它们不是笔记，是知识库
    *  的一个视角。有的是把它带进笔记的动作。 */

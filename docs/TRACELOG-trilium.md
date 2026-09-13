@@ -3355,3 +3355,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [495] 第 470 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行、1220 个实体里按新正则 9 个说话人标签（跟 dev 一致）。
+
+## [496] 第 471 轮：面包屑搬出 App.tsx（2026-09-14）
+
+- 状态栏面包屑的父链推导（真笔记沿树往上 / 尾巴行进来的事实表末尾改页面名 / 懒加载虚拟页按 id 形状拼「知识库 / 实体 / 叶子」/ app:* 不冠知识库 / 知识库根不重复）搬到 `util/crumbs.ts` 的 `buildCrumbs(id, rows, tabTitle, isVirtual)`，父分类表抽成 `virtualParentOf`；App.tsx 3249 → 3228 行。新测试 crumbs.test.ts 4 条。实拍 `open:kb:facts?topic=work` 面包屑「知识库 / 主题 / work / 事实表 · work」照旧。前端 116。
