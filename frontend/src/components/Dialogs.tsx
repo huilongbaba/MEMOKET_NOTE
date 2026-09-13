@@ -100,7 +100,7 @@ export function TextPrompt({ req }: { req: PromptRequest }) {
       <div className="palette" role="dialog" style={{ width: 420 }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="muted" style={{ fontSize: 12, padding: '2px 4px 6px' }}>{req.title}</div>
         <input
-          ref={input} value={v} onChange={(e) => setV(e.target.value)}
+          ref={input} value={v} onChange={(e) => setV(e.target.value)} aria-label={req.title}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); req.resolve(v) }
             else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(null) }
