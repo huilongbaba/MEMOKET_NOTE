@@ -3319,3 +3319,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行；往 `/api/client-log` 发一条 info，正式版日志里是 `[client:info] user=terrence smoke smoke`。
 - 跟进（第 460 轮）：kbNoise 那两条测试第一次跑就红了——「speakers」「speaker phone」被当成说话人标签（`[a-z0-9]{1,2}` 允许两个字母、字母前也不要求分隔）。前后端同一条正则改成：字母标签必须带分隔（Speaker A / speaker_c），数字标签可以贴着（Speaker1 / 说话人2）。terrence 库 1223 个实体里前后都是 9 个标签、没有原来藏着现在露出来的。后端 950（who 正则 12 条参数化）/ 前端 109。提交时应该先看单测再提交——这次是提交之后才看到红，下不为例。
+
+## [487] 巡检第 461 轮：其它「噪声」正则有没有测试（2026-09-14）
+
+- 顺着第 460 轮那条查：元话语（scrub_meta_sentences_v / audit_voice_lines）在 test_grounding_check、粗体标点在 test_bold_punct、引用正则 / 链接正则 / 片段 / 截句读前端都有测试——说话人标签是唯一漏的，已补。r45x / r46x 探针日志没有 client:error；scratchpad 第 440 轮前的截图清掉。没改代码。
