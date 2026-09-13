@@ -2186,6 +2186,7 @@ export default function App() {
       open(n); return
     }
     const parent = await api.createNote(`导入 ${fmtDate(new Date().toISOString())}`, `从 ${list.length} 个文件导入。`, under)
+    void api.setNoteIcon(parent.id, 'bx-import').catch(() => {})     // 导入进来的那一批挂在一个带「导入」图标的节点下
     let first: Note | null = null
     for (const f of list) {
       const n = await api.createNote(strip(f.name), await f.text(), parent.id)

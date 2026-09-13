@@ -30,3 +30,12 @@ def test_今天的日记_幂等_树的层级对(client):
     assert client.get(f"/api/tree/paths/{c2['id']}").json()[0][:-1] == paths[0][:-1]
     r = client.post("/api/notes/today")
     assert r.status_code == 200 and r.json()["title"].endswith(("周一", "周二", "周三", "周四", "周五", "周六", "周日"))
+
+
+def test_日记各层带默认图标():
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "t-today-icon"}) as c:
+        d = store.today_note("t-today-icon", date(2026, 9, 13))
+        assert d["icon"] == "bx-calendar-event"
+        rows = {r["title"]: r for r in c.get("/api/tree").json()}
+    assert rows["日记"]["icon"] == "bx-calendar" and rows["2026"]["icon"] == "bx-folder"

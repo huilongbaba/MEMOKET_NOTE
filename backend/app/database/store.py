@@ -1045,16 +1045,18 @@ def today_note(user_id: str, today) -> dict:
     """今天的日记（Trilium 的 day note）：`日记 / 2026 / 09 月 / 09-13 周六`，没有就一路建出来，
     有就原样返回——同一天点多少次都是同一篇。按标题找，所以用户把「日记」改名之后会另起一棵，
     这跟 Trilium 用 #calendarRoot 标签找根不同，是有意为之：没有属性系统就用最朴素的办法。"""
-    chain = [("日记", ""), (f"{today.year}", ""), (f"{today.month:02d} 月", ""),
+    # 每层带一个默认图标（Trilium 的日记根 / 年 / 月 / 日也各有图标）：日记根日历、年月文件夹、当天一页
+    chain = [("日记", "", "bx-calendar"), (f"{today.year}", "", "bx-folder"), (f"{today.month:02d} 月", "", "bx-folder"),
              (f"{today.month:02d}-{today.day:02d} {_WEEKDAYS[today.weekday()]}",
-              f"# {today.month} 月 {today.day} 日 {_WEEKDAYS[today.weekday()]}\n\n")]
+              f"# {today.month} 月 {today.day} 日 {_WEEKDAYS[today.weekday()]}\n\n", "bx-calendar-event")]
     parent = ROOT_ID
     note_id = None
-    for title, content in chain:
+    for title, content, icon in chain:
         with connect() as c:
             note_id = _child_titled(c, user_id, parent, title)
         if note_id is None:
             note_id = create_note(user_id, title, content, parent)["id"]
+            set_icon(user_id, note_id, icon)
         parent = note_id
     return get_note(user_id, note_id)
 

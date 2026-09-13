@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { friendlyError } from '../util/friendlyError'
-import { createNote, digest, memoryScope, SCOPE_LABEL, type MemoryScope } from '../api'
+import { createNote, digest, memoryScope, SCOPE_LABEL, type MemoryScope, setNoteIcon } from '../api'
 import type { Digest } from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
@@ -49,6 +49,7 @@ export default function DigestPanel() {
       const title = `回顾 ${result.date_from} ~ ${result.date_to}`
       const body = `# ${title}\n\n> 由「定期回顾」生成 · ${result.fact_count} 条事实\n\n${result.summary.trim()}\n`
       const n = await createNote(title, body)
+      await setNoteIcon(n.id, 'bx-history').catch(() => {})     // 回顾生成的笔记带个「历史」图标，树上一眼分得出
       toast('已存为笔记「' + title + '」')
       window.dispatchEvent(new CustomEvent('open-note', { detail: n.id }))
       window.dispatchEvent(new CustomEvent('notes-changed'))
