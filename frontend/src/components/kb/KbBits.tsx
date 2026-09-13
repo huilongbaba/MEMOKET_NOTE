@@ -2,6 +2,7 @@
  * 知识库页面的公共小件。图按 dataviz 的规矩：单色序列（accent 一种色）表示
  * 数量、细 mark、圆角端、hover 有值、文字用文字色。
  */
+import { isSpeakerTag } from '../../util/kbNoise'
 import { useState, type ReactNode } from 'react'
 
 import type { FactDetail, KbMonth } from '../../api'
@@ -111,7 +112,8 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
       {showTopics && (f.topics.length > 0 || f.entities.length > 0) && (
         <div className="fact-tags">
           {f.topics.map((t) => <Chip key={t} icon="bx-hash" onClick={() => actions.onOpen('kb:topic:' + t)}>{t}</Chip>)}
-          {f.entities.map((e, i) => <Chip key={e} icon="bx-user" onClick={() => actions.onOpen('kb:entity:' + e)}>{f.entity_names?.[i] ?? e}</Chip>)}
+          {/* 说话人标签（speaker_c）不是实体，每张卡都挂一个只是噪声（第 211 轮实拍会议页） */}
+          {f.entities.map((e, i) => [e, f.entity_names?.[i] ?? e] as const).filter(([, n]) => !isSpeakerTag(n)).map(([e, n]) => <Chip key={e} icon="bx-user" onClick={() => actions.onOpen('kb:entity:' + e)}>{n}</Chip>)}
         </div>
       )}
       <div className="fact-actions">

@@ -6,6 +6,7 @@
  * 一条事实时想看的是**它本身**——原话、谁引用了它、它的邻居。这些占一整
  * 屏才看得清，也才能用标签页把它留着、跟笔记并排。
  */
+import { isSpeakerTag } from '../util/kbNoise'
 import { useEffect, useState } from 'react'
 
 import { displayTitle } from '../util/displayTitle'
@@ -129,7 +130,7 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
       {(fact.topics.length > 0 || fact.entities.length > 0) && (
         <div className="chip-wrap">
           {fact.topics.map((t) => <button key={t} className="chip" onClick={() => onOpen('kb:topic:' + t)}><i className="bx bx-hash" />{t}</button>)}
-          {fact.entities.map((e) => <button key={e} className="chip" onClick={() => onOpen('kb:entity:' + e)}><i className="bx bx-user" />{e}</button>)}
+          {fact.entities.map((e, i) => [e, fact.entity_names?.[i] ?? e] as const).filter(([, n]) => !isSpeakerTag(n)).map(([e, n]) => <button key={e} className="chip" onClick={() => onOpen('kb:entity:' + e)}><i className="bx bx-user" />{n}</button>)}
         </div>
       )}
 

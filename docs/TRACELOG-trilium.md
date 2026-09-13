@@ -2196,3 +2196,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `open:kb:graph`：全部簇 111、搜节点、新建主题一行排得开，图谱随宽缩；`open:kb:timeline --dark`：年份 chip 换行、月份条 / 天数展开都对；`open:kb:unit:terrence-2046`（我给错了 id，会议 id 是 `terrence-2046-12`）：「没有这个会议」+ 回最近摄入，面包屑「知识库 / 最近摄入 / 会议记录」。
 - 没改代码。
+
+## [240] 巡检第 211 轮：会议页的实体 chip（2026-09-13）
+
+- `open:kb:unit:terrence-2046-12 --win=820x600`：标题（13/24）、日期 / 条数 / 说话人、事实按月分组都对。但「这场会在说什么」里 speaker_c 12 / Speaker E 5 / Speaker A 2 / speaker_d 1 跟 PCBA / KRL 并排当实体，每张事实卡也挂着一个 speaker_c chip——说话人标签不是实体（主题页早就滤了，这三处没滤）。
+- **改**：会议页 chips、事实卡 chips（KbBits）、事实页 chips（KbNoteView）都过 `isSpeakerTag`；事实页 chip 顺便用显示名而不是代码。实拍：会议页只剩 PCBA / KLR / 白老师 / KRL，事实卡只剩真实体。
+- 前端 87 tests。日页首次 175ms 之后 1ms、会议页 3ms（顺手量的）。

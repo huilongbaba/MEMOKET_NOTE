@@ -1,3 +1,4 @@
+import { isSpeakerTag } from '../../util/kbNoise'
 import { useEffect, useState } from 'react'
 
 import { kbUnit, type KbUnitPage } from '../../api'
@@ -31,7 +32,7 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
         <KbSection title="这场会在说什么">
           <div className="chip-wrap">
             {p.topics.map((t) => <Chip key={t.code} icon="bx-hash" count={t.facts} onClick={() => actions.onOpen('kb:topic:' + t.code)}>{t.code}</Chip>)}
-            {p.entities.map((e) => <Chip key={e.code} icon="bx-user" count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}
+            {p.entities.filter((e) => !isSpeakerTag(e.name)).map((e) => <Chip key={e.code} icon="bx-user" count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}
           </div>
         </KbSection>
       )}
