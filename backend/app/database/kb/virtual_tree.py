@@ -31,6 +31,7 @@ import re
 
 from collections import Counter, defaultdict
 from . import entities as entities_mod
+from .who import is_speaker_tag
 from .units import materials, parts_of
 
 KB_ROOT = "kb"
@@ -217,6 +218,8 @@ def _entity_rows(vocab, entity_count, facts=None) -> tuple[list[dict], list[dict
     for e in vocab.entities.values():
         if groups.canon(e.code) != e.code:
             continue                      # 不是代表：并进代表那一行
+        if is_speaker_tag(e.code) or is_speaker_tag(getattr(e, "name", "") or ""):
+            continue                      # speaker b 这类说话人标签不是实体（前端也过滤，这里过了「实体」的数才对）
         by_type.setdefault(e.etype or "", []).append(e)
     etype_rows: list[dict] = []
     entity_rows: list[dict] = []

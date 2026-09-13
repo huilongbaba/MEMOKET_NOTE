@@ -246,3 +246,13 @@ def test_一个分类超过_300_条时树上尾巴给一行去事实表(mem, mon
     assert tail[0]["child_count"] == 0 and tail[0]["position"] == vt.MAX_CHILDREN
     # 没超的不加尾巴
     assert not any(r["note_id"].startswith("kb:facts?") for r in vt.children(m, "kb:topic:life"))
+
+
+def test_树上实体这一层不算说话人标签(mem):
+    """「实体」的 child_count 和展开出来的行都不含 speaker b 这类标签（第 553 轮：前端一直在过滤，但数是服务端给的，1213 vs 1204 对不上）。"""
+    store, vocab = mem._index()
+    before = [r for r in vt.build(mem) if r["note_id"] == "kb:entities"][0]["child_count"]
+    vocab.entities["speaker_b"] = Entity("speaker_b", etype="", name="speaker b")
+    rows = vt.build(mem)
+    assert [r for r in rows if r["note_id"] == "kb:entities"][0]["child_count"] == before
+    assert not any(r["note_id"] == "kb:entity:speaker_b" for r in vt.children(mem, "kb:entities"))
