@@ -3012,3 +3012,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [412] 第 384 轮：文档——轮内同步的规则（2026-09-13）
 
 - harness-framework 事件表加 `scrub` 一行，`revision` 全量的原因写进去；表后加一段「客户端轮内正文怎么跟服务端保持一致」（重放 / 接缝压空行 / 删句 / 都从 liveContentRef 算 / 差异定位靠 harness-sync）。
+
+## [413] 巡检第 385 轮：文件夹 harness 与 magic tap 那侧的正文拼接（2026-09-13）
+
+- 顺着第 377 轮查另外两条流：文件夹 harness（runHarness）的轮初分隔、delta、段末对齐全走 `setContent(updater)`，没有跟 ref 混用，轮末 / 段末又用服务端正文对齐，不会出现单篇 harness 那种「一半在 ref 一半在 state」的漂；magic tap 的增量插进编辑器走 CM dispatch（跟敲键一条路）。没改代码。
