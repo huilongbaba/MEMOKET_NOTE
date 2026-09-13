@@ -115,6 +115,7 @@ class NoteBrief(BaseModel):
     pinned: bool = False
     preview: str = ""
     has_body: bool = True
+    first_body: str = ""      # 第一行非标题正文，同名笔记靠它分辨
     snippet: Snippet | None = None
 
 

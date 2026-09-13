@@ -521,6 +521,28 @@ def match_snippet(content: str, query: str, span: int = 40, before: int = 18) ->
             "after": text[i + len(q):end] + ("…" if end < len(text) else "")}
 
 
+def _first_body_line(content: str, title: str = "", limit: int = 60) -> str:
+    """第一行有信息量的正文。`[[` 补全里同名笔记靠它分辨——三篇「创业一年回顾」（库里标题都是
+    「未命名」、正文第一行就是这几个字）光看标题分不开（第 257 轮实拍）。
+    规则：跳过跟显示名一样的那一行（占位标题的笔记显示名就是正文第一行）；优先取非标题的正文行，
+    一行正文都没有（整篇只有骨架标题）就退回第一个小标题。"""
+    lines = [ln.strip() for ln in (content or "").split("\n")[:60]]
+    clean = lambda s: re.sub(r"[*_`\[\]]", "", re.sub(r"^([-*>+]|\d+\.|#{1,6})\s*", "", s)).strip()   # noqa: E731
+    shown = (title or "").strip()
+    if shown in ("", "未命名", "Untitled", "note"):
+        shown = next((clean(ln) for ln in lines if ln), "")
+    body, heads = [], []
+    for s in lines:
+        if not s or s.startswith("```") or s.startswith("!["):
+            continue
+        c = clean(s)
+        if len(c) <= 1 or c.lower() == shown.lower():
+            continue
+        (heads if s.startswith("#") else body).append(c)
+    pick = body[0] if body else (heads[0] if heads else "")
+    return pick[:limit]
+
+
 def list_notes_brief(user_id: str, q: str = "") -> dict:
     """⌘K 和 `[[` 补全每敲一个字就拉一次列表：带全文的 `list_notes` 在 413 篇的库上是 580KB
     一次（第 197 轮量的）。这里只给标题 / 日期 / 前 240 字 / 有没有正文，正文命中的再附一截命中片段
@@ -536,13 +558,13 @@ def list_notes_brief(user_id: str, q: str = "") -> dict:
             rows = c.execute(
                 "SELECT id, title, updated_at, pinned, substr(content, 1, ?) AS content, "
                 "length(trim(content)) > 0 AS has_body FROM notes WHERE user_id=? ORDER BY pinned DESC, updated_at DESC",
-                (PREVIEW_CHARS, user_id)).fetchall()
+                (PREVIEW_CHARS * 8, user_id)).fetchall()   # 多取几行算 first_body，返回的 preview 仍只 80 字
     out = []
     for r in rows[:BRIEF_MAX]:
         content = r["content"] or ""
         d = {"id": r["id"], "title": r["title"] or "", "updated_at": r["updated_at"], "pinned": bool(r["pinned"]),
              "preview": content[:PREVIEW_CHARS], "has_body": bool(r["has_body"]) if "has_body" in r.keys() else bool(content.strip()),
-             "snippet": None}
+             "first_body": _first_body_line(content, r["title"] or ""), "snippet": None}
         if q and q.lower() not in (r["title"] or "").lower():
             d["snippet"] = match_snippet(content, q)
         out.append(d)

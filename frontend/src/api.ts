@@ -130,7 +130,7 @@ async function json<T>(res: Response): Promise<T> {
 /** ⌘K / `[[` 补全用的轻量行：不带全文（413 篇的库带全文一次 580KB，每敲一个字拉一次）。 */
 export type NoteBrief = {
   id: string; title: string; updated_at: string; pinned: boolean
-  preview: string; has_body: boolean
+  preview: string; has_body: boolean; first_body?: string
   snippet: { before: string; hit: string; after: string } | null
 }
 export const listNotesBrief = (q = '') =>

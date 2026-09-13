@@ -11,12 +11,13 @@ import { fmtDate } from '../util/time'
  * Trilium 的内部链接（`~` / 链接对话框）对应的就是这条路。
  */
 /** 同名笔记只靠日期分不开（实拍三篇「创业一年回顾」并排）：重名的补一截正文首句。 */
-export function disambiguate(hits: { title?: string; content?: string; preview?: string; updated_at: string }[]): string[] {
+export function disambiguate(hits: { title?: string; content?: string; preview?: string; first_body?: string; updated_at: string }[]): string[] {
   const names = hits.map(displayTitle)
   const dup = new Set(names.filter((t, i) => names.indexOf(t) !== i))
   return hits.map((n, i) => {
     const date = fmtDate(n.updated_at)
     if (!dup.has(names[i])) return date
+    if (n.first_body) return `${date} · ${n.first_body.slice(0, 28)}${n.first_body.length > 28 ? '…' : ''}`   // 服务端算好的第一行正文
     // 小标题（「时间线与里程碑」）几篇都一样，分不开——优先取正文行，标题行只兜底
     // 只有 preview（前 80 字）时最后一行可能被截在半截（「## 时间线」剩个「#」）：整行去掉
     const src = n.content ?? n.preview ?? ''

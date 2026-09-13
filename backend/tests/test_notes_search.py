@@ -113,3 +113,17 @@ def test_轻量列表_不带全文_正文命中带片段(tmp_path, monkeypatch):
         assert len(hits[0]["snippet"]["before"].lstrip("…")) <= 18
         by_title = c.get("/api/notes/brief", params={"q": "创业"}).json()["notes"]
         assert by_title[0]["snippet"] is None, "标题命中的不用给片段"
+
+
+def test_轻量列表的first_body跳过标题和空行(tmp_path, monkeypatch):
+    from app.database import store
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    store.create_note("u", "创业一年回顾", "# 创业一年回顾\n\n## 时间线与里程碑\n\n- **4月16日EVT**：主机 4 台\n")
+    store.create_note("u", "只有标题", "# 只有标题\n## 小标题\n")
+    store.create_note("u", "重复标题", "**重复标题**\n\n真正的第一句。")
+    rows = {r["title"]: r for r in store.list_notes_brief("u")["notes"]}
+    assert rows["重复标题"]["first_body"] == "真正的第一句。"
+    assert rows["创业一年回顾"]["first_body"] == "4月16日EVT：主机 4 台"
+    assert rows["只有标题"]["first_body"] == "小标题", "一行正文都没有就退回第一个小标题"
+    store.create_note("u", "未命名", "创业一年回顾\n\n## 现有记录只能确认部分\n\n正文一句。")
+    assert next(r for r in store.list_notes_brief("u")["notes"] if r["title"] == "未命名")["first_body"] == "正文一句。"
