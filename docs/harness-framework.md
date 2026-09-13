@@ -483,6 +483,7 @@ Mode 按需追加的：
 | `round_summary` | 这一轮取到了什么（Provenance） |
 | `revision` | 应用了一条修订（op / anchor / reason / sources） |
 | `dropped` | 一条修订被防线丢了（不是错误：同义重写、锚点歧义、切出破字、动到用户标题、输出被截断） |
+| `scrub` | 服务端在轮内整句删掉的元话语（`sentence` 全量 + `why`）：客户端在本地正文里删同一句。`revision` 的 `anchor` / `text` 也是全量——客户端拿它本地重放，截过就会插半句 / 定位失败（第 375–382 轮真跑抓到的） |
 | `check_hit` | 代码判据命中，这一轮不打分 |
 | `evaluate` | 打分：各维度 level + note、status、最弱维度 |
 | `policy` | Runtime 调了下一轮参数、原因 |
@@ -490,6 +491,8 @@ Mode 按需追加的：
 | `phase_delta` | 子步骤（retrieval / edit / write / evaluate）的实时输出，`kind` 分 thinking / output |
 | `warning` | 某个 middleware 失败，run 继续 |
 | `insert_at` | 定向续写：这一轮的正文要插进某一节末尾（`section` · `pos`），在第一个 delta 之前发；没有它就是追加到文末 |
+
+客户端轮内正文怎么跟服务端保持一致（服务端正文是唯一权威，轮末 `round` 事件带全文对齐；轮内靠镜像）：`revision` 按同一套 `locate`（最小跨度那一对）本地重放，应用完 `tidyBlankLines`；`insert_at` / `delta` 逐块拼进去，接缝处 `\n{3,}` 压成 `\n\n`（`editor/streamJoin.ts`）；`scrub` 删同一句。都从 `liveContentRef` 算、不走 React updater（updater 晚一拍会把 ref 盖回去）。差异定位靠 `harness-sync` client-log：第一处不同的位置和前后 20 字。
 
 `to_sse()` 把事件翻成 SSE 帧；前端 `api.ts` 一处解析、分发给 `NoteHarnessHandlers`。
 
