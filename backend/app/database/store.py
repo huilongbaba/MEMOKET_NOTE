@@ -790,6 +790,11 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             # 删之前存一份快照进「最近删除」：笔记行 + 它的 branches + 历史版本。5 秒撤销窗口过了
             # 之后还能找回来（Trilium 的删除也是可撤销的）。
             note_row = c.execute("SELECT * FROM notes WHERE id=? AND user_id=?", (nid, user_id)).fetchone()
+            # 没写过一个字、也没起名的空笔记（新建后没动就走了，前端自动扔掉的那种）不进「最近删除」：
+            # 没什么可恢复的，只会攒出一排「未命名 · 0 字」（第 209 轮实拍）
+            if note_row is not None and not (note_row["content"] or "").strip() \
+                    and (note_row["title"] or "").strip() in ("", "未命名", "Untitled", "note"):
+                note_row = None
             if note_row is not None:
                 nd = dict(note_row)
                 payload = {

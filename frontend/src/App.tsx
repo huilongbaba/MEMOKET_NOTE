@@ -765,7 +765,8 @@ export default function App() {
     // （第 207 轮实拍实体页）——按 id 的形状把父链拼出来，名字用标签页上的
     if (out.length === 0 && api.isVirtualId(id)) {
       const parent = ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
-      const chain = ['kb', ...(parent ? [parent] : []), id]
+      // app:* 那些页（最近删除 / 写作 Skill / 设置…）不在知识库下面，别给它们冠「知识库 /」
+      const chain = id.startsWith('app:') ? [id] : ['kb', ...(parent ? [parent] : []), id]
       const leaf = tabs.find((t) => t.noteId === id)?.title ?? VIRTUAL_LABELS[id] ?? id.split(':').pop() ?? id
       return chain.map((x) => byNote.get(x) ?? ({ id: x, note_id: x, parent_note_id: '', title: x === id ? leaf : (VIRTUAL_LABELS[x] ?? x), position: 0, is_expanded: false, preview: '', cite_count: 0, ingested_at: '', pinned: false, updated_at: '', child_count: 0, branch_count: 0, fact_count: 0 } as TreeRow))
     }

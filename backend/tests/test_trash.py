@@ -69,3 +69,12 @@ def test_删子树时挂在上面的写作计划作废_孤儿计划启动时扫�
         c.execute("INSERT INTO writing_sections (id,plan_id,idx,title,status,note_id,created_at) VALUES ('s1',?,0,'x','done','gone-note','2026-01-01')", (plan["id"],))
         c.execute("INSERT INTO note_remotes (user_id,note_id,platform,remote_id,remote_path,exported_at) VALUES ('t-trash','gone-note','obsidian','','a.md','2026-01-01')")
     assert store.sweep_orphan_plans() == 2
+
+
+def test_空的未命名笔记删了不进最近删除(client):
+    """第 209 轮：新建后一个字没写就删的空笔记，最近删除里攒出一排「未命名 · 0 字」。"""
+    n = client.post("/api/notes", json={"title": "未命名", "content": ""}).json()
+    m = client.post("/api/notes", json={"title": "未命名", "content": "写了一点"}).json()
+    client.delete(f"/api/notes/{n['id']}"); client.delete(f"/api/notes/{m['id']}")
+    ids = [t["note_id"] for t in client.get("/api/notes/trash").json()]
+    assert m["id"] in ids and n["id"] not in ids
