@@ -45,6 +45,7 @@ from memoket_kite.storage import _verify_loadable
 from .. import store
 from . import kite_entity_candidates, kite_extract_profile
 from ..kb import search
+from ..kb.who import is_speaker_tag
 from ...util.config import get_settings
 from .kite_writer import write_lock
 
@@ -405,6 +406,9 @@ class UserMemory:
         t0 = time.perf_counter()
         store, vocab = self._index()
         _topics, _entities, surfaces = self._match_vocab(query, vocab)
+        # 报给右栏的「命中词」里别列 speaker b 这种说话人标签（它在词表里是个实体，所以会被认出来）：
+        # 第 530 轮正式版冒烟 recall terms=['speaker b', 'ideas']——用户看着像是拿说话人在搜
+        surfaces = [x for x in surfaces if not is_speaker_tag(x)]
 
         queries = search.plan(self, query, vocab)
         facts: list[dict] = []

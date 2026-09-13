@@ -3615,3 +3615,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [553] 第 529 轮：重打 dmg 前的全量门（2026-09-14）
 
 - 后端 952 通过；前端 tsc + eslint + vitest 129 + 17 条 check / smoke 全过。
+
+## [554] 第 530 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree 正常；`POST /api/memory/recall` 拿「Speaker B says they have no ideas now」查，命中词已经是剔过虚词的（says / they / have / now 都没了）——说明包里是新的 search.py（pyinstaller 打成 .pyc，grep 源码字符串是查不到的）。
+- 冒烟顺带看到命中词里还列着「speaker b」：它在词表里是个实体，`_match_vocab` 认出来当 surface 报了上去。`kite_memory.recall` 报给右栏的命中词过一遍 `is_speaker_tag`；这一处在 dmg 之后改的，第 540 轮的包才带。测试 30 条过。PROGRESS 补 521–530 行。

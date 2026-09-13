@@ -88,6 +88,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 491–500 | 真跑三次抓到轮内 scrub 差 1 字 → `applyScrub` 照服务端规则 + `check-scrub-parity`；`prepareInsert` + `check-stream-parity`（tidy / insert_into 对拍）；文件夹 harness 真跑 0 warn；eslint 开 `no-floating-promises`（27 处 void / 4 处补 catch）；桌面壳 loadURL / boot 失败兜底；无标题材料兜底名「会议记录 · 日期」；README 测试段更新；重打 dmg（第 500 轮） |
 | 501–510 | ⌘K 打字先列「打开的标签」（同名带正文首行）、▾ 列表同名项也带首行；应用菜单「标签」（tab-action 事件链）；8 处可点 div/span 键盘可达（`util/clickable`）+ `check-a11y` 进 npm test；toast 动作变真按钮；README 更新；重打 dmg（第 510 轮） |
 | 511–520 | 标签顶部「正在写」色条（单篇 + 文件夹 harness）；trilium-ui-gap 全表对账（60 行补已做 + 状态说明）+ 右键目标高亮真做；用量「今天」改「24 小时」；mermaid / KbNoteView / LocalGraph 按需加载，主包 1870 → 1103KB；重打 dmg（第 520 轮） |
+| 521–530 | 拆包后老路径回归；TODO / console 扫；桌面壳端口退回提示进落盘日志；虚拟页右栏「计划」角标不用上一篇的；召回剔英文虚词 / 说话人标签（自召回 57→60/60，seed 11 n200 196/194）+ `scripts/recall_selfcheck.py`；命中词不再列 speaker b；重打 dmg（第 530 轮） |
 
 ## 当前优先队列（2026-09-12 晚，用户点名：这些排在巡检之前）
 
