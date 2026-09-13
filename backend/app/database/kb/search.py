@@ -212,7 +212,13 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
         fact = store.facts.get(row.get("id"))
         text = (fact.text if fact else "") or ""
         # 数字命中比同长度的字词更硬（「4月16」几乎就是在指那一天），多给 2 分
-        s = sum(len(t) + (2 if t[0].isdigit() else 0) for t in _hits(terms, text))
+        hits = _hits(terms, text)
+        s = sum(len(t) + (2 if t[0].isdigit() else 0) for t in hits)
+        # 同一个词出现不止一次再加一点（每多一次 +1，最多 +2）：查询只剩一个内容词时（「…no ideas now but
+        # will have ideas later」剔掉虚词只剩 ideas），几十条都提到 ideas 的事实靠日期断结，
+        # 说了两遍的那条反而排不进前五（第 531 轮 seed 7 那条 miss）
+        low = text.lower()
+        s += sum(min(2, max(0, low.count(t) - 1)) for t in hits)
         if group_codes and fact is not None and group_codes & set(getattr(fact, "entities", ()) or ()):
             s += ENTITY_BONUS
         return (s, row.get("date") or "")

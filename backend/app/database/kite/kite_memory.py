@@ -367,7 +367,9 @@ class UserMemory:
                 topics.append({"code": code, "closure": True})
                 hit_surfaces.append(term)
             code = vocab.resolve_entity(term)
-            if code and code not in entities:
+            # 「speaker b」在词表里是个实体：让它进符号通道会把那个说话人的几百条事实整个拉进候选池，
+            # 还占掉 4 个实体槽里的一个（第 531 轮）。说话人标签不是查询的对象
+            if code and code not in entities and not is_speaker_tag(term) and not is_speaker_tag(code):
                 entities.append(code)
                 hit_surfaces.append(term)
 
@@ -383,6 +385,8 @@ class UserMemory:
                     break
 
         for code, ent in vocab.entities.items():
+            if is_speaker_tag(code) or is_speaker_tag(getattr(ent, "name", "")):
+                continue
             surfaces = {code, getattr(ent, "name", ""), *getattr(ent, "aliases", set())}
             for surface in surfaces:
                 sl = str(surface).replace("_", " ").lower()

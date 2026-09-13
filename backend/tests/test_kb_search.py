@@ -151,3 +151,18 @@ def test_英文虚词和说话人标签不当查询词():
     # 全是虚词时退回原样，别搜不出东西
     mem._candidate_terms = lambda text: ["speaker a", "says", "it"]
     assert search._terms(mem, "speaker a says it") == ["speaker a", "says", "it"]
+
+
+def test_同一个词出现两次的排在只出现一次的前面():
+    """查询只剩一个内容词时，几十条候选靠日期断结；说了两遍的那条才是「它自己」（第 531 轮）。"""
+    store = _store({
+        "twice": "they have no ideas now but will have ideas later",
+        "once": "some ideas about pricing",
+        "none": "unrelated",
+    })
+    rows = [{"id": "none", "date": "2026-09-03"}, {"id": "once", "date": "2026-09-02"}, {"id": "twice", "date": "2026-09-01"}]
+    mem = _FakeMemory()
+    mem._candidate_terms = lambda text: ["ideas"]
+    mem._cjk_terms = lambda text: []
+    out = search.rank(rows, "ideas", mem, store, limit=3)
+    assert [r["id"] for r in out] == ["twice", "once"]

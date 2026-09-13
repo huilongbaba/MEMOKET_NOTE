@@ -3620,3 +3620,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree 正常；`POST /api/memory/recall` 拿「Speaker B says they have no ideas now」查，命中词已经是剔过虚词的（says / they / have / now 都没了）——说明包里是新的 search.py（pyinstaller 打成 .pyc，grep 源码字符串是查不到的）。
 - 冒烟顺带看到命中词里还列着「speaker b」：它在词表里是个实体，`_match_vocab` 认出来当 surface 报了上去。`kite_memory.recall` 报给右栏的命中词过一遍 `is_speaker_tag`；这一处在 dmg 之后改的，第 540 轮的包才带。测试 30 条过。PROGRESS 补 521–530 行。
+
+## [555] 第 531 轮：说话人标签不进符号通道 + 同词出现两次加分（2026-09-14）
+
+- `_match_vocab` 认出的实体里剔掉说话人标签（正向 resolve 和反向扫描两条路都剔）：「speaker b」进符号通道会把那个说话人的几百条事实整个拉进候选池，还占掉 4 个实体槽之一。seed 11 n 200 从 196/194 提到 197/195，中位 71 → 62ms；但 seed 7 掉回 59/59——那条「no ideas now but will have ideas later」剔完虚词只剩 ideas，几十条提到 ideas 的候选靠日期断结，说了两遍的它自己排不进前五。
+- 排序加一条：同一个查询词出现不止一次每多一次 +1（最多 +2）。seed 7 回到 60/60，seed 11 197/195 不变，中位 65ms。测试各加一条；后端 953。
