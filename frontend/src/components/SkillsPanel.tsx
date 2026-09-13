@@ -38,7 +38,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
       setSkills(s)
       setScopes(sc)
       setLoading(false)
-    })
+    }).catch((e) => { setLoading(false); toast('读取 skill 列表失败：' + friendlyError(e), 'error') })
   }
   useEffect(reload, [])
 

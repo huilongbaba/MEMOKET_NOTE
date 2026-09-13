@@ -56,7 +56,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
     api.getWritingPlan(parent.note_id).then((r) => {
       setLocalPlan(r.plan)
       setLocalSections(r.sections)
-    })
+    }).catch((e) => toast('读取写作计划失败：' + friendlyError(e), 'error'))
   }, [parent.note_id])
 
   // harness 更新了这个文件夹的 plan/sections（跑起来之后）就同步一份到

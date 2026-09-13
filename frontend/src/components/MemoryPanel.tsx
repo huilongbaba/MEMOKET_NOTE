@@ -60,17 +60,17 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const lastSeenFactCount = useRef(-1)
 
   const refresh = () => memoryStats().then(setStats).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  useEffect(() => { void refresh() }, [])
   // 被服务重启打断、但内容落了盘的导入：列出来给「继续」
   const [interrupted, setInterrupted] = useState<JobOut[]>([])
   const loadInterrupted = () => listJobs(20).then((js) => setInterrupted(js.filter((j) => j.status === 'interrupted' && j.resumable))).catch(() => {})
-  useEffect(() => { loadInterrupted() }, [])
+  useEffect(() => { void loadInterrupted() }, [])
   async function doResume(j: JobOut) {
     try {
       const r = await resumeImportJob(j.job_id)
       setInterrupted((xs) => xs.filter((x) => x.job_id !== j.job_id))
       setBatchJob(r)
-      watchJob(r.job_id, (x) => { setBatchJob(x); pollRecentFacts(x.facts) }, () => { refresh(); setRecentFacts([]); loadInterrupted() })
+      watchJob(r.job_id, (x) => { setBatchJob(x); void pollRecentFacts(x.facts) }, () => { void refresh(); setRecentFacts([]); void loadInterrupted() })
     } catch (e) { toast('继续不了：' + (e instanceof Error ? e.message : String(e)), 'error') }
   }
   // 开始前的预估：这一批要跑多久、大概多少 token
@@ -102,7 +102,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           clearInterval(timer)
           setJob('')
           setRecentFacts([])
-          refresh()
+          void refresh()
           if (s.status === 'error') toast(`入库失败：${s.detail}`, 'error')
         }
       } catch { clearInterval(timer) }
@@ -120,7 +120,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
     const r = await ingestBatch(Array.from(files))
     setBatchJob(r)
     watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-      () => { refresh(); setRecentFacts([]) }, controller.signal)
+      () => { void refresh(); setRecentFacts([]) }, controller.signal)
   }
 
   useEffect(() => { appleAvailable().then(setApple).catch(() => setApple(null)) }, [])
@@ -133,7 +133,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
@@ -148,7 +148,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
@@ -163,7 +163,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
@@ -178,7 +178,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {

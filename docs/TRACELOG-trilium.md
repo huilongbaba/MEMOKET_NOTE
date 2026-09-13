@@ -3472,3 +3472,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [521] 第 496 轮：拿 ruff 的 F 类规则扫一遍后端（2026-09-14）
 
 - 仓库自己有 `test_no_undefined_names`（pyflakes 未定义名 / 残留 import）。用 ruff `--select F,E9,B006,B008` 再扫 app + tests：真问题只有测试里两个没用的局部变量（F841）——删；`F811 mem` 是 pytest 夹具的 import 再当参数，误报；`B008 File(...)` 是 FastAPI 惯用法。不引入 ruff 进 CI（pyflakes 那条测试已经把 F 类里要紧的盖住了，再加一个工具链不值）。
+
+## [522] 第 497 轮：没人接的 Promise（2026-09-14）
+
+- 试开 typescript-eslint 带类型信息的 `no-floating-promises`（`ignoreVoid`）：27 处。多数是 fire-and-forget 的 `reload()` / `save()` / `refresh()`（自己 catch 过）——标 `void` 表示有意不接；4 处 `.then()` 没 `.catch`：写作计划面板读计划、skill 页读列表（接口一失败就永远「加载中」）、启动时 `reload().then(open…)`、mermaid widget 的渲染链（意外抛出就停在「渲染图表…」）——补 catch（toast / 错误态）。`provider-changed` 事件监听原来直接挂的 async 函数，改成同步包一层。
+- 规则进 `eslint.config.mjs`（只对 src，带 `project: tsconfig.json`），eslint 全量仍 2.4 秒；探针文件验证过规则真在抓。`no-misused-promises` 没开（4 处都是事件回调惯用法）。前端 129 全绿，skills / plan-panel 实拍照旧。

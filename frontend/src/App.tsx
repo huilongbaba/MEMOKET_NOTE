@@ -1068,7 +1068,7 @@ export default function App() {
             sections: h.sections.map((s) => (s.id === d.section_id ? { ...s, status: 'done', summary: d.summary } : s)),
           } : h))
           if (d.blocked) toast(`这个分段卡住了，需要你看一眼：${d.blocked_reason || '原因未知'}`, 'error')
-          reload(); reloadTree()
+          void reload(); void reloadTree()
         },
         onPlanExtended: (newSections) => setHarness((h) => (h ? { ...h, sections: [...h.sections, ...newSections] } : h)),
         onPlanDone: (p) => {
@@ -1082,7 +1082,7 @@ export default function App() {
     } finally {
       setHarness((h) => (h ? { ...h, running: false, waitingFirstToken: false } : h))
       harnessAbortRef.current = null
-      reload(); reloadTree()
+      void reload(); void reloadTree()
     }
   }
 
@@ -1127,7 +1127,7 @@ export default function App() {
           <span
             style={{ flexShrink: 0, opacity: n.pinned ? 1 : 0.35 }}
             title={n.pinned ? '取消置顶' : '置顶'}
-            onClick={(e) => { e.stopPropagation(); togglePin(n) }}
+            onClick={(e) => { e.stopPropagation(); void togglePin(n) }}
           >
             <i className={'bx ' + (n.pinned ? 'bxs-pin' : 'bx-pin')} />
           </span>
@@ -1231,7 +1231,7 @@ export default function App() {
   }, [tree, notes])
 
   useEffect(() => {
-    reload().then((list) => {
+    void reload().then((list) => {
       if (!list.length) return
       // 回到上次看的那篇（标签页已经跨启动保住了，正文也该回到同一篇），
       // 没记录才退回最近编辑的。探针要的是确定的起点，一律最近编辑的。
@@ -1239,7 +1239,7 @@ export default function App() {
       try { if (!new URLSearchParams(location.search).get('probe')) last = localStorage.getItem('memoket-note-active:' + api.getUser()) } catch { /* 无所谓 */ }
       open(list.find((n) => n.id === last) ?? list[0])
     })
-    reloadTree()
+    void reloadTree()
     void checkHealth()
     // 设置里换了供应商 / 服务恢复了，状态栏那行红字要跟着变：之前只在启动时查一次，
     // 改完设置还挂着「LLM 不可达」直到重启。改设置立刻查；有红字时每 30 秒再查。
@@ -1347,9 +1347,9 @@ export default function App() {
     function onKeyDown(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey)) return
       const key = e.key.toLowerCase()
-      if (key === 's') { e.preventDefault(); save() }
+      if (key === 's') { e.preventDefault(); void save() }
       else if (key === 'd' && e.shiftKey) { e.preventDefault(); void openToday() }   // ⌘⇧D 今天的日记（Trilium 也是这个键）
-      else if (key === 'n') { e.preventDefault(); newNote() }
+      else if (key === 'n') { e.preventDefault(); void newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
       else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
@@ -1362,7 +1362,7 @@ export default function App() {
       // 标签：⌘T 新开、⌘W 关掉当前、⌘1..9 跳到第 n 个。跟浏览器一致，
       // 不需要学。⌘9 是**最后一个**（不是第九个）——同样是浏览器的约定。
       else if (key === 't' && e.shiftKey) { e.preventDefault(); reopenLastTab() }
-      else if (key === 't') { e.preventDefault(); newNote() }
+      else if (key === 't') { e.preventDefault(); void newNote() }
       // 前进后退：macOS 上 Trilium 用 ⌘[ / ⌘]（Alt+←/→ 被树的升降级占了）
       else if (key === '[') { e.preventDefault(); goHistory(-1) }
       else if (key === ']') { e.preventDefault(); goHistory(1) }
@@ -2077,7 +2077,7 @@ export default function App() {
       // 两个按钮凭空出现、没有任何说明。
       if (!pausedRef.current && !harnessDoneRef.current) setNoteHarnessStatus('')
       abortRef.current = null
-      reload()
+      void reload()
       // reload() 会用服务端正文替换文档，docChanged 会把装饰清掉——跑完
       // 之后必须再补一次，不然用户最终什么都看不到（这正是"只有第一次
       // 有绿色"的第二个原因）。
@@ -2114,9 +2114,10 @@ export default function App() {
   const [autoSync, setAutoSync] = useState(false)
   useEffect(() => {
     const load = () => api.getProviderConfig().then((c) => setAutoSync(!!c.auto_sync_notes)).catch(() => {})
-    load()
-    window.addEventListener('provider-changed', load)
-    return () => window.removeEventListener('provider-changed', load)
+    void load()
+    const onProv = () => { void load() }
+    window.addEventListener('provider-changed', onProv)
+    return () => window.removeEventListener('provider-changed', onProv)
   }, [])
   const autoSyncTimer = useRef<number | null>(null)
   const dirtySinceIngest = useRef<string>('')          // 哪篇改过还没同步
@@ -2668,7 +2669,7 @@ export default function App() {
         <WritingPlanPanel
           parent={writingPlanParent}
           onClose={() => setWritingPlanParent(null)}
-          onNoteChanged={() => { reload(); reloadTree() }}
+          onNoteChanged={() => { void reload(); void reloadTree() }}
           harness={harness}
           onRun={() => runHarness(writingPlanParent)}
           onToggleFollow={() => setHarness((h) => (h ? { ...h, follow: !h.follow } : h))}
@@ -3009,7 +3010,7 @@ export default function App() {
               {fbMenu && (
                 <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
                   { label: '打磨（只修不写）', icon: 'bx-brush', disabled: loading === 'note-harness' || !content.trim(),
-                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => runNoteHarness('polish') },
+                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => { void runNoteHarness('polish') } },
                   { kind: 'sep' },
                   { label: reviewEachRound ? '逐轮我来定：开' : '逐轮我来定：关', icon: reviewEachRound ? 'bx-checkbox-checked' : 'bx-checkbox',
                     hint: '每轮停下来等你逐条接受/撤回', disabled: loading === 'note-harness',

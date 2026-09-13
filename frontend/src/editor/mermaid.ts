@@ -100,6 +100,10 @@ class MermaidWidget extends WidgetType {
       pre.className = 'cm-mermaid-error-code'
       pre.textContent = this.code
       wrap.append(msg, pre)
+    }).catch((e: unknown) => {
+      // renderMermaid 自己会把语法错误转成 svg=null；这里兜的是它抛出来的意外（mermaid 初始化失败之类）
+      wrap.textContent = 'mermaid 渲染失败：' + String(e).slice(0, 80)
+      wrap.classList.add('cm-mermaid-error')
     })
     return wrap
   }

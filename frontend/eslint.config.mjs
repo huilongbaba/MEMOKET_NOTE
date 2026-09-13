@@ -18,4 +18,11 @@ export default tseslint.config(
       'no-constant-binary-expression': 'error',
     },
   },
+  // 带类型信息的一条：没人接的 Promise（第 497 轮扫出 27 处——多数是 fire-and-forget 的 reload()，
+  // 但也有 4 处 .then() 没 .catch，接口一失败面板就停在「加载中」）。`void x()` 表示有意不接。
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: { parserOptions: { project: './tsconfig.json', tsconfigRootDir: import.meta.dirname } },
+    rules: { '@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: true }] },
+  },
 )
