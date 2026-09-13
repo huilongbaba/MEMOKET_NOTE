@@ -766,7 +766,8 @@ export default function App() {
     if (out.length === 0 && api.isVirtualId(id)) {
       const parent = ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
       // app:* 那些页（最近删除 / 写作 Skill / 设置…）不在知识库下面，别给它们冠「知识库 /」
-      const chain = id.startsWith('app:') ? [id] : ['kb', ...(parent ? [parent] : []), id]
+      // 知识库根本身（id === 'kb'）在 kbRows 到之前也走这条：别拼成「知识库知识库」（第 269 轮实拍）
+      const chain = id.startsWith('app:') ? [id] : Array.from(new Set(['kb', ...(parent ? [parent] : []), id]))
       const leaf = tabs.find((t) => t.noteId === id)?.title ?? VIRTUAL_LABELS[id] ?? id.split(':').pop() ?? id
       return chain.map((x) => byNote.get(x) ?? ({ id: x, note_id: x, parent_note_id: '', title: x === id ? leaf : (VIRTUAL_LABELS[x] ?? x), position: 0, is_expanded: false, preview: '', cite_count: 0, ingested_at: '', pinned: false, updated_at: '', child_count: 0, branch_count: 0, fact_count: 0 } as TreeRow))
     }
