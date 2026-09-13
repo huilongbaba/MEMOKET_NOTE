@@ -3298,3 +3298,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [481] 第 455 轮：再补五个只读接口的冒烟（2026-09-14）
 
 - `/api/kb/clusters` `/api/kb/quality` `/api/kb/rebuild/pending` `/api/skills/scopes` `/api/import/apple/available` 进同一组参数化冒烟，都 200 + JSON。
+
+## [482] 巡检第 456 轮：没被测试碰过的路径还剩 15 个（2026-09-14）
+
+- 35 → 15：剩下的都是要模型（harness run / 块生成 / 重排版 / 图片转表格 / 来龙去脉 / 技能生成）、要录音（ingest audio / transcribe）、要第三方账号（飞书）或要真抽取（ingest text / batch / 同步）的；`skills/reorder` 是纯库操作，下一轮补。后端 937。
