@@ -3738,3 +3738,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [582] 第 558 轮：客户端也做 fix_bold_punct（2026-09-14）
 
 - 服务端续写收尾除了 scrub 还对整篇做 `fix_bold_punct`（`**依赖链：**` → `**依赖链**：`），客户端没有这一步——模型一写这种加粗轮末就差字。api.ts 的 harness 流加 `onTextEnd`（TEXT_MESSAGE_END），App 在那一刻对本地正文做同一遍。前端本来就有 `editor/format.fixBoldPunct`（格式化和插入续写在用），复用它——差点又抄第三份（streamJoin 里写了一遍，tsc 报重名才发现）。对拍抓到它不跳围栏代码块，服务端跳：补上。注释里说的「后端 editor/textshape」早没了，改指 grounding_rules。check-scrub-parity 加 6 组 fixBoldPunct 样本；vitest 129、check-format 照旧。
+
+## [583] 第 559 轮：重打 dmg 前的全量门（2026-09-14）
+
+- 后端 957 通过（第 557 轮改完后的全量）；前端 tsc + eslint + vitest 129 + 19 条 check / smoke 全过。
