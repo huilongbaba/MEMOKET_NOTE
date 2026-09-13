@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
-from .who import norm_who
+from .who import is_speaker_tag, norm_who
 from . import entities as entities_mod
 from .units import materials, part_labels, parts_of
 
@@ -159,7 +159,7 @@ def dashboard(mem) -> dict:
                              "facts": sum(unit_facts.get(p.id, 0) for p in m["parts"])})
 
     return {
-        "stats": {"facts": len(facts), "topics": len(vocab.topics), "entities": len(vocab.entities),
+        "stats": {"facts": len(facts), "topics": len(vocab.topics), "entities": sum(1 for c, e in vocab.entities.items() if not is_speaker_tag(c) and not is_speaker_tag(getattr(e, "name", ""))),
                   "units": len(units), "lines": len(store.lines),
                   "start_date": dates[0] if dates else "", "end_date": dates[-1] if dates else ""},
         "months": _months(facts, MONTHS_ON_DASHBOARD),

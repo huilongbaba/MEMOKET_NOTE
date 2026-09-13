@@ -238,3 +238,13 @@ def test_实体页_树_事实表都按组合并(mem):
     assert total == page["facts_total"] and any(r["id"] == "f-dup" for r in got)
     kids = virtual_tree.children(mem, "kb:entity:acme")
     assert any(k["note_id"] == "kb:fact:f-dup" for k in kids)
+
+
+def test_实体数不算说话人标签(mem):
+    """导入页「知识库现在 N 条事实 · M 个实体」和首页 stats：speaker b 在词表里也是实体，树 / 图 / 召回都不算它，这两个数也别算（第 552 轮）。"""
+    store, vocab = mem._index()
+    before = mem.stats()["entities"]
+    vocab.entities["speaker_b"] = Entity("speaker_b", etype="", name="speaker b")
+    vocab.entities["发言人_2"] = Entity("发言人_2", etype="", name="发言人 2")
+    assert mem.stats()["entities"] == before
+    assert pages.dashboard(mem)["stats"]["entities"] == before

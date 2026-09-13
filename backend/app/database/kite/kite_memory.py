@@ -1036,7 +1036,8 @@ class UserMemory:
         return {
             "facts": len(getattr(store, "facts", {}) or {}),
             "topics": len(vocab.topics),
-            "entities": len(vocab.entities),
+            # 说话人标签（speaker b）在词表里也是实体，树 / 图 / 召回都不算它——这里数出来的「1223 个实体」也别算（第 552 轮）
+            "entities": sum(1 for c, e in vocab.entities.items() if not is_speaker_tag(c) and not is_speaker_tag(getattr(e, "name", ""))),
             "units": len(getattr(store, "units", {}) or {}),
             "lines": len(getattr(store, "lines", {}) or {}),
             "speakers": sorted(getattr(store, "speakers", set()) or []),
