@@ -3625,3 +3625,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `_match_vocab` 认出的实体里剔掉说话人标签（正向 resolve 和反向扫描两条路都剔）：「speaker b」进符号通道会把那个说话人的几百条事实整个拉进候选池，还占掉 4 个实体槽之一。seed 11 n 200 从 196/194 提到 197/195，中位 71 → 62ms；但 seed 7 掉回 59/59——那条「no ideas now but will have ideas later」剔完虚词只剩 ideas，几十条提到 ideas 的候选靠日期断结，说了两遍的它自己排不进前五。
 - 排序加一条：同一个查询词出现不止一次每多一次 +1（最多 +2）。seed 7 回到 60/60，seed 11 197/195 不变，中位 65ms。测试各加一条；后端 953。
+
+## [556] 巡检第 532 轮：剩下的 miss 是什么，右栏实拍（2026-09-14）
+
+- seed 11 剩三条 miss：「Speaker A: Okay.」「I don't think it would be that much」——剔完虚词没有内容词，本来就搜不到，不算退化；「never thought about mental energy as a t…」是 mental energy 撞上一堆同话题的。不再往这三条上花功夫。
+- 右栏「记忆」实拍（harness 测试那篇的 APP 段）：卡片照常，第二张换成了「Speaker B 表示硬件与 APP 能连上…」——比之前更贴段落。RelatedMemory 不画命中词 chip，说话人标签的过滤只影响 MemoryPanel 那边的显示。没改代码。
