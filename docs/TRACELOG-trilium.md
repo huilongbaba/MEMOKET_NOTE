@@ -2934,3 +2934,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 导出 zip 里没起名的笔记文件名是正文首行 80 字硬截：「我们产品当前遇到的挑战：四项核心挑战归纳为验证框架：录制信任、关联即时反馈、总结行动化、图谱自维护。本次访谈在三月 四月.md」。后端 `exporters.display_title` 加 `clip_title`，跟前端 `clipTitle` 同一条规则（句号 ≥2 字截、逗号 / 分号 / 冒号 ≥8 字截、否则 60 硬截），冒号也算进两边的句读；整篇缩进的首行同样先 strip 再剥 `#`（后端这里之前也有这个顺序问题）。
 - 后端 908 / 前端 96。
+
+## [395] 巡检第 367 轮：dev 库体检（2026-09-13）
+
+- `pragma quick_check` ok；notes 465（terrence 23 + shot-perf 412 + 演示 / 测试用户）、branches 465（一一对应，没有孤儿）、note_revisions 16、note_trash 10、note_citations 331、writing_plans 52；数据目录 88MB（terrence 索引 36MB、资产 12MB、备份 23MB / 3 份）。桌面日志 dev 99KB / 正式版 21KB，离 2MB 滚动还远。r36x 探针日志没有 client:error。没改代码。
