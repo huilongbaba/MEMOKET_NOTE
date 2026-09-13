@@ -61,3 +61,12 @@ def test_没有引用也没摄入_空图(client):
     g = client.get(f"/api/notes/{n['id']}/graph").json()
     assert g == {"facts": 0, "topics": [], "entities": [], "links": []}
     assert client.get("/api/notes/nope/graph").status_code == 404
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("Speaker A", True), ("speaker_c", True), ("speaker-1", True), ("Speaker 12", True), ("说话人 1", True), ("说话人2", True), ("发言人 a", True),
+    ("speakers", False), ("speaker phone", False), ("Facebook", False), ("说话人们", False), ("", False),
+])
+def test_说话人伪实体的正则_跟前端同一条(name, expected):
+    from app.database.kb.who import is_speaker_tag
+    assert is_speaker_tag(name) is expected

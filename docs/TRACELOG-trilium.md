@@ -3318,3 +3318,4 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [486] 第 460 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行；往 `/api/client-log` 发一条 info，正式版日志里是 `[client:info] user=terrence smoke smoke`。
+- 跟进（第 460 轮）：kbNoise 那两条测试第一次跑就红了——「speakers」「speaker phone」被当成说话人标签（`[a-z0-9]{1,2}` 允许两个字母、字母前也不要求分隔）。前后端同一条正则改成：字母标签必须带分隔（Speaker A / speaker_c），数字标签可以贴着（Speaker1 / 说话人2）。terrence 库 1223 个实体里前后都是 9 个标签、没有原来藏着现在露出来的。后端 950（who 正则 12 条参数化）/ 前端 109。提交时应该先看单测再提交——这次是提交之后才看到红，下不为例。
