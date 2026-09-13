@@ -56,6 +56,7 @@ function iconOf(n: { note_id: string; child_count: number }): string {
   if (id.startsWith('kb:entity:')) return 'bx-user'
   if (id.startsWith('kb:month:')) return 'bx-calendar'
   if (id.startsWith('kb:unit:')) return 'bx-conversation'
+  if (id.startsWith('kb:material:')) return 'bx-conversation'   // 多段材料：跟会议同一个图标，不是文件夹
   if (id.startsWith('kb:fact:')) return 'bx-bulb'
   if (id.startsWith('app:')) return 'bx-cog'
   return n.child_count > 0 ? 'bx-folder' : 'bx-note'
