@@ -158,6 +158,7 @@ export default function App() {
   // **第二栏是只读的**——「对照着另一篇写」要的是看得见，不是两个光标；
   // 编辑器的状态（正文/骨架/修订/harness）是单实例的，做成可编辑要重构一半的
   // App.tsx，收益不成比例。要改它就点「在标签里打开」。
+  const splitFlush = useRef<(() => Promise<void>) | null>(null)
   const [split, setSplit] = useState<{ id: string; w: number } | null>(() => {
     try {
       // 探针截图要的是干净的初始布局，不把上次的分屏带进来
@@ -1522,6 +1523,13 @@ export default function App() {
   async function switchTo(n: Note, viaHarness = false) {
     if (current?.id === n.id) return
     await save()
+    // 要开的这篇正在分屏里被改：先把分屏没存的冲进库，再拿最新的正文来开。
+    // 不然主栏拿着旧正文开出来，1.5 秒后自动保存把分屏那几笔盖掉。
+    if (split?.id === n.id && splitFlush.current) {
+      await splitFlush.current()
+      const fresh = await api.getNote(n.id).catch(() => null)
+      if (fresh) n = fresh
+    }
     const leaving = current
     // 自动同步：改过还没同步的那篇，切走时马上同步（不等 2 分钟防抖）
     if (leaving && autoSync && dirtySinceIngest.current === leaving.id && !job) {
@@ -2575,7 +2583,7 @@ export default function App() {
                       <p className="muted split-hint">这篇在主栏正开着，这里只看不改。</p>
                       {note.content.trim() ? <MarkdownEditor content={content} readOnly /> : <p className="muted">这篇还是空的。</p>}
                     </>
-                  : <SplitEditor key={note.id} note={note} onSaved={(n) => {
+                  : <SplitEditor key={note.id} note={note} flushRef={splitFlush} onSaved={(n) => {
                       setNotes((prev) => prev.map((x) => (x.id === n.id ? n : x)))
                       void reloadTree(false)
                     }} />)

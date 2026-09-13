@@ -4,7 +4,7 @@
  *  存完把服务端回来的那篇交给 App 就地替换列表里的那条。不带 harness / 续写 /
  *  提案层 / 引用高亮那些——那些都长在主编辑器上，分屏的定位是「看着另一篇改几笔」。
  *  同一篇在主栏也开着的时候 App 不会用这个组件（那边只读渲染），两边不会互相盖。 */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import * as api from '../api'
 import type { Note } from '../api'
 import MarkdownEditor from './MarkdownEditor'
@@ -15,9 +15,11 @@ import { toast } from '../toast'
 const SAVE_DELAY_MS = 800
 
 /** 必须用 `key={note.id}` 挂载。 */
-export default function SplitEditor({ note, onSaved }: {
+export default function SplitEditor({ note, onSaved, flushRef }: {
   note: Note
   onSaved: (n: Note) => void
+  /** App 在把这篇切到主栏之前先 flush：不然分屏里最后 0.8 秒的改动会被主栏拿着旧正文的自动保存盖掉 */
+  flushRef?: MutableRefObject<(() => Promise<void>) | null>
 }) {
   const [content, setContent] = useState(note.content)
   const [status, setStatus] = useState<'' | 'saving' | 'saved' | 'error'>('')
@@ -41,6 +43,11 @@ export default function SplitEditor({ note, onSaved }: {
   // App 用 key={note.id} 挂这个组件：换一篇 = 重挂，正文从 useState 初始值来。
   // 卸载（关分屏 / 换篇）时把没存的冲掉再丢。
   useEffect(() => () => { void saver.flush(); saver.dispose() }, [saver])
+  useEffect(() => {
+    if (!flushRef) return
+    flushRef.current = () => saver.flush()
+    return () => { flushRef.current = null }
+  }, [flushRef, saver])
 
   // 别处改了这篇（导入 / 撤回 / 恢复历史版本）而这里没有未存改动：跟着刷新
   useEffect(() => {
