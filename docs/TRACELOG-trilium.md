@@ -3576,3 +3576,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [544] 第 520 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree（180 行）正常；包里 web/assets 有 mermaid.core / KbNoteView / LocalGraph 三个按需 chunk；正式版日志新增 20 行裸 `INFO:` 0 行。PROGRESS 补 511–520 行。
+
+## [545] 巡检第 521 轮：拆包之后老路径回归（2026-09-14）
+
+- `imgdrop`（拖图进编辑器 → `POST /api/assets` 200、正文里是 `/api/assets/…png`）、`find`（⌘F 查找 / 替换条）实拍照旧。主包剩 1103KB 主要是 CodeMirror + React + 应用代码，再拆收益小，到此为止。探针下 `POST /api/assets` 是真落盘的（save 被拦、资产不拦），孤儿资产 7 天后启动清理会收掉。没改代码。
