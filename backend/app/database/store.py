@@ -1900,6 +1900,36 @@ def delete_snapshot(user_id: str, run_id: str) -> None:
 
 
 SNAPSHOT_MAX_AGE_DAYS = 7
+USAGE_KEEP_DAYS = 90        # 用量账本：设置页只看到 30 天，留 90 天够回看
+JOB_KEEP_DAYS = 30          # 跑完的导入 / 入库任务：面板只列最近几个
+PLAN_KEEP_DAYS = 30         # 作废 / 写完的写作计划：只有活跃的那个会被用到
+
+
+def sweep_old_rows(now: datetime | None = None) -> dict:
+    """启动时清掉只增不减的流水：用量账本、跑完的入库任务（连同它的 items）、非活跃的写作计划
+    （连同 sections）。都是没有界面再回看的历史（第 264 轮：dev 库 27 个任务 201 个 item、18 个旧计划、
+    45 条用量，都没有过期机制）。笔记 / 事实 / 历史版本不在这里——那些是数据。"""
+    now = now or datetime.now(timezone.utc)
+    cut = lambda days: (now - timedelta(days=days)).isoformat()   # noqa: E731
+    out = {}
+    with connect() as c:
+        out["usage"] = c.execute("DELETE FROM llm_usage WHERE created_at < ?", (cut(USAGE_KEEP_DAYS),)).rowcount
+        old_jobs = [r["id"] for r in c.execute(
+            "SELECT id FROM ingest_jobs WHERE status NOT IN ('queued','running') AND created_at < ?", (cut(JOB_KEEP_DAYS),))]
+        if old_jobs:
+            q = ",".join("?" * len(old_jobs))
+            c.execute(f"DELETE FROM ingest_items WHERE job_id IN ({q})", old_jobs)
+            c.execute(f"DELETE FROM ingest_jobs WHERE id IN ({q})", old_jobs)
+        out["jobs"] = len(old_jobs)
+        old_plans = [r["id"] for r in c.execute(
+            "SELECT id FROM writing_plans WHERE status <> 'active' AND updated_at < ?", (cut(PLAN_KEEP_DAYS),))]
+        if old_plans:
+            q = ",".join("?" * len(old_plans))
+            c.execute(f"DELETE FROM writing_sections WHERE plan_id IN ({q})", old_plans)
+            c.execute(f"DELETE FROM writing_plans WHERE id IN ({q})", old_plans)
+        out["plans"] = len(old_plans)
+        c.commit()
+    return out
 
 
 def sweep_stale_snapshots(days: int = SNAPSHOT_MAX_AGE_DAYS) -> int:

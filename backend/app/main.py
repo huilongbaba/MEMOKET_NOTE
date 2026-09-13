@@ -30,6 +30,9 @@ app = FastAPI(title="memoket-NOTE", version="0.1.0",
 # 一个导入任务"的检查会认为一直有任务在跑，用户再也导不进任何东西。
 _orphans = store.sweep_orphan_jobs()
 _stale_pauses = store.sweep_stale_snapshots()
+_old_rows = store.sweep_old_rows()
+if any(_old_rows.values()):
+    print(f"[startup] 清理了过期流水：{_old_rows}")
 if _stale_pauses:
     print(f"[startup] 清理了 {_stale_pauses} 个超过 {store.SNAPSHOT_MAX_AGE_DAYS} 天没处置的轮末暂停")
 _orphan_plans = store.sweep_orphan_plans()

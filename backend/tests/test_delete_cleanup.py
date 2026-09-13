@@ -74,3 +74,28 @@ def test_运行记录孤儿不止note前缀一种(db):
     db.delete_note("u", n["id"])
     with db.connect() as c:
         assert c.execute("SELECT COUNT(*) FROM harness_runs").fetchone()[0] == 0
+
+
+def test_过期流水启动时清掉_新的留着(db):
+    """第 264 轮：用量账本 / 跑完的入库任务 / 非活跃写作计划只增不减。"""
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    old, fresh = (now - timedelta(days=100)).isoformat(), now.isoformat()
+    with db.connect() as c:
+        c.execute("INSERT INTO llm_usage (user_id, feature, model, prompt_tokens, completion_tokens, ms, created_at) VALUES ('u','x','m',1,1,1,?)", (old,))
+        c.execute("INSERT INTO llm_usage (user_id, feature, model, prompt_tokens, completion_tokens, ms, created_at) VALUES ('u','x','m',1,1,1,?)", (fresh,))
+        for jid, st, at in (("j-old", "done", old), ("j-run", "running", old), ("j-new", "done", fresh)):
+            c.execute("INSERT INTO ingest_jobs (id, user_id, status, facts, detail, created_at) VALUES (?,?,?,0,'',?)", (jid, "u", st, at))
+            c.execute("INSERT INTO ingest_items (id, job_id, idx, filename, kind, status, facts, detail, updated_at) VALUES (?,?,0,'f','doc',?,0,'',?)", ("i-" + jid, jid, st, at))
+        for pid, st, at in (("p-old", "abandoned", old), ("p-act", "active", old), ("p-new", "done", fresh)):
+            c.execute("INSERT INTO writing_plans (id, user_id, parent_note_id, goal, status, doc_note_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)", (pid, "u", "root", "g", st, "", at, at))
+            c.execute("INSERT INTO writing_sections (id, plan_id, idx, title, status, note_id, summary, created_at) VALUES (?,?,0,'t','pending','','',?)", ("s-" + pid, pid, at))
+        c.commit()
+    out = db.sweep_old_rows()
+    assert out == {"usage": 1, "jobs": 1, "plans": 1}
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM llm_usage").fetchone()[0] == 1
+        assert {r[0] for r in c.execute("SELECT id FROM ingest_jobs")} == {"j-run", "j-new"}
+        assert {r[0] for r in c.execute("SELECT job_id FROM ingest_items")} == {"j-run", "j-new"}
+        assert {r[0] for r in c.execute("SELECT id FROM writing_plans")} == {"p-act", "p-new"}
+        assert {r[0] for r in c.execute("SELECT plan_id FROM writing_sections")} == {"p-act", "p-new"}
