@@ -57,7 +57,7 @@ async def compose_block(body: ComposeBlockIn, request: Request,
         before, after = _context_block(body.content, body.cursor)
         st = State(
             mode=mode,
-            ctx=tools.ToolContext(user=user, note_id=body.note_id,
+            ctx=tools.ToolContext(user=user, note_id=body.note_id, scope=body.scope,
                                   note_title=body.title,
                                   content=body.content, cursor=body.cursor),
             request=request,

@@ -39,3 +39,16 @@ def test_recall_按范围过滤_多取再滤(tmp_path, monkeypatch):
         assert [f["id"] for f in r["facts"]] and all(f["id"].startswith("note-") for f in r["facts"])
         r = c.post("/api/memory/relations", json={"passage": "电池容量定在 420mAh。", "confirm": False, "scope": "imports"}).json()
         assert all(i.startswith("obsidian-") for rel in r["relations"] for i in rel["fact_ids"])
+
+
+def test_harness_取材料的工具也带范围(monkeypatch):
+    from app.harness.tools import ToolContext, registry
+    from app.harness.tools import memory_tools
+    from app.database.kite.kite_memory import UserMemory
+    seen = {}
+    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8, scope="all": (seen.__setitem__("scope", scope) or [], [], 0.1))
+    ctx = ToolContext(user="u", scope="meetings")
+    assert registry.get("search_memory") is not None
+    memory_tools.search_memory(ctx, "电池")
+    assert seen["scope"] == "meetings"
+    assert ToolContext(user="u").scope == "all"

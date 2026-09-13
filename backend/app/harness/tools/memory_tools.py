@@ -54,7 +54,7 @@ def _fmt_facts(rows: list[dict], *, with_id: bool = True) -> str:
     required=["query"],
 )
 def search_memory(ctx: ToolContext, query: str, limit: int = 8) -> str:
-    rows, _terms, _took = UserMemory(ctx.user).recall(query, limit=max(1, min(int(limit or 8), 20)))
+    rows, _terms, _took = UserMemory(ctx.user).recall(query, limit=max(1, min(int(limit or 8), 20)), scope=ctx.scope)
     hits = [r for r in rows if r.get("text")]
     return _fmt_facts(hits)
 
@@ -251,5 +251,5 @@ def gather_subject(ctx: ToolContext, query: str, limit: int = 14) -> str:
     from ...database.kb.recall import recall_clustered
 
     rows, _terms, _took = recall_clustered(
-        UserMemory(ctx.user), query, limit=max(1, min(int(limit or 14), 30)))
+        UserMemory(ctx.user), query, limit=max(1, min(int(limit or 14), 30)), scope=ctx.scope)
     return _fmt_facts([r for r in rows if r.get("text")])

@@ -124,7 +124,7 @@ class NoteHooks:
         if not AGENT_TOOLS:
             facts, _ids, _took = _retrieve(
                 st.ctx.user, st.content, spine, beats, limit=6,
-                title=title, anchor_first=True)
+                title=title, anchor_first=True, scope=st.ctx.scope)
             return facts, trace
 
         # Two stages: ask the model whether and what to retrieve, then write.
@@ -163,7 +163,7 @@ class NoteHooks:
             # two-millisecond fallback sat unused.
             facts, _ids, _took = _retrieve(
                 st.ctx.user, st.content, spine, beats, limit=6,
-                title=title, anchor_first=True)
+                title=title, anchor_first=True, scope=st.ctx.scope)
 
         # When last round's facts were judged unsupported, trace the top few
         # back to the original conversation lines and put them in front of the

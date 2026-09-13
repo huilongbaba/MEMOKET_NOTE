@@ -45,6 +45,7 @@ class ComposeBlockIn(BaseModel):
     cursor: int = 0
     mode: str = "prompt"
     prompt: str = ""
+    scope: str = "all"      # 记忆范围
     # 用户选中的那段。给了就是「对这段做点什么」（右键 → 自定义提示），
     # 没给就是「在光标这里插一块」（`/` 唤起）。同一套 harness，差的是作用域。
     selection: str = ""
@@ -178,6 +179,7 @@ class NoteHarnessRunIn(BaseModel):
     # 每轮写完停下来等用户逐条接受/拒绝。**是用户的选择，不是功能的属性**
     # ——同一个人在重要文档上想要、在草稿上不想要。
     review_each_round: bool = False
+    scope: str = "all"      # 记忆范围（database/kb/scope.py），取材料时只看这一档
 
 
 class HarnessResumeIn(BaseModel):

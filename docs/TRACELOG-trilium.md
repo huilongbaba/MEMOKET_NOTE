@@ -1947,3 +1947,10 @@ apple- evernote-` 导入 / 其余是会议记录），`UserMemory.recall(scope=)
 右栏「记忆」顶上一个下拉「全部记忆 / 只看笔记 / 只看会议记录 / 只看导入的」，存 localStorage，
 api 层自己带上，换了范围召回、关系卡、页边圆点都重算。智能续写 harness 那条路和真正分库仍在欠账。
 `tests/test_memory_scope.py`。pytest 857。
+
+## [200] 巡检第 171 轮：记忆范围接进 harness（2026-09-13）
+
+第 170 轮的范围只到召回 / 关系 / magic tap；智能续写、`/` 块生成、取材料的工具（search_memory /
+filter_facts…）还是全库。`ToolContext.scope`（NoteHarnessRunIn / ComposeBlockIn 带过来，前端从
+localStorage 取）→ hooks/note.py 两处 `_retrieve(scope=)`、memory_tools 的 recall / recall_clustered
+都带。深色下的范围下拉正常。PROGRESS 的分库欠账只剩「真正分库」。pytest 858。

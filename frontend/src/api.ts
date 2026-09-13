@@ -1017,7 +1017,7 @@ export async function runNoteHarness(
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
-      note_id: noteId, content, spine, beats, max_rounds: 20, mode,
+      note_id: noteId, content, spine, beats, max_rounds: 20, mode, scope: memoryScope(),
       review_each_round: reviewEachRound,
     }),
     signal,
@@ -1242,7 +1242,7 @@ export async function composeBlock(
   const res = await fetch('/api/compose/block', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, scope: memoryScope() }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(await res.text().catch(() => res.statusText))

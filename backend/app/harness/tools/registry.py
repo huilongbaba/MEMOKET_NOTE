@@ -48,6 +48,7 @@ class ToolContext:
     # 后开始的那个会把先开始的光标覆盖掉，先跑的那个就分析到别处的表去了。
     content: str = ""
     cursor: int = 0
+    scope: str = "all"      # 记忆范围：取材料的工具只看这一档（database/kb/scope.py）
 
     # Scratch space the caller owns; the tool pool never interprets it.
     #
