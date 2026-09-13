@@ -1,19 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useIngestActive } from '../util/ingestActive'
-import {
-  createTopic, factSources, listClusters, memoryEntities, memoryFacts, memoryStats,
-  memoryTimeline, memoryTopics, topicEntityLinks,
-} from '../api'
-import type {
-  EntityNode, FactDetail, FactsFilter, MemoryStats, SourceLine, TimelineBucket, TopicCluster,
-  TopicEntityLink, TopicNode,
-} from '../api'
+import { createTopic, listClusters, memoryEntities, memoryTopics, topicEntityLinks } from '../api'
+import type { EntityNode, TopicCluster, TopicEntityLink, TopicNode } from '../api'
 import KnowledgeGraph from './KnowledgeGraph'
 import { isSpeakerTag } from '../util/kbNoise'
 
-type Tab = 'overview' | 'topics' | 'timeline' | 'facts'
-
-const PAGE_SIZE = 20
 
 /** depth(root) = 0 -- "一级" in the UI means depth 0, "二级" depth <= 1, etc.
  * Same reachability-with-cycle-guard shape as closureFactCounts in
@@ -42,13 +33,9 @@ function topicDepths(topics: TopicNode[]): Map<string, number> {
  * 证据回溯是重点——事实表展开一条就按需拉 /facts/{id}/sources，不在列表页
  * 就把每条的原文都查一遍。
  */
-export default function MemoryBrowser({ onClose, embedded = false, initialTab = 'overview' }: {
-  onClose?: () => void
-  /** 内嵌进中栏（知识库虚拟节点打开时），不要弹层外壳、不要关闭按钮 */
-  embedded?: boolean
-  initialTab?: Tab
-}) {
-  const [tab, setTab] = useState<Tab>(initialTab)
+/** 主题地图（知识库虚拟节点 kb:graph 打开的那一页）。以前还带概览 / 时间线 / 事实表三个 tab 和弹层外壳，
+ *  那些早就各自是知识库的一页了，第 279 轮把没人走的那几截删掉，只剩地图。 */
+export default function MemoryBrowser() {
   // 只在摄入任务跑着的时候轮询（util/ingestActive.ts）——之前三个 3 秒定时器常开
   const live = useIngestActive()
   const [showCreate, setShowCreate] = useState(false)
@@ -57,36 +44,19 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   const [graphW, setGraphW] = useState(900)
   useEffect(() => {
     const el = graphHost.current
-    if (!el || !embedded) return
+    if (!el) return
     const ro = new ResizeObserver(() => setGraphW(Math.max(320, Math.floor(el.clientWidth))))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [embedded, tab])
-  const [stats, setStats] = useState<MemoryStats | null>(null)
+  }, [])
   const [topics, setTopics] = useState<TopicNode[]>([])
   const [entities, setEntities] = useState<EntityNode[]>([])
   const [links, setLinks] = useState<TopicEntityLink[]>([])
-  const [timeline, setTimeline] = useState<TimelineBucket[]>([])
-  const [factsFilter, setFactsFilter] = useState<FactsFilter>({ limit: PAGE_SIZE, offset: 0 })
-  const [facts, setFacts] = useState<FactDetail[]>([])
-  const [factsTotal, setFactsTotal] = useState(0)
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [sources, setSources] = useState<SourceLine[]>([])
-  const [loading, setLoading] = useState(false)
   const [newTopicCode, setNewTopicCode] = useState('')
   const [newTopicParent, setNewTopicParent] = useState('')
   const [creatingTopic, setCreatingTopic] = useState(false)
   const [newTopicError, setNewTopicError] = useState('')
   const [maxLevel, setMaxLevel] = useState<number | null>(null)
-  // 主题地图默认就要用满窗口——.modal 960px 的宽度封顶在节点一多的时候完全
-  // 不够看，之前靠一个"全屏"按钮补，但那是要求用户先看一遍挤成一团的图再
-  // 手动展开；这次改成默认状态本身就取消宽度封顶（见下面渲染部分）。
-  const [graphSize, setGraphSize] = useState({ w: window.innerWidth - 80, h: window.innerHeight - 200 })
-  useEffect(() => {
-    function onResize() { setGraphSize({ w: window.innerWidth - 80, h: window.innerHeight - 200 }) }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
   const [showEntities, setShowEntities] = useState(true)
 
   // 主题地图默认看**簇**，不是全部主题。196 个节点不是一张图，实测的代价是
@@ -96,12 +66,10 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
   const [drilled, setDrilled] = useState<string | null>(null)
   useEffect(() => { listClusters().then((r) => setClusters(r.clusters)).catch(() => {}) }, [])
 
-  useEffect(() => { memoryStats().then(setStats).catch(() => {}) }, [])
   // 主题/实体/共现边同样是抽取时后台不断产出的，之前只在切进 tab 的时候拉
   // 一次（还带了 length===0 的门槛，切走再切回来都不会重新拉）——开着这个
   // tab 抽取新内容，图上永远不会长出新节点。改成跟事实表一样轮询。
   useEffect(() => {
-    if (tab !== 'topics') return
     const fetchAll = () => {
       memoryTopics().then(setTopics).catch(() => {})
       memoryEntities().then(setEntities).catch(() => {})
@@ -111,33 +79,7 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
     if (!live) return
     const timer = setInterval(fetchAll, 3000)
     return () => clearInterval(timer)
-  }, [tab, live])
-
-  useEffect(() => {
-    if (tab !== 'timeline') return
-    const fetchTimeline = () => memoryTimeline().then((r) => setTimeline(r.buckets)).catch(() => {})
-    fetchTimeline()
-    if (!live) return
-    const timer = setInterval(fetchTimeline, 3000)
-    return () => clearInterval(timer)
-  }, [tab, live])
-
-  // 事实是分块抽取的，入库任务跑在后台的时候新 fact 会不断往库里落——这里
-  // 开着事实表就跟着轮询，边抽边多地刷出来，不用手动切一下筛选才能看到最新
-  // 的。第一次拉带 loading 转圈，轮询这几次不带，不然每 3 秒闪一下。
-  useEffect(() => {
-    if (tab !== 'facts') return
-    setLoading(true)
-    memoryFacts(factsFilter)
-      .then((r) => { setFacts(r.facts); setFactsTotal(r.total) })
-      .finally(() => setLoading(false))
-
-    if (!live) return
-    const timer = setInterval(() => {
-      memoryFacts(factsFilter).then((r) => { setFacts(r.facts); setFactsTotal(r.total) }).catch(() => {})
-    }, 3000)
-    return () => clearInterval(timer)
-  }, [tab, factsFilter, live])
+  }, [live])
 
   // 大语料下抽取会把 ASR 噪声碎片（单/双字母缩写、纯数字、0 引用的孤儿实体）
   // 一起当实体提出来——实测 terrence 语料到 1864 个实体时，95% type 为空，
@@ -263,25 +205,9 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
     : (drilledEntityCodes ? searchedEntities.filter((e) => drilledEntityCodes.has(e.code)) : searchedEntities)
   const graphLinks = drilled === null && clusters.length ? [] : searchedLinks
 
-  // 内嵌在中栏时，点一个主题/实体 = 打开它的页面（树上的节点），不是切到
-  // 这个组件自己那个已经藏起来的「事实表」tab。
-  function filterByTopic(code: string) {
-    if (embedded) { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:topic:' + code })); return }
-    setFactsFilter({ topic: code, limit: PAGE_SIZE, offset: 0 })
-    setTab('facts')
-  }
-
-  function filterByEntity(code: string) {
-    if (embedded) { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:entity:' + code })); return }
-    setFactsFilter({ entity: code, limit: PAGE_SIZE, offset: 0 })
-    setTab('facts')
-  }
-
-  async function toggleExpand(f: FactDetail) {
-    if (expanded === f.id) { setExpanded(null); return }
-    setExpanded(f.id)
-    setSources(await factSources(f.id).catch(() => []))
-  }
+  // 点一个主题/实体 = 打开它的页面（树上的节点）
+  function filterByTopic(code: string) { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:topic:' + code })) }
+  function filterByEntity(code: string) { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:entity:' + code })) }
 
   async function submitNewTopic() {
     if (!newTopicCode.trim()) return
@@ -299,66 +225,12 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
     }
   }
 
-  const maxTimelineCount = Math.max(1, ...timeline.map((b) => Math.max(b.units, b.facts)))
-
-  useEffect(() => {
-    if (embedded || !onClose) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, embedded])
-
   // **不要把外壳写成 render 里定义的组件**：每次 render 都是新的组件类型，
   // 整棵子树（含力导向图）每 3 秒轮询一次就重挂一次——图自己跳、放大了缩回去、
   // 拖过的节点归位，全是这一个原因（client-log 抓到每 1.5s 一次 new simulation）。
   const body = (
     <>
-        {!embedded && (
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 style={{ margin: 0 }}>知识库</h2>
-            <button onClick={onClose}>✕ 关闭</button>
-          </div>
-        )}
-
-        {!embedded && <div className="row" style={{ margin: '10px 0' }}>
-          {(['overview', 'topics', 'timeline', 'facts'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              className={tab === t ? 'primary' : ''}
-              onClick={() => setTab(t)}
-            >
-              {{ overview: '概览', topics: '主题地图', timeline: '时间线', facts: '事实表' }[t]}
-            </button>
-          ))}
-        </div>}
-
-        {/* overview 是默认 tab，stats 请求没回来之前是 null——之前这里直接
-           `stats &&` 短路，打开面板的第一瞬间内容区彻底空白，没有任何
-           加载提示（跟 [11] 修的 RelatedMemory 是同一类问题：默认/首屏
-           状态被短路成完全空白）。 */}
-        {tab === 'overview' && !stats && <p className="muted"><span className="spinner" /> 加载中…</p>}
-        {tab === 'overview' && stats && (
-          <div className="card">
-            <div className="row" style={{ gap: 20 }}>
-              <div><strong>{stats.facts}</strong> <span className="muted">条事实</span></div>
-              <div><strong>{stats.topics}</strong> <span className="muted">个主题</span></div>
-              <div><strong>{stats.entities}</strong> <span className="muted">个实体</span></div>
-              <div><strong>{stats.units}</strong> <span className="muted">个会话</span></div>
-              <div><strong>{stats.lines}</strong> <span className="muted">条原文</span></div>
-            </div>
-            {stats.start_date && (
-              <p className="muted" style={{ marginTop: 8 }}>
-                记录跨度：{stats.start_date} ~ {stats.end_date}
-              </p>
-            )}
-            {stats.speakers.length > 0 && (
-              <p className="muted">说话人：{stats.speakers.join('、')}</p>
-            )}
-            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{stats.codebook}</p>
-          </div>
-        )}
-
-        {tab === 'topics' && (
+        {(
           <div className="stack">
             {showCreate && <div className="filter-row">
               <input
@@ -446,123 +318,13 @@ export default function MemoryBrowser({ onClose, embedded = false, initialTab = 
                 }
                 filterByTopic(code)
               }}
-              width={embedded ? graphW : graphSize.w}
-              height={embedded ? Math.max(520, Math.round(graphW * 0.72)) : graphSize.h}
+              width={graphW}
+              height={Math.max(520, Math.round(graphW * 0.72))}
             />
           </div>
         )}
 
-        {tab === 'timeline' && (
-          <div>
-            {timeline.length === 0 && <p className="muted">还没有记录。</p>}
-            {timeline.map((b) => (
-              <div key={b.date} className="row" style={{ marginBottom: 6 }}>
-                <span className="muted" style={{ width: 90 }}>{b.date}</span>
-                <div style={{ flex: 1, background: 'var(--panel)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${(b.facts / maxTimelineCount) * 100}%`,
-                    background: 'var(--accent)', height: 8,
-                  }} />
-                </div>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {b.units} 会话 · {b.facts} 事实
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === 'facts' && (
-          <div>
-            <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
-              <input
-                placeholder="按 kind 过滤"
-                value={factsFilter.kind ?? ''}
-                onChange={(e) => setFactsFilter((f) => ({ ...f, kind: e.target.value, offset: 0 }))}
-                style={{ width: 120 }}
-              />
-              <input
-                placeholder="按 who 过滤"
-                value={factsFilter.who ?? ''}
-                onChange={(e) => setFactsFilter((f) => ({ ...f, who: e.target.value, offset: 0 }))}
-                style={{ width: 120 }}
-              />
-              <select
-                value={factsFilter.conf_min ?? ''}
-                onChange={(e) => setFactsFilter((f) => ({ ...f, conf_min: e.target.value, offset: 0 }))}
-              >
-                <option value="">任意置信度</option>
-                <option value="low">low 及以上</option>
-                <option value="med">med 及以上</option>
-                <option value="high">仅 high</option>
-              </select>
-              {(factsFilter.topic || factsFilter.entity) && (
-                <span className="badge">
-                  {factsFilter.topic ? `主题: ${factsFilter.topic}` : `实体: ${factsFilter.entity}`}
-                  {' '}
-                  <a className="link" onClick={() => setFactsFilter({ limit: PAGE_SIZE, offset: 0 })}>✕</a>
-                </span>
-              )}
-            </div>
-
-            {loading && <p className="muted"><span className="spinner" /> 加载中…</p>}
-            {!loading && facts.length === 0 && (
-              <p className="muted">
-                {factsFilter.topic
-                  ? `「${factsFilter.topic}」下面（含子主题）还没有事实——这是预置的分类，还没有内容归到这里。`
-                  : factsFilter.entity
-                    ? `「${factsFilter.entity}」还没有关联的事实。`
-                    : '没有符合条件的事实。'}
-              </p>
-            )}
-
-            {facts.map((f) => (
-              <div className="card" key={f.id}>
-                <div onClick={() => toggleExpand(f)} style={{ cursor: 'pointer' }}>
-                  {f.text}
-                  <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
-                    {f.when} · {f.who} · {f.kind} · {f.conf}
-                  </span>
-                </div>
-                {(f.topics.length > 0 || f.entities.length > 0) && (
-                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                    {f.topics.map((t) => `#${t}`).join(' ')} {f.entities.map((e) => `@${e}`).join(' ')}
-                  </p>
-                )}
-                {expanded === f.id && (
-                  <div style={{ marginTop: 6, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
-                    {sources.length === 0
-                      ? <p className="muted">没有找到原始出处。</p>
-                      : sources.map((s) => (
-                        <p key={s.id} className="muted" style={{ margin: '4px 0' }}>
-                          出处（{s.date} · {s.who}）：{s.text}
-                        </p>
-                      ))}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {factsTotal > PAGE_SIZE && (
-              <div className="row" style={{ justifyContent: 'center', marginTop: 10 }}>
-                <button
-                  disabled={(factsFilter.offset ?? 0) === 0}
-                  onClick={() => setFactsFilter((f) => ({ ...f, offset: Math.max(0, (f.offset ?? 0) - PAGE_SIZE) }))}
-                >上一页</button>
-                <span className="muted">
-                  {(factsFilter.offset ?? 0) + 1}–{Math.min(factsTotal, (factsFilter.offset ?? 0) + PAGE_SIZE)} / {factsTotal}
-                </span>
-                <button
-                  disabled={(factsFilter.offset ?? 0) + PAGE_SIZE >= factsTotal}
-                  onClick={() => setFactsFilter((f) => ({ ...f, offset: (f.offset ?? 0) + PAGE_SIZE }))}
-                >下一页</button>
-              </div>
-            )}
-          </div>
-        )}
       </>
   )
-  return embedded
-    ? <div className="kb-browser">{body}</div>
-    : <div className="modal-backdrop"><div className="modal" style={tab === 'topics' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}>{body}</div></div>
+  return <div className="kb-browser">{body}</div>
 }

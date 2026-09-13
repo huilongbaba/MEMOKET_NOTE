@@ -58,7 +58,7 @@ export default function KbNoteView(props: Props) {
   if (id.startsWith('kb:unit:')) return <UnitPage id={id.slice('kb:unit:'.length)} actions={actions} />
   // 多段材料（树上的「（n 段）」行）：打开它的第一段，页顶有分段导航
   if (id.startsWith('kb:material:')) return <UnitPage id={id.slice('kb:material:'.length)} actions={actions} />
-  if (id === 'kb:graph') return <ToolNote title="主题地图" icon="bx-network-chart"><MemoryBrowser embedded initialTab="topics" /></ToolNote>
+  if (id === 'kb:graph') return <ToolNote title="主题地图" icon="bx-network-chart"><MemoryBrowser /></ToolNote>
   if (id === 'kb:digest') return <ToolNote title="定期回顾" icon="bx-history"><DigestPanel /></ToolNote>
   return <CollectionNote {...props} />
 }

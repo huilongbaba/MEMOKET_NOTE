@@ -2522,3 +2522,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [307] 巡检第 278 轮：有没有没人用的前端模块（2026-09-13）
 
 - 扫了 `src/components` / `src/editor` / `src/util` 所有模块的引用：没有一个是没人 import 的（MemoryBrowser 走 KbNoteView 的主题地图页，KnowledgeGraph 走 LocalGraph）。没改代码。
+
+## [308] 巡检第 279 轮：主题地图页里没人走的代码（2026-09-13）
+
+- `MemoryBrowser` 只在 `KbNoteView` 里以 embedded + topics 挂载，但文件里还留着概览 / 时间线 / 事实表三个 tab、弹层外壳、Esc 关闭、事实翻页——那些早就各自是知识库的一页了；而且它每次挂载还多发一次 `/api/memory/stats`（概览 tab 的）。
+- **改**：删到只剩主题地图（568 → 330 行），点主题 / 实体一律走 `open-virtual`。tsc / eslint / vitest 全绿；`open:kb:graph` 浅色、`graph-zoom` 深色实拍不变。
