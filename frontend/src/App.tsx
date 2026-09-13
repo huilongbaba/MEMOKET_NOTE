@@ -1328,7 +1328,10 @@ export default function App() {
       setCurrent(n)
       setSaveStatus({ at: Date.now() })
       try { localStorage.removeItem('memoket-note-draft:' + current.id) } catch { /* 无所谓 */ }
-      await Promise.all([reload(), reloadTree(false)])
+      // 列表接口带全文（terrence 23 篇 250KB、shot-perf 413 篇 580KB）：每次自动保存都重拉一遍整个库
+      // 太浪费——保存只改这一篇，用返回的那篇就地替换；增删移动那些路径照旧 reload()
+      setNotes((prev) => (prev.some((x) => x.id === n.id) ? prev.map((x) => (x.id === n.id ? n : x)) : [n, ...prev]))
+      await reloadTree(false)
     } catch (e) {
       setSaveStatus({ at: Date.now(), error: String(e) })
       // **没存上的正文先落到本机**：后端崩了 / 网断了的那几秒里用户还在写，
