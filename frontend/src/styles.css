@@ -801,7 +801,10 @@ input[type=file]:hover { border-color: var(--accent); }
 .kb-search > .bx { color: var(--muted); font-size: 18px; }
 .kb-search input { flex: 1; border: none !important; background: transparent !important; padding: 11px 0 !important; font-size: 15px; }
 .kb-search input:focus-visible { outline: none; }
-.stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+/* 五张卡固定五列在 820px 窗口里每张只剩 130px，「1996-03 → 2026-12」折成三行把卡撑高（第 206 轮实拍）——
+   放不下就换行 */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat-span { white-space: nowrap; }
 .stat-tile { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .stat-value { font-size: 22px; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; }
 .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }

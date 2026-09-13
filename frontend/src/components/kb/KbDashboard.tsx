@@ -62,7 +62,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             <StatTile value={data.stats.topics} label="个主题" />
             <StatTile value={data.stats.entities.toLocaleString()} label="个实体" />
             <StatTile value={data.stats.units.toLocaleString()} label="场会议" />
-            <StatTile value={<span style={{ fontSize: 15 }}>{data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}</span>} label="跨度（按事实里的日期）" />
+            <StatTile value={<span className="stat-span" style={{ fontSize: 15 }}>{data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}</span>} label="跨度（按事实里的日期）" />
           </div>
 
           <ConflictInbox actions={actions} />
