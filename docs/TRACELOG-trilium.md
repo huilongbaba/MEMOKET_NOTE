@@ -2938,3 +2938,11 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [395] 巡检第 367 轮：dev 库体检（2026-09-13）
 
 - `pragma quick_check` ok；notes 465（terrence 23 + shot-perf 412 + 演示 / 测试用户）、branches 465（一一对应，没有孤儿）、note_revisions 16、note_trash 10、note_citations 331、writing_plans 52；数据目录 88MB（terrence 索引 36MB、资产 12MB、备份 23MB / 3 份）。桌面日志 dev 99KB / 正式版 21KB，离 2MB 滚动还远。r36x 探针日志没有 client:error。没改代码。
+
+## [396] 巡检第 368 轮：库里的测试残留（2026-09-13）
+
+- note_trash 那 10 条全是 `test-skeleton` 的，写作计划 done 34 / abandoned 18 都是历次真跑留下的（30 天不活跃会被启动清理扫掉）；隔离前的测试用户（harness-test-2 / cancel-test3 / cleanup-test / search-test）还在，等用户点头再清（第 187 轮起的约定）。没改代码。
+
+## [397] 第 369 轮：重打 dmg 前的全量门（2026-09-13）
+
+- 后端 908 通过；前端 tsc + eslint + vitest 96 + 12 条 check / smoke 全过。
