@@ -44,6 +44,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
   if (probe === 'conflicts') setTimeout(() => void openVirtual('kb', '知识库'), 600)
   if (probe === 'trash') setTimeout(() => void openVirtual('app:trash', '最近删除'), 600)
+  if (probe === 'today' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => window.dispatchEvent(new CustomEvent('open-today')), 800) }   // 这个 hook 每次 notes 变都跑，不挡会连点四次
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)
   if (probe?.startsWith('open:')) setTimeout(() => void openVirtual(probe.slice(5)), 900)

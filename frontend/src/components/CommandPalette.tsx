@@ -10,6 +10,7 @@ import Highlight from './Highlight'
  * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。 */
 const COMMANDS: { label: string; icon: string; run: () => void }[] = [
   { label: '新建笔记', icon: 'bx-plus', run: () => window.dispatchEvent(new CustomEvent('new-note')) },
+  { label: '今天的日记', icon: 'bx-calendar-event', run: () => window.dispatchEvent(new CustomEvent('open-today')) },
   { label: '知识库总览', icon: 'bx-data', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' })) },
   { label: '主题地图', icon: 'bx-network-chart', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:graph' })) },
   { label: '时间线', icon: 'bx-calendar', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:timeline' })) },

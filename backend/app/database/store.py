@@ -848,6 +848,34 @@ def purge_trash(user_id: str, note_id: str) -> bool:
         return c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id)).rowcount > 0
 
 
+_WEEKDAYS = "周一 周二 周三 周四 周五 周六 周日".split()
+
+
+def _child_titled(c, user_id: str, parent_id: str, title: str) -> str | None:
+    row = c.execute("SELECT n.id FROM notes n JOIN branches b ON b.note_id=n.id"
+                    " WHERE b.user_id=? AND b.parent_note_id=? AND n.title=? ORDER BY b.position LIMIT 1",
+                    (user_id, parent_id, title)).fetchone()
+    return row[0] if row else None
+
+
+def today_note(user_id: str, today) -> dict:
+    """今天的日记（Trilium 的 day note）：`日记 / 2026 / 09 月 / 09-13 周六`，没有就一路建出来，
+    有就原样返回——同一天点多少次都是同一篇。按标题找，所以用户把「日记」改名之后会另起一棵，
+    这跟 Trilium 用 #calendarRoot 标签找根不同，是有意为之：没有属性系统就用最朴素的办法。"""
+    chain = [("日记", ""), (f"{today.year}", ""), (f"{today.month:02d} 月", ""),
+             (f"{today.month:02d}-{today.day:02d} {_WEEKDAYS[today.weekday()]}",
+              f"# {today.month} 月 {today.day} 日 {_WEEKDAYS[today.weekday()]}\n\n")]
+    parent = ROOT_ID
+    note_id = None
+    for title, content in chain:
+        with connect() as c:
+            note_id = _child_titled(c, user_id, parent, title)
+        if note_id is None:
+            note_id = create_note(user_id, title, content, parent)["id"]
+        parent = note_id
+    return get_note(user_id, note_id)
+
+
 def child_notes(user_id: str, parent_id: str, exclude_id: str = "",
                 limit: int = 5) -> list[dict]:
     """某个节点下面的直接子笔记。无限续写拿它当「同一批内容」的参考上下文。

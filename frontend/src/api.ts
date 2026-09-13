@@ -537,6 +537,9 @@ export const kbDay = (date: string) => fetch(`/api/kb/timeline/${date}`, { heade
 export const kbUnit = (id: string, limit = 50, offset = 0) =>
   fetch(`/api/kb/unit/${encodeURIComponent(id)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbUnitPage>)
 
+/** 今天的日记：`日记 / 年 / 月 / 日` 没有就建、有就打开（Trilium 的 day note） */
+export const todayNote = () => fetch('/api/notes/today', { method: 'POST', headers: headers() }).then(json<Note>)
+
 /** 最近删除（30 天内可找回） */
 export type TrashItem = { note_id: string; title: string; chars: number; deleted_at: string }
 export const listTrash = () => fetch('/api/notes/trash', { headers: headers() }).then(json<TrashItem[]>)

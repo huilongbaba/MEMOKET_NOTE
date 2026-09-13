@@ -2,6 +2,7 @@
 export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: string }[] }[] = [
   { title: '笔记', items: [
     { keys: '⌘N / ⌘T', what: '新建笔记' },
+    { keys: '⌘⇧D', what: '今天的日记（日记 / 年 / 月 / 日）' },
     { keys: '⌘S', what: '保存（自动保存已开，这只是个安心键）' },
     { keys: '⌘K / ⌘J', what: '搜索笔记与知识库、跳转、命令' },
     { keys: '⌘[ / ⌘]', what: '后退 / 前进' },

@@ -26,6 +26,13 @@ def create_note(body: NoteCreateIn, user: str = Depends(current_user)):
     return store.create_note(user, body.title, body.content, body.parent_note_id)
 
 
+@router.post("/today", response_model=Note)
+def today(user: str = Depends(current_user)):
+    """今天的日记：`日记 / 年 / 月 / 日` 一路找过去，没有就建，有就打开。"""
+    from datetime import date as _date
+    return store.today_note(user, _date.today())
+
+
 @router.get("/trash")
 def list_trash(user: str = Depends(current_user)) -> list[dict]:
     """最近删除：30 天内删掉的笔记（连同子树里的每一篇），可恢复、可彻底删。"""

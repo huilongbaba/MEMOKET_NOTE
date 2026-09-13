@@ -657,6 +657,8 @@ export default function App() {
   useEffect(() => {
     const on = (e: Event) => { const id = (e as CustomEvent<string>).detail; if (id) void openVirtual(id) }
     const onNew = () => void newNote()
+    const onToday = () => void openToday()
+    window.addEventListener('open-today', onToday)
     const onKeys = () => setShowShortcuts(true)
     // 编辑器里的 ⌘[ / ⌘] 被 CodeMirror 的缩进吃掉了，编辑器自己把它们转成这个事件
     const onNav = (e: Event) => goHistory((e as CustomEvent<number>).detail < 0 ? -1 : 1)
@@ -695,7 +697,7 @@ export default function App() {
     window.addEventListener('open-virtual', on)
     window.addEventListener('new-note', onNew)
     window.addEventListener('show-shortcuts', onKeys)
-    return () => { window.removeEventListener('virtual-title', onTitle); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
+    return () => { window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 
@@ -1280,6 +1282,16 @@ export default function App() {
 
   const visibleNotes = searchResults ?? notes
 
+  /** 今天的日记：后端按 日记/年/月/日 找或建，这里刷树再打开。 */
+  async function openToday() {
+    await save()
+    try {
+      const n = await api.todayNote()
+      await Promise.all([reload(), reloadTree()])
+      await switchTo(n)
+    } catch (e) { toast('打不开今天的日记：' + friendlyError(e), 'error') }
+  }
+
   async function newNote() {
     await save()
     const n = await api.createNote('', '')
@@ -1320,6 +1332,7 @@ export default function App() {
       if (!(e.metaKey || e.ctrlKey)) return
       const key = e.key.toLowerCase()
       if (key === 's') { e.preventDefault(); save() }
+      else if (key === 'd' && e.shiftKey) { e.preventDefault(); void openToday() }   // ⌘⇧D 今天的日记（Trilium 也是这个键）
       else if (key === 'n') { e.preventDefault(); newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
       else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
@@ -2634,6 +2647,7 @@ export default function App() {
       <div className="launcher-pane">
         <div className="launcher-logo" title="MEMOKET NOTE"><Logo size={30} /></div>
         <button className="launcher-btn" title="新建笔记（⌘N）" onClick={newNote}><i className="bx bx-plus" /></button>
+        <button className="launcher-btn" title="今天的日记（⌘⇧D）：日记 / 年 / 月 / 日，没有就建" onClick={() => void openToday()}><i className="bx bx-calendar-event" /></button>
         <button className="launcher-btn" title="全局搜索：笔记 + 知识库（⌘K）"
                 onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><i className="bx bx-search" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:import' ? ' active' : '')}

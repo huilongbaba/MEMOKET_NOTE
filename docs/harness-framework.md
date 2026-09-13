@@ -225,7 +225,7 @@ backend/app/
     compose_block.py           `/` 块生成
     harness.py                 GET /paused · POST /{run_id}/resume
     compose.py                 单点动作：skeleton · magic-tap · rewrite · expand · verify · digest
-    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径）· 笔记 CRUD · 最近删除（note_trash，30 天可恢复）
+    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径）· 笔记 CRUD · 最近删除（note_trash，30 天可恢复）· 今天的日记（日记/年/月/日）
     kb.py · memory.py          知识库虚拟子树、各节点页面、检索、事实 peek / 反查
     ingest.py · import_sources.py · skills.py · settings.py · profile.py · assets.py · export.py
     client_log.py              前端错误报进后端日志（打包版没有 DevTools）
