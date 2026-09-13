@@ -3572,3 +3572,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `KbNoteView`（知识库整套页面，含 MemoryBrowser → KnowledgeGraph 的 d3）和 ribbon 引用页末尾的 `LocalGraph` 改 `React.lazy` + Suspense（fallback 一个「…」）。主包 1222 → 1103KB，主包里 `forceSimulation` 0 处。实拍：事实表页、引用页末尾的局部图照常，后端日志能看到 KbNoteView / LocalGraph 的 chunk 被按需请求。
 - 全量门：后端 950；前端 tsc + eslint + vitest 129 + 17 条 check / smoke 全过。
+
+## [544] 第 520 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、tree / kb/tree（180 行）正常；包里 web/assets 有 mermaid.core / KbNoteView / LocalGraph 三个按需 chunk；正式版日志新增 20 行裸 `INFO:` 0 行。PROGRESS 补 511–520 行。
