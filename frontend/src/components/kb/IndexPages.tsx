@@ -13,8 +13,11 @@ export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
     <div className="kb-page">
       <div className="kb-head">
         <h2 className="kb-note-title"><i className="bx bx-hash muted" /> 主题</h2>
-        <div className="muted" style={{ fontSize: 13 }}>{roots.length} 个一级主题。计数含子主题。</div>
+        <div className="muted" style={{ fontSize: 13 }}>{roots.length ? `${roots.length} 个一级主题。计数含子主题。` : '还没有主题。'}</div>
       </div>
+      {roots.length === 0 && (
+        <p className="muted" style={{ fontSize: 13 }}>导入会议记录或把笔记存入知识库之后，抽出来的事实会自动归到主题下，这里就会长出来。</p>
+      )}
       <div className="topic-grid">
         {roots.map((t) => (
           <div key={t.id} className="topic-card">
