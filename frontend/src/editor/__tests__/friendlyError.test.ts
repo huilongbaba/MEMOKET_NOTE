@@ -9,7 +9,7 @@ describe('friendlyError', () => {
   })
   it('其它错误原样保留，去掉 Error: 前缀', () => {
     expect(friendlyError(new Error('锚点找不到'))).toBe('锚点找不到')
-    expect(friendlyError('Error: 422 validation')).toBe('422 validation')
+    expect(friendlyError('Error: 422 validation')).toBe('validation')   // 第 253 轮起 4xx 状态码不给用户看
     expect(isLlmUnreachable('锚点找不到')).toBe(false)
   })
 })
