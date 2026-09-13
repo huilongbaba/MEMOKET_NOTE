@@ -215,7 +215,7 @@ backend/app/
     kb/                      知识库在 KITE 之上的那层：clusters · recall（簇粒度）· search（排序）
                              · virtual_tree（树上的虚拟子树）· pages（各节点的页面数据）
                              · extract_check / extract_judge / reextract（摄入质量）
-                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）· units（长材料切成的段：part_labels 带 k/n · materials() 按材料归组 · parts_of() 分段导航）· scope（记忆范围：按 session 前缀分 笔记 / 会议记录 / 导入）· who（说话人写法归一：speaker a / speaker_a / Speaker A 算一个人）
+                             · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）· units（长材料切成的段：part_labels 带 k/n · materials() 按材料归组 · parts_of() 分段导航）· scope（记忆范围：按 session 前缀分 笔记 / 会议记录 / 导入）· who（说话人写法归一：speaker a / speaker_a / Speaker A 算一个人）· entities（实体去重规则版：大小写 / 分隔符 / 别名归组，只在展示与查询层，代表 = 事实最多的码）
     ingest/                  摄入：asr · chunking · extract · importers · feishu（块 → markdown + 最小客户端）
     exporters.py             导回：render_tree（zip 导出 / Obsidian 目录共用）· markdown → Notion / 飞书块 · 最小写客户端
     assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
@@ -574,7 +574,7 @@ harness 的材料来自这里；设计在 `docs/kb-architecture.md` 与 `docs/kb
 - 知识库是树底部的**虚拟子树**（`kb/virtual_tree.py`，`GET /api/kb/tree`）：主题 / 实体 /
   时间线 / 最近摄入 / 事实表 / 主题地图 / 定期回顾；展开分类时才取事实。实体超过 200 个不随树下发
   （展开「实体」再取；说话人伪实体不进树）；最近摄入按**材料**列，多段材料是 `kb:material:<第一段 id>`，
-  展开给「第 k/n 段」的 `kb:unit:` 行；主题计数三处（首页 / 树 / 主题页）都按不同事实数。
+  展开给「第 k/n 段」的 `kb:unit:` 行；主题计数三处（首页 / 树 / 主题页）都按不同事实数；实体按 `kb/entities.py` 的组只列代表行。
 - 每个节点打开是一页（`kb/pages.py`：首页 / 主题页 / 实体页 / 会议页 / 时间线 / 某一天），
   一条事实是一篇只读笔记（原话 · 被哪些笔记引用 · 相关事实）。
 - 检索三条路：`kb/recall.py`（簇粒度，给写作）· `kb/search.py`（零 LLM 排序：ASCII 词整词、不分大小写，
