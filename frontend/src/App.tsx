@@ -16,7 +16,7 @@ import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
-import { insertStreamed, tidyBlankLines } from './editor/streamJoin'
+import { insertStreamed, tidyBlankLines, applyScrub } from './editor/streamJoin'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
@@ -1839,11 +1839,15 @@ export default function App() {
           // 记一笔：本地重放的正文跟服务端差了多少。差得多说明客户端的重放逻辑
           // 又跑偏了——这是「agent 输出跟编辑器对不对得上」的证据，不是靠感觉。
           // 带上第一处不同的位置和前后 20 字：光看字数差 4 个字不知道是哪里跑偏的（第 351 轮实拍）
+          // 只差文末的换行不算（第 492 轮真跑：每轮都是本地多一个尾部 \n——服务端 insert_into 之后
+          // 会 strip，本地 onInsertAt 预留的分隔留着了）——照样用服务端的，但别当跑偏记 warn
           const local = liveContentRef.current
-          let at = 0
-          while (at < local.length && at < serverContent.length && local[at] === serverContent[at]) at++
-          const win = (t: string) => JSON.stringify(t.slice(Math.max(0, at - 20), at + 20))
-          void api.clientLog('warn', `round ${_round}: 本地正文 ${local.length} 字 vs 服务端 ${serverContent.length} 字，已用服务端的；第一处不同在 ${at}：本地 ${win(local)} / 服务端 ${win(serverContent)}`, '', 'harness-sync')
+          if (local.replace(/\s+$/, '') !== serverContent.replace(/\s+$/, '')) {
+            let at = 0
+            while (at < local.length && at < serverContent.length && local[at] === serverContent[at]) at++
+            const win = (t: string) => JSON.stringify(t.slice(Math.max(0, at - 20), at + 20))
+            void api.clientLog('warn', `round ${_round}: 本地正文 ${local.length} 字 vs 服务端 ${serverContent.length} 字，已用服务端的；第一处不同在 ${at}：本地 ${win(local)} / 服务端 ${win(serverContent)}`, '', 'harness-sync')
+          }
           liveContentRef.current = serverContent
           setContent(serverContent)
         }
@@ -1923,8 +1927,9 @@ export default function App() {
         const c = liveContentRef.current
         const at = c.indexOf(sentence)
         if (at < 0) return
-        const next = tidyBlankLines(c.slice(0, at) + c.slice(at + sentence.length))
-        if (insertCursorRef.current != null && insertCursorRef.current > at) insertCursorRef.current = Math.max(at, insertCursorRef.current - sentence.length)
+        // 规则照抄服务端（同段其它句子也会被 strip），见 editor/streamJoin.applyScrub
+        const next = tidyBlankLines(applyScrub(c, sentence))
+        if (insertCursorRef.current != null && insertCursorRef.current > at) insertCursorRef.current = Math.max(at, insertCursorRef.current - (c.length - next.length))
         liveContentRef.current = next
         setContent(next)
       },

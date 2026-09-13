@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertStreamed } from '../streamJoin'
+import { insertStreamed, applyScrub } from '../streamJoin'
 
 describe('insertStreamed', () => {
   it('增量里三个以上换行压成段落分隔', () => {
@@ -39,5 +39,19 @@ describe('tidyBlankLines（照抄后端）', () => {
   })
   it('没有多余空行的不动', () => {
     expect(tidyBlankLines('a\n\nb\nc')).toBe('a\n\nb\nc')
+  })
+})
+
+describe('applyScrub（照服务端 scrub_meta_sentences_v）', () => {
+  it('删那句，同段其它句子首尾空格一起吃掉，整篇 trim', () => {
+    const c = '前言。\n\nDVT 节点调整。 [t-1-A] 这一步不能据此判断已经完成。 后面继续。\n\n# 标题\n\n尾巴。\n'
+    // 服务端按「。！？」切句，引用 id 跟在上一句句号后面就归到下一句里——发来的句子是「[t-1-A] 这一步…」
+    expect(applyScrub(c, '[t-1-A] 这一步不能据此判断已经完成。')).toBe('前言。\n\nDVT 节点调整。后面继续。\n\n# 标题\n\n尾巴。')
+    // 对不上整句（只是子串）就不动
+    expect(applyScrub(c, '这一步不能据此判断已经完成。')).toBe(c)
+  })
+  it('找不到那句 / 在表格代码块里就原样', () => {
+    expect(applyScrub('a。 b。', '没有')).toBe('a。 b。')
+    expect(applyScrub('| x | 不能据此。 |', '不能据此。')).toBe('| x | 不能据此。 |')
   })
 })

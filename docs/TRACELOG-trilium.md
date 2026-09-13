@@ -3449,3 +3449,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [516] 第 491 轮：标签列表里三个「会议记录」是怎么来的（2026-09-14）
 
 - 查了：真实数据 2429 场会议全有标题，`part_labels` 也从不给空——那三个是旧版标签恢复时的兜底名，页面一打开就会被 `virtual-title` 刷成真标题，不是 bug。顺手把无标题材料的兜底从裸 id「note-674aa9a1b4b7-0」改成「会议记录 · 日期」（连日期都没有才退回 id 去掉块号），测试加两条。
+
+## [517] 第 492 轮：真跑回归三次，抓到 scrub 的一个字（2026-09-14）
+
+- 第一次真跑（`harness:5f65df10cad6`）：第 2、3 轮各差 1 字，都是文末多一个 `\n`——服务端 scrub 之后整篇 strip，本地没有。轮末对齐时只差尾部空白不再记 warn。
+- 第二次真跑：第 2 轮差 1 字在正文中间——「。 [terrence-1833-10F1]」本地有空格、服务端没有。根因：服务端 `scrub_meta_sentences_v` 删元话语句子时，命中的段按「。！？」切句、**其余每句 strip 后无缝拼回**；本地 onScrub 只把那句从字符串里抠掉。照服务端规则写了 `editor/streamJoin.applyScrub`（表格 / 代码块 / 标题段不动；对不上整句就不动；发来的句子前面带引用 id 也算在句里）。`scripts/check-scrub-parity.mts`（第 15 条 check）拿 5 组样本喂 Python 的 `scrub_meta_sentences_v` 得到 (正文, 删掉的句子)，客户端逐句 `applyScrub`，两边全等。vitest 2 条。
+- 第三次真跑：harness-sync 0 条 warn。三次跑完都从 `r492-before.json` 把正文 / 骨架 / updated_at 还原、删掉新增的历史版本（17 条不变）。harness-framework 同步。前端 128 + 15 check。

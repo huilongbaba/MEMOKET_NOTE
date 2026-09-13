@@ -29,3 +29,31 @@ export function tidyBlankLines(content: string): string {
   }
   return out.join('\n')
 }
+
+/** 服务端轮内删掉一句元话语（`scrub` 事件）时，本地照同一套规则删——照抄
+ *  backend/app/harness/checks/grounding_rules.scrub_meta_sentences_v：
+ *  按空行切段；表格 / 代码块 / 标题段不动；命中的段按「。！？」切句，删掉那句，**其余每句 strip 后无缝拼回**；
+ *  最后连续空行压成一个、整篇 strip。之前本地只是把那句从字符串里抠掉，服务端却把同段其它句子的首尾空格
+ *  也吃了（「。 [terrence-1833-10F1]」→「。[terrence-…]」），每轮都差 1 个字（第 492 轮真跑）。
+ *  scripts/check-scrub-parity 拿样本跟 Python 那边对拍。 */
+export function applyScrub(content: string, sentence: string): string {
+  if (!content || !sentence || !content.includes(sentence)) return content
+  const out: string[] = []
+  let any = false
+  for (const para of content.split(/(\n\s*\n)/)) {
+    const t = para.trim()
+    if (t.startsWith('|') || t.startsWith('```') || t.startsWith('#') || !para.includes(sentence)) { out.push(para); continue }
+    const kept: string[] = []
+    let hit = false
+    for (const x of para.split(/(?<=[。！？])/)) {
+      if (!x) continue
+      if (x.trim() === sentence.trim()) { hit = true; continue }
+      kept.push(x.trim() || x)
+    }
+    // 服务端发来的那句是按同一规则切出来再 strip 的（前面带引用 id 也算在句里）；对不上整句就别动这段
+    if (hit) any = true
+    out.push(hit ? kept.join('') : para)
+  }
+  if (!any) return content
+  return out.join('').replace(/\n{3,}/g, '\n\n').trim()
+}
