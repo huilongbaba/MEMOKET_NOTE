@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { memoryRelations, mergeFacts, memoryScope, recall, SCOPE_LABEL, setMemoryScope, supersedeFact, type MemoryScope } from '../api'
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
+import { stripCitations } from '../util/wordCount'
 
 const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string; icon: string }> = {
   conflict: { text: '冲突', cls: 'rel-conflict', icon: 'bx-error' },
@@ -51,8 +52,8 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
   const [ignored, setIgnored] = useState<Set<string>>(() => ignoredSet())
   const lastPara = useRef('')
   useEffect(() => {
-    const p = paragraph.trim()
-    if (p.length < 8 || !/\d/.test(p)) { setRels([]); return }
+    const p = stripCitations(paragraph).trim()
+    if (p.length < MIN_CHARS || !/\d/.test(p)) { setRels([]); return }
     if (p === lastPara.current) return
     const t = setTimeout(() => {
       lastPara.current = p
@@ -89,7 +90,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
   const visibleRels = rels.filter((r) => !ignored.has(r.relation + ':' + r.fact_ids.join(',')))
 
   useEffect(() => {
-    const tail = content.slice(-TAIL_CHARS).trim()
+    const tail = stripCitations(content.slice(-TAIL_CHARS)).trim()
     if (tail.length < MIN_CHARS) { setFacts([]); return }
     if (tail === lastQueried.current) return
     const t = setTimeout(() => {
@@ -108,7 +109,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert }: {
   // 这个 tab 却看到完全空白，用户分不清是"还没写够内容触发检索"还是"面板
   // 坏了"。保留标题，用不同文案区分"内容太短还没触发"和"检索了但没找到"
   // 这两种不同的空状态。
-  const tooShort = content.slice(-TAIL_CHARS).trim().length < MIN_CHARS
+  const tooShort = stripCitations(content.slice(-TAIL_CHARS)).trim().length < MIN_CHARS
 
   return (
     <div>

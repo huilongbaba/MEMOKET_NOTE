@@ -3115,7 +3115,7 @@ export default function App() {
           {healthMsg && <span className="health-bad"><i className="bx bx-error" /> {healthMsg}</span>}
           {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
         </span>
-        {current && <span className="muted">{wordCount(content)} 字 · 约 {readingMinutes(wordCount(content))} 分钟</span>}
+        {current && <span className="muted">{wordCount(content)} 字{wordCount(content) > 0 && <> · 约 {readingMinutes(wordCount(content))} 分钟</>}</span>}
       </div>
     </div>
   )

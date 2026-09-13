@@ -29,7 +29,7 @@ export function NoteInfoPanel({ note, content, row }: { note: Note; content: str
     <dl className="kv">
       <dt>创建</dt><dd>{fmtDateTime(note.created_at)}</dd>
       <dt>修改</dt><dd>{fmtDateTime(note.updated_at)}</dd>
-      <dt>字数</dt><dd>{words} · 约 {readingMinutes(words)} 分钟阅读</dd>
+      <dt>字数</dt><dd>{words}{words > 0 && <> · 约 {readingMinutes(words)} 分钟阅读</>}</dd>
       <dt>引用</dt><dd>{row?.cite_count ? `${row.cite_count} 条知识库记录` : '无'}</dd>
       <dt>摄入</dt><dd>{row?.ingested_at ? `已摄入（${fmtDate(row.ingested_at)}）` : '未摄入'}</dd>
       {note.source && <><dt>来源</dt><dd>{SOURCE_LABEL[note.source] ?? note.source}{note.imported_at ? ` · ${fmtDate(note.imported_at)} 导入` : ''}{note.imported_at && note.updated_at > note.imported_at ? ' · 本地改过' : ''}</dd></>}
