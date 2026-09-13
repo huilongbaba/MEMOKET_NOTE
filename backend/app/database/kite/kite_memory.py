@@ -415,7 +415,10 @@ class UserMemory:
         facts = search.rank(facts, query, self, store, limit=limit if scope in ('', 'all') else limit * 4)
 
         if not facts:
-            facts = self._recall_via_lines(store, vocab, query, limit)
+            # 行级回退拉出来的是整场会的事实，同样要过一遍「至少命中一个查询词」——
+            # 不然「这篇是从系统拖进来的」这种没信息量的句子照样召回一屏不相干的（第 225 轮）
+            facts = search.rank(self._recall_via_lines(store, vocab, query, limit * 2),
+                                query, self, store, limit=limit)
             surfaces = surfaces + self._cjk_terms(query)[:3]
         else:
             surfaces = surfaces + [t for t in search.matched_terms(
@@ -474,10 +477,12 @@ class UserMemory:
         if not terms:
             return []
 
-        # 一个 unit 要被至少两个不同的词各命中一次才算：「这篇是」这种三字组几乎哪场会都有一行，
-        # 单靠它把整场会的事实都拉出来，右栏就是一堆不相干的（第 224 轮实拍拖一篇 .md 进来）
-        hits: dict[str, set[str]] = {}
-        for term in terms[:12]:
+        # 同一行原话里要同时出现至少两个查询词才算命中：「这篇是」「系统」这种词几乎哪场会都
+        # 各有一行，分散命中就把整场会的事实都拉出来，右栏全是不相干的（第 224 轮实拍拖一篇
+        # .md 进来）。两个词挤在一句话里才像是在说同一件事。
+        probe = [t for t in terms[:12]]
+        hits: dict[str, int] = {}
+        for term in probe:
             rows, _t = execute_plan(
                 store, vocab,
                 {"queries": [{"select": "lines", "where": {"grep": term},
@@ -485,9 +490,11 @@ class UserMemory:
                 budget=limit)
             for r in rows:
                 unit = r.get("unit")
-                if unit:
-                    hits.setdefault(unit, set()).add(term)
-        units = [u for u, ts in sorted(hits.items(), key=lambda kv: -len(kv[1])) if len(ts) >= 2][:4]
+                text = (r.get("text") or "").lower()
+                n = sum(1 for t in probe if t.lower() in text)
+                if unit and n >= 2:
+                    hits[unit] = max(hits.get(unit, 0), n)
+        units = [u for u, n in sorted(hits.items(), key=lambda kv: -kv[1])][:4]
 
         if not units:
             return []
