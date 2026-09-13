@@ -7,6 +7,12 @@
 export const CITATION_RE = /\[[A-Za-z][\w-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]/g
 export const stripCitations = (s: string) => s.replace(CITATION_RE, '').replace(/[ \t]{2,}/g, ' ')
 
+/** 拿去召回 / 判关系之前的正文：去掉引用标记、整条图片、链接地址（只留链接文字）。
+ * 实拍拖一张图进空笔记，右栏立刻冒出 Bill Browder / Russia 的英文事实——查询词就是那行
+ * `![probe](/api/assets/…png)`，「assets」撞上了「assets of Russia frozen」。 */
+export const stripForRecall = (s: string) => stripCitations(
+  s.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'))
+
 export function wordCount(content: string): number {
   return content
     // 图片整条不算（alt 里常是几千字的生成提示词——实拍一篇几百字的笔记显示 27779 字）；

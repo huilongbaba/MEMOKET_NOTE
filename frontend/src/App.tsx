@@ -5,7 +5,7 @@ import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
-import { readingMinutes, wordCount } from './util/wordCount'
+import { readingMinutes, stripForRecall, wordCount } from './util/wordCount'
 import { friendlyError, isLlmUnreachable } from './util/friendlyError'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -354,7 +354,9 @@ export default function App() {
   }, [])
   useEffect(() => {
     if (!current) { setMarginMarks([]); return }
-    const paras = paragraphsWithLines(content).filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8).slice(0, 80)
+    // 图片 / 链接地址 / 引用 id 先剥掉：一行 `![x](/api/assets/52dd….png)` 里的数字会让它过门槛去召回
+    const paras = paragraphsWithLines(content).map((p) => ({ ...p, text: stripForRecall(p.text).trim() }))
+      .filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8).slice(0, 80)
     if (paras.length === 0) { setMarginMarks([]); return }
     const t = setTimeout(() => {
       api.memoryRelationsBatch(paras.map((p) => p.text)).then((r) => {
