@@ -86,6 +86,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 471–480 | App.tsx 继续瘦身（面包屑 `util/crumbs`、引用 / 链接正则合成一份 `util/wordCount`、三栏宽度裁决 `util/layoutPanes`、草稿 `util/draft`，3249 → ~3210 行，+14 条单测）；`check-regex-parity` 前后端正则行为对拍（第一次就抓到自己的口径回归）；⌘⇧T 重开标签回原位；标签溢出 ▾ 列出全部 + ContextMenu 超高钳顶内部滚；重打 dmg（第 480 轮） |
 | 481–490 | 桌面后端输出按行打 `[backend]` 标（lineTagger）；ContextMenu / ⌘K / 「移动到…」键盘高亮跟着滚，「移动到…」列表原来根本滚不到（`.palette-list` 无定义）；`check-css-classes`（用了的类名 CSS 里得有 + 反向查死样式，清 5 个）；后端删 3 个没人调的函数；坏事实页「收掉这个标签」；重打 dmg（第 490 轮） |
 | 491–500 | 真跑三次抓到轮内 scrub 差 1 字 → `applyScrub` 照服务端规则 + `check-scrub-parity`；`prepareInsert` + `check-stream-parity`（tidy / insert_into 对拍）；文件夹 harness 真跑 0 warn；eslint 开 `no-floating-promises`（27 处 void / 4 处补 catch）；桌面壳 loadURL / boot 失败兜底；无标题材料兜底名「会议记录 · 日期」；README 测试段更新；重打 dmg（第 500 轮） |
+| 501–510 | ⌘K 打字先列「打开的标签」（同名带正文首行）、▾ 列表同名项也带首行；应用菜单「标签」（tab-action 事件链）；8 处可点 div/span 键盘可达（`util/clickable`）+ `check-a11y` 进 npm test；toast 动作变真按钮；README 更新；重打 dmg（第 510 轮） |
 
 ## 当前优先队列（2026-09-12 晚，用户点名：这些排在巡检之前）
 
