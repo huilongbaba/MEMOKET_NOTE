@@ -2674,3 +2674,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 探针 `split:edit`：在分屏 CM 视图文末插一句，5.5 秒后把状态行文本写进日志。实拍：分屏里出现那句 + 右下角「已保存」（深色）。第一版状态行 `position: sticky; bottom: 0` 落在编辑器 60vh 最小高度之下、悬在半空——改成分屏栏绝对定位右下角。
 - 文档：harness-framework §19 那条「分屏只读」改成现状；PROGRESS 债勾掉。前端 91。
 - 跟进：分屏里刚改了几笔（还在 0.8 秒防抖里）就点「在标签里打开」或在树上点它——主栏拿着旧正文开出来，1.5 秒后自动保存把分屏那几笔盖掉。`switchTo` 现在先 `splitFlush`（SplitEditor 通过 ref 交出 flush）再重新 GET 一次这篇拿最新正文。探针模式里 flush 不落库所以这条只能靠读代码 + autosave 单测兜。
+
+## [338] 第 310 轮：重打 dmg（2026-09-13）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB），Resources 带 LICENSE / third-party-notices.md，前端包里有 `split-save-status`（第 309 轮的分屏编辑进包了）。
+- 装好的包冒烟（这次只读接口，不再建日记）：就绪 3 秒（探 `/api/notes/trash`）、health ok、kb/tree 14 行。
