@@ -157,7 +157,8 @@ export default function AgentActivity({ rounds, status, running }: Props) {
         <p className="muted" style={{ margin: '6px 0 10px', fontSize: 12 }}>{status}</p>
       )}
 
-      {rounds.map((r) => (
+      {/* 事件是分散到达的，卡片按到达顺序建会乱（第 1 轮的初始策略先到、第 0 轮的快照后到）——按轮次排 */}
+      {[...rounds].sort((a, b) => a.round - b.round).map((r) => (
         <div
           key={r.round}
           style={{
@@ -166,7 +167,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
           }}
         >
           <div className="row" style={{ gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
-            <strong>第 {r.round} 轮</strong>
+            <strong>{r.round === 0 ? '开跑前' : `第 ${r.round} 轮`}</strong>
             {r.cleanupOnly && (
               <span className="muted" title="上一轮评分说已写内容自身有毛病，这一轮只理顺不加新内容">
                 只清理，不续写

@@ -1980,6 +1980,8 @@ export default function App() {
           liveContentRef.current = serverContent
           setContent(serverContent)
         }
+        // 跑完 / 暂停了，卡片上的「在写…」阶段标签得摘掉，不然停了还显示在写（实拍）
+        setAgentRounds((rs) => rs.map((r) => (r.phaseLabel ? { ...r, phase: undefined, phaseLabel: undefined } : r)))
         if (reason === 'awaiting_review' && runId) {
           // 这一轮写完了，等你处置。**正文的最终形态由编辑器说了算**——
           // 逐条接受/撤回都在这儿做，点「接着写」时把当前正文送回去。

@@ -1071,13 +1071,17 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
   // 后端一度用另一套自定义事件名，中间隔着一层翻译——那是三条 router 逐条
   // 迁移期间的过渡层。三条都切完之后前端换名字、后端删函数，一个 commit
   // 的事。
+  // 活动快照 / 工具结果这两种标准事件自己不带轮次，之前写死 round 0——面板上就多出一张
+  // 「第 0 轮」卡片挂着「在写…」，排在第 1 轮下面（用户实拍报的）。跟着最近一次 STEP_STARTED /
+  // round_summary 的轮次走。
+  let round = 0
   for await (const { event, payload } of sseFrames(res)) {
     if (event === 'TEXT_MESSAGE_CONTENT') handlers.onDelta?.(payload.delta)
-    else if (event === 'STEP_STARTED') handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label })
+    else if (event === 'STEP_STARTED') { round = payload.step; handlers.onPhase?.({ round: payload.step, phase: '', label: payload.label }) }
     else if (event === 'STEP_FINISHED') handlers.onRoundEnd?.(payload.step, payload.content)
-    else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round: 0, phase: '', label: payload.content })
+    else if (event === 'ACTIVITY_SNAPSHOT') handlers.onPhase?.({ round, phase: '', label: payload.content })
     else if (event === 'TOOL_CALL_RESULT') {
-      handlers.onToolCalls?.({ round: 0, iters: 1, truncated: false,
+      handlers.onToolCalls?.({ round, iters: 1, truncated: false,
         calls: [{ tool: payload.toolName, args: payload.args, result: payload.content }] })
     } else if (event === 'RUN_FINISHED') {
       handlers.onDone?.(payload.reason, payload.blocked_reason, payload.run_id, payload.content)
@@ -1088,7 +1092,7 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
     else if (event === 'CUSTOM') {
       const v = payload.value ?? {}
       if (payload.name === 'skeleton') handlers.onSkeleton?.(v.spine, v.beats)
-      else if (payload.name === 'round_summary') handlers.onRoundStart?.(v)
+      else if (payload.name === 'round_summary') { if (typeof v.round === 'number') round = v.round; handlers.onRoundStart?.(v) }
       else if (payload.name === 'revision') handlers.onRevision?.(v)
       else if (payload.name === 'evaluate') handlers.onEvaluate?.(v)
       else if (payload.name === 'phase_delta') handlers.onPhaseDelta?.(v)
