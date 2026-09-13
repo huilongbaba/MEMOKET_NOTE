@@ -10,6 +10,24 @@ import { fmtDate } from '../util/time'
  * 后端 `store.note_links_in` 与反链查询认的也是 `note://<id>`。
  * Trilium 的内部链接（`~` / 链接对话框）对应的就是这条路。
  */
+/** 同名笔记只靠日期分不开（实拍三篇「创业一年回顾」并排）：重名的补一截正文首句。 */
+export function disambiguate(hits: { title?: string; content?: string; updated_at: string }[]): string[] {
+  const names = hits.map(displayTitle)
+  const dup = new Set(names.filter((t, i) => names.indexOf(t) !== i))
+  return hits.map((n, i) => {
+    const date = fmtDate(n.updated_at)
+    if (!dup.has(names[i])) return date
+    // 小标题（「时间线与里程碑」）几篇都一样，分不开——优先取正文行，标题行只兜底
+    const lines = (n.content ?? '').split('\n')
+    const clean = (l: string) => l.replace(/^\s*(#{1,6}|[-*>]|\d+\.)\s+/, '').replace(/[*_`\[\]]/g, '').trim()
+    const pick = (ls: string[]) => ls.map(clean).filter((l) => l.length > 0 && l !== names[i])
+    const body = pick(lines.filter((l) => !/^\s*#{1,6}\s/.test(l)))
+    const heads = pick(lines.filter((l) => /^\s*#{1,6}\s/.test(l)))
+    const first = body.find((l) => l.length > 6) ?? body[0] ?? heads[0] ?? ''
+    return first ? `${date} · ${first.slice(0, 28)}${first.length > 28 ? '…' : ''}` : date
+  })
+}
+
 export async function noteLinkSource(context: CompletionContext): Promise<CompletionResult | null> {
   const match = context.matchBefore(/\[\[([^\]\n]{0,40})$/)
   if (!match) return null
@@ -26,13 +44,14 @@ export async function noteLinkSource(context: CompletionContext): Promise<Comple
     return { from: match.from, to: match.to, filter: false,
              options: [{ label: query ? `没有叫"${query}"的笔记` : '输入几个字搜笔记标题', apply: () => {} }] }
   }
+  const details = disambiguate(hits)
   return {
     from: match.from,
     to: match.to,
     filter: false,
-    options: hits.map((n) => ({
+    options: hits.map((n, i) => ({
       label: displayTitle(n),
-      detail: fmtDate(n.updated_at),
+      detail: details[i],
       apply: (view, _c, from, to) => {
         const text = `[${displayTitle(n)}](note://${n.id})`
         view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } })

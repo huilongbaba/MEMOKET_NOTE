@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { memoryScope, SCOPE_LABEL } from '../api'
 import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import type { TreeRow, WritingPlan, WritingSection } from '../api'
@@ -32,6 +33,8 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
   const [localPlan, setLocalPlan] = useState<WritingPlan | null>(null)
   const [localSections, setLocalSections] = useState<WritingSection[]>([])
   const [goal, setGoal] = useState('')
+  const scope = memoryScope()   // 对话框打开时读一次就够：范围在右栏切，切完再开
+  const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope]
   const [starting, setStarting] = useState(false)
 
   const isActive = harness?.folderId === parent.note_id
@@ -110,6 +113,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
             <p className="muted" style={{ fontSize: 13 }}>
               给一个写作目标，会自动拆成若干分段，每个分段独立成一篇笔记，一段接一段自动写下去；
               写完已知分段后还会检查有没有更多值得写的内容，没有才真正停下来。
+              {scopeLabel && <>取材料只看「{scopeLabel}」（范围在右栏「相关记忆」里切）。</>}
             </p>
             <textarea
               rows={3}

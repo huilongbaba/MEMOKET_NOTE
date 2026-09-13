@@ -2057,3 +2057,11 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - **改**：新迁移 `drop-orphan-runs-v2`——冒号后那截（没冒号就整个 key）不在 notes 里就删；`delete_note` 改成 `key=<id> OR key LIKE '%:<id>'`。下次起后端自动跑。
 - 测试：test_delete_cleanup +1，后端 866 passed。
 - 没做的：dev 库里隔离前的测试用户（cancel-test*/cleanup-test/harness-test-2/search-test/test-skeleton/apple-test/import-test/quality-sample/skilltest/u/writing-bench/harness-smoke-test）批量 DELETE 被自动模式拦下了（不可逆的本地删除）。库已备份到 scratchpad `notes-before-r187.sqlite3`，等用户点头再清；对产品没影响（每个用户各看各的）。
+
+## [217] 巡检第 188 轮：写作计划对话框、双链补全（2026-09-13）
+
+- 起后端后 `drop-orphan-runs-v2` 跑了：harness_runs 3899 → 32 行。
+- `plan-panel` 实拍：站在「日记」文件夹上点无限续写，对话框标题却是「09 月」——选父节点只看当前笔记的父节点，当前本身是文件夹时没优先它。改成「当前是文件夹就用它」。对话框说明里加「取材料只看『只看笔记』」提示（跟回顾面板一致）。
+- `wikilink --dark` 实拍：`[[创业` 弹出三条同名「创业一年回顾」，只靠日期分不开。补全项重名时在日期后面加一截正文首句（优先正文行，小标题只兜底——「时间线与里程碑」几篇都一样）。vitest +2（noteLinkCompletion.test.ts）。
+- 探针垃圾：记忆范围存 localStorage，上一次 `digest:30:notes` 切的「只看笔记」留给了后面每一次探针（右栏莫名只看笔记）。探针开始时没指定范围就复位到全部。
+- 三张实拍都核对过。前端 84 tests，后端 866。

@@ -988,10 +988,13 @@ export default function App() {
       toast('无限续写对着一棵子树跑——先建一篇笔记，往它下面放几篇')
       return
     }
+    // 当前打开的本身就是一个文件夹时，就是它——之前只看它的父节点，站在「日记」上
+    // 点无限续写，对话框却给了树上第一个有孩子的「09 月」（第 188 轮实拍）
+    const self = current ? parents.find((r) => r.note_id === current.id) : undefined
     const mine = current
       ? tree.find((r) => r.note_id === current.id)?.parent_note_id
       : undefined
-    const preferred = parents.find((r) => r.note_id === mine) ?? parents[0]
+    const preferred = self ?? parents.find((r) => r.note_id === mine) ?? parents[0]
     setWritingPlanParent(preferred)
     if (parents.length > 1) {
       toast(`已打开「${preferred.title}」的无限续写——想换一棵，在树上右键选`)
