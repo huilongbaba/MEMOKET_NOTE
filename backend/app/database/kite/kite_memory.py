@@ -559,6 +559,7 @@ class UserMemory:
              "aliases": sorted(e.aliases), "relations": sorted(e.rels),
              "fact_count": counts.get(e.code, 0)}
             for e in sorted(vocab.entities.values(), key=lambda e: e.code)
+            if not is_speaker_tag(e.code) and not is_speaker_tag(e.name or "")   # 说话人标签不是实体（第 554 轮，跟树 / 首页 / stats 一致）
         ]
 
     def topic_entity_links(self) -> list[dict]:
@@ -570,9 +571,12 @@ class UserMemory:
         """
         store, _vocab = self._index()
         counts: dict[tuple[str, str], int] = {}
+        spk = {c for c, e in _vocab.entities.items() if is_speaker_tag(c) or is_speaker_tag(getattr(e, "name", "") or "")}
         for f in store.facts.values():
             for t in f.topics:
                 for e in f.entities:
+                    if e in spk:          # 说话人标签不是实体，图上不该有它的边（第 554 轮）
+                        continue
                     key = (t, e)
                     counts[key] = counts.get(key, 0) + 1
         return [{"topic": t, "entity": e, "weight": w}
