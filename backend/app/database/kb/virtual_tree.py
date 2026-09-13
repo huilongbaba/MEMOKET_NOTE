@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 
-from collections import Counter
+from collections import Counter, defaultdict
 from .units import part_labels
 
 KB_ROOT = "kb"
@@ -94,6 +94,11 @@ def build(mem) -> list[dict]:
     facts = list(store.facts.values())
 
     topic_direct = Counter(c for f in facts for c in f.topics)
+    # 闭包计数按不同事实数：一条事实同时挂父子两个主题只算一次（跟首页 / 主题页一致，第 207 轮）
+    by_topic: dict[str, set[str]] = defaultdict(set)
+    for f in facts:
+        for c in f.topics:
+            by_topic[c].add(f.id)
     entity_count = Counter(c for f in facts for c in f.entities)
     month_count = Counter(f.when[:7] for f in facts if f.when)
     unit_count = Counter(f.unit for f in facts if f.unit)
@@ -110,7 +115,7 @@ def build(mem) -> list[dict]:
     for t in sorted(vocab.topics.values(), key=lambda t: t.code):
         parents = [p for p in sorted(t.parents) if p in vocab.topics] or [""]
         closure = vocab.downset(t.code, include_candidates=True) or {t.code}
-        n_facts = sum(topic_direct.get(c, 0) for c in closure)
+        n_facts = len(set().union(*(by_topic.get(c, set()) for c in closure)))
         for p in parents:
             parent_id = f"kb:topic:{p}" if p else "kb:topics"
             topic_rows.append(_row(

@@ -159,3 +159,15 @@ def test_首页主题计数是不同事实的条数(mem):
     d = pages.dashboard(mem)
     n_dash = next(t["facts"] for t in d["top_topics"] if t["code"] == root)
     assert n_dash == pages.topic_page(mem, root, limit=1, offset=0)["facts_total"]
+
+
+def test_树上的主题计数也是不同事实的条数(mem):
+    from app.database.kb import virtual_tree
+    store, vocab = mem._index()
+    root = next(t.code for t in vocab.topics.values() if not any(p in vocab.topics for p in t.parents))
+    kids = [t.code for t in vocab.topics.values() if root in t.parents]
+    if not kids:
+        import pytest; pytest.skip("夹具里没有子主题")
+    store.facts["dup2"] = _fact("dup2", "两个主题都挂", "2026-01-05", topics=[root, kids[0]])
+    row = next(r for r in virtual_tree.build(mem) if r["note_id"] == f"kb:topic:{root}")
+    assert row["fact_count"] == pages.topic_page(mem, root, limit=1, offset=0)["facts_total"]
