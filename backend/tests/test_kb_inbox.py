@@ -123,3 +123,18 @@ def test_ingest_sync_scans_conflicts(env, monkeypatch):
     ingest._ingest_job("job2", "u1", n["content"], "T", "note", source_id=n["id"], replace=True)
     rows = store.list_conflicts("u1")
     assert len(rows) == 1 and rows[0]["new_fact_id"].startswith(f"note-{n['id']}-0")
+
+
+def test_笔记摄入也报块进度(env, monkeypatch):
+    mem = env
+    n = store.create_note("u1", title="T", content=("这是一段很长的正文。" * 60 + "\n\n") * 4)
+
+    def fake_remember(self, messages, *, session_id, date=None, title="", profile=None):
+        return 1
+    monkeypatch.setattr(UserMemory, "remember", fake_remember)
+    from app.routers import ingest
+    job = store.create_job("u1") if hasattr(store, "create_job") else None
+    assert job is not None
+    ingest._ingest_job(job, "u1", n["content"], "T", "note", source_id=n["id"])
+    p = store.job_progress(job)
+    assert p["chunks_total"] >= 2 and p["chunks_done"] == p["chunks_total"] and p["elapsed_s"] >= 0

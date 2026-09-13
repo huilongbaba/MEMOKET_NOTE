@@ -306,6 +306,7 @@ _ADDED_COLUMNS = (
     ("ingest_jobs", "payload_path", "TEXT NOT NULL DEFAULT ''"),
     ("ingest_jobs", "chunk_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("ingest_jobs", "chunks_done", "INTEGER NOT NULL DEFAULT 0"),
+    ("ingest_jobs", "chunks_total", "INTEGER NOT NULL DEFAULT 0"),   # 没有 item 的任务（笔记摄入 / 同步）自己记总块数
     ("ingest_jobs", "chars_done", "INTEGER NOT NULL DEFAULT 0"),
     ("ingest_jobs", "started_at", "TEXT NOT NULL DEFAULT ''"),
     # 笔记侧增量（docs/import-sync-plan.md §3）：这篇是从哪导来的、源侧稳定 id、上次导入时
@@ -1349,6 +1350,11 @@ def bump_job_chunk(job_id: str, ms: int, chars: int) -> None:
                   " WHERE id=?", (int(ms), int(chars), 1, job_id))
 
 
+def set_job_chunks_total(job_id: str, n: int) -> None:
+    with connect() as c:
+        c.execute("UPDATE ingest_jobs SET chunks_total=? WHERE id=?", (int(n), job_id))
+
+
 def mark_job_started(job_id: str) -> None:
     with connect() as c:
         c.execute("UPDATE ingest_jobs SET started_at=? WHERE id=? AND started_at=''", (_now(), job_id))
@@ -1383,9 +1389,9 @@ def job_progress(job_id: str) -> dict:
     if not job:
         return {}
     items = get_items(job_id)
-    total = sum(int(i.get("chunks_total") or 0) for i in items)
-    done = sum(int(i.get("chunks_done") or 0) for i in items)
+    total = sum(int(i.get("chunks_total") or 0) for i in items) or int(job.get("chunks_total") or 0)
     n = int(job.get("chunks_done") or 0)
+    done = sum(int(i.get("chunks_done") or 0) for i in items) if items else n
     per = int(job["chunk_ms"] / n) if n and job.get("chunk_ms") else avg_chunk_ms(job["user_id"])
     remaining = max(0, total - done)
     elapsed = 0

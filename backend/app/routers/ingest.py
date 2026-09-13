@@ -58,7 +58,12 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
         # （手工粘贴一段文字这种场景，本来也没有可稳定的标识）。
         stem = f"{source}-{source_id}" if source_id else f"{source}-{uuid.uuid4().hex[:8]}"
         when = date or _date.today().isoformat()
-        for i, chunk in enumerate(_chunks(text)):
+        chunks = _chunks(text)
+        # 进度跟批量导入同一套：块数 + 每块耗时，状态栏才能说「第 2/5 块 · 还要约 40 秒」
+        store.set_job_chunks_total(job_id, len(chunks))
+        store.mark_job_started(job_id)
+        for i, chunk in enumerate(chunks):
+            t_chunk = time.perf_counter()
             try:
                 total += mem.remember(
                     [{"role": "user", "content": chunk}],
@@ -76,6 +81,7 @@ def _ingest_job(job_id: str, user_id: str, text: str, title: str, source: str,
                 continue
             # 每个 chunk 单独一次 LLM 调用（~13s），落一次库让前端轮询能看见
             # facts 数逐块往上涨，而不是等全部 chunk 跑完才一次性跳到最终值。
+            store.bump_job_chunk(job_id, int((time.perf_counter() - t_chunk) * 1000), len(chunk))
             store.set_job(job_id, "running", facts=total)
             _scan_conflicts(mem, user_id, f"{stem}-{i}", source)
         store.set_job(job_id, "done", facts=total,

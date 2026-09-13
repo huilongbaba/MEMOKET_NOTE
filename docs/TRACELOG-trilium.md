@@ -1882,3 +1882,12 @@ Trilium 的 day note 一直没有：`POST /api/notes/today` 按标题沿 `日记
 找或建（幂等，同一天永远同一篇；没有属性系统就按标题找，用户改了「日记」的名会另起一棵，有意为之），
 正文预填「# 9 月 13 日 周日」。前端：launcher 一个日历键、⌘⇧D（Trilium 同键）、⌘K「今天的日记」、
 快捷键表加一行。`tests/test_today.py`。pytest 849。
+
+## [192] 巡检第 164 轮：同步真跑 + 笔记摄入的块进度（2026-09-13）
+
+`POST /api/ingest/note/{id}/sync` 真跑（shot-demo 那篇摄入探针 2）：12.8 秒，旧 session 4 条换成
+新抽的 5 条、没有重复、stale 回到 false。但状态栏只有「存入知识库中…」一个转圈——笔记摄入 / 同步
+这条路没记块数和每块耗时（批量导入早就有）。`_ingest_job` 加 `set_job_chunks_total` +
+`mark_job_started` + 每块 `bump_job_chunk`（`ingest_jobs` 加 `chunks_total` 列，没有 item 的任务
+自己记），`job_progress` 没 item 时按 job 自己的数算；状态栏改成「存入知识库中… 第 2/5 块 · 还要约
+40 秒 · 已抽出 3 条」。

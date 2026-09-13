@@ -1258,15 +1258,17 @@ export default function App() {
   // 跑的过程要看得见：实拍点「存入知识库」后 4 秒界面上什么都没有（只有引用页里
   // 有一行），跑完也只有树上多个 ⇡。状态栏挂一个「存入知识库中… 已抽出 N 条」，结束
   // 给一条 toast（错误也说）。
-  const [jobInfo, setJobInfo] = useState<{ status: string; facts: number; detail: string } | null>(null)
+  type JobInfo = { status: string; facts: number; detail: string; done: number; total: number; eta: number }
+  const [jobInfo, setJobInfo] = useState<JobInfo | null>(null)
   useEffect(() => {
     setIngestActive(!!job)
     if (!job) { setJobInfo(null); return }
     const ctrl = new AbortController()
-    let last: { status: string; facts: number; detail: string } = { status: 'queued', facts: 0, detail: '' }
+    let last: JobInfo = { status: 'queued', facts: 0, detail: '', done: 0, total: 0, eta: 0 }
     setJobInfo(last)
     api.watchJob(job, (j) => {
-      last = { status: String(j.status ?? ''), facts: Number(j.facts ?? 0), detail: String(j.detail ?? '') }
+      last = { status: String(j.status ?? ''), facts: Number(j.facts ?? 0), detail: String(j.detail ?? ''),
+               done: Number(j.chunks_done ?? 0), total: Number(j.chunks_total ?? 0), eta: Number(j.eta_s ?? 0) }
       setJobInfo(last)
     }, () => {
       void reloadTree(); void reload(); setIngestTick((t) => t + 1); setIngestActive(false); setJobInfo(null); setJob('')
@@ -3096,7 +3098,7 @@ export default function App() {
         {pausedRun && <span style={{ color: 'var(--accent)' }}>⏸ 等你处置</span>}
         {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
-          {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.facts > 0 ? ` 已抽出 ${jobInfo.facts} 条` : ''}</span>}
+          {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.total > 0 ? ` 第 ${Math.min(jobInfo.done + 1, jobInfo.total)}/${jobInfo.total} 块` : ''}{jobInfo.eta > 0 ? ` · 还要约 ${jobInfo.eta < 90 ? `${jobInfo.eta} 秒` : `${Math.round(jobInfo.eta / 60)} 分钟`}` : ''}{jobInfo.facts > 0 ? ` · 已抽出 ${jobInfo.facts} 条` : ''}</span>}
           {healthMsg && <span className="health-bad"><i className="bx bx-error" /> {healthMsg}</span>}
           {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
         </span>
