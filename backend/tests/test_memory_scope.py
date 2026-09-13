@@ -52,3 +52,44 @@ def test_harness_取材料的工具也带范围(monkeypatch):
     memory_tools.search_memory(ctx, "电池")
     assert seen["scope"] == "meetings"
     assert ToolContext(user="u").scope == "all"
+
+
+def test_阶段回顾也只看一档(tmp_path, monkeypatch):
+    """第 184 轮：召回 / 关系 / 续写都遵守范围了，回顾还把三档混在一起总结。"""
+    from app.database import store
+    from app.database.kite import kite_memory
+    from app.database.kite.kite_memory import UserMemory
+    from app.routers import compose
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    fake = SimpleNamespace(kite_data_dir=tmp_path, kite_extract_model="fake", whisper_base_url="http://x")
+    monkeypatch.setattr(kite_memory, "get_settings", lambda: fake)
+    mem = UserMemory("u1")
+    mem.add_manual_fact("note-n1-0", "电池容量定在 380mAh。", date="2026-05-08", title="笔记")
+    mem.add_manual_fact("u1-7-1", "电池容量从 300mAh 改到 380mAh。", date="2026-05-09", title="会议")
+    seen: list[str] = []
+
+    async def fake_complete(messages, **kw):
+        seen.append(messages[-1]["content"])
+        return "总结"
+    monkeypatch.setattr(compose.llm, "complete", fake_complete)
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        body = {"date_from": "2026-05-01", "date_to": "2026-05-31"}
+        assert c.post("/api/digest", json=body).json()["fact_count"] == 2
+        assert c.post("/api/digest", json={**body, "scope": "notes"}).json()["fact_count"] == 1
+        assert "300mAh 改到" not in seen[-1] and "定在 380mAh" in seen[-1]
+        assert c.post("/api/digest", json={**body, "scope": "imports"}).json()["fact_count"] == 0
+
+
+def test_回顾空结果提示带范围(tmp_path, monkeypatch):
+    from app.database import store
+    from app.database.kite import kite_memory
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    fake = SimpleNamespace(kite_data_dir=tmp_path, kite_extract_model="fake", whisper_base_url="http://x")
+    monkeypatch.setattr(kite_memory, "get_settings", lambda: fake)
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        assert c.post("/api/digest", json={"days": 7}).json()["summary"] == "这段时间没有记录。"
+        assert "只看笔记" in c.post("/api/digest", json={"days": 7, "scope": "notes"}).json()["summary"]

@@ -195,8 +195,14 @@ async def digest(body: DigestIn, user: str = Depends(current_user)):
     date_from = body.date_from or (_date.today() - timedelta(days=body.days)).isoformat()
 
     rows = UserMemory(user).facts_between(date_from, date_to)
+    if body.scope not in ("", "all"):
+        from ..database.kb.scope import filter_rows
+        rows = filter_rows(rows, body.scope)
     if not rows:
-        return DigestOut(summary="这段时间没有记录。", fact_count=0,
+        from ..database.kb.scope import SCOPE_LABEL
+        empty = ("这段时间没有记录。" if body.scope in ("", "all")
+                 else f"这段时间「{SCOPE_LABEL.get(body.scope, body.scope)}」范围内没有记录，换成「全部记忆」再试。")
+        return DigestOut(summary=empty, fact_count=0,
                          date_from=date_from, date_to=date_to,
                          took_ms=round((time.perf_counter() - t0) * 1000, 1))
 

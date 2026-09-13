@@ -247,6 +247,10 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 定期回顾：打开工具页后点「最近 N 天」
   if (probe?.startsWith('digest:') && !harnessProbeDone.current) {
     harnessProbeDone.current = true   // 存为笔记后 notes 变了，effect 会再跑一次——别再点一遍
+    // digest:7:notes → 先把记忆范围切到「只看笔记」再回顾（第 184 轮）
+    const seg = probe.slice(7).split(':')[1]
+    if (seg === 'notes' || seg === 'meetings' || seg === 'imports') api.setMemoryScope(seg)
+    else api.setMemoryScope('all')
     setTimeout(() => void openVirtual('kb:digest'), 600)
     setTimeout(() => { const days = probe.slice(7).split(':')[0]; const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === `最近 ${days} 天`); btn?.click() }, 2500)
     // digest:7:save → 结果出来后点「存为笔记」

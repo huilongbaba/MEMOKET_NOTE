@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { friendlyError } from '../util/friendlyError'
-import { createNote, digest } from '../api'
+import { createNote, digest, memoryScope, SCOPE_LABEL, type MemoryScope } from '../api'
 import type { Digest } from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
@@ -24,6 +24,13 @@ export default function DigestPanel() {
   // 完成，之前三个按钮共用一个 loading 布尔值，点了"最近 7 天"之后三个
   // 按钮会一起转圈，用户分不清自己点的是哪个。
   const [loading, setLoading] = useState<number | null>(null)
+  const [scope, setScope] = useState<MemoryScope>(() => memoryScope())
+  useEffect(() => {
+    const on = (e: Event) => setScope((e as CustomEvent<MemoryScope>).detail)
+    window.addEventListener('memory-scope-changed', on)
+    return () => window.removeEventListener('memory-scope-changed', on)
+  }, [])
+  const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope]
   // 跑的时候页面除了一个转圈什么都没有（第 127 轮实拍）：这是一次几十秒的模型调用，
   // 得告诉人在做什么、已经等了多久
   const [elapsed, setElapsed] = useState(0)
@@ -63,6 +70,7 @@ export default function DigestPanel() {
       </div>
       <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>
         把一段时间的记录汇总成核心结论/关键决定/待跟进——不用自己翻记录找。
+        {scopeLabel && <>只看「{scopeLabel}」（范围在右栏「相关记忆」里切）。</>}
       </p>
       <div className="row" style={{ flexWrap: 'wrap' }}>
         {RANGES.map((r) => (
@@ -84,7 +92,7 @@ export default function DigestPanel() {
             </p>
             <span style={{ flex: 1 }} />
             {/* 回顾是一次性的，关掉页就没了——想留就存成一篇笔记，之后还能续写、引用 */}
-            <button className="chip" disabled={saving} onClick={() => void saveAsNote()}><i className="bx bx-save" /> 存为笔记</button>
+            <button className="chip" disabled={saving || result.fact_count === 0} title={result.fact_count === 0 ? '没有事实，没什么可存的' : undefined} onClick={() => void saveAsNote()}><i className="bx bx-save" /> 存为笔记</button>
           </div>
           <MarkdownEditor content={result.summary} readOnly />
         </div>

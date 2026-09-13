@@ -605,6 +605,7 @@ class DigestIn(BaseModel):
     days: int = 7
     date_from: str = ""
     date_to: str = ""
+    scope: str = "all"      # 记忆范围（database/kb/scope.py）
 
 
 class DigestOut(BaseModel):

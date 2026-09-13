@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 SCOPES = ("all", "notes", "meetings", "imports")
+SCOPE_LABEL = {"all": "全部记忆", "notes": "只看笔记", "meetings": "只看会议记录", "imports": "只看导入的"}
 _IMPORT_PREFIXES = ("obsidian-", "notion-", "feishu-", "apple-", "evernote-", "md-", "import-", "file-")
 
 

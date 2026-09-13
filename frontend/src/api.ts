@@ -610,7 +610,7 @@ export const digest = (days = 7) =>
   fetch('/api/digest', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ days }),
+    body: JSON.stringify({ days, scope: memoryScope() }),
   }).then(json<Digest>)
 
 export const memoryStats = () =>
