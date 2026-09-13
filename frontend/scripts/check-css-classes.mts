@@ -16,6 +16,8 @@ const css = files.filter((f) => f.endsWith('.css')).map((f) => readFileSync(f, '
 const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map((m) => m[1]))
 const HOOK_ONLY = new Set(['app-logo', 'export-back', 'export-back-result', 'mini-bars', 'tab-list', 'tl-month'])
 const PREFIX_OK = ['bx', 'cm-', 'mm-']
+// 代码里拼出来的类名（`'drop-' + where`）：反向检查按前缀放过
+const DYNAMIC_PREFIX = ['drop-']
 
 const used = new Map<string, Set<string>>()
 const note = (c: string, f: string) => { if (PREFIX_OK.some((p) => c.startsWith(p)) || !/^[A-Za-z_][\w-]*$/.test(c)) return; if (!used.has(c)) used.set(c, new Set()); used.get(c)!.add(f.replace(root + '/', '')) }
@@ -31,6 +33,10 @@ for (const f of files.filter((f) => /\.tsx?$/.test(f))) {
 const missing = [...used].filter(([c]) => !defined.has(c) && !HOOK_ONLY.has(c))
 const stale = [...HOOK_ONLY].filter((c) => defined.has(c) || !used.has(c))
 for (const [c, fs] of missing) console.log(`✗ .${c} 没有 CSS 定义 ← ${[...fs].join(', ')}`)
+// 反向：CSS 里定义了、代码里一个字都没提到的（死样式，第 485 轮清掉 5 个）
+const code = files.filter((f) => /\.tsx?$/.test(f)).map((f) => readFileSync(f, 'utf8')).join('\n') + readFileSync(resolve(root, '../index.html'), 'utf8')
+const dead = [...defined].filter((c) => !PREFIX_OK.some((p) => c.startsWith(p)) && !DYNAMIC_PREFIX.some((p) => c.startsWith(p)) && !/^[a-z]+-$/.test(c) && !code.includes(c))
+for (const c of dead) console.log(`✗ .${c} 在 CSS 里定义了，代码里没人用`)
 for (const c of stale) console.log(`✗ HOOK_ONLY 里的 .${c} 已经有定义或没人用了，从名单去掉`)
-if (missing.length || stale.length) process.exit(1)
-console.log(`OK: ${used.size} 个类名都有定义（${HOOK_ONLY.size} 个纯锚点类在名单里）`)
+if (missing.length || stale.length || dead.length) process.exit(1)
+console.log(`OK: ${used.size} 个类名都有定义（${HOOK_ONLY.size} 个纯锚点类在名单里）；${defined.size} 个 CSS 类没有死样式`)

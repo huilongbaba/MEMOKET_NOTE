@@ -93,14 +93,6 @@ button:hover:not(:disabled) { background: var(--hover); border-color: var(--main
 button { transition: background 120ms, border-color 120ms, color 120ms; }
 button:disabled { opacity: .5; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-/* Secondary/utility actions (save/export/copy/focus) shouldn't visually
-   compete with the primary "do a thing" buttons above them -- smaller,
-   borderless-until-hovered, so the eye lands on magic-tap/存入知识库 first. */
-.toolbar-secondary button {
-  font-size: 12px; padding: 4px 8px; border-color: transparent;
-  background: transparent; color: var(--muted);
-}
-.toolbar-secondary button:hover:not(:disabled) { border-color: var(--line); color: var(--fg); }
 /* Sticky, not inline -- .note-scroll is the scrolling ancestor (overflow-y: auto),
    so on a long note the toolbar would otherwise scroll away with the title
    the moment you scroll past the first screenful, which defeats the point
@@ -151,18 +143,6 @@ textarea { resize: vertical; }
    ran off the right edge un-wrapped -- lineWrapping was never the bug,
    the column never got small enough to force it to wrap there. */
 .sidebar { background: var(--panel); }
-/* 侧栏之前把"写作 Skill"/"无限续写"这两个不常用的工具类入口堆在顶部，
-   跟"+新建笔记"这个最高频操作抢视觉权重——新用户一打开先看到一堆按钮，
-   笔记列表反而要往下滚才看得到。这两个挪到侧栏底部，用 sticky 钉住（跟
-   .md-toolbar 是同一个技巧），滚动查笔记的时候仍然随时点得到，但不再
-   跟核心的"新建/找笔记"流程抢第一屏。 */
-.sidebar-footer {
-  position: sticky; bottom: 0; margin: 8px -14px -14px;
-  padding: 8px 14px; background: var(--panel);
-  border-top: 1px solid var(--line);
-  display: flex; gap: 6px;
-}
-.sidebar-footer button { flex: 1; font-size: 12px; padding: 5px 6px; }
 
 h1 { font-size: 16px; margin: 0 0 4px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
@@ -693,11 +673,6 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1;
 }
 .ribbon-actions:hover { background: var(--hover-item-bg); color: var(--main-fg); }
-/* AI 动作行钉在正文滚动区顶部：判据 1 的按钮不该随正文滚走 */
-.note-actions {
-  position: sticky; top: -10px; z-index: 6; padding: 10px 0 6px;
-  background: var(--main-bg);
-}
 .kb-browser { display: flex; flex-direction: column; gap: 8px; }
 
 
@@ -718,9 +693,6 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 /* ------------------------------------------------ 中栏画布 */
 /* 正文区宽度封顶：一行两百个字没法读。左对齐，跟标题行的内边距对齐。 */
 .note-body { max-width: 880px; }
-/* AI 动作行：钉在顶部，一行放得下；判据 1 的按钮不该随正文滚走 */
-.note-actions { top: -10px; padding: 10px 0 8px; margin: 0 !important; }
-.note-actions > button { padding: 6px 12px; font-size: 13px; }
 /* 正文右上角的浮动按钮（Trilium FloatingButtons）：跟正文相关但不占正文的行 */
 
 .floating-buttons button {

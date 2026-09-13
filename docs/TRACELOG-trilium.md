@@ -3418,3 +3418,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [509] 第 484 轮：「用了的类名 CSS 里得有」做成 check（2026-09-14）
 
 - 上一轮 `.palette-list` 那种错 tsc / eslint / vitest 都不管。写 `scripts/check-css-classes.mts`（第 14 条 check）：扫 TSX / TS 的 className（字面量 / 模板 / `+ ' xxx'` 拼接 / `el.className = `），跟所有 css 里的 `.xxx` 对；`bx*` / `cm-*` / `mm-*` 前缀放过；纯锚点类（子元素有样式、自己不需要）进 HOOK_ONLY 名单，名单里的类有了定义或没人用了也报。首跑 223 个类名全有定义，名单 6 个（app-logo / export-back / export-back-result / mini-bars / tab-list / tl-month）——逐个看过都是容器或探针锚点，不是漏样式。
+
+## [510] 第 485 轮：死样式反向扫（2026-09-14）
+
+- check-css-classes 加反向：CSS 里定义了、代码里一个字都没提到的类算死样式（`drop-*` 这种代码里拼出来的按前缀放过）。首跑抓到 5 个早就没人用的：`.note-actions`（两处，旧的 AI 动作行）、`.sidebar-footer`（旧侧栏底部工具条）、`.toolbar-secondary`、`.right-pane-heading`、`.right-pane-ambient`，连同它们的注释一起删（37 行）。实拍 `open:5f65df10cad6` 布局不变。
+- 教训：用「上一个空行」当删除起点会把前面的规则一起切掉（第一版把 `.app` 和 `button {}` 也删了，靠打印片段发现、git checkout 重来）——删 CSS 块要用块自己的注释首行做起点。
