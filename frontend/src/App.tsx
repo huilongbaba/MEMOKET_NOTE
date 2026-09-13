@@ -2889,7 +2889,7 @@ export default function App() {
         {current && (
           <div className="title-row">
             {/* 图标可点：挑一个当这篇的标识（Trilium 的 NoteIcon）。树、标签、标题行三处同一个 */}
-            <button type="button" className="title-icon-btn" title="换个图标" ref={iconBtnRef} onClick={() => setIconPicker((v) => !v)}>
+            <button type="button" className="title-icon-btn" title="换个图标" aria-label="换个图标" aria-haspopup="dialog" aria-expanded={iconPicker} ref={iconBtnRef} onClick={() => setIconPicker((v) => !v)}>
               <i className={'bx title-icon ' + (current.icon || ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note'))} />
             </button>
             {iconPicker && (
