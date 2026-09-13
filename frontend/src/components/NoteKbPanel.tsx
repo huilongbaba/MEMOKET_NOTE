@@ -113,14 +113,6 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
         </div>
       )}
 
-      {graph && graph.topics.length + graph.entities.length >= 2 && (
-        <div className="stack" style={{ gap: 4 }}>
-          <strong style={{ fontSize: 12 }}>这篇周围有什么 <span className="muted" style={{ fontWeight: 400 }}>· {graph.facts} 条事实牵出的主题和实体，点节点进它的页面</span></strong>
-          <LocalGraph topics={graph.topics} entities={graph.entities} links={graph.links} height={240}
-                      actions={{ onOpen: (id) => window.dispatchEvent(new CustomEvent('open-virtual', { detail: id })), onOpenNote, onCite: null }} />
-        </div>
-      )}
-
       {/* 这篇贡献的事实：可改、可删、可补。抽取器抽错了改一下，比重新摄入省一次模型调用。 */}
       {row?.ingested_at && (
         <div className="stack" style={{ gap: 6 }}>
@@ -200,6 +192,15 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
             </div>
           )
         })}
+
+      {/* 局部图放在最后：面板的正事是事实本身，图是顺带的；ribbon 只有 40vh 高，放前面把事实顶到看不见（820×600 实拍） */}
+      {graph && graph.topics.length + graph.entities.length >= 2 && (
+        <div className="stack" style={{ gap: 4 }}>
+          <strong style={{ fontSize: 12 }}>这篇周围有什么 <span className="muted" style={{ fontWeight: 400 }}>· {graph.facts} 条事实牵出的主题和实体，点节点进它的页面</span></strong>
+          <LocalGraph topics={graph.topics} entities={graph.entities} links={graph.links} height={200}
+                      actions={{ onOpen: (id) => window.dispatchEvent(new CustomEvent('open-virtual', { detail: id })), onOpenNote, onCite: null }} />
+        </div>
+      )}
     </div>
   )
 }
