@@ -11,7 +11,7 @@ import uuid
 from datetime import date as _date
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..harness import prompts
 from ..harness.events import sse
@@ -86,6 +86,8 @@ def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int 
 @router.post("/skeleton", response_model=SkeletonOut)
 async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     """线 1：生成核心张力（spine）+ 结构节拍（beats）。"""
+    if not body.content.strip() and not body.title.strip():
+        raise HTTPException(400, "先写点内容（或标题）再生成骨架")   # 空正文也会花一次模型调用，答一句「内容尚未提供」
     t0 = time.perf_counter()
     system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user)
     parsed, text = await llm.complete_json_raw(
@@ -217,6 +219,8 @@ async def digest(body: DigestIn, user: str = Depends(current_user)):
 @router.post("/rewrite", response_model=EditOut)
 async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
     """选中文本 -> 重写/润色，产出一条 replace 修订。"""
+    if not body.selection.strip():
+        raise HTTPException(400, "没有选中内容")   # 空选区一样会花一次模型调用然后回空（第 168 轮实测）
     t0 = time.perf_counter()
     if body.selection not in body.content:
         return EditOut(revisions=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
@@ -257,6 +261,8 @@ def _truncated_note(stats: dict, revisions: list) -> str:
 async def expand(body: ExpandIn, user: str = Depends(current_user)):
     """选中文本 -> 往前/往后补上下文，最多产出两条修订
     （insert_before 补在前面、insert 补在后面），各自独立可接受。"""
+    if not body.selection.strip():
+        raise HTTPException(400, "没有选中内容")   # 空选区一样会花一次模型调用然后回空（第 168 轮实测）
     t0 = time.perf_counter()
     if body.selection not in body.content:
         return EditOut(revisions=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
@@ -312,6 +318,8 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
     """选中文本 -> 核对笔记内部一致性 + 知识库事实，返回带证据引用的判断。
     检索走 recall()（零 LLM），只有判断这一步调模型——跟线2/续写同一个
     "快检索 + 一次 LLM 调用"节奏，不是 KITE 的 ask()/planning 那条慢路径。"""
+    if not body.selection.strip():
+        raise HTTPException(400, "没有选中内容")   # 空选区一样会花一次模型调用然后回空（第 168 轮实测）
     t0 = time.perf_counter()
     mem = UserMemory(user)
     # 用户已经在这段旁边引了的事实，是最直接的证据：先按 id 取，再补词法召回。
