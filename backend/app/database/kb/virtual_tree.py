@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 
 from collections import Counter, defaultdict
+from . import entities as entities_mod
 from .units import materials, parts_of
 
 KB_ROOT = "kb"
@@ -128,7 +129,7 @@ def build(mem) -> list[dict]:
 
     # ---- 实体：按类型分组。**类型只有一种时不分组**——真实库里 1220 个实体
     # 全没标类型，分出来是一层只有「其他」的空壳，多点一下什么都没得到。
-    etype_rows, entity_rows, grouped = _entity_rows(vocab, entity_count)
+    etype_rows, entity_rows, grouped = _entity_rows(vocab, entity_count, facts)
     # 实体多了就不随树一起下发：1220 个实体 = 358KB，每次保存后刷树都要重拉一遍（第 175 轮实测）。
     # 超过阈值只给分类节点和数量，展开「实体」时再按 children(kb:entities) 取。
     lazy_entities = len(entity_rows) > ENTITY_EAGER_MAX
@@ -190,10 +191,21 @@ def _unit_tree_title(date: str, label: str) -> str:
     return f"{short} · {label}"
 
 
-def _entity_rows(vocab, entity_count) -> tuple[list[dict], list[dict], bool]:
-    """实体这一层：(类型节点, 实体节点, 有没有分组)。build 和 children 共用。"""
+def _entity_rows(vocab, entity_count, facts=None) -> tuple[list[dict], list[dict], bool]:
+    """实体这一层：(类型节点, 实体节点, 有没有分组)。build 和 children 共用。
+    同一实体的几种写法（memo cat / MemoCat / memo_cat）只列代表那一行，事实数是各写法之和（kb/entities.py）。"""
+    groups = entities_mod.build(vocab, entity_count)
+    # 一组的事实数按不同事实算：一条事实同时挂 memo_cat 和 memocat 只算一次（跟实体页一致）
+    if facts is not None:
+        merged_count: Counter = Counter(c for f in facts for c in {groups.canon(x) for x in f.entities})
+    else:
+        merged_count = Counter()
+        for code, n in entity_count.items():
+            merged_count[groups.canon(code)] += n
     by_type: dict[str, list] = {}
     for e in vocab.entities.values():
+        if groups.canon(e.code) != e.code:
+            continue                      # 不是代表：并进代表那一行
         by_type.setdefault(e.etype or "", []).append(e)
     etype_rows: list[dict] = []
     entity_rows: list[dict] = []
@@ -203,12 +215,12 @@ def _entity_rows(vocab, entity_count) -> tuple[list[dict], list[dict], bool]:
         if grouped:
             etype_rows.append(_row(eid, "kb:entities", ETYPE_LABELS.get(etype, etype),
                                    position=i, child_count=len(ents)))
-        for j, e in enumerate(sorted(ents, key=lambda e: (-entity_count.get(e.code, 0), e.code))):
+        for j, e in enumerate(sorted(ents, key=lambda e: (-merged_count.get(e.code, 0), e.code))):
             entity_rows.append(_row(
-                f"kb:entity:{e.code}", eid, e.name or e.code, position=j,
-                preview=" / ".join(sorted(e.aliases)),
-                child_count=entity_count.get(e.code, 0),
-                fact_count=entity_count.get(e.code, 0)))
+                f"kb:entity:{e.code}", eid, groups.name(e.code), position=j,
+                preview=" / ".join(sorted(set(e.aliases) | set(groups.variants(e.code)))),
+                child_count=merged_count.get(e.code, 0),
+                fact_count=merged_count.get(e.code, 0)))
     return etype_rows, entity_rows, grouped
 
 
@@ -225,7 +237,7 @@ def children(mem, node: str) -> list[dict]:
 
     if kind == "entities" or kind == "etype":
         entity_count = Counter(c for f in facts for c in f.entities)
-        _etypes, entity_rows, grouped = _entity_rows(vocab, entity_count)
+        _etypes, entity_rows, grouped = _entity_rows(vocab, entity_count, facts)
         if kind == "entities":
             # 不分组时它们直接挂在 kb:entities 下；分组时给全部（索引页要一张全表）
             return entity_rows
@@ -234,7 +246,8 @@ def children(mem, node: str) -> list[dict]:
         closure = vocab.downset(key, include_candidates=True) or {key}
         picked = [f for f in facts if set(f.topics) & closure]
     elif kind == "entity":
-        picked = [f for f in facts if key in f.entities]
+        members = set(entities_mod.for_store(store, vocab).members(key))
+        picked = [f for f in facts if members & set(f.entities)]
     elif kind == "month":
         picked = [f for f in facts if (f.when or "").startswith(key)]
     elif kind == "material":

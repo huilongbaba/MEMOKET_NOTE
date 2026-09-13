@@ -173,7 +173,7 @@ def test_实体不分组也懒加载时数量不能是零(mem, monkeypatch):
     from app.database.kb import virtual_tree
     monkeypatch.setattr(virtual_tree, "ENTITY_EAGER_MAX", 1)
     fake = [virtual_tree._row(f"kb:entity:e{i}", "kb:entities", f"E{i}", position=i, child_count=1, fact_count=1) for i in range(3)]
-    monkeypatch.setattr(virtual_tree, "_entity_rows", lambda vocab, cnt: ([], fake, False))
+    monkeypatch.setattr(virtual_tree, "_entity_rows", lambda vocab, cnt, facts=None: ([], fake, False))
     rows = virtual_tree.build(mem)
     assert [r for r in rows if r["note_id"].startswith("kb:entity:")] == []
     assert next(r for r in rows if r["note_id"] == "kb:entities")["child_count"] == 3

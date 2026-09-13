@@ -214,3 +214,22 @@ def test_没抽出事实的会议页带原话(mem):
     page = pages.unit_page(mem, "s-empty")
     assert page["facts_total"] == 0 and page["lines"] == [{"who": "A", "text": "就说了一句"}]
     assert pages.unit_page(mem, "s1")["lines"] == []
+
+
+def test_实体页_树_事实表都按组合并(mem):
+    from app.database.kb import pages, virtual_tree
+    store, vocab = mem._index()
+    acme = vocab.entities["acme"]
+    vocab.entities["acme_inc"] = type(acme)(code="acme_inc", name="ACME", etype=acme.etype, aliases=set(), rels=set()) if hasattr(acme, "rels") else acme
+    f = next(iter(store.facts.values()))
+    store.facts["f-dup"] = type(f)(**{**f.__dict__, "id": "f-dup", "entities": ["acme_inc"], "text": "另一种写法"})
+    store.facts["f-both"] = type(f)(**{**f.__dict__, "id": "f-both", "entities": ["acme", "acme_inc"], "text": "两种写法都挂"})
+    page = pages.entity_page(mem, "acme_inc")
+    assert page["code"] == "acme" and "另一种写法" in [x["text"] for x in page["facts"]] and page["variants"] == ["ACME"]
+    rows = [r for r in virtual_tree.build(mem) if r["note_id"].startswith("kb:entity:acme")]
+    assert [r["note_id"] for r in rows] == ["kb:entity:acme"] and rows[0]["fact_count"] == page["facts_total"]
+    assert "ACME" in rows[0]["preview"]
+    got, total = mem.facts_page(entity="acme_inc", limit=50)
+    assert total == page["facts_total"] and any(r["id"] == "f-dup" for r in got)
+    kids = virtual_tree.children(mem, "kb:entity:acme")
+    assert any(k["note_id"] == "kb:fact:f-dup" for k in kids)

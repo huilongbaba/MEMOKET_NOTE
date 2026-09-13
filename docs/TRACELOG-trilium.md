@@ -2579,3 +2579,10 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [320] 巡检第 291 轮：820 宽深色首页、最近摄入（深色）（2026-09-13）
 
 - 首页 820 深色：统计卡 4+1、主题 / 实体两栏；最近摄入深色：15 份材料各带段数、总条数，零事实的「Single-utterance Request」0 条也列着（点进去现在能看到原话）。没改代码。
+
+## [321] 第 292 轮：实体去重——规则版（用户指定，先简单）（2026-09-13）
+
+- 新模块 `kb/entities.py`：**只在展示 / 查询层归组，不改知识库**。三条零歧义规则：大小写不分；空格 / 下划线 / 连字符 / 点 / 撇号忽略；词表里登记的 name / aliases 算同一个。中英文对译（苹果手表 / Apple Watch）、缩写不碰。每组代表 = 事实最多的码（并列取更短的），显示名用代表的。按当前索引算一次挂在 store 上（1223 个实体几毫秒）。
+- 接进去的地方：树 / 实体索引只列代表行（事实数按不同事实算、preview 列出其它写法）；首页实体 chip 按组计数；实体页任何一种写法进来都落到代表、事实合并、标题下「同一实体的写法：MemoCat」；事实表 `entity=` 筛选和树上实体节点展开都取全组；事实卡 / 浮层的 chip 显示代表名（`annotate()` 统一改）。
+- 真库效果：1223 个实体 → 1213 组，归并了 10 组（memo cat + MemoCat 169 条、Apple Watch + AppleWatch 60、ChatGPT + chat gpt 56、Hui Long + Huilong、open ai + OpenAI、AppStore + App Store、MemoKit + memo_kit、T0 + T 0、T1 + T 1、SamAltman + Sam Altman）。实拍三页都对（索引 1213 个、memo cat 169、事实表按 MemoCat 筛出 169）。
+- 测试：新文件 test_kb_entities.py + test_kb_pages 合并用例（实体页 / 树 / 事实表 / 展开），后端 898；前端 87。

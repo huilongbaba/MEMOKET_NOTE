@@ -538,6 +538,8 @@ export type KbTopicPage = KbFactsPage & {
 }
 export type KbEntityPage = KbFactsPage & {
   code: string; name: string; type: string; aliases: string[]; months: KbMonth[]
+  /** 同一实体的其它写法（规则归组：大小写 / 分隔符 / 别名；kb/entities.py） */
+  variants?: string[]
   relations: { rel: string; target: string; target_name: string }[]
   topics: { code: string; facts: number }[]
   /** 「这些事怎么变的」：按对象类串起来的事实线（有日期、≥2 条） */

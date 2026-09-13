@@ -86,9 +86,6 @@ def facts(kind: str = "", who: str = "", topic: str = "", entity: str = "",
         kind=kind, who=who, topic=topic, entity=entity, conf_min=conf_min,
         limit=limit, offset=offset)
     pages.annotate(mem, rows)
-    _, vocab = mem._index()
-    for r in rows:   # chip 上显示名：事实表的卡片之前显示代码 facebook（第 275 轮实拍）
-        r["entity_names"] = [pages._entity_name(vocab, c) for c in r.get("entities") or []]
     return FactsPageOut(facts=[FactDetailOut(**r) for r in rows], total=total,
                         limit=limit, offset=offset)
 
@@ -120,12 +117,14 @@ def fact_peek(fact_id: str, user: str = Depends(current_user)):
     fact = mem.fact_by_id(fact_id)
     if not fact:
         raise HTTPException(404, f"没有这条记录：{fact_id}")
-    _, vocab = mem._index()
+    store_, vocab = mem._index()
+    from ..database.kb import entities as entities_mod
+    groups = entities_mod.for_store(store_, vocab)
     return FactPeekOut(
         id=fact_id, text=fact.get("text", ""), when=fact.get("when", ""),
         kind=fact.get("kind", ""),
         topics=list(fact.get("topics") or []), entities=list(fact.get("entities") or []),
-        entity_names=[pages._entity_name(vocab, c) for c in fact.get("entities") or []],
+        entity_names=[groups.name(c) for c in fact.get("entities") or []],
         # **每条原话截断。** 实拍发现一条会议记录原文能有几千字，浮层直接
         # 占了半屏、把正文盖住——那反而违背了判据 2（不打断当前这一页）。
         # 浮层是「扫一眼确认对不对」，不是阅读器；要看全文走知识库那一栏。

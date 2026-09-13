@@ -26,7 +26,7 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
         <div className="kb-crumbs muted"><a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>实体</a></div>
         <h2 className="kb-note-title"><i className="bx bx-user muted" /> {p.name}</h2>
         <div className="muted" style={{ fontSize: 13 }}>
-          {p.facts_total} 条事实{p.type ? ' · ' + p.type : ''}{p.aliases.length ? ' · 别名：' + p.aliases.join('、') : ''}
+          {p.facts_total} 条事实{p.type ? ' · ' + p.type : ''}{p.aliases.length ? ' · 别名：' + p.aliases.join('、') : ''}{p.variants?.length ? ' · 同一实体的写法：' + p.variants.join('、') : ''}
         </div>
       </div>
       {p.relations.length > 0 && (

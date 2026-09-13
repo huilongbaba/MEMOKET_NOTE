@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 
 from .who import norm_who
+from . import entities as entities_mod
 from .units import materials, part_labels, parts_of
 
 MONTHS_ON_DASHBOARD = 12
@@ -33,13 +34,13 @@ def _speakers(facts, top_n: int) -> list[dict]:
     return [{"who": (spelling[k].most_common(1)[0][0] or "?"), "facts": n} for k, n in by_key.most_common(top_n)]
 
 
-def _fact(f, vocab=None) -> dict:
+def _fact(f, vocab=None, groups=None) -> dict:
     d = {"id": f.id, "text": f.text, "when": f.when or "", "kind": f.kind or "",
          "who": f.who or "", "conf": f.conf or "", "topics": list(f.topics),
          "entities": list(f.entities), "unit": f.unit or ""}
     # 事实卡上的实体 chip 之前显示的是代码（facebook / speaker_a），带上显示名
     if vocab is not None:
-        d["entity_names"] = [_entity_name(vocab, c) for c in f.entities]
+        d["entity_names"] = [_entity_name(vocab, c, groups) for c in f.entities]
     # 从笔记摄入的：知识库页面反链回那篇（session 命名见 routers/ingest.py）
     nid = note_id_of_unit(f.unit)
     if nid:
@@ -89,6 +90,16 @@ def _page(facts, limit: int, offset: int, vocab=None) -> tuple[list[dict], int]:
 def annotate(mem, rows: list[dict]) -> list[dict]:
     """给一页事实带上生命周期：被哪条取代（superseded_by）、是不是合并进去的（merged）。
     之前只有实体页带，主题页 / 会议页 / 某一天 / 事实表上一条已被取代的记录看着跟现行的一样。"""
+    if rows:
+        # 实体 chip 一律显示代表名（memo cat / MemoCat / memo_cat 都是 MemoCat，kb/entities.py）
+        try:
+            store, vocab = mem._index()
+            g = entities_mod.for_store(store, vocab)
+            for r in rows:
+                if r.get("entities"):
+                    r["entity_names"] = [g.name(c) for c in r["entities"]]
+        except Exception:      # noqa: BLE001 — 假的 mem（测试）没有索引就跳过
+            pass
     if not rows or not hasattr(mem, "fact_attrs"):
         return rows
     superseded = mem.fact_attrs("superseded_by")
@@ -102,7 +113,10 @@ def annotate(mem, rows: list[dict]) -> list[dict]:
     return rows
 
 
-def _entity_name(vocab, code: str) -> str:
+def _entity_name(vocab, code: str, groups=None) -> str:
+    """实体显示名。给了 groups 就用代表的名字（memo_cat / memocat 都显示成 MemoCat，kb/entities.py）。"""
+    if groups is not None:
+        return groups.name(code)
     e = vocab.entities.get(code)
     return (e.name or e.code) if e else code
 
@@ -132,8 +146,9 @@ def dashboard(mem) -> dict:
                                "children": sum(1 for x in vocab.topics.values() if t.code in x.parents)})
     top_topics.sort(key=lambda r: -r["facts"])
 
-    ent = Counter(c for f in facts for c in f.entities)
-    top_entities = [{"code": c, "name": _entity_name(vocab, c), "facts": n} for c, n in ent.most_common(TOP_N)]
+    groups = entities_mod.for_store(store, vocab)
+    ent = Counter(groups.canon(c) for f in facts for c in set(groups.canon(x) for x in f.entities))
+    top_entities = [{"code": c, "name": groups.name(c), "facts": n} for c, n in ent.most_common(TOP_N)]
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
     recent_units = []
@@ -228,12 +243,17 @@ def entity_page(mem, code: str, limit: int = FACT_PAGE, offset: int = 0) -> dict
     e = vocab.entities.get(code)
     if e is None:
         return None
-    facts = [f for f in store.facts.values() if code in f.entities]
+    groups = entities_mod.for_store(store, vocab)
+    code = groups.canon(code)                      # 任何一种写法进来都落到代表
+    e = vocab.entities.get(code) or e
+    members = set(groups.members(code))
+    facts = [f for f in store.facts.values() if members & set(f.entities)]
     topics = Counter(c for f in facts for c in f.topics)
     page, total = _page(facts, limit, offset, vocab)
     annotate(mem, page)
     return {
-        "code": code, "name": e.name or e.code, "type": e.etype or "", "aliases": sorted(e.aliases),
+        "code": code, "name": groups.name(code), "type": e.etype or "", "aliases": sorted(e.aliases),
+        "variants": groups.variants(code),          # 同一实体的其它写法（规则归组，kb/entities.py）
         "relations": [{"rel": r, "target": tgt, "target_name": _entity_name(vocab, tgt)} for r, tgt in sorted(e.rels)],
         "facts_total": total, "facts": page, "limit": limit, "offset": offset,
         "chains": evolution_chains(facts, vocab),

@@ -588,6 +588,10 @@ class UserMemory:
         entity_code = vocab.resolve_entity(entity) if entity else ""
         if entity and not entity_code:
             entity_code = entity
+        entity_codes: set[str] = set()
+        if entity_code:
+            from ..kb import entities as entities_mod     # 同一实体的几种写法都算（kb/entities.py）
+            entity_codes = set(entities_mod.for_store(store, vocab).members(entity_code))
         conf_floor = CONF_ORDER.get(conf_min, 0) if conf_min else 0
 
         def match(f) -> bool:
@@ -599,7 +603,7 @@ class UserMemory:
                 return False
             if topic_closure is not None and not (set(f.topics) & topic_closure):
                 return False
-            if entity_code and entity_code not in f.entities:
+            if entity_codes and not (entity_codes & set(f.entities)):
                 return False
             return True
 
