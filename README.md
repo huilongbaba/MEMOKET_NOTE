@@ -211,6 +211,8 @@ LLM_MODEL=gpt-4.1-mini
 
 用户身份走 `X-User-Id` 请求头，每个 user_id 对应一个独立的 codebook。
 原型阶段没有认证，生产环境把 `routers/deps.py` 里的 `current_user` 换成真实鉴权即可。
+桌面版后端只绑 127.0.0.1，且拒绝来源不是本机的写请求（`main.py` 看 `Origin` / `Sec-Fetch-Site`）：
+CORS 只管读，跨站网页用 `<form>` / multipart 发的 POST 不预检、照样执行，这一层把它们挡在导入 / 上传接口外。
 
 ## 踩过的坑
 

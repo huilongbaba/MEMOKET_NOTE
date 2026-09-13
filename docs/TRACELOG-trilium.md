@@ -1839,3 +1839,12 @@ perf 的常规上报，唯一一条 traceback 是 9 月 12 日凌晨第 14 轮�
 `/api/memory/relations` 带模型确认：DVT 8-5 vs 库里 6-3 判成冲突并写出一句人话（5.2 秒）；
 KOL 样机那段只给叠加（terrence 库里没有台数记录，对的）。`/api/compose/restructure` 7.2 秒，
 标题层级和 mermaid 都保住了。没改代码。
+
+## [186] 巡检第 158 轮：本地接口的跨站写请求（2026-09-13）
+
+查了一遍本地 API 的越权面：后端只绑 127.0.0.1，CORS 白名单只有 Vite 开发页，`X-User-Id` 没有鉴权
+（原型设计）。CORS 只管「跨站读不读得到」：跨站网页用 `<form>` / multipart 发的 POST 是简单请求，
+不预检、照样执行——端口又是固定的 47231，任何网页都能往导入 / 上传接口塞东西（写进 default 用户）。
+`main.py` 加一层：非 GET 请求带着非本机的 `Origin`、或 `Sec-Fetch-Site: cross-site`，403。Electron 页面
+同源、Vite 页在 localhost、测试客户端不带 Origin，都不受影响（探针实测 POST 全 200）。README 记了
+一段。`tests/test_cross_site.py`。pytest 844。

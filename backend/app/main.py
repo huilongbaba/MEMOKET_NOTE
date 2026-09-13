@@ -7,8 +7,11 @@ import os
 import pathlib
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from urllib.parse import urlparse
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import backup, store
@@ -46,6 +49,24 @@ except Exception as _exc:                                  # noqa: BLE001
 parent_watch.install_from_env()
 
 _settings = get_settings()
+# 本地接口只信本机页面。CORS 只管「读得到读不到」：跨站页面用 <form> 或 multipart 发的 POST 是
+# 「简单请求」，不预检、照样执行——一个恶意网页能往 127.0.0.1:47231 的导入 / 上传接口塞东西
+# （第 158 轮巡检）。浏览器给跨站 POST 一定带 Origin（和 Sec-Fetch-Site），拿它们挡：写请求的
+# 来源不是本机就 403。同源的 Electron 页面（http://127.0.0.1:<port>）和 Vite 开发页（localhost）不受影响，
+# 命令行 / 测试客户端不带 Origin 也不受影响。
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+@app.middleware("http")
+async def _reject_cross_site_writes(request: Request, call_next):
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin", "")
+        if request.headers.get("sec-fetch-site", "") == "cross-site" or \
+                (origin and (urlparse(origin).hostname or "") not in _LOCAL_HOSTS):
+            return JSONResponse({"detail": "本地接口不接受来自别的网站的写请求"}, status_code=403)
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_settings.cors_list,
