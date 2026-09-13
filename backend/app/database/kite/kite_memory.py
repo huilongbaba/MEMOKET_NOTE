@@ -221,6 +221,16 @@ def _fact_seq(fact_id: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+def _surface_in(sl: str, lowered: str) -> bool:
+    """词表里的表层词是否出现在查询里。中文没有空格只能子串匹配；拉丁字母的表层词要
+    按整词匹配——「ev」「pc」「pcb」这些两三个字母的实体码之前靠子串命中「EVT」「PCBA」，
+    把电动车 / 电脑的事实拉进候选池，回给用户看的「搜了什么」也跟着多出三个半截词
+    （第 192 轮真库实测）。"""
+    if sl.isascii():
+        return re.search(r"(?<![a-z0-9])" + re.escape(sl) + r"(?![a-z0-9])", lowered) is not None
+    return sl in lowered
+
+
 class UserMemory:
     """单个用户的 codebook。每人一个 XML 文件。"""
 
@@ -331,6 +341,10 @@ class UserMemory:
             depth += 1
         return out
 
+    @staticmethod
+    def _surface_in(sl: str, lowered: str) -> bool:
+        return _surface_in(sl, lowered)
+
     def _match_vocab(self, text: str, vocab) -> tuple[list[dict], list[str], list[str]]:
         """把查询映射到符号码。
 
@@ -359,7 +373,7 @@ class UserMemory:
                 continue
             for surface in {code, *getattr(topic, "aliases", set())}:
                 sl = str(surface).replace("_", " ").lower()
-                if len(sl) >= 2 and sl in lowered:
+                if len(sl) >= 2 and _surface_in(sl, lowered):
                     if not any(t["code"] == code for t in topics):
                         topics.append({"code": code, "closure": True})
                         hit_surfaces.append(sl)
@@ -369,7 +383,7 @@ class UserMemory:
             surfaces = {code, getattr(ent, "name", ""), *getattr(ent, "aliases", set())}
             for surface in surfaces:
                 sl = str(surface).replace("_", " ").lower()
-                if len(sl) >= 2 and sl in lowered:
+                if len(sl) >= 2 and _surface_in(sl, lowered):
                     if code not in entities:
                         entities.append(code)
                         hit_surfaces.append(sl)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +44,15 @@ class Settings(BaseSettings):
     # （KITE_DATA_DIR，pydantic-settings 自动认这个名字；见 desktop/src/backend.ts）；开发时保持
     # 相对 ./data 不变。
     kite_data_dir: Path = Path("./data")
+
+    @field_validator("kite_data_dir")
+    @classmethod
+    def _anchor_data_dir(cls, v: Path) -> Path:
+        # 相对路径按 backend/ 目录解析，不按进程的 cwd：在仓库根目录起一个脚本跑
+        # UserMemory，会在仓库根下凭空建一个空的 data/terrence/codebook.xml，召回全空
+        # （第 192 轮踩过）。绝对路径（桌面版传进来的 KITE_DATA_DIR、测试的 mkdtemp）不动。
+        p = Path(v)
+        return p if p.is_absolute() else (Path(__file__).resolve().parents[2] / p).resolve()
     kite_extract_model: str = "muse-glimmer-30b"
 
     host: str = "0.0.0.0"

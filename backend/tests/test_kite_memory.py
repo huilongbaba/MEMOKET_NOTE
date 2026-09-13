@@ -168,3 +168,22 @@ def test_evict_idle_drops_only_stale_indexes(tmp_path, monkeypatch):
     assert UserMemory.cache_info()["users"] == ["ub"]
     a._index()                                            # 再用就重建
     assert UserMemory.cache_info()["entries"] == 2
+
+
+def test_词表里的拉丁表层词按整词匹配_中文按子串():
+    """第 192 轮：实体码 ev / pc / pcb 靠子串命中 EVT / PCBA，把无关实体拉进候选池。"""
+    from app.database.kite.kite_memory import _surface_in
+    q = "4月16日的evt准备4台主机和15套pcba，手表、手环"
+    assert _surface_in("evt", q) and _surface_in("pcba", q) and _surface_in("手环", q)
+    assert not _surface_in("ev", q) and not _surface_in("pc", q) and not _surface_in("pcb", q)
+    assert _surface_in("pc", "换一台 pc 用") and _surface_in("ev", "ev battery")
+
+
+def test_相对数据目录按backend目录解析(monkeypatch):
+    from pathlib import Path
+    from app.util import config
+    monkeypatch.setenv("KITE_DATA_DIR", "./data")
+    s = config.Settings()
+    assert s.kite_data_dir.is_absolute() and s.kite_data_dir == (Path(config.__file__).resolve().parents[2] / "data")
+    monkeypatch.setenv("KITE_DATA_DIR", "/tmp/abs-x")
+    assert config.Settings().kite_data_dir == Path("/tmp/abs-x")
