@@ -29,6 +29,9 @@ app = FastAPI(title="memoket-NOTE", version="0.1.0",
 # 还停在 queued/running。不清理的话进度面板永远显示「处理中…」，而且"同时只跑
 # 一个导入任务"的检查会认为一直有任务在跑，用户再也导不进任何东西。
 _orphans = store.sweep_orphan_jobs()
+_orphan_plans = store.sweep_orphan_plans()
+if _orphan_plans:
+    print(f"[startup] 作废 {_orphan_plans} 个父节点已删的写作计划")
 if _orphans:
     print(f"[startup] 清理了 {_orphans} 个被中断的入库任务")
 

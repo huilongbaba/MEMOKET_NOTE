@@ -1954,3 +1954,9 @@ api 层自己带上，换了范围召回、关系卡、页边圆点都重算。�
 filter_facts…）还是全库。`ToolContext.scope`（NoteHarnessRunIn / ComposeBlockIn 带过来，前端从
 localStorage 取）→ hooks/note.py 两处 `_retrieve(scope=)`、memory_tools 的 recall / recall_clustered
 都带。深色下的范围下拉正常。PROGRESS 的分库欠账只剩「真正分库」。pytest 858。
+
+## [201] 巡检第 172 轮：孤儿写作计划（2026-09-13）
+
+看了一眼 dev 库：`writing_plans` 里 15 个 active 计划，父节点全都已删——探针跑完删掉子树，计划
+永远 active、指着不存在的节点。`delete_note` 把挂在被删子树上的 active 计划标 abandoned；启动时
+`sweep_orphan_plans` 扫一遍老库（这次扫掉 15 个）。`tests/test_trash.py` 加一条。pytest 859。

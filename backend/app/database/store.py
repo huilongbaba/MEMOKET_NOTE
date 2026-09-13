@@ -803,6 +803,12 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             removed.append(nid)
 
         drop(note_id)
+        # 挂在被删子树上的写作计划一起作废：不然它永远 active、指着一个不存在的父节点
+        # （dev 库里攒了 15 个这样的孤儿计划，第 172 轮实拍）
+        if removed:
+            q = ",".join("?" * len(removed))
+            c.execute(f"UPDATE writing_plans SET status='abandoned' WHERE user_id=? AND status='active' AND parent_note_id IN ({q})",
+                      [user_id, *removed])
         c.commit()
     return removed
 def record_llm_usage(user_id: str, feature: str, model: str, prompt_tokens: int, completion_tokens: int, ms: int) -> None:
@@ -1634,6 +1640,13 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def sweep_orphan_plans() -> int:
+    """父节点已经不在的 active 计划标成 abandoned。启动时扫一遍（老库里的历史垃圾）。"""
+    with connect() as c:
+        return c.execute("UPDATE writing_plans SET status='abandoned' WHERE status='active'"
+                         " AND parent_note_id NOT IN (SELECT id FROM notes)").rowcount
 
 
 def sweep_orphan_jobs() -> int:

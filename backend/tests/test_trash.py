@@ -52,3 +52,15 @@ def test_超过_30_天的自动清掉(client, monkeypatch):
     with store.connect() as c:
         c.execute("UPDATE note_trash SET deleted_at='2020-01-01T00:00:00+00:00'")
     assert client.get("/api/notes/trash").json() == []
+
+
+def test_删子树时挂在上面的写作计划作废_孤儿计划启动时扫掉(client):
+    p = client.post("/api/notes", json={"title": "项目", "content": "x"}).json()
+    plan = store.create_plan("t-trash", p["id"], "写三篇")
+    assert store.get_active_plan("t-trash", p["id"])["id"] == plan["id"]
+    client.delete(f"/api/notes/{p['id']}")
+    assert store.get_active_plan("t-trash", p["id"]) is None
+    # 老库里父节点已经没了却还 active 的：启动扫一遍
+    with store.connect() as c:
+        c.execute("UPDATE writing_plans SET status='active' WHERE id=?", (plan["id"],))
+    assert store.sweep_orphan_plans() == 1 and store.get_active_plan("t-trash", p["id"]) is None
