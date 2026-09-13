@@ -3535,3 +3535,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 对着 trilium-ui-gap §3（标签页）逐行核对：14 行里除「工作区色条」全都早就做了，只是表里没标——补上「已做」。剩那一行按当时的建议落地：Trilium 工作区色条的位置（标签顶部 3px）用来表达「这篇 harness 正在写」——切去别的标签时唯一能看出还在跑、跑的是哪篇的地方。`.note-tab.busy::after` + 1.6s 呼吸；title 后缀「（正在写）」。App 新增 `noteHarnessNoteId`（单篇 harness 起 / 续跑时记、finally 清），文件夹 harness 用 `harness.currentNoteId`；TabBar 收 `busyIds`。
 - 实拍：真跑 26 秒时截，「harne…」标签顶上蓝条。跑完把正文从 `r492-before.json` 还原、没留快照。
+
+## [536] 巡检第 512 轮：trilium-ui-gap 全表对账（2026-09-14）
+
+- 上一轮只核了 §3，这轮把 §1 / 2 / 4 / 5 / 6 / 7 / 8 剩下的 91 行逐个拿代码 grep（令牌 `--warn` / `--accent-fg` / `--shadow-opacity` / `--backdrop-color` / `--focus-ring` / `--inline-code-*`、`.gutter`、`.tree-actions`、`.tree-item-button`、`dropdown-menu-opening`、`openSearchPanel` / `goHistory` / `reopenLastTab`、`data-theme` 0 处…）：60 行早就做了只是没标，全部补「已做」+ 依据；表头加状态说明——没标的是有意不抄（多选 / peek / 子菜单 / 启动栏 58px）或真没做（单独的 scope 概念）。没改代码。
