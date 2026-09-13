@@ -773,6 +773,11 @@ export default function App() {
     const out: TreeRow[] = []
     let cur = byNote.get(id); let guard = 0
     while (cur && guard++ < 50) { out.unshift(cur); cur = byNote.get(cur.parent_note_id) }
+    // 从树上尾巴行「还有 N 条 · 去事实表看」进来的事实表：面包屑末尾用页面的名字（跟标签一样「事实表 · work」），不是那句入口的话
+    if (out.length && out[out.length - 1].note_id.startsWith('kb:facts')) {
+      const last = out[out.length - 1]
+      out[out.length - 1] = { ...last, title: tabs.find((t) => t.noteId === last.note_id)?.title ?? '事实表' }
+    }
     // 懒加载的那几层（实体 / 某个主题下的事实…）不在 allRows 里，之前状态栏就退回「23 篇笔记」
     // （第 207 轮实拍实体页）——按 id 的形状把父链拼出来，名字用标签页上的
     if (out.length === 0 && api.isVirtualId(id)) {
