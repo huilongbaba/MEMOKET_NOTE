@@ -3549,3 +3549,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 第 512 轮那 60 个「已做」里凭印象写的再 grep 一遍：只剩「状态栏高度」写得含糊，核到 `.status-bar { min-height: 28px; background: var(--left-pane-bg) }`，依据补上；其余都有类名 / 令牌 / 函数名对得上。
 - 数据体检：dev 库 2.0MB、496 页里空 10 页（2%，远不到 VACUUM 阈值）；日志 dev 374KB / 正式 45KB（2MB 滚动）；`data/terrence` 36MB（含那 25MB codebook 副本，仍等用户点头）；`data/` 下还有 `default`（dev 实例不带 X-User-Id 的请求落的空用户）、`editing-bench` / `quality-sample` / `terrence-rewrite`（bench 数据）——不动。没改代码。
+
+## [539] 第 515 轮：文件夹 harness 的「正在写」色条实拍（2026-09-14）
+
+- `plan-run:2f73294746f0` 跑到 40 秒截：标签行滚到最右，正在写的「APP…」标签顶上有蓝条（`harness.currentNoteId` 那条路），前一篇「硬件形态…」写完没有。截完杀掉进程，按 t0 删掉写出来的 3 篇 + 这份计划（folder 下回到 1 篇、无 active 计划）。
