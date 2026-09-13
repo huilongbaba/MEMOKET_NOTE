@@ -537,6 +537,12 @@ export const kbDay = (date: string) => fetch(`/api/kb/timeline/${date}`, { heade
 export const kbUnit = (id: string, limit = 50, offset = 0) =>
   fetch(`/api/kb/unit/${encodeURIComponent(id)}?limit=${limit}&offset=${offset}`, { headers: headers() }).then(json<KbUnitPage>)
 
+/** 最近删除（30 天内可找回） */
+export type TrashItem = { note_id: string; title: string; chars: number; deleted_at: string }
+export const listTrash = () => fetch('/api/notes/trash', { headers: headers() }).then(json<TrashItem[]>)
+export const restoreTrash = (id: string) => fetch(`/api/notes/trash/${id}/restore`, { method: 'POST', headers: headers() }).then(json<Note>)
+export const purgeTrash = (id: string) => fetch(`/api/notes/trash/${id}`, { method: 'DELETE', headers: headers() }).then(json<{ ok: boolean }>)
+
 /** 引用了某条事实的笔记。右栏「反向链接」用。 */
 export type CitingNote = { id: string; title: string; updated_at: string; preview?: string }
 

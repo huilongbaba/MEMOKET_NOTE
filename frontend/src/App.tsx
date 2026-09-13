@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
+import TrashPanel from './components/TrashPanel'
 import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, wordCount } from './util/wordCount'
@@ -105,7 +106,7 @@ export type HarnessState = {
 
 /** 不在树上、又没人传标题时标签页显示什么——之前 app:skills 直接把 id 当标题（实拍）。 */
 const VIRTUAL_LABELS: Record<string, string> = {
-  'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入',
+  'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入', 'app:trash': '最近删除',
   kb: '知识库', 'kb:graph': '主题地图', 'kb:digest': '定期回顾', 'kb:timeline': '时间线',
   'kb:topics': '主题', 'kb:entities': '实体', 'kb:recent': '最近摄入',
 }
@@ -1553,7 +1554,7 @@ export default function App() {
     const timer = setTimeout(() => {
       if (!undone) api.deleteNote(n.id).then(() => { void reloadTree(); void reload() }).catch(() => { void reloadTree(); void reload() })
     }, 5000)
-    toastAction(`已删除「${displayTitle(n)}」${ids.size > 1 ? `和它下面的 ${ids.size - 1} 篇` : ''}`, '撤销', () => {
+    toastAction(`已删除「${displayTitle(n)}」${ids.size > 1 ? `和它下面的 ${ids.size - 1} 篇` : ''}（30 天内可在「最近删除」找回）`, '撤销', () => {
       undone = true
       clearTimeout(timer)
       void reload(); void reloadTree()
@@ -2817,6 +2818,9 @@ export default function App() {
             <div className="kb-note"><h2 className="kb-note-title"><i className="bx bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /></div>
           ) : virtualId === 'app:skills' ? (
             <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><i className="bx bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
+          ) : virtualId === 'app:trash' ? (
+            <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><i className="bx bx-trash" /> 最近删除</h2>
+              <TrashPanel onRestored={(id) => { void reload(); void reloadTree(); void api.getNote(id).then((n) => switchTo(n)).catch(() => {}) }} /></div>
           ) : virtualId ? (
             <KbNoteView
               id={virtualId}

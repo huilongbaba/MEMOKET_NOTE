@@ -207,7 +207,7 @@ backend/app/
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
   database/
-    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· ingest_jobs / ingest_items · skills · snapshots · runs
+    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· ingest_jobs / ingest_items · skills · snapshots · runs
     retrieval.py             零 LLM 关键词检索（工具循环失败时的退路）；format_fact() 给材料带 id
     kite/                    KITE codebook 适配：UserMemory（recall / facts / topics / entities / fact_by_id）
     kb/                      知识库在 KITE 之上的那层：clusters · recall（簇粒度）· search（排序）
@@ -225,7 +225,7 @@ backend/app/
     compose_block.py           `/` 块生成
     harness.py                 GET /paused · POST /{run_id}/resume
     compose.py                 单点动作：skeleton · magic-tap · rewrite · expand · verify · digest
-    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径）· 笔记 CRUD
+    tree.py · notes.py         笔记树（branches / 克隆 / 重排 / 路径）· 笔记 CRUD · 最近删除（note_trash，30 天可恢复）
     kb.py · memory.py          知识库虚拟子树、各节点页面、检索、事实 peek / 反查
     ingest.py · import_sources.py · skills.py · settings.py · profile.py · assets.py · export.py
     client_log.py              前端错误报进后端日志（打包版没有 DevTools）

@@ -160,6 +160,17 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user ON harness_snapshots(user_id, crea
 
 -- 笔记历史版本（Trilium 的 note revisions）。保存时正文变了、且离上一版超过
 -- 间隔就把**旧**正文存一份；恢复某版之前先把当前存一份，恢复永远可逆。
+-- 最近删除（Trilium 的删除是可找回的）：删掉的笔记连同它的 branches 存一份快照，30 天内可恢复
+CREATE TABLE IF NOT EXISTS note_trash (
+    user_id     TEXT NOT NULL,
+    note_id     TEXT NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    chars       INTEGER NOT NULL DEFAULT 0,
+    payload     TEXT NOT NULL,
+    deleted_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, note_id)
+);
+
 -- 导回记录：这篇在哪个平台有副本、远端 id / 路径、上次导回时间（docs/import-sync-plan.md §2）
 CREATE TABLE IF NOT EXISTS note_remotes (
     user_id     TEXT NOT NULL,
@@ -750,6 +761,22 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
                               " parent_note_id=? AND user_id=?", (kid, nid, user_id))
                 else:
                     drop(kid)
+            # 删之前存一份快照进「最近删除」：笔记行 + 它的 branches + 历史版本。5 秒撤销窗口过了
+            # 之后还能找回来（Trilium 的删除也是可撤销的）。
+            note_row = c.execute("SELECT * FROM notes WHERE id=? AND user_id=?", (nid, user_id)).fetchone()
+            if note_row is not None:
+                nd = dict(note_row)
+                payload = {
+                    "note": nd,
+                    "branches": [dict(r) for r in c.execute(
+                        "SELECT * FROM branches WHERE note_id=? AND user_id=?", (nid, user_id))],
+                    "revisions": [dict(r) for r in c.execute(
+                        "SELECT * FROM note_revisions WHERE user_id=? AND note_id=? ORDER BY created_at DESC LIMIT 20",
+                        (user_id, nid))],
+                }
+                c.execute("INSERT OR REPLACE INTO note_trash (user_id,note_id,title,chars,payload,deleted_at) VALUES (?,?,?,?,?,?)",
+                          (user_id, nid, nd.get("title") or "", len(nd.get("content") or ""),
+                           json.dumps(payload, ensure_ascii=False), _now()))
             c.execute("DELETE FROM branches WHERE note_id=? AND user_id=?",
                       (nid, user_id))
             c.execute("DELETE FROM notes WHERE id=? AND user_id=?", (nid, user_id))
@@ -764,6 +791,63 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
         drop(note_id)
         c.commit()
     return removed
+TRASH_KEEP_DAYS = 30
+
+
+def prune_trash(user_id: str, days: int = TRASH_KEEP_DAYS) -> int:
+    cutoff = (datetime.now(timezone.utc) - __import__("datetime").timedelta(days=days)).isoformat(timespec="seconds")
+    with connect() as c:
+        return c.execute("DELETE FROM note_trash WHERE user_id=? AND deleted_at < ?", (user_id, cutoff)).rowcount
+
+
+def list_trash(user_id: str) -> list[dict]:
+    """最近删除的笔记（新删的在前）。顺手把超过保留期的清掉。"""
+    prune_trash(user_id)
+    with connect() as c:
+        rows = c.execute("SELECT note_id, title, chars, deleted_at FROM note_trash WHERE user_id=? ORDER BY deleted_at DESC",
+                         (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def restore_from_trash(user_id: str, note_id: str) -> dict | None:
+    """把一篇从「最近删除」放回去：笔记行原样、branches 原位（父节点已经不在了就挂到树根）、
+    历史版本一起回来。id 不变，所以别的笔记里的 [[链接]] 和知识库反链都还认得它。"""
+    with connect() as c:
+        row = c.execute("SELECT payload FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id)).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row["payload"])
+        nd = payload["note"]
+        if c.execute("SELECT 1 FROM notes WHERE id=?", (note_id,)).fetchone():
+            c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id))
+            return get_note(user_id, note_id)          # 已经在了（撤销窗口里恢复过）：只清掉快照
+        cols = [k for k in nd.keys()]
+        c.execute(f"INSERT INTO notes ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", [nd[k] for k in cols])
+        branches = payload.get("branches") or []
+        if not branches:
+            branches = [{"note_id": note_id, "parent_note_id": ROOT_ID, "user_id": user_id}]
+        for b in branches:
+            parent = b.get("parent_note_id") or ROOT_ID
+            if parent != ROOT_ID and not c.execute("SELECT 1 FROM notes WHERE id=?", (parent,)).fetchone():
+                parent = ROOT_ID
+            if c.execute("SELECT 1 FROM branches WHERE note_id=? AND parent_note_id=?", (note_id, parent)).fetchone():
+                continue
+            bcols = [k for k in b.keys() if k != "parent_note_id"]
+            vals = [b[k] for k in bcols]
+            c.execute(f"INSERT INTO branches ({','.join(bcols)},parent_note_id) VALUES ({','.join('?' * len(bcols))},?)", [*vals, parent])
+        for r in payload.get("revisions") or []:
+            rcols = list(r.keys())
+            c.execute(f"INSERT OR IGNORE INTO note_revisions ({','.join(rcols)}) VALUES ({','.join('?' * len(rcols))})", [r[k] for k in rcols])
+        c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id))
+        c.commit()
+    return get_note(user_id, note_id)
+
+
+def purge_trash(user_id: str, note_id: str) -> bool:
+    with connect() as c:
+        return c.execute("DELETE FROM note_trash WHERE user_id=? AND note_id=?", (user_id, note_id)).rowcount > 0
+
+
 def child_notes(user_id: str, parent_id: str, exclude_id: str = "",
                 limit: int = 5) -> list[dict]:
     """某个节点下面的直接子笔记。无限续写拿它当「同一批内容」的参考上下文。

@@ -26,6 +26,27 @@ def create_note(body: NoteCreateIn, user: str = Depends(current_user)):
     return store.create_note(user, body.title, body.content, body.parent_note_id)
 
 
+@router.get("/trash")
+def list_trash(user: str = Depends(current_user)) -> list[dict]:
+    """最近删除：30 天内删掉的笔记（连同子树里的每一篇），可恢复、可彻底删。"""
+    return store.list_trash(user)
+
+
+@router.post("/trash/{note_id}/restore", response_model=Note)
+def restore_trash(note_id: str, user: str = Depends(current_user)):
+    n = store.restore_from_trash(user, note_id)
+    if not n:
+        raise HTTPException(404, "最近删除里没有这篇")
+    return n
+
+
+@router.delete("/trash/{note_id}")
+def purge_trash(note_id: str, user: str = Depends(current_user)) -> dict:
+    if not store.purge_trash(user, note_id):
+        raise HTTPException(404, "最近删除里没有这篇")
+    return {"ok": True}
+
+
 @router.get("/{note_id}", response_model=Note)
 def get_note(note_id: str, user: str = Depends(current_user)):
     note = store.get_note(user, note_id)
