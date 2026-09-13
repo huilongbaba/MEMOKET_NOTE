@@ -2679,3 +2679,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB），Resources 带 LICENSE / third-party-notices.md，前端包里有 `split-save-status`（第 309 轮的分屏编辑进包了）。
 - 装好的包冒烟（这次只读接口，不再建日记）：就绪 3 秒（探 `/api/notes/trash`）、health ok、kb/tree 14 行。
+
+## [339] 巡检第 311 轮：全新空库的第一屏（2026-09-13）
+
+- 装好的包里那个库是空的（0 篇、kb/tree 0 行），照这个状态用一个全新用户 `fresh-r311` 实拍第一屏（亮 / 深色 1000×700）：三张卡（新建 / 导入 / 知识库）+ 常用键四条，右栏一句「打开一篇笔记后…」，状态栏「0 篇笔记」。没抓到问题。
+- 全新用户只要打开过一次，`data/<user>/` 目录就会建出来（空的 codebook 落盘）——探针用完删掉。
