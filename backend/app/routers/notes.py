@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, Note, NoteBriefPage, NoteCreateIn, NoteIconIn, NoteIn, NoteLinksOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
+from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -84,6 +84,58 @@ def note_links(note_id: str, user: str = Depends(current_user)):
             outgoing.append(CitingNoteOut(id=t["id"], title=t["title"], updated_at=t["updated_at"],
                                           preview=(t["content"] or "")[:80], icon=t.get("icon") or ""))
     return NoteLinksOut(outgoing=outgoing, backlinks=[CitingNoteOut(**r) for r in store.backlinks(user, note_id)])
+
+
+@router.get("/{note_id}/graph", response_model=NoteGraphOut)
+def note_graph(note_id: str, user: str = Depends(current_user)):
+    """这篇笔记周围有什么（Trilium 的 NoteMap 在我们这儿的样子）：正文引用的事实 + 它贡献的事实，
+    各自挂在哪些主题 / 实体上，连成一张局部图。主题最多 12 个、实体最多 20 个，按出现次数取；
+    说话人伪实体（speaker a 这种）不进图。"""
+    from collections import Counter
+    from ..database.kb import entities as entities_mod
+    from ..database.kb.who import is_speaker_tag
+    n = store.get_note(user, note_id)
+    if not n:
+        raise HTTPException(404, "note not found")
+    mem = UserMemory(user)
+    ids = list(store.cited_fact_ids(n["content"] or ""))
+    if n.get("ingested_at"):
+        ids += [f["id"] for f in mem.facts_for_prefix(UserMemory.note_prefix(note_id))]
+    seen: set[str] = set()
+    facts = []
+    for fid in ids:
+        if fid in seen:
+            continue
+        seen.add(fid)
+        f = mem.fact_by_id(fid)
+        if f:
+            facts.append(f)
+    if not facts:
+        return NoteGraphOut()
+    store_, vocab = mem._index()
+    groups = entities_mod.for_store(store_, vocab)
+    tcount: Counter = Counter()
+    ecount: Counter = Counter()
+    pair: Counter = Counter()
+    for f in facts:
+        ts = list(dict.fromkeys(f.get("topics") or []))
+        es = [groups.canon(c) for c in (f.get("entities") or [])]
+        es = [c for c in dict.fromkeys(es) if not is_speaker_tag(groups.name(c))]
+        tcount.update(ts)
+        ecount.update(es)
+        for t in ts:
+            for e in es:
+                pair[(t, e)] += 1
+    top_t = [c for c, _ in tcount.most_common(12)]
+    top_e = [c for c, _ in ecount.most_common(20)]
+    tset, eset = set(top_t), set(top_e)
+    topics = [TopicOut(code=c, parents=sorted(p for p in (vocab.topics[c].parents if c in vocab.topics else ()) if p in tset),
+                       status=vocab.topics[c].status if c in vocab.topics else "candidate",
+                       aliases=sorted(vocab.topics[c].aliases) if c in vocab.topics else [], fact_count=tcount[c]) for c in top_t]
+    entities = [EntityOut(code=c, name=groups.name(c), type=(vocab.entities[c].etype if c in vocab.entities else "") or "",
+                          aliases=sorted(vocab.entities[c].aliases) if c in vocab.entities else [], fact_count=ecount[c]) for c in top_e]
+    links = [TopicEntityLink(topic=t, entity=e, weight=w) for (t, e), w in pair.most_common() if t in tset and e in eset]
+    return NoteGraphOut(facts=len(facts), topics=topics, entities=entities, links=links)
 
 
 @router.get("/{note_id}/revisions", response_model=list[RevisionOut])

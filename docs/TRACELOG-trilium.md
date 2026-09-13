@@ -3037,3 +3037,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟：就绪 3 秒、health ok、`/docs` 200。
 - health 里后端 rss 从之前的 81MB 变成 319MB，查了一下不是回归：`memory.users` 是 `['default', 'terrence']`——正式版的界面身份是 terrence，它的知识库索引装进内存就是这个量（dev 实例一样）；我冒烟用的 curl 不带 X-User-Id，落的是 default 这个空用户，所以之前一直以为「装好的库是空的」、rss 才 81MB。以后看正式版的真库要带 identity.json 里的用户。
+
+## [419] 第 391 轮：「这篇周围有什么」——笔记级局部图（2026-09-13）
+
+- trilium-ui-gap §9 最后一个没做的：NoteMap。Trilium 画笔记之间的链接；我们这儿更有用的是「这篇的知识语境」：`GET /api/notes/{id}/graph` 把正文引用的 + 它贡献的事实挂到主题（≤12）/ 实体（≤20，说话人伪实体不进）上，主题↔实体按同一条事实里共现连线；ribbon「引用」顶部画成 `LocalGraph`（复用 KnowledgeGraph），点节点进它的页面。
+- harness 测试篇实拍：31 条事实 → 6 主题 + 6 实体，接口 5ms。后端 `kb/who.py` 补 `is_speaker_tag`（跟前端同一条正则）。
+- 后端 911（test_note_graph 2 条）/ 前端 104；README、harness-framework、gap 表同步。

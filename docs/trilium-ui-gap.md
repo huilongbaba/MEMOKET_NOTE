@@ -264,7 +264,7 @@ Trilium 有 **322 个**配色令牌（`theme-next-light.css` / `theme-next-dark.
 | **tree-actions 工具条（折叠全树 / 定位当前笔记）** | `$T/widgets/note_tree.ts:113-121`；收起 40px 圆钮 hover 展开 — `theme-next/shell.css:908-981` | 树导航 | **已做：树底部浮动工具条（定位 / 折叠全部）** | — |
 | **TabHistoryNavigationButtons（前进后退）** | `$T/widgets/TabHistoryNavigationButtons.tsx:12-37`，右键出历史菜单 | 跳去看一篇再回来 | **已做：标签行 ← →，⌘[ ⌘]（编辑器里也生效）** | — |
 | **Backlinks（反向链接）** | 浮动按钮 `Backlinks` — `$T/widgets/FloatingButtonsDefinitions.tsx:372-437`；面板 `.backlinks-items { width: 400px; top: 50px }` — `FloatingButtons.css:112-158`；侧栏版 `$T/widgets/sidebar/Backlinks.tsx` | 「哪些笔记引用了我」，带**摘录片段** | **已做**（2026-09-12）：事实反链在 ribbon「引用」的「也引用于」；笔记之间的链接 `[[` 补全 + `note://` 标记 + ribbon「链接」（链出 / 链到这篇的），见 TRACELOG [32] | — |
-| **NoteMap / NoteMapGraph** | `$T/widgets/sidebar/NoteMap.tsx` | 笔记关系图 | 低。我们有 `KnowledgeGraph.tsx`（713 行），但它是弹层不是右栏 tab；北极星表里写着该进右栏 | 细节 |
+| **NoteMap / NoteMapGraph** | `$T/widgets/sidebar/NoteMap.tsx` | 笔记关系图 | **已做（第 391 轮）**：ribbon「引用」里「这篇周围有什么」——`GET /api/notes/{id}/graph` 把正文引用的 + 贡献的事实挂到主题 / 实体上，`LocalGraph` 画局部图，点节点进它的页面。Trilium 画的是笔记之间的链接，我们画的是这篇的知识语境——对笔记工具更有用 | — |
 | **branch_prefix 对话框** | `$T/widgets/dialogs/branch_prefix.tsx`，F2 — `$TS/…:193-200` | 同一篇在不同位置显示不同前缀 | 低。克隆量小的时候用不上 | — |
 | **delete_notes 确认对话框** | `$T/widgets/dialogs/delete_notes.tsx` | 删子树前列出会删掉什么 | **已做**：单篇仍是乐观删除 + 撤销；删子树走 App 的 `askConfirm`（列出前 8 篇，危险态焦点在取消）；放弃写作计划也走它（第 306 轮），确认框渲染在写作计划面板之后 | — |
 | **item_picker / clone_to / move_to 对话框** | `$T/widgets/dialogs/{item_picker,clone_to,move_to}.tsx`（带搜索的笔记选择器） | 选目标笔记 | **已做：NotePicker（搜索 + ↑↓ 回车）用于克隆到 / 移动到 / 分屏** | — |

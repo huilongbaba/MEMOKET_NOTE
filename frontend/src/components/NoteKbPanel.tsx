@@ -7,9 +7,10 @@
  * 等于让一篇笔记建立在不存在的依据上。
  */
 import { useEffect, useState } from 'react'
+import LocalGraph from './kb/LocalGraph'
 import { fmtDate } from '../util/time'
 
-import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type CitingNote, type FactPeek, type NoteKb, type TreeRow } from '../api'
+import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type CitingNote, type FactPeek, type NoteKb, type TreeRow, noteGraph, type NoteGraph } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { toast } from '../toast'
 
@@ -83,6 +84,14 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
 
   const missing = citedIds.filter((id) => facts[id] === null)
 
+  // 这篇周围有什么：引用的 + 贡献的事实挂在哪些主题 / 实体上（Trilium 的 NoteMap 在我们这儿的样子）
+  const [graph, setGraph] = useState<NoteGraph | null>(null)
+  useEffect(() => {
+    let alive = true
+    noteGraph(noteId).then((g) => { if (alive) setGraph(g) }).catch(() => {})
+    return () => { alive = false }
+  }, [noteId, refreshTick, citedIds.length, row?.ingested_at])
+
   return (
     <div className="stack" style={{ fontSize: 13 }}>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -101,6 +110,14 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
         // 改过没同步要醒目：树上的 ⇡ 也会变黄。自动同步开着的话过一会儿会自己跑。
         <div className="card" style={{ borderColor: 'var(--warn)', color: 'var(--warn)', padding: '6px 8px' }}>
           笔记在 {fmtDate(kb.ingested_at)} 摄入之后又改过，知识库里还是旧版——点「同步到知识库」，或在设置里打开自动同步。
+        </div>
+      )}
+
+      {graph && graph.topics.length + graph.entities.length >= 2 && (
+        <div className="stack" style={{ gap: 4 }}>
+          <strong style={{ fontSize: 12 }}>这篇周围有什么 <span className="muted" style={{ fontWeight: 400 }}>· {graph.facts} 条事实牵出的主题和实体，点节点进它的页面</span></strong>
+          <LocalGraph topics={graph.topics} entities={graph.entities} links={graph.links} height={240}
+                      actions={{ onOpen: (id) => window.dispatchEvent(new CustomEvent('open-virtual', { detail: id })), onOpenNote, onCite: null }} />
         </div>
       )}
 

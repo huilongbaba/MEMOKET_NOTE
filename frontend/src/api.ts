@@ -604,6 +604,11 @@ export const restoreRevision = (noteId: string, revId: string) =>
   fetch(`/api/notes/${noteId}/revisions/${revId}/restore`, { method: 'POST', headers: headers() }).then(json<Note>)
 
 /** 笔记之间的链接：这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。 */
+export type NoteGraph = { facts: number; topics: TopicNode[]; entities: EntityNode[]; links: TopicEntityLink[] }
+/** 这篇周围有什么：引用的 + 贡献的事实挂在哪些主题 / 实体上（ribbon「引用」里的局部图） */
+export const noteGraph = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/graph`, { headers: headers() }).then(json<NoteGraph>)
+
 export type NoteLinks = { outgoing: CitingNote[]; backlinks: CitingNote[] }
 export const noteLinks = (noteId: string) =>
   fetch(`/api/notes/${noteId}/links`, { headers: headers() }).then(json<NoteLinks>)

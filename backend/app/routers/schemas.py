@@ -384,6 +384,14 @@ class TopicEntityLink(BaseModel):
     weight: int
 
 
+class NoteGraphOut(BaseModel):
+    """这篇笔记周围有什么：正文引用的 + 它贡献的事实，各自挂在哪些主题 / 实体上（局部图用）。"""
+    facts: int = 0
+    topics: list[TopicOut] = Field(default_factory=list)
+    entities: list[EntityOut] = Field(default_factory=list)
+    links: list[TopicEntityLink] = Field(default_factory=list)
+
+
 class SourceLineOut(BaseModel):
     id: str
     unit: str

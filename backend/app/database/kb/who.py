@@ -12,3 +12,12 @@ _WS = re.compile(r"[\s_]+")
 
 def norm_who(who: str) -> str:
     return _WS.sub(" ", (who or "").strip()).lower()
+
+
+# 录音转写的说话人标签（Speaker A / speaker_c / 说话人 1…）：抽取会把它们当实体。
+# 跟前端 util/kbNoise.ts 的 SPEAKER_TAG 同一条正则，两边都要认得出。
+_SPEAKER_TAG = re.compile(r"^(speaker[\s_-]?[a-z0-9]{1,2}|说话人\s?[a-z0-9]{1,2}|发言人\s?[a-z0-9]{1,2})$", re.I)
+
+
+def is_speaker_tag(name: str) -> bool:
+    return bool(_SPEAKER_TAG.match((name or "").strip()))

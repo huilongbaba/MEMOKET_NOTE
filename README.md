@@ -189,6 +189,7 @@ LLM_MODEL=gpt-4.1-mini
 | `POST /api/notes/{id}/icon` | 给笔记设图标（boxicons 类名如 `bx-rocket`，空串清掉）；树、标签、标题行同一个图标 |
 | `POST /api/notes/today` · `GET /api/notes/trash` · `POST /api/notes/trash/{id}/restore` | 今天的日记（日记 / 年 / 月 / 日，没有就建）；最近删除（软删 30 天，恢复时父链一起回来） |
 | `GET /api/notes/{id}/revisions` · `POST /api/notes/{id}/revisions` · `GET /api/notes/{id}/links` · `POST /api/notes/{id}/pin` · `PUT /api/notes/{id}/skeleton` | 历史版本（自动 + 手动，可恢复）、笔记之间的链接（链出 / 链入）、置顶、写作骨架 |
+| `GET /api/notes/{id}/graph` | 这篇周围有什么：正文引用的 + 它贡献的事实挂在哪些主题 / 实体上，ribbon「引用」里画成局部图（Trilium 的 NoteMap 在我们这儿的样子） |
 | `GET /api/export/markdown` · `POST /api/export/obsidian` · `POST /api/import/files` · `POST /api/import/notion` · `POST /api/import/feishu` · `POST /api/import/apple` | 整库导出 zip / 导回 Obsidian 目录；从 Obsidian / Evernote / Notion / 飞书 / Apple 备忘录导入（可断点续跑 `POST /api/import/jobs/{id}/resume`） |
 | `POST /api/kb/fact` · `PATCH /api/kb/fact/{id}` · `DELETE /api/kb/fact/{id}` · `POST /api/kb/fact/merge` · `GET /api/kb/conflicts` · `POST /api/kb/conflicts/{id}/resolve` | 手工加 / 改 / 删 / 合并事实；冲突收件箱 |
 | `GET /api/kb/dashboard` · `GET /api/kb/topic/{code}` · `GET /api/kb/entity/{code}` · `GET /api/kb/unit/{id}` · `GET /api/kb/timeline` · `GET /api/kb/quality` · `POST /api/kb/rebuild` | 知识库各页的数据；抽取质量；重建索引 |
