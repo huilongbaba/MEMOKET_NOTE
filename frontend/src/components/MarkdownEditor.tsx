@@ -29,7 +29,7 @@ import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
   from '../editor/roundDiff'
 import { marginMemory, setMarginMarks, type MarginMark } from '../editor/marginMemory'
 import { slashMenu, type SlashItem } from '../editor/slashMenu'
-import { markdownHighlight, dimSyntaxMarks, editorTheme, syntaxHighlighting } from '../editor/theme'
+import { markdownHighlight, dimSyntaxMarks, editorTheme, scrollPadding, syntaxHighlighting } from '../editor/theme'
 
 /**
  * Markdown-native editor (CodeMirror 6): the document is always a single
@@ -51,6 +51,8 @@ type Props = {
   /** Read-only rendering (e.g. a generated digest) -- still gets markdown
    * styling and rendered mermaid blocks, just no typing/completion/revisions. */
   readOnly?: boolean
+  /** 正文底部垫 30vh（只有主编辑器要；只读小窗不要）。 */
+  scrollPad?: boolean
   /** 「这一轮 harness 改了什么」的只读高亮：新增标绿、删掉的原文以删除线
    * 就地补出来。跟 revisions 不是一回事——那个是待接受的建议，这个是已经
    * 自动应用完的改动，用户否则完全不知道正文被动了哪里。 */
@@ -93,7 +95,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 }
 
 export default function MarkdownEditor({
-  content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false,
+  content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
   roundDiff = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -168,6 +170,7 @@ export default function MarkdownEditor({
           if (r) liveRef.current.onAcceptInline?.(r)
         }),
         editorTheme,
+        scrollPad ? scrollPadding : [],
         marginMemory((m) => liveRef.current.onMarginClick?.(m)),
         cmPlaceholder(placeholder ?? ''),
         EditorView.lineWrapping,

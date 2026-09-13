@@ -60,15 +60,18 @@ export const dimSyntaxMarks = ViewPlugin.fromClass(class {
   }
 }, { decorations: (v) => v.decorations })
 
+/** 正文底部垫 30vh（Trilium 的 ScrollPadding）：最后一行也能滚到视线中间，写到文末时光标
+ *  不贴着状态栏；点空白处光标落到文末。只给主编辑器——快速查看 / 分屏 / 历史版本 / 回顾
+ *  这些只读小窗本身就有高度上限，垫一截空白只是白滚。 */
+export const scrollPadding = EditorView.theme({ '.cm-content': { paddingBottom: '30vh' } })
+
 export const editorTheme = EditorView.theme({
   '&': {
     fontSize: '16px',
     backgroundColor: 'transparent',
   },
   '.cm-content': {
-    // 底部留一大截空白（Trilium 的 ScrollPadding）：最后一行也能滚到视线中间，
-    // 写到文末时光标不贴着状态栏；点空白处光标落到文末。
-    padding: '0 0 30vh',
+    padding: '0',
     lineHeight: '1.8',
     fontFamily: 'inherit',
     caretColor: 'var(--fg, #111)',

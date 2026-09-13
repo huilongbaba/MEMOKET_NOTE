@@ -3004,6 +3004,7 @@ export default function App() {
               // AI 在写的时候锁住编辑器：这时手改的字会被轮末的服务端正文盖掉（同步是
               // 服务端权威）。逐轮暂停、跑完、停止都会解锁。
               readOnly={loading === 'note-harness' || loading === 'tap'}
+              scrollPad
               revisions={revisions}
               onAcceptInline={acceptRevision}
               roundDiff={roundDiff}
