@@ -17,6 +17,10 @@ from .deps import current_user
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
+# 一条偏好是一句话，不是一篇文章：每条都会原样拼进写作提示词，5000 字的一条能把提示词撑爆
+# （第 242 轮实测接口照单全收）
+MAX_CHARS = 400
+
 
 @router.get("", response_model=list[ProfileEntry])
 def list_profile(user: str = Depends(current_user)):
@@ -28,6 +32,12 @@ def add_profile(body: ProfileEntryIn, user: str = Depends(current_user)):
     text = body.text.strip()
     if not text:
         raise HTTPException(400, "content is empty")
+    if len(text) > MAX_CHARS:
+        raise HTTPException(400, f"一条偏好最多 {MAX_CHARS} 字——太长的拆成几条，或者写进笔记再存入知识库")
+    # 同一句话再加一次原样返回已有的那条：连点两下「添加」不该出现两条一模一样的
+    for e in store.list_profile(user):
+        if e["text"] == text:
+            return e
     return store.add_profile_entry(user, text)
 
 

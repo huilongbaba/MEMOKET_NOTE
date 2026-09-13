@@ -102,3 +102,17 @@ def test_edit_user_omits_spine_beats_block_when_empty():
     out = prompts.edit_user("", [], "正文", [], [])
     assert "【核心张力】" not in out
     assert "【结构节拍】" not in out
+
+
+def test_偏好一条不能太长_重复不入库(tmp_path, monkeypatch):
+    """第 242 轮：5000 字一条照单全收（会撑爆写作提示词）；同一句话连加两次出现两条。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.main import app
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        assert c.post("/api/profile", json={"text": "x" * 401}).status_code == 400
+        a = c.post("/api/profile", json={"text": "写得口语一点"}).json()
+        b = c.post("/api/profile", json={"text": " 写得口语一点 "}).json()
+        assert a["id"] == b["id"]
+        assert len(c.get("/api/profile").json()) == 1
