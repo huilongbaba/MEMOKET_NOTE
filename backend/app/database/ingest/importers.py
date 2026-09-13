@@ -32,6 +32,7 @@ class ImportedNote:
     date: str = ""            # YYYY-MM-DD，拿不到就留空（由调用方决定退回什么）
     source: str = "import"    # obsidian / notion / apple / evernote
     source_id: str = ""
+    icon: str = ""            # 我们自己导出的 front-matter 里带的笔记图标（boxicons 类名），再导入时还原
     folder: str = ""          # 源侧的文件夹/笔记本名，用于在这边归类
 
 

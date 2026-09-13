@@ -2789,3 +2789,9 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - trilium-ui-gap §9 剩下的「中」级项。做法：`notes.icon` 一列（boxicons 类名，空 = 默认）+ `POST /api/notes/{id}/icon`（只认 `bxs?-[a-z0-9-]{1,40}`，否则 422——图标名会原样进 className）；树行 / 笔记都带 icon；标题行的图标变成按钮，点开 `IconPicker`（8×6 一组 48 个常用 boxicons + 「默认」清掉），点外面 / Esc 关；树上的 `iconOf` 用户挑的优先。
 - 实拍：第一版选择器第 8 列画到框外——全局 button 的 padding 把格子撑宽了，格子加 `padding: 0; min-width: 0; width: 100%` 后放得下。`icon-picker:pick` 探针真点了「rocket」：标题行图标变火箭、后端 POST 200，拍完清回空。
 - 后端 903（新增 test_note_icon 2 条）/ 前端 95；README API 表加一行，harness-framework 路由说明同步。
+
+## [362] 第 334 轮：笔记图标跟着导出 / 导入走（2026-09-13）
+
+- `icon-picker:pick` 再拍一张看树：树行图标也变成火箭（拍完清回空）。
+- 图标是笔记的一部分，整库导出的 front-matter 加 `icon:`；导入（`/api/import/files`，我们自己的 zip 走 obsidian 洗法）认 front-matter 里的 icon——只认 boxicons 类名，别的当没有；文件夹笔记（`项目/项目.md`）的图标也回到文件夹本身。最近删除的快照是 `SELECT *`，恢复时图标自然在。
+- 测试：导出再导回图标都在、front-matter 剥干净。后端 904。

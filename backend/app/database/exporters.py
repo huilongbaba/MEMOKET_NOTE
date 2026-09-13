@@ -52,7 +52,8 @@ def note_body(n: dict) -> tuple[str, set[str]]:
     """一篇笔记的导出正文：front-matter（memoket_id 是导回时按 id 覆盖的依据）+ 正文，
     资产链接改成相对路径。"""
     front = (f"---\nid: {n['id']}\nmemoket_id: {n['id']}\ntitle: {n['title'] or ''}\n"
-             f"created: {n['created_at']}\nupdated: {n['updated_at']}\n---\n\n")
+             + (f"icon: {n['icon']}\n" if n.get("icon") else "")          # 笔记图标随身带，导回 / 再导入认得
+             + f"created: {n['created_at']}\nupdated: {n['updated_at']}\n---\n\n")
     body = n["content"] or ""
     assets = set(ASSET_REF.findall(body))
     return front + ASSET_REF.sub(r"_assets/\1", body), assets

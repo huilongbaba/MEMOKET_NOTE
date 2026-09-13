@@ -49,3 +49,21 @@ def test_导出再导入_树长回原样(client):
     assert notes["项目"]["content"].rstrip() == "# 项目\n总览正文"        # 文件夹笔记的正文回到它自己身上
     assert notes["子目录"]["content"].rstrip() == "子目录说明"
     assert "id:" not in notes["会议 A"]["content"]                       # front-matter 剥掉了
+
+
+def test_笔记图标跟着导出再导回(client):
+    p = client.post("/api/notes", json={"title": "项目", "content": "# 项目\n总览正文"}).json()
+    a = client.post("/api/notes", json={"title": "会议 A", "content": "正文 A 足够长", "parent_note_id": p["id"]}).json()
+    client.post(f"/api/notes/{p['id']}/icon", json={"icon": "bx-briefcase"})
+    client.post(f"/api/notes/{a['id']}/icon", json={"icon": "bx-rocket"})
+    z = zipfile.ZipFile(io.BytesIO(client.get("/api/export/markdown").content))
+    md = {name: z.read(name).decode() for name in z.namelist() if name.endswith(".md")}
+    assert any("icon: bx-rocket" in body for body in md.values())
+    files = [("files", (name, body.encode(), "text/markdown")) for name, body in md.items()]
+    r = client.post("/api/import/files", data={"source": "obsidian", "to": "notes", "min_chars": "1"},
+                    files=files, headers={"X-User-Id": "t-rt3"})
+    assert r.status_code == 200, r.text
+    notes = {n["title"]: n for n in client.get("/api/notes", headers={"X-User-Id": "t-rt3"}).json()}
+    assert notes["会议 A"]["icon"] == "bx-rocket"
+    assert notes["项目"]["icon"] == "bx-briefcase"          # 文件夹笔记的图标也回到它自己身上
+    assert "icon:" not in notes["会议 A"]["content"]

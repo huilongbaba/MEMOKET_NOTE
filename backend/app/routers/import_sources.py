@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import shutil
 import subprocess
@@ -48,6 +49,15 @@ MAX_FILES = 2000          # 一个 vault 几千篇很常见，比 batch 的 50 �
 NOTION_VERSION = "2026-03-11"
 
 
+_ICON_RE = re.compile(r"bxs?-[a-z0-9-]{1,40}")
+
+
+def _icon_of(meta: dict) -> str:
+    """front-matter 里的 icon：只认 boxicons 类名（我们自己导出时写的那种），别的一律当没有。"""
+    v = str(meta.get("icon") or "").strip()
+    return v if _ICON_RE.fullmatch(v) else ""
+
+
 def _land(user: str, notes: list[importers.ImportedNote], to: str,
           job_id: str, items: list[dict]) -> None:
     """把洗好的笔记落到笔记列表 / 知识库。每条一个 item，互不拖累。"""
@@ -70,6 +80,8 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
             body = folder_body.get(path)
             folders[path] = store.create_note(user, name, body.content if body else "",
                                               parent or store.ROOT_ID)["id"]
+            if body and body.icon:
+                store.set_icon(user, folders[path], body.icon)
         return folders[path]
 
     for note, item in zip(notes, items):
@@ -91,6 +103,8 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                 elif existing is None:
                     n = store.create_note(user, note.title, note.content, fid or store.ROOT_ID)
                     store.set_note_source(user, n["id"], note.source, note.source_id, sha)
+                    if note.icon:
+                        store.set_icon(user, n["id"], note.icon)       # 我们自己导出的 front-matter 带的图标
                 elif existing.get("source_sha") == sha:
                     note_state = "same"                    # 同一份导第二次：不再建一篇
                 elif (existing.get("updated_at") or "") > (existing.get("imported_at") or ""):
@@ -283,7 +297,8 @@ async def import_files(bg: BackgroundTasks,
             date=importers.normalize_date(meta.get("created") or meta.get("date")),
             source="obsidian",
             source_id=hashlib.sha1(rel.encode()).hexdigest()[:16],
-            folder=parent))
+            folder=parent,
+            icon=_icon_of(meta)))
 
     if min_chars:
         notes = [n for n in notes if len(n.content.strip()) >= min_chars]
