@@ -285,7 +285,7 @@ export default function MemoryBrowser() {
               <div className="quick-search" style={{ minWidth: 200 }}>
                 <i className="bx bx-search" />
                 <input placeholder="找节点…" value={nodeQuery} onChange={(e) => setNodeQuery(e.target.value)} />
-                {nodeQuery && <button className="icon-btn" onClick={() => setNodeQuery('')}><i className="bx bx-x" /></button>}
+                {nodeQuery && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setNodeQuery('')}><i className="bx bx-x" /></button>}
               </div>
               {(drilled !== null || clusters.length === 0) && (
                 <>

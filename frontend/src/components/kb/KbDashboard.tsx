@@ -36,7 +36,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜知识库：人、事、数字、日期…"
                  autoFocus onKeyDown={(e) => { if (e.key === 'Escape') setQ('') }} />
           {searching && <span className="spinner" />}
-          {q && <button className="icon-btn" onClick={() => setQ('')}><i className="bx bx-x" /></button>}
+          {q && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setQ('')}><i className="bx bx-x" /></button>}
         </div>
       )}
 

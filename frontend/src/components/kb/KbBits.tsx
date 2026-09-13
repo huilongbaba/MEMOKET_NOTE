@@ -152,9 +152,9 @@ export function Pager({ total, limit, offset, onPage, tail }: { total: number; l
   const page = Math.floor(offset / limit) + 1, pages = Math.ceil(total / limit)
   return (
     <div className="row" style={{ gap: 6, alignItems: 'center', marginTop: 8 }}>
-      <button className="icon-btn" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}><i className="bx bx-chevron-left" /></button>
+      <button className="icon-btn" title="上一页" aria-label="上一页" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}><i className="bx bx-chevron-left" /></button>
       <span className="muted" style={{ fontSize: 12 }}>{page} / {pages} · 共 {total} 条</span>
-      <button className="icon-btn" disabled={offset + limit >= total} onClick={() => onPage(offset + limit)}><i className="bx bx-chevron-right" /></button>
+      <button className="icon-btn" title="下一页" aria-label="下一页" disabled={offset + limit >= total} onClick={() => onPage(offset + limit)}><i className="bx bx-chevron-right" /></button>
       {/* 一页页翻 121 页没人翻得动：翻页器旁边给一条「去事实表筛」的出口（主题 / 实体页传进来） */}
       {tail && <span className="muted" style={{ fontSize: 12 }}>· {tail}</span>}
     </div>
