@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
 from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
@@ -164,7 +165,7 @@ def get_revision(note_id: str, rev_id: str, user: str = Depends(current_user)):
     r = store.get_revision(user, note_id, rev_id)
     if not r:
         raise HTTPException(404, "revision not found")
-    r["chars"] = len(r["content"])
+    r["chars"] = word_count(r["content"])   # 跟历史列表 / 状态栏同一条规则
     return r
 
 

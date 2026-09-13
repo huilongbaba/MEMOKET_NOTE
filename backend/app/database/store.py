@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from .wordcount import word_count
 from ..util.config import get_settings
 
 _SCHEMA = """
@@ -786,11 +787,17 @@ def list_revisions(user_id: str, note_id: str) -> list[dict]:
     """新的在前。不带正文——列表只要知道什么时候、多少字。"""
     with connect() as c:
         rows = c.execute(
-            "SELECT id, note_id, title, reason, created_at, length(content) AS chars"
+            "SELECT id, note_id, title, reason, created_at, content"
             # 同一秒内可能存两版（恢复前的强制快照紧跟手动版），rowid 兜底定序
             " FROM note_revisions WHERE user_id=? AND note_id=? ORDER BY created_at DESC, rowid DESC",
             (user_id, note_id)).fetchall()
-    return [dict(r) for r in rows]
+    # 「N 字」跟状态栏同一条规则（util/wordcount），不再是 length(content)——同一篇两个数（第 547 轮）
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["chars"] = word_count(d.pop("content") or "")
+        out.append(d)
+    return out
 
 
 def get_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
@@ -891,7 +898,7 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
                         (user_id, nid))],
                 }
                 c.execute("INSERT OR REPLACE INTO note_trash (user_id,note_id,title,chars,payload,deleted_at) VALUES (?,?,?,?,?,?)",
-                          (user_id, nid, nd.get("title") or "", len(nd.get("content") or ""),
+                          (user_id, nid, nd.get("title") or "", word_count(nd.get("content") or ""),
                            json.dumps(payload, ensure_ascii=False), _now()))
             c.execute("DELETE FROM branches WHERE note_id=? AND user_id=?",
                       (nid, user_id))

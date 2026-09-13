@@ -2951,7 +2951,7 @@ export default function App() {
                                     onOpen={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}  onUnlink={unlinkNotes} knownIds={noteIdSet} knownNotes={notes} updatedAt={current.updated_at} />,
             }, {
               id: 'history', title: '历史', icon: 'bx-history',
-              body: <RevisionHistoryPanel noteId={current.id} currentChars={content.length} currentContent={content} updatedAt={current.updated_at}
+              body: <RevisionHistoryPanel noteId={current.id} currentChars={wordCount(content)} currentContent={content} updatedAt={current.updated_at}
                                           onRestored={(n) => { setCurrent(n); setTitle(n.title); setContent(n.content); liveContentRef.current = n.content; void reload() }} />,
             }, {
               id: 'paths', title: '路径', icon: 'bx-git-branch',

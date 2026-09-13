@@ -3689,3 +3689,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [570] 第 546 轮：说话人标签正则也进对拍（2026-09-14）
 
 - check-regex-parity 加 18 个样本喂 `kbNoise.isSpeakerTag` 和 `who.is_speaker_tag`（speaker a / Speaker B / speaker_c / 说话人2 / 发言人 10 算，speakers / speaker phone / 光秃秃的 speaker / 两个空格的不算）：全等。这条正则现在树、图、召回三处都靠它，两边漂了树上会冒出「speaker b」实体。
+
+## [571] 第 547 轮：「N 字」前后端同一条规则（2026-09-14）
+
+- 历史版本列表和最近删除的字数是后端 `len(content)`，状态栏 / 信息面板是前端 `wordCount`（去空白、记号、图片、链接地址、引用标记）——同一篇 8330 vs 9613。后端照抄成 `database/wordcount.word_count`（放 util/ 会被分层测试拦：store 只许从 util 拿 config），历史列表、单版详情、删除入回收站三处都用它；前端历史面板的「当前 N 字」也改用 wordCount，「字符」统一叫「字」。`scripts/check-wordcount-parity.mts`（第 19 条 check）8 组样本全等。实拍历史页：17 个版本都是 8330 字，跟状态栏一致。后端 954（trash 测试的期望改成去空白的数）。

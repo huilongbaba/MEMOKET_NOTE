@@ -23,7 +23,7 @@ def test_删了能在最近删除里找回_位置和历史版本都在(client):
     assert client.delete(f"/api/notes/{a['id']}").json()["deleted"] == [a["id"]]
     assert client.get(f"/api/notes/{a['id']}").status_code == 404
     t = client.get("/api/notes/trash").json()
-    assert [x["note_id"] for x in t] == [a["id"]] and t[0]["title"] == "会议 A" and t[0]["chars"] == len("v2 改过")
+    assert [x["note_id"] for x in t] == [a["id"]] and t[0]["title"] == "会议 A" and t[0]["chars"] == 4   # 跟状态栏同一条字数规则（去空白），不是 len()
     r = client.post(f"/api/notes/trash/{a['id']}/restore").json()
     assert r["id"] == a["id"] and r["content"] == "v2 改过"
     tree = client.get("/api/tree").json()
