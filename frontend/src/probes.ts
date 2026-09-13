@@ -32,8 +32,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     return
   }
   // 标签装不下时右边的 ▾：列出全部标签
-  if (probe === 'tabs:list') {
+  if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)
+    // :keys → 按 40 下 ↓，高亮应该滚到列表下半截还看得见
+    // 一个 tick 里连发 40 下没用：菜单的 keydown 闭包里 hi 还是同一个值，得隔开发
+    if (probe.endsWith(':keys')) setTimeout(() => { let n = 0; const t = setInterval(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); if (++n >= 40) clearInterval(t) }, 30) }, 3500)
     return
   }
   // 连开三篇，关掉中间那个，再 ⌘⇧T 找回来：应该回到原位（第 2 个），不是追加到最右

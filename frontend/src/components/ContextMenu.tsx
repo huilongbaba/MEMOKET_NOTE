@@ -69,6 +69,13 @@ export default function ContextMenu({
     })
   }, [at.x, at.y, list.length])
 
+  // 高亮项滚进视野：菜单比窗口高时内部滚（50 个标签的列表），↑↓ 走到看不见的地方要跟着滚
+  useEffect(() => {
+    if (hi < 0) return
+    const el = ref.current?.querySelector('.context-menu-item.hi') as HTMLElement | null
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [hi])
+
   useEffect(() => {
     const selectable = (k: number) => {
       const it = list[k] as any

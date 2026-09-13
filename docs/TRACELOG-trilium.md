@@ -3404,3 +3404,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [506] 第 481 轮：翻正式版日志——后端输出按行打标（2026-09-14）
 
 - 翻 `~/Library/Logs/memoket-note-desktop/memoket-note.log`：117 行裸的「INFO:     Waiting for application startup.」没有 `[backend]` 前缀——子进程一个 data 块常带好几行，原来只给块首加前缀。`desktop/src/backend.ts` 抽出 `lineTagger(emit)`：按行切、半行留到下一块再拼、流结束 flush；stdout / stderr 各一个。node 直接验过拼接（跨块半行、\r\n）；dev 实例实拍日志裸 INFO 0 行、带前缀 21 行。正式版下次（第 490 轮）重打时带上。
+
+## [507] 第 482 轮：内部滚动的菜单里 ↑↓ 高亮跟着滚（2026-09-14）
+
+- 第 478 轮让 ContextMenu 超高时内部滚，键盘 ↑↓ 走到看不见的项时不会跟着滚（scrollIntoView 只给了树和标签行）。补一个 `hi` 变化时 `.context-menu-item.hi` `scrollIntoView({block:'nearest'})`。探针 `tabs:list:keys`（按 40 下 ↓）；实拍高亮在第 40 项「实体 · 其他」、列表滚到了它。探针备忘：一个 tick 里连发 40 个 keydown 没用——菜单的 keydown 闭包里 `hi` 是同一个值，要隔 30ms 发。
