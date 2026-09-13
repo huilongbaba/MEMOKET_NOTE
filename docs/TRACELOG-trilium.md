@@ -3367,3 +3367,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [498] 第 473 轮：笔记链接正则前端也合成一份（2026-09-14）
 
 - `[标题](note://id)` 的正则散在 App.tsx 角标、NoteLinksPanel 三处、wordCount.ts `noteLinkRanges` 四份。现在 `util/wordCount.ts` 是唯一源：`NOTE_LINK_RE` / `linkedNoteIds()`（去重按首次顺序），面板的「链出去」「链到的不在了」和重查 key 都用它，App 的角标改成 `linkedNoteIds(content).length`——顺手把角标口径从「链接出现次数」改成「链到几篇」，跟面板列表的数对上（同一篇链两次原来角标 2、列表 1）。新测试 1 条。实拍 `note:bb215ab441a2:ribbon:links`：角标 1、「链到的笔记 · 1」。前端 119。探针备忘：ribbon 标签用 id（cites/links/history/paths/info），不是中文名。
+
+## [499] 第 474 轮：前后端引用 / 链接正则一致性做成 check 脚本，顺手抓到自己上一轮的回归（2026-09-14）
+
+- 新 `scripts/check-regex-parity.mts`（挂进 `npm test`，第 13 条 check）：4 组样本同时喂前端 `citedFactIds` / `linkedNoteIds` / `^CITE_RE_SOURCE` 和后端 `store._CITE` / `checks/citations.CITE` / `store._NOTE_LINK` / `prompts/fragments._FACT_ID`，比的是行为不是字面（Python / JS 写法允许不同）。后端 venv 不在就跳过。
+- 第一次跑就红了一条：第 473 轮我让 `linkedNoteIds` 用带标题的完整正则，标题里夹换行的 `[标题\n换行](note://id)` 后端（只看 `](note://id)` 尾巴）算链接、前端不算——面板列表和反链会对不上。改回跟后端同口径的 `NOTE_LINK_TAIL_RE`，`noteLinkRanges`（要拿标题替换）照旧用完整版。vitest 补这条样本。前端 119 + 13 条 check 全过。

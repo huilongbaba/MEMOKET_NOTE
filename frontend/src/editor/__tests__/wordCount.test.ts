@@ -40,5 +40,7 @@ describe('linkedNoteIds', () => {
     expect(linkedNoteIds('见 [甲](note://aaaaaaaaaaaa)、[乙](note://bbbbbbbbbbbb)，再 [甲](note://aaaaaaaaaaaa)；[站](https://x.y) ![图](/api/assets/a.png)'))
       .toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb'])
     expect(linkedNoteIds('[短](note://abc)')).toEqual([])
+    // 标题里夹换行的也算（后端 store._NOTE_LINK 就是只看尾巴）
+    expect(linkedNoteIds('[标题\n换行](note://0123456789ab)')).toEqual(['0123456789ab'])
   })
 })
