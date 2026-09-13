@@ -186,3 +186,20 @@ def test_说话人不同写法算同一个人(mem):
     assert [v for k, v in sp.items() if k.lower().replace("_", " ") == "speaker a"] == [3]
     rows, total = mem.facts_page(who="speaker a", limit=50, offset=0)[:2]
     assert {r["id"] for r in rows} >= {"w1", "w2", "w3"}
+
+
+def test_事实表和单条事实都带实体显示名(mem, monkeypatch, tmp_path):
+    """第 275 轮实拍：事实表卡片的实体 chip 显示代码 facebook，首页 / 筛选框显示 Facebook。"""
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.database.kite import kite_memory
+    from app.main import app
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    monkeypatch.setattr(kite_memory, "UserMemory", lambda user: mem)
+    from app.routers import memory as memory_router
+    monkeypatch.setattr(memory_router, "UserMemory", lambda user: mem)
+    with TestClient(app, headers={"X-User-Id": "u"}) as c:
+        rows = c.get("/api/memory/facts", params={"entity": "acme", "limit": 5}).json()["facts"]
+        assert rows and rows[0]["entity_names"] and rows[0]["entity_names"][rows[0]["entities"].index("acme")] == "Acme"
+        one = c.get(f"/api/memory/facts/{rows[0]['id']}").json()
+        assert one["entity_names"] == rows[0]["entity_names"]

@@ -404,6 +404,7 @@ class NoteLinksOut(BaseModel):
 class FactPeekOut(BaseModel):
     topics: list[str] = Field(default_factory=list)
     entities: list[str] = Field(default_factory=list)
+    entity_names: list[str] = Field(default_factory=list)   # 实体显示名，跟 entities 一一对应（chip 上显示 Facebook 不是 facebook）
     """行内出处浮层要的东西：一条事实 + 它的原话。
 
     `sources` 最多三条——浮层是**扫一眼**用的，不是阅读器；要看全部走
@@ -427,6 +428,7 @@ class FactDetailOut(BaseModel):
     conf: str = ""
     topics: list[str] = Field(default_factory=list)
     entities: list[str] = Field(default_factory=list)
+    entity_names: list[str] = Field(default_factory=list)   # 实体显示名，跟 entities 一一对应（chip 上显示 Facebook 不是 facebook）
     unit: str = ""
     superseded_by: str = ""
     merged: bool = False
