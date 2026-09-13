@@ -3164,3 +3164,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [448] 第 420 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 3 秒、health ok、kb/tree 180 行；正式版日志里第一行就是「笔记库 VACUUM：2.3MB → 0.8MB（空页 1.4MB）」，之后才做当天备份（0.8MB 的干净文件）。
+
+## [449] 巡检第 421 轮：知识库备份（2026-09-14）
+
+- `data/backups/kb/` 34MB，9 个用户各一份（一周一份），里面有 writing-bench / quality-sample / editing-bench 这些评测用的 dev 用户——正式版只有真用户，不是问题。r41x 探针日志没有 client:error。没改代码。
