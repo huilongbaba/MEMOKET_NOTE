@@ -2587,3 +2587,4 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 真库效果：1223 个实体 → 1213 组，归并了 10 组（memo cat + MemoCat 169 条、Apple Watch + AppleWatch 60、ChatGPT + chat gpt 56、Hui Long + Huilong、open ai + OpenAI、AppStore + App Store、MemoKit + memo_kit、T0 + T 0、T1 + T 1、SamAltman + Sam Altman）。实拍三页都对（索引 1213 个、memo cat 169、事实表按 MemoCat 筛出 169）。
 - 测试：新文件 test_kb_entities.py + test_kb_pages 合并用例（实体页 / 树 / 事实表 / 展开），后端 898；前端 87。
 - 追加（第 293 轮）：主题页 / 会议页的实体 chip 计数按组算（不再出现 memo cat 和 MemoCat 两个 chip）；召回的符号通道把认出的实体扩到同一组的所有写法。测试 +1，后端 899。
+- 再追加：排序给「挂着查询实体组」的事实加 4 分、六个字母以上的 ASCII 词去掉空格再比一次（memocat ↔ memo cat）。真库：「AppleWatch 续航」从 3:6 变 6:2 两种写法都有；「MemoCat 的定位」仍 7:1（写成 memo cat 的那批事实正文里根本没这个词，只有标签，靠文本排不上来——先这样）。60 条自召回 57 / 46。后端 899。

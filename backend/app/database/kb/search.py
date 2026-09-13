@@ -135,6 +135,10 @@ def _hits(terms: list[str], text: str) -> list[str]:
         if t.isascii() and t[0].isalpha():
             if re.search(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9])", low):
                 out.append(t)
+            elif len(t) >= 6 and t in squeezed:
+                # 够长的词去掉空格再比一次：「memocat」要能命中写成「memo cat」的事实（第 293 轮）；
+                # 六个字母以下不这么比，免得 md / api 这种撞回来
+                out.append(t)
         elif t in squeezed:
             out.append(t)
     return out
@@ -170,13 +174,27 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
     terms = _terms(memory, query)
     if not terms:
         return rows[:limit]
+    # 查询里认出的实体（含同一组的其它写法）：事实挂着它就加分——不然「MemoCat」只召回文本里写成
+    # MemoCat 的，写成 memo cat 的那一半排不上来（第 293 轮真库实测 7:1）
+    group_codes: set[str] = set()
+    if hasattr(memory, "_match_vocab") and hasattr(memory, "_index"):
+        try:
+            from . import entities as entities_mod
+            _t, ents, _s = memory._match_vocab(query, getattr(memory, "_index")()[1])
+            g = entities_mod.for_store(store, getattr(memory, "_index")()[1])
+            group_codes = {m for e in ents for m in g.members(e)}
+        except Exception:      # noqa: BLE001 — 假的 memory 没这些，按纯词面
+            group_codes = set()
+    ENTITY_BONUS = 4
 
     def score(row: dict) -> tuple[int, str]:
         fact = store.facts.get(row.get("id"))
         text = (fact.text if fact else "") or ""
         # 数字命中比同长度的字词更硬（「4月16」几乎就是在指那一天），多给 2 分
-        return (sum(len(t) + (2 if t[0].isdigit() else 0) for t in _hits(terms, text)),
-                row.get("date") or "")
+        s = sum(len(t) + (2 if t[0].isdigit() else 0) for t in _hits(terms, text))
+        if group_codes and fact is not None and group_codes & set(getattr(fact, "entities", ()) or ()):
+            s += ENTITY_BONUS
+        return (s, row.get("date") or "")
 
     # 一个查询词都没命中的候选不要：它们只是 grep 通道子串撞进来的（`md` 撞 SMD），
     # 排在后面照样会被当成「相关记忆」显示出来（第 224 轮实拍）
