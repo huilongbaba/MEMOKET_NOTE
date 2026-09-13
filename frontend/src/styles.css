@@ -811,6 +811,8 @@ input[type=file]:hover { border-color: var(--accent); }
 .stat-value { font-size: 22px; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; }
 .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .kb-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+/* grid 子项默认 min-width:auto，左栏长标题会把右栏挤成一条（第 268 轮实拍首页深色右栏 chip 被裁） */
+.kb-two-col > * { min-width: 0; }
 .mini-bars-row { display: flex; align-items: flex-end; gap: 3px; }
 .mini-bar { flex: 1 1 0; max-width: 28px; min-width: 4px; background: var(--accent); opacity: .85; border-radius: 3px 3px 0 0; transition: opacity 100ms; }
 .mini-bar:hover { opacity: 1; }
@@ -819,8 +821,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .chip {
   display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px;
   border: 1px solid var(--line); border-radius: 13px; background: var(--panel); color: var(--fg);
-  font-size: 12px; line-height: 1; cursor: pointer; text-decoration: none;
-}
+  font-size: 12px; line-height: 1; cursor: pointer; text-decoration: none;; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }   /* 窄栏里「speaker a」折成两行（第 268 轮实拍首页深色） */
 .chip .bx { font-size: 13px; color: var(--muted); }
 .chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--panel); }
 .chip:disabled { cursor: default; opacity: 1; }
