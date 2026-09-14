@@ -1032,7 +1032,12 @@ input[type=file]:hover { border-color: var(--accent); }
 .welcome-recent { display: flex; flex-direction: column; gap: 2px; }
 .welcome-recent .kb-link { padding: 5px 8px; border-radius: 6px; gap: 6px; align-items: center; }
 .welcome-recent .kb-link:hover { background: var(--hover); }
+/* 说明文字会折两三行，键帽跟着居中就飘在中间了——顶对齐（实拍：新用户首页
+   那一格 ⌘K 悬在三行字的正中间，读起来像跟第二行有关）。窄了就一列。 */
 .welcome-keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 18px; }
+.welcome-keys .shortcut-row { align-items: flex-start; }
+.welcome-keys .shortcut-row kbd { margin-top: 2px; }
+@container (max-width: 640px) { .welcome-keys { grid-template-columns: 1fr; } }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 kbd {
   font-family: inherit; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 5px;

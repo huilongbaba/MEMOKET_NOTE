@@ -49,6 +49,16 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
           <b>知识库</b>
           <span className="muted">{factCount > 0 ? '总览、主题地图、时间线，每个节点都是一页。' : '还是空的——导入一场会议录音就有了。'}</span>
         </button>
+        {/* 只有桌面版有采集能力；网页版摆出来点进去只会看到「要用桌面版」。
+            摆在这儿是因为**新用户不会无缘无故去点左栏那个显示器图标**——
+            一个默认不开的功能，不介绍一次就等于没有。 */}
+        {window.memoketDesktop?.journey && (
+          <button className="welcome-card" onClick={() => onOpen('app:journey')}>
+            <i className="bx bx-desktop" />
+            <b>屏幕活动</b>
+            <span className="muted">每隔一会儿记一句你在做什么，晚上汇成一份今天做了什么。默认不开，开之前先告诉你记什么。</span>
+          </button>
+        )}
       </div>
 
       {recent.length > 0 && (

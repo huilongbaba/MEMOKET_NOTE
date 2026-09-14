@@ -2861,6 +2861,9 @@ export default function App() {
             隐藏」，那本身就是个信号：**需要躲开输入框，说明它不该在输入框里**
             （用户原话：「你这个切换视角的按钮放在搜索框里合适？」）。
             这一行顺带回答了应用一直没回答的一个问题：现在这一列是什么、多少条。 */}
+        {/* 一篇笔记都没有时这一行整条收起来：**空列表没有「视角」可切**，
+            而「0 篇」是新用户第一眼就看到的一句废话（第 643 轮全新用户实拍）。 */}
+        {(notes.length > 0 || searchResults !== null || noteQuery) && (
         <div className="list-head">
           {searchResults !== null || noteQuery ? (
             <span className="muted">{visibleNotes.length} 条结果</span>
@@ -2876,6 +2879,7 @@ export default function App() {
             </>
           )}
         </div>
+        )}
         {/* 树的滚动容器——笔记一多，没有它树底部就被裁掉且滚不到 */}
         <div className="left-pane-body">
         {recentMode && searchResults === null && !noteQuery ? (
