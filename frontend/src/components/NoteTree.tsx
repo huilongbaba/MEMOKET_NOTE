@@ -270,6 +270,7 @@ export default function NoteTree({
                 该让位的是标题——名字一样的时候，能分辨的是日期。 */}
             <span className="tree-title" title={displayTitle(n) + (n.updated_at ? `\n修改于 ${fmtDate(n.updated_at)}` : '')}>{displayTitle(n)}</span>
             {dup.has(n.id) && <span className="tree-dup-date">· {dup.get(n.id)}</span>}
+            <span className="tree-gap" />
             {n.fact_count > 0 && !isFactId(n.note_id) && (
               <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
             )}

@@ -23,7 +23,7 @@ export type ProbeCtx = Record<string, any>
 export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
-  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setKbExpanded, loadKbChildren } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
+  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
   if (!harnessProbeDone.current && !/:(notes|meetings|imports)(:|$)/.test(probe) && api.memoryScope() !== 'all') api.setMemoryScope('all')
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
@@ -199,28 +199,15 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       }
     }
   }
-  // kbexpand:<id> → 把树上的某个知识库分类展开（看懒加载的那一层长什么样）
+  // kbexpand:<id> → 打开某个知识库分类的页面（看它名下那一层长什么样）。
+  // 第 619 轮之前这条是「把树展开到它」——知识库不在树里之后，下钻本来就在
+  // 那一页里，探针跟着改成直接开页。`:end` 保留：滚到页底看 300 条之后的尾巴行。
   if (probe?.startsWith('kbexpand:') && !harnessProbeDone.current) {
     harnessProbeDone.current = true
-    // `kbexpand:<id>:end` → 展开后把左栏滚到底（看 300 条之后的尾巴行）
     const toEnd = probe.endsWith(':end')
     const id = toEnd ? probe.slice(9, -4) : probe.slice(9)
-    if (toEnd) setTimeout(() => { const el = document.querySelector('.left-pane-body'); if (el) el.scrollTop = el.scrollHeight }, 4500)
-    // 父链也要展开（kb:entity:x 挂在 kb:entities 下，那层是懒加载的，也要取）
-    const parent = ({ entity: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent', etype: 'kb:entities' } as Record<string, string>)[id.split(':')[1]]
-    setTimeout(() => {
-      setKbExpanded(new Set(['kb', ...(parent ? [parent] : []), id]))   // 只展开这一条链，别的收起
-      if (parent) void loadKbChildren(parent)
-      void loadKbChildren(id)
-    }, 900)
-    // 把那个节点滚到树的可视区顶部，不然截图里看不到展开的那一层
-    setTimeout(() => {
-      const NAMES = { 'kb:entities': '实体', 'kb:topics': '主题', 'kb:recent': '最近摄入', 'kb:timeline': '时间线' } as Record<string, string>
-      const find = (label: string) => Array.from(document.querySelectorAll('.tree-node')).find((n) => new RegExp('^' + label + '\\s*\\d*$', 'i').test(n.textContent?.trim() ?? ''))
-      // 会议 / 月份行的文字不是 id（「03-10 · 产品计划会…」）：找不到就滚到它的父分类
-      const el = find(NAMES[id] ?? id.split(':').pop() ?? '') ?? (parent ? find(NAMES[parent] ?? parent) : undefined)
-      el?.scrollIntoView({ block: 'start' })
-    }, 2500)
+    setTimeout(() => void openVirtual(id), 900)
+    if (toEnd) setTimeout(() => { const el = document.querySelector('.kb-page'); if (el) el.scrollTop = el.scrollHeight }, 4500)
   }
   if (probe === 'graph-zoom') {
     setTimeout(() => void openVirtual('kb:graph'), 900)

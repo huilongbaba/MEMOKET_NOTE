@@ -118,13 +118,6 @@ export default function App() {
   // 知识库那棵**虚拟**子树（docs/kb-fusion-design.md §3.2）。分类层一次取全，
   // 事实按需展开；展开状态不在服务端（虚拟节点没有 branch），存本机。
   const [kbRows, setKbRows] = useState<TreeRow[]>([])
-  const [kbChildren, setKbChildren] = useState<Record<string, TreeRow[]>>({})
-  const [kbExpanded, setKbExpanded] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('memoket-note-kb-expanded:' + api.getUser())
-      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
-    } catch { return new Set() }
-  })
   // 中栏正在看的虚拟节点（一条事实 / 一个分类）。跟 current 互斥：有 current
   // 就是在写笔记，有 virtualId 就是在看知识库。
   const [virtualId, setVirtualId] = useState<string | null>(null)
@@ -571,35 +564,9 @@ export default function App() {
     return rows
   }, [])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('memoket-note-kb-expanded:' + api.getUser(),
-                           JSON.stringify([...kbExpanded]))
-    } catch { /* 存不上就下次全收起，不致命 */ }
-  }, [kbExpanded])
-
   /** 树上不列录音转写的说话人标签（Speaker A / speaker_c…）：它们是「实体」里事实最多的前五个，
    *  展开「实体」头一屏全是它们（第 203 轮真库实测 2858 / 2296 / 1318…）。索引页默认也藏着，那里有开关能看。 */
   const notSpeakerEntity = (r: TreeRow) => !(r.note_id.startsWith('kb:entity:') && isSpeakerTag(r.title))
-  /** 事实是按需取的：展开一个主题/实体/月份/会议时才去拿它名下那一层。
-   *  实体多的库（>200）树里不带实体节点，展开「实体」/「某类实体」时也是这条路取。 */
-  const needsFacts = (id: string) => /^kb:(topic|entity|month|unit|etype|material):/.test(id) || id === 'kb:entities'
-  const loadKbChildren = useCallback(async (id: string) => {
-    if (!needsFacts(id)) return
-    // 小库的实体本来就随树来了：树里已经有它的孩子就别再取一份，不然 allRows 里每个实体出现两次
-    if (kbRows.some((r) => r.parent_note_id === id)) return
-    try {
-      const rows = (await api.kbTreeChildren(id)).filter(notSpeakerEntity)
-      setKbChildren((m) => ({ ...m, [id]: rows }))
-    } catch { /* 展开了但没内容，树上就是空的，比报错好 */ }
-  }, [kbRows])
-
-  // 刷新后已经展开着的分类，把事实层补回来。
-  useEffect(() => {
-    for (const id of kbExpanded) if (needsFacts(id) && !kbChildren[id]) void loadKbChildren(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbRows])
-
   // 虚拟节点的标签可能在 kbRows 到之前就开了（恢复的标签、探针），名字还是
   // 裸 id——数据到了补成真名。
   useEffect(() => {
@@ -620,14 +587,25 @@ export default function App() {
   }, [kbRows, tabs])
 
   /** 真笔记 + 虚拟子树，一个控件画。虚拟节点的展开状态从本机的集合来。 */
+  /** 树上的行 = 用户自己的笔记 + **一行**知识库入口。
+   *
+   * 知识库原来是整棵子树接在树的最底下（主题 / 实体 / 时间线…一层层展开）。
+   * 不合适，理由在 docs/sidebar-ia-plan.md §1，一句话说：**树是「我写的、我摆
+   * 的」，知识库是「机器抽的、机器摆的」**，两套层级规则相反——笔记能改名能拖
+   * 能删，主题不能；而且体量倒挂，实测这个库真笔记 26 行、知识库子树 180 行，
+   * 排在最底下的那个节点装的东西比它上面所有东西加起来多一个数量级。
+   *
+   * 留这一行是因为它在回答「我的材料在哪」；点进去才回答「里面有什么」——
+   * 下钻交给知识库首页，那一页（搜索 + 数字 + 月度图 + 主题 / 实体 / 最近摄入）
+   * 本来就比在树里一层层展开好用。而「写作时够到知识」有两条更好的路：右栏的
+   * 「记忆」面板和 ⌘K。 */
   const allRows = useMemo(() => {
-    const virt = [...kbRows, ...Object.values(kbChildren).flat()]
-      .map((r) => ({ ...r, is_expanded: kbExpanded.has(r.note_id) }))
-    return [...tree, ...virt]
-  }, [tree, kbRows, kbChildren, kbExpanded])
+    const entry = kbRows.find((r) => r.note_id === 'kb')
+    return entry ? [...tree, { ...entry, child_count: 0, is_expanded: false }] : tree
+  }, [tree, kbRows])
 
-  // 截图探针：把知识库子树摆成「根 + 主题 + 第一个主题」展开的样子，
-  // 并打开第一个主题（kb-tree）或它名下第一条事实（kb-fact）。
+  // 截图探针：打开事实最多的那个主题（kb-tree），或它名下第一条事实（kb-fact）。
+  // 以前还要先把树展开到那儿——知识库不在树里之后就没这一步了（第 619 轮）。
   const kbProbeDone = useRef(false)
   useEffect(() => {
     const probe = new URLSearchParams(location.search).get('probe')
@@ -636,24 +614,14 @@ export default function App() {
       .sort((a, b) => b.fact_count - a.fact_count)[0]
     if (!first) return
     kbProbeDone.current = true
-    setKbExpanded(new Set(['kb', 'kb:topics', first.note_id]))
-    void api.kbTreeChildren(first.note_id).then((rows) => {
-      setKbChildren((m) => ({ ...m, [first.note_id]: rows }))
-      if (probe === 'kb-fact' && rows[0]) void openVirtual(rows[0].note_id, rows[0].title)
-      else void openVirtual(first.note_id, first.title)
-    })
+    if (probe === 'kb-fact') {
+      void api.kbTreeChildren(first.note_id).then((rows) => {
+        if (rows[0]) void openVirtual(rows[0].note_id, rows[0].title)
+        else void openVirtual(first.note_id, first.title)
+      })
+    } else void openVirtual(first.note_id, first.title)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbRows])
-
-  function toggleKbNode(row: TreeRow) {
-    const next = !row.is_expanded
-    setKbExpanded((prev) => {
-      const s = new Set(prev)
-      if (next) s.add(row.note_id); else s.delete(row.note_id)
-      return s
-    })
-    if (next && !kbChildren[row.note_id]) void loadKbChildren(row.note_id)
-  }
 
   /** 打开一个虚拟节点：一条事实 = 一篇只读笔记，占中栏、开标签，跟真笔记
    *  一样的肌肉记忆。离开正在写的那篇之前先落盘——跟 switchTo 同一条纪律。 */
@@ -747,22 +715,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 
-  // 树上把当前的虚拟节点露出来：从首页 / 图 / chips 点进一个主题时，左栏的树
-  // 也展开到它（Trilium 的树永远跟着当前笔记）。只展开祖先，不展开它自己。
-  // 挂在 effect 上而不是 openVirtual 里：kbRows 可能比打开动作晚到。
-  useEffect(() => {
-    if (!virtualId || kbRows.length === 0) return
-    setKbExpanded((prev) => {
-      const byNote = new Map<string, TreeRow>()
-      for (const r of allRows) if (!byNote.has(r.note_id)) byNote.set(r.note_id, r)
-      const next = new Set(prev)
-      let cur = byNote.get(virtualId)?.parent_note_id; let guard = 0
-      while (cur && cur !== api.ROOT_ID && guard++ < 50) { next.add(cur); cur = byNote.get(cur)?.parent_note_id }
-      return next.size === prev.size ? prev : next
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [virtualId, kbRows])
-
   /** 点标签 / ⌘数字 / 关标签后的回退，都走这一条：真笔记就 switchTo，
    *  虚拟节点就 openVirtual。 */
   function activateTab(tab: Tab | undefined) {
@@ -805,10 +757,6 @@ export default function App() {
       )
       if (current) items.push({ label: '引用到当前笔记', icon: 'bx-link', hint: current.title || '未命名',
                                 onSelect: () => insertAtCursor(`[${factId}]`) })
-    } else if (row.child_count > 0) {
-      items.push({ kind: 'sep' },
-        { label: row.is_expanded ? '收起' : '展开', icon: row.is_expanded ? 'bx-chevron-down' : 'bx-chevron-right',
-          onSelect: () => toggleKbNode(row) })
     }
     return items
   }
@@ -877,11 +825,10 @@ export default function App() {
     if (ok) remove(note, new Set([row.note_id, ...kids]))
   }
 
-  /** 折叠整棵树（只折真笔记的 branch；知识库那边清本机集合）。 */
+  /** 折叠整棵树。知识库现在是一行入口，没有可折的东西了（第 619 轮）。 */
   async function collapseAll() {
     const open = tree.filter((r) => r.is_expanded)
     setTree((prev) => prev.map((r) => ({ ...r, is_expanded: false })))
-    setKbExpanded(new Set())
     await Promise.all(open.map((r) => api.setBranchExpanded(r.note_id, r.parent_note_id, false).catch(() => {})))
   }
 
@@ -1258,7 +1205,7 @@ export default function App() {
   useEffect(() => {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
-    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setKbExpanded, loadKbChildren }), 800)
+    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo }), 800)
     return () => clearTimeout(timer)
     // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
     // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针
@@ -2939,7 +2886,8 @@ export default function App() {
             menuRowId={treeMenu?.row.id ?? null}
             activeNoteId={current?.id ?? virtualId}
             onOpen={openFromTree}
-            onToggle={(row) => (api.isVirtualId(row.note_id) ? toggleKbNode(row) : void toggleTreeNode(row))}
+            /* 树上只剩真笔记可以展开：知识库现在是一行入口，下钻在它自己那一页里 */
+            onToggle={(row) => { if (!api.isVirtualId(row.note_id)) void toggleTreeNode(row) }}
             onDelete={(row) => { const n = notes.find((x) => x.id === row.note_id); if (n) void removeWithSubtree(n, row) }}
             locateTick={locateTick}
             onRename={(row) => void renameNode(row)}

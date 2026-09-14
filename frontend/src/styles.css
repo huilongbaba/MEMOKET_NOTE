@@ -512,15 +512,25 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .tree-item-button:hover { background: var(--left-pane-item-action-hover-bg); }
 
 .tree-title {
-  flex: 1; min-width: 0;
+  /* **两个都不能被挤没。** 第 619 轮实拍连栽两次：
+     第一版标题 `flex:1; min-width:0` + 日期 `flex-shrink:0` → 标题被截成「No...」；
+     第二版给标题 `min-width:4.5em` → 它 `flex-grow:1` 又把日期挤成「· 09-07」，
+     两行看起来还是一样，等于白标。
+     现在标题**不抢剩余空间**（`flex:0 1 auto`），日期一步不让（`flex:0 0 auto`），
+     中间的空隙交给下面的 `.tree-gap`。挤不下时该截的是标题——名字截一半还认得出，
+     时间截一半就不分辨了。 */
+  flex: 0 1 auto; min-width: 3em;
   overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 标题 / 日期 和右边那排角标之间的弹性空隙 */
+.tree-gap { flex: 1 1 auto; min-width: 0; }
 
 /* 撞名那几行后面的日期（第 609 轮：侧栏里四行都写着「创业一年回顾」）。
    压得很轻——它是用来分辨的，不该跟标题抢眼睛。 */
 .tree-dup-date {
-  flex-shrink: 0;          /* 标题让位给它：名字一样时，能分辨的是日期 */
+  flex: 0 0 auto;                 /* 一步不让：截一半的时间不分辨，等于没标 */
+  white-space: nowrap;
   color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums;
   margin-inline-start: 4px;
 }
