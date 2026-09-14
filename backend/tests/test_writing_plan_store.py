@@ -133,3 +133,12 @@ def test_分段标题太长会截断(isolated_store):
     plan = isolated_store.create_plan("u", "p2", "目标")
     (s,) = isolated_store.add_sections(plan["id"], ["很长的标题" * 40])
     assert len(s["title"]) == SECTION_TITLE_MAX
+
+
+def test_分段标题里的引用标记剥掉(isolated_store):
+    """第 595 轮实拍：加了「零引用要拦下」的判据之后，模型连分段标题都开始带编号，
+    而分段标题会成为笔记标题。"""
+    plan = isolated_store.create_plan("u", "p3", "目标")
+    (s,) = isolated_store.add_sections(
+        plan["id"], ["硬件线：设备与 APP 的连接稳定性 [terrence-1850-6F6] [terrence-1997-11F1]"])
+    assert s["title"] == "硬件线：设备与 APP 的连接稳定性"

@@ -1448,6 +1448,15 @@ MAX_SECTIONS_PER_ADD = 20
 SECTION_TITLE_MAX = 80
 
 
+# 分段标题会成为笔记标题，标题里不该有引用标记。第 595 轮实拍：加了「零引用要拦下」的判据之后，
+# 模型连分段标题都开始带编号——「硬件线：设备与 APP 的连接稳定性及测试验证 [terrence-1850-6F6]」。
+_TITLE_CITE = re.compile(r"\s*\[[A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]")
+
+
+def _clean_section_title(t: str) -> str:
+    return " ".join(_TITLE_CITE.sub("", t or "").split())[:SECTION_TITLE_MAX]
+
+
 def _section_key(t: str) -> str:
     return " ".join((t or "").split()).lower()
 
@@ -1470,7 +1479,7 @@ def add_sections(plan_id: str, titles: list[str]) -> list[dict]:
         for t in titles:
             if len(picked) >= cap:
                 break
-            t = " ".join((t or "").split())[:SECTION_TITLE_MAX]
+            t = _clean_section_title(t)
             k = _section_key(t)
             if not t or k in have:
                 continue
