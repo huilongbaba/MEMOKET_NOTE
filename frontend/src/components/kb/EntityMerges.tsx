@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { decideEntityMerge, entityMergeCandidates,
+import { decideEntityMerge, entityMergeCandidates, undoEntityMerge,
          type EntityMergeCandidate, type EntityMergeDecision } from '../../api'
-import { toast } from '../../toast'
+import { toast, toastAction } from '../../toast'
 
 /**
  * 「可能是同一个」——实体合并的收件箱（docs/kb-entities-plan.md 第二部分）。
@@ -46,8 +46,20 @@ export default function EntityMerges({ onDone }: { onDone?: () => void }) {
       // 判完就从列表里拿掉：不重新拉整张表——用户在连着点，重排会让手底下的东西跳走
       setRows((r) => (r ?? []).filter((x) => x.a + x.b !== key))
       setDecided((n) => n + 1)
-      if (d === 'same') toast(`合并了：${c.name_a} + ${c.name_b} → ${c.facts_total} 条`)
-      if (d === 'drop_a' || d === 'drop_b') toast(`${d === 'drop_a' ? c.name_a : c.name_b} 不再当实体`)
+      // **「随时可撤」这句话得有地方兑现。** 连着点一屏，点错一下是常事，
+      // 而这一对判完就从列表里消失了——没有这个撤销，那句话就是假的。
+      const said = d === 'same' ? `合并了：${c.name_a} + ${c.name_b} → ${c.facts_total} 条`
+        : d === 'drop_a' ? `「${c.name_a}」不再当实体`
+          : d === 'drop_b' ? `「${c.name_b}」不再当实体`
+            : d === 'unsure' ? `记下「拿不准」：${c.name_a} / ${c.name_b}`
+              : `记下「不是」：${c.name_a} / ${c.name_b}`
+      toastAction(said, '撤销', () => {
+        void undoEntityMerge(c.a, c.b).then(() => {
+          setRows((r) => [c, ...(r ?? [])])       // 放回最前面，用户刚才就在看它
+          setDecided((n) => Math.max(0, n - 1))
+          onDone?.()
+        }).catch((e) => toast(e instanceof Error ? e.message : String(e), 'error'))
+      }, 7000)
       onDone?.()
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setBusy('') }
   }
