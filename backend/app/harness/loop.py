@@ -314,12 +314,32 @@ def _regressed(st: State) -> str | None:
     best = st.best
     if st.skip_judge:
         return None
+    if _coverage_unmet(st):
+        return None
     if best is None or not st.mode.dims or st.round >= st.mode.max_rounds:
         return None                      # 最后一轮本来就要交最好的，不用另起一个理由
     best_rank, _content = best
     if best_rank[0] < max(1, len(st.mode.dims) - 1):
         return None
     return "regressed" if st.rank() < best_rank else None
+
+
+# 「还没写够」的那几个维度。跟 middleware/repair.py 的 INNER_QUALITY 正好相对：
+# 那边是「已经写的东西有毛病，别再加了」，这边是「东西还不够，得接着写」。
+COVERAGE_DIMS = ("beat_coverage", "section_coverage", "material_use")
+
+
+def _coverage_unmet(st: State) -> bool:
+    """这一轮还有「写得不够」的维度没达标。
+
+    第 607 轮真跑实拍：分段第 1 轮六维里五维达标、差的正是 `section_coverage`
+    ——而 `_regressed` 的武装条件恰好是「最好那轮只差一个维度」。于是第 2 轮
+    接着写，正文长了，`non_repetition` 暂时掉到 1，排名一低就被判成「退步」、
+    整节 570 字交卷。**要求它多写，又因为多写而判它退步**，两条规则打架。
+    覆盖没满足就说明活还没干完，这时候的波动是干活的代价，不是退步。
+    """
+    return any((s := st.ev.scores.get(d)) and s.level < 2
+               for d in COVERAGE_DIMS) if st.ev else False
 
 
 BUILTIN_STOPS = (_complete, _blocked, _no_progress, _regressed)

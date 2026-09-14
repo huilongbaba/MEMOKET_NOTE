@@ -70,6 +70,42 @@ def mermaid_blocks(text: str) -> list[str]:
     return out
 
 
+# 手写也放行的那一种图：最简单的流程图。
+#
+# 「必须跟工具返回的字节一模一样」这条原本是对的——模型学会了照着工具结果
+# 手写 mermaid，而它自创的语法（`y-axis "曝光" 0 --> 260000` 带范围）会让
+# 整张图变成一段报错。但第 607 轮把四次真跑里模型写出来的 mermaid 全收集起来
+# 看了一遍：**9 块全是 `graph TD` / `flowchart LR` 加几行 `A[x] --> B[y]`，
+# 9 块全合法**。判据把九张有用的流程图全拒了，换来一个模型多半完成不了的
+# 工具往返（写正文那一步没有工具）。
+#
+# 所以判据从「跟工具字节一致」放宽一格：**这一种形状，自己写的也算数**。
+# 它的语法面小到可以确定性地判全——节点名、形状、箭头、箭头上的标签，再无
+# 别的。xychart / pie / gantt / sequence 一概照旧必须工具产出：那些才是真会
+# 写坏的地方，而且工具本来就画得出来。
+#
+# 标签里不许出现 `[](){}"|`：这些在 mermaid 里有语法含义，嵌在标签中间是
+# 最常见的渲染失败原因，而它又是纯字符判断。
+_FLOW_HEAD = re.compile(r"^(?:graph|flowchart)\s+(?:TD|TB|BT|LR|RL)\s*$")
+_FLOW_NODE = r"[A-Za-z_][A-Za-z0-9_]*(?:\[\[[^\[\]{}()\"|]*\]\]|\[[^\[\]{}()\"|]*\]|\(\([^\[\]{}()\"|]*\)\)|\([^\[\]{}()\"|]*\)|\{[^\[\]{}()\"|]*\})?"
+_FLOW_ARROW = r"(?:-{2,3}>|-{3}|-\.->|={2,3}>)(?:\|[^|]*\|)?"
+_FLOW_LINE = re.compile(
+    rf"^{_FLOW_NODE}(?:\s*{_FLOW_ARROW}\s*{_FLOW_NODE})+$")
+
+
+def is_plain_flowchart(block: str) -> bool:
+    """这块 mermaid 是不是「最简单的流程图」——手写也认的那一种。
+
+    整块每一行都得认得出来才算：一行看不懂就说明里面有这个语法之外的东西，
+    那就走工具那条路。空行忽略。
+    """
+    lines = [ln.strip() for ln in (block or "").strip().splitlines()]
+    lines = [ln for ln in lines if ln]
+    if len(lines) < 2 or not _FLOW_HEAD.match(lines[0]):
+        return False
+    return all(_FLOW_LINE.match(ln) for ln in lines[1:])
+
+
 def unauthorized_charts(block: str, allowed: list[str], limit: int = 3) -> list[str]:
     """块里那些**不是工具产出**的 mermaid 图。
 
@@ -79,11 +115,14 @@ def unauthorized_charts(block: str, allowed: list[str], limit: int = 3) -> list[
     render_chart 从不写范围，因为写错了图就出不来）。数字对不代表图能渲染，
     也不代表下次它不会顺手改一个数。
 
-    所以判据不是"看起来像不像"，是**跟工具返回的字符串一模一样**。
+    所以判据不是"看起来像不像"，是**跟工具返回的字符串一模一样**——
+    只放一格：最简流程图（`is_plain_flowchart`）手写也算数，那一种的语法面
+    小到可以确定性判全，而且真跑里模型想画的全是它。
     """
     ok = set(allowed)
     return [b.split("\n", 2)[1][:70] if "\n" in b else b[:70]
-            for b in mermaid_blocks(block) if b not in ok][:limit]
+            for b in mermaid_blocks(block)
+            if b not in ok and not is_plain_flowchart(b)][:limit]
 
 
 def chart_gap(block: str, allowed: list[str] | None = None) -> str:

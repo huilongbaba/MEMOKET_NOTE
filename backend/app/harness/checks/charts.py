@@ -72,6 +72,8 @@ def charts_from_tools(st: State) -> Verdict | None:
         pick_dimension(st, "has_charts", "chart_validity", "coherence"),
         f"这里有 {len(bad)} 张 mermaid 图不是工具画的（{'; '.join(bad)}），是手写的、模仿工具"
         "输出。手写的 mermaid 没验证过，一处语法不对（比如 y 轴范围）整张图就变成一段"
-        "报错。画什么由你定，**代码必须是工具原样返回的**；工具没画出你要的，就再调一次，"
-        "别手改它的输出。",
+        "报错。画什么由你定，**代码必须是工具原样返回的**；工具没画出你要的，"
+        "就在下一轮取材料那一步再调一次 render_chart（写正文这一步没有工具可用）。"
+        "——只有最简流程图例外：`graph TD` / `flowchart LR` 加几行 `A[甲] --> B[乙]`，"
+        "那一种自己写没问题，上面这几张不是那一种。",
     )

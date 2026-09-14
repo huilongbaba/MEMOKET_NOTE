@@ -11,6 +11,7 @@ stops holding, the claim was wrong or the code drifted.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 
 import pytest
 from app.harness.types import Dimension, DimensionScore, Evaluation
@@ -465,3 +466,38 @@ def test_判据打回的那一轮不算质量退步():
     assert done.data["reason"] != "regressed", "判据要修的毛病不是质量退步"
     assert done.data["reason"] == "complete" and st.round == 3, \
         "第 3 轮本来能跑到达标，被 regressed 掐掉就永远看不到"
+
+
+def test_覆盖维度还没达标时不算退步():
+    """要求它多写，又因为多写而判它退步——两条规则打架。
+
+    第 607 轮真跑实拍：分段第 1 轮六维里五维达标、差的正是 section_coverage，
+    而 _regressed 的武装条件恰好是「最好那轮只差一个维度」。第 2 轮接着写，
+    正文长了，non_repetition 暂时掉到 1，排名一低就被判退步，570 字交卷。
+    """
+    from app.harness.loop import COVERAGE_DIMS
+    from app.harness.types import Dimension
+
+    assert "section_coverage" in COVERAGE_DIMS
+
+    names = ("topic_fidelity", "section_coverage", "non_repetition", "coherence")
+    dims = tuple(Dimension(n, "...") for n in names)
+
+    # 第 1 轮只差 section_coverage（武装 _regressed）；第 2 轮为了写够，
+    # non_repetition 暂时掉下来；第 3 轮两条都补上
+    rounds = [[2, 1, 2, 2], [2, 1, 1, 2], [2, 2, 2, 2]]
+
+    async def score(st):
+        levels = rounds[min(st.round, len(rounds)) - 1]
+        scores = {n: DimensionScore(level=v, note="") for n, v in zip(names, levels)}
+        done = all(v >= 2 for v in levels)
+        return Evaluation(scores=scores, status="complete" if done else "continue",
+                          weakest=None if done else "section_coverage")
+
+    hooks = FakeHooks(["a", "bb", "ccc"])
+    st = _state(dataclasses.replace(_mode(max_rounds=3), dims=dims))
+    events = asyncio.run(_drive(st, hooks, score, mw=BASE))
+
+    done = _finished(events)
+    assert done.data["reason"] == "complete" and done.data["content"] == "ccc", \
+        "覆盖没满足就说明活还没干完，这时候的波动是干活的代价"

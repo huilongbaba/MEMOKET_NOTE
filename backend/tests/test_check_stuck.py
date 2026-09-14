@@ -105,8 +105,10 @@ def test_笔记原来就有的图不算这一轮手写的():
     """
     from app.harness.checks.charts import charts_from_tools
 
-    old = "```mermaid\ngraph TD\nA[5G切换至2.4G] --> B[完成通信验证]\n```"
-    mine = "```mermaid\ngraph TD\nX[我自己编的] --> Y[语法未验证]\n```"
+    # 例子要挑「还必须走工具」的那一类：最简流程图第 607 轮起手写也放行了，
+    # 拿它当例子的话测的就不是「新旧之分」而是别的事了。
+    old = "```mermaid\nxychart-beta\n  title 上次跑留下的\n  bar [1, 2, 3]\n```"
+    mine = "```mermaid\nxychart-beta\n  y-axis \"曝光\" 0 --> 260000\n```"
 
     st = _st([])
     st.bag["content_at_start"] = "一段正文。\n\n" + old
@@ -115,7 +117,7 @@ def test_笔记原来就有的图不算这一轮手写的():
 
     st.content += "\n\n" + mine
     v = charts_from_tools(st)
-    assert v is not None and "我自己编的" in v.message, "这一轮新写的手写图照样要拦"
+    assert v is not None and "y-axis" in v.message, "这一轮新写的手写图照样要拦"
 
     # 没记开跑快照的老路径（别的 harness / 单测）不能因此崩掉
     st2 = _st([]); st2.content = old
@@ -182,3 +184,31 @@ def test_流程图判据点名的工具真的会画流程图():
         "判据点名的工具，这个模式得真的发得出去"
     assert "flow" in (registry.get("render_chart").description), \
         "chart_from_text 只会饼 / 柱 / 折线，会画流程图的是 render_chart"
+
+
+def test_手写的最简流程图放行_别的照旧必须工具产出():
+    """第 607 轮把四次真跑里模型写出来的 mermaid 全收集起来看了一遍：
+    9 块全是 `graph TD` / `flowchart LR` 加几行 `A[x] --> B[y]`，**9 块全合法**。
+    判据把九张有用的流程图全拒了，换来一个模型多半完成不了的工具往返
+    （写正文那一步没有工具）。
+
+    语料和反例都在 `tests/fixtures/mermaid_corpus.json`，前端
+    `scripts/check-mermaid-grammar.mts` 拿真 mermaid 再验一遍「放行的确实
+    渲染得出来」——这条语法是手写正则，光我自己说它对不算数。
+    """
+    import json
+    from pathlib import Path
+
+    from app.harness.checks.blockcheck import is_plain_flowchart, unauthorized_charts
+
+    corpus = json.loads((Path(__file__).parent / "fixtures" / "mermaid_corpus.json")
+                        .read_text(encoding="utf-8"))
+    for block in corpus["accept"]:
+        assert is_plain_flowchart(block), f"真跑里写出来的合法流程图被拒了：\n{block}"
+    for block in corpus["reject"]:
+        assert not is_plain_flowchart(block), f"这块不该放行：\n{block}"
+
+    # xychart 那类才是真会写坏的地方，照旧必须工具原样给
+    bad = "```mermaid\nxychart-beta\n  y-axis \"曝光\" 0 --> 260000\n```"
+    assert unauthorized_charts(bad, [])
+    assert not unauthorized_charts("```mermaid\ngraph TD\nA[甲] --> B[乙]\n```", [])
