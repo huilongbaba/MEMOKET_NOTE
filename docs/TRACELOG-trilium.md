@@ -3809,3 +3809,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 真跑 `harness:5f65df10cad6`：harness-sync 0 条、无 client error、无 traceback（这一跑没撞 token 上限、也没触发劈开句子的修订，护栏靠单测兜）。正文从 `r492-before.json` 还原。
 - 全量：后端 968；前端 tsc + eslint + vitest 129 + 19 条 check / smoke 全过。
+
+## [597] 第 573 轮：重打 dmg（2026-09-14）
+
+- `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB），带上 `eriwa` 那两个修复。装好的包冒烟（terrence 身份）：就绪 2 秒、tree / kb/tree 正常；日志新增 8 行裸 `INFO:` 0 行。PROGRESS 补 561–573 行。
