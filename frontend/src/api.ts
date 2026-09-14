@@ -1022,7 +1022,7 @@ export type NoteHarnessHandlers = {
   /** 服务端把流给我们的某一段 / 某一行（重复的段落、模型自己写的标题）剥掉了：本地删同一段 */
   onDedup?: (v: { paragraph: string }) => void
   /** 代码判据当场判这一轮不合格。命中时跳过模型打分，分数就是这条判据给的。 */
-  onCheckHit?: (d: { dimension: string; note: string }) => void
+  onCheckHit?: (d: { dimension: string; note: string; stuck_rounds?: number }) => void
   /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
    * 但**不能是静默的**——这一轮少了那个能力，用户得知道。 */
   onWarning?: (d: { middleware: string; hook: string; error: string }) => void

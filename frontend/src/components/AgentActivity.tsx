@@ -26,7 +26,7 @@ export type AgentRound = {
   dropped: string[]
   /** 代码判据（不是模型）当场判这一轮不合格。命中时这一轮**不会**再花一次
    * 模型调用去打分——所以要标出来，否则用户看到一个 0 分却不知道是谁判的。 */
-  checkHit?: { dimension: string; note: string }
+  checkHit?: { dimension: string; note: string; stuck_rounds?: number }
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
   phaseLabel?: string
@@ -293,8 +293,17 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                                           display: 'flex', gap: 5 }}>
               <span style={{ flexShrink: 0 }}>⚑</span>
               <span>
-                代码判据判了 <b>{r.checkHit.dimension}</b> 不合格，这一轮没再花模型
-                调用去打分。{r.checkHit.note}
+                {r.checkHit.stuck_rounds ? (
+                  <>
+                    <b>{r.checkHit.dimension}</b> 这条已经连着 {r.checkHit.stuck_rounds} 轮
+                    原样卡在这里，改不动——这一轮不再拦，照常打分。{r.checkHit.note}
+                  </>
+                ) : (
+                  <>
+                    代码判据判了 <b>{r.checkHit.dimension}</b> 不合格，这一轮没再花模型
+                    调用去打分。{r.checkHit.note}
+                  </>
+                )}
               </span>
             </p>
           )}

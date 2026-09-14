@@ -384,7 +384,7 @@ State: mode · ctx(user/note/cursor) · request · round
 | **Facts** | after_prepare / before_round | 跨轮累积材料并修剪——只做一半各出过一个 bug |
 | **Provenance** | after_prepare | 把工具真的返回了什么给用户看（`round_summary`），依据不能靠模型自报 |
 | **Repeats** | after_produce | 机械近重复检测（difflib），结果作为打分的证据 |
-| **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit` |
+| **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit`；同一条原样卡满 `STUCK_ROUNDS` 轮就只发事件不再短路（改不动的老正文不该把剩余轮数烧掉） |
 | **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的 |
 | **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料） |
 
@@ -488,7 +488,7 @@ Mode 按需追加的：
 | `dropped` | 一条修订被防线丢了（不是错误：同义重写、锚点歧义、切出破字、动到用户标题、输出被截断、整句插到一句话中间——第 570 轮用户实拍「…漏斗后半段：如果要把…；KOL 是否愿意…」） |
 | `scrub` | 服务端在轮内整句删掉的元话语（`sentence` 全量 + `why`）：客户端在本地正文里删同一句。`revision` 的 `anchor` / `text` 也是全量——客户端拿它本地重放，截过就会插半句 / 定位失败（第 375–382 轮真跑抓到的） |
 | `dedup` | 流给客户端之后服务端落进正文前又剥掉的段落 / 行（跟已有正文重复的段、模型自己写的标题、重写了一遍的小节标题；`paragraph` 全量）：客户端删同一段。`hooks/mirror._record_dropped` 按段和行两级找（单篇和分段两条 harness 都发）「流里有、留下的里没有」，loop 在 TEXT_MESSAGE_END 之后发（第 561 轮） |
-| `check_hit` | 代码判据命中，这一轮不打分 |
+| `check_hit` | 代码判据命中，这一轮不打分；带 `stuck_rounds` 时表示它已经卡满、这一轮放行照常打分 |
 | `evaluate` | 打分：各维度 level + note、status、最弱维度 |
 | `policy` | Runtime 调了下一轮参数、原因 |
 | `replan` | 骨架中途变了 |

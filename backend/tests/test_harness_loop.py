@@ -121,11 +121,38 @@ def test_a_failing_check_skips_the_scoring_call():
     def always_fails(st):
         return Verdict("d0", "no charts here")
 
-    hooks = FakeHooks(["x"] * 3)
-    st = _state(_mode(checks=(always_fails,), max_rounds=3))
+    from app.harness.middleware.checks import STUCK_ROUNDS
+
+    n = STUCK_ROUNDS
+    hooks = FakeHooks(["x"] * n)
+    st = _state(_mode(checks=(always_fails,), max_rounds=n))
     events = asyncio.run(_drive(st, hooks, counting, mw=BASE))
     assert calls == []
-    assert sum(1 for e in events if e.data.get("name") == "check_hit") == 3
+    assert sum(1 for e in events if e.data.get("name") == "check_hit") == n
+
+
+def test_一条判据原样卡满就不再挡着打分():
+    """省下打分调用的前提是「判据已经知道答案了」。同一条原样卡满几轮，
+    说明它知道的那个答案这一轮兑现不了——再挡下去只是把剩余轮数烧掉，
+    而且整个 run 到不了 complete（第 601 轮真跑读出来的死锁）。"""
+    calls: list[int] = []
+
+    async def counting(st):
+        calls.append(st.round)
+        return Evaluation({"d0": DimensionScore(2, "")}, "complete")
+
+    from app.harness.middleware.checks import STUCK_ROUNDS
+
+    n = STUCK_ROUNDS + 1
+    hooks = FakeHooks(["x"] * n)
+    st = _state(_mode(checks=(lambda st: Verdict("d0", "改不动的老问题"),),
+                      max_rounds=n))
+    events = asyncio.run(_drive(st, hooks, counting, mw=BASE))
+
+    assert calls == [n], "前几轮该省的还是省了，卡满那一轮才轮到打分器"
+    assert _finished(events).data["reason"] != "max_rounds", "打分器说 complete 就该收工"
+    assert sum(1 for e in events if e.data.get("name") == "check_hit") == n, \
+        "放行不等于不报——用户还得看见这条一直没解决"
 
 
 def test_a_fix_that_works_is_kept_and_does_not_fail_the_round():

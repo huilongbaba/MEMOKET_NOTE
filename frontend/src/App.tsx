@@ -2023,6 +2023,8 @@ export default function App() {
       onCheckHit: (d) => {
         // 代码判据当场判不合格，这一轮不会再花模型调用去打分。不标出来的话
         // 用户看到一个 0 分，不知道是谁判的、为什么这轮这么快。
+        // 带 `stuck_rounds` 的是另一回事：这条连着卡了几轮改不动，后端已经
+        // 放行、照常打分了，得说清楚，否则「报了错还给了分」看着像矛盾。
         if (currentRef.current?.id !== noteId) return
         setAgentRounds((rs) => {
           if (!rs.length) return rs
