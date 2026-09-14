@@ -140,3 +140,30 @@ def test_trace_把_KITE_的英文拒答换成中文():
     assert _no_info_to_chinese("Not enough information to answer.").startswith("知识库里")
     assert _no_info_to_chinese("No information", has_facts=False) == "知识库里没有跟这段沾边的记录。"
     assert _no_info_to_chinese("证据显示：2026-02-27 …") == "证据显示：2026-02-27 …"
+
+
+def test_模型改写的关系说明有长度上限(tmp_path, monkeypatch):
+    """关系卡那句话直接显示在右栏；代码判出来的本来就短，模型改写的那版没准绳（第 577 轮）。"""
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app.database import store
+    from app.database.kite import kite_memory
+    from app.database.kite.kite_memory import UserMemory
+    from app.routers import memory as memory_router
+
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    fake = SimpleNamespace(kite_data_dir=tmp_path, kite_extract_model="fake", whisper_base_url="http://x")
+    monkeypatch.setattr(kite_memory, "get_settings", lambda: fake)
+    mem = UserMemory("u1")
+    a = mem.add_manual_fact("note-n1-0", "电池容量从 300mAh 改到 380mAh。", date="2026-05-08", title="T")
+    rows = [{"id": a["id"], "text": a["text"], "date": "2026-05-08"}]
+    monkeypatch.setattr(UserMemory, "recall", lambda self, q, limit=8, scope="all": (rows, [], 0.1))
+
+    async def fake_json(messages, **kw):
+        return [{"index": 0, "keep": True, "say": "很长的说明 " * 200}]
+    monkeypatch.setattr(memory_router.llm, "complete_json", fake_json)
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u1"}) as c:
+        r = c.post("/api/memory/relations", json={"passage": "电池容量定在 420mAh。"}).json()
+    says = [x["say"] for x in r["relations"]]
+    assert says and all(len(s) <= memory_router.RELATION_SAY_MAX for s in says)

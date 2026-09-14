@@ -15,6 +15,9 @@ from ..util import llm
 from .schemas import AskIn, AskOut, CitingNoteOut, FactPeekOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
 from .deps import current_user
 
+# 关系卡上那句话的长度上限——代码判出来的本来就短，模型改写的那版没准绳
+RELATION_SAY_MAX = 120
+
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
 
@@ -203,7 +206,8 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
                 for v in verdict:
                     if isinstance(v, dict) and isinstance(v.get("index"), int):
                         keep[v["index"]] = v
-                cands = [dict(c, say=(keep[i].get("say") or c["say"]))
+                # 模型改写的那句话直接显示在右栏关系卡上：封顶 120 字，别把卡片撑成一屏（第 577 轮）
+                cands = [dict(c, say=" ".join(str(keep[i].get("say") or c["say"]).split())[:RELATION_SAY_MAX])
                          for i, c in enumerate(cands)
                          if i not in keep or keep[i].get("keep", True)]
         except Exception:      # noqa: BLE001 — 模型不在就用代码判的那句
