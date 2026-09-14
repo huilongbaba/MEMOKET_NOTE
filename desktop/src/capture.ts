@@ -46,7 +46,10 @@ export const DENY_APPS = [
 ]
 export const DENY_TITLE_WORDS = [
   '密码', 'password', '隐私浏览', 'private browsing', '无痕', 'incognito',
-  '网上银行', 'online banking',
+  // **知情选择那一屏上写的是「银行」**，而这里原来只挡「网上银行」——
+  // 「招商银行」「工商银行」一个都挡不住（第 657 轮对着自己写的承诺查出来的）。
+  // 这个方向上宁可多挡：挡错一次只是少记一段，漏一次是把银行页面记下来了。
+  '银行', 'online banking', '转账', '账单',
 ]
 
 export type Segment = {

@@ -78,7 +78,9 @@ export default function ExportNotePanel({ noteId, title, onClose }:
       {/* ① 状态先说。重复动作里这一行比任何说明都有用 */}
       <p className="muted export-note-state">
         {remotes === null ? '…'
-          : remotes.length === 0 ? '这一篇还没导回过。再导一次是覆盖同一处，不会新建一份。'
+          /* 「再导一次是覆盖」对一篇**从没导过**的笔记是句糊涂话：还没有「同一处」。
+             说清楚两步：这一次新建，之后才是覆盖。 */
+          : remotes.length === 0 ? '这一篇还没导回过——这一次会在对方那边新建一份，之后再导就是覆盖它。'
             : remotes.map((r) => `${WHERE_LABEL[r.platform as ExportWhere] ?? r.platform} · ${fmtDate(r.exported_at)} 导回`).join('；')}
       </p>
 

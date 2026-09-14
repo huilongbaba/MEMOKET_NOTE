@@ -71,7 +71,7 @@ MIN_DESC = 12
 BUILTIN_DENY_APPS = ("1Password", "1Password 7", "Keychain Access", "钥匙串访问",
                      "Bitwarden", "LastPass", "Dashlane", "Enpass")
 BUILTIN_DENY_WORDS = ("密码", "password", "隐私浏览", "private browsing", "无痕",
-                      "incognito", "网上银行", "online banking")
+                      "incognito", "银行", "online banking", "转账", "账单")
 
 
 def journey_root() -> Path:

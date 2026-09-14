@@ -3215,7 +3215,11 @@ export default function App() {
                   /* 单篇导回。后端和 api 层本来就收 note_ids，一直缺的只是这个入口
                      （用户第 628 轮：「每一个 note，导出到 Notion/Obsidian/Feishu 的按钮没有」）。 */
                   { label: '导回到 Obsidian / Notion / 飞书…', icon: 'bx-share',
-                    hint: '按 memoket_id 覆盖对方那边的同一篇', onSelect: () => setExportOne(current) },
+                    /* **这句话原来是不准的**：只有 Obsidian 是按文件里的 memoket_id 认，
+                       Notion / 飞书认的是这台机器上记着的那一篇（`note_remotes.remote_id`）。
+                       差别是实的：换台机器导，Notion / 飞书会新建一份而不是覆盖。 */
+                    hint: '覆盖对方那边的同一篇（Obsidian 按文件里的 id 认，Notion / 飞书按这台机器记着的认）',
+                    onSelect: () => setExportOne(current) },
                   { label: '导出全部笔记…', icon: 'bx-package', hint: '整库打成 Markdown zip', onSelect: () => window.dispatchEvent(new CustomEvent('export-all')) },
                   { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
                   { kind: 'sep' },
