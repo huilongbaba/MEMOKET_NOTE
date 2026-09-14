@@ -58,7 +58,8 @@ export default function ExportBack() {
           <label className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的
           </label>
-          <button onClick={() => void run('obsidian', () => exportObsidian(vaultDir.trim(), [], force))} disabled={!vaultDir.trim() || !!busy}>
+          <button onClick={() => void run('obsidian', () => exportObsidian(vaultDir.trim(), [], force))} disabled={!vaultDir.trim() || !!busy}
+                  title={!vaultDir.trim() ? '先填 vault 目录' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('obsidian', '写入')}
           </button>
         </div>
@@ -70,7 +71,8 @@ export default function ExportBack() {
           <span style={{ width: 88 }}>Notion</span>
           <input type="password" placeholder="Integration token" value={notionToken} onChange={(e) => setNotionToken(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input placeholder="父页面 id" title="页面链接末尾那 32 位" value={notionParent} onChange={(e) => setNotionParent(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void run('notion', () => exportNotion(notionToken.trim(), notionParent.trim().replace(/-/g, '')))} disabled={!notionToken.trim() || !notionParent.trim() || !!busy}>
+          <button onClick={() => void run('notion', () => exportNotion(notionToken.trim(), notionParent.trim().replace(/-/g, '')))} disabled={!notionToken.trim() || !notionParent.trim() || !!busy}
+                  title={!notionToken.trim() ? '先填 Integration token' : !notionParent.trim() ? '先填父页面 id' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('notion', '写入')}
           </button>
         </div>
@@ -83,7 +85,8 @@ export default function ExportBack() {
           <input placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input placeholder="文件夹 token" title="留空 = 应用根目录" value={feishuFolder} onChange={(e) => setFeishuFolder(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void run('feishu', () => exportFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuFolder.trim()))} disabled={!feishuAppId.trim() || !feishuSecret.trim() || !!busy}>
+          <button onClick={() => void run('feishu', () => exportFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuFolder.trim()))} disabled={!feishuAppId.trim() || !feishuSecret.trim() || !!busy}
+                  title={!feishuAppId.trim() ? '先填 App ID' : !feishuSecret.trim() ? '先填 App Secret' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('feishu', '写入')}
           </button>
         </div>

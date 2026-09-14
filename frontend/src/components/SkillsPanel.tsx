@@ -274,7 +274,8 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
               onChange={(e) => setImportRaw(e.target.value)}
             />
             <div className="row">
-              <button className="primary" onClick={() => applyImportedText(importRaw)} disabled={!importRaw.trim()}>
+              <button className="primary" onClick={() => applyImportedText(importRaw)} disabled={!importRaw.trim()}
+                      title={!importRaw.trim() ? '先把 skill 的内容贴进上面的框' : undefined}>
                 解析并预览
               </button>
               <button onClick={() => { setShowImport(false); setImportRaw(''); setImportUrl('') }}>取消</button>

@@ -30,6 +30,19 @@ for (const f of walk(root)) {
     if (/title|aria-label/.test(m[1])) continue
     bad++; console.log(`✗ ${rel}:${s.slice(0, m.index).split('\n').length} 图标按钮没有 title / aria-label`)
   }
+  // 禁用的按钮要说清为什么（判据 1）。只在「条件没满足」时要求：
+  // 正在跑（busy / saving / loading / 有 spinner）和「就是当前这一个」自明，不算。
+  for (const m of s.matchAll(/<button\b/g)) {
+    const end = tagEnd(m.index!)
+    const tag = s.slice(m.index, end)
+    if (!/\bdisabled\b/.test(tag)) continue
+    if (/title|aria-label/.test(tag)) continue
+    const cond = /disabled=\{([^]*?)\}\s*(?:[a-zA-Z-]+=|>|$)/.exec(tag)?.[1] ?? ''
+    if (/busy|saving|loading|running|starting|pending|probing|item\.disabled|=== ?(p|cur|active|current)/.test(cond)) continue
+    // 按钮自己在转圈（`<span className="spinner" />`）：禁用的原因就画在按钮上
+    if (/spinner/.test(s.slice(end, s.indexOf('</button>', end) + 9))) continue
+    bad++; console.log(`✗ ${rel}:${s.slice(0, m.index).split('\n').length} 禁用按钮没说为什么：disabled={${cond.replace(/\s+/g, ' ').slice(0, 70)}}`)
+  }
 }
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
-console.log('OK: 可点的 div / span 都能键盘按，图标按钮都有说明')
+console.log('OK: 可点的 div / span 都能键盘按，图标按钮和禁用按钮都有说明')
