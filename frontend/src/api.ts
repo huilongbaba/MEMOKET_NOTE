@@ -1431,6 +1431,40 @@ export const journeySetDeny = (apps: string[], words: string[]) =>
   fetch('/api/journey/deny', { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' },
                                body: JSON.stringify({ apps, words }) }).then(json<JourneyDeny>)
 
+// ---------------------------------------------------------------- 实体合并
+//
+// 形状是用户定的：**一次性全量后处理，不做增量**。候选每次重算（纯代码零调用），
+// 落库的只有人的判断。合并只在展示 / 查询层生效，知识库不动、随时可撤。
+
+export type EntityMergeCandidate = {
+  a: string; b: string
+  /** 哪条信号点出来的：initials / translit / spelling / substring */
+  why: string
+  score: number
+  name_a: string; name_b: string
+  facts_a: number; facts_b: number; facts_total: number
+  sample_a: string[]; sample_b: string[]
+  /** 同时提到两个名字的句子。**有就最好判**——但它不是判据：真库里
+   *  「Elisa 打算…，伊丽莎会给几个单词说明…」是同一句话里两种写法指同一个人。 */
+  both: string[]
+}
+
+export type EntityMergeDecision = 'same' | 'different' | 'unsure' | 'drop_a' | 'drop_b'
+
+export const entityMergeCandidates = (limit = 200) =>
+  fetch(`/api/kb/entity-merges?limit=${limit}`, { headers: headers() })
+    .then(json<{ candidates: EntityMergeCandidate[]; total: number; decided: number }>)
+
+export const decideEntityMerge = (a: string, b: string, decision: EntityMergeDecision, why = '') =>
+  fetch('/api/kb/entity-merges', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ a, b, decision, why }),
+  }).then(json<{ ok: boolean }>)
+
+export const undoEntityMerge = (a: string, b: string) =>
+  fetch(`/api/kb/entity-merges?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
+        { method: 'DELETE', headers: headers() }).then(json<{ ok: boolean }>)
+
 /** 哪几天有记录，新的在前。翻天跳过空的，也用来判断「有没有用过」。 */
 export const journeyDays = () =>
   fetch('/api/journey/days', { headers: headers() }).then(json<string[]>)

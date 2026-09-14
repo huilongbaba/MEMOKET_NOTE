@@ -7,6 +7,7 @@
  * 屏才看得清，也才能用标签页把它留着、跟笔记并排。
  */
 import { isSpeakerTag } from '../util/kbNoise'
+import EntityMerges from './kb/EntityMerges'
 import { useEffect, useState } from 'react'
 
 import { displayTitle } from '../util/displayTitle'
@@ -49,6 +50,7 @@ export default function KbNoteView(props: Props) {
   if (id === 'kb') return <KbDashboard actions={actions} />
   if (id === 'kb:topics') return <TopicsIndex rows={rows} actions={actions} />
   if (id === 'kb:entities') return <EntitiesIndex rows={rows} actions={actions} />
+  if (id === 'kb:merges') return <ToolNote title="可能是同一个" icon="bx-merge"><EntityMerges /></ToolNote>
   if (id.startsWith('kb:etype:')) return <EntitiesIndex rows={rows} actions={actions} node={id} />
   if (id === 'kb:recent') return <RecentIndex rows={rows} actions={actions} />
   if (id === 'kb:timeline') return <TimelinePage actions={actions} />

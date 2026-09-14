@@ -2,6 +2,7 @@
  *  （实体多的库树里不带实体，实体页自己取一次）。 */
 import { useEffect, useMemo, useState } from 'react'
 import { entityIcon } from '../../util/entityIcon'
+import { entityMergeCandidates } from '../../api'
 
 import { kbTreeChildren, type TreeRow } from '../../api'
 import { Chip, KbSection, type KbActions } from './KbBits'
@@ -80,6 +81,9 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
       {!etype && all.length === 0 && (
         <p className="muted" style={{ fontSize: 13 }}>导入会议记录或把笔记存入知识库之后，事实里提到的人、公司、产品会自动收在这里。</p>
       )}
+      {/* 去合并收件箱的入口。**摆在实体页上**是因为问题在这儿被看见：
+          列表按事实数排序，而那些数字现在是真值的一部分（MemoCat 真实 189 显示 93）。 */}
+      {!etype && all.length > 0 && <MergeEntry onOpen={() => actions.onOpen('kb:merges')} />}
       {all.length > 0 && <div className="kb-search">
         <i className="bx bx-search" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜实体名或别名…" />
@@ -94,6 +98,20 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
         {list.map((e) => <Chip key={e.id} icon={entityIcon(e.title)} count={e.fact_count} onClick={() => actions.onOpen(e.note_id)} title={e.preview || undefined}>{e.title}</Chip>)}
       </div>
     </div>
+  )
+}
+
+/** 「有 N 对可能是重复的」那一条。数字自己去取——**没有数字的入口没人会点**。 */
+function MergeEntry({ onOpen }: { onOpen: () => void }) {
+  const [n, setN] = useState<number | null>(null)
+  // 取一条就够——要的是 `total`（待判总数），不是这一页有几条
+  useEffect(() => { entityMergeCandidates(1).then((d) => setN(d.total)).catch(() => setN(0)) }, [])
+  if (!n) return null
+  return (
+    <p className="muted" style={{ fontSize: 13, margin: '-2px 0 8px' }}>
+      有 <b>{n} 对</b>可能是同一个东西（`Anker` / `安克` / `安克莱` 这类）——
+      合并之后这一列的事实数才是真的。<a className="link" onClick={onOpen}>去看看 →</a>
+    </p>
   )
 }
 

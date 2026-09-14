@@ -145,6 +145,7 @@ def _pair(a_name: str, b_name: str, pinyin=None) -> tuple[str, float] | None:
 
 def find_candidates(entities: list[tuple[str, str, int]], *, min_facts: int = MIN_FACTS,
                     pinyin=None, limit: int = 400) -> list[Candidate]:
+    # `limit=0` = 全给（调用方要数总数时用）
     """`entities` 是 (code, 显示名, 事实数)。返回按「值不值得先看」排好序的候选。
 
     排序 = **涉及的事实数 × 信号可靠度**：先给 `MemoCat`（189 条）这种，
@@ -165,7 +166,7 @@ def find_candidates(entities: list[tuple[str, str, int]], *, min_facts: int = MI
             why, score = hit
             out.append(Candidate(a=ca, b=cb, why=why, score=score, facts_a=fa, facts_b=fb))
     out.sort(key=lambda c: -(c.facts_total * weight.get(c.why, 0.5) * c.score))
-    return out[:limit]
+    return out[:limit] if limit else out
 
 
 def pair_key(a: str, b: str) -> tuple[str, str]:

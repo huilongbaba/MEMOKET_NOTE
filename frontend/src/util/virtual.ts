@@ -5,6 +5,7 @@ export const VIRTUAL_LABELS: Record<string, string> = {
   'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入', 'app:trash': '最近删除', 'app:journey': '屏幕活动',
   kb: '知识库', 'kb:graph': '主题地图', 'kb:digest': '定期回顾', 'kb:timeline': '时间线',
   'kb:topics': '主题', 'kb:entities': '实体', 'kb:recent': '最近摄入',
+  'kb:merges': '可能是同一个',
 }
 
 /** 认识的知识库虚拟 id 形状（`kb:facts?topic=x` 也算——重启时带查询串的事实表标签不能被当成不认识的收掉） */
@@ -49,5 +50,6 @@ export function previewLine(content: string, skip = ''): string {
 
 /** 懒加载的虚拟节点在树上挂在哪个分类下（面包屑拼父链用） */
 export function virtualParentOf(id: string): string | undefined {
+  if (id === 'kb:merges') return 'kb:entities'     // 合并收件箱挂在实体下面，面包屑才回得去
   return ({ entity: 'kb:entities', etype: 'kb:entities', topic: 'kb:topics', month: 'kb:timeline', unit: 'kb:recent', material: 'kb:recent' } as Record<string, string>)[id.split(':')[1]]
 }

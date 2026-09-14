@@ -1220,3 +1220,20 @@ kbd {
 .slide-no { position: absolute; inset-block-start: 4px; inset-inline-end: 6px; font-size: 10px; color: var(--muted); }
 .slide-body { font-size: 10px; line-height: 1.4; color: var(--muted); white-space: pre-wrap; overflow: hidden; }
 .warnish { color: var(--warn); }
+
+/* ------------------------------------------------ 实体合并收件箱
+   一屏判一对，判起来要的东西按「判什么」排：两边是什么 → 有没有同现的原话
+   → 各自的原话 → 五个答案。合并后多少条写在右上角，那是这一下点击的收益。 */
+.merge-card { padding: 10px 12px; }
+.merge-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.merge-side b { font-size: 14px; }
+.merge-eq { font-size: 13px; }
+.merge-both { margin: 8px 0 0; font-size: 12px; line-height: 1.6;
+              border-inline-start: 3px solid var(--accent); padding-inline-start: 8px; }
+.merge-both p { margin: 2px 0; }
+.merge-none { font-size: 12px; margin: 8px 0 0; }
+.merge-samples { margin-top: 6px; font-size: 12px; line-height: 1.6; color: var(--fg); }
+.merge-samples > div { overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+                       -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.merge-drops { margin-top: 6px; font-size: 12px; align-items: baseline; }
+.merge-drops .linklike { font-size: 12px; }

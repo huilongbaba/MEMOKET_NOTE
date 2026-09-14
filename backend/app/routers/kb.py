@@ -491,9 +491,15 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
                     co_text[k].append((getattr(f, "text", "") or "")[:140])
 
     rows = [(c, name(c), int(count.get(c, 0))) for c in vocab.entities]
+    # `total` 要的是**待判的总数**，不是这一页给了几条：入口上那句「有 N 对」
+    # 拿 limit 去数就会随 limit 变（实拍：入口写 60、点进去是 68）。
+    total = 0
     out = []
-    for cand in entity_merge.find_candidates(rows, limit=limit * 3):
+    for cand in entity_merge.find_candidates(rows, limit=0):
         if entity_merge.pair_key(cand.a, cand.b) in decided:
+            continue
+        total += 1
+        if len(out) >= limit:
             continue
         out.append({
             "a": cand.a, "b": cand.b, "why": cand.why, "score": cand.score,
@@ -505,9 +511,7 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
             # **两种都有，所以只给句子、不给结论。**
             "both": co_text.get(entity_merge.pair_key(cand.a, cand.b), []),
         })
-        if len(out) >= limit:
-            break
-    return {"candidates": out, "decided": len(decided)}
+    return {"candidates": out, "total": total, "decided": len(decided)}
 
 
 class EntityMergeIn(BaseModel):
