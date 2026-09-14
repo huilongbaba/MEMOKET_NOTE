@@ -555,3 +555,26 @@ def test_骨架有长度上限():
     assert len(beats) == 2 and len(beats[0]) == BEAT_MAX and beats[1] == "正常节拍"
     # 空白折成一个空格，空的丢掉
     assert clamp_skeleton("  多余   空白 ", ["", "   "]) == ("多余 空白", [])
+
+
+def test_这一轮写了整段却一条引用都没有():
+    """第 593 轮真跑：1066 字的分段笔记零引用，写的还是知识库里另一个项目的内容，
+    而整条判据链都放行了（`citations_exist` 一个都没引时直接 return None）。"""
+    from types import SimpleNamespace
+    from app.harness.checks.grounding import MIN_CITED_ROUND_CHARS, citations_present
+
+    def st(fresh, facts=("[f-1-A] 材料一",), bag=None):
+        return SimpleNamespace(fresh=fresh, facts=list(facts), bag=bag or {},
+                               ctx=SimpleNamespace(user="u"), content=fresh, scores={},
+                               mode=SimpleNamespace(dims=[SimpleNamespace(name="factual_grounding"),
+                                                         SimpleNamespace(name="material_use")]))
+
+    long_text = "写满一整段的内容。" * 40
+    assert len(long_text) >= MIN_CITED_ROUND_CHARS
+    v = citations_present(st(long_text))
+    assert v and "一个 [事实编号] 都没有" in v.message
+    # 引了就放行；没取到材料、写得短、大纲模式都不判
+    assert citations_present(st(long_text + " [f-1-A]")) is None
+    assert citations_present(st(long_text, facts=())) is None
+    assert citations_present(st("只写了一句过渡。")) is None
+    assert citations_present(st(long_text, bag={"outline_mode": True})) is None

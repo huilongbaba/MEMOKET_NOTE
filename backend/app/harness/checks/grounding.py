@@ -101,6 +101,35 @@ def citations_exist(st: State) -> Verdict | None:
     )
 
 
+# 这一轮写了这么多字还一条引用都没有，就不是"顺手补一句过渡"了
+MIN_CITED_ROUND_CHARS = 300
+
+
+def citations_present(st: State) -> Verdict | None:
+    """手上有材料、这一轮写了整整一段，却一个 ``[事实编号]`` 都没有。
+
+    第 593 轮真跑实证：一篇 1066 字的分段笔记零引用，而且写的是知识库里另一个项目的内容——
+    整条链上没有一道判据拦得住它。`citations_exist` 只查「引用的 id 存不存在」，一个都没引
+    时第一行就 ``return None``；`material_used` 数的是特征词，模型把材料改写进正文（不带编号）
+    照样算用上了。**这个产品的承诺是每句判断都能点回它的依据**，零引用的产出等于通用 LLM 写的。
+
+    只判**这一轮写的**（``st.fresh``），不判整篇：用户自己原来那些段落没有引用是正常的。
+    大纲模式关掉，理由同 `material_used`——用户自己列的小节可能本来就没有材料。
+    """
+    if st.bag.get("outline_mode") or not st.facts:
+        return None
+    from .citations import cited_ids
+    fresh = (st.fresh or "").strip()
+    if len(fresh) < MIN_CITED_ROUND_CHARS or cited_ids(fresh):
+        return None
+    return Verdict(
+        pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
+        f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有。"
+        "把真正用到的那几条的编号写在对应句子末尾——这篇笔记的价值在于每句判断都能点回它的依据；"
+        "没有编号的判断读者无从核对，跟随便哪个模型写的没区别。编号只能从材料里抄，不要自己编。",
+    )
+
+
 def material_used(st: State) -> Verdict | None:
     """Facts were retrieved and none of them made it into the text.
 

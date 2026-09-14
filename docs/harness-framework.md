@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 11 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 12 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -192,7 +192,7 @@ backend/app/
     middleware/              13 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
       skills · facts · history · compact · best_of · checks · provenance
       · revise · repeats · replan · repair · runtime · save · _order
-    checks/                  10 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+    checks/                  12 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
     tools/                   21 个工具 + registry（分组授权）
       memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools · registry
@@ -285,7 +285,7 @@ RUN_FINISHED(content, reason, run_id?)
 给打分用，`Checks` 可能判定不合格直接跳过打分。② `Revise` 在 `before_round` 改已有
 正文，必须在 `Compact` 压缩之前。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（11 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（12 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 ---
@@ -403,7 +403,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 11 条 check（代码判据）
+## 8. 12 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -411,11 +411,12 @@ Mode 按需追加的：
 | `no_audit_voice` | style_fit / coherence / fits_context | | 「现有材料不足以说明…」这种谈证据不谈事情的句子 |
 | `citations_hold` | factual_grounding … | | 模型自报的引用跟材料模糊对不上 |
 | `citations_exist` | factual_grounding … | ✔ 摘掉编造的 `[id]` | 正文里的 `[事实 id]` 既不在材料里也查不到知识库 |
+| `citations_present` | factual_grounding / material_use / no_fabrication | | 这一轮写了 ≥300 字、手上有材料，却一个 `[事实编号]` 都没有（第 593 轮真跑：1066 字零引用，写的还是另一个项目的内容，整条判据链都放行了）|
 | `material_used` | material_use / factual_grounding | | 查到了材料一条都没用（大纲模式下关闭） |
 | `outline_intact` | fits_context / coherence | | 这篇是大纲，标题层级被压平了 |
 | `heading_fits` | fits_context / coherence | ✔ 标题整体下沉 | 插入块的标题跟周围平级而不是下级 |
 | `tail_clashes` | fits_context / coherence | ✔ 去掉收尾小节 | 插入块自己写了「总结」而下文已有 |
-| `no_fake_charts` | has_charts / chart_validity / coherence | | 用文字描述的图（`[柱状图：…]`） |
+| `no_fake_charts` | has_charts / chart_validity / coherence | | 用文字描述的图（`[柱状图：…]`），以及把一条流程写成箭头链（`A → B → C → D`，第 592 轮） |
 | `charts_from_tools` | has_charts / chart_validity / coherence | | 手写的 mermaid——不是工具原样返回的 |
 | `table_present` | table_validity / coherence | | 生成表格那条路的产出里没有 markdown 表（模型写「[tool call needed]」交卷） |
 

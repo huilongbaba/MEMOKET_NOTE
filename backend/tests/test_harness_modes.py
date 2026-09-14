@@ -220,6 +220,8 @@ def test_每条check打翻的维度这个mode真的有():
                 names = {d.name for d in shaped.dims}
                 st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
                 st.content, st.before, st.after = CONTENT, BEFORE, AFTER
+                # 这一轮写出来的：够长、一条引用都没有（citations_present 判的是 fresh 不是 content）
+                st.fresh = "这一轮写满了一整段内容，但一条编号也没给。" * 20
                 st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
                 st.charts = []
                 st.trace = ToolTrace()
