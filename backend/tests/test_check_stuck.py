@@ -212,3 +212,44 @@ def test_手写的最简流程图放行_别的照旧必须工具产出():
     bad = "```mermaid\nxychart-beta\n  y-axis \"曝光\" 0 --> 260000\n```"
     assert unauthorized_charts(bad, [])
     assert not unauthorized_charts("```mermaid\ngraph TD\nA[甲] --> B[乙]\n```", [])
+
+
+@pytest.mark.anyio
+async def test_修复对某一档分数试过一次没用就不再为它花轮次():
+    """实拍（第 647 轮，真跑 4 轮）：`non_repetition` 每轮都判 0，
+    第 2 轮排修复、第 3 轮修完还是 0、**第 4 轮又排一次修复**——
+    二十轮上限下就是十轮空转。而那一轮判的是「同一个论点换个说法又说了一遍」，
+    正文里一对逐字重复都没有，修订那一步手上全是词面手段，改不动它。
+    """
+    from app.harness.middleware.repair import Repair
+    from app.harness.types import DimensionScore, Evaluation
+
+    st = _st([])
+    rep = Repair()
+
+    def judged(level: int) -> None:
+        st.ev = Evaluation(scores={"non_repetition": DimensionScore(level, "又说了一遍")},
+                           status="continue", weakest="non_repetition")
+        st.skip_judge = False
+
+    judged(0)
+    [e async for e in rep.after_judge(st)]
+    assert st.bag["cleanup_only"], "第一次判不合格：该排一轮只修不写"
+
+    judged(0)                                   # 修完那一轮，分数没动
+    evs = [e async for e in rep.after_judge(st)]
+    assert not st.bag["cleanup_only"], "修过一轮没动分，下一轮该去写，不该再修"
+    assert evs and evs[0].data["value"].get("gave_up") == ["non_repetition"], "放弃了要说出来"
+
+    judged(0)                                   # 再判一次：还是不该再排修复
+    [e async for e in rep.after_judge(st)]
+    assert not st.bag["cleanup_only"], "已经证明修不动的那一档，别隔一轮又来一次"
+
+    judged(1)                                   # 分数动了 → 上次修复是有效的，重新给机会
+    [e async for e in rep.after_judge(st)]
+    assert st.bag["cleanup_only"], "分数一动就该重新给一次修复机会"
+
+    judged(2)                                   # 达标：账一笔勾销
+    [e async for e in rep.after_judge(st)]
+    assert not st.bag["cleanup_only"]
+    assert "non_repetition" not in st.bag["repair_failed"]

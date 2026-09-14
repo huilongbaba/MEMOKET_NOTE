@@ -43,14 +43,47 @@ class Repair:
         # → `produce()` 直接返回 → **模型根本没机会去调画图工具**，而那正是这条
         # 判据要求的修法。判据说「调工具画出来」，修复策略说「这一轮不许写」，
         # 于是两轮原地打转、一次分都没打上，最后 `no_progress` 收场。
-        weak = [d for d in INNER_QUALITY
-                if st.ev and not st.skip_judge
-                and (s := st.ev.scores.get(d)) and s.level < 2]
+        # **修复对某一档分数试过一次没用，就不再为它花轮次。**
+        #
+        # 实拍（第 647 轮，真跑 4 轮）：`non_repetition` 每一轮都判 0，第 2 轮
+        # 排修复、第 3 轮修完还是 0、第 4 轮**又排一次修复**——二十轮上限下这
+        # 就是十轮空转。而那一轮判的是「同一个论点换个说法又说了一遍」，正文里
+        # 一对逐字重复都没有（段落两两相似度最高不到 0.5），修订那一步手上全是
+        # 词面手段，改不动它。
+        #
+        # 分数一动（哪怕只从 0 到 1）就重新给一次机会：那说明上一次修复是有效的，
+        # 只是还没到位。记的是「在哪一档上失败过」而不是「失败过」，就是为了这个。
+        pending: dict[str, int] = st.bag.setdefault("repair_pending", {})
+        failed: dict[str, int] = st.bag.setdefault("repair_failed", {})
+
+        weak: list[str] = []
+        gave_up: list[str] = []
+        for d in INNER_QUALITY:
+            if not st.ev or st.skip_judge:
+                break
+            s = st.ev.scores.get(d)
+            if not s:
+                continue
+            if s.level >= 2:                       # 达标了：账一笔勾销
+                pending.pop(d, None)
+                failed.pop(d, None)
+                continue
+            if d in pending and s.level <= pending.pop(d):
+                failed[d] = s.level                # 上一轮修完没动分
+            if d in failed and s.level <= failed[d]:
+                gave_up.append(d)
+                continue
+            weak.append(d)
+
         st.bag["cleanup_only"] = bool(weak)
-        if weak:
+        for d in weak:
+            pending[d] = st.ev.scores[d].level     # type: ignore[union-attr]
+        if weak or gave_up:
             yield Event.custom(CUSTOM_POLICY, {
                 "round": st.round,
                 "note": "next round repairs what is written instead of "
-                        "adding to it",
+                        "adding to it" if weak else
+                        "repairing these did not move the score; writing instead",
                 "dimensions": weak,
+                **({"gave_up": gave_up} if gave_up else {}),
             })
