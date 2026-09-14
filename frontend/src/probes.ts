@@ -259,6 +259,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
   }
   if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
+  // `recent` → 侧栏切到「按最近改动排」（第 622 轮）
+  if (probe === 'recent') setTimeout(() => {
+    const b = Array.from(document.querySelectorAll('.quick-search .icon-btn'))
+      .find((x) => (x.getAttribute('title') ?? '').startsWith('按最近')) as HTMLElement | undefined
+    if (b) b.click()
+    else void api.clientLog('warn', 'recent: 侧栏没有「按最近」那个开关', '', 'probe')
+  }, 1000)
   // `search-kb:<q>`：搜一个笔记里没有的词，再点「到知识库里搜」那条去处——
   // 验的是词有没有真的落进知识库的搜索框（第 616 轮）。
   if (probe?.startsWith('search-kb:')) {

@@ -74,7 +74,7 @@ import Toaster from './components/Toaster'
 import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
-import { fmtDate } from './util/time'
+import { fmtDate, fmtWhen } from './util/time'
 import { notifyIfHidden } from './util/notify'
 
 // 后台自动生成的节流参数。骨架/编辑都是真实 LLM 调用（本地模型上约 8-15s），
@@ -123,6 +123,18 @@ export default function App() {
   const [virtualId, setVirtualId] = useState<string | null>(null)
   // 应用内对话框（替掉 window.prompt——Electron 里那是系统级模态，主题管不到）
   const [picker, setPicker] = useState<PickerRequest | null>(null)
+  /** 侧栏怎么排：`tree` 是用户自己摆的层级，`recent` 是按最近改动平铺。
+   *
+   * 树只有一种排法（手动顺序 `position`），于是笔记这边**没有「最近」这个概念**
+   * ——知识库有「最近摄入」、日记按日期，唯独笔记没有（docs/sidebar-ia-plan.md §3）。
+   * 「我昨天写的那篇在哪」在三百篇的库里没法回答。
+   * 切到这个模式时时间才显示，因为那是这个模式的重点；树模式下不显示。 */
+  const [recentMode, setRecentMode] = useState(() => {
+    try { return localStorage.getItem('memoket-note-list-mode:' + api.getUser()) === 'recent' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('memoket-note-list-mode:' + api.getUser(), recentMode ? 'recent' : 'tree') } catch { /* 存不上就下次回树，不致命 */ }
+  }, [recentMode])
   const [prompt, setPrompt] = useState<PromptRequest | null>(null)
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const [iconPicker, setIconPicker] = useState(false)
@@ -1075,7 +1087,7 @@ export default function App() {
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {/* 在哪个文件夹下：搜索命中几十条时，这是区分同名笔记的唯一线索 */}
             {(() => { const row = tree.find((r) => r.note_id === n.id); const parent = row && row.parent_note_id !== api.ROOT_ID ? tree.find((r) => r.note_id === row.parent_note_id) : undefined; return parent ? displayTitle(parent) + ' · ' : '' })()}
-            {fmtDate(n.updated_at)}
+            {fmtWhen(n.updated_at)}
           </span>
           {/* 「移动到文件夹」的下拉没了：树上靠拖拽和右键菜单移动，一个
               只能选一层的下拉表达不了任意深度的树。 */}
@@ -2825,11 +2837,26 @@ export default function App() {
             }}
           />
           {noteQuery && <button className="icon-btn" title="清空" onClick={() => setNoteQuery('')}><i className="bx bx-x" /></button>}
+          {/* 树 ⇄ 按最近。搜索时不显示：搜索结果本来就是平铺的，这时候切没有意义 */}
+          {!noteQuery && (
+            <button className={'icon-btn' + (recentMode ? ' active' : '')}
+                    title={recentMode ? '按最近改动排（点回树）' : '按最近改动排'}
+                    aria-pressed={recentMode}
+                    onClick={() => setRecentMode((v) => !v)}>
+              <i className={'bx ' + (recentMode ? 'bx-list-ul' : 'bx-time-five')} />
+            </button>
+          )}
         </div>
         </div>
         {/* 树的滚动容器——笔记一多，没有它树底部就被裁掉且滚不到 */}
         <div className="left-pane-body">
-        {searchResults !== null || noteQuery ? (
+        {recentMode && searchResults === null && !noteQuery ? (
+          /* 平铺、按最近改动。不画层级——跟搜索时同一条规矩（App 里那句
+             「命中就该直接看到，不用先猜它在树的哪一层」）：这个模式回答的是
+             「我最近动过哪几篇」，层级在这个问题里帮不上忙。
+             `renderNoteItem` 每行本来就带「父文件夹 · 时间」，正好是这个模式要的。 */
+          [...notes].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? '')).map(renderNoteItem)
+        ) : searchResults !== null || noteQuery ? (
           // 搜索时不画树：命中就该直接看到，不用先猜它在树的哪一层。
           visibleNotes.length === 0
             ? (
