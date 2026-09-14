@@ -408,6 +408,9 @@ class UserMemory:
         数字见 ``kb/search.py``。
         """
         t0 = time.perf_counter()
+        # 正文当查询时先剥掉引用标记 / 图片 / 链接地址（search.clean_query）——后端自己拿正文查的
+        # 那几条路（选中校验、摄入冲突扫描、写作取材料）原来是带着标记去查的（第 566 轮）
+        query = search.clean_query(query)
         store, vocab = self._index()
         _topics, _entities, surfaces = self._match_vocab(query, vocab)
         # 报给右栏的「命中词」里别列 speaker b 这种说话人标签（它在词表里是个实体，所以会被认出来）：

@@ -3769,3 +3769,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [589] 第 565 轮：定向续写落点也对拍（2026-09-14）
 
 - 客户端 `util/sectionEnd`（onInsertAt 拿本地正文重算落点）和服务端 `outline.section_end` 是第七处「两份实现同一条规则」。check-stream-parity 加 9 组样本：同级标题、更深层级、只有一节、找不到、围栏里的 `#` 注释、尾随空格、没有标题、未闭合围栏、`#` 后面没空格的假标题——全等（前端逐行扫围栏 vs 后端先 mask 再 finditer，结果一样）。harness-framework 补一句。
+
+## [590] 第 566 轮：拿正文当查询前的清洗，后端也得做（2026-09-14）
+
+- 前端 `stripForRecall`（剥引用标记 / 整条图片 / 链接地址）只在前端发请求前做；但**后端自己也拿正文去查**——选中校验（compose）、摄入冲突扫描（inbox）、写作取材料——那几条路一直带着 `![probe](/api/assets/…png)` 和 `[terrence-123-AB]` 去查（当年右栏冒出 Bill Browder / Russia 的那个坑，只在前端堵了一半）。
+- `search.clean_query` 照同一条规则写，放在 `UserMemory.recall()` 入口——一处生效处处生效，前端那份留着（剥两次幂等）。check-regex-parity 加 6 组样本对拍；后端测试加一条。自召回三口径不变（60/60/28）。后端 960。

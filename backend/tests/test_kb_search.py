@@ -185,3 +185,12 @@ def test_伪相关反馈_跟词面前两名同主题的候选往前挪():
     out = [r["id"] for r in search.rank(rows, "EVT PCBA 样机", mem, store, limit=4)]
     # 词面：a(evt+pcba+样机) > b(evt) ≈ same(pcba+样机) / other(样机)；反馈之后 same（同主题）压过 other（日期更新但主题不同）
     assert out.index("same") < out.index("other")
+
+
+def test_正文当查询时先剥掉图片_链接地址_引用标记():
+    """实拍：拖一张图进空笔记，右栏冒出 Bill Browder / Russia——查询词是那行 `![probe](/api/assets/…png)`，
+    「assets」撞上了「assets of Russia frozen」。前端剥过一遍，后端自己拿正文查的那几条路没剥（第 566 轮）。"""
+    assert search.clean_query("![probe](/api/assets/52dd.png)\n样机交期") == "\n样机交期"
+    assert search.clean_query("见 [链接文字](https://x.y/z) 之后") == "见 链接文字 之后"
+    assert search.clean_query("样机交期 [terrence-1346-1F3]。") == "样机交期 。"
+    assert search.clean_query("") == ""

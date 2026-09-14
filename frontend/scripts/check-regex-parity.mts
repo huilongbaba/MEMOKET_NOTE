@@ -13,6 +13,7 @@ import { resolve } from 'node:path'
 
 import { CITE_RE_SOURCE, NOTE_LINK_RE, citedFactIds, linkedNoteIds } from '../src/util/wordCount.ts'
 import { isSpeakerTag } from '../src/util/kbNoise.ts'
+import { stripForRecall } from '../src/util/wordCount.ts'
 
 const SAMPLES = [
   '据 [terrence-12-AB] 和 [u-9-F]，又见 [terrence-12-AB]；[t-0123456789ab-1f] 也是。',
@@ -71,7 +72,27 @@ print(json.dumps([bool(is_speaker_tag(x)) for x in json.loads(sys.stdin.read())]
   const res2 = JSON.parse(execFileSync(py, ['-c', script2], { input: JSON.stringify(SPK), encoding: 'utf8' })) as boolean[]
   SPK.forEach((x, i) => ok(isSpeakerTag(x) === res2[i], `说话人标签 ${JSON.stringify(x)}：前端 ${isSpeakerTag(x)} == 后端 ${res2[i]}`))
 }
+// 拿正文当查询前剥掉的东西（wordCount.stripForRecall vs search.clean_query）：前端发请求前剥一遍，
+// 后端自己拿正文查的那几条路（选中校验 / 摄入冲突 / 取材料）也剥一遍，规则得一样
+const QUERIES = [
+  '![probe](/api/assets/52dd40dab10e4849200fed18.png)\n\n样机的交期 [terrence-1346-1F3]。',
+  '见 [链接文字](https://x.y/z) 之后',
+  '普通正文，没有任何记号。',
+  '[terrence-12-AB] 开头就是引用',
+  '![](/a.png)![b](/c.png) 连着两张图',
+  '',
+]
+if (existsSync(py)) {
+  const script3 = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(backend)})
+from app.database.kb.search import clean_query
+print(json.dumps([clean_query(q) for q in json.loads(sys.stdin.read())]))
+`
+  const res3 = JSON.parse(execFileSync(py, ['-c', script3], { input: JSON.stringify(QUERIES), encoding: 'utf8' })) as string[]
+  QUERIES.forEach((q, i) => { const l = stripForRecall(q); ok(l === res3[i], `clean_query 样本 ${i + 1}${l === res3[i] ? '' : `\n    本地 ${JSON.stringify(l)}\n    服务端 ${JSON.stringify(res3[i])}`}`) })
+}
 // 前端自己：NOTE_LINK_RE 是 g 正则，lastIndex 不能被谁遗留（matchAll 会克隆，但 .test/.exec 直接用会踩坑）
 ok(NOTE_LINK_RE.lastIndex === 0, 'NOTE_LINK_RE.lastIndex 没被污染')
 if (bad) { console.error(`${bad} 处不一致`); process.exit(1) }
-console.log('OK: 前后端引用 / 链接 / 说话人标签正则行为一致')
+console.log('OK: 前后端引用 / 链接 / 说话人标签 / 查询清洗一致')

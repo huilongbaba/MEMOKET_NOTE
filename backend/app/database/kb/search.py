@@ -98,6 +98,24 @@ def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
     return queries[:MAX_QUERIES]
 
 
+# 拿正文当查询之前要剥掉的东西（跟前端 util/wordCount.stripForRecall 同一条规则，
+# scripts/check-regex-parity 对拍）：引用标记里的 id、整条图片、链接地址（只留链接文字）。
+# 实拍：拖一张图进空笔记，右栏立刻冒出 Bill Browder / Russia 的英文事实——查询词就是那行
+# `![probe](/api/assets/…png)`，「assets」撞上了「assets of Russia frozen」。
+# 前端在发请求前剥过一遍，但**后端自己也拿正文查**（选中校验 compose、摄入冲突扫描 inbox、
+# 写作取材料），那几条路原来是带着标记去查的（第 566 轮）。剥两次幂等，两边都留着。
+_IMG_MD = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_LINK_MD = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_CITE_MARK = re.compile(r"\[[A-Za-z][\w-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]")
+
+
+def clean_query(text: str) -> str:
+    s = _IMG_MD.sub("", text or "")
+    s = _LINK_MD.sub(r"\1", s)
+    s = _CITE_MARK.sub("", s)
+    return re.sub(r"[ \t]{2,}", " ", s)
+
+
 def _terms(memory, query: str) -> list[str]:
     """查询词，去重、小写。英文候选词本来就是小写的，而模型抽出来的事实里 EVT / PCBA /
     APP 是大写——之前排序用大小写敏感的 `in` 比，英文词对这些事实永远不得分（第 191 轮
