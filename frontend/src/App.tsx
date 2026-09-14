@@ -3162,8 +3162,9 @@ export default function App() {
               </button>
               <span className="fb-split">
                 <button className={'fb-btn secondary' + (loading === 'note-harness' ? ' running' : '')}
-                        onClick={() => runNoteHarness('write')} disabled={loading === 'tap'}
-                        title="智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停">
+                        onClick={() => runNoteHarness('write')} disabled={loading === 'tap' || isSlides(content)}
+                        title={isSlides(content) ? '这一篇是幻灯片——接散文会把分页和引用弄乱；要改内容回原笔记改完再重做一份'
+                          : '智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停'}>
                   <i className={'bx ' + (loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
                 </button>
                 <button className="fb-btn secondary fb-caret-btn" title="打磨 / 逐轮我来定"
@@ -3191,8 +3192,12 @@ export default function App() {
                   /* 无限续写：**不在标题行上常驻**（用户第 625 轮：「无限续写的按钮不要显示了行吗？」）。
                      收进这里而不是只留树上右键——右键是「知道了才会去用」的地方，不承担发现；
                      这个菜单至少是看得见的一个入口。作用域仍然是当前这篇：分段会建成它的子笔记。 */
-                  { label: '无限续写…', icon: 'bx-rocket',
-                    hint: '给一个目标，拆成若干分段，每段建成这篇的子笔记',
+                  /* 幻灯片上不给：它是**原笔记的一种形态**，往里塞散文分段既破坏
+                     `---` 分页、也回不到原笔记（方案里「不做反向同步」那条）。
+                     实拍撞到过——探针在幻灯片那篇上打开了写作计划弹层。 */
+                  { label: '无限续写…', icon: 'bx-rocket', disabled: isSlides(content),
+                    hint: isSlides(content) ? '这一篇是幻灯片——要改内容回原笔记改完再重做一份'
+                      : '给一个目标，拆成若干分段，每段建成这篇的子笔记',
                     onSelect: () => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) } },
                   /* 痛点 6：「想做成 PPT，又要上传给另一个 agent 工具，两个工具之间没有链接」。
                      **产物是一篇笔记不是一个文件**——落成这篇的子笔记，于是能 ⌘K 找到、
