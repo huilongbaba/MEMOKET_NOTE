@@ -3765,3 +3765,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [588] 第 564 轮：「禁用要说清为什么」做成 check（2026-09-14）
 
 - 第 462 轮人工扫过一次，之后加的代码又漏了。check-a11y 加第三条：带 `disabled` 的 button 必须有 title/aria-label；**正在跑**（disabled 表达式里是 busy / saving / loading / running…，或按钮自己画着 spinner）和**就是当前这一个**（`x.id === p.id`）自明，豁免。首跑抓到 4 个真漏的：导回 Obsidian / Notion / 飞书三个「写入」（各自缺哪个字段说清楚）、skill 导入的「解析并预览」（先贴内容）。
+
+## [589] 第 565 轮：定向续写落点也对拍（2026-09-14）
+
+- 客户端 `util/sectionEnd`（onInsertAt 拿本地正文重算落点）和服务端 `outline.section_end` 是第七处「两份实现同一条规则」。check-stream-parity 加 9 组样本：同级标题、更深层级、只有一节、找不到、围栏里的 `#` 注释、尾随空格、没有标题、未闭合围栏、`#` 后面没空格的假标题——全等（前端逐行扫围栏 vs 后端先 mask 再 finditer，结果一样）。harness-framework 补一句。
