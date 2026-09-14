@@ -3082,6 +3082,16 @@ export default function App() {
             {/* 暂停 / 运行 / 结果 一条粘在浮动按钮下面的横条：轮末暂停时用户多半已经
                 滚到正文底部看新写的内容，两个按钮和那句话如果留在正文顶部就等于没有
                 （实拍：只剩状态栏一个「等你处置」）。 */}
+            {/* 文件夹 harness 写到当前这篇时也给一条——不然编辑器忽然打不了字，没有任何解释 */}
+            {!pausedRun && loading !== 'note-harness' && harness?.running && harness.currentNoteId === current?.id && (
+              <div className="harness-sticky">
+                <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>
+                  「{harness.folderName}」的写作计划正在写这一篇{harness.currentSectionTitle ? `（${harness.currentSectionTitle}）` : ''}
+                </span>
+                  <span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>· 正文由 AI 接管，停下来再改</span>
+                </p>
+              </div>
+            )}
             {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
               <div className="harness-sticky">
                 <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>{pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}</span>
@@ -3135,7 +3145,10 @@ export default function App() {
               onChange={setContent}
               // AI 在写的时候锁住编辑器：这时手改的字会被轮末的服务端正文盖掉（同步是
               // 服务端权威）。逐轮暂停、跑完、停止都会解锁。
-              readOnly={loading === 'note-harness' || loading === 'tap'}
+              // 文件夹 harness 正在写的那篇也只读：它跟单篇那条一样在逐块往正文里写，
+              // 用户这时候打的字会跟 AI 的写入互相打断，轮末服务端正文一对齐就没了（第 584 轮）
+              readOnly={loading === 'note-harness' || loading === 'tap'
+                || (!!harness?.running && harness.currentNoteId === current?.id)}
               scrollPad
               revisions={revisions}
               onAcceptInline={acceptRevision}
