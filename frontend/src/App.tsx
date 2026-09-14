@@ -76,7 +76,8 @@ import Toaster from './components/Toaster'
 import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
-import { fmtDate, fmtWhen } from './util/time'
+import { dupSuffixes } from './util/dupTitles'
+import { fmtDate, whenLabel } from './util/time'
 import { notifyIfHidden } from './util/notify'
 
 // 后台自动生成的节流参数。骨架/编辑都是真实 LLM 调用（本地模型上约 8-15s），
@@ -1092,7 +1093,10 @@ export default function App() {
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {/* 在哪个文件夹下：搜索命中几十条时，这是区分同名笔记的唯一线索 */}
             {(() => { const row = tree.find((r) => r.note_id === n.id); const parent = row && row.parent_note_id !== api.ROOT_ID ? tree.find((r) => r.note_id === row.parent_note_id) : undefined; return parent ? displayTitle(parent) + ' · ' : '' })()}
-            {fmtWhen(n.updated_at)}
+            {/* 撞名且同一天的两行，这里要精确到分钟才分得开；没撞的照常
+                「今天 / 昨天 / MM-DD」（`dupSuffixes` 给的是刚好够分开的粒度，
+                带空格的就是分钟级——只有那种才值得顶掉 fmtWhen）。 */}
+            {whenLabel(listDups.get(n.id), n.updated_at)}
           </span>
           {/* 「移动到文件夹」的下拉没了：树上靠拖拽和右键菜单移动，一个
               只能选一层的下拉表达不了任意深度的树。 */}
@@ -1267,6 +1271,15 @@ export default function App() {
   }, [job])
 
   const visibleNotes = searchResults ?? notes
+
+  /** 平铺的那两个列表（搜索结果 / 最近）里撞名的行，各自补一个刚好够分开的时间。
+   *
+   *  树上第 619 轮就做了这件事，**平铺列表漏了**——而平铺才是最容易撞的地方：
+   *  实拍搜「硬件」11 条结果里，「公司汇报：」出现两次，两行都写着「Notes · 09-07」，
+   *  完全分不出是哪一篇（真是两篇不同的笔记，12:50 和 12:58）。 */
+  const listDups = useMemo(
+    () => dupSuffixes(visibleNotes.map((n) => ({ key: n.id, title: displayTitle(n), at: n.updated_at }))),
+    [visibleNotes])
 
   /** 今天的日记：后端按 日记/年/月/日 找或建，这里刷树再打开。 */
   async function openToday() {

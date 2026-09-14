@@ -35,3 +35,16 @@ export function fmtWhen(iso: string, now: Date = new Date()): string {
   if (d.getFullYear() === now.getFullYear()) return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   return day(d)
 }
+
+
+/** 列表里这一行的时间写什么。
+ *
+ *  平时是「今天 HH:MM / 昨天 HH:MM / MM-DD / 完整日期」（`fmtWhen`）；**只有撞名
+ *  且同一天的那几行**才换成 `dupSuffixes` 给的分钟级标签——那是唯一能把它们分开的
+ *  东西（实拍：搜「硬件」出来两行都写着「Notes · 09-07」，其实是 12:50 和 12:58
+ *  两篇）。`dupSuffixes` 给的若是日级（不含空格），说明按天就分得开，那就没必要
+ *  顶掉 fmtWhen——顶掉反而会把「今天」变成一个日期。
+ */
+export function whenLabel(dup: string | undefined, iso: string, now = new Date()): string {
+  return dup && dup.includes(' ') ? dup : fmtWhen(iso, now)
+}
