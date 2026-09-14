@@ -481,6 +481,11 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
    拖拽留的余量——压到 1.6em 之后拖放的命中率会明显变差。 */
 .note-tree { margin: 0 -4px; }
 
+/* 「导回这一篇」的弹层：借 palette 的遮罩和盒子，只是宽一点、可滚。
+   不另写一套弹层样式——它托的是导入页那个同一个组件（第 628 轮）。 */
+.palette.export-one { width: min(560px, 92vw); max-height: 80vh; overflow: auto; }
+.palette.export-one h2 { margin: 0 0 8px; font-size: 15px; }
+
 /* 列表头：视角开关 + 条数。压得很轻——它是标签，不是操作区。 */
 .list-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;

@@ -259,6 +259,26 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
   }
   if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
+  // `export-one:<id>` → 打开某篇 → 「⋯」→「导回到…」，验单篇导回那个入口（第 628 轮）
+  if (probe?.startsWith('export-one:') && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const n = notes.find((x) => x.id === probe.slice(11)) ?? notes[0]
+    void (async () => {
+      await switchTo(n)
+      setTimeout(() => {
+        const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
+          .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
+        if (!more) { void api.clientLog('warn', 'export-one: 找不到「更多」', '', 'probe'); return }
+        more.click()
+        setTimeout(() => {
+          const item = Array.from(document.querySelectorAll('.context-menu button, .context-menu [role="menuitem"]'))
+            .find((x) => (x.textContent ?? '').includes('导回到')) as HTMLElement | undefined
+          if (item) item.click()
+          else void api.clientLog('warn', 'export-one: 「更多」里没有「导回到…」', '', 'probe')
+        }, 400)
+      }, 1200)
+    })()
+  }
   // `reopen-right` → 点「展开右栏」那个小钮。验的是「明确的动作要赢过被动布局规则」：
   // 左栏拖宽之后右栏会被自动收掉，而按钮只改 rightOn（本来就是 true），点了等于没点
   // （用户实拍「右侧栏打不开了？」，第 625 轮）。

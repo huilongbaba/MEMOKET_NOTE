@@ -43,6 +43,7 @@ import PreferencesPanel from './components/PreferencesPanel'
 // 知识库那一整套页面（含 d3 的图）按需加载：只写笔记的人不该为它多下 300KB（第 519 轮）
 const KbNoteView = lazy(() => import('./components/KbNoteView'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
+import ExportBack from './components/ExportBack'
 import { setPendingKbQuery } from './util/pendingKbQuery'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
@@ -123,6 +124,9 @@ export default function App() {
   const [virtualId, setVirtualId] = useState<string | null>(null)
   // 应用内对话框（替掉 window.prompt——Electron 里那是系统级模态，主题管不到）
   const [picker, setPicker] = useState<PickerRequest | null>(null)
+  /** 「导回这一篇」的弹层。整库导在导入页，这里只是换个范围——**共用同一个组件**，
+   *  不另写一个导出界面（否则又是「同一个动作两个门、各自会漂」）。 */
+  const [exportOne, setExportOne] = useState<Note | null>(null)
   /** 侧栏怎么排：`tree` 是用户自己摆的层级，`recent` 是按最近改动平铺。
    *
    * 树只有一种排法（手动顺序 `position`），于是笔记这边**没有「最近」这个概念**
@@ -2709,6 +2713,17 @@ export default function App() {
           confirm={askConfirm}
         />
       )}
+      {exportOne && (
+        <div className="palette-backdrop" onMouseDown={() => setExportOne(null)}>
+          <div className="palette export-one" role="dialog" aria-label="导回这一篇"
+               onMouseDown={(e) => e.stopPropagation()}>
+            <ExportBack noteIds={[exportOne.id]} what={displayTitle(exportOne)} />
+            <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+              <button onClick={() => setExportOne(null)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 确认框必须排在写作计划面板之后：两者的遮罩同一层（z-index 200），谁在 DOM 里靠后谁在上面。
          排前面的话，面板上点「换个目标」弹出的确认框会被面板自己盖住（第 306 轮实拍）。 */}
       {confirmReq && <ConfirmDialog req={confirmReq} />}
@@ -3108,6 +3123,10 @@ export default function App() {
                   { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
                     onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + friendlyError(e), 'error')) } },
                   { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
+                  /* 单篇导回。后端和 api 层本来就收 note_ids，一直缺的只是这个入口
+                     （用户第 628 轮：「每一个 note，导出到 Notion/Obsidian/Feishu 的按钮没有」）。 */
+                  { label: '导回到 Obsidian / Notion / 飞书…', icon: 'bx-share',
+                    hint: '按 memoket_id 覆盖对方那边的同一篇', onSelect: () => setExportOne(current) },
                   { label: '导出全部笔记…', icon: 'bx-package', hint: '整库打成 Markdown zip', onSelect: () => window.dispatchEvent(new CustomEvent('export-all')) },
                   { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
                   { kind: 'sep' },

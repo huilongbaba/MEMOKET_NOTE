@@ -6,8 +6,14 @@ import { toast } from '../toast'
  * 导回（docs/import-sync-plan.md §2）：把这里的笔记按目标平台的规则渲染出去。
  * 这里是真相：每篇带 memoket_id，下次再导按 id 覆盖而不是新建；对方在那边改过的
  * 先跳过报冲突，不自动拉回来——双向同步是无底洞，明确不做。凭证不落库，每次填。
+ *
+ * `noteIds` 给了就只导这几篇——**导入页整库导、单篇从「⋯」菜单导，共用这一个组件**。
+ * 后端和 api 层本来就收 `note_ids`，一直缺的只是单篇那个入口（用户第 628 轮报的：
+ * 「每一个 note，导出到 Notion/Obsidian/Feishu 的按钮没有」）。
+ * 不为它另写一个导出界面：那就又是「同一个动作两个门、各自会漂」。
  */
-export default function ExportBack() {
+export default function ExportBack({ noteIds, what }: { noteIds?: string[]; what?: string } = {}) {
+  const only = noteIds ?? []
   const [vaultDir, setVaultDir] = useState(() => { try { return localStorage.getItem('memoket-note:vault-dir') || '' } catch { return '' } })
   const [force, setForce] = useState(false)
   const [notionToken, setNotionToken] = useState('')
@@ -31,7 +37,7 @@ export default function ExportBack() {
       const out = await fn()
       setResult({ where, out })
       const n = (out.written ?? 0) + (out.created ?? 0) + (out.updated ?? 0)
-      toast(n ? `导回 ${n} 篇` : '没有需要写的：都是上次导回后没改过的')
+      toast(n ? `导回 ${n} 篇` : '没有需要写的：上次导回之后没改过')
       window.dispatchEvent(new CustomEvent('note-remotes-changed'))
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
@@ -44,11 +50,18 @@ export default function ExportBack() {
 
   return (
     <>
-      <h2>导回</h2>
+      {/* 笔记标题照原样显示：全局 h2 有 text-transform，不加 plain-case 的话
+          「hi」会被显示成「HI」（第 628 轮实拍，跟写作计划面板同一个坑） */}
+      <h2>{what ? <>导回「<span className="plain-case">{what}</span>」</> : '导回'}</h2>
       <div className="stack export-back">
         <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-          把这里的笔记写回到别的地方。这里是真相：每篇带 <code>memoket_id</code>，再导一次是<strong>覆盖</strong>不是新建；
+          {what ? '把这一篇' : '把这里的笔记'}写回到别的地方。这里是真相：每篇带 <code>memoket_id</code>，再导一次是<strong>覆盖</strong>不是新建；
           对方那边改过的会先跳过并列出来，不会自动拉回来。
+          {what ? '' : ' '}
+          <br />
+          {/* 凭证不落库是有意的（见文件头）。不说清楚的话，用户会以为是 bug——
+              「我上次不是填过吗」。Obsidian 的路径不是密钥，所以它记得住。 */}
+          Notion / 飞书的凭证<strong>不会存下来</strong>，每次要重填；Obsidian 只是个本机路径，记得住。
         </p>
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -58,7 +71,7 @@ export default function ExportBack() {
           <label className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的
           </label>
-          <button onClick={() => void run('obsidian', () => exportObsidian(vaultDir.trim(), [], force))} disabled={!vaultDir.trim() || !!busy}
+          <button onClick={() => void run('obsidian', () => exportObsidian(vaultDir.trim(), only, force))} disabled={!vaultDir.trim() || !!busy}
                   title={!vaultDir.trim() ? '先填 vault 目录' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('obsidian', '写入')}
           </button>
@@ -71,7 +84,7 @@ export default function ExportBack() {
           <span style={{ width: 88 }}>Notion</span>
           <input type="password" placeholder="Integration token" value={notionToken} onChange={(e) => setNotionToken(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input placeholder="父页面 id" title="页面链接末尾那 32 位" value={notionParent} onChange={(e) => setNotionParent(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void run('notion', () => exportNotion(notionToken.trim(), notionParent.trim().replace(/-/g, '')))} disabled={!notionToken.trim() || !notionParent.trim() || !!busy}
+          <button onClick={() => void run('notion', () => exportNotion(notionToken.trim(), notionParent.trim().replace(/-/g, ''), only))} disabled={!notionToken.trim() || !notionParent.trim() || !!busy}
                   title={!notionToken.trim() ? '先填 Integration token' : !notionParent.trim() ? '先填父页面 id' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('notion', '写入')}
           </button>
@@ -85,7 +98,7 @@ export default function ExportBack() {
           <input placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input placeholder="文件夹 token" title="留空 = 应用根目录" value={feishuFolder} onChange={(e) => setFeishuFolder(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void run('feishu', () => exportFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuFolder.trim()))} disabled={!feishuAppId.trim() || !feishuSecret.trim() || !!busy}
+          <button onClick={() => void run('feishu', () => exportFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuFolder.trim(), only))} disabled={!feishuAppId.trim() || !feishuSecret.trim() || !!busy}
                   title={!feishuAppId.trim() ? '先填 App ID' : !feishuSecret.trim() ? '先填 App Secret' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('feishu', '写入')}
           </button>
