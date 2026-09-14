@@ -3894,3 +3894,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 ## [613] 第 590 轮：重打 dmg（2026-09-14）
 
 - `npm run dist` → `out/MEMOKET NOTE-0.1.0-arm64.dmg`（183MB）。装好的包冒烟（terrence 身份）：就绪 2 秒、tree / kb/tree 正常；日志新增 8 行裸 `INFO:` 0 行。PROGRESS 补 581–590 行。
+
+## [614] 第 591 轮：位置记忆跨重启（2026-09-14）
+
+- 上一轮的位置记忆只活在内存里，关掉应用就没了——而痛点 12 更常见的动线其实是「昨天写到一半，今天打开接着写」。`util/spots.ts` 落 localStorage（按用户分、只留最近 60 篇、Map 插入序当 LRU、存坏了当没有），4 条 vitest。
+- 新探针 `return-spot:reload`（设好光标 → `location.reload()` → 重新进来报位置）第一次跑出来光标 0：**位置只在「切走」时记，直接关掉 / 刷新不记**。补两处时机：`flush-save`（桌面版 ⌘Q 退出前那一下）和 `beforeunload`（刷新 / 关窗）。再跑：光标 6729、scrollTop 4770，跟关掉之前一模一样。前端 133。

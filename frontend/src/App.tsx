@@ -47,6 +47,7 @@ import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/
 import { buildCrumbs } from './util/crumbs'
 import { layoutPanes } from './util/layoutPanes'
 import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
+import { loadSpots, putSpot, saveSpots } from './util/spots'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { runProbe } from './probes'
@@ -222,8 +223,8 @@ export default function App() {
   // 单篇 harness 正在写哪篇：标签行给那个标签顶上一道 3px 色条（Trilium 工作区色条的位置，第 511 轮）
   const [noteHarnessNoteId, setNoteHarnessNoteId] = useState<string | null>(null)
   // 每篇看到哪儿了：切走时记下光标和滚动位置，切回来放回去（痛点 12：查完一篇旧笔记回来，
-  // 想不起来自己刚才在写哪一段）。只活在这次会话里——跨重启的「上次看的那篇」是另一回事，已经有了。
-  const spots = useRef(new Map<string, { head: number; top: number }>())
+  // 想不起来自己刚才在写哪一段）。跨重启保留，见 util/spots。
+  const spots = useRef(loadSpots(api.getUser()))
   /** agent 每一轮干了什么，喂给 AgentActivity 可视化。按轮聚合：用户关心的是
    * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
    * 事件流水账看不出所以然。 */
@@ -707,11 +708,15 @@ export default function App() {
     // 退出时刚建、一个字没写的「未命名」也收掉——切走时会收，退出时之前不收，demo 库里
     // 攒了四篇空「未命名」（实拍）。走 actionsRef 拿最新闭包，这个 effect 的 current 是旧的。
     const onFlush = () => {
+      rememberSpot()          // ⌘Q 退出前也记一次位置（第 591 轮：只在切走时记，直接关掉就丢了）
       save().catch(() => {})
         .then(() => actionsRef.current.dropIfStillEmpty(currentRef.current)).catch(() => {})
         .finally(() => window.memoketDesktop?.flushed?.())
     }
     window.addEventListener('flush-save', onFlush)
+    // 刷新 / 关窗：desktop 的 ⌘Q 走 flush-save，网页版和 reload 走这里
+    const onUnload = () => rememberSpot()
+    window.addEventListener('beforeunload', onUnload)
     const onOpenNote = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
       const n = notes.find((x) => x.id === id)
@@ -737,7 +742,7 @@ export default function App() {
     // ⌘K「换个图标」/ 树菜单「换个图标…」：只对主栏正开着的那篇；没开笔记就提示
     const onIconPicker = () => { if (current) setIconPicker(true); else toast('先打开一篇笔记再换图标') }
     window.addEventListener('open-icon-picker', onIconPicker)
-    return () => { window.removeEventListener('open-icon-picker', onIconPicker); window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('virtual-gone', onGone); window.removeEventListener('tab-action', onTabAction); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush) }
+    return () => { window.removeEventListener('open-icon-picker', onIconPicker); window.removeEventListener('open-today', onToday); window.removeEventListener('virtual-title', onTitle); window.removeEventListener('virtual-gone', onGone); window.removeEventListener('tab-action', onTabAction); window.removeEventListener('open-virtual', on); window.removeEventListener('new-note', onNew); window.removeEventListener('show-shortcuts', onKeys); window.removeEventListener('open-note', onOpenNote); window.removeEventListener('nav-history', onNav); window.removeEventListener('tree-locate', onLocate); window.removeEventListener('tree-collapse', onCollapse); window.removeEventListener('export-all', onExport); window.removeEventListener('flush-save', onFlush); window.removeEventListener('beforeunload', onUnload) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, virtualId, allRows, notes])
 
@@ -1527,7 +1532,8 @@ export default function App() {
     const id = currentRef.current?.id
     if (!v || !id) return
     const scroller = document.querySelector('.note-scroll') as HTMLElement | null
-    spots.current.set(id, { head: v.state.selection.main.head, top: scroller?.scrollTop ?? 0 })
+    putSpot(spots.current, id, { head: v.state.selection.main.head, top: scroller?.scrollTop ?? 0 })
+    saveSpots(api.getUser(), spots.current)
   }
 
   /** 等这一篇的正文真的进了编辑器，再把光标和滚动放回去。

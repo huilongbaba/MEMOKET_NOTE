@@ -80,8 +80,22 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     }, 3000)
     return
   }
+  // 重启之后（探针 return-spot:reload 会 location.reload 一次）：上次看的那篇和位置还在不在
+  if (probe === 'return-spot:reload' && notes.length >= 2) {
+    let did = false
+    try { did = sessionStorage.getItem('spot-reloaded') === '1' } catch { /* 无所谓 */ }
+    if (did) {
+      setTimeout(() => {
+        const w = editorViewRef.current
+        const scroller = document.querySelector('.note-scroll') as HTMLElement | null
+        void api.clientLog('warn', `return-spot:reload 之后 光标 ${w?.state.selection.main.head ?? -1} · scrollTop ${Math.round(scroller?.scrollTop ?? -1)} · 文档 ${w?.state.doc.length ?? -1}`, '', 'probe')
+      }, 3000)
+      return
+    }
+    try { sessionStorage.setItem('spot-reloaded', '1') } catch { /* 无所谓 */ }
+  }
   // 痛点 12：查完一篇旧笔记回来，光标和滚动位置还在不在原处
-  if ((probe === 'return-spot' || probe === 'return-spot:kb') && notes.length >= 2) {
+  if ((probe === 'return-spot' || probe === 'return-spot:kb' || probe === 'return-spot:reload') && notes.length >= 2) {
     const [a, b] = notes
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
     void (async () => {
@@ -100,6 +114,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       const leftScroll = Math.round(scroller()?.scrollTop ?? -1)
       // 走一趟知识库再回来（第 588 轮：openVirtual 那条路原来不记位置）
       if (probe === 'return-spot:kb') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' }))
+      else if (probe === 'return-spot:reload') { await wait(300); location.reload(); return }
       else open(b.id)
       await wait(1500)
       open(a.id)
