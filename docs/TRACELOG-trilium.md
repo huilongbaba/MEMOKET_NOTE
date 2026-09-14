@@ -3882,3 +3882,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
   - 第一版在 `open()` 里 `requestAnimationFrame` 恢复——太早，那时 `setContent` 还没过 React 渲染、CM 的 doc 还是上一篇的，dispatch 的 selection 被随后到达的新内容顶掉。改成 effect 等 `doc.length === content.length` 再放。
   - 滚动容器是外层的 `.note-scroll`，不是 CM 的 `scrollDOM`（第一版量到的 scrollTop 一直是 0）。
 - 实测：光标 6729 / 6729、scrollTop 4770 / 4770。探针本身也修了一处：多步切换不能用 ctx 里那份 `switchTo` 闭包（runProbe 那一刻的快照，第二次切回去编辑器还停在第二篇），改走 `open-note` 事件。
+
+## [611] 第 588 轮：去知识库看一眼再回来，也回到原处（2026-09-14）
+
+- 「离开当前笔记」不止 `switchTo` 一条路：`openVirtual`（点树上的知识库 / 事实表 / 设置…）也会清掉 current，那条路原来不记位置——而这正是痛点 12 最典型的动线（写着写着去查一条事实）。补上 `rememberSpot()`。探针加 `return-spot:kb` 变体（中途去知识库而不是另一篇笔记）：光标 6729/6729、scrollTop 4770/4770。

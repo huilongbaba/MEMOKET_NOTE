@@ -81,7 +81,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     return
   }
   // 痛点 12：查完一篇旧笔记回来，光标和滚动位置还在不在原处
-  if (probe === 'return-spot' && notes.length >= 2) {
+  if ((probe === 'return-spot' || probe === 'return-spot:kb') && notes.length >= 2) {
     const [a, b] = notes
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
     void (async () => {
@@ -98,7 +98,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       await wait(800)
       const scroller = () => document.querySelector('.note-scroll') as HTMLElement | null
       const leftScroll = Math.round(scroller()?.scrollTop ?? -1)
-      open(b.id)
+      // 走一趟知识库再回来（第 588 轮：openVirtual 那条路原来不记位置）
+      if (probe === 'return-spot:kb') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' }))
+      else open(b.id)
       await wait(1500)
       open(a.id)
       await wait(1500)

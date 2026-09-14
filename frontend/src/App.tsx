@@ -666,6 +666,7 @@ export default function App() {
     // 事实表带查询串（kb:facts?kind=plan，首页类型 / 说话人 chip 点进来的）也是认识的——第 132 轮实拍点 chip 落回了总览
     if (id.startsWith('kb:') && !isKnownVirtual(id)) id = 'kb'
     if (virtualId === id && !current) return
+    rememberSpot()          // 去知识库看一眼再回来，也该回到原处（第 588 轮）
     await save()
     const leaving = current
     pushHistory(id)
