@@ -9,6 +9,7 @@ import { resolve } from 'node:path'
 
 import { previewLine } from '../src/util/virtual.ts'
 import { displayTitle } from '../src/util/displayTitle.ts'
+import { matchSnippet } from '../src/util/snippet.ts'
 
 const SAMPLES: [string, string][] = [
   ['# 会议纪要 10\n- 第一条\n- 第二条', '会议纪要 10'],
@@ -32,6 +33,17 @@ const TITLES: [string, string][] = [
   ['未命名', ''],
   ['未命名', '一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三'],
 ]
+// 搜索卡上的命中片段（store.match_snippet vs util/snippet.matchSnippet）：⌘K 用服务端算的，
+// 侧栏本地搜索用前端算的，同一条规则才不会一个卡片一个样。窗口参数显式传一样的。
+const SNIPS: [string, string][] = [
+  ['# 创业一年回顾\n\n## 时间线与里程碑\n以 4 月 10 日所在周的 MakeDecision 作为年度判断起点。', '判断'],
+  ['- 列表项里的 EVT 准备\n2. 有序列表 EVT 也剥', 'EVT'],
+  ['开头就命中：样机的交期', '开头'],
+  ['命中在结尾处的样机', '样机'],
+  ['大小写 MemoCat 不敏感', 'memocat'],
+  ['完全没有这个词', 'zzz'],
+  ['多行\n\n  空白    压成一个空格  ', '空白'],
+]
 const backend = resolve(import.meta.dirname, '../../backend')
 const py = resolve(backend, '.venv/bin/python')
 let bad = 0
@@ -54,6 +66,18 @@ print(json.dumps([display_title(t, c) for t, c in json.loads(sys.stdin.read())])
 `
   const res2 = JSON.parse(execFileSync(py, ['-c', script2], { input: JSON.stringify(TITLES), encoding: 'utf8' })) as string[]
   TITLES.forEach(([t, c], i) => { const l = displayTitle({ title: t, content: c }); ok(l === res2[i], `显示名 ${i + 1}${l === res2[i] ? '' : `\n    本地 ${JSON.stringify(l)}\n    服务端 ${JSON.stringify(res2[i])}`}`) })
+  const script3 = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(backend)})
+from app.database.store import match_snippet
+print(json.dumps([match_snippet(c, q, 40, 18) for c, q in json.loads(sys.stdin.read())]))
+`
+  const res3 = JSON.parse(execFileSync(py, ['-c', script3], { input: JSON.stringify(SNIPS), encoding: 'utf8' })) as (object | null)[]
+  SNIPS.forEach(([c, q], i) => {
+    const l = matchSnippet(c, q, 40, 18)
+    const same = JSON.stringify(l) === JSON.stringify(res3[i])
+    ok(same, `命中片段 ${i + 1}（${JSON.stringify(q)}）${same ? '' : `\n    本地 ${JSON.stringify(l)}\n    服务端 ${JSON.stringify(res3[i])}`}`)
+  })
 }
 if (bad) { console.error(`${bad} 处不一致`); process.exit(1) }
-console.log('OK: 正文首行 / 显示名前后端一致')
+console.log('OK: 正文首行 / 显示名 / 命中片段前后端一致')
