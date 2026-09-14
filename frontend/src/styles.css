@@ -470,6 +470,19 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
    拖拽留的余量——压到 1.6em 之后拖放的命中率会明显变差。 */
 .note-tree { margin: 0 -4px; }
 
+/* 列表头：视角开关 + 条数。压得很轻——它是标签，不是操作区。 */
+.list-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 2px 10px 6px; font-size: 11px; color: var(--muted);
+}
+.seg { display: inline-flex; gap: 2px; }
+.seg button {
+  padding: 2px 8px; border-radius: 10px; font-size: 11px; line-height: 1.6;
+  background: transparent; border: none; color: var(--muted); cursor: pointer;
+}
+.seg button:hover { background: var(--left-pane-item-hover-bg); color: var(--fg); }
+.seg button.on { background: var(--left-pane-item-selected-bg); color: var(--fg); }
+
 .tree-node {
   display: flex; align-items: center; gap: 4px;
   height: 2.4em; padding: 4px; padding-inline-end: 6px;

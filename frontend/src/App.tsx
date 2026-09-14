@@ -2837,16 +2837,28 @@ export default function App() {
             }}
           />
           {noteQuery && <button className="icon-btn" title="清空" onClick={() => setNoteQuery('')}><i className="bx bx-x" /></button>}
-          {/* 树 ⇄ 按最近。搜索时不显示：搜索结果本来就是平铺的，这时候切没有意义 */}
-          {!noteQuery && (
-            <button className={'icon-btn' + (recentMode ? ' active' : '')}
-                    title={recentMode ? '按最近改动排（点回树）' : '按最近改动排'}
-                    aria-pressed={recentMode}
-                    onClick={() => setRecentMode((v) => !v)}>
-              <i className={'bx ' + (recentMode ? 'bx-list-ul' : 'bx-time-five')} />
-            </button>
-          )}
         </div>
+        </div>
+        {/* 列表自己的头一行：**你现在看的是什么、有多少**。
+            视角开关第一版塞在搜索框里（第 622 轮），不对——`×` 属于输入框（它清的是
+            你打的字），而视角开关作用的是**下面的列表**。当时还给它写了「有搜索词就
+            隐藏」，那本身就是个信号：**需要躲开输入框，说明它不该在输入框里**
+            （用户原话：「你这个切换视角的按钮放在搜索框里合适？」）。
+            这一行顺带回答了应用一直没回答的一个问题：现在这一列是什么、多少条。 */}
+        <div className="list-head">
+          {searchResults !== null || noteQuery ? (
+            <span className="muted">{visibleNotes.length} 条结果</span>
+          ) : (
+            <>
+              <span className="seg">
+                <button className={recentMode ? '' : 'on'} onClick={() => setRecentMode(false)}
+                        aria-pressed={!recentMode} title="按你自己摆的层级">层级</button>
+                <button className={recentMode ? 'on' : ''} onClick={() => setRecentMode(true)}
+                        aria-pressed={recentMode} title="按最近改动，平铺">最近</button>
+              </span>
+              <span className="muted">{notes.length} 篇</span>
+            </>
+          )}
         </div>
         {/* 树的滚动容器——笔记一多，没有它树底部就被裁掉且滚不到 */}
         <div className="left-pane-body">

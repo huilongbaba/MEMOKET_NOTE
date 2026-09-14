@@ -261,8 +261,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
   // `recent` → 侧栏切到「按最近改动排」（第 622 轮）
   if (probe === 'recent') setTimeout(() => {
-    const b = Array.from(document.querySelectorAll('.quick-search .icon-btn'))
-      .find((x) => (x.getAttribute('title') ?? '').startsWith('按最近')) as HTMLElement | undefined
+    const b = Array.from(document.querySelectorAll('.list-head .seg button'))
+      .find((x) => (x.textContent ?? '').trim() === '最近') as HTMLElement | undefined
     if (b) b.click()
     else void api.clientLog('warn', 'recent: 侧栏没有「按最近」那个开关', '', 'probe')
   }, 1000)
