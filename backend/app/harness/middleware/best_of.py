@@ -21,6 +21,13 @@ class BestOf:
     after: tuple[str, ...] = ()
 
     async def after_judge(self, st: State) -> None:
+        # **平手归后来者。** `>` 会让并列时最早的那一轮赢，而这是反的：每一轮
+        # 的正文都是在上一轮的正文上改出来的，分数一样就说明后一轮白多做了
+        # 那些修订——分不出高下时该交做得多的那份。
+        #
+        # 第 602 轮真跑实拍：4 轮全被代码判据打回，`rank()` 一律 (0, 0.0)，
+        # 于是 best 从头到尾钉在第 1 轮。后三轮 8 条修订（删掉两整段重复、
+        # 修好一张手写 mermaid）全被扔掉，用户等 90 秒拿到的是第 1 轮的正文。
         rank = st.rank()
-        if st.best is None or rank > st.best[0]:
+        if st.best is None or rank >= st.best[0]:
             st.best = (rank, st.content)

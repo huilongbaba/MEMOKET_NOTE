@@ -134,7 +134,33 @@ def _locate(content: str, anchor: str, anchor_end: str) -> tuple[int, int]:
         i = content.find(anchor, i + 1)
     # 结尾标记一次都没匹配上时退回只用 anchor：宁可少改一点，也不要按错误的
     # 范围改，更不要因为一个写错的结尾标记就整条丢弃。
+    #
+    # **这个退路只对 insert 安全**，对 replace / delete 是有害的——见
+    # `_span_missing`，那条会在应用之前就把它们拦掉，所以走到这里的不会是
+    # 那两种。插入只拿这个区间定位，窄一点不影响插在哪。
     return best if best[0] >= 0 else (first, first + len(anchor))
+
+
+def _span_missing(content: str, anchor: str, anchor_end: str) -> bool:
+    """给了结尾标记，却在正文里配不成一对。
+
+    第 602 轮真跑实拍的正文损坏：模型要 replace 一整段，`anchor_end` 写成
+    「这里**只**需要补上测试场景…」，正文里是「这里需要补上…」——差一个字，
+    配不上。`_locate` 于是退回只替换 anchor 那二十来个字，而 `text` 是整段的
+    重写，**结果段尾原封不动留在原地，被新文本复述了一遍**：同样三个分句在
+    一段里连着说了两遍，交付给用户的正文就是这样的。
+
+    replace / delete 是**按范围**动刀的，范围找不到就没有"少改一点"这回事，
+    只有"改错地方"。丢掉它，下一轮模型会重新给一条锚点写对的。
+    """
+    if not anchor_end:
+        return False
+    i = content.find(anchor)
+    while i >= 0:
+        if content.find(anchor_end, i + len(anchor)) >= 0:
+            return False
+        i = content.find(anchor, i + 1)
+    return True
 
 
 def _replaced_span(content: str, anchor: str, anchor_end: str) -> str:
@@ -177,6 +203,8 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
     防线也必须共用：只修一边，等于另一条路径上的 bug 还活着。
     """
     key = " ".join(anchor.split())[:40]
+    if op in ("replace", "delete") and _span_missing(content, anchor, anchor_end):
+        return f"这条的结尾标记在正文里找不到，范围划不出来，已丢弃：{key[:24]}…"
     if op == "replace" and edited is not None and key in edited:
         return f"这处上一轮已改过，跳过：{key[:24]}…"
     if op == "replace" and _is_same_meaning_rewrite(

@@ -301,6 +301,41 @@ def test_dedup_delete_survives_the_ambiguity_guard():
     # 「删掉重复的那一节」= 重复的锚 + 结尾标记，是去重的**标准形态**，必须放行。
     # 第一版把它拦了，20 轮实测 non_repetition 全 20 次 0 分、coherence 掉到 0.5。
     assert rej(doc, "delete", "## 众筹节奏", "", anchor_end="启动众筹。") == ""
+
+
+def test_结尾标记配不上就丢掉_按范围动刀的那两种():
+    """第 602 轮真跑实拍的正文损坏。
+
+    模型要 replace 一整段，`anchor_end` 写成「这里**只**需要补上测试场景…」，
+    正文里是「这里需要补上…」——差一个字。`_locate` 于是退回只替换 anchor
+    那二十来个字，而 `text` 是整段的重写，**段尾原封不动留在原地被复述了一遍**：
+    同样三个分句在一段里连着说了两遍，交付给用户的就是这个。
+
+    replace / delete 是按范围动刀的，范围找不到就没有「少改一点」这回事，
+    只有「改错地方」。insert 只拿它定位，窄一点无所谓，照常放行。
+    """
+    from app.harness.revision import apply_revision, reject_revision as rej
+
+    para = ("通信切换后，需要把测试结论与下游动作直接对应起来：测试通过，记录结构和"
+            "电池方案是否获准继续。这里需要补上测试场景、时间、硬件版本和最终结论。")
+    doc = "开头一段。\n\n" + para + "\n\n结尾一段。\n"
+    head, tail_typo = para[:24], "这里只需要补上测试场景、时间、硬件版本和最终结论。"
+
+    assert "找不到" in rej(doc, "replace", head, "整段重写过的新内容。", tail_typo)
+    assert "找不到" in rej(doc, "delete", head, "", tail_typo)
+    assert rej(doc, "insert", head, "补一句。", tail_typo) == ""
+
+    # 拦掉它是为了不产出这个：原来的段尾留在原地，被新文本复述一遍
+    broken = apply_revision(doc, "replace", head, "整段重写过的新内容。",
+                            anchor_end=tail_typo)
+    assert "整段重写过的新内容。：测试通过" in broken, (
+        f"没复现那个损坏形状，这条测试就不是在测它：\n{broken}")
+
+    # 标记写对了照常放行
+    assert rej(doc, "replace", head, "整段重写过的新内容。",
+               "这里需要补上测试场景、时间、硬件版本和最终结论。") == ""
+
+
 def test_outline_target_is_decided_before_retrieval():
     """大纲模式下必须先定"这轮写哪一节"再去检索，否则每轮拿回同一批事实。
 

@@ -109,6 +109,20 @@ def test_out_of_rounds_ships_the_best_round_not_the_last():
     assert done.data["content"] == "bb"
 
 
+def test_分数打平时交后来的那一轮():
+    """平手归后来者。每一轮的正文都是在上一轮的正文上改出来的，分数一样
+    就说明后一轮白多做了那些修订。
+
+    第 602 轮真跑实拍：4 轮全被代码判据打回，rank 一律 (0, 0.0)，严格大于
+    比不过，best 从头到尾钉在第 1 轮——后三轮 8 条修订（删掉两整段重复、
+    修好一张手写 mermaid）全被扔掉，用户等 90 秒拿到的是第 1 轮的正文。"""
+    hooks = FakeHooks(["a", "bb", "ccc"])
+    st = _state(_mode(max_rounds=3))
+    events = asyncio.run(_drive(st, hooks, _scorer([[0, 0], [0, 0], [0, 0]]),
+                                mw=BASE))
+    assert _finished(events).data["content"] == "ccc"
+
+
 def test_a_failing_check_skips_the_scoring_call():
     """A scoring call costs tens of seconds. If a deterministic rule already
     knows the answer, paying for it is waste."""
