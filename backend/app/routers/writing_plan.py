@@ -204,6 +204,15 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
                     break
 
                 new_sections = store.add_sections(plan["id"], more)
+                if not new_sections:
+                    # 提出来的全是已有分段的同名重复，或者总数已经到上限（store.add_sections）：
+                    # 这跟「没有更多」是同一件事。不这么判就会一直提、一直丢、一直再问，
+                    # 转到 PLAN_SAFETY_CAP 才停（第 574 轮）。
+                    store.set_plan_status(user, plan["id"], "done")
+                    plan["status"] = "done"
+                    _sync_tracking_note(user, plan, sections)
+                    yield _sse("plan-done", {"plan": plan, "reason": "提出的新分段都跟已有的重复，或已到分段上限"})
+                    break
                 _sync_tracking_note(user, plan, sections + new_sections)
                 yield _sse("plan-extended", {"sections": new_sections})
                 continue

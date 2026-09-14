@@ -107,3 +107,29 @@ def test_set_plan_doc_note(isolated_store):
     plan = isolated_store.create_plan("u1", "f1", "目标")
     isolated_store.set_plan_doc_note("u1", plan["id"], "note-abc")
     assert isolated_store.get_plan("u1", plan["id"])["doc_note_id"] == "note-abc"
+
+
+def test_分段列表有上限_同名的丢掉(isolated_store):
+    """每个分段最后都是一篇笔记 + 若干轮模型调用：模型抽风返回一百条的代价太大（第 574 轮）。
+    同名分段也丢——prompt 交代过不要重复提同一主题，实测照样会。"""
+    from app.database.store import MAX_PLAN_SECTIONS, MAX_SECTIONS_PER_ADD
+
+    plan = isolated_store.create_plan("u", "p1", "目标")
+    first = isolated_store.add_sections(plan["id"], [f"第 {i} 段" for i in range(50)])
+    assert len(first) == MAX_SECTIONS_PER_ADD
+
+    # 同名（含前后空白 / 大小写差异）不再加
+    assert isolated_store.add_sections(plan["id"], ["  第 0 段 ", "第 1 段"]) == []
+    # 新的能加，直到总数封顶
+    rest = isolated_store.add_sections(plan["id"], [f"新 {i}" for i in range(40)])
+    assert len(rest) == MAX_PLAN_SECTIONS - MAX_SECTIONS_PER_ADD
+    assert len(isolated_store.list_sections(plan["id"])) == MAX_PLAN_SECTIONS
+    assert isolated_store.add_sections(plan["id"], ["再多一个"]) == []
+
+
+def test_分段标题太长会截断(isolated_store):
+    from app.database.store import SECTION_TITLE_MAX
+
+    plan = isolated_store.create_plan("u", "p2", "目标")
+    (s,) = isolated_store.add_sections(plan["id"], ["很长的标题" * 40])
+    assert len(s["title"]) == SECTION_TITLE_MAX

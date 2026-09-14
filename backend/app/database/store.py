@@ -1425,12 +1425,44 @@ def list_sections(plan_id: str) -> list[dict]:
     return [_note(r) for r in rows]
 
 
+# 一份计划最多这么多分段，单次最多追加这么多。**每个分段最后都独立成一篇笔记、
+# 各自跑若干轮模型调用**，所以模型抽风返回一百条标题的代价是一百篇笔记加一百轮调用。
+# prompt 里写的正常范围是 3–8 个，这两个数远高于它，只挡失控（第 574 轮）。
+MAX_PLAN_SECTIONS = 40
+MAX_SECTIONS_PER_ADD = 20
+# 分段标题会成为笔记标题
+SECTION_TITLE_MAX = 80
+
+
+def _section_key(t: str) -> str:
+    return " ".join((t or "").split()).lower()
+
+
 def add_sections(plan_id: str, titles: list[str]) -> list[dict]:
     """追加新 section，idx 接着已有的往后编号——初次生成骨架、以及后续
-    「还有没有更多可写」判定为是时的追加，都走这一个函数。"""
+    「还有没有更多可写」判定为是时的追加，都走这一个函数。
+
+    **跟已有分段同名的丢掉**：prompt 里反复交代过不要重复提同一个主题，实测照样会
+    （「决策、冲突与升级机制」写完又提「决策与冲突处理规范」），用户拿到的是两篇雷同的笔记。
+    字面同名是确定性可判的，先把这一层挡掉；换说法的重复仍然只能靠 prompt。
+    """
     with connect() as c:
         existing = c.execute("SELECT COALESCE(MAX(idx), -1) FROM writing_sections WHERE plan_id=?",
                              (plan_id,)).fetchone()[0]
+        have = {_section_key(r[0]) for r in
+                c.execute("SELECT title FROM writing_sections WHERE plan_id=?", (plan_id,)).fetchall()}
+        cap = min(MAX_SECTIONS_PER_ADD, max(0, MAX_PLAN_SECTIONS - len(have)))
+        picked: list[str] = []
+        for t in titles:
+            if len(picked) >= cap:
+                break
+            t = " ".join((t or "").split())[:SECTION_TITLE_MAX]
+            k = _section_key(t)
+            if not t or k in have:
+                continue
+            have.add(k)
+            picked.append(t)
+        titles = picked
         rows = []
         for offset, title in enumerate(titles):
             row = {"id": uuid.uuid4().hex[:12], "plan_id": plan_id, "idx": existing + 1 + offset,
