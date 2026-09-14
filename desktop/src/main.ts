@@ -290,6 +290,7 @@ function installMenu() {
         { label: '导入…', click: () => win?.webContents.send('menu', 'import') },
         { label: '导出全部笔记…', click: () => win?.webContents.send('menu', 'export-all') },
         { label: '最近删除', click: () => win?.webContents.send('menu', 'trash') },
+        { label: '屏幕活动', click: () => openJourneyPage() },
         { type: 'separator' as const },
         { role: 'close' as const, label: '关闭窗口' },
       ],
@@ -399,7 +400,10 @@ function refreshTray() {
   tray.setToolTip(TRAY_SAY[st])
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: TRAY_SAY[st], enabled: false },
-    { label: `今天已记 ${n} 段`, enabled: false },
+    { type: 'separator' },
+    // **菜单栏是用户平时待的地方**，「今天记了什么」必须从这儿点得进去——
+    // 不然那一页只有从左栏图标才找得到，而应用多数时候根本不在前台。
+    { label: `今天已记 ${n} 段 — 打开看看`, click: () => openJourneyPage() },
     { type: 'separator' },
     ...(st === 'off'
       ? [{ label: '开始记录', click: () => { journey?.start(); refreshTray() } }]
@@ -412,6 +416,15 @@ function refreshTray() {
     { type: 'separator' },
     { label: '停止并关掉', enabled: st !== 'off', click: () => { journey?.stop(); refreshTray() } },
   ]))
+}
+
+/** 把窗口拿到前面并翻到「今天」页。菜单栏和「文件」菜单共用。 */
+function openJourneyPage() {
+  if (!win || win.isDestroyed()) { void boot(); return }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  app.focus({ steal: true })
+  win.webContents.send('menu', 'journey')
 }
 
 function setupJourneyIpc() {

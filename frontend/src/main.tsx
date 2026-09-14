@@ -21,6 +21,7 @@ window.memoketDesktop?.onMenu?.((name) => {
   if (name === 'today') window.dispatchEvent(new CustomEvent('open-today'))
   if (name === 'import') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))
   if (name === 'trash') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:trash' }))
+  if (name === 'journey') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:journey' }))
   if (name.startsWith('tab:')) window.dispatchEvent(new CustomEvent('tab-action', { detail: name.slice(4) }))
 })
 

@@ -725,6 +725,9 @@ class AskOut(BaseModel):
 # 走 `/api/journey/frame`——图片默认不留、留也只在本机（daily-journey-plan §1）。
 
 class JourneySegment(BaseModel):
+    # 这一段在当天文件里的下标。**删一段要按它来**——数组里已删的位置是留着的
+    # （抠掉会让后面每一段的下标都挪一位，点第 5 段删掉的其实是第 6 段）。
+    i: int = 0
     start: str = ""
     end: str = ""
     app: str = ""
@@ -732,6 +735,8 @@ class JourneySegment(BaseModel):
     desc: str = ""
     n: int = 0
     has_frame: bool = False
+    # 有没有那张 256px 的缩略图（大图在描述做完之后就删了，§1 ③）。
+    has_thumb: bool = False
 
 
 class JourneyDayOut(BaseModel):

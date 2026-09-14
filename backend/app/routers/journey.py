@@ -28,6 +28,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 
 from ..util import llm
@@ -92,6 +93,45 @@ def _load(day: str) -> list[dict]:
         return []
 
 
+# 大图留多久。**没描述也不能永远留着**：8 小时 ≈ 960 张 ≈ 300MB/天，
+# 一个月 9GB，而且那是把风险留在磁盘上（§1 ③）。过了这个天数还没描述的，
+# 图删掉、段标记成过期——那一段仍然在时间轴上，只是没法再补描述了。
+FRAME_KEEP_DAYS = 3
+
+
+def _drop_frame(seg: dict) -> None:
+    """删掉这一段的大图。缩略图（256px）留着——一句没有任何凭据的描述，
+    用户没法判断它是不是编的。"""
+    for f in seg.get("frames") or []:
+        try:
+            Path(f).unlink()
+        except OSError:
+            pass
+    seg["frames"] = []
+
+
+def _expire_frames(day: str, segs: list[dict]) -> int:
+    """把过了 `FRAME_KEEP_DAYS` 还没描述的大图删掉。改了几段就返回几段。"""
+    try:
+        stale = (_date.today() - _date.fromisoformat(day)).days >= FRAME_KEEP_DAYS
+    except ValueError:
+        return 0
+    if not stale:
+        return 0
+    n = 0
+    for seg in segs:
+        if seg.get("deleted"):
+            continue
+        if seg.get("frames") and not seg.get("desc"):
+            _drop_frame(seg)
+            seg["skip"] = "截图已过期"
+            n += 1
+        elif seg.get("frames"):
+            _drop_frame(seg)
+            n += 1
+    return n
+
+
 def _load_report(day: str) -> dict:
     """这一天写过的日报，连同**它是按几段写的**。
 
@@ -131,6 +171,10 @@ def worth_keeping(desc: str) -> bool:
 def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
     day_s = date or _date.today().isoformat()
     segs = _load(day_s)
+    # 顺手清过期的大图：这是唯一一个每天都会被调到的接口，清理挂在这儿最省事，
+    # 也不用为了一件「到点就该做」的事另起一个定时器。
+    if _expire_frames(day_s, segs):
+        _save(day_s, segs)
     return JourneyDayOut(
         date=day_s,
         **{k: v for k, v in _load_report(day_s).items() if k in
@@ -138,9 +182,11 @@ def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
         segments=[JourneySegment(**{k: s.get(k, "") for k in
                                     ("start", "end", "app", "title", "desc")},
                                  n=int(s.get("n") or 0),
-                                 has_frame=bool(s.get("frames")))
-                  for s in segs],
-        minutes=round(sum(_secs(s) for s in segs) / 60),
+                                 has_frame=bool(s.get("frames")),
+                                 has_thumb=bool(s.get("thumb")),
+                                 i=n)
+                  for n, s in enumerate(segs) if not s.get("deleted")],
+        minutes=round(sum(_secs(s) for s in segs if not s.get("deleted")) / 60),
     )
 
 
@@ -177,7 +223,7 @@ async def catch_up(date: str = "", limit: int = 20,
             break
         # `skip` 也算处理过了：没有截图的段重试多少次都还是没有截图，
         # 不标记的话每次补描述都会把它们再走一遍，而 `left` 永远归不了零。
-        if seg.get("desc") or seg.get("skip"):
+        if seg.get("desc") or seg.get("skip") or seg.get("deleted"):
             continue
         frame = (seg.get("frames") or [None])[0]
         if not frame or not Path(frame).is_file():
@@ -193,6 +239,7 @@ async def catch_up(date: str = "", limit: int = 20,
         desc = pick_answer(raw)
         seg["desc"] = desc
         described += 1
+        _drop_frame(seg)          # **描述做完就删大图**（§1 ③），见那个函数的注释
         if not worth_keeping(desc):
             seg["skip"] = "没说出具体的东西"
             skipped += 1
@@ -211,9 +258,32 @@ async def catch_up(date: str = "", limit: int = 20,
                 raise
             seg["session"] = session
     _save(day_s, segs)
-    left = sum(1 for s in segs if not s.get("desc") and not s.get("skip"))
+    left = sum(1 for s in segs if not s.get("desc") and not s.get("skip") and not s.get("deleted"))
     return JourneyRunOut(date=day_s, described=described, ingested=ingested,
                          skipped=skipped, left=left)
+
+
+@router.get("/thumb")
+def thumb(date: str, i: int, user: str = Depends(current_user)):
+    """某一段的缩略图（256px）。**只走本机**——这个接口跟别的接口一样只在
+    127.0.0.1 上听，图片不经过任何外部服务（§1）。
+
+    路径来自段落自己记的 `thumb`，但**必须落在这一天的目录里**才给：
+    段落文件是壳写的，真要被改过，这里就是一个任意读文件的口子。
+    """
+    segs = _load(date)
+    if not 0 <= i < len(segs):
+        raise HTTPException(404, "没有这一段")
+    raw = segs[i].get("thumb") or ""
+    root = _day_dir(date).resolve()
+    try:
+        p = Path(raw).resolve()
+        p.relative_to(root)
+    except (OSError, ValueError):
+        raise HTTPException(404, "这一段没有缩略图") from None
+    if not p.is_file():
+        raise HTTPException(404, "这一段没有缩略图")
+    return FileResponse(p, media_type="image/jpeg")
 
 
 @router.post("/report", response_model=JourneyReportOut)
@@ -229,8 +299,8 @@ async def report(date: str = "", user: str = Depends(current_user)) -> JourneyRe
     t0 = time.perf_counter()
     day_s = date or _date.today().isoformat()
     segs = _load(day_s)
-    st = day_stats(day_s, segs)
-    told = [s for s in segs if (s.get("desc") or "").strip()]
+    st = day_stats(day_s, [s for s in segs if not s.get("deleted")])
+    told = [s for s in segs if (s.get("desc") or "").strip() and not s.get("deleted")]
     if not told:
         # 一段描述都没有就别花这次调用：模型只会拿应用名编一份出来。
         raise HTTPException(400, "这一天还没有任何描述，先点「描述这几段」。")
@@ -300,6 +370,39 @@ async def span(date_from: str = "", date_to: str = "", days: int = 7,
     return JourneySpanOut(date_from=from_s, date_to=to_s, days=len(reports),
                           missing=missing, note_id=note["id"], title=title,
                           took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+@router.delete("/segment", response_model=JourneyRunOut)
+def delete_segment(date: str, i: int, user: str = Depends(current_user)) -> JourneyRunOut:
+    """删掉一段：它的图、它在时间轴上的位置、**以及它抽出来的那条事实**。
+
+    为什么非有不可：黑名单挡不住所有东西——同事发来的一张截图、一封还没公开
+    的邮件、一个忘了关的窗口。只能「删一整天」的话，用户为了抹掉一分钟会丢掉
+    一整天，或者干脆把这个功能关掉。**能精确地删，才敢一直开着**（§1）。
+
+    段是按下标寻址的，所以**不能真的从数组里抠掉**——那会让后面每一段的
+    下标都挪一位，正在看这一页的人点第 5 段删掉的其实是第 6 段。标成已删，
+    读的时候跳过。
+    """
+    segs = _load(date)
+    if not 0 <= i < len(segs):
+        raise HTTPException(404, "没有这一段")
+    seg = segs[i]
+    gone = UserMemory(user).remove_sessions(seg["session"]) if seg.get("session") else 0
+    _drop_frame(seg)
+    for f in (seg.get("thumb"),):
+        if f:
+            try:
+                Path(f).unlink()
+            except OSError:
+                pass
+    segs[i] = {"start": seg.get("start", ""), "end": seg.get("end", ""),
+               "app": "", "title": "", "desc": "", "deleted": True, "n": 0}
+    _save(date, segs)
+    return JourneyRunOut(date=date, described=0, ingested=0, skipped=0,
+                         left=sum(1 for x in segs if not x.get("desc") and not x.get("skip")
+                                  and not x.get("deleted")),
+                         removed_facts=gone)
 
 
 @router.delete("/day", response_model=JourneyRunOut)

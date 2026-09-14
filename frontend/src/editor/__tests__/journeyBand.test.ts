@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { appColors, bandCells, hhmm, saySpan, shiftDay } from '../../components/JourneyPage'
 
 const seg = (start: string, end: string, app = 'Code') =>
-  ({ start, end, app, title: '', desc: '', n: 1, has_frame: true })
+  ({ i: 0, start, end, app, title: '', desc: '', n: 1, has_frame: true, has_thumb: false })
 
 describe('屏幕活动那条带', () => {
   it('同一个应用在整页里是同一个颜色，出场顺序决定分到哪一档', () => {

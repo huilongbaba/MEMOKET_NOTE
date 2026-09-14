@@ -35,6 +35,9 @@ const MAX_SEG_MIN = 20         // 一段最长多久，强制切
 export const BLIP_SEC = 60     // 切走不到这么久又切回来：算插曲，并回原来那段
 const WIDE_RATIO = 2.1         // 比 16:9 还宽这么多就按「两个窗口并排」处理
 const FRAME_LONG = 1600        // 存下来给描述用的长边。**实测：整屏送过去模型读不动**
+// 描述做完之后大图就删（计划 §1 ③：8 小时 ≈ 960 张 ≈ 300MB/天，一个月 9GB，
+// 而且那是把风险留在磁盘上）。只留这么长的一张缩略图用来回看时认路。
+const THUMB_LONG = 256
 
 /** 默认不记的。命中就连截图都不拍。 */
 export const DENY_APPS = [
@@ -51,7 +54,10 @@ export type Segment = {
   end: string
   app: string
   title: string
+  /** 给描述用的大图。**描述做完就被后端删掉**，所以这个数组多数时候是空的。 */
   frames: string[]
+  /** 256px 的缩略图，留着回看时认路——一句没有任何凭据的描述，用户没法判断真假。 */
+  thumb?: string
   n: number
 }
 
@@ -177,7 +183,7 @@ async function dhash(file: string, tmpDir: string): Promise<bigint> {
  * 立刻能读出文件名和网页标题。取前台窗口坐标要 Accessibility 权限，没有它时
  * 按宽高比切半是零权限的等价近似。
  */
-async function saveFrame(src: string, dst: string, tmpDir: string): Promise<void> {
+async function saveFrame(src: string, dst: string, thumb: string, tmpDir: string): Promise<void> {
   const { w, h } = await sizeOf(src)
   let from = src
   if (w / h >= WIDE_RATIO) {
@@ -185,6 +191,11 @@ async function saveFrame(src: string, dst: string, tmpDir: string): Promise<void
     await run('sips', ['-c', String(h), String(Math.floor(w / 2)), src, '--out', from])
   }
   await run('sips', ['-Z', String(FRAME_LONG), from, '--out', dst])
+  // **缩略图在这里一起做掉**：描述做完之后大图就删了（计划 §1 ③），到那时候
+  // 再想缩已经没有源了。留这一张是为了回看时认路——一句没有任何凭据的描述，
+  // 用户没法判断它是不是编的。
+  try { await run('sips', ['-Z', String(THUMB_LONG), from, '-s', 'format', 'jpeg', '--out', thumb]) }
+  catch { /* 缩略图存不下不影响这一段 */ }
 }
 
 // ——— 循环 ————————————————————————————————————————————————
@@ -238,6 +249,7 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
     if (today !== dir) {                       // 跨天：换一天的目录，重新开始
       dir = today
       mkdirSync(path.join(dir, 'shots'), { recursive: true })
+      mkdirSync(path.join(dir, 'thumbs'), { recursive: true })
       segs = readSegments(dir)
       prevHash = null
     }
@@ -268,9 +280,11 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
       || (prevHash !== null && hamming(prevHash, h) > NEW_SEG_BITS) || tooLong
 
     if (changed) {
-      const frame = path.join(dir, 'shots', `${String(segs.length + 1).padStart(3, '0')}.png`)
-      try { await saveFrame(raw, frame, tmp) } catch { /* 存不下就这一段没图 */ }
-      segs.push({ start: now, end: now, app, title, frames: [frame], n: 1 })
+      const stem = String(segs.length + 1).padStart(3, '0')
+      const frame = path.join(dir, 'shots', `${stem}.png`)
+      const thumb = path.join(dir, 'thumbs', `${stem}.jpg`)
+      try { await saveFrame(raw, frame, thumb, tmp) } catch { /* 存不下就这一段没图 */ }
+      segs.push({ start: now, end: now, app, title, frames: [frame], thumb, n: 1 })
       flush()                                  // 每切一段落一次盘：崩了不血本无归
     } else {
       cur.end = now

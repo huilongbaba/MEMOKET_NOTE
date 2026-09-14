@@ -189,3 +189,76 @@ def test_一份日报都没有就不写跨时间回顾(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as e:
         asyncio.run(J.span(date_from="2026-09-10", date_to="2026-09-12", user="tester"))
     assert e.value.status_code == 400 and "先在那几天各写一份" in e.value.detail
+
+
+def test_描述做完就删大图_缩略图留着(tmp_path, monkeypatch):
+    """§1 ③：8 小时 ≈ 960 张 ≈ 300MB/天，一个月 9GB，而且那是把风险留在磁盘上。
+    缩略图留着——**一句没有任何凭据的描述，用户没法判断它是不是编的**。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    (day / "shots").mkdir(parents=True)
+    (day / "thumbs").mkdir()
+    big, small = day / "shots" / "001.png", day / "thumbs" / "001.jpg"
+    big.write_bytes(b"PNG"), small.write_bytes(b"JPG")
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T01:10:00Z", "app": "Code",
+         "frames": [str(big)], "thumb": str(small)},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    async def fake_img(*a, **kw):
+        return "答案：在 VS Code 里改 journey.py 的 catch_up"
+
+    monkeypatch.setattr(J, "ask_image", fake_img)
+    monkeypatch.setattr(J, "UserMemory", lambda user: type(
+        "M", (), {"remember": lambda *a, **k: None, "remove_sessions": lambda *a: 0})())
+
+    asyncio.run(J.catch_up(date="2026-09-14", limit=5, user="tester"))
+    assert not big.exists(), "大图应该在描述做完之后就删掉"
+    assert small.exists(), "缩略图要留着"
+
+
+def test_过期还没描述的大图也要删(tmp_path, monkeypatch):
+    """没描述也不能永远留着。段仍然在时间轴上，只是标成过期、没法再补描述。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-01"
+    (day / "shots").mkdir(parents=True)
+    big = day / "shots" / "001.png"
+    big.write_bytes(b"PNG")
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-01T01:00:00Z", "end": "2026-09-01T01:10:00Z", "app": "Code",
+         "frames": [str(big)], "desc": ""},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    out = J.day(date="2026-09-01", user="tester")
+    assert not big.exists()
+    assert out.segments[0].app == "Code"          # 段还在
+    assert json.loads((day / "segments.json").read_text())[0]["skip"] == "截图已过期"
+
+
+def test_删一段不挪后面那些段的下标(tmp_path, monkeypatch):
+    """**不能真的从数组里抠掉**：那会让后面每一段的下标挪一位，
+    正在看这一页的人点第 2 段删掉的其实是第 3 段。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T02:00:00Z", "app": "A", "desc": "一"},
+        {"start": "2026-09-14T02:00:00Z", "end": "2026-09-14T03:00:00Z", "app": "B", "desc": "二",
+         "session": "screen-20260914-001"},
+        {"start": "2026-09-14T03:00:00Z", "end": "2026-09-14T04:00:00Z", "app": "C", "desc": "三"},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    monkeypatch.setattr(J, "UserMemory", lambda user: type(
+        "M", (), {"remove_sessions": lambda self, s: 3})())
+
+    out = J.delete_segment(date="2026-09-14", i=1, user="tester")
+    assert out.removed_facts == 3
+    after = J.day(date="2026-09-14", user="tester")
+    assert [s.app for s in after.segments] == ["A", "C"]
+    assert [s.i for s in after.segments] == [0, 2]        # C 还是 2，没往前挪
+    assert after.minutes == 120                            # 删掉的那小时不算了

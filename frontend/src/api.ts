@@ -1355,8 +1355,10 @@ export const tableFromImage = (file: File) => {
 // `compose/digest` 本来就是那件事。
 
 export type JourneySegment = {
+  /** 这一段在当天文件里的下标——**删一段按它来**（已删的位置留着，不重排）。 */
+  i: number
   start: string; end: string; app: string; title: string
-  desc: string; n: number; has_frame: boolean
+  desc: string; n: number; has_frame: boolean; has_thumb: boolean
 }
 export type JourneyDay = {
   date: string; segments: JourneySegment[]; minutes: number
@@ -1392,6 +1394,14 @@ export type JourneySpan = {
 /** 一段时间的回顾：**喂给模型的是日报不是原始记录**，产出落成一篇笔记。 */
 export const journeySpan = (days: number) =>
   fetch(`/api/journey/span?days=${days}`, { method: 'POST', headers: headers() }).then(json<JourneySpan>)
+
+/** 某一段的缩略图（256px）。只走本机。 */
+export const journeyThumb = (date: string, i: number) => `/api/journey/thumb?date=${date}&i=${i}`
+
+/** 删掉一段：图、时间轴上的位置、**以及它抽出来的那条事实**。
+ *  黑名单挡不住所有东西——能精确地删，才敢一直开着。 */
+export const journeyDeleteSegment = (date: string, i: number) =>
+  fetch(`/api/journey/segment?date=${date}&i=${i}`, { method: 'DELETE', headers: headers() }).then(json<JourneyRun>)
 
 /** 删这一天：段、截图、**以及它抽进知识库的事实**。 */
 export const journeyDeleteDay = (date: string) =>

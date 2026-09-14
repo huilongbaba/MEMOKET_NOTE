@@ -1143,7 +1143,7 @@ kbd {
 /* 三列对齐：**描述要从同一个位置开始**，不然一列字读下来是锯齿形的。
    应用名截一半还认得出（Google Chro…），时间截一半就没法看了——所以固定的是
    时间那一列，能挤的是应用名（同 .tree-dup-date 那条规矩）。 */
-.journey-row { display: grid; grid-template-columns: 6.8em 7.6em 1fr; gap: 8px;
+.journey-row { display: grid; grid-template-columns: 6.8em 7.6em 1fr 22px; gap: 8px;
                align-items: baseline; font-size: 13px; line-height: 1.5; }
 .journey-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 .journey-app { display: flex; align-items: baseline; gap: 5px; font-weight: 500; min-width: 0; }
@@ -1151,8 +1151,9 @@ kbd {
 .journey-desc { min-width: 0; }
 /* 窄栏：描述整句换行到下一行，别把它挤成一列字（时间/应用仍在一行上） */
 @container (max-width: 380px) {
-  .journey-row { grid-template-columns: 6.8em 1fr; }
+  .journey-row { grid-template-columns: 6.8em 1fr 22px; }
   .journey-desc { grid-column: 1 / -1; }
+  .journey-del { grid-row: 1; grid-column: 3; }
 }
 /* 日报排在页首：它是结论，下面那条带和时间轴是证据 */
 .journey-report { padding: 10px 12px; }
@@ -1170,3 +1171,16 @@ kbd {
 .jr-md code { font-size: 12px; background: var(--line); border-radius: 3px; padding: 0 3px; }
 /* 「回顾一段时间」：从「今天」这一页出去的一条路，不是这一页的主角 */
 .journey-span { border-top: 1px solid var(--line); padding-top: 12px; }
+/* 时间轴那一行的删除键：**悬停才出现**（跟笔记列表同一条规矩——
+   常驻的破坏性按钮会让人不敢用鼠标）。但它得一直占着位置，不然出现的时候整行会跳。 */
+.journey-row { position: relative; }
+.journey-del { opacity: 0; transition: opacity .12s; }
+.journey-row:hover .journey-del, .journey-del:focus-visible { opacity: 1; }
+/* 缩略图是**凭据**，不是插图：默认不占地方，停在那一行才浮出来。
+   浮层而不是塞进行里——塞进去的话每次悬停整列都要重排，鼠标划过一遍时间轴
+   下面的内容会跳一路（这是把它做成浮层的唯一理由）。 */
+.journey-thumb { display: none; position: absolute; z-index: 5; right: 26px; top: calc(100% - 2px);
+                 width: 256px; max-width: 70%; border: 1px solid var(--line); border-radius: 6px;
+                 box-shadow: 0 4px 16px #0003; background: var(--panel); }
+/* 键盘也要够得着：焦点走到那一行的删除键上时，凭据一样浮出来 */
+.journey-row:hover .journey-thumb, .journey-row:focus-within .journey-thumb { display: block; }

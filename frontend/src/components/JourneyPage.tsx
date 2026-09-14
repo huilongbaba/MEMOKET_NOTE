@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { createNote, journeyCatchUp, journeyDay, journeyDeleteDay, journeyReport, journeySpan,
+import { createNote, journeyCatchUp, journeyDay, journeyDeleteDay, journeyDeleteSegment,
+         journeyReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneySegment } from '../api'
 import { parseMini, type Inline } from '../util/miniMarkdown'
 import { toast } from '../toast'
@@ -165,6 +166,17 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setSpanning(0) }
   }
 
+  /** 删一段。**黑名单挡不住所有东西**——同事发来的一张截图、一封还没公开的
+   *  邮件、一个忘了关的窗口。只能删一整天的话，用户为了抹掉一分钟会丢掉一整天，
+   *  或者干脆把这个功能关掉。 */
+  async function dropSeg(s: JourneySegment) {
+    if (!day) return
+    if (!window.confirm(`删掉 ${hhmm(s.start)}–${hhmm(s.end)} 这一段？\n\n${s.desc || '（还没描述）'}\n\n连它抽进知识库的记忆一起删。`)) return
+    const r = await journeyDeleteSegment(day.date, s.i)
+    toast(`删掉了这一段${r.removed_facts ? `，连带 ${r.removed_facts} 条记忆` : ''}`)
+    await refresh()
+  }
+
   async function wipe() {
     if (!day) return
     if (!window.confirm(`删掉 ${day.date} 的屏幕活动？\n\n连同它抽进知识库的记忆一起删——删完就真的没有了。`)) return
@@ -194,10 +206,10 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           每隔一会儿看一眼你的屏幕，把「你在做什么」记成一句话，到晚上汇成一份今天做了什么。
         </p>
         <dl className="journey-facts">
-          <dt>记什么</dt><dd>只记「在哪个应用、在做什么」的一句话描述；截图不保存</dd>
+          <dt>记什么</dt><dd>只记「在哪个应用、在做什么」的一句话描述。截图看完就删，只留一张缩略图给你核对</dd>
           <dt>存在哪</dt><dd>全在这台机器上。看图用的是本机的模型，一张图都不出这台电脑</dd>
           <dt>不记什么</dt><dd>密码管理器、银行、隐私窗口——默认就不记，命中时连截图都不拍</dd>
-          <dt>怎么关</dt><dd>菜单栏一直有个开关；删掉某一天会<b>连它抽进知识库的记忆一起删</b></dd>
+          <dt>怎么关</dt><dd>菜单栏一直有个开关。删一段或删一整天，都会<b>连它抽进知识库的记忆一起删</b></dd>
         </dl>
         <div className="row" style={{ gap: 8, marginTop: 14 }}>
           <button className="primary" onClick={() => { void bridge?.start().then(refresh) }}
@@ -334,7 +346,15 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                 </span>
                 <span className={'journey-desc' + (s.desc ? '' : ' muted')}>
                   {s.desc || '还没描述'}
+                  {/* 缩略图是**凭据**：一句没有任何依据的描述，用户没法判断它是不是编的。
+                      默认不占地方，鼠标停在那一行才出现。 */}
+                  {s.has_thumb && (
+                    <img className="journey-thumb" loading="lazy" alt=""
+                         src={journeyThumb(day!.date, s.i)} />
+                  )}
                 </span>
+                <button className="icon-btn sm journey-del" title="删掉这一段（连它抽出来的记忆一起）"
+                        onClick={() => void dropSeg(s)}><i className="bx bx-trash" /></button>
               </div>
             ))}
           </div>
