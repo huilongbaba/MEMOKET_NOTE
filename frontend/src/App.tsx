@@ -78,6 +78,9 @@ import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
 import { dupSuffixes } from './util/dupTitles'
+import { mermaidSvg } from './editor/mermaid'
+import { parseMini } from './util/miniMarkdown'
+import { slidesToHtml } from './util/slideHtml'
 import { isSlides, slidePages } from './util/slidePages'
 import { fmtDate, whenLabel } from './util/time'
 import { notifyIfHidden } from './util/notify'
@@ -1753,6 +1756,26 @@ export default function App() {
     } finally { setLoading(''); abortRef.current = null }
   }
 
+  /** 幻灯片 → PDF。HTML 在这边拼（`util/slideHtml`），打印交给主进程——
+   *  渲染器这边 `window.print()` 打的是**当前这个窗口**，会把编辑器的 DOM
+   *  卷进去；主进程开一个离屏窗口，跟正在编辑的东西完全无关。 */
+  async function exportSlidesPdf() {
+    if (!current) return
+    try {
+      // ```mermaid 先渲成 SVG 内联进去：打印那一步在离屏窗口里跑、而且关掉了 JS。
+      // 渲不出来的就印源码，不拦着导出——一张图渲不出来不该让整份 PDF 导不成。
+      const svgs = new Map<string, string>()
+      for (const b of parseMini(content)) {
+        if (b.kind !== 'pre' || b.lang !== 'mermaid') continue
+        const svg = await mermaidSvg(b.text.trim())
+        if (svg) svgs.set(b.text.trim(), svg)
+      }
+      const where = await window.memoketDesktop?.slidesToPdf?.(
+        slidesToHtml(current.title, content, svgs), displayTitle(current))
+      if (where) toast('存好了：' + where)
+    } catch (e) { toast('导出 PDF 失败：' + friendlyError(e), 'error') }
+  }
+
   /** 智能续写：单篇笔记内的 harness——自动修订（不等人工点接受）+ 自动
    * 续写交替，直到内容相对 spine/beats 已经完整才停。修订直接用跟
    * RevisionPanel 手动接受同一套 applyRevision() 锚点语义应用到本地
@@ -3177,6 +3200,13 @@ export default function App() {
                   { label: '做成幻灯片…', icon: 'bx-slideshow', disabled: !content.trim() || loading === 'slides',
                     hint: !content.trim() ? '正文是空的' : '落成这篇的子笔记，每页带着它的引用编号',
                     onSelect: () => { void runSlides('points') } },
+                  /* 只有这篇真是幻灯片时才给这一项——普通笔记上「导出幻灯片」是句空话。
+                     零新依赖：主进程在离屏窗口里 printToPDF（方案 §落点「导出」那一行）。 */
+                  ...(isSlides(content) && window.memoketDesktop?.slidesToPdf ? [{
+                    label: '导出这份幻灯片 → PDF', icon: 'bx-file-blank',
+                    hint: `${slidePages(content).length} 页，16:9`,
+                    onSelect: () => { void exportSlidesPdf() },
+                  }] : []),
                   { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
                   { kind: 'sep' },
                   { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),

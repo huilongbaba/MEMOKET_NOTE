@@ -100,6 +100,7 @@ function ReportBody({ md }: { md: string }) {
       {parseMini(md).map((b, i) =>
         b.kind === 'h' ? <h4 key={i}>{ink(b.parts)}</h4>
         : b.kind === 'ul' ? <ul key={i}>{b.items.map((it, k) => <li key={k}>{ink(it)}</li>)}</ul>
+        : b.kind === 'pre' ? <pre key={i}>{b.text}</pre>
         : <p key={i}>{ink(b.parts)}</p>)}
     </div>
   )

@@ -69,6 +69,16 @@ async function renderOnce(code: string, id: string): Promise<string | null> {
   }
 }
 
+/** 把一段 mermaid 渲成 SVG 字符串，失败给 null。
+ *
+ *  导出 PDF 用得上：打印那一步在**离屏窗口**里跑、而且关掉了 JS（`javascript: false`），
+ *  所以图必须在这边先渲好、把 SVG 内联进去。走跟编辑器同一条路（含 `autoFixMermaid`
+ *  和那层缓存），不是另写一遍——两条路渲出来的图不一样才是真的坑。 */
+export async function mermaidSvg(code: string): Promise<string | null> {
+  const r = await renderMermaid(code)
+  return r.svg
+}
+
 function renderMermaid(code: string): Promise<RenderResult> {
   const cached = renderCache.get(code)
   if (cached) return cached

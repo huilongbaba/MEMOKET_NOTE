@@ -9,6 +9,10 @@
  * 认的东西刚好是日报会产出的那几样（提示词里规定死的）：`## 小标题`、
  * `- 列表项`、`**粗**`、`` `代码` ``、普通段落。别的一律当纯文本——
  * 宁可少认一种写法，也不要在一份回顾里冒出半截没渲染的标记。
+ *
+ * 后来加了**代码围栏**：幻灯片会带 ```mermaid 图，而不认围栏的话整块会被压成
+ * 一行带反引号的乱码（第 650 轮导出 PDF 实拍，第 7 页就是那样）。围栏里的内容
+ * 原样留着、连换行一起——那正是「不认的东西当纯文本」这条规矩本来的意思。
  */
 
 export type Inline = { t: 'text' | 'b' | 'code'; s: string }
@@ -16,6 +20,8 @@ export type Block =
   | { kind: 'h'; parts: Inline[] }
   | { kind: 'p'; parts: Inline[] }
   | { kind: 'ul'; items: Inline[][] }
+  /** 代码围栏。`lang` 是围栏后面那个词（mermaid / python / 空）。 */
+  | { kind: 'pre'; lang: string; text: string }
 
 const INLINE = /\*\*([^*]+)\*\*|`([^`]+)`/g
 
@@ -36,7 +42,18 @@ export function parseMini(md: string): Block[] {
   let para: string[] = []
   const flush = () => { if (para.length) { out.push({ kind: 'p', parts: parseInline(para.join('')) }); para = [] } }
 
-  for (const raw of (md || '').split('\n')) {
+  const lines = (md || '').split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
+    const fence = /^\s*```(.*)$/.exec(raw)
+    if (fence) {
+      flush()
+      const lang = fence[1].trim().split(/\s+/)[0] ?? ''
+      const buf: string[] = []
+      for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) buf.push(lines[i])
+      out.push({ kind: 'pre', lang, text: buf.join('\n') })
+      continue
+    }
     const line = raw.trimEnd()
     if (!line.trim()) { flush(); continue }
     const h = /^#{1,6}\s+(.*)$/.exec(line)

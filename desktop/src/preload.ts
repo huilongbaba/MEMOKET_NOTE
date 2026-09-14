@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('memoketDesktop', {
   /** 屏幕活动（Daily Journey）。**采集在主进程里**——它要常驻、要在窗口关掉之后
    *  继续、要响应锁屏，这些渲染层都做不到。界面只是这个状态的一个视图：
    *  菜单栏那个图标是另一个（docs/daily-journey-plan.md §8.3）。 */
+  /** 幻灯片 → PDF：主进程在离屏窗口里 printToPDF（零新依赖）。
+   *  返回存到哪；用户取消返回空串。 */
+  slidesToPdf(html: string, name: string): Promise<string> {
+    return ipcRenderer.invoke('slides:pdf', html, name)
+  },
   journey: {
     state(): Promise<{ state: 'off' | 'running' | 'paused' | 'no-permission'; today: number }> {
       return ipcRenderer.invoke('journey:state')

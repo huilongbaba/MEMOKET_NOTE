@@ -38,3 +38,22 @@ describe('日报那一小块 markdown', () => {
     expect(parseMini('')).toEqual([])
   })
 })
+
+describe('代码围栏', () => {
+  it('围栏整块留着，换行不丢——不认它的话 mermaid 图会被压成一行乱码', () => {
+    const b = parseMini('# 标\n\n```mermaid\ngraph TD\nA-->B\n```\n\n后面一段')
+    expect(b.map((x) => x.kind)).toEqual(['h', 'pre', 'p'])
+    expect(b[1].kind === 'pre' && b[1]).toMatchObject({ lang: 'mermaid', text: 'graph TD\nA-->B' })
+  })
+
+  it('围栏里的 - 和 ## 不当列表和标题', () => {
+    const b = parseMini('```\n- 不是列表\n## 不是标题\n```')
+    expect(b).toHaveLength(1)
+    expect(b[0].kind).toBe('pre')
+  })
+
+  it('没闭合的围栏吃到结尾，不炸', () => {
+    const b = parseMini('```python\nprint(1)')
+    expect(b[0].kind === 'pre' && b[0].text).toBe('print(1)')
+  })
+})

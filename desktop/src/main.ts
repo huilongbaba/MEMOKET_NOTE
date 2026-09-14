@@ -266,6 +266,39 @@ ipcMain.handle('pick-directory', async (_e, title: unknown) => {
   const r = await dialog.showOpenDialog({ title: typeof title === 'string' ? title : '选择文件夹', properties: ['openDirectory', 'createDirectory'] })
   return r.canceled ? '' : (r.filePaths[0] || '')
 })
+/** 幻灯片 → PDF（痛点 6 的最后一步）。**零新依赖**：Electron 自己就能
+ *  `printToPDF`，所以要的只是一份排好版的 HTML（前端 `util/slideHtml` 生成）。
+ *
+ *  在一个**离屏窗口**里打，不在当前窗口里打：当前窗口里是编辑器，把它的 DOM
+ *  换掉再换回来，光标、滚动、未保存的改动全要重来一遍。
+ */
+ipcMain.handle('slides:pdf', async (_e, html: unknown, name: unknown) => {
+  if (typeof html !== 'string' || !html) return ''
+  const r = await dialog.showSaveDialog({
+    title: '导出幻灯片',
+    defaultPath: `${typeof name === 'string' && name ? name : '幻灯片'}.pdf`,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  })
+  if (r.canceled || !r.filePath) return ''
+  const off = new BrowserWindow({ show: false, width: 1280, height: 720,
+                                  webPreferences: { javascript: false } })
+  try {
+    await off.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+    // 16:9 一页：跟 slideHtml 里的 @page 尺寸对齐（1280×720 CSS px = 13.33×7.5 英寸）
+    const pdf = await off.webContents.printToPDF({
+      pageSize: { width: 13.333, height: 7.5 }, printBackground: true, margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    })
+    writeFileSync(r.filePath, pdf)
+    remember(`[desktop] 幻灯片导出 ${r.filePath}（${(pdf.length / 1024).toFixed(0)}KB）\n`)
+    return r.filePath
+  } catch (e) {
+    remember(`[desktop] 幻灯片导出失败：${String(e)}\n`)
+    throw e
+  } finally {
+    off.destroy()
+  }
+})
+
 ipcMain.on('set-theme', (_e, theme: unknown) => {
   if (forcedTheme) return
   if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
