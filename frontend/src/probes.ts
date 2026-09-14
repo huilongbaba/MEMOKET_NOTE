@@ -80,6 +80,36 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     }, 3000)
     return
   }
+  // 痛点 12：查完一篇旧笔记回来，光标和滚动位置还在不在原处
+  if (probe === 'return-spot' && notes.length >= 2) {
+    const [a, b] = notes
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    void (async () => {
+      // 每一步都走 window 事件，不用 ctx 里那份闭包：ctx 是 runProbe 那一刻的快照，
+      // 多步切换时里面的 current 早就过时了（第一版这么写，切回来编辑器还停在第二篇）
+      const open = (id: string) => window.dispatchEvent(new CustomEvent('open-note', { detail: id }))
+      open(a.id)
+      await wait(1200)
+      const v = editorViewRef.current
+      if (!v) return
+      const at = Math.floor(v.state.doc.length * 0.7)
+      v.focus()
+      v.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) })
+      await wait(800)
+      const scroller = () => document.querySelector('.note-scroll') as HTMLElement | null
+      const leftScroll = Math.round(scroller()?.scrollTop ?? -1)
+      open(b.id)
+      await wait(1500)
+      open(a.id)
+      await wait(1500)
+      const w = editorViewRef.current
+      if (!w) return
+      void api.clientLog('warn',
+        `return-spot 光标 期望 ${at} / 实际 ${w.state.selection.main.head} · scrollTop 走时 ${leftScroll} / 回来 ${Math.round(scroller()?.scrollTop ?? -1)} · 文档 ${w.state.doc.length}`,
+        '', 'probe')
+    })()
+    return
+  }
   // 标签装不下时右边的 ▾：列出全部标签
   if (probe === 'tabs:list' || probe === 'tabs:list:keys') {
     setTimeout(() => (document.querySelector('.tab-list') as HTMLElement | null)?.click(), 2500)

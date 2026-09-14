@@ -221,6 +221,9 @@ export default function App() {
   const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness'>('')
   // 单篇 harness 正在写哪篇：标签行给那个标签顶上一道 3px 色条（Trilium 工作区色条的位置，第 511 轮）
   const [noteHarnessNoteId, setNoteHarnessNoteId] = useState<string | null>(null)
+  // 每篇看到哪儿了：切走时记下光标和滚动位置，切回来放回去（痛点 12：查完一篇旧笔记回来，
+  // 想不起来自己刚才在写哪一段）。只活在这次会话里——跨重启的「上次看的那篇」是另一回事，已经有了。
+  const spots = useRef(new Map<string, { head: number; top: number }>())
   /** agent 每一轮干了什么，喂给 AgentActivity 可视化。按轮聚合：用户关心的是
    * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
    * 事件流水账看不出所以然。 */
@@ -1209,6 +1212,7 @@ export default function App() {
     // **SSE 流断了之后它就再也找不回来了**——关标签页、后端重启、网络抖一下，
     // 快照留在库里，而 run_id 只存在于那条已经断掉的流里。用户看到的是「我
     // 明明点了智能续写，现在什么都没有」。这个接口是它唯一的入口。
+    pendingSpot.current = n.id
     void api.listPausedRuns()
       .then((runs) => {
         const mine = runs.find((r) => r.note_id === n.id)
@@ -1515,6 +1519,32 @@ export default function App() {
    * title/content with the new note's values. The edits were never sent to
    * the backend and never came back: silent data loss, no error, nothing to
    * undo. Every path that leaves the current note must flush first. */
+  /** 当前这篇看到哪儿了。harness 自己切笔记时也记：那时候的光标是它写到的位置，
+   *  下次回来正好落在上次写到的地方。 */
+  function rememberSpot() {
+    const v = editorViewRef.current
+    const id = currentRef.current?.id
+    if (!v || !id) return
+    const scroller = document.querySelector('.note-scroll') as HTMLElement | null
+    spots.current.set(id, { head: v.state.selection.main.head, top: scroller?.scrollTop ?? 0 })
+  }
+
+  /** 等这一篇的正文真的进了编辑器，再把光标和滚动放回去。
+   *  `open()` 里直接 rAF 太早：那时候 setContent 还没经过 React 渲染、CM 的 doc 还是上一篇的，
+   *  dispatch 的 selection 会被随后到达的新内容顶掉（实测光标回到 0）。 */
+  const pendingSpot = useRef<string | null>(null)
+  useEffect(() => {
+    const id = pendingSpot.current
+    const v = editorViewRef.current
+    if (!id || current?.id !== id || !v || v.state.doc.length !== content.length) return
+    pendingSpot.current = null
+    const spot = spots.current.get(id)
+    if (!spot) return
+    v.dispatch({ selection: { anchor: Math.min(spot.head, v.state.doc.length) } })
+    const scroller = document.querySelector('.note-scroll') as HTMLElement | null
+    if (scroller && spot.top) requestAnimationFrame(() => { scroller.scrollTop = spot.top })
+  }, [current?.id, content])
+
   async function switchTo(n: Note, viaHarness = false) {
     if (current?.id === n.id) return
     await save()
@@ -1526,6 +1556,7 @@ export default function App() {
       if (fresh) n = fresh
     }
     const leaving = current
+    rememberSpot()
     // 自动同步：改过还没同步的那篇，切走时马上同步（不等 2 分钟防抖）
     if (leaving && autoSync && dirtySinceIngest.current === leaving.id && !job) {
       dirtySinceIngest.current = ''
