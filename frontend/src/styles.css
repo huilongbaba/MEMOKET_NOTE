@@ -739,15 +739,29 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .fb-btn:hover:not(:disabled) { background: var(--floating-btn-hover-bg); border-color: transparent; color: var(--fg); box-shadow: 0 2px 6px rgba(0,0,0,var(--shadow-opacity)); }
 .fb-btn:active:not(:disabled) { transform: scale(.97); }
 .fb-btn:disabled { opacity: .5; }
+/* 主次要分出来。原来「续写」「智能续写」「▾」三个连着的实心蓝，视觉上都是
+   「主操作」——三个一样响的按钮抢同一块地方，等于没有主次，而且它们浮在正文
+   右上角、压着第一行要写字的地方（用户实拍反馈：「你这些蓝色的图标这个设计
+   好吗？」，第 618 轮）。
+   现在：**只有一个实心蓝**（续写，最常用、最便宜的那个动作）；智能续写和它的
+   ▾ 降成描边——同样一眼看得见、但不抢。跑起来时照旧变红（running）。 */
 .fb-btn.primary { background: var(--accent); color: var(--accent-fg); }
 .fb-btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
-.fb-btn.primary.running { background: var(--del); }
+.fb-btn.secondary {
+  background: var(--floating-btn-bg); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.fb-btn.secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--floating-btn-bg));
+  border-color: var(--accent); color: var(--accent);
+}
+.fb-btn.primary.running, .fb-btn.secondary.running { background: var(--del); color: var(--accent-fg); border-color: var(--del); }
 .fb-btn.rec { color: var(--del); }
 .fb-caret { font-size: 13px !important; margin-inline-start: -3px; }
 .fb-split { display: inline-flex; }
 .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; padding-inline-end: 9px; }
 .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 5px; margin-inline-start: 1px; }
-.floating-buttons .fb-btn:not(.primary) { padding: 0 9px; }
+.floating-buttons .fb-btn:not(.primary):not(.secondary) { padding: 0 9px; }
 .harness-line { font-size: 12px; margin: 0 0 8px; display: flex; align-items: center; gap: 4px; }
 .title-icon { font-size: 20px; color: var(--muted); margin-inline-end: 6px; flex-shrink: 0; }
 
@@ -885,9 +899,14 @@ input[type=file]:hover { border-color: var(--accent); }
 .memory-card:hover .memory-card-actions { opacity: 1; }
 .memory-card:hover { border-color: var(--accent); }
 
-/* 中栏窄（分屏）时浮动按钮只留图标 */
+/* 浮动按钮的文字什么时候藏起来。
+   **600 定得太狠了**：默认三栏（左 320 + 右 340）中间就是 600 上下，于是除非
+   关掉一侧面板、否则那几个按钮永远只有图标——用户实拍反馈「这些 icon 是什么
+   意思，不太好理解吧」，而它们本来是有字的，只是从没露过面。更糟的是空文档的
+   提示语写着「点右上角『续写』」，指着一个看不见的标签（第 618 轮）。
+   降到 380：那是真的挤不下的宽度（分屏对照的一栏），正常用一定看得见字。 */
 .note-body { container-type: inline-size; }
-@container (max-width: 600px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } }
+@container (max-width: 380px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } }
 
 .harness-del-pill {
   text-decoration: none; font-size: 11px; padding: 0 6px; border-radius: 8px;

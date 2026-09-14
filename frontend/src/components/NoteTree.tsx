@@ -18,6 +18,7 @@ import type { TreeRow } from '../api'
 import { ROOT_ID, isFactId, isVirtualId } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { dupSuffixes } from '../util/dupTitles'
+import { sourceIcon, sourceLabel } from '../util/noteSource'
 import { fmtDate } from '../util/time'
 
 type Props = {
@@ -45,7 +46,7 @@ export type DropWhere = 'before' | 'after' | 'over'
 
 /** 每种节点一个图标（Boxicons）。真笔记：叶子 = note、有子节点 = folder
  *  （notes.ts:140-143 的规则）；知识库那棵虚拟子树按节点种类分。 */
-function iconOf(n: { note_id: string; child_count: number; icon?: string }): string {
+function iconOf(n: { note_id: string; child_count: number; icon?: string; source?: string }): string {
   const id = n.note_id
   if (n.icon) return n.icon              // 用户自己挑的图标优先（Trilium 的 NoteIcon）
   if (id === 'kb') return 'bx-brain'
@@ -64,6 +65,12 @@ function iconOf(n: { note_id: string; child_count: number; icon?: string }): str
   if (id.startsWith('kb:fact:')) return 'bx-bulb'
   if (id.startsWith('kb:facts')) return 'bx-table'          // 「还有 N 条 · 去事实表看」尾巴行
   if (id.startsWith('app:')) return 'bx-cog'
+  // 导进来的 / 机器生成的：来源图标代替默认的 note。文件夹不换——有子节点时
+  // 「这是一层」比「这是哪来的」更要紧（写作计划的父节点就是个普通文件夹）。
+  if (n.child_count === 0) {
+    const from = sourceIcon(n.source)
+    if (from) return from
+  }
   return n.child_count > 0 ? 'bx-folder' : 'bx-note'
 }
 
@@ -255,7 +262,8 @@ export default function NoteTree({
             </span>
             {/* 图标：真笔记 叶子 = 文档 / 有子节点 = 文件夹（notes.ts:140-143）；
                 知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
-            <span className="tree-icon" aria-hidden><i className={'bx ' + iconOf(n)} /></span>
+            <span className="tree-icon" aria-hidden={!sourceLabel(n.source)}
+                  title={sourceLabel(n.source) || undefined}><i className={'bx ' + iconOf(n)} /></span>
             {/* 标题被截断时悬停能看全；**撞名的那几行**把日期直接写在后面，不用逐个悬停。
                 日期是 `.tree-title` 的兄弟而不是儿子：放进去会跟标题一起被省略号切掉，
                 切出来的「09-07 1…」两行长得还是一样，比不标更糟（第 609 轮截图实拍）。

@@ -703,7 +703,7 @@ def update_note_from_source(user_id: str, note_id: str, title: str, content: str
 
 
 def create_note(user_id: str, title: str, content: str,
-                parent_id: str = ROOT_ID) -> dict:
+                parent_id: str = ROOT_ID, *, source: str = "") -> dict:
     """建一篇笔记，**同时把它挂到树上**。
 
     照 Trilium：笔记总是创建在某个父节点下面，没有「建完再决定放哪」这个
@@ -711,12 +711,12 @@ def create_note(user_id: str, title: str, content: str,
     那不是一篇笔记，是一条垃圾数据。
     """
     note = {"id": uuid.uuid4().hex[:12], "user_id": user_id, "title": title,
-            "content": content, "pinned": 0,
+            "content": content, "pinned": 0, "source": source,
             "created_at": _now(), "updated_at": _now()}
     with connect() as c:
         c.execute(
-            "INSERT INTO notes (id,user_id,title,content,pinned,created_at,updated_at) "
-            "VALUES (:id,:user_id,:title,:content,:pinned,:created_at,:updated_at)", note)
+            "INSERT INTO notes (id,user_id,title,content,pinned,source,created_at,updated_at) "
+            "VALUES (:id,:user_id,:title,:content,:pinned,:source,:created_at,:updated_at)", note)
         pos = _next_position(c, user_id, parent_id)
         c.execute("INSERT INTO branches (id,user_id,note_id,parent_note_id,"
                   "position,is_expanded,created_at) VALUES (?,?,?,?,?,0,?)",
@@ -1346,6 +1346,12 @@ def tree(user_id: str) -> list[dict]:
         rows = c.execute(
             "SELECT b.id, b.note_id, b.parent_note_id, b.position, b.is_expanded,"
             "       n.title, n.pinned, n.icon, n.updated_at,"
+            # 这篇是哪来的（导入的 / 写作计划生成的 / 空 = 自己写的）。树上用它挑
+            # 默认图标——**一个字形，不占宽度**。库里混着手写、飞书导入、自动生成的
+            # 分段时，「这行是我写的还是机器来的」是唯一一个会改变你怎么读这行的信息：
+            # 它决定你信不信里面的话、该不该直接改它。`created_at` **不查**——找东西的
+            # 线索是修改时间，创建时间只在信息面板里有意义（docs/sidebar-ia-plan.md §3）。
+            "       n.source,"
             # 正文开头。**树上标题为空或还是占位符时拿它当显示名**——真实
             # 库里 18 篇有 15 篇标题字面就是「未命名」（旧界面建笔记时的
             # 默认值），一列二十个「未命名」的树是没法用的。

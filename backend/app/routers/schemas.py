@@ -109,6 +109,10 @@ class TreeRow(BaseModel):
     ingested_at: str = ""
     pinned: bool = False
     icon: str = ""
+    # 这篇是哪来的：obsidian / notion / feishu / apple / plan（写作计划生成的分段），
+    # 空 = 自己写的。树上按它挑默认图标。`created_at` 不在这儿——见
+    # docs/sidebar-ia-plan.md §3。
+    source: str = ""
     updated_at: str
     child_count: int = 0
     # 这篇笔记一共有几条 branch。>1 就是克隆，树上要标出来——用户得知道

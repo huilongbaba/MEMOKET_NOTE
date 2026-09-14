@@ -39,6 +39,10 @@ export type TreeRow = {
   pinned: boolean
   /** 笔记图标（boxicons 类名，空 = 按文件夹 / 笔记默认） */
   icon?: string
+  /** 这篇是哪来的：obsidian / notion / feishu / apple / plan，空 = 自己写的。
+   *  树上按它挑默认图标（util/noteSource）。`created_at` 不在树行里——见
+   *  docs/sidebar-ia-plan.md §3。 */
+  source: string
   updated_at: string
   child_count: number
   /** 这篇引用了几条事实。树上画角标——一眼看出哪些笔记「有据可依」、

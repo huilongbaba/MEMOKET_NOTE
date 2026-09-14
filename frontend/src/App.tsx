@@ -3112,12 +3112,12 @@ export default function App() {
                 <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
               </button>
               <span className="fb-split">
-                <button className={'fb-btn primary' + (loading === 'note-harness' ? ' running' : '')}
+                <button className={'fb-btn secondary' + (loading === 'note-harness' ? ' running' : '')}
                         onClick={() => runNoteHarness('write')} disabled={loading === 'tap'}
                         title="智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停">
                   <i className={'bx ' + (loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
                 </button>
-                <button className="fb-btn primary fb-caret-btn" title="打磨 / 逐轮我来定"
+                <button className="fb-btn secondary fb-caret-btn" title="打磨 / 逐轮我来定"
                         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
                   <i className="bx bx-chevron-down" />
                 </button>
@@ -3147,6 +3147,9 @@ export default function App() {
                   { label: '导出全部笔记…', icon: 'bx-package', hint: '整库打成 Markdown zip', onSelect: () => window.dispatchEvent(new CustomEvent('export-all')) },
                   { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
                   { kind: 'sep' },
+                  { label: '正文怎么写', icon: 'bx-help-circle',
+                    hint: 'Markdown 语法、```mermaid 画图、[[ 链笔记、@ 引事实',
+                    onSelect: () => setShowShortcuts(true) },
                   { label: focusMode ? '退出专注模式' : '专注模式', icon: 'bx-fullscreen', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },
                   { label: '保存', icon: 'bx-save', shortcut: '⌘S', onSelect: () => void save() },
                 ]} />
@@ -3233,7 +3236,14 @@ export default function App() {
               onMarginClick={() => setPaneFocus({ id: 'memory', n: Date.now() })}
               onSlash={onSlash}
               onStopRun={stopRun}
-              placeholder="开始写…  支持 Markdown 和 ```mermaid 图表。写到一半点右上角「续写」，会先查你的知识库再往下写。"
+              /* 空文档那一刻是**唯一一个用户愿意读提示的时刻**，别拿去讲 Markdown。
+                 原文是「开始写… 支持 Markdown 和 ```mermaid 图表。写到一半点右上角
+                 「续写」…」——三个毛病：讲的是实现细节不是邀请；```mermaid 这种写法
+                 是给程序员看的；而最值钱的东西（`/` 后面挂着八个能力）一个字没提。
+                 还指着「续写」那个标签，而那个标签在默认布局下是藏起来的（第 618 轮）。
+                 Markdown / mermaid 的说明挪进了「更多」菜单——那是「想起来了去查」的
+                 东西，不是「第一次打开」的。 */
+              placeholder="写点什么…　输入 / 唤出 AI：用 AI 写、插图、表格、数据分析…"
               viewRef={editorViewRef}
             />
           </>

@@ -28,6 +28,9 @@ from ..database.retrieval import retrieve as _retrieve
 from .schemas import WritingPlanOut, WritingPlanRunIn, WritingPlanStartIn
 from .deps import current_user, sse_response
 
+# 写作计划建出来的笔记（追踪文档 + 每个分段一篇）在树上标成「机器生成的」。
+PLAN_SOURCE = "plan"
+
 router = APIRouter(prefix="/api/writing-plan", tags=["writing-plan"])
 
 TRACKING_NOTE_TITLE = "📋 写作追踪"
@@ -106,7 +109,11 @@ def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
         if existing:
             store.update_note(user, plan["doc_note_id"], TRACKING_NOTE_TITLE, doc)
             return
-    note = store.create_note(user, TRACKING_NOTE_TITLE, doc, plan["parent_note_id"])
+    # 标成「写作计划生成的」：树上据此给个默认图标。用户库里混着手写和机器生成的
+    # 笔记时，「这行是我写的还是机器来的」决定他信不信里面的话、该不该直接改它
+    # （docs/sidebar-ia-plan.md §3）。source_id 留空，所以不会跟导入去重撞上。
+    note = store.create_note(user, TRACKING_NOTE_TITLE, doc, plan["parent_note_id"],
+                             source=PLAN_SOURCE)
     store.set_plan_doc_note(user, plan["id"], note["id"])
     plan["doc_note_id"] = note["id"]
 
@@ -220,7 +227,8 @@ async def run_plan(body: WritingPlanRunIn, request: Request, user: str = Depends
             note = store.get_note(user, target["note_id"]) if target["note_id"] else None
             is_new_note = note is None
             if is_new_note:
-                note = store.create_note(user, target["title"], "", body.parent_note_id)
+                note = store.create_note(user, target["title"], "", body.parent_note_id,
+                                         source=PLAN_SOURCE)
             if target["status"] != "in_progress" or is_new_note:
                 store.update_section(plan["id"], target["id"], status="in_progress", note_id=note["id"])
             target = {**target, "status": "in_progress", "note_id": note["id"]}
