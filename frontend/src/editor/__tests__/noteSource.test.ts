@@ -25,3 +25,13 @@ describe('树上的来源图标', () => {
     }
   })
 })
+
+describe('这一段新长出来的两种「机器来的」', () => {
+  it('幻灯片和屏幕活动回顾都认得出来', () => {
+    // 它们各自有 notes.icon（用户图标优先），所以树上图标看不出差别——
+    // **但悬停要说得出它是哪来的**，那正是 sourceLabel 的活
+    expect(sourceLabel('slides')).toContain('幻灯片')
+    expect(sourceLabel('journey')).toContain('屏幕活动')
+    expect(sourceIcon('slides')).toBe('bx-slideshow')
+  })
+})
