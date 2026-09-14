@@ -120,3 +120,65 @@ def test_笔记原来就有的图不算这一轮手写的():
     # 没记开跑快照的老路径（别的 harness / 单测）不能因此崩掉
     st2 = _st([]); st2.content = old
     assert charts_from_tools(st2) is not None
+
+
+@pytest.mark.anyio
+async def test_判据打回的那一轮不该触发只修不写():
+    """第 606 轮实拍的死锁：手写 mermaid 的判据落在 `coherence` 上
+    （`pick_dimension` 的兜底——分段模式没有 has_charts 这个维度），
+    而 `coherence` 在 INNER_QUALITY 里 → 下一轮 cleanup_only →
+    `produce()` 直接返回 → 模型根本没机会去调画图工具，而那正是这条判据
+    要求的修法。两轮原地打转、一次分都没打上，`no_progress` 收场。
+    """
+    from app.harness.middleware.repair import Repair
+    from app.harness.types import DimensionScore, Evaluation
+
+    st = _st([])
+    fake = Evaluation(scores={"coherence": DimensionScore(0, "有张手写的图")},
+                      status="continue", weakest="coherence")
+
+    st.ev, st.skip_judge = fake, True
+    [e async for e in Repair().after_judge(st)]
+    assert not st.bag["cleanup_only"], "判据伪造的单维度分数不该决定下一轮写不写"
+
+    st.ev, st.skip_judge = fake, False
+    [e async for e in Repair().after_judge(st)]
+    assert st.bag["cleanup_only"], "打分器真判 coherence 不合格时，只修不写仍然对"
+
+
+def test_挂了图表判据的模式必须带得动画图的工具():
+    """判据点名要调的工具，模式得真的有。
+
+    第 606 轮真跑实拍：两个长文模式只有 ("memory", "skill")，却双双挂着
+    `no_fake_charts` / `charts_from_tools`，而判据原话是「调 render_chart /
+    chart_from_text」。模型手上没有那个工具，只能手写 mermaid → 被拦 →
+    再手写。文件夹三节里有两节的第 1、2、4 轮全烧在这上面。
+    """
+    from app.harness import modes
+    from app.harness.checks import charts as chart_checks
+
+    chart_checks_set = {chart_checks.no_fake_charts, chart_checks.charts_from_tools}
+    for mode in (modes.NOTE, modes.SECTION, modes.EDA, modes.CHART):
+        if chart_checks_set & set(mode.checks):
+            assert "chart" in mode.groups, (
+                f"{mode.key} 挂了图表判据却没有 chart 工具组——"
+                "判据会要求它做一件它做不到的事，每一轮都要求一次")
+
+
+def test_流程图判据点名的工具真的会画流程图():
+    """`chart_from_text` 只会饼 / 柱 / 折线。指着一个做不到的工具，
+    模型只能手写 mermaid，然后被下一条判据拦掉。"""
+    from app.harness.checks import charts as chart_checks
+    from app.harness.tools import registry
+
+    st = _st([])
+    st.content = ("依赖链：容量确认 → 下单 → EVD标准样机 → 样机发出 → 真实使用 → 用户证言。")
+    v = chart_checks.no_fake_charts(st)
+    assert v is not None and "render_chart" in v.message
+    from app.harness import modes
+    import app.harness.tools  # noqa: F401  注册表靠 import 填起来
+
+    assert "render_chart" in registry.names(list(modes.SECTION.groups)), \
+        "判据点名的工具，这个模式得真的发得出去"
+    assert "flow" in (registry.get("render_chart").description), \
+        "chart_from_text 只会饼 / 柱 / 折线，会画流程图的是 render_chart"

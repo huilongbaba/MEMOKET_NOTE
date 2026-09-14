@@ -29,7 +29,11 @@ def no_fake_charts(st: State) -> Verdict | None:
             return Verdict(
                 pick_dimension(st, "has_charts", "chart_validity", "coherence"),
                 f"这条流程是用箭头串在正文里的，不是一张图：{'; '.join(flows)}。"
-                "调 chart_from_text 让它画成 mermaid flowchart，把返回的代码块原样贴进来；"
+                # 点名的工具要真能画流程图。`chart_from_text` 只会饼 / 柱 / 折线，
+                # 画不了 flowchart——指着一个做不到的工具，模型只能手写 mermaid，
+                # 然后被下一条判据拦掉（第 606 轮真跑里来回了三轮）。
+                "调 render_chart（kind=flow，labels 就是这几步，不用给 values），"
+                "把返回的代码块原样贴进来；"
                 "正文里留一句话说明这张图在讲什么就够，不用再把每一步重列一遍。",
             )
         return None

@@ -33,8 +33,19 @@ class Repair:
     after: tuple[str, ...] = ()
 
     async def after_judge(self, st: State) -> AsyncIterator[Event]:
+        # **代码判据打回的那一轮不算数。** 这个模块的整个设计前提是「读完整的
+        # 分数向量」（见模块头：只看最弱那个维度名会来回震荡），而判据命中时
+        # `st.ev` 是伪造的——只有一个维度、分数 0，根本没有向量可读。
+        #
+        # 代价是实拍出来的（第 606 轮，文件夹跑的第三节）：手写 mermaid 的判据
+        # 落在 `coherence` 上（`pick_dimension` 的兜底，分段模式没有 has_charts
+        # 这个维度），`coherence` 又在 INNER_QUALITY 里 → 下一轮 cleanup_only
+        # → `produce()` 直接返回 → **模型根本没机会去调画图工具**，而那正是这条
+        # 判据要求的修法。判据说「调工具画出来」，修复策略说「这一轮不许写」，
+        # 于是两轮原地打转、一次分都没打上，最后 `no_progress` 收场。
         weak = [d for d in INNER_QUALITY
-                if st.ev and (s := st.ev.scores.get(d)) and s.level < 2]
+                if st.ev and not st.skip_judge
+                and (s := st.ev.scores.get(d)) and s.level < 2]
         st.bag["cleanup_only"] = bool(weak)
         if weak:
             yield Event.custom(CUSTOM_POLICY, {

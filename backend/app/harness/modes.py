@@ -421,10 +421,16 @@ CUSTOM_DIMS = (_FOLLOWS_PROMPT, _REPLACES_CLEANLY, _NO_FABRICATION)
 # over from compose_block.MODES during migration. What matters here is the
 # shape: which tools, which dimensions, which checks, how many rounds.
 
+# **两个长文模式都要带 chart 组。** 它们本来只有 ("memory", "skill")，却双双挂着
+# `no_fake_charts` / `charts_from_tools` 两条判据——而那两条的原话是「调
+# chart_column / render_chart / chart_from_text」。**判据要求的修法，模型手上
+# 根本没有那个工具**：它只能手写 mermaid，被拦，再手写。第 606 轮真跑实拍，
+# 文件夹三节里有两节的第 1、2、4 轮全烧在这上面，每轮都是同一条判据。
+# 模型每一轮都想画图这件事本身就是证据：长文该能有图。
 NOTE = Mode(
     key="note",
     label="续写整篇",
-    groups=("memory", "skill"),
+    groups=("memory", "skill", "chart"),
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
@@ -440,7 +446,7 @@ NOTE = Mode(
 SECTION = Mode(
     key="section",
     label="分段写作",
-    groups=("memory", "skill"),
+    groups=("memory", "skill", "chart"),
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, citations_present,
