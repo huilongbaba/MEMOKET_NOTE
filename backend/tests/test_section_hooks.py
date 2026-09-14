@@ -100,6 +100,8 @@ def test_已经写过的段落在拼接前丢掉(monkeypatch):
     _produce(_hooks(), st)
     assert st.content.count(重复段) == 1, "重复的段落没被丢掉"
     assert "新写的一段。" in st.content
+    # 丢掉的那段要告诉客户端（loop 发 dedup）——它已经流进编辑器了（第 562 轮）
+    assert st.bag.get("dedup") == [重复段]
 
 
 def test_元话语在存下来之前被清掉(monkeypatch):
@@ -107,6 +109,8 @@ def test_元话语在存下来之前被清掉(monkeypatch):
     st = _st("")
     _produce(_hooks(), st)
     assert "不足以说明" not in st.content
+    # 同上：删掉的整句要发成 scrub，客户端删同一句
+    assert st.bag.get("scrubbed") == ["现有材料不足以说明这一点。"]
 
 
 # ------------------------------------------------------------ 取材料 ---

@@ -15,7 +15,6 @@ Two things live here that no other harness has:
 
 from __future__ import annotations
 
-import re
 
 import os
 from typing import AsyncIterator
@@ -25,7 +24,7 @@ from .. import agent_loop
 from .. import tools
 from ...util import llm
 from ...editor import outline
-from ..checks import grounding_rules as grounding_check
+from .mirror import _record_dropped, _scrub_and_record
 from ..agent_loop import ToolTrace
 from ...database.retrieval import retrieve as _retrieve
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
@@ -36,36 +35,6 @@ from ..state import State
 # stops being a plan and becomes a copy of the table of contents.
 MAX_OUTLINE_BEATS = 12
 
-
-
-def _scrub_and_record(st, content: str) -> str:
-    """续写收尾的整篇 scrub：删掉的元话语句子记到 st.bag["scrubbed"]，loop 在 text_end 之后发成 `scrub` 事件——
-    修订那一路早就发了，这一路一直没发，客户端本地多一整句、轮末才对齐（第 556 轮真跑差 52 / 102 字）。"""
-    out, removed = grounding_check.scrub_meta_sentences_v(content)
-    if removed:
-        st.bag.setdefault("scrubbed", []).extend(removed)
-    return grounding_check.fix_bold_punct(out)
-
-def _record_dropped(st, streamed: str, kept: str) -> None:
-    """流给客户端的这一轮文字，服务端落进正文前又剥了什么（模型自己写的标题 / 跟已有正文重复的段落 /
-    重写了一遍的小节标题）：按段落（空行切）和行两级找「流里有、留下的里没有」的，记到 st.bag["dedup"]，
-    loop 在 TEXT_MESSAGE_END 之后发成 `dedup` 事件——客户端已经把它们插进编辑器了，得知道删哪些（第 561 轮）。"""
-    def paras(t: str) -> list[str]:
-        return [p.strip() for p in re.split(r"\n\s*\n", t or "") if p.strip()]
-    kept_paras = set(paras(kept))
-    kept_lines = {ln.strip() for ln in (kept or "").split("\n") if ln.strip()}
-    gone: list[str] = []
-    for p in paras(streamed):
-        if p in kept_paras:
-            continue
-        # 整段没了 → 报整段；段还在但少了几行（标题被剥）→ 报那几行
-        lines = [ln.strip() for ln in p.split("\n") if ln.strip()]
-        if not any(ln in kept_lines for ln in lines):
-            gone.append(p)
-        else:
-            gone.extend(ln for ln in lines if ln not in kept_lines)
-    if gone:
-        st.bag.setdefault("dedup", []).extend(gone)
 
 
 class NoteHooks:

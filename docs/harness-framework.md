@@ -185,9 +185,9 @@ backend/app/
     types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition · Dimension
     state.py                 State：一次 run 的全部状态，middleware 的 bag 也在这
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
-    events.py                AG-UI 事件 + 11 个 CUSTOM 名字 + to_sse()
-    hooks/                   三组回调
-      note · section · block
+    events.py                AG-UI 事件 + 12 个 CUSTOM 名字 + to_sse()
+    hooks/                   三组回调 + 客户端镜像用的两个记录函数
+      note · section · block · mirror
     middleware/              13 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
       skills · facts · history · compact · best_of · checks · provenance
       · revise · repeats · replan · repair · runtime · save · _order
@@ -484,7 +484,7 @@ Mode 按需追加的：
 | `revision` | 应用了一条修订（op / anchor / reason / sources） |
 | `dropped` | 一条修订被防线丢了（不是错误：同义重写、锚点歧义、切出破字、动到用户标题、输出被截断） |
 | `scrub` | 服务端在轮内整句删掉的元话语（`sentence` 全量 + `why`）：客户端在本地正文里删同一句。`revision` 的 `anchor` / `text` 也是全量——客户端拿它本地重放，截过就会插半句 / 定位失败（第 375–382 轮真跑抓到的） |
-| `dedup` | 流给客户端之后服务端落进正文前又剥掉的段落 / 行（跟已有正文重复的段、模型自己写的标题、重写了一遍的小节标题；`paragraph` 全量）：客户端删同一段。`hooks/note._record_dropped` 按段和行两级找「流里有、留下的里没有」，loop 在 TEXT_MESSAGE_END 之后发（第 561 轮） |
+| `dedup` | 流给客户端之后服务端落进正文前又剥掉的段落 / 行（跟已有正文重复的段、模型自己写的标题、重写了一遍的小节标题；`paragraph` 全量）：客户端删同一段。`hooks/mirror._record_dropped` 按段和行两级找（单篇和分段两条 harness 都发）「流里有、留下的里没有」，loop 在 TEXT_MESSAGE_END 之后发（第 561 轮） |
 | `check_hit` | 代码判据命中，这一轮不打分 |
 | `evaluate` | 打分：各维度 level + note、status、最弱维度 |
 | `policy` | Runtime 调了下一轮参数、原因 |
@@ -493,7 +493,7 @@ Mode 按需追加的：
 | `warning` | 某个 middleware 失败，run 继续 |
 | `insert_at` | 定向续写：这一轮的正文要插进某一节末尾（`section` · `pos`），在第一个 delta 之前发；没有它就是追加到文末 |
 
-客户端轮内正文怎么跟服务端保持一致（服务端正文是唯一权威，轮末 `round` 事件带全文对齐；轮内靠镜像）：`revision` 按同一套 `locate`（最小跨度那一对）本地重放，应用完 `tidyBlankLines`；`insert_at` 先按服务端 `outline.insert_into` 的规则腾位置（`prepareInsert`：前后各收成一个空行、紧跟插入点的孤立标点去掉），`delta` 逐块拼进去，接缝处 `\n{3,}` 压成 `\n\n`（`editor/streamJoin.ts`；`scripts/check-stream-parity.mts` 拿样本跟 Python 的 `tidy_blank_lines` / `insert_into` 对拍）；`dedup` 删同一段（找不到记 `dedup miss`）；`scrub`（修订中间件和续写收尾两路都发——续写那一路是 `hooks/note._scrub_and_record` 记到 `st.bag["scrubbed"]`、loop 在 TEXT_MESSAGE_END 之后发，第 557 轮补的）照服务端 `scrub_meta_sentences_v` 同一套规则删（`editor/streamJoin.applyScrub`：命中的段按「。！？」切句、删那句、其余每句 strip 后无缝拼回、整篇 trim——只抠那句的话同段的「。 [id]」空格就对不上，第 492 轮真跑每轮差 1 字；`scripts/check-scrub-parity.mts` 拿样本跟 Python 对拍）；TEXT_MESSAGE_END 时客户端对整篇做一遍 `fixBoldPunct`（服务端续写收尾会做 `fix_bold_punct`，`editor/format.fixBoldPunct` 同一条规则、围栏里不动，check-scrub-parity 对拍）；轮末只差尾部空白不记 warn。都从 `liveContentRef` 算、不走 React updater（updater 晚一拍会把 ref 盖回去）。差异定位靠 `harness-sync` client-log：第一处不同的位置和前后 20 字。
+客户端轮内正文怎么跟服务端保持一致（服务端正文是唯一权威，轮末 `round` 事件带全文对齐；轮内靠镜像）：`revision` 按同一套 `locate`（最小跨度那一对）本地重放，应用完 `tidyBlankLines`；`insert_at` 先按服务端 `outline.insert_into` 的规则腾位置（`prepareInsert`：前后各收成一个空行、紧跟插入点的孤立标点去掉），`delta` 逐块拼进去，接缝处 `\n{3,}` 压成 `\n\n`（`editor/streamJoin.ts`；`scripts/check-stream-parity.mts` 拿样本跟 Python 的 `tidy_blank_lines` / `insert_into` 对拍）；`dedup` 删同一段（找不到记 `dedup miss`）；`scrub`（修订中间件和续写收尾两路都发——续写那一路是 `hooks/mirror._scrub_and_record` 记到 `st.bag["scrubbed"]`、loop 在 TEXT_MESSAGE_END 之后发，第 557 轮补的）照服务端 `scrub_meta_sentences_v` 同一套规则删（`editor/streamJoin.applyScrub`：命中的段按「。！？」切句、删那句、其余每句 strip 后无缝拼回、整篇 trim——只抠那句的话同段的「。 [id]」空格就对不上，第 492 轮真跑每轮差 1 字；`scripts/check-scrub-parity.mts` 拿样本跟 Python 对拍）；TEXT_MESSAGE_END 时客户端对整篇做一遍 `fixBoldPunct`（服务端续写收尾会做 `fix_bold_punct`，`editor/format.fixBoldPunct` 同一条规则、围栏里不动，check-scrub-parity 对拍）；轮末只差尾部空白不记 warn。都从 `liveContentRef` 算、不走 React updater（updater 晚一拍会把 ref 盖回去）。差异定位靠 `harness-sync` client-log：第一处不同的位置和前后 20 字。
 
 面板数据的新鲜度（第 402–411 轮）：能从**本地正文**算的就本地算（引用 id、链出的笔记、坏链接——`citedIds` / `noteLinkRanges` / notes 列表），改一个字立刻对；必须由服务端从**落库正文**算的（链入、stale、局部图、历史版本）跟着这篇的 `updated_at`（自动保存落库后变）重查，**不要**跟着本地内容变化立刻重查——那一次拿到的是保存前的旧版，还会再等下一次变化才对。
 

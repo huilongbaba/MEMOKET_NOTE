@@ -17,7 +17,7 @@ from .. import prompts
 from .. import agent_loop
 from .. import tools
 from ...editor import outline
-from ..checks import grounding_rules as grounding_check
+from .mirror import _record_dropped, _scrub_and_record
 from ...util import llm
 from ..agent_loop import ToolTrace
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
@@ -120,9 +120,12 @@ class SectionHooks:
         # guard lived only on the single-note harness once, and the first
         # benchmark of the folder path caught verbatim repetition inside a
         # single sentence.
+        streamed = text
         text = outline.drop_already_written(st.content, text) or text
-        st.content = grounding_check.scrub_meta_sentences(
-            prompts.join_round_text(st.content, text))
+        # 跟单篇 harness 同一套镜像：剥掉的段 / 删掉的元话语句子都记进 st.bag，loop 发 dedup / scrub，
+        # 客户端删同一份——这条路原来两样都没发（第 562 轮）
+        _record_dropped(st, streamed, text)
+        st.content = _scrub_and_record(st, prompts.join_round_text(st.content, text))
 
     # ------------------------------------------------------------ commit --
     async def commit(self, st: State) -> None:
