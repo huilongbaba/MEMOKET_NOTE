@@ -3193,24 +3193,29 @@ export default function App() {
             { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,
               // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats / agentRounds 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
               badge: agentRounds.length || (current ? beats.length : 0) || undefined,
-              body: (
-                <div className="stack">
-                  {current && (
-                    <SkeletonPanel
-                      spine={spine}
-                      beats={beats}
-                      beatCoverage={beatCoverage}
-                      loading={loading === 'skeleton'}
-                      onRun={runSkeleton}
-                    />
-                  )}
-                  {(current || loading === 'note-harness' || harness?.running) && <AgentActivity
-                    rounds={agentRounds}
-                    status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
-                    running={loading === 'note-harness'}
-                  />}
-                </div>
-              ) },
+              // 跑起来之后轮次卡排在骨架前面：骨架是一屏高的静态文本，跑动中用户要看的是
+              // 「这一轮在干什么、判了什么」，原来得滚过整份骨架才看得到（第 579 轮实拍）。
+              // 不跑的时候骨架在前——那会儿规划才是主角。
+              body: (() => {
+                const busy = loading === 'note-harness' || !!harness?.running || !!pausedRun
+                const skeleton = current && (
+                  <SkeletonPanel
+                    key="skeleton"
+                    spine={spine}
+                    beats={beats}
+                    beatCoverage={beatCoverage}
+                    loading={loading === 'skeleton'}
+                    onRun={runSkeleton}
+                  />
+                )
+                const activity = (current || loading === 'note-harness' || harness?.running) && <AgentActivity
+                  key="activity"
+                  rounds={agentRounds}
+                  status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
+                  running={loading === 'note-harness'}
+                />
+                return <div className="stack">{busy ? [activity, skeleton] : [skeleton, activity]}</div>
+              })() },
             { id: 'revisions', title: '修订', icon: 'bx-edit', badge: revisions.length || undefined,
               hasContent: revisions.length > 0, emptyHint: '这篇还没有待处置的修订。',
               body: (
