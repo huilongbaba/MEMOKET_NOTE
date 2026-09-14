@@ -306,3 +306,144 @@ def test_开关接口翻转启用状态(env):
         assert any(s["slug"] == slug and s["enabled"] is False for s in c.get("/api/skills").json())
         assert c.post(f"/api/skills/{slug}/toggle").json()["enabled"] is True
         assert c.post("/api/skills/不存在的/toggle").status_code == 404
+
+
+def test_出厂技能自己要守应用自己的中西文空格规则():
+    """这个产品的「智能排版」会给用户的正文**中西文之间补一个空格**
+    （`editor/format.ts` 的 `cjkSpacing`，中文排版通行做法）。而出厂技能的
+    标题自己违反了它：第 613 轮截图实拍，11 个内置技能的大标题全是
+    「（受brainstorming 启发）」这样——对用户的文字讲究，对自己发的文字不讲究。
+
+    技能的 SKILL.md 是**原样渲染进界面的出厂内容**，不是注释，所以按同一条
+    规则守住。代码、链接、URL 里不动，跟前端那份一致。
+    """
+    import re
+    from pathlib import Path
+
+    cjk = r"[一-鿿぀-ヿ]"
+    bad_pat = re.compile(f"({cjk}[A-Za-z0-9]|[A-Za-z0-9]{cjk})")
+    split = re.compile(r"(`[^`]*`|\[[^\]]*\]\([^)]*\)|https?://\S+)")
+
+    bad = []
+    root = Path(__file__).resolve().parent.parent / "skills"
+    for f in sorted(root.rglob("SKILL.md")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            plain = "".join("" if k % 2 else p for k, p in enumerate(split.split(line)))
+            for m in bad_pat.finditer(plain):
+                bad.append(f"{f.parent.name}:{i}: …{plain[max(0, m.start() - 16):m.end() + 16]}…")
+    assert not bad, "出厂技能里中西文之间少了空格：\n" + "\n".join(bad)
+
+
+def test_出厂技能的修正能到达已经装过的用户_但改过的不碰(tmp_path, monkeypatch):
+    """播种一直是「目录已经在就跳过」——为的是别覆盖用户改过的技能，这是对的。
+    代价是**出厂内容的修正永远到不了已经装过的用户**：第 613 轮把 11 个内置技能
+    标题里缺的中西文空格补好了，界面上一个字都没变。
+
+    所以记下发出去那一版的 sha：一样就说明用户没动过，换成新的；不一样就是
+    他改过，一个字都不碰。老库里没记过 sha 的一律当成「可能动过」。
+    """
+    from app.database import store
+    from app.harness import skills as sk
+
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    monkeypatch.setattr(sk, "skills_root", lambda user: tmp_path / "data" / user / "skills")
+    shipped = tmp_path / "builtin"
+    (shipped / "demo").mkdir(parents=True)
+    (shipped / "demo" / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: d\n---\n\n# 标题（受demo 启发）\n正文。\n", encoding="utf-8")
+    (shipped / "mine").mkdir()
+    (shipped / "mine" / "SKILL.md").write_text(
+        "---\nname: mine\ndescription: d\n---\n\n# 我的\n正文。\n", encoding="utf-8")
+    monkeypatch.setattr(sk, "BUILTIN_ROOT", shipped)
+
+    assert sk.seed("u") == 2
+    here = sk.skills_root("u")
+    mine = here / "mine" / "SKILL.md"
+    mine.write_text(mine.read_text(encoding="utf-8") + "\n用户自己加的一句。\n", encoding="utf-8")
+
+    # 出厂那份改了（补空格）
+    fixed = "---\nname: demo\ndescription: d\n---\n\n# 标题（受 demo 启发）\n正文。\n"
+    (shipped / "demo" / "SKILL.md").write_text(fixed, encoding="utf-8")
+    (shipped / "mine" / "SKILL.md").write_text(
+        "---\nname: mine\ndescription: d\n---\n\n# 我的（改过的出厂版）\n正文。\n", encoding="utf-8")
+
+    assert sk.seed("u") == 0, "不是新增，是就地更新"
+    assert (here / "demo" / "SKILL.md").read_text(encoding="utf-8") == fixed, \
+        "用户没动过的那份要跟着升级走"
+    assert "用户自己加的一句。" in mine.read_text(encoding="utf-8"), \
+        "用户改过的一个字都不许碰"
+
+
+def test_老库没记过sha_跟出厂一字不差就补上(tmp_path, monkeypatch):
+    """机制得能自愈：这一版之前播种的用户 `seeded_sha` 是空的，一次都不会被
+    升级。磁盘上跟出厂那份一字不差就说明他没动过，把 sha 补上——下一次出厂
+    内容改了就送得到他手上。不一样的一律不猜，保持原样。"""
+    from app.database import store
+    from app.harness import skills as sk
+
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    monkeypatch.setattr(sk, "skills_root", lambda user: tmp_path / "data" / user / "skills")
+    shipped = tmp_path / "builtin"
+    (shipped / "demo").mkdir(parents=True)
+    body = "---\nname: demo\ndescription: d\n---\n\n# 出厂\n正文。\n"
+    (shipped / "demo" / "SKILL.md").write_text(body, encoding="utf-8")
+    monkeypatch.setattr(sk, "BUILTIN_ROOT", shipped)
+
+    sk.seed("u")
+    store.set_skill_config("u", "demo", seeded_sha="")      # 装成老库
+    sk.seed("u")
+    assert store.skill_configs("u")["demo"]["seeded_sha"] == store.content_sha(body)
+
+    # 这一轮之后出厂内容再改，就送得到了
+    nxt = body.replace("出厂", "出厂（改过）")
+    (shipped / "demo" / "SKILL.md").write_text(nxt, encoding="utf-8")
+    sk.seed("u")
+    assert (sk.skills_root("u") / "demo" / "SKILL.md").read_text(encoding="utf-8") == nxt
+
+
+def test_一次性旧版清单让这次的修正送得到老用户(tmp_path, monkeypatch):
+    """`seeded_sha` 是这一轮才加的列，之前播种的用户那一栏是空的——不认旧 sha
+    的话，这一轮修的 11 个技能标题只对新装的用户生效。清单只为这一次跨越存在，
+    跨过去之后每次播种都会记下当时的 sha，不该再往里加东西。"""
+    from app.database import store
+    from app.harness import skills as sk
+
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    monkeypatch.setattr(sk, "skills_root", lambda user: tmp_path / "data" / user / "skills")
+    shipped = tmp_path / "builtin"
+    (shipped / "demo").mkdir(parents=True)
+    old = "---\nname: demo\ndescription: d\n---\n\n# 标题（受demo 启发）\n正文。\n"
+    new = old.replace("受demo", "受 demo")
+    (shipped / "demo" / "SKILL.md").write_text(old, encoding="utf-8")
+    monkeypatch.setattr(sk, "BUILTIN_ROOT", shipped)
+
+    sk.seed("u")
+    store.set_skill_config("u", "demo", seeded_sha="")          # 装成第 613 轮之前的老库
+    (shipped / "demo" / "SKILL.md").write_text(new, encoding="utf-8")
+    monkeypatch.setattr(sk, "_PRE_SHA_LEDGER", {"demo": store.content_sha(old)})
+
+    sk.seed("u")
+    assert (sk.skills_root("u") / "demo" / "SKILL.md").read_text(encoding="utf-8") == new
+    assert store.skill_configs("u")["demo"]["seeded_sha"] == store.content_sha(new)
+
+
+def test_旧版清单认不出来的一律不碰(tmp_path, monkeypatch):
+    from app.database import store
+    from app.harness import skills as sk
+
+    monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
+    monkeypatch.setattr(sk, "skills_root", lambda user: tmp_path / "data" / user / "skills")
+    shipped = tmp_path / "builtin"
+    (shipped / "demo").mkdir(parents=True)
+    (shipped / "demo" / "SKILL.md").write_text("---\nname: demo\ndescription: d\n---\n\n# 甲\n", encoding="utf-8")
+    monkeypatch.setattr(sk, "BUILTIN_ROOT", shipped)
+    monkeypatch.setattr(sk, "_PRE_SHA_LEDGER", {})
+
+    sk.seed("u")
+    here = sk.skills_root("u") / "demo" / "SKILL.md"
+    here.write_text("---\nname: demo\ndescription: d\n---\n\n# 我改过的\n", encoding="utf-8")
+    store.set_skill_config("u", "demo", seeded_sha="")          # 老库 + 用户改过
+    (shipped / "demo" / "SKILL.md").write_text("---\nname: demo\ndescription: d\n---\n\n# 乙\n", encoding="utf-8")
+
+    sk.seed("u")
+    assert "我改过的" in here.read_text(encoding="utf-8")

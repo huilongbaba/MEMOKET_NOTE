@@ -309,6 +309,15 @@ _ADDED_COLUMNS = (
     # skill_config 是这一版新建的，但真实库里已经跑过一轮，
     # CREATE TABLE IF NOT EXISTS 不会给它补上后加的列。
     ("skill_config", "idx", "INTEGER NOT NULL DEFAULT 0"),
+    # 出厂技能**发出去的时候**是哪一版（SKILL.md 的 content_sha）。
+    #
+    # 播种一直是「目录已经在就跳过」——为的是别把用户改过的技能覆盖掉，这是对的。
+    # 但代价是**出厂内容的修正永远到不了已经装过的用户**：第 613 轮把 11 个内置技能
+    # 标题里缺的中西文空格补好了，界面上一个字都没变，因为它们早就播种进用户目录了。
+    # 记下发出去那一版的 sha，升级时就能分清两件事——磁盘上还是我们发的那份（放心
+    # 换成新的）还是用户动过（一个字都不碰）。跟 Obsidian 导回「对方改过就跳过」
+    # 同一条路子。空 = 老库里播种时还没记，一律当成「用户可能动过」，不覆盖。
+    ("skill_config", "seeded_sha", "TEXT NOT NULL DEFAULT ''"),
     # 这篇笔记什么时候被摄入进知识库的。空 = 没摄入过。树上据此标 ⇡，
     # 一眼看出哪些笔记「有据可依」、哪些还只是草稿。
     ("notes", "ingested_at", "TEXT NOT NULL DEFAULT ''"),
@@ -1934,7 +1943,7 @@ def skill_configs(user_id: str) -> dict[str, dict]:
     """
     with connect() as conn:
         rows = conn.execute(
-            "SELECT slug, enabled, scopes, sandbox, source, idx FROM skill_config "
+            "SELECT slug, enabled, scopes, sandbox, source, idx, seeded_sha FROM skill_config "
             "WHERE user_id = ?", (user_id,)).fetchall()
     return {
         r["slug"]: {
@@ -1943,6 +1952,7 @@ def skill_configs(user_id: str) -> dict[str, dict]:
             "sandbox": r["sandbox"],
             "source": r["source"],
             "idx": r["idx"],
+            "seeded_sha": r["seeded_sha"],
         }
         for r in rows
     }
@@ -1950,7 +1960,8 @@ def skill_configs(user_id: str) -> dict[str, dict]:
 
 def set_skill_config(user_id: str, slug: str, *, enabled: bool | None = None,
                      scopes: list[str] | None = None, sandbox: str | None = None,
-                     source: str | None = None, idx: int | None = None) -> None:
+                     source: str | None = None, idx: int | None = None,
+                     seeded_sha: str | None = None) -> None:
     """Upsert one skill's configuration; unspecified fields keep their value.
 
     First-insert defaults are deliberately conservative: ``sandbox='none'``
@@ -1963,6 +1974,7 @@ def set_skill_config(user_id: str, slug: str, *, enabled: bool | None = None,
                      (user_id, slug))
         for column, value in (("enabled", None if enabled is None else int(enabled)),
                               ("scopes", None if scopes is None else ",".join(scopes)),
+                              ("seeded_sha", seeded_sha),
                               ("sandbox", sandbox),
                               ("source", source),
                               ("idx", idx)):

@@ -261,6 +261,27 @@ def read_reference(user: str, slug: str, relative: str) -> str | None:
 # app/harness/skills.py → app/harness → app → backend
 BUILTIN_ROOT = Path(__file__).resolve().parents[2] / "skills"
 
+# **一次性**的旧版清单。`seeded_sha` 是第 613 轮才加的列，在那之前播种的用户
+# 那一栏是空的，所以「磁盘上还是我们发的那份吗」这个问题对他们答不出来——
+# 而那一轮修的正是 11 个内置技能标题里缺的中西文空格，不认这批旧 sha 的话，
+# 修正就只对新装的用户生效。
+#
+# 这张表只为这一次跨越存在：跨过去之后每次播种都会记下当时发出去的 sha，
+# 机制自己接得上，**不要再往里加东西**——要再改出厂内容，直接改文件就行。
+_PRE_SHA_LEDGER: dict[str, str] = {
+    "brainstorming-confirm-scope": "7ef79abdfb5f62db",
+    "discernment-nudge-more-sections-restraint": "813bcbd419a5d74c",
+    "discernment-nudge-verify-triage": "d56029c843e38cad",
+    "doc-coauthoring-anticipate-questions": "ccb25775afe001cd",
+    "doc-coauthoring-sections": "174314833a7fd049",
+    "llm-writing-avoid-defaults": "033d49aaa8dfa007",
+    "source-check-edit-evidence": "3aac0abf6f821ec8",
+    "source-check-top-edit-rewrite": "4ed3915164ff217a",
+    "story-memory-term-consistency": "e253784e01bc79d3",
+    "story-planning-expand-consistency": "32f0e500f2df2929",
+    "top-edit-structural-patterns": "f59b9ba4dd10de1f",
+}
+
 
 def seed(user: str) -> int:
     """Install the built-in skills into this user's directory. Returns how many.
@@ -273,23 +294,52 @@ def seed(user: str) -> int:
 
     Incremental: a directory that already exists is left alone, so a user's
     edits survive an upgrade and a new built-in reaches existing users.
+
+    **除非那份还是我们发出去的原样。** 只跳过不更新的代价是出厂内容的修正
+    永远到不了已经装过的用户：第 613 轮把 11 个内置技能标题里缺的中西文空格
+    补好了，界面上一个字都没变——它们早就播种进用户目录了。所以播种时记下
+    发出去那一版的 sha（`skill_config.seeded_sha`），升级时拿它跟磁盘上的
+    SKILL.md 比：一样就说明用户没动过，换成新的；不一样就是他改过，一个字
+    都不碰。跟 Obsidian 导回「对方改过就跳过」同一条路子。老库里没记过 sha
+    的一律当成「可能动过」。
     """
     from ..database import store
 
     root = skills_root(user)
     root.mkdir(parents=True, exist_ok=True)
+    configs = store.skill_configs(user)
     added = 0
     for source in sorted(BUILTIN_ROOT.iterdir()) if BUILTIN_ROOT.is_dir() else []:
         md = source / "SKILL.md"
         if not source.is_dir() or not md.is_file():
             continue
+        shipped = md.read_text(encoding="utf-8")
+        sha = store.content_sha(shipped)
         target = root / source.name
         if target.exists():
+            here = target / "SKILL.md"
+            if not here.is_file():
+                continue
+            seeded = (configs.get(source.name) or {}).get("seeded_sha") or ""
+            here_sha = store.content_sha(here.read_text(encoding="utf-8"))
+            if not seeded:
+                # 老库：播种那会儿还没记 sha。**跟出厂那份（这一版或上一版）
+                # 一字不差**就说明用户没动过——把 sha 补上，顺带把上一版的换成
+                # 新的。机制从这一刻起自愈。对不上的一律不猜，保持原样。
+                if here_sha == sha:
+                    store.set_skill_config(user, source.name, seeded_sha=sha)
+                elif here_sha == _PRE_SHA_LEDGER.get(source.name):
+                    here.write_text(shipped, encoding="utf-8")
+                    store.set_skill_config(user, source.name, seeded_sha=sha)
+                continue
+            if here_sha == seeded and seeded != sha:
+                here.write_text(shipped, encoding="utf-8")
+                store.set_skill_config(user, source.name, seeded_sha=sha)
             continue
         shutil.copytree(source, target)
         store.set_skill_config(user, source.name, enabled=True,
                                scopes=BUILTIN_SCOPES.get(source.name, []),
-                               sandbox="none", source="builtin")
+                               sandbox="none", source="builtin", seeded_sha=sha)
         added += 1
     return added
 
