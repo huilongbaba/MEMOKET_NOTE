@@ -45,7 +45,17 @@ def extract_values(text: str) -> dict:
 
 
 def _terms(text: str) -> set[str]:
-    out = {w.lower() for w in _EN.findall(text) if len(w) >= 2}
+    # 中文那边一直在剔虚词（`_STOP`），英文这边只按长度 ≥2 收——于是
+    # `is` `the` `in` `us` 全算实词。实拍（第 614 轮）：
+    #   「The German friend app tester is a US MBA student studying in Chicago Booth.」
+    #   「The Chicago Booth app tester is supportive.」
+    # 共有词 app / booth / chicago / **is** / tester / **the**，一半不带意思，
+    # 于是被提议「合成一条」——一条说他是谁、一条说他支持，合了就丢信息。
+    # 用召回那边同一份词表（`kb/search._EN_STOP`），别再各写各的。
+    from .search import _EN_STOP
+
+    out = {w.lower() for w in _EN.findall(text)
+           if len(w) >= 2 and w.lower() not in _EN_STOP}
     cjk = "".join(_CJK.findall(text))
     for i in range(len(cjk) - 1):
         g = cjk[i:i + 2]
@@ -197,6 +207,21 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> lis
     return uniq
 
 
+# 双向重合的下限。`overlap` 用 min 归一，短句被长句「包住」时会虚高——
+# 「Speaker A's cohort group is 100 people.」和「Speaker C says there are Google
+# people in there.」min 归一有 0.5，可它们只是共用了主语。
+#
+# 0.55 是量出来的（第 614 轮，真实库 work / project / learning / personal 四个
+# 主题 800 条事实两两比）：双向重合 0.25~0.50 那一大段（约 700 对）抽查**全是**
+# 「同一个主语的不同陈述」；0.57 往上才开始出现真重复（「Colin's father dreams
+# of his wife coming home to his garden.」vs「Colin's father dreams of his wife.」），
+# 0.7 往上抽查全是真的。原来的 0.35 把那一整段都放行了。
+#
+# 代价是会漏掉少数真重复（0.5 那档里有一对是真的）。这个取舍是有意的：
+# 这里**只提议**，漏一条提议没什么，提错一条要用户来挡。
+MIN_TWO_WAY = 0.55
+
+
 def _merge_candidate(related: list[tuple[float, dict]], *, min_pair: float = 0.5) -> dict | None:
     """两条记录词面重合 ≥ min_pair 且不是同一条 → 合并候选。只报最像的一对，早的在前。
     去重是写作者的活，不是抽取器的（docs/agent-native-editor.md §3.3.1）——这里只提议。"""
@@ -214,7 +239,7 @@ def _merge_candidate(related: list[tuple[float, dict]], *, min_pair: float = 0.5
                 # 短句的 min-归一化容易虚高：还要求双向都过半
                 if s >= min_pair:
                     ta_, tb_ = _terms(ta), _terms(tb)
-                    if len(ta_ & tb_) / max(len(ta_), len(tb_)) < 0.35:
+                    if len(ta_ & tb_) / max(len(ta_), len(tb_)) < MIN_TWO_WAY:
                         continue
             if s >= min_pair and (best is None or s > best[0]):
                 best = (s, a, b)

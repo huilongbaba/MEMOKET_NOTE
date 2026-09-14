@@ -167,3 +167,32 @@ def test_模型改写的关系说明有长度上限(tmp_path, monkeypatch):
         r = c.post("/api/memory/relations", json={"passage": "电池容量定在 420mAh。"}).json()
     says = [x["say"] for x in r["relations"]]
     assert says and all(len(s) <= memory_router.RELATION_SAY_MAX for s in says)
+
+
+def test_同一个主语的不同陈述不该被提议合并():
+    """第 614 轮截图实拍，右栏给出的合并建议是：
+
+        「The German friend app tester is a US MBA student studying in Chicago Booth.」
+        「The Chicago Booth app tester is supportive.」
+
+    一条说他是谁、一条说他支持——合了就丢信息。共有词是
+    app / booth / chicago / **is** / tester / **the**：中文那边一直在剔虚词，
+    英文这边只按长度收，一半共有词不带意思。而且 `overlap` 用 min 归一，短句
+    被长句包住时会虚高，原来 0.35 的双向下限把这一整段都放行了。
+    """
+    from app.database.kb.relations import _merge_candidate
+
+    def pair(x, y):
+        return _merge_candidate([(1.0, {"id": "a", "text": x, "date": "2026-03-10"}),
+                                 (1.0, {"id": "b", "text": y, "date": "2026-03-11"})])
+
+    assert pair("The German friend app tester is a US MBA student currently studying in Chicago Booth.",
+                "The Chicago Booth app tester is supportive.") is None
+    assert pair("Speaker A's cohort group is 100 people.",
+                "Speaker C says there are Google people in there.") is None
+
+    # 真重复照旧认得出来：同一句话，一条带说话人前缀 / 一条更长一点
+    assert pair("Colin's father dreams of his wife coming home to his garden.",
+                "Colin's father dreams of his wife.")
+    assert pair("Speaker A 说严亚总是我合作的非常好的ODI的。",
+                "严亚总是我合作的非常好的ODI的")

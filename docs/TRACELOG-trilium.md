@@ -4083,3 +4083,16 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 还差一步：这一列是这一轮才加的，之前播种的用户那栏是空的，答不出「还是我们发的那份吗」。所以补了两条：① 磁盘上跟出厂那份一字不差 → 把 sha 记上（机制自愈）；② 一张**一次性**的旧版 sha 清单（从 git HEAD 算出来的 11 条），认出来就换成新的。清单只为这一次跨越存在，跨过去之后不该再往里加东西。
 - 在真实 dev 库上验过：`seed('terrence')` 之后 11 份全换成了新标题、sha 也记上了，截图确认界面变了。
 - 后端 1003、前端 143 + 20 check 全过。
+
+## [636] 第 614 轮：右栏提议把两条不同的事实合成一条（2026-09-14）
+
+- 截图时右栏正好弹出一张合并卡：「知识库里 2026-03-10 有两条说的像是同一件事，合成一条？」，两条是
+  - `The German friend app tester is a US MBA student currently studying in Chicago Booth.`
+  - `The Chicago Booth app tester is supportive.`
+  一条说他是谁、一条说他支持——**合了就丢信息**。
+- 两处根因：
+  1. **英文没有虚词表。** 中文那边一直在剔（`_STOP`），英文只按长度 ≥2 收，于是共有词是 `app / booth / chicago / is / tester / the`，一半不带意思。召回那边第 521–529 轮就加过 `_EN_STOP`，这个模块没用上——现在两边共用同一份。
+  2. **双向下限太低。** `overlap` 用 min 归一，短句被长句「包住」时虚高（这一对 0.857）。代码里本来就知道（注释：「短句的 min-归一化容易虚高」）并加了 0.35 的双向下限，但 0.35 太松。
+- **量出来的阈值**：真实库 work / project / learning / personal 四个主题 800 条事实两两比。双向重合 0.25~0.50 那一大段（约 700 对）抽查**全是**「同一个主语的不同陈述」（「Speaker A's cohort group is 100 people.」vs「Speaker C says there are Google people in there.」）；0.57 往上才开始出现真重复（「Colin's father dreams of his wife coming home to his garden.」vs「…dreams of his wife.」），0.7 往上抽查全是真的。下限 0.35 → **0.55**。
+- 取舍写清楚了：会漏掉少数真重复（0.5 那档里有一对是真的）。这里**只提议**——漏一条提议没什么，提错一条要用户来挡。
+- 后端 1003、前端 143 + 20 check 全过。
