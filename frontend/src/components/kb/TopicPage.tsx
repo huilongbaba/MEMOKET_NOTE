@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { entityIcon } from '../../util/entityIcon'
 import { isSpeakerTag } from '../../util/kbNoise'
 
 import { kbTopic, type KbTopicPage } from '../../api'
@@ -51,7 +52,7 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
       )}
       {p.entities.length > 0 && (
         <KbSection title="常一起出现的实体">
-          <div className="chip-wrap">{p.entities.filter((e) => !isSpeakerTag(e.name)).map((e) => <Chip key={e.code} icon="bx-user" count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}</div>
+          <div className="chip-wrap">{p.entities.filter((e) => !isSpeakerTag(e.name)).map((e) => <Chip key={e.code} icon={entityIcon(e.name)} count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}</div>
         </KbSection>
       )}
       <KbSection title="事实" extra={<span className="muted" style={{ fontSize: 12 }}>含子主题 · 新的在前</span>}>

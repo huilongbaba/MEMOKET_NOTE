@@ -1,6 +1,7 @@
 /** 三个分类页：主题 / 实体 / 最近摄入。数据就是树上那些行——不再请求一次
  *  （实体多的库树里不带实体，实体页自己取一次）。 */
 import { useEffect, useMemo, useState } from 'react'
+import { entityIcon } from '../../util/entityIcon'
 
 import { kbTreeChildren, type TreeRow } from '../../api'
 import { Chip, KbSection, type KbActions } from './KbBits'
@@ -90,7 +91,7 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
         </label>
       )}
       <div className="chip-wrap">
-        {list.map((e) => <Chip key={e.id} icon="bx-user" count={e.fact_count} onClick={() => actions.onOpen(e.note_id)} title={e.preview || undefined}>{e.title}</Chip>)}
+        {list.map((e) => <Chip key={e.id} icon={entityIcon(e.title)} count={e.fact_count} onClick={() => actions.onOpen(e.note_id)} title={e.preview || undefined}>{e.title}</Chip>)}
       </div>
     </div>
   )

@@ -3,6 +3,7 @@
  * 数量、细 mark、圆角端、hover 有值、文字用文字色。
  */
 import { isSpeakerTag } from '../../util/kbNoise'
+import { entityIcon } from '../../util/entityIcon'
 import { clickable } from '../../util/clickable'
 import { useState, type ReactNode } from 'react'
 
@@ -114,7 +115,7 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
         <div className="fact-tags">
           {f.topics.map((t) => <Chip key={t} icon="bx-hash" onClick={() => actions.onOpen('kb:topic:' + t)}>{t}</Chip>)}
           {/* 说话人标签（speaker_c）不是实体，每张卡都挂一个只是噪声（第 211 轮实拍会议页） */}
-          {f.entities.map((e, i) => [e, f.entity_names?.[i] ?? e] as const).filter(([, n]) => !isSpeakerTag(n)).map(([e, n]) => <Chip key={e} icon="bx-user" onClick={() => actions.onOpen('kb:entity:' + e)}>{n}</Chip>)}
+          {f.entities.map((e, i) => [e, f.entity_names?.[i] ?? e] as const).filter(([, n]) => !isSpeakerTag(n)).map(([e, n]) => <Chip key={e} icon={entityIcon(n)} onClick={() => actions.onOpen('kb:entity:' + e)}>{n}</Chip>)}
         </div>
       )}
       <div className="fact-actions">

@@ -1,5 +1,6 @@
 /** 知识库首页：搜索在第一屏，然后是数字、近 12 个月、主题 Top、实体 Top、最近摄入。 */
 import { useEffect, useState } from 'react'
+import { entityIcon } from '../../util/entityIcon'
 
 import { kbDashboard, recall, type Fact, type FactDetail, type KbDashboard as Data } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, StatTile, type KbActions } from './KbBits'
@@ -106,7 +107,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             <KbSection title="实体" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>全部 →</a>}>
               <div className="chip-wrap">
                 {data.top_entities.filter((t) => !isSpeakerTag(t.name)).map((t) => (
-                  <Chip key={t.code} icon="bx-user" count={t.facts} onClick={() => actions.onOpen('kb:entity:' + t.code)}>{t.name}</Chip>
+                  <Chip key={t.code} icon={entityIcon(t.name)} count={t.facts} onClick={() => actions.onOpen('kb:entity:' + t.code)}>{t.name}</Chip>
                 ))}
               </div>
             </KbSection>

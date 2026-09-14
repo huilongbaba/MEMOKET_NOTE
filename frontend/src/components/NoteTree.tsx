@@ -18,6 +18,7 @@ import type { TreeRow } from '../api'
 import { ROOT_ID, isFactId, isVirtualId } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { dupSuffixes } from '../util/dupTitles'
+import { NEUTRAL_ENTITY_ICON } from '../util/entityIcon'
 import { sourceIcon, sourceLabel } from '../util/noteSource'
 import { fmtDate } from '../util/time'
 
@@ -58,7 +59,9 @@ function iconOf(n: { note_id: string; child_count: number; icon?: string; source
   if (id === 'kb:digest') return 'bx-history'
   if (id.startsWith('kb:topic:')) return 'bx-hash'
   if (id.startsWith('kb:etype:')) return 'bx-category'
-  if (id.startsWith('kb:entity:')) return 'bx-user'
+  // 树上那一层实体同理：**不知道类型就别用人形图标**（见 util/entityIcon）。
+  // 这里手上只有 id 没有名字，所以一律中性——名字在别处才有。
+  if (id.startsWith('kb:entity:')) return NEUTRAL_ENTITY_ICON
   if (id.startsWith('kb:month:')) return 'bx-calendar'
   if (id.startsWith('kb:unit:')) return 'bx-conversation'
   if (id.startsWith('kb:material:')) return 'bx-conversation'   // 多段材料：跟会议同一个图标，不是文件夹
