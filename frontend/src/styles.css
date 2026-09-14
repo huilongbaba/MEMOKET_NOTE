@@ -957,7 +957,16 @@ input[type=file]:hover { border-color: var(--accent); }
    意思，不太好理解吧」，而它们本来是有字的，只是从没露过面。更糟的是空文档的
    提示语写着「点右上角『续写』」，指着一个看不见的标签（第 618 轮）。
    降到 380：那是真的挤不下的宽度（分屏对照的一栏），正常用一定看得见字。 */
+/* 正文栏是容器查询的锚点。**下面所有 `@container` 的阈值都要对着这个范围挑**：
+   桌面壳的 `minWidth: 900`（desktop/src/main.ts），减去启动栏 80，再减去两侧——
+   `layoutPanes` 保证中栏不低于 520 时才收右栏，而左栏收起时右栏不收，
+   于是**正文栏在桌面版的下限是 900 − 80 − 340 = 480px**。
+   比 480 还小的阈值在桌面版一次都不会触发（只在浏览器里打开时才够得着）。
+   第 664 轮量的——在这之前我按「感觉」写过 380，那几条规则桌面版根本走不到。 */
 .note-body { container-type: inline-size; }
+/* 这一条**故意留在 480 以下**：第 620 轮它原来是 600，结果默认三栏下那几个字
+   从没露过面（用户实拍）。桌面版走不到 380 正是想要的效果——按钮标签一直有；
+   只有在浏览器里把窗口拖到很窄时才收起来。**这是有意的，不是没对过阈值。** */
 @container (max-width: 380px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } }
 
 .harness-del-pill {
@@ -1135,7 +1144,7 @@ kbd {
 .journey-facts { display: grid; grid-template-columns: 5.5em 1fr; gap: 6px 12px; margin: 4px 0 0; font-size: 13px; }
 .journey-facts dt { color: var(--muted); }
 .journey-facts dd { margin: 0; }
-@container (max-width: 380px) { .journey-facts { grid-template-columns: 1fr; gap: 2px; }
+@container (max-width: 480px) { .journey-facts { grid-template-columns: 1fr; gap: 2px; }
                                 .journey-facts dd { margin-bottom: 6px; } }
 
 .journey-state { margin: -10px 0 0; font-size: 13px; }
@@ -1160,7 +1169,7 @@ kbd {
 .journey-app-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .journey-desc { min-width: 0; }
 /* 窄栏：描述整句换行到下一行，别把它挤成一列字（时间/应用仍在一行上） */
-@container (max-width: 380px) {
+@container (max-width: 480px) {
   .journey-row { grid-template-columns: 6.8em 1fr 22px; }
   .journey-desc { grid-column: 1 / -1; }
   .journey-del { grid-row: 1; grid-column: 3; }
