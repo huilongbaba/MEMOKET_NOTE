@@ -1092,14 +1092,14 @@ export default function App() {
           {/* 「移动到文件夹」的下拉没了：树上靠拖拽和右键菜单移动，一个
               只能选一层的下拉表达不了任意深度的树。 */}
           <span
-            style={{ flexShrink: 0, opacity: n.pinned ? 1 : 0.35 }}
+            className={'row-act' + (n.pinned ? ' pinned' : '')}
             title={n.pinned ? '取消置顶' : '置顶'}
             {...clickable((e) => { e.stopPropagation(); void togglePin(n) })}
           >
             <i className={'bx ' + (n.pinned ? 'bxs-pin' : 'bx-pin')} />
           </span>
           <span
-            style={{ flexShrink: 0 }}
+            className="row-act danger"
             title="删除（5 秒内可在提示里撤销）"
             {...clickable((e) => { e.stopPropagation(); remove(n) })}
           >

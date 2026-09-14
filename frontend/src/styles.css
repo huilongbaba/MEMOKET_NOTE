@@ -156,6 +156,17 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .note-item:hover { background: var(--left-pane-item-hover-bg); }
 .note-item.active { background: var(--left-pane-item-selected-bg); box-shadow: var(--left-pane-item-selected-shadow); }
 .note-item .t { font-weight: 500; }
+/* 行上的操作（置顶 / 删除）**悬停或键盘走到才出现**。
+   原来它们常驻在每一行的时间戳旁边——用户实拍反馈「最近的那个删除按钮有点怪啊」。
+   两个毛病：删除是不可逆的动作，不该在一个导航列表里长期露着；而且同一个侧栏里
+   两套规矩——树上删除在右键菜单里，切到「最近」突然每行一个叉（第 624 轮）。
+   **已置顶的图钉例外**：那是状态不是操作，收起来就看不出哪几篇被置顶了。 */
+.note-item .row-act { flex-shrink: 0; opacity: 0; transition: opacity 120ms; }
+.note-item:hover .row-act,
+.note-item:focus-within .row-act { opacity: .45; }
+.note-item .row-act:hover { opacity: 1; }
+.note-item .row-act.pinned { opacity: 1; }
+.note-item .row-act.danger:hover { color: var(--del); }
 
 .editor { min-height: 380px; font-size: 16px; line-height: 1.8; }
 
