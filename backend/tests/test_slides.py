@@ -94,3 +94,20 @@ def test_内容进去了就不算漏掉_哪怕小节标题没出现():
 def test_空产出不炸():
     c = check_slides("", SRC)
     assert c.pages == 0 and c.cite_coverage == 0.0
+
+
+def test_派生出来的子笔记不当参考上下文(tmp_path, monkeypatch):
+    """幻灯片是这篇的**另一种形态**，屏幕活动回顾是那一天的汇总——
+    拿它们当「同一批内容里的另一篇」喂回去是循环：模型读到的是自己刚写过的话的
+    浓缩版，只会把重复写得更重（而 `non_repetition` 本来就是最难达标的那一维，
+    第 647 轮真跑连续四轮判 0）。
+    """
+    from app.database import store
+
+    parent = store.create_note("u_derived", "父笔记", "正文")["id"]
+    store.create_note("u_derived", "同伴一篇", "正文", parent)
+    store.create_note("u_derived", "父笔记 · 幻灯片", "# 页\n", parent, source="slides")
+    store.create_note("u_derived", "屏幕活动回顾", "## 推进了什么\n", parent, source="journey")
+
+    got = [n["title"] for n in store.child_notes("u_derived", parent, limit=10)]
+    assert got == ["同伴一篇"], got

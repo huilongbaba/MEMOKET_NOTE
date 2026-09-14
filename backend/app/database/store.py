@@ -1118,19 +1118,32 @@ def upsert_child(user_id: str, parent_id: str, title: str, content: str,
     return get_note(user_id, note["id"])
 
 
+# 这几种子笔记是**从父笔记派生出来的**，不是「同一批内容里的另一篇」：
+# 幻灯片是这篇的另一种形态，屏幕活动回顾是那一天的汇总。
+# 拿它们当参考上下文喂回去是**循环**——模型读到的是自己刚写过的话的浓缩版，
+# 只会把重复写得更重（而 `non_repetition` 本来就是最难达标的那一维，
+# 第 647 轮真跑连续四轮判 0）。
+DERIVED_SOURCES = ("slides", "journey")
+
+
 def child_notes(user_id: str, parent_id: str, exclude_id: str = "",
                 limit: int = 5) -> list[dict]:
     """某个节点下面的直接子笔记。无限续写拿它当「同一批内容」的参考上下文。
 
     走 branches 而不是 notes.folder_id：**克隆之后一篇笔记可以同时属于好几个
     父节点**，folder_id 那个单值字段表达不了。
+
+    **派生出来的那几种不算**（见 `DERIVED_SOURCES`）：它们是父笔记的产物，
+    不是它的同伴。
     """
+    holes = ",".join("?" * len(DERIVED_SOURCES))
     with connect() as c:
         rows = c.execute(
             "SELECT n.* FROM notes n JOIN branches b ON b.note_id = n.id"
-            " WHERE b.user_id=? AND b.parent_note_id=? AND n.id != ?"
+            f" WHERE b.user_id=? AND b.parent_note_id=? AND n.id != ?"
+            f" AND COALESCE(n.source,'') NOT IN ({holes})"
             " ORDER BY n.updated_at DESC LIMIT ?",
-            (user_id, parent_id, exclude_id, limit)).fetchall()
+            (user_id, parent_id, exclude_id, *DERIVED_SOURCES, limit)).fetchall()
     return [_note(r) for r in rows]
 
 

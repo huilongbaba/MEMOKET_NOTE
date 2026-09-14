@@ -8,6 +8,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { DENY_APPS, DENY_TITLE_WORDS, mergeBlips, type Segment } from '../../desktop/src/capture.ts'
+import { GAP_MIN as JOURNEY_GAP_MIN, saySpan } from '../src/components/JourneyPage'
 
 const B = Date.parse('2026-09-14T18:00:00Z')   // 带 Z：两边都按 UTC 算，不然差一个时区
 const seg = (app: string, m0: number, m1: number, n = 5): Segment => ({
@@ -74,5 +75,26 @@ if (!same) {
   console.log(`    PY  ${JSON.stringify([pyDeny.apps, pyDeny.words])}`)
   bad++
 }
+
+// ——— 空档阈值和时长写法两边也要一样 ————————————————————————————
+//
+// 带上那道斜纹空档是前端按 GAP_MIN 画的，日报里「中间有 X 没在记」是后端按
+// 同一个数算的；「不到 1 分钟」这种写法两边各写了一遍。漂了的后果很具体：
+// **带上画着一道缝，报告里却说没有空档**。
+const pyMore = JSON.parse(execFileSync(venv, ['-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(new URL('../../backend', import.meta.url).pathname)})
+from app.journey.stats import GAP_MIN, say_span
+print(json.dumps({"gap": GAP_MIN, "spans": [say_span(s) for s in [0, 20, 59, 60, 600, 3600, 4320, 7200]]}))
+`], { encoding: 'utf8' })) as { gap: number; spans: string[] }
+
+const tsSpans = [0, 20, 59, 60, 600, 3600, 4320, 7200].map((s) => saySpan(s))
+const gapOk = pyMore.gap === JOURNEY_GAP_MIN
+const spanOk = JSON.stringify(tsSpans) === JSON.stringify(pyMore.spans)
+console.log(`${gapOk ? '✓' : '✗'} 空档阈值：两边都是 ${JOURNEY_GAP_MIN} 分钟${gapOk ? '' : `（后端 ${pyMore.gap}）`}`)
+console.log(`${spanOk ? '✓' : '✗'} 时长写成人话：两边一样`)
+if (!spanOk) { console.log(`    TS  ${JSON.stringify(tsSpans)}\n    PY  ${JSON.stringify(pyMore.spans)}`) }
+if (!gapOk) bad++
+if (!spanOk) bad++
 
 process.exit(bad ? 1 : 0)

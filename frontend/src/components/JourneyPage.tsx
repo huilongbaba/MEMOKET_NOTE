@@ -50,7 +50,7 @@ export function saySpan(sec: number): string {
 
 /** 两段之间隔了这么久，就算一段「没在记」的空档：中午出去吃饭、下午开会。
  *  带上不画出来的话，`合计 4 小时 24 分钟` 和一条从早排到晚的实心带互相矛盾。 */
-const GAP_MIN = 15
+export const GAP_MIN = 15
 /** 空档在带上最多占这么久的宽度：隔夜 12 小时不能把一整天挤成两条缝。 */
 const GAP_CAP_SEC = 20 * 60
 
