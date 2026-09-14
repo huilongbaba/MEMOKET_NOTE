@@ -142,3 +142,38 @@ def strip_citations(text: str, ids: list[str]) -> str:
     for fid in ids:
         text = _re.sub(r"\s*\[" + _re.escape(fid) + r"\]", "", text)
     return text
+
+
+# 同一组事实被写了两遍。段落级查重看不见它（整段两两相似度只有 0.39——
+# 两段各自还有别的话，被稀释掉了），清单级查重也看不见（没有顿号清单）。
+# 但**它们引的是同一组编号**，而编号是我们自己发的、可以精确比对的。
+#
+# 第 608 轮读产出抓到的那一对：
+#   「付款安排本身也要保留触发条件。已有讨论中，供应商流程是先完成货物，再由我们
+#     验货；验货通过后开票，付清尾款，之后才发货 [1459-8F1] [1459-8F2]。」
+#   「商业动作还要按"付款、验货、发货、使用"拆开…供应商完成生产后，需要先由我方
+#     验货，验货确认无误后再开票、支付尾款，之后才发货 [1459-8F1] [1459-8F2]。」
+# 同一件事、同一组依据，换了个说法又说了一遍。
+#
+# 共享 2 个以上编号才报：共一个太常见（一条事实被两段从不同角度用上是正常的），
+# 共两个以上就说明两段站在同一批依据上。阈值是量出来的——这几轮攒下的 30 份
+# harness 产出、548 段（其中 95 段带 ≥2 个引用）里只命中这一对，没有误报。
+MIN_SHARED_CITES = 2
+
+
+def same_sources_twice(text: str, fresh: str = "", limit: int = 2) -> list[tuple[str, str]]:
+    """两段正文站在同一批事实编号上，把同一件事说了两遍。"""
+    paras = [p.strip() for p in (text or "").split("\n\n") if len(p.strip()) >= 60]
+    sets = [(p, set(cited_ids(p))) for p in paras]
+    out: list[tuple[str, str]] = []
+    for i, (pa, sa) in enumerate(sets):
+        if len(sa) < MIN_SHARED_CITES:
+            continue
+        for pb, sb in sets[i + 1:]:
+            if fresh and pa not in fresh and pb not in fresh:
+                continue
+            if len(sa & sb) >= MIN_SHARED_CITES:
+                out.append((pa, pb))
+                if len(out) >= limit:
+                    return out
+    return out

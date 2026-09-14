@@ -189,3 +189,31 @@ def test_bench_wordlist_and_scrubber_cannot_drift():
     for w in tuple(AUDIT) + tuple(LEAK):
         assert _META_SENT.search(f"这里{w}的一句话。"), f"bench 报 {w!r} 而 scrub 删不掉"
         assert w not in scrub_meta_sentences(f"三月启动。这里{w}的一句话。排期倒推。")
+
+
+def test_same_sources_twice():
+    """同一批事实被换个说法写了两遍。第 608 轮读产出抓到的：整段两两相似度
+    只有 0.39，段落级和清单级查重都看不见，但两段引的是同一组编号。
+
+    阈值（共享 ≥2 个编号）是量出来的：这几轮攒下的 30 份 harness 产出、
+    548 段（其中 95 段带 ≥2 个引用）里只命中这一对，没有误报。
+    """
+    from app.harness.checks.citations import same_sources_twice
+
+    a = ("付款安排本身也要保留触发条件：供应商先完成货物，再由我们验货，"
+         "验货通过后开票，付清尾款，之后才发货 [u-111-1F1] [u-111-1F2]。")
+    b = ("商业动作还要按付款、验货、发货、使用拆开，不能把收款直接记成履约完成；"
+         "供应商完成生产后需先验货，确认无误再开票付尾款 [u-111-1F1] [u-111-1F2]。")
+    other = ("这一段讲的是完全不同的事情，它引的是另一条事实，"
+             "跟上面两段没有任何共享的编号 [u-222-3F3] [u-222-3F4]。")
+
+    doc = a + "\n\n" + other + "\n\n" + b
+    assert len(same_sources_twice(doc)) == 1
+
+    # 只共享一个编号不报：一条事实被两段从不同角度用上是正常的
+    one = b.replace("[u-111-1F2]", "[u-333-9F9]")
+    assert not same_sources_twice(a + "\n\n" + one)
+
+    # 这一轮没碰过的两段（用户原来正文里就有的）不报
+    assert not same_sources_twice(doc, fresh="这一轮写的是别的东西。")
+    assert same_sources_twice(doc, fresh=b)

@@ -207,10 +207,18 @@ def test_每条check打翻的维度这个mode真的有():
     AFTER = "## Next steps\n\n收尾在这儿。\n"
     # 这一轮写出来的：够长、一条引用都没有（citations_present 判 fresh），
     # 末尾同一组清单换个说法列了两遍（no_repeated_lists 判 content、要求 fresh 里碰过）
-    FRESH = ("这一轮写满了一整段内容，但一条编号也没给。" * 20
-             + "至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论。"
-             + "中间隔着别的话。"
-             + "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。")
+    # **两份素材，不是一份。** `citations_present` 要的是「这一轮写了一大段、
+    # 一个编号都没有」，`no_same_sources_twice` 要的是「两段引了同一组编号」
+    # ——同一段 fresh 不可能既没有编号又有两组重复的编号。硬塞在一起的结果是
+    # 按下葫芦浮起瓢：加了引用，零引用那条就不响了。
+    FRESH_NO_CITE = ("这一轮写满了一整段内容，但一条编号也没给。" * 20
+                     + "至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论。"
+                     + "中间隔着别的话。"
+                     + "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。")
+    FRESH_SAME_CITES = ("付款安排本身也要保留触发条件：供应商先完成货物，再由我们验货，"
+                        "验货通过后开票，付清尾款，之后才发货 [u-111-1F1] [u-111-1F2]。"
+                        "\n\n商业动作还要按付款、验货、发货、使用拆开，不能把收款直接记成履约完成；"
+                        "供应商完成生产后需先验货，确认无误再开票付尾款 [u-111-1F1] [u-111-1F2]。")
     CONTENT = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
                "现有材料不足以说明这一点 [u-999-FF]。\n"
                "```mermaid\nxychart-beta\n bar [1,2]\n```\n"
@@ -225,25 +233,24 @@ def test_每条check打翻的维度这个mode真的有():
                 shaped = modes.for_run(mode, has_profile=has_profile, polish=polish)
                 names = {d.name for d in shaped.dims}
                 st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
-                # 这一轮写出来的：够长、一条引用都没有（citations_present 判的是 fresh 不是 content），
-                # 末尾还有同一组清单换个说法列两遍（no_repeated_lists 判的是 content，要求 fresh 里碰过）
-                st.fresh = FRESH
-                st.content = CONTENT + FRESH
-                st.before, st.after = BEFORE, AFTER
-                st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
-                st.charts = []
-                st.trace = ToolTrace()
-                st.bag["claimed_sources"] = ["[fact-nope] 不存在的来源"]
-                for check in shaped.checks:
-                    seen[check.__name__] += 1
-                    verdict = check(st)
-                    if not verdict:
-                        continue
-                    fired[check.__name__] += 1
-                    if verdict.dimension not in names:
-                        bad.append(f"{shaped.key}(profile={has_profile},polish={polish})"
-                                   f" 的 {check.__name__} 打了 {verdict.dimension}，"
-                                   f"而它的 dims 是 {sorted(names)}")
+                for fresh in (FRESH_NO_CITE, FRESH_SAME_CITES):
+                    st.fresh = fresh
+                    st.content = CONTENT + "\n\n" + fresh
+                    st.before, st.after = BEFORE, AFTER
+                    st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
+                    st.charts = []
+                    st.trace = ToolTrace()
+                    st.bag["claimed_sources"] = ["[fact-nope] 不存在的来源"]
+                    for check in shaped.checks:
+                        seen[check.__name__] += 1
+                        verdict = check(st)
+                        if not verdict:
+                            continue
+                        fired[check.__name__] += 1
+                        if verdict.dimension not in names:
+                            bad.append(f"{shaped.key}(profile={has_profile},polish={polish})"
+                                       f" 的 {check.__name__} 打了 {verdict.dimension}，"
+                                       f"而它的 dims 是 {sorted(names)}")
 
     silent = sorted(n for n in seen if not fired[n])
     assert not silent, ("这些判据在一段踩满了所有毛病的正文上一次都没触发——"

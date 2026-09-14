@@ -118,6 +118,28 @@ def outline_intact(st: State) -> Verdict | None:
     )
 
 
+def no_same_sources_twice(st: State) -> Verdict | None:
+    """同一批事实被换个说法写了两遍。
+
+    段落级查重（0.39）和清单级查重都看不见这一对，但**它们引的是同一组编号**
+    ——而编号是我们自己发的，可以精确比对。判据细节和阈值来源见
+    `citations.same_sources_twice`；它住在 citations.py 而不是 blockcheck.py，
+    因为引用正则全仓只定义一处，而 blockcheck 是只许标准库的纯层。
+    """
+    from .citations import same_sources_twice
+
+    dups = same_sources_twice(st.content, st.fresh or "")
+    if not dups:
+        return None
+    a, b = dups[0]
+    return Verdict(
+        pick_dimension(st, "non_repetition", "coherence", "style_fit"),
+        f"这两段引的是同一批事实，等于把同一件事说了两遍：「{a[:50]}…」和「{b[:50]}…」。"
+        "留下更完整的那一段，另一段删掉或改成一句话接住上文——"
+        "同一组依据支撑不出两段独立的结论。",
+    )
+
+
 def no_repeated_lists(st: State) -> Verdict | None:
     """同一组清单换个说法列了两遍。
 

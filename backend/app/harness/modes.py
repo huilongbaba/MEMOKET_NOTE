@@ -18,7 +18,8 @@ from .types import Dimension
 from .checks import grounding_rules as grounding_check
 from .checks import (charts_from_tools, citations_exist, citations_present, citations_hold, heading_fits,
                      material_used, no_audit_voice, no_fake_charts,
-                     no_placeholder, no_repeated_lists, outline_intact, table_present, tail_clashes)
+                     no_placeholder, no_repeated_lists, no_same_sources_twice, outline_intact,
+                     table_present, tail_clashes)
 from .middleware import Compact, Repair, Replan, Runtime, Save
 from .middleware.revise import Revise
 from .state import State
@@ -434,7 +435,7 @@ NOTE = Mode(
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
-            citations_exist, citations_present, material_used, no_repeated_lists,
+            citations_exist, citations_present, material_used, no_repeated_lists, no_same_sources_twice,
             no_fake_charts, charts_from_tools),
     stop_when=(material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
@@ -450,7 +451,8 @@ SECTION = Mode(
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, citations_present,
-            material_used, no_repeated_lists, no_fake_charts, charts_from_tools),
+            material_used, no_repeated_lists, no_same_sources_twice,
+            no_fake_charts, charts_from_tools),
     stop_when=(material_used_up, pause_for_review),
     extra_mw=(Revise(), Repair(), Compact(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
