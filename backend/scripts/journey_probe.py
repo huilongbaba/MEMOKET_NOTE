@@ -58,6 +58,7 @@ SAME_FRAME_BITS = 6     # 汉明距离 ≤ 这个数就算「没变化」
 NEW_SEG_BITS = 18       # 超过这个数算「画面换了」，切段
 MAX_SEG_MIN = 20        # 一段最长多久，强制切
 MIN_SEG_SEC = 45        # 比这还短的段不描述（一闪而过的切换，不是「在做什么」）
+BLIP_SEC = 60           # 切走不到这么久又切回来：算插曲，并回原来那段
 
 
 def front_app() -> tuple[str, str]:
@@ -212,10 +213,15 @@ def pick_answer(raw: str) -> str:
 async def describe(frames: list[Path], app: str, title: str) -> tuple[str, float]:
     """一段送一次模型。挑段首那一帧。"""
     t0 = time.perf_counter()
-    hint = f"这个人在做什么？（前台应用：{app}"
+    # **别把前台应用当成断言塞给模型。** 超宽屏上我们送的是「在动的那半边」，
+    # 它未必就是 macOS 认为在前台的那个——实测有一段前台是 Feishu，送过去的
+    # 那半边却是 VS Code，模型于是写出「…同时 Feishu 应用在前台打开」，
+    # 把两件事缝在了一起（第 633 轮）。取不到窗口坐标之前，这个提示只当参考。
+    hint = "这个人在做什么？"
     if title:
-        hint += f"；窗口标题：{title}"
-    hint += "）"
+        hint += f"（这个窗口的标题是「{title}」）"
+    elif app:
+        hint += f"（系统说此刻前台是 {app}，但图里未必是它，以图为准）"
     try:
         text = pick_answer(await ask_image(
             hint, frames[0].read_bytes(), max_tokens=600, system=DESCRIBE_SYSTEM))
@@ -224,12 +230,75 @@ async def describe(frames: list[Path], app: str, title: str) -> tuple[str, float
     return text.strip(), (time.perf_counter() - t0)
 
 
+def merge_blips(segs: list[dict]) -> list[dict]:
+    """切走一下下又切回来的，并回原来那段。
+
+    实测（第 633 轮，51 分钟真实使用）：18 段里有 6 段是 1 帧的瞬时切换
+    —— 瞟一眼飞书、看一眼终端然后切回来。它们不是「在做另一件事」，是同一件事
+    里的插曲；留着的话一天会切出 **169 段**，而真正值得记的大概只有三分之一。
+
+    判据：这一段短于 `BLIP_SEC`，而且**它前后两段是同一个应用**——只有这时候
+    才谈得上「切走又切回来」。单独看一段短不短不足以判断（真的换了件事，
+    只做了 30 秒，那也是一段）。
+    """
+    out: list[dict] = []
+    for seg in segs:
+        secs = (seg["end"] - seg["start"]).total_seconds()
+        if (len(out) >= 1 and secs < BLIP_SEC and out[-1]["app"] == seg["app"]):
+            out[-1]["end"] = seg["end"]          # 同一个应用的短段：直接续上
+            out[-1]["n"] += seg["n"]
+            continue
+        if (len(out) >= 2 and secs < BLIP_SEC and out[-1]["app"] != seg["app"]
+                and out[-2]["app"] == seg["app"]):
+            pass                                  # 交错的情况留给下一轮合并
+        out.append(seg)
+    # 再走一遍：A B(短) A → 把 B 并进 A
+    merged: list[dict] = []
+    i = 0
+    while i < len(out):
+        cur = out[i]
+        if (merged and i + 1 < len(out)
+                and (cur["end"] - cur["start"]).total_seconds() < BLIP_SEC
+                and merged[-1]["app"] == out[i + 1]["app"]
+                and merged[-1]["app"] != cur["app"]):
+            merged[-1]["end"] = out[i + 1]["end"]
+            merged[-1]["n"] += cur["n"] + out[i + 1]["n"]
+            i += 2
+            continue
+        merged.append(cur)
+        i += 1
+    return merged
+
+
+async def finish_only(root: Path) -> int:
+    """从已落盘的 `segments.json` 出报告。
+
+    采样每切一段就落一次盘，就是为了这个：一小时的采样中途停掉（或者崩了）
+    不该血本无归——描述和报告是后置的，随时可以补做。
+    """
+    raw = json.loads((root / "segments.json").read_text(encoding="utf-8"))
+    segs = [{**r, "start": datetime.fromisoformat(r["start"]),
+             "end": datetime.fromisoformat(r["end"]),
+             "frames": [Path(f) for f in r.get("frames", [])]} for r in raw]
+    segs = merge_blips(segs)
+    await describe_and_write(root, segs, sampled_min=(
+        (segs[-1]["end"] - segs[0]["start"]).total_seconds() / 60 if segs else 0),
+        interval=0)
+    return 0
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser(description="Daily Journey P0 采样")
     ap.add_argument("--minutes", type=float, default=60)
     ap.add_argument("--interval", type=float, default=10, help="几秒采一次")
     ap.add_argument("--out", default="")
+    ap.add_argument("--finish", default="",
+                    help="不采样，直接拿这个目录里已落盘的段出报告（中途停了也不白跑）")
     args = ap.parse_args()
+
+    if args.finish:
+        return await finish_only(Path(args.finish))
+
 
     root = Path(args.out) if args.out else (
         Path(__file__).resolve().parent.parent / "data" / "journey-probe"
@@ -292,6 +361,15 @@ async def main() -> int:
     tmp.unlink(missing_ok=True)
     prev_full.unlink(missing_ok=True)
 
+    segments = merge_blips(segments)
+    await describe_and_write(root, segments, args.minutes, args.interval,
+                             frames_taken=frames_taken, skipped_deny=skipped_deny)
+    return 0
+
+
+async def describe_and_write(root: Path, segments: list[dict], sampled_min: float,
+                             interval: float, *, frames_taken: int = 0,
+                             skipped_deny: int = 0) -> None:
     # —— 描述（第 4 层）。太短的段跳过：一闪而过的切换不是「在做什么」——
     long_segs = [s for s in segments
                  if (s["end"] - s["start"]).total_seconds() >= MIN_SEG_SEC]
@@ -308,13 +386,13 @@ async def main() -> int:
         "> 这是 P0 的产出，**给人读的**。读的时候盯三件事：段切得对不对、",
         "> 描述里有没有具体的东西、以及这些描述汇起来能不能写出一份有用的日报。", "",
         "## 数字", "",
-        f"- 采样 {args.minutes:.0f} 分钟，每 {args.interval:.0f} 秒一次",
+        f"- 采样 {sampled_min:.0f} 分钟，每 {interval:.0f} 秒一次",
         f"- 截了 {frames_taken} 帧，黑名单跳过 {skipped_deny} 次",
         f"- 切出 **{len(segments)} 段**，其中 {len(long_segs)} 段够长（≥{MIN_SEG_SEC}s）",
         f"- 描述调用 {len(long_segs)} 次，合计 {took:.1f} 秒",
         "",
-        f"**按这个速率外推一天（8 小时）**：约 {round(len(segments) * 8 * 60 / args.minutes)} 段、"
-        f"{round(len(long_segs) * 8 * 60 / args.minutes)} 次模型调用。",
+        f"**按这个速率外推一天（8 小时）**：约 {round(len(segments) * 8 * 60 / sampled_min)} 段、"
+        f"{round(len(long_segs) * 8 * 60 / sampled_min)} 次模型调用。",
         "", "## 时间轴", "",
     ]
     for i, s in enumerate(segments, 1):
@@ -331,7 +409,8 @@ async def main() -> int:
     (root / "report.md").write_text("\n".join(lines), encoding="utf-8")
     dump_segments(root, segments)
     print(f"\n写好了：{root / 'report.md'}")
-    return 0
+
+
 
 
 def dump_segments(root: Path, segments: list[dict]) -> None:
