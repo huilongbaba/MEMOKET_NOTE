@@ -3774,3 +3774,7 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 
 - 前端 `stripForRecall`（剥引用标记 / 整条图片 / 链接地址）只在前端发请求前做；但**后端自己也拿正文去查**——选中校验（compose）、摄入冲突扫描（inbox）、写作取材料——那几条路一直带着 `![probe](/api/assets/…png)` 和 `[terrence-123-AB]` 去查（当年右栏冒出 Bill Browder / Russia 的那个坑，只在前端堵了一半）。
 - `search.clean_query` 照同一条规则写，放在 `UserMemory.recall()` 入口——一处生效处处生效，前端那份留着（剥两次幂等）。check-regex-parity 加 6 组样本对拍；后端测试加一条。自召回三口径不变（60/60/28）。后端 960。
+
+## [591] 巡检第 567 轮：选中校验实拍（2026-09-14）
+
+- `sel:verify`（选一段正文跑校验，走 compose → `mem.recall(selection)` 那条刚改的路）：「校验中…」浮层出现、`POST /api/compose/verify` 200、无 client error。clean_query 没破坏这条路。没改代码。
