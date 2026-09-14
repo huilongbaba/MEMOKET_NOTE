@@ -24,3 +24,20 @@ describe('harness 事件流的轮次归属', () => {
     expect(tools).toEqual([1])
   })
 })
+
+describe('判据卡满之后的那条 check_hit', () => {
+  it('stuck_rounds 一路传到面板，不被事件层吃掉', async () => {
+    const hits: { dimension: string; note: string; stuck_rounds?: number }[] = []
+    await consumeHarnessStream(sse([
+      { event: 'STEP_STARTED', data: { step: 1, label: '第一轮' } },
+      { event: 'CUSTOM', data: { name: 'check_hit', value: { dimension: 'factual_grounding', note: '有占位句' } } },
+      { event: 'STEP_STARTED', data: { step: 3, label: '第三轮' } },
+      // 连着卡满之后后端不再短路，事件照发、多带一个 stuck_rounds
+      { event: 'CUSTOM', data: { name: 'check_hit', value: { dimension: 'factual_grounding', note: '有占位句', stuck_rounds: 3 } } },
+      { event: 'RUN_FINISHED', data: { reason: 'complete' } },
+    ]), { onCheckHit: (d) => hits.push(d) })
+
+    expect(hits.map((h) => h.stuck_rounds)).toEqual([undefined, 3])
+    expect(hits[1].note).toBe('有占位句')
+  })
+})

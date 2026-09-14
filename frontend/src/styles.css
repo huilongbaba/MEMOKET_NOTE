@@ -514,6 +514,15 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .tree-title {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 撞名那几行后面的日期（第 609 轮：侧栏里四行都写着「创业一年回顾」）。
+   压得很轻——它是用来分辨的，不该跟标题抢眼睛。 */
+.tree-dup-date {
+  flex-shrink: 0;          /* 标题让位给它：名字一样时，能分辨的是日期 */
+  color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums;
+  margin-inline-start: 4px;
 }
 
 /* 克隆标记。用户得知道改这一处会让别处跟着变——不标的话他会以为那是

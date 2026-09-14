@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TreeRow } from '../api'
 import { ROOT_ID, isFactId, isVirtualId } from '../api'
 import { displayTitle } from '../util/displayTitle'
+import { dupSuffixes } from '../util/dupTitles'
 import { fmtDate } from '../util/time'
 
 type Props = {
@@ -106,6 +107,13 @@ export default function NoteTree({
 }: Props) {
   const hasFiles = (e: React.DragEvent) => !!onFilesDrop && Array.from(e.dataTransfer.types).includes('Files')
   const nodes = useMemo(() => flatten(rows), [rows])
+  // 树上撞名的那几个标题（第 609 轮截图实拍：四行都写着「创业一年回顾」）。
+  // 只认真笔记：知识库那棵虚拟子树里同名很正常（两个月份下各有一条同名事实），
+  // 给它们挂日期没有意义。
+  const dup = useMemo(
+    () => dupSuffixes(nodes.filter((n) => !isVirtualId(n.note_id))
+      .map((n) => ({ key: n.id, title: displayTitle(n), at: n.updated_at }))),
+    [nodes])
   const rootRef = useRef<HTMLDivElement>(null)
 
   // 拖拽状态。drop 位置按行内 y 分三段：上 25% = 放前面、下 25% = 放后面、
@@ -248,8 +256,12 @@ export default function NoteTree({
             {/* 图标：真笔记 叶子 = 文档 / 有子节点 = 文件夹（notes.ts:140-143）；
                 知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
             <span className="tree-icon" aria-hidden><i className={'bx ' + iconOf(n)} /></span>
-            {/* 标题被截断时悬停能看全；同名的几篇靠日期分 */}
+            {/* 标题被截断时悬停能看全；**撞名的那几行**把日期直接写在后面，不用逐个悬停。
+                日期是 `.tree-title` 的兄弟而不是儿子：放进去会跟标题一起被省略号切掉，
+                切出来的「09-07 1…」两行长得还是一样，比不标更糟（第 609 轮截图实拍）。
+                该让位的是标题——名字一样的时候，能分辨的是日期。 */}
             <span className="tree-title" title={displayTitle(n) + (n.updated_at ? `\n修改于 ${fmtDate(n.updated_at)}` : '')}>{displayTitle(n)}</span>
+            {dup.has(n.id) && <span className="tree-dup-date">· {dup.get(n.id)}</span>}
             {n.fact_count > 0 && !isFactId(n.note_id) && (
               <span className="tree-badge" title={`${n.fact_count} 条事实`}>{n.fact_count}</span>
             )}
