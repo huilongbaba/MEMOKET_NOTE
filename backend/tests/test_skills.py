@@ -290,3 +290,19 @@ def test_技能接口拒绝空名字_未知作用域_超长正文(tmp_path, monk
         assert c.post("/api/skills", json={**ok, "scopes": ["bogus"]}).status_code == 400
         assert c.post("/api/skills", json={**ok, "content": "x" * 20001}).status_code == 400
         assert c.post("/api/skills", json=ok).status_code == 200
+
+
+def test_开关接口翻转启用状态(env):
+    """`POST /api/skills/{slug}/toggle` 是 115 条路由里唯一一条能测却没测过的（第 586 轮统计）。"""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app, headers={"X-User-Id": "u-toggle"}) as c:
+        made = c.post("/api/skills", json={"name": "开关测试", "description": "d",
+                                           "content": "c", "scopes": ["magic_tap"]}).json()
+        slug = made["slug"]
+        assert made["enabled"] is True
+        assert c.post(f"/api/skills/{slug}/toggle").json()["enabled"] is False
+        # 关掉之后列表里还在，只是不启用——不是删除
+        assert any(s["slug"] == slug and s["enabled"] is False for s in c.get("/api/skills").json())
+        assert c.post(f"/api/skills/{slug}/toggle").json()["enabled"] is True
+        assert c.post("/api/skills/不存在的/toggle").status_code == 404
