@@ -93,6 +93,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 541–550 | 知识库首页搜索探针 + 耗时取整；§10 复核；前后端对拍再加三条：正文首行 / 显示名（`check-preview-parity`，围栏不当正文）、说话人标签正则、字数（`database/wordcount` + `check-wordcount-parity`，历史 / 回收站的「N 字」跟状态栏一致）；README 19 个检查脚本；重打 dmg（第 550 轮） |
 | 551–560 | 说话人标签六处口径统一（stats / 导入页数字 / 树实体层 / 实体列表 / 图的边 / 召回）；真跑抓到续写收尾的 scrub 不发事件 → `_scrub_and_record` + loop 发 `scrub`；客户端 TEXT_MESSAGE_END 做 fixBoldPunct（复用 format.ts、补围栏跳过）；harness 客户端 scrub miss / revision no-op 诊断日志；重打 dmg（第 560 轮） |
 | 561–573 | 分段 harness 也镜像（`hooks/mirror.py`）；对拍到 8 处（+ `section_end`、命中片段、查询清洗 `clean_query`）；`check-a11y` 加「禁用要说原因」；**用户报的 `eriwa`**：续尾两道护栏 `harness/tailing.py`；同一段里整句被插进句中：`reject_revision` 第四道防线；正文路径硬截全扫；重打 dmg（第 573 轮） |
+| 574–580 | 「模型回什么就用什么」同类全扫：写作计划分段数上限 + 同名去重 + 追加全被丢时不再空转、骨架长度封顶（`clamp_skeleton`）、关系说明封顶；harness 跑动时右栏「计划」轮次卡置前；重打 dmg（第 580 轮） |
 
 ## 当前优先队列（2026-09-12 晚，用户点名：这些排在巡检之前）
 
