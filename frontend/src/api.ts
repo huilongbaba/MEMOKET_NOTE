@@ -574,6 +574,10 @@ export type KbDashboard = {
    *  `full_*` 是没掐过的首尾：掐掉的东西要能看见。 */
   stats: { facts: number; topics: number; entities: number; units: number; lines: number
            start_date: string; end_date: string; full_start?: string; full_end?: string }
+  /** 体检：全库里有多少条事实**形状上就用不上**（太短 / 只有说话人+短语 /
+   *  是提问不是事实 / 口语填充 · ASR 噪声）。这直接解释「为什么召回有时候给我一堆废话」。 */
+  quality?: { facts: number; unusable: number; unusable_rate: number
+              reasons: Record<string, number>; speaker_labels: number; speaker_label_rate: number }
   months: KbMonth[]
   top_topics: { code: string; facts: number; children: number }[]
   top_entities: { code: string; name: string; facts: number }[]

@@ -16,6 +16,7 @@ from datetime import date as _date
 from .who import is_speaker_tag, norm_who
 from . import entities as entities_mod
 from .units import materials, part_labels, parts_of
+from . import extract_check
 from .scope import classify
 
 MONTHS_ON_DASHBOARD = 12
@@ -215,6 +216,14 @@ def dashboard(mem) -> dict:
         "stats": {"facts": len(facts), "topics": len(vocab.topics), "entities": sum(1 for c, e in vocab.entities.items() if not is_speaker_tag(c) and not is_speaker_tag(getattr(e, "name", ""))),
                   "units": len(units), "lines": len(store.lines),
                   **_span(dates)},
+        # 体检：**全库扫一遍只要几十毫秒**（`shapes` 不需要原文，只看事实本身的形状），
+        # 所以跟着首页一起给，不另开一次请求。这个数字原来只有 `GET /api/kb/quality`
+        # 拿得到，而那条接口前端一次都没调过——**能力建好了、测过了，用户够不着**
+        # （第 665 轮查「代码里有、用户却够不着」时翻出来的）。
+        #
+        # 为什么值得占首页一格：16% 的事实是用不上的（太短 / 是提问 / ASR 噪声），
+        # 这直接解释了「为什么召回有时候给我一堆废话」。看得见才谈得上去修。
+        "quality": extract_check.shapes(facts),
         "months": _months(facts, MONTHS_ON_DASHBOARD),
         "top_topics": top_topics[:TOP_N],
         "top_entities": top_entities,

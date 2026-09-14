@@ -87,6 +87,18 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
                        {data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}
                      </span>}
               label="跨度（按事实里的日期）" />
+            {/* 体检。**原来这个数字只有一条前端从没调过的接口拿得到**——能力建好了、
+                测过了，用户够不着（第 665 轮翻出来的）。值得占一格：16% 的事实是
+                用不上的，这直接解释了「为什么召回有时候给我一堆废话」。 */}
+            {data.quality && data.quality.unusable_rate >= 0.03 && (
+              <StatTile
+                value={<span title={Object.entries(data.quality.reasons)
+                                     .map(([k, v]) => `${k} ${v}`).join(' · ')
+                                     + `；另有 ${data.quality.speaker_labels} 条带说话人标签`}>
+                         {Math.round((1 - data.quality.unusable_rate) * 100)}%
+                       </span>}
+                label={`能用的事实（${data.quality.unusable.toLocaleString()} 条太短 / 是提问 / 噪声）`} />
+            )}
           </div>
 
           <ConflictInbox actions={actions} />
