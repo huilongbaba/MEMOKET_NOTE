@@ -247,3 +247,21 @@ def test_引用id_日期_序数不算可画的数():
     text = "光标在这。曾提出向第 5 位用户发放 [terrence-1462-9F1]。另外 EVT 准备 4 台主机。"
     hits = tabular.sentences_with_numbers(text, 3)
     assert hits == ["另外 EVT 准备 4 台主机。"]
+
+
+def test_箭头串出来的流程也算没画图():
+    """用户第 570 轮报的那段里有一条：「KOL 触达 → 进入 APP → 完成设备连接 → …」——
+    mermaid 的 flowchart 正好画这个，`_FAKE_CHART` 那条正则只认「[柱状图：…]」认不出它（第 592 轮）。"""
+    from app.harness.checks import blockcheck
+
+    real = "验证链路应按以下顺序记录：KOL 触达 → 进入 APP → 完成设备连接 → 持续查看数据 → 实际下单。"
+    assert blockcheck.text_flow(real)
+    assert blockcheck.text_flow("draft -> review -> approve -> ship")
+    # 两三个节点是在说一次变化，不是流程
+    assert blockcheck.text_flow("通信方案从 5G → 2.4G。") == []
+    assert blockcheck.text_flow("A → B → C。") == []
+    # 分号隔开的条件—动作对不是顺序流程（318 篇真实笔记上唯一的误报）
+    assert blockcheck.text_flow("录制未启动 → 检查权限；文件缺失 → 检查存储；后台被杀 → 看日志。") == []
+    # 已经画了图就不报，代码块里的箭头也不算
+    assert blockcheck.text_flow(real + "\n```mermaid\nflowchart LR\nA-->B\n```") == []
+    assert blockcheck.text_flow("```\nA → B → C → D → E\n```") == []

@@ -31,6 +31,31 @@ def fake_charts(block: str, limit: int = 3) -> list[str]:
     return out
 
 
+# 用箭头链在正文里"画"的流程。真实产出（用户第 570 轮报的那段里就有一条）：
+#   验证链路应按以下顺序记录：KOL 触达 → 进入 APP → 完成设备连接 → 持续查看数据 → 提交购买意向 → 实际下单。
+# mermaid 的 flowchart 正好画这个，而且 chart_from_text 能生成。两个节点的（5G → 2.4G）
+# 是在说一次变化，不是流程，不算；围栏代码块里的箭头也不算（第 592 轮）。
+# 节点里不许有分号 / 句号：那是"三组条件—动作对"（录制未启动 → 检查权限；文件缺失 → 检查存储）
+# 而不是一条顺序流程，画成 flowchart 反而更绕（318 篇真实笔记上验出来的唯一一个误报）
+_ARROW_CHAIN = re.compile(r"(?:[^\n→>—;；。.]{1,40}(?:→|->|—>)){3,}")
+
+
+def text_flow(text: str, limit: int = 2) -> list[str]:
+    """正文里用箭头串起来的流程（≥4 个节点）。整篇已经有 mermaid 图就不报——
+    那说明这一轮它知道该画图，剩下的箭头多半是图里画不下的旁注。"""
+    body = _MERMAID.sub("", text or "")
+    if "```" in body:                       # 别的代码块里的箭头也不算
+        body = re.sub(r"```.*?```", "", body, flags=re.S)
+    if _MERMAID.search(text or ""):
+        return []
+    out = []
+    for m in _ARROW_CHAIN.finditer(body):
+        out.append(" ".join(m.group(0).split())[:80])
+        if len(out) >= limit:
+            break
+    return out
+
+
 def mermaid_blocks(text: str) -> list[str]:
     """抽出所有 ```mermaid 代码块的**内容**，按行去掉首尾空白后规范化。
 

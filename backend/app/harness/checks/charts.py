@@ -23,6 +23,15 @@ def no_fake_charts(st: State) -> Verdict | None:
     """
     hits = blockcheck.fake_charts(st.content)
     if not hits:
+        # 另一种"用文字画图"：把一条流程写成箭头链（第 592 轮，用户实拍的那段里就有）
+        flows = blockcheck.text_flow(st.content)
+        if flows:
+            return Verdict(
+                pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+                f"这条流程是用箭头串在正文里的，不是一张图：{'; '.join(flows)}。"
+                "调 chart_from_text 让它画成 mermaid flowchart，把返回的代码块原样贴进来；"
+                "正文里留一句话说明这张图在讲什么就够，不用再把每一步重列一遍。",
+            )
         return None
     return Verdict(
         pick_dimension(st, "has_charts", "chart_validity", "coherence"),
