@@ -473,10 +473,22 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
     decided = {entity_merge.pair_key(d["code_a"], d["code_b"]) for d in store.entity_decisions(user)}
 
     samples: dict[str, list[str]] = {}
+    # 两个名字**同时出现在一句话里**的那些句子。这不是判据，是证据——
+    # 实测（第 660 轮）：`elisa` 和 `伊丽莎` 同现 4 次，而读那几句
+    # 「Elisa 打算…，伊丽莎会给几个单词说明…」一眼就看得出是同一个人（转写不一致）。
+    # **所以「同现 = 不是同一个」这条规则是错的**，我量完就丢了。但那几句话本身
+    # 是用户判起来最快的东西，所以带上。
+    co_text: dict[tuple[str, str], list[str]] = {}
     for f in store_.facts.values():
-        for c in f.entities:
+        ents = list(f.entities or ())
+        for c in ents:
             if len(samples.setdefault(c, [])) < MERGE_SAMPLE:
                 samples[c].append((getattr(f, "text", "") or "")[:120])
+        for i, a in enumerate(ents):
+            for b in ents[i + 1:]:
+                k = entity_merge.pair_key(a, b)
+                if len(co_text.setdefault(k, [])) < MERGE_SAMPLE:
+                    co_text[k].append((getattr(f, "text", "") or "")[:140])
 
     rows = [(c, name(c), int(count.get(c, 0))) for c in vocab.entities]
     out = []
@@ -488,6 +500,10 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
             "name_a": name(cand.a), "name_b": name(cand.b),
             "facts_a": cand.facts_a, "facts_b": cand.facts_b, "facts_total": cand.facts_total,
             "sample_a": samples.get(cand.a, []), "sample_b": samples.get(cand.b, []),
+            # 同时提到两个名字的句子。有就最好判——一句话里同时出现两种写法，
+            # 多半是转写不一致（同一个）；也可能是真的两个东西并排出现（不是同一个）。
+            # **两种都有，所以只给句子、不给结论。**
+            "both": co_text.get(entity_merge.pair_key(cand.a, cand.b), []),
         })
         if len(out) >= limit:
             break
@@ -497,15 +513,19 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
 class EntityMergeIn(BaseModel):
     a: str
     b: str
-    # same = 是同一个；different = 不是；drop_a / drop_b = 那一个压根不该是实体
+    # same = 是同一个；different = 不是；unsure = 拿不准；drop_a / drop_b = 那一个压根不该是实体
     decision: str
     why: str = ""
 
 
 @router.post("/entity-merges")
 def kb_entity_merge_decide(body: EntityMergeIn, user: str = Depends(current_user)) -> dict:
-    if body.decision not in ("same", "different", "drop_a", "drop_b"):
-        raise HTTPException(400, "decision 只能是 same / different / drop_a / drop_b")
+    # **「拿不准」是一个正经答案**：`elisa` 和 `Lisa` 一次都没同时出现过，
+    # 两边都不能证明——逼用户在「是」和「不是」之间二选一，只会换来一个乱猜的答案
+    # （用户第 660 轮原话：「elisa 和 lisa… 也可能是俩人」）。记下来，不再问，
+    # 但跟「不是」分得开：以后有了更多材料可以只把这些重新翻出来。
+    if body.decision not in ("same", "different", "unsure", "drop_a", "drop_b"):
+        raise HTTPException(400, "decision 只能是 same / different / unsure / drop_a / drop_b")
     if not body.a or not body.b or body.a == body.b:
         raise HTTPException(400, "要给两个不同的实体")
     store.record_entity_decision(user, body.a, body.b, body.decision, body.why)

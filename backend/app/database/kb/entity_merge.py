@@ -58,6 +58,11 @@ TRANSLIT_MIN = 0.62
 # 而音译跨了字母表，本身就是个很强的巧合。0.85 是拿真库调的（见模块头）。
 SPELL_MIN = 0.85
 
+# 子串这条信号的两条闸门（见 `_pair` 里那段注释）。**一个汉字的信息量远大于一个字母**。
+MIN_SUB_CJK = 2
+MIN_SUB_LATIN = 5
+MIN_SUB_RATIO = 0.5
+
 _CJK = re.compile(r"[一-鿿]")
 _SPLIT = re.compile(r"[\s_\-.·]+")
 
@@ -101,9 +106,23 @@ def _pair(a_name: str, b_name: str, pinyin=None) -> tuple[str, float] | None:
     na, nb = norm_key(a_name), norm_key(b_name)
     if not na or not nb or na == nb:
         return None
-    if len(na) >= 2 and len(nb) >= 2 and (na in nb or nb in na):
+    if na in nb or nb in na:
         short, long_ = sorted((na, nb), key=len)
-        return "substring", round(len(short) / len(long_), 3)
+        ratio = len(short) / len(long_)
+        # **子串是最弱的那条信号，门槛要高**。第一版只要「一个包含另一个」就算，
+        # 于是 `app` 一个人配出 7 对（apple / zappos / whatsapp / AppLovin / AppStore /
+        # Apple Watch / AppleWatch），`Ai` 配出 5 对（Gmail / Ukraine / hotmail…），
+        # `US` 配出 4 对（Russia / plus / TrustCenter / Stanford Business School）。
+        # 用户看到 `app ~ apple` 第一反应是「这怎么会是一个」——**对的，它不是**。
+        #
+        # 两条闸门，按字母表分开定：
+        #   · 短的那个要够长才算得上证据。**一个汉字的信息量远大于一个字母**，
+        #     所以中文 2 个字就够（安克 / 广州），拉丁要 5 个（app / gem / pro / memo 全挡掉）。
+        #   · 短的要占长的大半：`安克`/`安克莱` 0.67、`广州`/`广州市` 0.67 是真的；
+        #     `app`/`Apple Watch` 0.3、`Ai`/`Ukraine` 0.29 是巧合。
+        min_len = MIN_SUB_CJK if (has_cjk(short) or has_cjk(long_)) else MIN_SUB_LATIN
+        if len(short) >= min_len and ratio >= MIN_SUB_RATIO:
+            return "substring", round(ratio, 3)
     if (len(na) >= 2 and na == initials(b_name)) or (len(nb) >= 2 and nb == initials(a_name)):
         return "initials", 1.0
     # 音译：一中一西比（安克~Anker），**两个中文之间也比**——同音不同字在真库里

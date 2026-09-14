@@ -64,10 +64,11 @@ def test_说话人标签一个都不参与():
 
 def test_排序按_值不值得先看():
     """先给涉及事实多、信号又可靠的那几对——用户点头一下就修好一大块。"""
-    rows = [("a", "MemoCat", 81), ("b", "MemoCad", 15),      # spelling，共 96
-            ("c", "pro", 104), ("d", "prod", 11)]            # substring，共 115 但信号最弱
+    # 两对涉及的事实数一样（各 96），只差在信号可靠度：spelling 0.7 > substring 0.5
+    rows = [("a", "MemoCat", 81), ("b", "MemoCad", 15),
+            ("c", "广州", 48), ("d", "广州市", 48)]
     got = cands(rows)
-    assert [c.why for c in got] == ["spelling", "substring"]
+    assert [c.why for c in got] == ["spelling", "substring"], [(c.why, c.a, c.b) for c in got]
 
 
 def test_太稀的实体不参与():
@@ -136,3 +137,31 @@ def test_判过不该是实体的就不再列出来():
     assert same == [] and drop == {"c_app"}
     g = E.build(V, Counter({"c_app": 190, "c_apple": 54}), same, drop)
     assert g.is_dropped("c_app") and not g.is_dropped("c_apple")
+
+
+def test_短词被长词包住不算证据():
+    """用户看到 `app ~ apple` 第一反应是「这怎么会是一个」——**对的，它不是**。
+
+    第一版只要「一个包含另一个」就算，于是 `app` 一个人配出 7 对
+    （apple / zappos / whatsapp / AppLovin / AppStore / Apple Watch / AppleWatch），
+    `Ai` 配出 5 对（Gmail / Ukraine / hotmail…），`US` 配出 4 对
+    （Russia / plus / TrustCenter / Stanford Business School）。真库上 54 → 15。
+    """
+    junk = [("a", "app", 190), ("b", "apple", 54), ("c", "whatsapp", 11), ("d", "zappos", 5),
+            ("e", "Ai", 21), ("f", "Ukraine", 16), ("g", "US", 15), ("h", "Russia", 35),
+            ("i", "gem", 19), ("j", "gemini", 18), ("k", "pro", 104), ("l", "prod", 11)]
+    assert [c.why for c in cands(junk)] == []
+
+
+def test_一个汉字的信息量远大于一个字母():
+    """所以中文 2 个字就够当证据，拉丁要 5 个。"""
+    assert [c.why for c in cands([("a", "安克", 29), ("b", "安克莱", 37)])] == ["substring"]
+    assert [c.why for c in cands([("a", "广州", 10), ("b", "广州市", 19)])] == ["substring"]
+    # 同样两三个字符，拉丁的挡掉
+    assert cands([("a", "pro", 104), ("b", "prod", 11)]) == []
+
+
+def test_短的要占长的大半():
+    """`安克`/`安克莱` 0.67 是真的；`app`/`Apple Watch` 0.3 是巧合。"""
+    assert cands([("a", "中国", 7), ("b", "红杉中国", 15)])          # 0.5，留着让人判
+    assert cands([("a", "Memoket", 28), ("b", "memo kit ai is long", 17)]) == []
