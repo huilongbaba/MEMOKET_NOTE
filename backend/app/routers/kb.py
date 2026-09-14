@@ -445,3 +445,78 @@ def kb_conflict_resolve(conflict_id: int, body: ConflictResolveIn, user: str = D
     elif body.action == "old_wins":
         mem.set_fact_attr(row["new_fact_id"], "superseded_by", row["old_fact_id"])
     return store.resolve_conflict(user, conflict_id, body.action) or {}
+
+
+# ---------------------------------------------------------------- 实体合并
+#
+# 形状是用户定的（第 659 轮）：**一次性全量后处理，不做增量**。候选每次重算
+# （纯代码、零调用），落库的只有人的判断——它有两个用处：合并生效、不再问第二遍。
+# 合并只在展示 / 查询层生效（`kb/entities.build` 的 extra_pairs），知识库不动、随时可逆。
+#
+# 为什么不自动合：三条信号在真库上四到七成准（`docs/kb-entities-plan.md` §8），
+# 而 `德惠达`/`德威达` 是不是同一家、`安克莱` 是不是 Anker，**只有用户知道**。
+
+MERGE_SAMPLE = 2        # 每边给几句原话：一句不够判，三句占地方
+
+
+@router.get("/entity-merges")
+def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 200) -> dict:
+    """待判的实体对，按「值不值得先看」排好序。已经判过的（包括否掉的）不再出现。"""
+    from collections import Counter
+
+    from ..database.kb import entity_merge
+
+    mem = UserMemory(user)
+    store_, vocab = mem._index()
+    name = lambda c: getattr(vocab.entities.get(c), "name", "") or c      # noqa: E731
+    count = Counter(c for f in store_.facts.values() for c in f.entities)
+    decided = {entity_merge.pair_key(d["code_a"], d["code_b"]) for d in store.entity_decisions(user)}
+
+    samples: dict[str, list[str]] = {}
+    for f in store_.facts.values():
+        for c in f.entities:
+            if len(samples.setdefault(c, [])) < MERGE_SAMPLE:
+                samples[c].append((getattr(f, "text", "") or "")[:120])
+
+    rows = [(c, name(c), int(count.get(c, 0))) for c in vocab.entities]
+    out = []
+    for cand in entity_merge.find_candidates(rows, limit=limit * 3):
+        if entity_merge.pair_key(cand.a, cand.b) in decided:
+            continue
+        out.append({
+            "a": cand.a, "b": cand.b, "why": cand.why, "score": cand.score,
+            "name_a": name(cand.a), "name_b": name(cand.b),
+            "facts_a": cand.facts_a, "facts_b": cand.facts_b, "facts_total": cand.facts_total,
+            "sample_a": samples.get(cand.a, []), "sample_b": samples.get(cand.b, []),
+        })
+        if len(out) >= limit:
+            break
+    return {"candidates": out, "decided": len(decided)}
+
+
+class EntityMergeIn(BaseModel):
+    a: str
+    b: str
+    # same = 是同一个；different = 不是；drop_a / drop_b = 那一个压根不该是实体
+    decision: str
+    why: str = ""
+
+
+@router.post("/entity-merges")
+def kb_entity_merge_decide(body: EntityMergeIn, user: str = Depends(current_user)) -> dict:
+    if body.decision not in ("same", "different", "drop_a", "drop_b"):
+        raise HTTPException(400, "decision 只能是 same / different / drop_a / drop_b")
+    if not body.a or not body.b or body.a == body.b:
+        raise HTTPException(400, "要给两个不同的实体")
+    store.record_entity_decision(user, body.a, body.b, body.decision, body.why)
+    UserMemory(user).invalidate()          # 分组是按索引缓存的，判完要立刻生效
+    return {"ok": True}
+
+
+@router.delete("/entity-merges")
+def kb_entity_merge_undo(a: str, b: str, user: str = Depends(current_user)) -> dict:
+    """判错了要能撤——「可逆」那条承诺的一部分。撤完这一对会重新出现在待判里。"""
+    gone = store.forget_entity_decision(user, a, b)
+    if gone:
+        UserMemory(user).invalidate()
+    return {"ok": gone}

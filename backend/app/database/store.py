@@ -198,6 +198,22 @@ CREATE TABLE IF NOT EXISTS note_remotes (
 );
 
 -- 冲突收件箱：摄入时新事实跟旧事实撞上的（docs/agent-native-editor.md §3.3.1）
+-- 实体合并的裁决（docs/kb-entities-plan.md 第二部分）。
+-- **只记「人怎么判的」，候选每次全量重算**——用户定的形状（第 659 轮）：
+-- 一次性后处理，不做增量。重跑一遍扫描时，这张表里已经判过的那些对直接跳过，
+-- 所以同一对**不会被问第二遍**，包括被否掉的那些。
+-- 合并只在展示 / 查询层生效（跟 `kb/entities.EntityGroups` 一样），知识库不动、随时可逆。
+CREATE TABLE IF NOT EXISTS kb_entity_merges (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    code_a      TEXT NOT NULL,          -- 两个码按字典序存，跟谁在左谁在右无关
+    code_b      TEXT NOT NULL,
+    decision    TEXT NOT NULL,          -- same（是同一个）/ different（不是）/ drop_a / drop_b（那个压根不该是实体）
+    why         TEXT NOT NULL DEFAULT '',   -- 哪条信号点出来的：initials / translit / spelling / substring
+    decided_at  TEXT NOT NULL,
+    UNIQUE (user_id, code_a, code_b)
+);
+
 CREATE TABLE IF NOT EXISTS kb_conflicts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     TEXT NOT NULL,
@@ -616,6 +632,38 @@ def add_conflict(user_id: str, new_fact_id: str, old_fact_id: str, unit: str, sa
         cur = c.execute("INSERT OR IGNORE INTO kb_conflicts (user_id,new_fact_id,old_fact_id,unit,say,source,created_at) VALUES (?,?,?,?,?,?,?)",
                         (user_id, new_fact_id, old_fact_id, unit, say, source, _now()))
         return cur.rowcount > 0
+
+
+# ---------------------------------------------------------- 实体合并的裁决
+#
+# 候选**不落库**：它是纯代码算出来的，每次扫描全量重算（用户定的形状，第 659 轮：
+# 一次性后处理不做增量）。落库的只有人的判断，它有两个用处——合并生效、以及
+# **不再问第二遍**。
+
+def record_entity_decision(user_id: str, code_a: str, code_b: str, decision: str,
+                           why: str = "") -> None:
+    a, b = (code_a, code_b) if code_a <= code_b else (code_b, code_a)
+    with connect() as c:
+        c.execute("INSERT INTO kb_entity_merges (user_id,code_a,code_b,decision,why,decided_at)"
+                  " VALUES (?,?,?,?,?,?)"
+                  " ON CONFLICT(user_id,code_a,code_b) DO UPDATE SET decision=excluded.decision,"
+                  " why=excluded.why, decided_at=excluded.decided_at",
+                  (user_id, a, b, decision, why, _now()))
+
+
+def entity_decisions(user_id: str) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT code_a,code_b,decision,why,decided_at FROM kb_entity_merges"
+                         " WHERE user_id=? ORDER BY id", (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def forget_entity_decision(user_id: str, code_a: str, code_b: str) -> bool:
+    """判错了要能撤——这是「可逆」那条承诺的一部分。"""
+    a, b = (code_a, code_b) if code_a <= code_b else (code_b, code_a)
+    with connect() as c:
+        return c.execute("DELETE FROM kb_entity_merges WHERE user_id=? AND code_a=? AND code_b=?",
+                         (user_id, a, b)).rowcount > 0
 
 
 def list_conflicts(user_id: str, status: str = "open", limit: int = 100) -> list[dict]:

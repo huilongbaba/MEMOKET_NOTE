@@ -269,6 +269,13 @@ class UserMemory:
         if hit and hit[0] == mtime:
             return hit[1], hit[2]
         store, vocab = Store.load([key])
+        # **把用户挂在 store 上**：下游（`kb/entities.for_store`）要按用户去取
+        # 「人判过的实体合并」，而它手上只有 store。加一个属性比给五个调用点
+        # 都加一个参数干净——那五处分散在 routers / search / pages 三层。
+        try:
+            store._memoket_user = self.user_id
+        except Exception:      # noqa: BLE001
+            pass
         self._cache[key] = (mtime, store, vocab)
         return store, vocab
 

@@ -195,9 +195,12 @@ def dashboard(mem) -> dict:
     # 是说话人标签，首页「实体」那栏只剩 3 个 chip，旁边「主题」有 6 个（第 615 轮
     # 截图实拍）。说话人在首页本来就有自己那一栏（`speakers`），不该再占实体的名额。
     # 其他地方（统计数字、知识库树）早就这么做了，只有这一处没跟上。
+    # 用户点过「这压根不该是实体」的也不列（`app` `device` `pro` 这类被抽成实体的
+    # 英文常用词）——没有干净的规则能分开它们，只认人判的（kb-entities-plan §10）。
     top_entities = [{"code": c, "name": groups.name(c), "facts": n}
                     for c, n in ent.most_common()
-                    if not is_speaker_tag(c) and not is_speaker_tag(groups.name(c))][:TOP_N]
+                    if not is_speaker_tag(c) and not is_speaker_tag(groups.name(c))
+                    and not groups.is_dropped(c)][:TOP_N]
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
     recent_units = []
