@@ -2325,7 +2325,7 @@ export default function App() {
       if ((e as Error).name !== 'AbortError') toast('接着写失败：' + friendlyError(e), 'error')
     } finally {
       abortRef.current = null
-      setLoading('')
+      setLoading(''); setNoteHarnessNoteId(null)
     }
   }
 
@@ -2372,6 +2372,12 @@ export default function App() {
       const after = formatMarkdown(r.content)
       const v = editorViewRef.current
       if (!v) return
+      // 等模型的这几秒里用户还能打字（排版不像 harness 那样锁编辑器）。minimalChange 算出来的
+      // 位置是按请求前那份正文的，文档变过就会错位——宁可丢掉这次结果也不要弄坏正文（第 585 轮）
+      if (v.state.doc.toString() !== before) {
+        toast('排版期间正文改过了，这次结果没有应用——改完再点一次「智能排版」', 'error')
+        return
+      }
       // 只换变了的那一段：整篇替换会把之前各层提案的位置全映射到一个点上，账本就空了
       const change = minimalChange(before, after)
       if (change) v.dispatch({ changes: change })
@@ -2382,7 +2388,7 @@ export default function App() {
     } catch (e) {
       toast(`排版失败：${friendlyError(e)}`, 'error')
     } finally {
-      setLoading(''); setNoteHarnessNoteId(null)
+      setLoading('')
     }
   }
 
