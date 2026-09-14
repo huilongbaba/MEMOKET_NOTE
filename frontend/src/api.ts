@@ -383,6 +383,39 @@ export async function magicTap(
   return { truncated, fakeCitations }
 }
 
+export type SlidesResult = {
+  pages: number
+  cite_coverage: number
+  notes: string[]
+  note_id: string
+  truncated: boolean
+}
+
+/** 这篇 → 一份幻灯片笔记（痛点 6）。**产物是一篇笔记不是一个文件**：
+ *  落成原笔记的子笔记，于是能 ⌘K 找到、能挂引用、能被续写继续改、能导出。
+ *  一次模型调用，不进多轮闭环——幻灯片是一次成型的重构。 */
+export async function makeSlides(
+  noteId: string, content: string, title: string,
+  style: 'points' | 'talk',
+  onDelta: (s: string) => void,
+  signal?: AbortSignal,
+): Promise<SlidesResult> {
+  const res = await fetch('/api/slides', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ note_id: noteId, content, title, style }),
+    signal,
+  })
+  if (!res.ok || !res.body) throw new Error(`slides failed: ${res.status}`)
+  let out: SlidesResult = { pages: 0, cite_coverage: 0, notes: [], note_id: '', truncated: false }
+  for await (const { event, payload } of sseFrames(res)) {
+    if (event === 'delta') onDelta(payload.text as string)
+    else if (event === 'slides') out = payload as SlidesResult
+    else if (event === 'error') throw new Error(payload.detail)
+  }
+  return out
+}
+
 // ---------------------------------------------------------------- 无限续写计划
 //
 // 文件夹级别的写作 harness，不是笔记级别的"点一下续写"——一个持久化的
@@ -1219,12 +1252,16 @@ export const importNotion = (token: string, to: 'both' | 'kb' | 'notes' = 'both'
 
 /** 飞书云文档 / 知识库：自建应用的 app_id / app_secret（不落库，每次填），scope = wiki（知识库）
  *  或 drive（云空间）。文档要把应用加为协作者。 */
-export const importFeishu = (appId: string, appSecret: string, scope: 'wiki' | 'drive', to: 'both' | 'kb' | 'notes' = 'both') => {
+/** `docs` 填了就**只导这几篇**（一行一个链接或 token），不走「列出来」那条路。
+ *  飞书按文档授权，而列出来要求应用是知识库空间的**成员**——只加了单篇协作者的话，
+ *  那篇读得到却列不出来（真账号实测）。 */
+export const importFeishu = (appId: string, appSecret: string, scope: 'wiki' | 'drive', to: 'both' | 'kb' | 'notes' = 'both', docs = '') => {
   const fd = new FormData()
   fd.append('app_id', appId)
   fd.append('app_secret', appSecret)
   fd.append('scope', scope)
   fd.append('to', to)
+  if (docs.trim()) fd.append('docs', docs.trim())
   return fetch('/api/import/feishu', { method: 'POST', headers: headers(), body: fd })
     .then(json<JobOut>)
 }

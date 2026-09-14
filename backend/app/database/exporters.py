@@ -133,11 +133,35 @@ def render_tree(user: str, only: set[str] | None = None) -> list[ExportFile]:
     return out
 
 
+# markdown 的语言名 → 飞书 docx 的代码块语言枚举。读回来那一侧在
+# `ingest/feishu._CODE_LANG`，**两张表要对得上**——`scripts/check-...` 管不到这儿，
+# 靠的是这条注释和往返测试。认不出来就不设语言，不猜。
+_FEISHU_LANG = {
+    "c": 8, "cpp": 9, "c++": 9, "csharp": 10, "css": 12, "go": 17, "html": 22,
+    "java": 24, "javascript": 25, "js": 25, "json": 26, "kotlin": 28, "latex": 29,
+    "lua": 30, "makefile": 31, "markdown": 32, "md": 32, "objectivec": 36, "php": 40,
+    "python": 43, "py": 43, "r": 45, "ruby": 49, "rust": 50, "scala": 51, "scheme": 52,
+    "shell": 53, "sh": 53, "sql": 54, "swift": 55, "typescript": 58, "ts": 58,
+    "xml": 60, "yaml": 61, "yml": 61, "bash": 63,
+}
+# Notion 的 language 是字符串枚举，名字基本就是通用写法
+_NOTION_LANG = {k: k for k in ("c", "css", "go", "html", "java", "javascript", "json",
+                               "kotlin", "latex", "lua", "makefile", "markdown", "php",
+                               "python", "r", "ruby", "rust", "scala", "scheme", "shell",
+                               "sql", "swift", "typescript", "xml", "yaml", "bash")}
+_NOTION_LANG.update({"cpp": "c++", "js": "javascript", "ts": "typescript",
+                     "py": "python", "sh": "shell", "yml": "yaml", "md": "markdown"})
+
+
 # ---------------------------------------------------------------- markdown → 块
 
-def _md_lines(md: str) -> list[tuple[str, str, int]]:
-    """把 markdown 粗粒度切成 (kind, text, level)：heading / bullet / ordered / code / quote / para。
-    front-matter 去掉（那是给 Obsidian 的）。"""
+def _md_lines(md: str) -> list[tuple[str, str, int, str]]:
+    """把 markdown 粗粒度切成 (kind, text, level, lang)：heading / bullet / ordered / code / quote / para。
+    front-matter 去掉（那是给 Obsidian 的）。
+
+    `lang` 只有代码块用得上。**它是往返里唯一会丢的东西**（第 649 轮真账号实测：
+    ```python 导出去再导回来变成裸 ```），所以宁可多带一个字段，也不要在这里把它扔了。
+    """
     text = md
     if text.startswith("---\n"):
         end = text.find("\n---\n", 4)
@@ -150,31 +174,32 @@ def _md_lines(md: str) -> list[tuple[str, str, int]]:
 
     def flush() -> None:
         if para:
-            out.append(("para", " ".join(s.strip() for s in para), 0))
+            out.append(("para", " ".join(s.strip() for s in para), 0, ""))
             para.clear()
     while i < len(lines):
         ln = lines[i]
         if ln.startswith("```"):
             flush()
+            lang = ln[3:].strip().split()[0] if ln[3:].strip() else ""
             j = i + 1
             buf = []
             while j < len(lines) and not lines[j].startswith("```"):
                 buf.append(lines[j]); j += 1
-            out.append(("code", "\n".join(buf), 0))
+            out.append(("code", "\n".join(buf), 0, lang))
             i = j + 1
             continue
         m = re.match(r"^(#{1,6})\s+(.*)$", ln)
         if m:
-            flush(); out.append(("heading", m.group(2).strip(), min(len(m.group(1)), 3))); i += 1; continue
+            flush(); out.append(("heading", m.group(2).strip(), min(len(m.group(1)), 3), "")); i += 1; continue
         m = re.match(r"^\s*[-*+]\s+(.*)$", ln)
         if m:
-            flush(); out.append(("bullet", m.group(1).strip(), 0)); i += 1; continue
+            flush(); out.append(("bullet", m.group(1).strip(), 0, "")); i += 1; continue
         m = re.match(r"^\s*\d+[.)]\s+(.*)$", ln)
         if m:
-            flush(); out.append(("ordered", m.group(1).strip(), 0)); i += 1; continue
+            flush(); out.append(("ordered", m.group(1).strip(), 0, "")); i += 1; continue
         m = re.match(r"^>\s?(.*)$", ln)
         if m:
-            flush(); out.append(("quote", m.group(1).strip(), 0)); i += 1; continue
+            flush(); out.append(("quote", m.group(1).strip(), 0, "")); i += 1; continue
         if not ln.strip():
             flush(); i += 1; continue
         para.append(ln)
@@ -189,7 +214,7 @@ def _chunks2000(s: str) -> list[str]:
 
 def md_to_notion_blocks(md: str) -> list[dict]:
     blocks = []
-    for kind, text, level in _md_lines(md):
+    for kind, text, level, lang in _md_lines(md):
         rt = [{"type": "text", "text": {"content": c}} for c in _chunks2000(text)]
         if kind == "heading":
             t = f"heading_{level}"
@@ -199,7 +224,8 @@ def md_to_notion_blocks(md: str) -> list[dict]:
         elif kind == "ordered":
             blocks.append({"object": "block", "type": "numbered_list_item", "numbered_list_item": {"rich_text": rt}})
         elif kind == "code":
-            blocks.append({"object": "block", "type": "code", "code": {"rich_text": rt, "language": "plain text"}})
+            blocks.append({"object": "block", "type": "code",
+                           "code": {"rich_text": rt, "language": _NOTION_LANG.get(lang, "plain text")}})
         elif kind == "quote":
             blocks.append({"object": "block", "type": "quote", "quote": {"rich_text": rt}})
         else:
@@ -209,7 +235,7 @@ def md_to_notion_blocks(md: str) -> list[dict]:
 
 def md_to_feishu_children(md: str) -> list[dict]:
     out = []
-    for kind, text, level in _md_lines(md):
+    for kind, text, level, lang in _md_lines(md):
         el = {"elements": [{"text_run": {"content": text}}]}
         if kind == "heading":
             out.append({"block_type": 2 + level, f"heading{level}": el})
@@ -218,7 +244,11 @@ def md_to_feishu_children(md: str) -> list[dict]:
         elif kind == "ordered":
             out.append({"block_type": 13, "ordered": el})
         elif kind == "code":
-            out.append({"block_type": 14, "code": el})
+            # 语言标注带过去：往返实测（第 649 轮真账号）这是唯一会丢的东西
+            code = dict(el)
+            if lang and (n := _FEISHU_LANG.get(lang)):
+                code["style"] = {"language": n}
+            out.append({"block_type": 14, "code": code})
         elif kind == "quote":
             out.append({"block_type": 15, "quote": el})
         else:

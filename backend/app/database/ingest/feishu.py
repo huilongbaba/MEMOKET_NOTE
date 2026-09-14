@@ -23,6 +23,17 @@ for _t, _lvl in _HEADINGS.items():
     _TYPE_KEY[_t] = f"heading{_t - 2}"
 
 
+# 飞书 docx 的代码块语言枚举 → markdown 的语言名（官方「代码块语言」表里的常用几十种；
+# 认不出来就不写语言，不猜）。写出去那一侧在 `exporters._FEISHU_LANG`，两张表要对得上。
+_CODE_LANG = {
+    1: "", 8: "c", 9: "cpp", 10: "csharp", 12: "css", 17: "go", 22: "html",
+    24: "java", 25: "javascript", 26: "json", 28: "kotlin", 29: "latex", 30: "lua",
+    31: "makefile", 32: "markdown", 36: "objectivec", 40: "php", 43: "python",
+    45: "r", 49: "ruby", 50: "rust", 51: "scala", 52: "scheme", 53: "shell",
+    54: "sql", 55: "swift", 58: "typescript", 60: "xml", 61: "yaml", 63: "bash",
+}
+
+
 def _inline(elements: list[dict] | None) -> str:
     out = []
     for el in elements or []:
@@ -59,6 +70,16 @@ def blocks_to_markdown(blocks: list[dict]) -> str:
     lines: list[str] = []
     counters: dict[str, int] = {}
 
+    def gap() -> None:
+        """块级元素之前留一个空行。
+        
+        **列表项后面紧跟的任何东西都会被 markdown 吃成那一项的续行**——往返实测
+        （第 649 轮真账号）里连着中过两次：`> 引用` 紧跟 `- 列表第二条`、
+        普通段落紧跟 `2. 有序第二条`。列表项之间不留（那本来就该是紧的）。
+        """
+        if lines and lines[-1].strip():
+            lines.append("")
+
     def render(bid: str, depth: int = 0) -> None:
         b = by_id.get(bid)
         if not b:
@@ -68,9 +89,11 @@ def blocks_to_markdown(blocks: list[dict]) -> str:
         body = b.get(key) or {}
         indent = "  " * depth
         if t in _HEADINGS:
+            gap()
             lines.append(f"{'#' * _HEADINGS[t]} {_inline(body.get('elements'))}")
             lines.append("")
         elif t == 2:
+            gap()
             lines.append(indent + _inline(body.get("elements")))
             lines.append("")
         elif t == 12:
@@ -83,11 +106,16 @@ def blocks_to_markdown(blocks: list[dict]) -> str:
             done = (body.get("style") or {}).get("done")
             lines.append(f"{indent}- [{'x' if done else ' '}] {_inline(body.get('elements'))}")
         elif t == 14:
-            lines.append("```")
+            # **语言标注要带回来**：往返实测（第 649 轮，真账号）`​```python` 导出去
+            # 再导回来变成了裸 `​``` `——代码块没了高亮，重导一次就丢一次。
+            gap()
+            lang = _CODE_LANG.get((body.get("style") or {}).get("language"), "")
+            lines.append("```" + lang)
             lines.append(_inline(body.get("elements")))
             lines.append("```")
             lines.append("")
         elif t == 15:
+            gap()
             lines.append(f"> {_inline(body.get('elements'))}")
             lines.append("")
         elif t == 19:
@@ -95,9 +123,11 @@ def blocks_to_markdown(blocks: list[dict]) -> str:
                 render(cid, depth)
             return
         elif t == 22:
+            gap()
             lines.append("---")
             lines.append("")
         elif t == 27:
+            gap()
             lines.append(f"![图片]({body.get('token', '')})")
             lines.append("")
         elif t == 31:
@@ -238,6 +268,29 @@ class FeishuClient:
                 page_token = d.get("next_page_token") or ""
                 time.sleep(0.2)
         return out[:limit] if limit else out
+
+    # 链接里那一段 token：`https://xxx.feishu.cn/docx/<token>` / `/wiki/<token>`，
+    # 后面可能跟 `?from=...` 或 `#锚点`。裸 token 也认。
+    _REF = __import__("re").compile(r"(?:/(docx|wiki|docs)/)?([A-Za-z0-9]{16,32})(?:[?#].*)?$")
+
+    def resolve_doc(self, ref: str) -> dict:
+        """一个链接 / token → `{document_id, title}`。
+
+        **这条路存在的理由**：飞书是按文档授权的，而「列出来」那条路要求应用是
+        知识库空间的成员。实测（第 649 轮真账号）：一篇按文档加了协作者的 wiki
+        文档，`get_node` 读得到、`/wiki/v2/spaces` 里却一个空间都没有——
+        **读得到却列不出来**。能粘链接，这个功能才对「不是管理员的人」也成立。
+        """
+        m = self._REF.search((ref or "").strip())
+        if not m:
+            raise RuntimeError(f"认不出这是哪一篇：{ref[:40]}")
+        kind, token = m.group(1), m.group(2)
+        if kind == "wiki":
+            node = self._ok(self._do_get("/wiki/v2/spaces/get_node", {"token": token}), "查节点").get("node") or {}
+            if node.get("obj_type") != "docx":
+                raise RuntimeError(f"这是一篇「{node.get('obj_type') or '未知类型'}」，只能导入文档（docx）")
+            return {"document_id": node.get("obj_token") or "", "title": node.get("title") or ""}
+        return {"document_id": token, "title": ""}
 
     def document_blocks(self, document_id: str) -> list[dict]:
         blocks: list[dict] = []

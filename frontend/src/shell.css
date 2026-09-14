@@ -286,8 +286,11 @@
   overflow-x: auto; scrollbar-width: none;
 }
 .right-pane-tabs::-webkit-scrollbar { display: none; }
+/* **不许被挤**：上面那条「自己横向滚」只有在标签不缩的时候才成立。
+   少了 flex:none 的话 flex 会先压扁每个标签，中文标签名就竖着折成两行
+   （第 649 轮实拍：加出第五个标签之后「记忆」「目录」全变成两行一个字）。 */
 .pane-tab {
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 4px; flex: none; white-space: nowrap;
   padding: 4px 9px; border: none; border-radius: 6px 6px 0 0;
   background: transparent; color: var(--muted);
   font-size: 12px; cursor: pointer;

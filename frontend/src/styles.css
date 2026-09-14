@@ -1203,3 +1203,20 @@ kbd {
 /* 一行只读的地址 / 模型名：给人核对用的，所以等宽、可选中 */
 .mono-line { margin: 2px 0 0; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
              color: var(--fg); user-select: text; word-break: break-all; }
+
+/* ------------------------------------------------ 幻灯片预览（痛点 6）
+   纯 CSS 的 16:9 缩略图，不引 Marp（600KB+ 的依赖，只为预览不值）。
+   **没有依据的那几页是唯一用颜色标出来的东西**——那正是这份产物跟通用
+   PPT 工具的根本差别。 */
+.slide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.slide-thumb {
+  position: relative; display: flex; flex-direction: column; gap: 3px; text-align: start;
+  aspect-ratio: 16 / 9; padding: 8px 8px 6px; overflow: hidden; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg);
+}
+.slide-thumb:hover { border-color: var(--accent); }
+.slide-thumb.bare { border-inline-start: 3px solid var(--warn); }
+.slide-thumb b { font-size: 11px; line-height: 1.35; }
+.slide-no { position: absolute; inset-block-start: 4px; inset-inline-end: 6px; font-size: 10px; color: var(--muted); }
+.slide-body { font-size: 10px; line-height: 1.4; color: var(--muted); white-space: pre-wrap; overflow: hidden; }
+.warnish { color: var(--warn); }

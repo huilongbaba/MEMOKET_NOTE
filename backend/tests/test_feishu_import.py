@@ -46,7 +46,9 @@ BLOCKS = [
 def test_blocks_to_markdown():
     md = feishu.blocks_to_markdown(BLOCKS)
     assert md.startswith("## 决定\n\n电池改 **380mAh**，见 [文档](https://x)\n")
-    assert "- 第一条\n  - 子项\n- 第二条\n1. 先\n2. 后\n```\nprint(1)\n```" in md
+    # 列表项之间是紧的，**但列表后面紧跟的块要空一行**——不空的话 markdown 会把它
+    # 吃成最后那一项的续行（第 649 轮真账号往返实测中过两次：引用、普通段落）
+    assert "- 第一条\n  - 子项\n- 第二条\n1. 先\n2. 后\n\n```\nprint(1)\n```" in md
     assert "> 引用" in md and "- [x] 待办" in md
     assert "| 节点 | 日期 |\n|---|---|\n| DVT | 8-5 |" in md
     assert "![图片](img_x)" in md
@@ -83,7 +85,7 @@ def test_route_lists_wiki_and_queues(tmp_path, monkeypatch):
     real_init = feishu.FeishuClient.__init__
     monkeypatch.setattr(feishu.FeishuClient, "__init__", lambda self, a, b, **kw: real_init(self, a, b, get=fake_get, post=fake_post))
     from fastapi import BackgroundTasks
-    out = import_sources.import_feishu(BackgroundTasks(), app_id="cli_x", app_secret="s", scope="wiki", to="notes", limit=0, user="u1")
+    out = import_sources.import_feishu(BackgroundTasks(), app_id="cli_x", app_secret="s", scope="wiki", to="notes", limit=0, docs="", user="u1")
     assert out.status == "queued" and [it.filename for it in out.items] == ["周会纪要", "子页"]
     assert "/auth/v3/tenant_access_token/internal" in calls
     # 只列 docx，sheet 跳过；source_id = document_id（稳定 → 重导增量）
@@ -91,3 +93,66 @@ def test_route_lists_wiki_and_queues(tmp_path, monkeypatch):
     payload = json.loads(Path(store.get_job(out.job_id)["payload_path"]).read_text())
     assert [n["source_id"] for n in payload["notes"]] == ["docA", "docB"] and payload["notes"][0]["source"] == "feishu"
     assert payload["notes"][0]["content"].startswith("## 决定")
+
+
+def test_代码块的语言标注要带回来():
+    """往返实测（第 649 轮，真账号）：```python 导出去再导回来变成了裸 ```，
+    代码块没了高亮，**重导一次就丢一次**。写出去那一侧的表在
+    `database/exporters._FEISHU_LANG`，两张表要对得上。"""
+    blocks = [
+        {"block_id": "p", "block_type": 1, "children": ["c"], "page": {"elements": [_t("标题")]}},
+        {"block_id": "c", "block_type": 14, "parent_id": "p",
+         "code": {"elements": [_t("print(1)")], "style": {"language": 43}}},
+    ]
+    assert "```python\nprint(1)\n```" in feishu.blocks_to_markdown(blocks)
+
+    # 认不出来的语言就不写，不猜
+    blocks[1]["code"]["style"] = {"language": 999}
+    assert "```\nprint(1)\n```" in feishu.blocks_to_markdown(blocks)
+
+
+def test_两张语言表对得上():
+    """一张写出去、一张读回来。漂了的后果是往返之后语言变了或者丢了。"""
+    from app.database.exporters import _FEISHU_LANG
+    from app.database.ingest.feishu import _CODE_LANG
+
+    for name, num in _FEISHU_LANG.items():
+        assert num in _CODE_LANG, f"导出认得 {name}={num}，导入不认"
+        # 别名（py / js / cpp）读回来会变成规范名，这是对的；规范名必须原样回来
+        if _CODE_LANG[num] == name:
+            continue
+        assert _CODE_LANG[num] in _FEISHU_LANG, f"{num} 读回来是 {_CODE_LANG[num]}，导出不认这个名字"
+
+
+def test_粘一个链接就只导那一篇_不走列出来那条路(monkeypatch, tmp_path):
+    """**飞书按文档授权，而「列出来」要求应用是知识库空间的成员。**
+
+    实测（第 649 轮，真账号）：一篇按文档加了协作者的 wiki 文档，`get_node`
+    读得到、`/wiki/v2/spaces` 里却一个空间都没有——读得到却列不出来。
+    能粘链接，这个功能才对「不是管理员的人」也成立。
+    """
+    from fastapi import BackgroundTasks
+
+    from app.routers import import_sources
+
+    seen: dict = {}
+
+    def fake_get(path, params):
+        seen.setdefault("paths", []).append(path)
+        if path == "/wiki/v2/spaces/get_node":
+            return {"code": 0, "data": {"node": {"obj_type": "docx", "obj_token": "docW", "title": "共享给我的那篇"}}}
+        if path.startswith("/docx/v1/documents/"):
+            return {"code": 0, "data": {"items": BLOCKS, "has_more": False}}
+        raise AssertionError(f"不该访问 {path}")
+
+    real_init = feishu.FeishuClient.__init__
+    monkeypatch.setattr(feishu.FeishuClient, "__init__",
+                        lambda self, a, b, **kw: real_init(self, a, b, get=fake_get,
+                                                           post=lambda p, j: {"code": 0, "tenant_access_token": "t"}))
+    out = import_sources.import_feishu(
+        BackgroundTasks(), app_id="cli_x", app_secret="s", scope="wiki", to="notes", limit=0,
+        docs="https://x.feishu.cn/wiki/WikiTok3nAAAAAAAAAA\nDocxTok3nBBBBBBBBBB", user="u_links")
+    assert out.status == "queued"
+    # **一次都没去列空间**
+    assert not any(p.endswith("/spaces") for p in seen["paths"]), seen["paths"]
+    assert [it.filename for it in out.items][:1] == ["共享给我的那篇"]

@@ -366,29 +366,41 @@ def import_notion(bg: BackgroundTasks, token: str = Form(...), to: str = Form("b
 @router.post("/feishu", response_model=IngestOut)
 def import_feishu(bg: BackgroundTasks, app_id: str = Form(...), app_secret: str = Form(...),
                   scope: str = Form("wiki"), to: str = Form("both"), limit: int = Form(0),
+                  docs: str = Form(""),
                   user: str = Depends(current_user)):
     """飞书云文档 / 知识库（docs/import-sync-plan.md §1）：自建应用的 app_id / app_secret，
     列出应用能看到的 docx，逐篇取块转成 markdown，走同一条 item 流水线。
-    source_id = document_id（稳定 → 重导增量）。凭证不落库：跟 Notion token 一样每次填。"""
+    source_id = document_id（稳定 → 重导增量）。凭证不落库：跟 Notion token 一样每次填。
+
+    `docs` 填了就**只导这几篇**（一行一个链接或 token），不走「列出来」那条路。
+    这条不是锦上添花：飞书按文档授权，而列出来要求应用是知识库空间的**成员**。
+    实测（第 649 轮真账号）一篇按文档加了协作者的 wiki 文档——读得到、
+    `/wiki/v2/spaces` 里却一个空间都没有。**能粘链接，这个功能才对不是管理员的人成立。**
+    """
     _reject_if_busy(user)
     if scope not in ("wiki", "drive"):
         raise HTTPException(400, "scope 只能是 wiki 或 drive")
     client = feishu.FeishuClient(app_id, app_secret)
+    refs = [x.strip() for x in re.split(r"[\s,;]+", docs or "") if x.strip()]
     try:
         client.token()
-        docs = client.list_wiki_docs(limit) if scope == "wiki" else client.list_drive_docs(limit)
+        if refs:
+            found = [client.resolve_doc(r) for r in refs]
+        else:
+            found = client.list_wiki_docs(limit) if scope == "wiki" else client.list_drive_docs(limit)
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
     except httpx.HTTPStatusError as exc:
         raise HTTPException(400, f"飞书拒绝了请求：{exc.response.status_code}") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"连不上飞书：{exc}") from exc
-    if not docs:
+    if not found:
         raise HTTPException(400, "这个应用看不到任何文档——要把文档 / 知识库「添加协作者」给应用，"
-                                 "或者换 scope（wiki = 知识库，drive = 云空间）")
+                                 "或者换 scope（wiki = 知识库，drive = 云空间）。"
+                                 "**只加了单篇协作者的话列不出来，把文档链接直接贴进来。**")
     notes: list[importers.ImportedNote] = []
     skipped = 0
-    for i, d in enumerate(docs):
+    for i, d in enumerate(found):
         try:
             blocks = client.document_blocks(d["document_id"])
         except (RuntimeError, httpx.HTTPError):

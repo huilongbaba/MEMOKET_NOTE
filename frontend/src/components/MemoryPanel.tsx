@@ -52,6 +52,9 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   const [feishuAppId, setFeishuAppId] = useState('')
   const [feishuSecret, setFeishuSecret] = useState('')
   const [feishuScope, setFeishuScope] = useState<'wiki' | 'drive'>('wiki')
+  // 粘链接那条路：只加了单篇协作者的文档**读得到却列不出来**（真账号实测），
+  // 没有这个框，这个功能就只对「能给应用开知识库空间权限的人」成立。
+  const [feishuDocs, setFeishuDocs] = useState('')
   const [importing, setImporting] = useState(false)
   // 导到哪：一个几百篇的 vault 全抽进知识库要跑很久，得让人选
   const [importTo, setImportTo] = useState<'both' | 'kb' | 'notes'>('both')
@@ -174,7 +177,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
   async function doImportFeishu() {
     setImporting(true)
     try {
-      const r = await importFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuScope, importTo)
+      const r = await importFeishu(feishuAppId.trim(), feishuSecret.trim(), feishuScope, importTo, feishuDocs)
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
@@ -282,7 +285,8 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           <span style={{ width: 88 }}>飞书</span>
           <input placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <select aria-label="飞书范围" value={feishuScope} onChange={(e) => setFeishuScope(e.target.value as 'wiki' | 'drive')}>
+          <select aria-label="飞书范围" value={feishuScope} onChange={(e) => setFeishuScope(e.target.value as 'wiki' | 'drive')}
+                  disabled={!!feishuDocs.trim()} title={feishuDocs.trim() ? '填了链接就只导那几篇，不按范围列' : undefined}>
             <option value="wiki">知识库</option>
             <option value="drive">云空间</option>
           </select>
@@ -290,8 +294,16 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             {importing ? <span className="spinner" /> : '导入'}
           </button>
         </div>
+        <div className="row" style={{ gap: 8, alignItems: 'center', margin: '6px 0 0 96px' }}>
+          <input placeholder="或者直接粘文档链接（一行一个，填了就只导这几篇）" value={feishuDocs}
+                 onChange={(e) => setFeishuDocs(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+        </div>
         <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
           飞书开放平台建一个自建应用，开 docx / wiki / drive 的只读权限，再把要导的知识库或文档<strong>添加协作者</strong>给这个应用。凭证不会存下来。
+          <br />
+          {/* 真账号实测：只加了单篇协作者的 wiki 文档，get_node 读得到、
+              /wiki/v2/spaces 里却一个空间都没有——读得到却列不出来。 */}
+          <strong>只加了单篇协作者的话列不出来</strong>（列出来要求应用是知识库空间的成员）——把那篇的链接直接贴到上面那一栏。
         </p>
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>

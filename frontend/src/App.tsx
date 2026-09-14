@@ -42,6 +42,7 @@ import Logo from './components/Logo'
 import PreferencesPanel from './components/PreferencesPanel'
 // 知识库那一整套页面（含 d3 的图）按需加载：只写笔记的人不该为它多下 300KB（第 519 轮）
 const KbNoteView = lazy(() => import('./components/KbNoteView'))
+const SlidesPanel = lazy(() => import('./components/SlidesPanel'))
 const JourneyPage = lazy(() => import('./components/JourneyPage'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import ExportNotePanel from './components/ExportNotePanel'
@@ -77,6 +78,7 @@ import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
 import { dupSuffixes } from './util/dupTitles'
+import { isSlides, slidePages } from './util/slidePages'
 import { fmtDate, whenLabel } from './util/time'
 import { notifyIfHidden } from './util/notify'
 
@@ -231,7 +233,7 @@ export default function App() {
   // 静态清单。
   const [beatCoverage, setBeatCoverage] = useState<{ level: number; note: string } | null>(null)
   const [revisions, setRevisions] = useState<Revision[]>([])
-  const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness'>('')
+  const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness' | 'slides'>('')
   // 单篇 harness 正在写哪篇：标签行给那个标签顶上一道 3px 色条（Trilium 工作区色条的位置，第 511 轮）
   const [noteHarnessNoteId, setNoteHarnessNoteId] = useState<string | null>(null)
   // 每篇看到哪儿了：切走时记下光标和滚动位置，切回来放回去（痛点 12：查完一篇旧笔记回来，
@@ -1723,6 +1725,34 @@ export default function App() {
     }
   }
 
+  /** 这篇 → 一份幻灯片笔记（痛点 6）。
+   *
+   *  **不套多轮闭环**：幻灯片是一次成型的重构，多轮只会把页越改越碎。跑完直接
+   *  把人送到那篇子笔记上——产物是一篇笔记，那就该像打开一篇笔记一样看见它。
+   *  判据不合格不拦着落库，用一条提示说出来，要不要重做由用户定。 */
+  async function runSlides(style: 'points' | 'talk') {
+    if (!current || !content.trim()) return
+    setLoading('slides')
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    try {
+      await save()
+      const r = await api.makeSlides(current.id, content, current.title, style, () => {}, ctrl.signal)
+      window.dispatchEvent(new CustomEvent('notes-changed'))
+      await reload(); await reloadTree()
+      if (r.note_id) {
+        const n = await api.getNote(r.note_id)
+        await switchTo(n)
+      }
+      const bad = r.notes.length
+      toast(bad ? `${r.pages} 页 · ${Math.round(r.cite_coverage * 100)}% 的页带着引用 · ${bad} 条可以再改：${r.notes[0]}`
+                : `${r.pages} 页 · ${Math.round(r.cite_coverage * 100)}% 的页带着引用`,
+            bad ? 'error' : undefined)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') toast('做幻灯片失败：' + friendlyError(e), 'error')
+    } finally { setLoading(''); abortRef.current = null }
+  }
+
   /** 智能续写：单篇笔记内的 harness——自动修订（不等人工点接受）+ 自动
    * 续写交替，直到内容相对 spine/beats 已经完整才停。修订直接用跟
    * RevisionPanel 手动接受同一套 applyRevision() 锚点语义应用到本地
@@ -3141,6 +3171,12 @@ export default function App() {
                   { label: '无限续写…', icon: 'bx-rocket',
                     hint: '给一个目标，拆成若干分段，每段建成这篇的子笔记',
                     onSelect: () => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) } },
+                  /* 痛点 6：「想做成 PPT，又要上传给另一个 agent 工具，两个工具之间没有链接」。
+                     **产物是一篇笔记不是一个文件**——落成这篇的子笔记，于是能 ⌘K 找到、
+                     能挂引用、能被续写继续改、能导出。导出成 PDF 是第二步。 */
+                  { label: '做成幻灯片…', icon: 'bx-slideshow', disabled: !content.trim() || loading === 'slides',
+                    hint: !content.trim() ? '正文是空的' : '落成这篇的子笔记，每页带着它的引用编号',
+                    onSelect: () => { void runSlides('points') } },
                   { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
                   { kind: 'sep' },
                   { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
@@ -3287,6 +3323,13 @@ export default function App() {
                 : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
+            /* 幻灯片预览：**只在这篇真是幻灯片时才出现**（front-matter 里有 slides: true）。
+               普通笔记上多一个永远空着的标签，比没有这个标签更糟。 */
+            ...(isSlides(content) ? [{
+              id: 'slides', title: '幻灯片', icon: 'bx-slideshow', alwaysShown: true,
+              badge: slidePages(content).length || undefined,
+              body: <SlidesPanel content={content} viewRef={editorViewRef} />,
+            }] : []),
             // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
             { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0,
               body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff} /> },
