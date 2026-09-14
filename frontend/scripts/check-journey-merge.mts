@@ -7,7 +7,7 @@
  *     npx tsx scripts/check-journey-merge.mts
  */
 import { execFileSync } from 'node:child_process'
-import { mergeBlips, type Segment } from '../../desktop/src/capture.ts'
+import { DENY_APPS, DENY_TITLE_WORDS, mergeBlips, type Segment } from '../../desktop/src/capture.ts'
 
 const B = Date.parse('2026-09-14T18:00:00Z')   // 带 Z：两边都按 UTC 算，不然差一个时区
 const seg = (app: string, m0: number, m1: number, n = 5): Segment => ({
@@ -54,4 +54,25 @@ CASES.forEach((c, i) => {
   if (!ok) { bad++; console.log(`    TS  ${ts}\n    PY  ${pyOut}`) }
 })
 console.log(bad ? `${bad} 处两边对不上` : `${CASES.length} 个用例，壳和 P0 脚本给出同一个分段`)
+
+// ——— 内置黑名单两处必须一模一样 ————————————————————————————————
+//
+// 拦截发生在壳里（命中时连截图都不拍），而**界面上那份「默认不记的」是后端给的**。
+// 两边漂了的后果特别坏：界面上写着「不记」，实际一直在记。
+const pyDeny = JSON.parse(execFileSync(venv, ['-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(new URL('../../backend', import.meta.url).pathname)})
+from app.routers.journey import BUILTIN_DENY_APPS, BUILTIN_DENY_WORDS
+print(json.dumps({"apps": list(BUILTIN_DENY_APPS), "words": list(BUILTIN_DENY_WORDS)}))
+`], { encoding: 'utf8' })) as { apps: string[]; words: string[] }
+
+const same = JSON.stringify(pyDeny.apps) === JSON.stringify(DENY_APPS)
+  && JSON.stringify(pyDeny.words) === JSON.stringify(DENY_TITLE_WORDS)
+console.log(`${same ? '✓' : '✗'} 内置黑名单：壳和后端同一份`)
+if (!same) {
+  console.log(`    TS  ${JSON.stringify([DENY_APPS, DENY_TITLE_WORDS])}`)
+  console.log(`    PY  ${JSON.stringify([pyDeny.apps, pyDeny.words])}`)
+  bad++
+}
+
 process.exit(bad ? 1 : 0)

@@ -1376,6 +1376,20 @@ export type JourneyRun = {
   skipped: number; left: number; removed_facts: number
 }
 
+export type JourneyDeny = {
+  apps: string[]; words: string[]
+  /** 内置那份**拆不掉**，只读 */
+  builtin_apps: string[]; builtin_words: string[]
+}
+
+/** 用户自己加的黑名单。内置那份是地板，只能往上加。 */
+export const journeyDeny = () =>
+  fetch('/api/journey/deny', { headers: headers() }).then(json<JourneyDeny>)
+
+export const journeySetDeny = (apps: string[], words: string[]) =>
+  fetch('/api/journey/deny', { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ apps, words }) }).then(json<JourneyDeny>)
+
 /** 哪几天有记录，新的在前。翻天跳过空的，也用来判断「有没有用过」。 */
 export const journeyDays = () =>
   fetch('/api/journey/days', { headers: headers() }).then(json<string[]>)

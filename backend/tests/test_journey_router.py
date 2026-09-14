@@ -341,3 +341,44 @@ def test_没有任何记录时列表是空的不是报错(tmp_path, monkeypatch)
 
     monkeypatch.setattr(J, "journey_root", lambda: tmp_path / "还不存在")
     assert J.days(user="tester") == []
+
+
+def test_黑名单只能往上加_内置那份拆不掉(tmp_path, monkeypatch):
+    """「把密码管理器加回记录范围」不是一个该给的选项（§1 ②）。"""
+    from app.routers import journey as J
+    from app.routers.schemas import JourneyDenyIn
+
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    out = J.put_deny(JourneyDenyIn(apps=["Signal", "Signal", " "], words=["体检报告"]), user="t")
+    assert out.apps == ["Signal"] and out.words == ["体检报告"]      # 去重、去空
+    assert "1Password" in out.builtin_apps and "密码" in out.builtin_words
+
+    # 再读一遍要拿得回来；内置那份照样在
+    again = J.get_deny(user="t")
+    assert again.apps == ["Signal"]
+    assert again.builtin_apps == out.builtin_apps
+
+    # 清空只清自己加的
+    empty = J.put_deny(JourneyDenyIn(), user="t")
+    assert empty.apps == [] and empty.builtin_apps
+
+
+def test_黑名单条数和长度封顶(tmp_path, monkeypatch):
+    """名单要逐条比对，几千条会拖慢每一次采样。"""
+    from app.routers import journey as J
+    from app.routers.schemas import JourneyDenyIn
+
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    out = J.put_deny(JourneyDenyIn(apps=[f"App{i}" for i in range(500)],
+                                   words=["x" * 300]), user="t")
+    assert len(out.apps) == J.DENY_MAX
+    assert len(out.words[0]) == J.DENY_LEN
+
+
+def test_黑名单文件坏了当没加过_不是报错(tmp_path, monkeypatch):
+    """壳和界面共用这个文件，手改坏了不该让整页打不开。"""
+    from app.routers import journey as J
+
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    (tmp_path / "deny.json").write_text("{坏的", encoding="utf-8")
+    assert J.get_deny(user="t").apps == []

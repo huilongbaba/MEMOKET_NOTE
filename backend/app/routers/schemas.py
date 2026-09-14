@@ -776,6 +776,19 @@ class JourneySpanOut(BaseModel):
     took_ms: float = 0.0
 
 
+class JourneyDenyIn(BaseModel):
+    apps: list[str] = Field(default_factory=list)
+    words: list[str] = Field(default_factory=list)
+
+
+class JourneyDenyOut(BaseModel):
+    apps: list[str] = Field(default_factory=list)
+    words: list[str] = Field(default_factory=list)
+    # 内置那份**拆不掉**，只读给界面显示
+    builtin_apps: list[str] = Field(default_factory=list)
+    builtin_words: list[str] = Field(default_factory=list)
+
+
 class JourneyRunOut(BaseModel):
     date: str
     described: int = 0

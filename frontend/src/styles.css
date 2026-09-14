@@ -505,7 +505,12 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
   background: transparent; border: none; color: var(--muted); cursor: pointer;
 }
 .seg button:hover { background: var(--left-pane-item-hover-bg); color: var(--fg); }
-.seg button.on { background: var(--left-pane-item-selected-bg); color: var(--fg); }
+/* 选中那一格**不能只靠底色**：`--left-pane-item-selected-bg` 浅色下是纯白，
+   在左栏（#f2f2f2）上是个凸起的胶囊，可搬到正文区（也是白的）就完全看不见了
+   ——第 646 轮实拍「应用 / 标题词」两格长得一模一样，分不出选的是哪个。
+   加一道描边 + 加粗，两种底色上都成立。 */
+.seg button.on { background: var(--left-pane-item-selected-bg); color: var(--fg);
+                 font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); }
 
 .tree-node {
   display: flex; align-items: center; gap: 4px;
@@ -1174,6 +1179,12 @@ kbd {
 .jr-md ul { margin: 4px 0; padding-inline-start: 18px; }
 .jr-md li { margin: 2px 0; }
 .jr-md code { font-size: 12px; background: var(--line); border-radius: 3px; padding: 0 3px; }
+/* 「不记这些」：内置那份发灰不可点，自己加的才带 × */
+.journey-deny { border-top: 1px solid var(--line); padding-top: 12px; }
+.journey-deny .chip { cursor: default; }
+.journey-deny .chip.mine { border-color: var(--accent); color: var(--accent); padding-inline-end: 2px; }
+.journey-deny .chip.mine .icon-btn.sm { width: 18px; height: 18px; padding: 0; color: inherit; }
+
 /* 「回顾一段时间」：从「今天」这一页出去的一条路，不是这一页的主角 */
 .journey-span { border-top: 1px solid var(--line); padding-top: 12px; }
 /* 时间轴那一行的删除键：**悬停才出现**（跟笔记列表同一条规矩——

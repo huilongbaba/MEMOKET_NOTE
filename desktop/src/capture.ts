@@ -87,10 +87,34 @@ export async function frontApp(): Promise<{ app: string; title: string }> {
 }
 
 /** 黑名单。**应用名整串比，标题按词比**——标题是自由文本，只能看关键词。 */
-export function denied(app: string, title: string, extraApps: string[] = []): boolean {
-  if ([...DENY_APPS, ...extraApps].includes(app)) return true
+/**
+ * 这一刻该不该记。**内置那份是地板，用户只能往上加、不能往下拆**——
+ * 「把密码管理器加回记录范围」不是一个该给的选项。
+ *
+ * `extra` 是用户自己加的（应用名精确匹配，标题词按子串）。默认黑名单挡得住
+ * 通用的那几类，但挡不住「我们公司那个内部系统」「我看病那个网站」——
+ * **加不了自己的，这个功能就只能关掉不用**（计划 §1 ②）。
+ */
+export function denied(app: string, title: string,
+                       extra: { apps?: string[]; words?: string[] } | string[] = []): boolean {
+  const ex = Array.isArray(extra) ? { apps: extra, words: [] } : extra
+  if ([...DENY_APPS, ...(ex.apps ?? [])].includes(app)) return true
   const low = `${app} ${title}`.toLowerCase()
-  return DENY_TITLE_WORDS.some((w) => low.includes(w.toLowerCase()))
+  return [...DENY_TITLE_WORDS, ...(ex.words ?? [])]
+    .some((w) => w && low.includes(w.toLowerCase()))
+}
+
+/** 用户自己加的黑名单。**跟后端共用 `<userData>/journey/deny.json`**：
+ *  那个目录本来就是两边都认的（壳写段落、后端读段落），界面改这份名单走后端，
+ *  这里按文件改动时间重读——不新增一条壳和界面之间的通道。 */
+export function readDeny(dir: string): { apps: string[]; words: string[] } {
+  try {
+    const j = JSON.parse(readFileSync(path.join(dir, 'deny.json'), 'utf8')) as Record<string, unknown>
+    const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    return { apps: list(j.apps), words: list(j.words) }
+  } catch {
+    return { apps: [], words: [] }
+  }
 }
 
 export function hamming(a: bigint, b: bigint): number {
@@ -228,6 +252,16 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
   // 不然某天的记录会无声无息地缺一段，而用户以为一直在记。
   // 暂停不落盘——「暂停一小时」是临时的，重开就当它过去了。
   const optIn = path.join(userData, 'journey', 'on')
+  // 用户自己加的黑名单：文件变了才重读（每 15 秒一次 tick，不值得每次都读盘）
+  const denyFile = path.join(userData, 'journey', 'deny.json')
+  let denyAt = 0
+  let denyList = { apps: [] as string[], words: [] as string[] }
+  const deny = () => {
+    let at = 0
+    try { at = statSync(denyFile).mtimeMs } catch { /* 没这个文件 = 没加过 */ }
+    if (at !== denyAt) { denyAt = at; denyList = readDeny(path.join(userData, 'journey')) }
+    return denyList
+  }
   const remember = (on: boolean) => {
     try { on ? (mkdirSync(path.dirname(optIn), { recursive: true }), writeFileSync(optIn, '1')) : rmSync(optIn, { force: true }) }
     catch (e) { log(`[journey] 记不住开关：${String(e)}\n`) }
@@ -255,7 +289,7 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
     }
 
     const { app, title } = await frontApp()
-    if (denied(app, title)) {                  // 黑名单：连截图都不拍
+    if (denied(app, title, deny())) {                  // 黑名单：连截图都不拍
       if (segs.length) segs[segs.length - 1].end = new Date().toISOString()
       return
     }

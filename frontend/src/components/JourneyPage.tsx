@@ -4,6 +4,7 @@ import { journeyCatchUp, journeyDay, journeyDays, journeyDeleteDay, journeyDelet
          journeyReport, journeySaveReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneySegment } from '../api'
 import { parseMini, type Inline } from '../util/miniMarkdown'
+import JourneyDenyPanel from './JourneyDenyPanel'
 import { toast } from '../toast'
 
 /**
@@ -387,6 +388,8 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           </div>
         </>
       )}
+
+      <JourneyDenyPanel />
 
       {/* 一段时间的回顾：**日报 → 长报告 → 一篇笔记**。放在最下面——
           它不是「今天」这一页的主角，是从这一页出去的一条路（§4.2）。 */}

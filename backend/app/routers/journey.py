@@ -12,6 +12,7 @@
   · `POST /api/journey/catch-up` —— 把还没描述的段描述掉，并写进知识库
   · `POST /api/journey/report`   —— 写这一天的日报（时长走代码、结论走模型）
   · `POST /api/journey/span`     —— 一段时间的回顾：**日报 → 长报告 → 一篇笔记**
+  · `GET/PUT /api/journey/deny`  —— 用户自己加的黑名单（壳读同一个文件）
   · `DELETE /api/journey/day`    —— 删这一天，**连它抽出来的事实一起删**
 
 最后那条是隐私承诺的一部分：删完还留着事实的话，「我删了那天的记录」是假的
@@ -41,8 +42,8 @@ from ..journey import day_stats, render_time_block
 from ..journey.stats import render_churn
 from ..journey.prompt import REPORT_SYSTEM, SPAN_SYSTEM, report_user, span_user
 from .deps import current_user
-from .schemas import (JourneyDayOut, JourneyReportOut, JourneyRunOut,
-                      JourneySegment, JourneySpanOut)
+from .schemas import (JourneyDayOut, JourneyDenyIn, JourneyDenyOut, JourneyReportOut,
+                      JourneyRunOut, JourneySegment, JourneySpanOut)
 
 router = APIRouter(prefix="/api/journey", tags=["journey"])
 
@@ -63,6 +64,14 @@ ANSWER = "答案："
 # 这种话读起来像个描述，其实什么都没说，而它会被召回、会被引用（§7 ①）。
 VAGUE = ("看不清", "无法辨认", "看不出", "不清楚")
 MIN_DESC = 12
+
+# 内置黑名单（跟 `desktop/src/capture.ts` 的 DENY_APPS / DENY_TITLE_WORDS 同一份）。
+# **摆出来只为了给界面显示**——真正拦截发生在壳里，因为命中时连截图都不该拍。
+# 两处要同时改；只改一处的后果是界面上写着「不记」而实际在记。
+BUILTIN_DENY_APPS = ("1Password", "1Password 7", "Keychain Access", "钥匙串访问",
+                     "Bitwarden", "LastPass", "Dashlane", "Enpass")
+BUILTIN_DENY_WORDS = ("密码", "password", "隐私浏览", "private browsing", "无痕",
+                      "incognito", "网上银行", "online banking")
 
 
 def journey_root() -> Path:
@@ -185,6 +194,49 @@ def days(limit: int = 400, user: str = Depends(current_user)) -> list[str]:
     except OSError:
         return []
     return out[:max(1, limit)]
+
+
+# 用户自己加的黑名单：条数和长度都封顶。名单是要逐条比对的，几千条会拖慢每一次
+# 采样；而真需要排除的东西通常就那么几个。
+DENY_MAX = 100
+DENY_LEN = 80
+
+
+def _deny_file() -> Path:
+    return journey_root() / "deny.json"
+
+
+def _clean_list(v) -> list[str]:
+    out: list[str] = []
+    for x in (v or []):
+        t = str(x).strip()[:DENY_LEN]
+        if t and t not in out:
+            out.append(t)
+    return out[:DENY_MAX]
+
+
+@router.get("/deny", response_model=JourneyDenyOut)
+def get_deny(user: str = Depends(current_user)) -> JourneyDenyOut:
+    """用户自己加的黑名单，连同内置那份（只读，给界面显示）。"""
+    try:
+        j = json.loads(_deny_file().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        j = {}
+    return JourneyDenyOut(apps=_clean_list(j.get("apps")), words=_clean_list(j.get("words")),
+                          builtin_apps=list(BUILTIN_DENY_APPS), builtin_words=list(BUILTIN_DENY_WORDS))
+
+
+@router.put("/deny", response_model=JourneyDenyOut)
+def put_deny(body: JourneyDenyIn, user: str = Depends(current_user)) -> JourneyDenyOut:
+    """改黑名单。**只能往上加，内置那份拆不掉**——「把密码管理器加回记录范围」
+    不是一个该给的选项。写的是 `<journey 根>/deny.json`，壳按文件改动时间重读。
+    """
+    root = journey_root()
+    root.mkdir(parents=True, exist_ok=True)
+    data = {"apps": _clean_list(body.apps), "words": _clean_list(body.words)}
+    _deny_file().write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return JourneyDenyOut(**data, builtin_apps=list(BUILTIN_DENY_APPS),
+                          builtin_words=list(BUILTIN_DENY_WORDS))
 
 
 @router.get("/day", response_model=JourneyDayOut)
