@@ -390,7 +390,7 @@ def skeleton_user(title: str, content: str, profile: list[str]) -> str:
 def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
               profile: list[str], focus: str = "", dup_hints: list | None = None,
               outline_note: str = "", defect_lines: list[str] | None = None,
-              focus_note: str = "") -> str:
+              focus_note: str = "", tried: list[tuple[str, str]] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -442,6 +442,16 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
                        "不是给第三方看的审计报告。查到什么写什么，查不到就一句"
                        "「这里需要补上 XX 的实际记录」带过。"
                        "\n**一条都不许原样留着。**")
+    if tried:
+        # 前面几轮提过、但在应用阶段被守卫丢掉的那些锚点。**不告诉它就会原样
+        # 再提一遍**：第 601–603 轮连着三次真跑里，同一个「- - **4月16日EVT**」
+        # 被提了四轮、丢了四轮，每轮白花一次修订调用的额度。
+        # 这不是禁止再碰这几处——换个真正改出东西的改法仍然欢迎，只是别再把
+        # 同一条原样递上来。
+        parts.append("【这几处前面试过，没落地，别再原样提一遍】\n"
+                     + "\n".join(f"- {a}（{why}）" for a, why in tried[:8])
+                     + "\n还想改这几处的话，换一种真正改出东西的改法；"
+                       "改不动就跳过它，把额度用在别处。")
     parts.append("【正文】\n" + content)
     return "\n\n".join(parts)
 

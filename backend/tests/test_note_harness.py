@@ -613,3 +613,29 @@ def test_这一轮写了整段却一条引用都没有():
     assert citations_present(st(long_text, facts=())) is None
     assert citations_present(st("只写了一句过渡。")) is None
     assert citations_present(st(long_text, bag={"outline_mode": True})) is None
+
+
+def test_被丢掉的修订要记下来回喂给下一轮():
+    """不告诉它就会原样再提一遍。
+
+    第 601–603 轮连着三次真跑：同一个「- - **4月16日EVT**」被提了四轮、
+    丢了四轮，每轮白花一次修订额度。`edited_spans` 只记**应用成功**的那些，
+    被守卫丢掉的从来没人记。
+    """
+    from pathlib import Path
+
+    revise = (Path(__file__).resolve().parent.parent
+              / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert 'st.bag.setdefault("dropped_spans", {})' in revise, "要跨轮，就得放 bag"
+    assert revise.count("tried[key[:24]]") >= 4, "每个丢弃点都要记，漏一个那类就还会重提"
+    assert 'tried.pop(key[:24], None)' in revise, "落地了就不再是「试过没成」"
+    assert "tried=list(tried.items())" in revise, "记了不回喂等于没记"
+
+    from app.harness.prompts.writing import edit_user
+
+    prompt = edit_user("", [], "正文。", [], [],
+                       tried=[("- - **4月16日EVT**", "这条只是换了措辞")])
+    assert "别再原样提一遍" in prompt and "4月16日EVT" in prompt
+    assert "这条只是换了措辞" in prompt, "得说清为什么没落地，否则它不知道换哪种改法"
+    assert "别再原样提一遍" not in edit_user("", [], "正文。", [], []), \
+        "没有丢弃记录时不该凭空多一段"

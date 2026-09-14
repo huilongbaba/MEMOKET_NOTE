@@ -53,6 +53,9 @@ class Revise:
         # rewriting the same passage with nothing but wording changes is the
         # revision pass arguing with itself.
         edited: set[str] = st.bag.setdefault("edited_spans", set())
+        # 提过、但在应用阶段被守卫丢掉的锚点 → 一句为什么。跟 edited 分开记：
+        # 那个是「改过了别再碰」，这个是「试过没落地，别原样再递一遍」。
+        tried: dict[str, str] = st.bag.setdefault("dropped_spans", {})
         focus = st.bag.get("focus", "")
 
         system = prompts.compose_system(prompts.EDIT_SYSTEM, "edit", st.ctx.user,
@@ -66,7 +69,8 @@ class Revise:
             # worse than telling it which lines they are.
             defect_lines=(grounding_check.placeholder_lines(st.content)
                           + grounding_check.audit_voice_lines(st.content)),
-            focus_note=st.bag.get("focus_note", ""))
+            focus_note=st.bag.get("focus_note", ""),
+            tried=list(tried.items()))
 
         try:
             # Streamed so the user can watch: this step took tens of seconds
@@ -134,6 +138,7 @@ class Revise:
                 # Dropping a revision is **the guards working**, not an error.
                 # Reported as an error it renders as a wall of red, and
                 # several get dropped every round.
+                tried[key[:24]] = why_not.split("，已丢弃")[0].split("：")[0]
                 yield Event.custom(CUSTOM_DROPPED,
                                    {"round": st.round, "detail": why_not})
                 continue
@@ -145,11 +150,13 @@ class Revise:
                 continue
             destructive = too_destructive(st.content, updated, removed_total)
             if destructive:
+                tried[key[:24]] = "一次删得太多"
                 yield Event.custom(CUSTOM_DROPPED, {"round": st.round, "detail": destructive})
                 continue
             removed_total += max(0, len(st.content) - len(updated))
             broke = breakage(st.content, updated)
             if broke:
+                tried[key[:24]] = f"会把正文切出破字「{broke}」"
                 yield Event.custom(CUSTOM_DROPPED, {
                     "round": st.round,
                     "detail": f"这条会把正文切出破字「{broke}」，已丢弃：{key[:24]}…"})
@@ -159,6 +166,7 @@ class Revise:
                 # deletes one of their headings is dropped. The prompt already
                 # says not to touch them; the model does anyway. This is the
                 # hard guard behind the request.
+                tried[key[:24]] = "会动到用户自己写的标题"
                 yield Event.custom(CUSTOM_DROPPED, {
                     "round": st.round,
                     "detail": f"这条修订会动到你写的标题，已丢弃：{(reason or op)[:60]}"})
@@ -169,6 +177,7 @@ class Revise:
             st.content = tidy_blank_lines(updated)
             if op in ("replace", "delete"):
                 edited.add(key)
+            tried.pop(key[:24], None)       # 落地了就不再是「试过没成」
             applied += 1
             # anchor / text 给全量：客户端拿这条事件在本地重放同一条修订，截断的 text 会让它只插前 300 字、
             # 截断的 anchor 会让它定位失败——第 375 轮真跑第 3 轮本地跟服务端差 267 字就是这么来的。
