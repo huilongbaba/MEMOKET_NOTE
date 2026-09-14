@@ -23,7 +23,7 @@ export type ProbeCtx = Record<string, any>
 export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
-  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, openWritingPlan, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
+  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
   if (!harnessProbeDone.current && !/:(notes|meetings|imports)(:|$)/.test(probe) && api.memoryScope() !== 'all') api.setMemoryScope('all')
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
@@ -283,12 +283,20 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       setTimeout(() => void actionsRef.current.runHarness(row), 800)
     })() }
   }
-  if (probe === 'plan-panel' && tree.length) setTimeout(() => void openWritingPlan(), 1200)
+  // 走真实路径：点标题行那个「无限续写」。左栏那个全局火箭第 621 轮砍掉了——
+  // 同一个动作三个门，而它是错配最深的那个（工具栏没有上下文，这个动作需要上下文）。
+  const clickPlanEntry = () => {
+    const b = Array.from(document.querySelectorAll('.title-action'))
+      .find((x) => (x.textContent ?? '').includes('无限续写')) as HTMLElement | undefined
+    if (b) b.click()
+    else void api.clientLog('warn', 'plan-panel: 标题行没有「无限续写」入口', '', 'probe')
+  }
+  if (probe === 'plan-panel' && tree.length) setTimeout(clickPlanEntry, 1200)
   // 写作计划面板上点「换个目标」，看放弃计划的确认框（要那个文件夹上有计划）
   // `:abandon-esc` 再按一次 Esc——只该关掉确认框，面板留着；`plan-panel:esc` 只开面板然后 Esc——面板该关掉
   if ((probe === 'plan-panel:abandon' || probe === 'plan-panel:abandon-esc' || probe === 'plan-panel:esc') && tree.length && !harnessProbeDone.current) {
     harnessProbeDone.current = true
-    setTimeout(() => void openWritingPlan(), 1200)
+    setTimeout(clickPlanEntry, 1200)
     const esc = () => {
       const target = document.activeElement ?? window
       const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { memoryScope, SCOPE_LABEL } from '../api'
+import { displayTitle } from '../util/displayTitle'
 import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import type { TreeRow, WritingPlan, WritingSection } from '../api'
@@ -115,7 +116,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}><i className="bx bx-rocket" /> <span className="plain-case">{parent.title}</span> · 写作计划</h2>
+          <h2 style={{ margin: 0 }}><i className="bx bx-rocket" /> <span className="plain-case">{displayTitle(parent)}</span> · 写作计划</h2>
           <button onClick={onClose}>✕</button>
         </div>
 
