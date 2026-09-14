@@ -43,6 +43,7 @@ from .writing import (
     magic_tap_user,
     skeleton_user,
 )
+from .slides import SLIDES_SYSTEM, SLIDES_TALK_EXTRA, slides_user
 from .selection import (
     DIGEST_SYSTEM,
     EXPAND_SYSTEM,
@@ -88,6 +89,9 @@ __all__ = [
     "facts_block",
     "BLOCK_SYSTEM",
     "DIGEST_SYSTEM",
+    "SLIDES_SYSTEM",
+    "SLIDES_TALK_EXTRA",
+    "slides_user",
     "EDIT_SYSTEM",
     "EXPAND_SYSTEM",
     "FINISH_THE_SENTENCE",

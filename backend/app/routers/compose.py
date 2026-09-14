@@ -26,8 +26,10 @@ from ..editor import profile
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
+from ..harness.checks.slides import check_slides
+from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import DigestIn, DigestOut, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
+from .schemas import DigestIn, DigestOut, SlidesIn, EditOut, ExpandIn, MagicTapIn, Revision, RewriteIn, SkeletonIn, SkeletonOut, VerifyFinding, VerifyIn, VerifyOut
 from .deps import current_user, sse_response
 
 router = APIRouter(prefix="/api", tags=["compose"])
@@ -184,6 +186,63 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         # 撞 token 上限被切断（实拍一段停在「…写成事项已经完成」没句号）要说出来：
         # 已写的不删（删是拿丢内容掩盖截断），只告诉用户再点一次接着写。
         yield sse("done", {"truncated": stats.get("finish_reason") == "length", "fake_citations": fake})
+
+    return sse_response(gen())
+
+
+@router.post("/slides")
+async def slides(body: SlidesIn, user: str = Depends(current_user)):
+    """这篇 → 一份幻灯片笔记（痛点 6，docs/slides-plan.md）。
+
+    痛点原话是「想做成 PPT，又要上传给另一个 agent 工具，**两个工具之间没有
+    链接**」。所以产物是**一篇笔记**而不是一个文件：落成原笔记的子笔记，于是它
+    天然继承这个产品已有的一切——能用 ⌘K 找到、能挂引用、能被智能续写继续改、
+    能进知识库、能导出。导出成 .pptx / PDF 是第二步，不是主路径。
+
+    一次模型调用，不进多轮闭环：幻灯片是一次成型的重构，多轮只会把页越改越碎。
+
+    SSE：
+        event: delta   —— markdown 增量
+        event: slides  —— 页数 + 判据结果 + 落库之后的 note_id
+        event: done
+    """
+    if not body.content.strip():
+        raise HTTPException(400, "这篇还没有正文，没有可以做成幻灯片的内容")
+    note = store.get_note(user, body.note_id) if body.note_id else None
+
+    base = prompts.SLIDES_SYSTEM + (prompts.SLIDES_TALK_EXTRA if body.style == "talk" else "")
+    messages = [
+        {"role": "system", "content": prompts.compose_system(base, "slides", user)},
+        {"role": "user", "content": prompts.slides_user(
+            body.title or (note or {}).get("title", ""), body.content, body.style)},
+    ]
+
+    async def gen():
+        md = ""
+        stats: dict = {}
+        try:
+            async for piece in llm.stream(messages, max_tokens=body.max_tokens,
+                                          temperature=0.4, stats=stats):
+                md += piece
+                yield sse("delta", {"text": piece})
+        except Exception as exc:                       # noqa: BLE001
+            yield sse("error", {"detail": str(exc)})
+            yield sse("done", {})
+            return
+
+        md = md.strip()
+        check = check_slides(md, body.content)
+        note_id = ""
+        if note and md:
+            # **落成原笔记的子笔记**，同名覆盖：重做一次就该换掉上一份，
+            # 而不是在树上留一串「… · 幻灯片」。
+            made = store.upsert_child(user, body.note_id, f"{note['title']} · 幻灯片", md,
+                                      source="slides", icon="bx-slideshow")
+            note_id = made["id"]
+        yield sse("slides", {"pages": check.pages, "cite_coverage": check.cite_coverage,
+                             "notes": check.notes(), "note_id": note_id,
+                             "truncated": stats.get("finish_reason") == "length"})
+        yield sse("done", {})
 
     return sse_response(gen())
 

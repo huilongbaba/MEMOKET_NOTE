@@ -194,10 +194,12 @@ backend/app/
       · revise · repeats · replan · repair · runtime · save · _order
     checks/                  14 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
+      · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
+        不进闭环——幻灯片是一次成型的重构，判据结果跟着产物一起显示）
     tools/                   21 个工具 + registry（分组授权）
       memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools · registry
     prompts/                 提示词
-      writing · note · plan · block · selection · skills · fragments
+      writing · note · plan · block · selection · slides · skills · fragments
     skills.py                SKILL.md 目录 + DB 里的配置
     sandbox/                 policy（三档）· limits（资源上限）· runner（Seatbelt / bwrap）
     agent_loop.py            取材料的工具循环（模型自己决定查什么）

@@ -686,6 +686,17 @@ class VerifyOut(BaseModel):
     took_ms: float
 
 
+class SlidesIn(BaseModel):
+    """这篇 → 幻灯片。`style`：`points` 要点版 / `talk` 讲稿版——
+    两种用途对页面密度的要求正好相反，所以分开而不是加个开关。"""
+
+    note_id: str = ""
+    content: str
+    title: str = ""
+    style: Literal["points", "talk"] = "points"
+    max_tokens: int = 3000
+
+
 class DigestIn(BaseModel):
     """按日期范围（或最近 N 天）生成阶段回顾。不给 date_from/date_to 时按 days 算。"""
     days: int = 7

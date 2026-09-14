@@ -231,6 +231,7 @@ _OVERRIDES = {
 _NOT_EMBEDDED = {
     ("compose_system", "user"),      # 查 skill 用的用户名，不是要嵌进去的文本
     ("content_block", "empty"),      # 正文为空时才用得上的替代句，正文不空就该看不见
+    ("slides_user", "style"),        # 挑哪一版（要点 / 讲稿），不是要嵌进去的文本
 }
 
 
