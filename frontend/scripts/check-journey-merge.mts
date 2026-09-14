@@ -1,0 +1,57 @@
+/** 分段合并：壳里那份（TS）和 P0 脚本那份（Python）必须一致。
+ *
+ * 这条规则是**在真实使用上量出来的**（第 633 轮，51 分钟）：不合并瞬时切换的话
+ * 一天切出 169 段，合并之后 75 段。两份实现漂开的话，P0 量出来的东西就不能用来
+ * 说明产品里会发生什么——而这个功能的每一个阈值都是那么定下来的。
+ *
+ *     npx tsx scripts/check-journey-merge.mts
+ */
+import { execFileSync } from 'node:child_process'
+import { mergeBlips, type Segment } from '../../desktop/src/capture.ts'
+
+const B = Date.parse('2026-09-14T18:00:00Z')   // 带 Z：两边都按 UTC 算，不然差一个时区
+const seg = (app: string, m0: number, m1: number, n = 5): Segment => ({
+  app, title: '', n, frames: [],
+  start: new Date(B + m0 * 60_000).toISOString(),
+  end: new Date(B + m1 * 60_000).toISOString(),
+})
+const shape = (ss: Segment[]) =>
+  ss.map((s) => [s.app, (Date.parse(s.start) - B) / 60_000, (Date.parse(s.end) - B) / 60_000])
+
+const CASES: { why: string; input: Segment[] }[] = [
+  { why: '同一个应用的短段被吸收', input: [seg('Code', 0, 5), seg('Code', 5, 5.2), seg('Code', 5.2, 9)] },
+  { why: '切走一下又切回来', input: [seg('Code', 0, 5), seg('Safari', 5, 5.5), seg('Code', 5.5, 12)] },
+  { why: '真的换了件事就算短也留着', input: [seg('Code', 0, 5), seg('Safari', 5, 5.5), seg('Feishu', 5.5, 12)] },
+  { why: '切走很久不算插曲', input: [seg('Code', 0, 5), seg('Safari', 5, 7), seg('Code', 7, 20)] },
+  { why: '实拍那一串', input: [seg('Code', 6, 11), seg('Code', 12, 12), seg('Feishu', 12, 15), seg('Code', 15, 16), seg('Electron', 16, 17)] },
+  { why: '空的', input: [] },
+]
+
+const py = `
+import sys, json, datetime as dt
+sys.path.insert(0, ${JSON.stringify(new URL('../../backend', import.meta.url).pathname)})
+from scripts.journey_probe import merge_blips
+out = []
+for case in json.load(sys.stdin):
+    segs = [{**s, 'start': dt.datetime.fromisoformat(s['start'].replace('Z','+00:00')),
+             'end': dt.datetime.fromisoformat(s['end'].replace('Z','+00:00'))} for s in case]
+    B = dt.datetime.fromisoformat('2026-09-14T18:00:00+00:00')
+    out.append([[s['app'], (s['start']-B).total_seconds()/60, (s['end']-B).total_seconds()/60]
+                for s in merge_blips(segs)])
+print(json.dumps(out))
+`
+const venv = new URL('../../backend/.venv/bin/python', import.meta.url).pathname
+const got = JSON.parse(execFileSync(venv, ['-c', py], {
+  input: JSON.stringify(CASES.map((c) => c.input)), encoding: 'utf8',
+})) as unknown[][]
+
+let bad = 0
+CASES.forEach((c, i) => {
+  const ts = JSON.stringify(shape(mergeBlips(c.input)))
+  const pyOut = JSON.stringify(got[i])
+  const ok = ts === pyOut
+  console.log(`${ok ? '✓' : '✗'} ${c.why}`)
+  if (!ok) { bad++; console.log(`    TS  ${ts}\n    PY  ${pyOut}`) }
+})
+console.log(bad ? `${bad} 处两边对不上` : `${CASES.length} 个用例，壳和 P0 脚本给出同一个分段`)
+process.exit(bad ? 1 : 0)

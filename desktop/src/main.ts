@@ -4,11 +4,12 @@
  * 三件事：起后端、开窗口、退出时收干净。界面本身全在渲染进程里，跟网页版
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
-import { nativeTheme, app, BrowserWindow, Menu, dialog, shell, ipcMain, session, screen } from 'electron'
+import { nativeTheme, app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, dialog, shell, ipcMain, session, screen } from 'electron'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { startBackend, type Backend } from './backend.js'
+import { makeRecorder, type CaptureState, type Recorder } from './capture.js'
 
 // **--dev 只管开不开 devtools。** 「前端从哪来」必须看 app.isPackaged：
 // 用命令行标志决定的话，忘了带 --dev 就会去找打包后才存在的目录，后端挂不上
@@ -356,11 +357,69 @@ if (!app.requestSingleInstanceLock()) {
     if (win) { if (win.isMinimized()) win.restore(); win.focus() }
   })
   // boot() 里没兜住的意外（起窗口 / 读身份文件抛出来的）原来是 unhandled rejection：进程活着、窗口没有。
-  app.whenReady().then(() => { installMenu(); return boot() }).catch((e) => {
+  app.whenReady().then(() => { installMenu(); setupJourney(); return boot() }).catch((e) => {
     remember(`[desktop] 启动失败：${e instanceof Error ? e.stack ?? e.message : String(e)}\n`)
     dialog.showErrorBox('启动失败', `${e instanceof Error ? e.message : String(e)}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
     app.quit()
   })
+}
+
+// ——— 屏幕活动（Daily Journey，docs/daily-journey-plan.md）——————————————
+//
+// **默认不开。** macOS 的屏幕录制权限本来就会弹系统框，「静默默认开」根本不存在
+// ——既然那一刻一定会被打断，不如把它变成一次说清楚的选择（§1）。P1 先把开关和
+// 常驻状态做扎实，那一屏知情选择留给 P2 的界面。
+let journey: Recorder | null = null
+let tray: Tray | null = null
+
+const TRAY_GLYPH: Record<CaptureState, string> = {
+  off: '○', running: '●', paused: '⏸', 'no-permission': '⚠',
+}
+const TRAY_SAY: Record<CaptureState, string> = {
+  off: '屏幕活动：没在记',
+  running: '屏幕活动：记录中',
+  paused: '屏幕活动：已暂停',
+  'no-permission': '屏幕活动：截不到屏（去系统设置里给屏幕录制权限）',
+}
+
+/** 菜单栏那个图标。**应用多数时候不在前台，这是唯一能一直看到状态的地方**——
+ *  「现在在记吗」必须不用打开任何页面就能回答（§8.1）。 */
+function refreshTray() {
+  if (!journey) return
+  const st = journey.state()
+  const n = journey.today().length
+  if (!tray) {
+    tray = new Tray(nativeImage.createEmpty())
+    tray.setIgnoreDoubleClickEvents(true)
+  }
+  tray.setTitle(`${TRAY_GLYPH[st]}`)
+  tray.setToolTip(TRAY_SAY[st])
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: TRAY_SAY[st], enabled: false },
+    { label: `今天已记 ${n} 段`, enabled: false },
+    { type: 'separator' },
+    ...(st === 'off'
+      ? [{ label: '开始记录', click: () => { journey?.start(); refreshTray() } }]
+      : st === 'paused'
+        ? [{ label: '继续记录', click: () => { journey?.resume(); refreshTray() } }]
+        : [
+            { label: '暂停 1 小时', click: () => { journey?.pause(Date.now() + 3600_000); refreshTray() } },
+            { label: '暂停到我再打开', click: () => { journey?.pause(); refreshTray() } },
+          ]),
+    { type: 'separator' },
+    { label: '停止并关掉', enabled: st !== 'off', click: () => { journey?.stop(); refreshTray() } },
+  ]))
+}
+
+function setupJourney() {
+  journey = makeRecorder(app.getPath('userData'), remember)
+  refreshTray()
+  setInterval(refreshTray, 60_000)     // 段数和状态跟着走，不用等用户点开
+  // 锁屏 / 睡眠自动暂停：屏保上没什么可记的，而且「离开座位时还在录」最让人不安
+  powerMonitor.on('lock-screen', () => { if (journey?.state() === 'running') { journey.pause(); refreshTray() } })
+  powerMonitor.on('suspend', () => { if (journey?.state() === 'running') { journey.pause(); refreshTray() } })
+  powerMonitor.on('unlock-screen', () => { if (journey?.state() === 'paused') { journey.resume(); refreshTray() } })
+  powerMonitor.on('resume', () => { if (journey?.state() === 'paused') { journey.resume(); refreshTray() } })
 }
 
 app.on('window-all-closed', () => {

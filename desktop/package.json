@@ -31,8 +31,14 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "../LICENSE", "to": "LICENSE" },
-      { "from": "../docs/third-party-notices.md", "to": "third-party-notices.md" },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "../docs/third-party-notices.md",
+        "to": "third-party-notices.md"
+      },
       {
         "from": "../frontend/dist",
         "to": "web"
@@ -55,7 +61,9 @@
       "identity": null,
       "icon": "build/icon.icns",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "MEMOKET NOTE 需要用麦克风录音，用来语音输入和把录音转写进知识库。"
+        "NSMicrophoneUsageDescription": "MEMOKET NOTE 需要用麦克风录音，用来语音输入和把录音转写进知识库。",
+        "NSScreenCaptureUsageDescription": "MEMOKET NOTE 每隔一会儿看一眼屏幕，把「你在做什么」记成一句话，到晚上汇成一份今天做了什么。截图默认不保存，全部留在这台机器上。",
+        "LSUIElement": false
       }
     },
     "linux": {
