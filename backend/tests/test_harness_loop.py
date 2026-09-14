@@ -446,3 +446,22 @@ def test_produce_里记下的_dedup_段落在_text_end_之后发成_dedup_事件
     dd = [e.data["value"] for e in events if e.data.get("name") == "dedup"]
     assert dd and dd[0]["paragraph"] == "## 模型自己写的标题"
     assert "dedup" not in st.bag
+
+
+def test_判据打回的那一轮不算质量退步():
+    """判据命中时会伪造一份只有一个维度、分数 0 的 Evaluation，它的 rank 是
+    (0, 0.0)，跟真打分的分数向量不可比。不排除它，任何一条判据在第二轮响一下
+    就会被读成「从接近合格跌到谷底」，整节当场收工。
+
+    第 605 轮真跑实拍：硬件那一节第 1 轮六维只差一项，第 2 轮一张手写 mermaid
+    被判据拦下 → regressed，578 字交卷，剩下两轮没跑。
+    """
+    fires = iter([None, Verdict("d1", "有张手写的图")])
+    hooks = FakeHooks(["aa", "bb", "ccc", "dddd"])
+    st = _state(_mode(checks=(lambda st: next(fires, None),), max_rounds=4))
+    events = asyncio.run(_drive(st, hooks, _scorer([[2, 1], [2, 1], [2, 2]]), mw=BASE))
+
+    done = _finished(events)
+    assert done.data["reason"] != "regressed", "判据要修的毛病不是质量退步"
+    assert done.data["reason"] == "complete" and st.round == 3, \
+        "第 3 轮本来能跑到达标，被 regressed 掐掉就永远看不到"

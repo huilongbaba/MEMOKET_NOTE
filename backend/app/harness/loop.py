@@ -302,8 +302,18 @@ def _regressed(st: State) -> str | None:
     实拍生成表格：第 1 轮出了一张完整的表（三个维度两个达标），第 2 轮模型写了句「[tool call
     needed]」没表，第 3 轮还是没表——后两轮各花一次模型调用，最后交的仍是第 1 轮。规则：最好的一轮
     只差一个维度没达标、且这一轮排名比它低，就停（reason=regressed，best_of 会把最好的那轮交出去）。
-    第一轮不会触发（还没有「最好」可比）。"""
+    第一轮不会触发（还没有「最好」可比）。
+
+    **代码判据打回的那一轮不算「更差」。** 判据命中时会伪造一份只有一个维度、
+    分数 0 的 Evaluation（middleware/checks.py），它的 `rank()` 是 (0, 0.0)——
+    跟真打分出来的分数向量根本不可比。不排除它的话，任何一条判据在第二轮响一下，
+    就会被读成「从接近合格跌到谷底」，整节当场收工。第 605 轮真跑实拍：硬件那一节
+    第 1 轮六维只差一项，第 2 轮一张手写 mermaid 被判据拦下 → `regressed`，578 字
+    交卷，剩下两轮没跑。判据说的是「这一轮有个确定的毛病要修」，不是「质量退步了」。
+    """
     best = st.best
+    if st.skip_judge:
+        return None
     if best is None or not st.mode.dims or st.round >= st.mode.max_rounds:
         return None                      # 最后一轮本来就要交最好的，不用另起一个理由
     best_rank, _content = best

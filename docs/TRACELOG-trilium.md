@@ -3989,3 +3989,13 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
 - 顺手把 13 条判据按「会不会去打旧正文」过了一遍：`citations_present` / `no_repeated_lists` 已经只看 `st.fresh`；`material_used` / `table_present` 拿整篇判是**偏宽松**的方向，不伤人；`heading_fits` / `outline_intact` / `tail_clashes` 用的是 before/after，本来就是块级的。`no_placeholder` / `no_audit_voice` / `text_flow` 拿整篇判，但它们对旧正文的指控**是真的**（那里确实有占位、确实有审计腔），归第 601 轮的 `STUCK_ROUNDS` 兜——只有这条图的指控是假的，所以只修这一条。
 - 真跑对照：图 2 张进 2 张出，两轮 `material_used_up` 收工，应用 3 条修订；第一段那句无据的「Chicago Booth 测试者」被换成了带编号的事实——正是 601 轮误报盯上的那一段，这次是因为对的理由被改掉的。
 - 后端 988、前端 133 + 19 check 全过。
+
+## [627] 第 605 轮：换文件夹级写作计划真跑——「够不够」没人问（2026-09-14）
+
+- 连着五次都在同一篇笔记上读产出，换一条路径：真跑文件夹级写作计划（目标是用户原话「把创业一年的硬件、APP、市场三条线**各写成一篇**，每篇有据可依」）。
+- 取材料跑题（第 593 轮修的）确实好了——三节全在讲自己的项目、每段带引用、`topic_fidelity` 满分。**但三节各跑一轮就 complete，交出来 620 / 434 / 429 字**。不是一篇，是一段半。而 `material_used_up` 是 false，硬件那档知识库里有 412 条事实，这一节用上了四条（`fact_usage` 量：8% / 50% / 21%）。
+- 根因一眼可见：分段的五个维度 `topic_fidelity / non_repetition / factual_grounding / material_use / coherence` **全是质量维度，没有一条在问「够不够」**。短、干净、扣题、有引用、不重复的残篇就是这个闭环的最优解。单篇 harness 有 `beat_coverage` 管这件事，分段这边没有 spine/beats，从来就没补上对应的那条。
+- 补 `_SECTION_COVERAGE`：对照的是分段主题本身和总体目标（两样打分器本来就拿得到，见 `_score_context`），措辞照抄 `beat_coverage` 的分寸——**不要求写到极致**，只要求标题点到的每一面真的落了地。
+- 真跑对照：**APP 那一节 434 → 1161 字、6 条引用，两轮正常 complete**；硬件那节第 1 轮就被判 `section_coverage=1` 推着写第二轮。
+- 同一跑露出第二个问题，跟第 601 轮同根：**代码判据伪造的那份「单维度 0 分」Evaluation 被当成真打分喂给了后面的机器**。`_regressed` 拿它的 `rank()`（(0, 0.0)）跟真分数向量比，于是硬件那节第 2 轮一张手写 mermaid 被拦 → 读成「从接近合格跌到谷底」→ 整节当场收工，578 字交卷，剩下两轮没跑。判据说的是「这一轮有个确定的毛病要修」，不是「质量退步了」——`_regressed` 加一条 `if st.skip_judge: return None`。
+- 后端 989、前端 133 + 19 check 全过。文件夹跑的产物（8 篇笔记 / 2 个计划 / 6 个 section 及其引用、修订、树节点）已按 t0 清干净。
