@@ -18,6 +18,9 @@ export type PickerRequest = {
   title: string
   /** 不能选的（自己和自己的子树——选了会成环） */
   exclude: Set<string>
+  /** 排在最前面的几个（当前这篇、它所在的那一层）。**是提示，不是替你决定**——
+   *  它们照样要点一下才算选中。见 App.openWritingPlan 的注释。 */
+  first?: string[]
   resolve: (noteId: string | null) => void
 }
 
@@ -55,9 +58,13 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
     // 默认高亮项，选了只会换来一句「选一篇具体的笔记」（第 611 轮）。
     const root = req.exclude.has(ROOT_ID)
       ? [] : [{ id: 'root', note_id: ROOT_ID, label: '（树根）', path: '' }]
+    // 调用方点名要排在前面的那几个（去重、保持它给的顺序）
+    const want = req.first ?? []
+    const rank = (r: TreeRow) => { const k = want.indexOf(r.note_id); return k < 0 ? want.length : k }
+    const ordered = want.length ? [...hit].sort((a, b) => rank(a) - rank(b)) : hit
     return [...root,
-            ...hit.slice(0, 200).map((r) => ({ id: r.id, note_id: r.note_id, label: displayTitle(r), path: paths.get(r.id) ?? '' }))]
-  }, [rows, q, req.exclude, paths])
+            ...ordered.slice(0, 200).map((r) => ({ id: r.id, note_id: r.note_id, label: displayTitle(r), path: paths.get(r.id) ?? '' }))]
+  }, [rows, q, req.exclude, req.first, paths])
 
   const choose = (k: number) => { const it = items[k]; if (it) req.resolve(it.note_id) }
   // 列表能有 200 项、容器最高 60vh：↑↓ 走到看不见的地方要跟着滚（第 483 轮横扫）

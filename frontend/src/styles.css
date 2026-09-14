@@ -772,6 +772,19 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
 .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; padding-inline-end: 9px; }
 .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 5px; margin-inline-start: 1px; }
 .floating-buttons .fb-btn:not(.primary):not(.secondary) { padding: 0 9px; }
+/* 标题行右侧的动作按钮（「无限续写」）。描边不实心：它是这一篇的能力，
+   不该比标题还响；带字不带光图标——上一次做成图标，用户找不到（第 620 轮）。 */
+.title-action {
+  flex-shrink: 0; height: 26px; padding: 0 10px; border-radius: 13px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; white-space: nowrap;
+  background: transparent; color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+.title-action:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: var(--accent); }
+.title-action .bx { font-size: 14px; }
+
 .harness-line { font-size: 12px; margin: 0 0 8px; display: flex; align-items: center; gap: 4px; }
 .title-icon { font-size: 20px; color: var(--muted); margin-inline-end: 6px; flex-shrink: 0; }
 

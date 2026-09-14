@@ -844,8 +844,8 @@ export default function App() {
     new Promise<string | null>((resolve) => setPrompt({ title, initial, resolve: (v) => { setPrompt(null); resolve(v) } }))
   const askConfirm = (req: Omit<ConfirmRequest, 'resolve'>) =>
     new Promise<boolean>((resolve) => setConfirmReq({ ...req, resolve: (ok) => { setConfirmReq(null); resolve(ok) } }))
-  const askNode = (title: string, exclude: Set<string>) =>
-    new Promise<string | null>((resolve) => setPicker({ title, exclude, resolve: (v) => { setPicker(null); resolve(v) } }))
+  const askNode = (title: string, exclude: Set<string>, first: string[] = []) =>
+    new Promise<string | null>((resolve) => setPicker({ title, exclude, first, resolve: (v) => { setPicker(null); resolve(v) } }))
 
   async function renameNode(row: TreeRow) {
     const title = (await askText('改个名字', row.title))?.trim()
@@ -961,33 +961,31 @@ export default function App() {
    * 入口仍然是侧栏一个随时可见的按钮，自己判断该对哪棵子树开：当前笔记
    * 的父节点优先。反馈原文是「我找不到那个按钮了」——那时它藏在文件夹
    * 标题栏的一个图标里，没有文件夹时页面上根本不出现。 */
+  /** 左栏那个火箭。**一次都不猜。**
+   *
+   * 它是全局工具栏上唯一一个「动作」，而这个动作是**对某一棵子树**的——工具栏
+   * 按钮天然没有上下文，这个动作天然需要上下文。第 611 轮实拍就是这个错配的产物：
+   * 站在一篇根笔记上点它，程序只能猜你指哪棵子树，猜出来是自动生成的「09 月」
+   * 日记文件夹，对话框标题写着「09 月 · 写作计划」，跟手头的事毫无关系。
+   *
+   * 那一轮改成了「猜不出来才问」，根子还在：一个全局位置仍然在替一个局部动作
+   * 做决定，只是失手的概率低了些。现在一律问，**按钮不再假装它知道上下文**。
+   * 当前这篇（或它所在的那一层）排在选择器最前面——那是提示，不是替你决定。
+   *
+   * 按钮本身留着：它解决的是发现问题，而那个问题是真的——这个入口原来长在文件夹
+   * 标题栏的一个图标里，用户的原话是「我找不到那个按钮了」。有上下文的那条路在
+   * 树的右键菜单里（「对这棵子树无限续写」），那是知道了才会去用的地方。
+   */
   async function openWritingPlan() {
-    const parents = tree.filter((r) => r.child_count > 0)
-    // 当前打开的本身就是一个文件夹时，就是它——之前只看它的父节点，站在「日记」上
-    // 点无限续写，对话框却给了树上第一个有孩子的「09 月」（第 188 轮实拍）
-    const self = current ? parents.find((r) => r.note_id === current.id) : undefined
-    const mine = current
-      ? tree.find((r) => r.note_id === current.id)?.parent_note_id
-      : undefined
-    const guess = self ?? parents.find((r) => r.note_id === mine)
-    if (guess) {
-      setWritingPlanParent(guess)
-      if (parents.length > 1) {
-        toast(`已打开「${displayTitle(guess)}」的无限续写——想换一棵，在树上右键选`)
-      }
-      return
-    }
-
-    // **猜不出来就别猜。** 这里原本落到 `parents[0]`——树上第一个有子节点的行，
-    // 在真实库里是自动生成的「09 月」日记文件夹：站在一篇根笔记上点无限续写，
-    // 对话框标题写着「09 月 · 写作计划」，跟手头的事毫无关系（第 611 轮截图实拍）。
-    // 顺带去掉了「先往它下面放几篇」那条死路：写作计划**本来就是来建这些子笔记的**，
-    // 要求它们事先存在是把旧的「文件夹」概念带过来了，后端也从来没这个要求。
+    const row = current ? tree.find((r) => r.note_id === current.id) : undefined
+    // 当前这篇本身、以及它所在的那一层，排在最前面
+    const first = [row?.note_id, row?.parent_note_id].filter(
+      (x): x is string => !!x && x !== api.ROOT_ID)
     const id = await askNode('无限续写写到哪一篇下面？分段会建成它的子笔记',
-                             new Set([api.ROOT_ID]))
+                             new Set([api.ROOT_ID]), first)
     if (!id) return
-    const row = tree.find((r) => r.note_id === id)
-    if (row) setWritingPlanParent(row)
+    const target = tree.find((r) => r.note_id === id)
+    if (target) setWritingPlanParent(target)
   }
 
   /** 跑 harness——挂在 App 级别，不依赖 WritingPlanPanel 是否挂载（见
@@ -2944,6 +2942,17 @@ export default function App() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder={displayTitle({ title: '', content }) === '未命名' ? '标题' : displayTitle({ title: '', content })}
             />
+            {/* **文件夹那一级的入口。** 这个动作是对一棵子树的，它最该长在子树自己
+                的标题行上——而不是靠左栏一个全局按钮去猜你指哪棵。
+                它原来就在这儿，被挪走是因为当时做成了一个光秃秃的图标，用户的原话是
+                「我找不到那个按钮了」；所以这次**带字**。只在这篇底下有笔记时出现——
+                没有子笔记时「对这棵子树写」这句话没有指向（第 620 轮）。 */}
+            {(tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 && (
+              <button className="title-action" onClick={() => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) }}
+                      title="无限续写：给一个目标，自动拆成若干分段，每段独立成一篇笔记写下去">
+                <i className="bx bx-rocket" /> 无限续写
+              </button>
+            )}
             {saveStatus && (
               <span key={saveStatus.at} className={'save-status' + (saveStatus.error ? ' error' : '')}
                     title={saveStatus.error ?? undefined}>
