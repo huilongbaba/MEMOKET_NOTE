@@ -8,7 +8,10 @@ export type Theme = 'system' | 'light' | 'dark'
 const KEY = 'memoket.theme'
 
 declare global {
-  interface Window { memoketDesktop?: { setTheme(theme: Theme): void; onMenu?(cb: (name: string) => void): void; onFlush?(cb: () => void): void; flushed?(): void; rememberUser?(user: string): void; pickDirectory?(title: string): Promise<string> } }
+  /** 屏幕活动的采集在**主进程**里（要常驻、要在窗口关掉后继续、要响应锁屏），
+   *  界面只是它的一个视图——菜单栏那个图标是另一个（daily-journey-plan §8.3）。 */
+  type JourneyState = 'off' | 'running' | 'paused' | 'no-permission'
+  interface Window { memoketDesktop?: { setTheme(theme: Theme): void; onMenu?(cb: (name: string) => void): void; onFlush?(cb: () => void): void; flushed?(): void; rememberUser?(user: string): void; pickDirectory?(title: string): Promise<string>; journey?: { state(): Promise<{ state: JourneyState; today: number }>; start(): Promise<void>; pause(minutes?: number): Promise<void>; resume(): Promise<void>; stop(): Promise<void> } } }
 }
 
 export function getTheme(): Theme {

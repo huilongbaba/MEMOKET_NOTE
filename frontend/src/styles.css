@@ -1116,3 +1116,41 @@ kbd {
 
 /* 右键菜单开着时目标行 / 标签高亮（第 513 轮，trilium-ui-gap §6「右键目标高亮」）：菜单里有「删除（连同子树）」，得看清对的是谁 */
 .tree-node.ctx-target, .note-tab.ctx-target:not(.active) { background: var(--hover-item-bg); }
+
+/* ---------------------------------------------------------------- 屏幕活动（今天）
+   排版原则见 docs/daily-journey-plan.md §8.3：状态在最上面、证据在下面。
+   一个整天看着你屏幕的东西，**任何时刻都要能一眼回答「现在在记吗」**。 */
+.journey-consent { max-width: 620px; }
+.journey-consent h2 { margin: 0; }
+.journey-facts { display: grid; grid-template-columns: 5.5em 1fr; gap: 6px 12px; margin: 4px 0 0; font-size: 13px; }
+.journey-facts dt { color: var(--muted); }
+.journey-facts dd { margin: 0; }
+@container (max-width: 380px) { .journey-facts { grid-template-columns: 1fr; gap: 2px; }
+                                .journey-facts dd { margin-bottom: 6px; } }
+
+.journey-state { margin: -10px 0 0; font-size: 13px; }
+
+/* 一天一条带：一眼看出时间去哪了。段与段之间留 2px 底色缝——那条带上谁挨着谁
+   是数据说了算，缝是不靠颜色的第二层区分（同 --jn-* 的注释）。 */
+.journey-band { display: flex; gap: 2px; height: 16px; border-radius: 8px; overflow: hidden; }
+.journey-band > span { min-width: 2px; }
+.journey-legend .badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; font-size: 12px; }
+.journey-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* 空档（没在记的那段时间）不给颜色：它不是一个「应用」，画成底色上的一道缝 */
+.journey-gap { background: repeating-linear-gradient(135deg,
+                 var(--line) 0 2px, transparent 2px 5px); }
+
+/* 三列对齐：**描述要从同一个位置开始**，不然一列字读下来是锯齿形的。
+   应用名截一半还认得出（Google Chro…），时间截一半就没法看了——所以固定的是
+   时间那一列，能挤的是应用名（同 .tree-dup-date 那条规矩）。 */
+.journey-row { display: grid; grid-template-columns: 6.8em 7.6em 1fr; gap: 8px;
+               align-items: baseline; font-size: 13px; line-height: 1.5; }
+.journey-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.journey-app { display: flex; align-items: baseline; gap: 5px; font-weight: 500; min-width: 0; }
+.journey-app-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.journey-desc { min-width: 0; }
+/* 窄栏：描述整句换行到下一行，别把它挤成一列字（时间/应用仍在一行上） */
+@container (max-width: 380px) {
+  .journey-row { grid-template-columns: 6.8em 1fr; }
+  .journey-desc { grid-column: 1 / -1; }
+}

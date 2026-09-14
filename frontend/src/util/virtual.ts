@@ -2,7 +2,7 @@
  *  App.tsx 三千多行，这些不碰状态的函数放这儿才测得到。 */
 
 export const VIRTUAL_LABELS: Record<string, string> = {
-  'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入', 'app:trash': '最近删除',
+  'app:settings': '设置', 'app:skills': '写作 Skill', 'app:import': '导入', 'app:trash': '最近删除', 'app:journey': '屏幕活动',
   kb: '知识库', 'kb:graph': '主题地图', 'kb:digest': '定期回顾', 'kb:timeline': '时间线',
   'kb:topics': '主题', 'kb:entities': '实体', 'kb:recent': '最近摄入',
 }

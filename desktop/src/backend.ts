@@ -113,6 +113,11 @@ export async function startBackend(opts: {
    *  实拍踩过：第一次打包出来的 .app 把 notes.sqlite3 建在了
    *  Contents/Resources/backend/data/ 里。 */
   dataDir?: string
+  /** 屏幕活动的段落落在哪。**必须由壳告诉后端，不能让后端去猜**：采集在壳里、
+   *  读取在后端，两边各自拼一次 `<userData>/journey` 就会在开发时对不上
+   *  （开发的 userData 带 `-dev` 后缀），于是壳一直在记、「今天」页一直是空的。
+   *  实拍踩过（第 636 轮）。 */
+  journeyDir?: string
   onLog?: (line: string) => void
   timeoutMs?: number
   /** 子进程**不是我们叫停的**却退出了（崩了、被系统杀了）。主进程据此决定要不要拉起一个新的。 */
@@ -139,6 +144,7 @@ export async function startBackend(opts: {
       // 占着 sqlite 和端口。后端那边看 os.getppid() 变了就退。
       MEMOKET_NOTE_PARENT_PID: String(process.pid),
       ...(opts.dataDir ? { KITE_DATA_DIR: opts.dataDir } : {}),
+      ...(opts.journeyDir ? { MEMOKET_JOURNEY_DIR: opts.journeyDir } : {}),
       PYTHONUNBUFFERED: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

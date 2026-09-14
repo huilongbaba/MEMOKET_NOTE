@@ -56,12 +56,22 @@
   --new-tab-button-size: 24px;
   --center-pane-border-radius: 10px;
   --content-margin-inline: 24px;
+
+  /* 屏幕活动那条带上「一个应用一个颜色」的八个槽。深浅各一套，同一个色相换一步，
+     不是两套不同的颜色。改之前先跑 dataviz 的 validate_palette（相邻对 ΔE 要过线）。 */
+  --jn-1: #2a78d6; --jn-2: #eb6834; --jn-3: #1baf7a; --jn-4: #eda100;
+  --jn-5: #e87ba4; --jn-6: #008300; --jn-7: #4a3aa7; --jn-8: #e34948;
+  --jn-other: #8a8a86;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --root-bg: #1a1a1a;
     --main-bg: #242424;
+
+    --jn-1: #3987e5; --jn-2: #d95926; --jn-3: #199e70; --jn-4: #c98500;
+    --jn-5: #d55181; --jn-6: #008300; --jn-7: #9085e9; --jn-8: #e66767;
+    --jn-other: #8a8a86;
     --main-fg: #cccccc;
     --main-border: #454545;
     --subtle-border: #313131;

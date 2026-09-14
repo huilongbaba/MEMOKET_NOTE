@@ -85,3 +85,28 @@ def test_删一天_目录没了(client, tmp_path):
     client.delete("/api/journey/day?date=2026-09-14")
     assert not (tmp_path / "journey" / "2026-09-14").exists()
     assert client.get("/api/journey/day?date=2026-09-14").json()["segments"] == []
+
+
+def test_一行坏时间戳不能把整天打成_500(tmp_path, monkeypatch):
+    """`_secs` 算不出来就当 0——**页面照样列得出这一天**。
+
+    实拍（第 636 轮）：壳写的是 `toISOString()`（带 Z，带时区），手工塞进去的
+    那几段不带时区，两者一减就 `can't subtract offset-naive and offset-aware
+    datetimes`，`GET /day` 直接 500，整天一段都读不出来。合计分钟数算错一点
+    没什么，一段都看不见才是真的坏。
+    """
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T02:00:00Z", "app": "Code", "desc": "改 journey.py"},
+        {"start": "2026-09-14T02:00:00", "end": "2026-09-14T02:30:00Z", "app": "Safari", "desc": "看文档"},  # 一头带时区一头不带
+        {"start": "不是时间", "end": "也不是", "app": "Finder", "desc": ""},
+        {"app": "飞书", "desc": "没有时间字段"},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    out = J.day(date="2026-09-14", user="tester")
+    assert [s.app for s in out.segments] == ["Code", "Safari", "Finder", "飞书"]
+    assert out.minutes == 60          # 只有第一段算得出来，其余当 0

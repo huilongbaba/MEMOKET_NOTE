@@ -192,6 +192,8 @@ async function saveFrame(src: string, dst: string, tmpDir: string): Promise<void
 export type Recorder = {
   state: () => CaptureState
   today: () => Segment[]
+  /** 上次退出时是开着的话，重新开起来。启动时调一次。 */
+  restore: () => void
   start: () => void
   pause: (until?: number) => void
   resume: () => void
@@ -211,6 +213,14 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
   let dir = ''
   let prevHash: bigint | null = null
   const tmp = path.join(userData, 'journey', '_tmp')
+  // 开没开是**用户的选择，不是进程的状态**：退出重开还得是开着的，
+  // 不然某天的记录会无声无息地缺一段，而用户以为一直在记。
+  // 暂停不落盘——「暂停一小时」是临时的，重开就当它过去了。
+  const optIn = path.join(userData, 'journey', 'on')
+  const remember = (on: boolean) => {
+    try { on ? (mkdirSync(path.dirname(optIn), { recursive: true }), writeFileSync(optIn, '1')) : rmSync(optIn, { force: true }) }
+    catch (e) { log(`[journey] 记不住开关：${String(e)}\n`) }
+  }
 
   const flush = () => {
     try {
@@ -273,8 +283,12 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
   return {
     state: () => state,
     today: () => mergeBlips(readSegments(dayDir(userData))),
+    restore() {
+      if (existsSync(optIn)) { log('[journey] 上次是开着的，继续\n'); this.start() }
+    },
     start() {
       if (timer) return
+      remember(true)
       mkdirSync(tmp, { recursive: true })
       state = 'running'
       pauseUntil = 0
@@ -295,6 +309,7 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
     },
     stop() {
       if (timer) { clearInterval(timer); timer = null }
+      remember(false)
       state = 'off'
       try { rmSync(tmp, { recursive: true, force: true }) } catch { /* 无所谓 */ }
       log('[journey] 停止记录\n')

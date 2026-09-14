@@ -119,10 +119,17 @@ def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
 
 
 def _secs(s: dict) -> float:
+    """这一段有多长。**一行坏数据不能把整页打成 500**——这个函数是给「今天」页
+    算合计用的，算不出来就当 0，页面照样列得出这一段。
+
+    `TypeError` 是实拍补上的（第 636 轮）：壳写的是 `toISOString()`（带 Z，
+    带时区），手工塞进去的样例是不带时区的，一减就
+    「can't subtract offset-naive and offset-aware datetimes」，整天的段一条都读不出来。
+    """
     from datetime import datetime
     try:
         return (datetime.fromisoformat(s["end"]) - datetime.fromisoformat(s["start"])).total_seconds()
-    except (KeyError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return 0.0
 
 

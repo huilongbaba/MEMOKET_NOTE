@@ -1347,3 +1347,32 @@ export const tableFromImage = (file: File) => {
   return fetch('/api/compose/table-from-image', { method: 'POST', headers: headers(), body: fd })
     .then(json<{ detected: boolean; table: string; raw: string }>)
 }
+
+// ---- 屏幕活动（Daily Journey，docs/daily-journey-plan.md）----
+//
+// 段落落在壳那边（`<userData>/journey/<日期>/`），这几个接口只管「把段变成
+// 知识库里的记录」和「读某一天」。日报和跨时间报告不在这儿另起炉灶——
+// `compose/digest` 本来就是那件事。
+
+export type JourneySegment = {
+  start: string; end: string; app: string; title: string
+  desc: string; n: number; has_frame: boolean
+}
+export type JourneyDay = { date: string; segments: JourneySegment[]; minutes: number }
+export type JourneyRun = {
+  date: string; described: number; ingested: number
+  skipped: number; left: number; removed_facts: number
+}
+
+export const journeyDay = (date = '') =>
+  fetch(`/api/journey/day${date ? `?date=${date}` : ''}`, { headers: headers() }).then(json<JourneyDay>)
+
+/** 一次只描述 `limit` 段：一段十几秒，一天几十段，全做完是十几分钟——
+ *  界面上得看得见进度，而不是点一下等十分钟。 */
+export const journeyCatchUp = (date = '', limit = 10) =>
+  fetch(`/api/journey/catch-up?limit=${limit}${date ? `&date=${date}` : ''}`,
+        { method: 'POST', headers: headers() }).then(json<JourneyRun>)
+
+/** 删这一天：段、截图、**以及它抽进知识库的事实**。 */
+export const journeyDeleteDay = (date: string) =>
+  fetch(`/api/journey/day?date=${date}`, { method: 'DELETE', headers: headers() }).then(json<JourneyRun>)

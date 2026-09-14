@@ -193,6 +193,9 @@ async function launchBackend(webDir: string): Promise<Backend> {
     // ~/Library/Application Support/<appName>）。开发时不传，后端保持
     // 相对 ./data，跟手工起后端时用的是同一个库。
     dataDir: app.isPackaged ? path.join(app.getPath('userData'), 'data') : undefined,
+    // 屏幕活动**开发时也要对得上**：采集写 <userData>/journey，这里把同一个
+    // 路径告诉后端，两边不各猜一次（见 backend.ts 里 journeyDir 的注释）。
+    journeyDir: path.join(app.getPath('userData'), 'journey'),
     onLog: remember,
     onCrash: (info) => {
       if (quitting) return
@@ -411,8 +414,25 @@ function refreshTray() {
   ]))
 }
 
+function setupJourneyIpc() {
+  // 界面和菜单栏是同一个状态的两个视图，不是两套开关（§8.2）——两边都走这里。
+  ipcMain.handle('journey:state', () => ({
+    state: journey?.state() ?? 'off', today: journey?.today().length ?? 0,
+  }))
+  ipcMain.handle('journey:start', () => { journey?.start(); refreshTray() })
+  ipcMain.handle('journey:pause', (_e, minutes: unknown) => {
+    const m = typeof minutes === 'number' && minutes > 0 ? minutes : 0
+    journey?.pause(m ? Date.now() + m * 60_000 : undefined)
+    refreshTray()
+  })
+  ipcMain.handle('journey:resume', () => { journey?.resume(); refreshTray() })
+  ipcMain.handle('journey:stop', () => { journey?.stop(); refreshTray() })
+}
+
 function setupJourney() {
   journey = makeRecorder(app.getPath('userData'), remember)
+  journey.restore()                    // 上次是开着的就接着开——见 capture.ts 的 optIn
+  setupJourneyIpc()
   refreshTray()
   setInterval(refreshTray, 60_000)     // 段数和状态跟着走，不用等用户点开
   // 锁屏 / 睡眠自动暂停：屏保上没什么可记的，而且「离开座位时还在录」最让人不安

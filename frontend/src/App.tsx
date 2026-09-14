@@ -42,6 +42,7 @@ import Logo from './components/Logo'
 import PreferencesPanel from './components/PreferencesPanel'
 // 知识库那一整套页面（含 d3 的图）按需加载：只写笔记的人不该为它多下 300KB（第 519 轮）
 const KbNoteView = lazy(() => import('./components/KbNoteView'))
+const JourneyPage = lazy(() => import('./components/JourneyPage'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import ExportNotePanel from './components/ExportNotePanel'
 import { setPendingKbQuery } from './util/pendingKbQuery'
@@ -2813,6 +2814,8 @@ export default function App() {
         <button className={'launcher-btn' + (virtualId === 'app:import' ? ' active' : '')}
                 title="导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件"
                 onClick={() => void openVirtual('app:import', '导入')}><i className="bx bx-import" /></button>
+        <button className={'launcher-btn' + (virtualId === 'app:journey' ? ' active' : '')}
+                title="屏幕活动：今天都在做什么" onClick={() => void openVirtual('app:journey', '屏幕活动')}><i className="bx bx-desktop" /></button>
         <div className="launcher-spacer" />
         {/* 设置和 Skill 是「特殊笔记」：开标签、进中栏，跟别的笔记一样对待
             （照 Trilium：选项是隐藏子树里的笔记，不是弹层）。 */}
@@ -3049,6 +3052,10 @@ export default function App() {
             <div className="kb-note"><h2 className="kb-note-title"><i className="bx bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /><AboutLine /></div>
           ) : virtualId === 'app:skills' ? (
             <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><i className="bx bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
+          ) : virtualId === 'app:journey' ? (
+            <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}>
+              <JourneyPage onLater={() => { if (activeTabId) closeTab(activeTabId) }} />
+            </Suspense>
           ) : virtualId === 'app:trash' ? (
             <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><i className="bx bx-trash" /> 最近删除</h2>
               <TrashPanel onRestored={(id) => { void reload(); void reloadTree(); void api.getNote(id).then((n) => switchTo(n)).catch(() => {}) }} /></div>
