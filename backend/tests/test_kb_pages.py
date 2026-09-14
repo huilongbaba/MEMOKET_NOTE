@@ -283,3 +283,18 @@ def test_month_add():
     assert pages._month_add("2026-09", 3) == "2026-12"
     assert pages._month_add("2026-11", 3) == "2027-02"     # 跨年
     assert pages._month_add("2026-01", -1) == "2025-12"
+
+
+def test_首页实体栏先剔说话人再取前N(mem):
+    """之前是后端取前 8、前端再把 `speaker a` 这类滤掉——**先截断后过滤**，
+    用户看到几个全看运气：真实库里前 8 个实体有 5 个是说话人标签，首页「实体」
+    那栏只剩 3 个 chip，旁边「主题」有 6 个（第 615 轮截图实拍）。说话人在首页
+    本来就有自己那一栏，不该再占实体的名额。"""
+    from app.database.kb import pages
+
+    d = pages.dashboard(mem)
+    names = [e["name"] for e in d["top_entities"]]
+    codes = [e["code"] for e in d["top_entities"]]
+    from app.database.kb.who import is_speaker_tag
+    assert not [x for x in names + codes if is_speaker_tag(x)], \
+        f"实体栏里混进了说话人标签：{names}"
