@@ -184,6 +184,7 @@ backend/app/
     loop.py                  一份循环 + 3 条内置停止条件
     types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition · Dimension
     state.py                 State：一次 run 的全部状态，middleware 的 bag 也在这
+    tailing.py               撞 token 上限后：要不要续尾 / 续回来的像不像半句
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
     events.py                AG-UI 事件 + 12 个 CUSTOM 名字 + to_sse()
     hooks/                   三组回调 + 客户端镜像用的两个记录函数

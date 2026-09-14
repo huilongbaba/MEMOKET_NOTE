@@ -38,6 +38,7 @@ this package. The short version:
     revision.py       修订怎么定位、怎么应用、四道防线   → middleware/revise
     policy.py         这一轮的观测怎么变成下一轮的参数   → middleware/runtime
     replan_rules.py   骨架该不该改、改完合不合法         → middleware/replan
+    tailing.py        撞 token 上限后要不要续尾、续回来的收不收 → hooks/{note,section}
 
 子包：``prompts/``（全部写作 prompt，按主题分）· ``hooks/``（每条 harness
 自己写的三个回调）· ``middleware/``（能力包）· ``checks/``（判据，代码判和

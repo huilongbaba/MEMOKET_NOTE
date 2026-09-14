@@ -18,6 +18,7 @@ from .. import agent_loop
 from .. import tools
 from ...editor import outline
 from .mirror import _record_dropped, _scrub_and_record
+from ..tailing import acceptable_tail, needs_tail
 from ...util import llm
 from ..agent_loop import ToolTrace
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
@@ -107,14 +108,18 @@ class SectionHooks:
         # Hitting the token ceiling truncates mid-sentence. Finish the
         # sentence rather than dropping it -- deleting what was written is
         # the one response that loses work.
-        if stats.get("finish_reason") == "length" and text:
+        # 同单篇那条：撞上限 ≠ 切在句中，续回来的也要先看像不像半句（harness/tailing.py）
+        if stats.get("finish_reason") == "length" and needs_tail(text):
             tail = messages + [
                 {"role": "assistant", "content": text},
                 {"role": "user", "content": prompts.FINISH_THE_SENTENCE},
             ]
+            tail_text = ""
             async for piece in llm.stream(tail, max_tokens=CONTINUE_TAIL_TOKENS):
-                text += piece
-                yield piece
+                tail_text += piece
+            if acceptable_tail(text, tail_text):
+                text += tail_text
+                yield tail_text
 
         # Drop paragraphs the note already contains before joining. This
         # guard lived only on the single-note harness once, and the first

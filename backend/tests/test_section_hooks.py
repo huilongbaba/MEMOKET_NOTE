@@ -163,3 +163,24 @@ def test_锚在某个具体场合的问题会多跑一次跨会话查找(monkeyp
                                                  else "（没有）"))
     facts, _trace = asyncio.run(_hooks().prepare(_st("正文")))
     assert facts == ["多跳查到的", "普通检索到的"], "多跳的结果要排在前面"
+
+
+def test_撞上限但已经是完整一句就不续尾(monkeypatch):
+    """撞 token 上限 ≠ 切在句子中间。已经停在句号上时再问一次，模型只能自己找话说——
+    用户实拍：句号后面凭空多了 `eriwa`（第 569 轮）。"""
+    calls = _stream(monkeypatch, ["这一段正好写完了一整句。"],
+                    finish_reason="length", tail=["eriwa"])
+    out = _produce(_hooks(), _st(""))
+    assert len(calls) == 1, "已经是完整一句还去续尾"
+    assert "eriwa" not in out
+
+
+def test_续回来的碎片不像半句就丢掉(monkeypatch):
+    """中文语境下的续尾一定带中文；纯 ASCII 又没有句末标点的碎片是噪声，整段都不发给客户端。"""
+    calls = _stream(monkeypatch, ["写到一半就被切断了，这句话还没"],
+                    finish_reason="length", tail=["eriwa"])
+    st = _st("")
+    out = _produce(_hooks(), st)
+    assert len(calls) == 2, "该去续尾"
+    assert "eriwa" not in out and "eriwa" not in st.content
+    assert out.endswith("这句话还没")

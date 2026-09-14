@@ -25,6 +25,7 @@ from .. import tools
 from ...util import llm
 from ...editor import outline
 from .mirror import _record_dropped, _scrub_and_record
+from ..tailing import acceptable_tail, needs_tail
 from ..agent_loop import ToolTrace
 from ...database.retrieval import retrieve as _retrieve
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
@@ -278,7 +279,9 @@ class NoteHooks:
         # 「这意味着」. **Do not delete the half sentence**: that hides a
         # truncation by throwing away work the model already did. Ask it to
         # finish, once.
-        if stats.get("finish_reason") == "length" and text:
+        # 撞上限 ≠ 切在句中，续回来的也不一定是半句（实拍句号后面多了 `eriwa`）：
+        # 两道护栏见 harness/tailing.py；攒完再一次性 yield，丢掉时客户端也收不到
+        if stats.get("finish_reason") == "length" and needs_tail(text):
             unclosed = ("\n**上面有一个 ``` 代码块还没闭合，必须先把它补完整"
                         "再收尾**——没闭合的代码块会让整段渲染失败。"
                         if text.count("```") % 2 == 1 else "")
@@ -289,10 +292,13 @@ class NoteHooks:
                     "**不要重复已经写过的内容**，把当前这个自然段收尾即可，"
                     "不用另起新话题。" + unclosed},
             ]
+            tail_text = ""
             async for piece in llm.stream(tail, max_tokens=CONTINUE_TAIL_TOKENS,
                                           temperature=temp):
-                text += piece
-                yield piece
+                tail_text += piece
+            if acceptable_tail(text, tail_text):
+                text += tail_text
+                yield tail_text
 
         if not text.strip():
             return
