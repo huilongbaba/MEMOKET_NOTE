@@ -205,6 +205,12 @@ def test_每条check打翻的维度这个mode真的有():
     # 一条永远返回 None 的坏判据能安然通过。所以现在既查维度，也查触发。
     BEFORE = "## 一、背景\n\n## 二、现状\n\n## 三、问题\n\n## 四、方案\n\n"
     AFTER = "## Next steps\n\n收尾在这儿。\n"
+    # 这一轮写出来的：够长、一条引用都没有（citations_present 判 fresh），
+    # 末尾同一组清单换个说法列了两遍（no_repeated_lists 判 content、要求 fresh 里碰过）
+    FRESH = ("这一轮写满了一整段内容，但一条编号也没给。" * 20
+             + "至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论。"
+             + "中间隔着别的话。"
+             + "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。")
     CONTENT = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
                "现有材料不足以说明这一点 [u-999-FF]。\n"
                "```mermaid\nxychart-beta\n bar [1,2]\n```\n"
@@ -219,9 +225,11 @@ def test_每条check打翻的维度这个mode真的有():
                 shaped = modes.for_run(mode, has_profile=has_profile, polish=polish)
                 names = {d.name for d in shaped.dims}
                 st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
-                st.content, st.before, st.after = CONTENT, BEFORE, AFTER
-                # 这一轮写出来的：够长、一条引用都没有（citations_present 判的是 fresh 不是 content）
-                st.fresh = "这一轮写满了一整段内容，但一条编号也没给。" * 20
+                # 这一轮写出来的：够长、一条引用都没有（citations_present 判的是 fresh 不是 content），
+                # 末尾还有同一组清单换个说法列两遍（no_repeated_lists 判的是 content，要求 fresh 里碰过）
+                st.fresh = FRESH
+                st.content = CONTENT + FRESH
+                st.before, st.after = BEFORE, AFTER
                 st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
                 st.charts = []
                 st.trace = ToolTrace()

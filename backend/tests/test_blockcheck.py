@@ -265,3 +265,20 @@ def test_箭头串出来的流程也算没画图():
     # 已经画了图就不报，代码块里的箭头也不算
     assert blockcheck.text_flow(real + "\n```mermaid\nflowchart LR\nA-->B\n```") == []
     assert blockcheck.text_flow("```\nA → B → C → D → E\n```") == []
+
+
+def test_同一组清单换个说法列两遍():
+    """段落级查重看不见它：两段各自还有别的内容，difflib 被稀释到 0.4（第 596 轮读产出发现的）。"""
+    from app.harness.checks import blockcheck
+    a = "至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论。"
+    b = "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。"
+    assert blockcheck.repeated_lists(a + "中间隔着别的话。" * 20 + b)
+    # 只报这一轮碰过的：用户原来正文里的老重复不该每轮都报
+    assert blockcheck.repeated_lists(a + "中间隔着别的话。" + b, fresh=b)
+    assert blockcheck.repeated_lists(a + "中间隔着别的话。" + b, fresh="别的内容") == []
+    # 两张图的提示词长得像是正常的（167 篇真实笔记上唯一的假阳性）
+    assert blockcheck.repeated_lists(
+        "![为公司汇报制作一张专业、克制、现代的概念插图](/a.png)"
+        "![为公司汇报制作一张专业、现代、科技感的概念示意图](/b.png)") == []
+    # 不同的清单不算
+    assert blockcheck.repeated_lists("甲、乙、丙、丁。" + "完全不同的另一组：春、夏、秋、冬。") == []

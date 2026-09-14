@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import difflib
 import re
 
 # 假图：用文字描述了一张图，而不是给出 ```mermaid 代码块。
@@ -149,3 +150,33 @@ def has_table(block: str) -> bool:
         if "|" in prev:
             return True
     return False
+
+
+# 顿号串起来的清单（≥3 项，每项 2–12 字）。整段查重（`drop_already_written`，difflib 0.62）
+# 抓不到"同一组清单换个说法再列一遍"：两段各自还有别的内容，相似度被稀释到 0.4 左右。
+# 把清单单独抽出来两两比，第 596 轮读产出时发现的：
+#   「至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论」
+#   「这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录」
+_ITEM_LIST = re.compile(r"(?:[^、，。；：\n]{2,12}、){2,}[^、，。；：\n]{2,12}")
+_IMG_ALT = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+LIST_DUP_RATIO = 0.7
+
+
+def repeated_lists(text: str, fresh: str = "", limit: int = 2) -> list[tuple[str, str]]:
+    """同一组清单被换个说法列了两遍。
+
+    `fresh` 给了的话，只报**这一轮碰过**的那些——用户原来正文里就有的重复不该每轮都报一次。
+    图片的 alt 文字跳过：两张图的提示词长得像是正常的（167 篇真实笔记上唯一的假阳性）。
+    """
+    body = _IMG_ALT.sub("", text or "")
+    lists = [m.group(0) for m in _ITEM_LIST.finditer(body)]
+    out: list[tuple[str, str]] = []
+    for i, a in enumerate(lists):
+        for b in lists[i + 1:]:
+            if fresh and a not in fresh and b not in fresh:
+                continue
+            if difflib.SequenceMatcher(None, a, b).ratio() >= LIST_DUP_RATIO:
+                out.append((a, b))
+                if len(out) >= limit:
+                    return out
+    return out

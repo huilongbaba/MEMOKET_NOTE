@@ -116,3 +116,21 @@ def outline_intact(st: State) -> Verdict | None:
         "这篇是一份大纲，它的标题层级被压平了。保留原来的层级：在标题下面写，"
         "不要重写标题。",
     )
+
+
+def no_repeated_lists(st: State) -> Verdict | None:
+    """同一组清单换个说法列了两遍。
+
+    段落级查重（`drop_already_written`）看不见它：两段各自还有别的内容，difflib 被稀释到 0.4。
+    读产出才发现的（第 596 轮）——一篇复盘里「测试场景、时间、硬件版本、异常表现、负责人、最终结论」
+    这组清单出现了两次，中间隔着几百字，读起来是同一件事说了两遍。
+    """
+    dups = blockcheck.repeated_lists(st.content, st.fresh or "")
+    if not dups:
+        return None
+    a, b = dups[0]
+    return Verdict(
+        pick_dimension(st, "non_repetition", "coherence", "style_fit"),
+        f"同一组清单列了两遍：「{a[:40]}」和「{b[:40]}」。留下更完整的那一处，"
+        "另一处改成一句话带过（「按上面那几项回填」），不要把同一组要素换个说法再写一次。",
+    )
