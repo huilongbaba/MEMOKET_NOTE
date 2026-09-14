@@ -94,6 +94,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 551–560 | 说话人标签六处口径统一（stats / 导入页数字 / 树实体层 / 实体列表 / 图的边 / 召回）；真跑抓到续写收尾的 scrub 不发事件 → `_scrub_and_record` + loop 发 `scrub`；客户端 TEXT_MESSAGE_END 做 fixBoldPunct（复用 format.ts、补围栏跳过）；harness 客户端 scrub miss / revision no-op 诊断日志；重打 dmg（第 560 轮） |
 | 561–573 | 分段 harness 也镜像（`hooks/mirror.py`）；对拍到 8 处（+ `section_end`、命中片段、查询清洗 `clean_query`）；`check-a11y` 加「禁用要说原因」；**用户报的 `eriwa`**：续尾两道护栏 `harness/tailing.py`；同一段里整句被插进句中：`reject_revision` 第四道防线；正文路径硬截全扫；重打 dmg（第 573 轮） |
 | 574–580 | 「模型回什么就用什么」同类全扫：写作计划分段数上限 + 同名去重 + 追加全被丢时不再空转、骨架长度封顶（`clamp_skeleton`）、关系说明封顶；harness 跑动时右栏「计划」轮次卡置前；重打 dmg（第 580 轮） |
+| 581–590 | 痛点 6 出方案 `docs/slides-plan.md`（幻灯片笔记而非 pptx 文件）；超长笔记（47K 字）编辑性能实测；后端查询耗时实测；文件夹 harness 写着的那篇改只读 + 解释条；智能排版结果过时就丢弃（顺带修第 511 轮落错行的色条清理）；API 路径覆盖复算 115/3 + 补 skills toggle 测试；**切回笔记 / 从知识库回来恢复光标与滚动**（痛点 12）；重打 dmg（第 590 轮） |
 
 ## 当前优先队列（2026-09-12 晚，用户点名：这些排在巡检之前）
 
