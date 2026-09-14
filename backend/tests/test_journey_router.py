@@ -148,3 +148,44 @@ def test_一段描述都没有就别花那次模型调用(tmp_path, monkeypatch)
     with pytest.raises(HTTPException) as e:
         asyncio.run(J.report(date="2026-09-14", user="tester"))
     assert e.value.status_code == 400
+
+
+def test_跨时间回顾把缺日报的那几天写进正文(tmp_path, monkeypatch):
+    """**这篇笔记之后会被读、被引用**，读的人得知道它是按哪些天写的——
+    只在提示里说一句就过去不行（§4.2）。"""
+    from app.routers import journey as J
+
+    for d, md in (("2026-09-10", "## 推进了什么\n- 改了 a.py\n"),
+                  ("2026-09-12", "## 推进了什么\n- 改了 b.py\n")):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "report.json").write_text(
+            json.dumps({"report": md, "report_segments": 5}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    seen: dict = {}
+
+    async def fake(messages, **kw):
+        seen["user"] = messages[-1]["content"]
+        return "## 这段时间主要在做什么\n- 在写 journey\n"
+
+    monkeypatch.setattr(J.llm, "complete", fake)
+    made: dict = {}
+    monkeypatch.setattr(J.store, "create_note",
+                        lambda user, title, content, **kw: made.update(
+                            {"title": title, "content": content}) or {"id": "n1"})
+
+    out = asyncio.run(J.span(date_from="2026-09-10", date_to="2026-09-12", user="tester"))
+    assert out.days == 2 and out.missing == ["2026-09-11"]
+    assert "2026-09-11 这几天没有日报" in made["content"]
+    # 喂进去的是**日报**，不是原始的段
+    assert "改了 a.py" in seen["user"] and "改了 b.py" in seen["user"]
+
+
+def test_一份日报都没有就不写跨时间回顾(tmp_path, monkeypatch):
+    """要的是「先去写日报」，不是一份空报告。"""
+    from app.routers import journey as J
+
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(J.span(date_from="2026-09-10", date_to="2026-09-12", user="tester"))
+    assert e.value.status_code == 400 and "先在那几天各写一份" in e.value.detail

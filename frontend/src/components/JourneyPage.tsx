@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { createNote, journeyCatchUp, journeyDay, journeyDeleteDay, journeyReport,
+import { createNote, journeyCatchUp, journeyDay, journeyDeleteDay, journeyReport, journeySpan,
          type JourneyDay, type JourneySegment } from '../api'
 import { parseMini, type Inline } from '../util/miniMarkdown'
 import { toast } from '../toast'
@@ -110,6 +110,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   const [date, setDate] = useState('')
   const [busy, setBusy] = useState(false)
   const [writing, setWriting] = useState(false)
+  const [spanning, setSpanning] = useState(0)
   const bridge = window.memoketDesktop?.journey
 
   const refresh = useCallback(async () => {
@@ -150,6 +151,18 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
       window.dispatchEvent(new CustomEvent('notes-changed'))
       onOpenNote(n.id)
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
+  }
+
+  /** 一段时间的回顾。**产出是一篇笔记**——写完直接把人送过去，
+   *  不在这一页里再开一个只读小窗：那种东西关掉就没了。 */
+  async function runSpan(days: number) {
+    setSpanning(days)
+    try {
+      const r = await journeySpan(days)
+      window.dispatchEvent(new CustomEvent('notes-changed'))
+      toast(`按 ${r.days} 天的日报写好了${r.missing.length ? `（${r.missing.length} 天没有日报）` : ''}`)
+      onOpenNote(r.note_id)
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setSpanning(0) }
   }
 
   async function wipe() {
@@ -327,6 +340,24 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           </div>
         </>
       )}
+
+      {/* 一段时间的回顾：**日报 → 长报告 → 一篇笔记**。放在最下面——
+          它不是「今天」这一页的主角，是从这一页出去的一条路（§4.2）。 */}
+      <div className="journey-span">
+        <h3 className="kb-section-title">回顾一段时间</h3>
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+          把这些天的日报汇成一篇长回顾，落成一篇笔记——之后还能接着编辑、接着续写。
+          没写过日报的那几天会被跳过，并写在笔记里。
+        </p>
+        <div className="row" style={{ gap: 6 }}>
+          {[7, 30].map((d) => (
+            <button key={d} disabled={spanning !== 0} onClick={() => void runSpan(d)}
+                    title={spanning !== 0 ? '正在写，跑完才能换范围' : undefined}>
+              {spanning === d ? <><span className="spinner" /> 最近 {d} 天</> : `最近 ${d} 天`}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

@@ -10,6 +10,7 @@
   · `GET  /api/journey/day`      —— 某天有哪些段（给「今天」页）
   · `POST /api/journey/catch-up` —— 把还没描述的段描述掉，并写进知识库
   · `POST /api/journey/report`   —— 写这一天的日报（时长走代码、结论走模型）
+  · `POST /api/journey/span`     —— 一段时间的回顾：**日报 → 长报告 → 一篇笔记**
   · `DELETE /api/journey/day`    —— 删这一天，**连它抽出来的事实一起删**
 
 最后那条是隐私承诺的一部分：删完还留着事实的话，「我删了那天的记录」是假的
@@ -23,6 +24,7 @@ import os
 import time
 from datetime import date as _date
 from datetime import datetime as _dt
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,13 +32,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..util import llm
 from ..harness import prompts
+from ..database import store
 from ..database.kite.kite_memory import UserMemory
 from ..editor.vision import VisionError, ask_image
 from ..journey import day_stats, render_time_block
 from ..journey.stats import render_churn
-from ..journey.prompt import REPORT_SYSTEM, report_user
+from ..journey.prompt import REPORT_SYSTEM, SPAN_SYSTEM, report_user, span_user
 from .deps import current_user
-from .schemas import JourneyDayOut, JourneyReportOut, JourneyRunOut, JourneySegment
+from .schemas import (JourneyDayOut, JourneyReportOut, JourneyRunOut,
+                      JourneySegment, JourneySpanOut)
 
 router = APIRouter(prefix="/api/journey", tags=["journey"])
 
@@ -247,6 +251,55 @@ async def report(date: str = "", user: str = Depends(current_user)) -> JourneyRe
     return JourneyReportOut(date=day_s, report=md, segments=len(told),
                             report_at=meta["report_at"],
                             took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+@router.post("/span", response_model=JourneySpanOut)
+async def span(date_from: str = "", date_to: str = "", days: int = 7,
+               user: str = Depends(current_user)) -> JourneySpanOut:
+    """一段时间的回顾。**喂给模型的是日报，不是原始记录**（§4.2）。
+
+    30 天的段是几十万 token，而且只会换来一份平均值式的废话。两层：每天先
+    有日报（那一层已经做完了），这里把日报们汇成一份长报告。
+
+    产出**落成一篇笔记**，不是一段一次性的文字——它要能继续编辑、继续续写、
+    被引用。这也是这个功能最后一步的意义：一段时间的屏幕活动，最终变成
+    树上的一篇东西。
+    """
+    t0 = time.perf_counter()
+    to_s = date_to or _date.today().isoformat()
+    from_s = date_from or (_date.fromisoformat(to_s) - timedelta(days=max(1, days) - 1)).isoformat()
+    if from_s > to_s:
+        raise HTTPException(400, "起止日期反了")
+
+    reports: list[tuple[str, str]] = []
+    missing: list[str] = []
+    d = _date.fromisoformat(from_s)
+    while d <= _date.fromisoformat(to_s):
+        key = d.isoformat()
+        md = (_load_report(key).get("report") or "").strip()
+        (reports.append((key, md)) if md else missing.append(key))
+        d += timedelta(days=1)
+
+    if not reports:
+        # 一份日报都没有就不花这次调用。**要的是「先去写日报」，不是一份空报告**。
+        raise HTTPException(400, f"{from_s} 到 {to_s} 还没有任何日报。先在那几天各写一份。")
+
+    text = await llm.complete(
+        [{"role": "system", "content": prompts.compose_system(SPAN_SYSTEM, "journey", user)},
+         {"role": "user", "content": span_user(from_s, to_s, reports)}],
+        max_tokens=2000, temperature=0.3)
+
+    title = f"{from_s} – {to_s} 这段时间"
+    body = text.strip() + "\n"
+    if missing:
+        # **缺了哪几天要写在正文里**，不能只在提示里说一句就过去：这篇笔记之后
+        # 会被读、被引用，读的人得知道它是按哪些天写的。
+        body += (f"\n---\n\n（这份回顾按 {len(reports)} 天的日报写成；"
+                 f"{'、'.join(missing[:10])}{'…' if len(missing) > 10 else ''} 这几天没有日报。）\n")
+    note = store.create_note(user, title, f"# {title}\n\n{body}", source="journey")
+    return JourneySpanOut(date_from=from_s, date_to=to_s, days=len(reports),
+                          missing=missing, note_id=note["id"], title=title,
+                          took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 
 @router.delete("/day", response_model=JourneyRunOut)

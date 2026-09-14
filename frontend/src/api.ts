@@ -1384,6 +1384,15 @@ export const journeyReport = (date = '') =>
   fetch(`/api/journey/report${date ? `?date=${date}` : ''}`,
         { method: 'POST', headers: headers() }).then(json<JourneyReport>)
 
+export type JourneySpan = {
+  date_from: string; date_to: string; days: number
+  missing: string[]; note_id: string; title: string; took_ms: number
+}
+
+/** 一段时间的回顾：**喂给模型的是日报不是原始记录**，产出落成一篇笔记。 */
+export const journeySpan = (days: number) =>
+  fetch(`/api/journey/span?days=${days}`, { method: 'POST', headers: headers() }).then(json<JourneySpan>)
+
 /** 删这一天：段、截图、**以及它抽进知识库的事实**。 */
 export const journeyDeleteDay = (date: string) =>
   fetch(`/api/journey/day?date=${date}`, { method: 'DELETE', headers: headers() }).then(json<JourneyRun>)

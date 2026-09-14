@@ -755,6 +755,17 @@ class JourneyReportOut(BaseModel):
     took_ms: float = 0.0
 
 
+class JourneySpanOut(BaseModel):
+    date_from: str
+    date_to: str
+    days: int = 0
+    """这段时间里没有日报的那几天——写进笔记正文，读的人得知道它按哪些天写的。"""
+    missing: list[str] = Field(default_factory=list)
+    note_id: str = ""
+    title: str = ""
+    took_ms: float = 0.0
+
+
 class JourneyRunOut(BaseModel):
     date: str
     described: int = 0

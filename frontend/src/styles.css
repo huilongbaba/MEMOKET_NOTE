@@ -1168,3 +1168,5 @@ kbd {
 .jr-md ul { margin: 4px 0; padding-inline-start: 18px; }
 .jr-md li { margin: 2px 0; }
 .jr-md code { font-size: 12px; background: var(--line); border-radius: 3px; padding: 0 3px; }
+/* 「回顾一段时间」：从「今天」这一页出去的一条路，不是这一页的主角 */
+.journey-span { border-top: 1px solid var(--line); padding-top: 12px; }
