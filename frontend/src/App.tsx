@@ -43,7 +43,7 @@ import PreferencesPanel from './components/PreferencesPanel'
 // 知识库那一整套页面（含 d3 的图）按需加载：只写笔记的人不该为它多下 300KB（第 519 轮）
 const KbNoteView = lazy(() => import('./components/KbNoteView'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
-import ExportBack from './components/ExportBack'
+import ExportNotePanel from './components/ExportNotePanel'
 import { setPendingKbQuery } from './util/pendingKbQuery'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
@@ -2717,10 +2717,8 @@ export default function App() {
         <div className="palette-backdrop" onMouseDown={() => setExportOne(null)}>
           <div className="palette export-one" role="dialog" aria-label="导回这一篇"
                onMouseDown={(e) => e.stopPropagation()}>
-            <ExportBack noteIds={[exportOne.id]} what={displayTitle(exportOne)} />
-            <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-              <button onClick={() => setExportOne(null)}>关闭</button>
-            </div>
+            <ExportNotePanel noteId={exportOne.id} title={displayTitle(exportOne)}
+                             onClose={() => setExportOne(null)} />
           </div>
         </div>
       )}

@@ -481,10 +481,18 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
    拖拽留的余量——压到 1.6em 之后拖放的命中率会明显变差。 */
 .note-tree { margin: 0 -4px; }
 
-/* 「导回这一篇」的弹层：借 palette 的遮罩和盒子，只是宽一点、可滚。
-   不另写一套弹层样式——它托的是导入页那个同一个组件（第 628 轮）。 */
-.palette.export-one { width: min(560px, 92vw); max-height: 80vh; overflow: auto; }
-.palette.export-one h2 { margin: 0 0 8px; font-size: 15px; }
+/* 「导回这一篇」的弹层。窄、短、一次只问一件事——跟导入页那块整库导的排版
+   是两回事（第 629 轮重做：第 628 轮直接塞整块进来，说明文字比控件还多）。 */
+.palette.export-one { width: min(420px, 92vw); padding: 14px 16px 12px; }
+.export-note { display: flex; flex-direction: column; gap: 10px; }
+.export-note h2 { margin: 0; font-size: 15px; }
+.export-note-state { font-size: 12px; margin: 0; line-height: 1.6; }
+.export-note-seg { align-self: flex-start; }
+.export-note-seg button { padding: 3px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 3px; }
+.export-note-seg .bx { font-size: 13px; color: var(--accent); }
+.export-note-fields { display: flex; flex-direction: column; gap: 6px; }
+.export-note-fields input[type=text], .export-note-fields input:not([type]) { width: 100%; }
+.export-note-hint { font-size: 11px; margin: 0; line-height: 1.6; }
 
 /* 列表头：视角开关 + 条数。压得很轻——它是标签，不是操作区。 */
 .list-head {
