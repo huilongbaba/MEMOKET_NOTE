@@ -248,3 +248,38 @@ def test_实体数不算说话人标签(mem):
     vocab.entities["发言人_2"] = Entity("发言人_2", etype="", name="发言人 2")
     assert mem.stats()["entities"] == before
     assert pages.dashboard(mem)["stats"]["entities"] == before
+
+
+def test_一条远期计划日期不该把整张月度图拖走():
+    """首页那张图的右端原本直接取「有数据的最晚月份」。而这个库里相当一部分
+    事实日期是**计划**（「8 月 5 日 DVT」「7 月上市」），所以笔记里一句
+    「2028 年上市」就能把整个窗口平移十几个月，真实月份一根不剩。
+
+    第 124 轮修过镜像的另一半（一条 2005 年的错抽日期把横轴拉成
+    2005-11 → 2026-12），这一侧当时没修。
+    """
+    now = "2026-09"
+    real = [_fact(f"f{i}", "真实的记录", f"2026-0{i}-01") for i in range(1, 10)]
+
+    # 近期计划照画：窗口右端跟着数据走，最远到「这个月 + FUTURE_MONTHS」
+    near = pages._months(real + [_fact("p", "8 月 5 日 DVT", "2026-12-01")], 12, today=now)
+    assert near[-1]["month"] == "2026-12"
+    assert near[0]["month"] == "2026-01", "近期计划不该把真实月份挤出窗口"
+
+    # 远期计划夹不走窗口
+    far = pages._months(real + [_fact("p", "2028 年上市", "2028-06-01")], 12, today=now)
+    assert far[-1]["month"] == pages._month_add(now, pages.FUTURE_MONTHS)
+    assert [r["month"] for r in far][:3] == ["2026-01", "2026-02", "2026-03"], \
+        "2026 年的真实月份必须还在图上"
+    assert sum(r["facts"] for r in far) == len(real), "被夹出窗口的是那条远期计划，不是真实数据"
+
+    # 手上全是旧数据：照旧贴着数据右端走，否则画出的是一排空条、再被空月裁剪吃光
+    old = pages._months([_fact("o1", "很久以前", "2005-11-01"),
+                         _fact("o2", "也很久以前", "2005-12-01")], 12, today=now)
+    assert [r["month"] for r in old] == ["2005-11", "2005-12"]
+
+
+def test_month_add():
+    assert pages._month_add("2026-09", 3) == "2026-12"
+    assert pages._month_add("2026-11", 3) == "2027-02"     # 跨年
+    assert pages._month_add("2026-01", -1) == "2025-12"

@@ -285,12 +285,12 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       setTimeout(() => void actionsRef.current.runHarness(row), 800)
     })() }
   }
-  if (probe === 'plan-panel' && tree.length) setTimeout(() => openWritingPlan(), 1200)
+  if (probe === 'plan-panel' && tree.length) setTimeout(() => void openWritingPlan(), 1200)
   // 写作计划面板上点「换个目标」，看放弃计划的确认框（要那个文件夹上有计划）
   // `:abandon-esc` 再按一次 Esc——只该关掉确认框，面板留着；`plan-panel:esc` 只开面板然后 Esc——面板该关掉
   if ((probe === 'plan-panel:abandon' || probe === 'plan-panel:abandon-esc' || probe === 'plan-panel:esc') && tree.length && !harnessProbeDone.current) {
     harnessProbeDone.current = true
-    setTimeout(() => openWritingPlan(), 1200)
+    setTimeout(() => void openWritingPlan(), 1200)
     const esc = () => {
       const target = document.activeElement ?? window
       const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })

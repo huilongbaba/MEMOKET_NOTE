@@ -11,6 +11,7 @@ from __future__ import annotations
 
 
 from collections import Counter, defaultdict
+from datetime import date as _date
 
 from .who import is_speaker_tag, norm_who
 from . import entities as entities_mod
@@ -58,16 +59,36 @@ def note_id_of_unit(unit: str) -> str:
 
 
 
-def _months(facts, last: int | None = None) -> list[dict]:
+# 窗口最多能往未来伸几个月。事实里的日期有相当一部分是**计划**（「8 月 5 日 DVT」
+# 「7 月上市」），这是这个产品的常态，所以未来月份得画出来。但不能让它无界：
+# 窗口的右端原本直接取「有数据的最晚月份」，于是笔记里一句「2028 年上市」就能把
+# 整张图平移十几个月，2026 年的真实月份一根不剩。第 124 轮修过镜像的另一半——
+# 一条 2005 年的错抽日期把横轴拉成 2005-11 → 2026-12——这一侧当时没修。
+FUTURE_MONTHS = 3
+
+
+def _month_add(ym: str, delta: int) -> str:
+    y, m = (int(x) for x in ym.split("-"))
+    n = y * 12 + (m - 1) + delta
+    return f"{n // 12:04d}-{n % 12 + 1:02d}"
+
+
+def _months(facts, last: int | None = None, today: str | None = None) -> list[dict]:
     """按月计数。``last`` 给了就是**连续的**最近 N 个日历月（没数据的月份补 0），而不是「有数据
     的最近 N 个月」——后者会把一条 2005 年的错抽日期和 2026 年并排画成等宽的条，横轴写着
-    2005-11 → 2026-12，看不出任何形状（第 124 轮实拍 work 主题页）。不给 ``last`` = 全部有数据的月。"""
+    2005-11 → 2026-12，看不出任何形状（第 124 轮实拍 work 主题页）。不给 ``last`` = 全部有数据的月。
+
+    右端最远只到「这个月 + ``FUTURE_MONTHS``」：计划里的未来日期要画得出来，但一条
+    远期日期不该把整个窗口拖走。手上全是旧数据时（最晚的月份就在过去）照旧贴着数据的
+    右端走——那种情况下锚在今天只会画出一排空条，然后被下面的空月裁剪全部吃掉。
+    """
     c = Counter(f.when[:7] for f in facts if f.when)
     if not c:
         return []
     if not last:
         return [{"month": m, "facts": n} for m, n in sorted(c.items())]
-    y, m = (int(x) for x in max(c).split("-"))
+    now = today or _date.today().strftime("%Y-%m")
+    y, m = (int(x) for x in min(max(c), _month_add(now, FUTURE_MONTHS)).split("-"))
     months = []
     for _ in range(last):
         months.append(f"{y:04d}-{m:02d}")

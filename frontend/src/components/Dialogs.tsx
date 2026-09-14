@@ -50,7 +50,12 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
     const hit = needle
       ? list.filter((r) => (displayTitle(r) + ' ' + (paths.get(r.id) ?? '')).toLowerCase().includes(needle))
       : list
-    return [{ id: 'root', note_id: ROOT_ID, label: '（树根）', path: '' },
+    // 「移动到…」「克隆到…」可以选树根，「无限续写写到哪一篇下面」不行——
+    // 调用方把 ROOT_ID 放进 exclude 就不出现。之前它无条件排在第一位、还是
+    // 默认高亮项，选了只会换来一句「选一篇具体的笔记」（第 611 轮）。
+    const root = req.exclude.has(ROOT_ID)
+      ? [] : [{ id: 'root', note_id: ROOT_ID, label: '（树根）', path: '' }]
+    return [...root,
             ...hit.slice(0, 200).map((r) => ({ id: r.id, note_id: r.note_id, label: displayTitle(r), path: paths.get(r.id) ?? '' }))]
   }, [rows, q, req.exclude, paths])
 

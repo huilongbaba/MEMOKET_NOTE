@@ -1013,23 +1013,33 @@ export default function App() {
    * 入口仍然是侧栏一个随时可见的按钮，自己判断该对哪棵子树开：当前笔记
    * 的父节点优先。反馈原文是「我找不到那个按钮了」——那时它藏在文件夹
    * 标题栏的一个图标里，没有文件夹时页面上根本不出现。 */
-  function openWritingPlan() {
+  async function openWritingPlan() {
     const parents = tree.filter((r) => r.child_count > 0)
-    if (parents.length === 0) {
-      toast('无限续写对着一棵子树跑——先建一篇笔记，往它下面放几篇')
-      return
-    }
     // 当前打开的本身就是一个文件夹时，就是它——之前只看它的父节点，站在「日记」上
     // 点无限续写，对话框却给了树上第一个有孩子的「09 月」（第 188 轮实拍）
     const self = current ? parents.find((r) => r.note_id === current.id) : undefined
     const mine = current
       ? tree.find((r) => r.note_id === current.id)?.parent_note_id
       : undefined
-    const preferred = self ?? parents.find((r) => r.note_id === mine) ?? parents[0]
-    setWritingPlanParent(preferred)
-    if (parents.length > 1) {
-      toast(`已打开「${preferred.title}」的无限续写——想换一棵，在树上右键选`)
+    const guess = self ?? parents.find((r) => r.note_id === mine)
+    if (guess) {
+      setWritingPlanParent(guess)
+      if (parents.length > 1) {
+        toast(`已打开「${displayTitle(guess)}」的无限续写——想换一棵，在树上右键选`)
+      }
+      return
     }
+
+    // **猜不出来就别猜。** 这里原本落到 `parents[0]`——树上第一个有子节点的行，
+    // 在真实库里是自动生成的「09 月」日记文件夹：站在一篇根笔记上点无限续写，
+    // 对话框标题写着「09 月 · 写作计划」，跟手头的事毫无关系（第 611 轮截图实拍）。
+    // 顺带去掉了「先往它下面放几篇」那条死路：写作计划**本来就是来建这些子笔记的**，
+    // 要求它们事先存在是把旧的「文件夹」概念带过来了，后端也从来没这个要求。
+    const id = await askNode('无限续写写到哪一篇下面？分段会建成它的子笔记',
+                             new Set([api.ROOT_ID]))
+    if (!id) return
+    const row = tree.find((r) => r.note_id === id)
+    if (row) setWritingPlanParent(row)
   }
 
   /** 跑 harness——挂在 App 级别，不依赖 WritingPlanPanel 是否挂载（见
@@ -2864,7 +2874,7 @@ export default function App() {
         <button className={'launcher-btn' + (virtualId === 'app:skills' ? ' active' : '')} title="写作 Skill"
                 onClick={() => void openVirtual('app:skills', '写作 Skill')}><i className="bx bx-extension" /></button>
         <button className="launcher-btn" title="无限续写：对着一棵子树自动一段接一段"
-                onClick={openWritingPlan}><i className="bx bx-rocket" /></button>
+                onClick={() => void openWritingPlan()}><i className="bx bx-rocket" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:settings' ? ' active' : '')} title="设置：LLM 供应商"
                 onClick={() => void openVirtual('app:settings', '设置')}><i className="bx bx-cog" /></button>
         <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
