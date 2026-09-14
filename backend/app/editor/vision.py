@@ -23,7 +23,8 @@ class VisionError(RuntimeError):
 
 
 async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
-                    *, max_tokens: int = 1200, timeout: float = 300.0) -> str:
+                    *, max_tokens: int = 1200, timeout: float = 300.0,
+                    system: str = "") -> str:
     """给模型看一张图并提问，返回它的回答。
 
     图走 data URI 内联，不落盘也不对外暴露 URL——这条路径上的图可能是用户
@@ -31,12 +32,19 @@ async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
     """
     s = get_settings()
     b64 = base64.b64encode(image).decode()
+    # **要求要放 system，别拼在图旁边那段文字里。** 实测（Daily Journey 的 P0，
+    # 本地 muse-glimmer-30b）：拼在一起时模型会把要求原样复述一遍、然后用英文
+    # 自言自语，压根不输出答案；挪到 system 之后立刻守规矩。
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+    ]})
     body = {
         "model": s.vision_model,
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-        ]}],
+        "messages": messages,
         "max_tokens": max_tokens,
         "temperature": 0.1,
     }
