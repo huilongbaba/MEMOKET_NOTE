@@ -319,8 +319,27 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   }
   if (probe?.startsWith('big:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(4))
-    if (n) { harnessProbeDone.current = true; const t0 = performance.now(); void switchTo(n).then(() => requestAnimationFrame(() => void api.clientLog('warn', `big note ${n.content.length} 字 switchTo→paint ${Math.round(performance.now() - t0)} ms`, '', 'perf'))) }
+    if (n) { harnessProbeDone.current = true; const t0 = performance.now(); void switchTo(n).then(() => requestAnimationFrame(() => {
+      void api.clientLog('warn', `big note ${n.content.length} 字 switchTo→paint ${Math.round(performance.now() - t0)} ms`, '', 'perf')
+      // 打开之后再量三件用户真的会做的事：敲一个字、跳到文末、⌘F 找一个词（第 582 轮）
+      setTimeout(() => {
+        const v = editorViewRef.current; if (!v) return
+        const len = v.state.doc.length
+        const typeAt = Math.floor(len / 2)
+        v.dispatch({ selection: { anchor: typeAt } })
+        const t1 = performance.now()
+        for (let k = 0; k < 20; k++) v.dispatch({ changes: { from: typeAt + k, insert: '字' }, userEvent: 'input.type' })
+        const typed = performance.now() - t1
+        const t2 = performance.now()
+        v.dispatch({ effects: EditorView.scrollIntoView(len, { y: 'end' }) })
+        requestAnimationFrame(() => {
+          const jumped = performance.now() - t2
+          void api.clientLog('warn', `big note 打 20 个字 ${Math.round(typed)} ms（每字 ${(typed / 20).toFixed(1)}）· 跳到文末 ${Math.round(jumped)} ms · 文档 ${len} 字`, '', 'perf')
+        })
+      }, 2500)
+    })) }
   }
+
   if (probe?.startsWith('end:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.slice(4))
     if (n) { harnessProbeDone.current = true; void switchTo(n).then(() => { for (const t of [3000, 6000, 8000]) setTimeout(() => { const v = editorViewRef.current; if (v) v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.length, { y: 'end' }) }) }, t); setTimeout(() => { const c = document.querySelector('.note-scroll'); if (c) c.scrollTop = c.scrollHeight }, 8500); setTimeout(() => document.querySelector('.cm-note-link')?.dispatchEvent(new MouseEvent('mouseenter')), 9000) }) }
