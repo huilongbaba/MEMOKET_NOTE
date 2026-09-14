@@ -528,3 +528,19 @@ def test_record_dropped_按段和行找流里有留下的没有的():
     st2 = SimpleNamespace(bag={})
     _record_dropped(st2, "a\n\nb", "a\n\nb")
     assert "dedup" not in st2.bag
+
+
+def test_insert_不能把一句话从中间劈开():
+    """用户实拍（第 570 轮）：「……适合用来验证漏斗后半段：如果要把验证结果与产品推进节点对齐，
+    还应明确……时间节点；KOL 是否愿意持续展示……」——冒号后被塞进一整句，原句后半截被顶到后面，
+    读起来是两句缝在一起。"""
+    from app.harness.revision import reject_revision as rej
+
+    doc = "这批设备适合用来验证漏斗后半段：KOL 是否愿意持续展示，受众是否愿意进入 APP。"
+    whole = "如果要把验证结果与产品推进节点对齐，还应明确样机投放和容量确认的时间：5 月底前完成容量确认。"
+    assert "从中间劈开" in rej(doc, "insert", "漏斗后半段：", whole)
+    # 句末之后插、自己另起一段、补一个短语 / 引用标记：都放行
+    assert rej("前一句写完了。后一句。", "insert", "前一句写完了。", whole) == ""
+    assert rej("## 标题\n正文。", "insert", "## 标题", "\n\n" + whole) == ""
+    assert rej(doc, "insert", "漏斗后半段：", "[terrence-1-A]") == ""
+    assert rej(doc, "insert", "正文里没有这个锚点", whole) == ""

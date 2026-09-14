@@ -182,6 +182,12 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
     if op == "replace" and _is_same_meaning_rewrite(
             _replaced_span(content, anchor, anchor_end), text):
         return f"这条只是换了措辞，没改出东西，已丢弃：{key[:24]}…"
+    if op in ("insert", "insert_before") and _splits_a_sentence(content, op, anchor, anchor_end, text):
+        # 用户实拍（第 570 轮）：「这批设备适合用来验证漏斗后半段：如果要把验证结果与产品推进
+        # 节点对齐，还应明确……时间节点；KOL 是否愿意持续展示……」——冒号后面被塞进一整句，
+        # 原来那句的后半截（KOL 是否愿意…）被顶到插入内容之后，读起来是两句缝在一起。
+        # 补一个引用标记 / 几个字的短语不算，只拦「整句级」插到句子中间。
+        return f"这条会把一句话从中间劈开，已丢弃：{key[:24]}…"
     if op == "replace" and not anchor_end and content.count(anchor) > 1:
         # 只有"光秃秃的 replace + 锚点多处"才真的无法消歧：没有 anchor_end
         # 划出范围，改哪一处都说得通，切错的代价是正文被破坏。
@@ -194,6 +200,28 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
         #     （20 轮实测 non_repetition 全 20 次 0 分、coherence 掉到 0.5）。
         return f"这个位置在正文里有多处、又没给结尾标记，改哪个说不准：{key[:24]}…"
     return ""
+
+
+# 到这儿为止是一句话，可以在后面另起一句
+_SENTENCE_END = set("。！？!?…；;」』）】》”’\n")
+
+
+def _splits_a_sentence(content: str, op: str, anchor: str, anchor_end: str, text: str) -> bool:
+    """这条 insert 会不会插在一句话中间。"""
+    # 自己另起一行/一段的不算劈开（模型给的 text 以换行开头时，插在标题或半句后也是新的一段）
+    if (text or "").startswith(("\n", "\r")):
+        return False
+    body = (text or "").strip()
+    # 只拦整句级的插入：补引用标记（`[terrence-1-A]`）或几个字的短语不该被拦
+    if len(body) < 20 or not any(ch in "。！？!?" for ch in body):
+        return False
+    i, end = _locate(content, anchor, anchor_end)
+    if i < 0:
+        return False
+    head = content[: (i if op == "insert_before" else end)]
+    if not head.strip():
+        return False
+    return head.rstrip(" \t")[-1:] not in _SENTENCE_END
 
 
 def apply_revision(content: str, op: str, anchor: str, text: str,
