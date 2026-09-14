@@ -1184,3 +1184,6 @@ kbd {
                  box-shadow: 0 4px 16px #0003; background: var(--panel); }
 /* 键盘也要够得着：焦点走到那一行的删除键上时，凭据一样浮出来 */
 .journey-row:hover .journey-thumb, .journey-row:focus-within .journey-thumb { display: block; }
+/* 一行只读的地址 / 模型名：给人核对用的，所以等宽、可选中 */
+.mono-line { margin: 2px 0 0; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+             color: var(--fg); user-select: text; word-break: break-all; }

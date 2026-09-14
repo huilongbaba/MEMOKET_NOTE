@@ -341,6 +341,11 @@ class ProviderConfigOut(BaseModel):
     asr_base_url: str        # 用户填的（空 = 没填，在用默认）
     asr_default_url: str     # .env 默认，界面当 placeholder
     auto_sync_notes: bool = False
+    # 看图那台（屏幕活动的描述走它，跟写作用的 LLM 是两回事）。**只读**：它是
+    # 部署配置，跟 `asr_default_url` 一样。摆出来是因为知情选择那一屏上写着
+    # 「截图发到哪」——**说得出口的承诺必须看得见**，否则就是一句安慰。
+    vision_base_url: str = ""
+    vision_model: str = ""
     # 不把真实 key 传回前端——只告诉它"存了没"和"末尾几位"，用来在界面上
     # 显示"已设置 sk-...ab12"这种确认状态，不需要也不该把完整 key 露出来
     gpt_api_key_set: bool

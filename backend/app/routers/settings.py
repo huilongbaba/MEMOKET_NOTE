@@ -28,6 +28,8 @@ def _to_out(cfg: dict) -> ProviderConfigOut:
         asr_base_url=cfg["asr_base_url"],
         asr_default_url=get_settings().whisper_base_url,
         auto_sync_notes=bool(cfg.get("auto_sync_notes")),
+        vision_base_url=get_settings().vision_base_url,
+        vision_model=get_settings().vision_model,
     )
 
 

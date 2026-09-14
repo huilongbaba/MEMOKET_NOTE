@@ -477,7 +477,9 @@ export async function runWritingPlan(
  *  存在 localStorage，召回 / 关系 / 续写都带上；右栏「记忆」顶上切。 */
 export type MemoryScope = 'all' | 'notes' | 'meetings' | 'imports' | 'screen'
 export const MEMORY_SCOPE_KEY = 'memoket-note:memory-scope'
-export const SCOPE_LABEL: Record<MemoryScope, string> = { all: '全部记忆', notes: '只看笔记', meetings: '只看会议记录', imports: '只看导入的', screen: '只看屏幕活动' }
+/** 跟后端 `kb/scope.SCOPE_LABEL` 同一份。**「全部」不含屏幕活动**，所以标签上就写出来：
+ *  一天几十段的屏幕记录混进「相关记忆」，这一栏就从会议结论变成「你上周二在看某个网页」。 */
+export const SCOPE_LABEL: Record<MemoryScope, string> = { all: '全部（不含屏幕）', notes: '只看笔记', meetings: '只看会议记录', imports: '只看导入的', screen: '只看屏幕活动' }
 export function memoryScope(): MemoryScope {
   try { const v = localStorage.getItem(MEMORY_SCOPE_KEY); return v === 'notes' || v === 'meetings' || v === 'imports' ? v : 'all' } catch { return 'all' }
 }
@@ -1159,6 +1161,9 @@ export type ProviderConfig = {
   /** 用户填的语音服务地址（空 = 用默认） */
   asr_base_url: string
   asr_default_url: string
+  /** 看图那台（屏幕活动的描述走它，跟写作用的 LLM 是两回事）。只读：部署配置。 */
+  vision_base_url: string
+  vision_model: string
   /** 笔记改动后自动同步进知识库 */
   auto_sync_notes: boolean
 }

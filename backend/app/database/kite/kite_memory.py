@@ -423,7 +423,9 @@ class UserMemory:
             rows, _trace = execute_plan(store, vocab, {"queries": queries},
                                         budget=search.POOL * 2)
             facts = [r for r in rows if r.get("type") == "fact"]
-        facts = search.rank(facts, query, self, store, limit=limit if scope in ('', 'all') else limit * 4)
+        # 多留一些候选再筛：无论哪个范围，筛完都可能不够 `limit` 条
+        # （「全部」也会筛掉屏幕活动，见 kb/scope.filter_rows）
+        facts = search.rank(facts, query, self, store, limit=limit * 4)
 
         if not facts:
             # 行级回退拉出来的是整场会的事实，同样要过一遍「至少命中一个查询词」——
@@ -435,9 +437,8 @@ class UserMemory:
             surfaces = surfaces + [t for t in search.matched_terms(
                 facts, query, self, store) if t not in surfaces]
 
-        if scope not in ("", "all"):
-            from ..kb.scope import filter_rows
-            facts = filter_rows(facts, scope)
+        from ..kb.scope import filter_rows
+        facts = filter_rows(facts, scope)     # 「全部」也要筛：它不含屏幕活动
         return facts[:limit], surfaces, (time.perf_counter() - t0) * 1000
 
     def recall_multihop(self, question: str, limit: int = 8) -> tuple[list[dict], bool, float]:

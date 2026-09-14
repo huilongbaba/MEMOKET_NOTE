@@ -16,6 +16,7 @@ from datetime import date as _date
 from .who import is_speaker_tag, norm_who
 from . import entities as entities_mod
 from .units import materials, part_labels, parts_of
+from .scope import classify
 
 MONTHS_ON_DASHBOARD = 12
 MONTHS_ON_PAGE = 24
@@ -180,7 +181,8 @@ def dashboard(mem) -> dict:
 
     unit_facts = Counter(f.unit for f in facts if f.unit)
     recent_units = []
-    for m in materials(u for u in units if u.date)[:6]:      # 按材料列，跟树一致（第 267 轮）
+    # 跟树一致（第 267 轮按材料列）；屏幕活动不进这一栏（第 641 轮，见 virtual_tree）
+    for m in materials(u for u in units if u.date and classify(u.id) != "screen")[:6]:
         n = len(m["parts"])
         recent_units.append({"id": m["parts"][0].id, "date": m["date"],
                              "title": f"{m['title']}（{n} 段）" if n > 1 else m["title"],

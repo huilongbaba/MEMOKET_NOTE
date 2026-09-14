@@ -33,6 +33,7 @@ from collections import Counter, defaultdict
 from . import entities as entities_mod
 from .who import is_speaker_tag
 from .units import materials, parts_of
+from .scope import classify
 
 KB_ROOT = "kb"
 ROOT_POSITION = 1_000_000
@@ -159,7 +160,10 @@ def build(mem) -> list[dict]:
     # ---- 最近摄入：最近的几次会议
     # 按材料列：一行一份材料，多段的标「（n 段）」，展开时先给段、再给事实（children）。
     # 之前按段列，一份 13 段的材料把最近 15 场全占掉（第 267 轮实拍）。
-    mats = materials(u for u in store.units.values() if u.date)[:RECENT_UNITS]
+    # 屏幕活动不进「最近摄入」：一天几十段，开上一周这一栏就**全是它**，
+    # 「最近摄入」这个栏目等于没了。它有自己的去处（左栏「屏幕活动」那一页）。
+    mats = materials(u for u in store.units.values()
+                     if u.date and classify(u.id) != "screen")[:RECENT_UNITS]
     unit_rows = []
     for i, m in enumerate(mats):
         first, n = m["parts"][0], len(m["parts"])

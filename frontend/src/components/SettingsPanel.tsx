@@ -227,6 +227,15 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
               onChange={(e) => setAsrBaseUrl(e.target.value)}
             />
 
+            {/* 看图那台。**摆出来是因为知情选择那一屏上写着「截图发到哪」**——
+                说得出口的承诺必须看得见，否则就是一句安慰。它是部署配置，
+                跟语音的默认地址一样只读。 */}
+            <p className="kb-section-title" style={{ marginTop: 18 }}>看图（屏幕活动）</p>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+              屏幕活动的截图只发到这一处，<b>跟上面选的写作供应商无关</b>——写作切到 GPT，截图也不会跟着出去。
+            </p>
+            <p className="mono-line">{cfg?.vision_model || '（未配置）'} @ {cfg?.vision_base_url || '（未配置）'}</p>
+
             <p className="kb-section-title" style={{ marginTop: 18 }}>笔记 ↔ 知识库</p>
             <label className="row" style={{ gap: 8, fontSize: 13, alignItems: 'center' }}>
               <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />

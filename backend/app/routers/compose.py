@@ -197,9 +197,10 @@ async def digest(body: DigestIn, user: str = Depends(current_user)):
     date_from = body.date_from or (_date.today() - timedelta(days=body.days)).isoformat()
 
     rows = UserMemory(user).facts_between(date_from, date_to)
-    if body.scope not in ("", "all"):
-        from ..database.kb.scope import filter_rows
-        rows = filter_rows(rows, body.scope)
+    # 「全部」也要走一遍：它不含屏幕活动（kb/scope.filter_rows）。阶段回顾里
+    # 混进几百条「你在看某个网页」，这份回顾就没法读了。
+    from ..database.kb.scope import filter_rows
+    rows = filter_rows(rows, body.scope)
     if not rows:
         from ..database.kb.scope import SCOPE_LABEL
         empty = ("这段时间没有记录。" if body.scope in ("", "all")

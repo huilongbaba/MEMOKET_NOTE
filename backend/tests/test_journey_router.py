@@ -262,3 +262,24 @@ def test_删一段不挪后面那些段的下标(tmp_path, monkeypatch):
     assert [s.app for s in after.segments] == ["A", "C"]
     assert [s.i for s in after.segments] == [0, 2]        # C 还是 2，没往前挪
     assert after.minutes == 120                            # 删掉的那小时不算了
+
+
+def test_全部记忆不含屏幕活动():
+    """**这是屏幕活动这一档能不能存在的前提**（§7 ③）。一天几十段、一个月上千条，
+    不默认排除的话，右栏浮现的「相关记忆」会从有用的会议结论变成
+    「你上周二在看某个网页」，续写取到的材料也一样。
+
+    第 641 轮补：这条规矩原来只写在注释里，`filter_rows` 在 `all` 时原样返回。
+    """
+    from app.database.kb.scope import SCOPE_LABEL, filter_rows
+
+    rows = [{"unit": "terrence-1872-5F8"}, {"unit": "screen-20260914-003"},
+            {"unit": "note-abc-0"}, {"unit": "obsidian-x-1"}]
+    for scope in ("", "all", "不认识的"):
+        got = [r["unit"] for r in filter_rows(rows, scope)]
+        assert "screen-20260914-003" not in got, scope
+        assert len(got) == 3, scope
+    # 要看它就明确选
+    assert [r["unit"] for r in filter_rows(rows, "screen")] == ["screen-20260914-003"]
+    # 标签上也得写出来——代码里做了的事，界面上不能说成别的
+    assert "不含屏幕" in SCOPE_LABEL["all"]
