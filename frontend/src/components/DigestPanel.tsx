@@ -75,7 +75,8 @@ export default function DigestPanel() {
       </p>
       <div className="row" style={{ flexWrap: 'wrap' }}>
         {RANGES.map((r) => (
-          <button key={r.days} onClick={() => run(r.days)} disabled={loading !== null}>
+          <button key={r.days} onClick={() => run(r.days)} disabled={loading !== null}
+                  title={loading !== null ? `正在汇总最近 ${loading} 天，跑完才能换范围` : undefined}>
             {loading === r.days ? <><span className="spinner" /> {r.label}</> : r.label}
           </button>
         ))}
