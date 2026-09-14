@@ -279,6 +279,7 @@ async def main() -> int:
             save_frame(tmp, keep, prev_full)
             cur["frames"].append(keep)
             frames_kept += 1
+            dump_segments(root, segments)          # 每切一段落一次盘
         else:
             cur["end"] = now
             if not same_screen:            # 同一段里画面变了一点：留一帧备用
@@ -328,13 +329,19 @@ async def main() -> int:
         lines.append("")
 
     (root / "report.md").write_text("\n".join(lines), encoding="utf-8")
+    dump_segments(root, segments)
+    print(f"\n写好了：{root / 'report.md'}")
+    return 0
+
+
+def dump_segments(root: Path, segments: list[dict]) -> None:
+    """段落落盘。**采样中每切一段就写一次**——一小时的采样中途崩掉不该血本无归，
+    而且人可以中途 `cat segments.json` 看看切得对不对，不用等到最后。"""
     (root / "segments.json").write_text(json.dumps(
         [{k: (str(v) if isinstance(v, (datetime, Path)) else
               [str(x) for x in v] if isinstance(v, list) else v)
           for k, v in s.items()} for s in segments],
         ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"\n写好了：{root / 'report.md'}")
-    return 0
 
 
 if __name__ == "__main__":
