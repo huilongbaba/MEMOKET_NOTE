@@ -1154,3 +1154,17 @@ kbd {
   .journey-row { grid-template-columns: 6.8em 1fr; }
   .journey-desc { grid-column: 1 / -1; }
 }
+/* 日报排在页首：它是结论，下面那条带和时间轴是证据 */
+.journey-report { padding: 10px 12px; }
+.journey-report .cm-editor { background: transparent; }
+/* 日报写完之后这一天又长了：重写那个按钮点亮一下——不然用户不知道它过期了 */
+.chip.chip-action.hot { border-color: var(--accent); color: var(--accent); }
+
+/* 日报正文：紧凑。它是这一页的开头，把下面的证据顶出屏幕就等于没有证据 */
+.jr-md { font-size: 13px; line-height: 1.6; }
+.jr-md h4 { margin: 14px 0 4px; font-size: 13px; color: var(--fg); font-weight: 600; }
+.jr-md h4:first-child { margin-top: 2px; }
+.jr-md p { margin: 4px 0; }
+.jr-md ul { margin: 4px 0; padding-inline-start: 18px; }
+.jr-md li { margin: 2px 0; }
+.jr-md code { font-size: 12px; background: var(--line); border-radius: 3px; padding: 0 3px; }

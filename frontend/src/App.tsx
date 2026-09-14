@@ -3054,7 +3054,8 @@ export default function App() {
             <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><i className="bx bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
           ) : virtualId === 'app:journey' ? (
             <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}>
-              <JourneyPage onLater={() => { if (activeTabId) closeTab(activeTabId) }} />
+              <JourneyPage onLater={() => { if (activeTabId) closeTab(activeTabId) }}
+                           onOpenNote={(id) => { void reload().then(() => api.getNote(id).then((n) => switchTo(n)).catch(() => {})) }} />
             </Suspense>
           ) : virtualId === 'app:trash' ? (
             <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><i className="bx bx-trash" /> 最近删除</h2>

@@ -738,6 +738,21 @@ class JourneyDayOut(BaseModel):
     date: str
     segments: list[JourneySegment] = Field(default_factory=list)
     minutes: int = 0
+    # 已经写过的日报（`<那天>/report.json`）。没写过就是空串——**不自动生成**：
+    # 一次模型调用，得用户说要。
+    report: str = ""
+    # 那份日报是按几段、什么时候写的。**日报是快照，这一天还在长**：
+    # 不带这两个数，用户下午看到的还是上午那份，却没有任何迹象说明它过期了。
+    report_segments: int = 0
+    report_at: str = ""
+
+
+class JourneyReportOut(BaseModel):
+    date: str
+    report: str = ""
+    segments: int = 0
+    report_at: str = ""
+    took_ms: float = 0.0
 
 
 class JourneyRunOut(BaseModel):

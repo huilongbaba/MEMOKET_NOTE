@@ -9,6 +9,7 @@
 三个动作：
   · `GET  /api/journey/day`      —— 某天有哪些段（给「今天」页）
   · `POST /api/journey/catch-up` —— 把还没描述的段描述掉，并写进知识库
+  · `POST /api/journey/report`   —— 写这一天的日报（时长走代码、结论走模型）
   · `DELETE /api/journey/day`    —— 删这一天，**连它抽出来的事实一起删**
 
 最后那条是隐私承诺的一部分：删完还留着事实的话，「我删了那天的记录」是假的
@@ -19,16 +20,23 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import date as _date
+from datetime import datetime as _dt
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
 
+from ..util import llm
+from ..harness import prompts
 from ..database.kite.kite_memory import UserMemory
 from ..editor.vision import VisionError, ask_image
+from ..journey import day_stats, render_time_block
+from ..journey.stats import render_churn
+from ..journey.prompt import REPORT_SYSTEM, report_user
 from .deps import current_user
-from .schemas import JourneyDayOut, JourneyRunOut, JourneySegment
+from .schemas import JourneyDayOut, JourneyReportOut, JourneyRunOut, JourneySegment
 
 router = APIRouter(prefix="/api/journey", tags=["journey"])
 
@@ -80,6 +88,18 @@ def _load(day: str) -> list[dict]:
         return []
 
 
+def _load_report(day: str) -> dict:
+    """这一天写过的日报，连同**它是按几段写的**。
+
+    后者不是锦上添花：日报是某一刻的快照，而这一天还在长。不说清楚它按多少
+    段写的，用户下午看到的还是上午那份，却没有任何迹象表明它已经过期了。
+    """
+    try:
+        return json.loads((_day_dir(day) / "report.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _save(day: str, segs: list[dict]) -> None:
     d = _day_dir(day)
     d.mkdir(parents=True, exist_ok=True)
@@ -109,6 +129,8 @@ def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
     segs = _load(day_s)
     return JourneyDayOut(
         date=day_s,
+        **{k: v for k, v in _load_report(day_s).items() if k in
+           ("report", "report_segments", "report_at")},
         segments=[JourneySegment(**{k: s.get(k, "") for k in
                                     ("start", "end", "app", "title", "desc")},
                                  n=int(s.get("n") or 0),
@@ -188,6 +210,43 @@ async def catch_up(date: str = "", limit: int = 20,
     left = sum(1 for s in segs if not s.get("desc") and not s.get("skip"))
     return JourneyRunOut(date=day_s, described=described, ingested=ingested,
                          skipped=skipped, left=left)
+
+
+@router.post("/report", response_model=JourneyReportOut)
+async def report(date: str = "", user: str = Depends(current_user)) -> JourneyReportOut:
+    """写这一天的日报。**一半是数出来的，一半才交给模型**（§4.1）。
+
+    「时间去哪了」由 `journey.stats` 算好、渲染好，原样放在最前面，提示词里
+    明说不要重算——模型数时长会数错，而它数错的时候读起来跟数对了一模一样。
+    模型只负责它比代码强的那三节：推进了什么 / 卡在哪 / 计划外的。
+
+    写完落在 `<那天>/report.md`：跟着这一天走，`DELETE /day` 一起删掉。
+    """
+    t0 = time.perf_counter()
+    day_s = date or _date.today().isoformat()
+    segs = _load(day_s)
+    st = day_stats(day_s, segs)
+    told = [s for s in segs if (s.get("desc") or "").strip()]
+    if not told:
+        # 一段描述都没有就别花这次调用：模型只会拿应用名编一份出来。
+        raise HTTPException(400, "这一天还没有任何描述，先点「描述这几段」。")
+
+    lines = [f"{(s.get('start') or '')[11:16]} {s.get('app') or ''} {s['desc']}"
+             for s in sorted(told, key=lambda x: x.get("start") or "")]
+    text = await llm.complete(
+        [{"role": "system", "content": prompts.compose_system(REPORT_SYSTEM, "journey", user)},
+         {"role": "user", "content": report_user(day_s, lines, render_churn(st))}],
+        max_tokens=1200, temperature=0.3)
+
+    md = render_time_block(st) + "\n" + text.strip() + "\n"
+    d = _day_dir(day_s)
+    d.mkdir(parents=True, exist_ok=True)
+    meta = {"report": md, "report_segments": len(told),
+            "report_at": _dt.now().astimezone().isoformat(timespec="seconds")}
+    (d / "report.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    return JourneyReportOut(date=day_s, report=md, segments=len(told),
+                            report_at=meta["report_at"],
+                            took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 
 @router.delete("/day", response_model=JourneyRunOut)

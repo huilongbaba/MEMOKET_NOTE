@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.database.kb.scope import SCOPE_LABEL, classify
@@ -110,3 +112,39 @@ def test_一行坏时间戳不能把整天打成_500(tmp_path, monkeypatch):
     out = J.day(date="2026-09-14", user="tester")
     assert [s.app for s in out.segments] == ["Code", "Safari", "Finder", "飞书"]
     assert out.minutes == 60          # 只有第一段算得出来，其余当 0
+
+
+def test_日报记下它是按几段写的(tmp_path, monkeypatch):
+    """**日报是快照，这一天还在长。** 不带这个数，用户下午看到的还是上午那份，
+    却没有任何迹象说明它已经过期了（第 637 轮）。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "report.json").write_text(json.dumps(
+        {"report": "## 推进了什么\n- 改了 a.py\n", "report_segments": 9,
+         "report_at": "2026-09-14T18:00:00+08:00"}, ensure_ascii=False), encoding="utf-8")
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T02:00:00Z", "app": "Code", "desc": "改 a.py"},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    out = J.day(date="2026-09-14", user="tester")
+    assert out.report_segments == 9 and out.report_at.startswith("2026-09-14T18")
+    assert "改了 a.py" in out.report
+
+
+def test_一段描述都没有就别花那次模型调用(tmp_path, monkeypatch):
+    """没有描述只剩应用名，模型只会拿应用名编一份出来——那比没有更糟。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T02:00:00Z", "app": "Code", "desc": ""},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(J.report(date="2026-09-14", user="tester"))
+    assert e.value.status_code == 400

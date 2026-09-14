@@ -1358,7 +1358,12 @@ export type JourneySegment = {
   start: string; end: string; app: string; title: string
   desc: string; n: number; has_frame: boolean
 }
-export type JourneyDay = { date: string; segments: JourneySegment[]; minutes: number }
+export type JourneyDay = {
+  date: string; segments: JourneySegment[]; minutes: number
+  /** 已经写过的日报，连同**它是按几段写的**——日报是快照，这一天还在长。 */
+  report: string; report_segments: number; report_at: string
+}
+export type JourneyReport = { date: string; report: string; segments: number; report_at: string; took_ms: number }
 export type JourneyRun = {
   date: string; described: number; ingested: number
   skipped: number; left: number; removed_facts: number
@@ -1372,6 +1377,12 @@ export const journeyDay = (date = '') =>
 export const journeyCatchUp = (date = '', limit = 10) =>
   fetch(`/api/journey/catch-up?limit=${limit}${date ? `&date=${date}` : ''}`,
         { method: 'POST', headers: headers() }).then(json<JourneyRun>)
+
+/** 写这一天的日报。时长由后端算好写好，模型只写「推进了什么 / 卡在哪 / 计划外的」。
+ *  **不自动生成**——一次模型调用，得用户说要。 */
+export const journeyReport = (date = '') =>
+  fetch(`/api/journey/report${date ? `?date=${date}` : ''}`,
+        { method: 'POST', headers: headers() }).then(json<JourneyReport>)
 
 /** 删这一天：段、截图、**以及它抽进知识库的事实**。 */
 export const journeyDeleteDay = (date: string) =>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { journeyCatchUp, journeyDay, journeyDeleteDay, type JourneyDay, type JourneySegment } from '../api'
+import { createNote, journeyCatchUp, journeyDay, journeyDeleteDay, journeyReport,
+         type JourneyDay, type JourneySegment } from '../api'
+import { parseMini, type Inline } from '../util/miniMarkdown'
 import { toast } from '../toast'
 
 /**
@@ -83,9 +85,23 @@ export const hhmm = (iso: string) =>
 
 /** 「先不开」就是关掉这一页——**不要引到设置页去**：
  *  不想开的人不欠我们一次设置之旅。 */
-type Props = { onLater: () => void }
+/** 日报正文。排得比编辑器紧——它是这一页的开头，不是这一页的全部。 */
+function ReportBody({ md }: { md: string }) {
+  const ink = (parts: Inline[]) => parts.map((p, i) =>
+    p.t === 'b' ? <b key={i}>{p.s}</b> : p.t === 'code' ? <code key={i}>{p.s}</code> : <span key={i}>{p.s}</span>)
+  return (
+    <div className="jr-md">
+      {parseMini(md).map((b, i) =>
+        b.kind === 'h' ? <h4 key={i}>{ink(b.parts)}</h4>
+        : b.kind === 'ul' ? <ul key={i}>{b.items.map((it, k) => <li key={k}>{ink(it)}</li>)}</ul>
+        : <p key={i}>{ink(b.parts)}</p>)}
+    </div>
+  )
+}
 
-export default function JourneyPage({ onLater }: Props) {
+type Props = { onLater: () => void; onOpenNote: (id: string) => void }
+
+export default function JourneyPage({ onLater, onOpenNote }: Props) {
   // `null` = 还没问到。**问不到不能当成「没开过」**：那会把一个正在记录的
   // 应用画成「要不要开启」，用户再点一次「开始记录」——看着像没生效。
   const [state, setState] = useState<JourneyState | 'unknown' | null>(null)
@@ -93,6 +109,7 @@ export default function JourneyPage({ onLater }: Props) {
   // 只用来翻前几天；空串 = 今天（后端自己取当天，跨零点不用刷新页面）
   const [date, setDate] = useState('')
   const [busy, setBusy] = useState(false)
+  const [writing, setWriting] = useState(false)
   const bridge = window.memoketDesktop?.journey
 
   const refresh = useCallback(async () => {
@@ -113,6 +130,26 @@ export default function JourneyPage({ onLater }: Props) {
         : '没有要描述的了')
       await refresh()
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setBusy(false) }
+  }
+
+  async function writeReport() {
+    setWriting(true)
+    try {
+      const r = await journeyReport(date)
+      setDay((d) => (d ? { ...d, report: r.report, report_segments: r.segments, report_at: r.report_at } : d))
+      toast(`日报写好了（${r.segments} 段，${(r.took_ms / 1000).toFixed(0)} 秒）`)
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setWriting(false) }
+  }
+
+  /** 日报是跟着这一天走的，删这一天就没了。**想留就存成一篇笔记**——
+   *  跟「阶段回顾」同一条出口，之后还能续写、被引用。 */
+  async function saveReport() {
+    if (!day?.report) return
+    try {
+      const n = await createNote(`${day.date} 这一天`, day.report)
+      window.dispatchEvent(new CustomEvent('notes-changed'))
+      onOpenNote(n.id)
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
   }
 
   async function wipe() {
@@ -182,6 +219,9 @@ export default function JourneyPage({ onLater }: Props) {
   const byApp = new Map<string, number>()
   for (const s of segs) byApp.set(s.app, (byApp.get(s.app) ?? 0) + secs(s))
   const left = segs.filter((s) => !s.desc).length
+  const described = segs.length - left
+  // 日报写完之后又多出来的段数（>0 就该提醒重写）
+  const grown = day?.report ? Math.max(0, described - (day.report_segments || 0)) : 0
 
   return (
     <div className="kb-page">
@@ -205,6 +245,40 @@ export default function JourneyPage({ onLater }: Props) {
         {date ? '' : state === 'paused' ? '已暂停 —— 这段时间不会记录。' : '记录中。'}
         {segs.length > 0 && ` ${date ? '这天' : '今天'} ${segs.length} 段，合计 ${saySpan(total)}。`}
       </p>
+
+      {/* **报告在上、证据在下**（§8.3 ②）：先看今天是怎么回事，要核对再往下看 */}
+      {day?.report ? (
+        <div className="card journey-report">
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span className="muted" style={{ fontSize: 12 }}
+                  title={day.report_at ? `写于 ${hhmm(day.report_at)}` : undefined}>
+              这一天的回顾
+              {/* **日报是快照，这一天还在长**：不说清楚它按多少段写的，下午看到的
+                  还是上午那份，却没有任何迹象说明它已经过期了 */}
+              {grown > 0
+                ? `　按 ${day.report_segments} 段写的，之后又记了 ${grown} 段`
+                : day.report_segments > 0 && `　按 ${day.report_segments} 段写的`}
+            </span>
+            <span style={{ flex: 1 }} />
+            <button className="chip chip-action" onClick={() => void saveReport()}><i className="bx bx-save" /> 存为笔记</button>
+            <button className={'chip chip-action' + (grown > 0 ? ' hot' : '')} disabled={writing}
+                    onClick={() => void writeReport()}
+                    title={writing ? '正在重写' : '按现在的记录重写一份'}>
+              {writing ? <span className="spinner" /> : <i className="bx bx-refresh" />} 重写
+            </button>
+          </div>
+          <ReportBody md={day.report} />
+        </div>
+      ) : described > 0 && (
+        <div className="row">
+          <button className="primary" disabled={writing} onClick={() => void writeReport()}>
+            {writing ? <><span className="spinner" /> 正在写…</> : `写这一天的回顾（${described} 段）`}
+          </button>
+          <span className="muted" style={{ fontSize: 12, alignSelf: 'center', marginInlineStart: 8 }}>
+            一次模型调用。时长是数出来的，模型只写推进了什么、卡在哪。
+          </span>
+        </div>
+      )}
 
       {segs.length === 0 ? (
         <p className="muted">{date ? '这一天没有记录。' : '今天刚开始记，攒够一段就会出现在这儿。'}</p>
