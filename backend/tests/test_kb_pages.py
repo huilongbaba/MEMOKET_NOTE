@@ -298,3 +298,27 @@ def test_首页实体栏先剔说话人再取前N(mem):
     from app.database.kb.who import is_speaker_tag
     assert not [x for x in names + codes if is_speaker_tag(x)], \
         f"实体栏里混进了说话人标签：{names}"
+
+
+def test_跨度两边各掐掉百分之二():
+    """**这个数要回答「我攒了多久的记录」，不是「有没有一条离群的日期」。**
+
+    实拍（第 655 轮，terrence 的真库）：首页顶着「1996-03 → 2026-12」，而
+    1996-03 那个月总共只有 1 条事实——一句话里提到的一个年份，把一个本该
+    描述记录密度的数字撑成了 30 年。30 个有事实的月份里 17 个只有 1 条。
+    """
+    from app.database.kb.pages import _span
+
+    d = ["1996-03-01"] + [f"2026-01-{i % 28 + 1:02d}" for i in range(200)] + ["2030-01-01"]
+    got = _span(d)
+    assert got["start_date"].startswith("2026-01") and got["end_date"].startswith("2026-01")
+    # **掐掉的东西要能看见**
+    assert got["full_start"] == "1996-03-01" and got["full_end"] == "2030-01-01"
+
+
+def test_跨度_没有日期和只有一条都不炸():
+    from app.database.kb.pages import _span
+
+    assert _span([])["start_date"] == ""
+    one = _span(["2026-01-01"])
+    assert one["start_date"] == one["end_date"] == one["full_start"] == "2026-01-01"

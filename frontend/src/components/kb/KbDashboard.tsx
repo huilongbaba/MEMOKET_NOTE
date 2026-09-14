@@ -76,7 +76,16 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             <StatTile value={data.stats.topics} label="个主题" />
             <StatTile value={data.stats.entities.toLocaleString()} label="个实体" />
             <StatTile value={data.stats.units.toLocaleString()} label="场会议" />
-            <StatTile value={<span className="stat-span" style={{ fontSize: 15 }}>{data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}</span>} label="跨度（按事实里的日期）" />
+            {/* 两边各掐掉 2%：这个数要回答「我攒了多久的记录」，而不是「有没有
+                一条离群的日期」。掐掉的那截写在 title 里——**掐掉的东西要能看见**。 */}
+            <StatTile
+              value={<span className="stat-span" style={{ fontSize: 15 }}
+                           title={data.stats.full_start && data.stats.full_start !== data.stats.start_date
+                             ? `连最早最晚那几条一起算是 ${data.stats.full_start.slice(0, 7)} → ${(data.stats.full_end ?? '').slice(0, 7)}（两头各掐掉 2%，那些多半是句子里提到的年份）`
+                             : undefined}>
+                       {data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}
+                     </span>}
+              label="跨度（按事实里的日期）" />
           </div>
 
           <ConflictInbox actions={actions} />

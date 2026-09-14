@@ -569,7 +569,11 @@ export const kbTreeChildren = (node: string) =>
 // 知识库各节点打开之后的页面数据（docs/kb-experience-plan.md §3）
 export type KbMonth = { month: string; facts: number }
 export type KbDashboard = {
-  stats: { facts: number; topics: number; entities: number; units: number; lines: number; start_date: string; end_date: string }
+  /** `start/end_date` 两边各掐掉 2%——描述记录**在哪儿**，不是描述有没有一条
+   *  离群的日期（实拍：首页顶着「1996-03 → 2026-12」，而 1996-03 只有 1 条事实）。
+   *  `full_*` 是没掐过的首尾：掐掉的东西要能看见。 */
+  stats: { facts: number; topics: number; entities: number; units: number; lines: number
+           start_date: string; end_date: string; full_start?: string; full_end?: string }
   months: KbMonth[]
   top_topics: { code: string; facts: number; children: number }[]
   top_entities: { code: string; name: string; facts: number }[]

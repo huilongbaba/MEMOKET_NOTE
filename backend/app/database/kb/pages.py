@@ -74,6 +74,26 @@ def _month_add(ym: str, delta: int) -> str:
     return f"{n // 12:04d}-{n % 12 + 1:02d}"
 
 
+# 「跨度」这个数**要描述记录在哪儿，不是描述有没有一条离群的日期**。
+# 实拍（第 655 轮，terrence 的真库）：首页顶着「1996-03 → 2026-12」，
+# 而 1996-03 那个月**总共只有 1 条事实**——一句话里提到的一个年份，
+# 把一个本该回答「我攒了多久的记录」的数字撑成了 30 年。
+# 30 个有事实的月份里有 17 个只有 1 条。
+#
+# 所以两边各掐掉 2%：剩下的是记录真正所在的区间。原始首尾照样给出去
+# （`full_start` / `full_end`），界面上悬停时说得出来——**掐掉的东西要能看见**。
+TRIM = 0.02
+
+
+def _span(dates: list[str]) -> dict:
+    if not dates:
+        return {"start_date": "", "end_date": "", "full_start": "", "full_end": ""}
+    dates = sorted(dates)          # 调用方已经排过，但这函数自己也得站得住
+    k = int(len(dates) * TRIM)
+    return {"start_date": dates[k], "end_date": dates[-1 - k] if k else dates[-1],
+            "full_start": dates[0], "full_end": dates[-1]}
+
+
 def _months(facts, last: int | None = None, today: str | None = None) -> list[dict]:
     """按月计数。``last`` 给了就是**连续的**最近 N 个日历月（没数据的月份补 0），而不是「有数据
     的最近 N 个月」——后者会把一条 2005 年的错抽日期和 2026 年并排画成等宽的条，横轴写着
@@ -191,7 +211,7 @@ def dashboard(mem) -> dict:
     return {
         "stats": {"facts": len(facts), "topics": len(vocab.topics), "entities": sum(1 for c, e in vocab.entities.items() if not is_speaker_tag(c) and not is_speaker_tag(getattr(e, "name", ""))),
                   "units": len(units), "lines": len(store.lines),
-                  "start_date": dates[0] if dates else "", "end_date": dates[-1] if dates else ""},
+                  **_span(dates)},
         "months": _months(facts, MONTHS_ON_DASHBOARD),
         "top_topics": top_topics[:TOP_N],
         "top_entities": top_entities,
