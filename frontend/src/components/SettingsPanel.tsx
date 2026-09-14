@@ -7,9 +7,30 @@ import { applyTheme, canSwitchTheme, getTheme, type Theme } from '../theme'
 
 const FEATURE_LABEL: Record<string, string> = {
   'magic-tap': '续写', 'note-harness/run': '智能续写', 'note-harness/resume': '智能续写', 'writing-plan/run': '无限续写',
+  'writing-plan/start': '无限续写 · 定分段',
   'compose/block': '/ 块生成', 'compose/restructure': '智能排版', skeleton: '骨架', rewrite: '重写 / 润色', expand: '扩写',
   verify: '校验', digest: '定期回顾', 'memory/trace': '来龙去脉', 'memory/relations': '记忆关系', 'skills/generate': 'Skill 生成',
   'kb/quality/judged': '抽取质量', 'ingest/text': '存入知识库', 'kb/extract~': '知识库抽取（估算）',
+}
+
+/** 功能名是**中间件从 URL 路径自动生成的**（main.py 去掉 /api/ 和 id 段），
+ *  而这张标签表是手工维护的——新加一条会调模型的路由，用量里就多出一个没人
+ *  认领的 key。第 612 轮截图实拍：设置页的用量那一行里混着一个裸的
+ *  `writing-plan/start`，旁边全是中文。
+ *
+ *  所以补一层**按前缀兜底**：同一块功能下面新长出来的路由，至少能读出它属于
+ *  哪块，而不是把内部路由名甩给用户。整块都没见过才原样显示。 */
+const FEATURE_GROUP: Record<string, string> = {
+  'note-harness': '智能续写', 'writing-plan': '无限续写', compose: '插入块',
+  memory: '记忆', skills: 'Skill', kb: '知识库', ingest: '存入知识库',
+}
+
+export function featureLabel(key: string): string {
+  const exact = FEATURE_LABEL[key]
+  if (exact) return exact
+  const head = key.split('/')[0]
+  const group = FEATURE_GROUP[head]
+  return group ? `${group} · 其他` : key
 }
 const fmtTok = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 
@@ -30,7 +51,7 @@ function UsageSection() {
       </div>
       {u.by_feature.length > 0 && (
         <div className="chip-wrap" style={{ marginTop: 6 }}>
-          {u.by_feature.map((f) => <span key={f.feature} className="badge" title={`${f.feature} · ${f.calls} 次`}>{FEATURE_LABEL[f.feature] ?? f.feature} {fmtTok(f.tokens)}</span>)}
+          {u.by_feature.map((f) => <span key={f.feature} className="badge" title={`${f.feature} · ${f.calls} 次`}>{featureLabel(f.feature)} {fmtTok(f.tokens)}</span>)}
         </div>
       )}
       <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>

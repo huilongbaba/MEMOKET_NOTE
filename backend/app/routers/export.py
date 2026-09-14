@@ -121,11 +121,38 @@ def _pick(user: str, note_ids: list[str]) -> list[exporters.ExportFile]:
     return [f for f in exporters.render_tree(user, only) if f.note_id]
 
 
+
+def _need(value: str, msg: str) -> None:
+    """凭证没填就当场说清楚，别让它一路跑到 HTTP 库里。
+
+    第 612 轮实测：Notion 的 token 留空点「写入」，用户拿到的是
+    `一篇都没导出去：plaud的优势分析: Illegal header value b'Bearer '`
+    ——httpx 拼请求头时的内部报错，而他的真实错误是「token 没填」。飞书那边
+    是 `飞书返回 10003：invalid param`，同样看不出要去填哪个框。而且不拦的话
+    每一篇都会发一次注定失败的请求（这个库 23 篇，别人的库可能是几百篇）。
+
+    Obsidian 那条早就在开跑前查目录了（第 248 轮），另外两条一直没补上。
+    """
+    if not (value or "").strip():
+        raise HTTPException(400, msg)
+
+
+def _needs_create(user: str, files: list, kind: str) -> bool:
+    """这次有没有要**新建**的——父页面 / 文件夹 token 只有新建时才用得上，
+    全是更新的那一次不该因为它空着就被拦下。"""
+    return any(not (store.get_remote(user, f.note_id, kind) or {}).get("remote_id")
+               for f in files)
+
+
 @router.post("/notion")
 def export_notion(body: NotionOut, user: str = Depends(current_user)) -> dict:
+    _need(body.token, "Notion 的 Integration token 没填")
+    files = _pick(user, body.note_ids)
+    if _needs_create(user, files, "notion"):
+        _need(body.parent_page_id, "父页面 id 没填——每篇会建成它下面的子页面")
     w = exporters.NotionWriter(body.token)
     created, updated, failed = [], [], []
-    for f in _pick(user, body.note_ids):
+    for f in files:
         blocks = exporters.md_to_notion_blocks(f.content)
         try:
             prev = store.get_remote(user, f.note_id, "notion")
@@ -146,9 +173,14 @@ def export_notion(body: NotionOut, user: str = Depends(current_user)) -> dict:
 
 @router.post("/feishu")
 def export_feishu(body: FeishuOut, user: str = Depends(current_user)) -> dict:
+    _need(body.app_id, "飞书的 App ID 没填")
+    _need(body.app_secret, "飞书的 App Secret 没填")
+    files = _pick(user, body.note_ids)
+    if _needs_create(user, files, "feishu"):
+        _need(body.folder_token, "文件夹 token 没填——新文档会建在它下面")
     w = exporters.FeishuWriter(body.app_id, body.app_secret)
     created, updated, failed = [], [], []
-    for f in _pick(user, body.note_ids):
+    for f in files:
         children = exporters.md_to_feishu_children(f.content)
         try:
             prev = store.get_remote(user, f.note_id, "feishu")

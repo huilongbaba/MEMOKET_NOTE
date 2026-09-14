@@ -156,3 +156,22 @@ def test_obsidian_目录写不进去给400_文件名不带路径分隔(client, t
         assert r.status_code == 400 and "写不进去" in r.text
     finally:
         os.chmod(ro, 0o700)
+
+
+def test_凭证没填当场说清楚_别跑到HTTP库里(client):
+    """第 612 轮实测：Notion 的 token 留空点「写入」，用户拿到的是
+    `一篇都没导出去：plaud的优势分析: Illegal header value b'Bearer '`
+    ——httpx 拼请求头时的内部报错，而他的真实错误是「token 没填」。
+    飞书那边是 `飞书返回 10003：invalid param`，同样看不出要去填哪个框。
+    而且不拦的话每一篇都会发一次注定失败的请求。
+
+    Obsidian 那条早就在开跑前查目录了（第 248 轮），另外两条一直没补上。
+    """
+    r = client.post("/api/export/notion", json={"token": "", "parent_page_id": "p"})
+    assert r.status_code == 400 and "token 没填" in r.json()["detail"]
+
+    r = client.post("/api/export/feishu", json={"app_id": "", "app_secret": "s", "folder_token": "f"})
+    assert r.status_code == 400 and "App ID 没填" in r.json()["detail"]
+
+    r = client.post("/api/export/feishu", json={"app_id": "a", "app_secret": "", "folder_token": "f"})
+    assert r.status_code == 400 and "App Secret 没填" in r.json()["detail"]
