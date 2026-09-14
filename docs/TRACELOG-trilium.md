@@ -3804,3 +3804,8 @@ Skill 的建 / 开关 / 改 / 删走一遍 API 全 200、删后 404；深色页�
   - 其余全是「给模型看的材料」（`extract_judge` 的原文上下文、`memory_tools` 的事实摘要、skills 的 body、compact_context 的压缩）或「界面上的预览 / 提示」（brief 的 preview、`dropped` 事件里的理由前 24–60 字、链接悬浮摘要 240 字、删除段落的 tooltip 600 字）——截的都是副本，不动正文。
   - 前端写回正文的三条路（`insertStreamed` / `applyScrub` / `applyRevision`）都不截断。
 - 结论：正文里凭空多出或少掉的字，只可能来自续尾和修订两处，这两处现在各有护栏（`tailing.py` 两道 + `reject_revision` 四道）。
+
+## [596] 第 572 轮：修完之后真跑一次 + 全量门（2026-09-14）
+
+- 真跑 `harness:5f65df10cad6`：harness-sync 0 条、无 client error、无 traceback（这一跑没撞 token 上限、也没触发劈开句子的修订，护栏靠单测兜）。正文从 `r492-before.json` 还原。
+- 全量：后端 968；前端 tsc + eslint + vitest 129 + 19 条 check / smoke 全过。
