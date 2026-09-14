@@ -544,3 +544,14 @@ def test_insert_不能把一句话从中间劈开():
     assert rej("## 标题\n正文。", "insert", "## 标题", "\n\n" + whole) == ""
     assert rej(doc, "insert", "漏斗后半段：", "[terrence-1-A]") == ""
     assert rej(doc, "insert", "正文里没有这个锚点", whole) == ""
+
+
+def test_骨架有长度上限():
+    """骨架每轮都整份进 prompt、还显示在右栏：模型抽风返回几千字的 spine 时，撑爆面板又白烧 token（第 576 轮）。"""
+    from app.database.store import BEAT_MAX, SPINE_MAX, clamp_skeleton
+
+    spine, beats = clamp_skeleton("核心张力 " * 200, ["一个很长的节拍" * 30, "  ", "正常节拍"])
+    assert len(spine) == SPINE_MAX
+    assert len(beats) == 2 and len(beats[0]) == BEAT_MAX and beats[1] == "正常节拍"
+    # 空白折成一个空格，空的丢掉
+    assert clamp_skeleton("  多余   空白 ", ["", "   "]) == ("多余 空白", [])

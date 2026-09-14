@@ -27,6 +27,7 @@ from ...editor import outline
 from .mirror import _record_dropped, _scrub_and_record
 from ..tailing import acceptable_tail, needs_tail
 from ..agent_loop import ToolTrace
+from ...database import store
 from ...database.retrieval import retrieve as _retrieve
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
 from ..events import CUSTOM_SKELETON, Event
@@ -90,10 +91,11 @@ class NoteHooks:
                          st.ctx.note_title, content, self.profile)}],
                     max_tokens=800, temperature=0.4)
                 if isinstance(parsed, dict):
-                    self.spine = str(parsed.get("spine") or "").strip()
                     raw = parsed.get("beats")
-                    if isinstance(raw, list):
-                        self.beats = [str(b).strip() for b in raw if str(b).strip()][:6]
+                    # 封顶跟落库同一条规则（store.clamp_skeleton）：骨架每轮都整份进 prompt
+                    self.spine, self.beats = store.clamp_skeleton(
+                        str(parsed.get("spine") or ""),
+                        [str(b) for b in raw][:6] if isinstance(raw, list) else [])
             except Exception as exc:                   # noqa: BLE001
                 # Scoring still works without a skeleton -- spine_fidelity and
                 # beat_coverage judge on weaker evidence, not on none. Losing

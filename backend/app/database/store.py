@@ -822,9 +822,23 @@ def restore_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
     return get_note(user_id, note_id)
 
 
+# 骨架会整份进每一轮的 prompt、并显示在右栏。模型抽风返回几千字的 spine 时，
+# 既撑爆面板也白烧 token；正常的 spine 是一句话、beat 是一个短语（第 576 轮）。
+SPINE_MAX = 200
+BEAT_MAX = 60
+
+
+def clamp_skeleton(spine: str, beats: list[str]) -> tuple[str, list[str]]:
+    """骨架封顶——生成时和落库时都过一遍。"""
+    s = " ".join((spine or "").split())[:SPINE_MAX]
+    bs = [" ".join(str(b).split())[:BEAT_MAX] for b in (beats or [])]
+    return s, [b for b in bs if b]
+
+
 def set_skeleton(user_id: str, note_id: str, spine: str, beats: list[str]) -> None:
     """写作骨架跟着笔记存。**只在真的有内容时写**——空骨架不该覆盖已有的：
     前端切笔记时会把内存里的 spine/beats 清空，那个"空"不代表用户想删掉它。"""
+    spine, beats = clamp_skeleton(spine, beats)
     with connect() as c:
         c.execute("UPDATE notes SET spine=?, beats=? WHERE user_id=? AND id=?",
                   (spine, json.dumps(beats, ensure_ascii=False), user_id, note_id))
