@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { journeyCatchUp, journeyDay, journeyDeleteDay, journeyDeleteSegment,
+import { journeyCatchUp, journeyDay, journeyDays, journeyDeleteDay, journeyDeleteSegment,
          journeyReport, journeySaveReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneySegment } from '../api'
 import { parseMini, type Inline } from '../util/miniMarkdown'
@@ -53,14 +53,18 @@ const GAP_MIN = 15
 /** 空档在带上最多占这么久的宽度：隔夜 12 小时不能把一整天挤成两条缝。 */
 const GAP_CAP_SEC = 20 * 60
 
-/** 翻一天。回到今天就还原成空串——让后端继续负责「今天是哪天」，
- *  不然开着页面过零点，日期就钉死在昨天了。 */
-export function shiftDay(date: string, delta: number, today = new Date()): string {
-  const base = date ? new Date(date + 'T12:00:00') : today
-  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + delta)
-  const iso = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
-  const now = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
-  return iso >= now ? '' : iso
+/** 在**有记录的日子**之间翻。按日期加一减一会走进一串什么都没有的日子——
+ *  病了一周、出差没带电脑，翻七下才回到上一条记录。
+ *
+ *  `days` 是新的在前。回到最新的那天就还原成空串：让后端继续负责「今天是哪天」，
+ *  不然开着页面过零点，日期就钉死在昨天了。翻到头就返回 null（按钮置灰）。 */
+export function stepDay(days: string[], date: string, delta: number): string | null {
+  if (!days.length) return null
+  const i = date ? days.indexOf(date) : 0
+  if (i < 0) return null
+  const j = i + (delta < 0 ? 1 : -1)          // 往前翻 = 往列表后面走（新的在前）
+  if (j < 0 || j >= days.length) return null
+  return j === 0 ? '' : days[j]
 }
 
 type Cell = { seg?: JourneySegment; sec: number; gap?: [string, string] }
@@ -109,6 +113,8 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   const [day, setDay] = useState<JourneyDay | null>(null)
   // 只用来翻前几天；空串 = 今天（后端自己取当天，跨零点不用刷新页面）
   const [date, setDate] = useState('')
+  // 有记录的日子（新的在前）。翻天按它走——**按日期加一减一会走进一串空日子**。
+  const [days, setDays] = useState<string[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [writing, setWriting] = useState(false)
   const [spanning, setSpanning] = useState(0)
@@ -119,6 +125,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
     if (!bridge) setState('off')
     else await bridge.state().then((s) => setState(s.state)).catch(() => setState((v) => v ?? 'unknown'))
     journeyDay(date).then(setDay).catch(() => setDay(null))
+    journeyDays().then(setDays).catch(() => setDays([]))
   }, [bridge, date])
 
   useEffect(() => { void refresh(); const t = setInterval(() => void refresh(), 30_000); return () => clearInterval(t) }, [refresh])
@@ -187,7 +194,11 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
     await refresh()
   }
 
-  if (state === null) return <p className="muted" style={{ padding: 16 }}>…</p>
+  const known = days ?? []
+  const prev = stepDay(known, date, -1)
+  const next = stepDay(known, date, 1)
+
+  if (state === null || days === null) return <p className="muted" style={{ padding: 16 }}>…</p>
   if (state === 'unknown') {
     return (
       <div className="kb-page kb-empty">
@@ -200,7 +211,10 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   }
 
   // —— 没开过：那一屏知情选择。**不能跳过、不能默认勾选**（§1 ①）————————
-  if (state === 'off') {
+  //
+  // 「没开过」的判断必须看**有没有记录过**，不能只看当前状态：停掉之后如果
+  // 也退回这一屏，以前记的东西就既看不到也删不掉了（第 645 轮自查）。
+  if (state === 'off' && known.length === 0) {
     return (
       <div className="kb-page journey-consent">
         <h2>屏幕活动记录</h2>
@@ -259,20 +273,28 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
         <span className="row" style={{ gap: 6, alignItems: 'baseline' }}>
           <h2>{day?.date ?? '今天'} · 屏幕活动</h2>
           {/* 一天一页、翻得动。没有这两个箭头，「昨天我在干嘛」就只能干瞪眼 */}
-          <button className="icon-btn sm" title="前一天" onClick={() => setDate((d) => shiftDay(d, -1))}><i className="bx bx-chevron-left" /></button>
-          <button className="icon-btn sm" title="后一天" disabled={!date} onClick={() => setDate((d) => shiftDay(d, 1))}><i className="bx bx-chevron-right" /></button>
+          <button className="icon-btn sm" title="上一条记录" disabled={!prev}
+                  onClick={() => prev !== null && setDate(prev)}><i className="bx bx-chevron-left" /></button>
+          <button className="icon-btn sm" title="下一条记录" disabled={next === null}
+                  onClick={() => next !== null && setDate(next)}><i className="bx bx-chevron-right" /></button>
         </span>
         <span className="row" style={{ gap: 6 }}>
-          {state === 'paused'
-            ? <button onClick={() => { void bridge?.resume().then(refresh) }}>继续记录</button>
-            : <button onClick={() => { void bridge?.pause(60).then(refresh) }}>暂停 1 小时</button>}
-          <button className="linklike danger" onClick={() => void wipe()} disabled={!segs.length} title={segs.length ? '' : '今天还没有记录'}>删掉这一天</button>
+          {/* 停掉之后这一页还在（要能回看、要能删），所以这里也得能**重新开起来** */}
+          {state === 'off'
+            ? <button className="primary" onClick={() => { void bridge?.start().then(refresh) }}
+                      disabled={!bridge} title={bridge ? '' : '网页版没有采集能力，要用桌面版'}>开始记录</button>
+            : state === 'paused'
+              ? <button onClick={() => { void bridge?.resume().then(refresh) }}>继续记录</button>
+              : <button onClick={() => { void bridge?.pause(60).then(refresh) }}>暂停 1 小时</button>}
+          <button className="linklike danger" onClick={() => void wipe()} disabled={!segs.length} title={segs.length ? '' : '这一天还没有记录'}>删掉这一天</button>
         </span>
       </div>
 
       <p className="muted journey-state">
-        {/* 翻到往日时「记录中」是句废话，还容易被读成「在补记那天」 */}
-        {date ? '' : state === 'paused' ? '已暂停 —— 这段时间不会记录。' : '记录中。'}
+        {/* 翻到往日时「记录中」是句废话，还容易被读成「在补记那天」。
+            「没在记」反过来要说——那是用户最需要知道的一种状态。 */}
+        {state === 'off' ? '没在记录 —— 以前记的还在，可以回看、可以删。'
+          : date ? '' : state === 'paused' ? '已暂停 —— 这段时间不会记录。' : '记录中。'}
         {segs.length > 0 && ` ${date ? '这天' : '今天'} ${segs.length} 段，合计 ${saySpan(total)}。`}
       </p>
 

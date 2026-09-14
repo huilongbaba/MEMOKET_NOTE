@@ -318,3 +318,26 @@ def test_日报存成笔记挂在当天那页日记下面_重写覆盖不留一�
     again = J.save_report(date="2026-09-14", user="tester")
     assert again.note_id == out.note_id
     assert "改了 b.py" in store.get_note("tester", again.note_id)["content"]
+
+
+def test_有记录的日子按新到旧列_没段落文件的目录不算(tmp_path, monkeypatch):
+    """翻天要按这个列表走：**按日期加一减一会走进一串空日子**。
+    它同时回答「有没有用过」——停掉记录之后如果只看当天，页面会退回那一屏
+    知情选择，以前记的东西就既看不到也删不掉了。"""
+    from app.routers import journey as J
+
+    for d in ("2026-09-04", "2026-09-11", "2026-09-14"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "segments.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "2026-09-12").mkdir()            # 只有目录、没有段落文件
+    (tmp_path / "_tmp").mkdir()                  # 壳的临时目录，不是日期
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    assert J.days(user="tester") == ["2026-09-14", "2026-09-11", "2026-09-04"]
+
+
+def test_没有任何记录时列表是空的不是报错(tmp_path, monkeypatch):
+    from app.routers import journey as J
+
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path / "还不存在")
+    assert J.days(user="tester") == []

@@ -1376,6 +1376,10 @@ export type JourneyRun = {
   skipped: number; left: number; removed_facts: number
 }
 
+/** 哪几天有记录，新的在前。翻天跳过空的，也用来判断「有没有用过」。 */
+export const journeyDays = () =>
+  fetch('/api/journey/days', { headers: headers() }).then(json<string[]>)
+
 export const journeyDay = (date = '') =>
   fetch(`/api/journey/day${date ? `?date=${date}` : ''}`, { headers: headers() }).then(json<JourneyDay>)
 

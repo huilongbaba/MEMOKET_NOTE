@@ -7,6 +7,7 @@
 这个 session），那两条免费复用（§0）。
 
 三个动作：
+  · `GET  /api/journey/days`     —— 哪几天有记录（翻天用，也用来判断「有没有用过」）
   · `GET  /api/journey/day`      —— 某天有哪些段（给「今天」页）
   · `POST /api/journey/catch-up` —— 把还没描述的段描述掉，并写进知识库
   · `POST /api/journey/report`   —— 写这一天的日报（时长走代码、结论走模型）
@@ -165,6 +166,25 @@ def worth_keeping(desc: str) -> bool:
     """这段描述值不值得进知识库。见 VAGUE 上面那段注释。"""
     d = (desc or "").strip()
     return len(d) >= MIN_DESC and not any(v in d for v in VAGUE)
+
+
+@router.get("/days")
+def days(limit: int = 400, user: str = Depends(current_user)) -> list[str]:
+    """有记录的日期，新的在前。
+
+    两个用处，都不是锦上添花：
+      · **翻天要跳过空的**——按日期加一减一会走进一串什么都没有的日子。
+      · **判断「有没有用过」**。停掉记录之后如果只看当天，页面会退回那一屏
+        知情选择，于是**以前记的东西既看不到也删不掉**（第 645 轮自查）。
+    """
+    root = journey_root()
+    try:
+        out = sorted((d.name for d in root.iterdir()
+                      if d.is_dir() and _ok_day(d.name) and (d / "segments.json").is_file()),
+                     reverse=True)
+    except OSError:
+        return []
+    return out[:max(1, limit)]
 
 
 @router.get("/day", response_model=JourneyDayOut)

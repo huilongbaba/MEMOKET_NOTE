@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appColors, bandCells, hhmm, saySpan, shiftDay } from '../../components/JourneyPage'
+import { appColors, bandCells, hhmm, saySpan, stepDay } from '../../components/JourneyPage'
 
 const seg = (start: string, end: string, app = 'Code') =>
   ({ i: 0, start, end, app, title: '', desc: '', n: 1, has_frame: true, has_thumb: false })
@@ -58,17 +58,25 @@ describe('写给人看的时间', () => {
 })
 
 describe('翻天', () => {
-  const today = new Date(2026, 8, 14)   // 2026-09-14 本地
-  it('从今天往前翻一天', () => {
-    expect(shiftDay('', -1, today)).toBe('2026-09-13')
+  // 新的在前，跟后端 /days 一致
+  const days = ['2026-09-14', '2026-09-11', '2026-09-04']
+
+  it('往前翻跳过中间那些没记录的日子', () => {
+    // **按日期加一减一会走进一串空日子**：病了一周、出差没带电脑，翻七下才到上一条
+    expect(stepDay(days, '', -1)).toBe('2026-09-11')
+    expect(stepDay(days, '2026-09-11', -1)).toBe('2026-09-04')
   })
-  it('翻回今天就还原成空串——日期交给后端算，开着页面过零点才不会钉死', () => {
-    expect(shiftDay('2026-09-13', 1, today)).toBe('')
+
+  it('翻回最新那天就还原成空串——日期交给后端算，开着页面过零点才不会钉死', () => {
+    expect(stepDay(days, '2026-09-11', 1)).toBe('')
   })
-  it('翻不到明天去', () => {
-    expect(shiftDay('', 1, today)).toBe('')
+
+  it('翻到头返回 null（按钮置灰），不是原地不动', () => {
+    expect(stepDay(days, '2026-09-04', -1)).toBeNull()
+    expect(stepDay(days, '', 1)).toBeNull()
   })
-  it('跨月往前翻', () => {
-    expect(shiftDay('2026-09-01', -1, today)).toBe('2026-08-31')
+
+  it('一天记录都没有时哪边都翻不动', () => {
+    expect(stepDay([], '', -1)).toBeNull()
   })
 })
