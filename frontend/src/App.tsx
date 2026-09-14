@@ -43,6 +43,7 @@ import PreferencesPanel from './components/PreferencesPanel'
 // 知识库那一整套页面（含 d3 的图）按需加载：只写笔记的人不该为它多下 300KB（第 519 轮）
 const KbNoteView = lazy(() => import('./components/KbNoteView'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
+import { setPendingKbQuery } from './util/pendingKbQuery'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
 import { layoutPanes } from './util/layoutPanes'
@@ -2914,7 +2915,23 @@ export default function App() {
         {searchResults !== null || noteQuery ? (
           // 搜索时不画树：命中就该直接看到，不用先猜它在树的哪一层。
           visibleNotes.length === 0
-            ? <p className="muted">没有匹配的笔记。</p>
+            ? (
+              /* 死路变去处：搜不到笔记不等于这个词在这儿没有东西——知识库里可能有一堆。
+                 之前只在搜索框的 title 里提了一句「⌘K 是全局搜索（含知识库）」，
+                 而用户读 tooltip 的时机恰好不是搜不到的这一刻（第 616 轮实拍：
+                 搜「严亚」没有笔记，可知识库里关于严亚总的事实一大把）。 */
+              <div className="muted" style={{ padding: '4px 2px', lineHeight: 1.7 }}>
+                没有匹配的笔记。
+                <br />
+                <a href="#" onClick={(e) => {
+                  e.preventDefault()
+                  const q = noteQuery.trim()
+                  setPendingKbQuery(q)                 // 还没挂载：它挂载时自取
+                  window.dispatchEvent(new CustomEvent('kb-search', { detail: q }))  // 已经开着：直接收
+                  void openVirtual('kb', '知识库')
+                }}>到知识库里搜「{noteQuery.trim().slice(0, 12)}」 →</a>
+              </div>
+            )
             : visibleNotes.map(renderNoteItem)
         ) : (
           <NoteTree

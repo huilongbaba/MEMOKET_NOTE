@@ -272,6 +272,17 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
   }
   if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
+  // `search-kb:<q>`：搜一个笔记里没有的词，再点「到知识库里搜」那条去处——
+  // 验的是词有没有真的落进知识库的搜索框（第 616 轮）。
+  if (probe?.startsWith('search-kb:')) {
+    setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(10))), 900)
+    setTimeout(() => {
+      const link = Array.from(document.querySelectorAll('.left-pane-body a'))
+        .find((a) => (a.textContent ?? '').includes('到知识库里搜')) as HTMLElement | undefined
+      if (link) link.click()
+      else void api.clientLog('warn', 'search-kb: 没找到「到知识库里搜」那条去处', '', 'probe')
+    }, 2600)
+  }
   if (probe === 'many-tabs' && notes.length >= 8 && !harnessProbeDone.current) {
     harnessProbeDone.current = true
     void (async () => { for (const n of notes.slice(0, 10)) { syncTab(n); await switchTo(n) } })()

@@ -4,17 +4,28 @@ import { useEffect, useState } from 'react'
 import { kbDashboard, recall, type Fact, type FactDetail, type KbDashboard as Data } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, StatTile, type KbActions } from './KbBits'
 import { isSpeakerTag } from '../../util/kbNoise'
+import { takePendingKbQuery } from '../../util/pendingKbQuery'
 import ConflictInbox from './ConflictInbox'
 
 const toDetail = (f: Fact): FactDetail => ({ id: f.id, text: f.text, when: f.when, kind: f.kind, who: '', conf: '', topics: [], entities: [], unit: '' })
 
 export default function KbDashboard({ actions }: { actions: KbActions }) {
   const [data, setData] = useState<Data | null>(null)
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(takePendingKbQuery)
   const [hits, setHits] = useState<{ facts: FactDetail[]; took: number; terms: string[] } | null>(null)
   const [searching, setSearching] = useState(false)
 
   useEffect(() => { kbDashboard().then(setData).catch(() => setData(null)) }, [])
+
+  // 侧栏搜笔记没搜到时，那里给了一条「到知识库里搜同一个词」的去处。词走
+  // `pendingKbQuery`（挂载时自取，不赌时序）；这一页已经开着的时候走事件。
+  // 虚拟 id 里塞查询串要动一整条链路（knownVirtual / openVirtual / 面包屑父链 /
+  // probes 父链），为一个搜索词不值当。
+  useEffect(() => {
+    const on = (e: Event) => setQ(String((e as CustomEvent).detail || ''))
+    window.addEventListener('kb-search', on)
+    return () => window.removeEventListener('kb-search', on)
+  }, [])
 
   // 即搜即显：零 LLM 的符号检索，毫秒级
   useEffect(() => {
