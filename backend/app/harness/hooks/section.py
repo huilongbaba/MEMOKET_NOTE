@@ -11,6 +11,8 @@ replaces, and everything written in earlier rounds stays under judgement.
 
 from __future__ import annotations
 
+import re
+
 from typing import AsyncIterator
 
 from .. import prompts
@@ -24,6 +26,43 @@ from ..agent_loop import ToolTrace
 from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
 from ...database.retrieval import retrieve as _retrieve
 from ..state import State
+
+# 拿分段标题直接召回、无条件补进材料的条数。
+ANCHOR_FACTS = 4
+_FACT_ID = re.compile(r"^\s*\[([^\]\s]+)\]")
+
+
+def _merge_anchored(st: State, title: str, facts: list[str]) -> list[str]:
+    """把「分段标题直接召回」的几条摆到材料最前面。
+
+    取材料走的是工具循环——模型自己决定查什么，而它会查偏。第 593 轮真跑实证：分段标题是
+    「硬件线：设备与 APP 的连接稳定性及分阶段测试」，写出来整篇是华为 950 超节点 / 昇腾 /
+    鲲鹏 / 欧拉——那批事实字面上也讲「硬件」「连接」「稳定性」「分阶段测试」，于是后面每一道
+    判据都自洽地放行了：材料确实用上了（`material_used` 数特征词）、引用没有编造（一个都没引）、
+    `topic_fidelity` 还给了满分。**根因在取材料那一步，不在写作。**
+
+    直接拿标题 recall 一次是零 LLM、几十毫秒的事，而且实测对这个标题是准的（返回的全是用户
+    自己项目的硬件 / APP 事实）。补在最前面：prompt 里靠前的权重更高，模型查偏时也总能看见
+    对的材料。不去掉工具循环取回的——它多数时候更精准，这里要的只是一条下限。
+    """
+    try:
+        anchored, _ids, _took = _retrieve(st.ctx.user, st.content, title, [],
+                                          limit=ANCHOR_FACTS, title=title, anchor_first=True)
+    except Exception:                      # noqa: BLE001 — 检索挂了不该拖垮这一轮
+        return facts
+    def fid(f: str) -> str:
+        m = _FACT_ID.match(f)
+        return m.group(1) if m else " ".join(f.split())[:40]
+    seen: set[str] = set()
+    out: list[str] = []
+    for f in anchored + facts:
+        k = fid(f)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(f)
+    return out
+
 
 class SectionHooks:
     """One section of a plan. ``st.ctx.note_id`` is the note it writes into."""
@@ -56,7 +95,7 @@ class SectionHooks:
         ]
         _extra, trace = await agent_loop.gather_context(
             msgs, st.ctx, groups=list(st.mode.groups))
-        facts = list(trace.as_facts())
+        facts = _merge_anchored(st, title, list(trace.as_facts()))
 
         # A failed tool loop must not mean writing empty-handed: fall back to
         # the pre-agent keyword retrieval rather than producing a round with

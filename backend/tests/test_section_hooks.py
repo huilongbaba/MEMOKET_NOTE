@@ -184,3 +184,38 @@ def test_续回来的碎片不像半句就丢掉(monkeypatch):
     assert len(calls) == 2, "该去续尾"
     assert "eriwa" not in out and "eriwa" not in st.content
     assert out.endswith("这句话还没")
+
+
+def test_标题直接召回的材料无条件排在最前(monkeypatch):
+    """取材料走工具循环 = 模型自己决定查什么，实测会查偏（第 593 轮：标题「设备与 APP 的连接稳定性」，
+    写出来整篇是华为 950 超节点）。标题直接 recall 的几条补在最前面当下限。"""
+    from app.harness.hooks import section as mod
+
+    calls = {}
+
+    def fake_retrieve(user, content, spine, beats, limit=8, title="", anchor_first=False, scope="all"):
+        calls["title"] = title
+        calls["limit"] = limit
+        return ["[f-1-A] 手环与 APP 连上后退出会断开", "[f-2-B] 样机 4 月 10 日到手"], ["f-1-A", "f-2-B"], 1.0
+
+    monkeypatch.setattr(mod, "_retrieve", fake_retrieve)
+    st = _st("")
+    st.ctx.note_title = "硬件线：设备与 APP 的连接稳定性"
+    tool_facts = ["[f-9-Z] 950 超节点包含昇腾 NPU 刀片", "[f-1-A] 手环与 APP 连上后退出会断开"]
+    out = mod._merge_anchored(st, "硬件线：设备与 APP 的连接稳定性", tool_facts)
+    assert calls["title"] == "硬件线：设备与 APP 的连接稳定性" and calls["limit"] == mod.ANCHOR_FACTS
+    # 标题召回的在前、工具循环的在后、同一条 id 不重复
+    assert out[0].startswith("[f-1-A]") and out[1].startswith("[f-2-B]")
+    assert [o for o in out if o.startswith("[f-9-Z]")], "工具循环取回的不该被丢掉"
+    assert len(out) == 3
+
+
+def test_检索挂了不拖垮这一轮(monkeypatch):
+    from app.harness.hooks import section as mod
+
+    def boom(*a, **kw):
+        raise RuntimeError("kb down")
+
+    monkeypatch.setattr(mod, "_retrieve", boom)
+    facts = ["[f-1-A] 原样"]
+    assert mod._merge_anchored(_st(""), "标题", facts) == facts
