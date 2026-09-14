@@ -46,7 +46,7 @@ import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import { setPendingKbQuery } from './util/pendingKbQuery'
 import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
-import { layoutPanes } from './util/layoutPanes'
+import { layoutPanes, makeRoomForRight } from './util/layoutPanes'
 import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
 import { loadSpots, putSpot, saveSpots } from './util/spots'
 import { sectionEnd } from './util/sectionEnd'
@@ -1321,7 +1321,7 @@ export default function App() {
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
       else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
-      else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => ({ ...p, rightOn: !p.rightOn })) }
+      else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => (p.rightOn ? { ...p, rightOn: false } : makeRoomForRight(p, winW, split?.w ?? 0))) }
       else if (key === '\\') { e.preventDefault(); setPanes((p) => ({ ...p, leftOn: !p.leftOn })) }
       // ⌘/Ctrl+⇧+F 一键格式化。加 shift 是为了不跟浏览器/编辑器的「查找」撞
       else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
@@ -2630,7 +2630,7 @@ export default function App() {
           <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><i className="bx bx-x" /></button>
           {/* 右栏收起时那个「展开右栏」小钮是绝对定位在中栏右上角的，分屏一开正好压在「关闭分屏」上（第 198 轮实拍）——分屏时挪进这一行 */}
           {!rightShown && !focusMode && (
-            <button className="icon-btn" title="展开右栏（⌘⇧\\）" onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}><i className="bx bx-chevrons-left" /></button>
+            <button className="icon-btn" title="展开右栏（⌘⇧\\）" onClick={() => setPanes((p) => makeRoomForRight(p, winW, split?.w ?? 0))}><i className="bx bx-chevrons-left" /></button>
           )}
         </div>
         <div className="split-body">
@@ -2923,9 +2923,10 @@ export default function App() {
       )}
 
       <div className="rest-pane">
+        {/* 这一支在 `!split` 里，所以腾地方时分屏宽度按 0 算 */}
         {!rightShown && !focusMode && !split && (
           <button className="right-pane-reopen" title="展开右栏（⌘⇧\\）"
-                  onClick={() => setPanes((p) => ({ ...p, rightOn: true }))}><i className="bx bx-chevrons-left" /></button>
+                  onClick={() => setPanes((p) => makeRoomForRight(p, winW, 0))}><i className="bx bx-chevrons-left" /></button>
         )}
         <div className="center-pane">
         <div className="note-pane">
@@ -2953,24 +2954,6 @@ export default function App() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder={displayTitle({ title: '', content }) === '未命名' ? '标题' : displayTitle({ title: '', content })}
             />
-            {/* **这个动作唯一该在的地方：它作用的那篇笔记自己的标题行。**
-                用户的原话是「文件夹右击就有，为什么还要有一个单独的按钮？」——他说得对，
-                同一个动作当时有三个门：树上右键、左栏那个全局火箭、这里。而我自己前一轮
-                才刚论证过知识库「三条路里最差的那条该去掉」。
-                砍掉的是**左栏那个火箭**：它是全局工具栏上唯一一个「动作」，而工具栏按钮
-                天然没有上下文、这个动作天然需要上下文——第 611 轮那个「站在根笔记上点它，
-                给了你『09 月』日记文件夹」的 bug 就是这个错配的产物，第 620 轮的「一律问」
-                只是把失手概率压低，没拔根。
-                留下的两个各有各的活：这里是**发现**（一直看得见、带字——上一次做成光秃秃
-                的图标，用户找不到），树上右键是**指哪打哪**（要对别的子树跑时）。
-                所有真笔记都给，不只文件夹：写作计划本来就是来建这些子笔记的（第 611 轮），
-                只给文件夹的话，一个还没有层级的库根本看不见这个功能。 */}
-            {tree.some((r) => r.note_id === current.id) && (
-              <button className="title-action" onClick={() => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) }}
-                      title="无限续写：给一个目标，自动拆成若干分段，每段独立成一篇笔记写在这篇下面">
-                <i className="bx bx-rocket" /> 无限续写
-              </button>
-            )}
             {saveStatus && (
               <span key={saveStatus.at} className={'save-status' + (saveStatus.error ? ' error' : '')}
                     title={saveStatus.error ?? undefined}>
@@ -3114,6 +3097,12 @@ export default function App() {
                 ] : [
                   { label: '存入知识库', icon: 'bx-brain', disabled: !content.trim() || loading === 'ingest',
                     hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
+                  /* 无限续写：**不在标题行上常驻**（用户第 625 轮：「无限续写的按钮不要显示了行吗？」）。
+                     收进这里而不是只留树上右键——右键是「知道了才会去用」的地方，不承担发现；
+                     这个菜单至少是看得见的一个入口。作用域仍然是当前这篇：分段会建成它的子笔记。 */
+                  { label: '无限续写…', icon: 'bx-rocket',
+                    hint: '给一个目标，拆成若干分段，每段建成这篇的子笔记',
+                    onSelect: () => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) } },
                   { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
                   { kind: 'sep' },
                   { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),

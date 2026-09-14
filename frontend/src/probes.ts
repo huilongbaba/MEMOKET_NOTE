@@ -259,6 +259,14 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
   }
   if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
+  // `reopen-right` → 点「展开右栏」那个小钮。验的是「明确的动作要赢过被动布局规则」：
+  // 左栏拖宽之后右栏会被自动收掉，而按钮只改 rightOn（本来就是 true），点了等于没点
+  // （用户实拍「右侧栏打不开了？」，第 625 轮）。
+  if (probe === 'reopen-right') setTimeout(() => {
+    const b = document.querySelector('.right-pane-reopen') as HTMLElement | null
+    if (b) b.click()
+    else void api.clientLog('warn', 'reopen-right: 右栏本来就开着 / 找不到那个钮', '', 'probe')
+  }, 1200)
   // `recent` → 侧栏切到「按最近改动排」（第 622 轮）
   if (probe === 'recent') setTimeout(() => {
     const b = Array.from(document.querySelectorAll('.list-head .seg button'))
@@ -292,11 +300,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   }
   // 走真实路径：点标题行那个「无限续写」。左栏那个全局火箭第 621 轮砍掉了——
   // 同一个动作三个门，而它是错配最深的那个（工具栏没有上下文，这个动作需要上下文）。
+  // 走真实路径：浮动按钮的「⋯」→「无限续写…」。第 625 轮起它不在标题行上常驻了。
   const clickPlanEntry = () => {
-    const b = Array.from(document.querySelectorAll('.title-action'))
-      .find((x) => (x.textContent ?? '').includes('无限续写')) as HTMLElement | undefined
-    if (b) b.click()
-    else void api.clientLog('warn', 'plan-panel: 标题行没有「无限续写」入口', '', 'probe')
+    const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
+      .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
+    if (!more) { void api.clientLog('warn', 'plan-panel: 找不到「更多」按钮', '', 'probe'); return }
+    more.click()
+    setTimeout(() => {
+      const item = Array.from(document.querySelectorAll('.context-menu button, .context-menu [role="menuitem"]'))
+        .find((x) => (x.textContent ?? '').includes('无限续写')) as HTMLElement | undefined
+      if (item) item.click()
+      else void api.clientLog('warn', 'plan-panel: 「更多」里没有「无限续写」', '', 'probe')
+    }, 400)
   }
   if (probe === 'plan-panel' && tree.length) setTimeout(clickPlanEntry, 1200)
   // 写作计划面板上点「换个目标」，看放弃计划的确认框（要那个文件夹上有计划）
