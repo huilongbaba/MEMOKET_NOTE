@@ -366,10 +366,32 @@ async def span(date_from: str = "", date_to: str = "", days: int = 7,
         # 会被读、被引用，读的人得知道它是按哪些天写的。
         body += (f"\n---\n\n（这份回顾按 {len(reports)} 天的日报写成；"
                  f"{'、'.join(missing[:10])}{'…' if len(missing) > 10 else ''} 这几天没有日报。）\n")
-    note = store.create_note(user, title, f"# {title}\n\n{body}", source="journey")
+    # **挂在那个月的日记下面**，不是树根：跨几天的回顾也是跟着日期走的东西
+    parent = store.journal_node(user, _date.fromisoformat(to_s), depth=3)
+    note = store.create_note(user, title, f"# {title}\n\n{body}", parent, source="journey")
     return JourneySpanOut(date_from=from_s, date_to=to_s, days=len(reports),
                           missing=missing, note_id=note["id"], title=title,
                           took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+@router.post("/report/save", response_model=JourneySpanOut)
+def save_report(date: str = "", user: str = Depends(current_user)) -> JourneySpanOut:
+    """把这一天的回顾存成一篇笔记——**挂在当天那页日记下面**，不是树根。
+
+    回顾是跟着日期走的东西，日记树就是按日期组织的；落在树根上的话，用几周
+    之后树根全是「9 月 14 日这一天」。同名的直接覆盖：重写一次就该换掉上一份，
+    而不是在树上留一串同名笔记。
+    """
+    day_s = date or _date.today().isoformat()
+    md = (_load_report(day_s).get("report") or "").strip()
+    if not md:
+        raise HTTPException(400, "这一天还没有回顾，先写一份。")
+    parent = store.journal_node(user, _date.fromisoformat(day_s), depth=4)
+    note = store.upsert_child(user, parent, "屏幕活动回顾",
+                              f"# {day_s} 屏幕活动\n\n{md}",
+                              source="journey", icon="bx-desktop")
+    return JourneySpanOut(date_from=day_s, date_to=day_s, days=1,
+                          note_id=note["id"], title=note["title"])
 
 
 @router.delete("/segment", response_model=JourneyRunOut)

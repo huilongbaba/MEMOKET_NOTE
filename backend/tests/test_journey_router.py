@@ -170,13 +170,15 @@ def test_跨时间回顾把缺日报的那几天写进正文(tmp_path, monkeypat
 
     monkeypatch.setattr(J.llm, "complete", fake)
     made: dict = {}
+    monkeypatch.setattr(J.store, "journal_node", lambda user, day, depth=4: "月节点")
     monkeypatch.setattr(J.store, "create_note",
-                        lambda user, title, content, **kw: made.update(
-                            {"title": title, "content": content}) or {"id": "n1"})
+                        lambda user, title, content, parent="", **kw: made.update(
+                            {"title": title, "content": content, "parent": parent}) or {"id": "n1"})
 
     out = asyncio.run(J.span(date_from="2026-09-10", date_to="2026-09-12", user="tester"))
     assert out.days == 2 and out.missing == ["2026-09-11"]
     assert "2026-09-11 这几天没有日报" in made["content"]
+    assert made["parent"] == "月节点", "跨时间回顾要挂在那个月的日记下面，不是树根" 
     # 喂进去的是**日报**，不是原始的段
     assert "改了 a.py" in seen["user"] and "改了 b.py" in seen["user"]
 
@@ -283,3 +285,36 @@ def test_全部记忆不含屏幕活动():
     assert [r["unit"] for r in filter_rows(rows, "screen")] == ["screen-20260914-003"]
     # 标签上也得写出来——代码里做了的事，界面上不能说成别的
     assert "不含屏幕" in SCOPE_LABEL["all"]
+
+
+def test_日报存成笔记挂在当天那页日记下面_重写覆盖不留一串同名(tmp_path, monkeypatch):
+    """回顾是跟着日期走的东西，日记树就是按日期组织的。落在树根上的话，
+    用几周之后树根全是「9 月 14 日这一天」。"""
+    from app.database import store
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "report.json").write_text(json.dumps(
+        {"report": "## 推进了什么\n- 改了 a.py\n", "report_segments": 5}, ensure_ascii=False),
+        encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    out = J.save_report(date="2026-09-14", user="tester")
+    note = store.get_note("tester", out.note_id)
+    assert "改了 a.py" in note["content"]
+
+    # 挂在 日记 / 2026 / 09 月 / 09-14 … 下面
+    rows = {r["note_id"]: r for r in store.tree("tester")}
+    chain, cur = [], rows[out.note_id]
+    while cur and cur["parent_note_id"] in rows:
+        cur = rows[cur["parent_note_id"]]
+        chain.append(cur["title"])
+    assert chain[-3:] == ["09 月", "2026", "日记"], chain
+
+    # 再存一次：覆盖，不是第二篇
+    (day / "report.json").write_text(json.dumps(
+        {"report": "## 推进了什么\n- 改了 b.py\n"}, ensure_ascii=False), encoding="utf-8")
+    again = J.save_report(date="2026-09-14", user="tester")
+    assert again.note_id == out.note_id
+    assert "改了 b.py" in store.get_note("tester", again.note_id)["content"]

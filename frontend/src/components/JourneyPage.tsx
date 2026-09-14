@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { createNote, journeyCatchUp, journeyDay, journeyDeleteDay, journeyDeleteSegment,
-         journeyReport, journeySpan, journeyThumb,
+import { journeyCatchUp, journeyDay, journeyDeleteDay, journeyDeleteSegment,
+         journeyReport, journeySaveReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneySegment } from '../api'
 import { parseMini, type Inline } from '../util/miniMarkdown'
 import { toast } from '../toast'
@@ -144,13 +144,15 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   }
 
   /** 日报是跟着这一天走的，删这一天就没了。**想留就存成一篇笔记**——
-   *  跟「阶段回顾」同一条出口，之后还能续写、被引用。 */
+   *  它会挂在当天那页日记下面（回顾是跟着日期走的东西，日记树就是按日期组织的），
+   *  同名覆盖，重写一次不会在树上留一串。 */
   async function saveReport() {
     if (!day?.report) return
     try {
-      const n = await createNote(`${day.date} 这一天`, day.report)
+      const r = await journeySaveReport(day.date)
       window.dispatchEvent(new CustomEvent('notes-changed'))
-      onOpenNote(n.id)
+      toast('存进了当天那页日记下面')
+      onOpenNote(r.note_id)
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
   }
 

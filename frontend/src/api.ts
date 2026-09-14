@@ -1400,6 +1400,11 @@ export type JourneySpan = {
 export const journeySpan = (days: number) =>
   fetch(`/api/journey/span?days=${days}`, { method: 'POST', headers: headers() }).then(json<JourneySpan>)
 
+/** 把这一天的回顾存成一篇笔记——**挂在当天那页日记下面**，同名覆盖。 */
+export const journeySaveReport = (date = '') =>
+  fetch(`/api/journey/report/save${date ? `?date=${date}` : ''}`,
+        { method: 'POST', headers: headers() }).then(json<JourneySpan>)
+
 /** 某一段的缩略图（256px）。只走本机。 */
 export const journeyThumb = (date: string, i: number) => `/api/journey/thumb?date=${date}&i=${i}`
 

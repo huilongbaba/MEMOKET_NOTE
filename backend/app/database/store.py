@@ -1068,24 +1068,54 @@ def _child_titled(c, user_id: str, parent_id: str, title: str) -> str | None:
     return row[0] if row else None
 
 
-def today_note(user_id: str, today) -> dict:
-    """今天的日记（Trilium 的 day note）：`日记 / 2026 / 09 月 / 09-13 周六`，没有就一路建出来，
-    有就原样返回——同一天点多少次都是同一篇。按标题找，所以用户把「日记」改名之后会另起一棵，
-    这跟 Trilium 用 #calendarRoot 标签找根不同，是有意为之：没有属性系统就用最朴素的办法。"""
-    # 每层带一个默认图标（Trilium 的日记根 / 年 / 月 / 日也各有图标）：日记根日历、年月文件夹、当天一页
-    chain = [("日记", "", "bx-calendar"), (f"{today.year}", "", "bx-folder"), (f"{today.month:02d} 月", "", "bx-folder"),
-             (f"{today.month:02d}-{today.day:02d} {_WEEKDAYS[today.weekday()]}",
-              f"# {today.month} 月 {today.day} 日 {_WEEKDAYS[today.weekday()]}\n\n", "bx-calendar-event")]
+def journal_node(user_id: str, day, depth: int = 4) -> str:
+    """日记树上某一层的 id：`日记 / 2026 / 09 月 / 09-13 周六`，没有就一路建出来。
+
+    `depth` 决定走到哪一层（2=年、3=月、4=当天）。分出这个函数是因为**不是只有
+    「今天的日记」要挂在这棵树上**：一天的屏幕活动回顾挂当天那一页下面，跨几天
+    的回顾挂那个月下面——它们要是都落在树根上，用几周之后树根全是这种东西。
+
+    按标题找，所以用户把「日记」改名之后会另起一棵，这跟 Trilium 用 #calendarRoot
+    标签找根不同，是有意为之：没有属性系统就用最朴素的办法。
+    """
+    # 每层带一个默认图标（Trilium 的日记根 / 年 / 月 / 日也各有图标）
+    chain = [("日记", "", "bx-calendar"), (f"{day.year}", "", "bx-folder"),
+             (f"{day.month:02d} 月", "", "bx-folder"),
+             (f"{day.month:02d}-{day.day:02d} {_WEEKDAYS[day.weekday()]}",
+              f"# {day.month} 月 {day.day} 日 {_WEEKDAYS[day.weekday()]}\n\n", "bx-calendar-event")]
     parent = ROOT_ID
-    note_id = None
-    for title, content, icon in chain:
+    note_id = ROOT_ID
+    for title, content, icon in chain[:max(1, depth)]:
         with connect() as c:
             note_id = _child_titled(c, user_id, parent, title)
         if note_id is None:
             note_id = create_note(user_id, title, content, parent)["id"]
             set_icon(user_id, note_id, icon)
         parent = note_id
-    return get_note(user_id, note_id)
+    return note_id
+
+
+def today_note(user_id: str, today) -> dict:
+    """今天的日记——同一天点多少次都是同一篇。"""
+    return get_note(user_id, journal_node(user_id, today, depth=4))
+
+
+def upsert_child(user_id: str, parent_id: str, title: str, content: str,
+                 *, source: str = "", icon: str = "") -> dict:
+    """父节点下这个标题的笔记：有就改写正文，没有就建。
+
+    给「反复生成同一份东西」的路径用（屏幕活动的回顾就是——重写一次就该覆盖
+    上一份，而不是在树上留一串同名笔记）。
+    """
+    with connect() as c:
+        nid = _child_titled(c, user_id, parent_id, title)
+    if nid:
+        update_note(user_id, nid, title=title, content=content)
+        return get_note(user_id, nid)
+    note = create_note(user_id, title, content, parent_id, source=source)
+    if icon:
+        set_icon(user_id, note["id"], icon)
+    return get_note(user_id, note["id"])
 
 
 def child_notes(user_id: str, parent_id: str, exclude_id: str = "",
