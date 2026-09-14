@@ -55,7 +55,13 @@ def charts_from_tools(st: State) -> Verdict | None:
     tool returned"**. Correct numbers don't make a chart render, and don't
     guarantee the next one won't quietly change a digit.
     """
-    bad = blockcheck.unauthorized_charts(st.content, st.charts)
+    # 笔记原来就有的图不算这一轮手写的。`st.charts` 只记**这一次跑**里工具
+    # 画过的，于是用户自己画的、或上一次跑留下的 mermaid 每一轮都会被判成
+    # 「模型手写的」——第 604 轮真跑实拍：两张语法完全正确的流程图就是这么
+    # 被修订那一步整个删掉的，删完下一轮又报「这条流程是用箭头串在正文里的，
+    # 不是一张图」，删图和要图来回打架。判据只该管这次跑写出来的东西。
+    allowed = st.charts + blockcheck.mermaid_blocks(st.bag.get("content_at_start") or "")
+    bad = blockcheck.unauthorized_charts(st.content, allowed)
     if not bad:
         return None
     return Verdict(

@@ -46,6 +46,11 @@ async def run(st: State, hooks: Hooks,
     try:
         async for e in _fire(chain, "before_run", st):
             yield e
+        # 开跑时正文里已经有什么。**判据看的是整篇正文**，而整篇里有很多东西
+        # 不是这次跑写的——用户自己写的、上一次跑留下的。分不清这两者的判据
+        # 会去打自己没做过的事（第 601 轮的占位符、第 604 轮被删掉的两张图）。
+        st.bag["content_at_start"] = st.content
+
         # 门槛：规则就能判「现在做不了」的，别让模型试三轮
         pre_blocked = ""
         if st.round == 0 and st.mode.precheck is not None:

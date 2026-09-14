@@ -91,3 +91,32 @@ async def test_卡死的那条放行之后后面的判据还能拦():
     assert st.ev.weakest == "style_fit", "该轮到后面那条说话了"
     assert [e.data["value"]["dimension"] for e in evs] == \
         ["factual_grounding", "style_fit"], "两条都要让用户看见"
+
+
+def test_笔记原来就有的图不算这一轮手写的():
+    """第 604 轮真跑实拍的内容损毁。
+
+    `st.charts` 只记**这一次跑**里工具画过的图，于是用户自己画的、或上一次
+    跑留下的 mermaid 每一轮都被判成「模型手写的、模仿工具输出」——两张语法
+    完全正确的流程图就这样被修订那一步整个删掉，删完下一轮又报「这条流程是
+    用箭头串在正文里的，不是一张图」，删图和要图来回打架。
+
+    判据只该管这次跑写出来的东西；对开跑时就在的图，那句指控本身是假的。
+    """
+    from app.harness.checks.charts import charts_from_tools
+
+    old = "```mermaid\ngraph TD\nA[5G切换至2.4G] --> B[完成通信验证]\n```"
+    mine = "```mermaid\ngraph TD\nX[我自己编的] --> Y[语法未验证]\n```"
+
+    st = _st([])
+    st.bag["content_at_start"] = "一段正文。\n\n" + old
+    st.content = st.bag["content_at_start"]
+    assert charts_from_tools(st) is None, "开跑时就在的图不是这一轮手写的"
+
+    st.content += "\n\n" + mine
+    v = charts_from_tools(st)
+    assert v is not None and "我自己编的" in v.message, "这一轮新写的手写图照样要拦"
+
+    # 没记开跑快照的老路径（别的 harness / 单测）不能因此崩掉
+    st2 = _st([]); st2.content = old
+    assert charts_from_tools(st2) is not None
