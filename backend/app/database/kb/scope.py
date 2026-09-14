@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-SCOPES = ("all", "notes", "meetings", "imports")
-SCOPE_LABEL = {"all": "全部记忆", "notes": "只看笔记", "meetings": "只看会议记录", "imports": "只看导入的"}
+SCOPES = ("all", "notes", "meetings", "imports", "screen")
+SCOPE_LABEL = {"all": "全部记忆", "notes": "只看笔记", "meetings": "只看会议记录",
+               "imports": "只看导入的", "screen": "只看屏幕活动"}
 _IMPORT_PREFIXES = ("obsidian-", "notion-", "feishu-", "apple-", "evernote-", "md-", "import-", "file-")
 
 
@@ -16,6 +17,12 @@ def classify(unit: str) -> str:
         return "notes"
     if u.startswith(_IMPORT_PREFIXES):
         return "imports"
+    # 屏幕活动（Daily Journey）：一天几十段，量很快会盖过会议记录，所以它必须
+    # 能被单独筛出来、也能被单独排除。**写作取材料默认排除这一档**——右栏浮现的
+    # 「相关记忆」从有用的会议结论变成「你上周二在看某个网页」，这个功能就毁了
+    # （docs/daily-journey-plan.md §3、§7）。
+    if u.startswith("screen-"):
+        return "screen"
     return "meetings"
 
 

@@ -716,3 +716,34 @@ class AskOut(BaseModel):
     answer: str
     facts: list[FactOut] = Field(default_factory=list)
     took_ms: float
+
+
+# ---------------------------------------------------------------- 屏幕活动
+#
+# 段落本身落在壳那边（`<userData>/journey/<日期>/segments.json`），这里只是
+# 把它交给界面的形状。**截图不走接口出去**：`has_frame` 只说有没有，要看图
+# 走 `/api/journey/frame`——图片默认不留、留也只在本机（daily-journey-plan §1）。
+
+class JourneySegment(BaseModel):
+    start: str = ""
+    end: str = ""
+    app: str = ""
+    title: str = ""
+    desc: str = ""
+    n: int = 0
+    has_frame: bool = False
+
+
+class JourneyDayOut(BaseModel):
+    date: str
+    segments: list[JourneySegment] = Field(default_factory=list)
+    minutes: int = 0
+
+
+class JourneyRunOut(BaseModel):
+    date: str
+    described: int = 0
+    ingested: int = 0
+    skipped: int = 0
+    left: int = 0
+    removed_facts: int = 0

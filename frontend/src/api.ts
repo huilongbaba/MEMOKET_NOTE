@@ -475,9 +475,9 @@ export async function runWritingPlan(
 
 /** 记忆范围（database/kb/scope.py）：全部 / 只看笔记摄入的 / 只看会议记录 / 只看导入的。
  *  存在 localStorage，召回 / 关系 / 续写都带上；右栏「记忆」顶上切。 */
-export type MemoryScope = 'all' | 'notes' | 'meetings' | 'imports'
+export type MemoryScope = 'all' | 'notes' | 'meetings' | 'imports' | 'screen'
 export const MEMORY_SCOPE_KEY = 'memoket-note:memory-scope'
-export const SCOPE_LABEL: Record<MemoryScope, string> = { all: '全部记忆', notes: '只看笔记', meetings: '只看会议记录', imports: '只看导入的' }
+export const SCOPE_LABEL: Record<MemoryScope, string> = { all: '全部记忆', notes: '只看笔记', meetings: '只看会议记录', imports: '只看导入的', screen: '只看屏幕活动' }
 export function memoryScope(): MemoryScope {
   try { const v = localStorage.getItem(MEMORY_SCOPE_KEY); return v === 'notes' || v === 'meetings' || v === 'imports' ? v : 'all' } catch { return 'all' }
 }
