@@ -101,6 +101,8 @@
   /* 主按钮那一层带品牌色的投影（UI_SPEC §2.1） */
   /* 底部 composer 的阴影和玻璃边（0.5.10 的 --home-composer-shadow /
      --home-composer-glass-edge / -highlight）。 */
+  /* 卡片 hover 抬起来那一下的阴影（0.5.10 `.home-notescard:hover`）。 */
+  --shadow-card-hover: 0 14px 30px -16px rgba(40, 24, 90, .3);
   --shadow-composer: 0 16px 48px rgba(0, 0, 0, .12);
   --glass-edge: rgba(255, 255, 255, .58);
   --glass-hi:   rgba(255, 255, 255, .34);
@@ -263,5 +265,13 @@
     --mk-thumb:       rgba(255, 255, 255, .22);
     --mk-thumb-hover: rgba(255, 255, 255, .34);
     --mk-surface-glass: rgba(22, 19, 31, .72);
+    /* **玻璃的亮边在深色下要暗下来。** 浅色那条是 `rgba(255,255,255,.58)`——
+       压在暗底上就成了一圈发光的白描边（第 715 轮实拍一眼就看见）。
+       0.5.10 深色下 `--home-composer-glass-edge` 是 `.18`、highlight 是 `.10`。 */
+    --glass-edge: rgba(255, 255, 255, .18);
+    --glass-hi:   rgba(255, 255, 255, .10);
+    --shadow-composer: 0 16px 48px rgba(0, 0, 0, .5);
+    /* 0.5.10 深色的 `--line-strong` */
+    --mk-line-strong: rgba(255, 255, 255, .18);
   }
 }

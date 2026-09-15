@@ -264,11 +264,18 @@ h1 { font-size: var(--t-base); margin: 0 0 4px; }
 h2 { font-size: var(--t-xl); font-weight: var(--w-bold); color: var(--fg);
      letter-spacing: var(--ls-tight); margin: 18px 0 8px; }
 h2:first-child { margin-top: 0; }
+/* 分组标题**两档**，照 0.5.10（第 715 轮）：
+   - 侧栏那档 `.sb-section`：11px / 700 / `.08em` / 大写，padding `12 10 6`；
+   - 内容区那档 `.home-section`：12px / 700 / `.07em` / 大写，**margin `34px 0 12px`**。
+   差别不只是字号——**内容区那档上面留的白多得多**（34 对 12），
+   一列卡片被它切成几段时，那段白就是「这里换了一组」的主要信号。
+   颜色我们照旧用 `--ink-2` 不用他们的 `--ink-3`：分组标题是**要读的**（§1.4）。 */
 .section-label {
-  font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2);
+  font-size: var(--t-sm); font-weight: var(--w-bold); color: var(--ink-2);
   text-transform: uppercase; letter-spacing: var(--ls-caps);
-  margin: 18px 0 8px;
+  margin: var(--s-8) 0 var(--s-5);
 }
+.section-label:first-child { margin-top: 0; }
 .muted { color: var(--muted); font-size: var(--t-md); }
 .row { display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap; }
 /* 勾选框 + 一段可能很长的说明。**不能用 `.row`**：它 flex-wrap，说明一长
@@ -304,10 +311,22 @@ h2:first-child { margin-top: 0; }
 /* 内容卡：**静止时是平的**（细线、无影），hover 才抬。源仓库的卡就是这样——
    边线 6% 黑、看不出阴影。原来是「重线 + 常驻阴影」，双重强调，一屏堆几十个
    就成了方框感（第 692 轮量像素：我的线 #E5E5E5 vs 它的 #F0F0F0，重 1.7 倍）。 */
-.card { transition: border-color .12s, box-shadow .12s;
-        border: 1px solid var(--mk-line-2); border-radius: var(--r); padding: var(--s-5);
-        background: var(--panel); font-size: var(--t-md); }
+/* 内容卡。**照 0.5.10 的 `.home-notescard` 重量了一遍**（第 715 轮）——
+   之前这几个值是从 6 月那批 0.3.x 展示稿上量的，全偏轻一档：
+   边线 `.05` → **`.10`**（实拍 0.5.10 的卡边是 `(227,227,227)` 压在 #FDFDFD 上，
+   正好是 10% 黑）、圆角 12 → **18**、内边距 12 → **18**，并且它**有阴影**。
+   hover 是他们的签名动作：**边线染 45% 品牌色 + 整张卡上浮 1px**，
+   比「底色变一点」清楚得多，也告诉你这张卡是能点的。 */
+.card { transition: border-color .14s, box-shadow .14s, transform .07s;
+        border: 1px solid var(--mk-line); border-radius: var(--r-lg); padding: var(--s-6);
+        background: var(--panel); font-size: var(--t-md); box-shadow: var(--shadow-card); }
 .card + .card { margin-top: var(--s-5); }
+/* **只给真能点的卡**（硬规矩第 15 条：别给不能点的东西加 hover）。 */
+.card.clickable:hover, a.card:hover, button.card:hover {
+  border-color: color-mix(in srgb, var(--brand), transparent 55%);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
 
 /* Revision highlights, now plain CM6 mark decorations (see editor/revisions.ts)
    instead of a second transparent-textarea layer. */
