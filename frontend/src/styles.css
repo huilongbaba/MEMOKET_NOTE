@@ -274,10 +274,13 @@ h2:first-child { margin-top: 0; }
    apply to a plain div, so it's given explicitly here. */
 .md-editor { border: none; background: transparent; padding: 0; width: 100%; }
 
+/* 内容卡：**静止时是平的**（细线、无影），hover 才抬。源仓库的卡就是这样——
+   边线 6% 黑、看不出阴影。原来是「重线 + 常驻阴影」，双重强调，一屏堆几十个
+   就成了方框感（第 692 轮量像素：我的线 #E5E5E5 vs 它的 #F0F0F0，重 1.7 倍）。 */
 .card { transition: border-color .12s, box-shadow .12s;
-        border: 1px solid var(--line); border-radius: var(--r); padding: var(--s-5);
-        background: var(--panel); font-size: var(--t-md); box-shadow: var(--shadow-card); }
-.card + .card { margin-top: 8px; }
+        border: 1px solid var(--mk-line-2); border-radius: var(--r); padding: var(--s-5);
+        background: var(--panel); font-size: var(--t-md); }
+.card + .card { margin-top: var(--s-5); }
 
 /* Revision highlights, now plain CM6 mark decorations (see editor/revisions.ts)
    instead of a second transparent-textarea layer. */
@@ -815,7 +818,7 @@ h2:first-child { margin-top: 0; }
 .kb-link {
   transition: border-color .12s, box-shadow .12s, color .12s;
   display: flex; align-items: center; gap: var(--s-5);
-  padding: 14px 18px; border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: 14px 18px; border: 1px solid var(--mk-line-2); border-radius: var(--r-card);
   background: var(--panel); font-size: var(--t-base);
   font-weight: var(--w-semi); color: var(--fg); text-decoration: none;
 }
@@ -1027,7 +1030,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .stat-row > .stat-tile { flex: 1 1 118px; min-width: 0; }   /* 正常宽度一行五张；窄了最后一张换到下一行占整行（grid auto-fit 在正常宽度也会挤成 4+1，第 212 轮实拍） */
 .stat-span { white-space: nowrap; }
 .stat-row > .stat-tile:has(.stat-span) { flex-basis: 168px; }   /* 「1996-03 → 2026-12」不折行要这么宽 */
-.stat-tile { transition: border-color .12s, box-shadow .12s; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-card); }
+.stat-tile { transition: border-color .12s, box-shadow .12s; padding: 14px 16px; border: 1px solid var(--mk-line-2); border-radius: var(--r); background: var(--panel); }
 .stat-value { font-size: var(--t-2xl); font-weight: var(--w-bold); letter-spacing: var(--ls-tight); line-height: 1.2; }
 .stat-label { font-size: var(--t-sm); font-weight: var(--w-semi); color: var(--muted); margin-top: 2px; }
 /* 中栏本来就不宽（三栏下 ~620px），再一分为二每边只剩 300——卡片被挤扁，
@@ -1049,7 +1052,7 @@ input[type=file]:hover { border-color: var(--accent); }
   transition: background .12s, color .12s, border-color .12s;
 
   display: inline-flex; align-items: center; gap: var(--s-3); height: 26px; padding: 0 10px;
-  border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--panel); color: var(--ink-2);
+  border: 1px solid var(--mk-line-2); border-radius: var(--r-pill); background: var(--panel); color: var(--ink-2);
   font-weight: var(--w-semi);
   font-size: var(--t-sm); line-height: 1; cursor: pointer; text-decoration: none; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }   /* 窄栏里「speaker a」折成两行（第 268 轮实拍首页深色） */
 .chip .bx { font-size: var(--t-md); color: var(--muted); }
@@ -1063,7 +1066,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .fact-month { font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-3); margin: 18px 0 2px; letter-spacing: var(--ls-caps); }
 .fact-row {
   display: grid; grid-template-columns: 1fr auto; gap: var(--s-3) var(--s-5); align-items: start;
-  padding: 14px 18px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel);
+  padding: 14px 18px; border: 1px solid var(--mk-line-2); border-radius: var(--r-card); background: var(--panel);
   transition: border-color .12s, box-shadow .12s;
 }
 .fact-row:hover { border-color: color-mix(in srgb, var(--brand), transparent 62%); box-shadow: var(--shadow-card); }
@@ -1079,7 +1082,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .filter-row { display: flex; gap: var(--s-4); flex-wrap: wrap; align-items: center; }
 .filter-row select, .filter-row input { width: auto; min-width: 140px; padding: 6px 8px; font-size: var(--t-md); }
 .topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s-5); }
-.topic-card { transition: border-color .14s, box-shadow .14s; padding: var(--s-5); border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); display: flex; flex-direction: column; gap: var(--s-4); }
+.topic-card { transition: border-color .14s, box-shadow .14s; padding: var(--s-5); border: 1px solid var(--mk-line-2); border-radius: var(--r); background: var(--panel); display: flex; flex-direction: column; gap: var(--s-4); }
 .topic-card-title { display: flex; align-items: center; gap: var(--s-3); font-weight: var(--w-semi); color: var(--fg); text-decoration: none; font-size: var(--t-base); }
 .topic-card-title:hover { color: var(--accent); }
 .topic-card:hover { border-color: color-mix(in srgb, var(--brand), transparent 55%); box-shadow: var(--shadow-card); }
@@ -1270,7 +1273,7 @@ kbd {
      却一处没用，就是漏在这儿。 */
   font-family: var(--mono); font-weight: var(--w-bold);
   font-size: var(--t-2xs); line-height: 1; padding: 3px 6px; border-radius: var(--r-xs);
-  border: 1px solid var(--line); background: transparent; color: var(--ink-3); white-space: nowrap;
+  border: 1px solid var(--mk-line-2); background: transparent; color: var(--ink-3); white-space: nowrap;
 }
 .shortcut-row { display: flex; align-items: center; gap: var(--s-5); padding: 4px 4px; font-size: var(--t-md); }
 .shortcut-row kbd { min-width: 88px; text-align: center; }
