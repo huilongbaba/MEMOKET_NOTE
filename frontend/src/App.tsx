@@ -154,6 +154,8 @@ export default function App() {
   const iconBtnRef = useRef<HTMLButtonElement>(null)   // 选择器关掉后焦点回到这个钮（键盘用户不至于掉到 body 上）
   const [locateTick, setLocateTick] = useState(0)
   const [paneFocus, setPaneFocus] = useState<{ id: string; n: number } | undefined>(undefined)
+  /** 底部 composer 里那句话。空 = 主钮是「续写」，有字 = 主钮是「发送」。 */
+  const [askDraft, setAskDraft] = useState('')
   const [fbMenu, setFbMenu] = useState<{ kind: 'harness' | 'more'; at: MenuAt } | null>(null)
   // 树菜单「导入到这里…」用的隐藏文件框；记住要挂到哪个节点下面
   const importInput = useRef<HTMLInputElement>(null)
@@ -866,7 +868,7 @@ export default function App() {
   }
 
   /** 应用内的输入框，Promise 形式——调用处跟原来用 window.prompt 一样直。 */
-  const askText = (title: string, initial: string) =>
+  const composeAsk = (title: string, initial: string) =>
     new Promise<string | null>((resolve) => setPrompt({ title, initial, resolve: (v) => { setPrompt(null); resolve(v) } }))
   const askConfirm = (req: Omit<ConfirmRequest, 'resolve'>) =>
     new Promise<boolean>((resolve) => setConfirmReq({ ...req, resolve: (ok) => { setConfirmReq(null); resolve(ok) } }))
@@ -874,7 +876,7 @@ export default function App() {
     new Promise<string | null>((resolve) => setPicker({ title, exclude, first, resolve: (v) => { setPicker(null); resolve(v) } }))
 
   async function renameNode(row: TreeRow) {
-    const title = (await askText('改个名字', row.title))?.trim()
+    const title = (await composeAsk('改个名字', row.title))?.trim()
     if (title === undefined || title === row.title) return
     setTree((prev) => prev.map((r) => (r.note_id === row.note_id ? { ...r, title } : r)))
     try {
@@ -2627,6 +2629,18 @@ export default function App() {
    *
    * 落进正文之后同时算出 diff 交给「接受 / 撤回」，跟 harness 改动、右键润色
    * 走同一套处置方式。 */
+  /** composer 里写了一句话之后：按这句话写一段，插在光标处。
+   *  **走的是跟 `/` 菜单「用 AI 写」完全相同的一条路**（`runBlock` + `prompt` 模式）——
+   *  同一个能力不该有两套实现，不然判据、流式、插入规则都要维护两遍。 */
+  async function runCompose() {
+    const text = askDraft.trim()
+    if (!text) return
+    const view = editorViewRef.current
+    const at = view ? view.state.selection.main.head : content.length
+    setAskDraft('')
+    await runBlock({ group: 'AI', key: 'prompt', label: '用 AI 写', hint: '', icon: 'bx-pen', needsPrompt: true }, at, at, text)
+  }
+
   async function runBlock(item: SlashItem, from: number, to: number, prompt: string) {
     const view = editorViewRef.current
     if (!view || !current) return
@@ -3195,35 +3209,62 @@ export default function App() {
           )
         ) : (
           <>
-            {/* 浮动按钮（Trilium FloatingButtons）：AI 能力跟正文在一起、不占正文的行。
-                判据 1「一个能力一个按钮」：续写、智能续写各一个；打磨和「逐轮我来定」是
-                智能续写的参数，收在它的 ▾ 里；录音一个麦克风两个去处；⋯ 是杂项。 */}
-            <div className="floating-buttons">
-              <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
-                      disabled={loading === 'note-harness'}
-                      title="续写：先查知识库，据此往下写一段（流式）">
-                <Icon n={(loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
-              </button>
-              <span className="fb-split">
-                <button className={'fb-btn secondary' + (loading === 'note-harness' ? ' running' : '')}
-                        onClick={() => runNoteHarness('write')} disabled={loading === 'tap' || isSlides(content)}
-                        title={isSlides(content) ? '这一篇是幻灯片——接散文会把分页和引用弄乱；要改内容回原笔记改完再重做一份'
-                          : '智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停'}>
-                  <Icon n={(loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
-                </button>
-                <button className="fb-btn secondary fb-caret-btn" title="打磨 / 逐轮我来定"
-                        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
-                  <Icon n="bx-chevron-down" />
-                </button>
-              </span>
+            {/* **底部 composer**（第 714 轮，用户：「你续写智能续写音频入口那一行真的很奇怪」）。
+                原来这一排浮在正文右上角，压着要写字的第一行，五个控件三种形状。
+                搬到正文底部做成一条胶囊——构造照 0.5.10 的 `.home-ask-dock` +
+                `.home-composer`（docs/MEMOKET_DESKTOP_0.5.10.md）。
+                顺带补上了一个本来只藏在 `/` 菜单里的入口：**直接说要写什么**。
+                动作一个没丢，只是重新排了：输入框空着时主钮是「续写」，
+                写了字就变成「发送」（走跟 `/` 的「用 AI 写」同一条路）。 */}
+            <div className="composer-dock">
+             <div className="composer">
+              <input className="composer-input" value={askDraft} onChange={(e) => setAskDraft(e.target.value)}
+                     aria-label="让 AI 写点什么"
+                     placeholder="说要写什么…"
+                     onKeyDown={(e) => { if (e.key === 'Enter' && askDraft.trim()) { e.preventDefault(); void runCompose() } }} />
+              <span className="composer-actions">
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
               <button className="fb-btn" title="更多"
                       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
                 <Icon n="bx-dots-horizontal-rounded" />
               </button>
+              {/* **主钮在最右**：跟 0.5.10 composer 的发送钮同一个位置。
+                  次要的（麦克风、杂项）排在它左边。「续写」和它的 ⌄ 贴在一起
+                  （`.fb-split`），读起来是一个分体按钮而不是两个东西。 */}
+              <span className="fb-split">
+              <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')}
+                      onClick={() => { if (askDraft.trim()) void runCompose(); else void runMagicTap() }}
+                      disabled={loading === 'note-harness'}
+                      title={askDraft.trim() ? '按这句话写一段（Enter）' : '续写：先查知识库，据此往下写一段（流式）'}>
+                <Icon n={loading === 'tap' ? 'bx-stop' : askDraft.trim() ? 'bx-paper-plane' : 'bx-edit-alt'} />
+                <span className="fb-label">{loading === 'tap' ? '停止' : askDraft.trim() ? '发送' : '续写'}</span>
+              </button>
+              <button className="fb-btn fb-caret-btn" title="智能续写 / 打磨 / 逐轮我来定"
+                      aria-label="更多写作动作"
+                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.top - 180 } }) }}>
+                <Icon n="bx-chevron-down" />
+              </button>
+              </span>
+              {loading === 'note-harness' && (
+                <button className="fb-btn primary running" onClick={() => runNoteHarness('write')}
+                        title="停止智能续写">
+                  <Icon n="bx-stop" /><span className="fb-label">停止</span>
+                </button>
+              )}
+              {/* **「智能续写」并进主钮旁边的 ⌄**（第 714 轮）。它跟「续写」是同一类动作
+                  （都是「往下写」，差别只在写多久），原来并排两个胶囊，右边这一簇
+                  五个控件三种形状。用户对按钮数量的态度一贯是「越少越好」
+                  （第 625 轮：「无限续写的按钮不要显示了行吗？」）。
+                  **一个能力一个按钮**没有被破坏——只是「写一段 / 写到完整」
+                  收成了一个按钮加一个下拉，而不是两个抢注意力的胶囊。 */}
+              </span>
               {loading === 'ingest' && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}><span className="spinner" /></span>}
               {fbMenu && (
                 <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
+                  { label: '智能续写', icon: 'bx-bot', disabled: loading === 'tap' || loading === 'note-harness' || isSlides(content),
+                    hint: isSlides(content) ? '这一篇是幻灯片——接散文会把分页和引用弄乱'
+                      : '自动修订 + 自动续写交替，直到相对骨架已经完整才停',
+                    onSelect: () => { void runNoteHarness('write') } },
                   { label: '打磨（只修不写）', icon: 'bx-brush', disabled: loading === 'note-harness' || !content.trim(),
                     hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => { void runNoteHarness('polish') } },
                   { kind: 'sep' },
@@ -3279,7 +3320,8 @@ export default function App() {
                   { label: '保存', icon: 'bx-save', shortcut: '⌘S', onSelect: () => void save() },
                 ]} />
               )}
-            </div>
+             </div>{/* composer */}
+            </div>{/* composer-dock */}
             {/* 暂停 / 运行 / 结果 一条粘在浮动按钮下面的横条：轮末暂停时用户多半已经
                 滚到正文底部看新写的内容，两个按钮和那句话如果留在正文顶部就等于没有
                 （实拍：只剩状态栏一个「等你处置」）。 */}

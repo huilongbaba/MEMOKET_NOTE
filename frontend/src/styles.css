@@ -1013,42 +1013,73 @@ h2:first-child { margin-top: 0; }
 .note-pane.focus .ribbon,
 .note-pane.focus .md-toolbar,
 .note-pane.focus .note-scroll > * { max-width: 880px; margin-inline-end: auto; }
-/* 正文右上角的浮动按钮（Trilium FloatingButtons）：跟正文相关但不占正文的行 */
-
-.floating-buttons button {
-  height: 30px; padding: 0 10px; font-size: var(--t-sm); border-radius: var(--r-pill);
-  background: var(--floating-btn-bg); color: var(--muted); border-color: transparent;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-}
-.floating-buttons button:hover:not(:disabled) { color: var(--fg); background: var(--hover-item-bg); border-color: transparent; }
-.floating-buttons .row { gap: var(--s-2); }
 .note-scroll { position: relative; }
 .cm-editor .cm-placeholder { color: var(--muted); opacity: .7; }
 
 
-/* ------------------------------------------------ 浮动按钮（正文右上角） */
-/* sticky 而不是 absolute：absolute 会跟着正文一起滚走；sticky 留在滚动区顶部。
-   height: 0 + overflow visible = 不占正文的行。 */
-/* 一条带底色的横带：滚动时正文从它下面过，不会跟半透明的胶囊叠在一起
-   （实拍：标题被按钮盖住一半） */
-.floating-buttons {
-  /* top:-8px + 上补 8px：滚动区顶部有 8px 内边距，钉在 top:0 时那 8px 露出下面滚过的正文
-     （实拍：ribbon 下面一条引用的蓝色虚线）。 */
-  position: sticky; top: -8px; height: 56px; z-index: var(--z-sticky); box-sizing: border-box;
-  display: flex; justify-content: flex-end; align-items: center; gap: var(--s-3);
-  margin: -8px calc(-1 * var(--content-margin-inline)) 4px; padding: var(--s-4) var(--content-margin-inline) 0;
-  background: var(--main-bg);
+/* ------------------------------------------------ 底部 composer（正文动作） */
+/* **AI 入口从「浮在正文右上角」搬到「正文底部的一条胶囊」**（第 714 轮）。
+   用户原话：「你续写智能续写音频入口那一行真的很奇怪」。三个毛病：
+   ① 它压在正文第一行上（第 701 轮修渐变时已经看见过一次）；
+   ② 五个控件三种形状（实心胶囊 / 描边胶囊 / 小箭头 / 麦克风+箭头 / 幽灵图标）；
+   ③ 它待在右上角——那是眼睛用来**读**的地方，不是用来**动手**的地方。
+
+   构造照 0.5.10 的 `.home-ask-dock` + `.home-composer`（见
+   docs/MEMOKET_DESKTOP_0.5.10.md）：底部一个 dock 负责遮罩渐变，
+   里面一颗 99px 圆角的玻璃胶囊。
+
+   **跟他们不一样的一处，写清楚为什么**：他们的 dock 自己吃掉指针事件
+   （注释说的是「这块地方视觉上盖住了文件行，就得连命中测试一起拿走，
+   不然会点到看不见的行」）。我们下面是**可编辑的正文**——那 100px 里
+   要能点进去定位光标，所以 dock 是 `pointer-events: none`，只有胶囊本身可点。 */
+.composer-dock {
+  position: absolute; inset-inline: 0; bottom: 0; z-index: var(--z-float);
+  display: flex; justify-content: center; align-items: flex-end;
+  height: 104px; padding: 0 var(--s-6) var(--s-7);
+  pointer-events: none;
 }
-/* 渐变要在**带子下沿之外**，不能压在带子里。原来是
-   `linear-gradient(var(--main-bg) 86%, transparent)`——56px 的带子只剩 8px 做
-   过渡，而滚过来的是 28px 的标题：结果不是淡出，是**齐腰切一刀**，带子底下
-   露着一排半截字（第 701 轮实拍量的：235 行以上全白，236–241 行冒出字的下半截）。
-   实底 + 下面挂 16px 的淡出条，文字才是「淡进来」。
-   `pointer-events: none`：这 16px 压在正文上，不挡点选。 */
-.floating-buttons::after {
-  content: ''; position: absolute; inset-inline: 0; top: 100%; height: var(--s-6);
-  background: linear-gradient(var(--main-bg), transparent); pointer-events: none;
+/* 遮罩：正文滚到底下时淡出，不是被硬切一刀（第 701 轮那条教训的同一个道理）。 */
+.composer-dock::before {
+  content: ''; position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(to bottom, transparent, var(--main-bg) 62%);
 }
+.composer {
+  position: relative; z-index: 1; pointer-events: auto;
+  width: min(760px, 100%); min-height: 56px;
+  display: flex; align-items: center; gap: var(--s-5);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-6);
+  border-radius: var(--r-pill);
+  background: var(--mk-surface-glass);
+  box-shadow: var(--shadow-composer);
+  backdrop-filter: blur(10px) saturate(145%); -webkit-backdrop-filter: blur(10px) saturate(145%);
+  isolation: isolate;
+}
+/* 玻璃的边和高光：一条 1px 的亮边 + 一道斜向高光（他们的 `::before` 同款）。
+   没有这两样，毛玻璃看起来就只是「半透明的灰块」。 */
+.composer::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  border: 1px solid var(--glass-edge); border-radius: inherit;
+  background: linear-gradient(135deg, var(--glass-hi), transparent 38%, transparent 68%, var(--glass-hi));
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+.composer > * { position: relative; z-index: 1; }
+.composer-input {
+  flex: 1; min-width: 0; height: 24px;
+  margin: 0; padding: 0; border: none; background: transparent; box-shadow: none !important;
+  font: inherit; font-size: var(--t-lg); line-height: 1.6; color: var(--fg);
+}
+.composer-input:focus, .composer-input:focus-visible { outline: none; border: none; box-shadow: none !important; }
+.composer-actions { flex: none; display: flex; align-items: center; gap: var(--s-3); }
+/* 圆钮：36×36，跟他们的 `.home-composer-send` / `.voice-input-button` 同尺寸。 */
+.composer-actions .fb-btn, .composer-actions .icon-btn, .composer-actions button {
+  height: 36px; border-radius: var(--r-pill);
+}
+.composer-actions .icon-btn { width: 36px; }
+
+/* ------------------------------------------------ composer 里的按钮 */
+/* （原来这里是 `.floating-buttons`——一条粘在正文顶部的横带。第 714 轮 AI 入口
+   搬到底部 composer 之后整块作废，连同第 701 轮给它加的那条「下沿外挂 16px 淡出条」
+   一起删了：**那个问题随着带子一起消失了**，淡出改由 `.composer-dock::before` 负责。） */
 .fb-btn {
   height: 32px; padding: 0 12px; font-size: var(--t-md); border-radius: var(--r-pill); line-height: 1; white-space: nowrap;
   display: inline-flex; align-items: center; gap: var(--s-3);
@@ -1060,29 +1091,21 @@ h2:first-child { margin-top: 0; }
 .fb-btn:hover:not(:disabled) { background: var(--floating-btn-hover-bg); border-color: transparent; color: var(--fg); box-shadow: var(--shadow-card); }
 .fb-btn:active:not(:disabled) { transform: scale(.97); }
 .fb-btn:disabled { opacity: .5; }
-/* 主次要分出来。原来「续写」「智能续写」「▾」三个连着的实心蓝，视觉上都是
-   「主操作」——三个一样响的按钮抢同一块地方，等于没有主次，而且它们浮在正文
-   右上角、压着第一行要写字的地方（用户实拍反馈：「你这些蓝色的图标这个设计
-   好吗？」，第 618 轮）。
-   现在：**只有一个实心蓝**（续写，最常用、最便宜的那个动作）；智能续写和它的
-   ▾ 降成描边——同样一眼看得见、但不抢。跑起来时照旧变红（running）。 */
-.fb-btn.primary { background: var(--accent); color: var(--accent-fg); }
-.fb-btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
-.fb-btn.secondary {
-  background: var(--floating-btn-bg); color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-.fb-btn.secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 10%, var(--floating-btn-bg));
-  border-color: var(--accent); color: var(--accent);
-}
-.fb-btn.primary.running, .fb-btn.secondary.running { background: var(--del); color: var(--accent-fg); border-color: var(--del); }
+/* 跑起来变红（停止）。原来还有一条 `.fb-btn.secondary` —— 那是「智能续写」
+   那个描边胶囊专用的，第 714 轮它并进主钮的 ⌄ 之后整条作废，删了。 */
+.fb-btn.primary.running { background: var(--del); color: var(--accent-fg); border-color: var(--del); }
 .fb-btn.rec { color: var(--del); }
 .fb-caret { font-size: var(--t-md) !important; margin-inline-start: -3px; }
 .fb-split { display: inline-flex; }
 .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; padding-inline-end: 9px; }
 .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 5px; margin-inline-start: 1px; }
-.floating-buttons .fb-btn:not(.primary):not(.secondary) { padding: 0 9px; }
+/* composer 里的分体按钮：主钮是品牌实心，它的 ⌄ 也得是同一块——原来 ⌄ 是
+   幽灵按钮，贴在实心胶囊右边像掉了一块漆（第 714 轮实拍）。 */
+.composer .fb-split .fb-caret-btn { background: var(--accent); color: var(--accent-fg); }
+.composer .fb-split .fb-caret-btn:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
+.composer-actions .fb-split .fb-btn { border-radius: var(--r-pill); }
+.composer-actions .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
+.composer-actions .fb-split .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; width: auto; padding: 0 8px 0 4px; }
 .harness-line { font-size: var(--t-sm); margin: 0 0 8px; display: flex; align-items: center; gap: var(--s-2); }
 .title-icon { font-size: var(--t-xl); color: var(--muted); margin-inline-end: 6px; flex-shrink: 0; }
 

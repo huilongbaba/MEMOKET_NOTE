@@ -99,6 +99,11 @@
   --shadow-pop:  0 20px 56px -16px rgba(35, 22, 70, .30), 0 2px 8px rgba(20, 16, 40, .07);
   --shadow-float:0 14px 40px -12px rgba(40, 24, 90, .30), 0 0 0 0.5px rgba(33, 30, 41, .07);
   /* 主按钮那一层带品牌色的投影（UI_SPEC §2.1） */
+  /* 底部 composer 的阴影和玻璃边（0.5.10 的 --home-composer-shadow /
+     --home-composer-glass-edge / -highlight）。 */
+  --shadow-composer: 0 16px 48px rgba(0, 0, 0, .12);
+  --glass-edge: rgba(255, 255, 255, .58);
+  --glass-hi:   rgba(255, 255, 255, .34);
   --shadow-brand:       0 1px 2px rgba(20, 16, 40, .14), 0 5px 14px -6px rgba(74, 31, 156, .30);
   --shadow-brand-hover: 0 2px 5px rgba(20, 16, 40, .16), 0 12px 24px -8px rgba(74, 31, 156, .45);
 

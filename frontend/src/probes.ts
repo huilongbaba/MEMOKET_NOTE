@@ -307,7 +307,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     void (async () => {
       await switchTo(n)
       setTimeout(() => {
-        const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
+        const more = Array.from(document.querySelectorAll('.composer .fb-btn'))
           .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
         if (!more) { void api.clientLog('warn', 'export-one: 找不到「更多」', '', 'probe'); return }
         more.click()
@@ -363,7 +363,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 同一个动作三个门，而它是错配最深的那个（工具栏没有上下文，这个动作需要上下文）。
   // 走真实路径：浮动按钮的「⋯」→「无限续写…」。第 625 轮起它不在标题行上常驻了。
   const clickPlanEntry = () => {
-    const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
+    const more = Array.from(document.querySelectorAll('.composer .fb-btn'))
       .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
     if (!more) { void api.clientLog('warn', 'plan-panel: 找不到「更多」按钮', '', 'probe'); return }
     more.click()

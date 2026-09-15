@@ -48,7 +48,13 @@ const FUNC = /\b(?:rgba?|hsla?)\s*\(/g
    border-radius 要连**多值**一起查。第一版只匹配 `border-radius: 9px`，于是
    `border-radius: var(--r-sm) 6px 0 0` 里的那个 6px 一直活着（第 683 轮在
    `.pane-tab` 上抓到）——**只查一半的闸门给的是假安全感**。 */
-const SHAPE = /(?:border-radius:[^;}]*?\b[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *['"]?[0-9]+|borderRadius: *['"]?[0-9]+|fontWeight: *['"]?[0-9]{3}\b|lineHeight: *['"][0-9.]+['"]|fontFamily: *['"][^'"]*(?:monospace|sans-serif|serif)|gap: *[0-9]+px|z-index: *[0-9]+|letter-spacing: *[-0-9.]+em)/g
+/* **`z-index: 0` 和 `1` 放行，这是有意的例外**（第 714 轮写进规范 §1.6）。
+   层级令牌（`--z-sticky:10 --z-float:20 --z-backdrop:100 --z-menu:200 --z-toast:300`）
+   管的是**应用级的层**：谁盖谁。而 `0` / `1` 只可能是**一个 isolate 出来的局部
+   堆叠上下文里的前后关系**（composer 的玻璃边在下、内容在上），跟应用层级无关，
+   也不可能跟任何一个令牌相等。
+   判据只放这两个值——`2` 起就不放，那种「随手加一档」才是要拦的。 */
+const SHAPE = /(?:border-radius:[^;}]*?\b[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *['"]?[0-9]+|borderRadius: *['"]?[0-9]+|fontWeight: *['"]?[0-9]{3}\b|lineHeight: *['"][0-9.]+['"]|fontFamily: *['"][^'"]*(?:monospace|sans-serif|serif)|gap: *[0-9]+px|z-index: *(?![01]\b)[0-9]+|letter-spacing: *[-0-9.]+em)/g
 
 let bad = 0
 for (const f of corpus(walk(root), 70, '源文件')) {
