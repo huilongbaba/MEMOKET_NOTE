@@ -187,11 +187,24 @@ export function mermaidCmd(view: EditorView) {
   view.focus()
 }
 
-/** Cmd/Ctrl keybindings for the same actions the toolbar buttons trigger --
- * discoverable via the toolbar, faster via keyboard once learned. */
+/** 跟工具栏按钮同一批动作的键。
+ *
+ * 原来只有三个，注释写的是「discoverable via the toolbar」——而第 704 轮把常驻
+ * 工具条收起来之后，这句话就不成立了：**标题、列表、引用、代码块一个键都没有**
+ * （第 706 轮逐条核对我自己给过的理由时发现的）。
+ *
+ * 选键的规矩：不发明。⌘1…⌘9 已经是「跳到第 n 个标签」，所以标题走 ⌘⌥1/2/3
+ * （Notion / Obsidian 同款）；列表走 ⌘⇧7 / ⌘⇧8 / ⌘⇧9（Word / Notion 同款）。
+ * 加一个键就要往 `shortcuts.ts` 的表里加一行——**表里查不到的键等于没有**。 */
 export const markdownKeymap = [
   { key: 'Mod-b', run: (view: EditorView) => { boldCmd(view); return true } },
   { key: 'Mod-i', run: (view: EditorView) => { italicCmd(view); return true } },
   // ⌘K 是外壳的搜索 / 跳转（Notion、VSCode 的约定），插链接让位到 ⇧⌘K
   { key: 'Mod-Shift-k', run: (view: EditorView) => { linkCmd(view); return true } },
+  { key: 'Mod-Alt-1', run: (view: EditorView) => { heading1Cmd(view); return true } },
+  { key: 'Mod-Alt-2', run: (view: EditorView) => { heading2Cmd(view); return true } },
+  { key: 'Mod-Alt-3', run: (view: EditorView) => { heading3Cmd(view); return true } },
+  { key: 'Mod-Shift-7', run: (view: EditorView) => { orderedListCmd(view); return true } },
+  { key: 'Mod-Shift-8', run: (view: EditorView) => { bulletListCmd(view); return true } },
+  { key: 'Mod-Shift-9', run: (view: EditorView) => { taskListCmd(view); return true } },
 ]

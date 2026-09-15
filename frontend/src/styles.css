@@ -1372,6 +1372,19 @@ kbd {
 }
 .shortcut-row { display: flex; align-items: center; gap: var(--s-5); padding: 4px 4px; font-size: var(--t-md); }
 .shortcut-row kbd { min-width: 88px; text-align: center; }
+/* **一节里的键位列要对齐。** 原来每行各自 flex + `min-width: 88px`：键位一长
+   （`⌥⌘1 / ⌥⌘2 / ⌥⌘3`）那一行的说明就被顶到右边，整列参差（第 706 轮实拍，
+   加了两行新键之后当场露出来）。`min-width` 只保证「不比 88 窄」，
+   保证不了「所有行一样宽」。
+   一节当成一张两列网格，行 `display: contents` 把 kbd 和说明交给网格去对齐；
+   行的上下间距因此要落到两个子元素上（`display: contents` 的盒子自己不占空间）。 */
+.shortcuts-body section, .welcome-keys {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center; column-gap: var(--s-5);
+}
+.shortcuts-body section > .palette-group, .welcome-keys > .palette-group { grid-column: 1 / -1; }
+.shortcuts-body .shortcut-row, .welcome-keys .shortcut-row { display: contents; }
+.shortcuts-body .shortcut-row > *, .welcome-keys .shortcut-row > * { padding-block: 4px; }
 .palette.shortcuts { width: 640px; max-height: 80vh; }
 .shortcuts-body { padding: 4px 12px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2) 24px; }
 .shortcuts-body section:last-child { grid-column: 1 / -1; }

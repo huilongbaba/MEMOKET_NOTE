@@ -2,7 +2,7 @@
 export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: string }[] }[] = [
   { title: '笔记', items: [
     { keys: '⌘N / ⌘T', what: '新建笔记' },
-    { keys: '⌘⇧D', what: '今天的日记（日记 / 年 / 月 / 日）' },
+    { keys: '⇧⌘D', what: '今天的日记（日记 / 年 / 月 / 日）' },
     { keys: '⌘S', what: '保存（自动保存已开，这只是个安心键）' },
     { keys: '⌘K / ⌘J', what: '搜索笔记与知识库、开着的标签、跳转、命令' },
     { keys: '⌘[ / ⌘]', what: '后退 / 前进' },
@@ -18,7 +18,7 @@ export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: stri
     { keys: '⌘.', what: '专注模式' },
   ] },
   { title: '写作', items: [
-    { keys: '/', what: '行首唤起 AI 菜单：用 AI 写、插图、表格、可视化、语音' },
+    { keys: '/', what: '行首唤起菜单：AI 写作 / 插图 / 表格 / 语音，以及标题、列表、引用、代码块这些排版' },
     { keys: '@', what: '引用知识库里的一条事实' },
     { keys: '[[', what: '链接另一篇笔记（⌘点击链接跳过去）' },
     // 「更多 → 正文怎么写」指到这张表，那就得真讲得到 mermaid，
@@ -27,6 +27,8 @@ export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: stri
     { keys: '⌘F', what: '页内查找 / 替换' },
     { keys: '⇧⌘F', what: '格式化整篇 Markdown' },
     { keys: '⌘B / ⌘I / ⇧⌘K', what: '粗体 / 斜体 / 插入链接' },
+    { keys: '⌥⌘1 / ⌥⌘2 / ⌥⌘3', what: '一 / 二 / 三级标题（⌘1…⌘9 是切标签，所以带 ⌥）' },
+    { keys: '⇧⌘7 / ⇧⌘8 / ⇧⌘9', what: '有序 / 无序 / 任务列表' },
     { keys: '选中后右键', what: '校验 / 重写 / 润色 / 扩展 / 来龙去脉' },
     { keys: '⌥点击', what: '树上快速查看一篇（不切页）' },
     { keys: '⌘/', what: '这张表' },

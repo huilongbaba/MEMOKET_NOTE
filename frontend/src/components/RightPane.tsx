@@ -19,6 +19,7 @@
  * 我们的「运行」放的是 harness 每一轮做了什么、判了什么——执行记录，不是对话。
  */
 import { useEffect, useState, type ReactNode } from 'react'
+import { fmtShortcut } from '../util/keys'
 
 export type PaneTab = {
   id: string
@@ -64,7 +65,7 @@ export default function RightPane({
         {/* 右端动作区：任何宽度下都完整可点（RightPanelContainer.css:110-145） */}
         {onCollapse && (
           <span className="right-pane-actions">
-            <button className="icon-btn" title="收起右栏（⌘⇧\\）" onClick={onCollapse}><i className="bx bx-chevrons-right" /></button>
+            <button className="icon-btn" title={`收起右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={onCollapse}><i className="bx bx-chevrons-right" /></button>
           </span>
         )}
       </div>

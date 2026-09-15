@@ -5,6 +5,7 @@ import {
   bulletListCmd, orderedListCmd, taskListCmd, linkCmd, codeBlockCmd, mermaidCmd,
   tableCmd,
 } from '../editor/markdownCommands'
+import { fmtShortcut } from '../util/keys'
 
 const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: EditorView) => void }[] = [
   { label: 'B', title: '加粗 (⌘/Ctrl+B)', cmd: boldCmd },
@@ -48,7 +49,7 @@ export default function MarkdownToolbar(
     <div className="row md-toolbar">
       {onFormat && (
         <button
-          title="一键格式化整篇（⌘/Ctrl+⇧+F）：标题、列表、表格对齐、中西文空格。纯规则不走模型，结果可以逐处接受或撤回。"
+          title={`一键格式化整篇（${fmtShortcut('⇧⌘F')}）：标题、列表、表格对齐、中西文空格。纯规则不走模型，结果可以逐处接受或撤回。`}
           style={{ marginRight: 6 }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={onFormat}

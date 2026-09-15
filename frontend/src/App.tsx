@@ -84,6 +84,7 @@ import { slidesToHtml } from './util/slideHtml'
 import { isSlides, slidePages } from './util/slidePages'
 import { fmtDate, whenLabel } from './util/time'
 import { notifyIfHidden } from './util/notify'
+import { fmtShortcut } from './util/keys'
 
 // 后台自动生成的节流参数。骨架/编辑都是真实 LLM 调用（本地模型上约 8-15s），
 // 不能跟着每次按键触发——用"停止输入 N 秒 + 内容变化够多"两条门槛，既保证
@@ -2724,7 +2725,7 @@ export default function App() {
           <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><i className="bx bx-x" /></button>
           {/* 右栏收起时那个「展开右栏」小钮是绝对定位在中栏右上角的，分屏一开正好压在「关闭分屏」上（第 198 轮实拍）——分屏时挪进这一行 */}
           {!rightShown && !focusMode && (
-            <button className="icon-btn" title="展开右栏（⌘⇧\\）" onClick={() => setPanes((p) => makeRoomForRight(p, winW, split?.w ?? 0))}><i className="bx bx-chevrons-left" /></button>
+            <button className="icon-btn" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={() => setPanes((p) => makeRoomForRight(p, winW, split?.w ?? 0))}><i className="bx bx-chevrons-left" /></button>
           )}
         </div>
         <div className="split-body">
@@ -2873,8 +2874,8 @@ export default function App() {
         <div className="tab-row-left-spacer" />
         {/* 前进后退（TabHistoryNavigationButtons）。跳去看一篇再回来。 */}
         <span className="history-nav">
-          <button className="icon-btn" disabled={!histState.back} title="后退（⌘[）" onClick={() => goHistory(-1)}><i className="bx bx-left-arrow-alt" /></button>
-          <button className="icon-btn" disabled={!histState.fwd} title="前进（⌘]）" onClick={() => goHistory(1)}><i className="bx bx-right-arrow-alt" /></button>
+          <button className="icon-btn" disabled={!histState.back} title={`后退（${fmtShortcut('⌘[')}）`} onClick={() => goHistory(-1)}><i className="bx bx-left-arrow-alt" /></button>
+          <button className="icon-btn" disabled={!histState.fwd} title={`前进（${fmtShortcut('⌘]')}）`} onClick={() => goHistory(1)}><i className="bx bx-right-arrow-alt" /></button>
         </span>
         <TabBar
           tabs={tabs}
@@ -2896,9 +2897,9 @@ export default function App() {
           记忆是一等公民，不该藏在某个按钮后面的弹层里。 */}
       <div className="launcher-pane">
         <div className="launcher-logo" title="MEMOKET NOTE"><Logo size={30} /></div>
-        <button className="launcher-btn" title="新建笔记（⌘N）" onClick={newNote}><i className="bx bx-plus" /></button>
-        <button className="launcher-btn" title="今天的日记（⌘⇧D）：日记 / 年 / 月 / 日，没有就建" onClick={() => void openToday()}><i className="bx bx-calendar-event" /></button>
-        <button className="launcher-btn" title="全局搜索：笔记 + 知识库（⌘K）"
+        <button className="launcher-btn" title={`新建笔记（${fmtShortcut('⌘N')}）`} onClick={newNote}><i className="bx bx-plus" /></button>
+        <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）：日记 / 年 / 月 / 日，没有就建`} onClick={() => void openToday()}><i className="bx bx-calendar-event" /></button>
+        <button className="launcher-btn" title={`全局搜索：笔记 + 知识库（${fmtShortcut('⌘K')}）`}
                 onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><i className="bx bx-search" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:import' ? ' active' : '')}
                 title="导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件"
@@ -2932,7 +2933,7 @@ export default function App() {
           <i className="bx bx-search" />
           <input
             placeholder="快速搜索"
-            title="搜标题和正文；⌘K 是全局搜索（含知识库）"
+            title={`搜标题和正文；${fmtShortcut('⌘K')} 是全局搜索（含知识库）`}
             value={noteQuery}
             onChange={(e) => setNoteQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -3034,7 +3035,7 @@ export default function App() {
       <div className="rest-pane">
         {/* 这一支在 `!split` 里，所以腾地方时分屏宽度按 0 算 */}
         {!rightShown && !focusMode && !split && (
-          <button className="right-pane-reopen" title="展开右栏（⌘⇧\\）"
+          <button className="right-pane-reopen" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`}
                   onClick={() => setPanes((p) => makeRoomForRight(p, winW, 0))}><i className="bx bx-chevrons-left" /></button>
         )}
         <div className="center-pane">
