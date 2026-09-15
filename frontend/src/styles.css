@@ -324,6 +324,13 @@ h2:first-child { margin-top: 0; }
    东西不给一点进场，会像是「本来就在那儿」**。reduced-motion 那一块会关掉它。 */
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .toast { animation: toast-in .18s cubic-bezier(.22, .61, .36, 1); }
+/* **toast 是反底**，里面的动作链接不能用品牌紫——第 686 轮我把 `.linklike`
+   的颜色改成 `--brand-text` 之后，「撤销」成了深紫压在近黑上，几乎看不见
+   （第 698 轮实拍）。反底上用面色 + 下划线，对比度 18:1。 */
+/* `.linklike.link`（0,2,0）定义在后面，权重相同时后来者赢——所以这里要 0,3,0。
+   第一版写成 `.toast .link` 没生效，实拍还是紫的（第 698 轮）。 */
+.toast .linklike, .toast .linklike.link, .toast .link { color: var(--mk-surface); text-decoration: underline; text-underline-offset: 2px; }
+.toast .linklike:hover { opacity: .85; }
 
 /* KnowledgeGraph semantic zoom: below the zoom threshold, labels vanish and
    links fade -- an "abstract point map" overview by design, not a bug. The
