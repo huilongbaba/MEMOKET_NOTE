@@ -108,5 +108,27 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
   }
   for (const v of dead) { bad++; console.log(`✗ 令牌 ${v} 定义了没人用 —— 删掉，或者说明为什么留着`) }
 }
+/* **面色不许有明显色偏。**
+   第 690 轮用户原话：「整个背景全用紫色？？？」。量了源仓库真 app 的像素：
+   它的面几乎是中性的（侧栏 #F5F3F9、内容 #FCFBFF、卡片纯白，**R−B 差只有 3~4**），
+   紫只出现在品牌标记、选中态、主按钮这些**小面积**上。而我把它展示稿里那个
+   假桌面色 `#E4E0F0`（R−B **−14**）刷在了启动栏 + 标签条上——从上到下一整条
+   大面积，于是整屏泛紫。
+   面色是大面积的，色偏一点点就会被放大；品牌色、语义色、选中态不受这条限制。 */
+{
+  const tokens = readFileSync(resolve(root, 'design-tokens.css'), 'utf8')
+  const SURFACE = /^\s*(--mk-(?:bg|surface|paper|sidebar)):\s*(#[0-9a-fA-F]{6})/gm
+  const MAX_CAST = 6
+  for (const m of tokens.matchAll(SURFACE)) {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(m[2].slice(i, i + 2), 16))
+    const cast = Math.max(Math.abs(r - b), Math.abs(r - g), Math.abs(g - b))
+    // 深色那几个面是源仓库自己合成的紫黑（APP 没有深色可抄），不在这条里
+    if (r + g + b < 200) continue
+    if (cast > MAX_CAST) {
+      bad++
+      console.log(`✗ 面色 ${m[1]} = ${m[2]} 色偏 ${cast}（上限 ${MAX_CAST}）—— 大面积的面要中性，紫留给品牌标记 / 选中态 / 主按钮`)
+    }
+  }
+}
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
-console.log('OK: 没有死令牌')
+console.log('OK: 没有死令牌；面色都是中性的')
