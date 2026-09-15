@@ -24,15 +24,9 @@ SOURCE_CHARS = 300
 
 
 def kb_is_empty(user: str) -> bool:
-    """这个用户的知识库里一条事实都没有。
-
-    索引是按 codebook 的 mtime 缓存的，检索本身刚刚已经加载过，所以这是一次
-    字典取长度，不额外花钱。"""
-    try:
-        store, _vocab = UserMemory(user)._index()
-        return not getattr(store, "facts", None)
-    except Exception:      # noqa: BLE001 —— 读不出来就当"不确定"，按原路走
-        return False
+    """这个用户的知识库里一条事实都没有。判据在 `UserMemory.is_empty()`——
+    它是关于记忆库的事实，归数据层，不归工具层。"""
+    return UserMemory(user).is_empty()
 
 
 # **「空知识库」跟「这次没查到」是两件事。** 第 676 轮拿一个全新用户实跑续写：

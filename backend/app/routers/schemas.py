@@ -512,6 +512,11 @@ class RecallOut(BaseModel):
     facts: list[FactOut]
     took_ms: float
     terms: list[str] = Field(default_factory=list)
+    # 知识库一条事实都没有。**「没查到」和「库是空的」得分得开**：前者该劝人
+    # 换个说法再试，后者该劝人去导入。第 676 轮在写作闭环里修过一次，第 677 轮
+    # 实拍发现 `@` 引用这条路上同样在说「知识库里没找到跟"样机"相关的记录」
+    # ——那句话对一个还没导过任何东西的人是误导。
+    kb_empty: bool = False
 
 
 class IngestTextIn(BaseModel):

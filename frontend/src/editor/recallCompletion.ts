@@ -25,18 +25,29 @@ export async function recallSource(context: CompletionContext): Promise<Completi
   if (!query) return null
 
   let facts: api.Fact[]
+  let kbEmpty = false
   try {
     const res = await api.recall(query, 8)
     facts = res.facts
+    kbEmpty = !!res.kb_empty
   } catch {
     return null
   }
   if (context.aborted) return null
   if (facts.length === 0) {
+    // **「库是空的」跟「这一次没查到」得说成两件事。** 前者换多少个说法都是空，
+    // 该说的是「去导入」；后者才值得换个词再试。第 677 轮实拍：一个还没导过
+    // 任何东西的新用户按 `@样机`，看到的是「知识库里没找到跟"样机"相关的记录」
+    // ——听起来像是这个词不对。（写作闭环里的同一个坑在第 676 轮修过。）
     return {
       from: match.from,
       to: match.to,
-      options: [{ label: `知识库里没找到跟"${query}"相关的记录`, apply: () => {} }],
+      options: [{
+        label: kbEmpty
+          ? '知识库还是空的——先导入会议记录或笔记，这里才有东西可引'
+          : `知识库里没找到跟"${query}"相关的记录`,
+        apply: () => {},
+      }],
       filter: false,
     }
   }

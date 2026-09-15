@@ -39,7 +39,7 @@ def recall(body: RecallIn, user: str = Depends(current_user)):
     mem = UserMemory(user)
     rows, terms, took = mem.recall(body.query, limit=body.limit, scope=body.scope)
     return RecallOut(facts=rows_to_facts(mem, rows), took_ms=round(took, 3),
-                     terms=terms)
+                     terms=terms, kb_empty=mem.is_empty())
 
 
 @router.get("/stats", response_model=StatsOut)

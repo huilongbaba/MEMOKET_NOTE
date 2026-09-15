@@ -282,6 +282,23 @@ class UserMemory:
         self._cache[key] = (mtime, store, vocab)
         return store, vocab
 
+    def is_empty(self) -> bool:
+        """这个用户的知识库一条事实都没有。
+
+        **「库是空的」跟「这一次没查到」是两件事**：后者该劝人换个说法再试，
+        前者该劝人去导入。分不开的时候，写作闭环会对着空库反复换检索路径
+        （第 676 轮实跑量到白烧一轮），`@` 引用会说「没找到跟 X 相关的记录」
+        （第 677 轮实拍）——两句话对一个还没导过任何东西的人都是误导。
+
+        索引按 mtime 缓存，检索本身刚加载过，所以这是一次字典取长度；读不出来
+        一律当「不是空的」，宁可少说一句也不要对着读失败告诉用户「你没有材料」。
+        """
+        try:
+            store, _vocab = self._index()
+            return not getattr(store, "facts", None)
+        except Exception:      # noqa: BLE001
+            return False
+
     def invalidate(self) -> None:
         self._cache.pop(str(self.path), None)
 

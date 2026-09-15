@@ -472,3 +472,24 @@ def test_没有材料时占位符不再被判成谎话(monkeypatch):
     st = St(); st.facts = ["某条材料"]
     monkeypatch.setattr(mt.UserMemory, "_index", lambda self: (Store({}), None))
     assert grounding.no_placeholder(st) is not None
+
+
+def test_recall_接口把空库和没查到分开告诉前端(monkeypatch):
+    """第 677 轮：`@` 引用那条路上说的是「知识库里没找到跟"样机"相关的记录」，
+    对一个还没导过任何东西的人是误导——他会换词再试，试多少次都是空。
+    判据放在 `UserMemory.is_empty()`（关于记忆库的事实归数据层），
+    `/api/memory/recall` 把它带给前端。"""
+    from app.database.kite.kite_memory import UserMemory
+
+    class Store:
+        def __init__(self, facts): self.facts = facts
+
+    monkeypatch.setattr(UserMemory, "_index", lambda self: (Store({}), None))
+    assert UserMemory("u").is_empty()
+
+    monkeypatch.setattr(UserMemory, "_index", lambda self: (Store({"f": 1}), None))
+    assert not UserMemory("u").is_empty()
+
+    def boom(self): raise RuntimeError("索引读不出来")
+    monkeypatch.setattr(UserMemory, "_index", boom)
+    assert not UserMemory("u").is_empty(), "读失败不能说成「你没有材料」"

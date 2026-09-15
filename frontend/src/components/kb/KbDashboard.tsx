@@ -56,7 +56,12 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
         <KbSection title={`${hits.facts.length} 条结果`}
                    extra={<span className="muted" style={{ fontSize: 12 }}>{Math.round(hits.took)} ms{hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}</span>}>
           <FactList facts={hits.facts} actions={actions} />
-          {hits.facts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>换个说法，或者到「事实表」按主题 / 实体筛。</p>}
+          {/* 空库上「换个说法」是句废话——换多少个说法都是空。分开说（第 677 轮） */}
+          {hits.facts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>
+            {data && data.stats.facts === 0
+              ? '知识库还是空的——先导入会议记录或笔记，这里才搜得到东西。'
+              : '换个说法，或者到「事实表」按主题 / 实体筛。'}
+          </p>}
         </KbSection>
       ) : !data ? (
         <p className="muted"><span className="spinner" /> 加载中…</p>
