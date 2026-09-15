@@ -3038,7 +3038,7 @@ export default function App() {
                   onClick={() => setPanes((p) => makeRoomForRight(p, winW, 0))}><i className="bx bx-chevrons-left" /></button>
         )}
         <div className="center-pane">
-        <div className="note-pane">
+        <div className={'note-pane' + (focusMode ? ' focus' : '')}>
         {/* 标题行固定在滚动区之上（Trilium 的 title-row 是 ScrollingContainer
             的兄弟，50px）。跟正文一起滚走的标题，滚到下面就不知道在写哪篇。 */}
         {current && (

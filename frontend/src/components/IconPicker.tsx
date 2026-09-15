@@ -8,7 +8,7 @@ export const NOTE_ICONS = [
   'bx-calendar', 'bx-time-five', 'bx-task', 'bx-check-square', 'bx-list-ul', 'bx-bulb', 'bx-target-lock', 'bx-rocket',
   'bx-briefcase', 'bx-buildings', 'bx-group', 'bx-user', 'bx-chat', 'bx-conversation', 'bx-phone', 'bx-envelope',
   'bx-code-alt', 'bx-chip', 'bx-cog', 'bx-wrench', 'bx-bar-chart-alt-2', 'bx-line-chart', 'bx-dollar-circle', 'bx-cart',
-  'bx-home', 'bx-map', 'bx-plane', 'bx-car', 'bx-coffee', 'bx-food-menu', 'bx-dumbbell', 'bx-leaf',
+  'bx-home', 'bx-map', 'bx-paper-plane', 'bx-car', 'bx-coffee', 'bx-food-menu', 'bx-dumbbell', 'bx-leaf',
   'bx-image', 'bx-music', 'bx-camera', 'bx-palette', 'bx-pencil', 'bx-paint', 'bx-brain', 'bx-lock',
 ]
 

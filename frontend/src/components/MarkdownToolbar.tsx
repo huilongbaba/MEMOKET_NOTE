@@ -22,7 +22,9 @@ const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: Editor
   { label: '<>', title: '行内代码', cmd: inlineCodeCmd },
   { label: '{ }', title: '代码块', cmd: codeBlockCmd },
   { label: '▦', title: '表格：插入 3 列空表格', cmd: tableCmd },
-  { label: '⟁', title: '流程图：插入 mermaid 图表模板', cmd: mermaidCmd },
+  // `⟁`（U+27C1）是个冷僻数学符号，字体支持看运气——实拍里被替换成了一个
+  // 像警告三角的字形。换成图标字体里真实存在的（check-icons 闸门会盯着）。
+  { label: '⟁', icon: 'bx-network-chart', title: '流程图：插入 mermaid 图表模板', cmd: mermaidCmd },
 ]
 
 /**
@@ -62,7 +64,7 @@ export default function MarkdownToolbar(
           onMouseDown={(e) => e.preventDefault()}
           onClick={onRestructure}
         >
-          {restructuring ? <span className="spinner" /> : <><i className="bx bx-magic-wand" /> 智能排版</>}
+          {restructuring ? <span className="spinner" /> : <><i className="bx bx-brush-alt" /> 智能排版</>}
         </button>
       )}
       {(onFormat || onRestructure) && <span className="tb-sep" />}
