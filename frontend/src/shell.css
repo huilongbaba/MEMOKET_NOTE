@@ -216,11 +216,13 @@
      标题、标签带、工具栏、正文一口气贴到底（第 689 轮对比实拍）。 */
   padding: var(--s-7) var(--content-margin-inline) 120px;
 }
-/* 有浮动按钮的（真笔记）正文起点往下让一行，别被按钮盖住 */
-.note-scroll.has-fb { padding-top: 8px; }
-/* 给底部 composer 让出地方：正文最后一行不该永远压在胶囊底下。
-   104（dock 高）+ 一点余量。 */
-.note-scroll.has-fb { padding-bottom: 120px; }
+/* `has-composer`：这一栏底下有那条 composer 胶囊，正文要给它让出地方，
+   否则最后一行永远压在胶囊底下。104（dock 高）+ 一点余量。
+   （**上面原来还有一条 `padding-top: 8px`**——那是给已经删掉的「浮动按钮粘性带」
+   让位的，带子第 714 轮搬走了，这条覆盖却留着，把正文顶部的白从 24 压回 8。
+   第 729 轮清掉。类名也从 `has-fb`〔floating buttons〕改成 `has-composer`：
+   **名字跟着东西走，不然下一个人读到 fb 会去找一个不存在的组件。**） */
+.note-scroll.has-composer { padding-bottom: 120px; }
 /* ribbon 的「格式」标签展开时是一条 36px 的工具栏，不要像别的标签那样有内边距 */
 .ribbon-body:has(.md-toolbar) { padding: 2px 12px 4px; }
 .ribbon-icon .bx { font-size: var(--icon-md); vertical-align: -2px; }

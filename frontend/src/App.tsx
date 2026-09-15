@@ -3163,7 +3163,7 @@ export default function App() {
             }] as RibbonTab[]}
           />
         )}
-        <div className={'note-scroll' + (current ? ' has-fb' : '')}>
+        <div className={'note-scroll' + (current ? ' has-composer' : '')}>
         <div className="note-body">
 
         {!current ? (
