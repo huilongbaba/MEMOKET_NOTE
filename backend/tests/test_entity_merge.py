@@ -165,3 +165,43 @@ def test_短的要占长的大半():
     """`安克`/`安克莱` 0.67 是真的；`app`/`Apple Watch` 0.3 是巧合。"""
     assert cands([("a", "中国", 7), ("b", "红杉中国", 15)])          # 0.5，留着让人判
     assert cands([("a", "Memoket", 28), ("b", "memo kit ai is long", 17)]) == []
+
+
+def test_判完一下之后分组要立刻是新的(monkeypatch):
+    """缓存键里不放「判过多少对」（那会让每次调用都查一次库，实测 0.445ms/次、
+    占了 98%），靠的是**判完路由会 `invalidate()`**：索引缓存一丢，
+    下次拿到的是新的 store 对象，挂在上面的分组自然不在了。
+
+    这条测的就是那个依赖——哪天有人把 `invalidate()` 从路由里拿掉，这里会红。
+    """
+    import inspect
+
+    from app.routers import kb as kb_router
+
+    src = inspect.getsource(kb_router.kb_entity_merge_decide)
+    assert "invalidate()" in src, "判完不 invalidate，合并结果要等索引自己过期才生效"
+    assert "invalidate()" in inspect.getsource(kb_router.kb_entity_merge_undo)
+
+
+def test_同一个_store_上反复取分组只算一次():
+    from app.database.kb import entities as E
+
+    class E1:
+        def __init__(self, code, name): self.code, self.name, self.aliases, self.etype = code, name, (), ""
+
+    class V:
+        entities = {"a": E1("a", "安克"), "b": E1("b", "Anker")}
+
+    class St:
+        facts = {}
+
+    calls = []
+    real = E.user_decisions
+    E.user_decisions = lambda u: (calls.append(u), ([], set()))[1]
+    try:
+        st = St()
+        for _ in range(5):
+            E.for_store(st, V)
+    finally:
+        E.user_decisions = real
+    assert len(calls) == 1, f"查了 {len(calls)} 次库，应该只有第一次算的时候查"

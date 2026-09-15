@@ -131,18 +131,22 @@ def user_decisions(user_id: str) -> tuple[list[tuple[str, str]], set[str]]:
 def for_store(store, vocab) -> EntityGroups:
     """按当前索引算一次、挂在 store 上；事实数变了再算。1220 个实体几毫秒。
 
-    缓存键带上「人判过多少对」：用户在收件箱里点了一下，下一次取分组就得是新的。
+    **人判过的合并只在算的那一次去查库**。第一版把「判过多少对」放进了缓存键，
+    于是每次调用都要开一次 sqlite ——实测命中缓存时每次 0.454ms，其中 0.445ms
+    是那次查询（98%），等于把缓存的意义抵消了；而这个函数被 `search.rank`、
+    `pages`、`notes`、`memory` 四条热路径反复调（第 668 轮量的）。
+    不需要放进键：用户在收件箱里判完一下，路由会 `UserMemory.invalidate()`，
+    索引缓存一丢、下次 `_index()` 给的是**新的 store 对象**，这个属性自然不在了。
     """
     n = len(getattr(store, "facts", {}) or {})
-    pairs, drop = user_decisions(getattr(store, "_memoket_user", "") or "")
-    key = (n, len(pairs), len(drop))
     cached = getattr(store, "_memoket_entity_groups", None)
-    if cached and cached[0] == key:
+    if cached and cached[0] == n:
         return cached[1]
+    pairs, drop = user_decisions(getattr(store, "_memoket_user", "") or "")
     count = Counter(c for f in store.facts.values() for c in f.entities)
     g = build(vocab, count, pairs, drop)
     try:
-        store._memoket_entity_groups = (key, g)
+        store._memoket_entity_groups = (n, g)
     except Exception:      # noqa: BLE001 — 挂不上就每次算
         pass
     return g
