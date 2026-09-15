@@ -144,7 +144,13 @@
   flex-shrink: 0;
   display: flex; flex-direction: column; min-height: 0;
   background: var(--left-pane-bg); color: var(--left-pane-fg);
-  border-right: 1px solid var(--subtle-border);
+  /* **分界要看得见一档。** 0.5.10 出货 CSS 里侧栏用的是
+     `border-right: 1px solid var(--line-strong)`（rgba(0,0,0,.16)），
+     比内容卡那种若有若无的线重一档——它分的是两块**大面**，不是两张卡。
+     （实拍里这条线在 mac 上看不见，因为它那边另有一条 `border-right: 0`
+     的平台分支；但 Windows 分支上是有的，而我们这边左栏和纸面只差 10 级亮度，
+     没有线就真的分不开。取它写下来的值。） */
+  border-right: 1px solid var(--mk-line-strong);
 }
 .left-pane-search { padding: 8px 8px 0; flex-shrink: 0; }
 /* 树的滚动容器。第一版把树塞在 .left-pane-search 里、外层 .shell 又是
@@ -188,8 +194,9 @@
   padding-block: 10px 2px;
   padding-inline: var(--content-margin-inline);
 }
+/* 大标题走 display 字族（见 design-tokens 里 --display 的注释）。 */
 .note-title {
-  flex: 1; font-size: var(--note-title-size); font-weight: var(--w-bold); line-height: 1.2;
+  flex: 1; font-family: var(--display); font-size: var(--note-title-size); font-weight: var(--w-bold); line-height: 1.2;
   letter-spacing: var(--ls-tight);
   border: none !important; background: transparent !important; padding: 8px 0 !important;
 }
@@ -433,9 +440,13 @@
 .left-pane-toggle .bx { transition: transform 600ms; }
 
 /* 快速搜索：一个带图标的圆角框（theme-next/shell.css:561-640） */
+/* 搜索框照 0.5.10 的 `.sb-search`：高 40、圆角 12、内边距 0 14、gap 12、
+   边线 `--home-border`（= 我们的 `--mk-line-strong`）、底色是**画布**不是侧栏色
+   ——它要从侧栏底上「浮」出来。 */
 .quick-search {
-  display: flex; align-items: center; gap: var(--s-4); padding: 0 6px 0 10px;
-  border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--main-bg);
+  display: flex; align-items: center; gap: var(--s-5); padding: 0 var(--s-6) 0 var(--s-6);
+  height: 40px;
+  border-radius: var(--r); border: 1px solid var(--mk-line-strong); background: var(--main-bg);
   transition: background .12s, border-color .12s, box-shadow .12s;
 }
 .quick-search:hover { border-color: var(--ink-3); }

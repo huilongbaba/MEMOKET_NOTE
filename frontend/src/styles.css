@@ -691,13 +691,20 @@ h2:first-child { margin-top: 0; }
 .seg button.on { background: var(--left-pane-item-selected-bg); color: var(--fg);
                  font-weight: var(--w-semi); box-shadow: inset 0 0 0 1px var(--line); }
 
+/* **尺寸照 0.5.10 正式版的 `.nav-item` / `.sb-folder-row`**（第 712 轮）。
+   原来这套是从 **Trilium 的 tree.css** 抄的（行高 2.4em、圆角 5px、字重 600）——
+   跟 memoket-desktop 没有关系，只是当初改造的起点是 Trilium。
+   他们的值：`height: 36px; padding: 0 8px; border-radius: 10px; gap: 6px;
+   font-size: 14px; font-weight: 500`，行与行之间留 4px。
+   字重从 600 降到 500 是这一刀里最明显的一处：一列全是 600 的标题，
+   整个左栏都是「重」的。 */
 .tree-node {
   transition: background .12s, color .12s, box-shadow .12s;
 
-  display: flex; align-items: center; gap: var(--s-2);
-  height: 2.4em; padding: var(--s-2); padding-inline-end: 6px;
+  display: flex; align-items: center; gap: var(--s-3);
+  height: 36px; padding: 0 var(--s-4); margin-bottom: var(--s-1);
   border-radius: var(--r-sm); cursor: pointer;
-  font-size: var(--t-md); font-weight: var(--w-semi); color: var(--left-pane-fg);
+  font-size: var(--t-base); font-weight: var(--w-med); color: var(--left-pane-fg);
   /* 标题一行放不下时截断，不换行——树靠缩进表达层级，换行会把缩进读乱 */
   white-space: nowrap;
 }
@@ -705,12 +712,16 @@ h2:first-child { margin-top: 0; }
    **不加粗、不染色**。第一版是左边一道蓝杠 + 蓝字——那套令牌抄来了却
    一直没接上（--left-pane-item-* 全仓 0 处引用）。 */
 .tree-node:hover { background: var(--left-pane-item-hover-bg); }
+/* **选中态只靠一块更亮的底，不投影。** 0.5.10 写得很干脆：
+   `.nav-item.sel { background: var(--home-canvas); box-shadow: none }`，
+   实拍逐像素核对过——药丸上边是 241,240,238 直接跳到 253,253,253，
+   中间没有任何过渡行，**既没有描边也没有阴影**。
+   （原来这里是「浮起来的卡片」，那是照 Trilium theme-next 做的。） */
 .tree-node.active {
   background: var(--left-pane-item-selected-bg); color: var(--left-pane-item-selected-fg);
-  box-shadow: var(--left-pane-item-selected-shadow);
   animation: left-pane-item-select 200ms ease-out;
 }
-@keyframes left-pane-item-select { from { box-shadow: none; } }
+@keyframes left-pane-item-select { from { background: transparent; } }
 /* **选中行的图标变品牌色**——源仓库的签名动作（design-theme.css:181 / :190）。
    之前只有 chip 做了，树、标签页、面板标签都没有：选中态只靠一块底色表达，
    眼睛要找「我在哪」得先扫一遍背景。图标是一行里最先被看到的那个点。 */
@@ -762,10 +773,14 @@ h2:first-child { margin-top: 0; }
   margin-inline-start: 4px;
 }
 
-/* 克隆标记。用户得知道改这一处会让别处跟着变——不标的话他会以为那是
-   两篇不同的笔记。 */
+/* 行尾的小标：事实条数、克隆份数。**数字是数字，不是品牌标记**——
+   0.5.10 的 `.nav-item .count` 是 `12px / 400 / var(--ink-3)`、无底色无圆角，
+   一律中性。我们原来给它刷了 `--accent` 的半透明紫，于是「文件列表栏」里
+   那个 `45` 是紫的（用户第 711 轮点名「那个淡紫色太丑」的一部分）。
+   改中性；**带语义的那几个修饰类不动**（已摄入 / 被引用 / 过期是状态，
+   状态本来就该有颜色）。 */
 .tree-badge {
-  flex-shrink: 0; font-size: var(--t-xs); color: var(--accent); opacity: .75;
+  flex-shrink: 0; font-size: var(--t-xs); font-weight: var(--w-normal); color: var(--ink-2);
 }
 
 .tree-count {
@@ -854,12 +869,15 @@ h2:first-child { margin-top: 0; }
 .tree-badge.ingested.stale { color: var(--warn); opacity: 1; }
 
 /* ------------------------------------------------ 知识库：虚拟子树 + 只读笔记 */
-.tree-icon { flex-shrink: 0; color: var(--left-pane-icon); width: 18px; margin-inline-end: 4px; display: flex; align-items: center; justify-content: center; }
+/* 图标盒 20×20、字形 16——照 0.5.10 的 `.nav-item .ic`。原来是 18 的盒子里
+   放一个跟着行高走的 13.5 字形，比他们小了一圈，一行里最先被看到的那个点太弱。 */
+.tree-icon { flex-shrink: 0; color: var(--left-pane-icon); width: 20px; height: 20px; margin-inline-end: 0; display: flex; align-items: center; justify-content: center; }
+.tree-icon .bx { font-size: var(--icon-nav); }
 
 .kb-note { max-width: 760px; display: flex; flex-direction: column; gap: var(--s-6); }
 .kb-note-meta { display: flex; gap: var(--s-3); align-items: center; font-size: var(--t-sm); }
 .kb-note-id { font-size: var(--t-xs); opacity: .7; }
-.kb-note-title { margin: 0; font-size: var(--t-page); font-weight: var(--w-bold); line-height: 1.25; text-transform: none; letter-spacing: var(--ls-tight); }
+.kb-note-title { margin: 0; font-family: var(--display); font-size: var(--t-page); font-weight: var(--w-bold); line-height: 1.25; text-transform: none; letter-spacing: var(--ls-tight); }
 .kb-section { display: flex; flex-direction: column; gap: var(--s-5); }
 /* **页面里的分组标题是「大标题」，不是小标签**（第 689 轮照源仓库实拍改的）。
    它那边两种都有：`.lib-title`「全部文件」是 28px 的粗标题，`.doc-h` 才是
