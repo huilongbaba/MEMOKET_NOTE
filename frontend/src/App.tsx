@@ -343,7 +343,9 @@ export default function App() {
   // rightPaneWidth / leftPaneVisible，我们同一套思路）。focusMode 保留为
   // 「两个都收」的快捷方式。
   const [panes, setPanes] = useState(() => {
-    const d = { leftW: 260, rightW: 340, leftOn: true, rightOn: true }
+    // 左栏默认 280 = 0.5.10 的 `--sidebar-width`（第 716 轮）。原来是 260——
+    // 配上 16px 的内边距（也是他们的值）之后，260 会把树标题挤得更早截断。
+    const d = { leftW: 280, rightW: 340, leftOn: true, rightOn: true }
     try {
       const raw = localStorage.getItem('memoket-note-panes:' + api.getUser())
       return raw ? { ...d, ...(JSON.parse(raw) as Partial<typeof d>) } : d
