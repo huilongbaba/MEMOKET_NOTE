@@ -2831,7 +2831,7 @@ export default function App() {
         >
           <div className="row" style={{ gap: 6 }}>
             <span className="spinner" />
-            <strong style={{ fontSize: 'var(--t-md)' }}>🚀 {harness.folderName}</strong>
+            <strong style={{ fontSize: 'var(--t-md)' }}><i className="bx bx-folder-open" /> {harness.folderName}</strong>
           </div>
           <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 0' }}>
             {harness.currentSectionTitle ? `正在写：${harness.currentSectionTitle}` : '正在启动…'}
@@ -3489,10 +3489,10 @@ export default function App() {
             ))}
         </span>
         {loading === 'note-harness' && noteHarnessStatus && (
-          <span style={{ color: 'var(--accent)' }}>🤖 {noteHarnessStatus}</span>
+          <span style={{ color: 'var(--accent)' }}><i className="bx bx-bot" /> {noteHarnessStatus}</span>
         )}
-        {pausedRun && <span style={{ color: 'var(--accent)' }}>⏸ 等你处置</span>}
-        {harness?.running && <span style={{ color: 'var(--accent)' }}>🚀 {harness.folderName}</span>}
+        {pausedRun && <span style={{ color: 'var(--accent)' }}><i className="bx bx-pause-circle" /> 等你处置</span>}
+        {harness?.running && <span style={{ color: 'var(--accent)' }}><i className="bx bx-folder-open" /> {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
           {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.total > 0 ? ` 第 ${Math.min(jobInfo.done + 1, jobInfo.total)}/${jobInfo.total} 块` : ''}{jobInfo.eta > 0 ? ` · 还要约 ${jobInfo.eta < 90 ? `${jobInfo.eta} 秒` : `${Math.round(jobInfo.eta / 60)} 分钟`}` : ''}{jobInfo.facts > 0 ? ` · 已抽出 ${jobInfo.facts} 条` : ''}</span>}
           {/* 红字可点：装好的包第一次开、或换了台机器没填模型，红字只说「不可达」用户不知道去哪修 */}

@@ -204,7 +204,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
       >
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 style={{ margin: 0 }}>🧩 写作 Skill</h2>
+            <h2 style={{ margin: 0 }}><i className="bx bx-extension" /> 写作 Skill</h2>
             <button onClick={onClose}>✕</button>
           </div>
         )}
@@ -323,8 +323,8 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
           <div className="stack">
             <div className="row">
               <button onClick={startNew}>+ 新建 skill</button>
-              <button onClick={() => setShowImport(true)}>📥 导入第三方 Skill</button>
-              <button onClick={() => setShowGenerate(true)}>🪄 AI 生成</button>
+              <button onClick={() => setShowImport(true)}><i className="bx bx-download" /> 导入第三方 Skill</button>
+              <button onClick={() => setShowGenerate(true)}><i className="bx bx-brush-alt" /> AI 生成</button>
             </div>
             {skills.map((sk, i) => (
               <div key={sk.id} className="card">

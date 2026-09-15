@@ -18,7 +18,7 @@ const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: Editor
   { label: '☑', title: '任务列表', cmd: taskListCmd },
   // 这一排是**单色字形**（B / I / H1 / " / • / 1. / ☑ / <> / { } / ▦）。
   // 原来这里是彩色 emoji 🔗，在一排灰字里格外扎眼，深色下也不跟主题。
-  { label: '🔗', icon: 'bx-link', title: '链接 (⌘/Ctrl+K)', cmd: linkCmd },
+  { label: 'link', icon: 'bx-link', title: '链接 (⌘/Ctrl+K)', cmd: linkCmd },
   { label: '<>', title: '行内代码', cmd: inlineCodeCmd },
   { label: '{ }', title: '代码块', cmd: codeBlockCmd },
   { label: '▦', title: '表格：插入 3 列空表格', cmd: tableCmd },

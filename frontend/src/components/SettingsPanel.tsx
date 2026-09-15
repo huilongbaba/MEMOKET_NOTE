@@ -162,7 +162,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       >
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 style={{ margin: 0 }}>⚙️ 设置</h2>
+            <h2 style={{ margin: 0 }}><i className="bx bx-cog" /> 设置</h2>
             <button onClick={onClose}>✕</button>
           </div>
         )}
