@@ -84,6 +84,35 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
    `--quick-search-bg` / `--quick-search-hover-bg` / `--right-pane-heading`
    三个立刻没人用了——**定义了没人用的令牌会让下一个人以为它是活的**。 */
 {
+/* **双层光晕**：`X:focus-within { box-shadow }` 的外壳里，那个 input 必须
+   `box-shadow: none`。
+
+   全局 `input:focus` 会给每个输入框一圈 3px 光晕。当输入框被包在一个自己也画
+   边框 + 光晕的外壳里（搜索框都是这个形状），子元素的光晕**画在外壳的边线之后**，
+   会把外壳那条边线整条盖掉——看着像「边框只画了两个角」。
+   这个东西**靠眼睛发现不了**（两种紫，差别在一条 1px 线上），第 702 轮是拿
+   `rect:` 探针量出来的，两处都中招。 */
+{
+  const cssFiles = walk(root).filter((f) => f.endsWith('.css'))
+  for (const f of cssFiles) {
+    const rel = f.replace(root + '/', '')
+    const css = readFileSync(f, 'utf8')
+    const all = cssFiles.map((x) => readFileSync(x, 'utf8')).join('\n')
+    for (const m of css.matchAll(/^(\S[^{\n]*?):focus-within\s*\{([^}]*)\}/gm)) {
+      if (!/box-shadow\s*:/.test(m[2])) continue
+      const base = m[1].trim()
+      // 外壳里有 input 才算（有些 :focus-within 只是用来控制按钮的显隐）
+      const inner = new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+input\\b[^{]*\\{([^}]*)\\}')
+      const hit = inner.exec(all)
+      if (!hit) continue
+      if (/box-shadow\s*:\s*none/.test(hit[1])) continue
+      bad++
+      console.log(`✗ ${rel} ${base}:focus-within 自己有光晕，而 ${base} input 没写 box-shadow: none`
+        + ` —— 里面那圈会盖掉外壳的边线（看着像「边框只画了两个角」）`)
+    }
+  }
+}
+
   const cssAll = walk(root).filter((f) => f.endsWith('.css'))
     .map((f) => readFileSync(f, 'utf8')).join('\n')
   /* 定义不一定在行首：`.settings-dialog { --panel-dialog-w: 480px; }` 这种单行规则里

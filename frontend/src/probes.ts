@@ -21,10 +21,33 @@ import type { Note, TreeRow } from './api'
 export type ProbeCtx = Record<string, any>
 
 export function runProbe(probe: string, ctx: ProbeCtx): void {
+  /* 用 `;;` 串起来就是「先跑这个再跑那个」：`open:kb;;rect:.kb-search`。
+     （`|` 已经被 `openclick:` 占了，别复用。）
+     有了它，量一个**要先导航才存在**的元素不用再为每种组合新写一个探针。 */
+  if (probe?.includes(';;')) { for (const one of probe.split(';;')) runProbe(one, ctx); return }
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
   const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
   if (!harnessProbeDone.current && !/:(notes|meetings|imports)(:|$)/.test(probe) && api.memoryScope() !== 'all') api.setMemoryScope('all')
+  /* `rect:<CSS 选择器>`：把匹配到的元素的几何和几条关键计算样式打进
+     `[client:info]` 日志。**这条不是为了截图，是为了量。**
+     对着截图反推「这条边线到底是谁画的」会推错——第 702 轮我在知识库搜索框上
+     推了四五轮才发现该直接问 DOM。选择器里的逗号要用 `~` 代替（URL 参数）。 */
+  if (probe?.startsWith('rect:')) {
+    const sel = decodeURIComponent(probe.slice(5)).replace(/~/g, ',')
+    setTimeout(() => {
+      const out: string[] = []
+      document.querySelectorAll(sel).forEach((el, k) => {
+        const r = el.getBoundingClientRect()
+        const c = getComputedStyle(el)
+        const keys = ['height', 'padding', 'border', 'borderRadius', 'background', 'backgroundColor', 'boxSizing', 'flex', 'width', 'overflow', 'position'] as const
+        out.push(`[${k}] <${el.tagName.toLowerCase()}.${(el.className || '').toString().split(' ').join('.')}> `
+          + `x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.width.toFixed(1)} h=${r.height.toFixed(1)} | `
+          + keys.map((q) => `${q}=${(c as any)[q]}`).join(' ; '))
+      })
+      void api.clientLog('info', 'rect ' + sel + '\n' + (out.join('\n') || '（没匹配到）'))
+    }, 4000)
+  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {

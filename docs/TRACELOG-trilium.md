@@ -857,3 +857,37 @@ padding 24 抄三遍，值已经漂了——写作计划是 `90vw`/`80vh`，Skil
 照样报得出来。
 
 前端 224 + 25 条 check 全绿；改的五处各自实拍复核过。
+
+## [718] 第 702 轮：搜索框的边框「只画了两个角」，是双层光晕（2026-09-15）
+
+知识库首页实拍：聚焦的搜索框只有左右两个圆角是品牌紫，上下两条直边没有。
+
+**对着截图猜了四五轮，全错。** 猜过 input 比外壳高、猜过 `width:100%` 在 flex 里
+撑爆、猜过截图被纵向重采样（拿旁边卡片的 1px 横边线对照，排除了）。
+
+于是加了个 `rect:<选择器>` 探针，把 `getBoundingClientRect` 和 height / padding /
+border / box-sizing / flex / overflow 打进 `[client:info]`。一量就清楚：
+
+```
+<div.kb-search> y=74.0 h=40.0  border=1px solid rgb(98,15,240)
+<input>         y=75.0 h=38.0  backgroundColor=rgba(0,0,0,0)
+```
+
+高度严丝合缝，底色也真是透明——**盖住边线的不是盒子，是光晕**。
+全局 `input:focus` 给每个输入框一圈 3px `--brand-weak`；这个 input 是外壳的
+子元素，**光晕画在外壳的边线之后**，于是把那条 1px 的紫边整条盖掉，
+只剩光晕够不到的左右两端露出来。
+
+修：`.kb-search input { box-shadow: none !important }`。
+左栏 `.quick-search` 是同一个形状、同一个毛病，一起修。
+
+**上闸门**：`check-ui-tokens` 加「双层光晕」一条——`X:focus-within` 自己画光晕的，
+`X input` 必须写 `box-shadow: none`。变异验证过。
+这种东西**靠眼睛发现不了**：两种紫，差别在一条 1px 线上，不量看不出是谁盖了谁。
+
+顺手给探针加了 `;;`：`open:kb;;rect:.kb-search` = 先导航再量，
+省得为每种「要先到某一页才存在的元素」新写一个探针。
+
+规范 §5 补第 5 条：**实拍告诉你哪里不对，量才告诉你为什么。**
+
+前端 224 + 25 条 check 全绿。

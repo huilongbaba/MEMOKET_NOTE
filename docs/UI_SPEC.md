@@ -504,7 +504,7 @@ Skill 是 `92vw`/`84vh`，**没有任何理由不一样**。
 
 ## 5. 怎么验
 
-1. `cd frontend && npm test`（tsc + eslint + vitest + 23 条 check 脚本）；
+1. `cd frontend && npm test`（tsc + eslint + vitest + 25 条 check 脚本）；
    后端 `pytest` 不该受影响，但照跑。
 2. **闸门 `check-ui-tokens`**：扫 `src/**/*.{css,ts,tsx}`，除 `design-tokens.css`
    外出现**字面颜色 / 字号 / 字重 / 圆角**就失败（CSS 和 tsx 内联样式都查），
@@ -517,7 +517,17 @@ Skill 是 `92vw`/`84vh`，**没有任何理由不一样**。
    （见 §1.3 表）。改任何颜色令牌之后重算这几对：白字/主按钮（亮+暗）、
    `--ink-2`/纸面、`--ink-2`/侧栏、`--ink-3`/纸面、`--ink`/纸面、`--brand`/纸面。
    正文级要 ≥4.5，纯装饰的 `--ink-3` 允许 ≥3。
-5. **闸门自己也会出错，出错就修闸门**。这一段修过三处：`check-css-classes`
+5. **量不出来就别猜：用 `rect:` 探针问 DOM。**
+   `shot.sh <user> 'open:kb;;rect:.kb-search~.kb-search%20input' <name>`
+   会把匹配到的元素的 `getBoundingClientRect` 和几条关键计算样式
+   （height / padding / border / box-sizing / flex / overflow …）打进
+   `[client:info]` 日志。选择器里的逗号写 `~`；`;;` 是「先跑这个再跑那个」
+   （量一个要先导航才存在的元素）。
+   写这条是因为第 702 轮我对着截图猜「知识库搜索框的边框为什么只画了两个角」
+   猜了四五轮全错——一量就清楚了：外壳 y=74 h=40、input y=75 h=38，
+   高度对得上，**盖住边线的是 input 自己那圈聚焦光晕**。
+   **实拍告诉你哪里不对，量才告诉你为什么。**
+6. **闸门自己也会出错，出错就修闸门**。这一段修过三处：`check-css-classes`
    把注释里的 `.cat-chip` 和 data URI 里的 `www.w3.org` 当成了选择器；
    `check-ui-tokens` 去注释之后行号偏移、报错位置是错的。
    **闸门不该被散文和 URL 绊倒。**

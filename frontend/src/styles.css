@@ -1087,7 +1087,13 @@ input[type=file]:hover { border-color: var(--accent); }
    `color-mix(--accent 18%)`——同一个意思两种写法，深浅两套下还不一致。 */
 .kb-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-weak); }
 .kb-search > .bx { color: var(--muted); font-size: var(--t-xl); }
-.kb-search input { flex: 1; border: none !important; background: transparent !important; padding: 11px 0 !important; font-size: var(--t-lg); }
+/* `box-shadow: none`：**外壳已经有一圈光晕了**（`:focus-within` 那条），里面这个
+   input 自己还会吃到全局 `input:focus` 的 3px 光晕——它是子元素、画在外壳的
+   边线之后，于是把外壳那圈品牌色边线整条盖掉，只剩光晕够不到的左右两端还是紫的。
+   实拍看着像「边框只画了两个角」，对着图猜了四五轮，最后是 `rect:` 探针量出来的：
+   外壳 y=74 h=40，input y=75 h=38 —— 高度对得上，盖住边线的是**光晕**不是盒子
+   （第 702 轮）。 */
+.kb-search input { flex: 1; border: none !important; background: transparent !important; box-shadow: none !important; padding: 11px 0 !important; font-size: var(--t-lg); }
 .kb-search input:focus-visible { outline: none; }
 /* 五张卡固定五列在 820px 窗口里每张只剩 130px，「1996-03 → 2026-12」折成三行把卡撑高（第 206 轮实拍）——
    放不下就换行 */

@@ -441,7 +441,10 @@
 .quick-search:hover { border-color: var(--ink-3); }
 .quick-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-weak); }
 .quick-search > .bx { color: var(--ink-3); font-size: var(--icon-md); flex-shrink: 0; }
-.quick-search input { flex: 1; min-width: 0; border: none !important; background: transparent !important; padding: 6px 4px !important; font-size: var(--t-md); }
+/* `box-shadow: none` 的理由跟 `.kb-search` 那条一样：外壳有光晕，里面的 input
+   不能再吃一圈全局 `input:focus` 的光晕——子元素画在后面，会把外壳的边线盖掉。
+   闸门 `check-ui-tokens` 的「双层光晕」那条查这个。 */
+.quick-search input { flex: 1; min-width: 0; border: none !important; background: transparent !important; box-shadow: none !important; padding: 6px 4px !important; font-size: var(--t-md); }
 .quick-search input:focus-visible { outline: none; }
 
 /* 标签装不下时的左右滚动钮（Trilium tab_row 的 ◀ ▶） */
