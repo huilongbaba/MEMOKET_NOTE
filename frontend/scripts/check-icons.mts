@@ -12,6 +12,7 @@
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { corpus } from './_corpus.mts'
 
 const root = resolve(import.meta.dirname, '../src')
 const css = readFileSync(resolve(import.meta.dirname, '../node_modules/boxicons/css/boxicons.min.css'), 'utf8')
@@ -27,7 +28,7 @@ const walk = (d: string, out: string[] = []) => {
 }
 
 let bad = 0
-for (const f of walk(root)) {
+for (const f of corpus(walk(root), 70, '源文件')) {
   if (!/\.(tsx?|css)$/.test(f)) continue
   const rel = f.replace(root + '/', '')
   readFileSync(f, 'utf8').split('\n').forEach((line, i) => {

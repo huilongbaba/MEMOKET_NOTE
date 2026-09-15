@@ -10,6 +10,7 @@
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { corpus } from './_corpus.mts'
 
 const root = resolve(import.meta.dirname, '../src')
 const walk = (d: string, out: string[] = []) => {
@@ -50,7 +51,7 @@ const FUNC = /\b(?:rgba?|hsla?)\s*\(/g
 const SHAPE = /(?:border-radius:[^;}]*?\b[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *['"]?[0-9]+|borderRadius: *['"]?[0-9]+|fontWeight: *['"]?[0-9]{3}\b|lineHeight: *['"][0-9.]+['"]|fontFamily: *['"][^'"]*(?:monospace|sans-serif|serif)|gap: *[0-9]+px|z-index: *[0-9]+|letter-spacing: *[-0-9.]+em)/g
 
 let bad = 0
-for (const f of walk(root)) {
+for (const f of corpus(walk(root), 70, '源文件')) {
   if (!/\.(css|tsx?)$/.test(f)) continue
   const rel = f.replace(root + '/', '')
   if (ALLOW[rel]) continue
@@ -93,7 +94,7 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
    这个东西**靠眼睛发现不了**（两种紫，差别在一条 1px 线上），第 702 轮是拿
    `rect:` 探针量出来的，两处都中招。 */
 {
-  const cssFiles = walk(root).filter((f) => f.endsWith('.css'))
+  const cssFiles = corpus(walk(root).filter((f) => f.endsWith('.css')), 3, '样式表')
   for (const f of cssFiles) {
     const rel = f.replace(root + '/', '')
     const css = readFileSync(f, 'utf8')
@@ -113,7 +114,7 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
   }
 }
 
-  const cssAll = walk(root).filter((f) => f.endsWith('.css'))
+  const cssAll = corpus(walk(root).filter((f) => f.endsWith('.css')), 3, '样式表')
     .map((f) => readFileSync(f, 'utf8')).join('\n')
   /* 定义不一定在行首：`.settings-dialog { --panel-dialog-w: 480px; }` 这种单行规则里
      它跟在 `{` 后面。第一版只认 `^\s*`，于是把一个**真定义**报成了幽灵令牌

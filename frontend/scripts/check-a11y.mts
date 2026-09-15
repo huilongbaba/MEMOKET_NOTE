@@ -7,13 +7,14 @@
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { corpus } from './_corpus.mts'
 
 const root = resolve(import.meta.dirname, '../src')
 const walk = (d: string, out: string[] = []) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { if (!p.includes('__tests__')) walk(p, out) } else if (p.endsWith('.tsx')) out.push(p) } return out }
 // 遮罩 / 弹层容器：onClick 只是「点空白关掉」或 stopPropagation
 const BACKDROP = /palette-backdrop|'modal'|embedded-panel|stopPropagation\(\)\s*\}\s*$/
 let bad = 0
-for (const f of walk(root)) {
+for (const f of corpus(walk(root), 45, 'tsx 文件')) {   // 这条的 walk 只收 .tsx（当前 63 个）
   const s = readFileSync(f, 'utf8')
   const rel = f.replace(root + '/', '')
   // 标签到哪儿结束：`>` 得在花括号外面数（onClick={() => …} 里的箭头不算）

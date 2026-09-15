@@ -13,6 +13,7 @@
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { corpus } from './_corpus.mts'
 
 const root = resolve(import.meta.dirname, '../src')
 const walk = (d: string, out: string[] = []) => {
@@ -59,7 +60,7 @@ let bad = 0
 
 // ② 给人看的文案不许写死 mac 符号
 {
-  for (const f of walk(root)) {
+  for (const f of corpus(walk(root), 70, '源文件')) {
     if (!/\.tsx?$/.test(f) || f.endsWith('shortcuts.ts') || f.endsWith('util/keys.ts')) continue
     const rel = f.replace(root + '/', '')
     readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
