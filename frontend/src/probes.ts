@@ -48,6 +48,22 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       void api.clientLog('info', 'rect ' + sel + '\n' + (out.join('\n') || '（没匹配到）'))
     }, 4000)
   }
+  /* `composer:<一句话>`：往底部 composer 里打一句话再回车。
+     第 714 轮加的「发送」是一条**新的代码路径**，改完得真跑一次看请求发没发出去
+     （日志里找 `POST /api/compose/block`），不能只靠截图看长相。 */
+  if (probe?.startsWith('composer:') && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const text = decodeURIComponent(probe.slice(9))
+    const n = notes.find((x) => (x.content ?? '').length > 80) ?? notes[0]
+    void switchTo(n).then(() => setTimeout(() => {
+      const el = document.querySelector('.composer-input') as HTMLInputElement | null
+      if (!el) { void api.clientLog('warn', 'composer 探针：找不到输入框', '', 'probe'); return }
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+      setter?.call(el, text)                                   // React 受控 input：要走原型上的 setter 才触发 onChange
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      setTimeout(() => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 400)
+    }, 1500))
+  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {
