@@ -106,5 +106,24 @@ for (const f of corpus(walk(root), 70, '源文件')) {
     }
   }
 }
+/* **标签开头那个符号也是伪装成文字的图标。**（第 717 轮，硬规矩第 17 条的同一件事）
+   `<button>+ 新建 skill</button>`、`<button>＋ 补一条</button>`——加号是用系统字体
+   画的，跟旁边一屏 lucide 的笔形对不上。上一条判据只认「整个标签就是一个符号」，
+   漏掉了「符号 + 文字」这种。
+   判据同样收窄：只认**开头**的那几个**动作类**符号（加 / 叉 / 对钩 / 上下箭头），
+   后面还得跟一个空格。句子中间的箭头（「旧 → 新」）是内容，不碰。 */
+{
+  const LEAD_GLYPH = />([+＋✕×✓↑↓])\s+[^<>{}]{1,20}<\/(button|a)>/g
+  for (const f of walk(root)) {
+    if (!/\.tsx$/.test(f) || f.includes('__tests__')) continue
+    const rel = f.replace(root + '/', '')
+    const src = stripComments(readFileSync(f, 'utf8'))
+    for (const m of src.matchAll(LEAD_GLYPH)) {
+      const lineNo = src.slice(0, m.index).split('\n').length
+      bad++
+      console.log(`✗ ${rel}:${lineNo} 标签开头的 ${m[1]} 是个字符不是图标 —— 用 <Icon n="bx-…" />`)
+    }
+  }
+}
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
 console.log('OK: 图标名都存在，也没有彩色 emoji 当图标')

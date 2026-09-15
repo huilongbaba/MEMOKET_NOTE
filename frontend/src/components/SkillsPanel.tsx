@@ -321,7 +321,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
         ) : (
           <div className="stack">
             <div className="row">
-              <button onClick={startNew}>+ 新建 skill</button>
+              <button onClick={startNew}><Icon n="bx-plus" /> 新建 skill</button>
               <button onClick={() => setShowImport(true)}><Icon n="bx-download" /> 导入第三方 Skill</button>
               <button onClick={() => setShowGenerate(true)}><Icon n="bx-brush-alt" /> AI 生成</button>
             </div>

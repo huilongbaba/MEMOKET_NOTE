@@ -125,7 +125,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
         <div className="stack" style={{ gap: 6 }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
             <strong style={{ fontSize: 'var(--t-sm)' }}>这篇贡献的事实{kb ? ` · ${kb.facts.length} 条` : ''}</strong>
-            {adding === null && <button onClick={() => setAdding('')} style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }}>＋ 补一条</button>}
+            {adding === null && <button onClick={() => setAdding('')} style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }}><Icon n="bx-plus" /> 补一条</button>}
           </div>
           {adding !== null && (
             <div className="stack" style={{ gap: 4 }}>
