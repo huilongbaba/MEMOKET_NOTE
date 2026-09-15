@@ -5,8 +5,9 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { clientLog } from './api'
 import { restoreTheme } from './theme'
 import 'boxicons/css/boxicons.min.css'   // 图标字体（Trilium 同款，MIT）
-import './shell.css'   // 先：定义令牌
-import './styles.css'  // 后：老变量名指向那些令牌
+import './design-tokens.css'  // 最先：源令牌（唯一允许写字面颜色的文件，见 docs/UI_SPEC.md）
+import './shell.css'   // 再：外壳令牌指向源令牌
+import './styles.css'  // 最后：老变量名指向那些令牌
 
 restoreTheme()
 // 探针下报一次首帧耗时（从文档开始加载到 React 首次渲染完成）——包体瘦身有没有效，看这个数

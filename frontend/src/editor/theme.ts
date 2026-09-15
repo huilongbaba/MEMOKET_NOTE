@@ -15,16 +15,16 @@ export const markdownHighlight = HighlightStyle.define([
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strong, fontWeight: '700' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
-  { tag: tags.link, color: 'var(--accent, #4a7dfc)', textDecoration: 'underline' },
-  { tag: tags.url, color: 'var(--muted, #888)' },
-  { tag: tags.monospace, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', background: 'var(--card-alt, rgba(127,127,127,0.12))' },
-  { tag: tags.quote, fontStyle: 'italic', color: 'var(--muted, #888)' },
+  { tag: tags.link, color: 'var(--accent)', textDecoration: 'underline' },
+  { tag: tags.url, color: 'var(--muted)' },
+  { tag: tags.monospace, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', background: 'var(--card-alt)' },
+  { tag: tags.quote, fontStyle: 'italic', color: 'var(--muted)' },
   // NOT colored like tags.link -- a plain "- " list item isn't clickable,
   // and coloring it the same accent blue as a real link is a misleading
   // affordance (reported directly: "看起来像链接但点不了"). Only the bullet
   // marker itself gets a light tint, matching how the "- "/"1. " markers
   // are dimmed elsewhere via .cm-syntax-mark, not the list content.
-  { tag: tags.list, color: 'var(--muted, #888)' },
+  { tag: tags.list, color: 'var(--muted)' },
 ])
 
 // The literal delimiter characters (#, *, _, `, >) -- always visible, styled
@@ -74,7 +74,7 @@ export const editorTheme = EditorView.theme({
     padding: '0',
     lineHeight: '1.8',
     fontFamily: 'inherit',
-    caretColor: 'var(--fg, #111)',
+    caretColor: 'var(--fg)',
   },
   '.cm-scroller': {
     fontFamily: 'inherit',
@@ -86,26 +86,26 @@ export const editorTheme = EditorView.theme({
     margin: '10px 0',
     padding: '12px',
     borderRadius: '8px',
-    background: 'var(--card-alt, rgba(127,127,127,0.06))',
+    background: 'var(--card-alt)',
     textAlign: 'center',
     fontSize: '13px',
-    color: 'var(--muted, #888)',
+    color: 'var(--muted)',
   },
   '.cm-mermaid-widget svg': { maxWidth: '100%' },
   '.cm-mermaid-autofix-note': {
     fontSize: '11px',
-    color: 'var(--muted, #888)',
+    color: 'var(--muted)',
     fontStyle: 'italic',
     marginBottom: '6px',
   },
   '.cm-mermaid-error': { textAlign: 'left' },
-  '.cm-mermaid-error-msg': { color: 'var(--del, #d33)', marginBottom: '6px' },
+  '.cm-mermaid-error-msg': { color: 'var(--del)', marginBottom: '6px' },
   '.cm-mermaid-error-code': {
     whiteSpace: 'pre-wrap',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     fontSize: '12px',
-    color: 'var(--fg, #111)',
-    background: 'var(--card-alt, rgba(127,127,127,0.12))',
+    color: 'var(--fg)',
+    background: 'var(--card-alt)',
     borderRadius: '6px',
     padding: '8px',
     margin: 0,

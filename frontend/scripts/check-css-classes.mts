@@ -12,7 +12,11 @@ import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '../src')
 const walk = (d: string, out: string[] = []) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { if (!p.includes('__tests__')) walk(p, out) } else out.push(p) } return out }
 const files = walk(root)
-const css = files.filter((f) => f.endsWith('.css')).map((f) => readFileSync(f, 'utf8')).join('\n')
+/* 注释里的点号不是选择器。第 679 轮换肤时，注释里写的「源仓库的 `.cat-chip` 是
+   30px 高的筛选条」被当成定义了一个 `.cat-chip`，反向检查立刻判它是死样式——
+   **闸门被散文绊倒**。先去掉块注释再解析。 */
+const stripComments = (s: string) => s.replace(/\/\*[^]*?\*\//g, ' ')
+const css = files.filter((f) => f.endsWith('.css')).map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n')
 const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map((m) => m[1]))
 const HOOK_ONLY = new Set(['app-logo', 'export-back', 'export-back-result', 'mini-bars', 'tab-list', 'tl-month'])
 const PREFIX_OK = ['bx', 'cm-', 'mm-']

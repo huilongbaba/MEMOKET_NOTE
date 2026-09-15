@@ -1,0 +1,127 @@
+/* ============================================================================
+   MEMOKET NOTE — 设计令牌
+   规范见 docs/UI_SPEC.md。**这是全应用唯一允许写字面颜色的文件**
+   （闸门 scripts/check-ui-tokens.mts 会拦别处的）。
+
+   来源：memoket/memoket-desktop 的 Design System v3
+   （electron/src/renderer/src/styles/design-theme.css），它自己又对齐移动端
+   APP 的 AppTheme（品牌紫 #620FF0）。
+
+   深色写在 `@media (prefers-color-scheme: dark)` 里，**不用 `[data-theme]`**：
+   这个应用的主题切换是 Electron `nativeTheme.themeSource` 驱动系统偏好
+   （desktop/src/main.ts），网页版也因此能跟随系统。见 UI_SPEC §0。
+   ========================================================================== */
+
+:root {
+  /* ── 品牌 ───────────────────────────────────────────────────────────── */
+  --brand:       #620FF0;
+  --brand-2:     #8B5AE8;
+  --brand-press: #4A1F9C;
+  --brand-weak:  #F1EAFE;
+  --brand-text:  #620FF0;
+  /* **实心块上的品牌色单独一个令牌**（主按钮、选中的 chip）。浅色下跟 --brand
+     同值；深色下必须更暗——白字压在 #9B6BFF 上只有 3.53，不过 AA（第 679 轮实算）。
+     --brand 本身要留给图标 / 链接 / 边框，那些场合反而是越亮越清楚。 */
+  --brand-fill:  #620FF0;
+  --grad: linear-gradient(135deg, #620FF0 0%, #8B5AE8 55%, #6F5BFF 100%);
+  /* 危险 / 录音红。注意跟 --del（diff 的「删掉」红）是两件事，别合并。 */
+  --live: #F05049;
+
+  /* ── 面 ─────────────────────────────────────────────────────────────── */
+  --mk-bg:      #E4E0F0;   /* 窗口底（启动器、标签栏后面那层） */
+  --mk-surface: #FFFFFF;   /* 卡面、弹层、抬起来的选中行 */
+  --mk-paper:   #FCFBFF;   /* 正文纸面 */
+  --mk-sidebar: #F5F3F9;   /* 左树、面板 */
+
+  /* ── 字 ─────────────────────────────────────────────────────────────── */
+  --ink:   #0E1014;
+  /* 源仓库自己注明：APP 原值 #86909C 在白底只有 3.24:1、过不了 WCAG AA，
+     已调成 #6E7682。**但那是对纯白量的**——这个应用的正文纸面是 #FCFBFF，
+     同一个值只有 4.45，差一点点。第 679 轮实算之后再暗一步：
+     纸面 5.00 / 侧栏 4.68 / 卡面 5.15，三处都过 AA。 */
+  --ink-2: #666E7A;
+  /* **--ink-3 不承载需要读的内容**（UI_SPEC §1.4）：它只做占位符、图标底色这类
+     纯装饰。原值 #8E949E 在纸面只有 2.96，连 AA 大字都不过——与其把它硬调到
+     4.5（那就跟 --ink-2 没区别了），不如把分组标题和计数这些**要读的**东西
+     改用 --ink-2，这个值只留给不用读的。 */
+  --ink-3: #7A818C;
+
+  /* ── 线与态 ─────────────────────────────────────────────────────────── */
+  --mk-line:   rgba(0, 0, 0, .10);
+  --mk-line-2: rgba(0, 0, 0, .05);
+  --mk-hover:  rgba(0, 0, 0, .04);
+  --sel:       #F1EAFE;
+
+  /* ── 语义 ───────────────────────────────────────────────────────────── */
+  --success:      #0FBD58;
+  --success-weak: rgba(15, 189, 88, .10);
+  --success-text: #0E9E49;
+  --warning:      #F0A815;
+  --warning-weak: rgba(240, 168, 21, .12);
+  --live-weak:    rgba(240, 80, 73, .12);
+
+  /* ── 阴影 ───────────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 2px rgba(33, 30, 41, .05), 0 6px 18px -10px rgba(33, 30, 41, .10);
+  --shadow-pop:  0 20px 56px -16px rgba(35, 22, 70, .30), 0 2px 8px rgba(20, 16, 40, .07);
+  --shadow-float:0 14px 40px -12px rgba(40, 24, 90, .30), 0 0 0 0.5px rgba(33, 30, 41, .07);
+  /* 主按钮那一层带品牌色的投影（UI_SPEC §2.1） */
+  --shadow-brand: 0 1px 2px rgba(20, 16, 40, .14), 0 5px 14px -6px rgba(74, 31, 156, .30);
+
+  /* ── 杂项 ───────────────────────────────────────────────────────────── */
+  --mk-backdrop:    rgba(20, 16, 40, .45);
+  --mk-thumb:       rgba(0, 0, 0, .22);
+  --mk-thumb-hover: rgba(0, 0, 0, .34);
+
+  /* ── 圆角 ───────────────────────────────────────────────────────────── */
+  --r-sm: 9px;
+  --r:    12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  /* ── 字体 ───────────────────────────────────────────────────────────── */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand:       #9B6BFF;
+    --brand-2:     #B794FF;
+    --brand-press: #8A55F5;
+    --brand-weak:  rgba(98, 15, 240, .20);
+    --brand-text:  #C9B2FF;
+    --brand-fill:  #7C46EE;      /* 白字 5.29 ✓（#9B6BFF 只有 3.53） */
+    --grad: linear-gradient(135deg, #7B3BF0 0%, #9E6BFF 55%, #6E8BFF 100%);
+    --live: #FF6A64;
+
+    --mk-bg:      #050409;
+    --mk-surface: #16131F;
+    --mk-paper:   #120F1A;
+    --mk-sidebar: #0E0B15;
+
+    --ink:   #F2EFF7;
+    --ink-2: #A39EB0;
+    --ink-3: #6C6678;
+
+    --mk-line:   rgba(255, 255, 255, .09);
+    --mk-line-2: rgba(255, 255, 255, .055);
+    --mk-hover:  rgba(255, 255, 255, .05);
+    --sel:       rgba(98, 15, 240, .18);
+
+    --success:      #34D17E;
+    --success-weak: rgba(52, 209, 126, .16);
+    --success-text: #4ADB8F;
+    --warning:      #F7B955;
+    --warning-weak: rgba(247, 185, 85, .16);
+
+    /* 深色下卡片不投影——底色本身就是分层（源仓库同样把 --shadow-card 置 none） */
+    --shadow-card: none;
+    --shadow-pop:  0 22px 60px -14px rgba(0, 0, 0, .75);
+    --shadow-float:0 16px 44px -12px rgba(0, 0, 0, .65), 0 0 0 0.5px rgba(255, 255, 255, .07);
+    --shadow-brand: 0 1px 2px rgba(0, 0, 0, .3), 0 5px 14px -6px rgba(155, 107, 255, .35);
+    --live-weak:      rgba(255, 106, 100, .16);
+    --mk-backdrop:    rgba(0, 0, 0, .6);
+    --mk-thumb:       rgba(255, 255, 255, .22);
+    --mk-thumb-hover: rgba(255, 255, 255, .34);
+  }
+}

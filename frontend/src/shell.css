@@ -10,42 +10,47 @@
  */
 
 :root {
-  --root-bg: #e8e8e8;
-  --main-bg: #ffffff;
-  --main-fg: #000000;
-  --main-border: #dbdbdb;
-  --subtle-border: rgba(0, 0, 0, .1);
-  --accented-bg: #f5f5f5;
-  --hover-item-bg: rgba(0, 0, 0, .1);
-  --hover-item-fg: #000000;
+  /* **这些名字是 Trilium 的，值已经不是了。** 第 679 轮按 docs/UI_SPEC.md 把整套
+     视觉换成 memoket-desktop 的 Design System v3，落地走的是这层别名——名字散在
+     两千多行 CSS 和几十个组件的内联样式里，全局改名是纯机械风险，而别名让整个
+     应用一步吃到新配色。源令牌在 design-tokens.css。 */
+  --root-bg: var(--mk-bg);
+  --main-bg: var(--mk-surface);
+  --main-fg: var(--ink);
+  --main-border: var(--mk-line);
+  --subtle-border: var(--mk-line-2);
+  --accented-bg: var(--mk-sidebar);
+  --hover-item-bg: var(--mk-hover);
+  --hover-item-fg: var(--ink);
 
-  --launcher-bg: #e8e8e8;
-  --launcher-fg: #000000bd;
-  --launcher-hover-fg: #000000;
-  --launcher-hover-bg: #ffffff;
-  --launcher-hover-shadow: 4px 4px 4px rgba(0, 0, 0, .075);
+  --launcher-bg: var(--mk-bg);
+  --launcher-fg: var(--ink-2);
+  --launcher-hover-fg: var(--brand);
+  --launcher-hover-bg: var(--mk-surface);
+  --launcher-hover-shadow: var(--shadow-card);
 
-  --left-pane-bg: #f2f2f2;
-  --left-pane-fg: #383838;
-  --left-pane-item-hover-bg: rgba(0, 0, 0, .032);
-  --left-pane-item-selected-bg: #ffffff;
-  --left-pane-item-selected-fg: #000000;
-  --left-pane-item-selected-shadow: 1px 1px 2px rgba(0, 0, 0, .2);
-  --left-pane-item-action-bg: rgba(0, 0, 0, .11);
-  --left-pane-item-action-hover-bg: rgba(0, 0, 0, .2);
+  --left-pane-bg: var(--mk-sidebar);
+  --left-pane-fg: var(--ink-2);
+  --left-pane-item-hover-bg: var(--mk-hover);
+  /* 选中 = 抬起来的一片白 + 图标变紫（UI_SPEC §2.3），不是刷一块背景色 */
+  --left-pane-item-selected-bg: var(--mk-surface);
+  --left-pane-item-selected-fg: var(--ink);
+  --left-pane-item-selected-shadow: var(--shadow-card);
+  --left-pane-item-action-bg: var(--mk-line);
+  --left-pane-item-action-hover-bg: var(--ink-3);
   --left-pane-icon: currentColor;
 
-  --active-tab-bg: #ffffff;
-  --tab-close-hover-bg: #c95a5a;
+  --active-tab-bg: var(--mk-surface);
+  --tab-close-hover-bg: var(--live);
   --tab-close-hover-fg: #ffffff;
 
-  --right-pane-heading: gray;
+  --right-pane-heading: var(--ink-3);
 
-  --gutter-hover: #bfbfbf;
-  --quick-search-bg: rgba(0, 0, 0, .06);
-  --quick-search-hover-bg: rgba(0, 0, 0, .1);
-  --inactive-tab-fg: #4e4e4e;
-  --active-tab-shadow: 3px 3px 6px rgba(0, 0, 0, .1), -1px -1px 3px rgba(0, 0, 0, .05);
+  --gutter-hover: var(--brand);
+  --quick-search-bg: var(--mk-hover);
+  --quick-search-hover-bg: var(--mk-line-2);
+  --inactive-tab-fg: var(--ink-2);
+  --active-tab-shadow: var(--shadow-card);
 
   /* 尺寸。desktop_layout.tsx 里写的是 53 / 40，但 theme-next 用 !important
      把它们全盖掉了：跑起来的 Trilium 是启动栏 58px、标签行 50px、标签 36px、
@@ -66,44 +71,21 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --root-bg: #1a1a1a;
-    --main-bg: #242424;
-
+    /* 深色下这些别名的**指向跟浅色完全一样**——变的是源令牌
+       （design-tokens.css 的 media 块），不是这一层。留这个块只为两件事：
+       分类色另有一套，以及少数几个深色要反着来的值。 */
     --jn-1: #3987e5; --jn-2: #d95926; --jn-3: #199e70; --jn-4: #c98500;
     --jn-5: #d55181; --jn-6: #008300; --jn-7: #9085e9; --jn-8: #e66767;
     --jn-other: #8a8a86;
-    --main-fg: #cccccc;
-    --main-border: #454545;
-    --subtle-border: #313131;
-    --accented-bg: #555555;
-    --hover-item-bg: #ffffff16;
-    --hover-item-fg: #efefef;
 
-    --launcher-bg: #1a1a1a;
-    --launcher-fg: #909090;
-    --launcher-hover-fg: #ffffff;
-    --launcher-hover-bg: #ffffff1c;
-    --launcher-hover-shadow: 4px 4px 4px rgba(0, 0, 0, .2);
-
-    --left-pane-bg: #1f1f1f;
-    --left-pane-fg: #aaaaaa;
-    --left-pane-item-hover-bg: #ffffff0d;
-    --left-pane-item-selected-bg: #ffffff25;
-    --left-pane-item-selected-fg: #dfdfdf;
-    --left-pane-item-selected-shadow: 1px 1px 2px rgba(0, 0, 0, .6);
-    --left-pane-item-action-bg: #ffffff73;
-    --left-pane-item-action-hover-bg: #ffffffa0;
-    --left-pane-icon: #c5c5c5;
-
-    --active-tab-bg: #ffffff1c;
-    --tab-close-hover-bg: #a45353;
-    --tab-close-hover-fg: #ffffff;
-    --right-pane-heading: gray;
-    --gutter-hover: #626262;
-    --quick-search-bg: rgba(255, 255, 255, .08);
-    --quick-search-hover-bg: rgba(255, 255, 255, .13);
-    --inactive-tab-fg: #7c7c7c;
+    /* 深色下选中态不投影，改成一层更亮的面（UI_SPEC §2.3） */
+    --left-pane-item-selected-bg: rgba(255, 255, 255, .06);
+    --left-pane-item-selected-shadow: none;
+    --active-tab-bg: rgba(255, 255, 255, .06);
     --active-tab-shadow: none;
+    --launcher-hover-shadow: none;
+    --left-pane-item-action-bg: rgba(255, 255, 255, .18);
+    --left-pane-item-action-hover-bg: rgba(255, 255, 255, .34);
   }
 }
 

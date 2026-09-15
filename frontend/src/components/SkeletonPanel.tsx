@@ -38,8 +38,8 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, loading, onR
             padding: '10px 12px',
             fontSize: 14,
             fontStyle: 'italic',
-            borderLeft: '3px solid var(--accent, #888)',
-            background: 'var(--card-alt, rgba(127,127,127,0.08))',
+            borderLeft: '3px solid var(--accent)',
+            background: 'var(--card-alt)',
           }}
         >
           {spine}
