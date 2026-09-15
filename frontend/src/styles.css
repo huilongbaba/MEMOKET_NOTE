@@ -1056,9 +1056,14 @@ h2:first-child { margin-top: 0; }
 .composer-dock {
   position: absolute; inset-inline: 0; bottom: 0; z-index: var(--z-float);
   display: flex; justify-content: center; align-items: flex-end;
-  height: 104px; padding: 0 var(--s-6) var(--s-7);
+  height: 104px; padding: 0 var(--content-margin-inline) var(--s-7);
   pointer-events: none;
 }
+/* **专注模式下正文收成一条 880 的窄列、靠左**（`.note-pane.focus .note-scroll > *`），
+   composer 还居中在整个面板上就飘到正文右边去了（第 722 轮实拍）。
+   跟着正文那一列走：同样靠左、同样的上限。 */
+.note-pane.focus .composer-dock { justify-content: flex-start; }
+.note-pane.focus .composer { width: min(760px, 880px, 100%); }
 /* 遮罩：正文滚到底下时淡出，不是被硬切一刀（第 701 轮那条教训的同一个道理）。 */
 .composer-dock::before {
   content: ''; position: absolute; inset: 0; z-index: 0;
