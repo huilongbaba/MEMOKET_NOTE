@@ -167,7 +167,20 @@ _SPEAKER_LABEL = re.compile(r"Speaker [A-Z]")
 
 
 def unusable_shape(text: str) -> str | None:
-    """Why this fact can't be written from, or None if it can."""
+    """Why this fact can't be written from, or None if it can.
+
+    **这是形状上的信号，不是「有没有用」的判决。** 第 667 轮抽样逐条读过真库里
+    被它标记的 3256 条，四类各看六条：
+
+    * `太短` 里有「这款手机的价格是2999元。」「用户量级几千的量级。」——**又短又有用**；
+    * `是提问不是事实` 里有「Speaker C 说无论如何这个项目开发就要做 EWT，对吧？」
+      ——反问句，里面是个真判断；
+    * `口语填充` 里有一段关于协作模式的实质观察，只是夹着「嗯嗯」。
+
+    所以这个函数的产出**只能用来报数和排序，不能用来过滤召回**。真去量过：
+    召回结果里 10.6% 被它标记（全库基线 16%），看起来「滤掉就干净了」，
+    可滤掉的同时会把 2999 元那种句子一起滤掉——**而那正是这个产品存在的理由**。
+    """
     if len(text) < MIN_USEFUL_CHARS:
         return "太短"
     if _FILLER.search(text):
