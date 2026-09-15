@@ -4,6 +4,7 @@ import type { Fact, NoteBrief } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
 import Highlight from './Highlight'
+import Icon from './Icon'
 
 /** 没输入时的快捷命令：Trilium 的 jumpToNote 空态列最近笔记，我们再加几个
  * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。 */
@@ -161,7 +162,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
     const i = idx++
     return (
       <div key={key} className={'palette-item' + (i === activeIndex ? ' active' : '')} onClick={() => choose(i)}>
-        <i className={'bx ' + icon} /> {label}
+        <Icon n={icon} /> {label}
       </div>
     )
   }

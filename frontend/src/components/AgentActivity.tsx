@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { NoteHarnessToolCall } from '../api'
+import Icon from './Icon'
 
 /** 一轮里 agent 干了什么。按轮聚合而不是按事件平铺——用户关心的是
  * "这一轮它查了什么、改了什么、打了几分、然后决定下一轮怎么跑"这条
@@ -317,7 +318,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0 6px' }}>
                 {(r.dropped ?? []).map((d, i) => (
                   <li key={i} className="muted" style={{ display: 'flex', gap: 5, lineHeight: 1.55 }}>
-                    <i className="bx bx-x" style={{ flexShrink: 0 }} />
+                    <Icon n="bx-x" style={{ flexShrink: 0 }} />
                     <span>{d}</span>
                   </li>
                 ))}

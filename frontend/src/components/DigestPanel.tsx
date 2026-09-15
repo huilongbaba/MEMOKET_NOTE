@@ -4,6 +4,7 @@ import { createNote, digest, memoryScope, SCOPE_LABEL, type MemoryScope, setNote
 import type { Digest } from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
+import Icon from './Icon'
 
 const RANGES = [
   { label: '最近 7 天', days: 7 },
@@ -94,7 +95,7 @@ export default function DigestPanel() {
             </p>
             <span style={{ flex: 1 }} />
             {/* 回顾是一次性的，关掉页就没了——想留就存成一篇笔记，之后还能续写、引用 */}
-            <button className="chip chip-action" disabled={saving || result.fact_count === 0} title={result.fact_count === 0 ? '没有事实，没什么可存的' : undefined} onClick={() => void saveAsNote()}><i className="bx bx-save" /> 存为笔记</button>
+            <button className="chip chip-action" disabled={saving || result.fact_count === 0} title={result.fact_count === 0 ? '没有事实，没什么可存的' : undefined} onClick={() => void saveAsNote()}><Icon n="bx-save" /> 存为笔记</button>
           </div>
           <MarkdownEditor content={result.summary} readOnly />
         </div>

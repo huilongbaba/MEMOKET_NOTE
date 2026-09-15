@@ -5,6 +5,7 @@ import { isSpeakerTag } from '../../util/kbNoise'
 import { kbTopic, type KbTopicPage } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions, MissingPage } from './KbBits'
 import LocalGraph from './LocalGraph'
+import Icon from '../Icon'
 
 export default function TopicPage({ code, actions }: { code: string; actions: KbActions }) {
   const [p, setP] = useState<KbTopicPage | null | undefined>(undefined)
@@ -24,7 +25,7 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
           <a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:topics') }}>主题</a>
           {p.parents.map((pp) => <span key={pp}> / <a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:topic:' + pp) }}>{pp}</a></span>)}
         </div>
-        <h2 className="kb-note-title"><i className="bx bx-hash muted" /> {p.code}</h2>
+        <h2 className="kb-note-title"><Icon n="bx-hash" className="muted" /> {p.code}</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>
           {p.facts_total} 条事实{p.aliases.length ? ' · 别名：' + p.aliases.join('、') : ''}{p.status !== 'canonical' ? ' · ' + p.status : ''}
         </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { factSources } from '../api'
 import type { SourceLine, VerifyFinding } from '../api'
+import Icon from './Icon'
 
 const VERDICT_STYLE: Record<VerifyFinding['verdict'], string> = {
   矛盾: 'badge', // reuse the plain badge styling but color via inline style below
@@ -30,7 +31,7 @@ export default function VerifyPanel({ findings, onClose }: {
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>校验结果</h2>
-        <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
+        <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><Icon n="bx-x" /></button>
       </div>
       {findings.length === 0 && (
         <p className="muted">没有找到能支持或反驳这段内容的记录——不代表内容没问题，只是知识库里没有相关信息。</p>

@@ -11,6 +11,7 @@ import { notePaths, noteRemotes, type Note, type NoteRemote, type TreeRow } from
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate, fmtDateTime } from '../util/time'
 import { readingMinutes, wordCount } from '../util/wordCount'
+import Icon from './Icon'
 
 const SOURCE_LABEL: Record<string, string> = { obsidian: 'Obsidian', notion: 'Notion', apple: 'Apple 备忘录', evernote: 'Evernote', feishu: '飞书', import: '导入' }
 
@@ -81,7 +82,7 @@ export function NotePathsPanel({ noteId, rows, onOpen, onClone }: {
       ))}
       {onClone && (
         <div>
-          <button className="chip" onClick={onClone}><i className="bx bx-duplicate" /> 克隆到另一个位置…</button>
+          <button className="chip" onClick={onClone}><Icon n="bx-duplicate" /> 克隆到另一个位置…</button>
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { factSources } from '../api'
 import type { SourceLine, TapMeta } from '../api'
+import Icon from './Icon'
 
 /**
  * Magic-tap's grounding claim ("引用知识库") is worth nothing if it can't be
@@ -29,7 +30,7 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
     return (
       <p className="muted tap-prov" style={{ fontSize: 'var(--t-sm)' }}>
         <span className="badge">自由续写</span> 知识库中没有相关记录
-        {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><i className="bx bx-x" /></button>}
+        {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><Icon n="bx-x" /></button>}
       </p>
     )
   }
@@ -39,10 +40,10 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
       <p style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
         <span className="badge ok">引用知识库</span> 检索到 {meta.facts} 条事实（{Math.round(meta.recall_ms)} ms）
         <a className="link" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? '收起来源' : '查看来源'} <i className={'bx ' + (expanded ? 'bx-chevron-up' : 'bx-chevron-down')} />
+          {expanded ? '收起来源' : '查看来源'} <Icon n={(expanded ? 'bx-chevron-up' : 'bx-chevron-down')} />
         </a>
         <span style={{ flex: 1 }} />
-        {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><i className="bx bx-x" /></button>}
+        {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><Icon n="bx-x" /></button>}
       </p>
       {expanded && meta.sources.slice(0, 6).map((s, i) => {
         const id = meta.fact_ids[i]

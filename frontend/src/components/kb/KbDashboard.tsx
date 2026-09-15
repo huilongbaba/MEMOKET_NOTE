@@ -7,6 +7,7 @@ import { Chip, ExampleFacts, FactList, KbSection, MiniBars, StatTile, type KbAct
 import { isSpeakerTag } from '../../util/kbNoise'
 import { takePendingKbQuery } from '../../util/pendingKbQuery'
 import ConflictInbox from './ConflictInbox'
+import Icon from '../Icon'
 
 const toDetail = (f: Fact): FactDetail => ({ id: f.id, text: f.text, when: f.when, kind: f.kind, who: '', conf: '', topics: [], entities: [], unit: '' })
 
@@ -44,11 +45,11 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
       {/* 空库不摆搜索框：一条事实都没有，搜出来只能是空，autoFocus 的光标停在那里像在等你输入 */}
       {!(data && data.stats.facts === 0) && (
         <div className="kb-search">
-          <i className="bx bx-search" />
+          <Icon n="bx-search" />
           <input aria-label="搜知识库" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜知识库：人、事、数字、日期…"
                  autoFocus onKeyDown={(e) => { if (e.key === 'Escape') setQ('') }} />
           {searching && <span className="spinner" />}
-          {q && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setQ('')}><i className="bx bx-x" /></button>}
+          {q && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setQ('')}><Icon n="bx-x" /></button>}
         </div>
       )}
 
@@ -67,11 +68,11 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
         <p className="muted"><span className="spinner" /> 加载中…</p>
       ) : data.stats.facts === 0 ? (
         <div className="kb-empty">
-          <i className="bx bx-brain" />
+          <Icon n="bx-brain" />
           <h3>知识库还是空的</h3>
           <p className="muted">把会议记录、录音、其他应用的笔记导进来，或者把一篇写好的笔记「存入知识库」——之后这里会长出主题、实体和时间线，写作时右栏会自动浮现相关的记忆。</p>
           <div className="row" style={{ gap: 8 }}>
-            <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><i className="bx bx-import" /> 导入</button>
+            <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><Icon n="bx-import" /> 导入</button>
           </div>
           <ExampleFacts />
         </div>
@@ -138,7 +139,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
               <div className="stack" style={{ gap: 4 }}>
                 {data.recent_units.map((u) => (
                   <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:unit:' + u.id) }} title={u.title || u.id}>
-                    <i className="bx bx-conversation muted" /> <span className="muted" style={{ flex: 'none' }}>{u.date}</span>
+                    <Icon n="bx-conversation" className="muted" /> <span className="muted" style={{ flex: 'none' }}>{u.date}</span>
                     {/* 标题长了省略，日期 / 条数不换行（第 142 轮实拍：日期折成两行、「4 条」竖排） */}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{u.title || u.id}</span>
                     <span className="muted" style={{ marginInlineStart: 'auto', flex: 'none', whiteSpace: 'nowrap' }}>{u.facts} 条</span>

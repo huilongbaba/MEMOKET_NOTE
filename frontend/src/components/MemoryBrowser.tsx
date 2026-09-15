@@ -5,6 +5,7 @@ import { createTopic, listClusters, memoryEntities, memoryTopics, topicEntityLin
 import type { EntityNode, TopicCluster, TopicEntityLink, TopicNode } from '../api'
 import KnowledgeGraph from './KnowledgeGraph'
 import { isSpeakerTag } from '../util/kbNoise'
+import Icon from './Icon'
 
 
 /** depth(root) = 0 -- "一级" in the UI means depth 0, "二级" depth <= 1, etc.
@@ -261,12 +262,12 @@ export default function MemoryBrowser() {
             {clusters.length > 0 && (
               <div className="filter-row" style={{ gap: 6 }}>
                 <button className={'chip' + (drilled === null ? ' active' : '')} onClick={() => setDrilled(null)}>
-                  <i className="bx bx-network-chart" />全部簇 <span className="chip-count">{clusters.length}</span>
+                  <Icon n="bx-network-chart" />全部簇 <span className="chip-count">{clusters.length}</span>
                 </button>
                 {drilled !== null && (
                   <>
-                    <i className="bx bx-chevron-right muted" />
-                    <span className="chip active"><i className="bx bx-hash" />{clusters.find((c) => c.key === drilled)?.label ?? drilled}</span>
+                    <Icon n="bx-chevron-right" className="muted" />
+                    <span className="chip active"><Icon n="bx-hash" />{clusters.find((c) => c.key === drilled)?.label ?? drilled}</span>
                     <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>
                       {scopedTopics.length} 个主题 · {clusters.find((c) => c.key === drilled)?.facts ?? 0} 条事实
                     </span>
@@ -282,9 +283,9 @@ export default function MemoryBrowser() {
 
             <div className="filter-row">
               <div className="quick-search" style={{ minWidth: 200 }}>
-                <i className="bx bx-search" />
+                <Icon n="bx-search" />
                 <input aria-label="找节点" placeholder="找节点…" value={nodeQuery} onChange={(e) => setNodeQuery(e.target.value)} />
-                {nodeQuery && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setNodeQuery('')}><i className="bx bx-x" /></button>}
+                {nodeQuery && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setNodeQuery('')}><Icon n="bx-x" /></button>}
               </div>
               {(drilled !== null || clusters.length === 0) && (
                 <>
@@ -296,15 +297,15 @@ export default function MemoryBrowser() {
                     </button>
                   ))}
                   <button className={'chip' + (showEntities ? ' active' : '')} onClick={() => setShowEntities((v) => !v)} title="画不画实体节点">
-                    <i className="bx bx-user" />实体
+                    <Icon n="bx-user" />实体
                   </button>
                   <button className={'chip' + (hideNoiseEntities ? ' active' : '')} onClick={() => setHideNoiseEntities((v) => !v)}
                           title="过滤零引用 / 过短的噪声实体（转写抽取常见的缩写碎片）">
-                    <i className="bx bx-filter-alt" />滤噪声
+                    <Icon n="bx-filter-alt" />滤噪声
                   </button>
                 </>
               )}
-              <button className="chip" onClick={() => setShowCreate((v) => !v)} title="手工加一个主题" style={{ marginInlineStart: 'auto' }}><i className="bx bx-plus" />新建主题</button>
+              <button className="chip" onClick={() => setShowCreate((v) => !v)} title="手工加一个主题" style={{ marginInlineStart: 'auto' }}><Icon n="bx-plus" />新建主题</button>
             </div>
 
             <div ref={graphHost} />

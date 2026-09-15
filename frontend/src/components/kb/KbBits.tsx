@@ -8,6 +8,7 @@ import { clickable } from '../../util/clickable'
 import { useState, type ReactNode } from 'react'
 
 import type { FactDetail, KbMonth } from '../../api'
+import Icon from '../Icon'
 
 /** 虚拟节点指向的东西已经没了（旧标签、改名过的实体、重建过的知识库）：说清是什么、
  *  给条回去的路。之前三个页各写一行灰字，没有出口（实拍）。 */
@@ -18,7 +19,7 @@ export function MissingPage({ what, id, actions, back = 'kb', backLabel = '回�
     <div className="stack" style={{ gap: 8 }}>
       <h3 style={{ margin: 0 }}>没有这个{what}</h3>
       <p className="muted" style={{ margin: 0 }}><code>{id}</code> 在知识库里不存在——可能是旧标签、改过名，或者知识库重建过。</p>
-      <div><button onClick={() => actions.onOpen(back)}><i className="bx bx-left-arrow-alt" /> {backLabel}</button></div>
+      <div><button onClick={() => actions.onOpen(back)}><Icon n="bx-left-arrow-alt" /> {backLabel}</button></div>
     </div>
   )
 }
@@ -66,7 +67,7 @@ export function Chip({ icon, children, count, onClick, title }: {
 }) {
   return (
     <button className="chip" onClick={onClick} title={title} disabled={!onClick}>
-      {icon && <i className={'bx ' + icon} />}
+      {icon && <Icon n={icon} />}
       <span>{children}</span>
       {count !== undefined && <span className="chip-count">{count}</span>}
     </button>
@@ -123,9 +124,9 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
         </div>
       )}
       <div className="fact-actions">
-        <button className="icon-btn" title="打开这条事实" onClick={() => actions.onOpen('kb:fact:' + f.id)}><i className="bx bx-link-external" /></button>
+        <button className="icon-btn" title="打开这条事实" onClick={() => actions.onOpen('kb:fact:' + f.id)}><Icon n="bx-link-external" /></button>
         <button className="icon-btn" title={actions.onCite ? '引用到正在写的笔记' : '复制引用（原文 [id]）'} onClick={cite}>
-          <i className={'bx ' + (copied ? 'bx-check' : actions.onCite ? 'bx-link' : 'bx-copy')} />
+          <Icon n={(copied ? 'bx-check' : actions.onCite ? 'bx-link' : 'bx-copy')} />
         </button>
       </div>
     </div>
@@ -193,9 +194,9 @@ export function Pager({ total, limit, offset, onPage, tail }: { total: number; l
   const page = Math.floor(offset / limit) + 1, pages = Math.ceil(total / limit)
   return (
     <div className="row" style={{ gap: 6, alignItems: 'center', marginTop: 8 }}>
-      <button className="icon-btn" title="上一页" aria-label="上一页" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}><i className="bx bx-chevron-left" /></button>
+      <button className="icon-btn" title="上一页" aria-label="上一页" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}><Icon n="bx-chevron-left" /></button>
       <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>{page} / {pages} · 共 {total} 条</span>
-      <button className="icon-btn" title="下一页" aria-label="下一页" disabled={offset + limit >= total} onClick={() => onPage(offset + limit)}><i className="bx bx-chevron-right" /></button>
+      <button className="icon-btn" title="下一页" aria-label="下一页" disabled={offset + limit >= total} onClick={() => onPage(offset + limit)}><Icon n="bx-chevron-right" /></button>
       {/* 一页页翻 121 页没人翻得动：翻页器旁边给一条「去事实表筛」的出口（主题 / 实体页传进来） */}
       {tail && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>· {tail}</span>}
     </div>

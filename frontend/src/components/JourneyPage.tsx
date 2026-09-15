@@ -7,6 +7,7 @@ import { parseMini, type Inline } from '../util/miniMarkdown'
 import { usePoll } from '../util/poll'
 import JourneyDenyPanel from './JourneyDenyPanel'
 import { toast } from '../toast'
+import Icon from './Icon'
 
 /**
  * 「今天」——屏幕活动这一天长什么样（docs/daily-journey-plan.md §8.3）。
@@ -207,7 +208,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   if (state === 'unknown') {
     return (
       <div className="kb-page kb-empty">
-        <i className="bx bx-error" />
+        <Icon n="bx-error" />
         <h3>问不到采集状态</h3>
         <p className="muted">应用的采集那半边没应答，<b>现在是开是关都说不准</b>。
           菜单栏那个图标才是准的；重启一次应用通常就好了。</p>
@@ -222,7 +223,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   if (state === 'off' && known.length === 0) {
     return (
       <div className="kb-page journey-consent">
-        <h2 className="kb-note-title"><i className="bx bx-desktop muted" /> 屏幕活动记录</h2>
+        <h2 className="kb-note-title"><Icon n="bx-desktop" className="muted" /> 屏幕活动记录</h2>
         <p className="muted">
           每隔一会儿看一眼你的屏幕，把「你在做什么」记成一句话，到晚上汇成一份今天做了什么。
         </p>
@@ -252,7 +253,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   if (state === 'no-permission') {
     return (
       <div className="kb-page kb-empty">
-        <i className="bx bx-error" />
+        <Icon n="bx-error" />
         <h3>截不到屏了</h3>
         <p className="muted">
           多半是 macOS 的「屏幕录制」权限被关掉了——<b>现在什么都记不到</b>。
@@ -279,9 +280,9 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           <h2>{day?.date ?? '今天'} · 屏幕活动</h2>
           {/* 一天一页、翻得动。没有这两个箭头，「昨天我在干嘛」就只能干瞪眼 */}
           <button className="icon-btn sm" title="上一条记录" disabled={!prev}
-                  onClick={() => prev !== null && setDate(prev)}><i className="bx bx-chevron-left" /></button>
+                  onClick={() => prev !== null && setDate(prev)}><Icon n="bx-chevron-left" /></button>
           <button className="icon-btn sm" title="下一条记录" disabled={next === null}
-                  onClick={() => next !== null && setDate(next)}><i className="bx bx-chevron-right" /></button>
+                  onClick={() => next !== null && setDate(next)}><Icon n="bx-chevron-right" /></button>
         </span>
         <span className="row" style={{ gap: 6 }}>
           {/* 停掉之后这一页还在（要能回看、要能删），所以这里也得能**重新开起来** */}
@@ -317,11 +318,11 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                 : day.report_segments > 0 && `　按 ${day.report_segments} 段写的`}
             </span>
             <span style={{ flex: 1 }} />
-            <button className="chip chip-action" onClick={() => void saveReport()}><i className="bx bx-save" /> 存为笔记</button>
+            <button className="chip chip-action" onClick={() => void saveReport()}><Icon n="bx-save" /> 存为笔记</button>
             <button className={'chip chip-action' + (grown > 0 ? ' hot' : '')} disabled={writing}
                     onClick={() => void writeReport()}
                     title={writing ? '正在重写' : '按现在的记录重写一份'}>
-              {writing ? <span className="spinner" /> : <i className="bx bx-refresh" />} 重写
+              {writing ? <span className="spinner" /> : <Icon n="bx-refresh" />} 重写
             </button>
           </div>
           <ReportBody md={day.report} />
@@ -386,7 +387,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                   )}
                 </span>
                 <button className="icon-btn sm journey-del" title="删掉这一段（连它抽出来的记忆一起）"
-                        onClick={() => void dropSeg(s)}><i className="bx bx-trash" /></button>
+                        onClick={() => void dropSeg(s)}><Icon n="bx-trash" /></button>
               </div>
             ))}
           </div>

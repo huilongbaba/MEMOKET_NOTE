@@ -6,6 +6,7 @@ import {
   tableCmd,
 } from '../editor/markdownCommands'
 import { fmtShortcut } from '../util/keys'
+import Icon from './Icon'
 
 const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: EditorView) => void }[] = [
   { label: 'B', title: '加粗 (⌘/Ctrl+B)', cmd: boldCmd },
@@ -65,7 +66,7 @@ export default function MarkdownToolbar(
           onMouseDown={(e) => e.preventDefault()}
           onClick={onRestructure}
         >
-          {restructuring ? <span className="spinner" /> : <><i className="bx bx-brush-alt" /> 智能排版</>}
+          {restructuring ? <span className="spinner" /> : <><Icon n="bx-brush-alt" /> 智能排版</>}
         </button>
       )}
       {(onFormat || onRestructure) && <span className="tb-sep" />}
@@ -82,7 +83,7 @@ export default function MarkdownToolbar(
             if (view) b.cmd(view)
           }}
         >
-          {b.icon ? <i className={'bx ' + b.icon} /> : b.label}
+          {b.icon ? <Icon n={b.icon} /> : b.label}
         </button>
       ))}
     </div>

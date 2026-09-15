@@ -3,6 +3,7 @@ import { linkedNoteIds } from '../util/wordCount'
 import * as api from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
+import Icon from './Icon'
 
 /** ribbon「链接」：这篇链出去的笔记 + 链进来的笔记。`[[` 打字即可插链接。 */
 export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, knownIds, knownNotes, updatedAt }: {
@@ -33,7 +34,7 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
     ? <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>{empty}</p>
     : rows.map((n) => (
       <a key={n.id} className="kb-link" onClick={() => onOpen(n.id)}>
-        <i className={'bx ' + (n.icon || 'bx-note')} /> <span className="ellipsis">{displayTitle(n)}</span>
+        <Icon n={(n.icon || 'bx-note')} /> <span className="ellipsis">{displayTitle(n)}</span>
         <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 'var(--t-xs)' }}>{fmtDate(n.updated_at)}</span>
       </a>
     ))

@@ -17,6 +17,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRestoreFocus } from '../util/restoreFocus'
 import { fmtShortcut } from '../util/keys'
+import Icon from './Icon'
 
 export type MenuItem =
   | { kind: 'sep' }
@@ -136,7 +137,7 @@ export default function ContextMenu({
             onMouseEnter={() => setHi(i)}
             onClick={() => { onClose(); item.onSelect() }}
           >
-            <span className="cm-icon">{item.icon?.startsWith('bx-') ? <i className={'bx ' + item.icon} /> : (item.icon ?? '')}</span>
+            <span className="cm-icon">{item.icon?.startsWith('bx-') ? <Icon n={item.icon} /> : (item.icon ?? '')}</span>
             <span className="cm-label">{item.label}</span>
             {/* 提示只显示一行（CSS 打省略号），全文进 title——菜单要的是可扫 */}
             {item.hint && <span className="cm-hint" title={item.hint}>{item.hint}</span>}

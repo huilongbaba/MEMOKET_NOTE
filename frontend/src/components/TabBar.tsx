@@ -12,6 +12,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { fmtShortcut } from '../util/keys'
+import Icon from './Icon'
 
 export type Tab = { id: string; noteId: string; title: string }
 
@@ -83,7 +84,7 @@ export default function TabBar({
 
   return (
     <>
-    {overflow && <button className="tab-scroll" title="往左看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: -210, behavior: 'smooth' }) }}><i className="bx bx-chevron-left" /></button>}
+    {overflow && <button className="tab-scroll" title="往左看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: -210, behavior: 'smooth' }) }}><Icon n="bx-chevron-left" /></button>}
     <div className="tab-strip" ref={ref} role="tablist"
          // 滚轮竖滚转横滚：strip 是横向的，用户的滚轮是竖向的（tab_row.ts:424-466）
          onWheel={(e) => { if (e.deltaY && ref.current) ref.current.scrollLeft += e.deltaY }}>
@@ -120,7 +121,7 @@ export default function TabBar({
             onContextMenu(t, { x: e.clientX, y: e.clientY })
           }}
         >
-          {iconOf?.(t.noteId) && <i className={'bx note-tab-icon ' + iconOf(t.noteId)} aria-hidden />}
+          {iconOf?.(t.noteId) && <Icon n={iconOf(t.noteId)!} className="note-tab-icon" />}
           <span className="note-tab-title">{t.title || '未命名'}</span>
           <span
             className="note-tab-close"
@@ -132,14 +133,14 @@ export default function TabBar({
         </div>
       ))}
     </div>
-    {overflow && <button className="tab-scroll" title="往右看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: 210, behavior: 'smooth' }) }}><i className="bx bx-chevron-right" /></button>}
+    {overflow && <button className="tab-scroll" title="往右看" onClick={() => { if (ref.current) ref.current.scrollBy({ left: 210, behavior: 'smooth' }) }}><Icon n="bx-chevron-right" /></button>}
     {overflow && onListTabs && (
       <button className="tab-scroll tab-list" title={`列出全部 ${tabs.length} 个标签`}
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onListTabs({ x: r.left, y: r.bottom + 2 }) }}>
-        <i className="bx bx-chevron-down" />
+        <Icon n="bx-chevron-down" />
       </button>
     )}
-    <button className="note-new-tab" onClick={onNew} title={`新建笔记（${fmtShortcut('⌘T')}）`}><span><i className="bx bx-plus" /></span></button>
+    <button className="note-new-tab" onClick={onNew} title={`新建笔记（${fmtShortcut('⌘T')}）`}><span><Icon n="bx-plus" /></span></button>
     {/* 标签行空白处双击开新标签（浏览器约定） */}
     <div className="tab-row-filler" onDoubleClick={onNew} />
     </>

@@ -4,6 +4,7 @@ import { toast } from '../toast'
 import { friendlyError } from '../util/friendlyError'
 import { micError } from '../util/micError'
 import ContextMenu, { type MenuAt } from './ContextMenu'
+import Icon from './Icon'
 
 type Props = {
   /** 转写结果插到编辑器光标处 */
@@ -80,13 +81,13 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
   // 一个麦克风钮，两个去处在菜单里（正文右上角的浮动按钮位）。
   if (busy) return <button className="fb-btn" disabled><span className="spinner" /> {busy}…</button>
   if (recording) {
-    return <button className="fb-btn rec" onClick={stop} title="停止录音"><i className="bx bx-stop-circle" /> 停止录音</button>
+    return <button className="fb-btn rec" onClick={stop} title="停止录音"><Icon n="bx-stop-circle" /> 停止录音</button>
   }
   if (offline) {
     return (
       <button className="fb-btn" title={`语音服务不可达（${offline}）：录音转写用不了。在设置里检查语音服务地址`}
               onClick={() => toast(`语音服务不可达（${offline}），录音转写用不了；其它功能不受影响`, 'error')}>
-        <i className="bx bx-microphone-off" style={{ opacity: .6 }} />
+        <Icon n="bx-microphone-off" style={{ opacity: .6 }} />
       </button>
     )
   }
@@ -94,7 +95,7 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
     <>
       <button className="fb-btn" title="录音：转写后插入正文，或存进知识库"
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.left, y: r.bottom + 4 }) }}>
-        <i className="bx bx-microphone" /><i className="bx bx-chevron-down fb-caret" />
+        <Icon n="bx-microphone" /><Icon n="bx-chevron-down" className="fb-caret" />
       </button>
       {menuAt && (
         <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} items={[

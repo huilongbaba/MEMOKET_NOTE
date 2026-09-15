@@ -5,6 +5,7 @@ import * as api from '../api'
 import type { Skill, SkillIn, SkillScope } from '../api'
 import { parseSkillMd } from '../skillImport'
 import { toast, toastAction } from '../toast'
+import Icon from './Icon'
 
 const EMPTY_FORM: SkillIn = { name: '', description: '', scopes: [], content: '', enabled: true }
 
@@ -202,8 +203,8 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
       >
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 style={{ margin: 0 }}><i className="bx bx-extension" /> 写作 Skill</h2>
-            <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
+            <h2 style={{ margin: 0 }}><Icon n="bx-extension" /> 写作 Skill</h2>
+            <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><Icon n="bx-x" /></button>
           </div>
         )}
         <p className="muted" style={{ fontSize: 'var(--t-md)', margin: '6px 0 12px' }}>
@@ -321,8 +322,8 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
           <div className="stack">
             <div className="row">
               <button onClick={startNew}>+ 新建 skill</button>
-              <button onClick={() => setShowImport(true)}><i className="bx bx-download" /> 导入第三方 Skill</button>
-              <button onClick={() => setShowGenerate(true)}><i className="bx bx-brush-alt" /> AI 生成</button>
+              <button onClick={() => setShowImport(true)}><Icon n="bx-download" /> 导入第三方 Skill</button>
+              <button onClick={() => setShowGenerate(true)}><Icon n="bx-brush-alt" /> AI 生成</button>
             </div>
             {skills.map((sk, i) => (
               <div key={sk.id} className="card">
@@ -345,14 +346,14 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                     {sk.builtin && <span className="muted" style={{ fontSize: 'var(--t-xs)', flexShrink: 0 }} title="随应用一起带的，删不掉；不想要就用左边的开关关掉">内置</span>}
                   </div>
                   <div className="row" style={{ gap: 2, flexShrink: 0, flexWrap: 'nowrap' }}>
-                    <button className="icon-btn" aria-label="上移" onClick={() => move(sk, -1)} disabled={i === 0} title="上移"><i className="bx bx-chevron-up" /></button>
-                    <button className="icon-btn" aria-label="下移" onClick={() => move(sk, 1)} disabled={i === skills.length - 1} title="下移"><i className="bx bx-chevron-down" /></button>
-                    <button className="icon-btn" aria-label="编辑" onClick={() => startEdit(sk)} title="编辑"><i className="bx bx-pencil" /></button>
+                    <button className="icon-btn" aria-label="上移" onClick={() => move(sk, -1)} disabled={i === 0} title="上移"><Icon n="bx-chevron-up" /></button>
+                    <button className="icon-btn" aria-label="下移" onClick={() => move(sk, 1)} disabled={i === skills.length - 1} title="下移"><Icon n="bx-chevron-down" /></button>
+                    <button className="icon-btn" aria-label="编辑" onClick={() => startEdit(sk)} title="编辑"><Icon n="bx-pencil" /></button>
                     {/* 内置的删不掉：删完下一次列表就照出厂那份重新播种回来（实跑量过）。
                         所以这里给的是它真正做的那件事——恢复出厂。不想要它就用左边的开关。 */}
                     {sk.builtin
-                      ? <button className="icon-btn" aria-label="恢复出厂" onClick={() => restore(sk)} title="恢复出厂：把我对这条的改动扔掉，开关和排序也回默认"><i className="bx bx-reset" /></button>
-                      : <button className="icon-btn" aria-label="删除" onClick={() => remove(sk)} title="删除（5 秒内可撤销）"><i className="bx bx-x" /></button>}
+                      ? <button className="icon-btn" aria-label="恢复出厂" onClick={() => restore(sk)} title="恢复出厂：把我对这条的改动扔掉，开关和排序也回默认"><Icon n="bx-reset" /></button>
+                      : <button className="icon-btn" aria-label="删除" onClick={() => remove(sk)} title="删除（5 秒内可撤销）"><Icon n="bx-x" /></button>}
                   </div>
                 </div>
                 {/* 出处（「受 brainstorming 启发」）：是**要留的**归属说明，只是不该挤标题 */}

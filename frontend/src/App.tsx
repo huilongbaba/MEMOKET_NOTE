@@ -85,6 +85,7 @@ import { isSlides, slidePages } from './util/slidePages'
 import { fmtDate, whenLabel } from './util/time'
 import { notifyIfHidden } from './util/notify'
 import { fmtShortcut } from './util/keys'
+import Icon from './components/Icon'
 
 // 后台自动生成的节流参数。骨架/编辑都是真实 LLM 调用（本地模型上约 8-15s），
 // 不能跟着每次按键触发——用"停止输入 N 秒 + 内容变化够多"两条门槛，既保证
@@ -1112,14 +1113,14 @@ export default function App() {
             title={n.pinned ? '取消置顶' : '置顶'}
             {...clickable((e) => { e.stopPropagation(); void togglePin(n) })}
           >
-            <i className={'bx ' + (n.pinned ? 'bxs-pin' : 'bx-pin')} />
+            <Icon n={(n.pinned ? 'bxs-pin' : 'bx-pin')} />
           </span>
           <span
             className="row-act danger"
             title="删除（5 秒内可在提示里撤销）"
             {...clickable((e) => { e.stopPropagation(); remove(n) })}
           >
-            <i className="bx bx-x" />
+            <Icon n="bx-x" />
           </span>
         </div>
       </div>
@@ -2725,11 +2726,11 @@ export default function App() {
       <>
         <div className="split-head">
           <span className="split-title" title={title}>{title}</span>
-          {note && <button className="icon-btn" title="在标签里打开" onClick={() => void switchTo(note)}><i className="bx bx-link-external" /></button>}
-          <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><i className="bx bx-x" /></button>
+          {note && <button className="icon-btn" title="在标签里打开" onClick={() => void switchTo(note)}><Icon n="bx-link-external" /></button>}
+          <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><Icon n="bx-x" /></button>
           {/* 右栏收起时那个「展开右栏」小钮是绝对定位在中栏右上角的，分屏一开正好压在「关闭分屏」上（第 198 轮实拍）——分屏时挪进这一行 */}
           {!rightShown && !focusMode && (
-            <button className="icon-btn" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={() => setPanes((p) => makeRoomForRight(p, winW, split?.w ?? 0))}><i className="bx bx-chevrons-left" /></button>
+            <button className="icon-btn" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={() => setPanes((p) => makeRoomForRight(p, winW, split?.w ?? 0))}><Icon n="bx-chevrons-left" /></button>
           )}
         </div>
         <div className="split-body">
@@ -2836,7 +2837,7 @@ export default function App() {
         >
           <div className="row" style={{ gap: 6 }}>
             <span className="spinner" />
-            <strong style={{ fontSize: 'var(--t-md)' }}><i className="bx bx-folder-open" /> {harness.folderName}</strong>
+            <strong style={{ fontSize: 'var(--t-md)' }}><Icon n="bx-folder-open" /> {harness.folderName}</strong>
           </div>
           <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 0' }}>
             {harness.currentSectionTitle ? `正在写：${harness.currentSectionTitle}` : '正在启动…'}
@@ -2878,8 +2879,8 @@ export default function App() {
         <div className="tab-row-left-spacer" />
         {/* 前进后退（TabHistoryNavigationButtons）。跳去看一篇再回来。 */}
         <span className="history-nav">
-          <button className="icon-btn" disabled={!histState.back} title={`后退（${fmtShortcut('⌘[')}）`} onClick={() => goHistory(-1)}><i className="bx bx-left-arrow-alt" /></button>
-          <button className="icon-btn" disabled={!histState.fwd} title={`前进（${fmtShortcut('⌘]')}）`} onClick={() => goHistory(1)}><i className="bx bx-right-arrow-alt" /></button>
+          <button className="icon-btn" disabled={!histState.back} title={`后退（${fmtShortcut('⌘[')}）`} onClick={() => goHistory(-1)}><Icon n="bx-left-arrow-alt" /></button>
+          <button className="icon-btn" disabled={!histState.fwd} title={`前进（${fmtShortcut('⌘]')}）`} onClick={() => goHistory(1)}><Icon n="bx-right-arrow-alt" /></button>
         </span>
         <TabBar
           tabs={tabs}
@@ -2901,25 +2902,25 @@ export default function App() {
           记忆是一等公民，不该藏在某个按钮后面的弹层里。 */}
       <div className="launcher-pane">
         <div className="launcher-logo" title="MEMOKET NOTE"><Logo size={30} /></div>
-        <button className="launcher-btn" title={`新建笔记（${fmtShortcut('⌘N')}）`} onClick={newNote}><i className="bx bx-plus" /></button>
-        <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）：日记 / 年 / 月 / 日，没有就建`} onClick={() => void openToday()}><i className="bx bx-calendar-event" /></button>
+        <button className="launcher-btn" title={`新建笔记（${fmtShortcut('⌘N')}）`} onClick={newNote}><Icon n="bx-plus" /></button>
+        <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）：日记 / 年 / 月 / 日，没有就建`} onClick={() => void openToday()}><Icon n="bx-calendar-event" /></button>
         <button className="launcher-btn" title={`全局搜索：笔记 + 知识库（${fmtShortcut('⌘K')}）`}
-                onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><i className="bx bx-search" /></button>
+                onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><Icon n="bx-search" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:import' ? ' active' : '')}
                 title="导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件"
-                onClick={() => void openVirtual('app:import', '导入')}><i className="bx bx-import" /></button>
+                onClick={() => void openVirtual('app:import', '导入')}><Icon n="bx-import" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:journey' ? ' active' : '')}
-                title="屏幕活动：今天都在做什么" onClick={() => void openVirtual('app:journey', '屏幕活动')}><i className="bx bx-desktop" /></button>
+                title="屏幕活动：今天都在做什么" onClick={() => void openVirtual('app:journey', '屏幕活动')}><Icon n="bx-desktop" /></button>
         <div className="launcher-spacer" />
         {/* 设置和 Skill 是「特殊笔记」：开标签、进中栏，跟别的笔记一样对待
             （照 Trilium：选项是隐藏子树里的笔记，不是弹层）。 */}
         <button className={'launcher-btn' + (virtualId === 'app:skills' ? ' active' : '')} title="写作 Skill"
-                onClick={() => void openVirtual('app:skills', '写作 Skill')}><i className="bx bx-extension" /></button>
+                onClick={() => void openVirtual('app:skills', '写作 Skill')}><Icon n="bx-extension" /></button>
         <button className={'launcher-btn' + (virtualId === 'app:settings' ? ' active' : '')} title="设置：LLM 供应商"
-                onClick={() => void openVirtual('app:settings', '设置')}><i className="bx bx-cog" /></button>
+                onClick={() => void openVirtual('app:settings', '设置')}><Icon n="bx-cog" /></button>
         <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
                 title={panes.leftOn ? '收起左栏（⌘\\）' : '展开左栏（⌘\\）'}
-                onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}><i className="bx bx-chevrons-left" /></button>
+                onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}><Icon n="bx-chevrons-left" /></button>
         {/* 用户头像放在最底下——对标 Trilium 启动栏底部的 GlobalMenu。 */}
         <UserSwitcher />
       </div>
@@ -2934,7 +2935,7 @@ export default function App() {
         {/* 快速搜索在树的上面——照 Trilium 的位置。 */}
         <div className="left-pane-search">
         <div className="quick-search">
-          <i className="bx bx-search" />
+          <Icon n="bx-search" />
           <input
             placeholder="快速搜索"
             title={`搜标题和正文；${fmtShortcut('⌘K')} 是全局搜索（含知识库）`}
@@ -2946,7 +2947,7 @@ export default function App() {
               else if (e.key === 'Enter' && visibleNotes.length && noteQuery.trim()) { void switchTo(visibleNotes[0]); setNoteQuery('') }
             }}
           />
-          {noteQuery && <button className="icon-btn" title="清空" onClick={() => setNoteQuery('')}><i className="bx bx-x" /></button>}
+          {noteQuery && <button className="icon-btn" title="清空" onClick={() => setNoteQuery('')}><Icon n="bx-x" /></button>}
         </div>
         </div>
         {/* 列表自己的头一行：**你现在看的是什么、有多少**。
@@ -3025,8 +3026,8 @@ export default function App() {
             「定位」我们尤其需要——克隆意味着同一篇在树上有多处。 */}
         {searchResults === null && !noteQuery && (
         <div className="tree-actions">
-          <button className="icon-btn" title="定位到当前笔记" onClick={() => setLocateTick((v) => v + 1)}><i className="bx bx-crosshair" /></button>
-          <button className="icon-btn" title="折叠全部" onClick={() => void collapseAll()}><i className="bx bx-collapse-vertical" /></button>
+          <button className="icon-btn" title="定位到当前笔记" onClick={() => setLocateTick((v) => v + 1)}><Icon n="bx-crosshair" /></button>
+          <button className="icon-btn" title="折叠全部" onClick={() => void collapseAll()}><Icon n="bx-collapse-vertical" /></button>
         </div>
         )}
       </div>
@@ -3040,7 +3041,7 @@ export default function App() {
         {/* 这一支在 `!split` 里，所以腾地方时分屏宽度按 0 算 */}
         {!rightShown && !focusMode && !split && (
           <button className="right-pane-reopen" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`}
-                  onClick={() => setPanes((p) => makeRoomForRight(p, winW, 0))}><i className="bx bx-chevrons-left" /></button>
+                  onClick={() => setPanes((p) => makeRoomForRight(p, winW, 0))}><Icon n="bx-chevrons-left" /></button>
         )}
         <div className="center-pane">
         <div className={'note-pane' + (focusMode ? ' focus' : '')}>
@@ -3050,7 +3051,7 @@ export default function App() {
           <div className="title-row">
             {/* 图标可点：挑一个当这篇的标识（Trilium 的 NoteIcon）。树、标签、标题行三处同一个 */}
             <button type="button" className="title-icon-btn" title="换个图标" aria-label="换个图标" aria-haspopup="dialog" aria-expanded={iconPicker} ref={iconBtnRef} onClick={() => setIconPicker((v) => !v)}>
-              <i className={'bx title-icon ' + (current.icon || ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note'))} />
+              <Icon className="title-icon" n={current.icon || ((tree.find((r) => r.note_id === current.id)?.child_count ?? 0) > 0 ? 'bx-folder' : 'bx-note')} />
             </button>
             {iconPicker && (
               <IconPicker current={current.icon ?? ''} onClose={() => { setIconPicker(false); iconBtnRef.current?.focus() }}
@@ -3143,7 +3144,7 @@ export default function App() {
         {!current ? (
           virtualId === 'app:import' ? (
             <div className="kb-note" style={{ maxWidth: 760 }}>
-              <h2 className="kb-note-title"><i className="bx bx-import" /> 导入</h2>
+              <h2 className="kb-note-title"><Icon n="bx-import" /> 导入</h2>
               <div className="card">
                 <b>Markdown 文件</b>
                 <p className="muted" style={{ margin: '2px 0 8px', fontSize: 'var(--t-sm)' }}>一个文件一篇；多个文件成一棵子树。想放到某个节点下面，在树上右键那个节点「导入 .md 到这里…」。</p>
@@ -3162,16 +3163,16 @@ export default function App() {
               <MemoryPanel pendingJob={job} />
             </div>
           ) : virtualId === 'app:settings' ? (
-            <div className="kb-note"><h2 className="kb-note-title"><i className="bx bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /><AboutLine /></div>
+            <div className="kb-note"><h2 className="kb-note-title"><Icon n="bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /><AboutLine /></div>
           ) : virtualId === 'app:skills' ? (
-            <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><i className="bx bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
+            <div className="kb-note" style={{ maxWidth: 900 }}><h2 className="kb-note-title"><Icon n="bx-extension" /> 写作 Skill</h2><SkillsPanel embedded /></div>
           ) : virtualId === 'app:journey' ? (
             <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}>
               <JourneyPage onLater={() => { if (activeTabId) closeTab(activeTabId) }}
                            onOpenNote={(id) => { void reload().then(() => api.getNote(id).then((n) => switchTo(n)).catch(() => {})) }} />
             </Suspense>
           ) : virtualId === 'app:trash' ? (
-            <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><i className="bx bx-trash" /> 最近删除</h2>
+            <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><Icon n="bx-trash" /> 最近删除</h2>
               <TrashPanel onRestored={(id) => { void reload(); void reloadTree(); void api.getNote(id).then((n) => switchTo(n)).catch(() => {}) }} /></div>
           ) : virtualId ? (
             <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}><KbNoteView
@@ -3201,24 +3202,24 @@ export default function App() {
               <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
                       disabled={loading === 'note-harness'}
                       title="续写：先查知识库，据此往下写一段（流式）">
-                <i className={'bx ' + (loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
+                <Icon n={(loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
               </button>
               <span className="fb-split">
                 <button className={'fb-btn secondary' + (loading === 'note-harness' ? ' running' : '')}
                         onClick={() => runNoteHarness('write')} disabled={loading === 'tap' || isSlides(content)}
                         title={isSlides(content) ? '这一篇是幻灯片——接散文会把分页和引用弄乱；要改内容回原笔记改完再重做一份'
                           : '智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停'}>
-                  <i className={'bx ' + (loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
+                  <Icon n={(loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
                 </button>
                 <button className="fb-btn secondary fb-caret-btn" title="打磨 / 逐轮我来定"
                         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
-                  <i className="bx bx-chevron-down" />
+                  <Icon n="bx-chevron-down" />
                 </button>
               </span>
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
               <button className="fb-btn" title="更多"
                       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
-                <i className="bx bx-dots-horizontal-rounded" />
+                <Icon n="bx-dots-horizontal-rounded" />
               </button>
               {loading === 'ingest' && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}><span className="spinner" /></span>}
               {fbMenu && (
@@ -3285,7 +3286,7 @@ export default function App() {
             {/* 文件夹 harness 写到当前这篇时也给一条——不然编辑器忽然打不了字，没有任何解释 */}
             {!pausedRun && loading !== 'note-harness' && harness?.running && harness.currentNoteId === current?.id && (
               <div className="harness-sticky">
-                <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>
+                <p className="muted harness-line"><Icon n="bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>
                   「{harness.folderName}」的写作计划正在写这一篇{harness.currentSectionTitle ? `（${harness.currentSectionTitle}）` : ''}
                 </span>
                   <span className="muted" style={{ marginInlineStart: 8, fontSize: 'var(--t-xs)' }}>· 正文由 AI 接管，停下来再改</span>
@@ -3294,18 +3295,18 @@ export default function App() {
             )}
             {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
               <div className="harness-sticky">
-                <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>{pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}</span>
+                <p className="muted harness-line"><Icon n="bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>{pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}</span>
                   {loading === 'note-harness' && <span className="muted" style={{ marginInlineStart: 8, fontSize: 'var(--t-xs)' }}>· 运行中正文由 AI 接管，停下来再改</span>}
                   {pausedRun && (
                     /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
                        关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
                        你在跑的过程中做的处置会被下一轮盖掉。 */
                     <span className="row" style={{ gap: 6, marginInlineStart: 8 }}>
-                      <button className="primary" onClick={() => resumePausedRun()}><i className="bx bx-play" /> 接着写</button>
+                      <button className="primary" onClick={() => resumePausedRun()}><Icon n="bx-play" /> 接着写</button>
                       <button onClick={() => resumePausedRun(true)}>到此为止</button>
                     </span>
                   )}
-                  {harnessDone && !pausedRun && <button className="icon-btn sm" title="关闭" onClick={() => { setHarnessDone(false); harnessDoneRef.current = false; setNoteHarnessStatus('') }}><i className="bx bx-x" /></button>}
+                  {harnessDone && !pausedRun && <button className="icon-btn sm" title="关闭" onClick={() => { setHarnessDone(false); harnessDoneRef.current = false; setNoteHarnessStatus('') }}><Icon n="bx-x" /></button>}
                 </p>
               </div>
             )}
@@ -3315,8 +3316,8 @@ export default function App() {
                 标题不是标题、一片等宽字。给一键去缩进，别让人自己猜为什么渲染不对。 */}
             {current && content.length > 40 && stripCommonIndent(content) !== content && (
               <p className="muted harness-line" style={{ marginBottom: 8 }}>
-                <i className="bx bx-info-circle" /> 这篇整体缩进了，Markdown 会把它当成一整块代码，标题和列表都显示不出来。
-                <button className="chip" style={{ marginInlineStart: 8 }} onClick={formatNote}><i className="bx bx-align-left" /> 去掉缩进</button>
+                <Icon n="bx-info-circle" /> 这篇整体缩进了，Markdown 会把它当成一整块代码，标题和列表都显示不出来。
+                <button className="chip" style={{ marginInlineStart: 8 }} onClick={formatNote}><Icon n="bx-align-left" /> 去掉缩进</button>
               </p>
             )}
 
@@ -3499,19 +3500,19 @@ export default function App() {
             ))}
         </span>
         {loading === 'note-harness' && noteHarnessStatus && (
-          <span style={{ color: 'var(--accent)' }}><i className="bx bx-bot" /> {noteHarnessStatus}</span>
+          <span style={{ color: 'var(--accent)' }}><Icon n="bx-bot" /> {noteHarnessStatus}</span>
         )}
-        {pausedRun && <span style={{ color: 'var(--accent)' }}><i className="bx bx-pause-circle" /> 等你处置</span>}
-        {harness?.running && <span style={{ color: 'var(--accent)' }}><i className="bx bx-folder-open" /> {harness.folderName}</span>}
+        {pausedRun && <span style={{ color: 'var(--accent)' }}><Icon n="bx-pause-circle" /> 等你处置</span>}
+        {harness?.running && <span style={{ color: 'var(--accent)' }}><Icon n="bx-folder-open" /> {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
           {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.total > 0 ? ` 第 ${Math.min(jobInfo.done + 1, jobInfo.total)}/${jobInfo.total} 块` : ''}{jobInfo.eta > 0 ? ` · 还要约 ${jobInfo.eta < 90 ? `${jobInfo.eta} 秒` : `${Math.round(jobInfo.eta / 60)} 分钟`}` : ''}{jobInfo.facts > 0 ? ` · 已抽出 ${jobInfo.facts} 条` : ''}</span>}
           {/* 红字可点：装好的包第一次开、或换了台机器没填模型，红字只说「不可达」用户不知道去哪修 */}
           {healthMsg && (
             <button className="health-bad linklike" title="点开设置页填模型地址 / 密钥" onClick={() => void openVirtual('app:settings', '设置')}>
-              <i className="bx bx-error" /> {healthMsg} · 去设置
+              <Icon n="bx-error" /> {healthMsg} · 去设置
             </button>
           )}
-          {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><i className="bx bx-microphone-off" /> 语音离线</span>}
+          {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><Icon n="bx-microphone-off" /> 语音离线</span>}
         </span>
         {current && <span className="muted">{wordCount(content)} 字{wordCount(content) > 0 && <> · 约 {readingMinutes(wordCount(content))} 分钟</>}</span>}
       </div>

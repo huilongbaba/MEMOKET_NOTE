@@ -20,6 +20,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import { fmtShortcut } from '../util/keys'
+import Icon from './Icon'
 
 export type PaneTab = {
   id: string
@@ -55,7 +56,7 @@ export default function RightPane({
             className={'pane-tab' + (current?.id === t.id ? ' active' : '')}
             onClick={() => setActive(t.id)}
           >
-            {t.icon && <i className={'bx ' + t.icon} />}
+            {t.icon && <Icon n={t.icon} />}
             {t.title}
             {t.badge !== undefined && t.badge !== 0 && (
               <span className="pane-tab-badge">{t.badge}</span>
@@ -65,7 +66,7 @@ export default function RightPane({
         {/* 右端动作区：任何宽度下都完整可点（RightPanelContainer.css:110-145） */}
         {onCollapse && (
           <span className="right-pane-actions">
-            <button className="icon-btn" title={`收起右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={onCollapse}><i className="bx bx-chevrons-right" /></button>
+            <button className="icon-btn" title={`收起右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={onCollapse}><Icon n="bx-chevrons-right" /></button>
           </span>
         )}
       </div>

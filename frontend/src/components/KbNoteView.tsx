@@ -28,6 +28,7 @@ import {
   isFactId, type CitingNote, type Fact, type FactPeek, type SourceLine, type TreeRow,
 } from '../api'
 import { fmtDate } from '../util/time'
+import Icon from './Icon'
 
 type Props = {
   id: string
@@ -68,7 +69,7 @@ export default function KbNoteView(props: Props) {
 function ToolNote({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
     <div className="kb-note" style={{ maxWidth: 'none' }}>
-      <h2 className="kb-note-title"><i className={'bx ' + icon + ' muted'} /> {title}</h2>
+      <h2 className="kb-note-title"><Icon n={icon} className="muted" /> {title}</h2>
       {children}
     </div>
   )
@@ -117,7 +118,7 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
         <h2 className="kb-note-title" style={{ color: 'var(--del)' }}>找不到这条事实</h2>
         <p className="muted">{factId} 在知识库里不存在——可能是引用写错了，或者知识库重建过。</p>
         {/* 上次开着的标签恢复回来时它指的事实已经没了（重建过 / 探针残留）：别让它一直占着标签行 */}
-        <p><button className="chip chip-action" onClick={() => window.dispatchEvent(new CustomEvent('virtual-gone', { detail: 'kb:fact:' + factId }))}><i className="bx bx-x" /> 收掉这个标签</button></p>
+        <p><button className="chip chip-action" onClick={() => window.dispatchEvent(new CustomEvent('virtual-gone', { detail: 'kb:fact:' + factId }))}><Icon n="bx-x" /> 收掉这个标签</button></p>
       </div>
     )
   }
@@ -129,15 +130,15 @@ function FactNote({ id, onOpen, onOpenNote, onCite }: Props) {
         {fact.kind && <span>· {fact.kind}</span>}
         <code className="kb-note-id">[{factId}]</code>
         <span style={{ marginInlineStart: 'auto' }} className="row">
-          {onCite && <button onClick={() => onCite(factId, fact.text)} title="把引用插到正在写的笔记里"><i className="bx bx-link" /> 引用到笔记</button>}
-          <button onClick={copyCite}><i className={'bx ' + (copied ? 'bx-check' : 'bx-copy')} /> {copied ? '已复制' : '复制引用'}</button>
+          {onCite && <button onClick={() => onCite(factId, fact.text)} title="把引用插到正在写的笔记里"><Icon n="bx-link" /> 引用到笔记</button>}
+          <button onClick={copyCite}><Icon n={(copied ? 'bx-check' : 'bx-copy')} /> {copied ? '已复制' : '复制引用'}</button>
         </span>
       </div>
       <h2 className="kb-note-title">{fact.text}</h2>
       {(fact.topics.length > 0 || fact.entities.length > 0) && (
         <div className="chip-wrap">
-          {fact.topics.map((t) => <button key={t} className="chip" onClick={() => onOpen('kb:topic:' + t)}><i className="bx bx-hash" />{t}</button>)}
-          {fact.entities.map((e, i) => [e, fact.entity_names?.[i] ?? e] as const).filter(([, n]) => !isSpeakerTag(n)).map(([e, n]) => <button key={e} className="chip" onClick={() => onOpen('kb:entity:' + e)}><i className="bx bx-user" />{n}</button>)}
+          {fact.topics.map((t) => <button key={t} className="chip" onClick={() => onOpen('kb:topic:' + t)}><Icon n="bx-hash" />{t}</button>)}
+          {fact.entities.map((e, i) => [e, fact.entity_names?.[i] ?? e] as const).filter(([, n]) => !isSpeakerTag(n)).map(([e, n]) => <button key={e} className="chip" onClick={() => onOpen('kb:entity:' + e)}><Icon n="bx-user" />{n}</button>)}
         </div>
       )}
 

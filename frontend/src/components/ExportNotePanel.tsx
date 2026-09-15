@@ -4,6 +4,7 @@ import { noteRemotes, type NoteRemote } from '../api'
 import { toast } from '../toast'
 import { fmtDate } from '../util/time'
 import { WHERE_LABEL, loadVault, saveVault, useExportBack, type ExportWhere } from '../util/useExportBack'
+import Icon from './Icon'
 
 /**
  * 把**一篇**导回到别处。
@@ -72,7 +73,7 @@ export default function ExportNotePanel({ noteId, title, onClose }:
     <div className="export-note">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h2>导回「<span className="plain-case">{title}</span>」</h2>
-        <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
+        <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><Icon n="bx-x" /></button>
       </div>
 
       {/* ① 状态先说。重复动作里这一行比任何说明都有用 */}
@@ -90,7 +91,7 @@ export default function ExportNotePanel({ noteId, title, onClose }:
           <button key={w} className={where === w ? 'on' : ''} aria-pressed={where === w}
                   onClick={() => setWhere(w)}>
             {WHERE_LABEL[w]}
-            {remotes?.some((r) => r.platform === w) && <i className="bx bx-check" />}
+            {remotes?.some((r) => r.platform === w) && <Icon n="bx-check" />}
           </button>
         ))}
       </div>
@@ -102,7 +103,7 @@ export default function ExportNotePanel({ noteId, title, onClose }:
             <div className="row" style={{ gap: 6 }}>
               <input aria-label="Obsidian vault 文件夹路径" placeholder="vault 文件夹路径" value={vault} style={{ flex: 1, minWidth: 0 }}
                      onChange={(e) => { setVault(e.target.value); saveVault(e.target.value) }} />
-              <button className="icon-btn" aria-label="选文件夹" onClick={() => void pickVault()} title="选文件夹"><i className="bx bx-dots-horizontal-rounded" /></button>
+              <button className="icon-btn" aria-label="选文件夹" onClick={() => void pickVault()} title="选文件夹"><Icon n="bx-dots-horizontal-rounded" /></button>
             </div>
             <label className="muted" style={{ fontSize: 'var(--t-sm)' }}>
               <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的

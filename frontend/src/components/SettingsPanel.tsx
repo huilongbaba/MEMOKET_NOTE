@@ -4,6 +4,7 @@ import * as api from '../api'
 import type { ProviderConfig } from '../api'
 import { toast } from '../toast'
 import { applyTheme, canSwitchTheme, getTheme, type Theme } from '../theme'
+import Icon from './Icon'
 
 const FEATURE_LABEL: Record<string, string> = {
   'magic-tap': '续写', 'note-harness/run': '智能续写', 'note-harness/resume': '智能续写', 'writing-plan/run': '无限续写',
@@ -77,7 +78,7 @@ function AppearanceSection() {
           <button key={o.v} className={'chip' + (theme === o.v ? ' active' : '')}
                   disabled={!canSwitchTheme() && o.v !== 'system'} title={!canSwitchTheme() && o.v !== 'system' ? '网页版只能跟随系统，桌面版才能手动选' : undefined}
                   onClick={() => { setTheme(o.v); applyTheme(o.v) }}>
-            <i className={'bx ' + o.icon} /> {o.label}
+            <Icon n={o.icon} /> {o.label}
           </button>
         ))}
       </div>
@@ -160,8 +161,8 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       >
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 style={{ margin: 0 }}><i className="bx bx-cog" /> 设置</h2>
-            <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
+            <h2 style={{ margin: 0 }}><Icon n="bx-cog" /> 设置</h2>
+            <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><Icon n="bx-x" /></button>
           </div>
         )}
 

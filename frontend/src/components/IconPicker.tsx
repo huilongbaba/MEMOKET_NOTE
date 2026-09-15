@@ -1,6 +1,7 @@
 /** 笔记图标选择器（Trilium 的 NoteIcon 点开那个面板的精简版）：一格 boxicons，点一个就设，
  *  「默认」清掉。挂在标题行图标下面，点外面 / Esc 关。 */
 import { useEffect, useRef } from 'react'
+import Icon from './Icon'
 
 /** 够日常用的一小组；不做搜索——Trilium 那个 1500 个图标的搜索面板对笔记软件是过度设计。 */
 export const NOTE_ICONS = [
@@ -43,11 +44,11 @@ export default function IconPicker({ current, onPick, onClose }: {
       }}>
         {NOTE_ICONS.map((ic) => (
           <button key={ic} type="button" className={'icon-picker-cell' + (ic === current ? ' active' : '')} title={ic.replace(/^bxs?-/, '')}
-                  onClick={() => onPick(ic)}><i className={'bx ' + ic} /></button>
+                  onClick={() => onPick(ic)}><Icon n={ic} /></button>
         ))}
       </div>
       <div className="icon-picker-foot">
-        <button type="button" className="chip chip-action" disabled={!current} title={current ? '清掉图标，回到默认' : '已经是默认图标'} onClick={() => onPick('')}><i className="bx bx-reset" /> 默认</button>
+        <button type="button" className="chip chip-action" disabled={!current} title={current ? '清掉图标，回到默认' : '已经是默认图标'} onClick={() => onPick('')}><Icon n="bx-reset" /> 默认</button>
       </div>
     </div>
   )

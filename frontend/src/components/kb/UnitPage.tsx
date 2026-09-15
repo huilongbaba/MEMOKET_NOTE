@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { kbUnit, type KbUnitPage } from '../../api'
 import { Chip, FactList, KbSection, Pager, type KbActions, MissingPage } from './KbBits'
+import Icon from '../Icon'
 
 /** 一场会议（KITE 的 unit）：这场会抽出来的事实。 */
 export default function UnitPage({ id, actions }: { id: string; actions: KbActions }) {
@@ -26,7 +27,7 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
     <div className="kb-page">
       <div className="kb-head">
         <div className="kb-crumbs muted"><a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:recent') }}>最近摄入</a></div>
-        <h2 className="kb-note-title"><i className="bx bx-conversation muted" /> {p.title || p.id}</h2>
+        <h2 className="kb-note-title"><Icon n="bx-conversation" className="muted" /> {p.title || p.id}</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{p.date} · {p.facts_total} 条事实{p.speakers.length ? ' · ' + p.speakers.join('、') : ''}</div>
         {/* 长材料切成的几段：在段之间走，不用回最近摄入再找（第 267 轮） */}
         {(p.part_total ?? 1) > 1 && p.parts && (

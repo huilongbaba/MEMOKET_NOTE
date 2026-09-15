@@ -4,6 +4,7 @@ import { entityIcon } from '../../util/entityIcon'
 import { kbEntity, type KbEntityPage } from '../../api'
 import { Chip, FactList, KbSection, MiniBars, Pager, type KbActions, MissingPage } from './KbBits'
 import LocalGraph from './LocalGraph'
+import Icon from '../Icon'
 
 export default function EntityPage({ code, actions }: { code: string; actions: KbActions }) {
   const [p, setP] = useState<KbEntityPage | null | undefined>(undefined)
@@ -25,7 +26,7 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
     <div className="kb-page">
       <div className="kb-head">
         <div className="kb-crumbs muted"><a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>实体</a></div>
-        <h2 className="kb-note-title"><i className={"bx muted " + entityIcon(p.name, (p as { etype?: string }).etype)} /> {p.name}</h2>
+        <h2 className="kb-note-title"><Icon n={entityIcon(p.name, (p as { etype?: string }).etype)} className="muted" /> {p.name}</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>
           {p.facts_total} 条事实{p.type ? ' · ' + p.type : ''}{p.aliases.length ? ' · 别名：' + p.aliases.join('、') : ''}{p.variants?.length ? ' · 同一实体的写法：' + p.variants.join('、') : ''}
         </div>
@@ -61,7 +62,7 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
         <KbSection title="这些事怎么变的" extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>按对象串起来的线 · 最新在下</span>}>
           {p.chains.map((c) => (
             <div key={c.obj} className="card" style={{ padding: '6px 10px' }}>
-              <div className="muted" style={{ fontSize: 'var(--t-xs)', marginBottom: 4 }}><i className="bx bx-trending-up" /> {c.obj} · {c.total} 条</div>
+              <div className="muted" style={{ fontSize: 'var(--t-xs)', marginBottom: 4 }}><Icon n="bx-trending-up" /> {c.obj} · {c.total} 条</div>
               <ol className="chain">
                 {c.facts.map((f) => (
                   <li key={f.id} className={f.superseded_by ? 'muted' : ''} onClick={() => actions.onOpen('kb:fact:' + f.id)}>

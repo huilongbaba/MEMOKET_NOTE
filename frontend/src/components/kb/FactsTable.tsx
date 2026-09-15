@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { kbDashboard, memoryFacts, type FactsFilter, type FactsPage, type KbDashboard } from '../../api'
 import { ExampleFacts, FactList, KbSection, Pager, type KbActions } from './KbBits'
+import Icon from '../Icon'
 
 const LIMIT = 50
 
@@ -22,7 +23,7 @@ export default function FactsTable({ query, actions }: { query: string; actions:
   return (
     <div className="kb-page">
       <div className="kb-head">
-        <h2 className="kb-note-title"><i className="bx bx-table muted" /> 事实表</h2>
+        <h2 className="kb-note-title"><Icon n="bx-table" className="muted" /> 事实表</h2>
         {/* 空库时这行讲的是下面根本不存在的那排筛选器——说明要跟着眼前的东西走 */}
         {!(meta && meta.stats.facts === 0) && (
           <div className="muted" style={{ fontSize: 'var(--t-md)' }}>按类型 / 说话人 / 主题 / 实体 / 置信度筛。想按关键词找，用首页的搜索或 ⌘K。</div>
@@ -32,12 +33,12 @@ export default function FactsTable({ query, actions }: { query: string; actions:
           也说不出下一步该干什么（第 673 轮新用户实拍）。摆样子 + 一个导入出口。 */}
       {meta && meta.stats.facts === 0 ? (
         <div className="kb-empty">
-          <i className="bx bx-table" />
+          <Icon n="bx-table" />
           <h3>知识库还是空的，所以事实表也是空的</h3>
           <p className="muted">导进一场会议录音或一批笔记，抽出来的每一句都会落在这张表里，按类型 / 说话人 / 主题 / 实体筛。</p>
           <div className="row" style={{ gap: 8 }}>
-            <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><i className="bx bx-import" /> 导入</button>
-            <button onClick={() => actions.onOpen('kb')}><i className="bx bx-left-arrow-alt" /> 回知识库总览</button>
+            <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><Icon n="bx-import" /> 导入</button>
+            <button onClick={() => actions.onOpen('kb')}><Icon n="bx-left-arrow-alt" /> 回知识库总览</button>
           </div>
           <ExampleFacts />
         </div>
@@ -59,7 +60,7 @@ export default function FactsTable({ query, actions }: { query: string; actions:
           <option value="high">高</option>
         </select>
         {(filter.kind || filter.who || filter.topic || filter.entity || filter.conf_min) && (
-          <button className="icon-btn" title="清空筛选" onClick={() => setFilter({})}><i className="bx bx-x" /></button>
+          <button className="icon-btn" title="清空筛选" onClick={() => setFilter({})}><Icon n="bx-x" /></button>
         )}
       </div>
       {!page ? <p className="muted"><span className="spinner" /> 加载中…</p> : (

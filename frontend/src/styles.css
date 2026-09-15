@@ -38,6 +38,14 @@
    它就空了，第 683 轮删掉。） */
 
 * { box-sizing: border-box; }
+/* **`.bx` 不再是字体图标类，而是图标的尺寸 / 对齐钩子。**（第 713 轮）
+   字形换成 lucide 的 SVG 之后，boxicons 那份 CSS 就卸掉了（连带 400 多 KB 的
+   字体文件）。但全仓有几十条 `.xxx .bx { font-size: … }` 是按它写的，
+   `Icon` 组件用 `size="1em"` 让 SVG 跟着 font-size 走，那些规则一行都不用改。
+   这里补两件字体图标本来自带、SVG 没有的事：
+   - `vertical-align`：SVG 默认贴基线，比字体图标低一截，行内跟文字不齐；
+   - `flex-shrink: 0`：图标在 flex 行里不该被文字挤扁。 */
+.bx { display: inline-block; vertical-align: -.145em; flex-shrink: 0; }
 
 /* 单选/复选框不吃全局 input 的 100% 宽——吃了会把旁边的文字挤到下一行，
    自己孤零零居中画在一行里（设置页实拍）。 */

@@ -134,9 +134,21 @@ async function main() {
   if (!zoomGroupEl?.classList.contains('kg-interacting')) {
     throw new Error('a wheel event should immediately add kg-interacting to suppress repaint cost mid-gesture')
   }
-  await new Promise((r) => setTimeout(r, 250)) // past the 150ms settle timer
-  if (zoomGroupEl?.classList.contains('kg-interacting')) {
-    throw new Error('kg-interacting should clear ~150ms after the last zoom event, but it is still set')
+  /* **轮询到清除为止，别睡一个固定的 250ms。** 原来是 `sleep(250)` 然后断言——
+     它断的其实是「150ms 的定时器 + 一次 React 重渲染能在 250ms 内跑完」，
+     而后半句取决于机器和模块加载有多慢：第 713 轮给这个文件加了一行
+     `import Icon`（把 lucide 拉进这个 chunk），dev 下多解析一批模块，
+     250ms 就不够了——**功能没坏，是断言太脆**。
+     轮询版照旧会失败（清不掉就一直是 set，2 秒后抛），但不再跟机器快慢挂钩。 */
+  const cleared = await (async () => {
+    for (let i = 0; i < 40; i++) {
+      if (!zoomGroupEl?.classList.contains('kg-interacting')) return true
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    return false
+  })()
+  if (!cleared) {
+    throw new Error('kg-interacting should clear ~150ms after the last zoom event, but it is still set after 2s')
   }
   console.log('OK: kg-interacting suppresses labels/lines during an active zoom gesture and clears after it settles')
 

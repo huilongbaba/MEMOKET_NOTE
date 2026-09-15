@@ -21,6 +21,7 @@ import { dupSuffixes } from '../util/dupTitles'
 import { NEUTRAL_ENTITY_ICON } from '../util/entityIcon'
 import { sourceIcon, sourceLabel } from '../util/noteSource'
 import { fmtDate } from '../util/time'
+import Icon from './Icon'
 
 type Props = {
   rows: TreeRow[]
@@ -261,12 +262,12 @@ export default function NoteTree({
               onClick={(e) => { e.stopPropagation(); if (hasKids) onToggle(n) }}
               aria-hidden={!hasKids}
             >
-              {hasKids && <i className={'bx ' + (n.is_expanded ? 'bx-chevron-down' : 'bx-chevron-right')} />}
+              {hasKids && <Icon n={(n.is_expanded ? 'bx-chevron-down' : 'bx-chevron-right')} />}
             </span>
             {/* 图标：真笔记 叶子 = 文档 / 有子节点 = 文件夹（notes.ts:140-143）；
                 知识库虚拟节点 事实 ◆ / 分类 ▤。 */}
             <span className="tree-icon" aria-hidden={!sourceLabel(n.source)}
-                  title={sourceLabel(n.source) || undefined}><i className={'bx ' + iconOf(n)} /></span>
+                  title={sourceLabel(n.source) || undefined}><Icon n={iconOf(n)} /></span>
             {/* 标题被截断时悬停能看全；**撞名的那几行**把日期直接写在后面，不用逐个悬停。
                 日期是 `.tree-title` 的兄弟而不是儿子：放进去会跟标题一起被省略号切掉，
                 切出来的「09-07 1…」两行长得还是一样，比不标更糟（第 609 轮截图实拍）。
@@ -302,7 +303,7 @@ export default function NoteTree({
                 成本太高（note_tree.ts:1875-1941 的 add-note-button）。 */}
             {onNewChild && !virtual && (
               <button className="tree-item-button" title="新建子笔记"
-                      onClick={(e) => { e.stopPropagation(); onNewChild(n) }}><i className="bx bx-plus" /></button>
+                      onClick={(e) => { e.stopPropagation(); onNewChild(n) }}><Icon n="bx-plus" /></button>
             )}
           </div>
         )

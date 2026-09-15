@@ -6,6 +6,7 @@ import { clickable } from '../../util/clickable'
 import { kbConflicts, resolveConflict, type KbConflict } from '../../api'
 import { toast } from '../../toast'
 import { KbSection, type KbActions } from './KbBits'
+import Icon from '../Icon'
 
 export default function ConflictInbox({ actions, onCount }: { actions: KbActions; onCount?: (n: number) => void }) {
   const [rows, setRows] = useState<KbConflict[] | null>(null)
@@ -34,7 +35,7 @@ export default function ConflictInbox({ actions, onCount }: { actions: KbActions
       <div className="stack conflict-inbox" style={{ gap: 6 }}>
         {rows.slice(0, 20).map((c) => (
           <div key={c.id} className="card" style={{ padding: '8px 10px' }}>
-            <div style={{ fontSize: 'var(--t-md)' }}><i className="bx bx-error" style={{ color: 'var(--warn)' }} /> {c.say}</div>
+            <div style={{ fontSize: 'var(--t-md)' }}><Icon n="bx-error" style={{ color: 'var(--warn)' }} /> {c.say}</div>
             <div className="cf-side">
               <Side f={c.old} label="旧记录" />
               <Side f={c.new} label="新记录" />

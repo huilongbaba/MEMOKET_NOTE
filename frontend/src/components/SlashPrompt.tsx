@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRestoreFocus } from '../util/restoreFocus'
 import type { SlashItem } from '../editor/slashMenu'
+import Icon from './Icon'
 
 /** `/` 选中一个需要提示词的功能之后，就地弹出的输入框。
  *
@@ -33,7 +34,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 6 }}>
-        <i className={'bx ' + item.icon} />
+        <Icon n={item.icon} />
         <strong style={{ fontSize: 'var(--t-md)' }}>{item.label}</strong>
         <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{item.hint}</span>
       </div>

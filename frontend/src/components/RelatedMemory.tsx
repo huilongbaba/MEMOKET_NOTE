@@ -4,6 +4,7 @@ import { memoryRelations, mergeFacts, memoryScope, recall, SCOPE_LABEL, setMemor
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
 import { stripForRecall } from '../util/wordCount'
+import Icon from './Icon'
 
 const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string; icon: string }> = {
   conflict: { text: '冲突', cls: 'rel-conflict', icon: 'bx-error' },
@@ -135,7 +136,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
             return (
               <div key={key} className={'card rel-card ' + L.cls}>
                 <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-                  <span className={'badge ' + L.cls}><i className={'bx ' + L.icon} /> {L.text}</span>
+                  <span className={'badge ' + L.cls}><Icon n={L.icon} /> {L.text}</span>
                   <span style={{ fontSize: 'var(--t-md)', flex: 1 }}>{r.say}</span>
                 </div>
                 {r.facts.length > 0 && (
@@ -186,10 +187,10 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
             <span className="memory-card-actions">
               <button className="icon-btn" title="打开这条事实"
                       onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })) }}>
-                <i className="bx bx-link-external" />
+                <Icon n="bx-link-external" />
               </button>
               <button className="icon-btn" title="插入引用到光标处" onClick={(e) => { e.stopPropagation(); onInsert(`${f.text} [${f.id}]`) }}>
-                <i className="bx bx-link" />
+                <Icon n="bx-link" />
               </button>
             </span>
           </div>

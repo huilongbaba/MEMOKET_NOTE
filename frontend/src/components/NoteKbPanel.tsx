@@ -14,6 +14,7 @@ import { fmtDate } from '../util/time'
 import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type CitingNote, type FactPeek, type NoteKb, type TreeRow, noteGraph, type NoteGraph } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { toast } from '../toast'
+import Icon from './Icon'
 
 export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, ingesting, onOpenNote, refreshTick = 0, empty = false, onStripMissing }: {
   citedIds: string[]
@@ -109,7 +110,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
               {ingesting ? <span className="spinner" /> : (kb?.stale ? '同步到知识库' : '重新同步')}
             </button>
           : <button onClick={onIngest} disabled={ingesting || empty} style={{ marginInlineStart: 'auto' }} title={empty ? '正文是空的，先写点东西' : undefined}>
-              {ingesting ? <span className="spinner" /> : <><i className="bx bx-import" /> 存入知识库</>}
+              {ingesting ? <span className="spinner" /> : <><Icon n="bx-import" /> 存入知识库</>}
             </button>}
       </div>
       {kb?.stale && !ingesting && (
@@ -152,8 +153,8 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
                 <>
                   <div className="row" style={{ gap: 6, alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>{f.text}</div>
-                    <button className="icon-btn" title="改" onClick={() => setEditing({ id: f.id, text: f.text })}><i className="bx bx-edit-alt" /></button>
-                    <button className="icon-btn" title="从知识库删掉这条" onClick={() => void remove(f.id)}><i className="bx bx-x" /></button>
+                    <button className="icon-btn" title="改" onClick={() => setEditing({ id: f.id, text: f.text })}><Icon n="bx-edit-alt" /></button>
+                    <button className="icon-btn" title="从知识库删掉这条" onClick={() => void remove(f.id)}><Icon n="bx-x" /></button>
                   </div>
                   <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>
                     {f.when || '—'}{f.who ? ` · ${f.who}` : ''}{f.kind ? ` · ${f.kind}` : ''}{f.manual ? ' · 手工加的' : ''}

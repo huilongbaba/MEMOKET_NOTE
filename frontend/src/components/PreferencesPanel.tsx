@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { addProfileEntry, deleteProfileEntry, listProfile } from '../api'
 import type { ProfileEntry } from '../api'
+import Icon from './Icon'
 
 export default function PreferencesPanel() {
   const [profile, setProfile] = useState<ProfileEntry[]>([])
@@ -50,7 +51,7 @@ export default function PreferencesPanel() {
           <div className="card" key={p.id}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span>{p.text}</span>
-              <button className="icon-btn" aria-label="删掉这条" title="删掉这条" onClick={() => doDeletePref(p.id)}><i className="bx bx-x" /></button>
+              <button className="icon-btn" aria-label="删掉这条" title="删掉这条" onClick={() => doDeletePref(p.id)}><Icon n="bx-x" /></button>
             </div>
           </div>
         ))}

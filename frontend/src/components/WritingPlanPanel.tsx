@@ -6,6 +6,7 @@ import * as api from '../api'
 import type { TreeRow, WritingPlan, WritingSection } from '../api'
 import type { HarnessState } from '../App'
 import { toast } from '../toast'
+import Icon from './Icon'
 
 /** 状态用图标 + 语义色，不用 emoji：**emoji 拿不到令牌色**，深色下还是那几个
  *  彩块，而「已完成」该是 --ins、「写作中」该是 --brand。 */
@@ -122,8 +123,8 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}><i className="bx bx-rocket" /> <span className="plain-case">{displayTitle(parent)}</span> · 写作计划</h2>
-          <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
+          <h2 style={{ margin: 0 }}><Icon n="bx-rocket" /> <span className="plain-case">{displayTitle(parent)}</span> · 写作计划</h2>
+          <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><Icon n="bx-x" /></button>
         </div>
 
         {!plan || plan.status === 'abandoned' ? (
@@ -209,7 +210,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
                 <div key={s.id} className="card">
                   <div>
                     <span style={{ color: STATUS_COLOR[s.status] }}>
-                      <i className={'bx ' + STATUS_ICON[s.status]} /> {STATUS_TEXT[s.status]}
+                      <Icon n={STATUS_ICON[s.status]} /> {STATUS_TEXT[s.status]}
                     </span>{' '}
                     <strong>{s.title}</strong>
                   </div>

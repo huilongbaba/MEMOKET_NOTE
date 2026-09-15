@@ -15,9 +15,13 @@ import { join, resolve } from 'node:path'
 import { corpus } from './_corpus.mts'
 
 const root = resolve(import.meta.dirname, '../src')
-const css = readFileSync(resolve(import.meta.dirname, '../node_modules/boxicons/css/boxicons.min.css'), 'utf8')
-const known = new Set([...css.matchAll(/\.(bxs?-[a-z0-9-]+):/g)].map((m) => m[1]))
-if (known.size < 100) { console.error('没读到 boxicons 的类名表，闸门失效'); process.exit(1) }
+/* **名字表的来源从 boxicons 换成了 `components/Icon.tsx` 的 ICONS 映射**
+   （第 713 轮：字形换成 lucide，名字仍沿用 `bx-*`，理由见 Icon.tsx 的注释）。
+   名字不在表里的表现是**什么都不画**——跟当初 `bx-magic-wand` 在 boxicons 里
+   不存在是同一个坑，所以这条闸门照旧要有。 */
+const iconSrc = readFileSync(resolve(import.meta.dirname, '../src/components/Icon.tsx'), 'utf8')
+const known = new Set([...iconSrc.matchAll(/^\s*'(bxs?-[a-z0-9-]+)':/gm)].map((m) => m[1]))
+if (known.size < 100) { console.error('没读到 Icon.tsx 的 ICONS 映射表，闸门失效'); process.exit(1) }
 
 const walk = (d: string, out: string[] = []) => {
   for (const f of readdirSync(d)) {
@@ -27,16 +31,25 @@ const walk = (d: string, out: string[] = []) => {
   return out
 }
 
+/** 把注释挖空，但**保持行数不变**——不然报出来的行号是错的（UI_SPEC §5 第 7 条：
+ *  「闸门不该被散文和 URL 绊倒」，这条在第 713 轮又被自己的注释绊了一次：
+ *  Icon.tsx 的注释里举了 `bx-magic-wand` 当反例，闸门把它当成了真的用法）。 */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')
+}
+
 let bad = 0
 for (const f of corpus(walk(root), 70, '源文件')) {
   if (!/\.(tsx?|css)$/.test(f)) continue
   const rel = f.replace(root + '/', '')
-  readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+  stripComments(readFileSync(f, 'utf8')).split('\n').forEach((line, i) => {
     for (const m of line.matchAll(/\b(bxs?-[a-z0-9-]+)\b/g)) {
       const name = m[1]
       if (known.has(name)) continue
       bad++
-      console.log(`✗ ${rel}:${i + 1} 图标 ${name} 在 boxicons 里不存在 —— 会渲染成空白：${line.trim().slice(0, 80)}`)
+      console.log(`✗ ${rel}:${i + 1} 图标 ${name} 不在 Icon.tsx 的 ICONS 映射表里 —— 会什么都不画：${line.trim().slice(0, 80)}`)
     }
   })
 }

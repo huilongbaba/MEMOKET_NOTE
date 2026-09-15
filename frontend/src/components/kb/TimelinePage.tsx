@@ -3,6 +3,7 @@ import { clickable } from '../../util/clickable'
 
 import { kbDay, kbTimeline, type FactDetail, type KbTimelineMonth } from '../../api'
 import { FactList, type KbActions } from './KbBits'
+import Icon from '../Icon'
 
 /** 纵向时间线：年 → 月 → 日。条形是当月 / 当天的事实数，点一天展开事实。 */
 export default function TimelinePage({ actions }: { actions: KbActions }) {
@@ -35,7 +36,7 @@ export default function TimelinePage({ actions }: { actions: KbActions }) {
   return (
     <div className="kb-page">
       <div className="kb-head">
-        <h2 className="kb-note-title"><i className="bx bx-calendar muted" /> 时间线</h2>
+        <h2 className="kb-note-title"><Icon n="bx-calendar" className="muted" /> 时间线</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{months.length} 个月 · 新的在上。点一个月展开到天，点一天看事实。</div>
       </div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { journeyDeny, journeySetDeny, type JourneyDeny } from '../api'
 import { toast } from '../toast'
+import Icon from './Icon'
 
 /**
  * 「不记这些」。
@@ -54,12 +55,12 @@ export default function JourneyDenyPanel() {
         <div className="chip-wrap" style={{ marginTop: 6 }}>
           {d.apps.map((x) => (
             <span key={'a' + x} className="chip mine">{x}
-              <button className="icon-btn sm" title="去掉" onClick={() => void drop('apps', x)}><i className="bx bx-x" /></button>
+              <button className="icon-btn sm" title="去掉" onClick={() => void drop('apps', x)}><Icon n="bx-x" /></button>
             </span>
           ))}
           {d.words.map((x) => (
             <span key={'w' + x} className="chip mine">标题含「{x}」
-              <button className="icon-btn sm" title="去掉" onClick={() => void drop('words', x)}><i className="bx bx-x" /></button>
+              <button className="icon-btn sm" title="去掉" onClick={() => void drop('words', x)}><Icon n="bx-x" /></button>
             </span>
           ))}
         </div>

@@ -23,11 +23,11 @@
     "@lezer/highlight": "^1.2.3",
     "@lezer/markdown": "^1.7.2",
     "@types/d3-zoom": "^3.0.8",
-    "boxicons": "^2.1.4",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
+    "lucide-react": "^1.17.0",
     "mermaid": "^11.17.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

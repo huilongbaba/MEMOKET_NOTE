@@ -18,6 +18,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 import ContextMenu, { type MenuAt, type MenuItem } from './ContextMenu'
+import Icon from './Icon'
 
 export type RibbonTab = {
   id: string
@@ -77,7 +78,7 @@ export default function Ribbon({
             className={'ribbon-tab' + (open === t.id ? ' active' : '')}
             onClick={() => choose(open === t.id ? undefined : t.id)}
           >
-            {t.icon && <span className="ribbon-icon">{t.icon.startsWith('bx-') ? <i className={'bx ' + t.icon} /> : t.icon}</span>}
+            {t.icon && <span className="ribbon-icon">{t.icon.startsWith('bx-') ? <Icon n={t.icon} /> : t.icon}</span>}
             <span>{t.title}</span>
             {t.badge !== undefined && t.badge !== 0 && (
               <span className="ribbon-badge">{t.badge}</span>
@@ -87,7 +88,7 @@ export default function Ribbon({
         {actions && actions.length > 0 && (
           <button className="ribbon-actions" title="更多操作" aria-label="更多操作" aria-haspopup="menu"
                   onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.right - 200, y: r.bottom + 4 }) }}>
-            <i className="bx bx-dots-horizontal-rounded" />
+            <Icon n="bx-dots-horizontal-rounded" />
           </button>
         )}
         {menuAt && actions && <ContextMenu at={menuAt} items={actions} onClose={() => setMenuAt(null)} />}

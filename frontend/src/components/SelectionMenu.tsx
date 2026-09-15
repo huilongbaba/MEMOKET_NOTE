@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useRestoreFocus } from '../util/restoreFocus'
+import Icon from './Icon'
 
 export type SelectionAction = 'verify' | 'rewrite' | 'polish' | 'expand' | 'trace' | 'custom'
 
@@ -61,17 +62,17 @@ export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
         <div className="muted" style={{ padding: 10, textAlign: 'center', fontSize: 'var(--t-sm)' }}><span className="spinner" /> {BUSY_LABEL[busy]}</div>
       ) : (
         <div className="palette-results" style={{ padding: 0 }}>
-          <div className="palette-item" onClick={() => onAction('verify')}><i className="bx bx-check-shield" /> 校验</div>
-          <div className="palette-item" onClick={() => onAction('rewrite')}><i className="bx bx-edit-alt" /> 重写</div>
-          <div className="palette-item" onClick={() => onAction('polish')}><i className="bx bx-star" /> 润色</div>
-          <div className="palette-item" onClick={() => onAction('expand')}><i className="bx bx-expand-horizontal" /> 扩展上下文</div>
+          <div className="palette-item" onClick={() => onAction('verify')}><Icon n="bx-check-shield" /> 校验</div>
+          <div className="palette-item" onClick={() => onAction('rewrite')}><Icon n="bx-edit-alt" /> 重写</div>
+          <div className="palette-item" onClick={() => onAction('polish')}><Icon n="bx-star" /> 润色</div>
+          <div className="palette-item" onClick={() => onAction('expand')}><Icon n="bx-expand-horizontal" /> 扩展上下文</div>
           {/* 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
               问题由后端拼（判据 1）。对应痛点 13：汇总零散笔记时 AI 捋不清
               时间线，而 KITE 的 planning 恰好擅长时序。 */}
-          <div className="palette-item" onClick={() => onAction('trace')}><i className="bx bx-history" /> 来龙去脉</div>
+          <div className="palette-item" onClick={() => onAction('trace')}><Icon n="bx-history" /> 来龙去脉</div>
           {/* 跟 `/` 的「用 AI 写」是同一套 harness，差别在**作用域**：那个是
               「在光标这里插一块」，这个是「对我选中的这段做点什么」。 */}
-          <div className="palette-item" onClick={() => onAction('custom')}><i className="bx bx-message-dots" /> 自定义提示…</div>
+          <div className="palette-item" onClick={() => onAction('custom')}><Icon n="bx-message-dots" /> 自定义提示…</div>
         </div>
       )}
     </div>

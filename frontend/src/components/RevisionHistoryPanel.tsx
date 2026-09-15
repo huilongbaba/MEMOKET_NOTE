@@ -4,6 +4,7 @@ import * as api from '../api'
 import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
 import { diffParts } from '../editor/roundDiff'
+import Icon from './Icon'
 
 const REASON: Record<string, string> = { auto: '自动', manual: '手动', before_restore: '恢复前' }
 
@@ -65,19 +66,19 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
           {revs.length === 0 ? '还没有历史版本——正文改动后每隔十分钟自动留一版。' : `${revs.length} 个版本 · 当前 ${currentChars} 字`}
         </span>
         <span style={{ flex: 1 }} />
-        <button className="chip chip-action" disabled={busy || !currentContent.trim()} title={!currentContent.trim() ? '正文是空的，没什么可存' : undefined} onClick={snapshot}><i className="bx bx-bookmark-plus" /> 现在存一版</button>
+        <button className="chip chip-action" disabled={busy || !currentContent.trim()} title={!currentContent.trim() ? '正文是空的，没什么可存' : undefined} onClick={snapshot}><Icon n="bx-bookmark-plus" /> 现在存一版</button>
       </div>
       {revs.length > 0 && (
         <div className="revision-list">
           {revs.map((r) => (
             <div key={r.id} className={'revision-row' + (open?.id === r.id ? ' open' : '')}>
               <a className="kb-link" onClick={() => void view(r)}>
-                <i className={'bx ' + (open?.id === r.id ? 'bx-chevron-down' : 'bx-chevron-right')} />
+                <Icon n={(open?.id === r.id ? 'bx-chevron-down' : 'bx-chevron-right')} />
                 <span>{when(r.created_at)}</span>
                 <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{REASON[r.reason] ?? r.reason} · {r.chars} 字
                   {r.chars !== currentChars && <> · {r.chars > currentChars ? '+' : ''}{r.chars - currentChars}</>}</span>
                 <span style={{ flex: 1 }} />
-                <button className="chip chip-action" disabled={busy} onClick={(e) => { e.stopPropagation(); void restore(r) }}><i className="bx bx-undo" /> 恢复到这一版</button>
+                <button className="chip chip-action" disabled={busy} onClick={(e) => { e.stopPropagation(); void restore(r) }}><Icon n="bx-undo" /> 恢复到这一版</button>
               </a>
               {open?.id === r.id && (
                 <div className="revision-body">

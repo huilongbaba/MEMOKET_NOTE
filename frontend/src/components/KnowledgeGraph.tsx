@@ -5,6 +5,7 @@ import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, f
 import { select as d3select } from 'd3-selection'
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { EntityNode, TopicEntityLink, TopicNode } from '../api'
+import Icon from './Icon'
 
 /**
  * One force-directed graph for topics AND entities together.
@@ -620,11 +621,11 @@ export default function KnowledgeGraph(
         </div>
         <div className="row">
           {focusedId
-            ? <button className="chip active" onClick={clearFocus} title="退出聚焦，显示全部节点"><i className="bx bx-undo" />恢复全部</button>
+            ? <button className="chip active" onClick={clearFocus} title="退出聚焦，显示全部节点"><Icon n="bx-undo" />恢复全部</button>
             : (
               <>
-                <button className="icon-btn" onClick={() => fitTo()} title="适应窗口：缩放到刚好容纳所有节点"><i className="bx bx-expand" /></button>
-                <button className="icon-btn" onClick={resetZoom} title="重置视图：回到 100%"><i className="bx bx-reset" /></button>
+                <button className="icon-btn" onClick={() => fitTo()} title="适应窗口：缩放到刚好容纳所有节点"><Icon n="bx-expand" /></button>
+                <button className="icon-btn" onClick={resetZoom} title="重置视图：回到 100%"><Icon n="bx-reset" /></button>
               </>
             )}
         </div>

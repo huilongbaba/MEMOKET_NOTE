@@ -7,6 +7,7 @@ import { entityMergeCandidates } from '../../api'
 import { kbTreeChildren, type TreeRow } from '../../api'
 import { Chip, KbSection, type KbActions } from './KbBits'
 import { isSpeakerTag } from '../../util/kbNoise'
+import Icon from '../Icon'
 
 export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbActions }) {
   const roots = rows.filter((r) => r.parent_note_id === 'kb:topics').sort((a, b) => b.fact_count - a.fact_count)
@@ -14,7 +15,7 @@ export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
   return (
     <div className="kb-page">
       <div className="kb-head">
-        <h2 className="kb-note-title"><i className="bx bx-hash muted" /> 主题</h2>
+        <h2 className="kb-note-title"><Icon n="bx-hash" className="muted" /> 主题</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{roots.length ? `${roots.length} 个一级主题。计数含子主题。` : '还没有主题。'}</div>
       </div>
       {roots.length === 0 && (
@@ -24,7 +25,7 @@ export function TopicsIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
         {roots.map((t) => (
           <div key={t.id} className="topic-card">
             <a href="#" className="topic-card-title" onClick={(e) => { e.preventDefault(); actions.onOpen(t.note_id) }}>
-              <i className="bx bx-hash muted" /> {t.title}<span className="muted" style={{ marginInlineStart: 'auto', fontSize: 'var(--t-sm)' }}>{t.fact_count}</span>
+              <Icon n="bx-hash" className="muted" /> {t.title}<span className="muted" style={{ marginInlineStart: 'auto', fontSize: 'var(--t-sm)' }}>{t.fact_count}</span>
             </a>
             <div className="chip-wrap">
               {kids(t.title).slice(0, 8).map((k) => <Chip key={k.id} count={k.fact_count} onClick={() => actions.onOpen(k.note_id)}>{k.title}</Chip>)}
@@ -75,7 +76,7 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
   return (
     <div className="kb-page">
       <div className="kb-head">
-        <h2 className="kb-note-title"><i className="bx bx-group muted" /> {etype ? `实体 · ${ETYPE_LABELS[etype] ?? etype}` : '实体'}</h2>
+        <h2 className="kb-note-title"><Icon n="bx-group" className="muted" /> {etype ? `实体 · ${ETYPE_LABELS[etype] ?? etype}` : '实体'}</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{!etype && all.length === 0 ? '还没有实体。' : `${all.length} 个。按事实数排序${!q && all.length > 200 ? '，先给前 200 个——搜一下能找到其余的' : ''}。`}{etype && fetched !== null && all.length === 0 ? '这个库的实体没有按类型分组——去「实体」看全部。' : ''}</div>
       </div>
       {!etype && all.length === 0 && (
@@ -85,7 +86,7 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
           列表按事实数排序，而那些数字现在是真值的一部分（MemoCat 真实 189 显示 93）。 */}
       {!etype && all.length > 0 && <MergeEntry onOpen={() => actions.onOpen('kb:merges')} />}
       {all.length > 0 && <div className="kb-search">
-        <i className="bx bx-search" />
+        <Icon n="bx-search" />
         <input aria-label="搜实体名或别名" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜实体名或别名…" />
       </div>}
       {speakers > 0 && (
@@ -120,7 +121,7 @@ export function RecentIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
   return (
     <div className="kb-page">
       <div className="kb-head">
-        <h2 className="kb-note-title"><i className="bx bx-time-five muted" /> 最近摄入</h2>
+        <h2 className="kb-note-title"><Icon n="bx-time-five" className="muted" /> 最近摄入</h2>
         <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{units.length ? `最近 ${units.length} 场会议。点开看这场会抽出来的事实。` : '还没有摄入过。'}</div>
       </div>
       {units.length === 0 && (
@@ -130,7 +131,7 @@ export function RecentIndex({ rows, actions }: { rows: TreeRow[]; actions: KbAct
         <div className="stack" style={{ gap: 4 }}>
           {units.map((u) => (
             <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen(u.note_id) }}>
-              <i className="bx bx-conversation muted" /> {u.title}
+              <Icon n="bx-conversation" className="muted" /> {u.title}
               <span className="muted" style={{ marginInlineStart: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}>{u.fact_count} 条</span>
             </a>
           ))}

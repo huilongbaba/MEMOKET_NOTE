@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { listTrash, purgeTrash, restoreTrash, type TrashItem } from '../api'
 import { toast } from '../toast'
 import { fmtDateTime } from '../util/time'
+import Icon from './Icon'
 
 export default function TrashPanel({ onRestored }: { onRestored: (id: string) => void }) {
   const [items, setItems] = useState<TrashItem[] | null>(null)
@@ -37,7 +38,7 @@ export default function TrashPanel({ onRestored }: { onRestored: (id: string) =>
       {items.length === 0 && <p className="muted" style={{ fontSize: 'var(--t-md)' }}>最近 30 天没有删过笔记。</p>}
       {items.map((it) => (
         <div key={it.note_id} className="card row" style={{ alignItems: 'center', gap: 10, padding: '8px 10px' }}>
-          <i className="bx bx-trash muted" />
+          <Icon n="bx-trash" className="muted" />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 'var(--t-md)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title || '未命名'}</div>
             <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>{fmtDateTime(it.deleted_at)} 删除 · {it.chars} 字</div>
