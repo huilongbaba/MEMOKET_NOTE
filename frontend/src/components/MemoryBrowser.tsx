@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePoll } from '../util/poll'
 import { useIngestActive } from '../util/ingestActive'
 import { createTopic, listClusters, memoryEntities, memoryTopics, topicEntityLinks } from '../api'
 import type { EntityNode, TopicCluster, TopicEntityLink, TopicNode } from '../api'
@@ -70,17 +71,15 @@ export default function MemoryBrowser() {
   // 主题/实体/共现边同样是抽取时后台不断产出的，之前只在切进 tab 的时候拉
   // 一次（还带了 length===0 的门槛，切走再切回来都不会重新拉）——开着这个
   // tab 抽取新内容，图上永远不会长出新节点。改成跟事实表一样轮询。
-  useEffect(() => {
-    const fetchAll = () => {
-      memoryTopics().then((t) => { setTopics(t); setLoaded(true) }).catch(() => {})
-      memoryEntities().then(setEntities).catch(() => {})
-      topicEntityLinks().then(setLinks).catch(() => {})
-    }
-    fetchAll()
-    if (!live) return
-    const timer = setInterval(fetchAll, 3000)
-    return () => clearInterval(timer)
-  }, [live])
+  const fetchAll = useCallback(() => {
+    memoryTopics().then((t) => { setTopics(t); setLoaded(true) }).catch(() => {})
+    memoryEntities().then(setEntities).catch(() => {})
+    topicEntityLinks().then(setLinks).catch(() => {})
+  }, [])
+  useEffect(fetchAll, [fetchAll])
+  // 摄入跑着时每 3 秒对一次，**窗口看不见就不拉**——一次摄入可能跑十几分钟，
+  // 而这三个接口在两万条事实的库上不便宜（util/poll）
+  usePoll(fetchAll, 3000, live)
 
   // 大语料下抽取会把 ASR 噪声碎片（单/双字母缩写、纯数字、0 引用的孤儿实体）
   // 一起当实体提出来——实测 terrence 语料到 1864 个实体时，95% type 为空，

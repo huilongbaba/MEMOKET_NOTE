@@ -4,6 +4,7 @@ import { journeyCatchUp, journeyDay, journeyDays, journeyDeleteDay, journeyDelet
          journeyReport, journeySaveReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneySegment } from '../api'
 import { parseMini, type Inline } from '../util/miniMarkdown'
+import { usePoll } from '../util/poll'
 import JourneyDenyPanel from './JourneyDenyPanel'
 import { toast } from '../toast'
 
@@ -130,7 +131,9 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
     journeyDays().then(setDays).catch(() => setDays([]))
   }, [bridge, date])
 
-  useEffect(() => { void refresh(); const t = setInterval(() => void refresh(), 30_000); return () => clearInterval(t) }, [refresh])
+  // 每 30 秒对一次状态和段数；**窗口看不见就不轮询**，回到前台立刻对一次（util/poll）
+  useEffect(() => { void refresh() }, [refresh])
+  usePoll(() => void refresh(), 30_000)
 
   async function catchUp() {
     setBusy(true)
