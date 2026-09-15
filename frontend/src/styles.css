@@ -1445,8 +1445,10 @@ kbd {
      ⌘K 跟旁边的中文说明同一套字，读起来不像「键」。`--mono` 这个令牌定义了
      却一处没用，就是漏在这儿。 */
   font-family: var(--mono); font-weight: var(--w-bold);
-  font-size: var(--t-2xs); line-height: 1; padding: 3px 6px; border-radius: var(--r-xs);
-  border: 1px solid var(--mk-line-2); background: transparent; color: var(--ink-3); white-space: nowrap;
+  /* 0.5.10 的 `.kbd`：`10px/700/mono`、边 `1px var(--line)`（**`.10`，不是 `.05`**）、
+     圆角 5、内边距 **`1px 5px`**（比我们原来的 `3px 6px` 紧一圈，键帽才不虚胖）。 */
+  font-size: var(--t-2xs); line-height: 1; padding: var(--s-1) var(--s-3); border-radius: var(--r-xs);
+  border: 1px solid var(--mk-line); background: transparent; color: var(--ink-3); white-space: nowrap;
 }
 .shortcut-row { display: flex; align-items: center; gap: var(--s-5); padding: 4px 4px; font-size: var(--t-md); }
 .shortcut-row kbd { min-width: 88px; text-align: center; }

@@ -64,6 +64,19 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       setTimeout(() => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 400)
     }, 1500))
   }
+  /* `cmdl`：按一下 ⌘L，看焦点是不是真的落在 composer 的输入框上。
+     （第 724 轮加这个键之后顺手加的——键盘入口最容易「加了但没接上」。） */
+  if (probe === 'cmdl' && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const n = notes.find((x) => (x.content ?? '').length > 80) ?? notes[0]
+    void switchTo(n).then(() => setTimeout(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', metaKey: true, bubbles: true }))
+      setTimeout(() => {
+        const ok = document.activeElement?.classList.contains('composer-input')
+        void api.clientLog('info', 'cmdl 探针：焦点在 composer-input = ' + ok)
+      }, 300)
+    }, 1500))
+  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {

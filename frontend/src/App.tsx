@@ -1349,6 +1349,15 @@ export default function App() {
       else if (key === 'd' && e.shiftKey) { e.preventDefault(); void openToday() }   // ⌘⇧D 今天的日记（Trilium 也是这个键）
       else if (key === 'n') { e.preventDefault(); void newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
+      /* ⌘L 跳到底部 composer。第 714 轮它成了正文的 AI 主入口，却**只能用鼠标点**
+         ——一个主交互没有键盘入口是说不过去的（第 724 轮）。
+         选 ⌘L 的理由：⌘K/⌘J 是搜索、⌘N/⌘T 是新建、⌘F 是查找，L 空着，
+         而且「跳到地址栏 / 输入框」在浏览器里就是 ⌘L，手感是对的。 */
+      else if (key === 'l') {
+        e.preventDefault()
+        const el = document.querySelector('.composer-input') as HTMLInputElement | null
+        el?.focus(); el?.select()
+      }
       else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
       else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => (p.rightOn ? { ...p, rightOn: false } : makeRoomForRight(p, winW, split?.w ?? 0))) }

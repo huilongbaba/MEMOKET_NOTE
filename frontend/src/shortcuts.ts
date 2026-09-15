@@ -24,6 +24,7 @@ export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: stri
     // 「更多 → 正文怎么写」指到这张表，那就得真讲得到 mermaid，
     // 不然又是一个指向空处的指路牌（第 618 轮）。
     { keys: '```mermaid', what: '画流程图 / 饼图 / 柱状图，写完自动渲染（光标移开就显示图）' },
+    { keys: '⌘L', what: '跳到底部输入框：说一句话让 AI 写' },
     { keys: '⌘F', what: '页内查找 / 替换' },
     { keys: '⇧⌘F', what: '格式化整篇 Markdown' },
     { keys: '⌘B / ⌘I / ⇧⌘K', what: '粗体 / 斜体 / 插入链接' },
