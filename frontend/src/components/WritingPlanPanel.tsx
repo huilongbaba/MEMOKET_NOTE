@@ -7,8 +7,16 @@ import type { TreeRow, WritingPlan, WritingSection } from '../api'
 import type { HarnessState } from '../App'
 import { toast } from '../toast'
 
-const STATUS_LABEL: Record<WritingSection['status'], string> = {
-  pending: '⬜ 待写', in_progress: '🔄 写作中', done: '✅ 已完成',
+/** 状态用图标 + 语义色，不用 emoji：**emoji 拿不到令牌色**，深色下还是那几个
+ *  彩块，而「已完成」该是 --ins、「写作中」该是 --brand。 */
+const STATUS_ICON: Record<WritingSection['status'], string> = {
+  pending: 'bx-circle', in_progress: 'bx-loader-circle', done: 'bx-check-circle',
+}
+const STATUS_TEXT: Record<WritingSection['status'], string> = {
+  pending: '待写', in_progress: '写作中', done: '已完成',
+}
+const STATUS_COLOR: Record<WritingSection['status'], string> = {
+  pending: 'var(--ink-3)', in_progress: 'var(--brand)', done: 'var(--ins)',
 }
 
 /**
@@ -201,7 +209,12 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
             <div className="stack" style={{ marginTop: 8 }}>
               {sections.map((s) => (
                 <div key={s.id} className="card">
-                  <div>{STATUS_LABEL[s.status]} <strong>{s.title}</strong></div>
+                  <div>
+                    <span style={{ color: STATUS_COLOR[s.status] }}>
+                      <i className={'bx ' + STATUS_ICON[s.status]} /> {STATUS_TEXT[s.status]}
+                    </span>{' '}
+                    <strong>{s.title}</strong>
+                  </div>
                   {s.summary && (
                     <div className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>{s.summary}</div>
                   )}

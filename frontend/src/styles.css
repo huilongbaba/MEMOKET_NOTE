@@ -361,7 +361,10 @@ h2:first-child { margin-top: 0; }
   font-size: var(--t-base); padding: 14px 16px;
 }
 .palette-results { overflow-y: auto; padding: var(--s-3); }
-.palette-group { font-size: var(--t-xs); margin: 8px 4px 4px; padding: 0 4px; }
+/* 命令面板里的分组标题跟别处同一套字形（§2.6）。原来只设了字号——于是
+   「最近编辑 / 前往」跟下面的条目粗细一样，扫的时候分不出这是标题还是一条。 */
+.palette-group { font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2);
+  letter-spacing: var(--ls-caps); margin: 8px 4px 4px; padding: 0 4px; }
 .palette-item { transition: background .12s, color .12s; font-weight: var(--w-semi); padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--t-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette-item:hover, .palette-item.active { background: var(--hover); }
 .palette-item { display: flex; align-items: center; }

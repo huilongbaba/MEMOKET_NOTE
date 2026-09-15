@@ -109,7 +109,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
               {ingesting ? <span className="spinner" /> : (kb?.stale ? '同步到知识库' : '重新同步')}
             </button>
           : <button onClick={onIngest} disabled={ingesting || empty} style={{ marginInlineStart: 'auto' }} title={empty ? '正文是空的，先写点东西' : undefined}>
-              {ingesting ? <span className="spinner" /> : '📥 存入知识库'}
+              {ingesting ? <span className="spinner" /> : <><i className="bx bx-import" /> 存入知识库</>}
             </button>}
       </div>
       {kb?.stale && !ingesting && (

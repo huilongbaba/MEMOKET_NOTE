@@ -6,7 +6,7 @@ import {
   tableCmd,
 } from '../editor/markdownCommands'
 
-const BUTTONS: { label: string; title: string; cmd: (view: EditorView) => void }[] = [
+const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: EditorView) => void }[] = [
   { label: 'B', title: '加粗 (⌘/Ctrl+B)', cmd: boldCmd },
   { label: 'I', title: '斜体 (⌘/Ctrl+I)', cmd: italicCmd },
   { label: 'H1', title: '一级标题', cmd: heading1Cmd },
@@ -16,7 +16,9 @@ const BUTTONS: { label: string; title: string; cmd: (view: EditorView) => void }
   { label: '•', title: '无序列表', cmd: bulletListCmd },
   { label: '1.', title: '有序列表', cmd: orderedListCmd },
   { label: '☑', title: '任务列表', cmd: taskListCmd },
-  { label: '🔗', title: '链接 (⌘/Ctrl+K)', cmd: linkCmd },
+  // 这一排是**单色字形**（B / I / H1 / " / • / 1. / ☑ / <> / { } / ▦）。
+  // 原来这里是彩色 emoji 🔗，在一排灰字里格外扎眼，深色下也不跟主题。
+  { label: '🔗', icon: 'bx-link', title: '链接 (⌘/Ctrl+K)', cmd: linkCmd },
   { label: '<>', title: '行内代码', cmd: inlineCodeCmd },
   { label: '{ }', title: '代码块', cmd: codeBlockCmd },
   { label: '▦', title: '表格：插入 3 列空表格', cmd: tableCmd },
@@ -60,7 +62,7 @@ export default function MarkdownToolbar(
           onMouseDown={(e) => e.preventDefault()}
           onClick={onRestructure}
         >
-          {restructuring ? <span className="spinner" /> : '✨ 智能排版'}
+          {restructuring ? <span className="spinner" /> : <><i className="bx bx-magic-wand" /> 智能排版</>}
         </button>
       )}
       {(onFormat || onRestructure) && <span className="tb-sep" />}
@@ -77,7 +79,7 @@ export default function MarkdownToolbar(
             if (view) b.cmd(view)
           }}
         >
-          {b.label}
+          {b.icon ? <i className={'bx ' + b.icon} /> : b.label}
         </button>
       ))}
     </div>
