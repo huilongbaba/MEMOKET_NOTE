@@ -324,11 +324,9 @@ h2:first-child { margin-top: 0; }
    东西不给一点进场，会像是「本来就在那儿」**。reduced-motion 那一块会关掉它。 */
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .toast { animation: toast-in .18s cubic-bezier(.22, .61, .36, 1); }
-/* **toast 是反底**，里面的动作链接不能用品牌紫——第 686 轮我把 `.linklike`
-   的颜色改成 `--brand-text` 之后，「撤销」成了深紫压在近黑上，几乎看不见
-   （第 698 轮实拍）。反底上用面色 + 下划线，对比度 18:1。 */
-/* `.linklike.link`（0,2,0）定义在后面，权重相同时后来者赢——所以这里要 0,3,0。
-   第一版写成 `.toast .link` 没生效，实拍还是紫的（第 698 轮）。 */
+/* toast 是**反底**：里面的动作链接用面色 + 下划线（对比度 18:1），
+   不能用品牌紫——深紫压近黑几乎看不见（第 698 轮实拍）。
+   `.linklike.link`（0,2,0）定义在后面，同权重后来者赢，所以这里要 0,3,0。 */
 .toast .linklike, .toast .linklike.link, .toast .link { color: var(--mk-surface); text-decoration: underline; text-underline-offset: 2px; }
 .toast .linklike:hover { opacity: .85; }
 
@@ -1359,11 +1357,15 @@ kbd {
 .plain-case { text-transform: none; letter-spacing: 0; }
 
 /* 长得像文字的按钮（状态栏红字这种「一行字可点」的地方） */
-/* 长得像链接的按钮。**必须显式放开高度**：全局 `button { height: 33px }` 会
-   漏进来，把一行文字撑成 33px（第 686 轮在实体合并卡的「压根不该算实体」那行
-   实拍到）。`font: inherit` 也会带走字重，所以颜色单给一个能看出可点的。 */
+/* 长得像链接的按钮。**颜色必须 `inherit`**——它的整个用处就是「长得像旁边的
+   文字，但能点」：状态栏的红色告警（`.health-bad`）、屏幕活动的危险动作
+   （`.danger`）、toast 的反底，都靠继承上下文的颜色。
+   第 686 轮我为了让实体合并卡上那两个「压根不该算实体」看得出可点，
+   给它写死了 `--brand-text`——**契约就破了**：状态栏那条「语音离线」的红警告
+   被染成紫（`.health-bad` 定义在前面，同权重后来者赢），toast 里的「撤销」
+   成了深紫压近黑。要「看得出可点」就加 `.link`，不要改基类。 */
 .linklike { background: none; border: 0; padding: 0; margin: 0;
-  font: inherit; font-weight: var(--w-semi); color: var(--brand-text); cursor: pointer;
+  font: inherit; font-weight: var(--w-semi); color: inherit; cursor: pointer;
   display: inline-flex; align-items: center; gap: var(--s-2); }
 .linklike:hover { text-decoration: underline; }
 /* 既像链接又是真按钮（toast 里的「撤销」）：.linklike 的 color: inherit 排在 .link 后面会盖掉蓝色 */

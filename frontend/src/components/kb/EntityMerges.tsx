@@ -114,8 +114,8 @@ export default function EntityMerges({ onDone }: { onDone?: () => void }) {
           </div>
           <div className="row merge-drops" style={{ gap: 10 }}>
             <span className="muted">要是哪个压根不该算实体：</span>
-            <button className="linklike" disabled={!!busy} onClick={() => void decide(c, 'drop_a')}>{c.name_a}</button>
-            <button className="linklike" disabled={!!busy} onClick={() => void decide(c, 'drop_b')}>{c.name_b}</button>
+            <button className="linklike link" disabled={!!busy} onClick={() => void decide(c, 'drop_a')}>{c.name_a}</button>
+            <button className="linklike link" disabled={!!busy} onClick={() => void decide(c, 'drop_b')}>{c.name_b}</button>
           </div>
         </div>
       ))}
