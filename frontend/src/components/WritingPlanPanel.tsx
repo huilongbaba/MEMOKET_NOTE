@@ -126,7 +126,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
               给一个写作目标，会自动拆成若干分段，每个分段独立成一篇笔记，一段接一段自动写下去；写完已知分段后还会检查有没有更多值得写的内容，没有才真正停下来。
               {scopeLabel && <>取材料只看「{scopeLabel}」（范围在右栏「相关记忆」里切）。</>}
             </p>
-            <textarea
+            <textarea aria-label="写作目标"
               rows={3}
               placeholder="比如：梳理 XX 项目从技术方案到上线计划的完整推进思路"
               value={goal}

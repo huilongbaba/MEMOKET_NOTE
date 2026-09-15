@@ -100,7 +100,7 @@ export default function ExportNotePanel({ noteId, title, onClose }:
         {where === 'obsidian' && (
           <>
             <div className="row" style={{ gap: 6 }}>
-              <input placeholder="vault 文件夹路径" value={vault} style={{ flex: 1, minWidth: 0 }}
+              <input aria-label="Obsidian vault 文件夹路径" placeholder="vault 文件夹路径" value={vault} style={{ flex: 1, minWidth: 0 }}
                      onChange={(e) => { setVault(e.target.value); saveVault(e.target.value) }} />
               <button onClick={() => void pickVault()} title="选文件夹">…</button>
             </div>
@@ -111,15 +111,15 @@ export default function ExportNotePanel({ noteId, title, onClose }:
         )}
         {where === 'notion' && (
           <>
-            <input placeholder="Integration token（ntn_… / secret_…）" value={token} onChange={(e) => setToken(e.target.value)} />
-            <input placeholder="父页面 id" value={parent} onChange={(e) => setParent(e.target.value)} />
+            <input aria-label="Notion Integration token" placeholder="Integration token（ntn_… / secret_…）" value={token} onChange={(e) => setToken(e.target.value)} />
+            <input aria-label="Notion 父页面 id" placeholder="父页面 id" value={parent} onChange={(e) => setParent(e.target.value)} />
           </>
         )}
         {where === 'feishu' && (
           <>
-            <input placeholder="App ID（cli_…）" value={appId} onChange={(e) => setAppId(e.target.value)} />
-            <input placeholder="App Secret" value={secret} onChange={(e) => setSecret(e.target.value)} />
-            <input placeholder="文件夹 token" value={folder} onChange={(e) => setFolder(e.target.value)} />
+            <input aria-label="飞书 App ID" placeholder="App ID（cli_…）" value={appId} onChange={(e) => setAppId(e.target.value)} />
+            <input aria-label="飞书 App Secret" placeholder="App Secret" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            <input aria-label="飞书文件夹 token" placeholder="文件夹 token" value={folder} onChange={(e) => setFolder(e.target.value)} />
           </>
         )}
       </div>

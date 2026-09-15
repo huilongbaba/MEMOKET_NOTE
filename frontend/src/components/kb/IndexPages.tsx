@@ -86,7 +86,7 @@ export function EntitiesIndex({ rows, actions, node = 'kb:entities' }: { rows: T
       {!etype && all.length > 0 && <MergeEntry onOpen={() => actions.onOpen('kb:merges')} />}
       {all.length > 0 && <div className="kb-search">
         <i className="bx bx-search" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜实体名或别名…" />
+        <input aria-label="搜实体名或别名" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜实体名或别名…" />
       </div>}
       {speakers > 0 && (
         <label className="row muted" style={{ gap: 6, fontSize: 12, alignItems: 'center', margin: '-2px 0 8px' }}>

@@ -238,7 +238,7 @@ export default function MemoryBrowser() {
         {(
           <div className="stack">
             {showCreate && <div className="filter-row">
-              <input
+              <input aria-label="新主题名"
                 placeholder="新主题名"
                 value={newTopicCode}
                 onChange={(e) => setNewTopicCode(e.target.value)}
@@ -283,7 +283,7 @@ export default function MemoryBrowser() {
             <div className="filter-row">
               <div className="quick-search" style={{ minWidth: 200 }}>
                 <i className="bx bx-search" />
-                <input placeholder="找节点…" value={nodeQuery} onChange={(e) => setNodeQuery(e.target.value)} />
+                <input aria-label="找节点" placeholder="找节点…" value={nodeQuery} onChange={(e) => setNodeQuery(e.target.value)} />
                 {nodeQuery && <button className="icon-btn" title="清空" aria-label="清空搜索" onClick={() => setNodeQuery('')}><i className="bx bx-x" /></button>}
               </div>
               {(drilled !== null || clusters.length === 0) && (

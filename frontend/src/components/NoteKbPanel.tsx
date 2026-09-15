@@ -128,7 +128,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
           </div>
           {adding !== null && (
             <div className="stack" style={{ gap: 4 }}>
-              <textarea rows={2} value={adding} autoFocus placeholder="一句话说清一件事（谁、什么时候、什么）"
+              <textarea aria-label="新增一条事实" rows={2} value={adding} autoFocus placeholder="一句话说清一件事（谁、什么时候、什么）"
                         onChange={(e) => setAdding(e.target.value)} />
               <div className="row" style={{ gap: 6 }}>
                 <button className="primary" onClick={() => void saveAdd()} style={{ fontSize: 12, padding: '2px 10px' }}>加上</button>
@@ -142,7 +142,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
             <div key={f.id} className="card" style={{ padding: '6px 8px' }}>
               {editing?.id === f.id ? (
                 <div className="stack" style={{ gap: 4 }}>
-                  <textarea rows={2} value={editing.text} autoFocus onChange={(e) => setEditing({ id: f.id, text: e.target.value })} />
+                  <textarea aria-label="改这条事实" rows={2} value={editing.text} autoFocus onChange={(e) => setEditing({ id: f.id, text: e.target.value })} />
                   <div className="row" style={{ gap: 6 }}>
                     <button className="primary" onClick={() => void saveEdit()} style={{ fontSize: 12, padding: '2px 10px' }}>保存</button>
                     <button onClick={() => setEditing(null)} style={{ fontSize: 12, padding: '2px 10px' }}>取消</button>

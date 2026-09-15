@@ -191,19 +191,25 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
 
             {provider === 'gpt' && (
               <div className="stack" style={{ marginTop: 4, paddingLeft: 24 }}>
-                <input
+                {/* 看得见的字段名。**占位符不是名字**：填上字它就没了——实拍
+                    （第 675 轮）这三个框填着 `gpt-5.6-luna`、`https://api.openai.com/v1`，
+                    旁边一个字都没说这是什么。aria-label 管屏幕阅读器，这几行管眼睛。 */}
+                <label className="muted" style={{ fontSize: 12 }}>API key</label>
+                <input aria-label="GPT API key"
                   type="password"
-                  placeholder={cfg?.gpt_api_key_set ? `API key（已设置 ${cfg.gpt_api_key_preview}，留空则不改）` : 'sk-...'}
+                  placeholder={cfg?.gpt_api_key_set ? `已设置 ${cfg.gpt_api_key_preview}，留空则不改` : 'sk-...'}
                   value={gptApiKey}
                   onChange={(e) => setGptApiKey(e.target.value)}
                 />
-                <input
-                  placeholder="模型名（默认 gpt-4.1-mini）"
+                <label className="muted" style={{ fontSize: 12, marginTop: 4 }}>模型名</label>
+                <input aria-label="GPT 模型名"
+                  placeholder="默认 gpt-4.1-mini"
                   value={gptModel}
                   onChange={(e) => setGptModel(e.target.value)}
                 />
-                <input
-                  placeholder="API base URL（默认 OpenAI 官方端点）"
+                <label className="muted" style={{ fontSize: 12, marginTop: 4 }}>API base URL</label>
+                <input aria-label="GPT API base URL"
+                  placeholder="默认 OpenAI 官方端点"
                   value={gptBaseUrl}
                   onChange={(e) => setGptBaseUrl(e.target.value)}
                 />
@@ -221,7 +227,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
             <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
               录音转写用的 whisper.cpp server 地址。留空用默认；改完保存，状态栏的「语音离线」会立刻重查。
             </p>
-            <input
+            <input aria-label="语音服务地址"
               placeholder={`默认 ${cfg?.asr_default_url ?? ''}`}
               value={asrBaseUrl}
               onChange={(e) => setAsrBaseUrl(e.target.value)}

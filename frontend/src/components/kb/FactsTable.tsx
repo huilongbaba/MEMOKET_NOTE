@@ -51,8 +51,8 @@ export default function FactsTable({ query, actions }: { query: string; actions:
           <option value="">全部说话人</option>
           {meta?.speakers.map((s) => <option key={s.who} value={s.who}>{s.who} · {s.facts}</option>)}
         </select>
-        <input placeholder="主题（含子主题）" value={filter.topic ?? ''} onChange={(e) => set('topic', e.target.value)} />
-        <input placeholder="实体" value={filter.entity ?? ''} onChange={(e) => set('entity', e.target.value)} />
+        <input aria-label="按主题筛" placeholder="主题（含子主题）" value={filter.topic ?? ''} onChange={(e) => set('topic', e.target.value)} />
+        <input aria-label="按实体筛" placeholder="实体" value={filter.entity ?? ''} onChange={(e) => set('entity', e.target.value)} />
         <select aria-label="置信度" value={filter.conf_min ?? ''} onChange={(e) => set('conf_min', e.target.value)}>
           <option value="">任意置信度</option>
           <option value="med">≥ 中</option>

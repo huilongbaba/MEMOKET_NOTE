@@ -33,7 +33,7 @@ import { markdownHighlight, dimSyntaxMarks, editorTheme, scrollPadding, syntaxHi
 
 /**
  * Markdown-native editor (CodeMirror 6): the document is always a single
- * plain string, same contract as the old plain <textarea> -- so the
+ * plain string, same contract as the old plain <textarea aria-label="笔记正文"> -- so the
  * anchor-based revision system (LLM returns an exact substring of `content`
  * to highlight) needed zero backend changes. On top of that plain string,
  * CM6 adds real markdown syntax styling, dimmed (not hidden) delimiter

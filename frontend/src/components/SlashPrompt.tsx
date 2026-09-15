@@ -37,7 +37,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
         <strong style={{ fontSize: 13 }}>{item.label}</strong>
         <span className="muted" style={{ fontSize: 11 }}>{item.hint}</span>
       </div>
-      <input
+      <input aria-label="给 AI 的指令"
         ref={ref}
         value={value}
         disabled={busy}

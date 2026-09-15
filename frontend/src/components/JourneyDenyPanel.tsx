@@ -70,7 +70,7 @@ export default function JourneyDenyPanel() {
           <button className={kind === 'apps' ? 'on' : ''} onClick={() => setKind('apps')}>应用</button>
           <button className={kind === 'words' ? 'on' : ''} onClick={() => setKind('words')}>标题词</button>
         </span>
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} style={{ flex: 1 }}
+        <input aria-label="不记录的应用或窗口关键词" value={draft} onChange={(e) => setDraft(e.target.value)} style={{ flex: 1 }}
                placeholder={kind === 'apps' ? '比如：Signal' : '比如：体检报告'}
                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }} />
         <button onClick={add} disabled={!draft.trim()} title={draft.trim() ? '' : '先填一个'}>加上</button>

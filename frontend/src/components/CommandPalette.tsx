@@ -169,7 +169,7 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
   return (
     <div className="palette-backdrop" onClick={() => setOpen(false)}>
       <div className="palette" role="dialog" aria-label="搜索与命令" onClick={(e) => e.stopPropagation()}>
-        <input
+        <input aria-label="搜笔记、知识库、命令"
           ref={inputRef}
           value={q}
           onChange={(e) => { setQ(e.target.value); setActiveIndex(0) }}

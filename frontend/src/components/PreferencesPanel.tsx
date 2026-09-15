@@ -34,7 +34,7 @@ export default function PreferencesPanel() {
       </p>
       <div className="stack">
         <div className="row">
-          <input
+          <input aria-label="写作偏好"
             maxLength={400}   /* 跟后端 profile.MAX_CHARS 一致：一条是一句话，不是一篇文章 */
             placeholder="比如：喜欢简洁的语言、写周报先说结论再列数据…"
             value={newPref}

@@ -265,7 +265,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>Notion</span>
-          <input
+          <input aria-label="Notion Integration token"
             type="password"
             placeholder="Integration token（ntn_… / secret_…）"
             value={notionToken}
@@ -283,8 +283,8 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>飞书</span>
-          <input placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <input type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <input aria-label="飞书 App ID" placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <input aria-label="飞书 App Secret" type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <select aria-label="飞书范围" value={feishuScope} onChange={(e) => setFeishuScope(e.target.value as 'wiki' | 'drive')}
                   disabled={!!feishuDocs.trim()} title={feishuDocs.trim() ? '填了链接就只导那几篇，不按范围列' : undefined}>
             <option value="wiki">知识库</option>
@@ -295,7 +295,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           </button>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center', margin: '6px 0 0 96px' }}>
-          <input placeholder="或者直接粘文档链接（一行一个，填了就只导这几篇）" value={feishuDocs}
+          <input aria-label="飞书文档链接" placeholder="或者直接粘文档链接（一行一个，填了就只导这几篇）" value={feishuDocs}
                  onChange={(e) => setFeishuDocs(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
         </div>
         <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>

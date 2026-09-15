@@ -43,6 +43,25 @@ for (const f of walk(root)) {
     if (/spinner/.test(s.slice(end, s.indexOf('</button>', end) + 9))) continue
     bad++; console.log(`✗ ${rel}:${s.slice(0, m.index).split('\n').length} 禁用按钮没说为什么：disabled={${cond.replace(/\s+/g, ' ').slice(0, 70)}}`)
   }
+  /* 输入框要有名字。**占位符不是名字**：填上字它就没了。
+     实拍（第 675 轮，全新用户的设置页）：GPT 那一组三个框填着
+     `gpt-5.6-luna`、`https://api.openai.com/v1`，**旁边一个字都没有**说这是什么；
+     屏幕阅读器读到的也只是「编辑框」。
+     算数的名字：aria-label / aria-labelledby / id+<label htmlFor> / 外面裹一层
+     <label> / title。勾选框和单选框不算——它们后面跟着文字，那就是名字。 */
+  const labelled = new Set([...s.matchAll(/htmlFor="([^"]+)"/g)].map((m) => m[1]))
+  for (const m of s.matchAll(/<(input|select|textarea)\b/g)) {
+    const end = tagEnd(m.index!)
+    const tag = s.slice(m.index, end)
+    if (/aria-label|aria-labelledby|\btitle=/.test(tag)) continue
+    if (/\btype="(checkbox|radio|file|hidden)"/.test(tag)) continue
+    const id = /\bid="([^"]+)"/.exec(tag)?.[1]
+    if (id && labelled.has(id)) continue
+    // 外面裹了一层 <label>：往前找最近的 <label 和 </label>，前者更近就算裹住了
+    const before = s.slice(0, m.index)
+    if (before.lastIndexOf('<label') > before.lastIndexOf('</label>')) continue
+    bad++; console.log(`✗ ${rel}:${before.split('\n').length} 输入框没有名字（占位符填上字就没了）：${tag.replace(/\s+/g, ' ').slice(0, 90)}`)
+  }
 }
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
-console.log('OK: 可点的 div / span 都能键盘按，图标按钮和禁用按钮都有说明')
+console.log('OK: 可点的 div / span 都能键盘按，图标按钮 / 禁用按钮 / 输入框都有说明')

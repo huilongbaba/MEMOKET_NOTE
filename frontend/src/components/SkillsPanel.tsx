@@ -216,12 +216,12 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
           <span className="spinner" />
         ) : editing ? (
           <div className="stack">
-            <input
+            <input aria-label="skill 名称"
               placeholder="名称"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
-            <input
+            <input aria-label="skill 描述"
               placeholder="一句话描述（可选）"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -247,7 +247,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                 ))}
               </div>
             </div>
-            <textarea
+            <textarea aria-label="skill 正文"
               rows={6}
               placeholder="具体的指令内容——会原样叠加在对应生成动作的基础规则之后"
               value={form.content}
@@ -274,7 +274,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
               导入 Claude Skill 的 SKILL.md（yaml frontmatter + markdown 正文）——只会用到 name/description/正文，技能包常带的脚本/参考文件用不上（MEMOKET_NOTE 调的是原始接口，没法"运行"那些）。
             </p>
             <div className="row">
-              <input
+              <input aria-label="SKILL.md 文件 URL"
                 placeholder="SKILL.md 的原始文件 URL（比如 raw.githubusercontent.com/...）"
                 value={importUrl}
                 onChange={(e) => setImportUrl(e.target.value)}
@@ -289,7 +289,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
               <input type="file" accept=".md,.markdown,.txt" style={{ display: 'none' }}
                      onChange={(e) => handleFileUpload(e.target.files?.[0])} />
             </label>
-            <textarea
+            <textarea aria-label="SKILL.md 内容"
               rows={8}
               placeholder="或者直接把 SKILL.md 的内容粘贴在这里"
               value={importRaw}
@@ -306,7 +306,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
         ) : showGenerate ? (
           <div className="stack">
             <p className="muted" style={{ fontSize: 12 }}>用一两句话描述想要的写作行为，让模型草拟一条 skill——生成完还是会给你预览，改好、选好生效范围再保存。</p>
-            <textarea
+            <textarea aria-label="要生成的 skill 做什么"
               rows={3}
               placeholder="比如：续写时遇到具体的会议决定要直接用原话，不要转述得太抽象"
               value={generateGoal}

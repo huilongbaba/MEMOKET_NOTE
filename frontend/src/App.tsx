@@ -3034,7 +3034,7 @@ export default function App() {
             )}
             {/* 标题是占位词（「未命名」）时输入框显示空、把正文首行放在占位符里——
                 跟树和标签用同一个 displayTitle，一篇笔记不再有两个名字 */}
-            <input
+            <input aria-label="笔记标题"
               className="note-title"
               value={isPlaceholderTitle(title) ? '' : title}
               onChange={(e) => setTitle(e.target.value)}

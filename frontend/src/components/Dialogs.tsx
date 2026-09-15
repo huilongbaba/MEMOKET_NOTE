@@ -75,7 +75,7 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
     <div className="palette-backdrop" onMouseDown={() => req.resolve(null)}>
       <div className="palette" role="dialog" onMouseDown={(e) => e.stopPropagation()}>
         <div className="muted" style={{ fontSize: 12, padding: '2px 4px 6px' }}>{req.title}</div>
-        <input
+        <input aria-label="搜标题或路径"
           ref={input} value={q} placeholder="搜标题或路径…"
           onChange={(e) => { setQ(e.target.value); setI(0) }}
           onKeyDown={(e) => {
