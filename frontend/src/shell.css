@@ -19,7 +19,6 @@
   --main-fg: var(--ink);
   --main-border: var(--mk-line);
   --subtle-border: var(--mk-line-2);
-  --accented-bg: var(--mk-sidebar);
   --hover-item-bg: var(--mk-hover);
   --hover-item-fg: var(--ink);
 
@@ -245,12 +244,15 @@
 .ribbon-tab {
   font-weight: var(--w-semi);
   display: flex; align-items: center; gap: var(--s-3);
-  padding: 4px 10px; border: none; border-radius: var(--r-sm);
+  /* 选中态是**下划线**不是填底色（源 .sw-pill，design-detail.css:89-91）：
+     一排切换器填一块底色会在条上砸出一个方块，下划线只标一条线。 */
+  padding: 4px 10px 6px; border: none; border-bottom: 2px solid transparent; border-radius: 0;
   background: transparent; color: var(--muted);
   font-size: var(--t-sm); cursor: pointer;
+  transition: color .12s, border-color .12s;
 }
-.ribbon-tab:hover { background: var(--hover-item-bg); color: var(--hover-item-fg); }
-.ribbon-tab.active { background: var(--accented-bg); color: var(--main-fg); }
+.ribbon-tab:hover { color: var(--hover-item-fg); }
+.ribbon-tab.active { color: var(--main-fg); border-bottom-color: var(--brand); }
 .ribbon-tab.active .ribbon-icon, .ribbon-tab.active .bx { color: var(--brand); }
 .ribbon-icon { font-size: var(--icon-sm); line-height: 1; }
 .ribbon-badge {
@@ -274,12 +276,13 @@
 .pane-tab {
   font-weight: var(--w-semi);
   display: flex; align-items: center; gap: var(--s-2); flex: none; white-space: nowrap;
-  padding: 4px 9px; border: none; border-radius: var(--r-sm) 6px 0 0;
+  padding: 4px 9px 6px; border: none; border-bottom: 2px solid transparent; border-radius: 0;
   background: transparent; color: var(--muted);
   font-size: var(--t-sm); cursor: pointer;
+  transition: color .12s, border-color .12s;
 }
 .pane-tab:hover { color: var(--main-fg); }
-.pane-tab.active { background: var(--accented-bg); color: var(--main-fg); }
+.pane-tab.active { color: var(--main-fg); border-bottom-color: var(--brand); }
 .pane-tab.active .bx { color: var(--brand); }
 .pane-tab-badge {
   background: var(--accent); color: var(--accent-fg); font-size: var(--t-2xs);

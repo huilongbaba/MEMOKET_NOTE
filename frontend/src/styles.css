@@ -157,22 +157,45 @@ button.primary:active:not(:disabled) { transform: translateY(0) scale(.985); }
 
 /* 原生 <select>（事实表筛选、导入页「导入到」）没跟 input 一起定义过，暗色下是白底
    黑字一块（实拍）。跟 input 同一套令牌；`color-scheme` 让系统画的下拉列表本身也跟主题。 */
+/* 下拉框。原来高度靠 padding 撑（跟旁边 38px 的输入框对不齐），箭头是系统
+   chrome——在一屏紫色控件里那个灰箭头是最后一块「不是我们画的」东西。
+   自己画一个 `--ink-3` 的小箭头，高度跟输入框对齐。 */
 select {
-  font: inherit; color: var(--fg); background: var(--panel);
-  border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 10px;
+  appearance: none; -webkit-appearance: none;
+  font: inherit; font-size: var(--t-md); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  height: 38px; padding: 0 30px 0 10px; cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237A818C' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6.5l4 4 4-4'/></svg>");
+  background-repeat: no-repeat; background-position: right 9px center; background-size: 14px 14px;
+  transition: border-color .12s, box-shadow .12s;
+}
+select:hover { border-color: var(--ink-3); }
+[dir="rtl"] select { padding: 0 10px 0 30px; background-position: left 9px center; }
+/* data URI 里的颜色进不去 CSS 变量，所以深色单给一版——**不给就会留一个
+   永远是浅色灰的箭头**，深色下显得脏。（`%236C6678` = 深色的 --ink-3。） */
+@media (prefers-color-scheme: dark) {
+  select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236C6678' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6.5l4 4 4-4'/></svg>");
+  }
 }
 :root { color-scheme: light; }
 @media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
 
 input, textarea {
   font: inherit;
+  font-size: var(--t-md);
   color: var(--fg);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  padding: 8px 10px;
+  padding: 0 10px;
   width: 100%;
 }
+/* 规范 §2.2 写的是 38px。原来只给 padding、高度靠内容撑（约 36），
+   **规范里写了数就得真是那个数**——不然下一个人照着 38 做就对不齐。
+   textarea 是多行的，不设固定高度。 */
+input:not([type=checkbox]):not([type=radio]):not([type=file]) { height: 38px; }
+textarea { padding: 8px 10px; }
 /* 占位符统一 --ink-3（源仓库 design-theme.css:172）。原来吃浏览器默认灰，
    深色下几乎看不见。 */
 input::placeholder, textarea::placeholder { color: var(--ink-3); }
@@ -197,9 +220,9 @@ textarea { resize: vertical; }
 .sidebar { background: var(--panel); }
 
 h1 { font-size: var(--t-base); margin: 0 0 4px; }
-h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
+h2 { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: var(--ls-caps);
   /* 段标题全大写是给「批量导入」这类固定标签用的；标题里嵌的笔记名（Notes → NOTES）不能跟着变 */
-     color: var(--muted); margin: 18px 0 8px; font-weight: var(--w-semi); }
+     color: var(--ink-2); margin: 18px 0 8px; font-weight: var(--w-bold); }
 .muted { color: var(--muted); font-size: var(--t-md); }
 .row { display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap; }
 .stack > * + * { margin-top: 8px; }
@@ -687,8 +710,10 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
 /* 分隔线通栏：向两侧各溢出内边距 */
 .context-menu-sep { height: 1px; margin: 6px -8px; background: var(--line); }
 .context-menu-header {
-  padding: 6px 8px 2px; font-size: var(--t-2xs); color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em;
+  /* 菜单小标题：源 .menu-label 是 10.5px/700/.05em（design-detail.css:200）。
+     这里原来写了 .06em——同一种「小号大字距」全仓三个值，统一走 --ls-caps。 */
+  padding: 6px 10px 4px; font-size: var(--t-2xs); color: var(--ink-3);
+  font-weight: var(--w-bold); text-transform: uppercase; letter-spacing: var(--ls-caps);
 }
 
 /* ---------------------------------------------------------- 行内出处 */
@@ -940,7 +965,7 @@ input[type=file]:hover { border-color: var(--accent); }
 /* grid 子项默认 min-width:auto，左栏长标题会把右栏挤成一条（第 268 轮实拍首页深色右栏 chip 被裁） */
 .kb-two-col > * { min-width: 0; }
 .mini-bars-row { display: flex; align-items: flex-end; gap: var(--s-2); }
-.mini-bar { flex: 1 1 0; max-width: 28px; min-width: 4px; background: var(--accent); opacity: .85; border-radius: var(--r-xs) 3px 0 0; transition: opacity 100ms; }
+.mini-bar { flex: 1 1 0; max-width: 28px; min-width: 4px; background: var(--accent); opacity: .85; border-radius: var(--r-xs) var(--r-xs) 0 0; transition: opacity 100ms; }
 .mini-bar:hover { opacity: 1; }
 .mini-bars-axis { display: flex; justify-content: space-between; gap: var(--s-4); font-size: var(--t-xs); margin-top: 2px; white-space: nowrap; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: var(--s-3); }
@@ -963,14 +988,14 @@ input[type=file]:hover { border-color: var(--accent); }
 .chip.active { background: var(--brand-fill); color: #fff; border-color: var(--brand-fill); }
 .chip.active .bx, .chip.active .chip-count { color: var(--accent-fg); }
 .fact-list { display: flex; flex-direction: column; gap: var(--s-1); }
-.fact-month { font-size: var(--t-xs); margin: 10px 0 4px; letter-spacing: .04em; }
+.fact-month { font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2); margin: 10px 0 4px; letter-spacing: var(--ls-caps); }
 .fact-row {
   display: grid; grid-template-columns: 1fr auto; gap: var(--s-1) var(--s-5); align-items: start;
   padding: 7px 8px; border-radius: var(--r);
 }
 .fact-row:hover { background: var(--hover); }
 .fact-meta { font-size: var(--t-xs); display: flex; flex-wrap: wrap; gap: var(--s-3); line-height: 1.4; grid-column: 1 / -1; }
-.fact-kind { font-size: var(--t-2xs); text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
+.fact-kind { font-size: var(--t-2xs); font-weight: var(--w-bold); text-transform: uppercase; letter-spacing: var(--ls-caps); opacity: .8; }
 .fact-text { font-size: var(--t-base); line-height: 1.55; cursor: pointer; }
 .fact-text:hover { color: var(--accent); }
 .fact-tags { grid-column: 1; display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: 2px; }
