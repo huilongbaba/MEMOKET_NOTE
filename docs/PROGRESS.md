@@ -114,7 +114,7 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 | 7 | 飞书导入 | import-sync-plan §1 | ✅ 2026-09-12（自建应用凭证，知识库 / 云空间两种范围，块 → markdown；待真账号实测） |
 | 8 | 导回 Obsidian / Notion / 飞书 | import-sync-plan §2 | ✅ 2026-09-12（导入页「导回」区：Obsidian 写目录按 memoket_id 覆盖、对方改过报冲突；Notion / 飞书按记住的 page / document id 覆盖；信息面板「副本」行；Notion / 飞书没真账号实测） |
 | 10 | 知识库抽什么：抽取偏好可选 / 可自定义（用户 2026-09-12 晚提） | extraction-profiles.md | 方案已出（P1 预设 + 自定义关注 / 忽略 + 试抽；P2 自定义 kind + 按笔记 / 按导入覆盖；P3 上游 PR），待指令落地 |
-| 9 | 内存占用太高（用户点名，2026-09-12 晚） | TRACELOG [146] | 第一版 ✅：量出后端索引 ≈ 225MB/2 万条事实（大头是 memoket-kite 的词元倒排表 92MB + 词元计数 35MB），闲置 5 分钟自动放掉（回收 ~130MB）；health 带 rss。上游 PR 已提（memoket-kite#8：206 → 75MB，排序逐字节一致，本仓测试在分支上全过），待合并后 pip 升级；正式版实测闲置 5 分钟后 325 → 186MB；Electron 侧 375MB 是 Chromium 常态 |
+| 9 | 内存占用太高（用户点名，2026-09-12 晚） | TRACELOG [146] | 第一版 ✅：量出后端索引 ≈ 225MB/2 万条事实（大头是 memoket-kite 的词元倒排表 92MB + 词元计数 35MB），闲置 5 分钟自动放掉（回收 ~130MB）；health 带 rss。上游 PR 已提（memoket-kite#8：206 → 75MB，排序逐字节一致，本仓测试在分支上全过），**到第 670 轮仍未合**（远端 main 还停在 `8745feda`，装的就是它，`pip install -U` 拿不到新东西）；正式版实测闲置 5 分钟后 325 → 186MB；Electron 侧 375MB 是 Chromium 常态。**第 670 轮又省一笔**：`kite/kite_tokens.py` 让词元共用同一批字符串对象（真库里 token 出现 42.1 万次、去重后只有 7.26 万个，而每次出现都是新建对象）——服务态同一套步骤实测 300 → 271MB（加载索引后）、346 → 288MB（跑完召回和实体候选），单进程口径 308 → 242MB（-21%），**检索结果逐字不变** |
 
 ## 已知欠账（做完会划掉）
 

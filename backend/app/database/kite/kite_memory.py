@@ -43,7 +43,7 @@ from memoket_kite.providers.llm import llm_json
 from memoket_kite.storage import _verify_loadable
 
 from .. import store
-from . import kite_entity_candidates, kite_extract_profile
+from . import kite_entity_candidates, kite_extract_profile, kite_tokens
 from ..kb import search
 from ..kb.who import is_speaker_tag
 from ...util.config import get_settings
@@ -51,6 +51,9 @@ from .kite_writer import write_lock
 
 kite_extract_profile.install()
 kite_entity_candidates.install()
+# 词元共用同一批字符串对象：真库实测峰值 RSS 308 → 242MB（省 21%），
+# 检索结果一个字都不变。装不上就当没有（见 kite_tokens 的模块注释）。
+kite_tokens.install()
 
 # Root topics seeded into every new codebook. KITE's extraction prompt only
 # lets the model propose a topic as a child of an already-known root
