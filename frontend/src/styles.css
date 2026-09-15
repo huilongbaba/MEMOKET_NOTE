@@ -1060,8 +1060,17 @@ input[type=file]:hover { border-color: var(--accent); }
 .chip:disabled { cursor: default; opacity: 1; }           /* 展示用的 chip（KbBits）disabled = 不可点，不该发灰 */
 .chip.chip-action:disabled { opacity: .5; }               /* 动作 chip（存为笔记 / 现在存一版）disabled 就是不能点，要发灰 */
 .chip-count { color: var(--muted); font-size: var(--t-xs); }
-.chip.active { background: var(--brand-fill); color: #fff; border-color: var(--brand-fill); }
-.chip.active .bx, .chip.active .chip-count { color: var(--accent-fg); }
+/* 选中的 chip **不用实心品牌紫**。用户第 694 轮原话：「这个紫色底很不协调」。
+   他说的是外观那个分段控件（跟随系统 / 浅色 / 深色）——三个里一个刷成实心紫，
+   看起来像个主按钮，跟旁边两个轮廓片不是一个东西，也跟页面上真正的主按钮抢。
+   源仓库的**侧栏选中态**就是这个做法：淡底 + 品牌色字（`.sb-foot-btn.sel`：
+   `background: var(--brand-weak); color: var(--brand)`）。分段控件用它更合适——
+   实心留给「这一屏你最该点的那个」。 */
+.chip.active {
+  background: var(--brand-weak); color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand), transparent 70%);
+}
+.chip.active .bx, .chip.active .chip-count { color: var(--brand); }
 .fact-list { display: flex; flex-direction: column; gap: var(--s-5); }
 .fact-month { font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-3); margin: 18px 0 2px; letter-spacing: var(--ls-caps); }
 .fact-row {
@@ -1294,7 +1303,7 @@ kbd {
 .revision-list { display: flex; flex-direction: column; gap: var(--s-1); }
 .revision-row .kb-link { padding: 5px 8px; border-radius: var(--r-sm); gap: var(--s-4); align-items: center; }
 .revision-row .kb-link:hover, .revision-row.open .kb-link { background: var(--hover); }
-.revision-body { margin: 4px 0 8px 26px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; max-height: 32vh; overflow-y: auto; background: var(--card, var(--bg)); }
+.revision-body { margin: 4px 0 8px 26px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; max-height: 32vh; overflow-y: auto; background: var(--panel); }
 
 .health-bad { color: var(--del); display: inline-flex; align-items: center; gap: var(--s-2); }
 .cm-note-peek .peek-body { color: var(--muted); margin-top: 4px; white-space: pre-wrap; max-height: 160px; overflow: hidden; }

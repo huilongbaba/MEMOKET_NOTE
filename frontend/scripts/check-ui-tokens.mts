@@ -107,6 +107,25 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
     }
   }
   for (const v of dead) { bad++; console.log(`✗ 令牌 ${v} 定义了没人用 —— 删掉，或者说明为什么留着`) }
+
+  /* **反过来更要查：用了却没定义。**
+     第 694 轮：`.kb-note-title` 写着 `font-size: var(--t-page)`，而 `--t-page`
+     那次没加进去（替换没匹配上）——`var()` 解析失败，字号退回继承值，
+     **页面标题反而比分组标题还小**。死令牌只是浪费，**幽灵令牌是静默失效**，
+     而且 tsc / eslint / 构建全都不报。
+     运行时由 JS 写进 style 的（`--tab-w`）按前缀放过。 */
+  const RUNTIME = ['--tab-w']
+  const declared = new Set(defined)
+  // 注释里提到的令牌名不算「用到」——比如「原来这里是 `var(--card, …)`」这种
+  // 说明历史的句子（第 694 轮第一版就被自己的注释绊了一下）。
+  const codeOnly = allSrc.replace(/\/\*[^]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ')
+  const used = new Set([...codeOnly.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]))
+  for (const v of used) {
+    if (declared.has(v) || RUNTIME.includes(v)) continue
+    if (DYNAMIC.some((d) => v.startsWith(d.prefix))) continue
+    bad++
+    console.log(`✗ 令牌 ${v} 用了但**没有定义** —— var() 会解析失败，样式静默退回继承值`)
+  }
 }
 /* **面色不许有明显色偏。**
    第 690 轮用户原话：「整个背景全用紫色？？？」。量了源仓库真 app 的像素：

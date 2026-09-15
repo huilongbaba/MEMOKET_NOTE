@@ -29,7 +29,10 @@
   --launcher-hover-shadow: var(--shadow-card);
 
   --left-pane-bg: var(--mk-sidebar);
-  --left-pane-fg: var(--ink-2);
+  /* 树的**文字是满色**，只有图标弱化——源仓库的 `.nav-item { color: var(--ink) }`
+     配 `.nav-item .ic { color: var(--ink-2) }`。原来整行都用 `--ink-2`，
+     左栏整个看起来是灰的、发虚（第 694 轮实拍设置页时看出来的）。 */
+  --left-pane-fg: var(--ink);
   --left-pane-item-hover-bg: var(--mk-hover);
   /* 选中 = 抬起来的一片白 + 图标变紫（UI_SPEC §2.3），不是刷一块背景色 */
   --left-pane-item-selected-bg: var(--mk-surface);
@@ -37,7 +40,7 @@
   --left-pane-item-selected-shadow: var(--shadow-card);
   --left-pane-item-action-bg: var(--mk-line);
   --left-pane-item-action-hover-bg: var(--ink-3);
-  --left-pane-icon: currentColor;
+  --left-pane-icon: var(--ink-3);
 
   --active-tab-bg: var(--mk-surface);
   --tab-close-hover-bg: var(--live);
