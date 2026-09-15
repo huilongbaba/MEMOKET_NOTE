@@ -99,7 +99,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
   }, [noteId, refreshTick, row?.updated_at, row?.ingested_at])
 
   return (
-    <div className="stack" style={{ fontSize: 13 }}>
+    <div className="stack" style={{ fontSize: 'var(--t-md)' }}>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
         {row?.ingested_at
           ? <span className="muted">⇡ 已摄入知识库 · {fmtDate(row.ingested_at)}</span>
@@ -123,29 +123,29 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
       {row?.ingested_at && (
         <div className="stack" style={{ gap: 6 }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <strong style={{ fontSize: 12 }}>这篇贡献的事实{kb ? ` · ${kb.facts.length} 条` : ''}</strong>
-            {adding === null && <button onClick={() => setAdding('')} style={{ fontSize: 12, padding: '2px 8px' }}>＋ 补一条</button>}
+            <strong style={{ fontSize: 'var(--t-sm)' }}>这篇贡献的事实{kb ? ` · ${kb.facts.length} 条` : ''}</strong>
+            {adding === null && <button onClick={() => setAdding('')} style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }}>＋ 补一条</button>}
           </div>
           {adding !== null && (
             <div className="stack" style={{ gap: 4 }}>
               <textarea aria-label="新增一条事实" rows={2} value={adding} autoFocus placeholder="一句话说清一件事（谁、什么时候、什么）"
                         onChange={(e) => setAdding(e.target.value)} />
               <div className="row" style={{ gap: 6 }}>
-                <button className="primary" onClick={() => void saveAdd()} style={{ fontSize: 12, padding: '2px 10px' }}>加上</button>
-                <button onClick={() => setAdding(null)} style={{ fontSize: 12, padding: '2px 10px' }}>算了</button>
+                <button className="primary" onClick={() => void saveAdd()} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>加上</button>
+                <button onClick={() => setAdding(null)} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>算了</button>
               </div>
             </div>
           )}
-          {kb === null && <p className="muted" style={{ margin: 0, fontSize: 12 }}><span className="spinner" /> 在查…</p>}
-          {kb && kb.facts.length === 0 && <p className="muted" style={{ margin: 0, fontSize: 12 }}>这篇摄入时没抽出可记的事实。</p>}
+          {kb === null && <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}><span className="spinner" /> 在查…</p>}
+          {kb && kb.facts.length === 0 && <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>这篇摄入时没抽出可记的事实。</p>}
           {kb?.facts.map((f) => (
             <div key={f.id} className="card" style={{ padding: '6px 8px' }}>
               {editing?.id === f.id ? (
                 <div className="stack" style={{ gap: 4 }}>
                   <textarea aria-label="改这条事实" rows={2} value={editing.text} autoFocus onChange={(e) => setEditing({ id: f.id, text: e.target.value })} />
                   <div className="row" style={{ gap: 6 }}>
-                    <button className="primary" onClick={() => void saveEdit()} style={{ fontSize: 12, padding: '2px 10px' }}>保存</button>
-                    <button onClick={() => setEditing(null)} style={{ fontSize: 12, padding: '2px 10px' }}>取消</button>
+                    <button className="primary" onClick={() => void saveEdit()} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>保存</button>
+                    <button onClick={() => setEditing(null)} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>取消</button>
                   </div>
                 </div>
               ) : (
@@ -155,9 +155,9 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
                     <button className="icon-btn" title="改" onClick={() => setEditing({ id: f.id, text: f.text })}><i className="bx bx-edit-alt" /></button>
                     <button className="icon-btn" title="从知识库删掉这条" onClick={() => void remove(f.id)}><i className="bx bx-x" /></button>
                   </div>
-                  <div className="muted" style={{ fontSize: 11 }}>
+                  <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>
                     {f.when || '—'}{f.who ? ` · ${f.who}` : ''}{f.kind ? ` · ${f.kind}` : ''}{f.manual ? ' · 手工加的' : ''}
-                    <code style={{ fontSize: 10, marginInlineStart: 6 }}>[{f.id}]</code>
+                    <code style={{ fontSize: 'var(--t-2xs)', marginInlineStart: 6 }}>[{f.id}]</code>
                   </div>
                 </>
               )}
@@ -172,28 +172,28 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
           {/* 只列前 8 个：300 条找不到时（实拍造的长文）整块红字把面板撑满一屏 */}
           {missing.length} 条引用在知识库里找不到：{missing.slice(0, 8).join('、')}{missing.length > 8 ? `…还有 ${missing.length - 8} 个` : ''}
           <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <span className="muted" style={{ fontSize: 12 }}>可能是引用写错了，或者知识库重建过</span>
+            <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>可能是引用写错了，或者知识库重建过</span>
             {onStripMissing && (
-              <button style={{ fontSize: 12, padding: '2px 8px', marginInlineStart: 'auto' }} title="只删掉正文里这几个 [id]，句子留着"
+              <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px', marginInlineStart: 'auto' }} title="只删掉正文里这几个 [id]，句子留着"
                       onClick={() => onStripMissing(missing)}>清掉这些引用</button>
             )}
           </div>
         </div>
       )}
 
-      <strong style={{ fontSize: 12 }}>这篇引用的事实{citedIds.length ? ` · ${citedIds.length} 条` : ''}</strong>
+      <strong style={{ fontSize: 'var(--t-sm)' }}>这篇引用的事实{citedIds.length ? ` · ${citedIds.length} 条` : ''}</strong>
       {citedIds.length === 0
         ? <p className="muted" style={{ margin: 0 }}>这篇还没有引用知识库里的记录。续写和「来龙去脉」插入的内容会自动带上引用。</p>
         : citedIds.map((id) => {
           const f = facts[id]
           return (
             <div key={id} className="card" style={{ padding: '6px 8px' }}>
-              <div className="muted" style={{ fontSize: 11 }}>
+              <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>
                 {f ? `${f.when} · ${f.kind}` : id}
               </div>
               <div>{f === undefined ? '…' : f === null ? '（找不到）' : f.text}</div>
               {(citing[id] ?? []).filter((n) => n.id !== noteId).length > 0 && (
-                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                <div className="muted" style={{ fontSize: 'var(--t-xs)', marginTop: 4 }}>
                   也引用于：
                   {(citing[id] ?? []).filter((n) => n.id !== noteId).map((n) => (
                     <a key={n.id} href="#" onClick={(e) => { e.preventDefault(); onOpenNote(n.id) }}
@@ -208,7 +208,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
       {/* 局部图放在最后：面板的正事是事实本身，图是顺带的；ribbon 只有 40vh 高，放前面把事实顶到看不见（820×600 实拍） */}
       {graph && graph.topics.length + graph.entities.length >= 2 && (
         <div className="stack" style={{ gap: 4 }}>
-          <strong style={{ fontSize: 12 }}>这篇周围有什么 <span className="muted" style={{ fontWeight: 400 }}>· {graph.facts} 条事实牵出的主题和实体，点节点进它的页面</span></strong>
+          <strong style={{ fontSize: 'var(--t-sm)' }}>这篇周围有什么 <span className="muted" style={{ fontWeight: 'var(--w-normal)' }}>· {graph.facts} 条事实牵出的主题和实体，点节点进它的页面</span></strong>
           <Suspense fallback={<p className="muted">…</p>}>          <LocalGraph topics={graph.topics} entities={graph.entities} links={graph.links} height={200}
                       actions={{ onOpen: (id) => window.dispatchEvent(new CustomEvent('open-virtual', { detail: id })), onOpenNote, onCite: null }} /></Suspense>
         </div>

@@ -54,10 +54,10 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
 
       {hits ? (
         <KbSection title={`${hits.facts.length} 条结果`}
-                   extra={<span className="muted" style={{ fontSize: 12 }}>{Math.round(hits.took)} ms{hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}</span>}>
+                   extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>{Math.round(hits.took)} ms{hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}</span>}>
           <FactList facts={hits.facts} actions={actions} />
           {/* 空库上「换个说法」是句废话——换多少个说法都是空。分开说（第 677 轮） */}
-          {hits.facts.length === 0 && <p className="muted" style={{ fontSize: 12 }}>
+          {hits.facts.length === 0 && <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>
             {data && data.stats.facts === 0
               ? '知识库还是空的——先导入会议记录或笔记，这里才搜得到东西。'
               : '换个说法，或者到「事实表」按主题 / 实体筛。'}
@@ -85,7 +85,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
             {/* 两边各掐掉 2%：这个数要回答「我攒了多久的记录」，而不是「有没有
                 一条离群的日期」。掐掉的那截写在 title 里——**掐掉的东西要能看见**。 */}
             <StatTile
-              value={<span className="stat-span" style={{ fontSize: 15 }}
+              value={<span className="stat-span" style={{ fontSize: 'var(--t-lg)' }}
                            title={data.stats.full_start && data.stats.full_start !== data.stats.start_date
                              ? `连最早最晚那几条一起算是 ${data.stats.full_start.slice(0, 7)} → ${(data.stats.full_end ?? '').slice(0, 7)}（两头各掐掉 2%，那些多半是句子里提到的年份）`
                              : undefined}>
@@ -111,12 +111,12 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
 
           <ConflictInbox actions={actions} />
 
-          <KbSection title="近 12 个月（按事实里的日期，计划里的未来日期也算）" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:timeline') }}>全部时间线 →</a>}>
+          <KbSection title="近 12 个月（按事实里的日期，计划里的未来日期也算）" extra={<a href="#" className="muted" style={{ fontSize: 'var(--t-sm)' }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:timeline') }}>全部时间线 →</a>}>
             <MiniBars data={data.months} />
           </KbSection>
 
           <div className="kb-two-col">
-            <KbSection title="主题" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:topics') }}>全部 →</a>}>
+            <KbSection title="主题" extra={<a href="#" className="muted" style={{ fontSize: 'var(--t-sm)' }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:topics') }}>全部 →</a>}>
               <div className="chip-wrap">
                 {data.top_topics.map((t) => (
                   <Chip key={t.code} icon="bx-hash" count={t.facts} onClick={() => actions.onOpen('kb:topic:' + t.code)}
@@ -124,7 +124,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
                 ))}
               </div>
             </KbSection>
-            <KbSection title="实体" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>全部 →</a>}>
+            <KbSection title="实体" extra={<a href="#" className="muted" style={{ fontSize: 'var(--t-sm)' }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>全部 →</a>}>
               <div className="chip-wrap">
                 {data.top_entities.filter((t) => !isSpeakerTag(t.name)).map((t) => (
                   <Chip key={t.code} icon={entityIcon(t.name)} count={t.facts} onClick={() => actions.onOpen('kb:entity:' + t.code)}>{t.name}</Chip>
@@ -134,7 +134,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
           </div>
 
           <div className="kb-two-col">
-            <KbSection title="最近摄入" extra={<a href="#" className="muted" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:recent') }}>全部 →</a>}>
+            <KbSection title="最近摄入" extra={<a href="#" className="muted" style={{ fontSize: 'var(--t-sm)' }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:recent') }}>全部 →</a>}>
               <div className="stack" style={{ gap: 4 }}>
                 {data.recent_units.map((u) => (
                   <a key={u.id} href="#" className="kb-link" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:unit:' + u.id) }} title={u.title || u.id}>

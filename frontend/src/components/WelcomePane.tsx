@@ -26,7 +26,7 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
         <Logo size={40} />
         <div>
           <h2 style={{ margin: 0 }}>MEMOKET NOTE</h2>
-          <p className="muted" style={{ margin: '2px 0 0', fontSize: 13 }}>
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 'var(--t-md)' }}>
             {notes.length === 0 ? '从一篇笔记或一次导入开始。' : `${notes.length} 篇笔记 · ${factCount.toLocaleString()} 条知识库事实`}
           </p>
         </div>
@@ -68,7 +68,7 @@ export default function WelcomePane({ notes, factCount, onNew, onImport, onOpen,
             {recent.map((n) => (
               <a key={n.id} className="kb-link" onClick={() => onOpenNote(n)}>
                 <i className={'bx ' + (n.icon || 'bx-note')} /> <span className="ellipsis">{displayTitle(n)}</span>
-                <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
+                <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 'var(--t-xs)' }}>{fmtDate(n.updated_at)}</span>
               </a>
             ))}
           </div>

@@ -105,7 +105,7 @@ function ToolCallRow({ call }: { call: NoteHarnessToolCall }) {
     .join(' / ')
   const empty = call.result.startsWith('（')
   return (
-    <li style={{ marginBottom: 4, fontSize: 12, lineHeight: 1.5 }}>
+    <li style={{ marginBottom: 4, fontSize: 'var(--t-sm)', lineHeight: 1.5 }}>
       <button
         onClick={() => setOpen((v) => !v)}
         title={open ? '收起结果' : '展开查到的原文'}
@@ -126,9 +126,9 @@ function ToolCallRow({ call }: { call: NoteHarnessToolCall }) {
       {open && (
         <pre
           style={{
-            margin: '4px 0 6px 16px', padding: '6px 8px', fontSize: 11, lineHeight: 1.6,
+            margin: '4px 0 6px 16px', padding: '6px 8px', fontSize: 'var(--t-xs)', lineHeight: 1.6,
             whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflowY: 'auto',
-            background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 4,
+            background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 'var(--r-xs)',
           }}
         >
           {call.result}
@@ -154,7 +154,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
       </div>
 
       {status && (
-        <p className="muted" style={{ margin: '6px 0 10px', fontSize: 12 }}>{status}</p>
+        <p className="muted" style={{ margin: '6px 0 10px', fontSize: 'var(--t-sm)' }}>{status}</p>
       )}
 
       {/* 事件是分散到达的，卡片按到达顺序建会乱（第 1 轮的初始策略先到、第 0 轮的快照后到）——按轮次排 */}
@@ -162,8 +162,8 @@ export default function AgentActivity({ rounds, status, running }: Props) {
         <div
           key={r.round}
           style={{
-            marginBottom: 10, padding: '8px 10px', fontSize: 12,
-            border: '1px solid var(--line)', borderRadius: 6, background: 'var(--panel)',
+            marginBottom: 10, padding: '8px 10px', fontSize: 'var(--t-sm)',
+            border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', background: 'var(--panel)',
           }}
         >
           <div className="row" style={{ gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
@@ -257,18 +257,18 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               </summary>
               {txt.thinking && (
                 <pre style={{
-                  margin: '4px 0 0', padding: '6px 8px', fontSize: 11, lineHeight: 1.6,
+                  margin: '4px 0 0', padding: '6px 8px', fontSize: 'var(--t-xs)', lineHeight: 1.6,
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160,
                   overflowY: 'auto', background: 'var(--bg)', border: '1px dashed var(--line)',
-                  borderRadius: 4, color: 'var(--muted)', fontStyle: 'italic',
+                  borderRadius: 'var(--r-xs)', color: 'var(--muted)', fontStyle: 'italic',
                 }}>{txt.thinking}</pre>
               )}
               {txt.output && (
                 <pre style={{
-                  margin: '4px 0 0', padding: '6px 8px', fontSize: 11, lineHeight: 1.6,
+                  margin: '4px 0 0', padding: '6px 8px', fontSize: 'var(--t-xs)', lineHeight: 1.6,
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200,
                   overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--line)',
-                  borderRadius: 4,
+                  borderRadius: 'var(--r-xs)',
                 }}>{txt.output}</pre>
               )}
             </details>
@@ -280,10 +280,10 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 本轮写出的正文（{(r.streamed ?? '').length} 字）
               </summary>
               <pre style={{
-                margin: '4px 0 0', padding: '6px 8px', fontSize: 11, lineHeight: 1.7,
+                margin: '4px 0 0', padding: '6px 8px', fontSize: 'var(--t-xs)', lineHeight: 1.7,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260,
                 overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--line)',
-                borderRadius: 4,
+                borderRadius: 'var(--r-xs)',
               }}>{r.streamed}</pre>
             </details>
           )}

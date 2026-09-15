@@ -70,7 +70,7 @@ export default function RightPane({
       </div>
       <div className="right-pane-body" role="tabpanel">
         {current?.hasContent === false
-          ? <p className="muted" style={{ fontSize: 12 }}>{current.emptyHint ?? '这篇还没有这一项的内容。'}</p>
+          ? <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>{current.emptyHint ?? '这篇还没有这一项的内容。'}</p>
           : current?.body}
       </div>
     </>

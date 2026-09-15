@@ -38,7 +38,7 @@ export default function ExportBack() {
     <>
       <h2>导回</h2>
       <div className="stack export-back">
-        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+        <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
           把这里的笔记写回到别的地方。这里是真相：每篇带 <code>memoket_id</code>，再导一次是<strong>覆盖</strong>不是新建；
           对方那边改过的会先跳过并列出来，不会自动拉回来。
           <br />
@@ -51,7 +51,7 @@ export default function ExportBack() {
           <span style={{ width: 88 }}>Obsidian</span>
           <input aria-label="Obsidian vault 文件夹路径" placeholder="vault 文件夹路径" value={vaultDir} onChange={(e) => setVaultDir(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <button onClick={() => void pickVault()} title="选文件夹">…</button>
-          <label className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          <label className="muted" style={{ fontSize: 'var(--t-sm)', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的
           </label>
           <button onClick={() => void toObsidian(vaultDir, force)} disabled={!vaultDir.trim() || !!busy}
@@ -59,7 +59,7 @@ export default function ExportBack() {
             {spin('obsidian', '写入')}
           </button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           树的层级变成文件夹，克隆写成 .link.txt，图片 / 录音复制进 _assets/。Obsidian 打开这个 vault 就能看到。
         </p>
 
@@ -72,7 +72,7 @@ export default function ExportBack() {
             {spin('notion', '写入')}
           </button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           每篇建成父页面下的一个子页面；标题 / 段落 / 列表 / 代码 / 引用会变成 Notion 块。父页面要先 Connect 给这个 integration。
         </p>
 
@@ -86,29 +86,29 @@ export default function ExportBack() {
             {spin('feishu', '写入')}
           </button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           应用要有 docx / drive 的写权限，目标文件夹要把应用加为可编辑的协作者。凭证不会存下来。
         </p>
 
         {result && (
           <div className="card export-back-result">
-            <strong style={{ fontSize: 13 }}>
+            <strong style={{ fontSize: 'var(--t-md)' }}>
               {result.where === 'obsidian' ? 'Obsidian' : result.where === 'notion' ? 'Notion' : '飞书'}：
               {result.out.written != null && <> 写入 {result.out.written} 篇 · 没变 {result.out.skipped ?? 0} 篇</>}
               {result.out.created != null && <> 新建 {result.out.created} 篇 · 覆盖 {result.out.updated ?? 0} 篇</>}
             </strong>
             {!!result.out.conflicts?.length && (
               <div style={{ marginTop: 6 }}>
-                <span className="muted" style={{ fontSize: 12 }}>对方改过、这次没动（勾「覆盖对方改过的」再写一次就会覆盖）：</span>
-                <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>对方改过、这次没动（勾「覆盖对方改过的」再写一次就会覆盖）：</span>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 'var(--t-sm)' }}>
                   {result.out.conflicts.slice(0, 20).map((p) => <li key={p}>{p}</li>)}
                 </ul>
               </div>
             )}
             {!!result.out.failed?.length && (
               <div style={{ marginTop: 6 }}>
-                <span className="muted" style={{ fontSize: 12, color: 'var(--del)' }}>失败：</span>
-                <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                <span className="muted" style={{ fontSize: 'var(--t-sm)', color: 'var(--del)' }}>失败：</span>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 'var(--t-sm)' }}>
                   {result.out.failed.slice(0, 20).map((p) => <li key={p}>{p}</li>)}
                 </ul>
               </div>

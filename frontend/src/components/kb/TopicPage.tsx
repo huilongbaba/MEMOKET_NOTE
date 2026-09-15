@@ -25,14 +25,14 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
           {p.parents.map((pp) => <span key={pp}> / <a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:topic:' + pp) }}>{pp}</a></span>)}
         </div>
         <h2 className="kb-note-title"><i className="bx bx-hash muted" /> {p.code}</h2>
-        <div className="muted" style={{ fontSize: 13 }}>
+        <div className="muted" style={{ fontSize: 'var(--t-md)' }}>
           {p.facts_total} 条事实{p.aliases.length ? ' · 别名：' + p.aliases.join('、') : ''}{p.status !== 'canonical' ? ' · ' + p.status : ''}
         </div>
       </div>
       {p.months.length > 1 && <KbSection title="按月"><MiniBars data={p.months} /></KbSection>}
       {(p.children.length > 0 || p.entities.length > 0) && (
         <KbSection title="周围有什么"
-                   extra={<span className="muted" style={{ fontSize: 12 }}>
+                   extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>
                      {p.children.length > 12 ? `子主题只画最强的 12 个（共 ${p.children.length}）· ` : ''}点节点进它的页面</span>}>
           <LocalGraph actions={actions}
             topics={[
@@ -55,7 +55,7 @@ export default function TopicPage({ code, actions }: { code: string; actions: Kb
           <div className="chip-wrap">{p.entities.filter((e) => !isSpeakerTag(e.name)).map((e) => <Chip key={e.code} icon={entityIcon(e.name)} count={e.facts} onClick={() => actions.onOpen('kb:entity:' + e.code)}>{e.name}</Chip>)}</div>
         </KbSection>
       )}
-      <KbSection title="事实" extra={<span className="muted" style={{ fontSize: 12 }}>含子主题 · 新的在前</span>}>
+      <KbSection title="事实" extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>含子主题 · 新的在前</span>}>
         <FactList facts={p.facts} actions={actions} />
         <Pager total={p.facts_total} limit={p.limit} offset={p.offset} onPage={setOffset}
                tail={<a href="#" className="kb-link-inline" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:facts?topic=' + code) }}>去事实表按类型 / 说话人 / 实体筛</a>} />

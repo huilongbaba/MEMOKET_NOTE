@@ -64,10 +64,10 @@ export default function EntityMerges({ onDone }: { onDone?: () => void }) {
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setBusy('') }
   }
 
-  if (rows === null) return <p className="muted" style={{ fontSize: 12 }}>…</p>
+  if (rows === null) return <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>…</p>
   if (!rows.length) {
     return (
-      <p className="muted" style={{ fontSize: 13 }}>
+      <p className="muted" style={{ fontSize: 'var(--t-md)' }}>
         没有待判的了{decided ? `（判过 ${decided} 对）` : ''}。库里新增内容之后可以再扫一次。
       </p>
     )
@@ -75,7 +75,7 @@ export default function EntityMerges({ onDone }: { onDone?: () => void }) {
 
   return (
     <div className="stack">
-      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
         {rows.length} 对可能是同一个东西{decided ? ` · 判过 ${decided} 对` : ''}。
         <b>合并只影响显示和检索，知识库本身不动，随时可撤。</b>
       </p>
@@ -87,7 +87,7 @@ export default function EntityMerges({ onDone }: { onDone?: () => void }) {
             <span className="merge-side"><b>{c.name_b}</b> <span className="muted">{c.facts_b} 条</span></span>
             <span className="badge">{WHY[c.why] ?? c.why}</span>
             <span style={{ flex: 1 }} />
-            <span className="muted" style={{ fontSize: 12 }}>合并后 {c.facts_total} 条</span>
+            <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>合并后 {c.facts_total} 条</span>
           </div>
 
           {c.both.length > 0 ? (

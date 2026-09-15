@@ -35,7 +35,7 @@ export function NoteInfoPanel({ note, content, row }: { note: Note; content: str
       {note.source && <><dt>来源</dt><dd>{SOURCE_LABEL[note.source] ?? note.source}{note.imported_at ? ` · ${fmtDate(note.imported_at)} 导入` : ''}{note.imported_at && note.updated_at > note.imported_at ? ' · 本地改过' : ''}</dd></>}
       {remotes.length > 0 && <><dt>副本</dt><dd>{remotes.map((r) => `${SOURCE_LABEL[r.platform] ?? r.platform} · ${fmtDate(r.exported_at)} 导回${r.exported_at < note.updated_at ? '（之后改过）' : ''}`).join('；')}</dd></>}
       <dt>位置</dt><dd>{row?.branch_count && row.branch_count > 1 ? `${row.branch_count} 处（克隆）` : '1 处'}</dd>
-      <dt>id</dt><dd><code style={{ fontSize: 11 }}>{note.id}</code></dd>
+      <dt>id</dt><dd><code style={{ fontSize: 'var(--t-xs)' }}>{note.id}</code></dd>
     </dl>
   )
 }
@@ -60,9 +60,9 @@ export function NotePathsPanel({ noteId, rows, onOpen, onClone }: {
   }
   if (paths === null) return <p className="muted" style={{ margin: 0 }}>…</p>
   return (
-    <div className="stack" style={{ fontSize: 13 }}>
+    <div className="stack" style={{ fontSize: 'var(--t-md)' }}>
       {paths.length > 1 && (
-        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+        <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>
           这篇同时在 {paths.length} 个位置——它们是同一篇，改一处处处都变。
         </p>
       )}

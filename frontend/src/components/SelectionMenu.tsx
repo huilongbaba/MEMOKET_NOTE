@@ -58,7 +58,7 @@ export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
       style={{ position: 'fixed', left, top, width: 160, padding: 4, zIndex: 250 }}
     >
       {busy ? (
-        <div className="muted" style={{ padding: 10, textAlign: 'center', fontSize: 12 }}><span className="spinner" /> {BUSY_LABEL[busy]}</div>
+        <div className="muted" style={{ padding: 10, textAlign: 'center', fontSize: 'var(--t-sm)' }}><span className="spinner" /> {BUSY_LABEL[busy]}</div>
       ) : (
         <div className="palette-results" style={{ padding: 0 }}>
           <div className="palette-item" onClick={() => onAction('verify')}><i className="bx bx-check-shield" /> 校验</div>

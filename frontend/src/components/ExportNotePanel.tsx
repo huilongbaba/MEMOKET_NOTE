@@ -104,7 +104,7 @@ export default function ExportNotePanel({ noteId, title, onClose }:
                      onChange={(e) => { setVault(e.target.value); saveVault(e.target.value) }} />
               <button onClick={() => void pickVault()} title="选文件夹">…</button>
             </div>
-            <label className="muted" style={{ fontSize: 12 }}>
+            <label className="muted" style={{ fontSize: 'var(--t-sm)' }}>
               <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的
             </label>
           </>

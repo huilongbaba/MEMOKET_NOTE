@@ -43,7 +43,7 @@ function UsageSection() {
   return (
     <>
       <p className="kb-section-title" style={{ marginTop: 18 }}>模型用量</p>
-      <div className="row" style={{ gap: 14, flexWrap: 'wrap', fontSize: 13 }}>
+      <div className="row" style={{ gap: 14, flexWrap: 'wrap', fontSize: 'var(--t-md)' }}>
         <span><span className="muted">24 小时</span> {cell(u.today)}</span>
         <span><span className="muted">7 天</span> {cell(u.week)}</span>
         <span><span className="muted">30 天</span> {cell(u.month)}</span>
@@ -54,7 +54,7 @@ function UsageSection() {
           {u.by_feature.map((f) => <span key={f.feature} className="badge" title={`${f.feature} · ${f.calls} 次`}>{featureLabel(f.feature)} {fmtTok(f.tokens)}</span>)}
         </div>
       )}
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 0' }}>
         token 数取自供应商响应，按 30 天内的功能排；「知识库抽取（估算）」走 KITE 自己的调用，拿不到 usage，按字数估。{u.models.length ? ` 模型：${u.models.join('、')}` : ''}
       </p>
     </>
@@ -81,7 +81,7 @@ function AppearanceSection() {
           </button>
         ))}
       </div>
-      {!canSwitchTheme() && <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>浏览器里只能跟随系统；桌面版可以固定浅色 / 深色。</p>}
+      {!canSwitchTheme() && <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 0' }}>浏览器里只能跟随系统；桌面版可以固定浅色 / 深色。</p>}
     </>
   )
 }
@@ -97,7 +97,7 @@ function AppearanceSection() {
 /** 设置页最底下的出处行：AGPL §13 要求向使用者提供源码，仓库地址就放在这。 */
 export function AboutLine() {
   return (
-    <p className="muted" style={{ fontSize: 11, marginTop: 28 }}>
+    <p className="muted" style={{ fontSize: 'var(--t-xs)', marginTop: 28 }}>
       MEMOKET NOTE · AGPL-3.0 · 源码 <a href="https://github.com/huilongbaba/MEMOKET_NOTE" target="_blank" rel="noreferrer">github.com/huilongbaba/MEMOKET_NOTE</a> · 复用了 Trilium 的设计与主题（AGPL-3.0），依赖清单见仓库 docs/third-party-notices.md
     </p>
   )
@@ -156,7 +156,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
     <div className={embedded ? 'embedded-panel' : 'palette-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
         className={embedded ? '' : 'modal'}
-        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
+        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r)',
                 maxWidth: 480, width: '92vw', padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -173,7 +173,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
           <div className="stack" style={{ marginTop: 12 }}>
             {embedded && <AppearanceSection />}
             <h3 className="kb-section-title">LLM 供应商</h3>
-            <p className="muted" style={{ fontSize: 12, margin: '2px 0 8px' }}>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '2px 0 8px' }}>
               续写、修订、知识库抽取这些功能背后调用的模型——本地模型免费但慢，
               GPT 需要自己的 API key，通常快很多。
             </p>
@@ -194,27 +194,27 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                 {/* 看得见的字段名。**占位符不是名字**：填上字它就没了——实拍
                     （第 675 轮）这三个框填着 `gpt-5.6-luna`、`https://api.openai.com/v1`，
                     旁边一个字都没说这是什么。aria-label 管屏幕阅读器，这几行管眼睛。 */}
-                <label className="muted" style={{ fontSize: 12 }}>API key</label>
+                <label className="muted" style={{ fontSize: 'var(--t-sm)' }}>API key</label>
                 <input aria-label="GPT API key"
                   type="password"
                   placeholder={cfg?.gpt_api_key_set ? `已设置 ${cfg.gpt_api_key_preview}，留空则不改` : 'sk-...'}
                   value={gptApiKey}
                   onChange={(e) => setGptApiKey(e.target.value)}
                 />
-                <label className="muted" style={{ fontSize: 12, marginTop: 4 }}>模型名</label>
+                <label className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>模型名</label>
                 <input aria-label="GPT 模型名"
                   placeholder="默认 gpt-4.1-mini"
                   value={gptModel}
                   onChange={(e) => setGptModel(e.target.value)}
                 />
-                <label className="muted" style={{ fontSize: 12, marginTop: 4 }}>API base URL</label>
+                <label className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>API base URL</label>
                 <input aria-label="GPT API base URL"
                   placeholder="默认 OpenAI 官方端点"
                   value={gptBaseUrl}
                   onChange={(e) => setGptBaseUrl(e.target.value)}
                 />
                 {!cfg?.gpt_api_key_set && !gptApiKey.trim() && (
-                  <p className="muted" style={{ fontSize: 12, color: 'var(--del)' }}>
+                  <p className="muted" style={{ fontSize: 'var(--t-sm)', color: 'var(--del)' }}>
                     还没设置 API key，保存后选中 GPT 也用不了，会自动退回本地模型。
                   </p>
                 )}
@@ -224,7 +224,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
             {/* 语音服务地址。之前只能改 .env 重启；状态栏挂着「语音离线」、录音钮
                 提示「在设置里检查语音服务地址」，设置里却没这一项。 */}
             <p className="kb-section-title" style={{ marginTop: 18 }}>语音服务</p>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
               录音转写用的 whisper.cpp server 地址。留空用默认；改完保存，状态栏的「语音离线」会立刻重查。
             </p>
             <input aria-label="语音服务地址"
@@ -237,17 +237,17 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                 说得出口的承诺必须看得见，否则就是一句安慰。它是部署配置，
                 跟语音的默认地址一样只读。 */}
             <p className="kb-section-title" style={{ marginTop: 18 }}>看图（屏幕活动）</p>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
               屏幕活动的截图只发到这一处，<b>跟上面选的写作供应商无关</b>——写作切到 GPT，截图也不会跟着出去。
             </p>
             <p className="mono-line">{cfg?.vision_model || '（未配置）'} @ {cfg?.vision_base_url || '（未配置）'}</p>
 
             <p className="kb-section-title" style={{ marginTop: 18 }}>笔记 ↔ 知识库</p>
-            <label className="row" style={{ gap: 8, fontSize: 13, alignItems: 'center' }}>
+            <label className="row" style={{ gap: 8, fontSize: 'var(--t-md)', alignItems: 'center' }}>
               <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
               笔记改动后自动同步到知识库
             </label>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
               只对摄入过的笔记生效：停止编辑 2 分钟后、或切到别的笔记时，自动删掉上次抽的事实重新抽（你手工加的留着）。每次同步是一次模型调用。关着的话树上会用黄色 ⇡ 提醒你哪些改过没同步。
             </p>
 

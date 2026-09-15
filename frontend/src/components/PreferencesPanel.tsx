@@ -29,7 +29,7 @@ export default function PreferencesPanel() {
 
   return (
     <div className="stack">
-      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
         跟知识库是两回事——这里不走抽取，写完立刻生效。写作骨架 / 智能编辑 / magic tap 续写都会读取。
       </p>
       <div className="stack">

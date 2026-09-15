@@ -116,19 +116,19 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
 
   return (
     <div>
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
         {/* 转圈 + 下拉一起挤上来时这句会折成两行把头部撑高（第 216 轮实拍）：文字可截断，别折行 */}
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>跟着正文自动浮现，点一下插入引用。</span>
         {loading && <span className="spinner" style={{ flexShrink: 0 }} />}
         {/* 记忆范围：一个库里混着会议记录 / 笔记 / 导入的，写自家复盘时别让别家汇报串进来 */}
         <select value={scope} onChange={(e) => setMemoryScope(e.target.value as MemoryScope)} title="召回、关系、续写、扩写、校验、回顾、写作计划取材料都只看这一档"
-                style={{ marginInlineStart: 'auto', fontSize: 11, padding: '1px 4px', flexShrink: 0 }}>
+                style={{ marginInlineStart: 'auto', fontSize: 'var(--t-xs)', padding: '1px 4px', flexShrink: 0 }}>
           {(Object.keys(SCOPE_LABEL) as MemoryScope[]).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
         </select>
       </p>
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>
-          <div className="muted" style={{ fontSize: 11 }}>光标这段跟知识库的关系{relBusy && <> <span className="spinner" /></>}</div>
+          <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>光标这段跟知识库的关系{relBusy && <> <span className="spinner" /></>}</div>
           {visibleRels.map((r) => {
             const L = REL_LABEL[r.relation]
             const key = r.relation + ':' + r.fact_ids.join(',')
@@ -136,12 +136,12 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
               <div key={key} className={'card rel-card ' + L.cls}>
                 <div className="row" style={{ gap: 6, alignItems: 'center' }}>
                   <span className={'badge ' + L.cls}><i className={'bx ' + L.icon} /> {L.text}</span>
-                  <span style={{ fontSize: 13, flex: 1 }}>{r.say}</span>
+                  <span style={{ fontSize: 'var(--t-md)', flex: 1 }}>{r.say}</span>
                 </div>
                 {r.facts.length > 0 && (
                   <div className="stack" style={{ gap: 2, marginTop: 4 }}>
                     {r.facts.map((f) => (
-                      <div key={f.id} className="muted" style={{ fontSize: 12, cursor: 'pointer' }} title="打开这条"
+                      <div key={f.id} className="muted" style={{ fontSize: 'var(--t-sm)', cursor: 'pointer' }} title="打开这条"
                            {...clickable(() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })))}>
                         <span className="badge" style={{ marginInlineEnd: 4 }}>{f.when || '—'}</span>{f.text}
                       </div>
@@ -151,11 +151,11 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
                 <div className="row" style={{ gap: 4, marginTop: 6 }}>
                   {r.facts.length > 0 && (content.includes(`[${r.facts[r.facts.length - 1].id}]`)
                     ? <span className="badge ok" title="正文里已经引用了这条">已引用</span>
-                    : <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => onInsert(`${r.facts[r.facts.length - 1].text} [${r.facts[r.facts.length - 1].id}]`)}>引用这条</button>)}
-                  {r.relation === 'conflict' && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void supersede(r)}>新的取代旧的</button>}
-                  {r.relation === 'accumulation' && r.facts.length > 0 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => fillIn(r)}>补进来</button>}
-                  {r.relation === 'merge' && r.facts.length === 2 && <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => void merge(r)}>合成一条</button>}
-                  <button style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => ignore(key)}>忽略</button>
+                    : <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => onInsert(`${r.facts[r.facts.length - 1].text} [${r.facts[r.facts.length - 1].id}]`)}>引用这条</button>)}
+                  {r.relation === 'conflict' && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => void supersede(r)}>新的取代旧的</button>}
+                  {r.relation === 'accumulation' && r.facts.length > 0 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => fillIn(r)}>补进来</button>}
+                  {r.relation === 'merge' && r.facts.length === 2 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => void merge(r)}>合成一条</button>}
+                  <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => ignore(key)}>忽略</button>
                 </div>
               </div>
             )
@@ -163,7 +163,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
         </div>
       )}
       {facts.length === 0 && !loading && (
-        <p className="muted" style={{ fontSize: 13 }}>
+        <p className="muted" style={{ fontSize: 'var(--t-md)' }}>
           {kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
             : tooShort ? '再多写几个字就会开始自动检索。' : '知识库里暂时没有找到相关内容。'}
         </p>
@@ -176,7 +176,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           {...clickable(() => onInsert(`${f.text} [${f.id}]`))}
           title="点击插入引用到光标处"
         >
-          <div style={{ fontSize: 13 }}>{f.text}</div>
+          <div style={{ fontSize: 'var(--t-md)' }}>{f.text}</div>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <span className="row" style={{ gap: 4 }}>
               {f.when ? <span className="badge">{f.when}</span> : null}

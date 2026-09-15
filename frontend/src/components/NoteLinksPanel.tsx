@@ -30,11 +30,11 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
   }, [noteId, outgoingKey, updatedAt])
   if (!links) return <p className="muted" style={{ margin: 0 }}>…</p>
   const list = (rows: api.CitingNote[], empty: string) => rows.length === 0
-    ? <p className="muted" style={{ margin: 0, fontSize: 12 }}>{empty}</p>
+    ? <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>{empty}</p>
     : rows.map((n) => (
       <a key={n.id} className="kb-link" onClick={() => onOpen(n.id)}>
         <i className={'bx ' + (n.icon || 'bx-note')} /> <span className="ellipsis">{displayTitle(n)}</span>
-        <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 11 }}>{fmtDate(n.updated_at)}</span>
+        <span className="muted" style={{ marginInlineStart: 'auto', fontSize: 'var(--t-xs)' }}>{fmtDate(n.updated_at)}</span>
       </a>
     ))
   // 链出去的：有 notes 就本地算（按正文里出现的顺序，去重，只留还在的）
@@ -49,15 +49,15 @@ export default function NoteLinksPanel({ noteId, content, onOpen, onUnlink, know
     <div className="stack" style={{ gap: 8 }}>
     {dangling.length > 0 && (
       // 链到的笔记不在了（删了 / 从别的库导来的）：之前静默丢掉，正文里悬停才知道
-      <div className="card" style={{ borderColor: 'var(--del)', color: 'var(--del)', fontSize: 13 }}>
+      <div className="card" style={{ borderColor: 'var(--del)', color: 'var(--del)', fontSize: 'var(--t-md)' }}>
         {dangling.length} 条链接指向已经不在的笔记
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-          <span className="muted" style={{ fontSize: 12 }}>正文里悬停那条链接会提示「这篇笔记不存在了」</span>
-          {onUnlink && <button style={{ fontSize: 12, padding: '2px 8px', marginInlineStart: 'auto' }} title="链接改成纯文本，字留着" onClick={() => onUnlink(dangling)}>改成纯文本</button>}
+          <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>正文里悬停那条链接会提示「这篇笔记不存在了」</span>
+          {onUnlink && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px', marginInlineStart: 'auto' }} title="链接改成纯文本，字留着" onClick={() => onUnlink(dangling)}>改成纯文本</button>}
         </div>
       </div>
     )}
-    <div className="row" style={{ gap: 24, alignItems: 'flex-start', fontSize: 13 }}>
+    <div className="row" style={{ gap: 24, alignItems: 'flex-start', fontSize: 'var(--t-md)' }}>
       <section style={{ flex: 1, minWidth: 0 }}>
         <p className="muted palette-group" style={{ marginInline: 0 }}>链到的笔记 {outgoing.length > 0 && `· ${outgoing.length}`}</p>
         {list(outgoing, '正文里打 [[ 搜标题即可链接另一篇。')}

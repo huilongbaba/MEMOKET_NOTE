@@ -74,7 +74,7 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(null)}>
       <div className="palette" role="dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="muted" style={{ fontSize: 12, padding: '2px 4px 6px' }}>{req.title}</div>
+        <div className="muted" style={{ fontSize: 'var(--t-sm)', padding: '2px 4px 6px' }}>{req.title}</div>
         <input aria-label="搜标题或路径"
           ref={input} value={q} placeholder="搜标题或路径…"
           onChange={(e) => { setQ(e.target.value); setI(0) }}
@@ -91,7 +91,7 @@ export function NotePicker({ req, rows }: { req: PickerRequest; rows: TreeRow[] 
                  onMouseEnter={() => setI(k)} onClick={() => choose(k)} title={it.path ? `${it.label} · ${it.path}` : it.label}>
               {/* 长标题（首行当标题的那种一句话）不能顶出去：省略号，完整的放 title（第 135 轮实拍） */}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: '0 1 auto' }}>{it.label}</span>
-              {it.path && <span className="muted" style={{ marginInlineStart: 8, fontSize: 12, flex: 'none' }}>{it.path}</span>}
+              {it.path && <span className="muted" style={{ marginInlineStart: 8, fontSize: 'var(--t-sm)', flex: 'none' }}>{it.path}</span>}
             </div>
           ))}
         </div>
@@ -116,7 +116,7 @@ export function TextPrompt({ req }: { req: PromptRequest }) {
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(null)}>
       <div className="palette" role="dialog" style={{ width: 420 }} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="muted" style={{ fontSize: 12, padding: '2px 4px 6px' }}>{req.title}</div>
+        <div className="muted" style={{ fontSize: 'var(--t-sm)', padding: '2px 4px 6px' }}>{req.title}</div>
         <input
           ref={input} value={v} onChange={(e) => setV(e.target.value)} aria-label={req.title}
           onKeyDown={(e) => {
@@ -157,8 +157,8 @@ export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
     <div className="palette-backdrop" onMouseDown={() => req.resolve(false)}>
       <div className="palette" role="alertdialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}
            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(false) } }}>
-        <div style={{ fontWeight: 600, padding: '2px 4px 4px' }}>{req.title}</div>
-        {req.detail && <div className="muted" style={{ fontSize: 13, padding: '0 4px 8px', whiteSpace: 'pre-wrap' }}>{req.detail}</div>}
+        <div style={{ fontWeight: 'var(--w-semi)', padding: '2px 4px 4px' }}>{req.title}</div>
+        {req.detail && <div className="muted" style={{ fontSize: 'var(--t-md)', padding: '0 4px 8px', whiteSpace: 'pre-wrap' }}>{req.detail}</div>}
         <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
           <button ref={cancel} onClick={() => req.resolve(false)}>取消</button>
           <button ref={btn} className="primary" style={req.danger ? { background: 'var(--del)', borderColor: 'var(--del)' } : undefined}

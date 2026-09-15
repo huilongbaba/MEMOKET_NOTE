@@ -111,7 +111,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
       <div
         className="modal"
         role="dialog" aria-label="写作计划"
-        style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
+        style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r)',
                 maxWidth: 640, width: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -122,7 +122,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
 
         {!plan || plan.status === 'abandoned' ? (
           <div className="stack" style={{ marginTop: 12 }}>
-            <p className="muted" style={{ fontSize: 13 }}>
+            <p className="muted" style={{ fontSize: 'var(--t-md)' }}>
               给一个写作目标，会自动拆成若干分段，每个分段独立成一篇笔记，一段接一段自动写下去；写完已知分段后还会检查有没有更多值得写的内容，没有才真正停下来。
               {scopeLabel && <>取材料只看「{scopeLabel}」（范围在右栏「相关记忆」里切）。</>}
             </p>
@@ -138,7 +138,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
           </div>
         ) : (
           <div className="stack" style={{ marginTop: 12 }}>
-            <p className="muted" style={{ fontSize: 13 }}>{plan.goal}</p>
+            <p className="muted" style={{ fontSize: 'var(--t-md)' }}>{plan.goal}</p>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span className={'badge' + (plan.status === 'done' ? ' ok' : '')}>
                 {plan.status === 'done' ? '已完成' : '进行中'}
@@ -148,7 +148,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
                     压到一个字一行，这个面板更窄，更容易中招。 */}
                 {running && (
                   <label className="muted"
-                         style={{ fontSize: 12, cursor: 'pointer',
+                         style={{ fontSize: 'var(--t-sm)', cursor: 'pointer',
                                   whiteSpace: 'nowrap', flexShrink: 0 }}>
                     <input type="checkbox" checked={harness.follow} onChange={onToggleFollow} style={{ marginRight: 4 }} />
                     编辑器跟随写作
@@ -181,16 +181,16 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
               <div className="card" style={{ background: 'var(--panel)' }}>
                 <div className="row" style={{ gap: 6 }}>
                   <span className="spinner" />
-                  <strong style={{ fontSize: 13 }}>
+                  <strong style={{ fontSize: 'var(--t-md)' }}>
                     {harness.currentSectionTitle ? `正在写：${harness.currentSectionTitle}` : '正在启动…'}
                   </strong>
                 </div>
                 {harness.waitingFirstToken ? (
-                  <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+                  <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '6px 0 0' }}>
                     检索知识库、启动模型中…（本地模型这一步通常要几秒）
                   </p>
                 ) : (
-                  <div style={{ fontSize: 13, marginTop: 8, whiteSpace: 'pre-wrap',
+                  <div style={{ fontSize: 'var(--t-md)', marginTop: 8, whiteSpace: 'pre-wrap',
                                maxHeight: 220, overflowY: 'auto' }}>
                     {harness.preview || '…'}
                   </div>
@@ -203,7 +203,7 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
                 <div key={s.id} className="card">
                   <div>{STATUS_LABEL[s.status]} <strong>{s.title}</strong></div>
                   {s.summary && (
-                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{s.summary}</div>
+                    <div className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>{s.summary}</div>
                   )}
                 </div>
               ))}

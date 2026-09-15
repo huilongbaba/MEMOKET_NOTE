@@ -25,7 +25,7 @@ export default function FactsTable({ query, actions }: { query: string; actions:
         <h2 className="kb-note-title"><i className="bx bx-table muted" /> 事实表</h2>
         {/* 空库时这行讲的是下面根本不存在的那排筛选器——说明要跟着眼前的东西走 */}
         {!(meta && meta.stats.facts === 0) && (
-          <div className="muted" style={{ fontSize: 13 }}>按类型 / 说话人 / 主题 / 实体 / 置信度筛。想按关键词找，用首页的搜索或 ⌘K。</div>
+          <div className="muted" style={{ fontSize: 'var(--t-md)' }}>按类型 / 说话人 / 主题 / 实体 / 置信度筛。想按关键词找，用首页的搜索或 ⌘K。</div>
         )}
       </div>
       {/* 整个库还是空的：五个空下拉 + 「0 条 · 没有事实。」没有一处能动，

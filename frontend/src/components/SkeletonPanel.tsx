@@ -36,7 +36,7 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, loading, onR
           style={{
             margin: '10px 0',
             padding: '10px 12px',
-            fontSize: 14,
+            fontSize: 'var(--t-base)',
             fontStyle: 'italic',
             borderLeft: '3px solid var(--accent)',
             background: 'var(--card-alt)',
@@ -48,7 +48,7 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, loading, onR
       {beats.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
           {beats.map((b, i) => (
-            <li key={i} style={{ marginBottom: 6, fontSize: 13, display: 'flex', gap: 6 }}>
+            <li key={i} style={{ marginBottom: 6, fontSize: 'var(--t-md)', display: 'flex', gap: 6 }}>
               <span className="muted">·</span>
               <span>{b}</span>
             </li>
@@ -56,8 +56,8 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, loading, onR
         </ul>
       )}
       {beatCoverage && (
-        <p style={{ marginTop: 8, fontSize: 12, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-          <span style={{ color: LEVEL_COLOR[beatCoverage.level], fontWeight: 600 }}>
+        <p style={{ marginTop: 8, fontSize: 'var(--t-sm)', display: 'flex', gap: 6, alignItems: 'baseline' }}>
+          <span style={{ color: LEVEL_COLOR[beatCoverage.level], fontWeight: 'var(--w-semi)' }}>
             节拍覆盖：{LEVEL_LABEL[beatCoverage.level] ?? beatCoverage.level}
           </span>
           <span className="muted">{beatCoverage.note}</span>

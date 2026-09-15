@@ -27,7 +27,7 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
 
   if (!meta.grounded) {
     return (
-      <p className="muted tap-prov" style={{ fontSize: 12 }}>
+      <p className="muted tap-prov" style={{ fontSize: 'var(--t-sm)' }}>
         <span className="badge">自由续写</span> 知识库中没有相关记录
         {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><i className="bx bx-x" /></button>}
       </p>
@@ -35,7 +35,7 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
   }
 
   return (
-    <div className="muted tap-prov" style={{ fontSize: 12 }}>
+    <div className="muted tap-prov" style={{ fontSize: 'var(--t-sm)' }}>
       <p style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
         <span className="badge ok">引用知识库</span> 检索到 {meta.facts} 条事实（{Math.round(meta.recall_ms)} ms）
         <a className="link" onClick={() => setExpanded((v) => !v)}>

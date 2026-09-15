@@ -240,7 +240,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                   disabled={!bridge} title={bridge ? '' : '网页版没有采集能力，要用桌面版'}>开始记录</button>
           <button onClick={onLater}>先不开</button>
         </div>
-        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+        <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
           {bridge ? '点「开始记录」之后，macOS 会问一次屏幕录制权限——那一下必须给，不然什么都记不到。'
                   : '网页版没有采集能力，要用桌面版。'}
         </p>
@@ -307,7 +307,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
       {day?.report ? (
         <div className="card journey-report">
           <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <span className="muted" style={{ fontSize: 12 }}
+            <span className="muted" style={{ fontSize: 'var(--t-sm)' }}
                   title={day.report_at ? `写于 ${hhmm(day.report_at)}` : undefined}>
               这一天的回顾
               {/* **日报是快照，这一天还在长**：不说清楚它按多少段写的，下午看到的
@@ -331,7 +331,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           <button className="primary" disabled={writing} onClick={() => void writeReport()}>
             {writing ? <><span className="spinner" /> 正在写…</> : `写这一天的回顾（${described} 段）`}
           </button>
-          <span className="muted" style={{ fontSize: 12, alignSelf: 'center', marginInlineStart: 8 }}>
+          <span className="muted" style={{ fontSize: 'var(--t-sm)', alignSelf: 'center', marginInlineStart: 8 }}>
             一次模型调用。时长是数出来的，模型只写推进了什么、卡在哪。
           </span>
         </div>
@@ -399,7 +399,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           它不是「今天」这一页的主角，是从这一页出去的一条路（§4.2）。 */}
       <div className="journey-span">
         <h3 className="kb-section-title">回顾一段时间</h3>
-        <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '2px 0 6px' }}>
           把这些天的日报汇成一篇长回顾，落成一篇笔记——之后还能接着编辑、接着续写。
           没写过日报的那几天会被跳过，并写在笔记里。
         </p>

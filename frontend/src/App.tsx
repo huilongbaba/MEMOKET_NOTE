@@ -1079,7 +1079,7 @@ export default function App() {
       >
         <div className="t">{displayTitle(n)}</div>
         {n.content.trim() && (
-          <div className="muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div className="muted" style={{ fontSize: 'var(--t-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {(() => {
               // 标题本身就命中的（三篇「创业一年回顾」搜「创业」），片段再给一遍 H1 是重复的，
               // 换成第一行正文——同名的几篇靠这一行分辨（跟 ⌘K 的 first_body 一个思路）
@@ -1095,7 +1095,7 @@ export default function App() {
            不好预判。timestamp 用 min-width: 0 + ellipsis 当"该缩的先缩"
            那一个（跟更早修的 .col 溢出 bug 是同一个道理），三个控件固定
            大小不被挤压。 */}
-        <div className="muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div className="muted" style={{ fontSize: 'var(--t-xs)', display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {/* 在哪个文件夹下：搜索命中几十条时，这是区分同名笔记的唯一线索 */}
             {(() => { const row = tree.find((r) => r.note_id === n.id); const parent = row && row.parent_note_id !== api.ROOT_ID ? tree.find((r) => r.note_id === row.parent_note_id) : undefined; return parent ? displayTitle(parent) + ' · ' : '' })()}
@@ -2831,9 +2831,9 @@ export default function App() {
         >
           <div className="row" style={{ gap: 6 }}>
             <span className="spinner" />
-            <strong style={{ fontSize: 13 }}>🚀 {harness.folderName}</strong>
+            <strong style={{ fontSize: 'var(--t-md)' }}>🚀 {harness.folderName}</strong>
           </div>
-          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 0' }}>
             {harness.currentSectionTitle ? `正在写：${harness.currentSectionTitle}` : '正在启动…'}
           </p>
         </div>
@@ -3136,12 +3136,12 @@ export default function App() {
               <h2 className="kb-note-title"><i className="bx bx-import" /> 导入</h2>
               <div className="card">
                 <b>Markdown 文件</b>
-                <p className="muted" style={{ margin: '2px 0 8px', fontSize: 12 }}>一个文件一篇；多个文件成一棵子树。想放到某个节点下面，在树上右键那个节点「导入 .md 到这里…」。</p>
+                <p className="muted" style={{ margin: '2px 0 8px', fontSize: 'var(--t-sm)' }}>一个文件一篇；多个文件成一棵子树。想放到某个节点下面，在树上右键那个节点「导入 .md 到这里…」。</p>
                 {/* **这张卡原来是整页唯一一条到不了知识库的路**，而知识库空态页上
                     那个主按钮「导入」正是把人送到这一页最上面（第 678 轮）。默认
                     仍然只建笔记（迁移笔记的人不该被动花模型钱），但得说出来，
                     而且要在原地给得到。 */}
-                <label className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12, margin: '0 0 8px' }}>
+                <label className="row" style={{ gap: 6, alignItems: 'center', fontSize: 'var(--t-sm)', margin: '0 0 8px' }}>
                   <input type="checkbox" checked={mdToKb} onChange={(e) => setMdToKb(e.target.checked)} />
                   <span>同时存入知识库（逐篇抽事实，要跑模型；不勾就只建笔记，之后也能对单篇「存入知识库」）</span>
                 </label>
@@ -3208,7 +3208,7 @@ export default function App() {
                       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
                 <i className="bx bx-dots-horizontal-rounded" />
               </button>
-              {loading === 'ingest' && <span className="muted" style={{ fontSize: 12 }}><span className="spinner" /></span>}
+              {loading === 'ingest' && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}><span className="spinner" /></span>}
               {fbMenu && (
                 <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
                   { label: '打磨（只修不写）', icon: 'bx-brush', disabled: loading === 'note-harness' || !content.trim(),
@@ -3276,14 +3276,14 @@ export default function App() {
                 <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>
                   「{harness.folderName}」的写作计划正在写这一篇{harness.currentSectionTitle ? `（${harness.currentSectionTitle}）` : ''}
                 </span>
-                  <span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>· 正文由 AI 接管，停下来再改</span>
+                  <span className="muted" style={{ marginInlineStart: 8, fontSize: 'var(--t-xs)' }}>· 正文由 AI 接管，停下来再改</span>
                 </p>
               </div>
             )}
             {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
               <div className="harness-sticky">
                 <p className="muted harness-line"><i className="bx bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>{pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}</span>
-                  {loading === 'note-harness' && <span className="muted" style={{ marginInlineStart: 8, fontSize: 11 }}>· 运行中正文由 AI 接管，停下来再改</span>}
+                  {loading === 'note-harness' && <span className="muted" style={{ marginInlineStart: 8, fontSize: 'var(--t-xs)' }}>· 运行中正文由 AI 接管，停下来再改</span>}
                   {pausedRun && (
                     /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
                        关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
@@ -3313,7 +3313,7 @@ export default function App() {
                 className="row"
                 style={{
                   gap: 8, alignItems: 'center', margin: '2px 2px 6px',
-                  fontSize: 12, padding: '5px 8px', borderRadius: 6,
+                  fontSize: 'var(--t-sm)', padding: '5px 8px', borderRadius: 'var(--r-sm)',
                   border: '1px solid var(--line)', background: 'var(--panel)',
                 }}
               >
@@ -3390,7 +3390,7 @@ export default function App() {
               body: current
                 ? <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor}
                                  kbEmpty={kbRows.length > 0 && (kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0) === 0} />
-                : <p className="muted" style={{ fontSize: 12 }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
+                : <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
               body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
             /* 幻灯片预览：**只在这篇真是幻灯片时才出现**（front-matter 里有 slides: true）。
@@ -3449,10 +3449,10 @@ export default function App() {
                 <div className="stack">
                   <p style={{ margin: 0, lineHeight: 1.6 }}>{trace.answer}</p>
                   {trace.facts.map((f) => (
-                    <div key={f.id} className="card" style={{ fontSize: 12 }}>
+                    <div key={f.id} className="card" style={{ fontSize: 'var(--t-sm)' }}>
                       <span className="muted">{f.when}</span>
                       <div>{f.text}</div>
-                      <button style={{ fontSize: 11, marginTop: 4 }}
+                      <button style={{ fontSize: 'var(--t-xs)', marginTop: 4 }}
                               onClick={() => insertAtCursor(`${f.text} [${f.id}]\n`)}>
                         插入到正文
                       </button>

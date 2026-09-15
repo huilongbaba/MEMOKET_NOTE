@@ -19,7 +19,7 @@ export default function SlidesPanel({ content, viewRef }: {
 }) {
   const pages = slidePages(content)
   if (!pages.length) {
-    return <p className="muted" style={{ fontSize: 12 }}>这篇还不是幻灯片。在「⋯ → 做成幻灯片」里生成一份。</p>
+    return <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>这篇还不是幻灯片。在「⋯ → 做成幻灯片」里生成一份。</p>
   }
   const bare = pages.filter((p) => !p.cited).length
 
@@ -33,7 +33,7 @@ export default function SlidesPanel({ content, viewRef }: {
 
   return (
     <div>
-      <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '0 0 8px' }}>
         {pages.length} 页
         {bare > 0 && <>　·　<b className="warnish">{bare} 页没有依据</b></>}
         　·　点一页跳到正文

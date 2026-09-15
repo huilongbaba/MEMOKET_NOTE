@@ -66,7 +66,7 @@ export default function DocumentOutline({ content, viewRef }: {
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>('.outline-item.active')?.scrollIntoView({ block: 'nearest' })
   }, [activePos])
-  if (headings.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>正文里的 <code>#</code> 标题会列在这里，点一下跳过去。</p>
+  if (headings.length === 0) return <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>正文里的 <code>#</code> 标题会列在这里，点一下跳过去。</p>
 
   function jump(pos: number) {
     const view = viewRef.current
@@ -86,7 +86,7 @@ export default function DocumentOutline({ content, viewRef }: {
             key={i}
             className={'link outline-item' + (h.pos === activePos ? ' active' : '')}
             style={{
-              display: 'block', fontSize: 12,
+              display: 'block', fontSize: 'var(--t-sm)',
               paddingLeft: 6 + (h.level - 1) * 12,
               textDecoration: 'none',
             }}

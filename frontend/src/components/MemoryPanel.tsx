@@ -26,7 +26,7 @@ function JobProgress({ j }: { j: JobOut }) {
       {total > 0 && (
         <div className="progress" title={`${done}/${total} 块`}><div className="progress-bar" style={{ width: `${Math.min(100, Math.round(done / total * 100))}%` }} /></div>
       )}
-      <div className="muted" style={{ fontSize: 12 }}>
+      <div className="muted" style={{ fontSize: 'var(--t-sm)' }}>
         {total > 0 && <>{done}/{total} 块</>}
         {running && j.current && <> · 正在处理「{j.current}」</>}
         {running && (j.eta_s ?? 0) > 0 && <> · 预计还要 {fmtDur(j.eta_s!)}</>}
@@ -198,7 +198,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
   return (
     <div>
-      <p className="muted" style={{ fontSize: 12 }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>
         知识库现在 {stats ? `${stats.facts} 条事实 · ${stats.entities} 个实体` : '…'}
         {working && <> · <span className="spinner" /> 抽取中</>}
         {' '}· <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' })) }}>看总览</a>
@@ -206,18 +206,18 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
 
       {recentFacts.length > 0 && (
         <div className="stack" style={{ marginBottom: 10 }}>
-          <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
             刚抽取到（抽取是分块跑的，每跑完一块就会多几条）：
           </p>
           {recentFacts.map((f) => (
-            <div className="card" key={f.id} style={{ fontSize: 12 }}>{f.text}</div>
+            <div className="card" key={f.id} style={{ fontSize: 'var(--t-sm)' }}>{f.text}</div>
           ))}
         </div>
       )}
 
       <h2>从其他应用导入</h2>
       <div className="stack">
-        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+        <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
           {/* JSX 换行会变成空格，中文句子中间就多出「导过的 内容」这种缝（第 194 轮窄窗实拍）——一行写完 */}
           按来源清洗后导入：保留原始日期和文件夹结构，去掉各家的私有语法（<code>[[wiki 链接]]</code>、<code>![[附件]]</code>、dataview 块、Evernote 的附件占位）。<strong>重复导入是增量的</strong>——已经导过的内容会被跳过，不会翻倍也不会重新花抽取的时间。
         </p>
@@ -246,7 +246,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             onChange={(e) => doImport(Array.from(e.target.files ?? []), 'obsidian')}
           />
         </label>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           选整个 vault 目录。<code>.obsidian/</code> 和 <code>.trash/</code> 会自动跳过。
         </p>
 
@@ -259,7 +259,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             onChange={(e) => doImport(Array.from(e.target.files ?? []), 'evernote')}
           />
         </label>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           在 Evernote 里「导出笔记本为 .enex」，然后把文件选进来。
         </p>
 
@@ -276,7 +276,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             {importing ? <span className="spinner" /> : '导入'}
           </button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           要先在 Notion 里把目标页面 <strong>Connect 给这个 integration</strong>，
           否则会一条都取不到——这是最常见的「导了但是空的」原因。
         </p>
@@ -298,7 +298,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           <input aria-label="飞书文档链接" placeholder="或者直接粘文档链接（一行一个，填了就只导这几篇）" value={feishuDocs}
                  onChange={(e) => setFeishuDocs(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           飞书开放平台建一个自建应用，开 docx / wiki / drive 的只读权限，再把要导的知识库或文档<strong>添加协作者</strong>给这个应用。凭证不会存下来。
           <br />
           {/* 真账号实测：只加了单篇协作者的 wiki 文档，get_node 读得到、
@@ -312,7 +312,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
             {importing ? <span className="spinner" /> : '导入全部备忘录'}
           </button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: '0 0 6px 96px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
           {apple?.available
             ? '第一次导入时 macOS 会弹一个「允许控制「备忘录」」的授权框，点允许即可。'
             : `这台机器上不可用：${apple?.reason || '检测中…'}`}
@@ -323,13 +323,13 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       <div className="stack">
         {interrupted.length > 0 && (
           <div className="card" style={{ borderColor: 'var(--warn)' }}>
-            <strong style={{ fontSize: 13 }}>上次没跑完的导入</strong>
+            <strong style={{ fontSize: 'var(--t-md)' }}>上次没跑完的导入</strong>
             {interrupted.map((j) => (
               <div key={j.job_id} className="row" style={{ justifyContent: 'space-between', marginTop: 6, gap: 8 }}>
-                <span className="muted" style={{ fontSize: 12 }}>
+                <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>
                   {j.items.length} 篇 · 完成 {j.items.filter((it) => it.status === 'done').length} 篇 · {j.facts} 条事实{j.detail ? ` · ${j.detail}` : ''}
                 </span>
-                <button onClick={() => void doResume(j)} style={{ fontSize: 12, padding: '2px 10px' }}>继续</button>
+                <button onClick={() => void doResume(j)} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>继续</button>
               </div>
             ))}
           </div>
@@ -340,7 +340,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
           accept=".pdf,.docx,.txt,.md,.markdown,.wav,.mp3,.m4a,.flac"
           onChange={(e) => doBatchIngest(e.target.files)}
         />
-        <p className="muted" style={{ fontSize: 12 }}>
+        <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>
           支持 PDF / DOCX / TXT / MD / 音频混合上传，每个文件独立处理，某一个失败不影响其他文件。
         </p>
         {batchJob && (

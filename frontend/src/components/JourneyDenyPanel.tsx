@@ -40,7 +40,7 @@ export default function JourneyDenyPanel() {
   return (
     <div className="journey-deny">
       <h3 className="kb-section-title">不记这些</h3>
-      <p className="muted" style={{ fontSize: 12, margin: '2px 0 8px' }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '2px 0 8px' }}>
         命中就<b>连截图都不拍</b>。应用名要写全（跟菜单栏上显示的一样），标题词按包含匹配。
       </p>
 

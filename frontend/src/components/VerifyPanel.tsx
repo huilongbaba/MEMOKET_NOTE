@@ -46,7 +46,7 @@ export default function VerifyPanel({ findings, onClose }: {
           <p style={{ margin: '6px 0 0' }}>{f.reason}</p>
           {f.fact_id && (
             <>
-              <a className="link" style={{ fontSize: 12 }} onClick={() => toggle(f.fact_id)}>
+              <a className="link" style={{ fontSize: 'var(--t-sm)' }} onClick={() => toggle(f.fact_id)}>
                 依据：{f.fact_text} {openId === f.fact_id ? '（收起原文）' : '（查看原文）'}
               </a>
               {openId === f.fact_id && (
@@ -54,7 +54,7 @@ export default function VerifyPanel({ findings, onClose }: {
                   {loading ? <span className="spinner" /> : lines.length === 0 ? (
                     <span className="muted">找不到原文</span>
                   ) : lines.map((l) => (
-                    <p key={l.id} style={{ margin: '2px 0', fontSize: 12 }}>
+                    <p key={l.id} style={{ margin: '2px 0', fontSize: 'var(--t-sm)' }}>
                       {l.who && <strong>{l.who}：</strong>}{l.text}
                     </p>
                   ))}

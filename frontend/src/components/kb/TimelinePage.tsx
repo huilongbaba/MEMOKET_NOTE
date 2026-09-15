@@ -36,7 +36,7 @@ export default function TimelinePage({ actions }: { actions: KbActions }) {
     <div className="kb-page">
       <div className="kb-head">
         <h2 className="kb-note-title"><i className="bx bx-calendar muted" /> 时间线</h2>
-        <div className="muted" style={{ fontSize: 13 }}>{months.length} 个月 · 新的在上。点一个月展开到天，点一天看事实。</div>
+        <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{months.length} 个月 · 新的在上。点一个月展开到天，点一天看事实。</div>
       </div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
         {years.map((y) => <a key={y.year} href={'#y' + y.year} className="chip" onClick={(e) => { e.preventDefault(); document.getElementById('y' + y.year)?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }}>{y.year}</a>)}

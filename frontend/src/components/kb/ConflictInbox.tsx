@@ -25,24 +25,24 @@ export default function ConflictInbox({ actions, onCount }: { actions: KbActions
   if (!rows || rows.length === 0) return null
   const Side = ({ f, label }: { f: KbConflict['new']; label: string }) => (
     <div>
-      <div className="muted" style={{ fontSize: 11 }}>{label} · {f.when || '—'}{f.note_id ? <> · <a href="#" onClick={(e) => { e.preventDefault(); actions.onOpenNote(f.note_id) }}>来自笔记</a></> : null}</div>
+      <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>{label} · {f.when || '—'}{f.note_id ? <> · <a href="#" onClick={(e) => { e.preventDefault(); actions.onOpenNote(f.note_id) }}>来自笔记</a></> : null}</div>
       <div style={{ cursor: 'pointer' }} {...clickable(() => actions.onOpen('kb:fact:' + f.id))} title="打开这条">{f.text}</div>
     </div>
   )
   return (
-    <KbSection title={`待处理冲突 · ${rows.length}`} extra={<span className="muted" style={{ fontSize: 12 }}>摄入时新记录跟旧记录撞上的，点一下定谁算数</span>}>
+    <KbSection title={`待处理冲突 · ${rows.length}`} extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>摄入时新记录跟旧记录撞上的，点一下定谁算数</span>}>
       <div className="stack conflict-inbox" style={{ gap: 6 }}>
         {rows.slice(0, 20).map((c) => (
           <div key={c.id} className="card" style={{ padding: '8px 10px' }}>
-            <div style={{ fontSize: 13 }}><i className="bx bx-error" style={{ color: 'var(--warn)' }} /> {c.say}</div>
+            <div style={{ fontSize: 'var(--t-md)' }}><i className="bx bx-error" style={{ color: 'var(--warn)' }} /> {c.say}</div>
             <div className="cf-side">
               <Side f={c.old} label="旧记录" />
               <Side f={c.new} label="新记录" />
             </div>
             <div className="row" style={{ gap: 4, marginTop: 6 }}>
-              <button style={{ fontSize: 12, padding: '2px 8px' }} disabled={busy === c.id} onClick={() => void act(c, 'new_wins')}>新的取代旧的</button>
-              <button style={{ fontSize: 12, padding: '2px 8px' }} disabled={busy === c.id} onClick={() => void act(c, 'old_wins')}>旧的算数</button>
-              <button style={{ fontSize: 12, padding: '2px 8px' }} disabled={busy === c.id} onClick={() => void act(c, 'keep_both')}>两条都留</button>
+              <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} disabled={busy === c.id} onClick={() => void act(c, 'new_wins')}>新的取代旧的</button>
+              <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} disabled={busy === c.id} onClick={() => void act(c, 'old_wins')}>旧的算数</button>
+              <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} disabled={busy === c.id} onClick={() => void act(c, 'keep_both')}>两条都留</button>
             </div>
           </div>
         ))}

@@ -20,9 +20,9 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, S>
     if (!this.state.error) return this.props.children
     return (
       <div style={{ padding: 32, maxWidth: 760, margin: '0 auto', fontFamily: 'var(--sans)' }}>
-        <h2 style={{ textTransform: 'none', fontSize: 18 }}>界面出错了，正文没丢</h2>
+        <h2 style={{ textTransform: 'none', fontSize: 'var(--t-xl)' }}>界面出错了，正文没丢</h2>
         <p style={{ color: 'var(--muted)' }}>自动保存一直在跑，笔记在库里。重新加载就能回来；错误已经记进日志。</p>
-        <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: 'var(--card-alt)', padding: 12, borderRadius: 8 }}>
+        <pre style={{ whiteSpace: 'pre-wrap', fontSize: 'var(--t-sm)', background: 'var(--card-alt)', padding: 12, borderRadius: 'var(--r)' }}>
           {this.state.error.message}{'\n'}{this.state.info.split('\n').slice(0, 8).join('\n')}
         </pre>
         <button onClick={() => window.location.reload()}>重新加载</button>

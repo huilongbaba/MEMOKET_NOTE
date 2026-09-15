@@ -232,7 +232,7 @@ export default function MemoryBrowser() {
   // 一条事实都没有就不画，给一句话。
   const libraryEmpty = loaded && topics.every((t) => t.fact_count === 0) && entities.length === 0
   const body = libraryEmpty ? (
-    <p className="muted" style={{ fontSize: 13 }}>还没有事实。导入会议记录或把笔记存入知识库之后，这里会长出主题和实体的关系图。</p>
+    <p className="muted" style={{ fontSize: 'var(--t-md)' }}>还没有事实。导入会议记录或把笔记存入知识库之后，这里会长出主题和实体的关系图。</p>
   ) : (
     <>
         {(
@@ -267,13 +267,13 @@ export default function MemoryBrowser() {
                   <>
                     <i className="bx bx-chevron-right muted" />
                     <span className="chip active"><i className="bx bx-hash" />{clusters.find((c) => c.key === drilled)?.label ?? drilled}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>
+                    <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>
                       {scopedTopics.length} 个主题 · {clusters.find((c) => c.key === drilled)?.facts ?? 0} 条事实
                     </span>
                   </>
                 )}
                 {drilled === null && (
-                  <span className="muted" style={{ fontSize: 12 }}>
+                  <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>
                     点一个簇进去看它的主题和实体。簇 = 老在同一场会议里一起出现的主题；虚线 = 两个簇共享的实体多。
                   </span>
                 )}
@@ -288,7 +288,7 @@ export default function MemoryBrowser() {
               </div>
               {(drilled !== null || clusters.length === 0) && (
                 <>
-                  <span className="muted" style={{ fontSize: 12 }}>层级</span>
+                  <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>层级</span>
                   <button className={'chip' + (maxLevel === null ? ' active' : '')} onClick={() => setMaxLevel(null)}>全部</button>
                   {Array.from({ length: Math.max(1, ...depths.values()) + 1 }, (_, i) => i + 1).map((lvl) => (
                     <button key={lvl} className={'chip' + (maxLevel === lvl ? ' active' : '')} onClick={() => setMaxLevel(lvl)}>

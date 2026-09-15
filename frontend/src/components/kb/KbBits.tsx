@@ -43,7 +43,7 @@ export function StatTile({ value, label, hint }: { value: ReactNode; label: stri
  *  用 div 不用 svg：svg 拉伸到容器宽时三根柱子会变成三块大砖；div 给每根柱子
  *  一个上限宽（28px），少的时候就是几根细柱靠左站着。 */
 export function MiniBars({ data, height = 64, label = '条事实' }: { data: KbMonth[]; height?: number; label?: string }) {
-  if (data.length === 0) return <p className="muted" style={{ fontSize: 12, margin: 0 }}>还没有按月的数据。</p>
+  if (data.length === 0) return <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>还没有按月的数据。</p>
   const max = Math.max(1, ...data.map((d) => d.facts))
   return (
     <div className="mini-bars" style={{ maxWidth: Math.max(data.length * 31, 132) }}>{/* 只有一两个月时也要放得下两个「2026-03」标签，不然标签折成两行 */}
@@ -129,7 +129,7 @@ export function FactRow({ f, actions, showTopics = false }: { f: FactDetail; act
 }
 
 export function FactList({ facts, actions, showTopics }: { facts: FactDetail[]; actions: KbActions; showTopics?: boolean }) {
-  if (facts.length === 0) return <p className="muted" style={{ fontSize: 13, margin: 0 }}>没有事实。</p>
+  if (facts.length === 0) return <p className="muted" style={{ fontSize: 'var(--t-md)', margin: 0 }}>没有事实。</p>
   // 按月分组：一眼看出「哪个月在说这件事」
   const groups: { month: string; items: FactDetail[] }[] = []
   for (const f of facts) {
@@ -173,7 +173,7 @@ const NO_ACTIONS: KbActions = { onOpen: () => {}, onOpenNote: () => {}, onCite: 
 export function ExampleFacts() {
   return (
     <div className="kb-example">
-      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+      <div className="muted" style={{ fontSize: 'var(--t-sm)', marginBottom: 4 }}>
         示例 —— 导入之后每一句话会变成这样一条：带日期、说话人、类型，点得开，也能一键引到正文里。
       </div>
       <div className="fact-list" inert>
@@ -190,10 +190,10 @@ export function Pager({ total, limit, offset, onPage, tail }: { total: number; l
   return (
     <div className="row" style={{ gap: 6, alignItems: 'center', marginTop: 8 }}>
       <button className="icon-btn" title="上一页" aria-label="上一页" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}><i className="bx bx-chevron-left" /></button>
-      <span className="muted" style={{ fontSize: 12 }}>{page} / {pages} · 共 {total} 条</span>
+      <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>{page} / {pages} · 共 {total} 条</span>
       <button className="icon-btn" title="下一页" aria-label="下一页" disabled={offset + limit >= total} onClick={() => onPage(offset + limit)}><i className="bx bx-chevron-right" /></button>
       {/* 一页页翻 121 页没人翻得动：翻页器旁边给一条「去事实表筛」的出口（主题 / 实体页传进来） */}
-      {tail && <span className="muted" style={{ fontSize: 12 }}>· {tail}</span>}
+      {tail && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>· {tail}</span>}
     </div>
   )
 }

@@ -597,8 +597,8 @@ export default function KnowledgeGraph(
     // overflow: hidden, not auto -- panning is now d3-zoom's job (drag the
     // canvas), not the browser's native scrollbars; both at once would let
     // two independent "where am I looking" mechanisms fight each other.
-    <div style={{ position: 'relative', overflow: 'hidden', border: '1px solid var(--line)', borderRadius: 8 }}>
-      <div className="row" style={{ padding: '8px 10px 0', fontSize: 12, justifyContent: 'space-between' }}>
+    <div style={{ position: 'relative', overflow: 'hidden', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}>
+      <div className="row" style={{ padding: '8px 10px 0', fontSize: 'var(--t-sm)', justifyContent: 'space-between' }}>
         <div className="row">
           <span className="muted">
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
@@ -624,7 +624,7 @@ export default function KnowledgeGraph(
             )}
         </div>
       </div>
-      <p className="muted" style={{ padding: '4px 10px 0', fontSize: 11, margin: 0 }}>
+      <p className="muted" style={{ padding: '4px 10px 0', fontSize: 'var(--t-xs)', margin: 0 }}>
         滚轮缩放 · 拖动平移 · 悬停看简介 · 点节点聚焦它和它的关联（再点「恢复全部」）· 卡片里「查看详情」进它的页面。
         {cappedCount > 0 && (
           <> 当前只显示按事实数量排序的前 {nodes.length} 个节点（共 {allNodes.length} 个）——
@@ -756,20 +756,20 @@ export default function KnowledgeGraph(
           onMouseLeave={handleNodeLeave}
         >
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <strong style={{ fontSize: 13 }}>{hover.node.label}</strong>
+            <strong style={{ fontSize: 'var(--t-md)' }}>{hover.node.label}</strong>
             <span className="badge">{hover.node.kind === 'topic' ? '主题' : '实体'}</span>
           </div>
-          <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '6px 0 0' }}>
             {hover.node.factCount} 条事实
             {hover.node.kind === 'topic' && ` · ${hover.node.status}`}
           </p>
           {hover.node.aliases.length > 0 && (
-            <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 0' }}>
               别名：{hover.node.aliases.join('、')}
             </p>
           )}
           {hover.node.factCount === 0 ? (
-            <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>还没有内容</p>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '8px 0 0' }}>还没有内容</p>
           ) : (
             <button
               style={{ marginTop: 8, width: '100%' }}

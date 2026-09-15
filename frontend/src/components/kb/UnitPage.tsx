@@ -27,10 +27,10 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
       <div className="kb-head">
         <div className="kb-crumbs muted"><a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:recent') }}>最近摄入</a></div>
         <h2 className="kb-note-title"><i className="bx bx-conversation muted" /> {p.title || p.id}</h2>
-        <div className="muted" style={{ fontSize: 13 }}>{p.date} · {p.facts_total} 条事实{p.speakers.length ? ' · ' + p.speakers.join('、') : ''}</div>
+        <div className="muted" style={{ fontSize: 'var(--t-md)' }}>{p.date} · {p.facts_total} 条事实{p.speakers.length ? ' · ' + p.speakers.join('、') : ''}</div>
         {/* 长材料切成的几段：在段之间走，不用回最近摄入再找（第 267 轮） */}
         {(p.part_total ?? 1) > 1 && p.parts && (
-          <div className="row" style={{ gap: 6, fontSize: 12, marginTop: 6, alignItems: 'center' }}>
+          <div className="row" style={{ gap: 6, fontSize: 'var(--t-sm)', marginTop: 6, alignItems: 'center' }}>
             <span className="muted">第 {p.part_index}/{p.part_total} 段</span>
             {p.parts.map((x) => (
               <button key={x.id} className={'chip' + (x.id === p.id ? ' active' : '')} disabled={x.id === p.id}
@@ -51,7 +51,7 @@ export default function UnitPage({ id, actions }: { id: string; actions: KbActio
         <KbSection title={`这段没抽出事实 · 原话 ${p.lines.length} 行`}>
           <div className="stack" style={{ gap: 6 }}>
             {p.lines.map((l, i) => (
-              <p key={i} className="muted" style={{ margin: 0, fontSize: 13 }}>{l.who ? <b style={{ marginInlineEnd: 6 }}>{l.who}</b> : null}{l.text}</p>
+              <p key={i} className="muted" style={{ margin: 0, fontSize: 'var(--t-md)' }}>{l.who ? <b style={{ marginInlineEnd: 6 }}>{l.who}</b> : null}{l.text}</p>
             ))}
           </div>
         </KbSection>

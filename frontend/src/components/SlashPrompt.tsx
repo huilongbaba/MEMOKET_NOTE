@@ -34,8 +34,8 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
     >
       <div className="row" style={{ gap: 6, alignItems: 'center', marginBottom: 6 }}>
         <i className={'bx ' + item.icon} />
-        <strong style={{ fontSize: 13 }}>{item.label}</strong>
-        <span className="muted" style={{ fontSize: 11 }}>{item.hint}</span>
+        <strong style={{ fontSize: 'var(--t-md)' }}>{item.label}</strong>
+        <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{item.hint}</span>
       </div>
       <input aria-label="给 AI 的指令"
         ref={ref}
@@ -49,7 +49,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
         }}
         style={{ width: '100%', boxSizing: 'border-box' }}
       />
-      <div className="row" style={{ justifyContent: 'space-between', marginTop: 6, fontSize: 11 }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 6, fontSize: 'var(--t-xs)' }}>
         <span className="muted">
           {busy ? <><span className="spinner" /> {phase || '在跑…'}</> : 'Enter 开始 · Esc 取消'}
         </span>

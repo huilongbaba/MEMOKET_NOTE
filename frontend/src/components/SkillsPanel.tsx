@@ -198,7 +198,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
     <div className={embedded ? 'embedded-panel' : 'palette-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
         className={embedded ? '' : 'modal'}
-        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 10,
+        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r)',
                 maxWidth: 720, width: '92vw', maxHeight: '84vh', overflowY: 'auto', padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -208,7 +208,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
             <button onClick={onClose}>✕</button>
           </div>
         )}
-        <p className="muted" style={{ fontSize: 13, margin: '6px 0 12px' }}>
+        <p className="muted" style={{ fontSize: 'var(--t-md)', margin: '6px 0 12px' }}>
           每条 skill 是叠加在某个生成动作（续写/校验/重写…）基础规则之后的额外指令，可以开关、排序、自建。
         </p>
 
@@ -227,7 +227,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
             <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>生效范围（至少选一个）</div>
+              <div className="muted" style={{ fontSize: 'var(--t-sm)', marginBottom: 4 }}>生效范围（至少选一个）</div>
               <div className="row" style={{ flexWrap: 'wrap', gap: 4 }}>
                 {scopes.map((sc) => (
                   <label
@@ -253,7 +253,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
               value={form.content}
               onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
             />
-            <label className="row" style={{ fontSize: 13 }}>
+            <label className="row" style={{ fontSize: 'var(--t-md)' }}>
               <input
                 type="checkbox"
                 checked={form.enabled}
@@ -270,7 +270,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
           </div>
         ) : showImport ? (
           <div className="stack">
-            <p className="muted" style={{ fontSize: 12 }}>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>
               导入 Claude Skill 的 SKILL.md（yaml frontmatter + markdown 正文）——只会用到 name/description/正文，技能包常带的脚本/参考文件用不上（MEMOKET_NOTE 调的是原始接口，没法"运行"那些）。
             </p>
             <div className="row">
@@ -284,7 +284,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                 {importFetching ? <span className="spinner" /> : '抓取'}
               </button>
             </div>
-            <label className="muted" style={{ fontSize: 12, cursor: 'pointer' }}>
+            <label className="muted" style={{ fontSize: 'var(--t-sm)', cursor: 'pointer' }}>
               或上传本地 .md 文件
               <input type="file" accept=".md,.markdown,.txt" style={{ display: 'none' }}
                      onChange={(e) => handleFileUpload(e.target.files?.[0])} />
@@ -305,7 +305,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
           </div>
         ) : showGenerate ? (
           <div className="stack">
-            <p className="muted" style={{ fontSize: 12 }}>用一两句话描述想要的写作行为，让模型草拟一条 skill——生成完还是会给你预览，改好、选好生效范围再保存。</p>
+            <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>用一两句话描述想要的写作行为，让模型草拟一条 skill——生成完还是会给你预览，改好、选好生效范围再保存。</p>
             <textarea aria-label="要生成的 skill 做什么"
               rows={3}
               placeholder="比如：续写时遇到具体的会议决定要直接用原话，不要转述得太抽象"
@@ -344,7 +344,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                       {sk.enabled ? '● 已启用' : '○ 已关闭'}
                     </button>
                     <strong title={sk.name} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{splitSkillName(sk.name).head}</strong>
-                    {sk.builtin && <span className="muted" style={{ fontSize: 11, flexShrink: 0 }} title="随应用一起带的，删不掉；不想要就用左边的开关关掉">内置</span>}
+                    {sk.builtin && <span className="muted" style={{ fontSize: 'var(--t-xs)', flexShrink: 0 }} title="随应用一起带的，删不掉；不想要就用左边的开关关掉">内置</span>}
                   </div>
                   <div className="row" style={{ gap: 2, flexShrink: 0, flexWrap: 'nowrap' }}>
                     <button onClick={() => move(sk, -1)} disabled={i === 0} title="上移">↑</button>
@@ -359,9 +359,9 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                 </div>
                 {/* 出处（「受 brainstorming 启发」）：是**要留的**归属说明，只是不该挤标题 */}
                 {splitSkillName(sk.name).note && (
-                  <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>{splitSkillName(sk.name).note}</p>
+                  <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '4px 0 0' }}>{splitSkillName(sk.name).note}</p>
                 )}
-                {sk.description && <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>{sk.description}</p>}
+                {sk.description && <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0' }}>{sk.description}</p>}
                 <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
                   {sk.scopes.map((s) => <span key={s} className="badge">{scopeLabel(s)}</span>)}
                 </div>

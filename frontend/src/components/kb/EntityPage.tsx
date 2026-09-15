@@ -26,7 +26,7 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
       <div className="kb-head">
         <div className="kb-crumbs muted"><a href="#" onClick={(e) => { e.preventDefault(); actions.onOpen('kb:entities') }}>实体</a></div>
         <h2 className="kb-note-title"><i className={"bx muted " + entityIcon(p.name, (p as { etype?: string }).etype)} /> {p.name}</h2>
-        <div className="muted" style={{ fontSize: 13 }}>
+        <div className="muted" style={{ fontSize: 'var(--t-md)' }}>
           {p.facts_total} 条事实{p.type ? ' · ' + p.type : ''}{p.aliases.length ? ' · 别名：' + p.aliases.join('、') : ''}{p.variants?.length ? ' · 同一实体的写法：' + p.variants.join('、') : ''}
         </div>
       </div>
@@ -41,7 +41,7 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
       )}
       {p.months.length > 1 && <KbSection title="按月"><MiniBars data={p.months} /></KbSection>}
       {(p.topics.length > 0 || p.relations.length > 0) && (
-        <KbSection title="周围有什么" extra={<span className="muted" style={{ fontSize: 12 }}>点节点进它的页面</span>}>
+        <KbSection title="周围有什么" extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>点节点进它的页面</span>}>
           <LocalGraph actions={actions}
             topics={p.topics.map((t) => ({ code: t.code, parents: [], status: 'canonical', aliases: [], fact_count: t.facts }))}
             entities={[
@@ -58,10 +58,10 @@ export default function EntityPage({ code, actions }: { code: string; actions: K
       )}
       {(p.chains?.length ?? 0) > 0 && (
         // 「这些事怎么变的」：20406 条平铺时三条互相矛盾的日期不知道哪条算数；按对象串成线至少看出先后
-        <KbSection title="这些事怎么变的" extra={<span className="muted" style={{ fontSize: 12 }}>按对象串起来的线 · 最新在下</span>}>
+        <KbSection title="这些事怎么变的" extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>按对象串起来的线 · 最新在下</span>}>
           {p.chains.map((c) => (
             <div key={c.obj} className="card" style={{ padding: '6px 10px' }}>
-              <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}><i className="bx bx-trending-up" /> {c.obj} · {c.total} 条</div>
+              <div className="muted" style={{ fontSize: 'var(--t-xs)', marginBottom: 4 }}><i className="bx bx-trending-up" /> {c.obj} · {c.total} 条</div>
               <ol className="chain">
                 {c.facts.map((f) => (
                   <li key={f.id} className={f.superseded_by ? 'muted' : ''} onClick={() => actions.onOpen('kb:fact:' + f.id)}>

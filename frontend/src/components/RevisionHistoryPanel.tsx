@@ -59,9 +59,9 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
 
   if (!revs) return <p className="muted" style={{ margin: 0 }}>…</p>
   return (
-    <div className="stack" style={{ fontSize: 13, gap: 8 }}>
+    <div className="stack" style={{ fontSize: 'var(--t-md)', gap: 8 }}>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-        <span className="muted" style={{ fontSize: 12 }}>
+        <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>
           {revs.length === 0 ? '还没有历史版本——正文改动后每隔十分钟自动留一版。' : `${revs.length} 个版本 · 当前 ${currentChars} 字`}
         </span>
         <span style={{ flex: 1 }} />
@@ -74,7 +74,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
               <a className="kb-link" onClick={() => void view(r)}>
                 <i className={'bx ' + (open?.id === r.id ? 'bx-chevron-down' : 'bx-chevron-right')} />
                 <span>{when(r.created_at)}</span>
-                <span className="muted" style={{ fontSize: 11 }}>{REASON[r.reason] ?? r.reason} · {r.chars} 字
+                <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{REASON[r.reason] ?? r.reason} · {r.chars} 字
                   {r.chars !== currentChars && <> · {r.chars > currentChars ? '+' : ''}{r.chars - currentChars}</>}</span>
                 <span style={{ flex: 1 }} />
                 <button className="chip chip-action" disabled={busy} onClick={(e) => { e.stopPropagation(); void restore(r) }}><i className="bx bx-undo" /> 恢复到这一版</button>
@@ -104,7 +104,7 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
 function RevisionDiff({ from, to }: { from: string; to: string }) {
   const parts = diffParts(from, to)
   const changed = parts.filter((p) => p.type !== 'keep')
-  if (changed.length === 0) return <p className="muted" style={{ margin: 0, fontSize: 12 }}>跟现在的正文一模一样（只差空白）。</p>
+  if (changed.length === 0) return <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>跟现在的正文一模一样（只差空白）。</p>
   // 没变的长段折起来（只留改动前后各 120 字的上下文）：改动往往在几千字的中间，
   // 全文摊开时第一屏看到的全是没变的（实拍）
   const CTX = 120

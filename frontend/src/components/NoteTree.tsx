@@ -182,7 +182,7 @@ export default function NoteTree({
   }, [focusKey])
 
   if (nodes.length === 0) {
-    return <p className="muted" style={{ fontSize: 13, padding: '8px 4px' }}>
+    return <p className="muted" style={{ fontSize: 'var(--t-md)', padding: '8px 4px' }}>
       还没有笔记。新建一篇开始。
     </p>
   }

@@ -33,17 +33,17 @@ export default function TrashPanel({ onRestored }: { onRestored: (id: string) =>
   if (items === null) return <p className="muted"><span className="spinner" /> 加载中…</p>
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <p className="muted" style={{ fontSize: 12, margin: 0 }}>删掉的笔记在这里留 30 天。恢复会放回原来的位置（上级也删了的话放到最外层），历史版本一起回来；「彻底删除」之后就真的没了。</p>
-      {items.length === 0 && <p className="muted" style={{ fontSize: 13 }}>最近 30 天没有删过笔记。</p>}
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>删掉的笔记在这里留 30 天。恢复会放回原来的位置（上级也删了的话放到最外层），历史版本一起回来；「彻底删除」之后就真的没了。</p>
+      {items.length === 0 && <p className="muted" style={{ fontSize: 'var(--t-md)' }}>最近 30 天没有删过笔记。</p>}
       {items.map((it) => (
         <div key={it.note_id} className="card row" style={{ alignItems: 'center', gap: 10, padding: '8px 10px' }}>
           <i className="bx bx-trash muted" />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title || '未命名'}</div>
-            <div className="muted" style={{ fontSize: 11 }}>{fmtDateTime(it.deleted_at)} 删除 · {it.chars} 字</div>
+            <div style={{ fontSize: 'var(--t-md)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title || '未命名'}</div>
+            <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>{fmtDateTime(it.deleted_at)} 删除 · {it.chars} 字</div>
           </div>
-          <button style={{ fontSize: 12, padding: '2px 10px' }} disabled={busy === it.note_id} onClick={() => void restore(it)}>恢复</button>
-          <button style={{ fontSize: 12, padding: '2px 10px' }} disabled={busy === it.note_id} title="真的删掉，不能再找回" onClick={() => void purge(it)}>彻底删除</button>
+          <button style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }} disabled={busy === it.note_id} onClick={() => void restore(it)}>恢复</button>
+          <button style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }} disabled={busy === it.note_id} title="真的删掉，不能再找回" onClick={() => void purge(it)}>彻底删除</button>
         </div>
       ))}
     </div>
