@@ -205,3 +205,21 @@ def test_同一个_store_上反复取分组只算一次():
     finally:
         E.user_decisions = real
     assert len(calls) == 1, f"查了 {len(calls)} 次库，应该只有第一次算的时候查"
+
+
+def test_候选扫描要挂在_store_上缓存(monkeypatch):
+    """全量扫一次 205ms，而实体页顶上那句「有 N 对」每次渲染都会调一次这个接口
+    ——`limit` 只截结果，扫描照跑（第 669 轮量的）。
+
+    失效靠的是索引本身：索引按 codebook 文件的 mtime 缓存，摄入写文件就换新
+    store 对象；判完一对路由会 `invalidate()`。两条路都不需要额外的失效逻辑。
+    """
+    import inspect
+
+    from app.routers import kb as kb_router
+
+    src = inspect.getsource(kb_router.kb_entity_merge_candidates)
+    assert "_memoket_merge_cands" in src, "候选没缓存，实体页每次渲染都要扫一遍全库"
+    assert "limit=0" in src, "缓存的应该是全量候选，页面再自己截"
+    # 只给候选涉及的实体收原话——第一版给全部 1239 个实体都收，白跑一大圈
+    assert "want = {" in src and "if c in want" in src

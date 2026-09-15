@@ -472,6 +472,19 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
     count = Counter(c for f in store_.facts.values() for c in f.entities)
     decided = {entity_merge.pair_key(d["code_a"], d["code_b"]) for d in store.entity_decisions(user)}
 
+    # **候选扫描挂在 store 上缓存。** 实测全量扫一次 205ms，而实体页顶上那句
+    # 「有 N 对」每次渲染都会调一次这个接口——limit 只截结果，扫描照跑。
+    # 判完一下路由会 `invalidate()`，索引缓存一丢、下次是新的 store 对象，
+    # 缓存自然失效（跟 `kb/entities.for_store` 同一个机制，第 668 轮那条教训）。
+    cached = getattr(store_, "_memoket_merge_cands", None)
+    if cached is None:
+        rows_all = [(c, name(c), int(count.get(c, 0))) for c in vocab.entities]
+        cached = entity_merge.find_candidates(rows_all, limit=0)
+        try:
+            store_._memoket_merge_cands = cached
+        except Exception:      # noqa: BLE001
+            pass
+
     samples: dict[str, list[str]] = {}
     # 两个名字**同时出现在一句话里**的那些句子。这不是判据，是证据——
     # 实测（第 660 轮）：`elisa` 和 `伊丽莎` 同现 4 次，而读那几句
@@ -479,23 +492,30 @@ def kb_entity_merge_candidates(user: str = Depends(current_user), limit: int = 2
     # **所以「同现 = 不是同一个」这条规则是错的**，我量完就丢了。但那几句话本身
     # 是用户判起来最快的东西，所以带上。
     co_text: dict[tuple[str, str], list[str]] = {}
+    # **只给候选涉及的那些实体收原话**。第一版给全部 1239 个实体都收，还把
+    # 每条事实里的实体两两配对去攒同现——20406 条事实上白跑一大圈，而真正要显示的
+    # 只有几十对（第 669 轮量的）。
+    want = {c for cand in cached for c in (cand.a, cand.b)}
+    want_pairs = {entity_merge.pair_key(c.a, c.b) for c in cached}
     for f in store_.facts.values():
-        ents = list(f.entities or ())
+        ents = [c for c in (f.entities or ()) if c in want]
+        if not ents:
+            continue
+        text = (getattr(f, "text", "") or "")
         for c in ents:
             if len(samples.setdefault(c, [])) < MERGE_SAMPLE:
-                samples[c].append((getattr(f, "text", "") or "")[:120])
+                samples[c].append(text[:120])
         for i, a in enumerate(ents):
             for b in ents[i + 1:]:
                 k = entity_merge.pair_key(a, b)
-                if len(co_text.setdefault(k, [])) < MERGE_SAMPLE:
-                    co_text[k].append((getattr(f, "text", "") or "")[:140])
+                if k in want_pairs and len(co_text.setdefault(k, [])) < MERGE_SAMPLE:
+                    co_text[k].append(text[:140])
 
-    rows = [(c, name(c), int(count.get(c, 0))) for c in vocab.entities]
     # `total` 要的是**待判的总数**，不是这一页给了几条：入口上那句「有 N 对」
     # 拿 limit 去数就会随 limit 变（实拍：入口写 60、点进去是 68）。
     total = 0
     out = []
-    for cand in entity_merge.find_candidates(rows, limit=0):
+    for cand in cached:
         if entity_merge.pair_key(cand.a, cand.b) in decided:
             continue
         total += 1
