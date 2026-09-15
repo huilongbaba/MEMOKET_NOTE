@@ -82,6 +82,19 @@ export const editorTheme = EditorView.theme({
   },
   '&.cm-focused': { outline: 'none' },
   '.cm-syntax-mark': { opacity: 0.35 },
+  /* front-matter：等宽、弱色、正常字号，**盖掉 setext 标题的加粗放大**
+     （见 editor/frontmatter.ts 里的来历）。`!important` 是必要的——
+     标题样式来自语法高亮，权重比行装饰高。 */
+  '.cm-frontmatter': {
+    fontFamily: 'var(--mono)',
+    fontSize: 'var(--t-sm)',
+    color: 'var(--ink-3)',
+  },
+  '.cm-frontmatter *': {
+    fontSize: 'inherit !important',
+    fontWeight: 'var(--w-normal) !important',
+    color: 'inherit !important',
+  },
   '.cm-mermaid-widget': {
     margin: '10px 0',
     padding: '12px',

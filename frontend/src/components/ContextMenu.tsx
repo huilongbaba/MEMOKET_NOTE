@@ -129,7 +129,8 @@ export default function ContextMenu({
           >
             <span className="cm-icon">{item.icon?.startsWith('bx-') ? <i className={'bx ' + item.icon} /> : (item.icon ?? '')}</span>
             <span className="cm-label">{item.label}</span>
-            {item.hint && <span className="cm-hint">{item.hint}</span>}
+            {/* 提示只显示一行（CSS 打省略号），全文进 title——菜单要的是可扫 */}
+            {item.hint && <span className="cm-hint" title={item.hint}>{item.hint}</span>}
             {item.shortcut && <kbd className="cm-kbd">{fmtShortcut(item.shortcut)}</kbd>}
           </button>
         )

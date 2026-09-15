@@ -260,8 +260,12 @@
 .ribbon-tab.active .ribbon-icon, .ribbon-tab.active .bx { color: var(--brand); }
 .ribbon-icon { font-size: var(--icon-sm); line-height: 1; }
 .ribbon-badge {
-  background: var(--accent); color: var(--accent-fg); font-size: var(--t-2xs);
-  padding: 0 5px; border-radius: var(--r); line-height: 15px;
+  /* 计数角标是**安静的**（UI_SPEC §2.5）：弱底弱字的胶囊。原来是品牌实心，
+     跟同一条标签带上的「选中下划线」抢同一个紫色信号——一条带上两处紫，
+     眼睛先看到的是数字而不是「我在哪一栏」（第 686 轮实拍）。 */
+  background: var(--hover); color: var(--ink-2); font-weight: var(--w-bold);
+  font-size: var(--t-2xs); padding: 0 6px; border-radius: var(--r-pill); line-height: 16px;
+  font-variant-numeric: tabular-nums;
 }
 .ribbon-body { padding: 6px 12px 12px; max-height: 40vh; overflow-y: auto; }
 
@@ -289,8 +293,12 @@
 .pane-tab.active { color: var(--main-fg); border-bottom-color: var(--brand); }
 .pane-tab.active .bx { color: var(--brand); }
 .pane-tab-badge {
-  background: var(--accent); color: var(--accent-fg); font-size: var(--t-2xs);
-  padding: 0 5px; border-radius: var(--r); line-height: 15px;
+  /* 计数角标是**安静的**（UI_SPEC §2.5）：弱底弱字的胶囊。原来是品牌实心，
+     跟同一条标签带上的「选中下划线」抢同一个紫色信号——一条带上两处紫，
+     眼睛先看到的是数字而不是「我在哪一栏」（第 686 轮实拍）。 */
+  background: var(--hover); color: var(--ink-2); font-weight: var(--w-bold);
+  font-size: var(--t-2xs); padding: 0 6px; border-radius: var(--r-pill); line-height: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------------------------------------------------------------- 标签行

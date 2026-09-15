@@ -30,6 +30,7 @@ import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
 import { marginMemory, setMarginMarks, type MarginMark } from '../editor/marginMemory'
 import { slashMenu, type SlashItem } from '../editor/slashMenu'
 import { markdownHighlight, dimSyntaxMarks, editorTheme, scrollPadding, syntaxHighlighting } from '../editor/theme'
+import { frontmatterDim } from '../editor/frontmatter'
 
 /**
  * Markdown-native editor (CodeMirror 6): the document is always a single
@@ -169,6 +170,7 @@ export default function MarkdownEditor({
           const r = liveRef.current.revisions.find((x) => x.id === id)
           if (r) liveRef.current.onAcceptInline?.(r)
         }),
+        frontmatterDim,
         editorTheme,
         scrollPad ? scrollPadding : [],
         marginMemory((m) => liveRef.current.onMarginClick?.(m)),

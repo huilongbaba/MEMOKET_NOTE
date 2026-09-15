@@ -105,11 +105,14 @@ mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: in
 button {
   font: inherit;
   display: inline-flex; align-items: center; gap: var(--s-4);
-  /* **height 不是 min-height**：原来写 min-height，于是工具栏那条
-     `height: 28px` 被压过去（min > height 时 min 赢），规范里写的 28 是假的。
-     换行的按钮各自用 min-height 覆盖。 */
-  height: 33px;
-  padding: 0 13px;
+  /* **高度由内容定，不写死。** 这一条改过两次都不对：
+     先写 `min-height: 33px`——压过了工具栏那条 `height: 28px`（min > height 时
+     min 赢），规范里写的 28 是假的；改成 `height: 33px` 之后，每一个「把 button
+     重置成别的东西」的类都被锁死成 33px，`.linklike` / `.pane-tab` /
+     `.ribbon-tab` / `.palette-item` / `.topic-card-title` / `.context-menu-item`
+     一个个撞上来（最后那个更糟：菜单里折行的提示直接叠到下一行上）。
+     **一个一个补是补不完的**——改成用 padding 撑出 ≈33px，内容多了自己长。 */
+  padding: 8px 13px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: transparent;
@@ -706,7 +709,11 @@ h2:first-child { margin-top: 0; }
 /* 圆角 10 / 内边距 8 / 毛玻璃半透明底 / 阴影亮暗分开（theme-next/base.css:77,153-187）。
    打开 100ms 只淡入。 */
 .context-menu {
-  position: fixed; z-index: var(--z-menu); min-width: 200px;
+  /* **要有上限。** 只有 min-width 时，右侧那列提示里最长的一句
+     （「覆盖对方那边的同一篇（Obsidian 按文件里的 id 认…）」）会把菜单撑到
+     730px，盖住整个右栏（第 686 轮实拍）。420px 放得下「动作 + 一句提示」，
+     再长的提示自己折行。 */
+  position: fixed; z-index: var(--z-menu); min-width: 200px; max-width: 420px;
   padding: var(--s-4); border-radius: var(--r);
   /* 原来是毛玻璃 `blur(20px) saturate(6)`——600% 饱和，在紫色调下会把底下的
      内容染得发紫，而且滚动时重绘很贵。源仓库的菜单是实面 + shadow-pop
@@ -725,15 +732,21 @@ h2:first-child { margin-top: 0; }
      能有 50 项，36px 一屏放不下。但原来的 4px 挤到贴边了。 */
   padding: 6px 10px; border: none; background: transparent;
   color: var(--fg); text-align: start; cursor: pointer; border-radius: var(--r-sm);
-  white-space: nowrap;
 }
 .context-menu-item:hover:not(:disabled), .context-menu-item.hi:not(:disabled) { background: var(--hover); }
 .context-menu-item:disabled { opacity: .45; cursor: default; }
 /* 破坏性项只染图标不染文字（base.css:281-284）——整行红在删除项上过于抢眼 */
 .context-menu-item.danger .cm-icon { color: var(--del); }
 .cm-icon { width: 16px; flex-shrink: 0; text-align: center; }
-.cm-label { flex: 1; }
-.cm-hint { color: var(--muted); font-size: var(--t-xs); flex-shrink: 0; margin-inline-start: 12px; }
+.cm-label { flex: 1; white-space: nowrap; }
+/* 提示**只给一行，超出打省略号，全文进 title**。
+   第 686 轮先试了「让它折行」：菜单里最长的那条提示（「覆盖对方那边的同一篇
+   （Obsidian 按文件里的 id 认，Notion / 飞书按这台机器记着的认）」）折成四五行，
+   把行高撑得参差不齐。**菜单的价值是可扫**——行高齐比看全那句话重要，
+   而且那句话本来就不该写成一整句（它是提示，不是说明）。 */
+.cm-hint { color: var(--ink-3); font-size: var(--t-xs); margin-inline-start: 12px;
+  text-align: end; min-width: 0; flex: 0 1 auto;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cm-kbd { color: var(--ink-3); font: var(--t-2xs)/1 var(--mono); font-weight: var(--w-bold); margin-inline-start: var(--s-6); }
 /* 分隔线通栏：向两侧各溢出内边距 */
 .context-menu-sep { height: 1px; margin: 6px -8px; background: var(--line); }
@@ -1269,7 +1282,12 @@ kbd {
 .plain-case { text-transform: none; letter-spacing: 0; }
 
 /* 长得像文字的按钮（状态栏红字这种「一行字可点」的地方） */
-.linklike { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s-2); }
+/* 长得像链接的按钮。**必须显式放开高度**：全局 `button { height: 33px }` 会
+   漏进来，把一行文字撑成 33px（第 686 轮在实体合并卡的「压根不该算实体」那行
+   实拍到）。`font: inherit` 也会带走字重，所以颜色单给一个能看出可点的。 */
+.linklike { background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; font-weight: var(--w-semi); color: var(--brand-text); cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--s-2); }
 .linklike:hover { text-decoration: underline; }
 /* 既像链接又是真按钮（toast 里的「撤销」）：.linklike 的 color: inherit 排在 .link 后面会盖掉蓝色 */
 .linklike.link { color: var(--accent); }
