@@ -1828,7 +1828,12 @@ export default function App() {
           setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
           return
     }
-        setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，续写中…`)
+        // 知识库是空的（新用户最常见的情形）：**说一次**。原来界面上
+        // 「这一轮没查到」和「库压根是空的」长得一模一样，用户看到的只是
+        // 「续写中…」，不知道它手上一份材料都没有（第 676 轮实跑）。
+        setNoteHarnessStatus(d.round === 1 && d.kb_empty
+          ? `第 1 轮：知识库还是空的，这次只能靠你已经写下的内容——导入材料之后续写才会引用你自己的记录。续写中…`
+          : `第 ${d.round} 轮：修订 ${d.revisions_applied} 处，续写中…`)
         insertCursorRef.current = null
         // 续写的增量在这之后才开始到达——本地累积的 content 要先补一次
         // 分隔，跟后端 prompts.join_round_text() 是同一个道理

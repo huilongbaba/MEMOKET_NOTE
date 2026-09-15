@@ -50,6 +50,10 @@ class RoundFeedback:
     tool_facts: int = 0          # 工具实际带回来几条事实
     tools_used: tuple[str, ...] = ()   # 这一轮用到的工具名
     tool_truncated: bool = False
+    # 知识库整个是空的。**这跟「这一轮没查到」是两件事**：没查到值得换条路
+    # 再试，空库换什么路都是空。第 676 轮拿全新用户实跑，策略器对着一个空库
+    # 发「先 list_topics 看有哪些主题」，白烧一轮。
+    kb_empty: bool = False
     revisions_applied: int = 0
     stall_rounds: int = 0
 
@@ -135,8 +139,11 @@ def adjust(policy: RuntimePolicy, fb: RoundFeedback) -> tuple[RuntimePolicy, lis
         steer_parts.append(
             "上一轮打分认为正文的事实依据有问题"
             + (f"：{note}" if note else "")
-            + "。这一轮先把这些点查实——查得到就用查到的原话，"
-              "查不到就把那句改写成不含具体人名/日期/数字的说法，不要保留编造的细节。"
+            + ("。知识库是空的，查不到任何东西："
+               "把那句改写成不含具体人名/日期/数字的说法，或者直接删掉，不要保留编造的细节。"
+               if fb.kb_empty else
+               "。这一轮先把这些点查实——查得到就用查到的原话，"
+               "查不到就把那句改写成不含具体人名/日期/数字的说法，不要保留编造的细节。")
         )
         reasons.append(f"factual_grounding={fb.level('factual_grounding')} → 工具预算 +1、要求溯源核对")
 
@@ -145,7 +152,7 @@ def adjust(policy: RuntimePolicy, fb: RoundFeedback) -> tuple[RuntimePolicy, lis
     # 的内容（中英混合长查询让关键词匹配串味）。原来的规则只判"零召回"，
     # 抓不到"召回了但召回的是垃圾"这种更常见的情况——那种情况下 tool_facts
     # 不是 0，只是那些事实跟正文要写的东西没关系，最后体现为 grounding 低。
-    if (fb.level("factual_grounding") < 2 and fb.tools_used
+    if (fb.level("factual_grounding") < 2 and fb.tools_used and not fb.kb_empty
             and set(fb.tools_used) <= {"search_memory"}):
         steer_parts.append(
             "上一轮只用了 search_memory，而它是关键词匹配，中英混合的长查询很容易"
@@ -170,13 +177,25 @@ def adjust(policy: RuntimePolicy, fb: RoundFeedback) -> tuple[RuntimePolicy, lis
     # ---- 查了但没查到：换检索路径，别原地重试同一条 ----
     # 真实失败：search_memory("Speaker E 5月1号 APP体验") 召回了知识库里的
     # 英语学习材料。关键词召回在长查询上会串味，这时重试同样的路径没意义。
-    if fb.tool_calls and fb.tool_facts == 0:
+    if fb.tool_calls and fb.tool_facts == 0 and not fb.kb_empty:
         steer_parts.append(
             "上一轮的关键词检索一条都没召回。这一轮换路径："
             "先 list_topics 看知识库实际有哪些主题，再用 filter_facts 按主题精确取，"
             "不要继续换措辞重试 search_memory。"
         )
         reasons.append("工具查了但零召回 → 改走 list_topics → filter_facts")
+
+    # ---- 知识库整个是空的：**停止检索，也不要再拿"缺材料"当每轮的结论** ----
+    # 第 676 轮全新用户实跑：两轮下来正文全是「这里需要补上……」，第二轮打分
+    # 自己写「多次重复"需要补上实际内容"」。库空不是这一轮的失败，是这次写作
+    # 的前提——说一次就够，剩下的轮次该用在把用户已经写下的东西写好。
+    if fb.kb_empty:
+        steer_parts.append(
+            "这个用户的知识库是空的（一条事实都没有），所以别再调检索工具了。"
+            "**缺材料这件事整篇只说一次**，不要每一节都写「这里需要补上……」——"
+            "把力气花在用户已经写下的那点内容上：把它的判断、结构和取舍写清楚。"
+        )
+        reasons.append("知识库是空的 → 停止检索、缺材料只说一次")
 
     # ---- 结构乱：降温度求确定性 + 给更多修订额度去清理 ----
     # 真实失败：同一小节标题出现两次、标题层级混乱、两个收束板块。

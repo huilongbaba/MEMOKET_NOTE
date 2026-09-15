@@ -1038,7 +1038,7 @@ export type NoteHarnessToolCall = { tool: string; args: Record<string, unknown>;
 
 export type NoteHarnessHandlers = {
   onSkeleton?: (spine: string, beats: string[]) => void
-  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[] }) => void
+  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
   /** 这一轮的续写流结束（TEXT_MESSAGE_END）：客户端在这里做服务端收尾时也做的归一化（fixBoldPunct） */

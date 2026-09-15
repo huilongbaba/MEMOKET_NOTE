@@ -406,3 +406,69 @@ def test_a_run_cannot_spend_its_whole_life_running_scripts(tmp_path, monkeypatch
 
     assert len(ran) == limits.MAX_RUNS_PER_HARNESS_RUN
     assert "budget" in out[-1] and "budget" not in out[0]
+
+
+def test_空知识库和这次没查到要说成两件事(monkeypatch):
+    """第 676 轮：新用户跑续写，工具回「（没有匹配的事实）」——模型和策略器
+    都把它读成「换个说法再试」，于是白烧一轮换检索路径。**空库要当场说死。**"""
+    from app.harness.tools import memory_tools as mt
+
+    class St:
+        def __init__(self, facts): self.facts = facts
+
+    monkeypatch.setattr(mt.UserMemory, "_index", lambda self: (St({}), None))
+    assert mt.kb_is_empty("u")
+    out = mt._fmt_facts([], user="u")
+    assert "知识库是空的" in out and "不要再换检索词" in out
+    assert "没有匹配的事实" not in out
+
+    monkeypatch.setattr(mt.UserMemory, "_index", lambda self: (St({"f1": object()}), None))
+    assert not mt.kb_is_empty("u")
+    assert mt._fmt_facts([], user="u") == "（没有匹配的事实）"
+
+    # 读不出索引时不猜：按原来那句走，别把「读失败」说成「库是空的」
+    def boom(self): raise RuntimeError("坏了")
+    monkeypatch.setattr(mt.UserMemory, "_index", boom)
+    assert not mt.kb_is_empty("u")
+    assert mt._fmt_facts([], user="u") == "（没有匹配的事实）"
+
+
+def test_没有材料时占位符不再被判成谎话(monkeypatch):
+    """第 676 轮实跑：空库 + 用户只写了一句话，模型给出一张
+    `负责人 / 时间节点 / 衡量结果` 的表、格子里是 `[待填]`。原来这会判
+    factual_grounding=0，要求「要么写出来，要么删掉」——**两条路都是死的**
+    （写出来就是编，删掉表就没了）。占位符是谎话的前提是真话本来拿得到。"""
+    from app.harness.checks import grounding
+    from app.harness.tools import memory_tools as mt
+
+    class Ctx:
+        user = "u"
+
+    class Dim:
+        def __init__(self, n): self.name = n
+
+    class Mode:
+        dims = (Dim("factual_grounding"),)
+
+    class St:
+        content = "| P0 | [待填] | [待填] |\n\n这一节的负责人待定。"
+        facts: list = []
+        ctx = Ctx()
+        bag: dict = {}
+        mode = Mode()
+
+    class Store:
+        def __init__(self, facts): self.facts = facts
+
+    monkeypatch.setattr(mt.UserMemory, "_index", lambda self: (Store({}), None))
+    assert grounding.no_placeholder(St()) is None, "空库时占位符不该再被判"
+
+    # 库里有材料：照旧要报——那时候「待填」才是真的在假装写完了
+    monkeypatch.setattr(mt.UserMemory, "_index", lambda self: (Store({"f": 1}), None))
+    v = grounding.no_placeholder(St())
+    assert v is not None and "占位句" in v.message
+
+    # 库是空的但这一轮手上有材料（用户贴进来的、上游传下来的）：也照旧要报
+    st = St(); st.facts = ["某条材料"]
+    monkeypatch.setattr(mt.UserMemory, "_index", lambda self: (Store({}), None))
+    assert grounding.no_placeholder(st) is not None

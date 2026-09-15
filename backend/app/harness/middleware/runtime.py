@@ -16,6 +16,7 @@ from typing import AsyncIterator
 
 from .. import adapter as harness_adapter
 from .. import policy as runtime_policy
+from ..tools import memory_tools
 from ..events import CUSTOM_POLICY, Event
 from ..state import State
 
@@ -49,6 +50,7 @@ class Runtime:
             tool_truncated=bool(trace and trace.truncated),
             revisions_applied=st.bag.get("revisions_applied", 0),
             stall_rounds=st.bag.get("stall_rounds", 0),
+            kb_empty=memory_tools.kb_is_empty(st.ctx.user),
         ))
         st.bag["policy"] = policy
         if reasons:

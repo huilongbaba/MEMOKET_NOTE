@@ -47,4 +47,19 @@ class Provenance:
             "sources": st.facts_new[:6],
             "revisions_applied": st.bag.get("revisions_applied", 0),
             "skipped_continue": bool(st.bag.get("cleanup_only")),
+            # 「这一轮没查到」和「这个库压根是空的」在界面上原来长得一模一样：
+            # 都只是 `facts: 0`，一个字的解释都没有。新用户点了续写，看到的是
+            # 「第 1 轮：修订 0 处，续写中…」，完全不知道它手上没有任何材料
+            # （第 676 轮）。
+            "kb_empty": _kb_empty(st),
         })
+
+
+def _kb_empty(st) -> bool:
+    """这个用户的知识库一条事实都没有。读不出来就说「不是空的」——
+    宁可少说一句，也不要对着一个读失败的索引告诉用户「你没有材料」。"""
+    try:
+        from ..tools.memory_tools import kb_is_empty
+        return kb_is_empty(st.ctx.user)
+    except Exception:      # noqa: BLE001
+        return False

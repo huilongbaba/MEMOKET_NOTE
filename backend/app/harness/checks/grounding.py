@@ -19,6 +19,14 @@ from ..types import Verdict
 from .pick import pick_dimension
 
 
+def _kb_empty(st: State) -> bool:
+    try:
+        from ..tools.memory_tools import kb_is_empty
+        return kb_is_empty(st.ctx.user)
+    except Exception:      # noqa: BLE001 —— 读不出来就按原来那条走
+        return False
+
+
 def no_placeholder(st: State) -> Verdict | None:
     """Text that promises content instead of containing it.
 
@@ -27,6 +35,16 @@ def no_placeholder(st: State) -> Verdict | None:
     """
     lines = grounding_check.placeholder_lines(st.content)
     if not lines:
+        return None
+    # **没有材料的时候，占位符是唯一诚实的形状。** 第 676 轮拿全新用户实跑：
+    # 知识库一条事实都没有、用户自己只写了一句「我想写一份下半年规划」，模型
+    # 给出一张 `负责人 / 时间节点 / 衡量结果` 的表，格子里是 `[待填]`——这判据
+    # 判它 factual_grounding=0，要求「要么写出来，要么删掉」。**两条路都是死的**：
+    # 写出来就是编（那边 no_fabrication 会判 0），删掉表就没了（beat_coverage 判 0）。
+    # 于是剩下的轮次全花在一个不可能满足的要求上，跟第 647 轮那条「对着不可移动的
+    # 维度反复修」是同一个坑。
+    # 占位符是谎话，前提是**真话本来拿得到**。拿不到的时候它是一份让用户填的表。
+    if not st.facts and _kb_empty(st):
         return None
     return Verdict(
         pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),

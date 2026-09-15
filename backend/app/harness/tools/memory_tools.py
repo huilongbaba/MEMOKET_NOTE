@@ -23,9 +23,33 @@ FACT_CHARS = 200
 SOURCE_CHARS = 300
 
 
-def _fmt_facts(rows: list[dict], *, with_id: bool = True) -> str:
+def kb_is_empty(user: str) -> bool:
+    """这个用户的知识库里一条事实都没有。
+
+    索引是按 codebook 的 mtime 缓存的，检索本身刚刚已经加载过，所以这是一次
+    字典取长度，不额外花钱。"""
+    try:
+        store, _vocab = UserMemory(user)._index()
+        return not getattr(store, "facts", None)
+    except Exception:      # noqa: BLE001 —— 读不出来就当"不确定"，按原路走
+        return False
+
+
+# **「空知识库」跟「这次没查到」是两件事。** 第 676 轮拿一个全新用户实跑续写：
+# `gather_subject` 返回「（没有匹配的事实）」，模型和策略器都把它读成"这条查询
+# 没命中"，于是策略器发出「先 list_topics 看有哪些主题，再 filter_facts 精确取」
+# ——**而知识库是空的，一个主题都没有**。整整一轮花在一条不可能成立的建议上，
+# 正文退化成满屏「这里需要补上……」，第二轮的打分自己都写了「多次重复"需要补上
+# 实际内容"」。所以库空时要当场说死：别再换检索词，这一轮没有材料。
+EMPTY_KB = ("（知识库是空的——这个用户还没有导入过任何材料，一条事实都没有。"
+            "**不要再换检索词，也不要改用别的检索工具**，这一轮没有材料可用。"
+            "只写用户已经写下的文字能支撑的内容；确实缺的东西在正文里点一次名，"
+            "让用户自己补，不要反复强调「需要补充」。）")
+
+
+def _fmt_facts(rows: list[dict], *, with_id: bool = True, user: str = "") -> str:
     if not rows:
-        return "（没有匹配的事实）"
+        return EMPTY_KB if user and kb_is_empty(user) else "（没有匹配的事实）"
     out = []
     for r in rows:
         head = f"[{r.get('id','')}] " if with_id and r.get("id") else ""
@@ -56,7 +80,7 @@ def _fmt_facts(rows: list[dict], *, with_id: bool = True) -> str:
 def search_memory(ctx: ToolContext, query: str, limit: int = 8) -> str:
     rows, _terms, _took = UserMemory(ctx.user).recall(query, limit=max(1, min(int(limit or 8), 20)), scope=ctx.scope)
     hits = [r for r in rows if r.get("text")]
-    return _fmt_facts(hits)
+    return _fmt_facts(hits, user=ctx.user)
 
 
 @register(
@@ -76,7 +100,9 @@ def list_topics(ctx: ToolContext, limit: int = 40) -> str:
     rows.sort(key=lambda t: t["fact_count"], reverse=True)
     rows = rows[: max(1, min(int(limit or 40), 200))]
     if not rows:
-        return "（知识库里还没有任何主题）"
+        # 库整个是空的，跟「有材料但还没归出主题」不是一回事——后者还值得换路
+        # 再查，前者查什么都是空（第 676 轮实跑）。
+        return EMPTY_KB if kb_is_empty(ctx.user) else "（知识库里还没有任何主题）"
     return "\n".join(
         f"- {t['code']}（{t['fact_count']} 条"
         + (f"，别名：{'、'.join(t['aliases'][:3])}" if t.get("aliases") else "")
@@ -137,7 +163,7 @@ def filter_facts(ctx: ToolContext, topic: str = "", entity: str = "",
         topic=topic, entity=entity, kind=kind, who=who,
         limit=max(1, min(int(limit or 15), 50)))
     head = f"共 {total} 条，返回 {len(rows)} 条：\n" if total else ""
-    return head + _fmt_facts(rows)
+    return head + _fmt_facts(rows, user=ctx.user)
 
 
 @register(
@@ -156,7 +182,7 @@ def filter_facts(ctx: ToolContext, topic: str = "", entity: str = "",
 def facts_in_range(ctx: ToolContext, date_from: str, date_to: str, limit: int = 30) -> str:
     rows = UserMemory(ctx.user).facts_between(date_from, date_to,
                                               limit=max(1, min(int(limit or 30), 100)))
-    return _fmt_facts(rows)
+    return _fmt_facts(rows, user=ctx.user)
 
 
 @register(
@@ -216,7 +242,7 @@ def search_session_context(ctx: ToolContext, question: str, limit: int = 10) -> 
         question, limit=max(1, min(int(limit or 10), 20)))
     head = (f"（{'走了多跳定位' if multihop else '这个问题被判定不需要多跳，退化成了普通检索'}"
             f"，耗时 {took / 1000:.1f}s）\n")
-    return head + _fmt_facts(rows)
+    return head + _fmt_facts(rows, user=ctx.user)
 
 
 @register(
@@ -252,4 +278,4 @@ def gather_subject(ctx: ToolContext, query: str, limit: int = 14) -> str:
 
     rows, _terms, _took = recall_clustered(
         UserMemory(ctx.user), query, limit=max(1, min(int(limit or 14), 30)), scope=ctx.scope)
-    return _fmt_facts([r for r in rows if r.get("text")])
+    return _fmt_facts([r for r in rows if r.get("text")], user=ctx.user)

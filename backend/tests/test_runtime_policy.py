@@ -203,3 +203,45 @@ def test_material_use_failure_is_steered_hardest():
     assert "一条都没用上" in new.steer
     assert "宁可只写两句实的" in new.steer
     assert any("material_use" in r for r in reasons)
+
+
+def test_空知识库不再发那条不可能成立的换路建议():
+    """第 676 轮拿一个全新用户实跑续写抓到的：`gather_subject` 返回
+    「（没有匹配的事实）」，策略器把它读成「这条查询没命中」，于是发出
+    「先 list_topics 看有哪些主题，再 filter_facts 精确取」——**而库是空的，
+    一个主题都没有**。整整一轮花在一条不可能成立的建议上。
+
+    空库是这次写作的前提，不是这一轮的失败：停止检索，缺材料整篇只说一次。
+    """
+    p = RuntimePolicy()
+    fb = RoundFeedback(scores={"factual_grounding": 1}, tool_calls=3, tool_facts=0,
+                       tools_used=("search_memory",), kb_empty=True)
+    new, reasons = adjust(p, fb)
+    assert not any("零召回" in r for r in reasons), "空库还劝人换检索路径"
+    assert not any("filter_facts" in r for r in reasons), "空库还劝人改用 filter_facts"
+    assert any("知识库是空的" in r for r in reasons)
+    assert "别再调检索工具" in new.steer
+    assert "只说一次" in new.steer
+
+    # 而库里有东西、只是这一轮没查到：原来那条建议照发
+    fb2 = RoundFeedback(scores={"factual_grounding": 1}, tool_calls=3, tool_facts=0,
+                        tools_used=("search_memory",), kb_empty=False)
+    _new2, reasons2 = adjust(p, fb2)
+    assert any("零召回" in r for r in reasons2)
+
+
+def test_空库时不会在同一个prompt里既叫查实又叫别查():
+    """第 676 轮实跑的第二轮 steer，前后两句自相矛盾：
+    「这一轮先把这些点查实——查得到就用查到的原话」 + 「知识库是空的…别再调
+    检索工具了」。模型拿到的是一份互相打架的指令。"""
+    fb = RoundFeedback(scores={"factual_grounding": 0}, notes={"factual_grounding": "有占位句"},
+                       tool_calls=1, tool_facts=0, kb_empty=True)
+    new, _ = adjust(RuntimePolicy(), fb)
+    assert "查实" not in new.steer, "空库还叫模型去查实"
+    assert "知识库是空的，查不到任何东西" in new.steer
+    assert "别再调检索工具" in new.steer
+
+    fb2 = RoundFeedback(scores={"factual_grounding": 0}, notes={"factual_grounding": "有占位句"},
+                        tool_calls=1, tool_facts=0, kb_empty=False)
+    new2, _ = adjust(RuntimePolicy(), fb2)
+    assert "先把这些点查实" in new2.steer, "库里有东西时这条还得在"
