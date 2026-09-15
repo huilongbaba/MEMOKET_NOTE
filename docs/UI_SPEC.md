@@ -161,6 +161,23 @@ Trilium 令牌）。**这次照样走别名，不做全局改名**——理由�
 | `--r-pill` | `999px` | 胶囊：chip、计数角标 |
 | `--r-circle` | `50%` | 头像、圆点 |
 
+### 1.7 字体渲染与数字
+
+| | 源仓库 | 这里（改之前） |
+|---|---|---|
+| `-webkit-font-smoothing: antialiased` | 有（`design-theme.css:104`） | **没有** |
+| `text-rendering: optimizeLegibility` | 有（同上） | **没有** |
+| `font-variant-numeric: tabular-nums` | 16 处 | 2 处 |
+| `::selection` | 没有 | 没有 |
+
+- 前两条不设，macOS 上同一个字号会比源仓库粗一号、糊一点。设在 `body` 上。
+- **界面里的数字一律等宽字形**：计数、统计、时长在变化时不会左右跳。
+  规则挂在 `.badge/.chip-count/.stat-value/.fact-meta/.pane-tab-badge/
+  .ribbon-badge/.palette-when/.mini-bars-axis/.status-bar` 上。
+- **`::selection` 两边原来都没有**——于是选中文字是浏览器默认的蓝，在一套紫色
+  身份里很扎眼，深色下几乎看不清选了什么。这里补上 `--sel`。这条是**比源仓库
+  多做的**，理由写在这儿。
+
 ## 2. 组件规范
 
 每条都给了源仓库的 `file:line`。新加组件时按这张表挑，不要自己发明尺寸。
@@ -274,6 +291,34 @@ Trilium 令牌）。**这次照样走别名，不做全局改名**——理由�
 底 `--mk-surface`、边 `1px --mk-line`、圆角 `var(--r)`、`--shadow-card`
 （`design-theme.css:163`）。现在是 8px 圆角无阴影（`styles.css:177`）。
 
+### 2.12 手感与动效
+
+源仓库有整整一层「手感」，这里原来几乎没有：**19 处过渡 vs 96 处**，
+八个主要可交互面（树行、chip、链接、命令项、卡片、统计块、事实行、标签页）
+**一个过渡都没有**——hover 是硬切。
+
+| | 值 | 源 |
+|---|---|---|
+| 默认过渡时长 | `.12s`（源仓库 94 次用这一档） | `design-theme.css` 通篇 |
+| 只过渡 | `background` / `color` / `border-color` / `box-shadow` | —— |
+| 主按钮 | `transition: background .14s, box-shadow .16s, transform .08s` | `:355` |
+| 主按钮 hover | `translateY(-1px)` + `--shadow-brand-hover` | `:358-359` |
+| 主按钮 active | `translateY(0) scale(.985)` | `:361` |
+| 普通按钮 active | `scale(.97)` | `:224` |
+| 焦点环 | `2px solid var(--brand)`，`outline-offset: 2px`，跟随 `--r-sm` 圆角 | `:340-345` |
+
+**不要过渡布局属性**（width/height/margin/padding）——会掉帧。只动颜色和阴影，
+位移用 `transform`。
+
+### 2.13 减少动态（可达性，不是可选项）
+
+```css
+@media (prefers-reduced-motion: reduce) { /* 动画与过渡一律近乎归零 */ }
+```
+
+这条原来整份 CSS **一个字都没有**。它不是效果开关，是**可达性**：前庭功能敏感
+的人开了系统那个开关，界面就不该再动。源仓库有（`design-theme.css:369`）。
+
 ## 3. 新增界面必须遵守的硬规矩
 
 1. **不写字面值**。颜色、字号、字重、圆角一律走令牌，只允许出现在
@@ -290,6 +335,10 @@ Trilium 令牌）。**这次照样走别名，不做全局改名**——理由�
 8. **图标按钮要有 title**，**禁用按钮要说明为什么**——同一条闸门。
 9. **能点的 div 要能键盘按**（用 `util/clickable`）——同一条闸门。
 10. **分类色不碰 `--jn-*`**。那套是过了色盲校验的，改一个值就得重新验。
+11. **可交互的东西要有过渡**（`.12s`，只动颜色和阴影），并且**只用
+    `transform` 做位移**。加了动效就要确认 `prefers-reduced-motion` 那一块
+    能关掉它。
+12. **界面里的数字用 `tabular-nums`**。会变的数字不等宽就会左右跳。
 
 ## 4. 改动清单
 

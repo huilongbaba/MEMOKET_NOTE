@@ -301,6 +301,7 @@
 /* 竖版布局里的标签是「悬浮的胶囊」：36px、四角全圆 8px、激活靠阴影抬升
    （theme-next 特意取消了加粗）。上圆下方是浏览器标签的画法。 */
 .note-tab {
+  transition: background .12s, color .12s, box-shadow .12s;
   font-weight: var(--w-semi);
   display: flex; align-items: center; gap: 4px; flex-shrink: 0;
   width: var(--tab-w, 180px); min-width: 84px;
@@ -384,10 +385,12 @@
    Boxicons 字体图标。尺寸按位置定，不在每个用点上写。 */
 .launcher-btn .bx { font-size: var(--t-2xl); }
 .launcher-logo { margin: 4px 0 6px; display: flex; justify-content: center; }
-.launcher-logo svg { border-radius: var(--r); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.launcher-logo svg { border-radius: var(--r); box-shadow: var(--shadow-card); }
 .launcher-user .avatar {
-  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  background: var(--accent); color: var(--accent-fg); font-size: var(--t-sm); font-weight: var(--w-semi);
+  width: 26px; height: 26px; border-radius: var(--r-circle); display: flex; align-items: center; justify-content: center;
+  /* 头像用品牌渐变（源仓库 design-theme.css:208 同样处理）——`--grad` 原来定义了
+     却一处都没用上，而头像正是它该在的地方：一个小小的品牌签名。 */
+  background: var(--grad); color: #fff; font-size: var(--t-sm); font-weight: var(--w-bold);
 }
 .tree-icon .bx { font-size: var(--t-base); }
 .tree-expander .bx { font-size: var(--t-base); }

@@ -65,7 +65,8 @@
   --shadow-pop:  0 20px 56px -16px rgba(35, 22, 70, .30), 0 2px 8px rgba(20, 16, 40, .07);
   --shadow-float:0 14px 40px -12px rgba(40, 24, 90, .30), 0 0 0 0.5px rgba(33, 30, 41, .07);
   /* 主按钮那一层带品牌色的投影（UI_SPEC §2.1） */
-  --shadow-brand: 0 1px 2px rgba(20, 16, 40, .14), 0 5px 14px -6px rgba(74, 31, 156, .30);
+  --shadow-brand:       0 1px 2px rgba(20, 16, 40, .14), 0 5px 14px -6px rgba(74, 31, 156, .30);
+  --shadow-brand-hover: 0 2px 5px rgba(20, 16, 40, .16), 0 12px 24px -8px rgba(74, 31, 156, .45);
 
   /* ── 杂项 ───────────────────────────────────────────────────────────── */
   --mk-backdrop:    rgba(20, 16, 40, .45);
@@ -154,7 +155,8 @@
     --shadow-card: none;
     --shadow-pop:  0 22px 60px -14px rgba(0, 0, 0, .75);
     --shadow-float:0 16px 44px -12px rgba(0, 0, 0, .65), 0 0 0 0.5px rgba(255, 255, 255, .07);
-    --shadow-brand: 0 1px 2px rgba(0, 0, 0, .3), 0 5px 14px -6px rgba(155, 107, 255, .35);
+    --shadow-brand:       0 1px 2px rgba(0, 0, 0, .3), 0 5px 14px -6px rgba(155, 107, 255, .35);
+    --shadow-brand-hover: 0 2px 5px rgba(0, 0, 0, .35), 0 12px 24px -8px rgba(155, 107, 255, .5);
     --live-weak:      rgba(255, 106, 100, .16);
     --mk-backdrop:    rgba(0, 0, 0, .6);
     --mk-thumb:       rgba(255, 255, 255, .22);

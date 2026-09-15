@@ -49,14 +49,27 @@ input[type=radio], input[type=checkbox] { width: auto; padding: 0; margin: 0; }
 
 /* 焦点环（Trilium --input-focus-outline-color）。此前全仓没有一条
    :focus-visible，键盘用户看不到焦点在哪。 */
-:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--r-sm); }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 15px/1.6 var(--sans);
+  font: var(--t-lg)/1.6 var(--sans);
+  /* macOS 上不抹这两条，同一个字号会比源仓库粗一号、糊一点。
+     源仓库在 html,body 上就设了（design-theme.css:104）。 */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+/* 选区跟品牌走。**两边原来都没设**，于是选中文字是浏览器默认的蓝——
+   在一套紫色身份里那一块蓝很扎眼，而且深色下几乎看不清选了什么。 */
+::selection { background: var(--sel); color: var(--fg); }
+
+/* 界面里的数字用等宽字形：计数、统计、时长在变化时不会左右跳。
+   源仓库 16 处这么做，这里原来只有 2 处。 */
+.badge, .chip-count, .stat-value, .fact-meta, .pane-tab-badge,
+.ribbon-badge, .palette-when, .mini-bars-axis, .status-bar { font-variant-numeric: tabular-nums; }
 
 /* 链接跟主题走：之前没定义，深色下是浏览器默认的深蓝，导入页「看总览」
    在黑底上几乎看不见。 */
@@ -110,7 +123,14 @@ button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--live) 
 }
 .md-toolbar button:hover:not(:disabled) { background: var(--hover-item-bg); color: var(--fg); border-color: transparent; }
 .md-toolbar .tb-sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; flex-shrink: 0; }
-button.primary:hover:not(:disabled) { background: var(--brand-press); color: #fff; }
+/* 填充按钮的触感：悬停微抬 + 阴影加深，按下回弹。让主 CTA 有质感，不是平板一块
+   （源 design-theme.css:354-361）。`prefers-reduced-motion` 下面统一关掉。 */
+button.primary { transition: background .14s, box-shadow .16s, transform .08s, border-color .14s; }
+button.primary:hover:not(:disabled) {
+  background: var(--brand-press); color: #fff; transform: translateY(-1px);
+  box-shadow: var(--shadow-brand-hover);
+}
+button.primary:active:not(:disabled) { transform: translateY(0) scale(.985); }
 
 /* 原生 <select>（事实表筛选、导入页「导入到」）没跟 input 一起定义过，暗色下是白底
    黑字一块（实拍）。跟 input 同一套令牌；`color-scheme` 让系统画的下拉列表本身也跟主题。 */
@@ -179,7 +199,8 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
    apply to a plain div, so it's given explicitly here. */
 .md-editor { border: none; background: transparent; padding: 0; width: 100%; }
 
-.card { border: 1px solid var(--line); border-radius: var(--r); padding: 12px;
+.card { transition: border-color .12s, box-shadow .12s;
+        border: 1px solid var(--line); border-radius: var(--r); padding: 12px;
         background: var(--panel); font-size: var(--t-md); box-shadow: var(--shadow-card); }
 .card + .card { margin-top: 8px; }
 
@@ -260,7 +281,7 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
 }
 .palette-results { overflow-y: auto; padding: 6px; }
 .palette-group { font-size: var(--t-xs); margin: 8px 4px 4px; padding: 0 4px; }
-.palette-item { font-weight: var(--w-semi); padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--t-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.palette-item { transition: background .12s, color .12s; font-weight: var(--w-semi); padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--t-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette-item:hover, .palette-item.active { background: var(--hover); }
 .palette-item { display: flex; align-items: center; }
 .palette-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
@@ -522,6 +543,8 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
                  font-weight: var(--w-semi); box-shadow: inset 0 0 0 1px var(--line); }
 
 .tree-node {
+  transition: background .12s, color .12s, box-shadow .12s;
+
   display: flex; align-items: center; gap: 4px;
   height: 2.4em; padding: 4px; padding-inline-end: 6px;
   border-radius: var(--r-sm); cursor: pointer;
@@ -679,6 +702,8 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
   font-size: var(--t-md); line-height: 1.6;
 }
 .kb-link {
+  transition: background .12s, color .12s;
+
   display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--r-sm); font-size: var(--t-md);
   font-weight: var(--w-semi); color: var(--fg); text-decoration: none;
 }
@@ -864,7 +889,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .stat-row > .stat-tile { flex: 1 1 118px; min-width: 0; }   /* 正常宽度一行五张；窄了最后一张换到下一行占整行（grid auto-fit 在正常宽度也会挤成 4+1，第 212 轮实拍） */
 .stat-span { white-space: nowrap; }
 .stat-row > .stat-tile:has(.stat-span) { flex-basis: 168px; }   /* 「1996-03 → 2026-12」不折行要这么宽 */
-.stat-tile { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-card); }
+.stat-tile { transition: border-color .12s, box-shadow .12s; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-card); }
 .stat-value { font-size: var(--t-2xl); font-weight: var(--w-bold); letter-spacing: var(--ls-tight); line-height: 1.2; }
 .stat-label { font-size: var(--t-sm); font-weight: var(--w-semi); color: var(--muted); margin-top: 2px; }
 .kb-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
@@ -880,6 +905,8 @@ input[type=file]:hover { border-color: var(--accent); }
    照搬 30px 实测把 8 个实体从 2 行撑成 4 行——同一套视觉语言，密度得按用途定。
    抄的是长相（胶囊、弱边弱字、选中品牌实心），不是高度。 */
 .chip {
+  transition: background .12s, color .12s, border-color .12s;
+
   display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
   border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--panel); color: var(--ink-2);
   font-weight: var(--w-semi);
@@ -1267,3 +1294,17 @@ kbd {
                        -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .merge-drops { margin-top: 6px; font-size: var(--t-sm); align-items: baseline; }
 .merge-drops .linklike { font-size: var(--t-sm); }
+
+
+/* ===== 尊重「减少动态」系统偏好 =====
+   这条原来整份 CSS 一个字都没有（源仓库有，design-theme.css:369）。它不是效果，
+   是**可达性**：前庭功能敏感的人开了这个开关，界面就不该再动。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  button:active:not(:disabled), button.primary:hover:not(:disabled) { transform: none; }
+}
