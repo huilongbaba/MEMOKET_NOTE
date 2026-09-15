@@ -366,6 +366,19 @@ h2:first-child { margin-top: 0; }
 .palette-results { overflow-y: auto; padding: var(--s-3); }
 /* 命令面板里的分组标题跟别处同一套字形（§2.6）。原来只设了字号——于是
    「最近编辑 / 前往」跟下面的条目粗细一样，扫的时候分不出这是标题还是一条。 */
+/* 对话框（UI_SPEC §2.8）。**跟命令面板不是一个东西**：面板是「输入 + 一列结果」，
+   自带各自的内边距；确认框是一段话 + 两个按钮，套 `.palette` 就没有内边距——
+   标题贴着左边、按钮贴着右下角，中间一大块空白（第 696 轮实拍）。 */
+.dialog {
+  width: min(440px, 92vw);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop); padding: var(--s-7);
+  display: flex; flex-direction: column; gap: var(--s-5);
+}
+.dialog-title { font-size: var(--t-base); font-weight: var(--w-bold); color: var(--fg); line-height: 1.4; }
+.dialog-detail { font-size: var(--t-md); color: var(--ink-2); white-space: pre-wrap; margin: -6px 0 0; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-4); margin-top: var(--s-2); }
+
 .palette-group { font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2);
   letter-spacing: var(--ls-caps); margin: 8px 4px 4px; padding: 0 4px; }
 .palette-item { transition: background .12s, color .12s; font-weight: var(--w-semi); padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--t-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

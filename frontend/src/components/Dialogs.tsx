@@ -115,8 +115,8 @@ export function TextPrompt({ req }: { req: PromptRequest }) {
   useEffect(() => { input.current?.focus(); input.current?.select() }, [])
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(null)}>
-      <div className="palette" role="dialog" style={{ width: 420 }} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="muted" style={{ fontSize: 'var(--t-sm)', padding: '2px 4px 6px' }}>{req.title}</div>
+      <div className="dialog" role="dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dialog-title">{req.title}</div>
         <input
           ref={input} value={v} onChange={(e) => setV(e.target.value)} aria-label={req.title}
           onKeyDown={(e) => {
@@ -124,7 +124,7 @@ export function TextPrompt({ req }: { req: PromptRequest }) {
             else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(null) }
           }}
         />
-        <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
+        <div className="dialog-actions">
           <button onClick={() => req.resolve(null)}>取消</button>
           <button className="primary" onClick={() => req.resolve(v)}>确定</button>
         </div>
@@ -155,11 +155,11 @@ export function ConfirmDialog({ req }: { req: ConfirmRequest }) {
   useEffect(() => { (req.danger ? cancel : btn).current?.focus() }, [req.danger])
   return (
     <div className="palette-backdrop" onMouseDown={() => req.resolve(false)}>
-      <div className="palette" role="alertdialog" style={{ width: 440 }} onMouseDown={(e) => e.stopPropagation()}
+      <div className="dialog" role="alertdialog" onMouseDown={(e) => e.stopPropagation()}
            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(false) } }}>
-        <div style={{ fontWeight: 'var(--w-semi)', padding: '2px 4px 4px' }}>{req.title}</div>
-        {req.detail && <div className="muted" style={{ fontSize: 'var(--t-md)', padding: '0 4px 8px', whiteSpace: 'pre-wrap' }}>{req.detail}</div>}
-        <div className="row" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
+        <div className="dialog-title">{req.title}</div>
+        {req.detail && <div className="dialog-detail">{req.detail}</div>}
+        <div className="dialog-actions">
           <button ref={cancel} onClick={() => req.resolve(false)}>取消</button>
           <button ref={btn} className="primary" style={req.danger ? { background: 'var(--del)', borderColor: 'var(--del)' } : undefined}
                   onClick={() => req.resolve(true)}>{req.okLabel ?? '确定'}</button>
