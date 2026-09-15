@@ -167,20 +167,94 @@ def test_短的要占长的大半():
     assert cands([("a", "Memoket", 28), ("b", "memo kit ai is long", 17)]) == []
 
 
-def test_判完一下之后分组要立刻是新的(monkeypatch):
-    """缓存键里不放「判过多少对」（那会让每次调用都查一次库，实测 0.445ms/次、
-    占了 98%），靠的是**判完路由会 `invalidate()`**：索引缓存一丢，
-    下次拿到的是新的 store 对象，挂在上面的分组自然不在了。
+def _fake_index(monkeypatch, store, vocab):
+    from app.database.kite.kite_memory import UserMemory
+    monkeypatch.setattr(UserMemory, "_index", lambda self: (store, vocab))
 
-    这条测的就是那个依赖——哪天有人把 `invalidate()` 从路由里拿掉，这里会红。
+
+class _F:
+    def __init__(self, ents, text):
+        self.entities, self.text = ents, text
+
+
+class _E:
+    def __init__(self, code, name):
+        self.code, self.name, self.aliases, self.etype = code, name, (), ""
+
+
+class _V:
+    entities = {"a": _E("a", "Anker"), "b": _E("b", "安克"), "z": _E("z", "毫不相干的东西")}
+
+
+def _fake_store():
+    """两个实体各 6 条事实（`MIN_FACTS=5`），音译能连上；`z` 是陪跑的。"""
+    class St:
+        facts = {f"f{i}": _F(("a", "b") if i % 2 else ("z",), f"第 {i} 句：Anker 和安克") for i in range(12)}
+    return St()
+
+
+def test_判完一下之后索引缓存真的被丢掉了():
+    """缓存键里不放「判过多少对」——那会让每次调用都查一次库（实测 0.445ms/次，
+    占了 98%，第 668 轮）。靠的是**判完路由把索引缓存丢掉**：下次是新的 store
+    对象，挂在它身上的分组自然不在了。
+
+    这条**观察那件事真的发生**，不是去源码里找 `invalidate()` 这几个字母——
+    读源码的断言改一行注释就能骗过去，而它要保的是行为。
     """
-    import inspect
-
+    from app.database import store as S
+    from app.database.kite.kite_memory import UserMemory
     from app.routers import kb as kb_router
 
-    src = inspect.getsource(kb_router.kb_entity_merge_decide)
-    assert "invalidate()" in src, "判完不 invalidate，合并结果要等索引自己过期才生效"
-    assert "invalidate()" in inspect.getsource(kb_router.kb_entity_merge_undo)
+    key = str(UserMemory("u_inval").path)
+    UserMemory._cache[key] = (0.0, "哨兵", None)
+    kb_router.kb_entity_merge_decide(kb_router.EntityMergeIn(a="x", b="y", decision="same"), user="u_inval")
+    assert key not in UserMemory._cache, "判完没丢索引缓存，合并要等缓存自己过期才生效"
+
+    UserMemory._cache[key] = (0.0, "哨兵", None)
+    assert kb_router.kb_entity_merge_undo(a="x", b="y", user="u_inval")["ok"], "刚判的应该撤得掉"
+    assert key not in UserMemory._cache, "撤销没丢索引缓存，那一对不会回到待判里"
+    S.forget_entity_decision("u_inval", "x", "y")
+
+
+def test_候选扫描在同一个_store_上只跑一次(monkeypatch):
+    """全量扫一次 205ms，而实体页顶上那句「有 N 对」每次渲染都调一次这个接口
+    ——`limit` 只截结果，扫描照跑（第 669 轮量的）。
+
+    **数一数真的扫了几次**，不去源码里找变量名。失效不靠这个缓存自己：索引按
+    codebook 的 mtime 缓存，摄入写了文件就是新 store；判完一对路由会丢缓存。
+    """
+    from app.database.kb import entity_merge
+    from app.routers import kb as kb_router
+
+    st = _fake_store()
+    _fake_index(monkeypatch, st, _V)
+    scans = []
+    real = entity_merge.find_candidates
+    monkeypatch.setattr(entity_merge, "find_candidates",
+                        lambda rows, **kw: (scans.append(1), real(rows, **kw))[1])
+
+    first = kb_router.kb_entity_merge_candidates(user="u_scan", limit=5)
+    assert first["total"] >= 1, "Anker / 安克 本来就该是一对候选"
+    for _ in range(4):
+        again = kb_router.kb_entity_merge_candidates(user="u_scan", limit=5)
+    assert len(scans) == 1, f"扫了 {len(scans)} 次，应该只有第一次"
+    assert again["total"] == first["total"], "缓存之后给的结果要一样"
+
+    _fake_index(monkeypatch, _fake_store(), _V)      # 摄入之后索引重建 = 新 store
+    kb_router.kb_entity_merge_candidates(user="u_scan", limit=5)
+    assert len(scans) == 2, "索引换了还不重扫，新摄入的实体永远出不来"
+
+
+def test_原话只给候选涉及的实体收(monkeypatch):
+    """第一版给全部 1239 个实体都收两句原话、还把每条事实里的实体两两配对攒同现
+    ——在 20406 条事实上白跑，而真要显示的只有几十对（第 669 轮）。"""
+    from app.routers import kb as kb_router
+
+    _fake_index(monkeypatch, _fake_store(), _V)
+    c = kb_router.kb_entity_merge_candidates(user="u_samp", limit=5)["candidates"][0]
+    assert c["sample_a"] and c["sample_b"], "两边都要带原话，没有原话判不了"
+    assert c["both"], "同时提到两个名字的句子有就要给"
+    assert "z" not in (c["a"], c["b"])
 
 
 def test_同一个_store_上反复取分组只算一次():
@@ -207,19 +281,69 @@ def test_同一个_store_上反复取分组只算一次():
     assert len(calls) == 1, f"查了 {len(calls)} 次库，应该只有第一次算的时候查"
 
 
-def test_候选扫描要挂在_store_上缓存(monkeypatch):
+def test_候选扫描在同一个_store_上只跑一次(monkeypatch):
     """全量扫一次 205ms，而实体页顶上那句「有 N 对」每次渲染都会调一次这个接口
     ——`limit` 只截结果，扫描照跑（第 669 轮量的）。
 
-    失效靠的是索引本身：索引按 codebook 文件的 mtime 缓存，摄入写文件就换新
-    store 对象；判完一对路由会 `invalidate()`。两条路都不需要额外的失效逻辑。
+    **数一数真的扫了几次**，不是去源码里找变量名。失效靠索引本身：索引按
+    codebook 文件的 mtime 缓存，摄入写文件就换新 store；判完一对路由会丢缓存。
     """
-    import inspect
-
+    from app.database.kb import entity_merge
+    from app.database.kite.kite_memory import UserMemory
     from app.routers import kb as kb_router
 
-    src = inspect.getsource(kb_router.kb_entity_merge_candidates)
-    assert "_memoket_merge_cands" in src, "候选没缓存，实体页每次渲染都要扫一遍全库"
-    assert "limit=0" in src, "缓存的应该是全量候选，页面再自己截"
-    # 只给候选涉及的实体收原话——第一版给全部 1239 个实体都收，白跑一大圈
-    assert "want = {" in src and "if c in want" in src
+    class F:
+        def __init__(self, ents, text): self.entities, self.text = ents, text
+
+    class E1:
+        def __init__(self, code, name): self.code, self.name, self.aliases, self.etype = code, name, (), ""
+
+    class V:
+        entities = {"a": E1("a", "安克"), "b": E1("b", "Anker")}
+
+    class St:
+        facts = {"f1": F(("a",), "安克那边的样机"), "f2": F(("b",), "Anker 的包装")}
+
+    st = St()
+    monkeypatch.setattr(UserMemory, "_index", lambda self: (st, V))
+    scans = []
+    real = entity_merge.find_candidates
+    monkeypatch.setattr(entity_merge, "find_candidates",
+                        lambda rows, **kw: scans.append(1) or real(rows, **kw))
+
+    first = kb_router.kb_entity_merge_candidates(user="u_scan", limit=5)
+    for _ in range(4):
+        again = kb_router.kb_entity_merge_candidates(user="u_scan", limit=5)
+    assert len(scans) == 1, f"扫了 {len(scans)} 次，应该只有第一次"
+    assert again["total"] == first["total"], "缓存之后给的结果要一样"
+    # 换一个 store（模拟摄入之后索引重建）就该重新扫
+    st2 = St()
+    monkeypatch.setattr(UserMemory, "_index", lambda self: (st2, V))
+    kb_router.kb_entity_merge_candidates(user="u_scan", limit=5)
+    assert len(scans) == 2, "索引换了还不重扫，新摄入的实体永远出不来"
+
+
+def test_原话只给候选涉及的实体收(monkeypatch):
+    """第一版给全部 1239 个实体都收两句原话，还把每条事实里的实体两两配对攒同现
+    ——在 20406 条事实上白跑，而真正要显示的只有几十对。"""
+    from app.database.kite.kite_memory import UserMemory
+    from app.routers import kb as kb_router
+
+    class F:
+        def __init__(self, ents, text): self.entities, self.text = ents, text
+
+    class E1:
+        def __init__(self, code, name): self.code, self.name, self.aliases, self.etype = code, name, (), ""
+
+    class V:
+        entities = {"a": E1("a", "安克"), "b": E1("b", "Anker"), "z": E1("z", "毫不相干的实体")}
+
+    class St:
+        facts = {f"f{i}": F(("a", "b") if i % 2 else ("z",), f"第 {i} 句") for i in range(12)}
+
+    monkeypatch.setattr(UserMemory, "_index", lambda self: (St(), V))
+    out = kb_router.kb_entity_merge_candidates(user="u_samp", limit=5)
+    assert out["candidates"], "这一对本来就该是候选"
+    c = out["candidates"][0]
+    assert c["sample_a"] and c["sample_b"], "候选两边都要带原话，没有原话是判不了的"
+    assert c["both"], "同时提到两个名字的句子有就要给"
