@@ -121,15 +121,19 @@
   width: calc(var(--launcher-width) - 12px); height: calc(var(--launcher-width) - 12px);
   border: none; border-radius: var(--r);
   background: transparent; color: inherit; cursor: pointer;
-  font-size: var(--t-2xl); line-height: 1;
+  font-size: var(--icon-xl); line-height: 1;
   display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s, box-shadow .12s;
 }
-.launcher-btn:focus-visible { outline: 2px solid var(--focus-ring); }
+/* 焦点环走全局那条（2px 品牌色 + offset 2 + 跟随圆角）。原来这里自己写了一条
+   没有 offset 的，跟别处对不上——**同一个东西不要有两套写法**。 */
 .launcher-btn:hover {
   background: var(--launcher-hover-bg); color: var(--launcher-hover-fg);
   box-shadow: var(--launcher-hover-shadow);
 }
-.launcher-btn.active { background: var(--launcher-hover-bg); color: var(--accent); }
+/* 选中跟 hover 原来长得**一模一样**（同一个底色），鼠标扫过去就分不清哪个是
+   当前栏。源仓库的 `.sb-foot-btn.sel` 是 `--brand-weak` 底 + `--brand` 字。 */
+.launcher-btn.active { background: var(--brand-weak); color: var(--brand); box-shadow: none; }
 .launcher-spacer { flex: 1; }
 
 /* 左栏 */

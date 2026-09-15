@@ -105,7 +105,10 @@ mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: in
 button {
   font: inherit;
   display: inline-flex; align-items: center; gap: var(--s-4);
-  min-height: 33px;
+  /* **height 不是 min-height**：原来写 min-height，于是工具栏那条
+     `height: 28px` 被压过去（min > height 时 min 赢），规范里写的 28 是假的。
+     换行的按钮各自用 min-height 覆盖。 */
+  height: 33px;
   padding: 0 13px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
@@ -194,7 +197,10 @@ input, textarea {
 /* 规范 §2.2 写的是 38px。原来只给 padding、高度靠内容撑（约 36），
    **规范里写了数就得真是那个数**——不然下一个人照着 38 做就对不齐。
    textarea 是多行的，不设固定高度。 */
-input:not([type=checkbox]):not([type=radio]):not([type=file]) { height: 38px; }
+/* **笔记标题不在这条里**：它是个大字号的可编辑标题（`.note-title`），
+   套 38px 会把 24px 的字连同上下 padding 一起压掉——这是我上一轮加这条规则时
+   顺手砸到的（第 684 轮实拍发现）。同理排除快速搜索里那个（它自己有高度）。 */
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not(.note-title) { height: 38px; }
 textarea { padding: 8px 10px; }
 /* 占位符统一 --ink-3（源仓库 design-theme.css:172）。原来吃浏览器默认灰，
    深色下几乎看不见。 */
@@ -292,6 +298,10 @@ h2 { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: var(--ls
   box-shadow: var(--shadow-pop);
 }
 .toast.error { border-left: 3px solid var(--live); padding-left: 15px; }
+/* 进场淡入上移。源仓库的 toast 也有（`animation: hlFade .2s`）——**弹出来的
+   东西不给一点进场，会像是「本来就在那儿」**。reduced-motion 那一块会关掉它。 */
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.toast { animation: toast-in .18s cubic-bezier(.22, .61, .36, 1); }
 
 /* KnowledgeGraph semantic zoom: below the zoom threshold, labels vanish and
    links fade -- an "abstract point map" overview by design, not a bug. The
@@ -321,7 +331,9 @@ h2 { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: var(--ls
 }
 .palette {
   width: 560px; max-width: 90vw; max-height: 60vh; overflow: hidden;
-  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
+  /* 弹层用**面色**不是正文纸面——它浮在遮罩上，跟正文不是一层。
+     圆角跟对话框同一档（§2.8），原来是卡片那档。 */
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
   box-shadow: var(--shadow-pop);
   display: flex; flex-direction: column;
 }
@@ -1089,7 +1101,7 @@ input[type=file]:hover { border-color: var(--accent); }
 .local-graph { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--panel); }
 
 .kb-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-4); padding: 24px 0; max-width: 560px; }
-.kb-empty > .bx { font-size: var(--t-3xl); color: var(--muted); }
+.kb-empty > .bx { font-size: var(--icon-2xl); color: var(--ink-3); }
 .kb-empty h3 { margin: 0; font-size: var(--t-xl); }
 
 /* 空态里的「长什么样」示例：**必须一眼看出不是你自己的数据**（第 673 轮）。
@@ -1151,7 +1163,7 @@ input[type=file]:hover { border-color: var(--accent); }
 /* ------------------------------------------------ 欢迎页（没打开笔记时的中栏） */
 .welcome { max-width: 760px; display: flex; flex-direction: column; gap: var(--s-7); padding-top: 8px; }
 .welcome-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s-5); }
-.welcome-card {
+.welcome-card { height: auto;
   position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); text-align: start;
   padding: 14px 14px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
   cursor: pointer; font-size: var(--t-md); line-height: 1.4; min-height: 120px;
