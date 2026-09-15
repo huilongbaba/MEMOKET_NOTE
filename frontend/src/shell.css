@@ -44,11 +44,8 @@
   --tab-close-hover-bg: var(--live);
   --tab-close-hover-fg: #ffffff;
 
-  --right-pane-heading: var(--ink-3);
 
   --gutter-hover: var(--brand);
-  --quick-search-bg: var(--mk-hover);
-  --quick-search-hover-bg: var(--mk-line-2);
   --inactive-tab-fg: var(--ink-2);
   --active-tab-shadow: var(--shadow-card);
 
@@ -408,13 +405,13 @@
 
 /* 快速搜索：一个带图标的圆角框（theme-next/shell.css:561-640） */
 .quick-search {
-  display: flex; align-items: center; gap: var(--s-2); padding: 0 6px 0 8px;
-  border-radius: var(--r-sm); border: 2px solid transparent; background: var(--quick-search-bg);
-  transition: background 75ms, border-color 100ms;
+  display: flex; align-items: center; gap: var(--s-4); padding: 0 6px 0 10px;
+  border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--main-bg);
+  transition: background .12s, border-color .12s, box-shadow .12s;
 }
-.quick-search:hover { background: var(--quick-search-hover-bg); }
-.quick-search:focus-within { border-color: var(--focus-ring); background: var(--main-bg); }
-.quick-search > .bx { color: var(--muted); font-size: var(--t-base); flex-shrink: 0; }
+.quick-search:hover { border-color: var(--ink-3); }
+.quick-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-weak); }
+.quick-search > .bx { color: var(--ink-3); font-size: var(--icon-md); flex-shrink: 0; }
 .quick-search input { flex: 1; min-width: 0; border: none !important; background: transparent !important; padding: 6px 4px !important; font-size: var(--t-md); }
 .quick-search input:focus-visible { outline: none; }
 

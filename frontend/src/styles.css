@@ -7,7 +7,6 @@
    「抬升面」，结果暗色里页面底比卡片还亮，整套层级是反的。抬升面另给 --surface-raised。 */
 :root {
   --bg: var(--mk-paper);
-  --surface-raised: var(--mk-sidebar);
   --hover: var(--mk-hover);
   --fg: var(--ink);
   --muted: var(--ink-2);
@@ -27,19 +26,16 @@
   --kg-node-fill: color-mix(in srgb, var(--accent) 10%, var(--panel));
   --backdrop-color: var(--mk-backdrop);
   --menu-bg: var(--mk-surface);
-  --floating-btn-bg: var(--mk-surface);
+  --floating-btn-bg: var(--mk-surface-glass);
   --floating-btn-hover-bg: var(--mk-hover);
   --scrollbar-thumb: var(--mk-thumb);
   --scrollbar-thumb-hover: var(--mk-thumb-hover);
-  --shadow-opacity: .18;
   --focus-ring: var(--brand);
 }
 
-@media (prefers-color-scheme: dark) {
-  /* 这一层不再有自己的深色值——**深浅之差全部由 design-tokens.css 负责**，
-     别名层只做转接。留这个块只为 --shadow-opacity（几处手写阴影的浓度）。 */
-  :root { --shadow-opacity: .55; }
-}
+/* 这一层没有自己的深色值——**深浅之差全部由 design-tokens.css 负责**，
+   别名层只做转接。（原来这儿还留着一个 `--shadow-opacity`，阴影改走令牌之后
+   它就空了，第 683 轮删掉。） */
 
 * { box-sizing: border-box; }
 
@@ -98,7 +94,9 @@ body {
 
 /* 链接跟主题走：之前没定义，深色下是浏览器默认的深蓝，导入页「看总览」
    在黑底上几乎看不见。 */
-a { color: var(--accent); }
+/* 链接用 `--brand-text` 而不是 `--brand`：深色下前者是特意调亮过的
+   （对纸面 10.19），后者要同时当填充色用、不能太亮。 */
+a { color: var(--brand-text); }
 mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: var(--r-xs); padding: 0 1px; }
 
 /* 默认按钮是**幽灵按钮**（透明底、透明边），不是有边框的白底方块——
@@ -659,9 +657,11 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
 .context-menu {
   position: fixed; z-index: var(--z-menu); min-width: 200px;
   padding: var(--s-4); border-radius: var(--r);
+  /* 原来是毛玻璃 `blur(20px) saturate(6)`——600% 饱和，在紫色调下会把底下的
+     内容染得发紫，而且滚动时重绘很贵。源仓库的菜单是实面 + shadow-pop
+     （design-detail.css:199），照它来。 */
   background: var(--menu-bg); border: 1px solid var(--line);
-  backdrop-filter: blur(20px) saturate(6); -webkit-backdrop-filter: blur(20px) saturate(6);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-pop);
   font-size: var(--t-md);
   /* 项数不定（标签列表能有 50 项）：封顶到窗口高度，里面滚 */
   max-height: calc(100vh - 10px); overflow-y: auto; box-sizing: border-box;
@@ -670,7 +670,9 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
 @keyframes dropdown-menu-opening { from { opacity: 0; } }
 .context-menu-item {
   display: flex; align-items: center; gap: var(--s-4); width: 100%;
-  padding: 4px 8px; border: none; background: transparent;
+  /* 上下 6px ≈ 26px 行高。源仓库是 9px（≈36px），这里不能照抄——标签列表菜单
+     能有 50 项，36px 一屏放不下。但原来的 4px 挤到贴边了。 */
+  padding: 6px 10px; border: none; background: transparent;
   color: var(--fg); text-align: start; cursor: pointer; border-radius: var(--r-sm);
   white-space: nowrap;
 }
@@ -681,7 +683,7 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
 .cm-icon { width: 16px; flex-shrink: 0; text-align: center; }
 .cm-label { flex: 1; }
 .cm-hint { color: var(--muted); font-size: var(--t-xs); flex-shrink: 0; margin-inline-start: 12px; }
-.cm-kbd { color: var(--muted); font: 11px/1 system-ui, sans-serif; margin-inline-start: 16px; }
+.cm-kbd { color: var(--ink-3); font: var(--t-2xs)/1 var(--mono); font-weight: var(--w-bold); margin-inline-start: var(--s-6); }
 /* 分隔线通栏：向两侧各溢出内边距 */
 .context-menu-sep { height: 1px; margin: 6px -8px; background: var(--line); }
 .context-menu-header {
@@ -728,7 +730,7 @@ h2 { font-size: var(--t-md); text-transform: uppercase; letter-spacing: .05em;
 /* 分组标题（UI_SPEC §2.6）。**中文不做 uppercase**——对中文无效，还会吃掉字距。 */
 .kb-section-title {
   margin: 0; font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2);
-  letter-spacing: .08em;
+  letter-spacing: var(--ls-caps);
 }
 .kb-quote {
   margin: 0; padding: 6px 10px; border-inline-start: 2px solid var(--line);
@@ -916,10 +918,12 @@ input[type=file]:hover { border-color: var(--accent); }
 .kb-crumbs a:hover { color: var(--accent); }
 .kb-search {
   display: flex; align-items: center; gap: var(--s-4); padding: 0 10px;
-  border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
-  transition: border-color 120ms, box-shadow 120ms;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel);
+  transition: border-color .12s, box-shadow .12s;
 }
-.kb-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+/* 聚焦光晕跟 §2.2 一个写法：`--brand-weak`。原来这里手写了一个
+   `color-mix(--accent 18%)`——同一个意思两种写法，深浅两套下还不一致。 */
+.kb-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-weak); }
 .kb-search > .bx { color: var(--muted); font-size: var(--t-xl); }
 .kb-search input { flex: 1; border: none !important; background: transparent !important; padding: 11px 0 !important; font-size: var(--t-lg); }
 .kb-search input:focus-visible { outline: none; }
@@ -1150,8 +1154,12 @@ input[type=file]:hover { border-color: var(--accent); }
 @container (max-width: 640px) { .welcome-keys { grid-template-columns: 1fr; } }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 kbd {
-  font-family: inherit; font-size: var(--t-xs); line-height: 1; padding: 3px 6px; border-radius: var(--r-xs);
-  border: 1px solid var(--line); background: var(--card-alt); color: var(--muted); white-space: nowrap;
+  /* 源仓库的快捷键是 mono + 700（design-theme.css:183）。原来是 `inherit`——
+     ⌘K 跟旁边的中文说明同一套字，读起来不像「键」。`--mono` 这个令牌定义了
+     却一处没用，就是漏在这儿。 */
+  font-family: var(--mono); font-weight: var(--w-bold);
+  font-size: var(--t-2xs); line-height: 1; padding: 3px 6px; border-radius: var(--r-xs);
+  border: 1px solid var(--line); background: transparent; color: var(--ink-3); white-space: nowrap;
 }
 .shortcut-row { display: flex; align-items: center; gap: var(--s-5); padding: 4px 4px; font-size: var(--t-md); }
 .shortcut-row kbd { min-width: 88px; text-align: center; }
@@ -1283,7 +1291,7 @@ kbd {
 .jr-md p { margin: 4px 0; }
 .jr-md ul { margin: 4px 0; padding-inline-start: 18px; }
 .jr-md li { margin: 2px 0; }
-.jr-md code { font-size: var(--t-sm); background: var(--line); border-radius: var(--r-xs); padding: 0 3px; }
+.jr-md code { font-family: var(--mono); font-size: var(--t-sm); background: var(--card-alt); border-radius: var(--r-xs); padding: 0 3px; }
 /* 「不记这些」：内置那份发灰不可点，自己加的才带 × */
 .journey-deny { border-top: 1px solid var(--line); padding-top: 12px; }
 .journey-deny .chip { cursor: default; }

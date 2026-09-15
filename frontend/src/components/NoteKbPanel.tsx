@@ -114,7 +114,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
       </div>
       {kb?.stale && !ingesting && (
         // 改过没同步要醒目：树上的 ⇡ 也会变黄。自动同步开着的话过一会儿会自己跑。
-        <div className="card" style={{ borderColor: 'var(--warn)', color: 'var(--warn)', padding: '6px 8px' }}>
+        <div className="card" style={{ borderColor: 'var(--warn)', background: 'var(--warning-weak)', color: 'var(--warn)', padding: '6px 8px' }}>
           笔记在 {fmtDate(kb.ingested_at)} 摄入之后又改过，知识库里还是旧版——点「同步到知识库」，或在设置里打开自动同步。
         </div>
       )}
@@ -168,7 +168,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
 
       {missing.length > 0 && (
         // **找不到的要醒目。** 这是一篇笔记建立在不存在的依据上。
-        <div className="card" style={{ borderColor: 'var(--del)', color: 'var(--del)' }}>
+        <div className="card" style={{ borderColor: 'var(--del)', background: 'var(--live-weak)', color: 'var(--del)' }}>
           {/* 只列前 8 个：300 条找不到时（实拍造的长文）整块红字把面板撑满一屏 */}
           {missing.length} 条引用在知识库里找不到：{missing.slice(0, 8).join('、')}{missing.length > 8 ? `…还有 ${missing.length - 8} 个` : ''}
           <div className="row" style={{ gap: 8, alignItems: 'center' }}>

@@ -72,3 +72,34 @@ const stale = Object.keys(ALLOW).filter((f) => { try { statSync(join(root, f)); 
 for (const f of stale) { bad++; console.log(`✗ 白名单里的 ${f} 已经不存在了，从名单去掉`) }
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
 console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌')
+
+/* 死令牌跟死样式一样要清。第 683 轮把快速搜索框改成跟输入框同一套之后，
+   `--quick-search-bg` / `--quick-search-hover-bg` / `--right-pane-heading`
+   三个立刻没人用了——**定义了没人用的令牌会让下一个人以为它是活的**。 */
+{
+  const cssAll = walk(root).filter((f) => f.endsWith('.css'))
+    .map((f) => readFileSync(f, 'utf8')).join('\n')
+  const defined = [...cssAll.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((m) => m[1])
+  const allSrc = walk(root).filter((f) => /\.(css|tsx?)$/.test(f))
+    .map((f) => readFileSync(f, 'utf8')).join('\n')
+  // 运行时由 JS 写进 style 的（TabBar 的 --tab-w）用 setProperty 出现，一样算用了
+  /* 代码里拼出来的令牌名：`var(--jn-${i + 1})`（屏幕活动的八个分类色）。
+     按前缀放过——跟 check-css-classes 的 DYNAMIC_PREFIX 一个道理。
+     名单里每条要写清楚是谁拼的，前缀失效了这条也要跟着删。 */
+  const DYNAMIC = [
+    { prefix: '--jn-', why: 'JourneyPage.tsx:29 `var(--jn-${i + 1})` 拼出 8 个分类色' },
+  ]
+  const dead = [...new Set(defined)].filter((v) => {
+    if (DYNAMIC.some((d) => v.startsWith(d.prefix) && allSrc.includes('var(' + d.prefix + '$'))) return false
+    const uses = allSrc.split(`var(${v}`).length - 1 + allSrc.split(`'${v}'`).length - 1
+    return uses === 0
+  })
+  for (const d of DYNAMIC) {
+    if (!allSrc.includes('var(' + d.prefix + '$')) {
+      bad++; console.log(`✗ 动态名单里的 ${d.prefix} 已经没人拼了（${d.why}），从名单去掉`)
+    }
+  }
+  for (const v of dead) { bad++; console.log(`✗ 令牌 ${v} 定义了没人用 —— 删掉，或者说明为什么留着`) }
+}
+if (bad) { console.error(`${bad} 处`); process.exit(1) }
+console.log('OK: 没有死令牌')
