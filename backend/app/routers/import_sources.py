@@ -37,6 +37,7 @@ from memoket_kite import StorageError
 
 from ..database.kite.kite_memory import UserMemory
 from ..database.kb import inbox
+from ..harness.conflict_confirm import confirm_conflicts
 from .schemas import IngestItemOut, IngestOut
 from .deps import current_user
 from ..database.ingest.chunking import chunks as _chunks
@@ -152,7 +153,8 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                     store.set_item(item_id, "remembering", facts=facts, chunks_done=i + 1)
                     store.update_job_from_items(job_id)
                     try:
-                        inbox.scan_session(mem, user, f"{stem}-{i}", source=note.source)
+                        inbox.scan_session(mem, user, f"{stem}-{i}", source=note.source,
+                                           confirm=confirm_conflicts)
                     except Exception as exc:      # noqa: BLE001 — 扫不动不能拖垮导入
                         print(f"[import] 冲突扫描跳过 {stem}-{i}: {type(exc).__name__}: {exc}")
             state_note = {"same": "这篇之前导过、内容没变", "updated": "源侧改过，正文已更新",

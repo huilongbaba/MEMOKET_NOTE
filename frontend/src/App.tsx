@@ -311,6 +311,7 @@ export default function App() {
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
   const [writingPlanParent, setWritingPlanParent] = useState<TreeRow | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
+  const [mdToKb, setMdToKb] = useState(false)
   const [job, setJob] = useState('')
 
   // harness 跑起来时右栏切到「计划」：计划 + 每轮判了什么，就在眼前（判据 3）
@@ -2299,25 +2300,42 @@ export default function App() {
    * shouldn't require re-typing it. */
   /** 导入 .md：一个文件就是一篇；**多个文件生成一棵子树**——一个「导入 日期」
    *  的父节点，每个文件是它的子节点。几十篇散在树根上没法收拾。 */
-  async function importMarkdown(files: FileList | null, under: string = api.ROOT_ID) {
+  async function importMarkdown(files: FileList | null, under: string = api.ROOT_ID, toKb = false) {
     const list = Array.from(files ?? []).filter((f) => /\.(md|markdown|txt)$/i.test(f.name))
     if (list.length === 0) return
     await save()
     const strip = (name: string) => name.replace(/\.(md|markdown|txt)$/i, '')
+    // 顺带抽进知识库。**这一条是补一个路由上的坑**（第 678 轮）：知识库空态页
+    // 上那个主按钮「导入」把人送到这一页，而这一页最上面、最显眼的就是这张
+    // Markdown 卡——它是页面上**唯一一条到不了知识库的路**，而用户恰恰是为了
+    // 填知识库才点进来的。走的是跟「存入知识库」同一条 `ingest/text`。
+    const ingest = async (notes: { id: string; title: string; content: string }[]) => {
+      if (!toKb) return
+      for (const n of notes) {
+        try { await api.ingestText(n.content, n.title || '未命名', 'note', n.id) } catch { /* 单篇失败不挡其余 */ }
+      }
+      toast(`${notes.length} 篇已排进知识库抽取，抽完会在「最近摄入」里`)
+    }
     if (list.length === 1) {
-      const n = await api.createNote(strip(list[0].name), await list[0].text(), under)
+      const text = await list[0].text()
+      const n = await api.createNote(strip(list[0].name), text, under)
       await reload(); await reloadTree()
+      await ingest([{ id: n.id, title: n.title, content: text }])
       open(n); return
     }
     const parent = await api.createNote(`导入 ${fmtDate(new Date().toISOString())}`, `从 ${list.length} 个文件导入。`, under)
     void api.setNoteIcon(parent.id, 'bx-import').catch(() => {})     // 导入进来的那一批挂在一个带「导入」图标的节点下
     let first: Note | null = null
+    const made: { id: string; title: string; content: string }[] = []
     for (const f of list) {
-      const n = await api.createNote(strip(f.name), await f.text(), parent.id)
+      const text = await f.text()
+      const n = await api.createNote(strip(f.name), text, parent.id)
+      made.push({ id: n.id, title: n.title, content: text })
       first ??= n
     }
     await reload(); await reloadTree()
     toast(`已导入 ${list.length} 篇，放在「${parent.title}」下面`)
+    await ingest(made)
     open(first ?? parent)
   }
 
@@ -3119,7 +3137,15 @@ export default function App() {
               <div className="card">
                 <b>Markdown 文件</b>
                 <p className="muted" style={{ margin: '2px 0 8px', fontSize: 12 }}>一个文件一篇；多个文件成一棵子树。想放到某个节点下面，在树上右键那个节点「导入 .md 到这里…」。</p>
-                <input type="file" accept=".md,.markdown,.txt" multiple onChange={(e) => { void importMarkdown(e.target.files); e.target.value = '' }} />
+                {/* **这张卡原来是整页唯一一条到不了知识库的路**，而知识库空态页上
+                    那个主按钮「导入」正是把人送到这一页最上面（第 678 轮）。默认
+                    仍然只建笔记（迁移笔记的人不该被动花模型钱），但得说出来，
+                    而且要在原地给得到。 */}
+                <label className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12, margin: '0 0 8px' }}>
+                  <input type="checkbox" checked={mdToKb} onChange={(e) => setMdToKb(e.target.checked)} />
+                  <span>同时存入知识库（逐篇抽事实，要跑模型；不勾就只建笔记，之后也能对单篇「存入知识库」）</span>
+                </label>
+                <input aria-label="选择 Markdown 文件" type="file" accept=".md,.markdown,.txt" multiple onChange={(e) => { void importMarkdown(e.target.files, api.ROOT_ID, mdToKb); e.target.value = '' }} />
               </div>
               <MemoryPanel pendingJob={job} />
             </div>

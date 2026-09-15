@@ -196,3 +196,112 @@ def test_同一个主语的不同陈述不该被提议合并():
                 "Colin's father dreams of his wife.")
     assert pair("Speaker A 说严亚总是我合作的非常好的ODI的。",
                 "严亚总是我合作的非常好的ODI的")
+
+
+# —— 第 678 轮：冲突收件箱的误报 ——————————————————————————————
+#
+# 起因是拿一个全新用户导入两篇真会议记录，实拍知识库首页：冲突收件箱里**两条
+# 都是误报**，而每条卡片上都摆着「新的取代旧的」——点一下就把一条正确的事实
+# 作废掉。误报 + 一个有破坏性的按钮，比没有这个功能更糟。
+
+_LIB = [
+    {"id": "a", "text": "这一版产品的定价定在199美元。", "date": "2026-03-04"},
+    {"id": "b", "text": "样机的续航实测为11小时，比上一版多2小时。", "date": "2026-03-04"},
+]
+
+
+def _rel(passage):
+    from app.database.kb.relations import detect
+    return [(r["relation"], r.get("unit"), r["say"]) for r in detect(passage, _LIB)]
+
+
+def test_同一段里另一个数已经对上了就不再报冲突():
+    """「竞品 Plaud 的同档位价格是 159 美元，而我们的价格是 199 美元」——
+    循环对每个数各判一次，159 判成冲突、199 判成印证，**对同一条记录同时说
+    「你不同意」和「你也这么说」**。那句话没有反驳知识库，它在补一个别人的数。"""
+    got = _rel("竞品 Plaud 的同档位价格是 159 美元，而我们的价格是 199 美元。")
+    assert [r for r, _u, _s in got] == ["corroborated"]
+
+
+def test_只是碰巧同一个单位的不算冲突():
+    """「壳体方案 B 的高频衰减降到 3dB，成本高 1.2 美元」对上「定价定在 199 美元」
+    ——共用一个「美元」，说的是两件事（产品定价 vs 壳体增量成本），重合度 0.2。"""
+    assert _rel("壳体方案 B 的高频衰减降到 3dB，成本高 1.2 美元。") == []
+
+
+def test_真的改了价还是要报():
+    got = _rel("这一版产品的定价改成了 249 美元。")
+    assert [r for r, _u, _s in got] == ["conflict"]
+    assert "199美元" in got[0][2] and "249美元" in got[0][2]
+
+
+def test_没变就是印证():
+    assert [r for r, _u, _s in _rel("这一版产品的定价定在 199 美元，没有变。")] == ["corroborated"]
+
+
+def test_很短但很具体的句子照样判得了冲突():
+    """**这条是为了挡住我自己差点加进去的一条规则。** 第 678 轮为了压掉
+    「emc 15美金64 G。」那条误报，加过一条「两边词元都要 ≥4 才判冲突」——
+    它同时砍掉了这条真冲突（「DVT 定在 9 月 1 日」只有 {dvt, 月日} 两个词元）。
+    规则在一个例子上答对、理由却不成立，就不是规则。"""
+    facts = [_f(9, "DVT 从 6 月 3 日调整到 8 月 5 日。", "2026-05-08")]
+    got = relations.detect("DVT 定在 9 月 1 日。", facts)
+    assert any(r["relation"] == "conflict" for r in got)
+
+
+def test_同一条事实只报一次冲突():
+    """一句话里两个同单位的数对上同一条记录，原来会出两张卡——同一句话、
+    同一条记录，没有理由让用户分诊两遍。"""
+    from app.database.kb.relations import detect
+    lib = [{"id": "h", "text": "Speaker D: 含税100块钱，海水，也就是可能比18美金要便宜，个5美金，6美金左右。",
+            "date": "2026-02-24"}]
+    got = [r for r in detect("你可能一台霍克成本要四十美金,40美金要300块钱了", lib) if r["relation"] == "conflict"]
+    assert len(got) <= 1
+
+
+def test_收件箱的冲突要先过确认器():
+    """**把关原来把反了**：右栏那张只是给你看的关系卡会让模型确认一遍，
+    而收件箱那张摆着「新的取代旧的」的卡不确认——点一下就把一条正确的事实
+    作废掉。确认器由 routers 那层注入（知识库层不许往上依赖模型）。"""
+    from app.database.kb import inbox
+
+    seen = {}
+
+    class Mem:
+        def facts_for_prefix(self, sid):
+            return [{"id": "n1", "unit": sid, "text": "竞品 Plaud 的同档位定价是 159 美元。"}]
+
+        def fact_attrs(self, _k):
+            return {}
+
+        def recall(self, text, limit=8):
+            return ([{"id": "o1", "unit": "other-0", "text": "这一版的定价定在 199 美元。",
+                      "date": "2026-03-04"}], [], 0.0)
+
+    def confirm(passage, cands, by_id):
+        seen["n"] = len(cands)
+        return []          # 模型说：不是同一件事
+
+    added = inbox.scan_session(Mem(), "u_conf", "s-0", confirm=confirm)
+    assert seen["n"] >= 1, "确认器该拿到候选"
+    assert added == 0, "模型否掉了就不该进收件箱"
+
+
+def test_确认器不在时保持原来的纯代码行为():
+    """不注入确认器 = 原来那条路。**模型不可用不能变成悄悄吞掉真冲突。**"""
+    from app.database.kb import inbox
+    from app.database import store as S
+
+    class Mem:
+        def facts_for_prefix(self, sid):
+            return [{"id": "n2", "unit": sid, "text": "这一版的定价改成了 249 美元。"}]
+
+        def fact_attrs(self, _k):
+            return {}
+
+        def recall(self, text, limit=8):
+            return ([{"id": "o2", "unit": "other-0", "text": "这一版的定价定在 199 美元。",
+                      "date": "2026-03-04"}], [], 0.0)
+
+    assert inbox.scan_session(Mem(), "u_noconf", "s-1") == 1
+    S.drop_conflicts_for_facts("u_noconf", {"n2"})

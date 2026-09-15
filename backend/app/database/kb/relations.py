@@ -81,7 +81,33 @@ def _fmt(v: float) -> str:
     return str(int(v)) if v == int(v) else str(v)
 
 
-def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> list[dict]:
+# 判「冲突」要比判「沾边」严得多。**它是这套系统做出的最有破坏性的判断**——
+# 冲突卡上摆着「新的取代旧的」，点一下就把一条正确的事实作废掉。原来它跟
+# 「这两条有没有关系」共用同一个 0.12。
+#
+# 在 terrence 的真库上量过（20406 条，抽 2500 条各自当新写的一段跑一遍，
+# 第 678 轮）：只触发 14 次，按重合度读一遍——
+#   < 0.20（5 条）：全错。「差300元」对上「成本要5元美金」；「只有5%的场合
+#           可以录音」对上「95%以上没问题」（还正反各报一次）。
+#   0.20–0.35（4 条）：3 错 1 勉强。「2月1号上线」对上「2月10号刷出 UI 2.0」。
+#   0.35–0.60（2 条）：同一对，勉强算真的。
+#   ≥ 0.60（3 条）：有真的——「open rate 6.8%」对上「过去两周都超过 18%」。
+# 0.35 这条线砍掉 9 条里全部明确错的，留下勉强的和真的。
+CONFLICT_MIN_OVERLAP = 0.35
+
+# **试过一条「词元太少不判冲突」，撤了——记在这儿免得有人再试一遍。**
+# 起因是实测到一条 overlap=1.00 的冲突：「emc 15美金64 G。」对上「…故意跟 EMC
+# 差个 5 美金左右的一个趋势」，前者只切出 {emc, 美金} 两个词元，两个都在对面。
+# 看起来像「分母太小、比值没意义」，于是加了「两边都要 ≥4 个词元」。
+# 但单测当场抓到它砍掉了一条**真**冲突：「DVT 定在 9 月 1 日。」只有
+# {dvt, 月日} 两个词元，而它跟「DVT 从 6 月 3 日调整到 8 月 5 日」是货真价实
+# 的冲突。回头看，emc 那条误报的真正原因根本不是词元少——那两句**确实都在说
+# EMC 的价钱**，错在一个是差价、一个是单价。**规则在一个例子上答对，但答对的
+# 理由不成立**，那就不是规则。
+
+
+def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
+           conflict_min_overlap: float = CONFLICT_MIN_OVERLAP) -> list[dict]:
     """给一段正文和召回的事实（至少要有 id / text / date），产出关系候选。
 
     每条：{relation, say, fact_ids, unit?, values?}。同一种关系只报最有把握的那条，
@@ -135,10 +161,39 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> lis
                         "say": "这个量在变：" + " → ".join(chain),
                         "fact_ids": [f["id"] for f in distinct.values()], "values": chain})
         elif diff and not same:
+            # **这一段里另一个同单位的数已经跟它对上了，就不要再报冲突。**
+            # 真实误报（第 678 轮，新用户导入两篇会议记录后的冲突收件箱实拍）：
+            #   记录：「这一版产品的定价定在 199 美元」
+            #   新写：「竞品 Plaud 的同档位价格是 159 美元，而我们的价格是 199 美元」
+            # 循环对 `pv["nums"]` 里的每个数各判一次，159 那次判成冲突、199 那次
+            # 判成印证——**对同一条事实、同一个单位同时说「你不同意」和「你也这么说」**。
+            # 那句话根本没有反驳知识库，它在补一个别人的数。
+            diff = [r for r in diff if r[2] >= conflict_min_overlap]
+            if not diff:
+                continue
+            agreed = {r[1]["id"] for r in rows
+                      if any(abs(x - q) < 1e-9 for x in r[3] for q, u2 in pv["nums"] if u2 == unit)}
+            diff = [r for r in diff if r[1]["id"] not in agreed]
+            if not diff:
+                continue
             v, f, _s, _vals = max(diff, key=lambda r: r[2])
             out.append({"relation": "conflict", "unit": unit,
                         "say": f"跟知识库 {f.get('date') or '某天'} 的记录不一致：那里是 {_fmt(v)}{unit}，你写的是 {_fmt(pval)}{unit}。",
                         "fact_ids": [f["id"]], "values": [_fmt(v) + unit, _fmt(pval) + unit]})
+
+    # **同一条事实只报一次冲突。** 实测（第 678 轮）：「一台霍克成本四十美金,
+    # 40美金要300块钱」对着同一条记录报了两张卡（100块钱↔300块钱、6美金↔40美金）
+    # ——同一句话、同一条记录，没有理由让用户分诊两遍。留重合度最高的那条。
+    seen: set[str] = set()
+    deduped = []
+    for r in out:
+        if r["relation"] == "conflict":
+            fid = r["fact_ids"][0]
+            if fid in seen:
+                continue
+            seen.add(fid)
+        deduped.append(r)
+    out = deduped
 
     # 日期：同一件事（词面重合高）两边的日期不一样 → 冲突；一样 → 印证。
     # 同一条记录已经按数字印证过了，日期就不再单独报一次（实拍：两张一样的印证卡）。
@@ -155,9 +210,17 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12) -> lis
                             "say": f"日期跟知识库 {f.get('date') or '某天'} 的记录一致。",
                             "fact_ids": [f["id"]], "values": sorted(p_md & f_md)})
                 break
-            out.append({"relation": "conflict", "unit": "date",
-                        "say": f"日期跟知识库 {f.get('date') or '某天'} 的记录不一致：那里是 {'、'.join(sorted(f_md))}，你写的是 {'、'.join(sorted(p_md))}。",
-                        "fact_ids": [f["id"]], "values": sorted(f_md) + sorted(p_md)})
+            # **只有冲突要过那两道更严的关，印证不用。** 第一版把门槛加在
+            # `strong` 上，连「日期一致」这种无害的印证一起挡了——单测当场抓到
+            # （`test_corroborated_and_date_conflict`）。判据越严，越要只严在
+            # 该严的那一侧：冲突卡上摆着「新的取代旧的」，印证卡上什么都没有。
+            #
+            # 实测的日期误报跟数字那边同一类：「2月1号之前上线」对上
+            # 「2月10号之前把 UI 2.0 刷出来」，两件不同的事各有各的日期，重合度 0.27。
+            if s >= conflict_min_overlap:
+                out.append({"relation": "conflict", "unit": "date",
+                            "say": f"日期跟知识库 {f.get('date') or '某天'} 的记录不一致：那里是 {'、'.join(sorted(f_md))}，你写的是 {'、'.join(sorted(p_md))}。",
+                            "fact_ids": [f["id"]], "values": sorted(f_md) + sorted(p_md)})
             break
 
     # 叠加：同一件事，知识库里还有你没写的条件——别的单位的量、或你这段没写日期而它有。

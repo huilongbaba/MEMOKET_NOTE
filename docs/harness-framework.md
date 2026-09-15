@@ -209,6 +209,8 @@ backend/app/
     snapshot.py              轮末暂停：冻结 / 解冻 State
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
+    conflict_confirm.py      摄入时那批冲突候选进收件箱前让模型确认一遍；
+                             由 routers 注入给 database/kb/inbox（层次只能从上往下递）
   database/
     store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· llm_usage（模型用量）· ingest_jobs / ingest_items · skills · snapshots · runs
                              启动清理：sweep_orphan_jobs / sweep_orphan_plans / sweep_stale_snapshots（7 天）/ sweep_old_rows（用量 90 天、跑完的任务 30 天、非活跃计划 30 天）/ prune_job_payloads

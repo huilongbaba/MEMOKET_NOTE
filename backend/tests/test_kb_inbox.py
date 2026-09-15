@@ -116,7 +116,13 @@ def test_ingest_sync_scans_conflicts(env, monkeypatch):
         self.add_manual_fact(session_id, messages[0]["content"], date=date or "2026-06-01", title=title)
         return 1
     monkeypatch.setattr(UserMemory, "remember", fake_remember)
+    # 冲突候选进收件箱之前要过一次模型确认（第 678 轮加的）。单测不打模型：
+    # 这里把确认器换成「原样放行」，测的是**摄入这条路把候选送到了确认器**，
+    # 不是模型判得准不准（那个由 test_kb_relations 里的注入测试盯）。
+    from app.harness import conflict_confirm
+    monkeypatch.setattr(conflict_confirm, "confirm_conflicts", lambda p, c, b: c)
     from app.routers import ingest
+    monkeypatch.setattr(ingest, "confirm_conflicts", lambda p, c, b: c)
     ingest._ingest_job("job1", "u1", n["content"], "T", "note", source_id=n["id"])
     assert store.count_open_conflicts("u1") == 1
     # 同步（重抽）：旧 session 的事实没了，指着它的待办一起收掉，然后重新检出

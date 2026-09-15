@@ -20,6 +20,7 @@ from ..database.ingest import asr, extract
 from ..database.ingest.chunking import chunks as _chunks, chunks_for as _chunks_for
 from ..database.kite.kite_memory import UserMemory
 from ..database.kb import inbox
+from ..harness.conflict_confirm import confirm_conflicts
 from memoket_kite.errors import StorageError
 from .schemas import IngestItemOut, IngestOut, IngestTextIn
 from ..harness.events import sse
@@ -35,7 +36,8 @@ BATCH_MAX_FILES = 50
 def _scan_conflicts(mem: UserMemory, user_id: str, session_id: str, source: str) -> None:
     """摄入完一块就扫一遍冲突进收件箱；扫不动不能拖垮摄入。"""
     try:
-        inbox.scan_session(mem, user_id, session_id, source=source)
+        inbox.scan_session(mem, user_id, session_id, source=source,
+                           confirm=confirm_conflicts)
     except Exception as exc:      # noqa: BLE001
         print(f"[ingest] 冲突扫描跳过 {session_id}: {type(exc).__name__}: {exc}")
 

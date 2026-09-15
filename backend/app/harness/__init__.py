@@ -32,6 +32,8 @@ this package. The short version:
     skills.py     SKILL.md 目录的读写
     adapter.py    app 和 harness 之间的接缝（两个 Protocol 的实现）
     snapshot.py   State ⇄ JSON，轮末暂停用
+    conflict_confirm.py  摄入时那批冲突候选，进收件箱之前让模型确认一遍
+                  （由 routers 注入给 database/kb/inbox——层次只能从上往下递）
 
 **③ 某一个 middleware 背后的纯逻辑**——都是「给个字符串就能测」的规则，
     单独成文件是因为它们比使用它们的 middleware 长
