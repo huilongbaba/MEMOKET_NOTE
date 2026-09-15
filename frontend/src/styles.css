@@ -1394,7 +1394,10 @@ input[type=file]:hover { border-color: var(--accent); }
 .note-tree { padding-bottom: 44px; }
 
 /* ------------------------------------------------ 欢迎页（没打开笔记时的中栏） */
-.welcome { max-width: 760px; display: flex; flex-direction: column; gap: var(--s-7); padding-top: 8px; }
+/* 顶部留白。0.5.10 的内容区上面有一条 52px 的 `.home-topbar`，内容从它下面开始；
+   我们没有那条（有标签栏），但**那段白本身是要的**——并排一摆，我们的内容
+   贴着标签栏，他们的往下退了一截（第 721 轮）。 */
+.welcome { max-width: 760px; display: flex; flex-direction: column; gap: var(--s-7); padding-top: var(--s-7); }
 .welcome-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s-5); }
 .welcome-card { height: auto;
   /* **卡里是整段说明，不是按钮文字。** 全局 `button { white-space: nowrap }`
