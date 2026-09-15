@@ -117,15 +117,13 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
   return (
     <div className="palette-backdrop" onClick={onClose}>
       <div
-        className="modal"
+        className="panel-dialog plan-dialog"
         role="dialog" aria-label="写作计划"
-        style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r)',
-                maxWidth: 640, width: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}><i className="bx bx-rocket" /> <span className="plain-case">{displayTitle(parent)}</span> · 写作计划</h2>
-          <button onClick={onClose}>✕</button>
+          <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
         </div>
 
         {!plan || plan.status === 'abandoned' ? (

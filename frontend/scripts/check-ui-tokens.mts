@@ -86,7 +86,11 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
 {
   const cssAll = walk(root).filter((f) => f.endsWith('.css'))
     .map((f) => readFileSync(f, 'utf8')).join('\n')
-  const defined = [...cssAll.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((m) => m[1])
+  /* 定义不一定在行首：`.settings-dialog { --panel-dialog-w: 480px; }` 这种单行规则里
+     它跟在 `{` 后面。第一版只认 `^\s*`，于是把一个**真定义**报成了幽灵令牌
+     （第 701 轮，闸门自己出错）。`{` 和 `;` 后面也算定义位；`var(--x)` 里前面是
+     `(`，不会被误当成定义。 */
+  const defined = [...cssAll.matchAll(/(?:^|[{;])\s*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1])
   const allSrc = walk(root).filter((f) => /\.(css|tsx?)$/.test(f))
     .map((f) => readFileSync(f, 'utf8')).join('\n')
   // 运行时由 JS 写进 style 的（TabBar 的 --tab-w）用 setProperty 出现，一样算用了

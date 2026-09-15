@@ -126,6 +126,16 @@ button:hover:not(:disabled) { background: var(--hover); color: var(--fg); border
 button:active:not(:disabled) { transform: scale(.97); }
 button { transition: background 120ms, border-color 120ms, color 120ms, transform 60ms; }
 button:disabled { opacity: .5; cursor: default; }
+/* **实心主按钮禁用时不能只是「淡一点」。**（第 701 轮量出来的）
+   `.primary:disabled` 走通用的 `opacity: .5`，白字压在半透明的品牌紫上实测
+   只有 **2.69:1**——而写作计划弹层里它是唯一的动作，标签本身就是在告诉用户
+   「这里要做什么」，看不清等于没写。淡下去的实心紫还有第二个毛病：它看着
+   像**能点、只是颜色浅**，而不是「关着」。
+   禁用时卸掉实心，退成中性面 + `--ink-3`（4.2:1，读得清，也一眼就是关着的）。 */
+button.primary:disabled {
+  opacity: 1; background: var(--mk-bg); color: var(--ink-3);
+  border-color: transparent; box-shadow: none;
+}
 button.primary {
   background: var(--brand-fill); border-color: transparent; color: #fff;
   box-shadow: var(--shadow-brand);
@@ -176,6 +186,15 @@ select {
   transition: border-color .12s, box-shadow .12s;
 }
 select:hover { border-color: var(--ink-3); }
+/* 小号变体：给「记忆范围」这种**挤在一行说明文字里**的下拉用。原来是在 JSX 里
+   写 `padding: 1px 4px` 改小的——那一下把基类的 `0 30px 0 10px` 整条冲掉了，
+   右边给箭头留的 30px 没了，文字压在箭头上、还顶出右边框（第 701 轮实拍）。
+   尺寸变体归 CSS 管，别在调用处内联改 padding。 */
+select.select-sm {
+  height: 24px; font-size: var(--t-xs); padding: 0 var(--s-7) 0 var(--s-4);
+  background-position: right var(--s-3) center; background-size: 12px 12px;
+}
+[dir="rtl"] select.select-sm { padding: 0 var(--s-4) 0 var(--s-7); background-position: left var(--s-3) center; }
 [dir="rtl"] select { padding: 0 10px 0 30px; background-position: left 9px center; }
 /* data URI 里的颜色进不去 CSS 变量，所以深色单给一版——**不给就会留一个
    永远是浅色灰的箭头**，深色下显得脏。（`%236C6678` = 深色的 --ink-3。） */
@@ -383,6 +402,24 @@ h2:first-child { margin-top: 0; }
 .dialog-title { font-size: var(--t-base); font-weight: var(--w-bold); color: var(--fg); line-height: 1.4; }
 .dialog-detail { font-size: var(--t-md); color: var(--ink-2); white-space: pre-wrap; margin: -6px 0 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-4); margin-top: var(--s-2); }
+
+/* 弹层里的「大对话框」：设置（480）、写作 Skill（720）、写作计划（640）三处
+   原来各自在 JSX 里内联写一遍同一套外壳——背景、边框、圆角、92vw、padding 24。
+   一套东西抄三遍，值就开始漂：写作计划那处是 `90vw` / `80vh`，Skill 那处是
+   `92vw` / `84vh`，**没有任何理由不一样**（第 701 轮）。宽度是三处唯一真正
+   该不同的东西，留成一个变量；别的归这里。
+   底色用 `--panel` 不是 `--bg`：浮在 backdrop 上的是**面**，不是纸。 */
+.panel-dialog {
+  width: min(var(--panel-dialog-w, 640px), 92vw);
+  max-height: 84vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop); padding: var(--s-7);
+}
+/* 三处各自的宽度（唯一该不同的东西）。写成具名类而不是内联变量，是为了
+   「这个弹层多宽」这件事在 CSS 里能一眼查全、也能一起调。 */
+.settings-dialog { --panel-dialog-w: 480px; }
+.plan-dialog     { --panel-dialog-w: 640px; }
+.skills-dialog   { --panel-dialog-w: 720px; }
 
 .palette-group { font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2);
   letter-spacing: var(--ls-caps); margin: 8px 4px 4px; padding: 0 4px; }
@@ -967,7 +1004,17 @@ h2:first-child { margin-top: 0; }
   position: sticky; top: -8px; height: 56px; z-index: var(--z-sticky); box-sizing: border-box;
   display: flex; justify-content: flex-end; align-items: center; gap: var(--s-3);
   margin: -8px calc(-1 * var(--content-margin-inline)) 4px; padding: var(--s-4) var(--content-margin-inline) 0;
-  background: linear-gradient(var(--main-bg) 86%, transparent);
+  background: var(--main-bg);
+}
+/* 渐变要在**带子下沿之外**，不能压在带子里。原来是
+   `linear-gradient(var(--main-bg) 86%, transparent)`——56px 的带子只剩 8px 做
+   过渡，而滚过来的是 28px 的标题：结果不是淡出，是**齐腰切一刀**，带子底下
+   露着一排半截字（第 701 轮实拍量的：235 行以上全白，236–241 行冒出字的下半截）。
+   实底 + 下面挂 16px 的淡出条，文字才是「淡进来」。
+   `pointer-events: none`：这 16px 压在正文上，不挡点选。 */
+.floating-buttons::after {
+  content: ''; position: absolute; inset-inline: 0; top: 100%; height: var(--s-6);
+  background: linear-gradient(var(--main-bg), transparent); pointer-events: none;
 }
 .fb-btn {
   height: 32px; padding: 0 12px; font-size: var(--t-md); border-radius: var(--r-pill); line-height: 1; white-space: nowrap;

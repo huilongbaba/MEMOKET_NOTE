@@ -317,7 +317,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0 6px' }}>
                 {(r.dropped ?? []).map((d, i) => (
                   <li key={i} className="muted" style={{ display: 'flex', gap: 5, lineHeight: 1.55 }}>
-                    <span style={{ flexShrink: 0 }}>✕</span>
+                    <i className="bx bx-x" style={{ flexShrink: 0 }} />
                     <span>{d}</span>
                   </li>
                 ))}

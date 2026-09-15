@@ -197,15 +197,13 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
   return (
     <div className={embedded ? 'embedded-panel' : 'palette-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
-        className={embedded ? '' : 'modal'}
-        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r)',
-                maxWidth: 720, width: '92vw', maxHeight: '84vh', overflowY: 'auto', padding: 24 }}
+        className={embedded ? '' : 'panel-dialog skills-dialog'}
         onClick={(e) => e.stopPropagation()}
       >
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <h2 style={{ margin: 0 }}><i className="bx bx-extension" /> 写作 Skill</h2>
-            <button onClick={onClose}>✕</button>
+            <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
           </div>
         )}
         <p className="muted" style={{ fontSize: 'var(--t-md)', margin: '6px 0 12px' }}>
@@ -353,8 +351,8 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                     {/* 内置的删不掉：删完下一次列表就照出厂那份重新播种回来（实跑量过）。
                         所以这里给的是它真正做的那件事——恢复出厂。不想要它就用左边的开关。 */}
                     {sk.builtin
-                      ? <button onClick={() => restore(sk)} title="恢复出厂：把我对这条的改动扔掉，开关和排序也回默认">↺</button>
-                      : <button onClick={() => remove(sk)} title="删除（5 秒内可撤销）">✕</button>}
+                      ? <button className="icon-btn" aria-label="恢复出厂" onClick={() => restore(sk)} title="恢复出厂：把我对这条的改动扔掉，开关和排序也回默认"><i className="bx bx-reset" /></button>
+                      : <button className="icon-btn" aria-label="删除" onClick={() => remove(sk)} title="删除（5 秒内可撤销）"><i className="bx bx-x" /></button>}
                   </div>
                 </div>
                 {/* 出处（「受 brainstorming 启发」）：是**要留的**归属说明，只是不该挤标题 */}

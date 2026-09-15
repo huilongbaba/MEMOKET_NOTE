@@ -155,15 +155,13 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
   return (
     <div className={embedded ? 'embedded-panel' : 'palette-backdrop'} onClick={embedded ? undefined : onClose}>
       <div
-        className={embedded ? '' : 'modal'}
-        style={embedded ? undefined : { background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r)',
-                maxWidth: 480, width: '92vw', padding: 24 }}
+        className={embedded ? '' : 'panel-dialog settings-dialog'}
         onClick={(e) => e.stopPropagation()}
       >
         {!embedded && (
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <h2 style={{ margin: 0 }}><i className="bx bx-cog" /> 设置</h2>
-            <button onClick={onClose}>✕</button>
+            <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
           </div>
         )}
 

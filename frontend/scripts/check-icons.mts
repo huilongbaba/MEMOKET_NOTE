@@ -64,5 +64,27 @@ for (const f of walk(root)) {
     })
   }
 }
+/* **按钮的整个标签就是一个符号字形时，它是「伪装成文字的图标」。**
+   上面那条彩色 emoji 的闸门故意放行单色字形（`⚠ ☑ ▦` 这些是**内容**，跟着
+   currentColor 走，没问题）。但 `<button>✕</button>` `<button>↺</button>`
+   不是内容——它是一个图标按钮，只不过图标是用系统字体画的：粗细、字号、
+   基线都跟满屏的 boxicons 对不上（第 701 轮实拍，8 处）。
+   判据**故意收得很窄**：只认「整个子节点就是一个符号区字符」，
+   汉字 / 字母 / 数字标签一概不碰——误伤比漏报贵。 */
+{
+  // U+00D7/F7 是 × ÷；U+2010–2BFF 覆盖 ✕ ↺ ▾ → ● ○ 这些箭头 / 几何 / 杂项符号。
+  // 汉字（U+4E00 起）、全角标点（U+3000 段）都在范围外，不会被扫到。
+  const GLYPH_ONLY = /<(button|a)\b[^>]*>\s*([\u00D7\u00F7\u2010-\u2BFF])\s*<\/\1>/
+  for (const f of walk(root)) {
+    if (!/\.tsx$/.test(f) || f.includes('__tests__')) continue
+    const rel = f.replace(root + '/', '')
+    readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+      const m = GLYPH_ONLY.exec(line.split('//')[0])
+      if (!m) return
+      bad++
+      console.log(`✗ ${rel}:${i + 1} 按钮的标签就是一个 ${m[2]} —— 这是图标按钮，用 <i className="bx bx-…" />：${line.trim().slice(0, 70)}`)
+    })
+  }
+}
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
 console.log('OK: 图标名都存在，也没有彩色 emoji 当图标')

@@ -30,7 +30,7 @@ export default function VerifyPanel({ findings, onClose }: {
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>校验结果</h2>
-        <button onClick={onClose}>✕</button>
+        <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
       </div>
       {findings.length === 0 && (
         <p className="muted">没有找到能支持或反驳这段内容的记录——不代表内容没问题，只是知识库里没有相关信息。</p>

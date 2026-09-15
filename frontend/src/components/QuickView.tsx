@@ -31,7 +31,7 @@ export default function QuickView({ note, onClose, onOpen }: {
           <b style={{ flex: 1, fontSize: 'var(--t-base)' }}>{displayTitle(note)}</b>
           <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>{fmtDate(note.updated_at)}</span>
           <button onClick={() => { onClose(); onOpen(note) }}>在标签里打开</button>
-          <button className="icon-btn" title="关闭（Esc）" onClick={onClose}>×</button>
+          <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><i className="bx bx-x" /></button>
         </div>
         <div className="quick-view-body">
           {note.content.trim() ? <MarkdownEditor content={note.content} readOnly /> : <p className="muted" style={{ margin: '8px 0' }}>这篇还是空的。</p>}

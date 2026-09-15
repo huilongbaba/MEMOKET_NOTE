@@ -50,7 +50,7 @@ export default function PreferencesPanel() {
           <div className="card" key={p.id}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span>{p.text}</span>
-              <a className="link" onClick={() => doDeletePref(p.id)}>✕</a>
+              <button className="icon-btn" aria-label="删掉这条" title="删掉这条" onClick={() => doDeletePref(p.id)}><i className="bx bx-x" /></button>
             </div>
           </div>
         ))}
