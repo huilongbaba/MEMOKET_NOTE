@@ -73,13 +73,17 @@ export function Chip({ icon, children, count, onClick, title }: {
   )
 }
 
-export function KbSection({ title, extra, children }: { title: string; extra?: ReactNode; children: ReactNode }) {
+/** 分组标题现在是**大标题**（第 689 轮），所以「标题里塞一句注解」就不行了：
+ *  「近 12 个月（按事实里的日期，计划里的未来日期也算）」整句 20px 粗体，
+ *  读起来像文章标题。`note` 单独一行灰字——**标题说是什么，注解说怎么算**。 */
+export function KbSection({ title, note, extra, children }: { title: string; note?: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <section className="kb-section">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h3 className="kb-section-title">{title}</h3>
         {extra}
       </div>
+      {note && <p className="muted" style={{ margin: '-6px 0 0', fontSize: 'var(--t-sm)' }}>{note}</p>}
       {children}
     </section>
   )

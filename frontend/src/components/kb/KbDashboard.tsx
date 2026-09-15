@@ -111,7 +111,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
 
           <ConflictInbox actions={actions} />
 
-          <KbSection title="近 12 个月（按事实里的日期，计划里的未来日期也算）" extra={<a href="#" className="muted" style={{ fontSize: 'var(--t-sm)' }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:timeline') }}>全部时间线 →</a>}>
+          <KbSection title="近 12 个月" note="按事实里的日期算；计划里的未来日期也算进来。" extra={<a href="#" className="muted" style={{ fontSize: 'var(--t-sm)' }} onClick={(e) => { e.preventDefault(); actions.onOpen('kb:timeline') }}>全部时间线 →</a>}>
             <MiniBars data={data.months} />
           </KbSection>
 
