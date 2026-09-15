@@ -34,16 +34,26 @@ export type MenuItem =
 
 export type MenuAt = { x: number; y: number }
 
+/** 能点的那一类（不是分隔线、不是小标题）。 */
+export type MenuAction = Extract<MenuItem, { onSelect: () => void }>
+
+/** 这一项现在能不能被选中（键盘走位和回车都用它）。
+ *  写成类型谓词而不是 `as any`：**「禁用项不能被回车触发」这条规矩
+ *  由编译器一起看着**，而不是靠调用处记得先问一句（第 709 轮）。 */
+export function selectableItem(it: MenuItem | undefined): it is MenuAction {
+  return !!it && it.kind !== 'sep' && it.kind !== 'header' && !it.disabled
+}
+
 /** 去掉连续的、开头的、结尾的分隔线。 */
 export function tidyMenu(items: MenuItem[]): MenuItem[] {
   const out: MenuItem[] = []
   for (const it of items) {
     const sep = 'kind' in it && it.kind === 'sep'
-    const prevSep = out.length === 0 || ('kind' in out[out.length - 1] && (out[out.length - 1] as any).kind === 'sep')
+    const prevSep = out.length === 0 || out[out.length - 1].kind === 'sep'
     if (sep && prevSep) continue
     out.push(it)
   }
-  while (out.length && 'kind' in out[out.length - 1] && (out[out.length - 1] as any).kind === 'sep') out.pop()
+  while (out.length && out[out.length - 1].kind === 'sep') out.pop()
   return out
 }
 
@@ -77,10 +87,7 @@ export default function ContextMenu({
   }, [hi])
 
   useEffect(() => {
-    const selectable = (k: number) => {
-      const it = list[k] as any
-      return it && it.kind !== 'sep' && it.kind !== 'header' && !it.disabled
-    }
+    const selectable = (k: number) => selectableItem(list[k])
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -91,8 +98,10 @@ export default function ContextMenu({
           k = (k + step + list.length) % list.length
           if (selectable(k)) { setHi(k); break }
         }
-      } else if (e.key === 'Enter' && selectable(hi)) {
-        e.preventDefault(); onClose(); (list[hi] as any).onSelect()
+      } else if (e.key === 'Enter') {
+        const it = list[hi]
+        if (!selectableItem(it)) return
+        e.preventDefault(); onClose(); it.onSelect()
       }
     }
     const onDown = (e: MouseEvent) => {

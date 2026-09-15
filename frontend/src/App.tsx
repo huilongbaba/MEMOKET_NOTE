@@ -1443,15 +1443,19 @@ export default function App() {
         const r = await api.expandSelection(content, selection)
         if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, '扩展上下文')) toast('建议对不上正文（锚点找不到），没有改动。')
-      } else {
-        // 到这里只剩 rewrite / polish：custom 在函数最上面提前返回了，
-        // verify / expand 在前面的分支里处理完了。
-        // **这个断言是有前提的**——曾经因为 custom 的分支丢了、断言还在，
-        // 编译器不报错而线上直接 422（intent 只认 rewrite/polish）。
-        const r = await api.rewriteSelection(
-          content, selection, action as 'rewrite' | 'polish', spine, beats)
+      } else if (action === 'rewrite' || action === 'polish') {
+        const r = await api.rewriteSelection(content, selection, action, spine, beats)
         if (r.revisions.length === 0) toast(r.note || '模型没有给出修改建议。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, action === 'polish' ? '润色' : '重写')) toast('建议对不上正文（锚点找不到），没有改动。')
+      } else {
+        /* **走不到这里，但要让编译器来保证走不到。**
+           原来这一支写的是 `action as 'rewrite' | 'polish'`——一个不查的强转，
+           注释里还记着它出过事：custom 的分支丢了、断言还在，编译器一声不吭，
+           线上直接 422（intent 只认 rewrite/polish）。
+           **注释拦不住下一次。** 改成穷尽检查：`SelectionAction` 加了新成员而
+           上面没接，`never` 这一行当场编译不过——不用等到线上（第 709 轮）。 */
+        const missed: never = action
+        toast(`「${String(missed)}」这个动作还没接上`, 'error')
       }
     } catch (e) {
       toast(`操作失败：${friendlyError(e)}`, 'error')
