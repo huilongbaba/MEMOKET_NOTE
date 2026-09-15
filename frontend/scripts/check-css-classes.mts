@@ -16,7 +16,11 @@ const files = walk(root)
    30px 高的筛选条」被当成定义了一个 `.cat-chip`，反向检查立刻判它是死样式——
    **闸门被散文绊倒**。先去掉块注释再解析。 */
 const stripComments = (s: string) => s.replace(/\/\*[^]*?\*\//g, ' ')
-const css = files.filter((f) => f.endsWith('.css')).map((f) => stripComments(readFileSync(f, 'utf8'))).join('\n')
+/* url() 里的点号也不是选择器。第 682 轮自绘勾选框用了一个 data URI，里面的
+   `xmlns='http://www.w3.org/2000/svg'` 让反向检查报出一个叫 `.w3` 的死样式。
+   跟注释那条同一个毛病：**闸门不该把不是选择器的东西当选择器。** */
+const stripUrls = (s: string) => s.replace(/url\((?:[^)\\]|\\.)*\)/g, ' ')
+const css = files.filter((f) => f.endsWith('.css')).map((f) => stripUrls(stripComments(readFileSync(f, 'utf8')))).join('\n')
 const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map((m) => m[1]))
 const HOOK_ONLY = new Set(['app-logo', 'export-back', 'export-back-result', 'mini-bars', 'tab-list', 'tl-month'])
 const PREFIX_OK = ['bx', 'cm-', 'mm-']

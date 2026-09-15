@@ -40,7 +40,7 @@ const FUNC = /\b(?:rgba?|hsla?)\s*\(/g
    同样会随手写死、随手漂移。量过：圆角原来写死 6px(27 处) / 8px(17) / 10px(13)，
    字号写死 12px(41) / 13px(34) / 11px(29) 外加 226 处内联 fontSize，字重几乎全是
    默认 400（源仓库 600 用了 123 处）。所以这三样一起上闸门。 */
-const SHAPE = /(?:border-radius: *[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *[0-9]+\b|borderRadius: *[0-9]+\b|fontWeight: *[0-9]{3}\b)/g
+const SHAPE = /(?:border-radius: *[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *[0-9]+\b|borderRadius: *[0-9]+\b|fontWeight: *[0-9]{3}\b|gap: *[0-9]+px|z-index: *[0-9]+)/g
 
 let bad = 0
 for (const f of walk(root)) {
@@ -64,11 +64,11 @@ for (const f of walk(root)) {
     }
     for (const m of line.matchAll(SHAPE)) {
       bad++
-      console.log(`✗ ${rel}:${i + 1} 写死了字号 / 字重 / 圆角：${m[0].trim()} —— 用尺度令牌（docs/UI_SPEC.md §1.5）：${line.trim().slice(0, 80)}`)
+      console.log(`✗ ${rel}:${i + 1} 写死了尺度值（字号/字重/圆角/间距/层级）：${m[0].trim()} —— 用尺度令牌（docs/UI_SPEC.md §1.5）：${line.trim().slice(0, 80)}`)
     }
   })
 }
 const stale = Object.keys(ALLOW).filter((f) => { try { statSync(join(root, f)); return false } catch { return true } })
 for (const f of stale) { bad++; console.log(`✗ 白名单里的 ${f} 已经不存在了，从名单去掉`) }
 if (bad) { console.error(`${bad} 处`); process.exit(1) }
-console.log('OK: 颜色 / 字号 / 字重 / 圆角都走令牌')
+console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌')
