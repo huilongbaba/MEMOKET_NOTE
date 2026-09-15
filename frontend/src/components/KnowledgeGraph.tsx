@@ -60,6 +60,11 @@ const MIN_R = 16
 const R_SCALE = 6
 const MIN_SCALE = 0.05
 const MAX_SCALE = 12
+/* 自动适应视图时**单独一个更小的上限**。手动滚轮照样能放到 MAX_SCALE。
+   实拍（第 685 轮，库里只有 3 个簇）：`Math.min(W/boxW, H/boxH)` 算出来 ~2.5×，
+   于是 12px 的标签被放大成 30px、溢出节点，左右两个还被视口裁掉。
+   **节点少不该换来一屏大字**——自动适应的目的是「都看得见」，不是「填满」。 */
+const MAX_FIT_SCALE = 1.4
 // Below this zoom level, labels/detail hide and nodes render as plain dots --
 // an "abstract point map" overview; zooming in past it reveals detail. This
 // is what makes "local zoom" actually mean something: at the overview level
@@ -541,7 +546,7 @@ export default function KnowledgeGraph(
     const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad
     const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad
     const boxW = Math.max(1, x1 - x0), boxH = Math.max(1, y1 - y0)
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(W / boxW, H / boxH)))
+    const scale = Math.min(MAX_FIT_SCALE, Math.max(MIN_SCALE, Math.min(W / boxW, H / boxH)))
     const cx = centerOn?.x ?? (x0 + x1) / 2
     const cy = centerOn?.y ?? (y0 + y1) / 2
     const transform = zoomIdentity
@@ -601,7 +606,7 @@ export default function KnowledgeGraph(
       <div className="row" style={{ padding: '8px 10px 0', fontSize: 'var(--t-sm)', justifyContent: 'space-between' }}>
         <div className="row">
           <span className="muted">
-            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 'var(--r-circle)',
                            border: '1.5px solid var(--accent)', marginRight: 4, verticalAlign: -1 }} />
             主题
           </span>

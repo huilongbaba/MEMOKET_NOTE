@@ -40,10 +40,14 @@ const FUNC = /\b(?:rgba?|hsla?)\s*\(/g
    同样会随手写死、随手漂移。量过：圆角原来写死 6px(27 处) / 8px(17) / 10px(13)，
    字号写死 12px(41) / 13px(34) / 11px(29) 外加 226 处内联 fontSize，字重几乎全是
    默认 400（源仓库 600 用了 123 处）。所以这三样一起上闸门。 */
-/* border-radius 要连**多值**一起查。第一版只匹配 `border-radius: 9px`，于是
+/* 带引号的也要查：`fontSize: '16px'` / `fontWeight: '700'` 是 tsx / ts 里
+   （CodeMirror 主题、内联 style 对象）最常见的写法，第一版正则要求数字紧跟冒号，
+   于是**整个编辑器主题一条都没查到**（第 685 轮）。顺带把 lineHeight 和写死的
+   字体栈也纳进来。
+   border-radius 要连**多值**一起查。第一版只匹配 `border-radius: 9px`，于是
    `border-radius: var(--r-sm) 6px 0 0` 里的那个 6px 一直活着（第 683 轮在
    `.pane-tab` 上抓到）——**只查一半的闸门给的是假安全感**。 */
-const SHAPE = /(?:border-radius:[^;}]*?\b[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *[0-9]+\b|borderRadius: *[0-9]+\b|fontWeight: *[0-9]{3}\b|gap: *[0-9]+px|z-index: *[0-9]+|letter-spacing: *[-0-9.]+em)/g
+const SHAPE = /(?:border-radius:[^;}]*?\b[0-9.]+px|font-size: *[0-9.]+px|font-weight: *[0-9]{3}\b|fontSize: *['"]?[0-9]+|borderRadius: *['"]?[0-9]+|fontWeight: *['"]?[0-9]{3}\b|lineHeight: *['"][0-9.]+['"]|fontFamily: *['"][^'"]*(?:monospace|sans-serif|serif)|gap: *[0-9]+px|z-index: *[0-9]+|letter-spacing: *[-0-9.]+em)/g
 
 let bad = 0
 for (const f of walk(root)) {

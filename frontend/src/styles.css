@@ -226,11 +226,27 @@ textarea { resize: vertical; }
 .sidebar { background: var(--panel); }
 
 h1 { font-size: var(--t-base); margin: 0 0 4px; }
-h2 { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: var(--ls-caps);
-  /* 段标题全大写是给「批量导入」这类固定标签用的；标题里嵌的笔记名（Notes → NOTES）不能跟着变 */
-     color: var(--ink-2); margin: 18px 0 8px; font-weight: var(--w-bold); }
+/* **h2 是标题，不是分组标签。** 原来这条全局把任何 `<h2>` 变成小号大写标签
+   ——那是为「批量导入」这类页内分组写的，却顺手把弹窗标题（写作骨架 / 校验结果 /
+   阶段回顾 / 屏幕活动记录）也变成了一行小字（第 685 轮实拍屏幕活动页发现）。
+   **用元素选择器表达语义就会这样**：同一个标签在两个地方是两件事。
+   分组标签改用 `.section-label`（跟 `.kb-section-title` 同一套字形）。 */
+h2 { font-size: var(--t-xl); font-weight: var(--w-bold); color: var(--fg);
+     letter-spacing: var(--ls-tight); margin: 18px 0 8px; }
+h2:first-child { margin-top: 0; }
+.section-label {
+  font-size: var(--t-xs); font-weight: var(--w-bold); color: var(--ink-2);
+  text-transform: uppercase; letter-spacing: var(--ls-caps);
+  margin: 18px 0 8px;
+}
 .muted { color: var(--muted); font-size: var(--t-md); }
 .row { display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap; }
+/* 勾选框 + 一段可能很长的说明。**不能用 `.row`**：它 flex-wrap，说明一长
+   勾选框就被留在上一行、文字整段掉到下面（第 685 轮实拍导入页）。
+   勾选框不换行、不缩，文字在它旁边自己折。 */
+.checkbox-row { display: flex; align-items: flex-start; gap: var(--s-3); }
+.checkbox-row > input { flex-shrink: 0; margin-top: 1px; }
+.checkbox-row > span { flex: 1; min-width: 0; }
 .stack > * + * { margin-top: 8px; }
 
 .note-item { padding: var(--s-4); border-radius: var(--r-sm); cursor: pointer; font-size: var(--t-base); }

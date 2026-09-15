@@ -222,7 +222,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   if (state === 'off' && known.length === 0) {
     return (
       <div className="kb-page journey-consent">
-        <h2>屏幕活动记录</h2>
+        <h2 className="kb-note-title"><i className="bx bx-desktop muted" /> 屏幕活动记录</h2>
         <p className="muted">
           每隔一会儿看一眼你的屏幕，把「你在做什么」记成一句话，到晚上汇成一份今天做了什么。
         </p>

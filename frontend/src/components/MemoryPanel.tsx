@@ -215,7 +215,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         </div>
       )}
 
-      <h2>从其他应用导入</h2>
+      <p className="section-label">从其他应用导入</p>
       <div className="stack">
         <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
           {/* JSX 换行会变成空格，中文句子中间就多出「导过的 内容」这种缝（第 194 轮窄窗实拍）——一行写完 */}
@@ -319,7 +319,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
         </p>
       </div>
 
-      <h2>批量导入</h2>
+      <p className="section-label">批量导入</p>
       <div className="stack">
         {interrupted.length > 0 && (
           <div className="card" style={{ borderColor: 'var(--warn)' }}>

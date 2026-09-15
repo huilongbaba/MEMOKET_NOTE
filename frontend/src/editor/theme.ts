@@ -8,16 +8,16 @@ import { tags } from '@lezer/highlight'
  * headings/emphasis/links/code instead of raw '#'/'*'/'`' text, without
  * leaving plain-text mode (the doc is still one string underneath). */
 export const markdownHighlight = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: '1.6em', fontWeight: '700' },
-  { tag: tags.heading2, fontSize: '1.4em', fontWeight: '700' },
-  { tag: tags.heading3, fontSize: '1.2em', fontWeight: '700' },
-  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '700' },
+  { tag: tags.heading1, fontSize: 'var(--t-read-h1)', fontWeight: 'var(--w-bold)' },
+  { tag: tags.heading2, fontSize: 'var(--t-read-h2)', fontWeight: 'var(--w-bold)' },
+  { tag: tags.heading3, fontSize: 'var(--t-read-h3)', fontWeight: 'var(--w-bold)' },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: 'var(--w-bold)' },
   { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: tags.strong, fontWeight: '700' },
+  { tag: tags.strong, fontWeight: 'var(--w-bold)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: 'var(--accent)', textDecoration: 'underline' },
   { tag: tags.url, color: 'var(--muted)' },
-  { tag: tags.monospace, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', background: 'var(--card-alt)' },
+  { tag: tags.monospace, fontFamily: 'var(--mono)', background: 'var(--card-alt)' },
   { tag: tags.quote, fontStyle: 'italic', color: 'var(--muted)' },
   // NOT colored like tags.link -- a plain "- " list item isn't clickable,
   // and coloring it the same accent blue as a real link is a misleading
@@ -67,12 +67,12 @@ export const scrollPadding = EditorView.theme({ '.cm-content': { paddingBottom: 
 
 export const editorTheme = EditorView.theme({
   '&': {
-    fontSize: '16px',
+    fontSize: 'var(--t-read)',
     backgroundColor: 'transparent',
   },
   '.cm-content': {
     padding: '0',
-    lineHeight: '1.8',
+    lineHeight: 'var(--lh-read)',
     fontFamily: 'inherit',
     caretColor: 'var(--fg)',
   },
@@ -85,15 +85,15 @@ export const editorTheme = EditorView.theme({
   '.cm-mermaid-widget': {
     margin: '10px 0',
     padding: '12px',
-    borderRadius: '8px',
+    borderRadius: 'var(--r)',
     background: 'var(--card-alt)',
     textAlign: 'center',
-    fontSize: '13px',
+    fontSize: 'var(--t-md)',
     color: 'var(--muted)',
   },
   '.cm-mermaid-widget svg': { maxWidth: '100%' },
   '.cm-mermaid-autofix-note': {
-    fontSize: '11px',
+    fontSize: 'var(--t-xs)',
     color: 'var(--muted)',
     fontStyle: 'italic',
     marginBottom: '6px',
@@ -102,18 +102,18 @@ export const editorTheme = EditorView.theme({
   '.cm-mermaid-error-msg': { color: 'var(--del)', marginBottom: '6px' },
   '.cm-mermaid-error-code': {
     whiteSpace: 'pre-wrap',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '12px',
+    fontFamily: 'var(--mono)',
+    fontSize: 'var(--t-sm)',
     color: 'var(--fg)',
     background: 'var(--card-alt)',
-    borderRadius: '6px',
+    borderRadius: 'var(--r-sm)',
     padding: '8px',
     margin: 0,
   },
   '.cm-image-embed': {
     maxWidth: '100%',
     maxHeight: '480px',
-    borderRadius: '6px',
+    borderRadius: 'var(--r-sm)',
     display: 'block',
     margin: '6px 0',
     cursor: 'text',

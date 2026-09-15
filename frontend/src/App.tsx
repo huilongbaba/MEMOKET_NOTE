@@ -3141,7 +3141,9 @@ export default function App() {
                     那个主按钮「导入」正是把人送到这一页最上面（第 678 轮）。默认
                     仍然只建笔记（迁移笔记的人不该被动花模型钱），但得说出来，
                     而且要在原地给得到。 */}
-                <label className="row" style={{ gap: 6, alignItems: 'center', fontSize: 'var(--t-sm)', margin: '0 0 8px' }}>
+                {/* `.row` 会 flex-wrap——说明长了勾选框就被甩到上一行、文字掉到下面
+                    （第 685 轮实拍）。勾选框不参与换行，文字自己在旁边折行。 */}
+                <label className="checkbox-row" style={{ fontSize: 'var(--t-sm)', margin: '0 0 8px' }}>
                   <input type="checkbox" checked={mdToKb} onChange={(e) => setMdToKb(e.target.checked)} />
                   <span>同时存入知识库（逐篇抽事实，要跑模型；不勾就只建笔记，之后也能对单篇「存入知识库」）</span>
                 </label>
