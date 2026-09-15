@@ -1036,3 +1036,27 @@ Windows 是 Ctrl+Alt+Shift（Ctrl 在最前）——**两边是反的**，而它
 变异验证：把 `root` 从 `../src` 指到 `../src/util`，**五条全部自爆**。
 
 前端 237 + 26 条 check 全绿。
+
+## [724] 第 708 轮：`/` 菜单那句不查的强转（2026-09-15）
+
+后端全量 `pytest` 1111 过（这几轮没动后端，按规矩跑一次确认没被牵连）。
+
+看 `App.onSlash` 的分流，最后一句是 `mode: item.key as api.BlockMode`——
+**一个不查的强转**。菜单里加一项、key 少写一个字母，tsc / eslint / vitest 全绿，
+请求照发，后端在 `modes.BLOCK[mode]` 上抛 KeyError，用户看到的是「点了没反应」。
+上一轮我刚往这个菜单里加了十项，这个口子正好要堵。
+
+两件事：
+
+**① `BlockMode` 改成从常量数组派生**（`BLOCK_MODES` + `typeof …[number]`），
+类型不变，但列表在运行时拿得到，单测才能逐项核对。
+
+**② 两层校验：**
+- 单测「每一项都有人接」：逐条过 `SLASH_ITEMS`，要么带 `cmd`（就地执行）、
+  要么 `needsPrompt`、要么在 `table-image / audio / voice` 这三个特判里、
+  要么 key 是合法的 BlockMode。变异验证（把 `chart` 改成 `charts`）当场红。
+- 新闸门 `check-block-modes`（第 27 条）：前端 `BLOCK_MODES` 跟后端
+  `harness/modes.BLOCK` 的键逐字对拍，**两个方向都查**——后端有而前端没有的，
+  是「这个能力前端到不了」，同样是问题。变异验证过。
+
+前端 238 + 27 条 check 全绿；后端 1111 全过。

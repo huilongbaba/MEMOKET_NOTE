@@ -3,6 +3,7 @@ import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 
+import { BLOCK_MODES } from '../../api'
 import { SLASH_ITEMS, filtered } from '../slashMenu'
 
 /**
@@ -24,6 +25,18 @@ describe('/ 菜单的排版组', () => {
 
   it('每一条都有分组（渲染时靠它插小标题，漏了就串组）', () => {
     for (const it of SLASH_ITEMS) expect(it.group).toBeTruthy()
+  })
+
+  /** `App.onSlash` 的分流：needsPrompt → 弹输入框；table-image / audio → 选文件；
+   *  voice → 录音；**其余直接当 BlockMode 发给后端**（一句不查的强转）。
+   *  所以每一项都必须落在这几类里的某一类，否则就是「点了没反应」或者
+   *  「发了个后端不认识的 mode」。 */
+  it('每一项都有人接（不然就是点了没反应）', () => {
+    const handled = new Set(['table-image', 'audio', 'voice'])
+    for (const it of SLASH_ITEMS) {
+      if (it.cmd || it.needsPrompt || handled.has(it.key)) continue
+      expect(BLOCK_MODES as readonly string[]).toContain(it.key)
+    }
   })
 
   it('打「列表」筛出三条列表命令，筛不出 AI 的', () => {

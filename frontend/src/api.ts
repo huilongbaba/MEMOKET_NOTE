@@ -1319,7 +1319,12 @@ export const saveSkeleton = (noteId: string, spine: string, beats: string[]) =>
 /** 走跟写作 harness 同一套闭环：规划（调工具）→ 生成 → 打分 → 不达标带着诊断
  * 再来一轮。数字由 data 组工具算、图表语法由 chart 组工具拼——模型只决定算
  * 什么、画什么。custom 是右键「自定义提示」，作用域是选中的那段。 */
-export type BlockMode = 'prompt' | 'chart' | 'table' | 'eda' | 'analysis' | 'custom'
+/* **写成常量数组再派生类型**，不是直接写联合类型：`App.onSlash` 里那句
+   `mode: item.key as api.BlockMode` 是个不查的强转——`/` 菜单新加一项、key
+   写错一个字母，TypeScript 一声不吭，非法的 mode 就发到后端去了。
+   有了这个数组，单测就能逐项核对「这一项到底有没有人接」（第 708 轮）。 */
+export const BLOCK_MODES = ['prompt', 'chart', 'table', 'eda', 'analysis', 'custom'] as const
+export type BlockMode = typeof BLOCK_MODES[number]
 
 export async function composeBlock(
   body: { note_id: string; title: string; content: string; cursor: number;
