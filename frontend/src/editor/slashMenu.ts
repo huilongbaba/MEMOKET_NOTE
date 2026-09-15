@@ -11,6 +11,11 @@
 import { StateEffect, StateField } from '@codemirror/state'
 import { EditorView, showTooltip, type Tooltip } from '@codemirror/view'
 
+import {
+  heading1Cmd, heading2Cmd, heading3Cmd, quoteCmd,
+  bulletListCmd, orderedListCmd, taskListCmd, codeBlockCmd, mermaidCmd, tableCmd,
+} from './markdownCommands'
+
 export type SlashItem = {
   key: string
   label: string
@@ -20,24 +25,47 @@ export type SlashItem = {
   /** 需要用户再输入一段提示词的（智能分析、按提示词写…） */
   needsPrompt?: boolean
   placeholder?: string
+  /** 分组标题。同一组连着排，组变了就插一行小标题。 */
+  group: string
+  /** 排版类的就地执行：一个 CM6 命令，不走网络、不经 React。
+   *  （ 里这批返回 void，不是 CM6 的 Command 签名——
+   *  它们是给按钮直接调的，没有「没轮到我」这一说。） */
+  cmd?: (view: EditorView) => void
 }
 
-/** 菜单项。顺序就是用户看到的顺序：先是要动脑子的，再是纯插入的。 */
-/** 菜单项。**只放 AI 功能**——纯插入的（空表格、图片）在顶部工具栏里，
- * `/` 是"让 AI 干活"的入口，把两类混在一起会让这个菜单越长越难用。
- * 音频和语音留在这里，是因为它们插入之后都要**跑转写**，本身就是 AI 动作。 */
+/** 菜单项。分两组：先「让 AI 干活」（这个应用的主张），再「排版」。
+ *
+ * **排版这一组是第 705 轮补的，补的是我自己捅的窟窿**：上一轮把常驻的
+ * Markdown 工具条收起来了，理由之一写的是「`/` 斜杠菜单还在」——
+ * 结果实拍一看，这个菜单里**一条排版命令都没有**。
+ * 原来的注释说「纯插入的在顶部工具栏里」，那条理由随着工具条收起就不成立了：
+ * **一个入口的存在理由依赖另一个入口，动了那个就得回来改这个。**
+ *
+ * 只放**块级**的。加粗 / 斜体是行内的，`/` 在空位置唤起，选不中任何文字，
+ * 放进来点了等于什么都没发生（它们在选中弹出的菜单和 ⌘B / ⌘I 里）。 */
 export const SLASH_ITEMS: SlashItem[] = [
-  { key: 'prompt', icon: 'bx-pen', label: '用 AI 写', hint: '描述你想写什么，会结合上下文和你的知识库',
+  { group: 'AI', key: 'prompt', icon: 'bx-pen', label: '用 AI 写', hint: '描述你想写什么，会结合上下文和你的知识库',
     needsPrompt: true, placeholder: '例如：把上面几段总结成三条结论' },
-  { key: 'chart', icon: 'bx-image-add', label: '智能插图', hint: '数据用图表、概念用文生图，自动判断' },
-  { key: 'table', icon: 'bx-table', label: '智能表格', hint: '把上下文整理成表格',
+  { group: 'AI', key: 'chart', icon: 'bx-image-add', label: '智能插图', hint: '数据用图表、概念用文生图，自动判断' },
+  { group: 'AI', key: 'table', icon: 'bx-table', label: '智能表格', hint: '把上下文整理成表格',
     needsPrompt: true, placeholder: '想整理成什么表？留空则自动判断' },
-  { key: 'table-image', icon: 'bx-image-alt', label: '图片转表格', hint: '传一张图，识别里面的表格' },
-  { key: 'eda', icon: 'bx-bar-chart-alt-2', label: '数据可视化', hint: '把笔记里的表格画成图：分布、占比、对比' },
-  { key: 'analysis', icon: 'bx-calculator', label: '智能数据分析', hint: '问一个数据问题，用工具算出来再回答',
+  { group: 'AI', key: 'table-image', icon: 'bx-image-alt', label: '图片转表格', hint: '传一张图，识别里面的表格' },
+  { group: 'AI', key: 'eda', icon: 'bx-bar-chart-alt-2', label: '数据可视化', hint: '把笔记里的表格画成图：分布、占比、对比' },
+  { group: 'AI', key: 'analysis', icon: 'bx-calculator', label: '智能数据分析', hint: '问一个数据问题，用工具算出来再回答',
     needsPrompt: true, placeholder: '例如：哪个渠道的单位曝光收入最高？' },
-  { key: 'voice', icon: 'bx-microphone', label: '语音输入', hint: '录一段话，转写成文字插进来' },
-  { key: 'audio', icon: 'bx-headphone', label: '插入音频', hint: '插入音频并自动转写出文字稿' },
+  { group: 'AI', key: 'voice', icon: 'bx-microphone', label: '语音输入', hint: '录一段话，转写成文字插进来' },
+  { group: 'AI', key: 'audio', icon: 'bx-headphone', label: '插入音频', hint: '插入音频并自动转写出文字稿' },
+
+  { group: '排版', key: 'h1', icon: 'bx-heading', label: '一级标题', hint: '# 开头', cmd: heading1Cmd },
+  { group: '排版', key: 'h2', icon: 'bx-heading', label: '二级标题', hint: '## 开头', cmd: heading2Cmd },
+  { group: '排版', key: 'h3', icon: 'bx-heading', label: '三级标题', hint: '### 开头', cmd: heading3Cmd },
+  { group: '排版', key: 'ul', icon: 'bx-list-ul', label: '无序列表', hint: '- 开头', cmd: bulletListCmd },
+  { group: '排版', key: 'ol', icon: 'bx-list-ol', label: '有序列表', hint: '1. 开头', cmd: orderedListCmd },
+  { group: '排版', key: 'todo', icon: 'bx-list-check', label: '任务列表', hint: '- [ ] 开头，能勾', cmd: taskListCmd },
+  { group: '排版', key: 'quote', icon: 'bxs-quote-left', label: '引用', hint: '> 开头', cmd: quoteCmd },
+  { group: '排版', key: 'code', icon: 'bx-code-block', label: '代码块', hint: '三个反引号围起来', cmd: codeBlockCmd },
+  { group: '排版', key: 'grid', icon: 'bx-table', label: '空表格', hint: '插入一个 3 列的空表格', cmd: tableCmd },
+  { group: '排版', key: 'flow', icon: 'bx-network-chart', label: '流程图', hint: '插入一个 mermaid 模板', cmd: mermaidCmd },
 ]
 
 export type SlashState = {
@@ -108,6 +136,22 @@ export const slashField = StateField.define<SlashState | null>({
   },
 })
 
+/** 选中一项。
+ *
+ *  带 `cmd` 的（排版类）**就地执行**：先把 `/查询词` 删掉，再跑那个 CM6 命令。
+ *  它们不碰网络、不需要 React 的任何状态，交给上层 runner 反而要把整套命令
+ *  再传一遍。Enter 和鼠标两条路都走这里，免得两边行为不一致。 */
+function pick(view: EditorView, it: SlashItem, from: number, to: number, run: SlashRunner) {
+  view.dispatch({ effects: closeSlash.of(null) })
+  if (it.cmd) {
+    view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } })
+    it.cmd(view)
+    view.focus()
+    return
+  }
+  run(it, from, to)
+}
+
 function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'slash-menu'
@@ -119,7 +163,17 @@ function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElemen
     wrap.append(empty)
     return wrap
   }
+  let lastGroup = ''
   items.forEach((it, i) => {
+    // 组变了就插一行小标题。过滤之后只剩一组时也留着——它告诉用户
+    // 「筛出来的是排版命令」，比省掉一行更有用。
+    if (it.group !== lastGroup) {
+      lastGroup = it.group
+      const g = document.createElement('div')
+      g.className = 'slash-group'
+      g.textContent = it.group
+      wrap.append(g)
+    }
     const row = document.createElement('div')
     row.className = 'slash-item' + (i === st.active ? ' active' : '')
     row.innerHTML = ''
@@ -140,8 +194,7 @@ function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElemen
       e.preventDefault()
       e.stopPropagation()
       const head = view.state.selection.main.head
-      view.dispatch({ effects: closeSlash.of(null) })
-      run(it, st.from, head)
+      pick(view, it, st.from, head, run)
     })
     wrap.append(row)
   })
@@ -173,8 +226,7 @@ export function slashMenu(run: SlashRunner) {
         if (!it) return false
         e.preventDefault()
         const head = view.state.selection.main.head
-        view.dispatch({ effects: closeSlash.of(null) })
-        run(it, st.from, head)
+        pick(view, it, st.from, head, run)
         return true
       }
       return false

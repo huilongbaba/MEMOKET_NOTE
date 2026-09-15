@@ -549,6 +549,13 @@ h2:first-child { margin-top: 0; }
   line-height: 1.35;
   color: var(--muted);
 }
+/* 菜单里的分组小标题（AI / 排版）。跟 `.palette-group` 一套长相，
+   但这个菜单窄（300px）、padding 小，所以单给一条，不复用那条的外边距。 */
+.slash-group {
+  font-size: var(--t-2xs); font-weight: var(--w-bold); color: var(--ink-3);
+  letter-spacing: var(--ls-caps); padding: var(--s-3) var(--s-4) var(--s-1);
+}
+.slash-group:first-child { padding-top: var(--s-1); }
 .slash-empty {
   padding: var(--s-5);
   font-size: var(--t-sm);

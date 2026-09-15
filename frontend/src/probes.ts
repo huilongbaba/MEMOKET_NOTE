@@ -271,7 +271,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     })() }
   }
   // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
-  if ((probe === 'slash' || probe === 'mention' || probe === 'wikilink') && notes.length && !harnessProbeDone.current) {
+  // `slash:<词>` = 打完 `/` 再打一个过滤词，看筛选之后的菜单（第 705 轮加排版组时要看）
+  if ((probe === 'slash' || probe?.startsWith('slash:') || probe === 'mention' || probe === 'wikilink') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => (x.content ?? '').length > 80)
     if (n) { harnessProbeDone.current = true; void (async () => {
       await switchTo(n)
@@ -284,8 +285,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
         if (probe === 'wikilink') {
           view.dispatch({ changes: { from: end + 2, insert: '[[创业' }, selection: { anchor: end + 6 }, userEvent: 'input.type' })
         } else {
-          view.dispatch({ changes: { from: end + 2, insert: probe === 'slash' ? '/' : '@' }, selection: { anchor: end + 3 }, userEvent: 'input.type' })
-          if (probe === 'mention') view.dispatch({ changes: { from: end + 3, insert: '样机' }, selection: { anchor: end + 5 }, userEvent: 'input.type' })
+          view.dispatch({ changes: { from: end + 2, insert: probe.startsWith('slash') ? '/' : '@' }, selection: { anchor: end + 3 }, userEvent: 'input.type' })
+          const q = probe === 'mention' ? '样机' : probe.startsWith('slash:') ? decodeURIComponent(probe.slice(6)) : ''
+          if (q) view.dispatch({ changes: { from: end + 3, insert: q }, selection: { anchor: end + 3 + q.length }, userEvent: 'input.type' })
         }
         view.dispatch({ effects: EditorView.scrollIntoView(end + 3) })
         // mermaid / 表格预览晚一点才撑开高度，再滚一次

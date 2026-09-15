@@ -1415,7 +1415,7 @@ export default function App() {
       setSelectionMenu(null)
       if (!view || !sel || sel.empty) return
       setSlash({
-        item: { key: 'custom', label: '自定义提示', icon: 'bx-message-dots',
+        item: { group: 'AI', key: 'custom', label: '自定义提示', icon: 'bx-message-dots',
                 hint: '对选中的这段做点什么', needsPrompt: true,
                 placeholder: '例如：改写成给投资人看的口吻 / 拆成三条要点' },
         from: sel.from, to: sel.to, ...at,
