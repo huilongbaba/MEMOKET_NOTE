@@ -32,6 +32,17 @@ export type RibbonTab = {
   body: ReactNode
 }
 
+/** 上一次打开的是哪个页签（`''` = 用户自己收起的）。
+ *  **不按笔记记**：「我要不要看工具条」是个人习惯，不是某一篇的属性。
+ *  localStorage 在无痕 / 禁用站点数据时会抛，读写都兜住。 */
+const REMEMBER_KEY = 'ribbon-open'
+const remembered = (): string | undefined => {
+  try { return localStorage.getItem(REMEMBER_KEY) || undefined } catch { return undefined }
+}
+const remember = (id: string | undefined) => {
+  try { localStorage.setItem(REMEMBER_KEY, id ?? '') } catch { /* 存不上就只是这次不记住 */ }
+}
+
 export default function Ribbon({
   tabs, defaultOpen, noteKey, actions,
 }: { tabs: RibbonTab[]; defaultOpen?: string; noteKey?: string; actions?: MenuItem[] }) {
@@ -39,14 +50,19 @@ export default function Ribbon({
   // 收进来，不跟 magic tap / 智能续写抢同一行的注意力（判据 1 的反面）
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null)
   // undefined = 收起。收起是默认：正文才是主角，元数据是需要时才展开的东西。
-  const [open, setOpen] = useState<string | undefined>(defaultOpen)
+  const [open, setOpen] = useState<string | undefined>(defaultOpen ?? remembered())
 
   // 换笔记时按 activate 规则重算；同一篇里用户手动收起/展开的不动。
   const activateId = tabs.find((t) => t.activate)?.id
   useEffect(() => {
-    setOpen(defaultOpen ?? activateId)
+    setOpen(defaultOpen ?? activateId ?? remembered())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteKey, defaultOpen, activateId === undefined])
+
+  /** 点开 / 收起都记一笔，**换笔记之后仍然是它**。
+   *  原来每换一篇都退回默认（要么强行展开、要么强行收起），
+   *  于是习惯开着工具条的人每切一篇就得再点一次（第 704 轮）。 */
+  const choose = (id: string | undefined) => { setOpen(id); remember(id) }
 
   if (tabs.length === 0) return null
 
@@ -59,7 +75,7 @@ export default function Ribbon({
             role="tab"
             aria-selected={open === t.id}
             className={'ribbon-tab' + (open === t.id ? ' active' : '')}
-            onClick={() => setOpen(open === t.id ? undefined : t.id)}
+            onClick={() => choose(open === t.id ? undefined : t.id)}
           >
             {t.icon && <span className="ribbon-icon">{t.icon.startsWith('bx-') ? <i className={'bx ' + t.icon} /> : t.icon}</span>}
             <span>{t.title}</span>
@@ -69,9 +85,9 @@ export default function Ribbon({
           </button>
         ))}
         {actions && actions.length > 0 && (
-          <button className="ribbon-actions" title="更多操作" aria-haspopup="menu"
+          <button className="ribbon-actions" title="更多操作" aria-label="更多操作" aria-haspopup="menu"
                   onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.right - 200, y: r.bottom + 4 }) }}>
-            ⋯
+            <i className="bx bx-dots-horizontal-rounded" />
           </button>
         )}
         {menuAt && actions && <ContextMenu at={menuAt} items={actions} onClose={() => setMenuAt(null)} />}

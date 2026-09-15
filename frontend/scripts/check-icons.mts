@@ -74,16 +74,22 @@ for (const f of walk(root)) {
 {
   // U+00D7/F7 是 × ÷；U+2010–2BFF 覆盖 ✕ ↺ ▾ → ● ○ 这些箭头 / 几何 / 杂项符号。
   // 汉字（U+4E00 起）、全角标点（U+3000 段）都在范围外，不会被扫到。
-  const GLYPH_ONLY = /<(button|a)\b[^>]*>\s*([\u00D7\u00F7\u2010-\u2BFF])\s*<\/\1>/
+  /* **从闭合标签往回认，不从开标签往后认。**
+     第一版写的是 `<button[^>]*>…`，两次都漏：① 逐行 exec，跨行写的按钮扫不到；
+     ② 就算整份文件一起扫，`onClick={(e) => …}` 里的**箭头自带一个 `>`**，
+     `[^>]*>` 会在那里提前收尾（第 704 轮，同一条闸门连错两次）。
+     改成认「开标签的 `>` 紧跟一个符号字形、紧跟 `</button>`」——
+     属性怎么写、写几行、里面有多少个 `>` 都不影响。 */
+  const GLYPH_ONLY = />\s*([\u00D7\u00F7\u2010-\u2BFF])\s*<\/(button|a)>/g
   for (const f of walk(root)) {
     if (!/\.tsx$/.test(f) || f.includes('__tests__')) continue
     const rel = f.replace(root + '/', '')
-    readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
-      const m = GLYPH_ONLY.exec(line.split('//')[0])
-      if (!m) return
+    const src = readFileSync(f, 'utf8')
+    for (const m of src.matchAll(GLYPH_ONLY)) {
+      const lineNo = src.slice(0, m.index).split('\n').length
       bad++
-      console.log(`✗ ${rel}:${i + 1} 按钮的标签就是一个 ${m[2]} —— 这是图标按钮，用 <i className="bx bx-…" />：${line.trim().slice(0, 70)}`)
-    })
+      console.log(`✗ ${rel}:${lineNo} <${m[2]}> 的标签就是一个 ${m[1]} —— 这是图标按钮，用 <i className="bx bx-…" />`)
+    }
   }
 }
 if (bad) { console.error(`${bad} 处`); process.exit(1) }

@@ -3080,8 +3080,13 @@ export default function App() {
             noteKey={current.id}
             defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' || pr.startsWith('notekb:') ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : pr.startsWith('blank:ribbon:') ? pr.slice(13) : (/^note:[^:]+:ribbon:([^:]+)/.exec(pr)?.[1]) })()}
             tabs={[{
+              /* **不给 activate**：它是全应用唯一一个，等于每开一篇笔记都把
+                 13 个钮的工具条强行摊开——而 Ribbon 自己的注释写的是
+                 「收起是默认：正文才是主角」。标题和正文之间原来叠着三条控件带
+                 （页签 / 工具条 / 浮动按钮），这是最容易去掉的一条。
+                 排版入口没少：`/` 斜杠菜单、选中弹出的菜单、⌘B 这些键都在，
+                 想要常驻工具条的人点一次「格式」，**换笔记也记着**（第 704 轮）。 */
               id: 'format', title: '格式', icon: 'bx-text',
-              activate: true,
               body: (
                 <MarkdownToolbar
                   viewRef={editorViewRef}

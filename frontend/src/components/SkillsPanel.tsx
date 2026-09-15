@@ -345,9 +345,9 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                     {sk.builtin && <span className="muted" style={{ fontSize: 'var(--t-xs)', flexShrink: 0 }} title="随应用一起带的，删不掉；不想要就用左边的开关关掉">内置</span>}
                   </div>
                   <div className="row" style={{ gap: 2, flexShrink: 0, flexWrap: 'nowrap' }}>
-                    <button onClick={() => move(sk, -1)} disabled={i === 0} title="上移">↑</button>
-                    <button onClick={() => move(sk, 1)} disabled={i === skills.length - 1} title="下移">↓</button>
-                    <button onClick={() => startEdit(sk)} title="编辑">✎</button>
+                    <button className="icon-btn" aria-label="上移" onClick={() => move(sk, -1)} disabled={i === 0} title="上移"><i className="bx bx-chevron-up" /></button>
+                    <button className="icon-btn" aria-label="下移" onClick={() => move(sk, 1)} disabled={i === skills.length - 1} title="下移"><i className="bx bx-chevron-down" /></button>
+                    <button className="icon-btn" aria-label="编辑" onClick={() => startEdit(sk)} title="编辑"><i className="bx bx-pencil" /></button>
                     {/* 内置的删不掉：删完下一次列表就照出厂那份重新播种回来（实跑量过）。
                         所以这里给的是它真正做的那件事——恢复出厂。不想要它就用左边的开关。 */}
                     {sk.builtin

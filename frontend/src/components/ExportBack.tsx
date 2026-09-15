@@ -50,7 +50,7 @@ export default function ExportBack() {
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>Obsidian</span>
           <input aria-label="Obsidian vault 文件夹路径" placeholder="vault 文件夹路径" value={vaultDir} onChange={(e) => setVaultDir(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void pickVault()} title="选文件夹">…</button>
+          <button className="icon-btn" aria-label="选文件夹" onClick={() => void pickVault()} title="选文件夹"><i className="bx bx-dots-horizontal-rounded" /></button>
           <label className="muted" style={{ fontSize: 'var(--t-sm)', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的
           </label>

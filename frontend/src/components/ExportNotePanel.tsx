@@ -102,7 +102,7 @@ export default function ExportNotePanel({ noteId, title, onClose }:
             <div className="row" style={{ gap: 6 }}>
               <input aria-label="Obsidian vault 文件夹路径" placeholder="vault 文件夹路径" value={vault} style={{ flex: 1, minWidth: 0 }}
                      onChange={(e) => { setVault(e.target.value); saveVault(e.target.value) }} />
-              <button onClick={() => void pickVault()} title="选文件夹">…</button>
+              <button className="icon-btn" aria-label="选文件夹" onClick={() => void pickVault()} title="选文件夹"><i className="bx bx-dots-horizontal-rounded" /></button>
             </div>
             <label className="muted" style={{ fontSize: 'var(--t-sm)' }}>
               <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 覆盖对方改过的
