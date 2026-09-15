@@ -1064,6 +1064,14 @@ input[type=file]::file-selector-button {
   border: 1px solid var(--main-border); border-radius: var(--r-sm); background: var(--main-bg); color: var(--fg); cursor: pointer;
 }
 input[type=file]:hover { border-color: var(--accent); }
+/* **行内的文件选择器**（导入页的 Obsidian / Evernote 两行）。
+   基类 `input { width: 100% }` 让它的 flex-basis 变成整行宽，在 `.row`
+   （`flex-wrap: wrap`）里必然换行，把左边那个 88px 的标签挤到上一行去——
+   而它下面那句说明还按「标签在左」缩进了 96px，于是说明跟控件对不齐
+   （第 703 轮实拍；`rect:` 量出来是 `flex: 0 1 auto` + `width: 100%`，
+   x 从 443 退回 347）。
+   这是 `.row` 的老毛病第二次犯：上面勾选框那条注释记的是第 685 轮同一件事。 */
+.row > input[type=file] { flex: 1; width: auto; min-width: 0; }
 /* 右栏各标签里的小标题：section 标题，不是页面标题 */
 .right-pane-body h2 { font-size: var(--t-sm); margin: 10px 0 6px; color: var(--muted); }
 .right-pane-body > :first-child h2 { margin-top: 0; }
