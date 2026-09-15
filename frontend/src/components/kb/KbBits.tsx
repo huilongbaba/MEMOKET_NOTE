@@ -149,6 +149,41 @@ export function FactList({ facts, actions, showTopics }: { facts: FactDetail[]; 
   )
 }
 
+/** 空库时那句「看看事实表长什么样」要兑现的东西。
+ *
+ *  原来那儿是一个按钮，点进去是事实表页——五个空下拉 + 「0 条 · 没有事实。」。
+ *  **按钮承诺给你看长什么样，给出来的是空的**（第 673 轮拿全新用户走一遍实拍到的）。
+ *  承诺要么兑现要么撤掉；这里兑现：拿真正的 `FactRow` 渲染两条示例，跟导入之后
+ *  长得一模一样——只是整块 `inert`，点不动也 tab 不进去（假数据点开只会是 404）。
+ *  `inert` 顺带把它从无障碍树里摘掉了：这是**有意的**——屏幕阅读器读上面那句
+ *  说明就够了，逐条读两条假事实反而分不清哪些是自己的数据。
+ *
+ *  两条示例特意各带一样东西：第一条有说话人和类型（会议录音抽出来的样子），
+ *  第二条带「来自笔记」的反链（自己写的笔记存进来的样子）。 */
+const EXAMPLE_FACTS: FactDetail[] = [
+  { id: 'demo-1', text: '样机的续航实测 11 小时，比上一版多 2 小时。', when: '2026-03-04',
+    kind: '结论', who: '李工', conf: 'high', topics: ['硬件'], entities: [], unit: 'demo' },
+  { id: 'demo-2', text: '这一版的定价定在 199 美元，先在北美上。', when: '2026-03-11',
+    kind: '决定', who: '', conf: 'high', topics: ['定价'], entities: [], unit: 'demo',
+    note_id: 'demo-note' },
+]
+
+const NO_ACTIONS: KbActions = { onOpen: () => {}, onOpenNote: () => {}, onCite: null }
+
+export function ExampleFacts() {
+  return (
+    <div className="kb-example">
+      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+        示例 —— 导入之后每一句话会变成这样一条：带日期、说话人、类型，点得开，也能一键引到正文里。
+      </div>
+      <div className="fact-list" inert>
+        <div className="fact-month muted">2026-03</div>
+        {EXAMPLE_FACTS.map((f) => <FactRow key={f.id} f={f} actions={NO_ACTIONS} showTopics />)}
+      </div>
+    </div>
+  )
+}
+
 export function Pager({ total, limit, offset, onPage, tail }: { total: number; limit: number; offset: number; onPage: (o: number) => void; tail?: ReactNode }) {
   if (total <= limit) return null
   const page = Math.floor(offset / limit) + 1, pages = Math.ceil(total / limit)

@@ -979,6 +979,11 @@ input[type=file]:hover { border-color: var(--accent); }
 .kb-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 24px 0; max-width: 560px; }
 .kb-empty > .bx { font-size: 40px; color: var(--muted); }
 .kb-empty h3 { margin: 0; font-size: 18px; }
+
+/* 空态里的「长什么样」示例：**必须一眼看出不是你自己的数据**（第 673 轮）。
+   虚线框 + 整块降透明度；`inert` 已经挡住交互，这里只负责让眼睛也知道。 */
+.kb-example { align-self: stretch; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; opacity: .72; }
+.kb-example .fact-row { cursor: default; }
 .filter-row select, .filter-row input { min-width: 120px; }
 
 /* magic tap 的来源行：一行折叠，展开才列来源 */

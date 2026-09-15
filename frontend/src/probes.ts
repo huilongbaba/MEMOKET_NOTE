@@ -176,6 +176,22 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     // 页里有 mermaid 块的话报一下渲染状态：按需加载 mermaid 之后（第 518 轮）得确认真的画出来了
     setTimeout(() => { const ws = document.querySelectorAll('.cm-mermaid-widget'); if (ws.length) void api.clientLog('warn', `mermaid widgets=${ws.length} svg=${Array.from(ws).filter((w) => w.querySelector('svg')).length} error=${document.querySelectorAll('.cm-mermaid-error').length}`, '', 'probe') }, 6000)
   }
+  /* openclick:<虚拟页 id>|<选择器> → 打开一页，再去点里面某个东西，并把点的结果报出来。
+     写这个是因为**「点不动」这件事只有真点一下才验得了**：空库示例那两条假事实靠
+     `inert` 挡交互，而 jsdom 根本没实现 inert（属性读出来是 undefined）——单测只能
+     断言属性在，行为得在真 Chromium 里看（第 673 轮）。 */
+  if (probe?.startsWith('openclick:')) {
+    const [id, sel] = probe.slice(10).split('|')
+    setTimeout(() => void openVirtual(id), 900)
+    setTimeout(() => {
+      const el = document.querySelector(sel) as HTMLElement | null
+      const before = document.querySelector(".status-crumbs")?.textContent ?? ''
+      el?.focus()
+      const focused = document.activeElement === el
+      el?.click()
+      setTimeout(() => void api.clientLog('warn', `openclick ${sel} found=${!!el} focusable=${focused} crumbs「${before}」→「${document.querySelector(".status-crumbs")?.textContent ?? ''}」`, '', 'probe'), 600)
+    }, 3500)
+  }
   // openend:<id> → 打开虚拟页并把正文滚到底（看页面尾部的小节 / 分页器）
   if (probe?.startsWith('openend:')) { setTimeout(() => void openVirtual(probe.slice(8)), 900); setTimeout(() => { const el = document.querySelector('.note-scroll'); if (el) el.scrollTop = el.scrollHeight }, 5000) }
   // note:<id>[:ribbon:<tab>] → 按 id 打开某篇真笔记（ribbon 标签由 App 的 defaultOpen 从 probe 串里读）

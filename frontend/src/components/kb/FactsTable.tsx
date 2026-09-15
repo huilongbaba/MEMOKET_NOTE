@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { kbDashboard, memoryFacts, type FactsFilter, type FactsPage, type KbDashboard } from '../../api'
-import { FactList, KbSection, Pager, type KbActions } from './KbBits'
+import { ExampleFacts, FactList, KbSection, Pager, type KbActions } from './KbBits'
 
 const LIMIT = 50
 
@@ -23,8 +23,25 @@ export default function FactsTable({ query, actions }: { query: string; actions:
     <div className="kb-page">
       <div className="kb-head">
         <h2 className="kb-note-title"><i className="bx bx-table muted" /> 事实表</h2>
-        <div className="muted" style={{ fontSize: 13 }}>按类型 / 说话人 / 主题 / 实体 / 置信度筛。想按关键词找，用首页的搜索或 ⌘K。</div>
+        {/* 空库时这行讲的是下面根本不存在的那排筛选器——说明要跟着眼前的东西走 */}
+        {!(meta && meta.stats.facts === 0) && (
+          <div className="muted" style={{ fontSize: 13 }}>按类型 / 说话人 / 主题 / 实体 / 置信度筛。想按关键词找，用首页的搜索或 ⌘K。</div>
+        )}
       </div>
+      {/* 整个库还是空的：五个空下拉 + 「0 条 · 没有事实。」没有一处能动，
+          也说不出下一步该干什么（第 673 轮新用户实拍）。摆样子 + 一个导入出口。 */}
+      {meta && meta.stats.facts === 0 ? (
+        <div className="kb-empty">
+          <i className="bx bx-table" />
+          <h3>知识库还是空的，所以事实表也是空的</h3>
+          <p className="muted">导进一场会议录音或一批笔记，抽出来的每一句都会落在这张表里，按类型 / 说话人 / 主题 / 实体筛。</p>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><i className="bx bx-import" /> 导入</button>
+            <button onClick={() => actions.onOpen('kb')}><i className="bx bx-left-arrow-alt" /> 回知识库总览</button>
+          </div>
+          <ExampleFacts />
+        </div>
+      ) : (<>
       <div className="filter-row">
         <select aria-label="类型" value={filter.kind ?? ''} onChange={(e) => set('kind', e.target.value)}>
           <option value="">全部类型</option>
@@ -51,6 +68,7 @@ export default function FactsTable({ query, actions }: { query: string; actions:
           <Pager total={page.total} limit={page.limit} offset={page.offset} onPage={(o) => setFilter((f) => ({ ...f, offset: o }))} />
         </KbSection>
       )}
+      </>)}
     </div>
   )
 }

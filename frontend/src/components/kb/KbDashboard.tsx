@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { entityIcon } from '../../util/entityIcon'
 
 import { kbDashboard, recall, type Fact, type FactDetail, type KbDashboard as Data } from '../../api'
-import { Chip, FactList, KbSection, MiniBars, StatTile, type KbActions } from './KbBits'
+import { Chip, ExampleFacts, FactList, KbSection, MiniBars, StatTile, type KbActions } from './KbBits'
 import { isSpeakerTag } from '../../util/kbNoise'
 import { takePendingKbQuery } from '../../util/pendingKbQuery'
 import ConflictInbox from './ConflictInbox'
@@ -67,8 +67,8 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
           <p className="muted">把会议记录、录音、其他应用的笔记导进来，或者把一篇写好的笔记「存入知识库」——之后这里会长出主题、实体和时间线，写作时右栏会自动浮现相关的记忆。</p>
           <div className="row" style={{ gap: 8 }}>
             <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><i className="bx bx-import" /> 导入</button>
-            <button onClick={() => actions.onOpen('kb:facts')}>看看事实表长什么样</button>
           </div>
+          <ExampleFacts />
         </div>
       ) : (
         <>
