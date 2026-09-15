@@ -1134,7 +1134,11 @@ input[type=file]:hover { border-color: var(--accent); }
 .chain-when { color: var(--muted); font-size: var(--t-xs); margin-inline-end: 4px; }
 .memory-card-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 120ms; }
 .memory-card:hover .memory-card-actions { opacity: 1; }
-.memory-card:hover { border-color: var(--accent); }
+/* 右栏的记忆卡跟内容卡一套：14px 圆角、卡之间留白。原来是 8px 间距的小卡，
+   一列堆下来像列表，而源仓库的卡是**一张一张分开的**（第 689 轮对比实拍）。 */
+.memory-card { border-radius: var(--r-card); padding: 14px 16px; }
+.memory-card + .memory-card { margin-top: var(--s-5); }
+.memory-card:hover { border-color: color-mix(in srgb, var(--brand), transparent 55%); box-shadow: var(--shadow-card); }
 
 /* 浮动按钮的文字什么时候藏起来。
    **600 定得太狠了**：默认三栏（左 320 + 右 340）中间就是 600 上下，于是除非

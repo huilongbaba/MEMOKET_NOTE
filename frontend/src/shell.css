@@ -176,7 +176,10 @@
 }
 /* 标题行：固定 50px，不随正文滚（desktop_layout.tsx:135-146） */
 .title-row {
-  flex-shrink: 0; min-height: 50px; display: flex; align-items: center;
+  /* 标题到正文之间留一段白（源仓库的文档页那一段非常大）。原来 50px 的行高
+     让标题紧贴着标签带，整页从上到下一口气挤到底。 */
+  flex-shrink: 0; min-height: 64px; display: flex; align-items: center;
+  padding-block: 10px 2px;
   padding-inline: var(--content-margin-inline);
 }
 .note-title {
@@ -188,7 +191,9 @@
 /* 正文的滚动容器。左右边距 --content-margin-inline（scrolling_container.css） */
 .note-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
-  padding: var(--s-4) var(--content-margin-inline) 120px;
+  /* 顶上留一段白：源仓库的文档页从标题到正文之间空得很开，这里原来是 8px，
+     标题、标签带、工具栏、正文一口气贴到底（第 689 轮对比实拍）。 */
+  padding: var(--s-7) var(--content-margin-inline) 120px;
 }
 /* 有浮动按钮的（真笔记）正文起点往下让一行，别被按钮盖住 */
 .note-scroll.has-fb { padding-top: 8px; }
@@ -244,7 +249,7 @@
 /* ---------------------------------------------------------------- ribbon
    标题下面那条可折叠的元数据带。收起是默认——正文才是主角。 */
 .ribbon { border-bottom: 1px solid var(--subtle-border); }
-.ribbon-strip { display: flex; gap: var(--s-1); padding: var(--s-2) calc(var(--content-margin-inline) - 8px); flex-wrap: wrap; min-height: 36px; align-items: center; }
+.ribbon-strip { display: flex; gap: var(--s-5); padding: var(--s-2) var(--content-margin-inline) 0; flex-wrap: wrap; min-height: 36px; align-items: center; }
 .ribbon-tab {
   font-weight: var(--w-semi);
   display: flex; align-items: center; gap: var(--s-3);
