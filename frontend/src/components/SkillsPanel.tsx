@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { splitSkillName } from '../util/skillName'
 import { friendlyError } from '../util/friendlyError'
 import * as api from '../api'
 import type { Skill, SkillIn, SkillScope } from '../api'
@@ -33,14 +34,15 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
   const [generateGoal, setGenerateGoal] = useState('')
   const [generating, setGenerating] = useState(false)
 
+  /** 返回那个 promise：恢复出厂要**等列表真的换过来**再报成功（第 673 轮）。 */
   function reload() {
-    Promise.all([api.listSkills(), api.listSkillScopes()]).then(([s, sc]) => {
+    return Promise.all([api.listSkills(), api.listSkillScopes()]).then(([s, sc]) => {
       setSkills(s)
       setScopes(sc)
       setLoading(false)
     }).catch((e) => { setLoading(false); toast('读取 skill 列表失败：' + friendlyError(e), 'error') })
   }
-  useEffect(reload, [])
+  useEffect(() => { void reload() }, [])
 
   function scopeLabel(value: string) {
     return scopes.find((s) => s.value === value)?.label ?? value
@@ -149,7 +151,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
         await api.updateSkill(editing, form)
       }
       setEditing(null)
-      reload()
+      void reload()
     } catch (e) {
       toast('保存失败：' + friendlyError(e), 'error')
     } finally {
@@ -158,18 +160,38 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
   }
 
   /** 同一套乐观删除+撤销 toast 模式，跟笔记/文件夹删除一致（见 App.tsx
-   * 的 remove()/removeFolder()）——不用 confirm() 弹窗。 */
+   * 的 remove()/removeFolder()）——不用 confirm() 弹窗。
+   *
+   * **失败要说出来。** 原来是 `.catch(() => {})`，出错一声不吭。
+   *
+   * 顺带纠正一件事：内置 skill 的 ✕ 原来点下去，卡片消失、toast 说「已删除」，
+   * 刷新之后它**还在**。实跑量到的机制不是删失败——DELETE 真的返回 200 把目录删了，
+   * 是**下一次列表会照着出厂那份重新播种一遍**（`skills.py::seed_builtins`）。
+   * 所以对内置来说这个动作的真名是「恢复出厂」，不是「删除」——按钮和 toast
+   * 现在都这么说（第 673 轮）。 */
   function remove(skill: Skill) {
     setSkills((prev) => prev.filter((s) => s.id !== skill.id))
     let undone = false
     const timer = setTimeout(() => {
-      if (!undone) api.deleteSkill(skill.id).catch(() => {})
+      if (!undone) api.deleteSkill(skill.id).catch((e) => { toast('删除失败：' + friendlyError(e), 'error'); void reload() })
     }, 5000)
     toastAction(`已删除「${skill.name}」`, '撤销', () => {
       undone = true
       clearTimeout(timer)
-      reload()
+      void reload()
     })
+  }
+
+  /** 内置的「删除」其实是恢复出厂：目录删掉，下一次列表照出厂那份重新播种。
+   *  不做乐观更新——这里要的是**看到它变回原样**，不是看到它消失。 */
+  async function restore(skill: Skill) {
+    try {
+      await api.deleteSkill(skill.id)
+      await reload()
+      toast(`「${splitSkillName(skill.name).head}」已恢复出厂`)
+    } catch (e) {
+      toast('恢复失败：' + friendlyError(e), 'error')
+    }
   }
 
   return (
@@ -307,7 +329,10 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
             {skills.map((sk, i) => (
               <div key={sk.id} className="card">
                 {/* 标题长（「先想读者会追问什么（受 doc-coauthoring 的语境收集启发）」）窄窗时
-                    按钮组整个被挤到下一行（实拍 1000px）：标题可省略，按钮不缩 */}
+                    按钮组整个被挤到下一行（实拍 1000px）：标题可省略，按钮不缩。
+                    但这样一来**每一条内置的名字都从中间被切掉**（1280px 实拍也照切，
+                    连右括号都没了，第 673 轮）——把括号里的出处摘到下面那行去，
+                    留在这一行的就只是真正分辨得出的那一截。 */}
                 <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', gap: 8 }}>
                   <div className="row" style={{ gap: 6, minWidth: 0, flexWrap: 'nowrap' }}>
                     <button
@@ -318,16 +343,24 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                     >
                       {sk.enabled ? '● 已启用' : '○ 已关闭'}
                     </button>
-                    <strong title={sk.name} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sk.name}</strong>
-                    {sk.builtin && <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>内置</span>}
+                    <strong title={sk.name} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{splitSkillName(sk.name).head}</strong>
+                    {sk.builtin && <span className="muted" style={{ fontSize: 11, flexShrink: 0 }} title="随应用一起带的，删不掉；不想要就用左边的开关关掉">内置</span>}
                   </div>
                   <div className="row" style={{ gap: 2, flexShrink: 0, flexWrap: 'nowrap' }}>
                     <button onClick={() => move(sk, -1)} disabled={i === 0} title="上移">↑</button>
                     <button onClick={() => move(sk, 1)} disabled={i === skills.length - 1} title="下移">↓</button>
                     <button onClick={() => startEdit(sk)} title="编辑">✎</button>
-                    <button onClick={() => remove(sk)} title="删除（5 秒内可撤销）">✕</button>
+                    {/* 内置的删不掉：删完下一次列表就照出厂那份重新播种回来（实跑量过）。
+                        所以这里给的是它真正做的那件事——恢复出厂。不想要它就用左边的开关。 */}
+                    {sk.builtin
+                      ? <button onClick={() => restore(sk)} title="恢复出厂：把我对这条的改动扔掉，开关和排序也回默认">↺</button>
+                      : <button onClick={() => remove(sk)} title="删除（5 秒内可撤销）">✕</button>}
                   </div>
                 </div>
+                {/* 出处（「受 brainstorming 启发」）：是**要留的**归属说明，只是不该挤标题 */}
+                {splitSkillName(sk.name).note && (
+                  <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>{splitSkillName(sk.name).note}</p>
+                )}
                 {sk.description && <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>{sk.description}</p>}
                 <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
                   {sk.scopes.map((s) => <span key={s} className="badge">{scopeLabel(s)}</span>)}

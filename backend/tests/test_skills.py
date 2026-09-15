@@ -109,6 +109,9 @@ def test_播种是增量的用户的修改不会被覆盖(env):
 
 
 def test_删掉的内置下次会补回来(env):
+    """这是**故意的**（出厂那份是随应用走的），但界面上原来把这个动作叫「删除」：
+    点完卡片消失、toast 说「已删除」，刷新一下它还在。第 673 轮实跑量到之后，
+    内置那一栏的按钮改叫「恢复出厂」——名字要跟这条测试保的行为对得上。"""
     skills.seed("u1")
     skills.uninstall("u1", "llm-writing-avoid-defaults")
     assert skills.seed("u1") == 1
