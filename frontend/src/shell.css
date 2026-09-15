@@ -173,6 +173,9 @@
 
 .center-pane { flex: 1; min-height: 0; display: flex; }
 .note-pane {
+  /* 标题 40px 在窄栏里放不下（分屏实拍：「harness 测试（可删）· 幻」被截，
+     第 697 轮）。标题是单行 `<input>`、换不了行，所以让**字号跟着栏宽降一档**。 */
+  container-type: inline-size; container-name: notepane;
   flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column; overflow: hidden;
   border-start-start-radius: var(--center-pane-border-radius);
@@ -191,6 +194,9 @@
   border: none !important; background: transparent !important; padding: 8px 0 !important;
 }
 .note-title:focus-visible { outline: none; }
+/* 栏一窄就降一档，再窄再降一档。分屏、收起左栏、小窗口都走这条。 */
+@container notepane (max-width: 760px) { .note-title { font-size: var(--t-page); } }
+@container notepane (max-width: 560px) { .note-title { font-size: var(--t-2xl); } }
 /* 正文的滚动容器。左右边距 --content-margin-inline（scrolling_container.css） */
 .note-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
