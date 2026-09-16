@@ -1128,6 +1128,10 @@ h2:first-child { margin-top: 0; }
 /* composer 里的分体按钮：主钮是品牌实心，它的 ⌄ 也得是同一块——原来 ⌄ 是
    幽灵按钮，贴在实心胶囊右边像掉了一块漆（第 714 轮实拍）。 */
 .composer .fb-split .fb-caret-btn { background: var(--accent); color: var(--accent-fg); }
+/* 跑起来主钮变红，**⌄ 那一半要跟着变**——不然是一半红一半紫的断块
+   （第 732 轮实拍：只在「跑动中」这一帧才看得见，之前几次截图都拍到的是跑完）。 */
+.composer .fb-split.running .fb-caret-btn,
+.composer .fb-split.running .fb-caret-btn:hover:not(:disabled) { background: var(--del); color: var(--accent-fg); }
 .composer .fb-split .fb-caret-btn:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
 .composer-actions .fb-split .fb-btn { border-radius: var(--r-pill); }
 .composer-actions .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }

@@ -3353,7 +3353,7 @@ export default function App() {
               {/* **一个位置只放一个主动作。** 第 714 轮我写成了「跑起来时主钮变灰 +
                   旁边再冒一个停止钮」——那一刻屏幕上有**两个主按钮**，一个还是死的
                   （第 728 轮回头读代码发现的）。正在跑什么，主钮就是停它。 */}
-              <span className="fb-split">
+              <span className={'fb-split' + (loading === 'tap' || loading === 'note-harness' ? ' running' : '')}>
               <button className={'fb-btn primary' + (loading === 'tap' || loading === 'note-harness' ? ' running' : '')}
                       onClick={() => {
                         if (loading === 'tap') { void runMagicTap(); return }          // 再点一次 = 停
