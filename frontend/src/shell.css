@@ -60,6 +60,14 @@
   --new-tab-button-size: 24px;
   --center-pane-border-radius: var(--r);
   --content-margin-inline: 24px;
+  /* **别的东西按它算偏移的尺寸，一律给个名字。**（第 735 轮）
+     `.toast` 的 `bottom: 44px` 其实是手算的「状态栏 28 + 一段间距」，
+     状态栏一改高度它就压上去；右栏标签条那行更直白——注释里写着
+     `--right-pane-header-height`，**这个令牌根本不存在**，值是写死的 34。
+     第 734 轮刚被这类数字坑过一次（横带删了，三处按它算的偏移各自留着）。 */
+  --status-bar-height: 28px;
+  --composer-dock-height: 104px;
+  --right-pane-header-height: 34px;
 
   /* 屏幕活动那条带上「一个应用一个颜色」的八个槽。深浅各一套，同一个色相换一步，
      不是两套不同的颜色。改之前先跑 dataviz 的 validate_palette（相邻对 ΔE 要过线）。 */
@@ -214,7 +222,10 @@
   flex: 1; min-height: 0; overflow-y: auto;
   /* 顶上留一段白：源仓库的文档页从标题到正文之间空得很开，这里原来是 8px，
      标题、标签带、工具栏、正文一口气贴到底（第 689 轮对比实拍）。 */
-  padding: var(--s-7) var(--content-margin-inline) 120px;
+  /* 底部留白分两层：这里是**所有页面**都要的一段（虚拟页也用这个滚动容器）；
+     真笔记还要再让出 composer 那条 dock 的高度，由下面的 `.has-composer` 加。
+     原来两处都写着 `120px`——同一个数字、两个出处，改一处另一处就漂（第 735 轮）。 */
+  padding: var(--s-7) var(--content-margin-inline) var(--s-8);
 }
 /* `has-composer`：这一栏底下有那条 composer 胶囊，正文要给它让出地方，
    否则最后一行永远压在胶囊底下。104（dock 高）+ 一点余量。
@@ -222,7 +233,7 @@
    让位的，带子第 714 轮搬走了，这条覆盖却留着，把正文顶部的白从 24 压回 8。
    第 729 轮清掉。类名也从 `has-fb`〔floating buttons〕改成 `has-composer`：
    **名字跟着东西走，不然下一个人读到 fb 会去找一个不存在的组件。**） */
-.note-scroll.has-composer { padding-bottom: 120px; }
+.note-scroll.has-composer { padding-bottom: calc(var(--composer-dock-height) + var(--s-6)); }
 /* ribbon 的「格式」标签展开时是一条 36px 的工具栏，不要像别的标签那样有内边距 */
 .ribbon-body:has(.md-toolbar) { padding: 2px 12px 4px; }
 .ribbon-icon .bx { font-size: var(--icon-md); vertical-align: -2px; }
@@ -263,7 +274,7 @@
 
 /* 状态栏 */
 .status-bar {
-  min-height: 28px; flex-shrink: 0;
+  min-height: var(--status-bar-height); flex-shrink: 0;
   display: flex; align-items: center; gap: var(--s-5); padding: 0 10px;
   /* 状态栏在视觉上是左栏的延伸，不是启动栏的（StatusBar.css:4-14） */
   background: var(--left-pane-bg); color: var(--left-pane-fg);
@@ -303,7 +314,7 @@
 /* ------------------------------------------------------------- 右栏内部 */
 .right-pane-tabs {
   display: flex; gap: var(--s-1); padding: 0 8px; align-items: center;
-  height: 34px;                                /* --right-pane-header-height */
+  height: var(--right-pane-header-height);
   border-bottom: 1px solid var(--subtle-border); flex-shrink: 0;
   /* 5 个中文标签在 300px 里已经很挤，栏一窄就溢出——自己横向滚，不显滚动条 */
   overflow-x: auto; scrollbar-width: none;

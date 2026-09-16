@@ -355,7 +355,9 @@ h2:first-child { margin-top: 0; }
 
 .toaster {
   /* 44px = 状态栏 28px + 留白：toast 之前盖在状态栏的字数/语音离线上（实拍） */
-  position: fixed; bottom: 44px; right: 16px; z-index: var(--z-toast);
+  /* 停在状态栏上方一段：`44px` 原来是手算的（状态栏 28 + 16），状态栏一改高度
+     toast 就压上去。改成从令牌算（第 735 轮）。 */
+  position: fixed; bottom: calc(var(--status-bar-height) + var(--s-6)); right: var(--s-6); z-index: var(--z-toast);
   display: flex; flex-direction: column; gap: var(--s-4); max-width: 360px;
 }
 /* Toast 是**反色块**（UI_SPEC §2.9），不是白底加边框——它要压在内容上面被看见。
@@ -1056,7 +1058,7 @@ h2:first-child { margin-top: 0; }
 .composer-dock {
   position: absolute; inset-inline: 0; bottom: 0; z-index: var(--z-float);
   display: flex; justify-content: center; align-items: flex-end;
-  height: 104px; padding: 0 var(--content-margin-inline) var(--s-7);
+  height: var(--composer-dock-height); padding: 0 var(--content-margin-inline) var(--s-7);
   pointer-events: none;
 }
 /* **专注模式下正文收成一条 880 的窄列、靠左**（`.note-pane.focus .note-scroll > *`），
