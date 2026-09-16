@@ -87,6 +87,31 @@ function persistLog(line: string) {
 
 const boundsFile = () => path.join(app.getPath('userData'), 'window.json')
 
+/** **版本变了就把 HTTP 缓存清掉。**
+ *
+ * 真出过（第 744 轮，用户原话「为什么我打开还是这个」）：装了新版，界面还是旧的。
+ * 前端是通过 `http://127.0.0.1:<port>/` 加载的，`index.html` **不带内容哈希**，
+ * 被 Chromium 的磁盘缓存留住之后指向的还是上一版的资源名——整套旧界面从缓存回来。
+ *
+ * 后端那边已经给 `index.html` 加了 `no-store`（`app/main.py`），但那只对**之后**
+ * 的版本有效：从一个没有那条头的旧版升上来，第一次打开缓存仍然是「新鲜」的，
+ * 浏览器根本不会去问。所以这里再兜一道——**版本号变了，清一次缓存**。
+ */
+async function clearCacheOnUpgrade() {
+  const f = path.join(app.getPath('userData'), 'version.json')
+  const now = app.getVersion()
+  let seen = ''
+  try { seen = JSON.parse(readFileSync(f, 'utf8')).version ?? '' } catch { /* 第一次跑，没有这个文件 */ }
+  if (seen === now) return
+  try {
+    await session.defaultSession.clearCache()
+    remember(`[desktop] 版本 ${seen || '(首次)'} → ${now}，已清掉 HTTP 缓存\n`)
+  } catch (e) {
+    remember(`[desktop] 清缓存失败（不致命）：${e instanceof Error ? e.message : String(e)}\n`)
+  }
+  try { writeFileSync(f, JSON.stringify({ version: now })) } catch { /* 写不上就下次再清一次 */ }
+}
+
 function loadBounds(): { x?: number; y?: number; width: number; height: number } | null {
   try {
     const b = JSON.parse(readFileSync(boundsFile(), 'utf8')) as { x?: number; y?: number; width: number; height: number }
@@ -394,7 +419,7 @@ if (!app.requestSingleInstanceLock()) {
     if (win) { if (win.isMinimized()) win.restore(); win.focus() }
   })
   // boot() 里没兜住的意外（起窗口 / 读身份文件抛出来的）原来是 unhandled rejection：进程活着、窗口没有。
-  app.whenReady().then(() => { installMenu(); setupJourney(); return boot() }).catch((e) => {
+  app.whenReady().then(() => { installMenu(); setupJourney(); return clearCacheOnUpgrade() }).then(boot).catch((e) => {
     remember(`[desktop] 启动失败：${e instanceof Error ? e.stack ?? e.message : String(e)}\n`)
     dialog.showErrorBox('启动失败', `${e instanceof Error ? e.message : String(e)}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
     app.quit()

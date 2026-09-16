@@ -224,8 +224,28 @@ async def _api_not_found(rest: str):
     raise HTTPException(404, f"没有这个端点：/api/{rest}")
 
 
+class _NoStoreIndex(StaticFiles):
+    """托管前端，但 **`index.html` 一律不许缓存**。
+
+    这是个真出过的 bug（第 744 轮）：升级安装包之后打开，界面还是**旧的**。
+    Vite 给 JS/CSS 的文件名带内容哈希，本来就能安全长缓存；可 `index.html`
+    不带哈希，它被 Chromium 的磁盘缓存留住之后，指向的还是**上一版的**资源名，
+    于是整套旧界面一起从缓存里回来——用户看到的是「装了新版，界面没变」。
+    （查的时候绕了一圈：装的包里 `index.html` 引的 JS 明明含新文案，
+    渲染出来却是旧的；换一个 `--user` 数据目录立刻正常，才定位到缓存。）
+
+    带哈希的资源照旧可缓存，只把入口文件设成 `no-store`。
+    """
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        resp = await super().get_response(path, scope)
+        if path in ("", ".", "index.html") or path.endswith("/index.html"):
+            resp.headers["Cache-Control"] = "no-store, must-revalidate"
+        return resp
+
+
 _web = _web_dir()
 if _web:
     # html=True：任何找不到的路径回落到 index.html
-    app.mount("/", StaticFiles(directory=str(_web), html=True), name="web")
+    app.mount("/", _NoStoreIndex(directory=str(_web), html=True), name="web")
     print(f"[startup] 托管前端：{_web}")
