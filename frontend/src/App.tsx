@@ -169,7 +169,7 @@ export default function App() {
   const [askDraft, setAskDraft] = useState('')
   /** 做幻灯片时的「第几页」。只有它需要比 BUSY_LABEL 更细的进度。 */
   const [slidePhase, setSlidePhase] = useState('')
-  const slidesSeen = useRef(0)
+  const slidesText = useRef('')
   const [fbMenu, setFbMenu] = useState<{ kind: 'harness' | 'more'; at: MenuAt } | null>(null)
   // 树菜单「导入到这里…」用的隐藏文件框；记住要挂到哪个节点下面
   const importInput = useRef<HTMLInputElement>(null)
@@ -1770,16 +1770,21 @@ export default function App() {
   async function runSlides(style: 'points' | 'talk') {
     if (!current || !content.trim()) return
     setLoading('slides')
-    slidesSeen.current = 0; setSlidePhase('')
+    slidesText.current = ''; setSlidePhase('')
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
       await save()
       const r = await api.makeSlides(current.id, content, current.title, style,
-        // 流式回来的是正文片段，不是阶段名——**报页数比报字数有意义**：
-        // 用户要的是「做到第几页了」，`---` 的个数就是页数。
-        (delta) => { slidesSeen.current += (delta.match(/\n---/g) ?? []).length
-                     setSlidePhase(`做幻灯片…第 ${slidesSeen.current + 1} 页`) },
+        /* 流式回来的是正文片段，不是阶段名——**报页数比报字数有意义**：
+           用户要的是「做到第几页了」，`---` 的个数就是页数。
+           **在累计文本上数，不在每个片段上数**：片段边界随时可能把 `\n---`
+           切成两半，逐片段数会漏（第 737 轮，我上一轮刚写的脆弱处）。 */
+        (delta) => {
+          slidesText.current += delta
+          const pages = (slidesText.current.match(/\n---/g) ?? []).length
+          setSlidePhase(`做幻灯片…第 ${pages + 1} 页`)
+        },
         ctrl.signal)
       window.dispatchEvent(new CustomEvent('notes-changed'))
       await reload(); await reloadTree()
@@ -3343,7 +3348,11 @@ export default function App() {
                  还指着「续写」那个标签，而那个标签在默认布局下是藏起来的（第 618 轮）。
                  Markdown / mermaid 的说明挪进了「更多」菜单——那是「想起来了去查」的
                  东西，不是「第一次打开」的。 */
-              placeholder="写点什么…　输入 / 唤出 AI：用 AI 写、插图、表格、数据分析…"
+              /* **两个占位符别说同一句话。** 底下那条 composer 是「说一句话让 AI 写」，
+                 这里是「自己动手写」——原来两句都以「写…什么」开头，一屏里
+                 两个输入框看起来在问同一件事（第 737 轮实拍新笔记那一屏）。
+                 顺带把 `/` 的内容补全：第 705 轮给它加了排版组，这句话还停在之前。 */
+              placeholder="在这里写。　打一个 / 唤出菜单：AI 写作、插图、表格、排版"
               viewRef={editorViewRef}
             />
           </>
@@ -3359,7 +3368,7 @@ export default function App() {
              <div className="composer">
               <input className="composer-input" value={askDraft} onChange={(e) => setAskDraft(e.target.value)}
                      aria-label="让 AI 写点什么"
-                     placeholder="说要写什么…"
+                     placeholder="说一句话，让 AI 接着写"
                      onKeyDown={(e) => { if (e.key === 'Enter' && askDraft.trim()) { e.preventDefault(); void runCompose() } }} />
               {/* **跑得久的动作要有反馈。** 原来这里只给「存入知识库」一个光转圈的
                   spinner，而「做成幻灯片」实测要 **20 秒**、进度回调还被丢成了
