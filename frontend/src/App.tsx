@@ -2646,8 +2646,16 @@ export default function App() {
   async function runCompose() {
     const text = askDraft.trim()
     if (!text) return
+    /* **插在哪**：跟「续写」用同一条规矩（见 `runMagicTap` 里那段注释）——
+       光标进过编辑器就插在光标处，否则追加到文末。
+       原来这里直接取 `selection.main.head`（第 714 轮），而 **⌘L 之后编辑器
+       根本没有焦点、光标多半还在 0**，于是一句话写出来的段落被插到笔记最前面
+       （第 731 轮回头查出来的；第 718 轮真跑时产出确实落在了开头，我当时
+       只看了「请求发出去没有」，没看它落在哪）。 */
     const view = editorViewRef.current
-    const at = view ? view.state.selection.main.head : content.length
+    const docLen = view?.state.doc.length ?? content.length
+    const at = view?.hasFocus || (view && view.state.selection.main.head > 0)
+      ? view.state.selection.main.head : docLen
     setAskDraft('')
     await runBlock({ group: 'AI', key: 'prompt', label: '用 AI 写', hint: '', icon: 'bx-pen', needsPrompt: true }, at, at, text)
   }
