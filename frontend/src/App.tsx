@@ -121,6 +121,17 @@ export type HarnessState = {
 /** 菜单里的标签名：硬截 + 省略号（不用 clipTitle——那个按句读截，「产品计划会：APP/硬件…」会只剩前半） */
 const ellipsize = (t: string, max: number) => (t.length > max ? t.slice(0, max - 1) + '…' : t)
 
+/** 跑得久的动作在 composer 里显示什么。
+ *  **只列真的会让用户等的**：续写和智能续写自己会把主钮变成「停止」，
+ *  不需要再来一行字；剩下这几个点完之后界面是静的，才需要一句话交代
+ *  （第 733 轮：「做成幻灯片」实测 20 秒，之前一点动静都没有）。 */
+const BUSY_LABEL: Record<string, string> = {
+  ingest: '存进知识库…',
+  slides: '做幻灯片…',
+  restructure: '智能排版…',
+  skeleton: '生成骨架…',
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
@@ -156,6 +167,9 @@ export default function App() {
   const [paneFocus, setPaneFocus] = useState<{ id: string; n: number } | undefined>(undefined)
   /** 底部 composer 里那句话。空 = 主钮是「续写」，有字 = 主钮是「发送」。 */
   const [askDraft, setAskDraft] = useState('')
+  /** 做幻灯片时的「第几页」。只有它需要比 BUSY_LABEL 更细的进度。 */
+  const [slidePhase, setSlidePhase] = useState('')
+  const slidesSeen = useRef(0)
   const [fbMenu, setFbMenu] = useState<{ kind: 'harness' | 'more'; at: MenuAt } | null>(null)
   // 树菜单「导入到这里…」用的隐藏文件框；记住要挂到哪个节点下面
   const importInput = useRef<HTMLInputElement>(null)
@@ -292,7 +306,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {} })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1756,11 +1770,17 @@ export default function App() {
   async function runSlides(style: 'points' | 'talk') {
     if (!current || !content.trim()) return
     setLoading('slides')
+    slidesSeen.current = 0; setSlidePhase('')
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
       await save()
-      const r = await api.makeSlides(current.id, content, current.title, style, () => {}, ctrl.signal)
+      const r = await api.makeSlides(current.id, content, current.title, style,
+        // 流式回来的是正文片段，不是阶段名——**报页数比报字数有意义**：
+        // 用户要的是「做到第几页了」，`---` 的个数就是页数。
+        (delta) => { slidesSeen.current += (delta.match(/\n---/g) ?? []).length
+                     setSlidePhase(`做幻灯片…第 ${slidesSeen.current + 1} 页`) },
+        ctrl.signal)
       window.dispatchEvent(new CustomEvent('notes-changed'))
       await reload(); await reloadTree()
       if (r.note_id) {
@@ -1773,7 +1793,7 @@ export default function App() {
             bad ? 'error' : undefined)
     } catch (e) {
       if ((e as Error).name !== 'AbortError') toast('做幻灯片失败：' + friendlyError(e), 'error')
-    } finally { setLoading(''); abortRef.current = null }
+    } finally { setLoading(''); setSlidePhase(''); abortRef.current = null }
   }
 
   /** 幻灯片 → PDF。HTML 在这边拼（`util/slideHtml`），打印交给主进程——
@@ -2790,7 +2810,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
@@ -3341,6 +3361,16 @@ export default function App() {
                      aria-label="让 AI 写点什么"
                      placeholder="说要写什么…"
                      onKeyDown={(e) => { if (e.key === 'Enter' && askDraft.trim()) { e.preventDefault(); void runCompose() } }} />
+              {/* **跑得久的动作要有反馈。** 原来这里只给「存入知识库」一个光转圈的
+                  spinner，而「做成幻灯片」实测要 **20 秒**、进度回调还被丢成了
+                  `() => {}`——点完之后界面上一点动静都没有（第 733 轮查出来的）。
+                  一个位置、一句话：在做什么，做到哪了。 */}
+              {BUSY_LABEL[loading] && (
+                <span className="composer-busy muted">
+                  <span className="spinner" />
+                  <span>{slidePhase || BUSY_LABEL[loading]}</span>
+                </span>
+              )}
               <span className="composer-actions">
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
               <button className="fb-btn" title="更多"
@@ -3377,7 +3407,6 @@ export default function App() {
                   **一个能力一个按钮**没有被破坏——只是「写一段 / 写到完整」
                   收成了一个按钮加一个下拉，而不是两个抢注意力的胶囊。 */}
               </span>
-              {loading === 'ingest' && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}><span className="spinner" /></span>}
               {fbMenu && (
                 <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
                   { label: '智能续写', icon: 'bx-bot', disabled: loading === 'tap' || loading === 'note-harness' || isSlides(content),

@@ -77,6 +77,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       }, 300)
     }, 1500))
   }
+  /* `slides`：点「做成幻灯片…」，看跑的那 20 秒里 composer 有没有交代
+     （第 733 轮给它接上进度之后，得拍一张**跑动中**的才算数）。 */
+  if (probe === 'slides' && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const n = notes.find((x) => (x.content ?? '').length > 300) ?? notes[0]
+    void switchTo(n).then(() => setTimeout(() => void actionsRef.current.runSlides('points'), 1500))
+  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {

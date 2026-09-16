@@ -1096,6 +1096,8 @@ h2:first-child { margin-top: 0; }
 }
 .composer-input:focus, .composer-input:focus-visible { outline: none; border: none; box-shadow: none !important; }
 .composer-actions { flex: none; display: flex; align-items: center; gap: var(--s-3); }
+/* 忙碌条：转圈 + 一句话，挤在输入框和动作之间。字小、不换行——它是交代，不是主角。 */
+.composer-busy { display: inline-flex; align-items: center; gap: var(--s-3); font-size: var(--t-sm); white-space: nowrap; }
 /* 圆钮：36×36，跟他们的 `.home-composer-send` / `.voice-input-button` 同尺寸。 */
 .composer-actions .fb-btn, .composer-actions .icon-btn, .composer-actions button {
   height: 36px; border-radius: var(--r-pill);
