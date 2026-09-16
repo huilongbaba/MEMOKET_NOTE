@@ -1494,7 +1494,30 @@ kbd {
 .cm-note-peek .peek-body { color: var(--muted); margin-top: 4px; white-space: pre-wrap; max-height: 160px; overflow: hidden; }
 
 /* harness 状态条：粘在浮动按钮横带（48px）下面，滚到哪都看得见 */
-.harness-sticky { position: sticky; top: 48px; z-index: var(--z-sticky); background: var(--main-bg); margin: 0 calc(-1 * var(--content-margin-inline)); padding: var(--s-1) var(--content-margin-inline) 4px; }
+/* `top: 0`：原来是 `48px`——那是给正文顶上那条 56px 的「浮动按钮横带」让位的
+   （48 ≈ 56 − 它自己的 `top: -8px`）。带子第 714 轮搬走了，这个偏移却留着，
+   于是这条横条悬在滚动区顶下方 48px、上面空一截（第 734 轮查出来的，
+   跟第 729 轮那条 `padding-top: 8px` 是同一类遗留）。 */
+.harness-sticky {
+  /* **负 `top` 是为了盖住滚动区自己的上内边距。** 钉在 `top: 0` 时它停在
+     滚动区顶**下方 24px**（`.note-scroll` 的 `padding-top`），那 24px 里漏着
+     滚过去的正文（第 734 轮实拍）。
+     **这个坑旧那条浮动带的注释里记过**：「滚动区顶部有 8px 内边距，钉在 top:0 时
+     那 8px 露出下面滚过的正文」——同一个办法：负 `top` 往上顶，`padding-top`
+     补回来，看起来位置不变。 */
+  position: sticky; top: calc(-1 * var(--s-7)); z-index: var(--z-sticky); background: var(--main-bg);
+  margin: 0 calc(-1 * var(--content-margin-inline));
+  /* **遮盖要够高，下面还要淡出。** 钉到 `top: 0` 之后正文从它底下滚过，
+     原来那点 `2px / 4px` 的内边距盖不住——标题被齐腰切一刀，露出上半截
+     （第 734 轮实拍）。**跟第 701 轮那条浮动带是同一个坑、同一套修法**：
+     实底加够高度，淡出条挂在**下沿之外**（`::after`），文字是淡进来的。 */
+  padding: calc(var(--s-7) + var(--s-4)) var(--content-margin-inline) var(--s-3);
+  margin-top: calc(-1 * var(--s-7));
+}
+.harness-sticky::after {
+  content: ''; position: absolute; inset-inline: 0; top: 100%; height: var(--s-5);
+  background: linear-gradient(var(--main-bg), transparent); pointer-events: none;
+}
 .harness-sticky .harness-line { margin: 0; flex-wrap: wrap; }
 .harness-sticky .harness-line button.primary, .harness-sticky .harness-line button { height: 26px; padding: 0 10px; font-size: var(--t-sm); display: inline-flex; align-items: center; gap: var(--s-2); }
 
