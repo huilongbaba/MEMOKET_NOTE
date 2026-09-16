@@ -118,6 +118,24 @@ console.log('OK: 颜色 / 字号 / 字重 / 圆角 / 间距 / 层级都走令牌
         + ` —— 里面那圈会盖掉外壳的边线（看着像「边框只画了两个角」）`)
     }
   }
+
+  /* **去掉边框的输入框，也要去掉聚焦光晕。**（第 739 轮，同一个坑的第三次）
+     全局 `input:focus` 给 3px 的 `--brand-weak` 环。一个刻意做成「不像输入框」的
+     输入框（笔记标题、搜索框里的内层 input）只清 `border` 是不够的——
+     点进去还是会套一个淡紫框。而且那个颜色**很淡，看截图容易放过**，
+     第 739 轮是靠读计算样式才抓到的。
+     判据只认**明确写了 `border: none`** 的规则，没写的不碰。 */
+  for (const f of cssFiles) {
+    const rel = f.replace(root + '/', '')
+    for (const m of readFileSync(f, 'utf8').matchAll(/([^{}\n]*\binput\b[^{}\n]*|\.[a-z-]*title[a-z-]*)\s*\{([^}]*)\}/g)) {
+      const body = m[2]
+      if (!/border:\s*none/.test(body)) continue
+      if (/box-shadow:\s*none/.test(body)) continue
+      bad++
+      console.log(`✗ ${rel} \`${m[1].trim()}\` 写了 border: none 却没写 box-shadow: none`
+        + ` —— 全局 input:focus 的 3px 光晕还在，点进去会套一个淡紫框`)
+    }
+  }
 }
 
   const cssAll = corpus(walk(root).filter((f) => f.endsWith('.css')), 3, '样式表')

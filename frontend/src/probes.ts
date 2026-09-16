@@ -105,6 +105,21 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       }, 500)
     }, 1500))
   }
+  /* `title-focus`：点进标题输入框，看聚焦时长什么样
+     （用户第 739 轮：「title 输入的框去掉」）。 */
+  if (probe === 'title-focus' && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    void switchTo(notes[0]).then(() => setTimeout(() => {
+      const t = document.querySelector('.note-title') as HTMLInputElement | null
+      t?.focus()
+      setTimeout(() => {
+        const a = document.activeElement as HTMLElement | null
+        const cs = t ? getComputedStyle(t) : null
+        void api.clientLog('info', `title-focus: active=${a?.className || a?.tagName} `
+          + `boxShadow=${cs?.boxShadow} border=${cs?.border} outline=${cs?.outline}`)
+      }, 400)
+    }, 1500))
+  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {

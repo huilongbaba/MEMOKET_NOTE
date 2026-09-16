@@ -159,6 +159,9 @@
      （#F1F0EE vs #FDFDFD），那条 `.16` 的线是多出来的，整个左栏因此显得重。
      **这就是「只读 CSS 会把不出货的分支当真」的一个实例。** */
   border-right: 0;
+  /* 跟正文区同一套：上面两个角圆，下面顶着状态栏不圆。 */
+  border-start-start-radius: var(--center-pane-border-radius);
+  border-start-end-radius: var(--center-pane-border-radius);
 }
 /* 侧栏内边距 **16**（0.5.10 的 `.sb-search { margin: 16px 16px 24px }`）。
    原来是 8——左栏的东西几乎贴着边，跟他们那种「内容从边上退开一截」的呼吸感
@@ -211,7 +214,15 @@
 .note-title {
   flex: 1; font-family: var(--display); font-size: var(--note-title-size); font-weight: var(--w-bold); line-height: 1.2;
   letter-spacing: var(--ls-tight);
-  border: none !important; background: transparent !important; padding: 8px 0 !important;
+  /* **连聚焦光晕一起清掉。** 全局 `input:focus` 会给 3px 的 `--brand-weak` 环，
+     这里只清了 border 没清 box-shadow——点进标题时整行外面套一个淡紫框
+     （用户第 739 轮：「title 输入的框去掉」；计算样式量到的是
+     `boxShadow: rgb(241,234,254) 0 0 0 3px`，颜色太淡，光看截图差点放过）。
+     **这是同一个坑第三次**：第 702 轮 `.kb-search` 和 `.quick-search` 各中一次。
+     没有框之后靠什么知道焦点在这儿？**光标**——一个无边框的标题输入框，
+     插入符就是它的聚焦指示（Notion / 苹果备忘录都是这样）。 */
+  border: none !important; background: transparent !important; box-shadow: none !important;
+  padding: 8px 0 !important;
 }
 .note-title:focus-visible { outline: none; }
 /* 栏一窄就降一档，再窄再降一档。分屏、收起左栏、小窗口都走这条。 */
@@ -245,6 +256,8 @@
   display: flex; flex-direction: column; min-height: 0;
   background: var(--main-bg);
   border-left: 1px solid var(--subtle-border);
+  /* 白卡的右上角（左上角在 `.note-pane` 那边，两块合起来是一张卡）。 */
+  border-start-end-radius: var(--center-pane-border-radius);
 }
 .right-pane-body { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
 .right-pane-actions { margin-inline-start: auto; min-width: max-content; display: flex; }

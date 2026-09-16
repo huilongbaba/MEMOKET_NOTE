@@ -412,8 +412,13 @@ h2:first-child { margin-top: 0; }
   box-shadow: var(--shadow-pop);
   display: flex; flex-direction: column;
 }
+/* ⌘K 那个面板的输入框：它**是面板的一部分**，不是一个独立控件——只留一条
+   分隔线。`box-shadow: none` 是第 739 轮闸门抓出来的第四处：全局 `input:focus`
+   的 3px 光晕会在面板里面再套一圈淡紫（面板自己已经有边和阴影了）。
+   聚焦靠什么看得出来？**面板是被 ⌘K 主动唤起来的，光标就在里面**，不需要。 */
 .palette input {
   border: none; border-bottom: 1px solid var(--line); border-radius: 0;
+  box-shadow: none;
   font-size: var(--t-base); padding: 14px 16px;
 }
 .palette-results { overflow-y: auto; padding: var(--s-3); }
