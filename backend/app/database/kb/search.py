@@ -129,8 +129,17 @@ def _terms(memory, query: str) -> list[str]:
     # 英文虚词和「speaker a」这种说话人标签不当查询词：英文事实几乎每条都是「Speaker B says …」，
     # 这些词一人一分把真正的内容词稀释掉——第 527 轮自召回复测三条 miss 全是这个样子
     # （terms= ['it', 'speaker a', 'speaker', 'says', 'can', …]）。全是虚词时退回原样，别搜不出东西。
-    kept = [t for t in out if t not in _EN_STOP and not _is_speaker_word(t)]
-    return kept or out
+    kept = [t for t in out if t not in _EN_STOP and not _is_speaker_word(t)
+            and not _is_cn_filler(t)]
+    # 全被剔光时怎么办，**分两种情况**（第 747 轮真库量出来的）：
+    # · 查询很短（用户主动在搜「总结」这种词）→ 退回原样，别搜不出东西（第 527 轮那条）；
+    # · 查询是一长句（跟着正文自动召回、或者一句任务指令）→ **就该什么都不返回**。
+    #   实测「帮我总结一下」在两万条的真库里得分 **20**，比真正相关的命中（8 分）还高——
+    #   因为整句口水话在会议记录里原样出现，还被切成 8 个重叠片段叠加。
+    #   这种时候捞回来的每一条都是噪声，**宁可空着**。
+    if kept:
+        return kept
+    return out if len(query.strip()) <= _SHORT_QUERY else []
 
 
 _EN_STOP = frozenset("""
@@ -142,6 +151,41 @@ under to up down out with without at by as in what which who whom when where why
 say says said saying talk talks talking know knows knew think thinks like likes want wants
 now later still already only ever never always some more most much many other another such
 """.split())
+
+
+# 查询里的**指令 / 口水词**。只放两类：中文虚词，和「帮我 / 写一个 / 总结一下」这种
+# **任务脚手架**。**不放领域词**——「需求」「功能」「产品」「目标用户」在这个库里是真内容，
+# 剔掉它们等于把用户真正想查的东西也剔了（第 747 轮定这条边界时先量后定）。
+_CN_FILLER = frozenset("""
+的 了 在 是 和 与 及 或 把 被 对 到 从 这 那 就 也 都 还 又 很 不 没 有 个 着 过 为 以 及
+我 你 他 她 它 我们 你们 他们 咱们 自己 什么 怎么 怎样 如何 为什么 哪些 哪个 多少
+帮我 帮忙 请 麻烦 一下 一个 一些 这个 那个 这些 那些 现在 然后 所以 因为 但是 而且
+写 写一 写一个 生成 做一 做一个 整理 梳理 总结 概括 归纳 列出 给出 给我 看看 说说
+一下子 一点 可以 能否 是否 需要注意
+""".split())
+
+
+_FILLER_CHARS = frozenset("".join(_CN_FILLER))
+
+
+def _is_cn_filler(t: str) -> bool:
+    """`t` 是不是纯指令 / 口水词。
+
+    CJK 查询会被切成**重叠的 n-gram**（「帮我总结一下」→ 帮我总 / 我总结 / 总结一 /
+    结一下 …），而这些片段**跨在两个口水词之间**，整词比对抓不住
+    （第 747 轮第一版就是这么漏的：剔完还剩 6 个片段，分数照样 20）。
+    改成**按字符**判：整个片段的字全来自口水词表才算口水。
+    「需求文」不会被误伤——需 / 求 / 文 都不在那张表的字里。
+    """
+    if t in _CN_FILLER:
+        return True
+    return bool(t) and all("\u4e00" <= c <= "\u9fff" and c in _FILLER_CHARS for c in t)
+
+
+# 字符数：比这短才当成「用户主动搜的词」，剔光了退回原样。
+# 主动搜的词一般就 2–4 个字（众筹 / 订金 / DVT）；「帮我总结一下」是 6 个字的**句子**，
+# 第一版门槛设成 8，它正好落进兜底里，剔了等于没剔（第 747 轮量出来的）。
+_SHORT_QUERY = 4
 
 
 def _is_speaker_word(t: str) -> bool:
@@ -212,7 +256,14 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
     """
     terms = _terms(memory, query)
     if not terms:
-        return rows[:limit]
+        # **一个内容词都没有 = 这段话跟知识库没关系，就该什么都不返回。**
+        # 原来这里是 `return rows[:limit]`——把整池原样交回去。
+        # 在「查询词不可能为空」的年代那是无害的兜底；第 747 轮给查询加了中文
+        # 口水词过滤之后，「帮我总结一下」这种**整句都是指令**的查询会被剔成空，
+        # 而这一行照旧把 8 条不相干的事实端上来（用户原话：「我让你写一个需求文档，
+        # 你给我搞了一堆没用的记忆」）。
+        # 两个调用点都是召回（正文召回 + 行级回退），返回空正是它们要的语义。
+        return []
     # 查询里认出的实体（含同一组的其它写法）：事实挂着它就加分——不然「MemoCat」只召回文本里写成
     # MemoCat 的，写成 memo cat 的那一半排不上来（第 293 轮真库实测 7:1）
     group_codes: set[str] = set()

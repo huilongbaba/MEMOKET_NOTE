@@ -81,10 +81,18 @@ def test_日期只在得分相同时用来断结():
     assert [r["id"] for r in out] == ["b", "a"]
 
 
-def test_查询里一个词都提取不出来时原样返回():
+def test_查询里一个词都提取不出来时返回空():
+    """**这条是故意推翻上一版的**（第 747 轮）。
+
+    原来断言的是「原样返回整池」。那在「查询词不可能为空」的年代是个无害的兜底；
+    给查询加了中文口水词过滤之后，「帮我总结一下」这种**整句都是指令**的查询会被
+    剔成空——而原来那个兜底会照旧端上来 8 条不相干的事实
+    （用户原话：「我让你写一个需求文档，你给我搞了一堆没用的记忆」）。
+    **一个内容词都没有 = 这段话跟知识库没关系，就该什么都不返回。**
+    """
     store = _store({"a": "内容"})
     rows = [{"id": "a", "date": ""}]
-    assert search.rank(rows, "!!!", _FakeMemory(), store, limit=1) == rows
+    assert search.rank(rows, "!!!", _FakeMemory(), store, limit=1) == []
 
 
 def test_报出来的命中词是真的出现在结果里的():
@@ -148,9 +156,13 @@ def test_英文虚词和说话人标签不当查询词():
     mem._cjk_terms = lambda text: []
     terms = search._terms(mem, "Speaker B says they have no ideas now but will have ideas later")
     assert terms == ["ideas"]
-    # 全是虚词时退回原样，别搜不出东西
+    # 全是虚词时怎么办，**分两种情况**（第 747 轮改的，上一版是一律退回原样）：
+    # · 长句（跟着正文自动召回、或者一句任务指令）→ **返回空**，宁可不给；
     mem._candidate_terms = lambda text: ["speaker a", "says", "it"]
-    assert search._terms(mem, "speaker a says it") == ["speaker a", "says", "it"]
+    assert search._terms(mem, "speaker a says it") == []
+    # · 很短（用户主动在搜这个词）→ 还是退回原样，别搜不出东西（第 527 轮那条）。
+    mem._candidate_terms = lambda text: ["it"]
+    assert search._terms(mem, "it") == ["it"]
 
 
 def test_同一个词出现两次的排在只出现一次的前面():

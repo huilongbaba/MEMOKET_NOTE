@@ -511,6 +511,43 @@ function setupJourney() {
   powerMonitor.on('suspend', () => { if (journey?.state() === 'running') { journey.pause(); refreshTray() } })
   powerMonitor.on('unlock-screen', () => { if (journey?.state() === 'paused') { journey.resume(); refreshTray() } })
   powerMonitor.on('resume', () => { if (journey?.state() === 'paused') { journey.resume(); refreshTray() } })
+  // 开着 app 的时候先补一批，别让用户干等一个周期才看见第一句描述。
+  setTimeout(() => void describeBacklog(), 30_000)
+  setInterval(() => void describeBacklog(), DESCRIBE_EVERY_MS)
+}
+
+/** 多久补描一次、一次几段。
+ *  描述一段要跑一次看图模型（实测 15–20 秒 / 2k token，本机 GPU），
+ *  所以**小批、慢跑**：不跟用户抢机器，也不会在后台堆一个大批次。 */
+const DESCRIBE_EVERY_MS = 3 * 60_000
+const DESCRIBE_BATCH = 4
+
+/** **把「还没描述」的段自动描述掉。**
+ *
+ * 这个功能的主张是「每隔一会儿看一眼你的屏幕，把**你在做什么**记成一句话」
+ * （docs/daily-journey-plan.md）。可实现里只有采集是自动的，**描述一直要用户
+ * 自己去点那个「描述这 N 段」**——于是那一屏上全是「还没描述」，剩下的只有
+ * 应用名和时长，看起来就是个**窗口计时器**
+ * （用户第 745 轮原话：「我想要的不是窗口计时器」）。
+ *
+ * 放在壳里而不是后端：采集的节奏本来就由壳掌握（`makeRecorder`），
+ * 而且只有壳知道「现在是不是在记」——暂停 / 锁屏时不该偷偷跑模型。
+ */
+async function describeBacklog() {
+  if (journey?.state() !== 'running') return          // 暂停 / 没开就不跑
+  if (!backend) return
+  try {
+    const r = await fetch(`http://127.0.0.1:${backend.port}/api/journey/catch-up?limit=${DESCRIBE_BATCH}`, {
+      method: 'POST',
+      headers: { 'X-User-Id': loadIdentity() ?? '' },
+    })
+    if (!r.ok) { remember(`[journey] 自动描述失败：HTTP ${r.status}\n`); return }
+    const j = await r.json() as { described?: number; skipped?: number }
+    if (j.described) remember(`[journey] 自动描述了 ${j.described} 段\n`)
+  } catch (e) {
+    // 看图服务不通是常态（不在内网时），不该刷屏——只记一行
+    remember(`[journey] 自动描述跳过：${e instanceof Error ? e.message : String(e)}\n`)
+  }
 }
 
 app.on('window-all-closed', () => {
