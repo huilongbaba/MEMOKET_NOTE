@@ -15,6 +15,7 @@ import {
   heading1Cmd, heading2Cmd, heading3Cmd, quoteCmd,
   bulletListCmd, orderedListCmd, taskListCmd, codeBlockCmd, mermaidCmd, tableCmd,
 } from './markdownCommands'
+import { mountIcon } from '../components/iconDom'
 
 export type SlashItem = {
   key: string
@@ -152,7 +153,8 @@ function pick(view: EditorView, it: SlashItem, from: number, to: number, run: Sl
   run(it, from, to)
 }
 
-function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElement {
+function menuDom(view: EditorView, st: SlashState, run: SlashRunner): { dom: HTMLElement; dispose: () => void } {
+  const disposers: (() => void)[] = []
   const wrap = document.createElement('div')
   wrap.className = 'slash-menu'
   const items = filtered(st.query)
@@ -161,7 +163,7 @@ function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElemen
     empty.className = 'slash-empty'
     empty.textContent = '没有匹配的功能'
     wrap.append(empty)
-    return wrap
+    return { dom: wrap, dispose: () => {} }
   }
   let lastGroup = ''
   items.forEach((it, i) => {
@@ -177,9 +179,12 @@ function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElemen
     const row = document.createElement('div')
     row.className = 'slash-item' + (i === st.active ? ' active' : '')
     row.innerHTML = ''
-    // boxicons 名字（跟外壳其它图标一套），不再是 emoji
-    const icon = document.createElement('i')
-    icon.className = 'slash-icon bx ' + it.icon
+    /* 图标。**这里是手写 DOM，不是 JSX**——第 713 轮换 lucide 时机械替换只扫了
+       JSX，这一处还留着 `<i class="bx bx-…">` 的字体图标写法，换掉字体之后
+       渲染出来是空的（用户第 741 轮：「/ 里的功能呢，怎么没有图标了，显得好空」）。 */
+    const icon = document.createElement('span')
+    icon.className = 'slash-icon bx'
+    disposers.push(mountIcon(icon, it.icon))
     const text = document.createElement('span')
     const label = document.createElement('div')
     label.className = 'slash-label'
@@ -198,7 +203,7 @@ function menuDom(view: EditorView, st: SlashState, run: SlashRunner): HTMLElemen
     })
     wrap.append(row)
   })
-  return wrap
+  return { dom: wrap, dispose: () => disposers.forEach((d) => d()) }
 }
 
 export function slashMenu(run: SlashRunner) {
@@ -209,7 +214,8 @@ export function slashMenu(run: SlashRunner) {
       pos: st.from,
       above: false,
       arrow: false,
-      create: (view) => ({ dom: menuDom(view, st, run) }),
+      // `destroy` 把图标那些 React 根卸掉——菜单每次过滤都会重建，不卸会漏。
+      create: (view) => { const { dom, dispose } = menuDom(view, st, run); return { dom, destroy: dispose } },
     }
   })
 

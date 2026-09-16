@@ -9,6 +9,7 @@ import { RangeSetBuilder, type Extension } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import { fmtDate } from '../util/time'
 import { wordCount } from '../util/wordCount'
+import { mountIcon } from '../components/iconDom'
 
 const NOTE_LINK = /\[([^\]\n]{1,80})\]\(note:\/\/([0-9a-f]{12})\)/g
 
@@ -56,12 +57,16 @@ async function showPeek(anchor: HTMLElement, id: string, lookup: NoteLookup, sti
 class NoteLinkWidget extends WidgetType {
   constructor(readonly title: string, readonly id: string, readonly lookup?: NoteLookup) { super() }
   eq(o: NoteLinkWidget) { return o.title === this.title && o.id === this.id }
+  /** 图标那个 React 根的卸载函数（`mountIcon` 给的），widget 销毁时要调。 */
+  private dispose?: () => void
+  destroy() { this.dispose?.() }
   toDOM() {
     const a = document.createElement('a')
     a.className = 'cm-note-link'
     a.title = '打开这篇笔记'
-    const i = document.createElement('i')
-    i.className = 'bx bx-note'
+    const i = document.createElement('span')
+    i.className = 'bx'
+    this.dispose = mountIcon(i, 'bx-note')
     a.append(i, document.createTextNode(this.title))
     a.addEventListener('mousedown', (e) => {
       e.preventDefault()

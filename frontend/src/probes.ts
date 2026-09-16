@@ -48,78 +48,6 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       void api.clientLog('info', 'rect ' + sel + '\n' + (out.join('\n') || '（没匹配到）'))
     }, 4000)
   }
-  /* `composer:<一句话>`：往底部 composer 里打一句话再回车。
-     第 714 轮加的「发送」是一条**新的代码路径**，改完得真跑一次看请求发没发出去
-     （日志里找 `POST /api/compose/block`），不能只靠截图看长相。 */
-  if (probe?.startsWith('composer:') && notes.length && !harnessProbeDone.current) {
-    harnessProbeDone.current = true
-    const text = decodeURIComponent(probe.slice(9))
-    const n = notes.find((x) => (x.content ?? '').length > 80) ?? notes[0]
-    void switchTo(n).then(() => setTimeout(() => {
-      const el = document.querySelector('.composer-input') as HTMLInputElement | null
-      if (!el) { void api.clientLog('warn', 'composer 探针：找不到输入框', '', 'probe'); return }
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
-      setter?.call(el, text)                                   // React 受控 input：要走原型上的 setter 才触发 onChange
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-      setTimeout(() => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 400)
-    }, 1500))
-  }
-  /* `cmdl`：按一下 ⌘L，看焦点是不是真的落在 composer 的输入框上。
-     （第 724 轮加这个键之后顺手加的——键盘入口最容易「加了但没接上」。） */
-  if (probe === 'cmdl' && notes.length && !harnessProbeDone.current) {
-    harnessProbeDone.current = true
-    const n = notes.find((x) => (x.content ?? '').length > 80) ?? notes[0]
-    void switchTo(n).then(() => setTimeout(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', metaKey: true, bubbles: true }))
-      setTimeout(() => {
-        const ok = document.activeElement?.classList.contains('composer-input')
-        void api.clientLog('info', 'cmdl 探针：焦点在 composer-input = ' + ok)
-      }, 300)
-    }, 1500))
-  }
-  /* `slides`：点「做成幻灯片…」，看跑的那 20 秒里 composer 有没有交代
-     （第 733 轮给它接上进度之后，得拍一张**跑动中**的才算数）。 */
-  if (probe === 'slides' && notes.length && !harnessProbeDone.current) {
-    harnessProbeDone.current = true
-    const n = notes.find((x) => (x.content ?? '').length > 300) ?? notes[0]
-    void switchTo(n).then(() => setTimeout(() => void actionsRef.current.runSlides('points'), 1500))
-  }
-  /* `fbmenu:more` / `fbmenu:harness`：打开 composer 上那两个菜单。
-     第 714 轮把那一排搬到窗口底部之后**从没打开过它们**，用户报「没有一个
-     功能是正常可以点击的」（第 738 轮）。 */
-  if (probe?.startsWith('fbmenu:') && notes.length && !harnessProbeDone.current) {
-    harnessProbeDone.current = true
-    const which = probe.slice(7) === 'harness' ? '智能续写 / 打磨 / 逐轮我来定' : '更多'
-    const n = notes.find((x) => (x.content ?? '').length > 80) ?? notes[0]
-    void switchTo(n).then(() => setTimeout(() => {
-      const btn = Array.from(document.querySelectorAll('.composer button'))
-        .find((x) => x.getAttribute('title') === which) as HTMLElement | undefined
-      if (!btn) { void api.clientLog('warn', 'fbmenu: 找不到按钮 ' + which, '', 'probe'); return }
-      btn.click()
-      setTimeout(() => {
-        const m = document.querySelector('.context-menu') as HTMLElement | null
-        const r = m?.getBoundingClientRect()
-        void api.clientLog('info', `fbmenu ${which}: menu=${m ? 'yes' : 'no'}`
-          + (r ? ` at x=${Math.round(r.x)} y=${Math.round(r.y)} w=${Math.round(r.width)} h=${Math.round(r.height)}`
-               + ` 视口 ${window.innerWidth}x${window.innerHeight}` : ''))
-      }, 500)
-    }, 1500))
-  }
-  /* `title-focus`：点进标题输入框，看聚焦时长什么样
-     （用户第 739 轮：「title 输入的框去掉」）。 */
-  if (probe === 'title-focus' && notes.length && !harnessProbeDone.current) {
-    harnessProbeDone.current = true
-    void switchTo(notes[0]).then(() => setTimeout(() => {
-      const t = document.querySelector('.note-title') as HTMLInputElement | null
-      t?.focus()
-      setTimeout(() => {
-        const a = document.activeElement as HTMLElement | null
-        const cs = t ? getComputedStyle(t) : null
-        void api.clientLog('info', `title-focus: active=${a?.className || a?.tagName} `
-          + `boxShadow=${cs?.boxShadow} border=${cs?.border} outline=${cs?.outline}`)
-      }, 400)
-    }, 1500))
-  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {
@@ -379,7 +307,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     void (async () => {
       await switchTo(n)
       setTimeout(() => {
-        const more = Array.from(document.querySelectorAll('.composer .fb-btn'))
+        const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
           .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
         if (!more) { void api.clientLog('warn', 'export-one: 找不到「更多」', '', 'probe'); return }
         more.click()
@@ -435,7 +363,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 同一个动作三个门，而它是错配最深的那个（工具栏没有上下文，这个动作需要上下文）。
   // 走真实路径：浮动按钮的「⋯」→「无限续写…」。第 625 轮起它不在标题行上常驻了。
   const clickPlanEntry = () => {
-    const more = Array.from(document.querySelectorAll('.composer .fb-btn'))
+    const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
       .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
     if (!more) { void api.clientLog('warn', 'plan-panel: 找不到「更多」按钮', '', 'probe'); return }
     more.click()

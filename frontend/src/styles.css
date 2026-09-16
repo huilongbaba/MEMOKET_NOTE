@@ -1027,7 +1027,12 @@ h2:first-child { margin-top: 0; }
 
 /* ------------------------------------------------ 中栏画布 */
 /* 正文区宽度封顶：一行两百个字没法读。左对齐，跟标题行的内边距对齐。 */
+/* 顶上那段白（原来在 .note-scroll 上，第 741 轮挪过来，见那边的注释）。
+   给  而不是给 .note-body：浮动按钮是它的第一个子节点，
+   给容器加 padding 会把按钮也推下去，又回到「要滚才吸顶」。 */
 .note-body { max-width: 880px; }
+.note-body > .floating-buttons + * { margin-top: var(--s-7); }
+.note-body > *:first-child:not(.floating-buttons) { margin-top: var(--s-7); }
 /* 专注模式：整栏只剩正文，宽度一下变成一千多像素。**正文有上限（880），
    但它是左对齐的**——于是右边空出三百多像素，标题和工具栏又是通栏的，
    整屏看起来像没排完（第 688 轮实拍）。专注模式下把标题 / 标签带 / 工具栏 /
@@ -1045,106 +1050,62 @@ h2:first-child { margin-top: 0; }
 .cm-editor .cm-placeholder { color: var(--muted); opacity: .7; }
 
 
-/* ------------------------------------------------ 底部 composer（正文动作） */
-/* **AI 入口从「浮在正文右上角」搬到「正文底部的一条胶囊」**（第 714 轮）。
-   用户原话：「你续写智能续写音频入口那一行真的很奇怪」。三个毛病：
-   ① 它压在正文第一行上（第 701 轮修渐变时已经看见过一次）；
-   ② 五个控件三种形状（实心胶囊 / 描边胶囊 / 小箭头 / 麦克风+箭头 / 幽灵图标）；
-   ③ 它待在右上角——那是眼睛用来**读**的地方，不是用来**动手**的地方。
-
-   构造照 0.5.10 的 `.home-ask-dock` + `.home-composer`（见
-   docs/MEMOKET_DESKTOP_0.5.10.md）：底部一个 dock 负责遮罩渐变，
-   里面一颗 99px 圆角的玻璃胶囊。
-
-   **跟他们不一样的一处，写清楚为什么**：他们的 dock 自己吃掉指针事件
-   （注释说的是「这块地方视觉上盖住了文件行，就得连命中测试一起拿走，
-   不然会点到看不见的行」）。我们下面是**可编辑的正文**——那 100px 里
-   要能点进去定位光标，所以 dock 是 `pointer-events: none`，只有胶囊本身可点。 */
-.composer-dock {
-  position: absolute; inset-inline: 0; bottom: 0; z-index: var(--z-float);
-  display: flex; justify-content: center; align-items: flex-end;
-  height: var(--composer-dock-height); padding: 0 var(--content-margin-inline) var(--s-7);
+/* ------------------------------------------------ 浮动按钮（正文右上角） */
+/* **它不该是一条白带子。**（用户第 741 轮：「那一行还是很占空间，而且是一条白的」）
+   原来为了挡住滚过去的正文，给它铺了一条整宽的实底 56px 横带——
+   代价是正文顶上永远横着一条白杠，还占掉 56px 的行。
+   改成**真正的浮动按钮**：
+   - `height: 0` + `overflow: visible` —— **不占布局高度**，按钮悬在正文上方；
+   - 底色去掉，遮挡交给**按钮自己**（不透明的小胶囊 + 阴影），滚过去的正文
+     被胶囊挡住，胶囊之外的地方正文照常可见；
+   - `pointer-events: none`，只有按钮本身可点——不然这一条会吃掉正文右上角的
+     点选（跟第 714 轮 composer dock 那条同一个道理）。 */
+.floating-buttons {
+  /* **贴住 ribbon 的下边**（用户第 741 轮：「再往上移，直接贴住编辑区和信息栏的边」）。
+     `.note-scroll` 自己有 24px 上内边距，钉在 `top: 0` 会停在那 24px 下面；
+     负 `top` 把它顶回滚动区的最上沿，正好贴着 ribbon。 */
+  position: sticky; top: 0; height: 0; overflow: visible; z-index: var(--z-sticky);
+  display: flex; justify-content: flex-end; align-items: flex-start; gap: var(--s-2);
+  margin: 0; padding: 0;
   pointer-events: none;
 }
-/* **专注模式下正文收成一条 880 的窄列、靠左**（`.note-pane.focus .note-scroll > *`），
-   composer 还居中在整个面板上就飘到正文右边去了（第 722 轮实拍）。
-   跟着正文那一列走：同样靠左、同样的上限。 */
-.note-pane.focus .composer-dock { justify-content: flex-start; }
-.note-pane.focus .composer { width: min(760px, 880px, 100%); }
-/* 遮罩：正文滚到底下时淡出，不是被硬切一刀（第 701 轮那条教训的同一个道理）。 */
-.composer-dock::before {
-  content: ''; position: absolute; inset: 0; z-index: 0;
-  background: linear-gradient(to bottom, transparent, var(--main-bg) 62%);
-}
-.composer {
-  position: relative; z-index: 1; pointer-events: auto;
-  width: min(760px, 100%); min-height: 56px;
-  display: flex; align-items: center; gap: var(--s-5);
-  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-6);
-  border-radius: var(--r-pill);
-  background: var(--mk-surface-glass);
-  box-shadow: var(--shadow-composer);
-  backdrop-filter: blur(10px) saturate(145%); -webkit-backdrop-filter: blur(10px) saturate(145%);
-  isolation: isolate;
-}
-/* 玻璃的边和高光：一条 1px 的亮边 + 一道斜向高光（他们的 `::before` 同款）。
-   没有这两样，毛玻璃看起来就只是「半透明的灰块」。 */
-.composer::before {
-  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  border: 1px solid var(--glass-edge); border-radius: inherit;
-  background: linear-gradient(135deg, var(--glass-hi), transparent 38%, transparent 68%, var(--glass-hi));
-  box-shadow: inset 0 1px 0 var(--glass-hi);
-}
-.composer > * { position: relative; z-index: 1; }
-.composer-input {
-  flex: 1; min-width: 0; height: 24px;
-  margin: 0; padding: 0; border: none; background: transparent; box-shadow: none !important;
-  font: inherit; font-size: var(--t-lg); line-height: 1.6; color: var(--fg);
-}
-.composer-input:focus, .composer-input:focus-visible { outline: none; border: none; box-shadow: none !important; }
-.composer-actions { flex: none; display: flex; align-items: center; gap: var(--s-3); }
-/* 忙碌条：转圈 + 一句话，挤在输入框和动作之间。字小、不换行——它是交代，不是主角。 */
-.composer-busy { display: inline-flex; align-items: center; gap: var(--s-3); font-size: var(--t-sm); white-space: nowrap; }
-/* 圆钮：36×36，跟他们的 `.home-composer-send` / `.voice-input-button` 同尺寸。 */
-.composer-actions .fb-btn, .composer-actions .icon-btn, .composer-actions button {
-  height: 36px; border-radius: var(--r-pill);
-}
-.composer-actions .icon-btn { width: 36px; }
-
-/* ------------------------------------------------ composer 里的按钮 */
-/* （原来这里是 `.floating-buttons`——一条粘在正文顶部的横带。第 714 轮 AI 入口
-   搬到底部 composer 之后整块作废，连同第 701 轮给它加的那条「下沿外挂 16px 淡出条」
-   一起删了：**那个问题随着带子一起消失了**，淡出改由 `.composer-dock::before` 负责。） */
+.floating-buttons > * { pointer-events: auto; }
 .fb-btn {
-  height: 32px; padding: 0 12px; font-size: var(--t-md); border-radius: var(--r-pill); line-height: 1; white-space: nowrap;
+  height: 28px; padding: 0 10px; font-size: var(--t-sm); border-radius: var(--r-pill); line-height: 1; white-space: nowrap;
   display: inline-flex; align-items: center; gap: var(--s-3);
-  background: var(--floating-btn-bg); color: var(--fg); border: 1px solid transparent;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  /* **不透明**：带子没了之后，遮挡滚过去的正文是按钮自己的事。 */
+  background: var(--mk-surface); color: var(--fg); border: 1px solid var(--mk-line);
+  box-shadow: var(--shadow-card);
   transition: background 120ms, box-shadow 120ms, transform 80ms;
 }
-.fb-btn .bx { font-size: var(--t-base); }
+.fb-btn .bx { font-size: var(--t-md); }
 .fb-btn:hover:not(:disabled) { background: var(--floating-btn-hover-bg); border-color: transparent; color: var(--fg); box-shadow: var(--shadow-card); }
 .fb-btn:active:not(:disabled) { transform: scale(.97); }
 .fb-btn:disabled { opacity: .5; }
-/* 跑起来变红（停止）。原来还有一条 `.fb-btn.secondary` —— 那是「智能续写」
-   那个描边胶囊专用的，第 714 轮它并进主钮的 ⌄ 之后整条作废，删了。 */
-.fb-btn.primary.running { background: var(--del); color: var(--accent-fg); border-color: var(--del); }
+/* 主次要分出来。原来「续写」「智能续写」「▾」三个连着的实心蓝，视觉上都是
+   「主操作」——三个一样响的按钮抢同一块地方，等于没有主次，而且它们浮在正文
+   右上角、压着第一行要写字的地方（用户实拍反馈：「你这些蓝色的图标这个设计
+   好吗？」，第 618 轮）。
+   现在：**只有一个实心蓝**（续写，最常用、最便宜的那个动作）；智能续写和它的
+   ▾ 降成描边——同样一眼看得见、但不抢。跑起来时照旧变红（running）。 */
+.fb-btn.primary { background: var(--accent); color: var(--accent-fg); }
+.fb-btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
+.fb-btn.secondary {
+  background: var(--floating-btn-bg); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.fb-btn.secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--floating-btn-bg));
+  border-color: var(--accent); color: var(--accent);
+}
+.fb-btn.primary.running, .fb-btn.secondary.running { background: var(--del); color: var(--accent-fg); border-color: var(--del); }
 .fb-btn.rec { color: var(--del); }
 .fb-caret { font-size: var(--t-md) !important; margin-inline-start: -3px; }
+/* 忙碌条：转圈 + 一句话，跟在那排按钮后面。字小、不换行——它是交代，不是主角。 */
+.fb-busy { display: inline-flex; align-items: center; gap: var(--s-3); font-size: var(--t-sm); white-space: nowrap; }
 .fb-split { display: inline-flex; }
 .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; padding-inline-end: 9px; }
 .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 5px; margin-inline-start: 1px; }
-/* composer 里的分体按钮：主钮是品牌实心，它的 ⌄ 也得是同一块——原来 ⌄ 是
-   幽灵按钮，贴在实心胶囊右边像掉了一块漆（第 714 轮实拍）。 */
-.composer .fb-split .fb-caret-btn { background: var(--accent); color: var(--accent-fg); }
-/* 跑起来主钮变红，**⌄ 那一半要跟着变**——不然是一半红一半紫的断块
-   （第 732 轮实拍：只在「跑动中」这一帧才看得见，之前几次截图都拍到的是跑完）。 */
-.composer .fb-split.running .fb-caret-btn,
-.composer .fb-split.running .fb-caret-btn:hover:not(:disabled) { background: var(--del); color: var(--accent-fg); }
-.composer .fb-split .fb-caret-btn:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); opacity: .92; }
-.composer-actions .fb-split .fb-btn { border-radius: var(--r-pill); }
-.composer-actions .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
-.composer-actions .fb-split .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; width: auto; padding: 0 8px 0 4px; }
 .harness-line { font-size: var(--t-sm); margin: 0 0 8px; display: flex; align-items: center; gap: var(--s-2); }
 .title-icon { font-size: var(--t-xl); color: var(--muted); margin-inline-end: 6px; flex-shrink: 0; }
 
@@ -1505,26 +1466,12 @@ kbd {
    （48 ≈ 56 − 它自己的 `top: -8px`）。带子第 714 轮搬走了，这个偏移却留着，
    于是这条横条悬在滚动区顶下方 48px、上面空一截（第 734 轮查出来的，
    跟第 729 轮那条 `padding-top: 8px` 是同一类遗留）。 */
-.harness-sticky {
-  /* **负 `top` 是为了盖住滚动区自己的上内边距。** 钉在 `top: 0` 时它停在
-     滚动区顶**下方 24px**（`.note-scroll` 的 `padding-top`），那 24px 里漏着
-     滚过去的正文（第 734 轮实拍）。
-     **这个坑旧那条浮动带的注释里记过**：「滚动区顶部有 8px 内边距，钉在 top:0 时
-     那 8px 露出下面滚过的正文」——同一个办法：负 `top` 往上顶，`padding-top`
-     补回来，看起来位置不变。 */
-  position: sticky; top: calc(-1 * var(--s-7)); z-index: var(--z-sticky); background: var(--main-bg);
-  margin: 0 calc(-1 * var(--content-margin-inline));
-  /* **遮盖要够高，下面还要淡出。** 钉到 `top: 0` 之后正文从它底下滚过，
-     原来那点 `2px / 4px` 的内边距盖不住——标题被齐腰切一刀，露出上半截
-     （第 734 轮实拍）。**跟第 701 轮那条浮动带是同一个坑、同一套修法**：
-     实底加够高度，淡出条挂在**下沿之外**（`::after`），文字是淡进来的。 */
-  padding: calc(var(--s-7) + var(--s-4)) var(--content-margin-inline) var(--s-3);
-  margin-top: calc(-1 * var(--s-7));
-}
-.harness-sticky::after {
-  content: ''; position: absolute; inset-inline: 0; top: 100%; height: var(--s-5);
-  background: linear-gradient(var(--main-bg), transparent); pointer-events: none;
-}
+/* 粘在浮动按钮下面。带子没了（第 741 轮），`--fb-band-height` 现在表示的是
+   **按钮本身的高度**——状态条从那底下开始，才不会跟按钮叠在一起。**从令牌算，不写死**——第 734 轮就是写死 48
+   之后带子被搬走，横条悬在半空（第 740 轮把带子改矮时顺手收掉这个隐患）。
+   遮盖和淡出由那条带子负责，这里不用再做一遍
+   （第 734 轮它独立钉顶时需要，第 739 轮带子回来了就不需要了）。 */
+.harness-sticky { position: sticky; top: var(--fb-band-height); z-index: var(--z-sticky); background: var(--main-bg); margin: 0 calc(-1 * var(--content-margin-inline)); padding: var(--s-1) var(--content-margin-inline) 4px; }
 .harness-sticky .harness-line { margin: 0; flex-wrap: wrap; }
 .harness-sticky .harness-line button.primary, .harness-sticky .harness-line button { height: 26px; padding: 0 10px; font-size: var(--t-sm); display: inline-flex; align-items: center; gap: var(--s-2); }
 

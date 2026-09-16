@@ -165,8 +165,6 @@ export default function App() {
   const iconBtnRef = useRef<HTMLButtonElement>(null)   // 选择器关掉后焦点回到这个钮（键盘用户不至于掉到 body 上）
   const [locateTick, setLocateTick] = useState(0)
   const [paneFocus, setPaneFocus] = useState<{ id: string; n: number } | undefined>(undefined)
-  /** 底部 composer 里那句话。空 = 主钮是「续写」，有字 = 主钮是「发送」。 */
-  const [askDraft, setAskDraft] = useState('')
   /** 做幻灯片时的「第几页」。只有它需要比 BUSY_LABEL 更细的进度。 */
   const [slidePhase, setSlidePhase] = useState('')
   const slidesText = useRef('')
@@ -1363,15 +1361,6 @@ export default function App() {
       else if (key === 'd' && e.shiftKey) { e.preventDefault(); void openToday() }   // ⌘⇧D 今天的日记（Trilium 也是这个键）
       else if (key === 'n') { e.preventDefault(); void newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
-      /* ⌘L 跳到底部 composer。第 714 轮它成了正文的 AI 主入口，却**只能用鼠标点**
-         ——一个主交互没有键盘入口是说不过去的（第 724 轮）。
-         选 ⌘L 的理由：⌘K/⌘J 是搜索、⌘N/⌘T 是新建、⌘F 是查找，L 空着，
-         而且「跳到地址栏 / 输入框」在浏览器里就是 ⌘L，手感是对的。 */
-      else if (key === 'l') {
-        e.preventDefault()
-        const el = document.querySelector('.composer-input') as HTMLInputElement | null
-        el?.focus(); el?.select()
-      }
       else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
       else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => (p.rightOn ? { ...p, rightOn: false } : makeRoomForRight(p, winW, split?.w ?? 0))) }
@@ -1752,8 +1741,16 @@ export default function App() {
         toast(`摘掉了 ${fakeCitations.length} 个知识库里查不到的引用`)
       }
       if (fixed !== inserted) { inserted = fixed; setContent(head + inserted + tail) }
-      // 撞 token 上限停在句中（实拍「…写成事项已经完成」没句号）：已写的留着，说一声
-      if (truncated) toast('这段撞到长度上限，补了一次尾还没收住——把光标放在末尾再点一次接着写', 'error')
+      /* **接受 / 撤回。** 续写原来是全应用**唯一**一条不进修订层的插入路径——
+         格式化、智能排版、语音输入、图片转表格、插入音频、`/` 菜单的块、
+         智能续写全都调了 `pushDiff`，**最常用的这一个反而没有**
+         （用户第 739 轮：「续写有截断，且没有 accept 和撤回」）。
+         没有它，写出来的东西只能靠 ⌘Z 一把撸掉，逐处挑不了；
+         写坏了、撞上限截断了，也没有一键还原的去处。 */
+      if (inserted.trim()) pushDiff('续写', full, head + inserted + tail)
+      // 撞 token 上限停在句中（实拍「…写成事项已经完成」没句号）：已写的留着，说一声。
+      // **现在这句话有了去处**：撤回就在正文里，不用再靠用户自己 ⌘Z。
+      if (truncated) toast('这段撞到长度上限，补了一次尾还没收住——不满意就用正文上的「撤回」，或把光标放在末尾再点一次', 'error')
     } catch (e) {
       if ((e as Error).name !== 'AbortError') { if (isLlmUnreachable(e)) toastAction('续写失败：' + friendlyError(e), '打开设置', () => void openVirtual('app:settings', '设置'), 8000); else toast('续写失败：' + friendlyError(e), 'error') }
     } finally {
@@ -2665,26 +2662,6 @@ export default function App() {
    *
    * 落进正文之后同时算出 diff 交给「接受 / 撤回」，跟 harness 改动、右键润色
    * 走同一套处置方式。 */
-  /** composer 里写了一句话之后：按这句话写一段，插在光标处。
-   *  **走的是跟 `/` 菜单「用 AI 写」完全相同的一条路**（`runBlock` + `prompt` 模式）——
-   *  同一个能力不该有两套实现，不然判据、流式、插入规则都要维护两遍。 */
-  async function runCompose() {
-    const text = askDraft.trim()
-    if (!text) return
-    /* **插在哪**：跟「续写」用同一条规矩（见 `runMagicTap` 里那段注释）——
-       光标进过编辑器就插在光标处，否则追加到文末。
-       原来这里直接取 `selection.main.head`（第 714 轮），而 **⌘L 之后编辑器
-       根本没有焦点、光标多半还在 0**，于是一句话写出来的段落被插到笔记最前面
-       （第 731 轮回头查出来的；第 718 轮真跑时产出确实落在了开头，我当时
-       只看了「请求发出去没有」，没看它落在哪）。 */
-    const view = editorViewRef.current
-    const docLen = view?.state.doc.length ?? content.length
-    const at = view?.hasFocus || (view && view.state.selection.main.head > 0)
-      ? view.state.selection.main.head : docLen
-    setAskDraft('')
-    await runBlock({ group: 'AI', key: 'prompt', label: '用 AI 写', hint: '', icon: 'bx-pen', needsPrompt: true }, at, at, text)
-  }
-
   async function runBlock(item: SlashItem, from: number, to: number, prompt: string) {
     const view = editorViewRef.current
     if (!view || !current) return
@@ -3253,6 +3230,95 @@ export default function App() {
           )
         ) : (
           <>
+            {/* 浮动按钮（Trilium FloatingButtons）：AI 能力跟正文在一起、不占正文的行。
+                判据 1「一个能力一个按钮」：续写、智能续写各一个；打磨和「逐轮我来定」是
+                智能续写的参数，收在它的 ▾ 里；录音一个麦克风两个去处；⋯ 是杂项。 */}
+            <div className="floating-buttons">
+              <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
+                      disabled={loading === 'note-harness'}
+                      title="续写：先查知识库，据此往下写一段（流式）">
+                <Icon n={(loading === 'tap' ? 'bx-stop' : 'bx-edit-alt')} /><span className="fb-label">{loading === 'tap' ? '停止' : '续写'}</span>
+              </button>
+              <span className="fb-split">
+                <button className={'fb-btn secondary' + (loading === 'note-harness' ? ' running' : '')}
+                        onClick={() => runNoteHarness('write')} disabled={loading === 'tap' || isSlides(content)}
+                        title={isSlides(content) ? '这一篇是幻灯片——接散文会把分页和引用弄乱；要改内容回原笔记改完再重做一份'
+                          : '智能续写：自动修订 + 自动续写交替，直到相对骨架已经完整才停'}>
+                  <Icon n={(loading === 'note-harness' ? 'bx-stop' : 'bx-bot')} /><span className="fb-label">{loading === 'note-harness' ? '停止' : '智能续写'}</span>
+                </button>
+                <button className="fb-btn secondary fb-caret-btn" title="打磨 / 逐轮我来定"
+                        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
+                  <Icon n="bx-chevron-down" />
+                </button>
+              </span>
+              <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
+              <button className="fb-btn" title="更多"
+                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
+                <Icon n="bx-dots-horizontal-rounded" />
+              </button>
+              {/* 跑得久的动作要有反馈（第 733 轮）。`BUSY_LABEL` 只列真会让用户等的；
+                  续写 / 智能续写自己会把按钮变成「停止」，不在这里重复一遍。 */}
+              {BUSY_LABEL[loading] && (
+                <span className="fb-busy muted"><span className="spinner" /><span>{slidePhase || BUSY_LABEL[loading]}</span></span>
+              )}
+              {fbMenu && (
+                <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
+                  { label: '打磨（只修不写）', icon: 'bx-brush', disabled: loading === 'note-harness' || !content.trim(),
+                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => { void runNoteHarness('polish') } },
+                  { kind: 'sep' },
+                  { label: reviewEachRound ? '逐轮我来定：开' : '逐轮我来定：关', icon: reviewEachRound ? 'bx-checkbox-checked' : 'bx-checkbox',
+                    hint: '每轮停下来等你逐条接受/撤回', disabled: loading === 'note-harness',
+                    onSelect: () => setReviewEachRound((v) => !v) },
+                ] : [
+                  { label: '存入知识库', icon: 'bx-brain', disabled: !content.trim() || loading === 'ingest',
+                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
+                  /* 无限续写：**不在标题行上常驻**（用户第 625 轮：「无限续写的按钮不要显示了行吗？」）。
+                     收进这里而不是只留树上右键——右键是「知道了才会去用」的地方，不承担发现；
+                     这个菜单至少是看得见的一个入口。作用域仍然是当前这篇：分段会建成它的子笔记。 */
+                  /* 幻灯片上不给：它是**原笔记的一种形态**，往里塞散文分段既破坏
+                     `---` 分页、也回不到原笔记（方案里「不做反向同步」那条）。
+                     实拍撞到过——探针在幻灯片那篇上打开了写作计划弹层。 */
+                  { label: '无限续写…', icon: 'bx-rocket', disabled: isSlides(content),
+                    hint: isSlides(content) ? '这一篇是幻灯片——要改内容回原笔记改完再重做一份'
+                      : '给一个目标，拆成若干分段，每段建成这篇的子笔记',
+                    onSelect: () => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) } },
+                  /* 痛点 6：「想做成 PPT，又要上传给另一个 agent 工具，两个工具之间没有链接」。
+                     **产物是一篇笔记不是一个文件**——落成这篇的子笔记，于是能 ⌘K 找到、
+                     能挂引用、能被续写继续改、能导出。导出成 PDF 是第二步。 */
+                  { label: '做成幻灯片…', icon: 'bx-slideshow', disabled: !content.trim() || loading === 'slides',
+                    hint: !content.trim() ? '正文是空的' : '落成这篇的子笔记，每页带着它的引用编号',
+                    onSelect: () => { void runSlides('points') } },
+                  /* 只有这篇真是幻灯片时才给这一项——普通笔记上「导出幻灯片」是句空话。
+                     零新依赖：主进程在离屏窗口里 printToPDF（方案 §落点「导出」那一行）。 */
+                  ...(isSlides(content) && window.memoketDesktop?.slidesToPdf ? [{
+                    label: '导出这份幻灯片 → PDF', icon: 'bx-file-blank',
+                    hint: `${slidePages(content).length} 页，16:9`,
+                    onSelect: () => { void exportSlidesPdf() },
+                  }] : []),
+                  { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
+                  { kind: 'sep' },
+                  { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
+                    onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + friendlyError(e), 'error')) } },
+                  { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
+                  /* 单篇导回。后端和 api 层本来就收 note_ids，一直缺的只是这个入口
+                     （用户第 628 轮：「每一个 note，导出到 Notion/Obsidian/Feishu 的按钮没有」）。 */
+                  { label: '导回到 Obsidian / Notion / 飞书…', icon: 'bx-share',
+                    /* **这句话原来是不准的**：只有 Obsidian 是按文件里的 memoket_id 认，
+                       Notion / 飞书认的是这台机器上记着的那一篇（`note_remotes.remote_id`）。
+                       差别是实的：换台机器导，Notion / 飞书会新建一份而不是覆盖。 */
+                    hint: '覆盖对方那边的同一篇（Obsidian 按文件里的 id 认，Notion / 飞书按这台机器记着的认）',
+                    onSelect: () => setExportOne(current) },
+                  { label: '导出全部笔记…', icon: 'bx-package', hint: '整库打成 Markdown zip', onSelect: () => window.dispatchEvent(new CustomEvent('export-all')) },
+                  { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
+                  { kind: 'sep' },
+                  { label: '正文怎么写', icon: 'bx-help-circle',
+                    hint: 'Markdown 语法、```mermaid 画图、[[ 链笔记、@ 引事实',
+                    onSelect: () => setShowShortcuts(true) },
+                  { label: focusMode ? '退出专注模式' : '专注模式', icon: 'bx-fullscreen', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },
+                  { label: '保存', icon: 'bx-save', shortcut: '⌘S', onSelect: () => void save() },
+                ]} />
+              )}
+            </div>
             {/* **底部 composer**（第 714 轮，用户：「你续写智能续写音频入口那一行真的很奇怪」）。
                 原来这一排浮在正文右上角，压着要写字的第一行，五个控件三种形状。
                 搬到正文底部做成一条胶囊——构造照 0.5.10 的 `.home-ask-dock` +
@@ -3359,132 +3425,6 @@ export default function App() {
         )}
         </div>{/* note-body */}
         </div>{/* note-scroll */}
-            {/* composer 在 .note-scroll **外面**：它是 `position: absolute; bottom: 0`，
-                放在滚动容器里锚的是**滚动内容的底**，不是视口的底——内容一长它就跟着
-                飘到正文中间去（第 728 轮实拍：harness 写完 280 字之后它停在半页高的地方）。
-                定位上下文是 `.note-pane`（第 714 轮给它加的 `position: relative`）。 */}
-            {current && (
-            <div className="composer-dock">
-             <div className="composer">
-              <input className="composer-input" value={askDraft} onChange={(e) => setAskDraft(e.target.value)}
-                     aria-label="让 AI 写点什么"
-                     placeholder="说一句话，让 AI 接着写"
-                     onKeyDown={(e) => { if (e.key === 'Enter' && askDraft.trim()) { e.preventDefault(); void runCompose() } }} />
-              {/* **跑得久的动作要有反馈。** 原来这里只给「存入知识库」一个光转圈的
-                  spinner，而「做成幻灯片」实测要 **20 秒**、进度回调还被丢成了
-                  `() => {}`——点完之后界面上一点动静都没有（第 733 轮查出来的）。
-                  一个位置、一句话：在做什么，做到哪了。 */}
-              {BUSY_LABEL[loading] && (
-                <span className="composer-busy muted">
-                  <span className="spinner" />
-                  <span>{slidePhase || BUSY_LABEL[loading]}</span>
-                </span>
-              )}
-              <span className="composer-actions">
-              <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
-              {/* 锚点给 `r.top` 就够：菜单在窗口底部装不下时，ContextMenu 自己会
-                  往上钳（`min(at.y, innerHeight - height - 5)`）。
-                  原来这两处一个写 `r.bottom + 4`（往下弹，而下面已经是窗口边缘）、
-                  一个写 `r.top - 180`（**猜的魔数**，菜单一长就不对）——第 738 轮
-                  搬到底部之后一直没打开过它们。 */}
-              <button className="fb-btn" title="更多"
-                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.top } }) }}>
-                <Icon n="bx-dots-horizontal-rounded" />
-              </button>
-              {/* **主钮在最右**：跟 0.5.10 composer 的发送钮同一个位置。
-                  次要的（麦克风、杂项）排在它左边。「续写」和它的 ⌄ 贴在一起
-                  （`.fb-split`），读起来是一个分体按钮而不是两个东西。 */}
-              {/* **一个位置只放一个主动作。** 第 714 轮我写成了「跑起来时主钮变灰 +
-                  旁边再冒一个停止钮」——那一刻屏幕上有**两个主按钮**，一个还是死的
-                  （第 728 轮回头读代码发现的）。正在跑什么，主钮就是停它。 */}
-              <span className={'fb-split' + (loading === 'tap' || loading === 'note-harness' ? ' running' : '')}>
-              <button className={'fb-btn primary' + (loading === 'tap' || loading === 'note-harness' ? ' running' : '')}
-                      onClick={() => {
-                        if (loading === 'tap') { void runMagicTap(); return }          // 再点一次 = 停
-                        if (loading === 'note-harness') { void runNoteHarness('write'); return }
-                        if (askDraft.trim()) void runCompose(); else void runMagicTap()
-                      }}
-                      title={loading === 'tap' || loading === 'note-harness' ? '停下来' : askDraft.trim() ? '按这句话写一段（Enter）' : '续写：先查知识库，据此往下写一段（流式）'}>
-                <Icon n={loading === 'tap' || loading === 'note-harness' ? 'bx-stop' : askDraft.trim() ? 'bx-paper-plane' : 'bx-edit-alt'} />
-                <span className="fb-label">{loading === 'tap' || loading === 'note-harness' ? '停止' : askDraft.trim() ? '发送' : '续写'}</span>
-              </button>
-              <button className="fb-btn fb-caret-btn" title="智能续写 / 打磨 / 逐轮我来定"
-                      aria-label="更多写作动作"
-                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.top } }) }}>
-                <Icon n="bx-chevron-down" />
-              </button>
-              </span>
-              {/* **「智能续写」并进主钮旁边的 ⌄**（第 714 轮）。它跟「续写」是同一类动作
-                  （都是「往下写」，差别只在写多久），原来并排两个胶囊，右边这一簇
-                  五个控件三种形状。用户对按钮数量的态度一贯是「越少越好」
-                  （第 625 轮：「无限续写的按钮不要显示了行吗？」）。
-                  **一个能力一个按钮**没有被破坏——只是「写一段 / 写到完整」
-                  收成了一个按钮加一个下拉，而不是两个抢注意力的胶囊。 */}
-              </span>
-              {fbMenu && (
-                <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
-                  { label: '智能续写', icon: 'bx-bot', disabled: loading === 'tap' || loading === 'note-harness' || isSlides(content),
-                    hint: isSlides(content) ? '这一篇是幻灯片——接散文会把分页和引用弄乱'
-                      : '自动修订 + 自动续写交替，直到相对骨架已经完整才停',
-                    onSelect: () => { void runNoteHarness('write') } },
-                  { label: '打磨（只修不写）', icon: 'bx-brush', disabled: loading === 'note-harness' || !content.trim(),
-                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => { void runNoteHarness('polish') } },
-                  { kind: 'sep' },
-                  { label: reviewEachRound ? '逐轮我来定：开' : '逐轮我来定：关', icon: reviewEachRound ? 'bx-checkbox-checked' : 'bx-checkbox',
-                    hint: '每轮停下来等你逐条接受/撤回', disabled: loading === 'note-harness',
-                    onSelect: () => setReviewEachRound((v) => !v) },
-                ] : [
-                  { label: '存入知识库', icon: 'bx-brain', disabled: !content.trim() || loading === 'ingest',
-                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
-                  /* 无限续写：**不在标题行上常驻**（用户第 625 轮：「无限续写的按钮不要显示了行吗？」）。
-                     收进这里而不是只留树上右键——右键是「知道了才会去用」的地方，不承担发现；
-                     这个菜单至少是看得见的一个入口。作用域仍然是当前这篇：分段会建成它的子笔记。 */
-                  /* 幻灯片上不给：它是**原笔记的一种形态**，往里塞散文分段既破坏
-                     `---` 分页、也回不到原笔记（方案里「不做反向同步」那条）。
-                     实拍撞到过——探针在幻灯片那篇上打开了写作计划弹层。 */
-                  { label: '无限续写…', icon: 'bx-rocket', disabled: isSlides(content),
-                    hint: isSlides(content) ? '这一篇是幻灯片——要改内容回原笔记改完再重做一份'
-                      : '给一个目标，拆成若干分段，每段建成这篇的子笔记',
-                    onSelect: () => { const row = tree.find((r) => r.note_id === current.id); if (row) setWritingPlanParent(row) } },
-                  /* 痛点 6：「想做成 PPT，又要上传给另一个 agent 工具，两个工具之间没有链接」。
-                     **产物是一篇笔记不是一个文件**——落成这篇的子笔记，于是能 ⌘K 找到、
-                     能挂引用、能被续写继续改、能导出。导出成 PDF 是第二步。 */
-                  { label: '做成幻灯片…', icon: 'bx-slideshow', disabled: !content.trim() || loading === 'slides',
-                    hint: !content.trim() ? '正文是空的' : '落成这篇的子笔记，每页带着它的引用编号',
-                    onSelect: () => { void runSlides('points') } },
-                  /* 只有这篇真是幻灯片时才给这一项——普通笔记上「导出幻灯片」是句空话。
-                     零新依赖：主进程在离屏窗口里 printToPDF（方案 §落点「导出」那一行）。 */
-                  ...(isSlides(content) && window.memoketDesktop?.slidesToPdf ? [{
-                    label: '导出这份幻灯片 → PDF', icon: 'bx-file-blank',
-                    hint: `${slidePages(content).length} 页，16:9`,
-                    onSelect: () => { void exportSlidesPdf() },
-                  }] : []),
-                  { label: '分屏对照另一篇…', icon: 'bx-columns', onSelect: () => { void askNode('在右侧分屏打开哪一篇？', new Set([current.id])).then((id) => { if (id && id !== api.ROOT_ID) openInSplit(id) }) } },
-                  { kind: 'sep' },
-                  { label: '现在存一版', icon: 'bx-bookmark-plus', hint: '历史版本在 ribbon「历史」里', disabled: !content.trim(),
-                    onSelect: () => { void save().then(() => api.snapshotNote(current.id)).then(() => toast('已存一版')).catch((e) => toast('存版失败：' + friendlyError(e), 'error')) } },
-                  { label: '导出为 .md', icon: 'bx-export', onSelect: exportMarkdown },
-                  /* 单篇导回。后端和 api 层本来就收 note_ids，一直缺的只是这个入口
-                     （用户第 628 轮：「每一个 note，导出到 Notion/Obsidian/Feishu 的按钮没有」）。 */
-                  { label: '导回到 Obsidian / Notion / 飞书…', icon: 'bx-share',
-                    /* **这句话原来是不准的**：只有 Obsidian 是按文件里的 memoket_id 认，
-                       Notion / 飞书认的是这台机器上记着的那一篇（`note_remotes.remote_id`）。
-                       差别是实的：换台机器导，Notion / 飞书会新建一份而不是覆盖。 */
-                    hint: '覆盖对方那边的同一篇（Obsidian 按文件里的 id 认，Notion / 飞书按这台机器记着的认）',
-                    onSelect: () => setExportOne(current) },
-                  { label: '导出全部笔记…', icon: 'bx-package', hint: '整库打成 Markdown zip', onSelect: () => window.dispatchEvent(new CustomEvent('export-all')) },
-                  { label: '复制正文', icon: 'bx-copy', onSelect: () => void copyMarkdown() },
-                  { kind: 'sep' },
-                  { label: '正文怎么写', icon: 'bx-help-circle',
-                    hint: 'Markdown 语法、```mermaid 画图、[[ 链笔记、@ 引事实',
-                    onSelect: () => setShowShortcuts(true) },
-                  { label: focusMode ? '退出专注模式' : '专注模式', icon: 'bx-fullscreen', shortcut: '⌘.', onSelect: () => setFocusMode((v) => !v) },
-                  { label: '保存', icon: 'bx-save', shortcut: '⌘S', onSelect: () => void save() },
-                ]} />
-              )}
-             </div>
-            </div>
-            )}
         </div>{/* note-pane */}
         {split && (
           <>
