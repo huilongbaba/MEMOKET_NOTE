@@ -3382,8 +3382,13 @@ export default function App() {
               )}
               <span className="composer-actions">
               <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
+              {/* 锚点给 `r.top` 就够：菜单在窗口底部装不下时，ContextMenu 自己会
+                  往上钳（`min(at.y, innerHeight - height - 5)`）。
+                  原来这两处一个写 `r.bottom + 4`（往下弹，而下面已经是窗口边缘）、
+                  一个写 `r.top - 180`（**猜的魔数**，菜单一长就不对）——第 738 轮
+                  搬到底部之后一直没打开过它们。 */}
               <button className="fb-btn" title="更多"
-                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
+                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.top } }) }}>
                 <Icon n="bx-dots-horizontal-rounded" />
               </button>
               {/* **主钮在最右**：跟 0.5.10 composer 的发送钮同一个位置。
@@ -3405,7 +3410,7 @@ export default function App() {
               </button>
               <button className="fb-btn fb-caret-btn" title="智能续写 / 打磨 / 逐轮我来定"
                       aria-label="更多写作动作"
-                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.top - 180 } }) }}>
+                      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'harness', at: { x: r.right - 220, y: r.top } }) }}>
                 <Icon n="bx-chevron-down" />
               </button>
               </span>

@@ -84,6 +84,27 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     const n = notes.find((x) => (x.content ?? '').length > 300) ?? notes[0]
     void switchTo(n).then(() => setTimeout(() => void actionsRef.current.runSlides('points'), 1500))
   }
+  /* `fbmenu:more` / `fbmenu:harness`：打开 composer 上那两个菜单。
+     第 714 轮把那一排搬到窗口底部之后**从没打开过它们**，用户报「没有一个
+     功能是正常可以点击的」（第 738 轮）。 */
+  if (probe?.startsWith('fbmenu:') && notes.length && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    const which = probe.slice(7) === 'harness' ? '智能续写 / 打磨 / 逐轮我来定' : '更多'
+    const n = notes.find((x) => (x.content ?? '').length > 80) ?? notes[0]
+    void switchTo(n).then(() => setTimeout(() => {
+      const btn = Array.from(document.querySelectorAll('.composer button'))
+        .find((x) => x.getAttribute('title') === which) as HTMLElement | undefined
+      if (!btn) { void api.clientLog('warn', 'fbmenu: 找不到按钮 ' + which, '', 'probe'); return }
+      btn.click()
+      setTimeout(() => {
+        const m = document.querySelector('.context-menu') as HTMLElement | null
+        const r = m?.getBoundingClientRect()
+        void api.clientLog('info', `fbmenu ${which}: menu=${m ? 'yes' : 'no'}`
+          + (r ? ` at x=${Math.round(r.x)} y=${Math.round(r.y)} w=${Math.round(r.width)} h=${Math.round(r.height)}`
+               + ` 视口 ${window.innerWidth}x${window.innerHeight}` : ''))
+      }, 500)
+    }, 1500))
+  }
   if (probe === 'tabs' && notes.length >= 3) {
     // 连开三篇，看标签行铺开的样子
     void (async () => {

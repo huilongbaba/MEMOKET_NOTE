@@ -13,8 +13,17 @@
  *   出现两条线连着。
  * · `hint` 是说明文字（禁用时说为什么），`shortcut` 是快捷键——两者分开，
  *   混用一个槽位以后加快捷键就撞了。
+ * · **挂到 `document.body`（portal），不留在调用处的 DOM 里。**
+ *   它是 `position: fixed` + 视口坐标，而 `fixed` 的包含块**会被祖先抢走**——
+ *   `backdrop-filter` / `filter` / `transform` / `will-change` 任意一个都会。
+ *   第 738 轮真出过：composer 那条玻璃胶囊有 `backdrop-filter`，
+ *   菜单于是按胶囊定位，量出来在 `x=1175 y=763`（视口 1280×860）——
+ *   **95% 在屏幕外**，用户报「没有一个功能是正常可以点击的」。
+ *   portal 之后它挂在哪儿都一样。（React 的事件冒泡仍走组件树，
+ *   `ref.current.contains()` 也照常，因为 ref 指的是真实 DOM 节点。）
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRestoreFocus } from '../util/restoreFocus'
 import { fmtShortcut } from '../util/keys'
 import Icon from './Icon'
@@ -117,7 +126,7 @@ export default function ContextMenu({
     }
   }, [onClose, hi, list])
 
-  return (
+  return createPortal((
     <div
       ref={ref}
       className="context-menu"
@@ -146,5 +155,5 @@ export default function ContextMenu({
         )
       })}
     </div>
-  )
+  ), document.body)
 }
