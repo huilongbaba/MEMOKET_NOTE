@@ -254,6 +254,143 @@ GEPA 的循环是「读执行轨迹 → LLM 诊断失败 → 改写 prompt → P
 
 ---
 
+## 8. 第二批（再查一轮，四条比第一批更直接）
+
+### ① 长文那两个：`factual_grounding` 有成熟解法，而且我们的条件比论文里还好
+
+这是我们**第一大阻塞项**（41% 不达标、11 次 0 分），而这条线已经很成熟，
+统称 **decompose-then-verify**：把长文拆成**原子命题**，逐条去对来源。
+
+| 工作 | 做法 |
+|---|---|
+| **FActScore** | 最早提出按原子命题查长文；拆成「每条只含一个信息」的短句，逐条对 Wikipedia，**被支持的比例**就是分数 |
+| **SAFE** | 三步：抽命题 → **改写以消解指代不清** → **相关性检查：这条值不值得查** |
+| **VeriScore** | 只抽**可验证**的命题；滑动窗口给抽取带上下文 |
+| **Claimify / DnDScore** | 从三个维度评拆解本身：蕴含、去语境化、覆盖 |
+
+**我们的条件比这些论文好**：它们要去 Google 搜证据，
+而我们的来源是**一个封闭的本地知识库**，就在手边、一次跑里已经检索过了。
+
+更妙的是 SAFE 的第三步「相关性检查」，跟我们**吃过亏才写进 guidance 的那条规矩
+是同一件事**——`_FACTUAL_GROUNDING` 里写着「检索到的事实没被全部用上，
+明确不算不足」，因为为此扣过分之后，下一轮正文里就「引入了大量未在知识库中
+出现的具体日期与人物」。**论文把它作为流水线的一个显式步骤，我们把它塞在
+一段 guidance 文字里指望模型自觉。**
+
+**反面证据要一起记**：`Decomposition Dilemmas` 这篇专门在问
+拆解到底是帮忙还是添乱——拆得太碎会丢语境、制造无法验证的碎片。
+所以**拆解粒度本身是个要量的参数**，不是拿来就用。
+
+### ② WritingBench：跟我们任务最接近的一个，而它两条都跟我们相反
+
+`WritingBench`（X-PLUG，2025，已开源）是**生成式写作**的综合基准——
+6 个大领域、100 个子领域、1239 条写作查询。它的评测框架：
+
+> **query-dependent evaluation framework**：给定一条查询，
+> **让 LLM 现场生成 5 条 instance-specific 评判标准**，
+> 每条由「简名 + 展开描述 + 详细评分细则」三段组成；
+> 再配一个**微调过的 critic 模型**做 criteria-aware 打分（10 分制，附理由）。
+
+对着我们看：
+
+| | WritingBench | 我们 |
+|---|---|---|
+| 判据 | **每条查询现场生成 5 条** | 每个模式 3–7 条，**写死** |
+| 打分者 | **专门微调的 critic 模型** | **跟写作同一个模型** |
+
+**两条都相反。** 而这是离我们任务最近的一个基准。
+
+一处**field 内部并不一致**的地方要如实记下来：
+WritingBench 用 10 分制 + 理由，而第 6 节 ② 那条线（Checklists / 业界实践）
+主张二元 pass/fail。**这不是我漏看，是这两条线还没打通。**
+我们该按自己的数据选（第 6 节 ③ 的按维度一致率），不要照抄任何一边。
+
+### ③ 「谁来验证验证者」：criteria drift —— 对我们是一条**警告**，不是方法
+
+`EvalGen` / *Who Validates the Validators?*（UIST 2024）提出一个现象叫
+**criteria drift**：
+
+> 用户需要判据才能给产出打分，**而给产出打分这件事又反过来帮他定义判据**。
+> 有些判据是**依赖于具体看到的那些产出**的，不是先验可定义的——
+> 这对「假设评测独立于观察模型产出」的做法提出了严重质疑。
+
+我们这套 evaluator **正是这么长出来的**（`harness-evaluators.md` 第三节第 1 条：
+每一个维度都是读产出读出来的）。所以这篇不是在教我们新方法，
+**是在指出我们方法的固有风险**：判据一旦冻结，它就只对当初那批产出有效。
+
+对应到我们身上很具体：`_NON_REPETITION` 改过一次、`_COHERENCE` 后加的、
+`_SECTION_COVERAGE` 更后加——**每一次都是因为旧判据对新产出失效了**。
+而现在这 25 条又冻在那里，没有任何机制告诉我们它们什么时候会再次失效。
+
+### ④ CriticGPT：一个我们**已经会、但没用在这儿**的方法
+
+OpenAI 的 *LLM Critics Help Catch LLM Bugs*：训练一个专门的 critic 模型
+挑代码里的错。关键在**训练数据怎么来的**——
+
+> 让 ChatGPT 写代码，**再让人往里塞一个 bug 并写下对这个 bug 的批评**。
+
+结果：critic 挑出的植入 bug 比付费的人类评审还多，
+critique 被偏好的比例 **>80%**，人配合 CriticGPT 评审比单干**好 60%**。
+
+**「植入已知缺陷，看检测器抓不抓得到」——这正是我们验闸的规矩**
+（第 750 / 752 轮那几次突变测试）。我们把它用在了 28 个门禁脚本上，
+**却从来没用在 25 个评分维度上。**
+
+这给了一条不需要人工标注、**这周就能做**的路子：
+拿过去的真实产出，机械地植入缺陷——复制一段、改掉一个日期、删掉一条节拍、
+把两节的主题换成同一个——**看对应那一维会不会掉分**。
+一维抓不住自己该抓的东西，就是那一维不合格。
+（这也正好能回答 `harness-evaluators.md` 里「≥5 个维度从不区分好坏」
+到底是判据没用、还是条件太少见。）
+
+### ⑤ Weaver：弱验证器要**按各自的准确率加权**，不是先到先得
+
+Stanford 的 `Weaver`：把多个弱的、不完美的验证器组合成一个强的，
+**加权组合显著优于不加权**（因为各验证器准确率本来就不一样），
+把 generation–verification gap 平均缩小 **14.5%**。
+
+我们现在是两套都不加权：
+- `Checks` 是 **first failing check wins**（谁先命中谁说了算，顺序即权重，
+  而那个顺序是写代码时排出来的）；
+- `rank()` 把多维分数**不加权**折叠成一个标量。
+
+**而我们没法加权，因为从没测过任何一个验证器的准确率。** 又绕回第 6 节 ③。
+
+### ⑥ 用户的编辑：把「采集人的信号」这条做实
+
+`harness-mechanism-rethink.md` 第五节提的那件事，学界有现成的名字和方法：
+
+- **PRELUDE**（NeurIPS 2024，*Aligning LLM Agents by Learning Latent Preference
+  from User Edits*）：写作助手里用户对产出的编辑是**自然产生的**反馈，
+  学他编辑背后的潜在偏好，目标是**让他以后越编越少**。
+- **Coactive Learning**：它的假设弱到几乎白送——
+  *「只要求编辑后的文本比提出的文本更好」*。**我们这儿天然成立。**
+- 生产实践那边把这类叫**隐式反馈**（复制、重试、编辑、放弃、停留时长），
+  覆盖率能到 20–60% 的交互。
+
+### 第二批对每个 harness 分别意味着什么
+
+| 功能 | 第二批新增的着力点 |
+|---|---|
+| 续写整篇 / 分段写作 | **①** 原子命题逐条对知识库（我们的来源是封闭的，比论文条件好）；**②** spine/beats 就是现成的「query」，可以据此现场生成本篇专属判据；**③** 判据会随产出漂移，要有重新校准的机制 |
+| 数据可视化 / 智能插图 / 生成表格 | **⑤** 这三个模式的判据最多、最确定性，正是最该**按准确率加权**而不是先到先得的地方；**④** 植入缺陷测判据在这里最容易（改一个数、删一个图例） |
+| 按指令生成 / 改写选区 | **②** 与第 4 节的 TICK 指向同一件事：用户的指令就是 query，据此现场生成判据 |
+| 幻灯片 | **④** 五条判据可以用植入缺陷的办法各测一遍灵敏度 |
+| **magic-tap / journey 日报 / digest**（现在没有 evaluator） | **⑥** 恰恰是这几个——**用户拿到就直接编辑**，隐式反馈最密集。与其先给它们造判据，不如**先开始采集编辑信号** |
+
+最后一条值得单独说：**没有 evaluator 的那几个功能，反而是人的信号最容易拿到的地方。**
+先采集、后立判据，比反过来省力得多。
+
+### 第二批之后，我对顺序的修正
+
+第 7 节那四步不变，但**插一步、并把第 4 步的做法换掉**：
+
+- **在第 1 步之前**插入：**植入缺陷测一遍现有 25 个维度的灵敏度**（④）。
+  不要人工标注、不要等数据，**这周就能做**，而且它会直接告诉你
+  哪几维该删、哪几维只是条件太少见。
+- **第 4 步「攒 judge-vs-人 的一致率」改用用户编辑**（⑥）而不是专门标注：
+  coactive learning 的假设在我们这儿天然成立，**采集成本接近零**。
+
 ## 来源
 
 **长文 / 细粒度评测**
@@ -282,6 +419,33 @@ GEPA 的循环是「读执行轨迹 → LLM 诊断失败 → 改写 prompt → P
 - [Quantifying and Mitigating Self-Preference Bias of LLM Judges](https://arxiv.org/html/2604.22891v4)
 - [Using LLM-as-a-Judge For Evaluation: A Complete Guide（Hamel Husain）](https://hamel.dev/blog/posts/llm-judge/)
 - [How to align LLM judge with human labels（Evidently AI）](https://www.evidentlyai.com/blog/how-to-align-llm-judge-with-human-labels)
+
+**长文事实性：拆成原子命题再逐条核**
+- [FActScore: Fine-grained Atomic Evaluation of Factual Precision](https://arxiv.org/abs/2305.14251)
+- [VeriScore: Evaluating the factuality of verifiable claims in long-form text generation (EMNLP 2024 Findings)](https://aclanthology.org/2024.findings-emnlp.552/)
+- [DnDScore: Decontextualization and Decomposition for Factuality Verification](https://arxiv.org/html/2412.13175)
+- [Decomposition Dilemmas: Does Claim Decomposition Boost or Burden Fact-Checking?（反面证据）](https://arxiv.org/html/2411.02400v1)
+- [VeriFastScore: Speeding up long-form factuality evaluation](https://arxiv.org/pdf/2505.16973)
+
+**生成式写作基准（跟我们任务最接近的一个）**
+- [WritingBench: A Comprehensive Benchmark for Generative Writing](https://arxiv.org/abs/2503.05244) · [仓库](https://github.com/X-PLUG/WritingBench)
+- [EQ-bench / longform-writing-bench](https://github.com/EQ-bench/longform-writing-bench)
+
+**判据怎么立、以及它会漂**
+- [Who Validates the Validators? Aligning LLM-Assisted Evaluation with Human Preferences (EvalGen, UIST 2024)](https://arxiv.org/abs/2404.12272)
+
+**专门的 critic 模型 / 植入缺陷造训练与测试数据**
+- [LLM Critics Help Catch LLM Bugs (CriticGPT, OpenAI)](https://arxiv.org/html/2407.00215v1) · [PDF](https://cdn.openai.com/llm-critics-help-catch-llm-bugs-paper.pdf)
+
+**多个弱验证器怎么合并**
+- [Shrinking the Generation-Verification Gap with Weak Verifiers (Weaver, Stanford)](https://arxiv.org/abs/2506.18203)
+- [Trust but Verify! A Survey on Verification Design for Test-time Scaling](https://arxiv.org/html/2508.16665v3)
+- [Multi-Agent Verification: Scaling Test-Time Compute with Multiple Verifiers](https://arxiv.org/pdf/2502.20379)
+
+**从用户的编辑里学**
+- [Aligning LLM Agents by Learning Latent Preference from User Edits (PRELUDE, NeurIPS 2024)](https://arxiv.org/html/2404.15269v1)
+- [Coactive Learning for Large Language Models Using Implicit User Feedback (ICML 2024)](https://mlanthology.org/icml/2024/tucker2024icml-coactive/)
+- [Principled Fine-tuning of LLMs from User-Edits](https://arxiv.org/html/2601.19055)
 
 **优化器 / 多目标**
 - [GEPA: Reflective Prompt Evolution](https://github.com/gepa-ai/gepa)
