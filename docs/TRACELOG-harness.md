@@ -656,3 +656,290 @@ illustrative**」——判 2 **都是判词允许的**。只有 `right_kind`
 缺陷的植入器；④ 13 个没闸的植入器补自验；⑤ 台账那张表补上被 `roll_up` 洗掉的
 4 条「没抓住」和逐行 p 值。
 **2.6 / 5.1 / 5.2 要等整改完再动**——现在的依据不牢。
+
+## 批 7 · 整改批 4 / 批 6 两次驳回（2026-09-17）
+
+**一行产品代码都没改**（跟批 5 一样，这一批交的是台子和一张表）。
+批 6 判的是「台子留着、那张表里至少 5 条结论不能当依据」，五件事逐条落地。
+
+### 改了什么
+
+| # | 改动 | 落在哪 |
+|---|---|---|
+| ① | **带血缘判的共用语料筛选器**：把笔记分成 `user` / `script` / `fixture` 三类并说明理由 | `scripts/corpus_lineage.py`（新，238 行）+ `tests/test_corpus_lineage.py`（新，21 条） |
+| ① | bench 改成调它，自己那份 `FIXTURE_USERS` 删掉 | `scripts/dimension_sensitivity_bench.py` |
+| ② | `inj_strip_specifics` 改成**按行走**，围栏块 / 表格块整块处理；单测夹具换成「标题正文不隔空行 + 带日期的 mermaid + 带数字的表」的真实形状 | 同上 + `tests/` |
+| ② | `inj_strip_caveats` / `inj_strip_next_steps` 同一个毛病，一起改 | 同上 |
+| ③ | `drop_chart_series` → **`drop_mentioned_node`**：只删「标签在正文里逐字出现过」的节点，配套新取材器 `chart-block-narrated` | 同上 |
+| ④ | 27 个植入器**每个都有自验闸**（单边 `gate` 或成对 `verify`），没闸的**构造时直接抛** | 同上 |
+| ⑤ | 逐行 permutation p 值 + 按实测噪声标定「算抓住」那条线 + `washed_out()` 把被 `roll_up` 洗掉的失败行单列 + `VERDICT_RANK` 把「未跑」挪到最后 | 同上 |
+| — | 格子的身份里加正文指纹（实施中撞出来的，见下） | 同上 |
+| — | 架构文档第 4 节和第 18 节按重算后的结论改写，第 18 节加「语料血缘」一行 | `docs/harness-framework.md` |
+
+### ① 筛选器怎么判血缘
+
+判据只认**具体的生成器签名**，不做任何「看起来像测试」的推断；判不出来的一律留在 `user`。
+
+```
+fixture  user_id ∈ 15 个夹具用户（shot-perf / shot-demo / cancel-test3 / fresh67x …）
+script   user_id ∈ 5 个脚本用户（writing-bench / editing-bench / quality-sample …）
+script   标题前缀逐字来自脚本里的那个 f-string（soak- / suite- / writing- / editing- / 质量采样- / 📋 写作追踪）
+script   标题自标注（（可删）/ ^harness 测试 / ^链接测试）
+script   血缘：writing_sections.note_id → plan_id → writing_plans.parent_note_id → 那篇笔记的标题以 `soak-` 开头
+script   血缘：writing_plans.goal 逐字等于 soak.PLAN_GOALS 之一（parent 被 soak 清理掉时唯一的线索）
+user     以上都不命中
+```
+
+**`user` / `script` / `fixture` 不是三个好听的名字，是三种不同的用法**：
+`fixture` 连模型都没过（批 4 那篇 47k 探针是 100 个逐字相同的小节），拿它量任何跟
+文字质量有关的数都是纯噪声；`script` 的**形态**是真的、**分布**不是（三篇最坏的可以
+出自同一个 goal）；只有 `user` 能用来量判据和阈值。
+
+`test_corpus_lineage.py` 里两条线索**各自单独钉一条**（parent 标题那条、goal 那条），
+外加一条「`SOAK_PLAN_GOALS` 必须逐字等于 `soak.PLAN_GOALS`」，和一条在真库上跑的
+端到端（库是 gitignore 的，没库自动跳过）。
+
+**筛出来的结果**：跑过 harness 的 19 篇里，`user` 只剩 **5 篇**（全是 `terrence` 自己的），
+排掉 14 篇 = `script` 10 + `fixture` 4。批 5 用的 6 篇里有 3 篇（`47b046adafcb` /
+`12e024b55823` / `1da5a3c9767b`）这次被判成 `script`，852 次调用里的 **462 次因此作废**。
+
+### 重算：日志怎么用的
+
+**没有重跑那 852 次。** 老日志按格子逐条迁移：`clean` 臂的正文只由取材器决定，
+取材器没动的一律留着；`dirty` 臂只有改过的那几个植入器要作废。
+最后 **318 行沿用、264 格新跑**（本批真实 `evaluate()` 调用 **264 次，0 次失败**），
+现在这张表建立在 **582 次调用**上。
+
+### 重算后的结论，哪几条变了
+
+| 维度 | 批 5 说 | 批 6 驳回 | 批 7 重算 |
+|---|---|---|---|
+| `material_use` | 判据废了（2.0→1.93）| 两半都不成立 | **抓住**（with-evidence 2.0→0.89，n=3，p=0.003）——植入器修好之后它是灵敏的 |
+| `covers_the_data` | 没抓住（2.0→2.0）| 植入的不是那个缺陷 | 换植入器后 2.0→0.67，但**只剩 1 篇真实语料带图**，p=0.10，报「掉了但不显著」 |
+| `actionable` | 抓住 | 去掉 soak 后翻转成没抓住 | 0.56，p=0.053，**「只动了一点」** |
+| `right_kind` | 反了（0.11→2.0）| 可以当依据（9/9）| 方向还在（0.33→2.0，6/6 一致），但 n=1 篇、p=0.10，**降级成不能当硬依据** |
+| `no_fabrication` | 抓住（1.53→0.27）| — | **基线偏低**（干净版 0.89 < 1.0），这一档说明不了判据灵不灵 |
+| `factual_grounding` | 抓住 | — | 仍抓住，而且是全表最硬的两条之一（fabricate n=5 p=0.0005） |
+| `chart_validity` | 基线偏低 / 反了 | 判词允许图片引用 | **无从判断**（干净版恒 0）+ 手写 mermaid 那条**未跑** |
+| `follows_prompt`(with-evidence) | 只动了一点 | — | **没抓住**（0.0，n=3，p=1.0）——原来被 `roll_up` 洗掉了，现在单列 |
+| `numbers_from_tools` | 干净版恒 0 | 可以当依据 | 不变：3 篇 18 次一格没有例外 |
+
+**一句话**：批 6 点名「不能当依据」的 5 条里，`material_use` 是**植入器的错不是判据的错**
+（修好后翻转成抓住）、`covers_the_data` 同理（换植入器后掉了 1.33），
+`actionable` / `data_grounding`(table) / `chart_validity` 三条确认不能当依据。
+**批 5 说的「25 维里 15 维抓住」在真实用户语料上只剩 9 维**，
+其余 16 维分布在「掉了但不显著 5 / 只动了一点 6 / 基线偏低 3 / 无从判断 2」四档里。
+
+### ⑤ 那条线是怎么标定的
+
+拿现在这份日志的 37 行，每行把 clean/dirty 标签**在同一篇之内**打乱重算 400 次
+（共 14800 个纯噪声掉分）：
+
+* **纯噪声下 |掉分| ≥ 0.5 的比例 = 12.5%**（批 6 在老日志上量到 10.1%，同量级）——
+  「掉 ≥ 半档算抓住」那条线本身就有八分之一的概率被噪声越过。
+* 95% 分位数 = **0.89**，`CAUGHT` 从 0.5 改成 0.89。
+* 逐行还要过 **p < 0.05**（permutation，4000 次重排，固定种子 20260917）。
+  过不了的单独报「掉了但不显著」，**不许报成「没抓住」**——那是两件事，处理方式相反。
+* 一条硬事实：**n=1 篇 × 3 次重复时排列总数只有 C(6,3)=20，两侧 p 最小就是 0.10**。
+  所以全部 5 条「掉了但不显著」都是 n=1 行，它们**在数学上不可能显著**，
+  要么补语料、要么加重复次数，光看掉分没有意义。
+
+### 重算后的灵敏度全表（**逐条 probe，n 和 p 都在**）
+
+### 灵敏度（逐条 probe，**这张表才是原始结论**）
+
+| 维度 | probe | 条件 | 干净 | 植入 | 掉分 | 篇 | 次 | p | 结论 |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| `beat_coverage` | note/drop_last_section | as-deployed | 1.5 | 0.5 | 1.0 | 2 | 12 | 0.006 | 抓住 |
+| `factual_grounding` | note/shift_dates | with-evidence | 1.33 | 0.0 | 1.33 | 3 | 18 | 0.006 | 抓住 |
+| `factual_grounding` | note/fabricate_specifics | as-deployed | 1.67 | 0.47 | 1.2 | 5 | 30 | 0.0005 | 抓住 |
+| `honest_caveats` | eda/strip_caveats | as-deployed | 2.0 | 1.0 | 1.0 | 2 | 12 | 0.006 | 抓住 |
+| `material_use` | note/strip_specifics | with-evidence | 2.0 | 0.89 | 1.11 | 3 | 18 | 0.0032 | 抓住 |
+| `non_repetition` | note/duplicate_paragraph | as-deployed | 1.27 | 0.0 | 1.27 | 5 | 30 | 0.0002 | 抓住 |
+| `replaces_cleanly` | custom/lead_in | as-deployed | 1.78 | 0.0 | 1.78 | 3 | 18 | 0.0005 | 抓住 |
+| `spine_fidelity` | note/off_spine_graft | as-deployed | 2.0 | 1.0 | 1.0 | 2 | 12 | 0.006 | 抓住 |
+| `states_limits` | analysis/strip_caveats | as-deployed | 2.0 | 0.67 | 1.33 | 2 | 12 | 0.006 | 抓住 |
+| `topic_fidelity` | section/off_spine_graft | as-deployed | 1.25 | 0.0 | 1.25 | 4 | 24 | 0.0002 | 抓住 |
+| `covers_the_data` | eda/drop_mentioned_node | as-deployed | 2.0 | 0.67 | 1.33 | 1 | 6 | 0.1025 | 掉了但不显著 |
+| `has_charts` | eda/chart_to_prose | as-deployed | 1.33 | 0.33 | 1.0 | 1 | 6 | 0.3042 | 掉了但不显著 |
+| `no_duplicate_charts` | eda/duplicate_chart | as-deployed | 1.0 | 0.0 | 1.0 | 1 | 6 | 0.4154 | 掉了但不显著 |
+| `right_kind` | chart/chart_to_image | as-deployed | 0.33 | 2.0 | -1.67 | 1 | 6 | 0.1025 | 掉了但不显著 |
+| `table_validity` | table/drop_table_column | as-deployed | 1.33 | 0.0 | 1.33 | 1 | 6 | 0.4041 | 掉了但不显著 |
+| `actionable` | eda/strip_next_steps | as-deployed | 2.0 | 1.44 | 0.56 | 3 | 18 | 0.053 | 只动了一点 |
+| `answers_the_question` | analysis/answer_swap | as-deployed | 1.0 | 0.44 | 0.56 | 3 | 18 | 0.1685 | 只动了一点 |
+| `answers_the_question` | analysis/answer_swap | with-evidence | 1.33 | 1.0 | 0.33 | 3 | 18 | 0.3079 | 只动了一点 |
+| `factual_grounding` | note/shift_dates | as-deployed | 1.44 | 0.56 | 0.89 | 3 | 18 | 0.0095 | 只动了一点 |
+| `factual_grounding` | note/placeholder | as-deployed | 1.6 | 1.53 | 0.07 | 5 | 30 | 1.0 | 只动了一点 |
+| `fits_context` | eda/heading_flood | with-evidence | 1.11 | 0.33 | 0.78 | 3 | 18 | 0.0035 | 只动了一点 |
+| `follows_prompt` | prompt/answer_swap | as-deployed | 1.67 | 1.11 | 0.56 | 3 | 18 | 0.0687 | 只动了一点 |
+| `material_use` | note/strip_specifics | as-deployed | 2.0 | 1.58 | 0.42 | 4 | 24 | 0.0482 | 只动了一点 |
+| `section_coverage` | section/truncate_bodies | as-deployed | 1.33 | 1.08 | 0.25 | 4 | 24 | 0.3457 | 只动了一点 |
+| `style_fit` | note/audit_voice | as-deployed | 2.0 | 1.83 | 0.17 | 2 | 12 | 1.0 | 只动了一点 |
+| `style_fit` | note/audit_voice | with-evidence | 1.17 | 1.0 | 0.17 | 2 | 12 | 1.0 | 只动了一点 |
+| `topic_fidelity` | section/swap_section_bodies | as-deployed | 1.22 | 1.22 | 0.0 | 3 | 18 | 1.0 | 只动了一点 |
+| `coherence` | note/double_ending | as-deployed | 0.8 | 0.47 | 0.33 | 5 | 30 | 0.021 | 基线偏低 |
+| `data_grounding` | table/invent_table_cells | as-deployed | 0.67 | 0.0 | 0.67 | 1 | 6 | 0.3854 | 基线偏低 |
+| `fits_context` | eda/heading_flood | as-deployed | 0.56 | 0.33 | 0.22 | 3 | 18 | 0.3952 | 基线偏低 |
+| `no_fabrication` | prompt/fabricate_specifics | as-deployed | 0.89 | 0.22 | 0.67 | 3 | 18 | 0.2984 | 基线偏低 |
+| `chart_validity` | chart/break_mermaid_fence | as-deployed | 0.0 | 0.0 | 0.0 | 1 | 6 | 1.0 | 无从判断 |
+| `coherence` | note/heading_levels | as-deployed | 0.0 | 0.17 | -0.17 | 2 | 12 | 1.0 | 无从判断 |
+| `data_grounding` | chart/shift_dates | as-deployed | 0.0 | 0.0 | 0.0 | 1 | 6 | 1.0 | 无从判断 |
+| `numbers_from_tools` | eda/invent_statistic | as-deployed | 0.0 | 0.0 | 0.0 | 3 | 18 | 1.0 | 无从判断 |
+| `numbers_from_tools` | eda/scramble_numbers | as-deployed | 0.0 | 0.0 | 0.0 | 1 | 6 | 1.0 | 无从判断 |
+| `follows_prompt` | prompt/answer_swap | with-evidence | 1.67 | 1.67 | 0.0 | 3 | 18 | 1.0 | 没抓住 |
+| `chart_validity` | chart/handwrite_mermaid | as-deployed |  |  |  | 0 | 0 |  | 未跑 |
+
+### 每一维的最终结论（取它最好的那条 probe）
+
+| 维度 | 最好的 probe | 干净 | 植入 | 掉分 | 篇 | 次 | p | 结论 |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| `beat_coverage` | note/drop_last_section·as-deployed | 1.5 | 0.5 | 1.0 | 2 | 12 | 0.006 | 抓住 |
+| `factual_grounding` | note/shift_dates·with-evidence | 1.33 | 0.0 | 1.33 | 3 | 18 | 0.006 | 抓住 |
+| `honest_caveats` | eda/strip_caveats·as-deployed | 2.0 | 1.0 | 1.0 | 2 | 12 | 0.006 | 抓住 |
+| `material_use` | note/strip_specifics·with-evidence | 2.0 | 0.89 | 1.11 | 3 | 18 | 0.0032 | 抓住 |
+| `non_repetition` | note/duplicate_paragraph·as-deployed | 1.27 | 0.0 | 1.27 | 5 | 30 | 0.0002 | 抓住 |
+| `replaces_cleanly` | custom/lead_in·as-deployed | 1.78 | 0.0 | 1.78 | 3 | 18 | 0.0005 | 抓住 |
+| `spine_fidelity` | note/off_spine_graft·as-deployed | 2.0 | 1.0 | 1.0 | 2 | 12 | 0.006 | 抓住 |
+| `states_limits` | analysis/strip_caveats·as-deployed | 2.0 | 0.67 | 1.33 | 2 | 12 | 0.006 | 抓住 |
+| `topic_fidelity` | section/off_spine_graft·as-deployed | 1.25 | 0.0 | 1.25 | 4 | 24 | 0.0002 | 抓住 |
+| `covers_the_data` | eda/drop_mentioned_node·as-deployed | 2.0 | 0.67 | 1.33 | 1 | 6 | 0.1025 | 掉了但不显著 |
+| `has_charts` | eda/chart_to_prose·as-deployed | 1.33 | 0.33 | 1.0 | 1 | 6 | 0.3042 | 掉了但不显著 |
+| `no_duplicate_charts` | eda/duplicate_chart·as-deployed | 1.0 | 0.0 | 1.0 | 1 | 6 | 0.4154 | 掉了但不显著 |
+| `right_kind` | chart/chart_to_image·as-deployed | 0.33 | 2.0 | -1.67 | 1 | 6 | 0.1025 | 掉了但不显著 |
+| `table_validity` | table/drop_table_column·as-deployed | 1.33 | 0.0 | 1.33 | 1 | 6 | 0.4041 | 掉了但不显著 |
+| `actionable` | eda/strip_next_steps·as-deployed | 2.0 | 1.44 | 0.56 | 3 | 18 | 0.053 | 只动了一点 |
+| `answers_the_question` | analysis/answer_swap·as-deployed | 1.0 | 0.44 | 0.56 | 3 | 18 | 0.1685 | 只动了一点 |
+| `fits_context` | eda/heading_flood·with-evidence | 1.11 | 0.33 | 0.78 | 3 | 18 | 0.0035 | 只动了一点 |
+| `follows_prompt` | prompt/answer_swap·as-deployed | 1.67 | 1.11 | 0.56 | 3 | 18 | 0.0687 | 只动了一点 |
+| `section_coverage` | section/truncate_bodies·as-deployed | 1.33 | 1.08 | 0.25 | 4 | 24 | 0.3457 | 只动了一点 |
+| `style_fit` | note/audit_voice·as-deployed | 2.0 | 1.83 | 0.17 | 2 | 12 | 1.0 | 只动了一点 |
+| `coherence` | note/double_ending·as-deployed | 0.8 | 0.47 | 0.33 | 5 | 30 | 0.021 | 基线偏低 |
+| `data_grounding` | table/invent_table_cells·as-deployed | 0.67 | 0.0 | 0.67 | 1 | 6 | 0.3854 | 基线偏低 |
+| `no_fabrication` | prompt/fabricate_specifics·as-deployed | 0.89 | 0.22 | 0.67 | 3 | 18 | 0.2984 | 基线偏低 |
+| `chart_validity` | chart/break_mermaid_fence·as-deployed | 0.0 | 0.0 | 0.0 | 1 | 6 | 1.0 | 无从判断 |
+| `numbers_from_tools` | eda/invent_statistic·as-deployed | 0.0 | 0.0 | 0.0 | 3 | 18 | 1.0 | 无从判断 |
+
+### 被上面那张表洗掉的失败行（**必须跟着一起读**）
+
+| 维度 | probe | 干净 | 植入 | 掉分 | 篇 | 次 | p | 结论 |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| `follows_prompt` | prompt/answer_swap·with-evidence | 1.67 | 1.67 | 0.0 | 3 | 18 | 1.0 | 没抓住 |
+
+### 顺带掉分（误伤 / 维度之间不独立）
+
+| probe | 被顺带打低的维度 | 干净 | 植入 | 掉分 |
+|---|---|---:|---:|---:|
+| custom/paragraph/lead_in/as-deployed | `no_fabrication` | 1.78 | 0.0 | 1.78 |
+| eda/numeric-block/invent_statistic/as-deployed | `honest_caveats` | 1.44 | 0.11 | 1.33 |
+| note/whole-with-spine/off_spine_graft/as-deployed | `non_repetition` | 1.83 | 0.5 | 1.33 |
+| custom/paragraph/lead_in/as-deployed | `follows_prompt` | 1.67 | 0.44 | 1.22 |
+| note/whole/double_ending/as-deployed | `non_repetition` | 1.47 | 0.4 | 1.07 |
+| note/whole-with-spine/off_spine_graft/as-deployed | `style_fit` | 1.5 | 0.5 | 1.0 |
+| eda/chart-block-narrated/drop_mentioned_node/as-deployed | `honest_caveats` | 2.0 | 1.0 | 1.0 |
+| eda/chart-block-narrated/drop_mentioned_node/as-deployed | `has_charts` | 2.0 | 1.0 | 1.0 |
+| table/table-block/invent_table_cells/as-deployed | `fits_context` | 2.0 | 1.0 | 1.0 |
+| note/whole/strip_specifics/as-deployed | `beat_coverage` | 1.67 | 0.75 | 0.92 |
+
+### 实施中发现的、计划里没写到的
+
+**⑥ 改了植入器之后断点续跑会拿旧数据当新数据。** 老的格子 key 是
+`笔记|probe|arm|重复次数`——`strip_specifics` 修完之后同一个 key 指向的已经是
+**完全不同的一段正文**，而续跑只看 key。于是「修好的植入器」和「没修的旧分数」
+会被拼进同一张表，**毫无症状**。现在 key 里带正文 + 上下文的 sha1 指纹，
+正文或 context 一变那一格自动重跑，没变的一格钱也不白花；
+统计也只认「现在这套取材 + 植入能重现出来的格子」，作废多少行会打印出来。
+
+**⑦ `_TABLE_BLOCK` 漏掉表格的最后一行。** 正则写死了行尾 `\n`，而
+`603dca25403a` 那张真实的表**就在正文结尾、最后一行没有换行**——于是
+`drop_table_column` / `invent_table_cells` 都只改到了半张表，
+bench 侧那个 `table_column_mismatch`（5.x 要搬进 `checks/` 的那个）也只数了半张。
+**是批 7 新加的成对自验把它顶出来的**：`invent_table_cells` 的闸报「植入没成形」，
+查下去才发现是取材就取错了。这条直接影响「`table_validity` 抓住」那一行的可信度。
+
+**⑧ `inj_duplicate_paragraph` 把复制品插错了地方。** 它用
+`text.replace(tail, src + "\n\n" + tail, 1)`，换的是 `tail` 的**第一次**出现；
+`06647b9c2031` 那篇（段内重复本来就严重）里最后一段的文字在正文中段也出现过，
+于是复制品被塞进别人的段落中间，拼成一段四不像——「逐字复制了一整段」这句话不成立。
+改成按最后一次出现插。
+
+**⑨ 「判据宁可窄一点」在这一批是有代价的，而且代价要说出来。**
+只留 `user` 之后语料从 13 篇掉到 5 篇，其中**只有 1 篇带 mermaid、1 篇带 markdown 表**。
+后果是图表那一组（`chart_validity` / `right_kind` / `has_charts` /
+`no_duplicate_charts` / `covers_the_data` / `table_validity` / `data_grounding`）
+**全部 n=1**，数学上做不出显著。这不是判据的问题，是**没有真实用户的图表产出可用**——
+要量准这一组，得先有一批真实语料，不能靠 soak 凑。
+
+### 突变验（24 个，全部变红）
+
+每个突变体前后都 `rm -rf __pycache__`（批 5 踩过：只换元素顺序的突变体字节数一样、
+`mtime + size` 认不出文件变过，症状在下一次运行才出现）。
+
+| # | 把什么改坏 | 结果 |
+|---|---|---|
+| ① | 夹具用户名单退化成空 | ✅ |
+| ② | 不再看 plan parent 标题（`soak-` 前缀）| ✅（**第一版用例没抓住**，见下） |
+| ③ | 不再看 soak 的 goal 常量（parent 已删那条线索）| ✅ |
+| ④ | `SOAK_PLAN_GOALS` 跟 `soak.py` 脱钩 | ✅ |
+| ⑤ | 脚本写死的标题前缀不认了 | ✅ |
+| ⑥ | bench 里又长出自己一份夹具名单 | ✅ |
+| ⑦ | `strip_specifics` 撤回上一版（按段落走、`#` / `\|` / 围栏整段直通）| ✅（**第一版突变体没改到真东西**，见下） |
+| ⑧ | 围栏块（mermaid）原样留下 | ✅ |
+| ⑨ | 「还剩不剩具体材料」恒说干净了 | ✅ |
+| ⑩ | 删图里第一条边（不看正文点没点名）| ✅ |
+| ⑪ | `mentioned_nodes` 不再要求正文提过 | ✅ |
+| ⑫ | `Injector` 允许没有闸 | ✅ |
+| ⑬ | `mutate` 不再跑成对自验 | ✅（22 条红） |
+| ⑭ | 某个 `verify` 恒为真（等于没闸）| ✅ |
+| ⑮ | `duplicate_paragraph` 改回插在第一次出现处 | ✅（**第一版用例没抓住**，见下） |
+| ⑯ | `_TABLE_BLOCK` 改回写死行尾换行 | ✅ |
+| ⑰ | 「未跑」排回「没抓住」前面 | ✅ |
+| ⑱ | 被 `roll_up` 洗掉的失败行不再报 | ✅ |
+| ⑲ | p 值不再影响结论 | ✅ |
+| ⑳ | p 值可以是 0 | ✅ |
+| ㉑ | 噪声标定恒返回 0 | ✅ |
+| ㉒ | 格子身份里不带正文指纹 | ✅ |
+| ㉓ | 打分失败那一格被当成真分数 | ✅ |
+| ㉔ | 排列检验跨篇打乱 | ✅（**第一版用例没抓住**，见下） |
+
+**四个漏网，全部是「用例不够」，不是「实现对」**（批 3 / 批 5 记下的同一条）：
+
+* **②**：钉 soak 的那条用例给的血缘**两条线索同时成立**（parent 标题是 `soak-…`、
+  goal 也在名单里），砍掉任一条另一条都兜得住。补了一条**只有 parent 标题成立**的
+  （soak 以后换了 goal 就是这种）。
+* **⑦**：第一版突变体把标题行和表格行改成无条件直通——但表格分支在循环里排在标题
+  分支**前面**，那半句代码根本执行不到；而夹具里的标题又都不带数字，改了等于没改。
+  换成**把 `inj_strip_specifics` 整个函数体撤回上一版**才是真的撤回修复。
+* **⑮**：夹具里「重复出现的那句话」正好在段首，插在它前面复制品照样自成一段。
+  改成让它出现在**段落中间**。
+* **㉔**：第一版用「跨篇打乱之后 p 变大还是变小」去判，而跨篇打乱在那份数据上
+  正好也给出同一个结论。换成钉**不变性**：把某一篇的两臂同时加一个常数
+  （它的掉分一点没变），p 必须一点不变——跨篇打乱做不到这件事。
+
+### 闸
+
+后端 **1222 → 1319**（+97：`test_corpus_lineage.py` 新增 21 条；
+`test_dimension_sensitivity_bench.py` 44 → 119 条（+75，主要是植入器按 27 个
+参数化、正反各一轮 = 54 条）；`test_脚本导得进来` 按 `scripts/*.py` 参数化
+自动多出 1 条）。
+前端 51 文件 / 254 条不变。`test_doc_counts` / `test_directory_map` /
+`test_architecture_claims` 没响（没加 Mode / check / middleware / 工具）。
+
+### 这一批**没做**什么
+
+- **一个维度的判词还是一个字都没改。** 2.6 / 5.1 / 5.2 的依据现在才算立住。
+- **没有删维度。**
+- **没有回头改批 2 的那个「严重程度」数。** 它受同一条血缘污染影响
+  （`1da5a3c9767b` 是 soak 产出），阈值本身不受影响，但那个数该在共用筛选器上重算一遍。
+
+### 下一步
+
+1. **2.6 现在的依据反过来了**：`material_use` 不是废了，是**生产从不把事实块传给
+   打分器**（`as-deployed` 判 2.0 是判词规定的）。所以这一条应当并进 4.1/5.x
+   那条线——**先把证据传给打分器**，而不是改判词。
+2. **5.1 / 5.2 的依据最硬的一条还在**：`numbers_from_tools` 干净版恒 0（3 篇 18 次）。
+   `chart_validity` 干净版也恒 0。`table_column_mismatch` 可以搬进 `checks/`
+   （⑦ 修好之后它才是对的）。
+3. **补语料**：图表那一组全部 n=1，现在做不出任何显著结论。要么等真实用户产出，
+   要么把每格重复次数提到 5 次以上（C(10,5)=252，两侧 p 最低 0.008）。
+   **这是下一批动 5.1/5.2 之前的前置**。
+4. 批 2 的「段内重复严重程度」按共用筛选器重算一遍。
