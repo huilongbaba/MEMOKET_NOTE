@@ -22,6 +22,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from . import query_cache
 from . import tools
 from ..util import llm
 
@@ -242,7 +243,10 @@ async def gather_context(
 
         for call in kept:
             cid, name, raw_args = _parse_call(call)
-            result = tools.dispatch(name, raw_args, ctx)
+            # 走短路层而不是 `tools.dispatch`：同一次跑里参数完全相同的查询
+            # 不再打后端（计划 2.1）。同一轮内的重复连上下文都不再塞第二遍——
+            # 那一份就在这个 convo 上面（`query_cache` 的模块文档有对照表）。
+            result = query_cache.dispatch(name, raw_args, ctx)
             try:
                 args = json.loads(raw_args or "{}")
             except json.JSONDecodeError:

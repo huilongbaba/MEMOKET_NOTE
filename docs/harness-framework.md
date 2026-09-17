@@ -57,7 +57,7 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×14<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger<br/>Revise Repair Runtime Replan Compact Save"]
+    MW["Middleware ×15<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Compact Save"]
     CHK["checks/ ×10 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×21 · registry 分组授权<br/>memory · data · chart · table · image · skill"]
     AL["agent_loop<br/>模型自己决定查什么"]
@@ -110,7 +110,7 @@ flowchart TB
 |---|---|---|
 | **Mode** | 一个功能的全部配置：工具组、维度、判据、停止条件、额外 middleware、轮数 | `harness/modes.py`，8 个 |
 | **Hooks** | 三条 harness 真正不同的三件事：怎么取材料、怎么写、怎么收尾 | `harness/hooks/{note,section,block}.py` |
-| **Middleware** | 一项能力，挂在循环的 9 个钩子上，自带状态字段；默认全开 | `harness/middleware/`，13 个 |
+| **Middleware** | 一项能力，挂在循环的 9 个钩子上，自带状态字段；默认全开 | `harness/middleware/`，15 个 |
 
 ### 六条核心判断
 
@@ -191,9 +191,9 @@ backend/app/
                              ＋这次跑累积的材料（with_material，loop 每轮现拼）
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
-    middleware/              14 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
-      skills · facts · history · ledger · compact · best_of · checks · provenance
-      · revise · repeats · replan · repair · runtime · save · _order
+    middleware/              15 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
+      skills · facts · history · ledger · supersede · compact · best_of · checks
+      · provenance · revise · repeats · replan · repair · runtime · save · _order
     checks/                  15 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
@@ -205,6 +205,8 @@ backend/app/
     skills.py                SKILL.md 目录 + DB 里的配置
     sandbox/                 policy（三档）· limits（资源上限）· runner（Seatbelt / bwrap）
     agent_loop.py            取材料的工具循环（模型自己决定查什么）
+    query_cache.py           查询级短路：一次跑里参数完全相同的知识库查询只真查一次
+                             （同一轮内的重复连上下文都不再塞第二遍；跨轮的原样返回全文）
     policy.py                Runtime 策略控制器：上一轮反馈 → 下一轮参数
     replan_rules.py          骨架重规划的约束
     revision.py              定位 / 应用修订：纯函数
@@ -444,7 +446,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 ---
 
-## 7. 14 个 middleware
+## 7. 15 个 middleware
 
 `BASE`（默认全开，顺序即执行顺序）：
 
@@ -455,7 +457,8 @@ State: mode · ctx(user/note/cursor) · request · round
 | **Provenance** | after_prepare | 把工具真的返回了什么给用户看（`round_summary`），依据不能靠模型自报 |
 | **Repeats** | after_produce | 机械近重复检测（difflib），结果作为打分的证据 |
 | **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit`；同一条原样卡满 `STUCK_ROUNDS` 轮就只发事件不再短路（改不动的老正文不该把剩余轮数烧掉） |
-| **Ledger** | after_prepare / after_judge | **材料账本**：把这一轮的工具轨迹折进一份跨轮的状态（查过什么、查到过什么、各轴共 N 条取了 M 条），并把这一轮写进 `harness_rounds`。**只记不改**——接进 prompt 是单独一步，因为「把已经有什么摆给模型看」有实测证据会缩小它的搜索空间 |
+| **Ledger** | before_round / after_prepare / after_judge | **材料账本**：把这一轮的工具轨迹折进一份跨轮的状态（查过什么、查到过什么、每条事实的日期、各轴共 N 条取了 M 条），并把这一轮写进 `harness_rounds`（含短路省掉了几次查询）。`before_round` 给 `query_cache` 报轮次——跨轮的重复必须原样返回全文。**账本本身只记不改**——接进 prompt 是单独一步，因为「把已经有什么摆给模型看」有实测证据会缩小它的搜索空间 |
+| **Supersede** | after_prepare | 取材之后把「这条已经被取代了」补上：账本里的事实对一遍 `superseded_by`（人已裁决）和 `kb_conflicts`（未裁决的候选），被取代的**把取代它的那条一起带回来**，未裁决的只挂一句「两条都别当定论」。知识库一直知道 6/3 被 8/5 取代，而写作侧从来不问 |
 | **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的 |
 | **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料） |
 

@@ -17,7 +17,7 @@ from typing import AsyncIterator
 
 from .. import prompts
 from .. import agent_loop
-from .. import tools
+from .. import query_cache
 from ...editor import outline
 from .mirror import _record_dropped, _scrub_and_record
 from ..tailing import acceptable_tail, needs_tail
@@ -90,7 +90,7 @@ class SectionHooks:
                 st.skill_menu, [])},
             {"role": "user", "content": prompts.retrieval_plan_user(
                 title, self.goal, self.other_summaries, st.content,
-                topics_overview=tools.dispatch(
+                topics_overview=query_cache.dispatch(
                     "list_topics", {"limit": 40}, st.ctx))},
         ]
         _extra, trace = await agent_loop.gather_context(
@@ -110,7 +110,7 @@ class SectionHooks:
         # loop does not reach on its own.
         probe = f"{title}\n{st.content[-400:]}"
         if agent_loop.is_scoped_question(probe):
-            hop = tools.dispatch(
+            hop = query_cache.dispatch(
                 "search_session_context",
                 {"question": f"{title}——{self.goal[:100]}", "limit": 10},
                 st.ctx)

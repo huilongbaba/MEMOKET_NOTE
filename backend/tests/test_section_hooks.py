@@ -132,7 +132,7 @@ def test_工具挂了退回关键词检索(monkeypatch):
 
     monkeypatch.setattr(mod.agent_loop, "gather_context", fake_gather)
     monkeypatch.setattr(mod.agent_loop, "is_scoped_question", lambda p: False)
-    monkeypatch.setattr(mod.tools, "dispatch", lambda *a, **kw: "（没有）")
+    monkeypatch.setattr(mod.query_cache.tools, "dispatch", lambda *a, **kw: "（没有）")
     monkeypatch.setattr(mod, "_retrieve", lambda *a, **kw: (["退路查到的"], [], 0.0))
 
     facts, _trace = asyncio.run(_hooks().prepare(_st("正文")))
@@ -157,7 +157,7 @@ def test_锚在某个具体场合的问题会多跑一次跨会话查找(monkeyp
 
     monkeypatch.setattr(mod.agent_loop, "gather_context", fake_gather)
     monkeypatch.setattr(mod.agent_loop, "is_scoped_question", lambda p: True)
-    monkeypatch.setattr(mod.tools, "dispatch",
+    monkeypatch.setattr(mod.query_cache.tools, "dispatch",
                         lambda name, args, ctx: ("多跳查到的\n（这行是提示，不算）"
                                                  if name == "search_session_context"
                                                  else "（没有）"))

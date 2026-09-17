@@ -167,18 +167,32 @@ def paragraphs(text: str) -> list[str]:
     return [p for p in _PARA_SPLIT.split(text) if p.strip()]
 
 
-def sections(text: str) -> list[tuple[str, str]]:
-    """按 `##`+ 切成 (标题行, 正文) 对。标题之前的引子记成 ("", 引子)。"""
+def sections_at(text: str) -> list[tuple[str, str, int, int]]:
+    """按 `##`+ 切成 `(标题行, 正文, 起点, 终点)`。**带偏移的那一版。**
+
+    偏移不是锦上添花，是批 10 修的那个测量 bug 的根：取材器把一节重新拼成
+    `标题 + "\n" + 正文` 交出去，而 `sections()` 切出来的正文自带一个换行，
+    于是拼出来的串**跟原文差一个字符**，`surrounding()` 里那句
+    `content.find(subject.text[:40])` 一律返回 -1，落进「就当它在正文中间」
+    的兜底——`after` 恒为空、`before` 还是**错的那半篇**。症状：
+    `score_context.for_block` 填「（这里是笔记结尾，下面没有正文）」，
+    而那一节其实后面还有 1246 个字。
+    """
     marks = [m for m in _HEADING.finditer(text) if len(m.group(1)) >= 2]
-    out: list[tuple[str, str]] = []
     if not marks:
-        return [("", text)]
+        return [("", text, 0, len(text))]
+    out: list[tuple[str, str, int, int]] = []
     if marks[0].start() > 0:
-        out.append(("", text[: marks[0].start()]))
+        out.append(("", text[: marks[0].start()], 0, marks[0].start()))
     for i, m in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-        out.append((m.group(0), text[m.end(): end]))
+        out.append((m.group(0), text[m.end(): end], m.start(), end))
     return out
+
+
+def sections(text: str) -> list[tuple[str, str]]:
+    """按 `##`+ 切成 (标题行, 正文) 对。标题之前的引子记成 ("", 引子)。"""
+    return [(h, b) for h, b, _s, _e in sections_at(text)]
 
 
 @dataclass(frozen=True)
@@ -187,6 +201,12 @@ class Subject:
     text: str
     context: dict[str, str] = field(default_factory=dict)
     evidence: dict[str, str] = field(default_factory=dict)   # with-evidence 才加的那一份
+    # 这一块在原笔记里的起点 / 终点。**取材器重拼过正文的，必须自己报**——
+    # 靠 `find()` 回头找是批 10 修掉的那个坑（见 `sections_at`）：差一个换行
+    # 就找不到，而找不到时兜底给出的前后文是错的，且没有任何症状。
+    # -1 = 没报，`surrounding()` 退回 `find()`。
+    at: int = -1
+    end: int = -1
 
 
 def pick_whole(note: dict) -> Subject | None:
@@ -215,19 +235,26 @@ def pick_section(note: dict) -> Subject | None:
     return Subject(note["content"], {"这个分段的主题": title})
 
 
-def _block_around(text: str, pat: re.Pattern) -> str | None:
-    """真实笔记里的一块：`pat` 命中的那段 + 它前面那一段引子。"""
+def _block_around(text: str, pat: re.Pattern) -> tuple[str, int, int] | None:
+    """真实笔记里的一块：`pat` 命中的那段 + 它前面那一段引子。
+
+    连**起点**一起返回：块是重拼出来的（引子和正文之间换成了空行），
+    回头 `find()` 不一定找得回来——真实语料上 `chart-block` 就有一篇找不回。
+    """
     m = pat.search(text)
     if not m:
         return None
     head = text[: m.start()].rstrip()
-    lead = paragraphs(head)[-1] if paragraphs(head) else ""
-    return (lead + "\n\n" + m.group(0).strip()).strip()
+    paras = paragraphs(head)
+    lead = paras[-1] if paras else ""
+    start = text.rfind(lead, 0, m.start()) if lead else m.start()
+    return ((lead + "\n\n" + m.group(0).strip()).strip(),
+            start if start >= 0 else m.start(), m.end())
 
 
 def pick_chart_block(note: dict) -> Subject | None:
-    block = _block_around(note["content"], _MERMAID)
-    return Subject(block) if block else None
+    hit = _block_around(note["content"], _MERMAID)
+    return Subject(hit[0], at=hit[1], end=hit[2]) if hit else None
 
 
 def pick_chart_narrated(note: dict) -> Subject | None:
@@ -247,28 +274,54 @@ def pick_chart_narrated(note: dict) -> Subject | None:
         lead = "\n\n".join(head[-back:]).strip()
         block = (lead + "\n\n" + m.group(0).strip()).strip()
         if mentioned_nodes(block):
-            return Subject(block)
+            start = text.rfind(head[-back], 0, m.start()) if head else m.start()
+            return Subject(block, at=start if start >= 0 else m.start(), end=m.end())
     return None
 
 
 def pick_table_block(note: dict) -> Subject | None:
-    block = _block_around(note["content"], _TABLE_BLOCK)
-    return Subject(block) if block else None
+    hit = _block_around(note["content"], _TABLE_BLOCK)
+    return Subject(hit[0], at=hit[1], end=hit[2]) if hit else None
 
 
 _NUM = re.compile(r"\d")
 
 
+# 一节后面至少还剩这么多字，才算「这一块后面真的还有正文」。几十个字的尾巴
+# 撑不起 `fits_context` 要的「跟下文体例一致」。
+MIN_TAIL = 80
+
+
 def pick_numeric_block(note: dict) -> Subject | None:
-    """数字最密的那一节——eda / analysis 那几维要有数才判得动。"""
-    best, best_n = None, 0
-    for head, body in sections(note["content"]):
+    """数字最密的那一节——eda / analysis 那几维要有数才判得动。
+
+    **后面还有正文的那几节优先**（批 10）。台账批 9 ③ 记着这条偏差：这一档
+    挑中的块，`score_context.for_block` 全部填了「（这里是笔记结尾，下面没有
+    正文）」，于是 `fits_context` / `actionable` / `numbers_from_tools` /
+    `honest_caveats` / `answers_the_question` / `states_limits` 六个维度
+    **是在只给一半上下文的条件下被测的**。
+
+    真因比台账写的更深一层：不是「密的那节总在文末」，而是重拼出来的正文
+    定位不回去（见 `sections_at`）。偏移修好之后，同一份语料上三篇里有两篇
+    的后文分别是 1246 / 656 个字——**根本不在文末**。这里再加一条「同等条件
+    下优先挑后面还有正文的那一节」，是为了别再靠运气。
+    """
+    content = note["content"]
+    best = fallback = None
+    best_n = fb_n = 0
+    for head, body, start, end in sections_at(content):
         n = len(_NUM.findall(body))
-        if n > best_n:
-            best, best_n = (head + "\n" + body).strip(), n
-    if best_n < 6 or not best:
-        return None
-    return Subject(best)
+        if n < 6:
+            continue
+        text = (head + "\n" + body).strip()
+        if len(content[end:].strip()) >= MIN_TAIL:
+            if n > best_n:
+                best, best_n = Subject(text, at=start, end=end), n
+        elif n > fb_n:
+            fallback, fb_n = Subject(text, at=start, end=end), n
+    # 整篇只有末节有数时不硬凑：那一篇上「后面的正文」本来就是空的，
+    # 这是关于**那篇笔记**的事实，不是取材偏差——照实取，照实报。
+    return best or fallback
 
 
 def pick_paragraph(note: dict) -> Subject | None:
@@ -276,7 +329,9 @@ def pick_paragraph(note: dict) -> Subject | None:
     ps = [p for p in paragraphs(note["content"]) if len(p) > 180 and not p.startswith("#")]
     if len(ps) < 2:
         return None
-    return Subject(ps[len(ps) // 2])
+    hit = ps[len(ps) // 2]
+    at = note["content"].find(hit)
+    return Subject(hit, at=at, end=at + len(hit) if at >= 0 else -1)
 
 
 def choose_notes(kept: list[dict], n: int,
@@ -1103,10 +1158,30 @@ class Probe:
     targets: tuple[str, ...]
     condition: str = "as-deployed"
     evidence: Callable[[Subject, dict], dict[str, str]] | None = None
+    # **这一格的前置条件到底成没成立**（批 10）。`(subject, note, ctx) -> bool`，
+    # 纯代码判，在 `production_context` 拼完之后算——它判的是**拼出来的那份
+    # 上下文**，跟取材器判的「这篇笔记有没有这块东西」是两件事：
+    #   · 取材器（`pick_whole_with_spine`）：这篇**笔记**有没有核心张力；
+    #   · precondition：这一格递给打分器的 **context** 里有没有那块证据。
+    # 不分组就是把「条件没出现」和「判据不灵」算进同一个均值，而这两件事的
+    # 处理方式完全相反（前者该补上下文、后者该改判词）——正是 1.6 立项要
+    # 分开的那两件（台账批 9 ②）。
+    precondition: Callable[[Subject, dict, dict[str, str]], bool] | None = None
+    precondition_label: str = ""
 
     @property
     def id(self) -> str:
         return f"{self.mode}/{self.selector}/{self.injector}/{self.condition}"
+
+    def holds(self, subject: Subject, note: dict, ctx: dict[str, str]) -> bool:
+        """没声明前置条件 = 恒成立。**默认必须是 True**：默认 False 会让
+        整张表静默地空掉一半，而空表看起来跟"还没跑"一模一样。"""
+        if self.precondition is None:
+            return True
+        try:
+            return bool(self.precondition(subject, note, ctx))
+        except Exception:                                   # noqa: BLE001
+            return True
 
 
 # ------------------------------------------------- as-deployed 那一档 ---
@@ -1145,12 +1220,26 @@ def derived_facts(subject: Subject) -> list[str]:
 
 
 def surrounding(subject: Subject, note: dict) -> tuple[str, str]:
-    """这一块在原笔记里的前后文。截多少由 `score_context` 定，这里给全的。"""
+    """这一块在原笔记里的前后文。截多少由 `score_context` 定，这里给全的。
+
+    **偏移优先**：取材器重拼过正文时（`numeric-block` 每一篇、`chart-block`
+    有一篇），按串回头找一律落空，而原来那句兜底 `at = len(content) // 2`
+    是**静默给错**——`after` 恒为空、`before` 是错的那半篇，六个维度就这么
+    在半份上下文上被测了一整批（台账批 9 ③）。
+    """
     content = note["content"]
-    at = content.find(subject.text[:40]) if subject.text else -1
+    at, end = subject.at, subject.end
+    if at is None or at < 0:
+        at = content.find(subject.text[:40]) if subject.text else -1
+        end = at + len(subject.text) if at >= 0 else -1
     if at < 0:
-        at = len(content) // 2
-    return content[:at], content[at + len(subject.text):]
+        # 真定位不到：**宁可把前后文都记成空**，也不要编一个位置出来。
+        # 空的那两项在 `for_block` 里会如实写成「上面/下面没有正文」，
+        # 而编出来的位置会让 `fits_context` 去罚一段它根本没见过的上下文。
+        return "", ""
+    if end is None or end < at:
+        end = at + len(subject.text)
+    return content[:at], content[end:]
 
 
 def instruction_for(note: dict) -> str:
@@ -1200,6 +1289,21 @@ def _ev_profile(subject: Subject, note: dict) -> dict[str, str]:
                               "- 语气克制，不用套话\n- 能给结论就别给过程"}
 
 
+def _pre_has_material(subject: Subject, note: dict, ctx: dict[str, str]) -> bool:
+    """【知识库事实】块里**真的给了材料**。
+
+    `_MATERIAL_USE` 的判词第一句就是「只在【知识库事实】块里**确实给了材料**
+    时才判这一项，**没给材料就算达标**」——材料块是空的时候它判 2.0 是
+    **判词规定的正确行为**，不是判据废了。
+
+    台账批 9 ②量出来的就是这一条：`material_use` 整行掉 0.67（看起来"只动了
+    一点"），按材料块空不空拆开是「非空 3 篇掉 **0.89**（p=0.025，抓住）」
+    ＋「为空 1 篇掉 **0.00**」。那一篇（`3a3a96354546`）的 `derived_facts`
+    摘不出带日期 / 数字的句子，于是它整篇都在给一个"条件没出现"的均值投票。
+    """
+    return bool((ctx.get(score_context.MATERIAL_KEY) or "").strip())
+
+
 PROBES: tuple[Probe, ...] = (
     # ---- note 模式（7 维）
     Probe("note", "whole", "duplicate_paragraph", ("non_repetition",)),
@@ -1209,7 +1313,8 @@ PROBES: tuple[Probe, ...] = (
     Probe("note", "whole", "fabricate_specifics", ("factual_grounding",)),
     Probe("note", "whole", "heading_levels", ("coherence",)),
     Probe("note", "whole", "double_ending", ("coherence",)),
-    Probe("note", "whole", "strip_specifics", ("material_use",)),
+    Probe("note", "whole", "strip_specifics", ("material_use",),
+          precondition=_pre_has_material, precondition_label="材料块非空"),
     Probe("note", "whole", "audit_voice", ("style_fit",)),
     Probe("note", "whole", "audit_voice", ("style_fit",),
           condition="with-evidence", evidence=_ev_profile),
@@ -1283,6 +1388,47 @@ def read_log(path: Path = LOG_PATH) -> list[dict]:
     return out
 
 
+def precondition_map(notes: list[dict], probes: tuple[Probe, ...]
+                     ) -> dict[tuple[str, str], bool]:
+    """`(笔记 id, probe id) → 前置条件成不成立`。纯代码、零调用。
+
+    **为什么要能在报告时重算**：前置条件是 `(语料, probe)` 的纯函数，不改变
+    递给打分器的任何东西。重算意味着批 9 那 396 格**不用重跑一次**就能按
+    条件拆开——要是只认日志里记下的那一列，这个修法的第一次收益就得先再花
+    一次全量评测的钱。
+    """
+    out: dict[tuple[str, str], bool] = {}
+    for note in notes:
+        for probe in probes:
+            subject = SELECTORS[probe.selector](note)
+            if subject is None:
+                continue
+            ctx = production_context(probe, subject, note)
+            if probe.evidence:
+                ctx.update(probe.evidence(subject, note) or {})
+            out[(note["id"], probe.id)] = probe.holds(subject, note, ctx)
+    return out
+
+
+def annotate_preconditions(records: list[dict], pre_map: dict[tuple[str, str], bool]
+                           ) -> list[dict]:
+    """给日志行补上 `pre`。已经有的不动（那是跑那一格时当场记下的）。"""
+    for r in records:
+        if "pre" in r:
+            continue
+        hit = pre_map.get((r.get("note", ""), r.get("probe", "")))
+        if hit is not None:
+            r["pre"] = hit
+    return records
+
+
+def split_by_precondition(records: list[dict]) -> tuple[list[dict], list[dict]]:
+    """`(条件成立的, 条件没成立的)`。**没标注的算成立**——见 `Probe.holds`。"""
+    met = [r for r in records if r.get("pre", True)]
+    unmet = [r for r in records if not r.get("pre", True)]
+    return met, unmet
+
+
 def cell_fingerprint(text: str, context: dict[str, str]) -> str:
     """这一格**到底把什么交给了打分器**的指纹（正文 + 上下文）。"""
     blob = text + "\x00" + "\x00".join(f"{k}={v}" for k, v in sorted(context.items()))
@@ -1312,6 +1458,9 @@ class Task:
     mode: str
     text: str
     context: dict[str, str]
+    # 这一格的前置条件成没成立。**不进 `key`**：它不改变递给打分器的任何
+    # 东西，进了 key 只会让已经跑过的格子全部作废重跑一遍。
+    pre: bool = True
 
 
 def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
@@ -1340,13 +1489,14 @@ def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
                                   "skipped": "这篇上拼不出 with-evidence 要的那块证据"})
                     continue
                 ctx.update(extra)
+            pre = probe.holds(subject, note, ctx)
             for rep in range(repeats):
                 for arm, text in (("clean", subject.text), ("dirty", dirty)):
                     key = cell_key(note["id"], probe.id, arm, rep, text, ctx)
                     if key in done:
                         continue
                     tasks.append(Task(key, note["id"], probe.id, arm, rep,
-                                      probe.mode, text, ctx))
+                                      probe.mode, text, ctx, pre))
     return tasks, skips
 
 
@@ -1360,7 +1510,7 @@ async def run_one(task: Task) -> dict:
                             dimensions=dims, context=task.context)
         scores = {k: v.level for k, v in ev.scores.items()}
         rec = {"key": task.key, "note": task.note_id, "probe": task.probe_id,
-               "arm": task.arm, "rep": task.rep, "scores": scores,
+               "arm": task.arm, "rep": task.rep, "scores": scores, "pre": task.pre,
                "status": ev.status, "ms": int((time.monotonic() - t0) * 1000)}
     except ScoreParseError as exc:
         # **没打上分 ≠ 打了 0 分**（批 3 的 1.7）。这一格作废，不进统计。
@@ -1552,7 +1702,9 @@ def summarize(records: list[dict], probes: tuple[Probe, ...] = PROBES, *,
     `data_grounding`(table) 那一行掉了一整档，但 n=1 篇、干净版三次是 [0,2,1]、
     p=0.40——那是噪声，不是灵敏度。
     """
-    rows = _pairs_by_row(records, probes)
+    met, unmet = split_by_precondition(records)
+    rows = _pairs_by_row(met, probes)
+    unmet_rows = _pairs_by_row(unmet, probes)
     out: list[dict] = []
     for probe in probes:
         for dim in probe.targets:
@@ -1560,7 +1712,7 @@ def summarize(records: list[dict], probes: tuple[Probe, ...] = PROBES, *,
             if not entries:
                 out.append({"probe": probe.id, "dim": dim, "verdict": "未跑",
                             "n_notes": 0, "n_calls": 0, "clean": None, "dirty": None,
-                            "drop": None, "p": None, "notes": []})
+                            "drop": None, "p": None, "notes": [], "pre": True})
                 continue
             pairs = [(c, d) for _n, c, d in entries]
             clean = statistics.fmean([statistics.fmean(c) for c, _d in pairs])
@@ -1573,7 +1725,25 @@ def summarize(records: list[dict], probes: tuple[Probe, ...] = PROBES, *,
                         "n_calls": sum(len(c) + len(d) for c, d in pairs),
                         "clean": round(clean, 2), "dirty": round(dirty, 2),
                         "drop": round(drop, 2), "p": round(pv, 4),
-                        "notes": [n for n, _c, _d in entries]})
+                        "notes": [n for n, _c, _d in entries], "pre": True})
+    # 条件没成立的那些格子**单独一行，只报计数**。
+    # 不这么做的话它们会以「判据不灵」的身份混进上面那个均值——台账批 9 ②
+    # 的 `material_use` 就是这么从「掉 0.89，抓住」被拖成「掉 0.67，只动了一点」的。
+    for probe in probes:
+        for dim in probe.targets:
+            entries = unmet_rows.get((probe.id, dim)) or []
+            if not entries:
+                continue
+            pairs = [(c, d) for _n, c, d in entries]
+            clean = statistics.fmean([statistics.fmean(c) for c, _d in pairs])
+            dirty = statistics.fmean([statistics.fmean(d) for _c, d in pairs])
+            out.append({"probe": probe.id, "dim": dim, "verdict": UNMET,
+                        "n_notes": len(pairs),
+                        "n_calls": sum(len(c) + len(d) for c, d in pairs),
+                        "clean": round(clean, 2), "dirty": round(dirty, 2),
+                        "drop": None, "p": None,
+                        "notes": [n for n, _c, _d in entries], "pre": False,
+                        "why": probe.precondition_label})
     return out
 
 
@@ -1583,8 +1753,12 @@ def summarize(records: list[dict], probes: tuple[Probe, ...] = PROBES, *,
 # **「未跑」挪到了最后一位**（批 7 ⑤）。原来它排在「没抓住」/「反着来了」前面，
 # 于是一个维度只要有一条 probe 没跑，它真正测出来的**失败就被静默吞掉**——
 # 表上显示"未跑"，看起来像"还没测"，其实是"测了，没抓住"。
+# 「条件没出现」不是一个关于判据的结论，所以它**不许参与 roll_up 的竞争**
+# （见 `roll_up`），只在报告里单独一节。放在这张表里是为了让排序函数别炸。
+UNMET = "条件没出现"
+
 VERDICT_RANK = ("抓住", "掉了但不显著", "只动了一点", "基线偏低", "无从判断",
-                "没抓住", "反着来了", "未跑")
+                "没抓住", "反着来了", UNMET, "未跑")
 
 
 def roll_up(rows: list[dict]) -> list[dict]:
@@ -1599,6 +1773,11 @@ def roll_up(rows: list[dict]) -> list[dict]:
     """
     best: dict[str, dict] = {}
     for r in rows:
+        if r["verdict"] == UNMET:
+            # **条件没成立的行不参与「这一维到底灵不灵」**：它既不能证明判据好，
+            # 也不能证明判据坏。让它进来只会在两个方向上都撒谎——赢了就把一个
+            # 没测过的维度报成合格，输了就把一个好维度报成废的。
+            continue
         cur = best.get(r["dim"])
         if cur is None or VERDICT_RANK.index(r["verdict"]) < VERDICT_RANK.index(cur["verdict"]):
             best[r["dim"]] = r
@@ -1677,7 +1856,8 @@ def render_report(rows: list[dict], side: list[dict], used: list[dict],
     lines += ["## 灵敏度（逐条 probe，**这张表才是原始结论**）", "",
               "| 维度 | probe | 条件 | 干净 | 植入 | 掉分 | 篇 | 次 | p | 结论 |",
               "|---|---|---|---:|---:|---:|---:|---:|---:|---|"]
-    for r in sorted(rows, key=lambda x: (VERDICT_RANK.index(x["verdict"]), x["dim"])):
+    for r in sorted([x for x in rows if x["verdict"] != UNMET],
+                    key=lambda x: (VERDICT_RANK.index(x["verdict"]), x["dim"])):
         pid = r["probe"].split("/")
         lines.append(
             f"| `{r['dim']}` | {pid[0]}/{pid[2]} | {pid[-1]} | "
@@ -1697,6 +1877,25 @@ def render_report(rows: list[dict], side: list[dict], used: list[dict],
             f"{'' if r['dirty'] is None else r['dirty']} | "
             f"{'' if r['drop'] is None else r['drop']} | {r['n_notes']} | "
             f"{r.get('n_calls', 0)} | {'' if r.get('p') is None else r['p']} | {r['verdict']} |")
+
+    unmet = [r for r in rows if r["verdict"] == UNMET]
+    lines += ["", "## 前置条件没成立的格子（**不进上面的掉分统计**）", "",
+              "判词自己写着「没给 X 就算达标」的那些维度，条件没出现时判满分是"
+              "**正确行为**，不是判据废了。把这两种格子算进同一个均值，就是"
+              "1.6 立项要分开的那两件事又混回去了（台账批 9 ②：`material_use` "
+              "整行 0.67，拆开是「材料块非空 3 篇掉 0.89、抓住」＋「材料块为空 "
+              "1 篇掉 0.00」）。", ""]
+    if unmet:
+        lines += ["| 维度 | probe | 前置条件 | 干净 | 植入 | 篇 | 次 | 笔记 |",
+                  "|---|---|---|---:|---:|---:|---:|---|"]
+        for r in sorted(unmet, key=lambda x: (x["dim"], x["probe"])):
+            pid = r["probe"].split("/")
+            lines.append(
+                f"| `{r['dim']}` | {pid[0]}/{pid[2]} | {r.get('why') or '—'}（没成立） | "
+                f"{r['clean']} | {r['dirty']} | {r['n_notes']} | {r.get('n_calls', 0)} | "
+                + "、".join(f"`{n}`" for n in r.get("notes", [])) + " |")
+    else:
+        lines.append("（无）")
 
     washed = washed_out(rows)
     lines += ["", "## 被上面那张表洗掉的失败行（**必须跟着一起读**）", ""]
@@ -1805,10 +2004,19 @@ def main() -> None:
         print(f"\n本次跑了 {ran} 格", flush=True)
         records = [r for r in read_log() if r.get("key") in valid]
 
-    calib = calibrate_threshold(records, probes)
+    # 前置条件是 `(语料, probe)` 的纯函数，**报告时重算**——批 9 那 396 格
+    # 不用重跑就能按条件拆开（`precondition_map` 的注释写了为什么值得）。
+    records = annotate_preconditions(records, precondition_map(notes, probes))
+    met, unmet_recs = split_by_precondition(records)
+    if unmet_recs:
+        print(f"前置条件没成立的格子：{len(unmet_recs)} 行（单独成表，不进掉分统计）",
+              flush=True)
+    # 噪声标定也只能用条件成立的那些：条件没出现的格子两臂本来就该一样，
+    # 混进来会把 null 分布压窄，标定出来的线偏松。
+    calib = calibrate_threshold(met, probes)
     print(f"噪声标定：{calib}", flush=True)
     rows = summarize(records, probes)
-    side = collateral(records, probes)
+    side = collateral(met, probes)
     report = render_report(rows, side, notes, dropped, skips, kept_total=len(kept), calib=calib)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"{datetime.now().strftime('%m%d-%H%M%S')}-sensitivity.md"

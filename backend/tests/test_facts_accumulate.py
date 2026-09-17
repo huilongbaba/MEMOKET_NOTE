@@ -89,6 +89,12 @@ def test_累积规则只有一个写入方():
     allowed = {
         "app/harness/middleware/facts.py",   # 累积规则本身
         "app/harness/snapshot.py",           # 轮末暂停后把上次的结果放回去
+        # 批 10（计划 2.2）：**只往后追加更正，不参与累积也不修剪**。
+        # 它加的是「这条已经被 X 取代了，X 说的是……」——知识库一直知道
+        # 6/3 被 8/5 取代，而写作侧从来不问，两条都会被写进正文。
+        # 为什么不让 Facts 代劳：它是 `after_prepare` 的第一棒、只认
+        # `st.facts_new`，而这几行不是这一轮"查回来的"，是对账查出来的。
+        "app/harness/middleware/supersede.py",
     }
     writers = {name for name, src in _sources().items() if "st.facts = " in src}
     assert writers == allowed, f"st.facts 的写入方变了：{sorted(writers)}"

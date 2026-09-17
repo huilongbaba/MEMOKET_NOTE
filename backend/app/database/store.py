@@ -347,6 +347,15 @@ _ADDED_COLUMNS = (
     # 自己停了"、"比最好那轮更差主动停"三件事该采取的行动完全不同
     # （docs/harness-effect-plan.md P4）。
     ("harness_runs", "stopped", "TEXT NOT NULL DEFAULT ''"),
+    # 查询级短路省掉了几次后端查询（计划 2.1）。**没有这一列，「短路做没做、
+    # 省了多少」跟「模型这轮本来就没重复查」在数据上长得一模一样**——而
+    # `repeat_calls` 只数得到进了 `trace.calls` 的那些，`hooks/note.prepare`
+    # 里直接调的主题树 / 多跳根本不在里面。
+    ("harness_rounds", "cached_calls", "INTEGER NOT NULL DEFAULT 0"),
+    # 这一轮有几条取回来的事实是「已经被别的事实取代了」（计划 2.2）。
+    # 库里 `kb_conflicts` 一直记着，而写作 harness 从来不问——
+    # 于是 6 月 3 日那条和 8 月 5 日那条都可能被写进正文。
+    ("harness_rounds", "superseded", "INTEGER NOT NULL DEFAULT 0"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
     # 笔记图标（boxicons 的类名，如 bx-rocket；空 = 按文件夹 / 笔记默认）。Trilium 的 NoteIcon，
     # 那边存成 #iconClass 属性，我们没有属性系统就直接一列。
@@ -1968,18 +1977,21 @@ def record_harness_run(key: str, status: str, rounds: int,
 def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, int],
                          status: str, weakest: str, content_len: int,
                          facts_new: int = 0, facts_total: int = 0,
-                         tool_calls: int = 0, repeat_calls: int = 0) -> None:
+                         tool_calls: int = 0, repeat_calls: int = 0,
+                         cached_calls: int = 0, superseded: int = 0) -> None:
     """记一轮。**记账失败不能影响这一轮的产出**——这张表是给分析用的，
     不是承重的，所以调用方把它包在 try 里。"""
     with connect() as c:
         c.execute(
             "INSERT INTO harness_rounds (id,key,run_id,round,scores,status,weakest,"
-            "content_len,facts_new,facts_total,tool_calls,repeat_calls,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "content_len,facts_new,facts_total,tool_calls,repeat_calls,"
+            "cached_calls,superseded,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), key, run_id, int(round_),
              json.dumps(scores, ensure_ascii=False), status, weakest,
              int(content_len), int(facts_new), int(facts_total),
-             int(tool_calls), int(repeat_calls), _now()))
+             int(tool_calls), int(repeat_calls),
+             int(cached_calls), int(superseded), _now()))
         # 跟 harness_runs 同一条修剪规矩：一个 key 只留最近 400 行
         # （50 次跑 × 8 轮），再往前的除了占地方没有用。
         c.execute("DELETE FROM harness_rounds WHERE key=? AND id NOT IN ("

@@ -86,3 +86,76 @@ def test_空调用不炸():
     led = blank()
     assert fold(led, [])["tool_calls"] == 0
     assert fold(led, None)["tool_calls"] == 0
+
+
+# ---------------------------------------------------- 批 10：日期 + 短路 ---
+
+def test_事实的日期进账本():
+    """`_fmt_facts` 一直在输出 `when`/`date`，账本以前每轮读一遍、每轮扔一遍。
+    LedgerRAG 四个信号里的 temporal validity 就是这一个
+    （docs/harness-fact-ledger.md §10②，计划 2.3）。"""
+    led = blank()
+    fold(led, [("search_memory", {"query": "dvt"},
+                "[f1] DVT 推到 8 月 5 日\n    （2026-08-05 · Speaker A · 决定）")])
+    assert led["facts"]["f1"]["when"] == "2026-08-05"
+
+
+def test_日期对的是上面那一条事实_不是下一条():
+    """两个正则各扫各的时，账本里每条事实的日期都是下一条的——
+    而且**看起来完全正常**：字段有值、格式对、只有内容错。"""
+    led = blank()
+    fold(led, [("search_memory", {"query": "a"},
+                "[f1] 甲\n    （2026-01-01 · A · 决定）\n"
+                "[f2] 乙\n    （2026-02-02 · B · 决定）")])
+    assert led["facts"]["f1"]["when"] == "2026-01-01"
+    assert led["facts"]["f2"]["when"] == "2026-02-02"
+
+
+def test_无日期不当成日期存():
+    """`_fmt_facts` 没有日期时填的是「无日期」。把那三个字存进账本，
+    比不存更糟——它长得像有数据。"""
+    led = blank()
+    fold(led, [("search_memory", {"query": "a"},
+                "[f1] 甲\n    （无日期 · Speaker A）")])
+    assert led["facts"]["f1"]["when"] == ""
+
+
+def test_同一条事实换个工具取回来时补上日期():
+    """`recall()` 走 `date`、`facts_page()` 走 `when`，两条路径键名本来就不同。"""
+    led = blank()
+    fold(led, [("search_memory", {"query": "a"}, "[f1] 甲\n    （无日期）")])
+    fold(led, [("filter_facts", {"topic": "x"}, "[f1] 甲\n    （2026-05-05 · A）")])
+    assert led["facts"]["f1"]["when"] == "2026-05-05"
+
+
+def test_重复查询占比算得出来():
+    """**短路要能被观测到**（计划 2.1）：做了和没做，产出一模一样。"""
+    from app.harness.middleware.ledger import repeat_rate
+    led = blank()
+    call = ("search_memory", {"query": "众筹"}, "")
+    fold(led, [call])
+    fold(led, [call, ("list_topics", {}, "")])
+    assert repeat_rate(led) == 1 / 3
+
+
+def test_账本每轮给短路层报一次轮次():
+    """**这是短路正确性的承重钉，不是记账。**
+
+    没人报轮次的话，`query_cache` 里那个「这一轮贴过了吗」永远停在初值，
+    于是**跨轮的重复也会被当成同一轮**，只回一句「结果在上面」——而上一轮的
+    工具消息根本不在这一轮的 convo 里。症状是这一轮凭空少一批材料，
+    没有任何报错，正文照常写出来、只是写得更空。
+    """
+    import asyncio
+
+    from app.harness import query_cache
+    from app.harness.middleware.ledger import Ledger
+    from app.harness.modes import NOTE
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+
+    assert "before_round" in Ledger.hooks
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    st.round = 3
+    asyncio.run(Ledger().before_round(st))
+    assert query_cache._cache(st.ctx)["round"] == 3

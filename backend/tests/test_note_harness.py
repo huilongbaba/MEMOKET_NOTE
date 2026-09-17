@@ -205,8 +205,11 @@ def test_judging_uses_run_level_facts_not_this_round():
     src = (Path(__file__).resolve().parent.parent / "app" / "harness").rglob("*.py")
     writers = sorted(f.name for f in src
                      if "st.facts = " in f.read_text(encoding="utf-8"))
-    # snapshot.py 也写，但那是「把上次累积的结果放回去」，不是累积规则
-    assert writers == ["facts.py", "snapshot.py"], f"st.facts 的写入方变了：{writers}"
+    # snapshot.py 也写，但那是「把上次累积的结果放回去」，不是累积规则；
+    # supersede.py 也写，但它只**往后追加更正**（被取代的事实 + 取代它的那条），
+    # 不参与累积也不修剪（批 10 / 计划 2.2，理由见 test_facts_accumulate.py）。
+    assert writers == ["facts.py", "snapshot.py", "supersede.py"], \
+        f"st.facts 的写入方变了：{writers}"
 
 
 def test_same_meaning_rewrite_is_rejected():

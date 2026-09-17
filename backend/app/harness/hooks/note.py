@@ -21,7 +21,7 @@ from typing import AsyncIterator
 
 from .. import prompts
 from .. import agent_loop
-from .. import tools
+from .. import query_cache
 from ...util import llm
 from ...editor import outline
 from .mirror import _record_dropped, _scrub_and_record
@@ -146,7 +146,11 @@ class NoteHooks:
                 title, spine, beats, st.content_for_continue(),
                 steer=getattr(policy, "steer", ""),
                 require_verification=getattr(policy, "require_verification", False),
-                topics_overview=tools.dispatch("list_topics", {"limit": 40}, st.ctx),
+                # 走短路层：主题树每一轮都要，而它同参数同结果（计划 2.1）。
+                # **跨轮短路一定要原样返回全文**——这一份是直接拼进 prompt 的，
+                # 退化成一句「已经查过」等于把主题树从 prompt 里抽掉，而当年
+                # 把主题树摆进 prompt 正是有效的那两次结构改动之一。
+                topics_overview=query_cache.dispatch("list_topics", {"limit": 40}, st.ctx),
                 section=target[0] if target else "")},
         ]
         # Mode decides which groups exist; the policy may add to them for a
@@ -177,7 +181,7 @@ class NoteHooks:
         # on breadth in the first round.
         if getattr(policy, "require_verification", False) and trace.used:
             for fid in agent_loop.fact_ids_in(trace)[:3]:
-                src = tools.dispatch("fact_sources", {"fact_id": fid}, st.ctx)
+                src = query_cache.dispatch("fact_sources", {"fact_id": fid}, st.ctx)
                 if src and not src.startswith("（"):
                     facts.append(f"[{fid} 的原话] " + src.replace("\n", " ")[:300])
 
@@ -187,7 +191,9 @@ class NoteHooks:
         # directly instead of hoped for.
         probe = f"{title}\n{st.content_for_continue()[-400:]}"
         if agent_loop.is_scoped_question(probe):
-            hop = tools.dispatch(
+            # 多跳一次要 10 秒，而同一次跑里 title/spine 不变、这个问题
+            # 每轮拼出来是**一模一样**的——短路它省的是整次跑里最贵的一次查询。
+            hop = query_cache.dispatch(
                 "search_session_context",
                 {"question": f"{title}——{spine or st.content[:120]}", "limit": 10},
                 st.ctx)

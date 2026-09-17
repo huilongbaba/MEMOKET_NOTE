@@ -908,3 +908,172 @@ def test_排列检验必须在同一篇之内打乱():
     shifted = [([2, 2, 2], [1, 1, 1]), ([5, 5, 5], [4, 4, 4])]
     assert bench.permutation_p(base, resamples=800) == \
         bench.permutation_p(shifted, resamples=800)
+
+
+# ================================================== 批 10：测量完整性 ===
+#
+# 两条都是「量错了东西」而不是「量出了坏结果」——这一类错误的共同特征是
+# **表照出、数照有、结论照下**，只有内容是错的。
+
+def test_取材器挑的块定位得回原文():
+    """批 10 的根：取材器把一节重新拼成 `标题 + "\\n" + 正文`，比原文少一个
+    换行，于是 `surrounding()` 里那句 `find()` 一律落空，落进「就当它在正文
+    中间」的兜底——`after` 恒为空、`before` 是错的那半篇。真实语料上
+    `numeric-block` 三篇全中、`chart-block` 中一篇。"""
+    note = _note_with(NOTE + "\n\n" + CHART + "\n\n收尾这一段是后文。")
+    for name in ("numeric-block", "chart-block", "chart-block-narrated",
+                 "table-block", "paragraph"):
+        subject = bench.SELECTORS[name](_note_with(NOTE + "\n\n" + CHART
+                                                   + "\n\n" + TABLE + "\n\n收尾。")) \
+            if name in ("table-block",) else bench.SELECTORS[name](note)
+        if subject is None:
+            continue
+        assert subject.at >= 0, f"{name} 没报自己在原笔记里的位置"
+
+
+def test_数字最密那一块优先挑后面还有正文的():
+    """台账批 9 ③：这一档挑的块后面恒为空，于是 `fits_context` /
+    `actionable` / `numbers_from_tools` / `honest_caveats` /
+    `answers_the_question` / `states_limits` **六个维度是在只给一半上下文的
+    条件下被测的**。"""
+    note = _note_with(NOTE)
+    subject = bench.SELECTORS["numeric-block"](note)
+    assert subject is not None
+    _before, after = bench.surrounding(subject, note)
+    assert after.strip(), "挑中的块后面又是空的"
+
+
+def test_整篇只有末节有数时照实取不硬凑():
+    """那一篇上「后面没有正文」是关于**这篇笔记**的事实，不是取材偏差。
+    硬凑一个不在文末的块，量出来的就不是生产那一刻的样子了。"""
+    note = _note_with("## 开头\n\n这一节没有任何数目字。\n\n"
+                      "## 末节\n\n1 2 3 4 5 6 7 8 个数字都在这里。\n")
+    subject = bench.SELECTORS["numeric-block"](note)
+    assert subject is not None and "末节" in subject.text
+
+
+def test_前后文用的是块的真实位置():
+    note = _note_with(NOTE)
+    subject = bench.SELECTORS["numeric-block"](note)
+    before, after = bench.surrounding(subject, note)
+    assert subject.text not in before and subject.text not in after, \
+        "块自己被算进了它的前后文"
+    assert before + subject.text + after == note["content"] or \
+        (before + note["content"][len(before):]) == note["content"]
+
+
+def test_定位不到时宁可把前后文记成空():
+    """编一个位置出来，`fits_context` 就会去罚一段它根本没见过的上下文。"""
+    note = _note_with(NOTE)
+    before, after = bench.surrounding(bench.Subject("这段话根本不在这篇笔记里面出现过"), note)
+    assert (before, after) == ("", "")
+
+
+# ---------------------------------------------- 前置条件（批 9 ② 的修法）---
+
+def _pre_probe(**kw):
+    return bench.Probe("note", "whole", "strip_specifics", ("material_use",),
+                       precondition=lambda s, n, c: kw["ok"],
+                       precondition_label="材料块非空")
+
+
+def _rows(pre_true: list[tuple[int, int]], pre_false: list[tuple[int, int]],
+          probe) -> list[dict]:
+    """`[(干净分, 植入分)]` → 日志行。每一对算一篇。"""
+    out = []
+    for i, (group, pre) in enumerate(((pre_true, True), (pre_false, False))):
+        for j, (c, d) in enumerate(group):
+            note = f"n{i}{j}"
+            out.append({"key": f"k{i}{j}c", "note": note, "probe": probe.id,
+                        "arm": "clean", "rep": 0, "pre": pre,
+                        "scores": {"material_use": c}})
+            out.append({"key": f"k{i}{j}d", "note": note, "probe": probe.id,
+                        "arm": "dirty", "rep": 0, "pre": pre,
+                        "scores": {"material_use": d}})
+    return out
+
+
+def test_条件没成立的格子不进掉分均值():
+    """台账批 9 ②：`material_use` 整行掉 0.67（"只动了一点"），按材料块空不空
+    拆开是「非空 3 篇掉 0.89」＋「为空 1 篇掉 0.00」。**不分组就是把"条件没
+    出现"和"判据不灵"算进同一个均值**，而这两件事的处理方式完全相反。"""
+    probe = _pre_probe(ok=True)
+    records = _rows([(2, 1), (2, 1), (2, 1)], [(2, 2)], probe)
+    rows = bench.summarize(records, (probe,), resamples=200)
+    main = [r for r in rows if r["verdict"] != bench.UNMET]
+    unmet = [r for r in rows if r["verdict"] == bench.UNMET]
+    assert len(main) == 1 and main[0]["drop"] == 1.0 and main[0]["n_notes"] == 3
+    assert len(unmet) == 1 and unmet[0]["n_notes"] == 1 and unmet[0]["drop"] is None
+
+
+def test_条件没成立的行不参与一维的最终结论():
+    """它既不能证明判据好，也不能证明判据坏。让它进来会在两个方向上都撒谎。"""
+    probe = _pre_probe(ok=True)
+    rows = bench.summarize(_rows([(2, 0), (2, 0)], [(2, 2), (2, 2)], probe),
+                           (probe,), resamples=200)
+    rolled = bench.roll_up(rows)
+    assert len(rolled) == 1 and rolled[0]["verdict"] != bench.UNMET
+    # 条件成立的那两篇掉满一整档；混进条件没成立的两篇就只剩一半
+    assert rolled[0]["n_notes"] == 2 and rolled[0]["drop"] == 2.0
+
+
+def test_没声明前置条件的probe恒成立():
+    """默认 False 会让整张表静默空掉一半，而空表看起来跟"还没跑"一样。"""
+    probe = bench.Probe("note", "whole", "strip_specifics", ("material_use",))
+    note = _note_with(NOTE)
+    assert probe.holds(bench.SELECTORS["whole"](note), note, {}) is True
+
+
+def test_材料块为空的那一格判成条件没成立():
+    """`_MATERIAL_USE` 判词第一句：「只在【知识库事实】块里**确实给了材料**时
+    才判这一项，没给材料就算达标」——空材料时判 2.0 是**判词规定的正确行为**。"""
+    note = _note_with(NOTE)
+    subject = bench.SELECTORS["whole"](note)
+    assert bench._pre_has_material(subject, note, {}) is False
+    assert bench._pre_has_material(subject, note, {"知识库事实": "- [F1] 甲"}) is True
+
+
+def test_前置条件能在报告时重算():
+    """**不重算就得先再花一次全量评测的钱**：批 9 那 396 格的日志里没有这一列。"""
+    note = _note_with(NOTE)
+    probe = [p for p in bench.PROBES if p.precondition is not None][0]
+    pre_map = bench.precondition_map([note], (probe,))
+    assert (note["id"], probe.id) in pre_map
+    records = [{"key": "k", "note": note["id"], "probe": probe.id,
+                "arm": "clean", "rep": 0, "scores": {"material_use": 2}}]
+    bench.annotate_preconditions(records, pre_map)
+    assert "pre" in records[0]
+
+
+def test_跑那一格时记下的前置条件不被重算覆盖():
+    """当场记下的是事实，重算的是推断——两者冲突时以当场那份为准。"""
+    records = [{"key": "k", "note": "n1", "probe": "p", "pre": False, "scores": {}}]
+    bench.annotate_preconditions(records, {("n1", "p"): True})
+    assert records[0]["pre"] is False
+
+
+def test_前置条件不进格子的身份():
+    """它不改变递给打分器的任何东西。进了 key 只会让跑过的格子全部作废重跑。"""
+    note = _note_with(NOTE)
+    probe = bench.Probe("note", "whole", "duplicate_paragraph", ("non_repetition",),
+                        precondition=lambda s, n, c: True, precondition_label="恒真")
+    tasks, skips = bench.build_tasks([note], (probe,), 1, set())
+    assert tasks, skips
+    same = bench.cell_key(note["id"], probe.id, tasks[0].arm, 0,
+                          tasks[0].text, tasks[0].context)
+    assert tasks[0].key == same
+
+
+def test_末节数字更密时也不挑末节():
+    """**这一条是上面那条的突变闸**：把「优先挑后面还有正文的」撤掉，
+    取材器就会去挑数字最密的末节，而末节后面什么都没有——六个维度又回到
+    「只给一半上下文」的条件下（台账批 9 ③）。"""
+    note = _note_with("## 前面这一节\n\n2026 年 3 月 15 日首单 1.5 万台，"
+                      "中性 3 万台，乐观 10 万台。\n\n"
+                      "## 中间这一节\n\n这一节是给末节垫后文用的，"
+                      "写得长一点好让它够得上门槛：这里讲的是承接那批支持者的做法，"
+                      "以及发货之后怎么收集反馈。\n\n"
+                      "## 末节\n\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 个数字全在这。\n")
+    subject = bench.SELECTORS["numeric-block"](note)
+    assert subject is not None and "前面这一节" in subject.text, \
+        "又去挑末节了——那一档的后文恒为空"

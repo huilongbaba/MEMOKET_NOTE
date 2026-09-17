@@ -23,6 +23,7 @@ from .runtime import Runtime
 from .repeats import Repeats
 from .save import Save
 from .skills import Skills
+from .supersede import Supersede
 from .provenance import Provenance
 
 # Where each one runs. Two on the same hook execute in list order, and that
@@ -35,6 +36,8 @@ from .provenance import Provenance
 #                                  gather is the only call with tools
 #   Facts        after_prepare     fold this round's haul into the run's
 #   Provenance   after_prepare     after Facts: show what the tools returned
+#   Supersede    after_prepare     after Ledger: 账本里哪条事实已经被取代了，
+#                                  把取代它的那条一起补进材料（计划 2.2）
 #   Repeats      before_judge      dup_hints is evidence for the scoring call
 #   Checks       before_judge      after Repeats: it may skip scoring entirely,
 #                                  and dup_hints is still wanted next round
@@ -50,8 +53,8 @@ from .provenance import Provenance
 #   Runtime      after_judge       feed the round's signals back into the
 #                                  next round's run parameters
 #   Replan       after_judge       adjust the skeleton, under constraints
-BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Repeats(), Checks(),
-               BestOf(), History())
+BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Supersede(), Repeats(),
+               Checks(), BestOf(), History())
 
 # Not in BASE, attached per-Mode via extra_mw:
 #   Revise  -- "fix what's already written before writing more"; only
@@ -63,4 +66,4 @@ BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Repeats(), Checks(),
 
 __all__ = ["BASE", "BestOf", "Checks", "Compact", "Facts", "History", "Ledger",
            "OrderError", "Provenance", "Repair", "Replan", "Repeats",
-           "Runtime", "Save", "Skills", "describe", "verify"]
+           "Runtime", "Save", "Skills", "Supersede", "describe", "verify"]

@@ -29,6 +29,9 @@ this package. The short version:
 
 **② 循环用得上的能力**
     agent_loop.py 工具循环：让模型自己决定查什么
+    query_cache.py 查询级短路：一次跑里参数完全相同的知识库查询只真查一次。
+                  同一轮内的重复连上下文都不再塞第二遍（那一份就在上面），
+                  跨轮的**原样返回全文**（这一轮的 convo 里没有它）
     skills.py     SKILL.md 目录的读写
     adapter.py    app 和 harness 之间的接缝（两个 Protocol 的实现）
     score_context.py  打分器除了正文还能看到什么：block 的前后文 / 指令 /

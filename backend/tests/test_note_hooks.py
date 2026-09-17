@@ -149,7 +149,7 @@ def _prep(monkeypatch, *, facts=(), error=False, used=True, groups_seen=None,
 
     monkeypatch.setattr(mod.agent_loop, "gather_context", fake_gather)
     monkeypatch.setattr(mod.agent_loop, "is_scoped_question", lambda p: False)
-    monkeypatch.setattr(mod.tools, "dispatch", lambda name, args, ctx: "（没有）")
+    monkeypatch.setattr(mod.query_cache.tools, "dispatch", lambda name, args, ctx: "（没有）")
     return mod
 
 
