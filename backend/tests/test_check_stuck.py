@@ -253,3 +253,84 @@ async def test_修复对某一档分数试过一次没用就不再为它花轮�
     [e async for e in rep.after_judge(st)]
     assert not st.bag["cleanup_only"]
     assert "non_repetition" not in st.bag["repair_failed"]
+
+
+@pytest.mark.anyio
+async def test_跑题也算内在质量要排一轮只修不写():
+    """第 765 轮（计划 1.4）。`topic_fidelity` 以前是个孤儿：既不在
+    `INNER_QUALITY`、也不在 `loop.COVERAGE_DIMS`，分段模式实测 16 次里
+    **7 次判它不达标**，而两条执行器选择规则一条都不看它——它唯一能做的是
+    把 `status` 钉在 `continue` 上，然后看着回路把轮数跑满。
+
+    归内在质量的理由：**已经跑题的那段文字，不会因为后面补了几段切题的就
+    不跑题了。** 追加只会让它更差，只有修订能让它变对。
+    """
+    from app.harness.middleware.repair import INNER_QUALITY, Repair
+    from app.harness.types import DimensionScore, Evaluation
+
+    assert "topic_fidelity" in INNER_QUALITY
+
+    st = _st([])
+    st.ev = Evaluation(
+        scores={"topic_fidelity": DimensionScore(1, "写到了该由别的分段覆盖的内容"),
+                "section_coverage": DimensionScore(2, "")},
+        status="continue", weakest="topic_fidelity")
+    st.skip_judge = False
+    evs = [e async for e in Repair().after_judge(st)]
+    assert st.bag["cleanup_only"], "跑题该排一轮只修不写"
+    assert evs and evs[0].data["value"]["dimensions"] == ["topic_fidelity"]
+
+
+def test_三族维度的名单互不重叠():
+    """同一个维度名写在三个文件里（`repair.INNER_QUALITY` /
+    `loop.COVERAGE_DIMS` / `policy.MATERIAL_DIMS`），而 `policy.py` 在分层
+    测试的 PURE 名单里、不能 import 另外两个——所以只能各写一份，再用这条
+    测试对账。`topic_fidelity` 当初就是这么漏成孤儿的。
+    """
+    from app.harness.loop import COVERAGE_DIMS
+    from app.harness.middleware.repair import INNER_QUALITY
+    from app.harness.policy import MATERIAL_DIMS
+
+    assert not set(INNER_QUALITY) & set(COVERAGE_DIMS), "一个维度不能既是缺陷又是缺口"
+    assert not set(INNER_QUALITY) & set(MATERIAL_DIMS), \
+        "内在质量的诊断不该有资格进检索规划"
+    assert set(COVERAGE_DIMS) <= set(MATERIAL_DIMS), \
+        "覆盖度不达标 = 还得接着写，检索正是为它服务的"
+
+
+def test_长文的每一个维度都得有人管():
+    """上一条只证明三个名单**互不重叠**——而 `topic_fidelity` 当初的毛病不是
+    重叠，是**哪个名单都没有它**。重叠测试对孤儿完全免疫：把它从
+    `INNER_QUALITY` 拿掉，上一条照样绿。
+
+    所以这一条反过来查：长文两个模式声明的维度，逐个看落没落进三个名单
+    （内在质量 / 覆盖度 / 检索可改善）。落不进的是孤儿——**孤儿的分数只能
+    把 `status` 钉在 continue 上，没有任何一条执行器规则会因为它做事。**
+
+    剩下的两个孤儿是**明知故留**的，各自写了理由；名单写死在这里，就是为了
+    下一个孤儿（无论是新加的维度，还是有人把 `topic_fidelity` 挪出去）必须
+    先改这行测试、先说清楚理由。
+    """
+    from app.harness.loop import COVERAGE_DIMS
+    from app.harness.middleware.repair import INNER_QUALITY
+    from app.harness.modes import _note_dims, _section_dims
+    from app.harness.policy import MATERIAL_DIMS
+
+    classified = set(INNER_QUALITY) | set(COVERAGE_DIMS) | set(MATERIAL_DIMS)
+    known_orphans = {
+        # 实测 1.88–1.96 封顶（`harness-mechanism-rethink.md` §1）：对着一份
+        # 没人验过的计划打分太容易满足，它几乎从不是最弱那一维，归哪一族都
+        # 不会改变任何一轮的走向。真要动它，先解决「计划本身没被验过」。
+        "spine_fidelity",
+        # 形状上是内在质量（文风是已写文字的属性，续写不会把它改对），但
+        # 它只在有 profile 的跑里才挂上，而且从没实测到它把回路卡住过。
+        # **判据宁可窄一点**：没有实测失败逼出来的改动不做。
+        "style_fit",
+    }
+
+    for name, dims in (("note", _note_dims(True, False)),
+                       ("note-polish", _note_dims(True, True)),
+                       ("section", _section_dims(True))):
+        orphans = {d.name for d in dims} - classified
+        assert orphans == known_orphans & {d.name for d in dims}, \
+            f"{name} 多了一个没人管的维度：{orphans - known_orphans}"

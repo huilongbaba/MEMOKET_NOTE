@@ -24,7 +24,16 @@ from ..state import State
 
 # Dimensions that describe a defect in the existing text rather than an
 # absence of text.
-INNER_QUALITY = ("non_repetition", "coherence")
+#
+# **`topic_fidelity` 是第 765 轮补进来的，它之前是个孤儿。**
+# 它既不在这个元组里，也不在 `loop.COVERAGE_DIMS` 里——于是分段模式实测
+# 16 次里 7 次判它不达标，而两条执行器选择规则一条都不看它：既不会排
+# 「只修不写」，也不算「还没写够」。它唯一的作用是把 `status` 钉在
+# `continue` 上，然后看着回路把轮数跑满。
+#
+# 归内在质量的理由很硬：**已经跑题的那段文字，不会因为后面补了几段切题的
+# 就不跑题了。** 跟重复是同一个形状——追加只会让它更差，只有修订能让它变对。
+INNER_QUALITY = ("non_repetition", "coherence", "topic_fidelity")
 
 
 class Repair:

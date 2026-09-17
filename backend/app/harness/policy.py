@@ -34,6 +34,31 @@ TOOL_ITERS_MIN, TOOL_ITERS_MAX = 1, 4
 REVISIONS_MIN, REVISIONS_MAX = 4, 10
 TEMP_MIN, TEMP_MAX = 0.3, 0.8
 
+# **只有这几个维度的诊断有资格进检索规划 prompt。**
+#
+# `steer` 唯一的去处是 `prompts/note.retrieval_plan_user`，那个 prompt 回答
+# 的问题只有一个：**这一轮该去知识库查哪些事实。** 而检索能改善的维度就
+# 这四个——事实站不站得住、查到的材料有没有写进去、节拍/分段覆盖到没有。
+#
+# 之前这里漏过一条真实的噪声：下面「连续 N 轮没达标 → 升级提示」那条规则
+# 对所有维度一视同仁，于是 `non_repetition` 卡住两轮之后，
+# 「你把同一件事说了两遍，换个思路」这句话被原样塞进了**决定去查什么**的
+# prompt。查什么都修不了重复（`harness-mechanism-rethink.md` §1 错配一），
+# 它在那儿只能起两个作用：占 token、把模型的注意力从「这一节缺哪些材料」
+# 上引开。
+#
+# 内在质量那一族（non_repetition / coherence / topic_fidelity）走的是另一条
+# 线：`loop.py` 的 `focus` / `focus_note` → `middleware/revise.py` → 修订
+# prompt。那条线是对的，也是唯一能让已经写坏的文字变对的那条——**这里少说
+# 一句，那边一个字都不少。**
+#
+# 名单跟 `middleware/repair.INNER_QUALITY` / `loop.COVERAGE_DIMS` 必须互不
+# 重叠、互相补齐，`tests/test_runtime_policy.py` 有一条断言钉着
+# （policy.py 在分层测试的 PURE 名单里，只能依赖标准库，所以不能 import
+# 那两个常量，只能各写一份 + 一条测试对账）。
+MATERIAL_DIMS = ("factual_grounding", "material_use",
+                 "beat_coverage", "section_coverage")
+
 
 @dataclass
 class RoundFeedback:
@@ -212,14 +237,23 @@ def adjust(policy: RuntimePolicy, fb: RoundFeedback) -> tuple[RuntimePolicy, lis
     # ---- 卡住了就升级，不是重复同样的动作 ----
     # 真实失败：清理↔续写震荡五轮撞 max_rounds。单轮分数看不出这个，
     # 只有"连续几轮同一维度不达标"看得出来。
-    for dim, n in stuck.items():
-        if n >= 2:
+    # 一次只升级最要紧的一个，堆一堆提示反而稀释注意力。
+    # **挑的时候材料类优先**：`steer` 只对它们有效，要是先撞上一个卡住的
+    # `non_repetition` 就 break，同样卡住的 `beat_coverage` 会一句话都得不到。
+    escalating = [d for d, n in stuck.items() if n >= 2]
+    if escalating:
+        dim = next((d for d in escalating if d in MATERIAL_DIMS), escalating[0])
+        reasons.append(f"{dim} 连续 {stuck[dim]} 轮未达标 → 升级提示")
+        # **卡住的是内在质量时，升级提示不进 steer。** 见 MATERIAL_DIMS 那段：
+        # steer 的落点是「这一轮去查什么」，而重复 / 不连贯 / 跑题再查十条事实
+        # 也不会好。这一档照旧记 reason（SSE 里用户看得到「non_repetition
+        # 连续 3 轮未达标」），但不再往检索 prompt 里塞一句它用不上的话——
+        # 修它的力气全在修订那条线上，`Repair` 已经为这三维排了「只修不写」。
+        if dim in MATERIAL_DIMS:
             steer_parts.append(
-                f"「{dim}」这一项已经连续 {n} 轮没达标，说明上一轮的做法没效果，"
+                f"「{dim}」这一项已经连续 {stuck[dim]} 轮没达标，说明上一轮的做法没效果，"
                 "换一个思路，不要重复上一轮的动作。"
             )
-            reasons.append(f"{dim} 连续 {n} 轮未达标 → 升级提示")
-            break       # 一次只升级最要紧的一个，堆一堆提示反而稀释注意力
 
     # ---- 一切正常就把预算收回来，别白花时间 ----
     # 工具每多跑一轮就是一次本地模型调用（20-90 秒）。事实这一维稳了、

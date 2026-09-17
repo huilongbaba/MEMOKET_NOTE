@@ -286,3 +286,150 @@ def test_parse_place_directive():
     assert outline.parse_place_directive("[放到: 「团队」]") == "团队"
     assert outline.parse_place_directive("【放到：文末】") is None
     assert outline.parse_place_directive("普通的一行正文") is None
+
+
+# ------------------------------------------------ 插入前按句再剔一遍 ---
+#
+# 第 765 轮（计划 1.3）。段落级只能整段扔或整段留，而模型**重写整节**时新旧
+# 句子混在同一段里——difflib 被段里的新句子稀释到 0.4 以下，整段原样插进去。
+# 下面每一条都对着 31 篇真实笔记里量到的一个具体形态。
+
+def test_按句剔掉正文里已经有的那几句():
+    """模型把整节重写了一遍：旧句子逐句剔掉，新句子留下，段落原样拼回去。
+
+    这是实测形态本身（笔记 1da5a3c9767b，段内重复 43.5%）：新写的一段里
+    「已有观察表明…有人会把 MemoCat Pro 导出的内容交给 GPT」跟正文里那句
+    相似度 0.964，而同一段里还挂着一句真正新的。
+    """
+    from app.editor.outline import drop_already_written, drop_restated_sentences
+
+    old = ("已有观察表明，用户录音后通常还需要继续处理，有人会把 MemoCat Pro "
+           "导出的内容交给 GPT；因此，「录下来」不能写成价值终点。")
+    rewritten = ("已有观察表明，用户录音后通常还需要继续处理，有人会把 MemoCat Pro "
+                 "导出的内容交给 GPT；因此，页面不能把「录下来」写成价值终点。"
+                 "另外还要说清楚硬件供应链在三月之前能不能把首批物料备齐这件事。"
+                 "定金用户那一批的复测窗口也得跟着排期一起定下来，不能留到上线前一周再说。"
+                 "媒体版本和众筹版本的差异清单，三月十五号之前要有人逐条对过并签字。")
+    got = drop_restated_sentences(old, rewritten)
+    assert "已有观察表明" not in got, "正文里已经有的那一句没被剔掉"
+    assert "硬件供应链" in got, "真正新的那一句被误删了"
+    # 段落级那一层看不见它：整段相似度被新句子稀释
+    import difflib
+    assert difflib.SequenceMatcher(None, old, rewritten).ratio() < 0.62, \
+        "这个样例要是段落级就能抓到，它就证明不了第二遍的必要性"
+    # 而 drop_already_written 现在两遍都跑
+    assert "已有观察表明" not in drop_already_written(old, rewritten)
+
+
+def test_剔句之后段落原样拼回去():
+    """剔掉一句，剩下的字必须一个不差地留在原位——包括换行。
+
+    切句用的是零宽 lookbehind 而不是 `\\n+`，就是为了这条：片段拼回去
+    等于原文。按 `\\n+` 切的话，清单的每一行剔完会被拼成一整行。
+    """
+    from app.editor.outline import drop_restated_sentences
+
+    old = "众筹阶段需要把价值感和转化规则讲清楚，定金优惠的口径必须统一。"
+    new = ("众筹阶段需要把价值感和转化规则讲清楚，定金优惠的口径必须统一。\n"
+           "三月上旬要定下谁负责供应链交付，否则整条排期都没法往前倒推。")
+    got = drop_restated_sentences(old, new)
+    assert got == "三月上旬要定下谁负责供应链交付，否则整条排期都没法往前倒推。"
+
+
+def test_轮内自己重复也要剔():
+    """一次续写的输出**内部**就在重复——实测四条里有三条是这个形态。"""
+    from app.editor.outline import drop_restated_sentences
+
+    a = "在此基础上，众筹页面应按「捕捉信息—整理与调用—产生下一步行动」的顺序展示生产力价值。"
+    b = "众筹页面要按「捕捉信息—整理与调用—产生下一步行动」的顺序展开生产力价值。"
+    got = drop_restated_sentences("旧正文很短。", a + "\n\n" + b)
+    assert got.count("捕捉信息") == 1
+
+
+def test_标题不参与句级判重():
+    """实测假阳性：标题 `## 获取首批 1,000 名 Beta 用户的回传质量策略` 跟
+    正文那句「首批 1,000 名 Beta 用户的回传质量策略已与招募页公开。」
+    相似度 **0.794**——删掉哪一边都是错的。"""
+    from app.editor.outline import drop_restated_sentences, is_sentence
+
+    head = "## 获取首批 1,000 名 Beta 用户的回传质量策略"
+    body = "首批 1,000 名 Beta 用户的回传质量策略已与招募页一并公开了。"
+    assert not is_sentence(head)
+    assert drop_restated_sentences(head, body) == body
+    assert drop_restated_sentences(body, head) == head
+
+
+def test_引文编号不同就不是同一件事():
+    """唯一一条在真实笔记里量到的真误伤（31 篇里 1 条）：
+
+        - 证据：会议记录 [shot-perf-299-A1]
+        - 证据：会议记录 [shot-perf-99-A1]
+
+    difflib **0.982**，可编号指向两条不同的原始记录。引文是身份不是措辞。
+    """
+    from app.editor.outline import cites_conflict, drop_already_written, near_duplicate
+
+    a = "- 证据：会议记录 [shot-perf-99-A1] 里写明了这一项的验收口径。"
+    b = "- 证据：会议记录 [shot-perf-299-A1] 里写明了这一项的验收口径。"
+    assert cites_conflict(a, b)
+    assert not near_duplicate(a, b)
+    # 段落级那一层也守着（那条误伤就发生在段落级）
+    pa = "- 计划时间：第299周\n- 当前状态：待验证\n- 证据：会议记录 [shot-perf-99-A1]"
+    pb = "- 计划时间：第300周\n- 当前状态：待验证\n- 证据：会议记录 [shot-perf-299-A1]"
+    assert drop_already_written(pa, pb).strip() == pb
+    # 编号相同的照旧算重复
+    same = a.replace("这一项", "这一条")
+    assert near_duplicate(a, same)
+
+
+def test_清单的兄弟项不参与判重():
+    """实测假阳性：一篇笔记的进度清单里六条 `- ✅ 已完成 **众筹前的…**`
+    彼此 0.62–0.70，`restated_ratio` 因此判了 9.4%（门槛 3%）——
+    **判据对着一份完全正常的清单报了缺陷**。"""
+    from app.editor.outline import drop_restated_sentences, template_rows
+
+    lst = ("- ✅ 已完成 **众筹前的业务背景与产品动因**\n"
+           "- ✅ 已完成 **众筹前的产品定位与应用场景**\n"
+           "- ✅ 已完成 **众筹前的产品验证与用户反馈**")
+    assert len(template_rows(lst)) == 3
+    # 往这份清单里再加一项：新的那一项必须留下
+    add = "- ✅ 已完成 **众筹筹备与上线节点的确认与排期**"
+    assert drop_restated_sentences(lst, add) == add
+    # 两条就不算模子（真复述往往成对出现）
+    assert template_rows("\n".join(lst.split("\n")[:2])) == set()
+
+
+def test_表格行和围栏不参与句级判重():
+    """跟段内那一层同一条规矩：它们按设计就长得一样。"""
+    from app.editor.outline import drop_restated_sentences
+
+    row = "| P1 | 第二事项 | 待定 | 三月上旬 | 负责人未定 |"
+    other = "| P1 | 第三事项 | 待定 | 三月上旬 | 负责人未定 |"
+    assert drop_restated_sentences(row, other).strip() == other
+    fence = "```mermaid\nflowchart LR\nA[软件版本准备] --> B[定金用户测试]\n```"
+    fence2 = "```mermaid\nflowchart LR\nA[软件版本准备] --> B[定金用户复测]\n```"
+    assert drop_restated_sentences(fence, fence2).strip() == fence2
+
+
+def test_句级查重的公共实现只能待在纯函数层():
+    """`outline.py` 在 `tests/test_layering.py` 的 PURE 名单里（只许依赖
+    标准库），所以共用逻辑放在这边、harness 反过来用它。
+
+    反了的话分层测试当场红：`editor` 不许 import `harness`。
+    """
+    from app.harness.middleware import repeats
+    from app.editor import outline
+
+    assert repeats._sentences is outline.sentences
+    assert repeats._blocks is outline.sentence_blocks
+    import ast
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "app" / "editor" / "outline.py").read_text(encoding="utf-8")
+    imported = {n.split(".")[0]
+                for node in ast.walk(ast.parse(src))
+                if isinstance(node, (ast.Import, ast.ImportFrom))
+                for n in ([a.name for a in node.names]
+                          if isinstance(node, ast.Import) else [node.module or ""])}
+    assert imported <= {"__future__", "difflib", "re"}, \
+        f"outline 只许依赖标准库，现在多了 {imported}"

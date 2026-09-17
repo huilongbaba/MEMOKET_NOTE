@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from app.harness.policy import (
     REVISIONS_MAX,
     TEMP_MIN,
@@ -245,3 +247,139 @@ def test_空库时不会在同一个prompt里既叫查实又叫别查():
                         tool_calls=1, tool_facts=0, kb_empty=False)
     new2, _ = adjust(RuntimePolicy(), fb2)
     assert "先把这些点查实" in new2.steer, "库里有东西时这条还得在"
+
+
+# ------------------------------------------------------- steer 分流 ---
+#
+# 第 765 轮（计划 1.5）。`steer` 唯一的去处是 `prompts/note.retrieval_plan_user`
+# ——「这一轮该去知识库查哪些事实」。内在质量的诊断进那个 prompt 是纯噪声：
+# 查什么都修不了重复。见 `harness-mechanism-rethink.md` §1 错配一。
+
+def test_内在质量卡住不往检索规划里塞话():
+    """`non_repetition` 连续两轮不达标，升级提示**不进 steer**。
+
+    之前的行为：「「non_repetition」这一项已经连续 2 轮没达标，换一个思路」
+    被原样塞进决定去查什么的 prompt。它在那儿只能占 token、把注意力从
+    「这一节缺哪些材料」上引开。
+    """
+    p = RuntimePolicy()
+    fb = RoundFeedback(scores={"non_repetition": 1})
+    p1, _ = adjust(p, fb)
+    p2, reasons = adjust(p1, fb)
+
+    assert p2.stuck_dims["non_repetition"] == 2
+    assert any("连续 2 轮未达标" in r for r in reasons), "SSE 里还得看得见它卡住了"
+    assert "non_repetition" not in p2.steer, "重复的诊断进了检索规划 prompt"
+    assert "换一个思路" not in p2.steer
+
+
+def test_材料类卡住照旧要升级():
+    """反过来这一半不能被改坏：检索能修的那几维，卡住了还是要说。"""
+    for dim in ("factual_grounding", "material_use", "beat_coverage", "section_coverage"):
+        fb = RoundFeedback(scores={dim: 1})
+        p1, _ = adjust(RuntimePolicy(), fb)
+        p2, _ = adjust(p1, fb)
+        assert "换一个思路" in p2.steer, f"{dim} 卡住了却没升级"
+        assert dim in p2.steer
+
+
+def test_材料类和内在质量同时卡住时优先升级材料类():
+    """一次只升级一个，挑的时候材料类优先——要是先撞上一个卡住的
+    `non_repetition` 就收工，同样卡住的 `beat_coverage` 会一句话都得不到。"""
+    fb = RoundFeedback(scores={"non_repetition": 1, "beat_coverage": 1})
+    p1, _ = adjust(RuntimePolicy(), fb)
+    p2, _ = adjust(p1, fb)
+    assert "beat_coverage" in p2.steer
+    assert "non_repetition" not in p2.steer
+
+
+def test_内在质量的诊断走的是修订那条线():
+    """分流不等于丢掉：它换了一条路。
+
+    `loop._weak_note` → `st.bag["focus_note"]` → `middleware/revise.py` →
+    修订 prompt。这条线是唯一能让已经写坏的文字变对的，**这一批一个字都
+    没动它**。
+    """
+    import pathlib
+
+    from app.harness.loop import _weak_note
+    from app.harness.modes import NOTE
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+    from app.harness.types import DimensionScore, Evaluation
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    st.ev = Evaluation(scores={"non_repetition": DimensionScore(1, "同一件事说了两遍")},
+                       status="continue", weakest="non_repetition")
+    assert _weak_note(st) == "同一件事说了两遍"
+
+    revise = (pathlib.Path(__file__).resolve().parent.parent / "app" / "harness"
+              / "middleware" / "revise.py").read_text(encoding="utf-8")
+    assert 'focus_note=st.bag.get("focus_note", "")' in revise
+
+
+def test_上一轮的分数不许喂给这一轮的打分器():
+    """第 765 轮（计划 4.7）。`st.bag["last_scores"]` 是死状态——写了，
+    全仓没有一处读。删掉它，并把「别接上」写在原地。
+
+    理由不是省两行：LLM 评委有实测的 anchoring bias，先给一个参考分会让它
+    跟着那个数走，而 `_no_progress` / `_regressed` / `Repair` 三处全都依赖
+    两轮之间**独立**打出来的分。
+    """
+    import pathlib
+
+    app = pathlib.Path(__file__).resolve().parent.parent / "app"
+    hits = [f"{p.relative_to(app)}:{i}" for p in app.rglob("*.py")
+            for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if "last_scores" in ln and not ln.lstrip().startswith("#")]
+    assert not hits, f"last_scores 又长回来了：{hits}"
+
+    loop = (app / "harness" / "loop.py").read_text(encoding="utf-8")
+    assert "anchoring" in loop.lower() and "不要把上一轮的分数喂给这一轮的打分器" in loop, \
+        "钉住它的那段注释没了——下一个人会好心地把它接回去"
+
+
+@pytest.mark.anyio
+async def test_打分器手上拿不到上一轮的任何东西(monkeypatch):
+    """上一条是**词法**的：它只会在有人原样写回 `last_scores` 这个名字时变红。
+    这一条盯的是性质本身——**上一轮的评判结果，一个字都不该出现在这一轮的
+    打分 prompt 里**。换个变量名、或者顺手把 `focus_note`（上一轮打分模型写的
+    那句诊断）塞进 `score_context`，词法那条一样绿，这一条会红。
+
+    做法是给上一轮的评语埋一个哨兵串，然后把 `_evaluate` 真正递给打分器的
+    四样东西渲染成 prompt，看哨兵在不在里面。
+    """
+    from app.harness import loop
+    from app.harness.checks.rubric import _build_prompt
+    from app.harness.modes import NOTE
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+    from app.harness.types import DimensionScore, Evaluation
+
+    sentinel = "哨兵-上一轮的评判-勿入打分prompt"
+    seen: dict = {}
+
+    async def _fake_evaluate(_llm, **kw):
+        seen.update(kw)
+        return None
+
+    monkeypatch.setattr(loop, "evaluate", _fake_evaluate)
+    monkeypatch.setattr(loop.harness_adapter, "AppLLMClient", lambda: object())
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    st.content = "正文第一段。\n\n正文第二段。"
+    st.bag["score_context"] = {"核心张力": "一句话主线"}
+    # 上一轮判完之后 loop 留在 bag 里的两样东西，都带上哨兵
+    st.ev = Evaluation(scores={"non_repetition": DimensionScore(1, sentinel)},
+                       status="continue", weakest="non_repetition")
+    st.bag["focus"] = st.ev.weakest
+    st.bag["focus_note"] = loop._weak_note(st)
+    assert sentinel in st.bag["focus_note"], "哨兵没埋进去，这条测试就是空的"
+
+    await loop._evaluate(st)
+
+    assert set(seen) == {"content", "dimensions", "dup_hints", "context"}, \
+        f"打分器多收/少收了东西：{sorted(seen)}"
+    prompt = _build_prompt(seen["content"], seen["dimensions"],
+                           seen["context"], tuple(seen["dup_hints"]))
+    assert sentinel not in prompt, "上一轮的评判漏进了这一轮的打分 prompt"

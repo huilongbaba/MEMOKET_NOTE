@@ -85,6 +85,11 @@ async def judge_meeting(user: str, meeting_id: str) -> MeetingJudgement:
             dimensions=list(DIMENSIONS),
             context={"原始对话": source[:SOURCE_CHARS]})
     except Exception:                                  # noqa: BLE001
+        # **打分返回体解析不出来也走这条**（第 766 轮，`rubric.ScoreParseError`）。
+        # 这个 `except` 本来就写对了，只是打分器从来没走过它：解析失败以前是
+        # 静默落回「每维 0 分」，于是 `judge_sample` 把那份假的 0 分算进
+        # `below_bar` 和均值里——**一次接口抖动被记成「抽取质量差」**，
+        # 而这个函数的全部用途就是拿这个数去调抽取 prompt。
         return MeetingJudgement(meeting_id, len(facts), None)
     return MeetingJudgement(meeting_id, len(facts), evaluation)
 

@@ -37,6 +37,32 @@ Return JSON only, no other text:
 }"""
 
 
+class ScoreParseError(Exception):
+    """**这一轮没打上分**，跟「打了分，分很低」是两回事。
+
+    第 766 轮之前，`_extract_json` 返回 None 时 `raw_scores` 就是个空 dict，
+    于是每一个维度都拿到 `level=0`——而那份"全 0 分"跟模型真的判「每一项都
+    远不达标」在下游**一个字节都分不出来**：
+
+    * `middleware/repair.py`：`non_repetition` / `coherence` / `topic_fidelity`
+      三维全 0 → 下一轮 `cleanup_only`，`produce()` 直接返回不写字。
+      一次解析失败就白扔一轮。
+    * `BestOf` 的 `rank()`：全 0 分是 `(0, 0.0)`，比「没打上分」的
+      `(-1, -1.0)` **高**——一次解析失败会把这一轮排到真正没判过的轮次前面。
+    * `_regressed`：接近合格的时候遇上一次解析失败就读成「质量跌到谷底」。
+    * `database/kb/extract_judge.py` 的汇总：全 0 分会被算进 `below_bar`
+      的均值里，**把一次接口抖动记成抽取质量差**。
+
+    而 `loop._score()` 只挡得住**抛异常**那条路（超时、连接断）——这条静默
+    路径从它底下穿过去了。所以解析失败现在也走抛异常：两条路合并成一条，
+    上层拿到的都是 `st.ev is None`＝「这一轮没判」，`rank()` 自然垫底、
+    `Repair` 的循环开头 `if not st.ev: break` 自然跳过。
+
+    **判据窄一条**：只有「一个维度都没解析出可用的 level」才算解析失败。
+    模型正常返回、真的给某一维打了 0 分，那是判断结果，照旧当分数用。
+    """
+
+
 def _extract_json(text: str) -> dict | None:
     """Minimal JSON-object extraction: strips ``` fences, then finds the
     first balanced {...}. Kept deliberately small and dependency-free --
@@ -123,6 +149,12 @@ async def evaluate(
     that genuinely needs the model's own judgment (a low score alone can't
     tell you whether another round would help), so it's asked for directly
     and trusted as reported.
+
+    Raises ``ScoreParseError`` when the reply yields no usable level for any
+    dimension -- "this round was not scored" must stay distinguishable from
+    "this round scored zero everywhere". Both callers already treat a raised
+    exception as "no judgement this round" (``loop._score`` returns ``None``,
+    ``extract_judge.judge_meeting`` drops the meeting from the aggregate).
     """
     if not dimensions:
         raise ValueError("evaluate() needs at least one dimension")
@@ -140,6 +172,7 @@ async def evaluate(
     raw_scores = parsed.get("scores") if isinstance(parsed.get("scores"), dict) else {}
 
     scores: dict[str, DimensionScore] = {}
+    judged = 0                   # 真正解析出 level 的维度个数，见 ScoreParseError
     for dim in dimensions:
         entry = raw_scores.get(dim.name)
         level, note = 0, ""
@@ -147,11 +180,25 @@ async def evaluate(
             level_raw = entry.get("level")
             if isinstance(level_raw, (int, float)) and int(level_raw) in (0, 1, 2):
                 level = int(level_raw)
+                judged += 1
             note = str(entry.get("note") or "")
         scores[dim.name] = DimensionScore(level=level, note=note)
 
     blocked = bool(parsed.get("blocked"))
     blocked_reason = str(parsed.get("blocked_reason") or "") or None
+
+    # **一个维度都没判上 = 这一轮没打上分**（`ScoreParseError` 的 docstring 写了
+    # 下游四处把"全 0 分"当真分数用的地方）。
+    #
+    # `blocked` 是唯一的例外，而且是**有意留窄的**：`blocked` 为真说明 JSON
+    # 本身解析成功了（解析不出来时 `parsed` 是空 dict，`blocked` 只能是 False），
+    # 模型是明确说了「再跑也没用」——那是一份真裁决，不是接口抖动。它会让
+    # `_blocked` 当轮停机，全 0 分也不会流进下一轮的 `Repair` / `BestOf`。
+    # 把它一起抛掉是拿真信号换整齐，误伤比漏报贵。
+    if judged == 0 and not blocked:
+        raise ScoreParseError(
+            f"打分返回体里一个维度都没解析出 level（维度 {len(dimensions)} 个，"
+            f"返回体 {len(raw)} 字）")
 
     if blocked:
         return Evaluation(scores=scores, status="blocked", blocked_reason=blocked_reason)

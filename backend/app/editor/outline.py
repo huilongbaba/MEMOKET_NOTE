@@ -261,6 +261,21 @@ def _is_block(para: str) -> bool:
     return p.startswith(("```", "|", ">", "    ")) or "```" in p
 
 
+# 引文编号。跟 `harness/checks/citations.CITE` 是同一个形状（那边在 harness
+# 层，这一层不许 import 它，所以各写一份）。
+_CITE = re.compile(r"\[[A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]")
+
+
+def cites_conflict(a: str, b: str) -> bool:
+    """两段/两句各自带了引文编号，而且编号不一样。
+
+    这种情况下**不管字面多像都不是重复**：编号指向不同的原始记录，说的就是
+    两件事。两边有一边没编号时不做判断（照旧比字面），宁可漏也不误删。
+    """
+    ca, cb = set(_CITE.findall(a or "")), set(_CITE.findall(b or ""))
+    return bool(ca and cb and ca != cb)
+
+
 def drop_already_written(content: str, text: str, *, threshold: float = 0.62) -> str:
     """把这一轮写出来的、正文里已经有的段落剔掉。
 
@@ -319,7 +334,219 @@ def drop_already_written(content: str, text: str, *, threshold: float = 0.62) ->
         # 被打分器独立判了 non_repetition=1），而只跟旧正文比根本看不到它们。
         # 把阈值从 0.72 降到 0.55 也没消掉这 3 篇，就是因为比错了对象。
         seen = old + [x.strip() for x in kept if len(x.strip()) >= 40]
-        if any(difflib.SequenceMatcher(None, p, o.strip()).ratio() > threshold for o in seen):
+        # **引文编号不同的两段不算重复**，字面再像也不算。实测唯一的一条真
+        # 误伤就在这一层（第 765 轮，31 篇真实笔记里扫出来的）：
+        #     - 计划时间：第300周 / - 当前状态：待验证 / - 证据：会议记录 [shot-perf-299-A1]
+        #     - 计划时间：第299周 / - 当前状态：待验证 / - 证据：会议记录 [shot-perf-99-A1]
+        # difflib 0.98，可它们是**两个不同周的两条不同证据**，删掉后一段等于
+        # 把一周的记录整块抹掉。引文是身份不是措辞，见 `near_duplicate`。
+        if any(not cites_conflict(p, o.strip())
+               and difflib.SequenceMatcher(None, p, o.strip()).ratio() > threshold
+               for o in seen):
             continue
         kept.append(para)
-    return re.sub(r"\n{3,}", "\n\n", "\n\n".join(kept)).strip()
+    whole = re.sub(r"\n{3,}", "\n\n", "\n\n".join(kept)).strip()
+    # **第二遍：按句再剔一遍。** 段落级只能整段扔或整段留，而模型重写整节时
+    # 新旧句子是混在同一段里的——difflib 被段里的新句子稀释到 0.4 以下，整段
+    # 原样插进去。见 `drop_restated_sentences`（阈值同一个 0.62，在 31 篇真实
+    # 笔记上量的）。
+    return drop_restated_sentences(content, whole, threshold=threshold)
+
+
+# ------------------------------------------------------------- 句级查重 ---
+#
+# **这一层是给 `drop_already_written` 补的第二遍（第 765 轮）。**
+# 它按段落比，而真实失败是这样的：模型这一轮把整节**重写**了一遍，新写的
+# 那一段里既有旧句子也有新句子——段落级 difflib 被新句子稀释到 0.4 以下，
+# 整段原样插进去，于是同一件事在正文里出现两次。实测 31 篇真实笔记，
+# **30.6% 的句子在同一篇的别的段落里有一个 ≥0.9 的孪生句**，
+# 这就是它们现在的样子。
+#
+# 这些常量和切法跟 `harness/middleware/repeats.py` 是同一套——那边看「同一段
+# 内部」，这边看「新写的 vs 已经写下的」，同一种缺陷两个粒度。逻辑放在这里
+# 而不是那里，是分层测试定的：`editor/outline` 在 `tests/test_layering.py`
+# 的 PURE 名单里（只许依赖标准库），而 harness 可以反过来用 editor
+# ——`revise` / `structure` / `note` / `section` 四处已经这么用了。
+# 反过来 import 会当场红。
+
+SENTENCE_THRESHOLD = 0.62        # 跟 drop_already_written 同一个数，见下
+MIN_SENTENCE_LEN = 18            # 更短的句子高相似度是噪声（量出来的）
+MIN_BLOCK_LEN = 20               # 一个自然段短于这个就不参与
+
+# 句子的边界是**句末标点或换行**。只按标点切会漏掉「重写的那一节换行另起」，
+# 只按换行切会把同一行里并排的两句当成一句。
+# 用的是**零宽** lookbehind 而不是 `\n+`：切出来的片段拼回去必须跟原文
+# 一模一样，否则「只剔掉其中一句、其余原样保留」做不到——剔完还得把段落
+# 重新拼起来交给用户。
+_SENT_SPLIT = re.compile(r"(?<=[。！？!?])|(?<=\n)")
+_TABLE_ROW = re.compile(r"^\s*\|")
+# 只由引文编号组成的行。实测 `[terrence-1848-9F11] [terrence-2394-23F4]` 和
+# `[terrence-1564-0F3] [terrence-1431-53F1]` 的 difflib 相似度 0.765——
+# **编号不同、含义完全不同，但长得一模一样**。这条是量出来的假阳性。
+_CITATION_ONLY = re.compile(r"^(?:\s*\[[^\]\n]+\]\s*)+$")
+
+
+def strip_fences(text: str) -> str:
+    """围栏代码块整块拿掉：mermaid 图里两条边写法相同是正常的。"""
+    out, fenced = [], False
+    for ln in (text or "").split("\n"):
+        if ln.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced:
+            out.append(ln)
+    return "\n".join(out)
+
+
+def sentence_blocks(text: str, *, min_len: int = MIN_BLOCK_LEN) -> list[str]:
+    """一个「段」= 一个自然段（`\\n\\n` 之间）。句子在它内部再切。"""
+    return [p.strip() for p in strip_fences(text).split("\n\n")
+            if len(p.strip()) >= min_len]
+
+
+def sentence_pieces(paragraph: str) -> list[str]:
+    """把一段切成片段，**拼回去等于原文**（分隔符留在片段里）。"""
+    return [p for p in _SENT_SPLIT.split(paragraph or "") if p]
+
+
+def is_sentence(piece: str) -> bool:
+    """这个片段算不算一句能拿去判重的话。
+
+    **标题、表格行、纯引文编号行一律不算。** 三条都是量出来的假阳性：
+    标题 `## 获取首批 1,000 名 Beta 用户的回传质量策略` 跟正文里
+    「首批 1,000 名 Beta 用户的回传质量策略已与招募页公开。」相似度 0.794，
+    但删掉哪一个都是错的；两条 `### **3 月 10 日 - …**` 是 0.688，说的却是
+    两个不同的时间窗口；表格行按设计就长得一样。
+    **判据宁可窄一点，误伤比漏报更贵。**
+    """
+    t = (piece or "").strip()
+    return (len(t) >= MIN_SENTENCE_LEN
+            and not _TABLE_ROW.match(t)
+            and not _HEADING.match(t)
+            and not _CITATION_ONLY.match(t))
+
+
+def sentences(paragraph: str) -> list[str]:
+    """一段里可以拿去判重的句子。"""
+    return [t for t in (p.strip() for p in sentence_pieces(paragraph))
+            if is_sentence(t)]
+
+
+_LIST_MARK = re.compile(r"^\s*(?:[-*+•·]|\d+[.)、])\s+")
+TEMPLATE_RUN = 3          # 同一个模子里出来的兄弟项，几条算一份清单
+TEMPLATE_PREFIX = 8       # 前多少个字相同才算「同一个模子」
+
+
+def template_rows(text: str) -> set[str]:
+    """同一份清单里的兄弟项——**它们按设计就长得一样，不参与判重**。
+
+    跟表格行是同一条道理，只是第 765 轮才在真实笔记里撞到：
+
+        - ✅ 已完成 **众筹前的业务背景与产品动因**
+        - ✅ 已完成 **众筹前的产品定位与应用场景**
+        - ✅ 已完成 **众筹前的产品验证与用户反馈**
+
+    difflib 给到 0.62–0.70，而它们是**三件不同的事**，共用的只是那个
+    「- ✅ 已完成 **众筹前的…**」的模子。按句去重时删掉其中任何一条，
+    用户看到的是自己的清单少了一项——这正是「误伤比漏报更贵」说的那种代价。
+
+    判法刻意笨：把所有清单行按**前 8 个字**分组，一组里有 3 条以上就整组
+    不参与。真正的复述不会三条三条地共享同一个开头；真共享了（比如三条
+    「- 改成：…」）那就宁可漏掉，也好过删错。
+    """
+    groups: dict[str, list[str]] = {}
+    for ln in strip_fences(text or "").split("\n"):
+        if not _LIST_MARK.match(ln):
+            continue
+        t = ln.strip()
+        groups.setdefault(t[:TEMPLATE_PREFIX], []).append(t)
+    return {t for g in groups.values() if len(g) >= TEMPLATE_RUN for t in g}
+
+
+def near_duplicate(a: str, b: str, threshold: float = SENTENCE_THRESHOLD) -> bool:
+    """两句是不是在说同一件事。
+
+    **引文编号不同的两句，一律不算重复。** 这条是在 31 篇真实笔记上跑出来
+    才发现的，是这一批里唯一一个真实误伤：
+
+        - 证据：会议记录 [shot-perf-299-A1]
+        - 证据：会议记录 [shot-perf-99-A1]
+
+    difflib 给 **0.982**——字面上它们几乎是同一句，可编号指向两条不同的原始
+    记录，删掉任何一条都是在删证据。引文是**身份**，不是措辞：编号不同就是
+    两件事，相似度再高也不能合并。两边都没有编号时照旧比字面。
+
+    再走 difflib 自己的两级快筛（`real_quick_ratio` 只看长度、`quick_ratio`
+    只看字符多重集，都是相似度的**上界**）：句级比对是 O(新句 × 旧句)，一篇
+    三千字的笔记有几百句，不筛的话每轮插入前要多花几百毫秒。
+    """
+    if cites_conflict(a, b):
+        return False
+    sm = difflib.SequenceMatcher(None, a, b)
+    if sm.real_quick_ratio() < threshold or sm.quick_ratio() < threshold:
+        return False
+    return sm.ratio() >= threshold
+
+
+def drop_restated_sentences(content: str, text: str, *,
+                            threshold: float = SENTENCE_THRESHOLD) -> str:
+    """把这一轮写出来的、正文里**已经有的句子**剔掉（段落级之后的第二遍）。
+
+    为什么必须有第二遍：段落级只能整段扔或整段留，而模型重写整节时新旧是
+    **混在同一段里**的——`drop_already_written` 那一层的 difflib 被段里的新
+    句子稀释，整段留下，重复就这么进了正文。
+
+    阈值 0.62 是在 31 篇真实笔记、2962 个「句子 vs 本篇其它段落的句子」
+    上量的，跟段落级那个数是同一个：
+
+        >= 0.55: 31.94%    >= 0.62: 31.43%    >= 0.70: 31.06%
+        >= 0.90: 30.59%    完全相同: 10.26%
+
+    **0.55 到 0.90 之间只有 1.4% 的句子**——这是一道很宽的谷，阈值落在里面
+    哪儿都一样，取 0.62 是为了跟另外两层（`drop_already_written` 的段落级、
+    `repeats.find_restated` 的段内级）保持同一个数：同一种缺陷，三个粒度。
+    把那 40 条落在 0.55–0.90 之间的原文逐条读过一遍，排除标题和引文编号行
+    之后**全是真重复**（「按 Speaker C 建议，可对现有 Beta 用户进行采访…」
+    vs「按 Speaker C 建议，对现有 Beta 用户的采访截图…将直接嵌入页面证据
+    链」，0.72）。**按聚合指标改机制之前，先把命中的原文抓出来看一眼。**
+
+    剔掉一句之后段落原样拼回去；整段被剔空就整段不要。
+    """
+    body = (text or "").strip()
+    if not body:
+        return body
+    # 清单的兄弟项两边都不参与：旧正文里的不进比对池，新写的也不判。
+    # 池子和候选用的是同一个集合（`content` 和 `text` 合起来算），否则
+    # 「往一份已有清单里再加一项」——最常见的追加形态——会因为旧的三项
+    # 已经立起了模子，而新的那一项在自己这边凑不够三条，被当成重复删掉。
+    template = template_rows((content or "") + "\n" + (text or ""))
+    seen = [s for para in sentence_blocks(content) for s in sentences(para)
+            if s not in template]
+    kept_paras: list[str] = []
+    for para in re.split(r"\n\s*\n", body):
+        stripped = para.strip()
+        if len(stripped) < MIN_BLOCK_LEN or _is_block(stripped):
+            # 代码块 / 表格 / 引用块跟段落级那一层一样不判重：它们的相似度
+            # 由格式骨架决定，跟内容说的是不是同一件事无关。
+            kept_paras.append(para)
+            continue
+        pieces, dropped = [], False
+        for piece in sentence_pieces(para):
+            t = piece.strip()
+            if not is_sentence(t) or t in template:
+                pieces.append(piece)          # 分隔符、标题、表格行、清单项原样留着
+                continue
+            if any(near_duplicate(t, old, threshold) for old in seen):
+                dropped = True
+                continue
+            pieces.append(piece)
+            # **也跟这一轮自己已经留下的句子比。** 跟段落级那层同一个理由：
+            # 重复大量出现在同一次续写的输出**内部**，只跟旧正文比看不到。
+            seen.append(t)
+        if not dropped:
+            kept_paras.append(para)
+            continue
+        rebuilt = "".join(pieces).strip()
+        if rebuilt:
+            kept_paras.append(rebuilt)
+    return re.sub(r"\n{3,}", "\n\n", "\n\n".join(kept_paras)).strip()

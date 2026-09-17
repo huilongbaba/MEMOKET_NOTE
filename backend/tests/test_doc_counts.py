@@ -35,8 +35,15 @@ def _counts() -> dict[str, int]:
 def test_文档里写的数量跟代码一致(what):
     real = _counts()[what]
     doc = DOC.read_text(encoding="utf-8")
-    # 「8 个 Mode」「21 个工具」「9 条 check」「13 个 middleware」
-    written = {int(n) for n in re.findall(rf"(\d+) ?[个条] ?{re.escape(what)}\b", doc)}
+    # 「8 个 Mode」「21 个工具」「9 条 check」「13 个 middleware」，
+    # **以及架构图里的 `Middleware ×14` 这种写法**——第 765 轮实拍：批 1 加
+    # Ledger 时把第 7 节的「13 个 middleware」改成了 14，而图里那个 `×13`
+    # 原样留着，这条闸一声不吭地绿着。**闸跑绿不等于闸有用**：漏的不是数，
+    # 是一种写法。`×N` 只在 `Mode` / `Middleware` 上出现，`tools/ ×21`、
+    # `checks/ ×10` 那两个数的是文件不是条目，词不一样，不会被这条误伤。
+    w = re.escape(what)
+    written = {int(n) for n in re.findall(rf"(\d+) ?[个条] ?{w}\b", doc)}
+    written |= {int(n) for n in re.findall(rf"{w} ?[×x] ?(\d+)", doc, re.IGNORECASE)}
     assert written, f"文档里一次都没写「N 个{what}」——这条测试在查一个不存在的说法"
     wrong = sorted(written - {real})
     assert not wrong, f"文档里写着 {wrong} 个{what}，实际是 {real}"

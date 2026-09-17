@@ -154,8 +154,23 @@ async def run(st: State, hooks: Hooks,
             # have no candidate at all.
             st.bag["focus"] = st.ev.weakest if st.ev else ""
             st.bag["focus_note"] = _weak_note(st)
-            st.bag["last_scores"] = ({n: s.level for n, s in st.ev.scores.items()}
-                                     if st.ev else {})
+            # **这里曾经还写过一个 `last_scores`（上一轮每个维度的分数），
+            # 全仓没有任何一处读它——第 765 轮删掉了。** 留个注释在原地，
+            # 是因为下一个看到「打分器不知道上一轮打了多少」的人，很可能会
+            # 好心地把它接上去。
+            #
+            # **不要把上一轮的分数喂给这一轮的打分器。** LLM 评委有实测的
+            # anchoring bias（Anchoring Bias in LLM-as-a-Judge）：先给一个
+            # 参考分，评委的判断会被那个数拖过去，而不是重新读一遍正文。
+            # 那会毁掉两件我们正在依赖的事：① `_no_progress` / `_regressed`
+            # 都在比「这一轮 vs 最好那一轮」的排名，锚定之后分数只会平滑地
+            # 跟着上一轮走，两条停机规则同时失灵；② `Repair` 判「修完动没动
+            # 分」靠的正是两轮之间独立打出来的分，锚上了就永远读成「修复
+            # 有效」，一路修到轮数用完。
+            #
+            # 要传给下一轮的是**诊断**（`focus`/`focus_note` 那两行，进修订
+            # prompt），不是**分数**。诊断说的是「哪里坏了」，分数说的是
+            # 「上次判了几分」——只有前者能让下一轮做事。
             st.ev, st.skip_judge = None, False
         else:
             # Ran out of rounds without ever meeting the bar. "Never met the
@@ -243,10 +258,20 @@ async def _score(st: State):
     unsaved on that path. Returning ``None`` means the round is simply
     unjudged: no stop condition fires, BestOf ranks it below everything, and
     the next round proceeds.
+
+    **解析失败走的是同一条路**（第 766 轮）。在那之前它是条静默的岔路：
+    `_extract_json` 解析不出来 → 每个维度 `level=0` → 一份"全 0 分"的
+    `Evaluation` 照常返回，这里一个异常都没有，于是下游把它当真分数用
+    （`Repair` 排 `cleanup_only`、`BestOf` 按 `(0, 0.0)` 排名、`_regressed`
+    读成质量跌到谷底）。`evaluate()` 现在为这一档抛 `ScoreParseError`，
+    被下面这个 `except` 接住 → `None`。**「没打上分」只有一种表示法。**
     """
     try:
         return await _evaluate(st)
     except Exception:                                  # noqa: BLE001
+        # ScoreParseError（解析失败）和超时/连接断在这里是同一件事：
+        # 这一轮没有分数可用。不分开处理是有意的——上层要是拿到两种
+        # "没判"，`rank()` / 停机 / 记账每一处都得各判一次。
         return None
 
 
@@ -334,6 +359,18 @@ def _regressed(st: State) -> str | None:
     """
     best = st.best
     if st.skip_judge:
+        return None
+    # **没打上分的一轮不算「更差」**（第 766 轮，计划 1.7 的另一半）。
+    # 上面那行 `skip_judge` 挡的是「判据短路了，这一轮没打分」，而打分**调用
+    # 失败**（超时 / 断连 / 返回体解析不出分数）走的是另一条路：`st.ev` 是
+    # None，`rank()` 返回 `(-1, -1.0)`，一比就比最好那轮低 → 当场 `regressed`
+    # 收工。同一件事（这一轮没判过）只挡住了一半。
+    #
+    # 后果跟 `skip_judge` 那条注释写的是同一种：最好那轮「只差一个维度」正是
+    # 这条规则的武装条件，也正是**最不该在这时候收工**的时刻——一次接口抖动
+    # 就把剩下的轮数全省掉了。`_score()` 的 docstring 里本来就写着「返回 None
+    # 意味着这一轮只是没判：没有停机条件会触发」，这行让那句话真的成立。
+    if st.ev is None:
         return None
     if _coverage_unmet(st):
         return None

@@ -9,8 +9,8 @@ and capped, so this is close to free.
 from __future__ import annotations
 
 
-import re
 from difflib import SequenceMatcher
+from ...editor import outline
 from ..types import DupHint
 from ..state import State
 
@@ -79,48 +79,42 @@ def _paragraphs(text: str) -> list[str]:
 # （另一个旁证：人类语料里连续的句级重复只有 0.02%，真人几乎不重复句子。）
 # 这个数跟 `editor/outline.drop_already_written` 的 0.62 是同一个，不是巧合：
 # 同一种缺陷，只是切的粒度不同。
-MIN_SENTENCE_LEN = 18        # 更短的句子高相似度是噪声（量出来的）
+# **切句和「什么算一句」这两件事，实现在 `editor/outline.py`。**
+# 那边有三层查重的公共部分：段落级（`drop_already_written`）、
+# 插入前的句级（`drop_restated_sentences`）、和这里的段内句级。
+# 同一种缺陷三个粒度，切法和阈值必须是同一套，分两份写必然分叉。
+#
+# 放在 editor 而不是这里，是分层测试（`tests/test_layering.py`）定的方向：
+# `editor/outline` 在 PURE 名单里（只依赖标准库），harness 可以用它，
+# 它不许反过来 import harness。
+#
 # 句子的边界是**句末标点或换行**。只按标点切会漏掉「重写的那一节换行另起」
 # 的情况；只按换行切会把同一行里并排的两句当成一句。
 # 这个缺口是突变验的时候露出来的：A、B 在同一自然段但分两行时，
 # 按行切会把它们分到两"段"里各自比较（比不着），而段落级又把整段揉成一块
 # （相似度被稀释）——**两边都漏**。
-_SENT_SPLIT = re.compile(r"(?<=[。！？!?])|\n+")
-
-
-# **表格行和围栏代码不参与查重。** 它们按设计就长得一样——
-# 一张表的两行除了第一格全同是正常的，一个模板表的每一行更是逐字相同。
-# 这条是量出来的：换成「按自然段切、按标点和换行切句」之后多抓了两篇，
-# 一看全是 `| P1 | [第二事项] | … |` 和 `| P1 | [第三事项] | … |` 这种表格行。
+#
+# **表格行、围栏代码、标题、纯引文编号行都不参与查重。** 它们按设计就长得
+# 一样——一张表的两行除了第一格全同是正常的。标题和引文编号那两条是第 765
+# 轮在 31 篇真实笔记上量出来的：标题 `## 获取首批 1,000 名 Beta 用户的回传
+# 质量策略` 跟正文那句相似度 0.794，两行引文编号 `[terrence-1848-9F11] …` 和
+# `[terrence-1564-0F3] …` 是 0.765——**编号不同、说的完全是两码事**。
 # **判据宁可窄一点，误伤比漏报更贵。**
-_TABLE_ROW = re.compile(r"^\s*\|")
+#
+# **同一份清单的兄弟项也不参与**（第 765 轮补的，实测撞到的）：
+# 一篇真实笔记的进度清单里六条 `- ✅ 已完成 **众筹前的…**` 彼此 0.62–0.70，
+# 于是 `restated_ratio` 判了 9.4%（门槛 3%）——**判据对着一份完全正常的清单
+# 报了缺陷**。见 `outline.template_rows`。
+MIN_SENTENCE_LEN = outline.MIN_SENTENCE_LEN
+_sentences = outline.sentences
+_strip_fences = outline.strip_fences
+_blocks = outline.sentence_blocks
 
 
-def _sentences(paragraph: str) -> list[str]:
-    out = []
-    for x in _SENT_SPLIT.split(paragraph):
-        t = (x or "").strip()
-        if len(t) < MIN_SENTENCE_LEN or _TABLE_ROW.match(t):
-            continue
-        out.append(t)
-    return out
-
-
-def _strip_fences(text: str) -> str:
-    """围栏代码块整块拿掉：mermaid 图里两条边写法相同是正常的。"""
-    out, fenced = [], False
-    for ln in (text or "").split("\n"):
-        if ln.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if not fenced:
-            out.append(ln)
-    return "\n".join(out)
-
-
-def _blocks(text: str) -> list[str]:
-    """一个「段」= 一个自然段（`\n\n` 之间）。句子在它内部按标点和换行再切。"""
-    return [p.strip() for p in _strip_fences(text).split("\n\n") if len(p.strip()) >= MIN_PARAGRAPH_LEN]
+def _judgeable(content: str, para: str) -> list[str]:
+    """这一段里可以拿去判重的句子（模板清单行按整篇算，所以要 content）。"""
+    template = outline.template_rows(content)
+    return [s for s in _sentences(para) if s not in template]
 
 
 def find_restated(content: str, *, threshold: float = DEFAULT_THRESHOLD,
@@ -128,7 +122,7 @@ def find_restated(content: str, *, threshold: float = DEFAULT_THRESHOLD,
     """同一段里被换个说法又说了一遍的句子。见上面那段注释。"""
     scored: list[DupHint] = []
     for para in _blocks(content):
-        ss = _sentences(para)
+        ss = _judgeable(content, para)
         for i, a in enumerate(ss):
             for b in ss[i + 1:]:
                 ratio = SequenceMatcher(None, a, b).ratio()
@@ -153,7 +147,7 @@ def restated_ratio(content: str, *, threshold: float = DEFAULT_THRESHOLD) -> flo
     ——一篇 3000 字里有两句重复，和一篇 1800 字里 782 字是重复，是两回事。"""
     total = dup = 0
     for para in _blocks(content):
-        ss = _sentences(para)
+        ss = _judgeable(content, para)
         seen: list[str] = []
         for s in ss:
             total += len(s)

@@ -57,7 +57,7 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×13<br/>Skills Facts Provenance Repeats Checks BestOf History<br/>Revise Repair Runtime Replan Compact Save"]
+    MW["Middleware ×14<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger<br/>Revise Repair Runtime Replan Compact Save"]
     CHK["checks/ ×10 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×21 · registry 分组授权<br/>memory · data · chart · table · image · skill"]
     AL["agent_loop<br/>模型自己决定查什么"]
@@ -379,6 +379,9 @@ State: mode · ctx(user/note/cursor) · request · round
   `pause_for_review`（每轮停下等用户）。内置三条在 `loop.py`：`complete` / `blocked` /
   `no_progress`。**`regressed`**：最好的一轮只差一个维度没达标、这一轮排名反而更低——别再跑了，
   best_of 交最好的那轮（实拍生成表格：第 1 轮好表，第 2、3 轮「[tool call needed]」没表，白花两次调用）。
+  它对**没判过的一轮**一律返回 None——判据短路（`skip_judge`）和打分调用失败
+  （`st.ev is None`）都算，两种都不是「变差了」。武装条件正是「最好那轮只差一个维度」，
+  而那也正是最不该因为一次接口抖动收工的时刻。
 - 加一个功能 = `modes.py` 加一个实例；路由不动。
 
 ---
@@ -403,7 +406,7 @@ Mode 按需追加的：
 | 名字 | 谁用 | 做什么 |
 |---|---|---|
 | **Revise** | note · section | 写新的之前先改已有正文（修订 pass，`max_tokens=4000`，截断时报 `dropped`） |
-| **Repair** | note · section | 把这一轮的打分读成下一轮的计划（弱在覆盖 → 多写；弱在质量 → 多改） |
+| **Repair** | note · section | 把这一轮的打分读成下一轮的计划（弱在覆盖 → 多写；弱在质量 → 多改）。内在质量 = `non_repetition` · `coherence` · `topic_fidelity`（**跑题是已写文字的缺陷，后面补几段切题的不会让它不跑题**——所以跟重复同一族，排「只修不写」）；覆盖度 = `beat_coverage` · `section_coverage` · `material_use`。两族必须互不重叠、且长文维度不能一族都不落（孤儿的分数只能停机、驱动不了修复），`tests/test_check_stuck.py` 有两条断言钉着 |
 | **Runtime** | note | 策略控制器（`policy.py`）：上一轮反馈 → 下一轮的工具预算 / 温度 / 修订额度 / 是否要求溯源 |
 | **Replan** | note | 骨架中途重规划（`replan_rules.py` 约束：能更新，不能把目标改到不收敛） |
 | **Compact** | note · section | 正文长了压缩喂给续写的那份（修订和打分仍读全文） |
@@ -439,6 +442,14 @@ Mode 按需追加的：
 - 两半判据是同一种东西的两种实现：`Check` 是零成本的 `Dimension`。模型打分在
   `checks/rubric.py`（`evaluate(llm, content, dimensions, context, dup_hints)` → 三态
   `continue / complete / blocked` + 最弱维度）。
+- **「这一轮没打上分」不是第四种状态，是 `st.ev is None`。** 打分调用超时/断连
+  会抛异常，返回体解析不出任何一个维度的 level 会抛 `ScoreParseError`，两条都被
+  `loop._score()` 接住变成 `None`。在那之前解析失败是条**静默**的路：每个维度
+  落回 `level=0`，一份"全 0 分"的 `Evaluation` 照常流进下游，而它跟「模型真判
+  每一项都远不达标」在 `Repair`（排 `cleanup_only`）、`BestOf`（`rank()` 给
+  `(0, 0.0)`，比没判过的 `(-1, -1.0)` 还高）、`_regressed` 和 `kb/extract_judge`
+  的汇总里**一个字节都分不出来**。判据窄一条：只有「一个维度都没解析出可用的
+  level」才算没判上；模型明确回了 `blocked` 是例外（那是真裁决，而且当轮停机）。
 
 ---
 
@@ -625,7 +636,8 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | 级 | 例子 | 处理 |
 |---|---|---|
 | 工具 | 查不到、参数错 | 结果字符串以「（」开头，agent 循环跳过，不当材料 |
-| middleware | 修订调用超时、打分解析失败 | `warning` / `dropped` 事件，这一轮少一项能力，run 继续 |
+| middleware | 修订调用超时、修订被空改守卫丢掉 | `warning` / `dropped` 事件，这一轮少一项能力，run 继续 |
+| 打分 | 调用超时/断连、返回体解析不出分数 | `st.ev = None`＝**这一轮没打上分**（不是 0 分），`evaluate` 事件报 `status=unknown`，计进 `no_change_rounds` 这张网；`rank()` 垫底、`Repair` 不排修复 |
 | 循环 | 异常冒到 `loop.run` | `RUN_ERROR` + `hooks.commit`（已有产出落盘），流正常结束 |
 
 取消：循环里一处 `request.is_disconnected()`；`Save` 每轮落盘所以关页面不丢；
