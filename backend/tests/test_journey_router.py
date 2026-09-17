@@ -382,3 +382,48 @@ def test_黑名单文件坏了当没加过_不是报错(tmp_path, monkeypatch):
     monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
     (tmp_path / "deny.json").write_text("{坏的", encoding="utf-8")
     assert J.get_deny(user="t").apps == []
+
+
+# ——— 描述收成一句（第 749 轮，量了真实产出之后加的）————————————————
+#
+# 旧提示词第一句是「你只回一句中文，说**这个人**在做什么」，模型照着起头：
+# 实测 14 条描述 **14 条**都以「这个人在 / 人在 / 他在 …」开头。那是一行里
+# 视线第一落点上的十几个字，每行都一样，真正的新东西被挤到末尾。
+# 而且这些描述会**原样变成知识库里的事实**——十四条事实共享同一串前缀，
+# 召回时那些 n-gram 命中一切（第 747 轮刚在查询侧修过口水词）。
+#
+# 提示词那一半改完当场 A/B 过（同一张截图，旧 200 字 → 新 32 字）；
+# 下面测的是**提示词管不住时代码接住的那一半**。
+
+def test_去掉开头的主语():
+    from app.routers.journey import tighten
+    for raw in ("这个人在改 capture.ts 的落盘逻辑",
+                "人在改 capture.ts 的落盘逻辑",
+                "他正在改 capture.ts 的落盘逻辑",
+                "用户在改 capture.ts 的落盘逻辑"):
+        assert tighten(raw) == "改 capture.ts 的落盘逻辑"
+
+
+def test_去完主语得还是句人话_不然不去():
+    """「他在忙」削成「忙」比原样更糟。判据宁可窄一点。"""
+    from app.routers.journey import tighten
+    assert tighten("他在忙") == "他在忙"
+
+
+def test_只留第一句():
+    from app.routers.journey import tighten
+    assert tighten("改了 flush 的落盘逻辑。另外顺手清了无主截图。") == "改了 flush 的落盘逻辑。"
+
+
+def test_不在句子中间砍():
+    """截一半比长更难读。模型写的常常是一整个逗号连成的长句——
+    这种就原样留着，长度那一半靠提示词，不靠切。"""
+    from app.routers.journey import tighten
+    long = "改 capture.ts 的 flush，加 keepBackendFields，再清掉无主截图"
+    assert tighten(long) == long
+
+
+def test_没有主语的原样不动():
+    from app.routers.journey import tighten
+    assert tighten("改 capture.ts 的落盘逻辑") == "改 capture.ts 的落盘逻辑"
+    assert tighten("") == ""

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import date as _date
 from datetime import datetime as _dt
@@ -50,14 +51,51 @@ router = APIRouter(prefix="/api/journey", tags=["journey"])
 # 描述这一步的要求**必须放 system**：拼在图旁边那段文字里时，本地视觉模型会把
 # 要求原样复述一遍再用英文自言自语，压根不输出描述（第 631 轮实测）。
 # 而且得留一个「答案：」的标记——它会边想边说，真答案在最后（第 631 轮）。
+# 第 749 轮按真实产出重写了一遍。旧版第一句是「你只回一句中文，说**这个人**在
+# 做什么」——模型就照着这五个字起头：实测 14 条描述 **14 条**都以
+# 「这个人在 / 人在 / 他在 …」开头。那是一行里视线第一落点上的十几个字，
+# 每行都一样，真正的新东西被挤到末尾。而且旧版一边说「一句」一边又要
+# 「结论 / 决定 / 报错 / 待办一并写进去」，实测中位 201 字、最长 388 字，
+# 页面上一段占六行——这就不是「记成一句话」了。
+#
+# **还有一层：这些描述会原样变成知识库里的事实。** 十四条事实前十五个字一模一样，
+# 召回时那些 n-gram 命中一切（第 747 轮刚在查询侧修过口水词，内容侧不能再造一遍）。
 DESCRIBE_SYSTEM = (
-    "你是屏幕活动记录助手。用户给你一张屏幕截图，你只回一句中文，说这个人在做什么。"
+    "你是屏幕活动记录助手。用户给你一张屏幕截图，你回一句中文，说屏幕前的人在做什么。"
+    "**直接从动词起头，不要主语**：写「改 capture.ts 的落盘逻辑」，"
+    "不要写「这个人在改 capture.ts 的落盘逻辑」。"
     "必须带看得见的具体名字：文件名、函数名、文档标题、网页标题、人名、数字。"
     "「在使用代码编辑器」「在浏览网页」这种话一点用都没有。实在看不清就只回「看不清」。"
-    "如果屏幕上有明显的结论、决定、报错、待办，一并写进那句话里。"
+    "**一句就是一句，四十字上下，只说屏幕中央在干的那件事。**"
+    "旁边的标签页、侧栏里的文件名、状态栏的数字，不是这句话要讲的东西。"
+    "屏幕上如果有结论、决定、报错、待办，那件事就是主语，写它。"
     "想什么都可以，但最后必须另起一行，以「答案：」开头写出那一句话。"
 )
 ANSWER = "答案："
+
+# 提示词管不住的那一半，代码管。**这个仓的老教训：「模型返回什么就用什么」
+# 是一类 bug**（第 574–579 轮扫过一轮）。这两条都是纯删，不改语义：
+_SUBJECT = re.compile(r"^(这个人|那个人|这位|用户|某人|人|他|她|TA|Ta)\s*(正在|在|则在|当前在)?\s*")
+_SENT_END = "。！？"
+
+
+def tighten(desc: str) -> str:
+    """把一条描述收成**一句**。
+
+    ① 去掉开头的主语。「这个人在 X」和「X」信息量完全一样，而前者占掉每一行
+       视线第一落点上的十几个字，还让十几条事实共享同一串前缀。
+       只在**后面还剩得下东西**时才去——「他」单独一条不动它。
+    ② 只留第一句。方案里写的就是「记成一句话」（docs/daily-journey-plan.md）。
+       **不在句子中间砍**：截一半比长更难读，宁可留着那一句长的。
+    """
+    d = (desc or "").strip()
+    cut = _SUBJECT.sub("", d)
+    if len(cut) >= 8:                 # 去完还得是句人话，别把「他在忙」削成「忙」
+        d = cut
+    for i, ch in enumerate(d):
+        if ch in _SENT_END and i + 1 < len(d):
+            return d[: i + 1]
+    return d
 
 # 一段描述里一个具体名词都没有 = 没用。**不入库。**
 # 这跟写作 harness 里 `material_used` 那条判据是同一场仗：「在使用代码编辑器」
@@ -285,8 +323,11 @@ def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
         date=day_s,
         **{k: v for k, v in _load_report(day_s).items() if k in
            ("report", "report_segments", "report_at")},
+        # 以前存下来的那些也收一收（`tighten` 是纯删、幂等）。**不回写盘**：
+        # 这一步纯粹是显示，不值得为它跟壳抢一次写。
         segments=[JourneySegment(**{k: s.get(k, "") for k in
-                                    ("start", "end", "app", "title", "desc")},
+                                    ("start", "end", "app", "title")},
+                                 desc=tighten(s.get("desc") or ""),
                                  n=int(s.get("n") or 0),
                                  has_frame=bool(s.get("frames")),
                                  has_thumb=bool(s.get("thumb")),
