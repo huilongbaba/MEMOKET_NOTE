@@ -232,6 +232,143 @@ prompt 里已经写了「主题对得上就优先用 `filter_facts`，比 `searc
 
 ---
 
+## 10. 调研：这个机制在文献里叫什么，我漏了什么
+
+第 761 轮的账本是我从原理推的。回头查了一遍，结论是**形状对了，但少了两个信号，
+而那两个信号的数据我们库里已经有了**；另外「准」和「全」都有现成的可量定义。
+
+### ① 它有名字：LedgerRAG
+
+> **LedgerRAG**：维护一份**显式的 claim 级证据账本**，用
+> **coverage（覆盖）/ temporal validity（时效）/ authority（权威）/ conflict（冲突）**
+> 四个信号来控制**检索、刷新和停机**决策。
+
+跟我提的那份对照：
+
+| LedgerRAG 的信号 | 我提了吗 | 我们库里有数据吗 |
+|---|---|---|
+| coverage | ✅ | ✅ `list_topics` 带条数、`filter_facts` 返回「共 N 条」 |
+| **temporal validity** | ❌ **漏了** | ✅ 每条事实都带日期（`_fmt_facts` 已经在显示 `when`/`date`） |
+| authority | ❌ 漏了 | 部分（`fact_sources` 能回到来源，但没有权威分级） |
+| **conflict** | ❌ **漏了** | ✅ **`kb_conflicts` 表就在库里** |
+
+同一条线上还有 `Stateful Evidence-Driven RAG`（持久的对比式证据池）、
+`Agent Memory: Characterization of Stateful Long-Horizon Workloads`。
+
+### ② 我漏掉的那两个，在这个仓里不是假设
+
+**`kb_conflicts` 这张表已经存在**（`store.py:217`），字段是
+`new_fact_id` / `old_fact_id` / `status` / `resolution`——
+**它记的正是「哪条事实取代了哪条」**。摄入时由 `harness/conflict_confirm.py`
+写进去，由 `routers/kb.py` 的冲突收件箱读出来展示。
+
+**而写作 harness 从来不问它。**（全仓 grep：`harness/` 下没有任何一处读 `kb_conflicts`。）
+
+这不是个理论问题。这个项目自己的记忆里就记着那个例子：
+**DVT 从 6 月 3 日推迟到 8 月 5 日。** 知识库知道后者取代了前者，
+而续写的时候没人问，两条都可能被取出来、都可能被写进正文——
+`factual_grounding` 判据要的正是「没有跟事实矛盾的说法」，
+**而它自己判不出哪条是旧的。**
+
+**账本该加的两列**：`superseded_by`（来自 `kb_conflicts`）和 `when`（事实日期）。
+两者都是零成本的——数据已经在库里，只是没被接进来。
+
+### ③ 「全」有现成的可量定义：sufficient context
+
+`Sufficient Context: A New Lens on RAG`（ICLR 2025，Google）给了一个关键区分：
+
+> **只看「相关性」是量错了东西**——要问的是这些材料**够不够回答这个问题**。
+
+他们训了一个 **sufficient-context autorater** 判「够 / 不够」，
+Gemini 1.5 Pro 一例 few-shot 到 **93% 准确率**。而实测发现：
+**材料不够的时候，强模型不会弃答，而是直接答错**——
+RAG 系统在材料不足时仍有 35–62% 的比例给出答案。
+
+**这条对我们的意义**：`material_use` 判的是「有没有用上材料」（相关性那一档），
+**没有任何一维在问「这一节的材料够不够写」。**
+
+而更妙的是——**弃答这件事，这个仓已经有正确形态了**。
+`grounding_rules.py:256` 写着：对冲句子该删，正确形态是
+「**这里需要补上 XX 的实际记录**」。
+**弃答的表达方式早就定好了，缺的是触发它的信号。**
+账本的覆盖分母正好就是那个信号。
+
+### ④ 「准」也有现成的可量定义：ALCE 的引用精确率 / 召回率
+
+`ALCE`（*Enabling LLMs to Generate Text with Citations*）把引用质量拆成两个数：
+
+- **Citation Recall**：这句话是不是**完全**被它引的那些材料支撑；
+- **Citation Precision**：**每一条**引用是不是真的支撑这句话
+  （做法是**留一法**：去掉其中一条，看是否还蕴含）。
+
+人机一致性验证过：Cohen's kappa **0.698 / 0.525**。
+
+对照我们的 `citations_hold`——它现在查的是「正文引的 id **在不在**材料里」，
+**那既不是 precision 也不是 recall，只是「存在性」。**
+
+有了账本（id → 原话），这两个数都变得可算。
+**但要注意 ALCE 用的是一个专门的 NLI 模型（TRUE，T5-11B 微调）来判蕴含，不是生成器自己。**
+——又一次撞上同一条规矩：**别让写的人自己判。**
+
+### ⑤ 反面证据：把「已经有什么」摆给模型看，可能**减少探索**
+
+这条直接打在我的提案上，必须记：
+
+> **注入的上下文会把 agent 锚定到特定解法上**；
+> 在它本来会自由探索的场合，这**缩小了搜索空间（有害）**。
+
+锚定效应在 LLM 上被反复证实过（`Anchors in the Machine`、
+`Understanding the Anchoring Effect of LLM`）。
+
+**由此得出一条具体的设计决定**（不是加个警告了事）：
+
+> **账本摘要要以「缺口」的形式呈现，不要以「库存」的形式呈现。**
+>
+> - ❌「已经取到 40 条，覆盖众筹、硬件节点、团队」→ 邀请它见好就收
+> - ✅「**定价：18 条，一条都没取**；产品验证：23 条，取了 2 条」→ 邀请它去补
+
+同一份数据，两种写法，效果相反。§3 里那段示例要按这条重写——
+**把「已取」压到最小，把「没取」摆到最前。**
+
+### ⑥ 顺带查到一处我们**碰巧做对了**，别改坏
+
+`Anchoring Bias in LLM-as-a-Judge: Prior Scores Compromise Evaluation Independence`
+指出：**把上一轮的分数喂给这一轮的打分器，会破坏评判的独立性。**
+
+我们的打分器**看不到上一轮的分数**——`_build_prompt` 只吃 `score_context`，
+而那份 context 由 router 组装（spine/beats/分段主题），不含分数。
+
+`loop.py:155` 确实写了 `st.bag["last_scores"]`，
+**但全仓没有任何一处读它——是一段死状态。**
+（顺带：这行可以删，或者接上 §7 第 1 步的「只记不改」一起落库。）
+
+**这一条要写进注释钉住**：将来谁想「让打分器知道上一轮的分数好做对比」，
+这里有现成的反面证据。
+
+### ⑦ 调研之后，§2 的账本形状修正为
+
+```python
+ledger = {
+  "queries": [ {tool, args, hit, empty} ],
+  "axes":    { "topic:定价": {"total": 18, "taken": 0} },        # coverage
+  "facts":   { "f_8a3c": {"line": "…", "state": "taken|used|dropped",
+                          "when": "2026-03-11",                  # ← 新增：时效
+                          "superseded_by": "f_9d21",             # ← 新增：来自 kb_conflicts
+                          "why": ""} },
+}
+```
+
+两个新字段都是**接现成数据**，不是新造。
+
+对应的落地顺序里加一步，插在原来的第 2 步之前：
+
+> **1.5　把 `kb_conflicts` 接进取材那一步**——取到一条被取代的事实时，
+> 在账本里标上 `superseded_by`，并把取代它的那条一起带回来。
+> **这一步独立于账本的其它部分，可以单独做、单独验**，
+> 而且它直接打在 `factual_grounding`（41% 不达标）上。
+
+---
+
 ## 参考
 
 本文的机制形状来自 `harness-multiround-retrieval.md` 和
@@ -241,3 +378,24 @@ prompt 里已经写了「主题对得上就优先用 `filter_facts`，比 `searc
 - [S2G-RAG: Structured Sufficiency and Gap Judging for Iterative Retrieval-Augmented QA](https://arxiv.org/pdf/2604.23783) —— gap judging 的形状
 - [TASR: Training-Free Adaptive Stopping for Iterative Retrieval](https://arxiv.org/pdf/2606.13814) —— 覆盖率驱动停机
 - [SAFE / 长文事实性拆解-核对那条线](https://arxiv.org/abs/2305.14251) —— 「这条值不值得查」的 relevance check
+
+第 10 节的调研来源：
+
+**账本这个形状本身**
+- [LedgerRAG: Governance-Driven Agentic Chain of Retrieval for Dynamic Knowledge Scenarios](https://doi.org/10.3390/electronics15071376)
+- [Stateful Evidence-Driven Retrieval-Augmented Generation with Iterative Reasoning](https://arxiv.org/pdf/2604.14170)
+- [Agent Memory: Characterization and System Implications of Stateful Long-Horizon Workloads](https://arxiv.org/html/2606.06448v1)
+
+**「够不够」的可量定义**
+- [Sufficient Context: A New Lens on Retrieval Augmented Generation Systems (ICLR 2025, Google)](https://arxiv.org/abs/2411.06037) · [仓库](https://github.com/hljoren/sufficientcontext) · [Google Research 博客](https://research.google/blog/deeper-insights-into-retrieval-augmented-generation-the-role-of-sufficient-context/)
+
+**「准不准」的可量定义**
+- [ALCE: Enabling Large Language Models to Generate Text with Citations](https://arxiv.org/pdf/2305.14627)
+- [Learning Fine-Grained Grounded Citations for Attributed LLMs](https://arxiv.org/pdf/2408.04568)
+- [Think&Cite: Improving Attributed Text Generation with Self-Guided Tree Search](https://arxiv.org/pdf/2412.14860)
+
+**反面证据：锚定**
+- [When Context Hurts: The Crossover Effect of Knowledge Transfer on Multi-Agent Design Exploration](https://arxiv.org/pdf/2605.04361)
+- [Anchors in the Machine: Behavioral and Attributional Evidence of Anchoring Bias in LLMs](https://arxiv.org/pdf/2511.05766)
+- [Understanding the Anchoring Effect of LLM with Synthetic Data](https://arxiv.org/html/2505.15392v2)
+- [Anchoring Bias in LLM-as-a-Judge Systems: Prior Scores Compromise Evaluation Independence](https://arxiv.org/html/2608.25869)
