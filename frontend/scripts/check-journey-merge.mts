@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DENY_APPS, DENY_TITLE_WORDS, keepBackendFields, mergeBlips, sweepOrphans, type Segment } from '../../desktop/src/capture.ts'
+import { groupRuns, RUN_GAP_MIN, RUN_SIM, similar } from '../src/util/journeyRuns'
 import { GAP_MIN as JOURNEY_GAP_MIN, saySpan } from '../src/components/JourneyPage'
 
 const B = Date.parse('2026-09-14T18:00:00Z')   // 带 Z：两边都按 UTC 算，不然差一个时区
@@ -184,5 +185,66 @@ if (!backOk) { bad++; console.log(`    ${JSON.stringify(pyMerge)}`) }
   if (!graceOk) bad++
   rmSync(dir, { recursive: true, force: true })
 }
+
+// ——— 「连着说同一件事」的分块：前端和后端必须是同一份 ————————————————
+//
+// 前端拿它排时间轴（八行近似重复 → 一块），后端拿它喂日报
+// （同一件事喂八遍，模型会当成八件事来权衡）。两边漂了的后果是
+// **页面上并成一块的事，日报里却按八件事算权重**。
+const RUN_CASES: { why: string; input: { start: string; end: string; app: string; desc: string }[] }[] = (() => {
+  const t = (m: number) => new Date(Date.parse('2026-09-17T07:00:00Z') + m * 60_000).toISOString()
+  const g = (m0: number, m1: number, app: string, desc: string) =>
+    ({ start: t(m0), end: t(m1), app, desc })
+  const A = '查看 PRD.md#70-81 的日本 Android 崩溃分析'
+  const B = '阅读 PRD.md#70-81 的日本 Android 崩溃分析结论'
+  const C = '改需求文档中 [项目名称] 的背景与问题模板'
+  return [
+    { why: '同一件事并成一块', input: [g(0, 5, 'Code', A), g(5, 11, 'Code', B), g(11, 20, 'Code', A)] },
+    { why: '换了件事断开', input: [g(0, 5, 'Code', A), g(5, 9, 'Code', C)] },
+    { why: '换了应用断开', input: [g(0, 5, 'Code', A), g(5, 9, 'Safari', A)] },
+    { why: '隔太久断开', input: [g(0, 5, 'Code', A), g(120, 125, 'Code', A)] },
+    { why: '两条都没描述就并', input: [g(0, 5, 'Code', ''), g(5, 9, 'Code', ''), g(9, 14, 'Code', '')] },
+    { why: '一条有一条没有不并', input: [g(0, 5, 'Code', A), g(5, 9, 'Code', '')] },
+    { why: '块上取最长那一句', input: [g(0, 5, 'Code', A), g(5, 9, 'Code', A + '，Crashlytics 匹配到 4 条')] },
+    // a 像 b、b 像 c，而 a 跟 c 已经是两件事。按「跟上一条比」会把三条并成一块。
+    { why: '跟块首比不跟上一条比（会飘）', input: [
+      g(0, 5, 'Code', A),
+      g(5, 9, 'Code', A + '，打开 Crashlytics 按机型筛选导出 CSV'),
+      g(9, 14, 'Code', '打开 Crashlytics 按机型筛选导出 CSV 并写进周报')] },
+    { why: '空的', input: [] },
+  ]
+})()
+
+const pyRuns = JSON.parse(execFileSync(venv, ['-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(new URL('../../backend', import.meta.url).pathname)})
+from app.journey.runs import GAP_MIN, SIM, group_runs, similar
+out = {"gap": GAP_MIN, "sim": SIM, "runs": [], "scores": []}
+cases = json.load(sys.stdin)
+for c in cases:
+    out["runs"].append([[r["start"], r["end"], r["app"], r["desc"], len(r["segs"])]
+                        for r in group_runs(c)])
+for a, b in [("\u67e5\u770b PRD.md", "\u9605\u8bfb PRD.md"), ("abc def", "abc xyz"), ("", "x")]:
+    out["scores"].append(round(similar(a, b), 6))
+print(json.dumps(out))
+`], { input: JSON.stringify(RUN_CASES.map((c) => c.input)), encoding: 'utf8' })) as
+  { gap: number; sim: number; runs: unknown[][]; scores: number[] }
+
+RUN_CASES.forEach((c, i) => {
+  const ts = JSON.stringify(groupRuns(c.input).map((r) => [r.start, r.end, r.app, r.desc, r.segs.length]))
+  const py = JSON.stringify(pyRuns.runs[i])
+  const ok = ts === py
+  console.log(`${ok ? '✓' : '✗'} 分块：${c.why}`)
+  if (!ok) { bad++; console.log(`    TS  ${ts}\n    PY  ${py}`) }
+})
+
+const tsScores = [['查看 PRD.md', '阅读 PRD.md'], ['abc def', 'abc xyz'], ['', 'x']]
+  .map(([a, b]) => Number(similar(a, b).toFixed(6)))
+const simOk = JSON.stringify(tsScores) === JSON.stringify(pyRuns.scores)
+const thrOk = pyRuns.gap === RUN_GAP_MIN && Math.abs(pyRuns.sim - RUN_SIM) < 1e-9
+console.log(`${simOk ? '✓' : '✗'} 相似度算法两边同一个数`)
+console.log(`${thrOk ? '✓' : '✗'} 门槛两边一样（${RUN_SIM} / ${RUN_GAP_MIN} 分钟）`)
+if (!simOk) { bad++; console.log(`    TS  ${JSON.stringify(tsScores)}\n    PY  ${JSON.stringify(pyRuns.scores)}`) }
+if (!thrOk) bad++
 
 process.exit(bad ? 1 : 0)

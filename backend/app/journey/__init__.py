@@ -8,6 +8,8 @@
 跟数对了一模一样。
 """
 
+from .runs import group_runs, similar
 from .stats import AppSpan, Churn, DayStats, Stretch, day_stats, render_time_block
 
-__all__ = ["AppSpan", "Churn", "DayStats", "Stretch", "day_stats", "render_time_block"]
+__all__ = ["AppSpan", "Churn", "DayStats", "Stretch", "day_stats", "group_runs",
+           "render_time_block", "similar"]

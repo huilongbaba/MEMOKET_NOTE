@@ -427,3 +427,50 @@ def test_没有主语的原样不动():
     from app.routers.journey import tighten
     assert tighten("改 capture.ts 的落盘逻辑") == "改 capture.ts 的落盘逻辑"
     assert tighten("") == ""
+
+
+# ——— 日报喂进去的是「块」不是「段」（第 753 轮）————————————————————
+#
+# 同一件事以八条近似重复的样子进提示词，模型看到的是「这件事出现了八次」——
+# 这一天真正推进了什么反而被那八遍压下去。第 752 轮在时间轴上做的是同一件事。
+# 判据本身跟前端那份逐位对拍（`frontend/scripts/check-journey-merge.mts`），
+# 这里只测**后端这一侧真的用上了**。
+
+def test_日报把连着说同一件事的段并成一块(tmp_path, monkeypatch):
+    from app.journey import group_runs
+    d = "2026-09-17"
+    a = "查看 PRD.md#70-81 的日本 Android 崩溃分析"
+    segs = [
+        {"start": f"{d}T07:00:00Z", "end": f"{d}T07:05:00Z", "app": "Code", "desc": a},
+        {"start": f"{d}T07:05:00Z", "end": f"{d}T07:11:00Z", "app": "Code",
+         "desc": "阅读 PRD.md#70-81 的日本 Android 崩溃分析结论"},
+        {"start": f"{d}T07:11:00Z", "end": f"{d}T07:20:00Z", "app": "Code", "desc": a},
+        {"start": f"{d}T07:20:00Z", "end": f"{d}T07:25:00Z", "app": "Code",
+         "desc": "改需求文档中 [项目名称] 的背景与问题模板"},
+    ]
+    runs = group_runs(segs)
+    assert [len(r["segs"]) for r in runs] == [3, 1]
+    assert runs[0]["start"].endswith("07:00:00Z") and runs[0]["end"].endswith("07:20:00Z")
+
+
+def test_块上取信息最多的那一句():
+    """它们说的是同一件事，具体的文件名 / 报错往往只出现在其中一条里。"""
+    from app.journey import group_runs
+    d = "2026-09-17"
+    runs = group_runs([
+        {"start": f"{d}T07:00:00Z", "end": f"{d}T07:05:00Z", "app": "Code",
+         "desc": "查看 PRD.md 的崩溃分析"},
+        {"start": f"{d}T07:05:00Z", "end": f"{d}T07:09:00Z", "app": "Code",
+         "desc": "查看 PRD.md 的崩溃分析，Crashlytics 匹配到 4 条"},
+    ])
+    assert len(runs) == 1
+    assert "Crashlytics" in runs[0]["desc"]
+
+
+def test_时间戳读不出来就不并():
+    """宁可多出一行，也不要把两段隔了很久的事并成一块——并错了用户看不出来。"""
+    from app.journey import group_runs
+    a = "查看 PRD.md#70-81 的日本 Android 崩溃分析"
+    runs = group_runs([{"start": "坏的", "end": "坏的", "app": "Code", "desc": a},
+                       {"start": "也坏", "end": "也坏", "app": "Code", "desc": a}])
+    assert len(runs) == 2

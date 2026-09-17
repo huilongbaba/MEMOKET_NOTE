@@ -39,7 +39,7 @@ from ..harness import prompts
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
 from ..editor.vision import VisionError, ask_image
-from ..journey import day_stats, render_time_block
+from ..journey import day_stats, group_runs, render_time_block
 from ..journey.stats import render_churn
 from ..journey.prompt import REPORT_SYSTEM, SPAN_SYSTEM, report_user, span_user
 from .deps import current_user
@@ -452,8 +452,14 @@ async def report(date: str = "", user: str = Depends(current_user)) -> JourneyRe
         # 一段描述都没有就别花这次调用：模型只会拿应用名编一份出来。
         raise HTTPException(400, "这一天还没有任何描述，先点「描述这几段」。")
 
-    lines = [f"{(s.get('start') or '')[11:16]} {s.get('app') or ''} {s['desc']}"
-             for s in sorted(told, key=lambda x: x.get("start") or "")]
+    # **连着说同一件事的并成一块再喂**（`journey/runs.py`）。不并的话同一件事
+    # 会以八条近似重复的样子进提示词，而模型看到的是「这件事出现了八次」——
+    # 这一天真正推进了什么反而被那八遍压下去。并完带上「N 段」，
+    # 让它仍然知道这件事占了多少时间。第 752 轮在时间轴上做的是同一件事。
+    runs = group_runs(sorted(told, key=lambda x: x.get("start") or ""))
+    lines = [f"{r['start'][11:16]}–{r['end'][11:16]} {r['app']} {r['desc']}"
+             + (f"（{len(r['segs'])} 段）" if len(r["segs"]) > 1 else "")
+             for r in runs]
     text = await llm.complete(
         [{"role": "system", "content": prompts.compose_system(REPORT_SYSTEM, "journey", user)},
          {"role": "user", "content": report_user(day_s, lines, render_churn(st))}],
