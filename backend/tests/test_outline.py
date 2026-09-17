@@ -317,8 +317,18 @@ def test_按句剔掉正文里已经有的那几句():
     import difflib
     assert difflib.SequenceMatcher(None, old, rewritten).ratio() < 0.62, \
         "这个样例要是段落级就能抓到，它就证明不了第二遍的必要性"
-    # 而 drop_already_written 现在两遍都跑
-    assert "已有观察表明" not in drop_already_written(old, rewritten)
+    # **第 766 轮故意推翻上一版的断言。** 上一版这里是
+    #     assert "已有观察表明" not in drop_already_written(old, rewritten)
+    # ——也就是「两遍串起来跑」。审查（第 766 轮）逐条实跑验出三处硬伤：
+    #   ① 阈值依据里混进一篇 47k 字的合成性能探针，排掉夹具用户后
+    #      ≥0.9 的句子占比从 30.03% 掉到 2.63%，而且阈值在真实笔记上确实有影响；
+    #   ② 句子从一行内部被剔掉时，`hooks/mirror._record_dropped` 会报**整段**，
+    #      客户端把整段抹掉（dedup 协议只有段/行两级粒度）；
+    #   ③ `template_rows` 按前 8 字分组、≥3 才豁免，编号清单永远凑不成一组。
+    # 这是唯一会直接删掉用户看得见的文字的改动，所以在三处修好之前**先断开**。
+    # 函数本身和上面那几条断言全部保留——它的诊断是对的，接法不对。
+    assert "已有观察表明" in drop_already_written(old, rewritten), (
+        "句级那一遍现在是故意断开的；要重新接上，先补齐 outline.py 里记的那三条")
 
 
 def test_剔句之后段落原样拼回去():
