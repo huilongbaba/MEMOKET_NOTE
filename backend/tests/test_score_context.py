@@ -86,6 +86,36 @@ def test_材料太多时截断_并且说清没列全():
     assert "一共 40 条" in out
 
 
+def test_更正行不受预算约束_且排在最前():
+    """**台账批 11 H2。** `middleware/supersede` 补进来的更正行（「这条取代了
+    X」「这两条对不上、都别当定论」）是对**别的材料**的更正——被这一刀切掉，
+    被更正的那条反而留在材料里，比不补更糟。而它是 append 在末尾的，从头累加
+    的截断正好先切它。
+
+    钉「带记号的行一条都不许少」而不是「supersede 插在最前面」：材料这一份有
+    两个读者（写作那一步不截断、打分这一步截断），按位置修只对一个成立。
+    """
+    facts = [f"第 {i} 条材料" + "凑" * 400 for i in range(40)]
+    notice = f"[new] DVT 推到 8 月 5 日{score_context.NOTICE_MARK}这条取代了 [old]"
+    out = score_context.material(facts + [notice])
+    assert notice in out, "更正行被截断切掉了"
+    assert out.splitlines()[0] == "- " + notice, "更正行要排在最前，别埋在末尾"
+    assert "- 第 0 条材料" in out, "正经材料不能被挤没"
+
+
+def test_更正行多到撑破预算时也全都留着():
+    """生产里条数封在 `supersede.MAX_ADDED`（6 条 × 单条 500 字上限 = 3000，
+    撑不爆 6000）。这里故意给 20 条把预算撑破，钉的是**撑破时的取舍方向**：
+    普通材料少一条只是少一点料，更正少一条是让模型拿着一条已知过时的事实
+    当定论。`material()` 不许因为预算到了就把更正行也 `break` 掉。"""
+    notices = [f"[n{i}] 更正{i}{score_context.NOTICE_MARK}这条取代了 [o{i}]"
+               + "凑" * 400 for i in range(20)]
+    assert sum(len(n) for n in notices) > score_context.MATERIAL_CHARS
+    out = score_context.material(["普通材料" + "凑" * 400] + notices)
+    for i in range(20):
+        assert f"[n{i}] 更正{i}" in out
+
+
 def test_单条材料超长时只切这一条():
     """block 模式的 facts 里混着工具原样返回的整张表 / 整段 mermaid
     （`hooks/block.prepare` 把 raw 也塞进去了），单条给得宽是因为

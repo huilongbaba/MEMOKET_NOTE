@@ -20,11 +20,25 @@
 | `mem.fact_attrs("superseded_by")` | **人已经裁决过**（收件箱点了 new_wins / old_wins，或者合并过） | 标进账本，**并把取代它的那条一起带回来** |
 | `kb_conflicts` 里 `status='open'` 的行 | 摄入时检出的**候选**，还没人裁决 | 只挂一句「这两条对不上，都别当定论」，**不声称谁取代谁** |
 
-open 那一档为什么不敢当成取代：`harness/conflict_confirm.py` 的开头记着实拍
-结果——新用户导入两篇真会议记录，**收件箱里两条全是误报**（「竞品 Plaud 的
-定价是 159 美元」跟「我们的定价是 199 美元」根本不是同一个量）。本机库里现存
-的 4 行 open 冲突，有 3 行正是那两笔误报。**拿未裁决的候选去把一条正确的事实
-标成「过时」，是误伤**，而铁律写着「判据宁可窄一点，误伤比漏报贵」。
+open 那一档为什么不敢当成取代——**依据只有一条，就是这一条**：
+`harness/conflict_confirm.py` 开头记着的那次实拍，新用户导入**两篇真会议记录**，
+收件箱里**两条候选全是误报**（「竞品 Plaud 的定价是 159 美元」跟「我们的定价是
+199 美元」根本不是同一个量）。同一处还记着量级：20406 条的真库上抽 2500 条，
+冲突候选一共只触发 4 次（0.16%）——**候选本来就稀少，而稀少的那几条里已知的
+全是误报**。**拿未裁决的候选去把一条正确的事实标成「过时」，是误伤**，
+而铁律写着「判据宁可窄一点，误伤比漏报贵」。
+
+**这里原来写的是另一条依据，它是假的**（台账批 11 H1 自验）：上一版拿本机
+开发库里那几行 open 冲突算了个「四分之三是误报」的比例当实证。那几行**全部**
+属于 `fresh678` / `fresh678b` / `shot-demo` 三个**夹具用户**，真实用户名下
+**一行都没有**——拿夹具的行去算比例，正是 `scripts/corpus_lineage.py` 整个模块
+在禁止的那种数。顺带一个必须说出来的事实：**这条 middleware 的两条分支在真实
+用户身上目前都是零流量**（已裁决的 `superseded_by` 属性一个都没有，真实用户名下
+未裁决的冲突也一个都没有），它的价值要等收件箱真被用起来才兑现——
+今天它是对的，但今天不产生收益。
+
+闸在 `tests/test_corpus_lineage.py`：产品代码里不许再出现「拿本机库的行当依据」
+的论断（那份名单是白名单制，每加一条都要写清楚这个数出自哪次真跑）。
 
 ## 为什么是单独一个 middleware，不是塞进 Ledger
 
@@ -36,6 +50,7 @@ open 那一档为什么不敢当成取代：`harness/conflict_confirm.py` 的开
 from __future__ import annotations
 
 from .ledger import LINE_CHARS, ledger_of
+from ..score_context import NOTICE_MARK
 from ..state import State
 
 # 一轮最多往材料里补几条。补的是「更正」，不是新材料——真出现十几条，
@@ -51,7 +66,11 @@ def replacement_line(new_id: str, text: str, when: str, old_id: str) -> str:
     """
     head = f"[{new_id}] " if new_id else ""
     date = f"（{when}）" if when else ""
-    return f"{head}{text}{date}【这条取代了 [{old_id}]，写的时候以这条为准】"
+    # 记号 `NOTICE_MARK` 是给打分那一侧的截断看的（`score_context.material`
+    # 按它优先保留），不是装饰：不带记号的更正会被 6000 字那一刀切掉，
+    # 而被它更正的那条旧事实留在前面——台账批 11 H2。
+    return (f"{head}{text}{date}{NOTICE_MARK}"
+            f"这条取代了 [{old_id}]，写的时候以这条为准")
 
 
 def conflict_line(fid: str, other_id: str, say: str) -> str:
@@ -59,7 +78,7 @@ def conflict_line(fid: str, other_id: str, say: str) -> str:
     里面已经带着另一边的日期和数值（「跟知识库 2026-03-04 的记录不一致：
     那里是 199美元，你写的是 159美元」），不用再去取一次事实。"""
     tail = f"：{say}" if say else ""
-    return (f"【注意】[{fid}] 跟 [{other_id}] 的记录对不上，**知识库里这条冲突"
+    return (f"{NOTICE_MARK}[{fid}] 跟 [{other_id}] 的记录对不上，**知识库里这条冲突"
             f"还没裁决，两条都别当定论**{tail}")
 
 
@@ -98,7 +117,7 @@ def apply(led: dict, facts: list[str], *, superseded: dict[str, str],
             if not text:
                 # 取代它的那条自己都取不回来（id 漂了 / 被删了）。**不静默**：
                 # 至少让写作知道这条已经不作数了，别拿它当定论。
-                line = (f"【注意】[{fid}] 已经被 [{new_id}] 取代，"
+                line = (f"{NOTICE_MARK}[{fid}] 已经被 [{new_id}] 取代，"
                         f"而那一条现在取不回来——这条别当定论。")
             else:
                 when = fresh.get("when") or fresh.get("date") or ""
@@ -154,4 +173,10 @@ class Supersede:
         st.bag["superseded_round"] = hits
         # **不按 `fact_budget` 再裁一刀**：这几行是更正，被挤掉的话，被更正的
         # 那条反而留在材料里，比不补更糟。条数已经封在 MAX_ADDED。
+        #
+        # 光在这儿不裁**不够**——台账批 11 H2：打分那一侧
+        # （`score_context.material`）是从头累加、到 6000 字 `break`，而这里是
+        # append 在末尾，于是「被更正的那条留下、更正行被切掉」在**那一侧原样
+        # 发生**。修法不是改插入位置（写作那一侧不截断、打分那一侧截断，按位置
+        # 修只对一个成立），是给每行打上 `NOTICE_MARK`，由截断那一侧认记号保留。
         st.facts = st.facts + added

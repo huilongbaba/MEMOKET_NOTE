@@ -357,6 +357,12 @@ the run's accumulated material directly」，那句话是假的（仓里第二�
 > 5 篇真实用户语料里只有 1 篇带 mermaid、1 篇带 markdown 表。批 9 把这一组加到
 > `--repeats 5` 拿到了篇内显著性，但**跨篇一概不下结论**。要量准它得先有真实语料。
 
+> **批 12 之后，`chart-block` 那几行连"结论"都不剩了**（台账批 12 ⑤）：那唯一一篇
+> 带 mermaid 的笔记里，图前面那一段是**一个游离的围栏收尾符**，取材器把它当引子交给
+> 了打分器（整段奇数个围栏）。所以 `chart_validity`「干净版恒 0 / 无从判断」
+> **是取材缺陷，不是"这篇没图"**。取材修好之后那 60 格自动作废，
+> 这 6 条 probe 现在是**未跑**——在重跑之前，图表那一组一条结论都不许引用。
+
 ---
 
 ### 4.1 定向续写：这一轮写到哪一节
@@ -458,7 +464,7 @@ State: mode · ctx(user/note/cursor) · request · round
 | **Repeats** | after_produce | 机械近重复检测（difflib），结果作为打分的证据 |
 | **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit`；同一条原样卡满 `STUCK_ROUNDS` 轮就只发事件不再短路（改不动的老正文不该把剩余轮数烧掉） |
 | **Ledger** | before_round / after_prepare / after_judge | **材料账本**：把这一轮的工具轨迹折进一份跨轮的状态（查过什么、查到过什么、每条事实的日期、各轴共 N 条取了 M 条），并把这一轮写进 `harness_rounds`（含短路省掉了几次查询）。`before_round` 给 `query_cache` 报轮次——跨轮的重复必须原样返回全文。**账本本身只记不改**——接进 prompt 是单独一步，因为「把已经有什么摆给模型看」有实测证据会缩小它的搜索空间 |
-| **Supersede** | after_prepare | 取材之后把「这条已经被取代了」补上：账本里的事实对一遍 `superseded_by`（人已裁决）和 `kb_conflicts`（未裁决的候选），被取代的**把取代它的那条一起带回来**，未裁决的只挂一句「两条都别当定论」。知识库一直知道 6/3 被 8/5 取代，而写作侧从来不问 |
+| **Supersede** | after_prepare | 取材之后把「这条已经被取代了」补上：账本里的事实对一遍 `superseded_by`（人已裁决）和 `kb_conflicts`（未裁决的候选），被取代的**把取代它的那条一起带回来**，未裁决的只挂一句「两条都别当定论」。知识库一直知道 6/3 被 8/5 取代，而写作侧从来不问。写出来的每一行都带 `score_context.NOTICE_MARK`——**打分那一侧的 6000 字截断按记号优先保留它们**，否则被更正的那条留在材料里、说它过时的那行反倒被切掉（批 11 H2） |
 | **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的 |
 | **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料） |
 
@@ -725,8 +731,9 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | 导入导出 | `test_export.py` · `test_export_roundtrip.py` · `test_export_back.py` | 层级 / 克隆 / 孤儿 / 资产；导出再导入树长回原样；导回按 id 覆盖、对方改过报冲突 |
 | 出口 | `test_llm_sanitize.py` · `test_bold_punct.py` · `test_kite_ask.py` | 提示词不带 base64；粗体标点；KITE Answer 字段漂移 |
 | 前端 | `vitest` + 11 条检查脚本 | roundDiff · factCite · 树扁平化 · SSE 解析 · mermaid 回退 · minimalChange · sectionEnd · friendlyError · runWritingPlan 事件映射 |
-| 判据本身 | `scripts/dimension_sensitivity_bench.py` + `test_dimension_sensitivity_bench.py` | **往真实产出里机械植入已知缺陷，看对应那一维掉不掉分**（CriticGPT 的路子）。语料取 `harness_runs` 跑过的笔记、按血缘**只留 `user` 那一类**；植入只在内存副本上做；27 个植入器**每个都有自验闸**（单边 `gate` 或成对 `verify`，没闸的构造时直接抛）；格子的身份带正文指纹，改了植入器旧分数自动作废；结果分「抓住 / 掉了但不显著 / 只动了一点 / 基线偏低 / 无从判断 / 没抓住 / 反着来了 / 未跑」八档，每行带 n 和 permutation p，「算抓住」那条线按实测噪声标定 |
+| 判据本身 | `scripts/dimension_sensitivity_bench.py` + `test_dimension_sensitivity_bench.py` | **往真实产出里机械植入已知缺陷，看对应那一维掉不掉分**（CriticGPT 的路子）。语料取 `harness_runs` 跑过的笔记、按血缘**只留 `user` 那一类**；植入只在内存副本上做；28 个植入器**每个都有自验闸**（单边 `gate` 或成对 `verify`，没闸的构造时直接抛）；格子的身份带正文指纹，改了植入器旧分数自动作废；**报告头记着这次跑的 `repeats`**（`repeats` 变了就是另一张表，两张表不能比「显著了没有」），材料那几维在报告里标着**是上界**（材料从干净正文摘，不是真实检索结果）；结果分「抓住 / 掉了但不显著 / 只动了一点 / 基线偏低 / 无从判断 / 没抓住 / 反着来了 / 未跑」八档，每行带 n 和 permutation p，「算抓住」那条线按实测噪声标定 |
 | 语料血缘 | `scripts/corpus_lineage.py` + `test_corpus_lineage.py` | **所有测量脚本共用的一份判据**：把笔记分成 `user`（用户真在用的）/ `script`（soak / suite / bench 用**真实 user_id** 跑出来的）/ `fixture`（模板硬生成、没过模型）三类并说明理由。只按 user_id 和标题筛挡不住 `soak.py`，要靠 `writing_sections` → plan → parent 标题 `soak-*` 这条血缘 |
+| 不许绕过血缘判据 | `test_corpus_lineage.py` 末尾那一节 | **建了判据不等于用了判据**（批 11 新规矩）。两侧规矩不同：**脚本**从笔记库取数就必须 import `corpus_lineage`；**产品代码**反过来——不许 import 它（那份知识只在开发机上成立），但也不许「拿本机库里的行当依据」，`app/harness/` 里每一句「库里 N 行」都要进白名单并注明这个数出自哪次真跑 |
 | 真跑 | `--probe=<name>` 连拍（`scratchpad/shot.sh`） | harness / tap / plan-run / sel:* / ingest / delete / draft / imgdrop … 每个探针一张图 + 一份后端日志（client-log 和 traceback 都在里面） |
 
 **反向验证**：新断言先注入违规看它变不变红，再落。**日志优于猜**：主题地图「放大了

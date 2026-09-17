@@ -91,9 +91,34 @@ def test_别的写作计划不许被误判成soak():
 # ----------------------------------------------------------- 标题签名 ---
 
 @pytest.mark.parametrize("title", ["suite-续写-众筹", "writing-seed3", "editing-case7",
-                                   "质量采样-polish", "soak-整理一份众筹前后", "📋 写作追踪"])
+                                   "质量采样-polish", "soak-整理一份众筹前后", "📋 写作追踪",
+                                   # 批 12 补的三个（台账批 11 M5）：这三个脚本
+                                   # **都拿真实 user_id `terrence` 建笔记**，
+                                   # 跟 soak 一个形状，按 user_id 一个都挡不住。
+                                   "压测-a3f9c1", "ab-tools-seed2", "sample-eda1"])
 def test_脚本写死的标题前缀都要认出来(title):
     assert cl.classify("terrence", title).kind == cl.ORIGIN_SCRIPT, title
+
+
+def test_每条标题签名都要能在它点名的那个脚本里逐字找到():
+    """名单上每一条都写着「出自哪个脚本的哪个 f-string」。**写得出签名**是
+    这份名单的准入条件（模块文档：写不出签名的不许进名单，那就是「看起来像
+    测试」的推断）。签名会漂：脚本改了标题格式，这里不改也没有任何症状——
+    下一批的语料里就又混进脚本产出了，跟 `SOAK_PLAN_GOALS` 那条闸同一个理由。
+    """
+    import re
+
+    checked = 0
+    for prefix, why in cl.SCRIPT_TITLE_PREFIXES:
+        m = re.search(r"([A-Za-z_][A-Za-z0-9_]*\.py)", why)
+        if not m:
+            continue                     # 不是脚本建的（`📋 写作追踪` 是产品自己建的）
+        src = Path(__file__).resolve().parent.parent / "scripts" / m.group(1)
+        assert src.exists(), f"{prefix} 的理由指着 {m.group(1)}，那个脚本不在了"
+        assert prefix in src.read_text(encoding="utf-8"), \
+            f"{m.group(1)} 里已经找不到 `{prefix}` 这个前缀了——签名漂了"
+        checked += 1
+    assert checked >= 8, "签名一条都没验到，这条闸在空转"
 
 
 def test_用户自标注的自测笔记归到script():
@@ -164,3 +189,142 @@ def test_真库上批4批6点名的那几篇都被排掉():
         assert nid in by_id and by_id[nid]["origin"] == cl.ORIGIN_SCRIPT, nid
     assert all(r["user_id"] == "terrence" for r in kept), \
         "留下来的必须全是真实用户自己的笔记"
+
+
+# ================= 闸：不许绕过血缘判据取数（台账批 11 H1 / 新规矩第三条）===
+#
+# 批 11 判下来的原话：**建了判据不等于用了判据。** 批 7 刚把血缘判据抽成共用
+# 模块，批 10 的 `middleware/supersede.py` 就从旁边绕过去了——它直接 `store.
+# list_conflicts` 取数，拿本机库里那几行 open 冲突算了个比例写进注释当「实证
+# 依据」，而那几行**全部属于夹具用户**，真实用户名下一行都没有。
+#
+# 立闸之前先把分层想清楚，因为这两侧的规矩**不是同一条**：
+#
+# ① **测量脚本那一侧**：它们的结论要拿去改判词、定阈值，语料是谁产的直接决定
+#    结论真不真。所以规矩是硬的——**从库里取笔记就必须走 `corpus_lineage`**。
+#
+# ② **产品代码那一侧**：`corpus_lineage` 住在 `scripts/`，而它的全部知识都是
+#    **关于测量脚本的**（soak 的 goal 常量、各 bench 的标题前缀、开发机上跑过
+#    的探针用户）。把它下沉进 `app/` 会让「哪些 user_id 是夹具」这种**只在这台
+#    开发机上成立**的事实变成生产依赖——生产里每个用户只看得见自己的数据，
+#    运行时根本没有「夹具用户」这个概念。所以产品代码**不需要**血缘判据，
+#    也**不许**依赖它。
+#
+#    那产品这边到底禁什么？禁的是那次真正出事的动作：**拿本机库里的行当依据**。
+#    产品代码里的实证依据只有两种来源合法——(a) 一次**真实用户**的真跑 / 实拍
+#    （像 `conflict_confirm.py` 开头记的那次导入）；(b) 台账里按血缘筛过的测量。
+#    所以下面那条闸是白名单制：`app/harness/` 里每出现一句「库里 N 行 / N 条」
+#    的论断，都要在名单里写清楚这个数出自哪儿。
+#
+# 判据宁可窄一点：文本那条只认「库 / 表 + 数字 + 行 / 条」这一种写法，不做任何
+# 语义推断。换个说法绕过去是可能的——但误伤一条真实拍出来的依据更贵。
+
+_LINEAGE_MODULE = "corpus_lineage"
+
+# 产品代码里允许出现的「库里 N 行」论断：**逐字**写在这里，每条注明出处。
+# 多一条就要有人在这里写明它这个数是怎么来的，跟 `test_facts_accumulate` 里
+# 那份「`st.facts` 的写入方」白名单同一个形状。
+ALLOWED_DB_CLAIMS: dict[str, dict[str, str]] = {
+    "app/harness/modes.py": {
+        "库里有412条":
+            "出自 `terrence` 真库上的一次真跑（硬件那一档的事实条数），"
+            "是真实用户自己的数据，不是把一堆来路不明的行放在一起算比例",
+    },
+    "app/harness/prompts/writing.py": {
+        "库里341条":
+            "同上，出自实测那次「定价要覆盖哪些成本」的真跑："
+            "`filter_facts topic=work_product_cost_control` 341 条可用而正文一条没用",
+    },
+}
+
+_DB_CLAIM = __import__("re").compile(r"(?:库里|本机库|全库|库中|表里)[^。；]{0,24}?\d+\s*[行条]")
+
+
+def _harness_sources() -> dict[str, str]:
+    root = Path(__file__).resolve().parent.parent
+    return {str(f.relative_to(root)): f.read_text(encoding="utf-8")
+            for f in sorted((root / "app" / "harness").rglob("*.py"))}
+
+
+def test_产品代码不许拿本机库里的行当依据():
+    """批 11 H1 的原样复现：`supersede.py` 拿夹具用户的那几行算了个比例，
+    当成「未裁决的不许当成取代」这条产品行为的实证依据写进注释。
+
+    比例本身可能还是对的——**但那个依据是假的**，而假依据比没有依据更糟：
+    下一个人会拿它当已经验证过的事实，在它上面接着建。
+    """
+    import re as _re
+
+    for name, src in _harness_sources().items():
+        flat = _re.sub(r"\s+", "", src)
+        for m in _DB_CLAIM.finditer(flat):
+            claim = m.group(0)
+            allowed = ALLOWED_DB_CLAIMS.get(name, {})
+            assert claim in allowed, (
+                f"{name} 里出现了一句「{claim}」——产品代码不许拿本机库里的行当依据。"
+                "要么换成一次真实用户的真跑 / 实拍，要么把它写进 ALLOWED_DB_CLAIMS "
+                "并注明这个数是怎么来的")
+
+
+def test_白名单里不许留下已经不存在的论断():
+    """白名单会腐烂：论断改掉了、名单留着，下一条同样形状的假依据就能免检进来。"""
+    import re as _re
+
+    sources = _harness_sources()
+    for name, claims in ALLOWED_DB_CLAIMS.items():
+        assert name in sources, f"白名单里的 {name} 不在 app/harness 下了"
+        flat = _re.sub(r"\s+", "", sources[name])
+        for claim in claims:
+            assert claim in flat, f"{name} 里已经没有「{claim}」这句话了，名单该删"
+
+
+def test_从库里取数的脚本必须走血缘判据():
+    """**这条是批 11 那句「建了判据不等于用了判据」的机械形态。**
+
+    形状照抄仓里已有的那条（`test_dimension_sensitivity_bench` 的
+    「bench 里不许再长出一份 `FIXTURE_USERS`」）：那一条管的是「别再写一份
+    名单」，这一条管的是「取了数就得用名单」——两次出事正好是这两个形状。
+    """
+    scripts = Path(__file__).resolve().parent.parent / "scripts"
+    touched = []
+    for f in sorted(scripts.glob("*.py")):
+        if f.name == f"{_LINEAGE_MODULE}.py":
+            continue                      # 它自己就是那份判据
+        src = f.read_text(encoding="utf-8")
+        if "notes.sqlite3" not in src and "FROM notes" not in src:
+            continue
+        touched.append(f.name)
+        assert _LINEAGE_MODULE in src, (
+            f"{f.name} 直接从笔记库取数，却没走 `{_LINEAGE_MODULE}`——"
+            "脚本产出和用户产出在库里长得一模一样，筛不掉就是拿脚本的分布当用户的")
+    assert touched, "一个从库里取数的脚本都没找到，这条闸在空转"
+
+
+def test_产品代码不许依赖scripts里的血缘判据():
+    """分层：这份判据的知识**全部是关于测量脚本的**，只在开发机上成立。
+    产品代码 import 它，等于把「哪些 user_id 是夹具」变成生产依赖——
+    而生产里每个用户只看得见自己的数据，运行时根本没有「夹具用户」这回事。
+
+    所以产品那一侧的规矩不是「也去走血缘判据」，是上面那条
+    `test_产品代码不许拿本机库里的行当依据`。
+    """
+    import ast
+
+    root = Path(__file__).resolve().parent.parent
+    seen = 0
+    for f in sorted((root / "app").rglob("*.py")):
+        if "__pycache__" in str(f):
+            continue
+        seen += 1
+        # **查 import，不查文本**：`supersede.py` 的注释里正写着「为什么这条
+        # 依据是假的」并点了这个模块的名，那是在解释，不是在依赖。
+        # 第一版拿子串查，当场把那段解释误伤了。
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""] + [a.name for a in node.names]
+            assert _LINEAGE_MODULE not in [n.split(".")[0] for n in names if n], \
+                f"{f.relative_to(root)} 依赖了 scripts/ 里的血缘判据"
+    assert seen > 50, "一个产品文件都没扫到，这条闸在空转"

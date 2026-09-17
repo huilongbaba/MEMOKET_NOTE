@@ -49,6 +49,26 @@ MATERIAL_KEY = "知识库事实"
 FACT_CHARS = 500
 MATERIAL_CHARS = 6000
 
+# 更正行的记号。`middleware/supersede.py` 补进材料的那几行（「这条取代了 X」/
+# 「这两条对不上、都别当定论」）都带着它，`material()` 截断时**优先保留带这个
+# 记号的行**。
+#
+# **为什么非要有这么一个记号**（台账批 11 H2）：`supersede` 的注释写着「不按
+# `fact_budget` 再裁一刀——被挤掉的话，被更正的那条反而留在材料里，比不补更糟」，
+# 而它是把更正 append 在 `st.facts` **末尾**的；`material()` 这边是**从头累加、
+# 到点 `break`**（实测 60 条 806 字只留下 11 条）。**它防的那个失败模式在这一侧
+# 原样发生了**：旧的那条在前面留着，说明它过时的那一行被截断切掉。
+#
+# 为什么不是「让 supersede 插到最前面」：材料这一份有两个读者——写作那一步
+# （`prompts.facts_block`，全量不截断）和打分这一步（这里，要截断）。按位置修
+# 只对其中一个成立，下一次谁换个窗口（计划 3.2 的事实索引要动的正是这里）
+# 就又漏了。按记号保留跟位置无关。
+#
+# 记号放在**行尾**、不放行首：`checks/citations.supplied_ids` 认的是行首那个
+# `[事实 id]`，记号插到行首会让「带回来的那条新事实」不再算作给过的材料，
+# 模型引用它时会被当成悬空引用去查库。
+NOTICE_MARK = "【材料提醒】"
+
 
 def for_block(*, before: str = "", after: str = "",
               prompt: str = "", selection: str = "") -> dict[str, str]:
@@ -90,15 +110,20 @@ def material(facts: Sequence[str]) -> str:
     数字但知识库里查无此事」，材料被砍掉一半而不说，它会把**真有出处**的句子
     判成编造——比漏判还糟，因为下一轮的诊断会逼着模型把对的内容改掉。
     """
+    # **更正行先进块，而且不受预算约束**（见 `NOTICE_MARK`）：它们是对别的材料
+    # 的更正，被截断切掉的话，被更正的那条反而留在材料里——比不补更糟。
+    # 条数封在 `supersede.MAX_ADDED`（6 条），撑不爆这一块。
+    notices = [f for f in facts if NOTICE_MARK in (f or "")]
+    ordered = notices + [f for f in facts if NOTICE_MARK not in (f or "")]
     lines: list[str] = []
     used = 0
-    for fact in facts:
+    for fact in ordered:
         text = (fact or "").strip()
         if not text:
             continue
         if len(text) > FACT_CHARS:
             text = text[:FACT_CHARS] + "…"
-        if used + len(text) > MATERIAL_CHARS and lines:
+        if used + len(text) > MATERIAL_CHARS and lines and NOTICE_MARK not in text:
             break
         lines.append("- " + text)
         used += len(text)
@@ -107,7 +132,8 @@ def material(facts: Sequence[str]) -> str:
     kept = len(lines)
     total = sum(1 for f in facts if (f or "").strip())
     if kept < total:
-        lines.append(f"（材料太多，这里只列了前 {kept} 条，一共 {total} 条——"
+        lines.append(f"（材料太多，这里只列了 {kept} 条，一共 {total} 条"
+                     "（更正 / 提醒那几行一定在里面）——"
                      "**没列出来的不代表知识库里没有**，别据此判成编造）")
     return "\n".join(lines)
 

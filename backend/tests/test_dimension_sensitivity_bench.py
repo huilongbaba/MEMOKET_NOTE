@@ -324,6 +324,31 @@ def test_掉不到半档只算只动了一点():
     assert rows[0]["verdict"] == "只动了一点"
 
 
+def test_拿去跟阈值比的必须是没四舍五入的掉分():
+    """**台账批 11 M1：这条闸是反推补上的，补之前把 `_verdict` 改成拿
+    `round(drop, 2)` 去比阈值，1380 条用例全绿。**
+
+    而批 10 自己在台账里写过这条教训——批 9 报「掉 0.89 正好压在 `CAUGHT` 线上，
+    抓住」，原始值其实是 0.888…，差 0.002。**那一批只修了读数、没留闸**，
+    于是同一个坑换成代码的形态又活了一遍。
+
+    下面这组数就是当时那一格：三篇里两篇掉满一档、一篇掉 2/3，
+    平均 0.888…，显示成 0.89 跟 `CAUGHT` 一模一样。
+    """
+    recs = []
+    for note, dirty in (("n1", [1, 1, 1]), ("n2", [1, 1, 1]), ("n3", [1, 1, 2])):
+        for rep, lvl in enumerate(dirty):
+            recs.append(_rec(P.id, note, "clean", "non_repetition", 2, rep=rep))
+            recs.append(_rec(P.id, note, "dirty", "non_repetition", lvl, rep=rep))
+    rows = bench.summarize(recs, (P,))
+    assert rows[0]["drop"] == 0.89 == bench.CAUGHT, "这组数没落在阈值上，用例就白写了"
+    assert rows[0]["p"] < bench.ALPHA, "p 不显著的话「抓住」会被改写成别的档，测不到这件事"
+    assert rows[0]["verdict"] == "只动了一点", \
+        "0.888… < 0.89，比阈值用的必须是原始值；报告里那个 0.89 是显示值"
+    assert bench._verdict(2.0, 0.888) == "只动了一点"
+    assert bench._verdict(2.0, 0.89) == "抓住"
+
+
 def test_干净版就已经垫底时报无从判断():
     """0 分再植入缺陷也掉不下去。把这种报成"没抓住"是**假阳性**——
     会让一个其实分不出好坏的格子去给维度定罪。"""
@@ -589,7 +614,7 @@ def test_每条probe的目标维度真的属于那个模式():
         assert set(p.targets) <= dims, f"{p.id} 的目标维度不在 {p.mode} 里"
 
 
-# ============================== 植入器自验：27 个一个都不许没有闸 ==========
+# ============================== 植入器自验：28 个一个都不许没有闸 ==========
 #
 # **批 6 ⑤ 逼出来的**：审查把 `inj_drop_chart_series` 换成**恒等函数**
 # （什么都不植入），44 条单测**全绿存活**——因为压根没有一条用例碰过那个植入器。
@@ -689,6 +714,8 @@ INJECTOR_FIXTURES: dict[str, tuple[str, str]] = {
     "lead_in": (NOTE, DONOR),
     "fabricate_specifics": (NOTE, ""),
     "answer_swap": (NOTE, DONOR),
+    # 批 12：`NOTE` 里带「N 月 D 日」，把它改回被取代的那一版
+    "use_superseded_date": (NOTE, ""),
 }
 
 
@@ -796,6 +823,79 @@ def test_covers_the_data只用带叙述的图块():
             "content": NARRATED_CHART, "spine": "", "beats": ""}
     assert bench.pick_chart_narrated(note) is not None
     assert bench.pick_chart_narrated({**note, "content": ANONYMOUS_CHART}) is None
+
+
+# ------------------------------------------- 图块：引子不许是围栏残片 ---
+#
+# 真实语料上唯一带 mermaid 的那篇（`06647b9c2031`）本身是坏的：全篇只有
+# **3 个** ``` ，图前面那一段是 `]` 加一个游离的围栏收尾符（上一次生成漏掉的
+# 残片）。下面这段夹具是那篇的形状。
+
+BROKEN_FENCE_NOTE = (
+    "## 节奏\n\n"
+    "10 台到货后才具备 10 人小范围对外可用与硬件联动验证条件，合规评审要留出回滚时间。\n\n"
+    "]\n```\n\n"
+    "```mermaid\ngraph LR\nA[6月15日 10台到货] --> B[10人小范围对外可用]\n```\n\n"
+    "### 后面还有正文\n\n招聘启动顺序跟着定义走。\n"
+)
+
+
+def _broken_note(content: str = BROKEN_FENCE_NOTE) -> dict:
+    return {"id": "n", "user_id": "terrence", "title": "t", "content": content,
+            "spine": "", "beats": ""}
+
+
+def test_图块的引子不许是围栏残片():
+    """**台账批 11 M4**：跟批 10 修的 `numeric-block` 同型——「命中块前面那一段」
+    不一定是正文。取成围栏残片之后，交给打分器的 subject 开头是一个孤零零的
+    ``` ，`chart_validity` 的干净版恒 0 分，报「无从判断」。
+    **那是取材缺陷，不是"这篇没图"**，两者的处理方式完全相反。"""
+    sub = bench.pick_chart_block(_broken_note())
+    assert sub is not None
+    assert not sub.text.startswith("]"), "引子取成了游离的围栏收尾符"
+    assert sub.text.count("```") == 2, "只该有图自己那一对围栏"
+    assert sub.text.startswith("10 台到货后"), "引子该是块前面那一段真正的正文"
+
+
+def test_图块交出去的正文里围栏必须成对():
+    """奇数个围栏 = 打分器看到的是半个代码块。这条比上面那条宽一档，
+    是**症状**那一侧的闸：换一种取错法也照样红。"""
+    for pick in (bench.pick_chart_block, bench.pick_chart_narrated):
+        sub = pick(_broken_note())
+        assert sub is not None, pick.__name__
+        assert sub.text.count("```") % 2 == 0, f"{pick.__name__} 交出了奇数个围栏"
+
+
+def test_带叙述的图块同样只认干净的正文段():
+    """`covers_the_data` 判的是"句子里提到的分组画全了没有"——叙述里带着
+    半个围栏，判的就不是那件事了。"""
+    sub = bench.pick_chart_narrated(_broken_note())
+    assert sub is not None and "```mermaid" in sub.text
+    assert bench.mentioned_nodes(sub.text), "引子里得真的点过图里的名字"
+    assert not sub.text.startswith("]") and sub.text.count("```") == 2
+
+
+def test_挑不到干净引子时引子留空而不是拿残片凑():
+    """拿不到跟拿错是两件事：拿错没有任何症状。"""
+    only_junk = "]\n```\n\n```mermaid\ngraph LR\nA[甲] --> B[乙]\n```\n\n后面还有正文。\n"
+    assert bench.clean_leads("]\n```") == []
+    sub = bench.pick_chart_block(_broken_note(only_junk))
+    assert sub is not None
+    assert sub.text.startswith("```mermaid"), "没有干净引子就只交那一块"
+    assert only_junk[sub.at:sub.at + 12] == sub.text[:12], "起点要指到块本身"
+
+
+def test_引子是原文里逐字的那一段():
+    """引子是重拼出来的，但**每一段都得在原文里逐字找得到**——
+    取材器不许合成一句引子出来（跟 `pick_chart_narrated` 那条同一个纪律）。"""
+    note = _broken_note()
+    for pick in (bench.pick_chart_block, bench.pick_chart_narrated,
+                 bench.pick_table_block):
+        sub = pick(note)
+        if sub is None:
+            continue
+        for para in sub.text.split("\n\n"):
+            assert para.strip() in note["content"], f"{pick.__name__}: {para[:30]}"
 
 
 # --------------------------------------- 表格块：最后一行不许落在匹配之外 ---
@@ -1077,3 +1177,167 @@ def test_末节数字更密时也不挑末节():
     subject = bench.SELECTORS["numeric-block"](note)
     assert subject is not None and "前面这一节" in subject.text, \
         "又去挑末节了——那一档的后文恒为空"
+
+
+# ------------------------- 被取代的事实：这套里唯一会改材料的东西（批 12）---
+#
+# `middleware/supersede.py` 是批 10 唯一会改材料内容的改动，交出去的时候
+# **零灵敏度覆盖**（台账批 11 H2）。下面钉的是这条 probe 立得住：
+# 它量的是「正文用了一条**有出处但已经作废**的事实」，而不是别的什么。
+
+SUPERSEDE_PROBE = next(p for p in bench.PROBES if p.injector == "use_superseded_date")
+
+
+def _dated_note() -> dict:
+    return {"id": "n", "user_id": "terrence", "title": "节奏",
+            "content": NOTE, "spine": "", "beats": ""}
+
+
+def test_更正那条probe的材料里真有一行生产写的更正():
+    note = _dated_note()
+    sub = bench.SELECTORS[SUPERSEDE_PROBE.selector](note)
+    ctx = bench.production_context(SUPERSEDE_PROBE, sub, note)
+    block = ctx[bench.score_context.MATERIAL_KEY]
+    assert bench.score_context.NOTICE_MARK in block
+    assert "这条取代了" in block and bench.SUPERSEDED_OLD_ID in block
+    assert SUPERSEDE_PROBE.holds(sub, note, ctx)
+
+
+def test_更正行的格式必须由生产那个函数写():
+    """脚本另抄一份格式，生产一改这条 probe 量的就不是那行字了——
+    跟 `as-deployed` 的上下文必须由 `score_context` 拼是同一条纪律。"""
+    import pathlib as _p
+
+    src = _p.Path(bench.__file__).read_text(encoding="utf-8")
+    assert "prod_supersede.replacement_line(" in src
+    from app.harness.middleware import supersede as prod
+
+    note = _dated_note()
+    sub = bench.SELECTORS[SUPERSEDE_PROBE.selector](note)
+    facts = bench.superseded_material(sub, note, [])
+    sent = facts[0].split("] ", 1)[1].replace(*bench.superseded_pair(sub.text)[::-1])
+    assert facts[1] == prod.replacement_line(bench.SUPERSEDED_NEW_ID, sent, "",
+                                             bench.SUPERSEDED_OLD_ID)
+
+
+def test_植入臂写的那个日期在材料里逐字找得到():
+    """**这条是这个 probe 跟 `shift_dates` 的全部区别。** 改出来的日期要是
+    材料里根本没有，判据判它编造就行了，量的就不是「作废的那一条」这件事。"""
+    note = _dated_note()
+    sub = bench.SELECTORS[SUPERSEDE_PROBE.selector](note)
+    dirty, why = bench.INJECTORS[SUPERSEDE_PROBE.injector].mutate(sub.text, "")
+    assert not why, why
+    now, older = bench.superseded_pair(sub.text)
+    block = bench.production_context(SUPERSEDE_PROBE, sub, note)[
+        bench.score_context.MATERIAL_KEY]
+    assert older in dirty and now not in dirty
+    assert older in block, "被取代的那一版必须在材料里，否则这条 probe 退化成 shift_dates"
+    assert now in block, "现行那一版也得在——生产里两条都会被取出来，这正是它要治的"
+
+
+def test_两臂的材料一模一样_只有正文不同():
+    """材料按**干净版**摘（`build_tasks` 里两臂共用一份 ctx）。两臂的材料不一样的话，
+    掉分里混进了「材料变了」这个变量，那张表就不是在量判据。"""
+    note = _dated_note()
+    sub = bench.SELECTORS[SUPERSEDE_PROBE.selector](note)
+    tasks, _ = bench.build_tasks([note], (SUPERSEDE_PROBE,), 1, set())
+    ctxs = {t.arm: t.context for t in tasks}
+    assert ctxs["clean"] == ctxs["dirty"]
+    texts = {t.arm: t.text for t in tasks}
+    assert texts["clean"] != texts["dirty"]
+
+
+def test_更正行被切掉时这一格报条件没出现而不是判据不灵():
+    """H2 的另一半：更正行要是被 `score_context.material` 的截断切掉，
+    这一格量的是「材料里压根没有更正」，那跟「判据不看更正」是两件事。"""
+    note = _dated_note()
+    sub = bench.SELECTORS[SUPERSEDE_PROBE.selector](note)
+    assert not SUPERSEDE_PROBE.holds(sub, note, {bench.score_context.MATERIAL_KEY:
+                                                 "- 一条没有更正的普通材料"})
+
+
+def test_别的probe的材料一个字都没动():
+    """`material` 钩子只有这一条 probe 用。它要是漏进了别的 probe，
+    整张表的材料就都变了，而格子指纹会让旧数据**静默**作废重跑。"""
+    users = [p.id for p in bench.PROBES if p.material is not None]
+    assert users == [SUPERSEDE_PROBE.id]
+
+
+# ------------- 报告参数 + 日志分类：两张表能不能比，先看它们是不是同一个 n ---
+
+def _one_note() -> dict:
+    return {"id": "n1", "user_id": "terrence", "title": "节奏",
+            "content": NOTE, "spine": "", "beats": ""}
+
+
+def test_重复次数排在外面的行不许跟指纹对不上的混成一个数():
+    """**台账批 11 H3 点名的那处误报。** 拿默认 `--repeats 3` 去读一份按
+    `--repeats 5` 跑出来的日志，rep=3 / rep=4 那些行身份完全没问题，
+    只是这次没要它们——上一版跟「取材器改过、指纹对不上」的行一起报成
+    「对不上现在的语料/植入器」。实测这一处是 **328 行有效数据**。
+
+    两类的处理方式相反：前者调回 `--repeats` 就在，后者必须重跑。
+    """
+    note = _one_note()
+    probes = (SUPERSEDE_PROBE,)
+    cells5, _ = bench.build_tasks([note], probes, 5, set())
+    cells3, _ = bench.build_tasks([note], probes, 3, set())
+    log = [{"key": t.key, "probe": t.probe_id, "note": t.note_id,
+            "arm": t.arm, "rep": t.rep, "scores": {"factual_grounding": 2}}
+           for t in cells5]
+    split = bench.classify_stale(log, cells3)
+    assert len(split["used"]) == len(cells3)
+    assert len(split["out_of_repeats"]) == len(cells5) - len(cells3) > 0
+    assert split["mismatched"] == []
+
+
+def test_指纹对不上的行仍然报作废():
+    """取材器 / 植入器一改，同一个 key 指向的已经是另一段正文了——
+    这种行混进统计是**毫无症状**的（批 7 撞出来的那个坑）。"""
+    note = _one_note()
+    cells, _ = bench.build_tasks([note], (SUPERSEDE_PROBE,), 1, set())
+    log = [{"key": bench.cell_key("n1", SUPERSEDE_PROBE.id, "clean", 0,
+                                  "另一段正文", {}), "probe": SUPERSEDE_PROBE.id}]
+    split = bench.classify_stale(log, cells)
+    assert len(split["mismatched"]) == 1 and split["out_of_repeats"] == []
+
+
+def _report(**over) -> str:
+    params = {"repeats": 5, "notes": 5, "only": "（全部）", "caught": bench.CAUGHT,
+              "alpha": bench.ALPHA, "perm_resamples": bench.PERM_RESAMPLES,
+              "seed": bench.PERM_SEED}
+    params.update(over)
+    return bench.render_report([], [], [_one_note()], [], [], kept_total=1,
+                               params=params, stale={"used": [], "mismatched": [],
+                                                     "out_of_repeats": [1, 2]})
+
+
+def test_报告头必须写着这次跑的repeats():
+    """不记 `repeats`，两张表并排放进台账就没人看得出「显著了」是修好接线
+    买的还是多跑两次买的——批 10 的头条正是这么混掉的。"""
+    out = _report(repeats=5)
+    assert "| `repeats` | 5 |" in out
+    assert "repeats" in out.split("## 语料")[0], "得写在报告头，不是埋在末尾"
+    assert "5" in _report(repeats=5) and "| `repeats` | 3 |" in _report(repeats=3)
+
+
+def test_报告头缺参数就不许出表():
+    """缺了当场炸，好过出一张看不出 n 的表——那张表会被当成可比的。"""
+    with pytest.raises(AssertionError):
+        bench.render_report([], [], [], [], [], params={"notes": 5})
+
+
+def test_报告头要把两类没进统计的行分开报():
+    out = _report()
+    assert "重复次数排在本次 `repeats` 之外" in out and "数据仍然有效" in out
+
+
+def test_报告里要标明材料那几维是上界():
+    """**台账批 11 H4。** 材料是从干净正文摘的，打分器拿到的是正文原句的
+    逐字副本——那四维测在最有利的条件下。数字照发，但不许当成生产灵敏度。"""
+    out = _report()
+    head = out.split("## 灵敏度（逐条 probe")[0]
+    assert "上界" in head and "derived_facts" in head
+    for dim in ("material_use", "factual_grounding", "numbers_from_tools",
+                "data_grounding"):
+        assert dim in head, dim

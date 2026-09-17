@@ -151,3 +151,29 @@ def test_轮内计数每轮清零(ctx, counting):
     query_cache.begin_round(ctx, 2)
     assert query_cache.stats(ctx)["this_round"]["calls"] == 0
     assert query_cache.stats(ctx)["run"]["calls"] == 1
+
+
+def test_没短路的那些派发也要进分母(ctx, counting):
+    """**台账批 11 M2：这条闸是反推补上的，补之前把 `calls += 1` 挪到
+    「不在白名单就直接走」那一句之后，1380 条用例全绿。**
+
+    而「重复查询率 33.3% / 40%」这个批 10 的头条数就是这个分母算出来的：
+    分母只数可短路的工具时，`list_tables` / `render_image` 这些照样发出去的
+    调用凭空消失，率会虚高——省下的次数一次没变，数字却好看了。
+    """
+    query_cache.begin_round(ctx, 1)
+    query_cache.dispatch("list_tables", {}, ctx)          # 不在白名单
+    query_cache.dispatch("search_memory", {"query": "a"}, ctx)
+    query_cache.dispatch("search_memory", {"query": "a"}, ctx)   # 这一次才是省下来的
+    assert query_cache.stats(ctx)["run"] == {"calls": 3, "hits": 1, "skipped": 1}
+    assert query_cache.repeat_rate(ctx) == pytest.approx(1 / 3), \
+        "分母是「这次跑一共派发了多少次」，不是「可短路的工具被叫了多少次」"
+    assert query_cache.stats(ctx)["this_round"]["calls"] == 3
+
+
+def test_参数不合法的那次也进分母(ctx, counting):
+    """另一条早退的路：参数不是 dict 时直接交给 `tools.dispatch` 去报错。
+    它确确实实是一次派发，漏数它同样会把率抬高。"""
+    query_cache.begin_round(ctx, 1)
+    query_cache.dispatch("search_memory", "[1, 2]", ctx)     # 合法 json，但不是 dict
+    assert query_cache.stats(ctx)["run"]["calls"] == 1

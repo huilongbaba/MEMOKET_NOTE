@@ -38,6 +38,10 @@
 判不出来的一律留在 `user`：误伤一篇真实产出，比多跑一篇脚本产出贵。
 反过来说，每加一个新的测量脚本，就要往下面的名单里补一条它的签名，
 否则它的产出会被当成用户笔记——`test_corpus_lineage.py` 里有闸钉着几条已知的。
+**这条承诺自己也栽过一次**（台账批 11 M5）：`harness_stress_test` / `agent_tools_ab`
+/ `full_output_sample` 三个脚本都拿真实 user_id `terrence` 建笔记，名单里却一条
+都没有——今天没出事只是因为它们跑完把笔记清掉了。批 12 补齐，并且加了一条闸：
+**名单里的前缀必须逐字出现在对应脚本的源码里**（`test_corpus_lineage.py`）。
 
 ## 为什么放在 `scripts/` 而不是 `app/database/`
 
@@ -108,6 +112,14 @@ SCRIPT_TITLE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("editing-", "`editing_quality_bench.py:244` 的 `f\"editing-{case['id']}\"`"),
     ("质量采样-", "`harness_quality_sample.py:148` 的 `f\"质量采样-{label}\"`"),
     ("📋 写作追踪", "`writing_plan` 自己建的追踪文档，不是正文产出"),
+    # 下面三条是批 12 补的（台账批 11 M5）。这三个脚本**都是拿真实 user_id
+    # `terrence` 跑的**，跟 `soak.py` 是同一个形状：按 user_id 筛一个都挡不住，
+    # 而它们又不建 writing_plan，连血缘那条线索也没有——只剩标题签名这一条。
+    # 今天库里这三种一篇都不剩（跑完清理掉了），所以补上不改变现在那张表；
+    # **补它们是因为下一次跑完忘了清就会静默混进「用户语料」**。
+    ("压测-", "`harness_stress_test.py:274` 的 `f\"压测-{uuid.uuid4().hex[:6]}\"`"),
+    ("ab-", "`agent_tools_ab.py:65` 的 `f\"ab-{label}-{seed[\'id\']}\"`"),
+    ("sample-", "`full_output_sample.py:129` 的 `f\"sample-{spec[\'id\']}\"`"),
 )
 
 # 用户在自己名下建的一次性自测笔记，标题里**自己写着**。

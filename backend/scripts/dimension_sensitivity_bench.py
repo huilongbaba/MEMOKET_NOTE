@@ -85,6 +85,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import corpus_lineage  # noqa: E402  （语料血缘判据，所有测量脚本共用这一份）
 from app.harness import score_context  # noqa: E402  （as-deployed 那一档由生产代码自己拼）
+from app.harness.middleware import supersede as prod_supersede  # noqa: E402
+# ↑ 更正行**必须由生产那个函数写**，脚本不许另抄一份：它一改格式，
+#   这条 probe 量的就不是生产里那行字了（跟 `score_context` 同一条纪律）。
 
 ROOT = Path(__file__).resolve().parent
 LOG_PATH = ROOT / "dimension_sensitivity_log.jsonl"
@@ -235,17 +238,40 @@ def pick_section(note: dict) -> Subject | None:
     return Subject(note["content"], {"这个分段的主题": title})
 
 
+_FENCE = re.compile(r"```")
+
+
+def clean_leads(head: str) -> list[str]:
+    """块前面那些**能当引子用**的段落，按原顺序。带围栏标记的一律剔掉。
+
+    **批 12 修的就是这一条（台账批 11 M4），跟批 10 修的 `numeric-block` 同型：
+    「命中块前面那一段」不一定是正文。** 真实语料上唯一带 mermaid 的那篇
+    （`06647b9c2031`）里，图前面那一段是 `]` + 一个**游离的围栏收尾符**
+    （那篇正文本身就是坏的：全篇只有 3 个 ``` ，开头那个是上一次生成漏掉的
+    残片）。于是交给打分器的 subject **开头是一个孤零零的 ```、整段有奇数个
+    围栏**——`chart_validity` 报「无从判断」（干净版恒 0 分）**是取材取坏了，
+    不是"这篇没图"**。
+
+    剔掉的是「段落里出现过 ``` 」这一种，不做别的推断：整块代码围栏也会被剔，
+    那是想要的——引子里混进第二个图会让 `no_duplicate_charts` 的干净版
+    从一开始就有两个图。剔完一个不剩时返回空列表，调用方**不许合成一句引子**。
+    """
+    return [p for p in paragraphs(head) if not _FENCE.search(p)]
+
+
 def _block_around(text: str, pat: re.Pattern) -> tuple[str, int, int] | None:
-    """真实笔记里的一块：`pat` 命中的那段 + 它前面那一段引子。
+    """真实笔记里的一块：`pat` 命中的那段 + 它前面那一段**干净的**引子。
 
     连**起点**一起返回：块是重拼出来的（引子和正文之间换成了空行），
     回头 `find()` 不一定找得回来——真实语料上 `chart-block` 就有一篇找不回。
+
+    引子怎么挑见 `clean_leads`。挑不到干净引子时**引子留空、起点指到块本身**，
+    不拿一段围栏残片凑数：拿不到跟拿错是两件事，后者没有任何症状。
     """
     m = pat.search(text)
     if not m:
         return None
-    head = text[: m.start()].rstrip()
-    paras = paragraphs(head)
+    paras = clean_leads(text[: m.start()].rstrip())
     lead = paras[-1] if paras else ""
     start = text.rfind(lead, 0, m.start()) if lead else m.start()
     return ((lead + "\n\n" + m.group(0).strip()).strip(),
@@ -269,7 +295,10 @@ def pick_chart_narrated(note: dict) -> Subject | None:
     m = _MERMAID.search(text)
     if not m:
         return None
-    head = paragraphs(text[: m.start()])
+    # 引子同样只认干净的正文段（`clean_leads`）：这一篇的图前面正好就是那个
+    # 游离的围栏残片，不剔掉的话「叙述」里带着半个围栏，`covers_the_data` 判的
+    # 就不是"句子提到的分组画全了没有"了。
+    head = clean_leads(text[: m.start()])
     for back in range(1, min(6, len(head)) + 1):
         lead = "\n\n".join(head[-back:]).strip()
         block = (lead + "\n\n" + m.group(0).strip()).strip()
@@ -466,6 +495,52 @@ def inj_shift_dates(text: str, donor: str) -> str | None:
 
     out = _DATE.sub(bump, text)
     return out if out != text else None
+
+
+# 「更正」这条 probe 用的那个位移：把日期往**前**挪两个月 = 回到被取代的那一版。
+# 植入器和材料两边都从这一个函数取数，**不许各算各的**——两边算出来的旧日期
+# 不一样，这条 probe 就变成「正文里有个材料里没有的日期」，那是 shift_dates
+# 已经在量的东西，不是「用了已经被取代的那一条」。
+SUPERSEDE_MONTHS_BACK = 2
+
+_MD = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日")
+
+
+def superseded_pair(text: str) -> tuple[str, str] | None:
+    """`(正文里第一处「N 月 D 日」原样, 往前挪两个月之后的写法)`。找不到返回 None。"""
+    m = _MD.search(text or "")
+    if not m:
+        return None
+    mon = (int(m.group(1)) - SUPERSEDE_MONTHS_BACK - 1) % 12 + 1
+    older = f"{mon} 月 {int(m.group(2))} 日"
+    return (m.group(0), older) if older != m.group(0) else None
+
+
+def inj_use_superseded_date(text: str, donor: str) -> str | None:
+    """把正文里那个日期改回**已经被取代的那一版**。→ factual_grounding
+
+    这条跟 `shift_dates` 看着像，量的是完全不同的一件事：改完之后那个日期
+    **在材料里是找得到的**（材料里那条旧事实就写着它），只有更正行说明它
+    已经作废。所以判据要是不看更正行，两臂在它眼里一样有据可依——
+    `middleware/supersede.py` 买到的东西，只有这条 probe 量得出来。
+    """
+    pair = superseded_pair(text)
+    if not pair:
+        return None
+    now, older = pair
+    out = text.replace(now, older)
+    return out if out != text else None
+
+
+def _v_use_superseded_date(clean: str, dirty: str, donor: str) -> bool:
+    """那个日期真的换成了旧的那一版，而且**只动了日期**。"""
+    pair = superseded_pair(clean)
+    if not pair:
+        return False
+    now, older = pair
+    if now in dirty or older not in dirty:
+        return False
+    return _no_digits(clean) == _no_digits(dirty)
 
 
 _QTY = re.compile(r"(\d+(?:\.\d+)?)\s*(万台|万|亿|%|％|台|人|条|美元|元)")
@@ -1141,6 +1216,8 @@ INJECTORS: dict[str, Injector] = {i.name: i for i in (
     Injector("lead_in", inj_lead_in, verify=_v_lead_in),
     Injector("fabricate_specifics", inj_fabricate_specifics, verify=_v_fabricate_specifics),
     Injector("answer_swap", inj_answer_swap, verify=_v_answer_swap),
+    Injector("use_superseded_date", inj_use_superseded_date,
+             verify=_v_use_superseded_date),
 )}
 
 
@@ -1158,6 +1235,13 @@ class Probe:
     targets: tuple[str, ...]
     condition: str = "as-deployed"
     evidence: Callable[[Subject, dict], dict[str, str]] | None = None
+    # 这一格的**材料**要不要动。`(subject, note, facts) -> facts`，
+    # 在 `derived_facts` 之后、`score_context.material` 之前。
+    # 目前只有一条 probe 用它：`middleware/supersede` 是这套 harness 里
+    # **唯一会改材料内容**的东西，而它零灵敏度覆盖（台账批 11 H2）——
+    # 要量它，材料里就得真的有一条「被取代的事实 + 更正行」。
+    # 不给默认值 = 不动，别的 probe 一个字都不受影响。
+    material: Callable[[Subject, dict, list[str]], list[str]] | None = None
     # **这一格的前置条件到底成没成立**（批 10）。`(subject, note, ctx) -> bool`，
     # 纯代码判，在 `production_context` 拼完之后算——它判的是**拼出来的那份
     # 上下文**，跟取材器判的「这篇笔记有没有这块东西」是两件事：
@@ -1268,7 +1352,10 @@ def production_context(probe: "Probe", subject: Subject, note: dict) -> dict[str
         ctx.update(score_context.for_block(
             before=before, after=after,
             prompt=instruction_for(note) if probe.mode in _HAS_INSTRUCTION else ""))
-    block = score_context.material(derived_facts(subject))
+    facts = derived_facts(subject)
+    if probe.material:
+        facts = probe.material(subject, note, facts)
+    block = score_context.material(facts)
     if block:
         ctx[score_context.MATERIAL_KEY] = block
     return ctx
@@ -1287,6 +1374,61 @@ def _ev_profile(subject: Subject, note: dict) -> dict[str, str]:
     0.17（n=2，p=1.0），没有任何证据说明传了有用。判据宁可窄一点。"""
     return {"用户的个人偏好": "- 只写事情本身，不要旁白证据够不够\n"
                               "- 语气克制，不用套话\n- 能给结论就别给过程"}
+
+
+# ------------------------------------- 被取代的事实那一档（批 12 / H2）---
+#
+# `middleware/supersede.py` 是这套 harness 里**唯一会改材料内容**的东西，
+# 而批 10 交出去的时候它**零灵敏度覆盖**（台账批 11 H2）。这一档补上。
+#
+# 量的是一件别的 probe 量不到的事：**正文写的那个值在材料里逐字找得到**，
+# 作废它的只有那行更正。材料的形状照着生产摆——新旧两条都在（这正是
+# `supersede` 要治的那个局面：两条都可能被取出来），外加一行更正。所以
+#   · 干净臂：正文用的是现行那一版；
+#   · 植入臂：正文用的是**被取代的那一版**（跟材料里那条旧事实逐字对得上）。
+# 掉分 = 判据认得出「有出处但已经作废」；不掉 = 明明告诉它了，它还是分不出
+# 哪条是旧的——那正是 `factual_grounding` 判词自己判不出来的那件事。
+#
+# 跟 `shift_dates` 的区别只有一条，但是决定性的：那一条改出来的日期
+# **材料里根本没有**（判成编造就行），这一条改出来的日期材料里有。
+
+SUPERSEDED_OLD_ID = "note-0000000000-9F9"
+SUPERSEDED_NEW_ID = "note-1111111111-1F1"
+
+
+def superseded_material(subject: Subject, note: dict, facts: list[str]) -> list[str]:
+    """材料里加两条：**被取代的那条旧事实** + 生产写的那行更正。
+
+    更正那一行由 `middleware/supersede.replacement_line` 生成——脚本不许另抄
+    一份格式，它一改这条 probe 量的就不是生产里那行字了。
+
+    这两条是合成的，跟 `derived_facts` 一样是 `st.facts` 的替身；
+    **合成的只有材料，正文一个字没编**（正文那一版由植入器从真实笔记改出来）。
+    """
+    pair = superseded_pair(subject.text)
+    if not pair:
+        return facts
+    now, older = pair
+    sent = next((x.strip() for x in re.split(r"(?<=[。！？])", subject.text)
+                 if now in x), "")
+    if not sent:
+        return facts
+    sent = sent[:120]
+    stale = f"[{SUPERSEDED_OLD_ID}] {sent.replace(now, older)}"
+    fresh = prod_supersede.replacement_line(SUPERSEDED_NEW_ID, sent, "",
+                                            SUPERSEDED_OLD_ID)
+    return facts + [stale, fresh]
+
+
+def _pre_has_supersede_notice(subject: Subject, note: dict,
+                              ctx: dict[str, str]) -> bool:
+    """材料块里**真的有那行更正**。
+
+    它顺带钉住了 H2 那条修复的另一半：更正行被截断切掉时（`score_context.
+    material` 是从头累加、到点 `break` 的），这一格报「条件没出现」单独成表，
+    **不会以「判据不灵」的身份混进掉分均值**。
+    """
+    return score_context.NOTICE_MARK in (ctx.get(score_context.MATERIAL_KEY) or "")
 
 
 def _pre_has_material(subject: Subject, note: dict, ctx: dict[str, str]) -> bool:
@@ -1319,6 +1461,9 @@ PROBES: tuple[Probe, ...] = (
     Probe("note", "whole", "audit_voice", ("style_fit",),
           condition="with-evidence", evidence=_ev_profile),
     Probe("note", "whole", "placeholder", ("factual_grounding",)),
+    Probe("note", "whole", "use_superseded_date", ("factual_grounding",),
+          material=superseded_material, precondition=_pre_has_supersede_notice,
+          precondition_label="材料里真有一条被取代的事实 + 那行更正"),
     # ---- section 模式（另外 2 维）
     Probe("section", "whole-section", "swap_section_bodies", ("topic_fidelity",)),
     Probe("section", "whole-section", "off_spine_graft", ("topic_fidelity",)),
@@ -1446,6 +1591,38 @@ def cell_key(note_id: str, probe_id: str, arm: str, rep: int,
     指纹进 key 之后，正文或上下文一变，那一格自动重跑；没变的一格钱也不白花。
     """
     return f"{note_id}|{probe_id}|{arm}|{rep}|{cell_fingerprint(text, context or {})}"
+
+
+def strip_rep(key: str) -> str:
+    """把格子身份里的「第几次重复」去掉：`笔记|probe|臂|rep|指纹` → `笔记|probe|臂|指纹`。"""
+    parts = (key or "").split("|")
+    return "|".join(parts[:3] + parts[4:]) if len(parts) >= 5 else key
+
+
+def classify_stale(records: list[dict], cells: list["Task"]) -> dict[str, list[dict]]:
+    """日志里**没进本次统计**的行，分两类。混成一个数是批 11 H3 点名的那处误报。
+
+    | 类 | 是什么 | 该怎么办 |
+    |---|---|---|
+    | `out_of_repeats` | 身份对得上，只是重复次数排在本次 `--repeats` 之外 | **数据还是好的**，`--repeats` 调回去就在 |
+    | `mismatched` | 正文 / 上下文指纹对不上（取材器或植入器改过） | 真作废，要重跑 |
+
+    上一版把两类一起报成「对不上现在的语料/植入器，不进统计」——于是拿默认
+    `--repeats 3` 跑一次 `--report`，那份按 `--repeats 5` 跑出来的日志里
+    **976 行有效数据被报成「对不上语料」**，而表还照出，看上去一切正常。
+    """
+    valid = {t.key for t in cells}
+    same_cell = {strip_rep(t.key) for t in cells}
+    out: dict[str, list[dict]] = {"used": [], "out_of_repeats": [], "mismatched": []}
+    for r in records:
+        key = r.get("key")
+        if key in valid:
+            out["used"].append(r)
+        elif strip_rep(key or "") in same_cell:
+            out["out_of_repeats"].append(r)
+        else:
+            out["mismatched"].append(r)
+    return out
 
 
 @dataclass
@@ -1827,15 +2004,40 @@ def collateral(records: list[dict], probes: tuple[Probe, ...] = PROBES) -> list[
     return sorted(out, key=lambda r: -r["drop"])
 
 
+# 报告头必须写清楚的那几个参数。**`repeats` 是其中最要紧的一个**（台账批 11 H3）：
+# 批 9 是 `--repeats 3`、批 10 是 `--repeats 5`，两张表并排放在台账里，
+# 谁也看不出「显著了」是修好上下文买的、还是多跑两次买的——按 r3 子集隔离之后
+# **那一批头条里 `spine_fidelity` 那一行 100% 是 repeats 买的**。
+# n 变了 p 就会变，那是统计功效，不是判据变灵敏。所以它得跟结论印在同一张纸上。
+PARAM_KEYS = ("repeats", "notes", "only", "caught", "alpha", "perm_resamples", "seed")
+
+
 def render_report(rows: list[dict], side: list[dict], used: list[dict],
                   dropped: list[dict], skips: list[dict], kept_total: int = 0,
-                  calib: dict | None = None) -> str:
+                  calib: dict | None = None, params: dict | None = None,
+                  stale: dict | None = None) -> str:
     by_origin: dict[str, int] = {}
     for d in dropped:
         by_origin[d.get("origin", "?")] = by_origin.get(d.get("origin", "?"), 0) + 1
+    params = params or {}
+    missing = [k for k in PARAM_KEYS if k not in params]
+    assert not missing, f"报告头缺参数：{missing}"
     lines = ["# 维度灵敏度（植入已知缺陷）", "",
              f"生成：{datetime.now().isoformat(timespec='seconds')}", "",
-             "## 语料", "",
+             "## 这次跑的参数（**`repeats` 变了就是另一张表**）", "",
+             "| 参数 | 值 |", "|---|---|"]
+    lines += [f"| `{k}` | {params[k]} |" for k in PARAM_KEYS]
+    lines += ["",
+              "`repeats` 直接决定 p 值能小到哪儿：n=1 篇 × 3 次时排列总数只有 "
+              "C(6,3)=20，两侧 p 最小就是 0.10——**那一档在数学上不可能显著**。"
+              "拿两张 `repeats` 不同的表比「显著了没有」，比的是统计功效，不是判据。", ""]
+    if stale is not None:
+        lines += [f"- 日志里另有 **{len(stale.get('out_of_repeats') or [])}** 行"
+                  "身份对得上、只是重复次数排在本次 `repeats` 之外"
+                  "（**数据仍然有效**，调回那个 `repeats` 就在）；",
+                  f"- **{len(stale.get('mismatched') or [])}** 行指纹对不上现在的"
+                  "取材 / 植入器（这些是真作废的，要重跑）。", ""]
+    lines += ["## 语料", "",
              f"- 跑过 harness 的笔记里，按血缘只留 `user` 那一类之后剩 **{kept_total or len(used)}** 篇、"
              f"排掉 **{len(dropped)}** 篇（"
              + "、".join(f"{k} {v}" for k, v in sorted(by_origin.items()))
@@ -1853,7 +2055,21 @@ def render_report(rows: list[dict], side: list[dict], used: list[dict],
                   f"本次表里用的线是 `CAUGHT = {CAUGHT}`",
                   f"- 逐行还要过 p < {ALPHA}（permutation，{PERM_RESAMPLES} 次重排，"
                   f"种子 {PERM_SEED}）；过不了的报「掉了但不显著」", ""]
-    lines += ["## 灵敏度（逐条 probe，**这张表才是原始结论**）", "",
+    lines += ["## 读这张表之前必须知道的一条：材料那几维是**上界**", "",
+              "bench 手上没有真实检索结果，材料是拿 `derived_facts` 从**干净正文**里"
+              "摘句子摘出来的（`production_context` 的注释里记着这处已知差）。于是打分器"
+              "拿到的材料是**正文原句的逐字副本**——`material_use` / "
+              "`factual_grounding` / `numbers_from_tools` / `data_grounding` 这四维"
+              "是在**最有利的条件**下被测的。", "",
+              "所以这几行的数**是「接线通没通」的上界，不是生产灵敏度**：生产里材料"
+              "来自知识库检索，是抽取模型的转述，不会逐字包含笔记自己的句子。"
+              "上界掉分为 0（比如 `factual_grounding` 对占位符三批一致掉 0.00）"
+              "是**硬结论**——最有利的条件下都判不出来；上界掉分大，只说明这条线接通了，"
+              "**不能据此说生产里这一维好使**。", "",
+              "（`use_superseded_date` 那条 probe 的材料里另有两条合成的：一条被取代的"
+              "旧事实 + 一行 `middleware/supersede` 写的更正。它量的正是「正文用了一条"
+              "有出处、但已经作废的事实」，同样是上界。）", "",
+              "## 灵敏度（逐条 probe，**这张表才是原始结论**）", "",
               "| 维度 | probe | 条件 | 干净 | 植入 | 掉分 | 篇 | 次 | p | 结论 |",
               "|---|---|---|---:|---:|---:|---:|---:|---:|---|"]
     for r in sorted([x for x in rows if x["verdict"] != UNMET],
@@ -1990,11 +2206,12 @@ def main() -> None:
     # 所以改了植入器之后的旧行、以及按血缘被排掉的那些笔记的行，
     # 会在这里自动掉出去——不会被拼进同一张表（批 7 撞出来的那个坑）。
     all_cells, _ = build_tasks(notes, probes, args.repeats, set())
-    valid = {t.key for t in all_cells}
-    stale = [r for r in records if r.get("key") not in valid]
-    records = [r for r in records if r.get("key") in valid]
-    print(f"待跑 {len(tasks)} 格（已完成 {len(done)}，日志里另有 {len(stale)} 行"
-          f"对不上现在的语料/植入器，不进统计），跳过 {len(skips)} 条 probe×篇", flush=True)
+    split = classify_stale(records, all_cells)
+    records = split["used"]
+    print(f"待跑 {len(tasks)} 格（已完成 {len(done)}；日志里另有 "
+          f"{len(split['out_of_repeats'])} 行只是重复次数排在 --repeats {args.repeats} "
+          f"之外（数据仍然有效）、{len(split['mismatched'])} 行指纹对不上现在的"
+          f"取材/植入器（真作废）），跳过 {len(skips)} 条 probe×篇", flush=True)
 
     if not args.report and tasks:
         _llm.ctx_user.set("sensitivity-bench")
@@ -2002,7 +2219,8 @@ def main() -> None:
         deadline = time.monotonic() + args.time_budget_seconds
         ran = asyncio.run(run_tasks(tasks, concurrency=args.concurrency, deadline=deadline))
         print(f"\n本次跑了 {ran} 格", flush=True)
-        records = [r for r in read_log() if r.get("key") in valid]
+        split = classify_stale(read_log(), all_cells)
+        records = split["used"]
 
     # 前置条件是 `(语料, probe)` 的纯函数，**报告时重算**——批 9 那 396 格
     # 不用重跑就能按条件拆开（`precondition_map` 的注释写了为什么值得）。
@@ -2017,7 +2235,12 @@ def main() -> None:
     print(f"噪声标定：{calib}", flush=True)
     rows = summarize(records, probes)
     side = collateral(met, probes)
-    report = render_report(rows, side, notes, dropped, skips, kept_total=len(kept), calib=calib)
+    report = render_report(rows, side, notes, dropped, skips, kept_total=len(kept),
+                           calib=calib, stale=split,
+                           params={"repeats": args.repeats, "notes": args.notes,
+                                   "only": args.only or "（全部）", "caught": CAUGHT,
+                                   "alpha": ALPHA, "perm_resamples": PERM_RESAMPLES,
+                                   "seed": PERM_SEED})
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"{datetime.now().strftime('%m%d-%H%M%S')}-sensitivity.md"
     out.write_text(report, encoding="utf-8")

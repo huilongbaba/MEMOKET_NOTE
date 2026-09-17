@@ -113,3 +113,52 @@ def test_跟这次跑无关的事实不管():
     added, hits = apply(led, [], superseded={"别人家的": "x"}, conflicts={},
                         lookup=_kb())
     assert (added, hits) == ([], 0)
+
+
+def test_更正行必须活过打分那一侧的截断():
+    """**批 11 H2 的原样复现。** `supersede` 的注释写着「不按 `fact_budget`
+    再裁一刀，否则被更正的那条反而留在材料里，比不补更糟」——但它 append 在
+    `st.facts` 末尾，而 `score_context.material()` 是从头累加、到 6000 字
+    `break`（实测 60 条 806 字只留 11 条）。**它防的那个失败模式在打分器那一侧
+    原样发生**：旧的那条在前面留着，说它过时的那一行被切掉。
+
+    所以这条闸钉的是「材料塞满时更正行还在不在」，不是「supersede 加没加」。
+    """
+    from app.harness import score_context
+
+    led = _led(("old", "DVT 定在 6 月 3 日"))
+    added, _ = apply(led, [], superseded={"old": "new"}, conflicts={},
+                     lookup=_kb(new={"id": "new", "text": "DVT 推到 8 月 5 日",
+                                     "when": "2026-08-05"}))
+    # 先把预算塞满，再按生产的顺序把更正接在末尾（`Supersede.after_prepare`）
+    filler = [f"[f{i}] " + "把材料塞满的一条事实。" * 20 for i in range(60)]
+    block = score_context.material(filler + added)
+    assert sum(len(f) for f in filler) > score_context.MATERIAL_CHARS, \
+        "填充材料没超预算，这条用例就没在测截断"
+    assert "DVT 推到 8 月 5 日" in block, "更正行被截断切掉了"
+    assert "[old]" in block and "以这条为准" in block
+    assert "把材料塞满的一条事实" in block, "别把正经材料整块挤没了"
+
+
+def test_未裁决的提醒也带记号():
+    """两条分支写出来的行都要能活过截断——被切掉的那一条是「别当定论」，
+    切掉之后留在材料里的正是那条**可能是误报**的事实，一个字的提示都没有。"""
+    from app.harness.score_context import NOTICE_MARK
+
+    led = _led(("a", "定价 159 美元"))
+    added, _ = apply(led, [], superseded={},
+                     conflicts={"a": ("b", "跟知识库 2026-03-04 的记录不一致。")},
+                     lookup=_kb())
+    assert NOTICE_MARK in added[0]
+
+
+def test_带回来的那条仍然算给过的材料():
+    """记号只能放行尾：`citations.supplied_ids` 认的是**行首**那个 `[事实 id]`，
+    记号插到行首，模型引用带回来的那条新事实时会被当成悬空引用去查库。"""
+    from app.harness.checks.citations import supplied_ids
+
+    led = _led(("old", "旧的"))
+    added, _ = apply(led, [], superseded={"old": "terrence-2046-2F3"}, conflicts={},
+                     lookup=_kb(**{"terrence-2046-2F3": {"id": "terrence-2046-2F3",
+                                                         "text": "新的", "when": ""}}))
+    assert "terrence-2046-2F3" in supplied_ids(added)
