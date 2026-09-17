@@ -501,7 +501,8 @@ function setupJourneyIpc() {
 }
 
 function setupJourney() {
-  journey = makeRecorder(app.getPath('userData'), remember)
+  journey = makeRecorder(app.getPath('userData'), remember,
+                         () => powerMonitor.getSystemIdleTime())
   journey.restore()                    // 上次是开着的就接着开——见 capture.ts 的 optIn
   setupJourneyIpc()
   refreshTray()

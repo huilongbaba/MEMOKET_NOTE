@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { DENY_APPS, DENY_TITLE_WORDS, keepBackendFields, mergeBlips, sweepOrphans, type Segment } from '../../desktop/src/capture.ts'
+import { DENY_APPS, DENY_TITLE_WORDS, IDLE_SEC, keepBackendFields, mergeBlips, sweepOrphans, trimIdleTail, type Segment } from '../../desktop/src/capture.ts'
 import { groupRuns, RUN_GAP_MIN, RUN_SIM, similar } from '../src/util/journeyRuns'
 import { GAP_MIN as JOURNEY_GAP_MIN, saySpan } from '../src/components/JourneyPage'
 
@@ -246,5 +246,39 @@ console.log(`${simOk ? '✓' : '✗'} 相似度算法两边同一个数`)
 console.log(`${thrOk ? '✓' : '✗'} 门槛两边一样（${RUN_SIM} / ${RUN_GAP_MIN} 分钟）`)
 if (!simOk) { bad++; console.log(`    TS  ${JSON.stringify(tsScores)}\n    PY  ${JSON.stringify(pyRuns.scores)}`) }
 if (!thrOk) bad++
+
+// ——— 人不在的时候那一段不能一路延下去 ————————————————————————————
+//
+// 读日报读出来的（第 753 轮）：人睡觉去了，屏幕亮着、前台窗口没变，那一段
+// 一路延到早上，日报里写着「00:00–10:44 **连续没被打断 10 小时 45 分钟**」。
+// 这一页的全部前提是可信，而这句话是假的。
+{
+  const now = Date.parse('2026-09-17T10:00:00Z')
+  const seg = (s: string, e: string): Segment =>
+    ({ start: s, end: e, app: 'Code', title: '', n: 1, frames: [] })
+
+  const a = [seg('2026-09-17T00:00:00.000Z', '2026-09-17T09:59:45.000Z')]
+  const trimmed = trimIdleTail(a, now, 8 * 3600)      // 八小时没动过
+  const tailOk = trimmed && a[0].end === '2026-09-17T02:00:00.000Z'
+  console.log(`${tailOk ? '✓' : '✗'} 人不在：段尾收回到最后一次动手那一刻`)
+  if (!tailOk) { bad++; console.log(`    ${a[0].end}`) }
+
+  // 只往回收、不往前推：时钟跳变 / 重复调用都不能把一段拉长
+  const b = [seg('2026-09-17T09:00:00.000Z', '2026-09-17T09:30:00.000Z')]
+  const noGrow = !trimIdleTail(b, now, 60) && b[0].end === '2026-09-17T09:30:00.000Z'
+  console.log(`${noGrow ? '✓' : '✗'} 人不在：只往回收，不把段拉长`)
+  if (!noGrow) { bad++; console.log(`    ${b[0].end}`) }
+
+  // 收过头就停在 start：宁可留一个零长段，也不要 end 早于 start 的坏数据
+  const c = [seg('2026-09-17T09:50:00.000Z', '2026-09-17T09:59:00.000Z')]
+  trimIdleTail(c, now, 3600)
+  const floorOk = c[0].end === c[0].start
+  console.log(`${floorOk ? '✓' : '✗'} 人不在：收过头也不会让 end 早于 start`)
+  if (!floorOk) { bad++; console.log(`    ${c[0].start} → ${c[0].end}`) }
+
+  const emptyOk = !trimIdleTail([], now, 3600) && IDLE_SEC === 300
+  console.log(`${emptyOk ? '✓' : '✗'} 人不在：空表不炸，门槛 5 分钟`)
+  if (!emptyOk) bad++
+}
 
 process.exit(bad ? 1 : 0)

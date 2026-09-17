@@ -222,6 +222,29 @@ export function sweepOrphans(dir: string, segs: Segment[], now = Date.now()): nu
   return n
 }
 
+/** 离开多久算「人不在」。五分钟是这类判断的通行值，也够宽——
+ *  读一屏长文、开会听着不动手，都不会到五分钟。 */
+export const IDLE_SEC = 5 * 60
+
+/** **把当前段的尾巴收回到人最后一次动手的那一刻。**
+ *
+ *  没有这一步的后果是实拍出来的（第 753 轮，读日报读出来的）：人睡觉去了，
+ *  屏幕亮着、前台窗口没变，于是那一段一路延到早上——日报里写着
+ *  「00:00–10:44 MEMOKET NOTE **连续没被打断 10 小时 45 分钟**」。
+ *  这一页的全部前提是可信，而这句话是假的。
+ *
+ *  收到 `now - idleSec` 而不是直接停在上一 tick：`getSystemIdleTime` 给的是
+ *  **精确的**「多久没动过」，比 15 秒一跳的采样准，也不用另存一个时间戳。
+ *  只往回收、不往前推（`Math.min`）——时钟跳变时不能把一段拉长。 */
+export function trimIdleTail(segs: Segment[], now: number, idleSec: number): boolean {
+  const last = segs[segs.length - 1]
+  if (!last) return false
+  const at = new Date(now - idleSec * 1000).toISOString()
+  if (at >= last.end) return false          // 已经收过了 / 还没到
+  last.end = at < last.start ? last.start : at
+  return true
+}
+
 export function readSegments(dir: string): Segment[] {
   try {
     return JSON.parse(readFileSync(path.join(dir, 'segments.json'), 'utf8')) as Segment[]
@@ -303,7 +326,10 @@ export type Recorder = {
  * 看过那一屏知情选择（§1：macOS 的屏幕录制权限本来就会弹框，静默默认开根本
  * 不存在，不如把那一刻用好）。
  */
-export function makeRecorder(userData: string, log: (s: string) => void): Recorder {
+export function makeRecorder(userData: string, log: (s: string) => void,
+                            /** 距上次动键盘 / 鼠标多少秒。**由壳注入**——
+                             *  这一份要能在对拍脚本里当普通模块 import，不能碰 electron。 */
+                            idleSec: () => number = () => 0): Recorder {
   let state: CaptureState = 'off'
   let timer: NodeJS.Timeout | null = null
   let pauseUntil = 0
@@ -311,6 +337,7 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
   let dir = ''
   let prevHash: bigint | null = null
   let sweptAt = 0                            // 0 = 还没扫过，开机第一次落盘就扫
+  let wasAway = false                        // 只在状态翻转时记一行，别每 15 秒刷一条
   const tmp = path.join(userData, 'journey', '_tmp')
   // 开没开是**用户的选择，不是进程的状态**：退出重开还得是开着的，
   // 不然某天的记录会无声无息地缺一段，而用户以为一直在记。
@@ -361,6 +388,16 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
       segs = readSegments(dir)
       prevHash = null
     }
+
+    // **人不在就不记。** 屏幕亮着 ≠ 有人在做事（见 `trimIdleTail` 的注释）。
+    // 跟锁屏 / 睡眠自动暂停是同一条理由：「离开座位时还在录」最让人不安。
+    const away = idleSec()
+    if (away >= IDLE_SEC) {
+      if (trimIdleTail(segs, Date.now(), away)) flush()
+      if (!wasAway) { wasAway = true; log(`[journey] 人离开了（${Math.round(away / 60)} 分钟没动），先不记\n`) }
+      return
+    }
+    if (wasAway) { wasAway = false; log('[journey] 人回来了，继续记\n') }
 
     const { app, title } = await frontApp()
     if (denied(app, title, deny())) {                  // 黑名单：连截图都不拍
