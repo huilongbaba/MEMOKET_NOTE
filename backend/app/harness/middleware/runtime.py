@@ -48,6 +48,9 @@ class Runtime:
             tool_facts=len(st.facts_new),
             tools_used=tuple(sorted({c[0] for c in trace.calls})) if trace else (),
             tool_truncated=bool(trace and trace.truncated),
+            # 计划 2.5：工具循环自己停了（连着两次没带回新 id）。这条取代了
+            # 「上一轮没用工具」那个脏信号，见 policy 里那段注释。
+            tool_stopped_barren=bool(trace and trace.stopped_barren),
             revisions_applied=st.bag.get("revisions_applied", 0),
             stall_rounds=st.bag.get("stall_rounds", 0),
             kb_empty=memory_tools.kb_is_empty(st.ctx.user),

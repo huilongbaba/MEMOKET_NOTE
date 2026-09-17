@@ -37,9 +37,13 @@ def _drive(coro_gen):
 
 
 class _Trace:
-    def __init__(self, calls, truncated=False):
+    def __init__(self, calls, truncated=False, stopped_barren=False):
         self.calls = calls
         self.truncated = truncated
+        # 计划 2.5：工具循环自己停了。**这里不给默认值兜底是故意的**——
+        # `Runtime` 直接读 `trace.stopped_barren`，用 `getattr` 兜底的话，
+        # 哪天真的 trace 少了这个字段，策略会静默地一路按 False 跑。
+        self.stopped_barren = stopped_barren
 
 
 # ------------------------------------------------------------- runtime ---
@@ -66,7 +70,8 @@ def test_喂给策略的观测取自正确的字段(monkeypatch):
         status="continue", weakest="coherence")
     st.facts = ["累积的一", "累积的二", "累积的三", "累积的四"]
     st.facts_new = ["这一轮新查到的"]
-    st.trace = _Trace([("recall", {}, "x"), ("list_topics", {}, "y")], truncated=True)
+    st.trace = _Trace([("recall", {}, "x"), ("list_topics", {}, "y")],
+                      truncated=True, stopped_barren=True)
 
     _drive(Runtime().after_judge(st))
     fb = seen["fb"]
@@ -74,6 +79,10 @@ def test_喂给策略的观测取自正确的字段(monkeypatch):
     assert fb.notes["coherence"] == "有点散"
     assert fb.weakest == "coherence" and fb.status == "continue"
     assert fb.tool_calls == 2 and fb.tool_truncated is True
+    # 计划 2.5：工具循环自己停了这件事要**传到**策略器。不传的话策略照旧
+    # 按「没查过」的老脏信号走，而那条已经换掉了——两边对不上，预算就再也
+    # 收不回来，闸却全绿。
+    assert fb.tool_stopped_barren is True
     assert fb.tools_used == ("list_topics", "recall")
     assert fb.tool_facts == 1, "该数这一轮新查到的，不是累积的四条"
     assert fb.revisions_applied == 3 and fb.stall_rounds == 1

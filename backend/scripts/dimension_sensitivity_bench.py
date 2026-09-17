@@ -1599,27 +1599,57 @@ def strip_rep(key: str) -> str:
     return "|".join(parts[:3] + parts[4:]) if len(parts) >= 5 else key
 
 
-def classify_stale(records: list[dict], cells: list["Task"]) -> dict[str, list[dict]]:
+def probe_of(key: str) -> str:
+    """格子身份里的 probe 段：`笔记|probe|臂|rep|指纹` → `probe`。
+
+    只认位置，不做别的推断——`--only` 把范围筛小之后，别的 probe 的行
+    不该被报成「作废」（见 `classify_stale` 的 `out_of_scope`）。
+    """
+    parts = (key or "").split("|")
+    return parts[1] if len(parts) >= 2 else ""
+
+
+def classify_stale(records: list[dict], cells: list["Task"],
+                   scope: set[str] | None = None) -> dict[str, list[dict]]:
     """日志里**没进本次统计**的行，分两类。混成一个数是批 11 H3 点名的那处误报。
 
     | 类 | 是什么 | 该怎么办 |
     |---|---|---|
     | `out_of_repeats` | 身份对得上，只是重复次数排在本次 `--repeats` 之外 | **数据还是好的**，`--repeats` 调回去就在 |
+    | `out_of_scope` | 这一行的 probe 根本不在本次 `--only` 选中的范围里 | **数据还是好的**，去掉 `--only` 就在 |
     | `mismatched` | 正文 / 上下文指纹对不上（取材器或植入器改过） | 真作废，要重跑 |
 
     上一版把两类一起报成「对不上现在的语料/植入器，不进统计」——于是拿默认
     `--repeats 3` 跑一次 `--report`，那份按 `--repeats 5` 跑出来的日志里
     **976 行有效数据被报成「对不上语料」**，而表还照出，看上去一切正常。
+
+    **`out_of_scope` 是批 13 补的第三类，同一个形状又栽了一次**：
+    `--only chart-block` 跑完之后报告头印着「**1548** 行指纹对不上现在的
+    取材/植入器（真作废）」——那是**整份日志**，而真作废的只有 973 行。
+    `--only` 把 `all_cells` 也一起筛小了，于是别的 probe 的每一行都掉进
+    `mismatched`。照这个数去重跑，等于把整张表白烧一遍。
+    判据窄在一处：只按 key 里的 probe 段判，不做别的推断；没传 `--only` 时
+    所有 probe 都在范围内，这一类恒为空，行为跟以前一字不差。
     """
     valid = {t.key for t in cells}
     same_cell = {strip_rep(t.key) for t in cells}
-    out: dict[str, list[dict]] = {"used": [], "out_of_repeats": [], "mismatched": []}
+    # **`scope` 是 `--only` 选中的 probe id，必须由调用方显式传。**
+    # 第一版拿 `{t.probe_id for t in cells}` 当范围，太宽：一条 probe 在这批
+    # 语料上一格都取不出来时（比如批 12 修完取材器之后的
+    # `chart-block-narrated`）它就没有 cells，于是它那些**真作废**的旧行
+    # 被报成「去掉 --only 就在」——反向误伤，比原来的错还难发现。
+    # 不传就恒为空，行为跟批 12 一字不差。
+    in_scope = scope
+    out: dict[str, list[dict]] = {"used": [], "out_of_repeats": [],
+                                  "out_of_scope": [], "mismatched": []}
     for r in records:
         key = r.get("key")
         if key in valid:
             out["used"].append(r)
         elif strip_rep(key or "") in same_cell:
             out["out_of_repeats"].append(r)
+        elif in_scope is not None and probe_of(key or "") not in in_scope:
+            out["out_of_scope"].append(r)
         else:
             out["mismatched"].append(r)
     return out
@@ -2035,6 +2065,8 @@ def render_report(rows: list[dict], side: list[dict], used: list[dict],
         lines += [f"- 日志里另有 **{len(stale.get('out_of_repeats') or [])}** 行"
                   "身份对得上、只是重复次数排在本次 `repeats` 之外"
                   "（**数据仍然有效**，调回那个 `repeats` 就在）；",
+                  f"- **{len(stale.get('out_of_scope') or [])}** 行的 probe 不在本次 "
+                  "`only` 选中的范围里（**数据仍然有效**，去掉 `only` 就在）；",
                   f"- **{len(stale.get('mismatched') or [])}** 行指纹对不上现在的"
                   "取材 / 植入器（这些是真作废的，要重跑）。", ""]
     lines += ["## 语料", "",
@@ -2206,11 +2238,13 @@ def main() -> None:
     # 所以改了植入器之后的旧行、以及按血缘被排掉的那些笔记的行，
     # 会在这里自动掉出去——不会被拼进同一张表（批 7 撞出来的那个坑）。
     all_cells, _ = build_tasks(notes, probes, args.repeats, set())
-    split = classify_stale(records, all_cells)
+    scope = {p.id for p in probes} if args.only else None
+    split = classify_stale(records, all_cells, scope)
     records = split["used"]
     print(f"待跑 {len(tasks)} 格（已完成 {len(done)}；日志里另有 "
           f"{len(split['out_of_repeats'])} 行只是重复次数排在 --repeats {args.repeats} "
-          f"之外（数据仍然有效）、{len(split['mismatched'])} 行指纹对不上现在的"
+          f"之外、{len(split['out_of_scope'])} 行的 probe 不在 --only 范围里"
+          f"（这两类数据仍然有效）、{len(split['mismatched'])} 行指纹对不上现在的"
           f"取材/植入器（真作废）），跳过 {len(skips)} 条 probe×篇", flush=True)
 
     if not args.report and tasks:
@@ -2219,7 +2253,7 @@ def main() -> None:
         deadline = time.monotonic() + args.time_budget_seconds
         ran = asyncio.run(run_tasks(tasks, concurrency=args.concurrency, deadline=deadline))
         print(f"\n本次跑了 {ran} 格", flush=True)
-        split = classify_stale(read_log(), all_cells)
+        split = classify_stale(read_log(), all_cells, scope)
         records = split["used"]
 
     # 前置条件是 `(语料, probe)` 的纯函数，**报告时重算**——批 9 那 396 格

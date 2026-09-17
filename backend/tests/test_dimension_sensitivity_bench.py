@@ -1302,6 +1302,58 @@ def test_指纹对不上的行仍然报作废():
     assert len(split["mismatched"]) == 1 and split["out_of_repeats"] == []
 
 
+def test_only筛小范围时别的probe的行不许报成作废():
+    """**同一个形状第三次。** 批 12 把「重复次数排在外面」跟「指纹对不上」
+    分开报，批 13 跑 `--only chart-block` 又中一次：报告头印着
+    「**1548** 行指纹对不上现在的取材/植入器（真作废）」——那是整份日志，
+    真作废的只有 973 行。`--only` 把 `all_cells` 一起筛小了，别的 probe 的
+    每一行都掉进 `mismatched`。照这个数去重跑等于把整张表白烧一遍。
+
+    没传 `--only` 时这一类必须恒为空——否则就是把好行误判成废行的反向误伤。
+    """
+    note = _one_note()
+    other = [p for p in bench.PROBES if p.id != SUPERSEDE_PROBE.id][0]
+    both, _ = bench.build_tasks([note], (SUPERSEDE_PROBE, other), 1, set())
+    log = [{"key": t.key, "probe": t.probe_id} for t in both]
+
+    only_one, _ = bench.build_tasks([note], (SUPERSEDE_PROBE,), 1, set())
+    split = bench.classify_stale(log, only_one, {SUPERSEDE_PROBE.id})
+    assert split["mismatched"] == [], "别的 probe 的行不是作废，是不在本次范围里"
+    assert len(split["out_of_scope"]) == len(both) - len(only_one) > 0
+
+    # 不筛的时候这一类必须是空的：行为跟批 12 一字不差。
+    split_all = bench.classify_stale(log, both)
+    assert split_all["out_of_scope"] == [] and split_all["mismatched"] == []
+    assert len(split_all["used"]) == len(both)
+
+
+def test_一格都取不出来的probe_它的旧行仍然算作废():
+    """**范围判据宁可窄一点。** 第一版拿「有没有 cells」当范围，于是一条
+    probe 在这批语料上一格都取不出来时（批 12 修完取材器之后的
+    `chart-block-narrated` 就是这样），它那些**真作废**的旧行被报成
+    「去掉 --only 就在」——反向误伤，比原来那个错更难发现。
+    范围必须由调用方显式传 `--only` 选中的那些 id。
+    """
+    note = _one_note()
+    other = [p for p in bench.PROBES if p.id != SUPERSEDE_PROBE.id][0]
+    both, _ = bench.build_tasks([note], (SUPERSEDE_PROBE, other), 1, set())
+    log = [{"key": t.key, "probe": t.probe_id} for t in both]
+    only_one, _ = bench.build_tasks([note], (SUPERSEDE_PROBE,), 1, set())
+    # 范围里两条 probe 都在（没传 --only），但 `other` 这次一格都没取出来
+    split = bench.classify_stale(log, only_one, {SUPERSEDE_PROBE.id, other.id})
+    assert split["out_of_scope"] == []
+    assert len(split["mismatched"]) == len(both) - len(only_one) > 0
+
+
+def test_报告头把三类没进统计的行分开报():
+    """三类的处理方式不一样：调 `repeats` / 去掉 `only` / 真重跑。
+    混成一个数，人只会当成「日志脏了」，然后去重跑本来好好的行。"""
+    out = _report()
+    assert "重复次数排在本次 `repeats` 之外" in out
+    assert "不在本次 `only` 选中的范围里" in out
+    assert "指纹对不上现在的" in out
+
+
 def _report(**over) -> str:
     params = {"repeats": 5, "notes": 5, "only": "（全部）", "caught": bench.CAUGHT,
               "alpha": bench.ALPHA, "perm_resamples": bench.PERM_RESAMPLES,
@@ -1309,7 +1361,8 @@ def _report(**over) -> str:
     params.update(over)
     return bench.render_report([], [], [_one_note()], [], [], kept_total=1,
                                params=params, stale={"used": [], "mismatched": [],
-                                                     "out_of_repeats": [1, 2]})
+                                                     "out_of_repeats": [1, 2],
+                                                     "out_of_scope": [3]})
 
 
 def test_报告头必须写着这次跑的repeats():

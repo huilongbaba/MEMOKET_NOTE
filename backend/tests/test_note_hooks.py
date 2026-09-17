@@ -126,7 +126,7 @@ def test_模型返回垃圾时不会把骨架弄成半截(monkeypatch):
 # 往工具组里加不能替换、工具挂了要退回零 LLM 的关键词检索。
 
 def _prep(monkeypatch, *, facts=(), error=False, used=True, groups_seen=None,
-          iters_seen=None):
+          iters_seen=None, msgs_seen=None, known_seen=None):
     """把 agent_loop.gather_context 打桩，返回它拿到的 groups/max_iters。"""
     from app.harness.hooks import note as mod
 
@@ -140,11 +140,15 @@ def _prep(monkeypatch, *, facts=(), error=False, used=True, groups_seen=None,
         def as_facts(self):
             return list(facts)
 
-    async def fake_gather(msgs, ctx, *, groups, max_iters):
+    async def fake_gather(msgs, ctx, *, groups, max_iters, known_ids=None):
         if groups_seen is not None:
             groups_seen.extend(groups)
         if iters_seen is not None:
             iters_seen.append(max_iters)
+        if msgs_seen is not None:
+            msgs_seen.extend(msgs)
+        if known_seen is not None:
+            known_seen.append(set(known_ids or ()))
         return [], T()
 
     monkeypatch.setattr(mod.agent_loop, "gather_context", fake_gather)
@@ -325,3 +329,79 @@ def test_定向续写说文末或没写指令就追加(monkeypatch):
     st = _st(正文)
     assert _produce(NoteHooks(), st) == "没有指令行直接写。\n第二行。"
     assert st.content.rstrip().endswith("第二行。")
+
+
+# ---------------------------------- 账本摘要进 prompt（计划 2.4 / 2.5 的接线）
+
+def _st_with_ledger() -> State:
+    """一个「第 1 轮已经查过、第 2 轮正要规划」的局面。"""
+    st = _st("正文")
+    st.bag["ledger"] = {
+        "queries": [{"key": "filter_facts\t" + json.dumps(
+            {"topic": "众筹"}, sort_keys=True, ensure_ascii=False),
+            "tool": "filter_facts", "hit": 5, "empty": False}],
+        "axes": {"topic:定价": {"total": 18, "taken": 0},
+                 "topic:众筹": {"total": 41, "taken": 5}},
+        "facts": {"f1": {"line": "甲", "state": "taken", "tool": "filter_facts",
+                         "when": "2026-03-11"}},
+    }
+    return st
+
+
+def test_账本摘要真的进了检索规划的prompt(monkeypatch):
+    """**建了判据不等于用了判据。** `gap_summary` 自己有闸盯着形状，但它
+    要是没被接进 `retrieval_plan_user`，那些闸会一直绿着而 prompt 一个字
+    没变——批 10 真跑量到的正是这件事：「不要再取上几轮已经写过的那些」
+    写在文字里，**而清单没给**，于是第 2 轮把第 1 轮的三条 `filter_facts`
+    一字不差地又发了一遍。"""
+    msgs = []
+    _prep(monkeypatch, msgs_seen=msgs)
+    _run_prepare(NoteHooks(), _st_with_ledger())
+    user = [m for m in msgs if m["role"] == "user"][0]["content"]
+    assert "哪些方向还没取过" in user
+    assert "定价：库里 18 条，一条都没取" in user
+    assert "filter_facts topic=众筹" in user
+    # **位置也是判据的一部分，不只是「在不在里面」。** 批 12 ⑮ 栽过同型的一次：
+    # 突变只删了标题、正文还在，闸照绿——「在不在」太松。这段话回答的是
+    # 「还缺什么」，整个 prompt 问的是「这一轮该查什么」，缺口摆在主题树和
+    # 正文后面就成了脚注。所以钉住它是**第一块**。
+    assert user.startswith("【这次跑到现在，哪些方向还没取过】"), \
+        "缺口摘要要摆在检索规划 prompt 的最前面，不是附在末尾"
+
+
+def test_一个开关就能把账本摘要整段撤掉(monkeypatch):
+    """2.4 是账本唯一会改 prompt 的一步，而「注入上下文会缩小搜索空间」
+    那条风险是实测过的（[LED] §10⑤）。所以它必须能**单独**关掉——
+    不是连账本（2.1/2.2/2.3 都靠它）一起撤。"""
+    msgs = []
+    mod = _prep(monkeypatch, msgs_seen=msgs)
+    monkeypatch.setattr(mod, "LEDGER_IN_PROMPT", False)
+    _run_prepare(NoteHooks(), _st_with_ledger())
+    user = [m for m in msgs if m["role"] == "user"][0]["content"]
+    assert "哪些方向还没取过" not in user
+    assert "还没开始写" in user or "【笔记标题】" in user, "别把整个 prompt 也撤了"
+
+
+def test_主题树的分母在渲染摘要之前就折进了账本(monkeypatch):
+    """**建了判据不等于用了判据的第二种形状：接了，但接在了错的一侧。**
+    `note_topics` 自己有闸，可它要是没在 `prepare` 里被调用，缺口摘要里
+    一条「一条都没取」都不会有——批 13 第一版真跑渲染出来的就是那样。
+    """
+    msgs = []
+    mod = _prep(monkeypatch, msgs_seen=msgs)
+    monkeypatch.setattr(mod.query_cache, "dispatch",
+                        lambda name, args, ctx: "- 定价（18 条）\n- 众筹（41 条）")
+    _run_prepare(NoteHooks(), _st("正文"))
+    user = [m for m in msgs if m["role"] == "user"][0]["content"]
+    assert "众筹：库里 41 条，一条都没取" in user
+    assert "定价：库里 18 条，一条都没取" in user
+
+
+def test_账本里的事实id作为已知项喂给停机判据(monkeypatch):
+    """计划 2.5 的另一半。`prepare` 每轮新建 `ToolTrace`，工具循环自己看到的
+    永远是空的——不把账本那份喂进去，第 2 轮在停机判据眼里每一发都算
+    「带回了新东西」（批 10 实测：第 2 轮 4 次调用、`facts_new = 0`）。"""
+    known = []
+    _prep(monkeypatch, known_seen=known)
+    _run_prepare(NoteHooks(), _st_with_ledger())
+    assert known == [{"f1"}]

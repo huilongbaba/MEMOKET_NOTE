@@ -35,6 +35,19 @@ MAX_TOOL_ITERS = 2
 # 一次循环里总共最多执行几个工具调用（跨工具名累计），防止模型一次发十个。
 MAX_CALLS_PER_ITER = 5
 
+# **覆盖率驱动停机**（计划 2.5 / [MR] §2③ / [LED] §3）：一轮工具循环里，
+# **连续这么多次调用没有带回新的事实 id 就停**。
+#
+# 换掉的是什么：停机原来只由 `policy.tool_iters`（1–4）决定，而策略器加减它
+# 靠的是「上一轮用没用工具」——`policy.py` 自己的注释就记着**那个信号是脏的**
+# （把「它诚实回答这段不用查」当成了「不需要检索能力」，真实 A/B 日志里预算
+# 被一路扣到 0）。这一条是**确定性判断，不用模型**：覆盖率不再上升就停。
+#
+# 为什么是 2 不是 1：一发空手很常见（换个轴、换个工具就回来了），
+# 1 会把正常的两级路径（`list_topics` 看有什么 → `filter_facts` 精确取）
+# 当成走到头。**判据宁可窄一点，误伤比漏报贵。**
+BARREN_STOP = 2
+
 # **第二轮起只允许"基于上一轮结果"的后续查询**，广度查询（关键词撒网）不再放行。
 #
 # 实测数据逼出来的：4 次真实采样的工具循环**全部撞上限**（截断=True），模型
@@ -94,6 +107,13 @@ class ToolTrace:
     iters: int = 0
     truncated: bool = False          # 是否因为撞上限而没让模型继续查
     error: str = ""
+    # 覆盖率驱动停机（计划 2.5）留下的两个数。**`stopped_barren` 跟
+    # `truncated` 是反义的**：前者是「查到头了，主动停」，后者是「还想查，
+    # 被预算拦住」。合成一个字段就再也分不开这两件事——而 `adjust()` 只在
+    # 前者为真时收预算，落库和 SSE 也是分开两栏给人看的。
+    # （**`truncated` 今天没有任何策略在读**，见下面 break 那里的注释。）
+    barren_calls: int = 0            # 这一轮有几次调用一条新 id 都没带回来
+    stopped_barren: bool = False     # 是不是因为连着空手而提前停的
 
     @property
     def used(self) -> bool:
@@ -199,6 +219,7 @@ async def gather_context(
     max_iters: int = MAX_TOOL_ITERS,
     max_tokens: int = 700,
     temperature: float = 0.3,
+    known_ids: set[str] | None = None,
 ) -> tuple[list[dict], ToolTrace]:
     """跑工具循环，返回 (要追加到 messages 后面的消息, 记录)。
 
@@ -208,6 +229,11 @@ async def gather_context(
 
     模型不调工具就返回空列表，行为跟没有工具时完全一致：这条路径必须是
     无损的，不能因为接了工具就让「不需要查」的场景变慢或变差。
+
+    ``known_ids``：**进这次循环之前就已经有的事实 id**（计划 2.5）。
+    传进来的是账本里那一份——这个函数自己只看得见本次循环，而重复检索是
+    **跨轮**的（批 10 真跑：第 2 轮四次调用、`facts_new = 0`）。不给它这份
+    清单，那一轮在停机判据眼里每一发都算「带回了新东西」。
     """
     trace = ToolTrace()
     spec = tools.specs(groups)
@@ -216,6 +242,8 @@ async def gather_context(
 
     convo = list(messages)
     extra: list[dict] = []
+    seen_ids: set[str] = set(known_ids or ())
+    barren = 0          # 连着几次调用一条新 id 都没带回来
 
     for _ in range(max_iters):
         try:
@@ -256,7 +284,40 @@ async def gather_context(
             convo.append(tool_msg)
             extra.append(tool_msg)
 
+            # ---- 覆盖率驱动停机（计划 2.5）----
+            # **只有 FACT_TOOLS 参与计数。** `list_topics` / `list_entities`
+            # 返回的是元信息，本来就不带事实 id，把它们算进「空手」的话，
+            # 「先 list_topics 看有什么 → 再 filter_facts 精确取」这条两级
+            # 路径会在第一步就被判定走到头——那是误伤，而误伤比漏报贵。
+            if name in FACT_TOOLS:
+                ids = set(fact_ids_in(result))
+                if ids - seen_ids:
+                    barren = 0
+                else:
+                    barren += 1
+                    trace.barren_calls += 1
+                seen_ids |= ids
+                if barren >= BARREN_STOP:
+                    # **只标记，不 break。** 这一条 assistant 消息里剩下的
+                    # tool_call 照常执行完——第一版在这儿 break，于是那条
+                    # assistant 消息带着 3 个 `tool_calls` 进了 `extra`，
+                    # 而后面只跟着 2 条 tool 结果。`hooks/block.prepare` 会把
+                    # `msgs + extra` 原样喂给第二次调用（EDA / ANALYSIS 的
+                    # `focus_groups` 那一轮），而「带 tool_calls 的 assistant
+                    # 消息后面必须跟齐每个 tool_call_id」是接口的硬校验，
+                    # 缺一个直接 400。停机判据只该管「不再发起下一轮」。
+                    trace.stopped_barren = True
+
         trace.iters += 1
+        if trace.stopped_barren:
+            # 这里 break 掉，下面那个 `else`（= 撞满 `max_iters`）就不会跑，
+            # 于是 `truncated` 不会被这条路径置真。**「查到头了」跟「还想查、
+            # 被预算拦住」是两件事**，落库和 SSE 都分开记。
+            # （批 13 审查纠正：原注释写「策略器拿 `truncated` 去判要不要加
+            # 预算」是**假的**——`RoundFeedback.tool_truncated` 全仓只有
+            # `runtime.py` 写、没有一处读。`adjust()` 读的是
+            # `tool_stopped_barren`。不要再拿一个没人读的字段当理由。）
+            break
     else:
         # for 正常跑完 = 撞到 max_iters 时模型还想继续查
         trace.truncated = True

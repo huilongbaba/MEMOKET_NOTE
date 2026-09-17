@@ -235,6 +235,13 @@ ALLOWED_DB_CLAIMS: dict[str, dict[str, str]] = {
             "同上，出自实测那次「定价要覆盖哪些成本」的真跑："
             "`filter_facts topic=work_product_cost_control` 341 条可用而正文一条没用",
     },
+    "app/harness/middleware/ledger.py": {
+        "库里条数从多到少排，而真实用户的大桶（`work`2862条":
+            "出自批 13 的真跑（`terrence` 真库，rails_off=(\"save\",) 只读）"
+            "**渲染出来的那段缺口摘要本身**——三个最大的桶被排到了最前面，"
+            "而那一篇笔记跟 learning / personal 毫无关系。是真实用户自己的"
+            "主题树，不是把一堆来路不明的行放在一起算比例",
+    },
 }
 
 _DB_CLAIM = __import__("re").compile(r"(?:库里|本机库|全库|库中|表里)[^。；]{0,24}?\d+\s*[行条]")

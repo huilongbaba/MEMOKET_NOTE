@@ -493,3 +493,147 @@ def test_recall_接口把空库和没查到分开告诉前端(monkeypatch):
     def boom(self): raise RuntimeError("索引读不出来")
     monkeypatch.setattr(UserMemory, "_index", boom)
     assert not UserMemory("u").is_empty(), "读失败不能说成「你没有材料」"
+
+
+# --------------------------------------------- 覆盖率驱动停机（计划 2.5）
+
+def _fact_rows(*ids: str) -> str:
+    return "\n".join(f"[{i}] 某条事实\n    （2026-03-11 · Speaker A · 决定）"
+                     for i in ids)
+
+
+@pytest.mark.asyncio
+async def test_连着两次没带回新id_工具循环自己停(clean_registry, monkeypatch):
+    """计划 2.5。停机以前只由 `policy.tool_iters` 决定，而策略器加减它靠的是
+    「上一轮用没用工具」——`policy.py` 自己的注释记着那个信号是脏的。
+
+    换成确定性判据：连着两次调用一条新 id 都没带回来就停。
+    """
+
+    @registry.register(name="filter_facts", description="",
+                       params={"topic": {"type": "string"}}, required=["topic"])
+    def filter_facts(ctx, topic):
+        return _fact_rows("f1", "f2")          # 每次都是同样那两条
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("filter_facts", {"topic": "定价"}, cid=f"c{i}")]}
+        for i in range(10)
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    _extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=4)
+    assert trace.stopped_barren is True
+    assert len(trace.calls) == 3, "第一发算新的，第二、三发空手 → 停"
+    assert trace.barren_calls == 2
+    assert trace.truncated is False, \
+        "「查到头了」跟「还想查、被预算拦住」是两件事，落库和 SSE 分两栏记"
+
+
+@pytest.mark.asyncio
+async def test_跨轮已经有的id_算不上新的(clean_registry, monkeypatch):
+    """`known_ids` 是账本那份。**批 10 真跑里第 2 轮 4 次调用、`facts_new = 0`**
+    ——`prepare` 每轮新建 `ToolTrace`，循环自己看到的永远是空的，不把账本
+    喂进来，那一轮在停机判据眼里每一发都是「新的」。"""
+
+    @registry.register(name="filter_facts", description="",
+                       params={"topic": {"type": "string"}}, required=["topic"])
+    def filter_facts(ctx, topic):
+        return _fact_rows("f1")
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("filter_facts", {"topic": f"t{i}"}, cid=f"c{i}")]}
+        for i in range(10)
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    _extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=4,
+        known_ids={"f1"})
+    assert trace.stopped_barren is True
+    assert len(trace.calls) == 2, "第一发就是旧的了，所以两发就到头"
+
+
+@pytest.mark.asyncio
+async def test_元信息工具不算空手(clean_registry, monkeypatch):
+    """`list_topics` / `list_entities` 返回的是主题名和条数，本来就不带事实 id。
+    把它们算进「空手」的话，「先 list_topics 看有什么 → 再 filter_facts 精确取」
+    这条两级路径会在第一步就被判走到头——**那是误伤，而误伤比漏报贵。**"""
+
+    @registry.register(name="list_topics", description="", params={})
+    def list_topics(ctx):
+        return "- 定价（18 条）\n- 众筹（41 条）"
+
+    @registry.register(name="list_entities", description="", params={})
+    def list_entities(ctx):
+        return "- Speaker A（12 条）"
+
+    @registry.register(name="filter_facts", description="",
+                       params={"topic": {"type": "string"}}, required=["topic"])
+    def filter_facts(ctx, topic):
+        return _fact_rows("f9")
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("list_topics", {}, cid="c1"),
+                        _call("list_entities", {}, cid="c2")]},
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("filter_facts", {"topic": "定价"}, cid="c3")]},
+        {"role": "assistant", "content": "好了"},
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    _extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=4)
+    assert trace.stopped_barren is False
+    assert [c[0] for c in trace.calls] == ["list_topics", "list_entities", "filter_facts"]
+
+
+@pytest.mark.asyncio
+async def test_停机那一发不能把同一条消息里剩下的工具调用丢掉(clean_registry, monkeypatch):
+    """**这是批 13 审查补的闸，钉住的是一条真的会 400 的路径。**
+
+    第一版 2.5 的 `break` 打在「遍历这一条 assistant 消息里的若干个 tool_calls」
+    那层循环上。于是停机那一发之后，同一条 assistant 消息里**剩下的
+    tool_call 再也不会有对应的 tool 结果消息**——而 `extra` 里那条 assistant
+    消息是带着全部 `tool_calls` 一起返回的。
+
+    这不是洁癖：`hooks/block.prepare` 会把 `msgs + extra` 原样喂给第二次
+    `gather_context`（EDA / ANALYSIS 的 `focus_groups` 那一轮），而
+    OpenAI 兼容接口对「带 tool_calls 的 assistant 消息后面必须跟着每个
+    tool_call_id 的 tool 消息」是**硬校验**，缺一个直接 400。
+    EDA / ANALYSIS 的 groups 里有 `memory`（= FACT_TOOLS），
+    `MAX_CALLS_PER_ITER` 又允许一条消息里发 5 个——触发条件齐全。
+
+    所以停机判据只管**不再发起下一轮**，当前这条消息里已经发出去的调用
+    照常执行完。**判据宁可窄一点，误伤比漏报贵。**
+    """
+
+    @registry.register(name="filter_facts", description="",
+                       params={"topic": {"type": "string"}}, required=["topic"])
+    def filter_facts(ctx, topic):
+        return _fact_rows("f1")            # 永远是同一条，第二发起就算空手
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("filter_facts", {"topic": "a"}, cid="c1"),
+                        _call("filter_facts", {"topic": "b"}, cid="c2"),
+                        _call("filter_facts", {"topic": "c"}, cid="c3")]},
+        {"role": "assistant", "content": "好了"},
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=4,
+        known_ids={"f1"})
+    assert trace.stopped_barren is True
+
+    asked = [c["id"] for m in extra if m.get("role") == "assistant"
+             for c in (m.get("tool_calls") or [])]
+    answered = [m["tool_call_id"] for m in extra if m.get("role") == "tool"]
+    assert asked == ["c1", "c2", "c3"]
+    assert answered == asked, (
+        "assistant 消息里的每一个 tool_call 都必须有对应的 tool 结果消息，"
+        "否则 hooks/block 把 msgs+extra 喂给下一次调用时接口直接 400")

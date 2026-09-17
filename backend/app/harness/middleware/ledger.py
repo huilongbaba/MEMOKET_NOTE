@@ -147,6 +147,160 @@ def fold(led: dict, calls: list[tuple[str, dict, str]]) -> dict:
     return stat
 
 
+# ======================================================== 缺口摘要（计划 2.4）===
+#
+# **形状是「缺口」，不是「库存」，这不是措辞偏好。**（[LED] §10⑤）
+# 有实测研究（`Anchors in the Machine` / `Understanding the Anchoring Effect
+# of LLM`）说明：注入的上下文会把 agent 锚定到特定解法上，在它本来会自由探索
+# 的场合**缩小搜索空间**。同一份账本两种写法效果相反：
+#
+#   ❌ 库存：「已经取到 40 条，覆盖众筹、硬件节点」→ 邀请它见好就收
+#   ✅ 缺口：「定价：18 条，一条都没取」          → 邀请它去补
+#
+# 所以这里**把「已取」压到最小**（整段只剩一句「另有 N 个方向已经取过」），
+# **把「没取」摆到最前**。
+#
+# **另一条同样重要的边界：覆盖率是诊断，不是指标。**
+# `checks/rubric._FACTUAL_GROUNDING` 的 guidance 里写着「检索到的事实没有被
+# 全部用上，明确不算不足」——那句话是吃过亏才写进去的：为这个扣过一次分，
+# 下一轮正文里就「引入了大量未在知识库中出现的具体日期与人物」。
+# 所以这段摘要里**一个「用了几条 / 还剩几条没用」的数都不许出现**：
+# 「定价 18 条一条没取」值得追问，「众筹 41 条只用了 12 条」完全正常。
+# 账本用来发现空白，不用来逼着填满。
+
+GAP_MAX_AXES = 8         # 缺口最多列几条。列太多等于把整棵主题树抄一遍
+GAP_MAX_QUERIES = 10     # 已发查询最多列几条
+
+
+def _pretty_args(args: dict) -> str:
+    """`{"topic": "work_pricing", "limit": 8}` → `topic=work_pricing`。
+
+    **`limit` / `offset` 这类分页参数不进显示**：它们不改变「查的是哪个方向」，
+    摆出来只会让两条本质相同的查询看着不一样，而这段话的全部目的就是让模型
+    认出「这条我发过了」。
+    """
+    out = []
+    for k, v in (args or {}).items():
+        if k in ("limit", "offset", "top_k") or v in (None, "", []):
+            continue
+        out.append(f"{k}={v}")
+    return " ".join(out)
+
+
+def _split_key(key: str) -> tuple[str, dict]:
+    tool, _sep, raw = (key or "").partition(SEP)
+    try:
+        args = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        args = {}
+    return tool, args if isinstance(args, dict) else {}
+
+
+def gap_summary(led: dict, *, max_axes: int = GAP_MAX_AXES,
+                max_queries: int = GAP_MAX_QUERIES) -> str:
+    """账本 → 递给检索规划的那一段话。没什么可说时返回空串。
+
+    调用方是 `hooks/note.prepare`，落点是 `prompts.retrieval_plan_user`。
+    **这是账本第一次碰 prompt**，所以它能被一个开关整段关掉
+    （`params.LEDGER_IN_PROMPT`）——上面那条锚定风险是实测过的，出了事要能
+    单独回退，而不是连账本一起撤。
+    """
+    axes = led.get("axes") or {}
+    untouched: list[tuple[str, int, int]] = []      # 一条都没取的
+    partial: list[tuple[str, int, int]] = []        # 取了一点的
+    done = 0
+    for key, slot in axes.items():
+        total = int((slot or {}).get("total") or 0)
+        taken = int((slot or {}).get("taken") or 0)
+        if total <= 0:
+            continue                # 没有分母就没有缺口可言，不编一个出来
+        if taken <= 0:
+            untouched.append((key, total, taken))
+        elif taken < total:
+            partial.append((key, total, taken))
+        else:
+            done += 1
+    untouched.sort(key=lambda r: -r[1])
+    partial.sort(key=lambda r: -(r[1] - r[2]))
+
+    lines: list[str] = []
+    shown = (untouched + partial)[:max_axes]
+    if shown:
+        lines.append("【这次跑到现在，哪些方向还没取过】")
+        for key, total, taken in shown:
+            name = key.split(":", 1)[1] if ":" in key else key
+            lines.append(f"- {name}：库里 {total} 条，"
+                         + ("一条都没取" if taken <= 0 else f"只取了 {taken} 条"))
+        hidden = len(untouched) + len(partial) - len(shown)
+        if hidden > 0:
+            lines.append(f"（还有 {hidden} 个方向同样没取全。）")
+        if done:
+            # **「已取」整段就这一句，而且只有一个数。** 见上面那条锚定依据：
+            # 把取到了什么摆开写，等于邀请它见好就收。
+            lines.append(f"（另有 {done} 个方向这次已经取过。）")
+
+    seen: set[str] = set()
+    qlines: list[str] = []
+    for q in (led.get("queries") or []):
+        key = q.get("key") or ""
+        if key in seen:
+            continue
+        seen.add(key)
+        tool, args = _split_key(key)
+        if tool not in query_cache.CACHEABLE:
+            # **只列读知识库的那几个。** 账本记的是这一轮全部的工具调用，
+            # 里面还有 `render_chart` / `run_skill_script` 这些会生成东西的。
+            # 第一版没拦：真跑渲染出来的那段话里出现了
+            # 「`render_chart kind=flow …` → 0 条，换个方向，不要换措辞重试」
+            # ——它根本不返回事实，「0 条」是把「没有事实行」读成了「查空了」，
+            # 而那句话会劝模型别再画图。**误伤比漏报贵。**
+            continue
+        text = f"- {tool} {_pretty_args(args)}".rstrip()
+        if q.get("empty"):
+            # **查空的要写明**：实测策略器为这件事专门加过一条规则——
+            # 零召回时换措辞重试同一条路径没有意义。
+            text += " → 0 条，换个方向，不要换措辞重试"
+        qlines.append(text)
+    if qlines:
+        lines.append("")
+        lines.append("【这些查询已经发过了，别再原样发一遍】")
+        lines.extend(qlines[:max_queries])
+        if len(qlines) > max_queries:
+            lines.append(f"（另有 {len(qlines) - max_queries} 条也发过了。）")
+
+    if not lines:
+        return ""
+    lines.append("")
+    # **这句话里的「只查相关的」不是客套，是一条实测顶出来的护栏。**
+    # 缺口按库里条数从多到少排，而真实用户的大桶（`work` 2862 条、
+    # `learning` 1097 条、`personal` 995 条）跟这一篇要写的东西常常毫无关系
+    # ——批 13 真跑渲染出来的第一版就把这三个摆在了最前面。
+    # 缺口形式是用来**打开**搜索空间的（[LED] §10⑤），但打开不等于放任跑题。
+    # 而**覆盖率是诊断、不是指标**：这里绝不能写成「把它们取满」。
+    lines.append("这一轮把力气花在上面还没取过的方向上，"
+                 "**只查跟这一节真的相关的那些**——不相关的方向不用管，"
+                 "这些数是用来找空白的，不是要求你取满。")
+    return "\n".join(lines)
+
+
+def note_topics(led: dict, topics_text: str) -> int:
+    """把主题树里的「共 N 条」折进账本的轴，**只补分母、不记一条查询**。
+
+    为什么单独开一个口子：主题树是 `hooks/note.prepare` 里**直接**调的
+    （每轮都要，拼进 prompt），**不进 `trace.calls`**，所以 `fold` 永远看不到它。
+    第一版 2.4 就栽在这儿——真跑渲染出来的缺口摘要里**一条「一条都没取」都
+    没有**，只有三条已经查过的轴；而 [LED] §10⑤ 那个例子（「定价：18 条，
+    一条都没取」）正是靠主题树才知道「定价」这个方向存在。
+    判据窄在两处：不写 `queries`（模型没发过这一条），不动 `taken`。
+    """
+    n = 0
+    for m in _TOPIC_LINE.finditer(topics_text or ""):
+        slot = led["axes"].setdefault(f"topic:{m.group(1)}", {"total": 0, "taken": 0})
+        slot["total"] = max(slot["total"], int(m.group(2)))
+        n += 1
+    return n
+
+
 def repeat_rate(led: dict) -> float:
     """这次跑里参数完全相同的重复查询占比。**短路要能被观测到**，
     否则「做了 2.1」和「没做 2.1」在数据上长得一模一样。"""
@@ -176,9 +330,12 @@ def mark_used(led: dict, content: str) -> int:
 class Ledger:
     """把每一轮的工具轨迹折进账本，并把这一轮记进 `harness_rounds`。
 
-    **不读、不改任何 prompt。** 接进 prompt 是下一步的事，要单独验——
-    有实测证据说明「把已经有什么摆给模型看」会**缩小它的搜索空间**
-    （docs/harness-fact-ledger.md §10⑤），所以那一步必须能单独回退。
+    **这个 middleware 本身仍然不读、不改任何 prompt。** 批 13 把账本接进
+    检索规划的 prompt 了，但接线在 `hooks/note.prepare`（它调
+    `ledger.gap_summary()`），不在这里——middleware 只负责让账本存在。
+    那一步有实测证据说明「把已经有什么摆给模型看」会**缩小搜索空间**
+    （docs/harness-fact-ledger.md §10⑤），所以它自己带一个开关
+    （`params.LEDGER_IN_PROMPT`）能单独关掉，而不牵连账本本身。
     """
 
     name = "ledger"

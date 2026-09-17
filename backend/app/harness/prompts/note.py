@@ -70,14 +70,27 @@ B 之后是 C）或者一组可比的数字，就在这里把图画了：调 **r
 
 def retrieval_plan_user(title: str, spine: str, beats: list[str], content: str,
                         steer: str = "", require_verification: bool = False,
-                        topics_overview: str = "", section: str = "") -> str:
+                        topics_overview: str = "", section: str = "",
+                        ledger_gaps: str = "") -> str:
     """``steer`` 是策略控制器根据上一轮反馈给出的方向（见 runtime_policy.py）。
 
     它承载的是此前被整个丢掉的信号——打分模型写的自然语言诊断。上一轮说
     "使用了知识库中未出现的具体日期和人物"，这句话原封不动喂回检索规划，
     比只把最弱维度的名字塞进去能指导的多得多。
+
+    ``ledger_gaps`` 是材料账本摘出来的那段话（计划 2.4，
+    `middleware/ledger.gap_summary`）。**它必须以「缺口」形式写**，理由和
+    实测证据在那个函数上面——这里只负责把它摆在正确的位置：**紧挨着
+    「不要再取上几轮已经写过的那些」那句话**。批 10 真跑量到的就是这条：
+    那句要求写在文字里、而清单没给，于是第 2 轮把第 1 轮的三条 `filter_facts`
+    **一字不差地又发了一遍**，整轮 `facts_new = 0`。
+    传空串 = 这一步整个关掉（`params.LEDGER_IN_PROMPT`）。
     """
     parts = []
+    if ledger_gaps:
+        # 摆在最前面。这段话回答的是「还缺什么」，而整个 prompt 问的是
+        # 「这一轮该查什么」——先知道缺口，后面那些材料才有参照。
+        parts.append(ledger_gaps)
     if section:
         # 大纲模式下这一轮只写某一节。**检索必须知道是哪一节**，否则每轮都
         # 拿同一批事实，模型只能把同一批材料换个标题再说一遍——20 轮 soak 里

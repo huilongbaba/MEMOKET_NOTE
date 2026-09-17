@@ -29,7 +29,9 @@ from ..tailing import acceptable_tail, needs_tail
 from ..agent_loop import ToolTrace
 from ...database import store
 from ...database.retrieval import retrieve as _retrieve
-from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
+from ..middleware import ledger as ledger_mw
+from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
+                      LEDGER_IN_PROMPT)
 from ..events import CUSTOM_SKELETON, Event
 from ..state import State
 
@@ -140,17 +142,28 @@ class NoteHooks:
         # "you decide", and it decided no. Making the retrieval decision its
         # own call makes *that question* the task. The model can still answer
         # "nothing needed" -- what changed is the context it is asked in.
+        # 走短路层：主题树每一轮都要，而它同参数同结果（计划 2.1）。
+        # **跨轮短路一定要原样返回全文**——这一份是直接拼进 prompt 的，
+        # 退化成一句「已经查过」等于把主题树从 prompt 里抽掉，而当年
+        # 把主题树摆进 prompt 正是有效的那两次结构改动之一。
+        topics = query_cache.dispatch("list_topics", {"limit": 40}, st.ctx)
+        led = ledger_mw.ledger_of(st)
+        # **主题树的分母要先折进账本**，缺口摘要才知道有哪些方向一条都没取。
+        # 它是这里直接调的、不进 `trace.calls`，`fold` 看不到它（见
+        # `ledger.note_topics` 的注释：第一版 2.4 就是这么漏掉的）。
+        # 单独一句、不靠参数求值顺序——那种写法一改参数次序就静默失效。
+        ledger_mw.note_topics(led, topics)
         msgs = [
             {"role": "system", "content": self._plan_system(st)},
             {"role": "user", "content": prompts.retrieval_plan_user(
                 title, spine, beats, st.content_for_continue(),
                 steer=getattr(policy, "steer", ""),
                 require_verification=getattr(policy, "require_verification", False),
-                # 走短路层：主题树每一轮都要，而它同参数同结果（计划 2.1）。
-                # **跨轮短路一定要原样返回全文**——这一份是直接拼进 prompt 的，
-                # 退化成一句「已经查过」等于把主题树从 prompt 里抽掉，而当年
-                # 把主题树摆进 prompt 正是有效的那两次结构改动之一。
-                topics_overview=query_cache.dispatch("list_topics", {"limit": 40}, st.ctx),
+                topics_overview=topics,
+                # 账本摘要，**以「缺口」形式**（计划 2.4）。这里读到的是
+                # 第 1..n-1 轮的账本：`Ledger.after_prepare` 要等这一轮的工具
+                # 循环跑完才折叠，所以此刻它正好是「上几轮已经取过什么」。
+                ledger_gaps=(ledger_mw.gap_summary(led) if LEDGER_IN_PROMPT else ""),
                 section=target[0] if target else "")},
         ]
         # Mode decides which groups exist; the policy may add to them for a
@@ -162,7 +175,12 @@ class NoteHooks:
                 groups.append(extra)
         _extra, trace = await agent_loop.gather_context(
             msgs, st.ctx, groups=groups,
-            max_iters=getattr(policy, "tool_iters", 2))
+            max_iters=getattr(policy, "tool_iters", 2),
+            # 覆盖率驱动停机（计划 2.5）要知道「已经有哪些 id」。**跨轮的那份
+            # 只有账本有**：`prepare` 每轮新建 `ToolTrace`，循环自己看到的
+            # 永远是空的。批 10 真跑里第 2 轮 4 次调用、`facts_new = 0`——
+            # 不把账本喂进来，那一轮在循环眼里每一发都是「新的」。
+            known_ids=set(led.get("facts") or ()))
         facts = list(trace.as_facts())
 
         if trace.error and not facts:

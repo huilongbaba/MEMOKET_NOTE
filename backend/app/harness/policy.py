@@ -75,6 +75,10 @@ class RoundFeedback:
     tool_facts: int = 0          # 工具实际带回来几条事实
     tools_used: tuple[str, ...] = ()   # 这一轮用到的工具名
     tool_truncated: bool = False
+    # 工具循环**自己停了**：连着两次调用一条新 id 都没带回来（计划 2.5，
+    # `agent_loop.BARREN_STOP`）。这是「这次跑已经查到头了」的确定性证据，
+    # 跟下面那个被它换掉的脏信号不是一回事——见「一切正常就把预算收回来」。
+    tool_stopped_barren: bool = False
     # 知识库整个是空的。**这跟「这一轮没查到」是两件事**：没查到值得换条路
     # 再试，空库换什么路都是空。第 676 轮拿全新用户实跑，策略器对着一个空库
     # 发「先 list_topics 看有哪些主题」，白烧一轮。
@@ -257,11 +261,20 @@ def adjust(policy: RuntimePolicy, fb: RoundFeedback) -> tuple[RuntimePolicy, lis
 
     # ---- 一切正常就把预算收回来，别白花时间 ----
     # 工具每多跑一轮就是一次本地模型调用（20-90 秒）。事实这一维稳了、
-    # 上一轮也没真用上工具，就没理由继续付这个钱。
-    if (fb.level("factual_grounding") == 2 and fb.tool_calls == 0
+    # 上一轮又查到头了，就没理由继续付这个钱。
+    #
+    # **判据从 `tool_calls == 0` 换成了 `tool_stopped_barren`（计划 2.5）。**
+    # 上面 TOOL_ITERS_MIN 那段注释里记着换掉的理由，那是从真实 A/B 日志里
+    # 看出来的：「上一轮没用工具」既可能是 agent 正当判断「这段不用查」，
+    # 也可能是它懒得查，两者被当成了同一个信号——于是**它诚实回答一句
+    # 「不需要检索」就要被扣一格预算**，连着几轮扣到下界。
+    # 新判据没有这个歧义：`stopped_barren` 是工具循环里连着两次调用一条新 id
+    # 都没带回来，**确定性的、代码算出来的**，它说的就是「这条线查到头了」。
+    # 一轮都没查的（`tool_calls == 0`）从此不再扣预算。
+    if (fb.level("factual_grounding") == 2 and fb.tool_stopped_barren
             and tool_iters == policy.tool_iters):
         tool_iters -= 1
-        reasons.append("事实达标且上一轮没用工具 → 工具预算 -1")
+        reasons.append("事实达标且工具循环连着两次没带回新材料 → 工具预算 -1")
 
     new = RuntimePolicy(
         tool_iters=_clamp(tool_iters, TOOL_ITERS_MIN, TOOL_ITERS_MAX),

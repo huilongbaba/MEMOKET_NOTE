@@ -119,21 +119,41 @@ def test_recovering_a_dimension_clears_its_stuck_counter():
     assert "coherence" not in p2.stuck_dims
 
 
-def test_budget_is_returned_when_tools_were_not_needed():
-    """工具每多跑一轮 = 一次本地模型调用（20-90 秒）。事实这一维稳了、
-    上一轮也没真用上工具，就没理由继续付这个钱。"""
-    fb = RoundFeedback(scores={"factual_grounding": 2}, tool_calls=0, tool_facts=0)
+def test_budget_is_returned_when_the_tool_loop_ran_dry():
+    """工具每多跑一轮 = 一次模型调用。事实这一维稳了、上一轮工具循环
+    **自己停了**（连着两次调用一条新 id 都没带回来），就没理由继续付这个钱。
+
+    计划 2.5。这个信号是 `agent_loop` 里代码算出来的，不是模型自称的。
+    """
+    fb = RoundFeedback(scores={"factual_grounding": 2}, tool_calls=3,
+                       tool_stopped_barren=True)
     new, reasons = adjust(RuntimePolicy(tool_iters=2), fb)
     assert new.tool_iters == 1
     assert any("工具预算 -1" in r for r in reasons)
 
 
-def test_budget_never_falls_to_zero_and_disables_retrieval():
-    """真实 A/B 日志里看出来的：连续几轮 agent 正当判断「不需要检索」，
-    预算被一路扣到 0——而 0 意味着工具循环根本不跑，它从此再也查不了。
-    因为它诚实回答了"这段不用查"就永久剥夺检索能力，是错的。"""
-    p = RuntimePolicy(tool_iters=2)
+def test_honestly_not_retrieving_no_longer_costs_budget():
+    """**这条是计划 2.5 换掉的那个脏信号本身。**
+
+    `policy.py` 顶上那段注释记着：「上一轮没用工具」既可能是 agent 正当判断
+    「这段不用查」、也可能是它懒得查，两者被当成同一个信号，于是真实 A/B
+    日志里预算被一路扣到了下界——**因为它诚实回答了"这段不用查"**。
+    换成 `tool_stopped_barren` 之后，一轮都没查的不再扣预算。
+    """
     fb = RoundFeedback(scores={"factual_grounding": 2}, tool_calls=0, tool_facts=0)
+    p = RuntimePolicy(tool_iters=2)
+    for _ in range(6):
+        p, reasons = adjust(p, fb)
+        assert not any("工具预算 -1" in r for r in reasons)
+    assert p.tool_iters == 2, "没查 ≠ 不需要检索能力"
+
+
+def test_budget_never_falls_to_zero_and_disables_retrieval():
+    """0 意味着工具循环根本不跑，agent 从此再也查不了。彻底关掉检索是配置
+    决定（MEMOKET_AGENT_TOOLS=0），不该是反馈能自己走进去的状态。"""
+    p = RuntimePolicy(tool_iters=2)
+    fb = RoundFeedback(scores={"factual_grounding": 2}, tool_calls=3,
+                       tool_stopped_barren=True)
     for _ in range(6):
         p, _ = adjust(p, fb)
     assert p.tool_iters >= 1

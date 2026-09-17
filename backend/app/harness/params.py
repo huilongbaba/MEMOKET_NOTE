@@ -28,6 +28,18 @@ import os
 AGENT_TOOLS = os.getenv("MEMOKET_AGENT_TOOLS", "1").lower() not in ("0", "false", "no")
 
 
+# 账本摘要要不要进检索规划的 prompt（计划 2.4）。
+#
+# **这是账本唯一会改 prompt 的那一步，所以它必须能单独关掉。**
+# 理由不是谨慎，是有实测证据的反向风险（docs/harness-fact-ledger.md §10⑤）：
+# 注入的上下文会把 agent 锚定到特定解法上、缩小它的搜索空间。摘要写成
+# 「缺口」形式是为了让这个效应反过来用，但**效应本身是真的**——真跑下来
+# 要是检索反而变窄，得能只撤这一步，而不是连账本（2.1/2.2/2.3 都靠它）
+# 一起撤。关掉之后 `retrieval_plan_user` 收到的是空串，跟批 12 之前一字不差。
+LEDGER_IN_PROMPT = os.getenv("MEMOKET_LEDGER_PROMPT", "1").lower() not in (
+    "0", "false", "no")
+
+
 # 单轮续写的正文 token 上限。**这是安全网，不是控制器。**
 #
 # "一轮写多少"由 prompt 的语义约束管（MAGIC_TAP_SYSTEM 里的"写 1-3 段即可，

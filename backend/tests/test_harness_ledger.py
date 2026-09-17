@@ -10,7 +10,9 @@
 
 from __future__ import annotations
 
-from app.harness.middleware.ledger import blank, fold, mark_used
+import json
+
+from app.harness.middleware.ledger import blank, fold, gap_summary, mark_used
 
 
 def _facts(*pairs) -> str:
@@ -159,3 +161,145 @@ def test_账本每轮给短路层报一次轮次():
     st.round = 3
     asyncio.run(Ledger().before_round(st))
     assert query_cache._cache(st.ctx)["round"] == 3
+
+
+# ------------------------------------------- 缺口摘要（计划 2.4）
+
+def _led(axes=None, queries=None):
+    led = blank()
+    led["axes"] = dict(axes or {})
+    led["queries"] = [
+        {"key": f"{t}\t" + json.dumps(a, sort_keys=True, ensure_ascii=False),
+         "tool": t, "hit": h, "empty": not h}
+        for t, a, h in (queries or [])]
+    return led
+
+
+def test_摘要是缺口形式_没取的摆最前():
+    """[LED] §10⑤ 那条反面证据：注入的上下文会把 agent 锚定到特定解法上、
+    **缩小搜索空间**。同一份账本两种写法效果相反——
+
+      ❌ 库存：「已经取到 40 条，覆盖众筹、硬件节点」→ 邀请它见好就收
+      ✅ 缺口：「定价：18 条，一条都没取」          → 邀请它去补
+
+    所以「一条都没取」的那些必须排在最前面，而且按库里条数从多到少。
+    """
+    led = _led({"topic:定价": {"total": 18, "taken": 0},
+                "topic:产品验证": {"total": 23, "taken": 2},
+                "topic:硬件": {"total": 50, "taken": 0}})
+    out = gap_summary(led)
+    lines = [l for l in out.splitlines() if l.startswith("- ")]
+    assert lines[0].startswith("- 硬件：库里 50 条，一条都没取")
+    assert lines[1].startswith("- 定价：库里 18 条，一条都没取")
+    assert "产品验证" in lines[2] and "只取了 2 条" in lines[2]
+
+
+def test_已取的压成一句话_不列清单():
+    """「把已取压到最小」是同一条依据的另一半。取满了的方向只留一个计数，
+    一个名字都不报——报出来就是库存清单。"""
+    led = _led({"topic:众筹": {"total": 41, "taken": 41},
+                "topic:团队": {"total": 9, "taken": 9},
+                "topic:定价": {"total": 18, "taken": 0}})
+    out = gap_summary(led)
+    assert "另有 2 个方向这次已经取过" in out
+    assert "众筹" not in out and "团队" not in out
+
+
+def test_摘要里不许出现用了几条():
+    """**覆盖率是诊断，不是指标。**`checks/rubric._FACTUAL_GROUNDING` 的
+    guidance 里写着「检索到的事实没有被全部用上，明确不算不足」——那句话是
+    吃过亏才写进去的：为这个扣过一次分，下一轮正文里就「引入了大量未在
+    知识库中出现的具体日期与人物」。
+
+    所以这段话里一个「用了 / 没用 / 还剩」的数都不许有：
+    「定价 18 条一条没取」值得追问，「众筹 41 条只用了 12 条」完全正常。
+    """
+    led = _led({"topic:众筹": {"total": 41, "taken": 12},
+                "topic:定价": {"total": 18, "taken": 0}},
+               [("filter_facts", {"topic": "众筹"}, 12)])
+    led["facts"] = {f"f{i}": {"line": "x", "state": "used" if i < 3 else "taken",
+                              "tool": "filter_facts", "when": ""} for i in range(12)}
+    out = gap_summary(led)
+    for banned in ("没用", "用上", "已用", "还剩", "已经取到"):
+        assert banned not in out, f"「{banned}」会把覆盖率读成指标，逼它去凑"
+
+
+def test_查空的那条要写明别换措辞重试():
+    led = _led(queries=[("search_memory", {"query": "APP 安装 测试"}, 0),
+                        ("filter_facts", {"topic": "定价", "limit": 8}, 5)])
+    out = gap_summary(led)
+    assert "别再原样发一遍" in out
+    assert "search_memory query=APP 安装 测试 → 0 条" in out
+    # limit 这类分页参数不进显示：它不改变「查的是哪个方向」，摆出来只会让
+    # 两条本质相同的查询看着不一样，而这段话就是让模型认出「这条我发过了」。
+    assert "limit" not in out
+
+
+def test_同一个查询只列一次():
+    q = ("filter_facts", {"topic": "定价"}, 5)
+    out = gap_summary(_led(queries=[q, q, q]))
+    assert out.count("filter_facts topic=定价") == 1
+
+
+def test_没有分母的轴不进摘要():
+    """`filter_facts` 的返回体里没有「共 N 条」时 `total` 是 0。
+    没有分母就没有缺口可言——**不编一个出来**。"""
+    out = gap_summary(_led({"topic:未知": {"total": 0, "taken": 0}}))
+    assert out == ""
+
+
+def test_空账本返回空串():
+    assert gap_summary(blank()) == ""
+
+
+def test_会生成东西的工具不进已发查询清单():
+    """真跑（批 13）渲染出来的那段话里出现过这一行：
+
+        - render_chart kind=flow labels=[…] → 0 条，换个方向，不要换措辞重试
+
+    `render_chart` 根本不返回事实，「0 条」是把「没有事实行」读成了「查空了」，
+    而那句话会劝模型别再画图。**清单只列读知识库的那几个**（`query_cache`
+    的白名单），误伤比漏报贵。
+    """
+    led = _led(queries=[("render_chart", {"kind": "flow"}, 0),
+                        ("run_skill_script", {"code": "x"}, 0),
+                        ("filter_facts", {"topic": "定价"}, 3)])
+    out = gap_summary(led)
+    assert "render_chart" not in out and "run_skill_script" not in out
+    assert "filter_facts topic=定价" in out
+
+
+def test_主题树的分母折进账本_缺口才有一条都没取的():
+    """主题树是 `hooks/note.prepare` **直接**调的，不进 `trace.calls`，
+    `fold` 永远看不到它。第一版 2.4 就栽在这儿：真跑渲染出来的缺口摘要里
+    **一条「一条都没取」都没有**，只剩三条已经查过的轴——而 [LED] §10⑤
+    那个例子（「定价：18 条，一条都没取」）正是靠主题树才知道这个方向存在。
+    """
+    from app.harness.middleware.ledger import note_topics
+    led = blank()
+    fold(led, [("filter_facts", {"topic": "众筹"},
+                "共 41 条，返回 2 条：\n" + _facts(("f1", "甲"), ("f2", "乙")))])
+    assert "一条都没取" not in gap_summary(led)
+
+    n = note_topics(led, "- 众筹（41 条，别名：x）\n- 定价（18 条）\n")
+    assert n == 2
+    out = gap_summary(led)
+    assert "定价：库里 18 条，一条都没取" in out
+    # **只补分母，不记一条查询**：模型没发过 `list_topics` 这一条。
+    assert "list_topics" not in out
+    assert len(led["queries"]) == 1
+
+
+def test_缺口那段话里要有相关性护栏():
+    """缺口按库里条数从多到少排，而真实用户的大桶（`work` 2862 条、
+    `learning` 1097 条、`personal` 995 条）跟这一篇常常毫无关系——批 13 真跑
+    渲染出来的第一版就把这三个摆在了最前面。缺口形式是用来**打开**搜索空间
+    的（[LED] §10⑤），但打开不等于放任跑题。
+
+    同时这句话**不许**写成「把它们取满」：覆盖率是诊断，不是指标。
+    """
+    out = gap_summary(_led({"topic:learning": {"total": 1097, "taken": 0}}))
+    assert "只查跟这一节真的相关的那些" in out
+    assert "不是要求你取满" in out
+    for banned in ("取满它们", "全部取回", "必须取"):
+        assert banned not in out

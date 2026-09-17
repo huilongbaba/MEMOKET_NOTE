@@ -360,8 +360,16 @@ the run's accumulated material directly」，那句话是假的（仓里第二�
 > **批 12 之后，`chart-block` 那几行连"结论"都不剩了**（台账批 12 ⑤）：那唯一一篇
 > 带 mermaid 的笔记里，图前面那一段是**一个游离的围栏收尾符**，取材器把它当引子交给
 > 了打分器（整段奇数个围栏）。所以 `chart_validity`「干净版恒 0 / 无从判断」
-> **是取材缺陷，不是"这篇没图"**。取材修好之后那 60 格自动作废，
-> 这 6 条 probe 现在是**未跑**——在重跑之前，图表那一组一条结论都不许引用。
+> **是取材缺陷，不是"这篇没图"**。取材修好之后那 60 格自动作废。
+
+> **批 13 重跑了这一组，结论是：6 条 probe 里只有 3 条跑得起来。**
+> `has_charts`（掉 1.4，p=0.0445，抓住）、`right_kind`（掉 0.6，p=0.399，只动了一点）、
+> `chart_validity`·break_mermaid_fence（1.2→1.2，**没抓住**）。另外 3 条在唯一那篇
+> 带图语料上**结构性跑不起来**，不是预算不够：`handwrite_mermaid` 干净版本身就带这个
+> 缺陷、`shift_dates` / `duplicate_chart` 植入器不适用，而 `covers_the_data` 依赖的
+> `chart-block-narrated` 在批 12 把引子收紧成「不含围栏的正文段」之后**一段都挑不到**。
+> 取材修好换来的是：`chart_validity` 的干净版基线从 0 抬到 1.2（原来那个 0 确实是取材
+> 缺陷），但**这一维仍然判不出被打断的围栏**。全组仍然 n=1 篇，**跨篇一概不下结论**。
 
 ---
 
@@ -539,6 +547,24 @@ Mode 按需追加的：
 `fact_sources` 这第二级，所以「回溯原话」由代码在需要时直接调；限定到某次会议的
 问题（「那次」「除了 X」）prompt 让它选 `search_session_context` 没用，代码识别后
 直接调。
+
+**什么时候停（批 13 / 计划 2.5）**：不只看 `policy.tool_iters` 那个上限了。
+一轮工具循环里**连着两次调用一条新事实 id 都没带回来就停**（`BARREN_STOP = 2`），
+确定性判断、不用模型。跨轮那份「已经有哪些 id」由**账本**喂进来（`known_ids`）——
+`prepare` 每轮新建 `ToolTrace`，循环自己看到的永远是空的。只有 `FACT_TOOLS` 参与
+计数：`list_topics` / `list_entities` 本来就不带事实 id，算进去会把「先看有什么 →
+再精确取」这条两级路径在第一步判成走到头。`stopped_barren` 跟 `truncated`
+**是反义的**（查到头 vs 还想查被拦住），策略器拿前者收预算——它换掉了
+「上一轮没用工具就扣预算」那个脏信号（`policy.py` 自己的注释记着那个信号是脏的）。
+
+**账本摘要进检索规划的 prompt（批 13 / 计划 2.4）**：`ledger.gap_summary()` 把账本
+摘成一段话接在 `retrieval_plan_user` 最前面，**以「缺口」形式、不是「库存」形式**
+（「定价：18 条，一条都没取」，而不是「已经取到 40 条」）——有实测研究说明注入的
+上下文会把 agent 锚定到特定解法、缩小搜索空间，同一份数据两种写法效果相反。
+三条硬边界：① **覆盖率是诊断不是指标**，摘要里一个「用了几条 / 还剩几条」都不许有
+（`_FACTUAL_GROUNDING` 的 guidance 写着「检索到的事实没被全部用上不算不足」）；
+② 缺口按库里条数排，最大的桶常常跟这一篇无关，所以末尾那句必须带相关性护栏；
+③ 这是账本唯一会改 prompt 的一步，`params.LEDGER_IN_PROMPT` 能把它**单独**关掉。
 
 ---
 
@@ -731,7 +757,7 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | 导入导出 | `test_export.py` · `test_export_roundtrip.py` · `test_export_back.py` | 层级 / 克隆 / 孤儿 / 资产；导出再导入树长回原样；导回按 id 覆盖、对方改过报冲突 |
 | 出口 | `test_llm_sanitize.py` · `test_bold_punct.py` · `test_kite_ask.py` | 提示词不带 base64；粗体标点；KITE Answer 字段漂移 |
 | 前端 | `vitest` + 11 条检查脚本 | roundDiff · factCite · 树扁平化 · SSE 解析 · mermaid 回退 · minimalChange · sectionEnd · friendlyError · runWritingPlan 事件映射 |
-| 判据本身 | `scripts/dimension_sensitivity_bench.py` + `test_dimension_sensitivity_bench.py` | **往真实产出里机械植入已知缺陷，看对应那一维掉不掉分**（CriticGPT 的路子）。语料取 `harness_runs` 跑过的笔记、按血缘**只留 `user` 那一类**；植入只在内存副本上做；28 个植入器**每个都有自验闸**（单边 `gate` 或成对 `verify`，没闸的构造时直接抛）；格子的身份带正文指纹，改了植入器旧分数自动作废；**报告头记着这次跑的 `repeats`**（`repeats` 变了就是另一张表，两张表不能比「显著了没有」），材料那几维在报告里标着**是上界**（材料从干净正文摘，不是真实检索结果）；结果分「抓住 / 掉了但不显著 / 只动了一点 / 基线偏低 / 无从判断 / 没抓住 / 反着来了 / 未跑」八档，每行带 n 和 permutation p，「算抓住」那条线按实测噪声标定 |
+| 判据本身 | `scripts/dimension_sensitivity_bench.py` + `test_dimension_sensitivity_bench.py` | **往真实产出里机械植入已知缺陷，看对应那一维掉不掉分**（CriticGPT 的路子）。语料取 `harness_runs` 跑过的笔记、按血缘**只留 `user` 那一类**；植入只在内存副本上做；28 个植入器**每个都有自验闸**（单边 `gate` 或成对 `verify`，没闸的构造时直接抛）；格子的身份带正文指纹，改了植入器旧分数自动作废；**报告头记着这次跑的 `repeats`**（`repeats` 变了就是另一张表，两张表不能比「显著了没有」），日志里没进统计的行**分三类报**（`repeats` 排在外面 / probe 不在 `--only` 范围里 / 指纹真对不上，前两类数据仍然有效，只有第三类要重跑），材料那几维在报告里标着**是上界**（材料从干净正文摘，不是真实检索结果）；结果分「抓住 / 掉了但不显著 / 只动了一点 / 基线偏低 / 无从判断 / 没抓住 / 反着来了 / 未跑」八档，每行带 n 和 permutation p，「算抓住」那条线按实测噪声标定 |
 | 语料血缘 | `scripts/corpus_lineage.py` + `test_corpus_lineage.py` | **所有测量脚本共用的一份判据**：把笔记分成 `user`（用户真在用的）/ `script`（soak / suite / bench 用**真实 user_id** 跑出来的）/ `fixture`（模板硬生成、没过模型）三类并说明理由。只按 user_id 和标题筛挡不住 `soak.py`，要靠 `writing_sections` → plan → parent 标题 `soak-*` 这条血缘 |
 | 不许绕过血缘判据 | `test_corpus_lineage.py` 末尾那一节 | **建了判据不等于用了判据**（批 11 新规矩）。两侧规矩不同：**脚本**从笔记库取数就必须 import `corpus_lineage`；**产品代码**反过来——不许 import 它（那份知识只在开发机上成立），但也不许「拿本机库里的行当依据」，`app/harness/` 里每一句「库里 N 行」都要进白名单并注明这个数出自哪次真跑 |
 | 真跑 | `--probe=<name>` 连拍（`scratchpad/shot.sh`） | harness / tap / plan-run / sel:* / ingest / delete / draft / imgdrop … 每个探针一张图 + 一份后端日志（client-log 和 traceback 都在里面） |
