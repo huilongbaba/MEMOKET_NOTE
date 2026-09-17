@@ -1557,20 +1557,38 @@ kbd {
 .journey-gap { background: repeating-linear-gradient(135deg,
                  var(--line) 0 2px, transparent 2px 5px); }
 
-/* 三列对齐：**描述要从同一个位置开始**，不然一列字读下来是锯齿形的。
-   应用名截一半还认得出（Google Chro…），时间截一半就没法看了——所以固定的是
-   时间那一列，能挤的是应用名（同 .tree-dup-date 那条规矩）。 */
-.journey-row { display: grid; grid-template-columns: 6.8em 7.6em 1fr 22px; gap: var(--s-4);
+/* 列序：**时间 → 在做什么 → 哪个应用 → 删**。
+   应用名原来排在描述前面，而它既是这一行里最不重要的东西、又每行都被截成
+   「MEMOKET …」（7.6em / 9em 都装不下，实拍量到可用 107.5px）——
+   一行里最先读到的两样都是计时器的零件，这一页就读成了窗口计时器
+   （用户第 745 轮原话：「我想要的不是窗口计时器」）。挪到行尾之后
+   描述紧跟时间，应用名退成一个可扫的标记，宽度也就不用抢了。
+   **描述仍从同一个位置开始**——固定的是时间那一列，不然一列字读下来是锯齿形的。
+   最后两列宽度全表一致（块首放「N 段 ⌄」、逐段放删除钮），
+   不一致的话应用名那一列会在两种行之间左右跳。 */
+.journey-row { display: grid; grid-template-columns: 6.8em 1fr 11em 4.6em; gap: var(--s-4);
                align-items: baseline; font-size: var(--t-md); line-height: 1.5; }
 .journey-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: var(--t-sm); }
 .journey-app { display: flex; align-items: baseline; gap: var(--s-3); font-weight: var(--w-med); min-width: 0; }
 .journey-app-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .journey-desc { min-width: 0; }
+/* 一块 = 连着说同一件事的几段（`util/journeyRuns`）。块首那行是概括，展开才是逐段。
+   **缩进只给展开出来的那几行**：不缩进的话，展开之后哪几行属于这一块就看不出来了。 */
+.journey-run.open > .journey-row:not(.journey-run-head) { padding-inline-start: var(--s-5); }
+.journey-del { justify-self: end; }
+.journey-app { justify-self: start; }
+.journey-run.open > .journey-run-head { font-weight: var(--w-med); }
+/* 「N 段 ⌄」贴在行尾。它替掉的是那一行的删除钮——**块上不给删**：
+   一次删掉几段是不可逆的，得先展开、看清楚哪一段，再删那一段。 */
+.journey-run-more { justify-self: end; white-space: nowrap; align-self: center; padding: 1px 6px; }
+.journey-run.open > .journey-run-head .journey-desc { color: var(--muted); }
+
 /* 窄栏：描述整句换行到下一行，别把它挤成一列字（时间/应用仍在一行上） */
 @container (max-width: 480px) {
-  .journey-row { grid-template-columns: 6.8em 1fr 22px; }
-  .journey-desc { grid-column: 1 / -1; }
-  .journey-del { grid-row: 1; grid-column: 3; }
+  .journey-row { grid-template-columns: 6.8em 1fr 4.6em; }
+  .journey-desc { grid-column: 1 / -1; grid-row: 2; }
+  .journey-app { grid-row: 1; grid-column: 2; }
+  .journey-del, .journey-run-more { grid-row: 1; grid-column: 3; }
 }
 /* 日报排在页首：它是结论，下面那条带和时间轴是证据 */
 .journey-report { padding: 10px 12px; }

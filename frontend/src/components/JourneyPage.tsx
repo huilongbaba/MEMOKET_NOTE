@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { journeyCatchUp, journeyDay, journeyDays, journeyDeleteDay, journeyDeleteSegment,
          journeyReport, journeySaveReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneySegment } from '../api'
+import { groupRuns } from '../util/journeyRuns'
 import { parseMini, type Inline } from '../util/miniMarkdown'
 import { usePoll } from '../util/poll'
 import JourneyDenyPanel from './JourneyDenyPanel'
@@ -122,6 +123,9 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   const [busy, setBusy] = useState(false)
   const [writing, setWriting] = useState(false)
   const [spanning, setSpanning] = useState(0)
+  /** 哪几块展开着（按块首时间记）。翻天 / 刷新之后自然回到收起——
+   *  展开是「我要核对这一段」的一次性动作，不是一种偏好。 */
+  const [opened, setOpened] = useState<Set<string>>(new Set())
   const bridge = window.memoketDesktop?.journey
 
   const refresh = useCallback(async () => {
@@ -265,6 +269,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
 
   const segs = day?.segments ?? []
   const colors = appColors(segs.map((s) => s.app))
+  const runs = groupRuns(segs)
   const total = segs.reduce((n, s) => n + secs(s), 0)
   const byApp = new Map<string, number>()
   for (const s of segs) byApp.set(s.app, (byApp.get(s.app) ?? 0) + secs(s))
@@ -370,26 +375,60 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
             )}
           </div>
           <div className="stack">
-            {segs.map((s, i) => (
-              <div key={i} className="journey-row">
-                <span className="journey-time">{hhmm(s.start)}–{hhmm(s.end)}</span>
-                <span className="journey-app" title={s.title || s.app}>
-                  <i className="journey-dot" style={{ background: colors.get(s.app) ?? OTHER }} />
-                  <span className="journey-app-name">{s.app}</span>
-                </span>
-                <span className={'journey-desc' + (s.desc ? '' : ' muted')}>
-                  {s.desc || '还没描述'}
-                  {/* 缩略图是**凭据**：一句没有任何依据的描述，用户没法判断它是不是编的。
-                      默认不占地方，鼠标停在那一行才出现。 */}
-                  {s.has_thumb && (
-                    <img className="journey-thumb" loading="lazy" alt=""
-                         src={journeyThumb(day!.date, s.i)} />
+            {/* **连着说同一件事的并成一块**（`util/journeyRuns`）。读真实产出读出来的：
+                连看一个多小时 Firebase 崩溃数据，时间轴上摊成八行近似重复，
+                这一页就退回成一份流水账。并在**显示层**——采集层并了就再也拆不开，
+                而每一段的截图凭据和删除入口都必须还在，所以块是能展开的。 */}
+            {runs.map((run, ri) => {
+              const one = run.segs.length === 1
+              const open = one || opened.has(run.start)
+              return (
+                <div key={ri} className={'journey-run' + (open && !one ? ' open' : '')}>
+                  {!one && (
+                    <div className="journey-row journey-run-head">
+                      <span className="journey-time">{hhmm(run.start)}–{hhmm(run.end)}</span>
+                      <span className={'journey-desc' + (run.desc ? '' : ' muted')}>
+                        {run.desc || '还没描述'}
+                      </span>
+                      <span className="journey-app" title={run.app}>
+                        <i className="journey-dot" style={{ background: colors.get(run.app) ?? OTHER }} />
+                        <span className="journey-app-name">{run.app}</span>
+                      </span>
+                      <button className="chip journey-run-more"
+                              aria-expanded={open}
+                              title={open ? '收起这几段' : '展开看这几段各自记了什么'}
+                              onClick={() => setOpened((o) => {
+                                const n = new Set(o)
+                                if (!n.delete(run.start)) n.add(run.start)
+                                return n
+                              })}>
+                        {run.segs.length} 段 <Icon n={open ? 'bx-chevron-up' : 'bx-chevron-down'} />
+                      </button>
+                    </div>
                   )}
-                </span>
-                <button className="icon-btn sm journey-del" title="删掉这一段（连它抽出来的记忆一起）"
-                        onClick={() => void dropSeg(s)}><Icon n="bx-trash" /></button>
-              </div>
-            ))}
+                  {open && run.segs.map((s) => (
+                    <div key={s.i} className="journey-row">
+                      <span className="journey-time">{hhmm(s.start)}–{hhmm(s.end)}</span>
+                      <span className={'journey-desc' + (s.desc ? '' : ' muted')}>
+                        {s.desc || '还没描述'}
+                        {/* 缩略图是**凭据**：一句没有任何依据的描述，用户没法判断它是不是编的。
+                            默认不占地方，鼠标停在那一行才出现。 */}
+                        {s.has_thumb && (
+                          <img className="journey-thumb" loading="lazy" alt=""
+                               src={journeyThumb(day!.date, s.i)} />
+                        )}
+                      </span>
+                      <span className="journey-app" title={s.title || s.app}>
+                        <i className="journey-dot" style={{ background: colors.get(s.app) ?? OTHER }} />
+                        <span className="journey-app-name">{s.app}</span>
+                      </span>
+                      <button className="icon-btn sm journey-del" title="删掉这一段（连它抽出来的记忆一起）"
+                              onClick={() => void dropSeg(s)}><Icon n="bx-trash" /></button>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         </>
       )}
