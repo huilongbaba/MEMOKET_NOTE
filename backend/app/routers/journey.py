@@ -154,10 +154,44 @@ def _load_report(day: str) -> dict:
         return {}
 
 
+# 这份文件**有两个写的人**：壳每切一段就落一次盘（`capture.ts` 的 `flush`），
+# 后端描述完一段也要写回去。谁后写谁赢 = 谁先写谁被抹掉。
+# 第 750 轮实拍到的就是这一幕：日志里「自动描述了 1 段」刷了 90 次，
+# 而 `segments.json` 里 71 段**一条描述都没有**——描述一段要 15–20 秒，
+# 这期间壳早把没有 `desc` 的那份内存副本盖回去了，下一轮再描述同一批。
+#
+# 规矩：**各写各的字段。** 后端只认这几个，别的一律以盘上那份为准
+# （段落表本身归壳——它在往后长，我们手里这份是 20 秒前的旧快照）。
+_MINE = ("desc", "skip", "session", "deleted", "frames")
+
+
+def _merge_back(disk: list[dict], ours: list[dict]) -> list[dict]:
+    """把我们改过的字段贴回**盘上最新的**那份段落表。
+
+    按 `start` 对齐：它是这一段建出来那一刻的时间戳，壳之后再不会改它。
+    盘上有、我们手里没有的段 = 这 20 秒里新采的，原样留着。
+    墓碑（`deleted`）整条覆盖——删段那一步会把 app / title / n 一起清掉。
+    """
+    if not disk:                       # 文件没了 / 空的：只能写我们这份
+        return ours
+    mine = {s["start"]: s for s in ours if s.get("start")}
+    out: list[dict] = []
+    for seg in disk:
+        m = mine.get(seg.get("start", ""))
+        if m is None:
+            out.append(seg)
+        elif m.get("deleted"):
+            out.append(m)
+        else:
+            out.append({**seg, **{k: m[k] for k in _MINE if k in m}})
+    return out
+
+
 def _save(day: str, segs: list[dict]) -> None:
     d = _day_dir(day)
     d.mkdir(parents=True, exist_ok=True)
-    (d / "segments.json").write_text(json.dumps(segs, ensure_ascii=False, indent=1),
+    merged = _merge_back(_load(day), segs)
+    (d / "segments.json").write_text(json.dumps(merged, ensure_ascii=False, indent=1),
                                      encoding="utf-8")
 
 

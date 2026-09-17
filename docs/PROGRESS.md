@@ -130,3 +130,4 @@ TRACELOG 记一条 → commit / push；隔几轮 `npm run dist` 重开正式版�
 - [x] 北极星痛点 6「想做成 PPT 又要上传给另一个 agent 工具」→ **第 648–651 轮落地**：`POST /api/slides` 一次模型调用 + 五条确定性判据 → 落成原笔记的**子笔记**（Marp markdown，不是一个文件），右栏预览，导出 PDF（`printToPDF`，零新依赖）。`.pptx` 仍走第三方 skill——主路径要解决的是「两个工具之间没有链接」，不是「我要一个 pptx 文件」。方案 + 落地差别在 `docs/slides-plan.md`
 - [x] 一个分类下最多给 300 条事实，再多要走事实表分页 → 第 352 轮：主题 / 实体展开到 300 条之后尾巴给一行「还有 N 条 · 去事实表看」（`kb:facts?topic=…` / `?entity=…`），月份 / 会议自己的页面本来就分页
 
+- [x] 屏幕活动「只有计时没有描述」→ **第 748 轮查到真因**：`segments.json` 有壳和后端两个写的人，各写全份，描述一段 15–20 秒、这期间壳把没有 `desc` 的内存副本盖回去，**跑了 90 次每次都被抹掉**；更糟的是后端描述完删了大图、壳又把路径写回来，那一段从此永久「没有截图」。改成各写各的字段（壳 start/end/app/title/n，后端 desc/skip/session/deleted/frames），另加 `sweepOrphans` 清掉 `mergeBlips` 合并掉那些段留下的无主截图（真机当场清掉 124 张）。四条判据进 `check-journey-merge.mts`，每条都反向突变验过。真机验到描述累积不回退、全部入库。详见 TRACELOG [750]

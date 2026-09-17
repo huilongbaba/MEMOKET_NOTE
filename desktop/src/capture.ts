@@ -22,7 +22,7 @@
  *   · 锁屏 / 睡眠自动暂停
  */
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -162,6 +162,64 @@ export function dayDir(root: string, when = new Date()): string {
   return path.join(root, 'journey', d)
 }
 
+/** 落盘时归**壳**写的字段。剩下的（`desc` / `skip` / `session`，以及描述做完被
+ *  清空的 `frames`）归后端，落盘前要从盘上读回来贴上。
+ *
+ *  这份文件有两个写的人。第 750 轮实拍到的后果：日志里「自动描述了 1 段」刷了
+ *  90 次，而那天 71 段**一条描述都没有**——描述一段要 15–20 秒，这期间壳
+ *  每切一段就 `flush()` 一次，把没有 `desc` 的内存副本整个盖回去，下一轮
+ *  后端再把同一批重描一遍，永远循环。用户看到的就是「只有计时没有描述」。 */
+const SHELL_OWNED = ['start', 'end', 'app', 'title', 'n'] as const
+
+/** 把盘上那份里**后端写的字段**贴回要落盘的这份。按 `start` 对齐（建段那一刻的
+ *  时间戳，之后再不会改）。墓碑整条用盘上的——删段会把 app / title / n 一起清掉。 */
+export function keepBackendFields(fresh: Segment[], disk: Segment[]): Segment[] {
+  if (!disk.length) return fresh
+  const byStart = new Map(disk.map(s => [s.start, s as unknown as Record<string, unknown>]))
+  return fresh.map(seg => {
+    const old = byStart.get(seg.start)
+    if (!old) return seg
+    if (old.deleted) return old as unknown as Segment
+    const out: Record<string, unknown> = { ...old }
+    for (const k of SHELL_OWNED) out[k] = (seg as unknown as Record<string, unknown>)[k]
+    return out as unknown as Segment
+  })
+}
+
+/** 没人认领的截图，删掉。
+ *
+ *  `mergeBlips` 会把短段并进邻居，**被并掉那一段的 `shots/NNN.png` 就此无主**：
+ *  它不在 `segments.json` 里，所以后端的过期清理（`_expire_frames` 只遍历段）
+ *  永远扫不到它，描述也永远轮不到它。第 750 轮在真实数据上量到的：71 段对应
+ *  63 张无主大图、134 张缩略图。这不只是占盘（计划里算过 300MB/天），更是
+ *  跟产品自己的承诺反着来——「描述做完就删大图」对这些图从来没兑现过。
+ *
+ *  只删**两分钟前就躺在那儿**的：刚写下去那张正要被 push 进 segs，别自己删自己。 */
+const ORPHAN_GRACE_MS = 2 * 60_000
+
+export function sweepOrphans(dir: string, segs: Segment[], now = Date.now()): number {
+  const keep = new Set<string>()
+  for (const s of segs) {
+    for (const f of s.frames || []) keep.add(path.basename(f))
+    if (s.thumb) keep.add(path.basename(s.thumb))
+  }
+  let n = 0
+  for (const sub of ['shots', 'thumbs']) {
+    let names: string[] = []
+    try { names = readdirSync(path.join(dir, sub)) } catch { continue }
+    for (const name of names) {
+      if (keep.has(name)) continue
+      const f = path.join(dir, sub, name)
+      try {
+        if (now - statSync(f).mtimeMs < ORPHAN_GRACE_MS) continue
+        rmSync(f, { force: true })
+        n++
+      } catch { /* 删不掉就下次再说，不值得为此打断记录 */ }
+    }
+  }
+  return n
+}
+
 export function readSegments(dir: string): Segment[] {
   try {
     return JSON.parse(readFileSync(path.join(dir, 'segments.json'), 'utf8')) as Segment[]
@@ -272,8 +330,10 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
 
   const flush = () => {
     try {
-      writeFileSync(path.join(dir, 'segments.json'),
-                    JSON.stringify(mergeBlips(segs), null, 1), 'utf8')
+      const out = keepBackendFields(mergeBlips(segs), readSegments(dir))
+      writeFileSync(path.join(dir, 'segments.json'), JSON.stringify(out, null, 1), 'utf8')
+      const gone = sweepOrphans(dir, out)
+      if (gone) log(`[journey] 清掉 ${gone} 张没人认领的截图\n`)
     } catch (e) { log(`[journey] 落盘失败：${String(e)}\n`) }
   }
 

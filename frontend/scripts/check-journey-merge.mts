@@ -7,7 +7,10 @@
  *     npx tsx scripts/check-journey-merge.mts
  */
 import { execFileSync } from 'node:child_process'
-import { DENY_APPS, DENY_TITLE_WORDS, mergeBlips, type Segment } from '../../desktop/src/capture.ts'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { DENY_APPS, DENY_TITLE_WORDS, keepBackendFields, mergeBlips, sweepOrphans, type Segment } from '../../desktop/src/capture.ts'
 import { GAP_MIN as JOURNEY_GAP_MIN, saySpan } from '../src/components/JourneyPage'
 
 const B = Date.parse('2026-09-14T18:00:00Z')   // 带 Z：两边都按 UTC 算，不然差一个时区
@@ -96,5 +99,90 @@ console.log(`${spanOk ? '✓' : '✗'} 时长写成人话：两边一样`)
 if (!spanOk) { console.log(`    TS  ${JSON.stringify(tsSpans)}\n    PY  ${JSON.stringify(pyMore.spans)}`) }
 if (!gapOk) bad++
 if (!spanOk) bad++
+
+// ——— 同一个 segments.json 的两个写的人，各写各的字段 ————————————————
+//
+// 壳每切一段 `flush()` 一次，后端描述完一段写回去。原来两边都是**整份覆写**，
+// 于是谁后写谁赢：第 750 轮实拍到日志里「自动描述了 1 段」刷了 90 次，
+// 而那天 71 段一条描述都没有——描述一段要 15–20 秒，这期间壳早把内存里
+// 那份没有 `desc` 的盖回去了。用户那边看到的就是「只有计时没有描述」。
+//
+// 契约：壳只写 start/end/app/title/n，后端只写 desc/skip/session/deleted/frames。
+const DISK = [
+  // 后端描述完这一段：写了 desc，大图删了（frames 清空），入了库
+  { start: 't0', end: 't1', app: 'Code', title: 'a', n: 5, frames: [] as string[],
+    desc: '在改 capture.ts 的 flush', session: 'screen-20260917-000' },
+  { start: 't2', end: 't3', app: 'Safari', title: 'b', n: 2, frames: [] as string[],
+    desc: '', skip: '没有截图' },
+]
+// 壳内存里那份：没有 desc，大图还在，而且这 20 秒里又采了一段
+const FRESH = [
+  { start: 't0', end: 't1b', app: 'Code', title: 'a', n: 7, frames: ['/shots/001.png'] },
+  { start: 't2', end: 't3', app: 'Safari', title: 'b', n: 2, frames: ['/shots/002.png'] },
+  { start: 't4', end: 't5', app: 'Feishu', title: 'c', n: 1, frames: ['/shots/003.png'] },
+] as unknown as Segment[]
+
+const kept = keepBackendFields(FRESH, DISK as unknown as Segment[]) as unknown as Record<string, unknown>[]
+const shellOk = kept.length === 3
+  && kept[0].desc === '在改 capture.ts 的 flush'        // 描述没被壳盖掉
+  && JSON.stringify(kept[0].frames) === '[]'           // 后端删过的大图没被复活
+  && kept[0].session === 'screen-20260917-000'
+  && kept[0].end === 't1b' && kept[0].n === 7          // 壳自己那几个字段照旧生效
+  && kept[1].skip === '没有截图'
+  && kept[2].app === 'Feishu'                          // 新采的段留着
+console.log(`${shellOk ? '✓' : '✗'} 壳落盘：不抹掉后端写的 desc/skip/session/frames`)
+if (!shellOk) { bad++; console.log(`    ${JSON.stringify(kept)}`) }
+
+// 反向：后端手里是 20 秒前的旧快照，写回去不能把这期间壳新采的段吞掉
+const pyMerge = JSON.parse(execFileSync(venv, ['-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(new URL('../../backend', import.meta.url).pathname)})
+from app.routers.journey import _merge_back
+disk = json.loads(sys.stdin.read())
+ours = [{"start": "t0", "end": "t1", "app": "Code", "title": "a", "n": 5,
+         "frames": [], "desc": "\u5728\u6539 capture.ts", "session": "s0"}]
+print(json.dumps(_merge_back(disk, ours)))
+`], { input: JSON.stringify(FRESH), encoding: 'utf8' })) as Record<string, unknown>[]
+
+const backOk = pyMerge.length === 3                     // 壳新采的两段没被吞
+  && pyMerge[0].desc === '在改 capture.ts'
+  && pyMerge[0].end === 't1b' && pyMerge[0].n === 7      // 壳那几个字段以盘上为准
+  && pyMerge[2].app === 'Feishu'
+console.log(`${backOk ? '✓' : '✗'} 后端写回：不吞掉这期间壳新采的段`)
+if (!backOk) { bad++; console.log(`    ${JSON.stringify(pyMerge)}`) }
+
+// ——— 被并掉那一段的截图要有人清 ————————————————————————————————
+//
+// `mergeBlips` 把短段并进邻居，被并掉那段的 `shots/NNN.png` 就此不在
+// `segments.json` 里——后端的过期清理只遍历段，永远扫不到它。
+// 第 750 轮在真实数据上量到：71 段配 63 张无主大图。产品自己写着
+// 「描述做完就删大图」，对这些图从来没兑现过。
+{
+  const dir = mkdtempSync(path.join(tmpdir(), 'journey-'))
+  mkdirSync(path.join(dir, 'shots')); mkdirSync(path.join(dir, 'thumbs'))
+  for (const n of ['001', '002', '003']) {
+    writeFileSync(path.join(dir, 'shots', `${n}.png`), 'x')
+    writeFileSync(path.join(dir, 'thumbs', `${n}.jpg`), 'x')
+  }
+  const kept = [{ start: 'a', end: 'b', app: '', title: '', n: 1,
+                  frames: [path.join(dir, 'shots', '001.png')],
+                  thumb: path.join(dir, 'thumbs', '001.jpg') },
+                // 描述做完的段：frames 空了，但缩略图要留着（凭据）
+                { start: 'c', end: 'd', app: '', title: '', n: 1,
+                  frames: [], thumb: path.join(dir, 'thumbs', '003.jpg') }] as Segment[]
+  const later = Date.now() + 3 * 60_000          // 越过两分钟的宽限
+  const gone = sweepOrphans(dir, kept, later)
+  const left = (d: string) => readdirSync(path.join(dir, d)).sort().join(',')
+  const sweepOk = gone === 3 && left('shots') === '001.png' && left('thumbs') === '001.jpg,003.jpg'
+  console.log(`${sweepOk ? '✓' : '✗'} 清无主截图：只删没人引用的，留着缩略图当凭据`)
+  if (!sweepOk) { bad++; console.log(`    清了 ${gone}；shots=${left('shots')} thumbs=${left('thumbs')}`) }
+
+  // 刚写下去那张还没进 segs，别自己删自己
+  writeFileSync(path.join(dir, 'shots', '009.png'), 'x')
+  const graceOk = sweepOrphans(dir, kept) === 0 && readdirSync(path.join(dir, 'shots')).includes('009.png')
+  console.log(`${graceOk ? '✓' : '✗'} 两分钟宽限：刚拍下来还没入表的不动`)
+  if (!graceOk) bad++
+  rmSync(dir, { recursive: true, force: true })
+}
 
 process.exit(bad ? 1 : 0)
