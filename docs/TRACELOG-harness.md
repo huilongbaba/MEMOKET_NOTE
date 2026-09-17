@@ -377,3 +377,177 @@ prompt。1.7 顺手把这个也修了，一行代码没改，只加了注释说�
 1.6（植入缺陷测 25 个维度的灵敏度）——它正好也是「判据够不够有效」这条线上的。
 然后 2.1 / 2.2 / 2.3（账本，不碰 prompt）。
 1.3 重接放在补齐 ①②③ + P4 + P5 之后。
+
+## 批 5 · 阶段 1.6：植入缺陷，量 25 个维度的灵敏度（2026-09-17）
+
+**一行产品代码都没改。** 这一批交的是一台评测台 + 一张表：
+`backend/scripts/dimension_sensitivity_bench.py`（照 `writing_quality_bench.py` /
+`editing_quality_bench.py` 的形状写，跟它们同一个目录、同一套 jsonl 续跑路子）。
+
+方法出自 [IND] §8④（CriticGPT：训练数据就是「人往代码里塞 bug 再写批评」）：
+**拿真实产出，机械植入一个已知缺陷，看负责抓它的那一维掉不掉分。**
+
+### 改了什么
+
+| # | 改动 | 落在哪 |
+|---|---|---|
+| 1.6 | 灵敏度评测台：语料筛选 + 27 个植入器 + 38 条 probe（覆盖全部 25 维）+ 六档结论 | `scripts/dimension_sensitivity_bench.py`（新，约 900 行） |
+| — | 它自己的 44 条单测 | `tests/test_dimension_sensitivity_bench.py`（新） |
+| — | `test_脚本导得进来` 先把模块挂进 `sys.modules` 再 exec | `tests/test_scripts_import.py` |
+| — | 产出目录进 `.gitignore` + 进「bench 产物不许进库」那条闸的名单 | `.gitignore` · `tests/test_scripts_import.py` |
+| — | 架构文档补「打分器能看见什么」+ 第 18 节加一行 | `docs/harness-framework.md` |
+
+**语料**（批 4 的新规矩落地）：`select distinct key from harness_runs` 拿到 23 个 key、
+对上 19 篇笔记，**排掉 6 篇**——4 篇夹具用户（`shot-demo` 1 篇、`fresh673` 3 篇）、
+2 篇真实用户名下标题自标注 `（可删）` 的自测笔记（`harness 测试` 9613 字、`链接测试` 53 字）。
+剩 13 篇，本次实际用了 **6 篇**（`terrence` 3 + `terrence-rewrite` 3，810–3072 字）。
+夹具名单 15 个用户写死在脚本里、有单测钉着批 4 点名的那 4 个。
+
+**不碰真实笔记**：全程 `sqlite3 ... mode=ro` 只读，植入只在内存里的字符串副本上做，
+脚本连 `update_note` 都没 import。
+
+### 测出什么（**852 次真实 `evaluate()` 调用，0 次失败，平均 8.1s/次**）
+
+六篇真实产出 × 38 条 probe × 3 次重复。每一维取它最好的那条 probe：
+
+| 结论 | 维度 | 数（干净 → 植入） |
+|---|---|---|
+| **抓住**（15 维） | `table_validity` 2.0→0.0 · `no_duplicate_charts` 1.67→0.0 · `no_fabrication` 1.53→0.27 · `factual_grounding` 1.72→0.5 · `honest_caveats` 1.67→0.44 · `spine_fidelity` 2.0→0.83 · `replaces_cleanly` 1.07→0.0 · `non_repetition` 1.0→0.0 · `beat_coverage` 2.0→1.0 · `data_grounding` 1.0→0.0 · `states_limits` 1.67→0.67 · `has_charts` 1.67→0.78 · `fits_context` 1.17→0.42 · `topic_fidelity` 1.07→0.47 · `actionable` 1.78→1.22 | 掉 ≥ 半档 |
+| **只动了一点**（5 维） | `follows_prompt` 1.47→1.13（−0.33）· `section_coverage` 1.33→1.08（−0.25）· `answers_the_question` 1.25→1.08（−0.17）· `style_fit` 1.33→1.17（−0.17）· **`material_use` 2.0→1.92（−0.08）** | |
+| **基线偏低判不出**（2 维） | `coherence` 0.73→0.40 · `chart_validity` 0.33→0.67 | 干净版本身 < 1.0 |
+| **条件从不出现**（1 维） | `numbers_from_tools` **干净版恒为 0.0** | |
+| **没抓住**（1 维） | `covers_the_data` **2.0→2.0** | |
+| **反着来了**（1 维） | `right_kind` **0.11→2.0** | 植入缺陷之后**涨**了 1.89 |
+
+**三条最硬的**：
+
+**① `material_use` 是真的废了，不是"条件很少出现"。**
+`harness-evaluators.md` 留的那个问题（25 次 24 次满分）现在有答案了。
+植入器把正文里**每一句带数字或外文名的句子全部剔掉**（剩下的是「谁都能写的通用内容」，
+正是判词说的不足），5 篇上 2.0 → **1.93**；把干净正文里的日期/数字摘成一个
+【知识库事实】块塞进 context 再判（`with-evidence`），4 篇上 2.0 → **1.92**。
+**两种条件下都等于没反应。** 同一次植入里 `beat_coverage` 掉了 0.67——
+打分器看得出内容变薄了，只是不往「材料没落进正文」上算。
+
+**② 一整组维度判的是打分器根本看不见的东西。**
+`loop._evaluate` 只传正文 + 维度 + `score_context` + `dup_hints`：
+**检索到的事实、个人偏好、用户那条指令、工具返回值，一样都没传。**
+后果是量得出来的：`numbers_from_tools` 干净版**恒为 0**（追不到工具结果就一律判不达标，
+6 篇 12 格没有一格例外）；`chart_validity` 对一张工具画的合法 mermaid 打 0.33；
+`style_fit` 在补上偏好档案之后基线反而从 1.33 掉到 0.5（它按我给的档案判，
+而真实产出确实不合那份档案）。**这三维的「满分率」以前说明不了任何事，
+因为它们从来没拿到判据要求的证据。**
+
+**③ `right_kind` 是反的，而且 6/6 可复现。**
+把一张工具画的 `graph LR` 换成**一个根本不存在的图片引用**
+`![节点关系示意图](/img/gen/timeline-7f3a.png)`：
+`chart_validity` / `data_grounding` / `right_kind` 三维**齐刷刷从 0 涨到 2**，
+三篇六次全部一致。判词写着「Insufficient: … a reference to an image that doesn't exist」——
+**打分器没有任何办法知道那张图存不存在**，于是「看起来像 render_image 的产物」就给满分，
+而真的 mermaid 因为「不知道是不是 render_chart 画的」反被判 0。
+这是 5.1/5.2「有 oracle 的模式要确定性化」最直接的一份证据。
+
+**④ `covers_the_data` 一分不掉。** 把 mermaid 里第一条边删掉（正文还在讲那个节点），
+3 篇上 2.0 → 2.0。判词说的「the subject of the sentence is missing」正是这个形状。
+
+**⑤ 顺带掉分说明维度之间根本不独立**（这关系到 `rank()` 的不加权折叠，[IND] §5）：
+`invent_statistic` 把 `honest_caveats` 打掉 1.33（比它自己的目标维度还狠）；
+`off_spine_graft` 顺手把 `style_fit` 打掉 1.33、`non_repetition` 打掉 1.0；
+`drop_table_column` 把 `data_grounding` 打掉 1.0。
+
+### 实施中发现的、计划里没写到的
+
+**⑥ `table_validity` 的达标线是一句纯粹能用代码判准的话，而没有一行代码在判它。**
+原话「a complete markdown table whose header and rows have matching column counts」——
+仓里 `table_present` 只查"有没有表"，`blockcheck.has_table` 只查"表头下面有没有分隔行"，
+**两者都不数列**。bench 侧先实现了 `table_column_mismatch` 用来自验植入器，
+它可以直接搬进 `checks/`（归 5.x）。
+
+**⑦ 语料本身决定结论，这一点比预想的严重。** 第一版按长度取前 2 篇，量出
+`beat_coverage` 2.0→2.0「没抓住」。查下去发现**那两篇的 `beats` 是空的**——
+这一维是在"没有节拍可对照"的条件下被打分的。换成"只用真有 spine/beats 的笔记"之后
+同一个植入器量到 2.0→1.0 **抓住**。所以脚本里 `spine_fidelity` / `beat_coverage`
+用专门的取材器（`whole-with-spine` / `whole-with-beats`），有单测钉着。
+**这跟批 4 的教训是同一条**：语料不对，量出来的是语料不是判据。
+
+**⑧ 「没抓住」和「判不出来」必须分成不同的档。** 干净版就已经 0 分时"植入后没掉"
+说明不了任何事；干净版 0.5 分时也说明不了。所以结论分六档而不是"抓住/没抓住"两档，
+`无从判断`（clean ≤ 0）和 `基线偏低`（clean < 1.0）各自成档——**否则这张表会把
+"条件没出现"报成"判据废了"，而这两件事的处理方式正好相反。**
+
+**⑨ `test_脚本导得进来` 加载脚本的方式是错的。** 它 `module_from_spec` 之后直接
+`exec_module`，**没先挂进 `sys.modules`**。脚本里只要有一个 `@dataclass` 配
+`from __future__ import annotations`，dataclasses 解 `Callable[...] | None` 这类注解时
+就会去 `sys.modules[cls.__module__]` 取命名空间，拿到 `None` 当场炸。
+这个脚本正常 `import` 得进来，只有那条测试的加载方式炸——**是测试的加载方式不对**。
+补了两行（挂上、finally 摘掉）。
+
+### 突变验（18 个，全部变红）
+
+| # | 把什么改坏 | 结果 |
+|---|---|---|
+| ① | 夹具用户名单退化成空 | ✅ |
+| ② | 不再排标题自标注的自测笔记 | ✅ |
+| ③ | 取材器没人满足时不再补语料 | ✅ |
+| ④ | `mutate` 不再自验"植入成没成形" | ✅ |
+| ⑤ | `mutate` 不再检查"干净版本身有没有这个缺陷" | ✅ |
+| ⑥ | 复制一段改成只挪位置（不复制） | ✅ |
+| ⑦ | 删整节改成只删标题 | ✅ |
+| ⑧ | 表格列数判据永远返回 False | ✅ |
+| ⑨ | 干净版垫底时报成"没抓住" | ✅ |
+| ⑩ | 取消"基线偏低"那一档 | ✅ |
+| ⑪ | "反着来了"不再单独报 | ✅ |
+| ⑫ | 打分失败那一格被当成真分数 | ✅（**第一版用例没抓住**，见下） |
+| ⑬ | 断点续跑不再跳过已完成的格子 | ✅ |
+| ⑭ | `spine_fidelity` 改回用没有核心张力的语料 | ✅ |
+| ⑮ | "顺带掉分"把目标维度也算进去 | ✅ |
+| ⑯ | `roll_up` 取第一条而不是最好的一条 | ✅ |
+| ⑰ | `roll_up` 同档不再取掉分更大的 | ✅ |
+| ⑱ | "反着来了"排到最前面（当成最好的结论） | ✅ |
+
+**突变验本身踩了一个坑，值得单独记**：第一遍跑完 18 个之后全量 `pytest -q` 红了一条，
+而单跑那个文件是绿的。原因是 **`scripts/__pycache__` 里的 `.pyc` 是最后一个突变体的**——
+⑱ 那个突变只是把 `VERDICT_RANK` 的元素**换了个顺序**，源文件**字节数一模一样**，
+还原又发生在同一秒内，于是 `mtime + size` 这套 pyc 失效判定认不出文件变过。
+**"把修复撤掉再撤回来"这个动作本身可能不生效**，而症状是下一次运行才出现。
+第二遍跑的时候每个突变体前后都 `rm -rf __pycache__`，18/18 重新确认全部变红。
+
+**⑫ 又犯了批 3 记下的那个毛病：用例不够，不是实现对。**
+第一版 `test_打分失败那一格不进统计` 给的错误行**身上没有 scores**——统计本来就会
+因为"没有 scores"跳过它，所以把 `r.get("error")` 这道守卫整个删掉，用例照样全绿。
+改成"带 error **也带 scores**"的行才钉得住「带 error 的行一律不是一次测量」。
+
+### 闸
+
+后端 **1177 → 1222**（+45：bench 自己的 44 条，外加 `test_脚本导得进来`
+按 `scripts/*.py` 参数化自动多出来的 1 条），前端 254 / 51 文件不变。
+`test_doc_counts` / `test_directory_map` 没响（没加 Mode / check / middleware / 工具），
+架构文档是主动补的两处。
+
+### 这一批**没做**什么
+
+- **一个维度的判词都没改。** 这一批只负责"量出来"，改判词是各自对应的条目
+  （`material_use` → 2.6；`numbers_from_tools` / `data_grounding` → 5.1/5.2；
+  `fits_context` → 4.1；`follows_prompt` / `answers_the_question` → 6.1）。
+- **没有删维度。** 计划第 4 节写着"不加新评分维度"，删也同理要单独决定——
+  `covers_the_data` 和 `right_kind` 现在有证据了，但那是下一步的事。
+
+### 还没量到的
+
+- `table_validity` / `data_grounding`(table) / `beat_coverage` / `numbers_from_tools`(改数字)
+  这几行 **n=1 篇**：13 篇真实语料里带 markdown 表的只有 1 篇、带 beats 的只有几篇。
+  结论方向可信（掉 2.0 / 1.0 这种幅度不是噪声），但**样本量要如实记着**。
+- `eda` / `analysis` 两个模式在真实语料里**没有产出可取**，用的是真实笔记里的
+  数字密集小节当"块"。内容是真的，形态是近似的。
+- 每格只重复 3 次。`chart/handwrite_mermaid` 那条方差明显（同一篇 0/2/0 vs 2/0/2），
+  单看它不能下结论。
+
+### 下一步
+
+2.6（`material_use` 改成可计算）现在有了最硬的证据，应当**排在 2.1–2.3 前面**：
+它不是"满分说明不了什么"，是"把材料全剔光也给满分"。
+接着 5.1 / 5.2（`data_grounding` / `numbers_from_tools` 确定性化）——③④⑥ 三条
+指的是同一件事：**图表这一组的判词全在问打分器看不见的东西**，
+而这三个模式恰恰有执行 oracle。`table_column_mismatch` 可以直接搬进 `checks/`。
+然后 4.1（`score_context` 补给 block 模式）——`fits_context` 在补上前后文之后
+从"基线偏低判不出"变成"抓住（1.17→0.42）"，这条的收益已经量出来了。

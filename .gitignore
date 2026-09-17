@@ -43,6 +43,9 @@ backend/scripts/writing_bench_results/
 # （众筹计划、团队信息、真实会议里的正文片段）。文件留在磁盘上，只是不再
 # 入库；已经进了历史的那些没动——重写历史是另一回事，要单独决定。
 backend/scripts/harness_quality_samples/
+# 灵敏度评测台的产出：报告里逐行引着真实笔记的标题和 note_id，
+# 跟上面几个同类，可重跑生成。
+backend/scripts/sensitivity_results/
 
 # 桌面版（Electron）
 desktop/node_modules/

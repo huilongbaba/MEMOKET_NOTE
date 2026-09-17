@@ -297,6 +297,17 @@ RUN_FINISHED(content, reason, run_id?)
 **判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（15 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
+**打分器能看见什么**：`loop._evaluate` 只给三样——正文、这个 Mode 的维度判词、
+`st.bag["score_context"]`（长文两条是 spine/beats 或分段主题，**六个 block 模式是空的**），
+外加机械查重的 `dup_hints`。**检索到的事实、个人偏好档案、用户那条指令、工具返回值，
+一样都没有传给它。** 而好几条维度的判词明确写着要对着这些东西判
+（`material_use` 说「只在【知识库事实】块里确实给了材料时才判」、`numbers_from_tools`
+说「每个统计量都能追到工具结果」、`style_fit` 说「贴合用户的个人偏好」、
+`follows_prompt` 说「有没有照指令做」）。植入缺陷的灵敏度实测（批 5）量到的后果：
+`numbers_from_tools` 干净版恒为 0 分（追不了就一律判不达标），`material_use` 把
+正文里具体材料**全部剔干净**之后仍判 1.9/2，`right_kind` 把工具画的 mermaid 换成
+一个**根本不存在的图片引用**后从 0.11 涨到 2.0。
+
 ---
 
 ### 4.1 定向续写：这一轮写到哪一节
@@ -664,6 +675,7 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | 导入导出 | `test_export.py` · `test_export_roundtrip.py` · `test_export_back.py` | 层级 / 克隆 / 孤儿 / 资产；导出再导入树长回原样；导回按 id 覆盖、对方改过报冲突 |
 | 出口 | `test_llm_sanitize.py` · `test_bold_punct.py` · `test_kite_ask.py` | 提示词不带 base64；粗体标点；KITE Answer 字段漂移 |
 | 前端 | `vitest` + 11 条检查脚本 | roundDiff · factCite · 树扁平化 · SSE 解析 · mermaid 回退 · minimalChange · sectionEnd · friendlyError · runWritingPlan 事件映射 |
+| 判据本身 | `scripts/dimension_sensitivity_bench.py` + `test_dimension_sensitivity_bench.py` | **往真实产出里机械植入已知缺陷，看对应那一维掉不掉分**（CriticGPT 的路子）。语料取 `harness_runs` 跑过的笔记、**先排掉夹具 / 探针用户**；植入只在内存副本上做；植入器自身用确定性判据自验；结果分「抓住 / 只动了一点 / 基线偏低 / 无从判断 / 没抓住 / 反着来了」六档 |
 | 真跑 | `--probe=<name>` 连拍（`scratchpad/shot.sh`） | harness / tap / plan-run / sel:* / ingest / delete / draft / imgdrop … 每个探针一张图 + 一份后端日志（client-log 和 traceback 都在里面） |
 
 **反向验证**：新断言先注入违规看它变不变红，再落。**日志优于猜**：主题地图「放大了

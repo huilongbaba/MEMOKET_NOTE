@@ -32,10 +32,19 @@ def test_脚本导得进来(path, monkeypatch):
     monkeypatch.setattr(sys, "argv", [str(path)])
     spec = importlib.util.spec_from_file_location(f"_probe_{path.stem}", path)
     module = importlib.util.module_from_spec(spec)
+    # **先挂进 sys.modules 再 exec**，这是 import 的真实顺序。少这一步时，
+    # 脚本里任何一个 `@dataclass`（配 `from __future__ import annotations`）
+    # 都会在 dataclasses 里炸掉：它要靠 `sys.modules[cls.__module__]` 去解
+    # `Callable[...] | None` 这类注解，模块没挂上就是 `None.__dict__`。
+    # 实测：`dimension_sensitivity_bench.py` 正常 import 得进来，只有这条
+    # 测试的加载方式会炸——**是测试的加载方式不对，不是脚本坏了**。
+    sys.modules[spec.name] = module
     try:
         spec.loader.exec_module(module)
     except SystemExit:
         pass                            # argparse 在没参数时退出，是正常的
+    finally:
+        sys.modules.pop(spec.name, None)
 
 
 def test_脚本目录不是空的():
@@ -56,7 +65,8 @@ def test_bench跑出来的产物不许进库():
     root = pathlib.Path(__file__).resolve().parents[2]
     produced = ["backend/scripts/harness_quality_samples",
                 "backend/scripts/editing_bench_results",
-                "backend/scripts/writing_bench_results"]
+                "backend/scripts/writing_bench_results",
+                "backend/scripts/sensitivity_results"]
     tracked = []
     for rel in produced:
         out = subprocess.run(["git", "ls-files", rel], cwd=root,
