@@ -551,3 +551,108 @@ prompt。1.7 顺手把这个也修了，一行代码没改，只加了注释说�
 而这三个模式恰恰有执行 oracle。`table_column_mismatch` 可以直接搬进 `checks/`。
 然后 4.1（`score_context` 补给 block 模式）——`fits_context` 在补上前后文之后
 从"基线偏低判不出"变成"抓住（1.17→0.42）"，这条的收益已经量出来了。
+
+## 批 6 · 审查驳回批 5 的结论（台子留着）（2026-09-17）
+
+审查 agent 复核批 5，结论**不能原样过**：台子本身值得留（形状对、断点续跑对、
+852 次调用能跟 `llm_usage` 表逐行对账），**但那张灵敏度表里至少 5 条结论不能当依据**
+——其中 2 条正是下一批要动 `material_use` / `data_grounding` 的依据。
+三条最重的我逐条自验，全部属实。
+
+### ① 语料污染，第二次，而且这次躲在真实 user_id 底下
+
+批 5 的「13 篇干净语料」里有 6 篇出自**同一次 `soak.py` 压测**；本次用的 6 篇里有 3 篇是。
+
+自验：`47b046adafcb` / `12e024b55823` 的 `writing_sections` → plan
+`0e1480636763` → `parent_note_id` 的标题是 **`soak-整理一份众筹前后`**，
+正是 `soak.py:123` 的 `f"soak-{goal[:8]}"` 配上 `PLAN_GOALS` 里那条 goal。
+`1da5a3c9767b` 同签名（同 goal、parent 已删）。
+
+**去掉这 3 篇重算，4 条结论翻转**：`actionable` 抓住 → 没抓住；
+`chart_validity` 基线偏低 → 无从判断；`answers_the_question` / `follows_prompt`
+只动了一点 → 抓住。
+
+**这条连带影响批 2**：我量到段内重复 42.9% / 34.6% 的那两篇
+（`1da5a3c9767b` / `06647b9c2031`）里，至少 `1da5a3c9767b` 是 soak 产出。
+*严格说它仍是「harness 在真实知识库上的真实产出」，不是 `shot-perf` 那种合成夹具；
+但三篇最坏的出自同一个 goal，说明那个数反映的是**某一个种子**，不是 harness 的普遍表现。*
+批 2 的阈值本身不受影响（0.62 落在双峰之间的宽谷，15/18 精确为 0），
+受影响的是**严重程度那个数**。
+
+### ② `material_use` 的头条证据不成立（两半都不成立）
+
+- **as-deployed 那一半**：`modes.py:186` 的判词原文是
+  「**没给材料就算达标**」——不传事实块时打 2/2 是**判词规定的正确行为**，
+  不能当「判据废了」的证据。
+- **with-evidence 那一半**：植入器 `inj_strip_specifics` **跳过所有以 `#` / `|`
+  开头、或含 ``` 的段落**。真实笔记里标题和正文常常不隔空行，于是整节带日期的
+  正文被当成「标题段」留下——实测残留率 11–14%，一篇的 dirty 版里
+  **整张带 5 个日期的 mermaid 时间线原封不动**。
+  「把材料全剔光」这句话不成立，真正干净的证据只剩 1 篇 × 3 次。
+
+### ③ `covers_the_data`「没抓住」是空的
+
+判词要的是「**句子里提到的分组要画全，the subject of the sentence is missing**」。
+而植入器删的那条边，**三篇正文里没有一篇提到过那个节点**——打分器判 2.0 是对的，
+没东西可抓。
+
+### ④ `right_kind` 那条「三维齐刷刷 0→2」只有一维成立
+
+读判词原文：`chart_validity` 明写「…**or render_image (a markdown image
+reference)**」，`data_grounding` 明写「**Not applicable when the image is
+illustrative**」——判 2 **都是判词允许的**。只有 `right_kind`
+（"using text-to-image for what should be exact"）是真的反了，9/9 一致。
+
+另外两维该归到另一类问题：**判词写了打分器验不了的条件**
+（「a reference to an image that doesn't exist」——打分器手里只有正文，
+它无从知道那个文件在不在）。处理方式跟「判据反了」完全不同。
+
+### ⑤ 27 个植入器里有 13 个没有任何闸
+
+审查把 `inj_drop_chart_series` 换成**恒等函数**（什么都不植入），
+**44 条单测全绿存活**。植入器是整个 bench 的承重墙——它要是没植入声称的缺陷，
+整张表都是空的。
+
+### ⑥ 「掉 ≥ 半档算抓住」这条线是拍的
+
+审查拿 852 条日志做 permutation（打乱 clean/dirty 标签重算）：
+**|掉分| ≥ 0.5 的概率就有 10.1%**；38 条 probe 里按纯噪声就该有约 4 行越线。
+同一格 3 次重复有 **26.5% 不一致、3.8% 跨满量程 0↔2**。
+逐行 p 值算完，`p ≥ 0.05` 的有 20 行——包括全部三条 n=1 行和全部 5 条「只动了一点」。
+
+---
+
+### 这次定下来的规矩（比上次那条更进一步）
+
+批 4 定的是「量阈值先排掉夹具用户」。这次证明**那条不够**：
+
+> **「真实产出」不等于「用户写的」。** 这个仓里三类东西长得一样：
+> ① 用户真的写的；② `soak` / `suite` / bench 这些脚本**用真实 user_id 跑出来的**；
+> ③ `shot-perf` 那种纯合成夹具。
+> 量任何东西之前必须三类分开，而**按 user_id 和标题筛只能挡住 ①③ 之间**。
+>
+> **结构性修法**：抽一个共用的语料筛选器（按 `writing_sections` → plan →
+> parent 标题 `soak-*` / `suite-*` 这类血缘判），所有测量脚本共用一份、有单测钉着，
+> 不要每个脚本各写一份 `FIXTURE_USERS`。
+
+### 能当依据的 / 不能当依据的（下一批要照着办）
+
+**可以当依据**：`right_kind` 反了（9/9，判词明文禁止）；
+`numbers_from_tools` 干净版恒 0（24/24）；以及掉分 ≥0.9 且 p<0.01 的 7 条
+（`no_duplicate_charts` / `no_fabrication` / `factual_grounding`(fabricate) /
+`honest_caveats` / `replaces_cleanly` / `non_repetition` / `states_limits`）。
+
+**不能当依据**：`material_use` 两半（判词规定 + 植入没成形）、
+`covers_the_data` 没抓住（植入的不是那个缺陷）、
+`data_grounding`(table) 抓住（n=1、干净版 [0,2,1]、p=0.40）、
+`chart_validity`/`data_grounding` 在图片引用上的 0→2（判词明文允许）、
+`actionable` 抓住（去掉 soak 残留后翻转）。
+
+### 下一步
+
+批 7 做整改（不是重写脚本）：
+① 抽共用语料筛选器（带血缘判）并重算；② 修 `inj_strip_specifics` 的 `#`/`|` 直通，
+单测夹具换成「标题正文不隔空行」的真实形状；③ 换一个真能造出 `covers_the_data`
+缺陷的植入器；④ 13 个没闸的植入器补自验；⑤ 台账那张表补上被 `roll_up` 洗掉的
+4 条「没抓住」和逐行 p 值。
+**2.6 / 5.1 / 5.2 要等整改完再动**——现在的依据不牢。
