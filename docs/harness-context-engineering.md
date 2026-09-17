@@ -198,6 +198,98 @@ system（1188 字英文，约 300 token，常量）
 
 ---
 
+## 7. 更正：第 4 节的三条改法是错的——**截断是最差的一档**
+
+用户第 759 轮的原话：「截断是最差的方法」。这条批评比我第一版意识到的更大：
+**第 4 节的第 3、4、5 条全都在挑「从哪一头截」，没有一条在问「为什么要截」。**
+
+### 把上下文管理的手段按信息损失排一下
+
+| 档 | 手段 | 损失 | 我们在哪 |
+|---|---|---|---|
+| 最差 | **截断**：按**位置**丢，完全不看重要性 | 最大、最不可控 | `facts.py:42` `[-40:]`、`_cut_at_boundary(…, 600)`、`content_for_continue` |
+| 次差 | **摘要 / 抽取**：按理解压缩，**回不去** | 有损 | `middleware/compact.py` 折叠更早的小节 |
+| 好 | **分页**：不丢，只是不常驻，要用再换进来 | 无损 | — |
+| 最好 | **索引 + 按需读取**：上下文里放指针 | 无损，而且天然 append-only | — |
+
+我们现在全部落在最差和次差两档。
+
+而且第二档还有一篇新的对照实验直接打脸：**《Verbatim Chunks Beat Extracted
+Artifacts》** 做的就是「逐字片段 vs 抽取出来的摘要」这一组消融，结论是
+**「Fidelity Before Structure」——抽取造成的信息损失，比结构化带来的好处更大**，
+多跳推理上差距尤其明显。`Compact` 做的正是被它否掉的那件事。
+
+### 我们的处境比论文里好得多
+
+MemGPT / Letta 那套「虚拟内存分页」是为**没有外部存储**的场景设计的：
+主上下文当 RAM、外部存档当磁盘，靠函数调用在两者之间换页，
+就是为了**避免走到截断那一档**——
+> 截断这类方法能延长有效上下文，**但压缩越狠，性能退化越明显**。
+
+而我们根本不需要自己造一套内存管理：
+- **笔记正文就在 sqlite 里**，任何一节随时读得到；
+- **事实有 id**，`fact_sources` 这个工具**已经存在**；
+- 工具循环本来就在跑（`tool_iters` 1–4）。
+
+**换句话说：那些被我们截掉、折叠掉的东西，根本不需要"留在上下文里才不丢"。**
+Manus 之所以要「拿文件系统当上下文」，是因为他们没有别的存储；
+我们有，而且更结构化。
+
+### 正确的形状：把三处截断换成索引 + 按需读
+
+| 现在（截断 / 压缩） | 改成（索引 + 取） |
+|---|---|
+| `content_for_continue`：留最后 4000 字，更早的折成摘要 | **小节索引**（每节标题 + 一行）+ **当前小节逐字** + 一个「读第 N 节」的工具 |
+| `facts[-40:]`：攒满 40 条从头丢 | **事实索引**（id + 一行）+ **本轮要用的那几条逐字** + `fact_sources` 按需取全文 |
+| `_cut_at_boundary(following, 600)` | 同理：给下一节的标题和首句，需要时再读 |
+
+**这一改一次解决四件事**（而且这四件事我们是分四轮各自发现的）：
+
+1. **不再丢信息**——用户这条批评的正面回答；
+2. **索引是 append-only** → 前缀稳 → 缓存命中（本文第 1–3 节）；
+3. **上下文短** → 避开 lost-in-the-middle（`harness-longform-deepdive.md` 第 3 节）；
+4. **判据可以按小节判**（同上第 3 节、建议三）。
+
+四个从不同方向推出来的结论指向同一个改法，这本身是它对的一个信号。
+
+### 代价和风险，老实说
+
+**代价：多一到两次工具往返。** 但我们现在是每轮把 **10537 token** 整个塞进去；
+换成索引之后基线会低一大截，多一两次 round-trip 换的是「不丢信息 + 缓存命中」。
+
+**风险：模型不去调那个工具。** 这不是假想——`policy.py` 里就记着
+「上一轮没用工具」这种情况，而且它还被写成了一条降预算的规则。
+两条缓解，都必须一起上：
+- 索引行里**明写**「要看全文调 `read_section(n)`」，不指望它自己想到；
+- **当前小节永远逐字给**——保证即使一次工具都不调，这一轮也写得下去。
+  **绝不能让"能不能写"取决于"它想不想查"。**
+
+### 我撤回哪几条
+
+- ~~建议三：事实块挪到正文之后~~ → **作废**。挪位置不解决「攒满 40 条从头丢」。
+- ~~建议四：`[-40:]` 改成追加式~~ → **作废**。`[:40]` 和 `[-40:]` 是同一档的两头，
+  都在丢东西。
+- ~~建议五：固化 `Compact` 的摘要~~ → **作废**。那是在优化一个**本来就不该存在的
+  压缩**。（区别要说清楚：索引行也是一行短文字，但它是**指针**——全文随时取得回来；
+  `Compact` 的摘要是**替换**，取不回来。这是「无损」和「有损」的区别，不是长度的区别。）
+
+**保留第 1、2、6 条**（记 `cached_tokens`、把 `dup_hints` 挪到 `content` 之后、
+传 `prompt_cache_key`）——这三条跟截断无关，是纯粹的排布和记账。
+
+### 修正后的顺序
+
+```
+1. 记 cached_tokens（不变，仍是第一步）
+2. 打分 prompt 挪 dup_hints（不变，两行、最安全）
+3. 【新】正文换成「小节索引 + 当前小节逐字 + read_section 工具」
+4. 【新】事实换成「事实索引 + 本轮逐字 + fact_sources 按需取」
+5. Compact 随 3 一起退休
+6. prompt_cache_key（不变）
+```
+
+第 3 条是这一轮真正的主菜，也是最大的一处改动。
+**它要等第 1 条落地之后再做**——否则改完连「命中率有没有上去」都答不出来。
+
 ## 来源
 
 - [Prompt caching | OpenAI API（规则、字段、`prompt_cache_key`）](https://developers.openai.com/api/docs/guides/prompt-caching)
@@ -207,3 +299,9 @@ system（1188 字英文，约 300 token，常量）
 - [Context Engineering for AI Agents: Part 2（Phil Schmid）](https://www.philschmid.de/context-engineering-part-2)
 - [KV cache routing: optimizing agentic AI infrastructure](https://www.ability.ai/blog/kv-cache-routing-agent-infrastructure)
 - [Leyline: KV Cache Directives for Agentic Inference](https://arxiv.org/pdf/2606.01065)
+
+**不截断：分页与外部化（第 7 节）**
+- [MemGPT: Towards LLMs as Operating Systems](https://arxiv.org/pdf/2310.08560) / [Letta](https://www.leoniemonigatti.com/blog/memgpt.html)
+- [Context Engineering for AI Agents: Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus)
+- [Verbatim Chunks Beat Extracted Artifacts: A Controlled Ablation of Memory Representations](https://arxiv.org/pdf/2601.00821)
+- [Cooperative Memory Paging with Keyword Bookmarks for Long-Horizon LLM Conversations](https://arxiv.org/pdf/2604.12376)
