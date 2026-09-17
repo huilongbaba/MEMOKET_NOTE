@@ -943,3 +943,211 @@ bench 侧那个 `table_column_mismatch`（5.x 要搬进 `checks/` 的那个）�
    要么把每格重复次数提到 5 次以上（C(10,5)=252，两侧 p 最低 0.008）。
    **这是下一批动 5.1/5.2 之前的前置**。
 4. 批 2 的「段内重复严重程度」按共用筛选器重算一遍。
+
+## 批 8 · 把证据传给打分器（计划 4.1）（2026-09-17）
+
+**这一批改的是生产代码**（批 5 / 批 7 交的是台子和表）。做的事只有一句：
+**把判词里点名要、而生产从来没传过的三样东西，真的递给打分器**——
+六个 block 模式的前后文 / 用户那条指令 / 选中的原文，加上**所有模式**这次跑
+累积的事实块。**一个维度的判词还是一个字都没改。**
+
+依据是批 7 顶出来的那条反转：`material_use` 在生产里恒判 2.0 **不是判据废了**，
+`modes.py:186` 的判词原文写着「没给材料就算达标」——不传材料时判 2 是**判词规定的
+正确行为**。同一条空账下还站着 `fits_context`（4/4 满分）、`data_grounding`
+（2/2 满分）、`numbers_from_tools`（干净版恒 0）、`follows_prompt`
+（with-evidence 掉分 0.0，n=3，p=1.0——因为那一臂其实也没拿到指令）。
+
+### 改了什么
+
+| # | 改动 | 落在哪 |
+|---|---|---|
+| ① | 新模块：打分上下文由**一处**拼。`for_block`（前后文 / 指令 / 选区，纯函数）+ `material`（事实块渲染 + 截断 + 「没列全」尾注）+ `with_material` | `app/harness/score_context.py`（新，约 150 行） |
+| ② | 六个 block 模式补 `score_context`（计划 4.1） | `app/routers/compose_block.py` |
+| ③ | `loop._evaluate` 把 `st.facts` 拼进 context，**不分模式**（循环结构没动，只动了这一个 helper） | `app/harness/loop.py` |
+| ④ | 写作和打分**共用同一组取量常量**（`BEFORE_CHARS=900` / `AFTER_CHARS=450` / `SELECTION_CHARS=2000`） | `app/harness/hooks/block.py` |
+| ⑤ | **那句假 docstring 改成真话**（仓里第二处文档与实现不符，第一处是批 3 的 `_score()`） | `app/routers/note_harness.py` |
+| ⑥ | bench 的 `as-deployed` 一档改成**由生产代码自己拼**（`production_context()` 调 `score_context`），不再是脚本里硬编一份跟着抄；三条已经接进生产的 `with-evidence` probe 删掉 | `scripts/dimension_sensitivity_bench.py` |
+| ⑦ | 架构文档第 4 节「打分器能看见什么」整段重写；目录图 + `harness/__init__` 地图加新模块；计划 4.1 标 ✅；调研文档「问题一」加「已落地」 | `docs/` 四份 |
+
+### 每个模式现在到底把什么交给打分器
+
+| 模式 | 批 8 之前 | 现在 |
+|---|---|---|
+| `note` | 核心张力 · 结构节拍 · 标题结构 | 同左 **＋ 事实块** |
+| `section` | 分段主题 · 总体目标 · 其他分段小结 | 同左 **＋ 事实块** |
+| `eda` / `chart` / `table` | **什么都没有** | 前后文（900 / 450 字）**＋ 事实块** |
+| `analysis` | **什么都没有** | 前后文 ＋ **用户那条指令** ＋ 事实块 |
+| `prompt` | **什么都没有** | 前后文 ＋ **用户那条指令** ＋ 事实块 |
+| `custom` | **什么都没有** | 前后文 ＋ **用户那条指令** ＋ **选中的原文** ＋ 事实块 |
+
+三条定在实现里的规矩：
+
+* **事实块必须是 `st.facts`（这次跑累积的那一份），不许在打分前重新检索。**
+  `_score_context` 的 docstring 里记着这个真 bug：修订 / 写作 / 打分三步各自
+  独立检索，打分器拿着第三批事实去判正文，报「知识库里查无此事」，而那一句
+  正是写作那一步刚用过的材料。
+* **材料排在 context 的最后一项**，紧挨着 `[Content]`。代价说清楚：材料每轮
+  增长会把正文那段前缀缓存顶掉（`harness-context-engineering.md` §2② 里
+  `dup_hints` 踩过同一件事）。这里选准确率，铁律 7。
+* **截断必须说出来。** 材料超 6000 字时尾注一句「没列出来的不代表知识库里没有」
+  ——不说的话 `factual_grounding` 会把**真有出处**的句子判成编造，下一轮的诊断
+  还会逼着模型去改一段本来对的内容。
+
+### 灵敏度对照：**没跑成，一个新数字都没有**
+
+**打分那台模型不在当前这张网上。** `llm_base_url` 是 `http://192.168.77.8:8080/v1`，
+本机现在挂在 `192.168.3.0/24` 上（外加一条 VPN 默认路由），`curl -m 10` 连 `/v1/models`
+超时（exit 28），`ping` 100% 丢包，本机也没有任何本地模型在听端口。
+**换一台模型去跑等于换了评委，跟批 7 的数字不可比，所以没换。**
+
+改完之后的口径变化是确定的：`as-deployed` 现在带上了材料 / 前后文 / 指令，
+**指纹一变，日志里 486 行对不上现在这套取材，不进统计，待跑 396 格**
+（这正是批 7 那条「格子身份带正文＋上下文指纹」在按设计工作——**代价是这一批
+的表要重跑**，不能拿旧分数拼进新表）。
+
+**这一批因此没有任何灵敏度结论。** 批 7 那张表量的是**批 8 之前那条接线**，
+它现在只能当**预测值**读：
+
+| 维度 | 批 7 `as-deployed`（旧接线） | 批 7 `with-evidence`（等于批 8 的新接线） | 批 8 重测 |
+|---|---|---|---|
+| `material_use` | 2.0→1.58，掉 0.42，n=4，p=0.048，只动了一点 | 2.0→0.89，掉 1.11，n=3，p=0.0032，抓住 | **待跑 18 格** |
+| `fits_context` | 0.56→0.33，掉 0.22，n=3，p=0.395，基线偏低 | 1.11→0.33，掉 0.78，n=3，p=0.0035 | **待跑 18 格** |
+| `follows_prompt` | 1.67→1.11，掉 0.56，n=3，p=0.069，只动了一点 | 1.67→1.67，掉 **0.0**，n=3，p=1.0，**没抓住** | **待跑 18 格** |
+| `data_grounding` | table 0.67→0.0（基线偏低，n=1）· chart 0.0→0.0（无从判断，n=1） | 没跑过 | **待跑 12 格**（两条 probe 各 6 格，都是 n=1） |
+| `numbers_from_tools` | 干净版**恒 0**，3 篇 18 次一格没有例外 | 没跑过 | **待跑 24 格**（invent_statistic 18 + scramble_numbers 6） |
+
+**`follows_prompt` 那一行要特别读**：批 7 的 with-evidence 臂掉分 0.0，
+而那一臂是**把指令塞进 context** 的——所以「补了指令也没反应」这个结论
+在批 8 之后仍然可能成立。**接线补上不等于判据灵敏**，这条得等重测。
+
+回到这张网之后，逐条跑（每条都能单独收敛，`--report` 只读日志不发调用）：
+
+```
+cd backend
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only strip_specifics    --repeats 3   # material_use 18 格
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only heading_flood      --repeats 3   # fits_context 18 格
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only answer_swap        --repeats 3   # follows_prompt 18 + answers_the_question 18
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only invent_table_cells --repeats 5   # data_grounding（表）n=1，见下
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only shift_dates        --repeats 3   # data_grounding（图）6 + factual_grounding 18
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only invent_statistic   --repeats 3   # numbers_from_tools 18
+.venv/bin/python scripts/dimension_sensitivity_bench.py --only scramble_numbers   --repeats 5   # numbers_from_tools，n=1 所以加重复
+.venv/bin/python scripts/dimension_sensitivity_bench.py --report
+```
+
+**图表那一组的前置没有变**（批 7 ⑨）：5 篇真实语料里只有 1 篇带 mermaid、
+1 篇带 markdown 表，所以 `data_grounding` / `chart_validity` / `right_kind` /
+`has_charts` / `no_duplicate_charts` / `covers_the_data` / `table_validity`
+**全部 n=1**。n=1 篇 × 3 次时排列总数只有 C(6,3)=20，**两侧 p 最小就是 0.10，
+数学上不可能显著**。要么 `--repeats 5`（C(10,5)=252，两侧 p 最低 0.008），
+要么这一组老实写「样本不足、不下结论」。**不许外推。**
+
+### 确定性那一半量到了（不需要模型）
+
+在 5 篇真实用户语料 × 全部 probe 的 82 个格子上，把新旧 context 各渲染一遍
+（`rubric._build_prompt`）：
+
+| 范围 | 打分 prompt 平均长度 | 变化 |
+|---|---|---|
+| 全部 82 格 | 2915 → 3628 字 | **+24%** |
+| 六个 block 模式（34 格） | 2308 → 3530 字 | **+53%** |
+| 长文两条（48 格） | 3345 → 3697 字 | **+11%** |
+
+涨最多的一格是 `eda/chart-block-narrated/drop_mentioned_node`：2972 → 4661 字。
+16 个格子一个字没变——那几篇那几块里摘不出带日期 / 数字的句子，材料块是空的
+（生产里也有这种跑：检索什么都没回来）。
+
+### 突变验（18 个）
+
+每个突变体前后都 `rm -rf __pycache__`（批 5 踩过）。
+
+| # | 把什么改坏 | 结果 |
+|---|---|---|
+| ① | router 不再装 `score_context` | ✅ |
+| ② | `for_block` 不给前后文 | ✅（三条同时红） |
+| ③ | 前后文不截断，整篇塞进去 | ✅ |
+| ④ | 不给用户那条指令 | ✅ |
+| ⑤ | 不给选中的原文 | ✅ |
+| ⑥ | `loop._evaluate` 撤回：不拼材料 | ✅ |
+| ⑦ | 传本轮的 `facts_new` 而不是累积的 `facts` | ✅ |
+| ⑧ | 材料截断时不说「没列全」 | ✅ |
+| ⑨ | 没有材料时给个空壳「（无相关记录）」 | ✅ |
+| ⑩ | 材料块改个名字（不再叫「知识库事实」） | ✅ |
+| ⑪ | 材料排到 context 最前面 | ✅ |
+| ⑫ | 写作那一步撤回自己的取量（跟打分脱钩） | ✅ |
+| ⑬ | bench 用回自己那份 as-deployed | ✅（**第一版用例没抓住**，见下） |
+| ⑭ | bench 自己抄一份上下文形状 | ✅ |
+| ⑮ | bench 的材料只给 block 模式 | ✅ |
+| ⑯ | 删掉的 `with-evidence` probe 加回来 | ✅ |
+| ⑰ | 往 `loop.py` 里塞字符串 `"facts"`（收窄那条闸之后它还认不认得出真泄漏） | ✅ |
+| ⑱ | 往 `loop.py` 里塞 `chain.facts`（非 `st.` 的属性泄漏） | ✅ |
+
+**⑬ 漏网，原因是「用例不够」不是「实现对」**（批 3 / 批 5 / 批 7 记的同一条）：
+新加的四条 bench 用例全都直接调 `production_context()`，**没有一条管
+`build_tasks` 用不用它**。把 `build_tasks` 里那一行改回 `dict(subject.context)`
+——等于整批的测量口径悄悄退回批 7——**155 条全绿**。补了一条盯
+「真正发出去的那一格 `Task.context` 里有没有前后文和材料」的用例才红。
+
+### 实施中发现的、计划里没写到的
+
+**① `test_循环不认识任何一个middleware` 误报了，判据太宽。**
+循环要把材料递给打分器，写的是 `st.facts`——而累积材料那条 middleware 正好也叫
+`facts`，那条闸按「词」匹配，当场红。读 State 的字段恰恰是循环**该**做的事
+（它早就在读 `st.facts_new` / `st.content`），跟「循环知道链上有谁」是两回事。
+判据收窄成「`st.<字段>` 不算」，**并当场验证真泄漏的两种形状仍然红**（⑰⑱）。
+*这是一次「闸挡住了对的改动」，不是「改动错了」——但收窄闸必须配突变验，
+不然就是把闸关了。*
+
+**② bench 的 `as-deployed` 一改口径，日志里 486 行当场作废。**
+这是批 7 那条「格子身份带正文 + 上下文指纹」按设计工作（旧分数混进新表是
+**毫无症状**的错），但代价要写出来：**改接线 = 整张灵敏度表重跑**。
+选择是明确的：让 `as-deployed` 名副其实，比省 396 次调用重要。
+
+**③ `custom` 的选区不会跟后文重复。** 前端 `App.runBlock` 在发请求之前就
+把选中那段从 doc 里删掉了（`changes: {from, to, insert: ''}` 之后才取
+`doc.toString()`），所以 `after` 里没有它——选区单独给一份不构成重复。
+*反过来说，bench 拼不出真实选区（合成一段等于凭空造变量），所以
+`replaces_cleanly` 那一行的 as-deployed 比生产**保守**，这条差异记在
+`production_context` 的 docstring 里。*
+
+**④ `style_fit` 是同一种病，但这一批**没有**治它。** 个人偏好档案在 router
+里现成（`_profile(user)`），判词也明写着「贴合用户的个人偏好」——按理该一起传。
+**没传的依据**：批 7 实测补了偏好的那一臂只掉 0.17（n=2 篇 12 次，p=1.0），
+**没有任何证据说明传了有用**。判据宁可窄一点，等它自己拿出数来。
+于是 `with-evidence` 这一档现在只剩这一条，含义也更干净了：
+**「生产至今仍然不给的证据」**。
+
+**⑤ 一条要在重测时盯住的污染风险。** block 模式的 `st.facts` 里混着工具**原样
+返回**的内容（`hooks/block.prepare` 把 raw 也塞进去），其中可能有整段 mermaid。
+材料块因此可能带图，而 `has_charts` / `no_duplicate_charts` 判的是「正文里的图」。
+重测时**先看这两行的干净臂有没有整体走高**——真走高就要在材料渲染时剥掉围栏块。
+现在不动：没有数就改是拍脑袋。
+
+### 闸
+
+后端 **1319 → 1340**（+21：`test_score_context.py` 新增 15 条；
+`test_dimension_sensitivity_bench.py` 119 → 125 条）。
+前端 51 文件 / 254 条不变。`test_doc_counts` / `test_directory_map` /
+`test_architecture_claims` 全绿（新模块已经进目录图和 `harness/__init__` 的地图；
+Mode / check / middleware / 工具的数量一个都没变）。
+
+### 这一批**没做**什么
+
+- **判词一个字都没改。** 2.6 / 5.1 / 5.2 仍然等重测。
+- **没有删维度，也没有加维度。**
+- **block 模式的 `stop_when` 没补**（[EVAL] 问题三）——调研文档自己写的是
+  「先看数据，不建议现在就加」，数据还没有。
+- **个人偏好没传给打分器**（见上面④）。
+- **批 2 的「段内重复严重程度」还是没按共用筛选器重算。**
+
+### 下一步
+
+1. **回到有模型的网上，先跑那 5 维 90 格**（`material_use` 18 + `fits_context` 18
+   + `follows_prompt` 18 + `data_grounding` 12 + `numbers_from_tools` 24；
+   上面那几条 `--only` 会顺带跑掉同名植入器的别的 probe，全表 396 格），把批 7 的
+   `with-evidence` 行和批 8 的 `as-deployed` 行逐条对上。
+   **对不上的比对得上的重要**：`follows_prompt` 如果仍然掉 0.0，
+   那说明问题在判词或者在指令的写法上，不在接线。
+2. 跑完再动 2.6 / 5.1 / 5.2。`numbers_from_tools` 现在真的能看到工具返回值了，
+   它是否还「干净版恒 0」是 5.2 唯一的依据。
+3. 图表那一组仍然 n=1，`--repeats 5` 之前不下任何结论。
+4. 盯材料块里的 mermaid 污染（上面⑤）。

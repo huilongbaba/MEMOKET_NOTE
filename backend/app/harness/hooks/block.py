@@ -17,6 +17,7 @@ from ..agent_loop import ToolTrace
 from .. import prompts
 from ..prompts import BLOCK_SYSTEM
 from ..state import State
+from ..score_context import AFTER_CHARS, BEFORE_CHARS, SELECTION_CHARS
 from ..checks.grounding_rules import fix_bold_punct
 
 # Sent into the focus round. The model has already explored by this point;
@@ -111,15 +112,19 @@ class BlockHooks:
             parts.append(f"【用户的具体要求】{self.prompt.strip()}")
         if self.selection.strip():
             parts.append("【用户选中的这一段（你的输出要替换掉它）】\n"
-                         + self.selection.strip()[:2000])
+                         + self.selection.strip()[:SELECTION_CHARS])
         if self.profile:
             parts.append("【用户的写作偏好】\n"
                          + "\n".join(f"- {p}" for p in self.profile))
         if facts:
             parts.append("【工具查到的东西】\n" + facts)
-        parts.append("【光标前面的正文】\n" + (st.before[-900:] or "（这里是开头）"))
+        # 这三个取量常量在 `harness/score_context.py`，**写作和打分共用同一组**：
+        # 批 8 给打分器补上下文时，`fits_context` 判的是「跟周围合不合」——
+        # 写作看 900 字、打分看 300 字的话，它会去罚一段写作那一步根本没见过
+        # 的上下文。
+        parts.append("【光标前面的正文】\n" + (st.before[-BEFORE_CHARS:] or "（这里是开头）"))
         if st.after.strip():
-            parts.append("【光标后面的正文】\n" + st.after[:450])
+            parts.append("【光标后面的正文】\n" + st.after[:AFTER_CHARS])
         parts.append(
             "【怎么输出】\n只输出要插入到光标位置的那一块内容本身，"
             "不要写「好的」「以下是」这类开场白，不要复述上面的要求，"

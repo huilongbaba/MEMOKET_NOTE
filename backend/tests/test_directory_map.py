@@ -181,7 +181,7 @@ def test_每个包的入口都说清了自己是干什么的():
 
 
 def test_harness的地图列全了它自己的文件():
-    """`harness/` 顶层 14 个文件，光看文件名分不出「哪个是循环本身、哪个是
+    """`harness/` 顶层 15 个文件，光看文件名分不出「哪个是循环本身、哪个是
     某个 middleware 背后的规则」——地图就在 `__init__.py` 里，得跟着代码走。
     """
     init = ROOT / "app" / "harness" / "__init__.py"

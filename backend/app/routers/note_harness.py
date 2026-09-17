@@ -26,11 +26,19 @@ MAX_ROUNDS_CAP = 30
 def _score_context(st: State) -> dict[str, str]:
     """What the scorer needs beyond the text itself.
 
-    Facts are not in here: the loop hands ``evaluate`` the run's accumulated
-    material directly. That is the fix for a measured bug -- the revise, write
-    and score steps each retrieved independently, so the scorer judged the
-    text against a third batch of facts and reported "not found in the
-    knowledge base" about a line the writer had just used.
+    材料不在这里，它每一轮都在长：`loop._evaluate` 把这次跑累积的那一份
+    （`st.facts`）现拼进 context。**必须是累积的那一份，不能在打分前重新检索
+    一遍**——那是量出来的真 bug：修订、写作、打分三步各自独立检索，打分器
+    拿着第三批事实去判正文，报「知识库里查无此事」，而那一句正是写作那一步
+    刚用过的材料。
+
+    **这段话在批 8 之前是假的**（仓里第二处「文档与实现不符」，第一处是批 3
+    查出的 `_score()`）：它写着「the loop hands evaluate the run's accumulated
+    material directly」，而 `_evaluate` 当时只传 content / dimensions /
+    dup_hints / context，**一条事实都没传**。后果是 `material_use` 在生产里
+    恒判 2 分——判词写着「没给材料就算达标」，那个满分是判词规定的正确行为，
+    跟这一维灵不灵一点关系都没有（台账批 6 ② / 批 7 下一步①）。
+    批 8 把实现补上，这段话才成立。
     """
     ctx: dict[str, str] = {}
     spine, beats = st.bag.get("spine", ""), st.bag.get("beats") or []

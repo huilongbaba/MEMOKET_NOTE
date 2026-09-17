@@ -13,12 +13,18 @@ CriticGPT 的训练数据是「让人往代码里塞一个 bug，再写下对这
 （前者该改判据，后者该补上下文），而现有数据分不开它们。
 
 所以每一行结果都带一个 `condition` 列：
-* `as-deployed`：跟生产里 `loop._evaluate` 一模一样的上下文（长文两条 harness
-  给 `score_context`，六个 block 模式**什么都不给**）；
-* `with-evidence`：额外把那一维的判词里**明确提到、而生产从不提供**的证据
-  塞进 context（【知识库事实】块、个人偏好、用户那条指令、前后文）。
+* `as-deployed`：跟生产里 `loop._evaluate` 一模一样的上下文。**这一档由生产
+  代码自己拼**（`production_context()` 调 `app.harness.score_context`），
+  不是脚本里硬编一份跟着抄——抄的那份跟生产同步全靠人记得改。
+* `with-evidence`：额外把那一维的判词里**明确提到、而生产至今仍然不给**的
+  证据塞进 context。批 8 之后这一档只剩 `style_fit` 的个人偏好一项。
 
 同一个缺陷在两种条件下的差值，就是「判据废了」和「条件没出现」的分界线。
+
+**批 8 把三样证据从 `with-evidence` 搬进了生产**（事实块 / block 的前后文 /
+用户那条指令，计划 4.1）。于是那几行的对照关系变成：
+**批 7 的 `with-evidence` 行 ⇄ 批 8 的 `as-deployed` 行**。三条 `with-evidence`
+probe 因此删掉了——留着就是同一份上下文跑两遍。
 
 ## 跟旁边两个 bench 的分工
 
@@ -78,6 +84,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import corpus_lineage  # noqa: E402  （语料血缘判据，所有测量脚本共用这一份）
+from app.harness import score_context  # noqa: E402  （as-deployed 那一档由生产代码自己拼）
 
 ROOT = Path(__file__).resolve().parent
 LOG_PATH = ROOT / "dimension_sensitivity_log.jsonl"
@@ -1102,45 +1109,95 @@ class Probe:
         return f"{self.mode}/{self.selector}/{self.injector}/{self.condition}"
 
 
-def _ev_facts(subject: Subject, note: dict) -> dict[str, str]:
-    """把干净正文里真的写着的日期 / 数字摘成【知识库事实】块。
+# ------------------------------------------------- as-deployed 那一档 ---
+#
+# **这一档必须由生产代码自己拼**，脚本不许另写一份：批 8 之前它是脚本里
+# 硬编的「长文两条给 spine/beats、六个 block 模式什么都不给」——那份硬编
+# 跟生产同步全靠人记得改。现在前后文 / 指令 / 选区走
+# `app.harness.score_context.for_block`、材料走 `score_context.material`，
+# 跟 `loop._evaluate` 是同一份函数。生产那边的接线被撤掉，这张表会跟着变。
 
-    这是 `_MATERIAL_USE` / `_FACTUAL_GROUNDING` 判词里点名要的那一块，
-    而 `loop._evaluate` **从来没给过**（它只传 `score_context`，里面没有事实）。
+_BLOCK_MODES = ("eda", "chart", "table", "analysis", "prompt", "custom")
+
+# 只有这三个模式在生产里**一定**有用户那条指令：`prompt` / `custom` 是用户
+# 亲手打的，`analysis` 的 task 本身就是一个问题。其余三个（chart/table/eda）
+# 用户常常什么都不打，给一句合成指令等于凭空多一个变量。
+_HAS_INSTRUCTION = ("prompt", "custom", "analysis")
+
+
+def derived_facts(subject: Subject) -> list[str]:
+    """把干净正文里真的写着的日期 / 数字摘成这次跑的"材料"。
+
+    **这是 `st.facts` 的替身**：bench 不跑 harness，手里没有真实检索结果，
+    只能拿正文里那些带日期 / 数字的句子当作"写作那一步用过的材料"。
+    对 `shift_dates` / `strip_specifics` / `invent_table_cells` 这类植入来说
+    它是对的替身——植入改的正是这些句子，材料是照**干净版**摘的，
+    于是"正文跟材料对不对得上"这件事真的可判。
     """
-    facts = []
-    for i, sent in enumerate(re.split(r"(?<=[。！？])", subject.text)):
+    facts: list[str] = []
+    for sent in re.split(r"(?<=[。！？])", subject.text):
         s = sent.strip()
         if len(s) > 12 and (_DATE.search(s) or _QTY.search(s)):
             facts.append(f"[F{len(facts) + 1}] {s[:120]}")
         if len(facts) >= 12:
             break
-    if not facts:
-        return {}
-    return {"知识库事实": "\n".join(facts)}
+    return facts
 
 
-def _ev_profile(subject: Subject, note: dict) -> dict[str, str]:
-    """`style_fit` 判的是"贴合用户的个人偏好"，而偏好档案生产里也没传给打分器。"""
-    return {"用户的个人偏好": "- 只写事情本身，不要旁白证据够不够\n"
-                              "- 语气克制，不用套话\n- 能给结论就别给过程"}
-
-
-def _ev_instruction(subject: Subject, note: dict) -> dict[str, str]:
-    """`follows_prompt` / `answers_the_question` 判的是"有没有照指令做"，
-    而那条指令生产里同样没传给打分器（block 模式的 context 是空的）。"""
-    head = (note.get("title") or "").strip() or "这篇笔记"
-    return {"用户的指令": f"围绕《{head}》这篇笔记当前这一段，按原主题把它写清楚，不要写到别的主题上去。"}
-
-
-def _ev_surrounding(subject: Subject, note: dict) -> dict[str, str]:
-    """`fits_context` 判的是"跟周围合不合"，而周围没给它看（计划 4.1）。"""
+def surrounding(subject: Subject, note: dict) -> tuple[str, str]:
+    """这一块在原笔记里的前后文。截多少由 `score_context` 定，这里给全的。"""
     content = note["content"]
     at = content.find(subject.text[:40]) if subject.text else -1
     if at < 0:
         at = len(content) // 2
-    return {"这一块前面的正文": content[max(0, at - 700): at].strip() or "（笔记开头）",
-            "这一块后面的正文": content[at + len(subject.text): at + len(subject.text) + 500].strip() or "（笔记结尾）"}
+    return content[:at], content[at + len(subject.text):]
+
+
+def instruction_for(note: dict) -> str:
+    head = (note.get("title") or "").strip() or "这篇笔记"
+    return f"围绕《{head}》这篇笔记当前这一段，按原主题把它写清楚，不要写到别的主题上去。"
+
+
+def production_context(probe: "Probe", subject: Subject, note: dict) -> dict[str, str]:
+    """生产里 `loop._evaluate` 这一刻真正递给打分器的那份 context。
+
+    三段拼起来，**每一段都走生产的那个函数**：
+      ① 长文两条 harness 的 router 装的（spine / beats / 分段主题）——
+         取材器已经按 router 抄好放在 `subject.context` 里；
+      ② 六个 block 模式的前后文 / 指令（`score_context.for_block`，计划 4.1）；
+      ③ 这次跑累积的材料（`score_context.material`）——**所有模式都有**，
+         `loop._evaluate` 是不分模式拼的。
+
+    **跟生产的两处已知差**，都记在这儿，别当成生产也这样：
+    * `custom` 少了选区那一项——bench 手上没有真实的选中文本，合成一段等于
+      凭空造一个变量。所以 `replaces_cleanly` 这一行比生产**保守**。
+    * 材料是从正文里摘的（`derived_facts`），不是真实检索结果。
+    """
+    ctx = dict(subject.context)
+    if probe.mode in _BLOCK_MODES:
+        before, after = surrounding(subject, note)
+        ctx.update(score_context.for_block(
+            before=before, after=after,
+            prompt=instruction_for(note) if probe.mode in _HAS_INSTRUCTION else ""))
+    block = score_context.material(derived_facts(subject))
+    if block:
+        ctx[score_context.MATERIAL_KEY] = block
+    return ctx
+
+
+# ------------------------------------------------ with-evidence 那一档 ---
+#
+# 批 8 之后这一档只剩**生产至今仍然不给**的证据。原来挂在这儿的三样
+# （事实块 / 前后文 / 用户那条指令）已经接进生产，它们的对照组
+# 变成了上面那个 `production_context`——台账批 8 的前后对照就是拿
+# 批 7 的 `with-evidence` 行去对批 8 的 `as-deployed` 行。
+
+def _ev_profile(subject: Subject, note: dict) -> dict[str, str]:
+    """`style_fit` 判的是"贴合用户的个人偏好"，而偏好档案生产里仍然没传给
+    打分器——**没动它是有依据的**：批 7 实测这一维在补了偏好的那一臂只掉
+    0.17（n=2，p=1.0），没有任何证据说明传了有用。判据宁可窄一点。"""
+    return {"用户的个人偏好": "- 只写事情本身，不要旁白证据够不够\n"
+                              "- 语气克制，不用套话\n- 能给结论就别给过程"}
 
 
 PROBES: tuple[Probe, ...] = (
@@ -1149,14 +1206,10 @@ PROBES: tuple[Probe, ...] = (
     Probe("note", "whole-with-spine", "off_spine_graft", ("spine_fidelity",)),
     Probe("note", "whole-with-beats", "drop_last_section", ("beat_coverage",)),
     Probe("note", "whole", "shift_dates", ("factual_grounding",)),
-    Probe("note", "whole", "shift_dates", ("factual_grounding",),
-          condition="with-evidence", evidence=_ev_facts),
     Probe("note", "whole", "fabricate_specifics", ("factual_grounding",)),
     Probe("note", "whole", "heading_levels", ("coherence",)),
     Probe("note", "whole", "double_ending", ("coherence",)),
     Probe("note", "whole", "strip_specifics", ("material_use",)),
-    Probe("note", "whole", "strip_specifics", ("material_use",),
-          condition="with-evidence", evidence=_ev_facts),
     Probe("note", "whole", "audit_voice", ("style_fit",)),
     Probe("note", "whole", "audit_voice", ("style_fit",),
           condition="with-evidence", evidence=_ev_profile),
@@ -1174,8 +1227,6 @@ PROBES: tuple[Probe, ...] = (
     Probe("eda", "chart-block-narrated", "drop_mentioned_node", ("covers_the_data",)),
     Probe("eda", "numeric-block", "strip_next_steps", ("actionable",)),
     Probe("eda", "numeric-block", "heading_flood", ("fits_context",)),
-    Probe("eda", "numeric-block", "heading_flood", ("fits_context",),
-          condition="with-evidence", evidence=_ev_surrounding),
     # ---- chart 模式（4 维）
     Probe("chart", "chart-block", "break_mermaid_fence", ("chart_validity",)),
     Probe("chart", "chart-block", "handwrite_mermaid", ("chart_validity",)),
@@ -1186,13 +1237,9 @@ PROBES: tuple[Probe, ...] = (
     Probe("table", "table-block", "invent_table_cells", ("data_grounding",)),
     # ---- analysis 模式（answers_the_question / states_limits）
     Probe("analysis", "numeric-block", "answer_swap", ("answers_the_question",)),
-    Probe("analysis", "numeric-block", "answer_swap", ("answers_the_question",),
-          condition="with-evidence", evidence=_ev_instruction),
     Probe("analysis", "numeric-block", "strip_caveats", ("states_limits",)),
     # ---- prompt / custom 模式（follows_prompt / no_fabrication / replaces_cleanly）
     Probe("prompt", "paragraph", "answer_swap", ("follows_prompt",)),
-    Probe("prompt", "paragraph", "answer_swap", ("follows_prompt",),
-          condition="with-evidence", evidence=_ev_instruction),
     Probe("prompt", "paragraph", "fabricate_specifics", ("no_fabrication",)),
     Probe("custom", "paragraph", "lead_in", ("replaces_cleanly",)),
 )
@@ -1285,7 +1332,7 @@ def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
             if why:
                 skips.append({"note": note["id"], "probe": probe.id, "skipped": why})
                 continue
-            ctx = dict(subject.context)
+            ctx = production_context(probe, subject, note)
             if probe.evidence:
                 extra = probe.evidence(subject, note)
                 if not extra:

@@ -22,7 +22,7 @@ from ..harness import tools
 from ..util import llm
 from ..editor import vision
 from ..editor import restructure, textshape
-from ..harness import loop, modes
+from ..harness import loop, modes, score_context
 from ..harness.events import to_sse
 from ..harness.hooks.block import BlockHooks
 from ..harness.state import State
@@ -64,6 +64,15 @@ async def compose_block(body: ComposeBlockIn, request: Request,
             before=before,
             after=after,
         )
+        # 打分器的上下文（计划 4.1）。**六个 block 模式在批 8 之前一个都没有**：
+        # `fits_context` 判的是「跟周围的正文合不合、标题比上面那个低不低一级」，
+        # 而周围的正文只有写作那一步看得到；`follows_prompt` 判的是「有没有照
+        # 指令做」，而指令同样没递过去（批 7 实测它在补了指令的那一臂掉分 0.0、
+        # p=1.0——两臂其实都没拿到指令）。事实块不在这里，它每轮都在长，由
+        # `loop._evaluate` 现装。
+        st.bag["score_context"] = score_context.for_block(
+            before=before, after=after,
+            prompt=body.prompt, selection=body.selection)
         hooks = BlockHooks(prompt=body.prompt, selection=body.selection,
                            profile=_profile(user), title=body.title)
         # 恢复时靠这些重建 hooks（见 routers/harness.py 的 _hooks_for）

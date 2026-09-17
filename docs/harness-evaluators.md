@@ -125,6 +125,12 @@
 
 ### 问题一：六个 block 模式打分时，一点上下文都没有
 
+> **已落地（批 8，计划 4.1）**：前后文 / 用户那条指令 / 选中的原文由
+> `harness/score_context.for_block` 装进 `st.bag["score_context"]`，事实块由
+> `loop._evaluate` 按 `st.facts` 现拼、**所有模式一视同仁**。下面这一节记的是
+> 第 756 轮当时的现状，留着是因为它是这次改动的来由；**别照着它判断今天的代码**。
+> 重测的数字见 `docs/TRACELOG-harness.md` 批 8。
+
 `score_context` 只有两处设置（`routers/note_harness.py:93`、
 `routers/writing_plan.py:253`）。**六个 block 模式一个都没有**——
 打分器看到的只有新生成的那一块（`hooks/block.py:82`：`st.content = 新块`）。

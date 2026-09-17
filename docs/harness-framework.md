@@ -187,6 +187,8 @@ backend/app/
     tailing.py               撞 token 上限后：要不要续尾 / 续回来的像不像半句
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
     events.py                AG-UI 事件 + 12 个 CUSTOM 名字 + to_sse()
+    score_context.py         打分器除了正文还能看到什么：block 的前后文 / 指令 / 选区（for_block）
+                             ＋这次跑累积的材料（with_material，loop 每轮现拼）
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
     middleware/              14 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
@@ -297,23 +299,42 @@ RUN_FINISHED(content, reason, run_id?)
 **判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（15 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
-**打分器能看见什么**：`loop._evaluate` 只给三样——正文、这个 Mode 的维度判词、
-`st.bag["score_context"]`（长文两条是 spine/beats 或分段主题，**六个 block 模式是空的**），
-外加机械查重的 `dup_hints`。**检索到的事实、个人偏好档案、用户那条指令、工具返回值，
-一样都没有传给它。** 而好几条维度的判词明确写着要对着这些东西判
-（`material_use` 说「只在【知识库事实】块里确实给了材料时才判」、`numbers_from_tools`
-说「每个统计量都能追到工具结果」、`style_fit` 说「贴合用户的个人偏好」、
-`follows_prompt` 说「有没有照指令做」）。植入缺陷的灵敏度实测量到的后果
-（批 5 量、批 6 驳回、批 7 在**只留真实用户语料**上重算，n / p 见台账）：
+**打分器能看见什么**（批 8 改过一轮，改之前这里是一笔空账）：
+`loop._evaluate` 给的是正文、这个 Mode 的维度判词、机械查重的 `dup_hints`，
+外加一份 context——context 由 `harness/score_context.py` 拼，两段：
+
+1. 这次跑的 `st.bag["score_context"]`：长文两条是 spine/beats 或分段主题（router 装），
+   **六个 block 模式是 `score_context.for_block` 装的前后文 / 用户那条指令 / 选中的原文**；
+2. **这次跑累积的材料 `st.facts`**（`score_context.material`，所有模式一视同仁，
+   排在 context 最后一项紧挨着正文）。
+
+**批 8 之前，1 的 block 那一半和 2 整个都不存在**：六个 block 模式一个 `score_context`
+都没有，事实块一条都没传，而好几条维度的判词明确写着要对着这些东西判
+（`material_use` 说「只在【知识库事实】块里确实给了材料时才判，**没给材料就算达标**」、
+`numbers_from_tools` 说「每个统计量都能追到工具结果」、`fits_context` 说「读起来要像
+本来就在这篇笔记里、标题比上方最近的标题低一级」、`follows_prompt` 说「有没有照指令做」）。
+**那几维的满分因此说明不了任何事**——不是「做得好」，是「无从判断，默认给过」。
+`routers/note_harness._score_context` 的 docstring 当时还写着「the loop hands evaluate
+the run's accumulated material directly」，那句话是假的（仓里第二处文档与实现不符），
+批 8 把实现补上它才成立。
+
+**仍然不传的**：个人偏好档案（`style_fit`）。**这是有依据的**：批 7 实测补了偏好的
+那一臂只掉 0.17（n=2，p=1.0），没有证据说明传了有用——判据宁可窄一点。
+
+灵敏度实测（批 5 量、批 6 驳回、批 7 在**只留真实用户语料**上重算，n / p 见台账）：
 
 * `numbers_from_tools` 干净版**恒为 0 分**（追不了工具结果就一律判不达标），
   3 篇 18 次没有一次例外——判词要的证据打分器根本拿不到。
 * `material_use` **不是废了**：把正文里的具体材料真正剔干净、并把事实块补给
-  打分器（`with-evidence`）之后，它从 2.0 掉到 0.89（n=3 篇，p=0.003）。
+  打分器（批 7 的 `with-evidence` 一档）之后，它从 2.0 掉到 0.89（n=3 篇，p=0.003）。
   批 5 说的「全剔光还给 1.93」是植入器没剔干净（残留 25%），批 7 修好后翻转。
-  **as-deployed（不传事实块）那一档判 2.0 是判词规定的正确行为**，不算缺陷。
+  **而 as-deployed 那一档判 2.0 是判词规定的正确行为**——所以批 8 改的是接线，不是判词。
 * `right_kind` 把工具画的 mermaid 换成一个**根本不存在的图片引用**后从 0.33 涨到
   2.0（方向 6/6 一致，但只剩 1 篇真实语料带图，p=0.10，还不能当硬依据）。
+
+> **上面这几个数是批 7 的，量的是批 8 之前那条接线。** 批 8 改完之后的重测
+> **还没跑**（打分那台模型不在当前这张网上），台账批 8 记着待跑的格子数和命令。
+> 确定性那一半量到了：打分 prompt 平均涨 24%（block 模式 +53%、长文 +11%）。
 
 ---
 

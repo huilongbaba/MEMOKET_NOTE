@@ -30,13 +30,24 @@ def _app_source() -> str:
 
 
 def _names_in(path: pathlib.Path) -> set[str]:
-    """所有标识符和属性名——精确到词，不做子串匹配。"""
+    """所有标识符和属性名——精确到词，不做子串匹配。
+
+    **`st.<字段>` 不算**：State 上的字段名跟 middleware 的名字是两套命名，
+    撞车只是巧合。批 8 撞上了第一例——循环要把材料递给打分器，写的是
+    `st.facts`，而累积材料的那条 middleware 正好也叫 `facts`，这条闸当场
+    误报。读 State 的字段恰恰是循环**该**做的事（它早就在读 `st.facts_new`
+    / `st.content`），跟「循环知道链上有谁」是两回事。
+    真漏了的样子是 `chain["facts"]` 这种字符串、或者 import 进来的类名，
+    两者都还在网里。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     out: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name):
             out.add(node.id)
         elif isinstance(node, ast.Attribute):
+            if isinstance(node.value, ast.Name) and node.value.id == "st":
+                continue
             out.add(node.attr)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             out.add(node.value)

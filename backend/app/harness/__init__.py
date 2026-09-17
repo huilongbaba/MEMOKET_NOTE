@@ -31,6 +31,9 @@ this package. The short version:
     agent_loop.py 工具循环：让模型自己决定查什么
     skills.py     SKILL.md 目录的读写
     adapter.py    app 和 harness 之间的接缝（两个 Protocol 的实现）
+    score_context.py  打分器除了正文还能看到什么：block 的前后文 / 指令 /
+                  选区，加上这次跑累积的材料（批 8 之前这三样一样都没传，
+                  而好几条判词明写着要对着它们判）
     snapshot.py   State ⇄ JSON，轮末暂停用
     conflict_confirm.py  摄入时那批冲突候选，进收件箱之前让模型确认一遍
                   （由 routers 注入给 database/kb/inbox——层次只能从上往下递）

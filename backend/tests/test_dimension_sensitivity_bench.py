@@ -466,6 +466,87 @@ def test_植不进去的probe记成跳过而不是静默消失():
     assert not tasks and len(skips) == 1 and skips[0]["probe"] == P.id
 
 
+# ------------------------------------------- as-deployed 到底像不像生产 ---
+#
+# 批 8 之前这一档是脚本里硬编的「长文两条给 spine/beats、六个 block 模式
+# 什么都不给」。硬编的那份靠人记得跟生产同步——而生产那边**三样证据一样
+# 都没传**（事实块 / block 前后文 / 用户那条指令），脚本抄的恰好是那个空账，
+# 于是整张表里「as-deployed」这个词名不副实。
+# 现在它由生产代码自己拼，下面四条钉住这件事。
+
+def _note_with(content: str) -> dict:
+    return {"id": "n1", "user_id": "terrence", "title": "众筹前后",
+            "content": content, "spine": "", "beats": ""}
+
+
+def test_as_deployed的上下文是生产那个函数拼的():
+    """**接线闸**：生产把 `score_context.for_block` 撤掉、或者 bench 自己
+    另写一份，这条就红。"""
+    src = pathlib.Path(bench.__file__).read_text(encoding="utf-8")
+    assert "score_context.for_block" in src and "score_context.material" in src
+    assert "这一块前面的正文" not in src, \
+        "bench 又把打分上下文的形状抄了一份——它只能由 score_context 说了算"
+
+
+def test_block模式的as_deployed带上了前后文():
+    """`fits_context` 判的是「跟周围合不合」，六个 block 模式在批 8 之前
+    一个字的周围都没拿到（计划 4.1 / [EVAL] 问题一）。"""
+    note = _note_with(NOTE + "\n\n" + CHART + "\n\n收尾这一段是后文。")
+    probe = bench.Probe("eda", "chart-block", "chart_to_prose", ("has_charts",))
+    subject = bench.SELECTORS[probe.selector](note)
+    ctx = bench.production_context(probe, subject, note)
+    joined = "\n".join(ctx.values())
+    assert "第一节 众筹前的验证" in joined, "前文没进去"
+    assert "收尾这一段是后文" in joined, "后文没进去"
+
+
+def test_指令只给真的一定有指令的那三个模式():
+    """`prompt` / `custom` 是用户亲手打的，`analysis` 的 task 本身就是一个
+    问题；其余三个用户常常什么都不打，合成一句等于凭空多一个变量。"""
+    note = _note_with(NOTE)
+    def ctx_of(mode, selector):
+        probe = bench.Probe(mode, selector, "answer_swap", ("follows_prompt",))
+        subject = bench.SELECTORS[selector](note)
+        return bench.production_context(probe, subject, note)
+    assert "用户的指令" in ctx_of("prompt", "numeric-block")
+    assert "用户的指令" in ctx_of("analysis", "numeric-block")
+    assert "用户的指令" not in ctx_of("chart", "numeric-block")
+
+
+def test_所有模式的as_deployed都带材料():
+    """`loop._evaluate` 拼材料时**不分模式**。少拼一个模式，那个模式的
+    `factual_grounding` / `data_grounding` 量出来的就还是旧世界的数。"""
+    note = _note_with(NOTE)
+    for mode, selector in (("note", "whole"), ("section", "whole-section"),
+                           ("eda", "numeric-block"), ("prompt", "numeric-block")):
+        probe = bench.Probe(mode, selector, "shift_dates", ("factual_grounding",))
+        subject = bench.SELECTORS[selector](note)
+        ctx = bench.production_context(probe, subject, note)
+        assert "2026 年 3 月 15 日" in ctx.get("知识库事实", ""), f"{mode} 没拿到材料"
+
+
+def test_真正发出去的那一格带的就是生产那份上下文():
+    """**上面几条都是直接调 `production_context`，谁也没管 `build_tasks` 用不用
+    它**——突变验第一轮就是这么漏的：把 `build_tasks` 里那一行改回
+    `dict(subject.context)`（等于整个批 8 的测量口径退回批 7），155 条全绿。
+    闸跑绿不等于闸有用：要盯的是**真的发给 `evaluate()` 的那个 context**。"""
+    note = _note_with(NOTE + "\n\n" + CHART + "\n\n收尾这一段是后文。")
+    probe = bench.Probe("eda", "chart-block", "chart_to_prose", ("has_charts",))
+    tasks, _ = bench.build_tasks([note], (probe,), 1, set())
+    assert tasks, "这篇上应该能建出格子"
+    ctx = tasks[0].context
+    assert "第一节 众筹前的验证" in "\n".join(ctx.values()), "发出去的那一格没带前后文"
+    assert ctx.get("知识库事实"), "发出去的那一格没带材料"
+
+
+def test_已经接进生产的证据不再留一份with_evidence():
+    """留着就是同一份上下文跑两遍——而且两行数字一模一样，读表的人会以为
+    「补了证据也没变化」。批 8 删掉的是事实块 / 前后文 / 指令那三样。"""
+    left = {p.id for p in bench.PROBES if p.condition == "with-evidence"}
+    assert left == {"note/whole/audit_voice/with-evidence"}, \
+        f"with-evidence 这一档只该剩生产仍然不给的那一样（个人偏好）：{sorted(left)}"
+
+
 def test_每个评分维度都有probe盯着():
     """25 个维度一条不落。**加了新维度而没给它配 probe，这条会红**——
     否则新维度的灵敏度就是一个谁都不知道的空白。"""

@@ -70,7 +70,17 @@ def test_打分拿到的是累积正文和这个mode的维度(monkeypatch):
     assert seen["content"] == "累积到现在的全部正文"
     assert [d.name for d in seen["dimensions"]] == ["d0", "d1"], \
         "维度要按这个 Mode 实际配的来"
-    assert seen["kw"]["context"] == {"核心张力": "张力"}
+    ctx = seen["kw"]["context"]
+    assert ctx["核心张力"] == "张力", "这次跑的 score_context 要原样带过去"
+    # **材料真的递到打分器手里了吗**（批 8）。在那之前这里断言的是
+    # `context == {"核心张力": "张力"}`——也就是把「一条事实都没传」钉成了
+    # 正确行为，而 `material_use` / `factual_grounding` 的判词全都写着对着
+    # 材料判。这条测试因此曾经是这个 bug 的**看守**，不是它的探测器。
+    material = ctx["知识库事实"]
+    assert "第一轮查到的" in material and "第二轮查到的" in material, \
+        "打分拿到的必须是跨轮累积的那一份材料"
+    assert "只有第二轮的" not in material, \
+        "传的是 st.facts（累积），不是 st.facts_new（本轮的）"
 
 
 def test_累积规则只有一个写入方():

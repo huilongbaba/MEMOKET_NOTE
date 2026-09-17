@@ -23,6 +23,7 @@ from typing import AsyncIterator, Sequence
 from .checks.rubric import evaluate
 
 from . import adapter as harness_adapter
+from . import score_context
 from .events import CUSTOM_DEDUP, CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_SCRUB, CUSTOM_WARNING, Event
 from .middleware import BASE, verify
 from .state import State
@@ -276,12 +277,28 @@ async def _score(st: State):
 
 
 async def _evaluate(st: State):
+    """把这一轮该看的东西交给打分器。
+
+    `context` 是两部分拼的：**这次跑的 `score_context`**（长文两条 harness 由
+    router 装，六个 block 模式由 `score_context.for_block` 装——批 8 之前它们
+    一个都没有）**加上这次跑累积的材料 `st.facts`**。
+
+    材料这一份在批 8 之前**从来没传过**，而 `material_use` /
+    `factual_grounding` / `data_grounding` / `numbers_from_tools` 四条判词都
+    明写着对着材料判——`_MATERIAL_USE` 甚至写着「没给材料就算达标」，所以它
+    在生产里打的满分是判词规定的正确行为，说明不了这一维灵不灵
+    （台账批 6 ②、批 7 下一步①）。
+
+    传的必须是 `st.facts`（这次跑累积的那一份），**不是在这儿重新检索一遍**：
+    重新检索出来的是第三批事实，打分器会拿它去判正文，报「知识库里查无此事」，
+    而那一句正是写作那一步刚用过的材料。
+    """
     return await evaluate(
         harness_adapter.AppLLMClient(),
         content=st.content,
         dimensions=list(st.mode.dims),
         dup_hints=st.bag.get("dup_hints") or [],
-        context=st.bag.get("score_context") or {},
+        context=score_context.with_material(st.bag.get("score_context"), st.facts),
     )
 
 
