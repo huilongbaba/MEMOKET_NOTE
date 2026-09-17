@@ -88,10 +88,16 @@ def _build_prompt(
                 parts.append(f"[{title}]\n{text}")
     dim_lines = "\n".join(f"- {d.name}: {d.guidance}" for d in dimensions)
     parts.append(f"[Dimensions to score]\n{dim_lines}")
+    parts.append(f"[Content]\n{content}")
+    # **dup_hints 排在 content 之后，不是之前。** 它每一轮都变（这一轮查出来的
+    # 候选对），而 content 在不被修订改动时是追加式的。放在前面的时候，
+    # 前缀缓存的断点落在大约 1300–2000 token 处，**正文那几千 token 从来
+    # 没有被缓存过一次**；放到后面，前缀变成 system + context + dimensions +
+    # content，那才是这段 prompt 里最大的一块（docs/harness-context-engineering.md §2②）。
+    # 语义上也说得通：它本来就是"辅助证据，自己核对别假设"。
     dup_block = _render_dup_hints(dup_hints)
     if dup_block:
         parts.append(dup_block)
-    parts.append(f"[Content]\n{content}")
     return "\n\n".join(parts)
 
 

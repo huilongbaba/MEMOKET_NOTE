@@ -16,6 +16,7 @@ import re
 
 from ...editor import outline
 from . import blockcheck
+from ..middleware import repeats
 from ..state import State
 from ..types import Verdict
 from .pick import pick_dimension
@@ -137,6 +138,39 @@ def no_same_sources_twice(st: State) -> Verdict | None:
         f"这两段引的是同一批事实，等于把同一件事说了两遍：「{a[:50]}…」和「{b[:50]}…」。"
         "留下更完整的那一段，另一段删掉或改成一句话接住上文——"
         "同一组依据支撑不出两段独立的结论。",
+    )
+
+
+# 段内重复到这个比例就是缺陷。**量出来的**：18 篇真产出里
+# **15 篇精确等于 0.0%**，另外三篇是 5.7% / 27.4% / 42.9%——
+# 中间没有连续带，所以门槛落在哪都一样安全，取 3% 是为了让
+# 「一篇长文里偶然有一对近似句」不值得单独占一轮。
+RESTATED_RATIO = 0.03
+
+
+def no_restated_paragraph(st: State) -> Verdict | None:
+    """同一段里把一件事逐句说了两遍。
+
+    **这是这个系统里所有查重都看不见的那一类**：模型把整节重写了一遍，
+    新旧并排落在同一段内部，连空行都没有。段落级的三条
+    （`find_repeats` 按 `\n\n`、`drop_already_written` 按段、
+    `repeated_lists` 按清单块）一条都够不到它。
+
+    判的是**字数占比**而不是「有几对」：一篇 3000 字里有两句重复，
+    跟一篇 1822 字里 782 字是重复，不是一回事。
+    """
+    ratio = repeats.restated_ratio(st.content)
+    if ratio < RESTATED_RATIO:
+        return None
+    dups = repeats.find_restated(st.content)
+    if not dups:
+        return None
+    a, b = dups[0].a, dups[0].b
+    return Verdict(
+        pick_dimension(st, "non_repetition", "coherence", "style_fit"),
+        f"同一段里把一件事说了两遍（这一篇有 {ratio:.0%} 的正文是段内重复）："
+        f"「{a[:40]}」和「{b[:40]}」。**删掉其中一句**，"
+        "留信息更完整的那一句，不要两句都留着改写。",
     )
 
 

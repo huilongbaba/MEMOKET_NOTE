@@ -18,8 +18,9 @@ from .charts import charts_from_tools, no_fake_charts
 from .grounding import (citations_exist, citations_present, citations_hold, material_used,
                         no_audit_voice, no_placeholder)
 from .pick import pick_dimension
-from .structure import (heading_fits, no_repeated_lists, no_same_sources_twice,
-                        outline_intact, table_present, tail_clashes)
+from .structure import (heading_fits, no_repeated_lists, no_restated_paragraph,
+                        no_same_sources_twice, outline_intact, table_present,
+                        tail_clashes)
 
 __all__ = [
     "pick_dimension",
@@ -27,6 +28,7 @@ __all__ = [
     "citations_exist",
     "citations_present",
     "no_repeated_lists",
+    "no_restated_paragraph",
     "no_same_sources_twice",
     "citations_hold",
     "heading_fits",

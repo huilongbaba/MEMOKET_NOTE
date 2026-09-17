@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 14 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 15 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -192,7 +192,7 @@ backend/app/
     middleware/              14 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
       skills · facts · history · ledger · compact · best_of · checks · provenance
       · revise · repeats · replan · repair · runtime · save · _order
-    checks/                  14 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+    checks/                  15 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
         不进闭环——幻灯片是一次成型的重构，判据结果跟着产物一起显示）
@@ -294,7 +294,7 @@ RUN_FINISHED(content, reason, run_id?)
 给打分用，`Checks` 可能判定不合格直接跳过打分。② `Revise` 在 `before_round` 改已有
 正文，必须在 `Compact` 压缩之前。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（14 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（15 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 ---
@@ -413,7 +413,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 14 条 check（代码判据）
+## 8. 15 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -427,6 +427,7 @@ Mode 按需追加的：
 | `heading_fits` | fits_context / coherence | ✔ 标题整体下沉 | 插入块的标题跟周围平级而不是下级 |
 | `tail_clashes` | fits_context / coherence | ✔ 去掉收尾小节 | 插入块自己写了「总结」而下文已有 |
 | `no_repeated_lists` | non_repetition / coherence / style_fit | | 同一组清单换个说法列了两遍（段落级查重稀释到 0.4 看不见，第 596 轮读产出发现） |
+| `no_restated_paragraph` | non_repetition / coherence / style_fit | | **同一段里把一件事逐句说了两遍**——模型把整节重写了一遍，新旧并排落在同一自然段内部，连空行都没有。段落级的三条（`find_repeats` 按 `\n\n`、`drop_already_written` 按段、`repeated_lists` 按清单块）一条都够不到它。实测一篇 42.9% 的正文是段内重复；阈值 0.62 / 3% 在 18 篇真产出上量过（相似度分布双峰，P75 只有 0.20、P90 就到 0.63；按比例 15 篇精确等于 0），表格行和围栏代码不参与（它们按设计就该长得一样） |
 | `no_same_sources_twice` | non_repetition / coherence / style_fit | | 两段引的是同一批事实编号，把同一件事说了两遍（整段相似度只有 0.39，段落级和清单级查重都看不见；第 608 轮读产出发现，阈值在 30 份 harness 产出 / 548 段上量过，零误报） |
 | `no_fake_charts` | has_charts / chart_validity / coherence | | 用文字描述的图（`[柱状图：…]`），以及把一条流程写成箭头链（`A → B → C → D`，第 592 轮） |
 | `charts_from_tools` | has_charts / chart_validity / coherence | | 手写的 mermaid——不是工具原样返回的 |
