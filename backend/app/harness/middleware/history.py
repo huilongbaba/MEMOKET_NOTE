@@ -30,6 +30,10 @@ class History:
         harness_adapter.SqliteRunHistoryStore().record(RunRecord(
             key=f"{st.mode.key}:{st.ctx.note_id}",
             status=st.ev.status,
+            # **怎么停的，跟打分模型怎么裁决不是一回事。** 只记 status 的时候
+            # 54% 的跑都是 `continue`，而那里面混着「跑满轮数」「连着几轮没动静」
+            # 「比最好那轮更差主动停」三种完全不同的情况。
+            stopped=st.stopped,
             rounds=st.round,
             final_scores=scores,
             weak_dimensions=[n for n, lv in scores.items() if lv < 2],

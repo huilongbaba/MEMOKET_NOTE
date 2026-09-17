@@ -16,6 +16,7 @@ from .checks import Checks
 from .compact import Compact
 from .facts import Facts
 from .history import History
+from .ledger import Ledger
 from .repair import Repair
 from .replan import Replan
 from .runtime import Runtime
@@ -49,8 +50,8 @@ from .provenance import Provenance
 #   Runtime      after_judge       feed the round's signals back into the
 #                                  next round's run parameters
 #   Replan       after_judge       adjust the skeleton, under constraints
-BASE: tuple = (Skills(), Facts(), Provenance(), Repeats(), Checks(), BestOf(),
-               History())
+BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Repeats(), Checks(),
+               BestOf(), History())
 
 # Not in BASE, attached per-Mode via extra_mw:
 #   Revise  -- "fix what's already written before writing more"; only
@@ -60,6 +61,6 @@ BASE: tuple = (Skills(), Facts(), Provenance(), Repeats(), Checks(), BestOf(),
 #   Repair  -- repair-instead-of-continue; long-form only.
 #   Runtime / Replan -- note_harness only.
 
-__all__ = ["BASE", "BestOf", "Checks", "Compact", "Facts", "History",
+__all__ = ["BASE", "BestOf", "Checks", "Compact", "Facts", "History", "Ledger",
            "OrderError", "Provenance", "Repair", "Replan", "Repeats",
            "Runtime", "Save", "Skills", "describe", "verify"]

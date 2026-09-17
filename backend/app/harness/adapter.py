@@ -36,14 +36,15 @@ class SqliteRunHistoryStore:
 
     def record(self, run: RunRecord) -> None:
         store.record_harness_run(
-            run.key, run.status, run.rounds, run.final_scores, run.weak_dimensions)
+            run.key, run.status, run.rounds, run.final_scores, run.weak_dimensions,
+            stopped=run.stopped)
 
     def recent(self, key: str, limit: int = 3) -> list[RunRecord]:
         return [
             RunRecord(
                 key=row["key"], status=row["status"], rounds=row["rounds"],
                 final_scores=row["final_scores"], weak_dimensions=row["weak_dimensions"],
-                timestamp=row["timestamp"],
+                timestamp=row["timestamp"], stopped=row.get("stopped", ""),
             )
             for row in store.recent_harness_runs(key, limit)
         ]

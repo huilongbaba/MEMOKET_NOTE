@@ -76,7 +76,8 @@ async def run(st: State, hooks: Hooks,
             # "writing" through all of it -- the interface looks hung exactly
             # when the run is doing its slowest work.
             yield Event.activity(f"{_who(st)}：在看要用哪些材料…")
-            st.facts_new, st.trace = await _wrap_prepare(chain, hooks.prepare, st)
+            with _step("tools"):
+                st.facts_new, st.trace = await _wrap_prepare(chain, hooks.prepare, st)
             async for e in _fire(chain, "after_prepare", st):
                 yield e
 
@@ -120,7 +121,8 @@ async def run(st: State, hooks: Hooks,
                 yield e
             if not st.skip_judge:
                 yield Event.activity(f"{_who(st)}：在核对…")
-                st.ev = await _score(st)
+                with _step("judge"):
+                    st.ev = await _score(st)
                 if st.ev is None:
                     # An unjudged round counts towards the stall net. A
                     # one-off scoring failure recovers next round; repeated
@@ -187,6 +189,25 @@ async def run(st: State, hooks: Hooks,
 
 async def _commit(hooks: Hooks, st: State) -> None:
     await hooks.commit(st)
+
+
+@contextlib.contextmanager
+def _step(name: str):
+    """把这一步的模型调用单独记账。
+
+    `main.py` 按 HTTP 路由打 `ctx_feature` 标，于是一次跑里的续写、打分、
+    工具规划、修订**全叫同一个名字**（`note-harness/run`）——
+    「打分占了多少预算」这个问题因此答不出来
+    （docs/harness-effect-plan.md ⑤）。这里在原标签后面缀一段步骤名，
+    退出时还原，所以嵌套和异常都不会串味。
+    """
+    from ..util import llm as _llm
+    base = _llm.ctx_feature.get() or ""
+    token = _llm.ctx_feature.set(f"{base}:{name}" if base else name)
+    try:
+        yield
+    finally:
+        _llm.ctx_feature.reset(token)
 
 
 def _who(st) -> str:

@@ -72,13 +72,31 @@ ctx_user: contextvars.ContextVar[str] = contextvars.ContextVar("llm_user", defau
 ctx_feature: contextvars.ContextVar[str] = contextvars.ContextVar("llm_feature", default="")
 
 
+def _cached_of(usage: dict) -> tuple[int, int]:
+    """这次调用命中了多少缓存的输入 token。
+
+    **两种返回体形状都认**：`/chat/completions` 是
+    ``usage.prompt_tokens_details.cached_tokens``，Responses API 是
+    ``usage.input_tokens_details.cached_tokens``（还多一个 ``cache_write_tokens``）。
+    照着文档只写一个，换条路就静默变成 0——而 0 跟"没命中"长得一模一样，
+    是最难发现的一种记账错。
+    """
+    for key in ("prompt_tokens_details", "input_tokens_details"):
+        d = usage.get(key)
+        if isinstance(d, dict):
+            return int(d.get("cached_tokens") or 0), int(d.get("cache_write_tokens") or 0)
+    return 0, 0
+
+
 def _record(usage: dict | None, model: str, t0: float) -> None:
     """记一笔用量。记账失败不能影响调用本身。"""
     try:
         u = usage or {}
+        cached, cache_write = _cached_of(u)
         store.record_llm_usage(ctx_user.get() or "", ctx_feature.get() or "", model,
                                int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0),
-                               int((time.perf_counter() - t0) * 1000))
+                               int((time.perf_counter() - t0) * 1000),
+                               cached_tokens=cached, cache_write_tokens=cache_write)
     except Exception:      # noqa: BLE001
         pass
 

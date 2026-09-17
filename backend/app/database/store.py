@@ -277,6 +277,32 @@ CREATE TABLE IF NOT EXISTS harness_runs (
     created_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_harness_runs_key ON harness_runs(key, created_at DESC);
+
+-- **每一轮**的分数。跟 harness_runs 不是一回事：那张一次跑一行、只有最后一轮。
+--
+-- 没有这张表，「第 N+1 轮比第 N 轮好吗」这个问题在现有数据里**无法回答**——
+-- 每轮的评分只活在 SSE 的 CUSTOM_EVALUATE 事件里，跑完就没了。而这正是判断
+-- 「多跑一轮买到了什么」唯一的依据（docs/harness-effect-plan.md P3）。
+--
+-- `content_len` 一起记：实测三篇笔记分数单调下滑的同时正文一直在长，
+-- 两条曲线要能并排看。
+CREATE TABLE IF NOT EXISTS harness_rounds (
+    id           TEXT PRIMARY KEY,
+    key          TEXT NOT NULL,
+    run_id       TEXT NOT NULL DEFAULT '',
+    round        INTEGER NOT NULL,
+    scores       TEXT NOT NULL DEFAULT '{}',
+    status       TEXT NOT NULL DEFAULT '',
+    weakest      TEXT NOT NULL DEFAULT '',
+    content_len  INTEGER NOT NULL DEFAULT 0,
+    facts_new    INTEGER NOT NULL DEFAULT 0,
+    facts_total  INTEGER NOT NULL DEFAULT 0,
+    tool_calls   INTEGER NOT NULL DEFAULT 0,
+    repeat_calls INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_harness_rounds_run ON harness_rounds(run_id, round);
+CREATE INDEX IF NOT EXISTS idx_harness_rounds_key ON harness_rounds(key, created_at DESC);
 """
 
 # 单个 job 里所有 item 都落到这些状态之一，才算 job 结束
@@ -310,6 +336,17 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) ->
 # 每一条都对应一次「功能加上了，可真实库里已经有数据」的时刻。
 _ADDED_COLUMNS = (
     ("ingest_jobs", "cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
+    # 命中了多少缓存的输入 token。**没有这一列，"缓存命中率"这个问题答不出来**
+    # ——而两条长文 harness 占了全部模型调用的 91%，中位入 10537 / 出 184 token，
+    # 输入侧是这个应用里唯一值得认真优化的地方（docs/harness-context-engineering.md）。
+    # 字段名按 provider 走：/chat/completions 是 usage.prompt_tokens_details.cached_tokens。
+    ("llm_usage", "cached_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("llm_usage", "cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    # **怎么停的**，跟"打分模型怎么裁决"不是一回事。原来只记 st.ev.status，
+    # 于是 54% 的跑都记成 `continue`——而"跑满轮数还没达标"、"连着几轮没动静
+    # 自己停了"、"比最好那轮更差主动停"三件事该采取的行动完全不同
+    # （docs/harness-effect-plan.md P4）。
+    ("harness_runs", "stopped", "TEXT NOT NULL DEFAULT ''"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
     # 笔记图标（boxicons 的类名，如 bx-rocket；空 = 按文件夹 / 笔记默认）。Trilium 的 NoteIcon，
     # 那边存成 #iconClass 属性，我们没有属性系统就直接一列。
@@ -992,10 +1029,15 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
                       [user_id, *removed])
         c.commit()
     return removed
-def record_llm_usage(user_id: str, feature: str, model: str, prompt_tokens: int, completion_tokens: int, ms: int) -> None:
+def record_llm_usage(user_id: str, feature: str, model: str, prompt_tokens: int,
+                     completion_tokens: int, ms: int, cached_tokens: int = 0,
+                     cache_write_tokens: int = 0) -> None:
     with connect() as c:
-        c.execute("INSERT INTO llm_usage (user_id,feature,model,prompt_tokens,completion_tokens,ms,created_at) VALUES (?,?,?,?,?,?,?)",
-                  (user_id, feature[:60], model[:80], int(prompt_tokens or 0), int(completion_tokens or 0), int(ms or 0), _now()))
+        c.execute("INSERT INTO llm_usage (user_id,feature,model,prompt_tokens,completion_tokens,"
+                  "ms,cached_tokens,cache_write_tokens,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (user_id, feature[:60], model[:80], int(prompt_tokens or 0),
+                   int(completion_tokens or 0), int(ms or 0),
+                   int(cached_tokens or 0), int(cache_write_tokens or 0), _now()))
 
 
 EXTRACT_PROMPT_FIXED_TOKENS = 1200      # KITE 抽取 prompt 的固定开销（规则 + 词表）
@@ -1906,20 +1948,50 @@ def get_asr_base_url() -> str:
 # ---------------------------------------------------------------- harness 的 run 历史
 
 def record_harness_run(key: str, status: str, rounds: int,
-                       final_scores: dict[str, int], weak_dimensions: list[str]) -> None:
+                       final_scores: dict[str, int], weak_dimensions: list[str],
+                       stopped: str = "") -> None:
     with connect() as c:
         c.execute(
             "INSERT INTO harness_runs "
-            "(id, key, status, rounds, final_scores, weak_dimensions, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "(id, key, status, rounds, final_scores, weak_dimensions, stopped, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), key, status, rounds,
              json.dumps(final_scores, ensure_ascii=False),
-             json.dumps(weak_dimensions, ensure_ascii=False), _now()))
+             json.dumps(weak_dimensions, ensure_ascii=False), stopped[:40], _now()))
         # 一个 key（一篇笔记 / 一个分段）只留最近 50 次：策略只看最近几次，
         # 再往前的除了占地方没有用
         c.execute("DELETE FROM harness_runs WHERE key=? AND id NOT IN ("
                   "SELECT id FROM harness_runs WHERE key=? ORDER BY created_at DESC, rowid DESC LIMIT 50)",
                   (key, key))
+
+
+def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, int],
+                         status: str, weakest: str, content_len: int,
+                         facts_new: int = 0, facts_total: int = 0,
+                         tool_calls: int = 0, repeat_calls: int = 0) -> None:
+    """记一轮。**记账失败不能影响这一轮的产出**——这张表是给分析用的，
+    不是承重的，所以调用方把它包在 try 里。"""
+    with connect() as c:
+        c.execute(
+            "INSERT INTO harness_rounds (id,key,run_id,round,scores,status,weakest,"
+            "content_len,facts_new,facts_total,tool_calls,repeat_calls,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (str(uuid.uuid4()), key, run_id, int(round_),
+             json.dumps(scores, ensure_ascii=False), status, weakest,
+             int(content_len), int(facts_new), int(facts_total),
+             int(tool_calls), int(repeat_calls), _now()))
+        # 跟 harness_runs 同一条修剪规矩：一个 key 只留最近 400 行
+        # （50 次跑 × 8 轮），再往前的除了占地方没有用。
+        c.execute("DELETE FROM harness_rounds WHERE key=? AND id NOT IN ("
+                  "SELECT id FROM harness_rounds WHERE key=? "
+                  "ORDER BY created_at DESC, rowid DESC LIMIT 400)", (key, key))
+
+
+def rounds_of_run(run_id: str) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM harness_rounds WHERE run_id=? ORDER BY round",
+                         (run_id,)).fetchall()
+    return [dict(r) | {"scores": json.loads(r["scores"] or "{}")} for r in rows]
 
 
 def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
@@ -1937,6 +2009,7 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
             "final_scores": json.loads(row["final_scores"]),
             "weak_dimensions": json.loads(row["weak_dimensions"]),
             "timestamp": row["created_at"],
+            "stopped": row["stopped"] if "stopped" in row.keys() else "",
         }
         for row in rows
     ]

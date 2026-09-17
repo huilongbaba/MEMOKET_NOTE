@@ -268,6 +268,10 @@ class RunRecord:
     final_scores: dict[str, int]
     weak_dimensions: list[str] = field(default_factory=list)
     timestamp: str = ""
+    # **怎么停的**（max_rounds / stalled / regressed / complete / blocked / …），
+    # 跟 `status`（打分模型的裁决）是两个不同的问题。分开记之前，
+    # 实测 39 次跑里 54% 的 `status` 都是 `continue`，而那是三种完全不同的失败混在一起。
+    stopped: str = ""
 
 
 @runtime_checkable

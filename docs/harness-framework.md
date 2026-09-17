@@ -189,8 +189,8 @@ backend/app/
     events.py                AG-UI 事件 + 12 个 CUSTOM 名字 + to_sse()
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
-    middleware/              13 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
-      skills · facts · history · compact · best_of · checks · provenance
+    middleware/              14 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
+      skills · facts · history · ledger · compact · best_of · checks · provenance
       · revise · repeats · replan · repair · runtime · save · _order
     checks/                  14 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
@@ -383,7 +383,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 ---
 
-## 7. 13 个 middleware
+## 7. 14 个 middleware
 
 `BASE`（默认全开，顺序即执行顺序）：
 
@@ -394,6 +394,7 @@ State: mode · ctx(user/note/cursor) · request · round
 | **Provenance** | after_prepare | 把工具真的返回了什么给用户看（`round_summary`），依据不能靠模型自报 |
 | **Repeats** | after_produce | 机械近重复检测（difflib），结果作为打分的证据 |
 | **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit`；同一条原样卡满 `STUCK_ROUNDS` 轮就只发事件不再短路（改不动的老正文不该把剩余轮数烧掉） |
+| **Ledger** | after_prepare / after_judge | **材料账本**：把这一轮的工具轨迹折进一份跨轮的状态（查过什么、查到过什么、各轴共 N 条取了 M 条），并把这一轮写进 `harness_rounds`。**只记不改**——接进 prompt 是单独一步，因为「把已经有什么摆给模型看」有实测证据会缩小它的搜索空间 |
 | **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的 |
 | **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料） |
 
