@@ -196,6 +196,8 @@ export function keepBackendFields(fresh: Segment[], disk: Segment[]): Segment[] 
  *
  *  只删**两分钟前就躺在那儿**的：刚写下去那张正要被 push 进 segs，别自己删自己。 */
 const ORPHAN_GRACE_MS = 2 * 60_000
+/** 多久扫一次无主图。见 `flush()` 里那段注释。 */
+const SWEEP_EVERY_MS = 10 * 60_000
 
 export function sweepOrphans(dir: string, segs: Segment[], now = Date.now()): number {
   const keep = new Set<string>()
@@ -308,6 +310,7 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
   let segs: Segment[] = []
   let dir = ''
   let prevHash: bigint | null = null
+  let sweptAt = 0                            // 0 = 还没扫过，开机第一次落盘就扫
   const tmp = path.join(userData, 'journey', '_tmp')
   // 开没开是**用户的选择，不是进程的状态**：退出重开还得是开着的，
   // 不然某天的记录会无声无息地缺一段，而用户以为一直在记。
@@ -332,8 +335,16 @@ export function makeRecorder(userData: string, log: (s: string) => void): Record
     try {
       const out = keepBackendFields(mergeBlips(segs), readSegments(dir))
       writeFileSync(path.join(dir, 'segments.json'), JSON.stringify(out, null, 1), 'utf8')
-      const gone = sweepOrphans(dir, out)
-      if (gone) log(`[journey] 清掉 ${gone} 张没人认领的截图\n`)
+      // **不是每次落盘都扫。** 落盘发生在每次切段（实测忙的时候 25 秒一次），
+      // 而 `mergeBlips` 每次都会当场并掉几个短段、留下几张无主图——于是日志里
+      // 25 秒一条「清掉 2 张」，磁盘也一直在churn。这些图不急：
+      // 现行策略对**没描述的大图**本来就是留 3 天（`FRAME_KEEP_DAYS`），
+      // 十分钟一扫已经严格得多。开机先扫一次（上次退出时留下的）。
+      if (Date.now() - sweptAt >= SWEEP_EVERY_MS) {
+        sweptAt = Date.now()
+        const gone = sweepOrphans(dir, out)
+        if (gone) log(`[journey] 清掉 ${gone} 张没人认领的截图\n`)
+      }
     } catch (e) { log(`[journey] 落盘失败：${String(e)}\n`) }
   }
 
