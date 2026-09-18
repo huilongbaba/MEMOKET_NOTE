@@ -195,8 +195,12 @@ def save_skeleton(note_id: str, body: SkeletonSaveIn, user: str = Depends(curren
     """
     if not store.get_note(user, note_id):
         raise HTTPException(404, "note not found")
-    store.set_skeleton(user, note_id, body.spine.strip(),
-                       [b for b in (x.strip() for x in body.beats) if b])
+    try:
+        store.set_skeleton(user, note_id, body.spine.strip(),
+                           [b for b in (x.strip() for x in body.beats) if b])
+    except ValueError as exc:
+        # P7：落库不再静默截成半句（P4 #1）——超长就把原因回给调用方
+        raise HTTPException(400, str(exc)) from exc
     return store.get_note(user, note_id)
 
 

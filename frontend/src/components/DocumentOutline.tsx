@@ -35,6 +35,52 @@ export function parseHeadings(content: string): Heading[] {
   return out
 }
 
+/** 没有 `#` 标题时的目录（P7，P4 #3）：26.7k 字的展厅讲解词零个 `#`，目录面板一片空白，用户在最长的一篇里
+ * 没有任何导航。退两步：
+ *   1. 「算力底座：」「案例：」「英伟达对比：」这种**短行 + 冒号结尾**的段落当伪标题（≥ 3 个才用这档）；
+ *   2. 都没有就**按段落列**，每段取首句（≤ 28 字）。
+ * 两档都在面板顶上说一句「这篇没有 # 标题，按 xx 列」，别让人以为它认出了标题。 */
+export type FallbackOutline = { items: Heading[]; how: 'colon' | 'paragraph' | 'none' }
+const COLON_HEAD = /^(.{1,16}?)\s*[：:]\s*$/
+const PARA_MIN_CHARS = 20
+const FALLBACK_MAX = 200
+
+function firstSentence(s: string): string {
+  const t = s.replace(/^[-*>\s]+|^\d+[.、]\s*/g, '').trim()
+  const m = t.match(/^(.{4,28}?)(?:[。！？；!?;]|$)/)
+  const head = m ? m[1] : t.slice(0, 28)
+  return head.length < t.length ? head + '…' : head
+}
+
+export function parseFallbackAnchors(content: string): FallbackOutline {
+  const fence = /^\s*(`{3,}|~{3,})/
+  const paras: { pos: number; first: string; len: number }[] = []
+  let cur: { pos: number; first: string; len: number } | null = null
+  let fenced = false
+  let at = 0
+  for (const line of content.split('\n')) {
+    const isFence = fence.test(line)
+    if (isFence) fenced = !fenced
+    if (!line.trim() || isFence || fenced) {
+      if (cur) { paras.push(cur); cur = null }
+    } else {
+      if (!cur) cur = { pos: at, first: line.trim(), len: 0 }
+      cur.len += line.trim().length
+    }
+    at += line.length + 1
+  }
+  if (cur) paras.push(cur)
+  const colon = paras.filter((p) => p.len <= 17 && COLON_HEAD.test(p.first))
+  if (colon.length >= 3) {
+    return { how: 'colon', items: colon.slice(0, FALLBACK_MAX).map((p) => ({ level: 1, text: p.first.replace(/\s*[：:]\s*$/, ''), pos: p.pos })) }
+  }
+  const long = paras.filter((p) => p.len >= PARA_MIN_CHARS)
+  if (long.length >= 2) {
+    return { how: 'paragraph', items: long.slice(0, FALLBACK_MAX).map((p) => ({ level: 1, text: firstSentence(p.first), pos: p.pos })) }
+  }
+  return { how: 'none', items: [] }
+}
+
 /** Jump-to-heading outline -- cheap to add now that the editor is real
  * markdown with real heading syntax, and it's table-stakes for anything
  * pitching itself as a Notion-class editor for longer documents. */
@@ -42,7 +88,9 @@ export default function DocumentOutline({ content, viewRef }: {
   content: string
   viewRef: RefObject<EditorView | null>
 }) {
-  const headings = useMemo(() => parseHeadings(content), [content])
+  const real = useMemo(() => parseHeadings(content), [content])
+  const fallback = useMemo<FallbackOutline | null>(() => (real.length ? null : parseFallbackAnchors(content)), [content, real.length])
+  const headings = useMemo(() => (real.length ? real : (fallback?.items ?? [])), [real, fallback])
   // 正在看哪一节：跟着正文滚动区顶部那一行走（Obsidian 的 outline 也这么做）。
   // 滚动的是 .note-scroll 不是 CM 自己，所以听它。
   const [activePos, setActivePos] = useState(-1)
@@ -80,6 +128,13 @@ export default function DocumentOutline({ content, viewRef }: {
 
   return (
     <div>
+      {fallback && fallback.how !== 'none' && (
+        <p className="muted outline-fallback-note" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px', lineHeight: 1.6 }}>
+          {fallback.how === 'colon'
+            ? '这篇没有 # 标题，按「xx：」这样的短行列；加上 # 标题就按标题列。'
+            : `这篇没有 # 标题，按段落列（${headings.length} 段，每段取首句）；加上 # 标题就按标题列。`}
+        </p>
+      )}
       <div className="stack" style={{ gap: 2 }} ref={listRef}>
         {headings.map((h, i) => (
           <a

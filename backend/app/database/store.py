@@ -1162,22 +1162,53 @@ def restore_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
 
 
 # 骨架会整份进每一轮的 prompt、并显示在右栏。模型抽风返回几千字的 spine 时，
-# 既撑爆面板也白烧 token；正常的 spine 是一句话、beat 是一个短语（第 576 轮）。
+# 既撑爆面板也白烧 token（第 576 轮）。
+#
+# **P7 改法（P4 #1）**：原来 `BEAT_MAX = 60`、按字数硬切，而 `POST /skeleton` 返回前不切——用户生成时
+# 看到整句、重开笔记看到「…之间的断点，并将问」（真库 4 篇已是）。现在：
+#   · 上限提到 200，高于实测分布（本轮 57–185、历史 28–185），生成侧先要求模型 ≤120 字
+#     （`checks/skeleton.BEAT_TARGET_CHARS`）；
+#   · 兜底**按句 / 顿号收**（`trim_to_boundary`），不按字数硬切；
+#   · 落库（`set_skeleton`）**不再静默截断**：超上限就报错，让调用方（route → 400）看见。
 SPINE_MAX = 200
-BEAT_MAX = 60
+BEAT_MAX = 200
+_BOUNDARY = "。；;！？!?，,、"
+
+
+def trim_to_boundary(text: str, limit: int) -> str:
+    """超过 `limit` 时退到上限之前最后一个句读（句号 / 分号 / 逗号 / 顿号）处收尾；上限的前一半
+    里都没有句读才按字数切并补「…」。不超过上限原样返回。"""
+    s = " ".join((text or "").split())
+    if len(s) <= limit:
+        return s
+    head = s[:limit]
+    cut = max(head.rfind(ch) for ch in _BOUNDARY)
+    if cut >= limit // 2:
+        return head[:cut].rstrip("，,、；;") + "。" if head[cut] not in "。！？!?" else head[:cut + 1]
+    return head[:limit - 1].rstrip() + "…"
 
 
 def clamp_skeleton(spine: str, beats: list[str]) -> tuple[str, list[str]]:
-    """骨架封顶——生成时和落库时都过一遍。"""
-    s = " ".join((spine or "").split())[:SPINE_MAX]
-    bs = [" ".join(str(b).split())[:BEAT_MAX] for b in (beats or [])]
+    """骨架封顶——**生成侧**过一遍（`routers/compose.skeleton`、`hooks/note.skeleton`）。"""
+    s = trim_to_boundary(spine, SPINE_MAX)
+    bs = [trim_to_boundary(str(b), BEAT_MAX) for b in (beats or [])]
     return s, [b for b in bs if b]
 
 
 def set_skeleton(user_id: str, note_id: str, spine: str, beats: list[str]) -> None:
     """写作骨架跟着笔记存。**只在真的有内容时写**——空骨架不该覆盖已有的：
-    前端切笔记时会把内存里的 spine/beats 清空，那个"空"不代表用户想删掉它。"""
-    spine, beats = clamp_skeleton(spine, beats)
+    前端切笔记时会把内存里的 spine/beats 清空，那个"空"不代表用户想删掉它。
+
+    **不截断**（P7）：生成侧已经按上限收过；这里再碰到超长的就是调用方绕过了生成侧，
+    抛 ValueError 让它看见，别悄悄存成半句。"""
+    spine = " ".join((spine or "").split())
+    beats = [" ".join(str(b).split()) for b in (beats or [])]
+    beats = [b for b in beats if b]
+    if len(spine) > SPINE_MAX:
+        raise ValueError(f"骨架的核心张力太长（{len(spine)} 字，上限 {SPINE_MAX}）")
+    for i, b in enumerate(beats, 1):
+        if len(b) > BEAT_MAX:
+            raise ValueError(f"骨架第 {i} 条节拍太长（{len(b)} 字，上限 {BEAT_MAX}）")
     with connect() as c:
         c.execute("UPDATE notes SET spine=?, beats=? WHERE user_id=? AND id=?",
                   (spine, json.dumps(beats, ensure_ascii=False), user_id, note_id))

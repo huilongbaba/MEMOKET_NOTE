@@ -4,7 +4,8 @@ import { memoryRelations, mergeFacts, memoryScope, recall, SCOPE_LABEL, setMemor
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
 import { stripForRecall } from '../util/wordCount'
-import { MARGIN_RULE, RELATION_LABEL } from '../editor/marginMemory'
+import { factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
+import { MARGIN_RULE, MODEL_NOTE, RELATION_LABEL } from '../editor/marginMemory'
 import Icon from './Icon'
 
 const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string; icon: string }> = {
@@ -21,8 +22,12 @@ function ignoredSet(): Set<string> {
 }
 
 const IDLE_MS = 900
-const TAIL_CHARS = 500
+const TAIL_CHARS = RECALL_TAIL_CHARS
 const MIN_CHARS = 8
+/** 记忆列表最多显示几条（已在正文里的折叠掉，位子让给新的——P4 #8） */
+const LIST_MAX = 5
+/** 多要几条，折叠掉「已在正文」的之后还够 LIST_MAX 条 */
+const RECALL_LIMIT = 8
 
 /**
  * Ambient recall: related facts surface on their own while you write, no
@@ -42,6 +47,10 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
 }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const [loading, setLoading] = useState(false)
+  // 按什么查的（整词）、空着的原因、这次是按光标段还是末尾（P4 #6 / #7）
+  const [terms, setTerms] = useState<string[]>([])
+  const [whyEmpty, setWhyEmpty] = useState<'' | 'no_terms' | 'weak'>('')
+  const [mode, setMode] = useState<'cursor' | 'tail'>('tail')
   const lastQueried = useRef('')
   // 记忆范围：换了就把两个缓存键清掉，让召回和关系都重来
   const [scope, setScope] = useState<MemoryScope>(() => memoryScope())
@@ -94,20 +103,25 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   }
   const visibleRels = rels.filter((r) => !ignored.has(r.relation + ':' + r.fact_ids.join(',')))
 
+  // 记忆列表：按**光标所在段（+ 前一段）**召回；光标不在正文里才退回末 500 字（P4 #7：原来只看末 500 字，
+  // 用户在顶部写华为芯片、右栏是尾段恒瑞翻译的记忆）。零模型，每次 ~100ms。
   useEffect(() => {
-    const tail = stripForRecall(content.slice(-TAIL_CHARS)).trim()
-    if (tail.length < MIN_CHARS) { setFacts([]); return }
-    if (tail === lastQueried.current) return
+    const q = recallQuery(content, paragraph)
+    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setWhyEmpty(''); return }
+    if (q.query === lastQueried.current) return
     const t = setTimeout(() => {
-      lastQueried.current = tail
+      lastQueried.current = q.query
       setLoading(true)
-      recall(tail, 5)
-        .then((r) => setFacts(r.facts))
+      recall(q.query, RECALL_LIMIT)
+        .then((r) => { setFacts(r.facts); setTerms(r.terms ?? []); setWhyEmpty(r.why_empty ?? ''); setMode(q.mode) })
         .catch(() => {})
         .finally(() => setLoading(false))
     }, IDLE_MS)
     return () => clearTimeout(t)
-  }, [content, scope])
+  }, [content, paragraph, scope])
+  // 已经在正文里的原话折叠掉（P4 #8：N4 5 条全是用户刚写的），位子让给新的
+  const fresh = facts.filter((f) => !factInBody(f.text, content)).slice(0, LIST_MAX)
+  const inBody = facts.filter((f) => factInBody(f.text, content))
 
   // 之前 facts 是空的时候整个组件（连带标题）直接 return null——这是这个
   // 面板在"写作"/"相关记忆"/"知识库" 三个 tab 里唯一的内容，点进"相关记忆"
@@ -135,7 +149,8 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
         {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
           <span key={k} style={{ whiteSpace: 'nowrap', marginInlineEnd: 6 }}><span className={'mm-dot mm-' + k} style={{ width: 7, height: 7, marginTop: 0, verticalAlign: 'middle', marginInlineEnd: 2 }} />{RELATION_LABEL[k]}</span>
         ))}
-        <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按正文最后 {TAIL_CHARS} 字召回。
+        <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按光标所在段（带前一段、约 {RECALL_CONTEXT_BEFORE} 字）召回，光标不在正文里时按末尾 {TAIL_CHARS} 字。
+        <br />{MODEL_NOTE}
       </p>
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>
@@ -173,13 +188,26 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           })}
         </div>
       )}
+      {/* 为什么给我看这几条（A5 的第一步）：按哪几个词找的、按光标段还是末尾 */}
+      {facts.length > 0 && !loading && (
+        <p className="muted mem-terms" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px' }}>
+          按{mode === 'cursor' ? '光标这段' : '正文末尾'}找的{terms.length ? '，命中：' + terms.slice(0, 6).join('、') : ''}
+        </p>
+      )}
       {facts.length === 0 && !loading && (
         <p className="muted" style={{ fontSize: 'var(--t-md)' }}>
           {kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
-            : tooShort ? '再多写几个字就会开始自动检索。' : '知识库里暂时没有找到相关内容。'}
+            : tooShort ? '再多写几个字就会开始自动检索。'
+            // P4 #6：查询退化到一个泛词（「记录」）时原来硬凑 5 条不相干的；现在后端不凑，这里说清楚为什么空
+            : whyEmpty === 'no_terms' ? (mode === 'cursor' ? '光标这段' : '正文末尾') + '没有可查的关键词（人名、项目、日期、数字这类具体的词）。'
+            : whyEmpty === 'weak' ? (mode === 'cursor' ? '光标这段' : '正文末尾') + '的关键词在知识库里没有一条记录同时命中两个——不硬凑不相干的。'
+            : '知识库里暂时没有找到相关内容。'}
         </p>
       )}
-      {facts.map((f) => (
+      {facts.length > 0 && fresh.length === 0 && !loading && (
+        <p className="muted" style={{ fontSize: 'var(--t-md)' }}>召回的 {inBody.length} 条都是正文里已经写了的原话（折在下面）。</p>
+      )}
+      {fresh.map((f) => (
         <div
           className="card memory-card"
           key={f.id}
@@ -206,6 +234,17 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           </div>
         </div>
       ))}
+      {inBody.length > 0 && (
+        <details className="mem-inbody" style={{ marginTop: 8 }}>
+          <summary className="muted" style={{ fontSize: 'var(--t-sm)', cursor: 'pointer' }}>已在正文里的 {inBody.length} 条（你刚写的原话，折起来）</summary>
+          {inBody.map((f) => (
+            <div key={f.id} className="muted" style={{ fontSize: 'var(--t-sm)', margin: '6px 0 0 8px', cursor: 'pointer' }} title="打开这条"
+                 {...clickable(() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })))}>
+              {f.when ? <span className="badge" style={{ marginInlineEnd: 4 }}>{f.when}</span> : null}{f.text}
+            </div>
+          ))}
+        </details>
+      )}
     </div>
   )
 }
