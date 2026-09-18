@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from '../toast'
-import { useExportBack } from '../util/useExportBack'
+import { CRED_HOWTO, canRememberCreds, loadCreds, saveCreds } from '../util/exportCreds'
+import { openRemote, useExportBack } from '../util/useExportBack'
 import Icon from './Icon'
 
 /**
  * 导回（docs/import-sync-plan.md §2）：把这里的笔记按目标平台的规则渲染出去。
  * 这里是真相：每篇带 memoket_id，下次再导按 id 覆盖而不是新建；对方在那边改过的
- * 先跳过报冲突，不自动拉回来——双向同步是无底洞，明确不做。凭证不落库，每次填。
+ * 先跳过报冲突，不自动拉回来——双向同步是无底洞，明确不做。凭证：桌面版记在主进程
+ * （util/exportCreds，P2-fix），网页版每次填。
  *
  * 这一块是**整库导**，长在导入页里（整页宽、第一次配置）。单篇导回是另一个
  * 场景（窄弹层、重复动作、只一篇），排版完全不同，在 `ExportNotePanel`——
@@ -21,6 +23,16 @@ export default function ExportBack() {
   const [feishuAppId, setFeishuAppId] = useState('')
   const [feishuSecret, setFeishuSecret] = useState('')
   const [feishuFolder, setFeishuFolder] = useState('')
+  const remember = canRememberCreds()
+  useEffect(() => {
+    let alive = true
+    void loadCreds().then((c) => {
+      if (!alive) return
+      if (c.notion_token) setNotionToken(c.notion_token); if (c.notion_parent) setNotionParent(c.notion_parent)
+      if (c.feishu_app_id) setFeishuAppId(c.feishu_app_id); if (c.feishu_app_secret) setFeishuSecret(c.feishu_app_secret); if (c.feishu_folder) setFeishuFolder(c.feishu_folder)
+    })
+    return () => { alive = false }
+  }, [])
 
   async function pickVault() {
     const pick = window.memoketDesktop?.pickDirectory
@@ -43,9 +55,9 @@ export default function ExportBack() {
           把这里的笔记写回到别的地方。这里是真相：每篇带 <code>memoket_id</code>，再导一次是<strong>覆盖</strong>不是新建；
           对方那边改过的会先跳过并列出来，不会自动拉回来。
           <br />
-          {/* 凭证不落库是有意的（见文件头）。不说清楚的话，用户会以为是 bug——
-              「我上次不是填过吗」。Obsidian 的路径不是密钥，所以它记得住。 */}
-          Notion / 飞书的凭证<strong>不会存下来</strong>，每次要重填；Obsidian 只是个本机路径，记得住。
+          {/* 桌面版记在主进程的 export-credentials.json（P2-fix）；网页版不存——说清楚，
+              不然用户会以为是 bug：「我上次不是填过吗」。 */}
+          {remember ? 'Notion / 飞书的凭证写成功后记在本机（应用数据目录），下次自动带出来。' : 'Notion / 飞书的凭证在网页版里不会存下来，每次要重填；Obsidian 只是个本机路径，记得住。'}
         </p>
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -68,27 +80,31 @@ export default function ExportBack() {
           <span style={{ width: 88 }}>Notion</span>
           <input aria-label="Notion Integration token" type="password" placeholder="Integration token" value={notionToken} onChange={(e) => setNotionToken(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input placeholder="父页面 id" title="页面链接末尾那 32 位" value={notionParent} onChange={(e) => setNotionParent(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void toNotion(notionToken, notionParent)} disabled={!notionToken.trim() || !notionParent.trim() || !!busy}
+          <button onClick={() => void toNotion(notionToken, notionParent, force).then((o) => { if (o) void saveCreds({ notion_token: notionToken.trim(), notion_parent: notionParent.trim() }) })} disabled={!notionToken.trim() || !notionParent.trim() || !!busy}
                   title={!notionToken.trim() ? '先填 Integration token' : !notionParent.trim() ? '先填父页面 id' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('notion', '写入')}
           </button>
         </div>
         <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
-          每篇建成父页面下的一个子页面；标题 / 段落 / 列表 / 代码 / 引用会变成 Notion 块。父页面要先 Connect 给这个 integration。
+          每篇建成父页面下的一个子页面；标题 / 段落 / 列表 / 表格 / 代码 / 引用 / 粗体会变成 Notion 块（本地图片 Notion API 收不了，写成一行说明）。父页面要先 Connect 给这个 integration。
+          {' '}<a href={CRED_HOWTO.notion.url} className="link" title={CRED_HOWTO.notion.text} onClick={(e) => { e.preventDefault(); openRemote(CRED_HOWTO.notion.url) }}>怎么拿凭证</a>
         </p>
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span style={{ width: 88 }}>飞书</span>
           <input aria-label="飞书 App ID" placeholder="App ID（cli_…）" value={feishuAppId} onChange={(e) => setFeishuAppId(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <input aria-label="飞书 App Secret" type="password" placeholder="App Secret" value={feishuSecret} onChange={(e) => setFeishuSecret(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <input placeholder="文件夹 token" title="留空 = 应用根目录" value={feishuFolder} onChange={(e) => setFeishuFolder(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button onClick={() => void toFeishu(feishuAppId, feishuSecret, feishuFolder)} disabled={!feishuAppId.trim() || !feishuSecret.trim() || !!busy}
-                  title={!feishuAppId.trim() ? '先填 App ID' : !feishuSecret.trim() ? '先填 App Secret' : busy ? '正在写，等这一次完成' : undefined}>
+          {/* 之前这里写「留空 = 应用根目录」而后端 400「没填」，前后端打架（P2 报告 §4.7）。
+              飞书 API 确实允许空 token（建在应用自己的空间里），但用户在飞书里根本找不到那份——所以改成必填。 */}
+          <input aria-label="飞书文件夹 token" placeholder="文件夹 token（必填）" title="文件夹链接 /drive/folder/ 后面那串；新文档建在它下面" value={feishuFolder} onChange={(e) => setFeishuFolder(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <button onClick={() => void toFeishu(feishuAppId, feishuSecret, feishuFolder, force).then((o) => { if (o) void saveCreds({ feishu_app_id: feishuAppId.trim(), feishu_app_secret: feishuSecret.trim(), feishu_folder: feishuFolder.trim() }) })} disabled={!feishuAppId.trim() || !feishuSecret.trim() || !feishuFolder.trim() || !!busy}
+                  title={!feishuAppId.trim() ? '先填 App ID' : !feishuSecret.trim() ? '先填 App Secret' : !feishuFolder.trim() ? '先填文件夹 token' : busy ? '正在写，等这一次完成' : undefined}>
             {spin('feishu', '写入')}
           </button>
         </div>
         <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px 96px' }}>
-          应用要有 docx / drive 的写权限，目标文件夹要把应用加为可编辑的协作者。凭证不会存下来。
+          应用要有 docx / drive 的写权限，目标文件夹要把应用加为可编辑的协作者。表格 / 图片 / 列表 / 代码 / 粗体都会变成飞书块。
+          {' '}<a href={CRED_HOWTO.feishu.url} className="link" title={CRED_HOWTO.feishu.text} onClick={(e) => { e.preventDefault(); openRemote(CRED_HOWTO.feishu.url) }}>怎么拿凭证</a>
         </p>
 
         {result && (
@@ -105,6 +121,17 @@ export default function ExportBack() {
                   {result.out.conflicts.slice(0, 20).map((p) => <li key={p}>{p}</li>)}
                 </ul>
               </div>
+            )}
+            {!!result.out.missing?.length && (
+              <div className="muted" style={{ marginTop: 6, fontSize: 'var(--t-sm)' }}>有 {result.out.missing.length} 个笔记 id 在库里找不到（可能已经删掉）。</div>
+            )}
+            {!!result.out.untried && (
+              <div className="muted" style={{ marginTop: 6, fontSize: 'var(--t-sm)' }}>同一类错误连着出现，剩下 {result.out.untried} 篇没再试——先把上面的错修好再来一次。</div>
+            )}
+            {!!result.out.urls?.length && (
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 'var(--t-sm)' }}>
+                {result.out.urls.slice(0, 20).map((u) => <li key={u.note_id}><a href={u.url} className="link" onClick={(e) => { e.preventDefault(); openRemote(u.url) }}>{u.title}</a></li>)}
+              </ul>
             )}
             {!!result.out.failed?.length && (
               <div style={{ marginTop: 6 }}>

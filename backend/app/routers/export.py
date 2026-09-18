@@ -13,6 +13,7 @@ import zipfile
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -51,6 +52,12 @@ def build_export(user: str) -> bytes:
 #
 # 导回是「视图」：这里是真相，按 memoket_id 覆盖远端副本；远端改过先提示不覆盖
 # （docs/import-sync-plan.md §2）。三条路都记 note_remotes。
+#
+# P2-fix（docs/_research/export-verification-P2.md §4）：
+#   · 开跑前先探一次凭证（token 错整库不再转圈 24 秒才报）；循环里同一类错误连着来就停
+#   · 失败信息是对面平台自己的 code/msg 翻成的中文（exporters.explain_*），不是 httpx 的英文 + MDN 链接
+#   · 成功带 `url`（toast 的「打开」、信息面板的链接）；note_ids 里对不上的 id 带回 `missing`
+#   · Notion / 飞书也有「对方改过就跳过」（remote_rev），跟 Obsidian 一样走 force
 
 class ObsidianOut(BaseModel):
     vault_dir: str
@@ -62,6 +69,7 @@ class NotionOut(BaseModel):
     token: str
     parent_page_id: str
     note_ids: list[str] = []
+    force: bool = False
 
 
 class FeishuOut(BaseModel):
@@ -69,20 +77,39 @@ class FeishuOut(BaseModel):
     app_secret: str
     folder_token: str = ""
     note_ids: list[str] = []
+    force: bool = False
+
+
+def obsidian_url(vault: Path, rel_path: str) -> str:
+    """Obsidian 自己的 URI：`obsidian://open?path=<绝对路径>`——装了 Obsidian 的机器上点一下就打开那篇。"""
+    return "obsidian://open?path=" + quote(str(vault / rel_path), safe="/")
+
+
+def _missing(user: str, note_ids: list[str], files: list[exporters.ExportFile]) -> list[str]:
+    """note_ids 里指了、库里却没有的（删掉了 / id 贴错了）。**不带回去前端就会把 0 篇解释成「没改过」**（§4.6）。"""
+    have = {f.note_id for f in files}
+    return [i for i in note_ids if i not in have]
 
 
 @router.post("/obsidian")
 def export_obsidian(body: ObsidianOut, user: str = Depends(current_user)) -> dict:
     """写进 vault 目录：`<树路径>/<标题>.md`，front-matter 带 memoket_id。文件被对方改过
     （内容不是我们上次写出去的那份）就跳过报冲突，除非 force。资产复制进 _assets/。"""
-    vault = Path(body.vault_dir).expanduser()
+    if not body.vault_dir.strip():
+        # `Path("").expanduser()` 是 `.`，is_dir() 为真——P2 实测把文件写进了后端进程的 cwd（§4.11）
+        raise HTTPException(400, "vault 目录没填")
+    vault = Path(body.vault_dir.strip()).expanduser()
+    if not vault.is_absolute():
+        raise HTTPException(400, f"vault 目录要是绝对路径：{vault}")
+    if vault.is_file():
+        raise HTTPException(400, f"这是一个文件，不是目录：{vault}")
     if not vault.is_dir():
         raise HTTPException(400, f"目录不存在：{vault}")
     if not os.access(vault, os.W_OK):
         raise HTTPException(400, f"这个目录写不进去：{vault}")   # 选到 /etc 这种目录之前是 500（第 248 轮实测）
     only = set(body.note_ids) or None
     files = exporters.render_tree(user, only)
-    written, skipped, conflicts = [], [], []
+    written, skipped, conflicts, urls = [], [], [], []
     assets: set[str] = set()
     for f in files:
         target = vault / f.path
@@ -106,6 +133,7 @@ def export_obsidian(body: ObsidianOut, user: str = Depends(current_user)) -> dic
         assets |= f.assets
         if f.note_id:
             store.record_remote(user, f.note_id, "obsidian", remote_id=store.content_sha(f.content), remote_path=f.path)
+            urls.append({"note_id": f.note_id, "title": f.title, "url": obsidian_url(vault, f.path)})
     for name in sorted(assets):
         src = _assets_store.assets_dir() / name
         if src.is_file():
@@ -113,7 +141,9 @@ def export_obsidian(body: ObsidianOut, user: str = Depends(current_user)) -> dic
             dst.parent.mkdir(parents=True, exist_ok=True)
             if not dst.exists():
                 dst.write_bytes(src.read_bytes())
-    return {"written": len(written), "skipped": len(skipped), "conflicts": conflicts, "files": written[:50]}
+    return {"written": len(written), "skipped": len(skipped), "conflicts": conflicts, "files": written[:50],
+            "missing": _missing(user, body.note_ids, [f for f in files if f.note_id]),
+            "urls": urls[:50], "url": urls[0]["url"] if len(urls) == 1 else ""}
 
 
 def _pick(user: str, note_ids: list[str]) -> list[exporters.ExportFile]:
@@ -144,31 +174,78 @@ def _needs_create(user: str, files: list, kind: str) -> bool:
                for f in files)
 
 
+def _probe(fn, what: str) -> None:
+    """开跑前探一次凭证。**填错了在这儿就停**：P2 实测 token 错 + 整库 28 篇 = 转圈 23.7 秒后只报第一篇（§4.3）。"""
+    try:
+        fn()
+    except exporters.RemoteError as exc:
+        raise HTTPException(400, str(exc))
+    except (httpx.HTTPError, KeyError) as exc:
+        raise HTTPException(400, f"连不上{what}：{exc}")
+
+
+class _Breaker:
+    """循环里同一类错误连着来第二次就停：一篇 404 可能是那一篇的事，两篇同样的 404 就是凭证 / 父页面的事。"""
+
+    def __init__(self) -> None:
+        self.last = ""
+        self.tripped = False
+
+    def hit(self, exc: BaseException) -> None:
+        key = f"{getattr(exc, 'status', 0)}:{getattr(exc, 'code', '')}" if isinstance(exc, exporters.RemoteError) else exc.__class__.__name__
+        if key == self.last:
+            self.tripped = True
+        self.last = key
+
+    def ok(self) -> None:
+        self.last = ""
+
+
+def _finish(created: list, updated: list, failed: list, conflicts: list, urls: list, missing: list, untried: int) -> dict:
+    if not created and not updated and failed:
+        raise HTTPException(400, "一篇都没导出去：" + failed[0] + (f"（还有 {untried} 篇没再试）" if untried else ""))
+    return {"created": len(created), "updated": len(updated), "failed": failed, "conflicts": conflicts,
+            "missing": missing, "untried": untried,
+            "urls": urls[:50], "url": urls[0]["url"] if len(urls) == 1 else ""}
+
+
 @router.post("/notion")
 def export_notion(body: NotionOut, user: str = Depends(current_user)) -> dict:
     _need(body.token, "Notion 的 Integration token 没填")
     files = _pick(user, body.note_ids)
+    missing = _missing(user, body.note_ids, files)
+    w = exporters.NotionWriter(body.token)
+    _probe(w.probe, " Notion")
     if _needs_create(user, files, "notion"):
         _need(body.parent_page_id, "父页面 id 没填——每篇会建成它下面的子页面")
-    w = exporters.NotionWriter(body.token)
-    created, updated, failed = [], [], []
-    for f in files:
+        _probe(lambda: w.check_parent(body.parent_page_id), " Notion")
+    created, updated, failed, conflicts, urls = [], [], [], [], []
+    br = _Breaker()
+    untried = 0
+    for k, f in enumerate(files):
+        if br.tripped:
+            untried = len(files) - k
+            break
         blocks = exporters.md_to_notion_blocks(f.content)
         try:
             prev = store.get_remote(user, f.note_id, "notion")
             if prev and prev.get("remote_id"):
-                w.replace_children(prev["remote_id"], f.title, blocks)
+                pid = prev["remote_id"]
+                if prev.get("remote_rev") and not body.force and w.last_edited(pid) != prev["remote_rev"]:
+                    conflicts.append(f.title)
+                    continue
+                r = w.replace_children(pid, f.title, blocks)
                 updated.append(f.title)
-                store.record_remote(user, f.note_id, "notion", remote_id=prev["remote_id"])
             else:
-                pid = w.create_page(body.parent_page_id, f.title, blocks)
+                r = w.create_page(body.parent_page_id, f.title, blocks)
                 created.append(f.title)
-                store.record_remote(user, f.note_id, "notion", remote_id=pid)
+            store.record_remote(user, f.note_id, "notion", remote_id=r["id"], remote_path=r["url"], remote_rev=r["rev"])
+            urls.append({"note_id": f.note_id, "title": f.title, "url": r["url"]})
+            br.ok()
         except (httpx.HTTPError, KeyError, RuntimeError) as exc:
             failed.append(f"{f.title}: {exc}")
-    if not created and not updated and failed:
-        raise HTTPException(400, "一篇都没导出去：" + failed[0])
-    return {"created": len(created), "updated": len(updated), "failed": failed}
+            br.hit(exc)
+    return _finish(created, updated, failed, conflicts, urls, missing, untried)
 
 
 @router.post("/feishu")
@@ -176,28 +253,41 @@ def export_feishu(body: FeishuOut, user: str = Depends(current_user)) -> dict:
     _need(body.app_id, "飞书的 App ID 没填")
     _need(body.app_secret, "飞书的 App Secret 没填")
     files = _pick(user, body.note_ids)
+    missing = _missing(user, body.note_ids, files)
     if _needs_create(user, files, "feishu"):
         _need(body.folder_token, "文件夹 token 没填——新文档会建在它下面")
     w = exporters.FeishuWriter(body.app_id, body.app_secret)
-    created, updated, failed = [], [], []
-    for f in files:
+    _probe(w.probe, "飞书")
+    created, updated, failed, conflicts, urls = [], [], [], [], []
+    br = _Breaker()
+    untried = 0
+    for k, f in enumerate(files):
+        if br.tripped:
+            untried = len(files) - k
+            break
         children = exporters.md_to_feishu_children(f.content)
         try:
             prev = store.get_remote(user, f.note_id, "feishu")
             if prev and prev.get("remote_id"):
-                w.replace_children(prev["remote_id"], children)
+                did = prev["remote_id"]
+                if prev.get("remote_rev") and not body.force and w.edited_time(did) != prev["remote_rev"]:
+                    conflicts.append(f.title)
+                    continue
+                w.replace_children(did, children)
                 updated.append(f.title)
-                store.record_remote(user, f.note_id, "feishu", remote_id=prev["remote_id"])
+                url = prev.get("remote_path") or w.doc_url(did)
             else:
                 did = w.create_document(body.folder_token, f.title)
                 w.replace_children(did, children)
                 created.append(f.title)
-                store.record_remote(user, f.note_id, "feishu", remote_id=did)
+                url = w.doc_url(did)
+            store.record_remote(user, f.note_id, "feishu", remote_id=did, remote_path=url, remote_rev=w.edited_time(did))
+            urls.append({"note_id": f.note_id, "title": f.title, "url": url})
+            br.ok()
         except (httpx.HTTPError, KeyError, RuntimeError) as exc:
             failed.append(f"{f.title}: {exc}")
-    if not created and not updated and failed:
-        raise HTTPException(400, "一篇都没导出去：" + failed[0])
-    return {"created": len(created), "updated": len(updated), "failed": failed}
+            br.hit(exc)
+    return _finish(created, updated, failed, conflicts, urls, missing, untried)
 
 
 @router.get("/remotes/{note_id}")

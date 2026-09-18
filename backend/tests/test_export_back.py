@@ -34,7 +34,7 @@ def test_markdown_转块_两家(client):
     kinds = [b["type"] for b in nb]
     assert kinds == ["heading_1", "paragraph", "bulleted_list_item", "bulleted_list_item",
                      "numbered_list_item", "code", "quote"]
-    assert nb[1]["paragraph"]["rich_text"][0]["text"]["content"] == "一段话 第二行"
+    assert nb[1]["paragraph"]["rich_text"][0]["text"]["content"] == "一段话\n第二行"   # P2-fix：硬换行用 \n，不是英文空格
     fb = exporters.md_to_feishu_children(md)
     assert [b["block_type"] for b in fb] == [3, 2, 12, 12, 13, 14, 15]
     # 长段落切 2000 字
@@ -79,6 +79,8 @@ class _FakeNotion:
             pid = f"page{len(self.pages) + 1}"
             self.pages[pid] = list(json["children"])
             return {"id": pid}
+        if method == "GET" and path.startswith("/pages/"):
+            return {"id": path.split("/")[2]}
         if method == "GET" and path.startswith("/blocks/"):
             pid = path.split("/")[2].split("?")[0]
             return {"results": [{"id": f"{pid}-b{i}"} for i in range(len(self.pages[pid]))], "has_more": False}
@@ -96,7 +98,7 @@ def test_notion_第二次是覆盖(client, monkeypatch):
     monkeypatch.setattr(exporters.NotionWriter, "_req", lambda self, m, p, j=None: fake(m, p, j))
     n = client.post("/api/notes", json={"title": "N", "content": "# N\n\n一段"}).json()
     j = client.post("/api/export/notion", json={"token": "secret", "parent_page_id": "root-page"}).json()
-    assert j == {"created": 1, "updated": 0, "failed": []}
+    assert (j["created"], j["updated"], j["failed"]) == (1, 0, [])
     assert store.get_remote("t-back", n["id"], "notion")["remote_id"] == "page1"
     client.put(f"/api/notes/{n['id']}", json={"title": "N", "content": "# N\n\n两段\n\n三段"})
     j = client.post("/api/export/notion", json={"token": "secret", "parent_page_id": "root-page"}).json()
@@ -112,6 +114,10 @@ class _FakeFeishu:
 
     def __call__(self, method, path, json):
         self.calls.append((method, path))
+        if "/auth/" in path:
+            return {"tenant_access_token": "t"}
+        if "metas/batch_query" in path:
+            return {"data": {"metas": [{"url": "https://x.feishu.cn/docx/d"}]}}
         if path.endswith("/documents") and method == "POST":
             did = f"doc{len(self.docs) + 1}"
             self.docs[did] = []
@@ -122,9 +128,9 @@ class _FakeFeishu:
         if path.endswith("batch_delete"):
             self.docs[did] = []
             return {}
-        if method == "POST" and path.endswith("/children"):
-            self.docs[did].extend(json["children"])
-            return {}
+        if method == "POST" and path.endswith("/descendant"):        # P2-fix：块树走 descendant 接口
+            self.docs[did].extend(b for b in json["descendants"] if b["block_id"] in json["children_id"])
+            return {"data": {"children": [{"block_id": i} for i in json["children_id"]]}}
         return {}
 
 
@@ -133,7 +139,8 @@ def test_飞书_第二次是覆盖_凭据不落库(client, monkeypatch):
     monkeypatch.setattr(exporters.FeishuWriter, "_req", lambda self, m, p, j=None, auth=True: fake(m, p, j))
     n = client.post("/api/notes", json={"title": "F", "content": "一段\n\n- 点"}).json()
     body = {"app_id": "cli_x", "app_secret": "s3", "folder_token": "fld"}
-    assert client.post("/api/export/feishu", json=body).json() == {"created": 1, "updated": 0, "failed": []}
+    j = client.post("/api/export/feishu", json=body).json()
+    assert (j["created"], j["updated"], j["failed"]) == (1, 0, [])
     assert fake.docs["doc1"] and len(fake.docs["doc1"]) == 2
     client.put(f"/api/notes/{n['id']}", json={"title": "F", "content": "改了"})
     j = client.post("/api/export/feishu", json=body).json()

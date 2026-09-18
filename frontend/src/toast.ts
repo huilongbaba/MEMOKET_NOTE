@@ -30,10 +30,10 @@ export function toast(message: string, kind: Toast['kind'] = 'info') {
  * "deleted a note, undo?" pattern. Deliberately not folded into toast()'s
  * signature: this one needs a longer, fixed lifetime tied to the caller's
  * own undo window, not the message-length-based defaults above. */
-export function toastAction(message: string, actionLabel: string, onAction: () => void, ms = 5000) {
+export function toastAction(message: string, actionLabel: string, onAction: () => void, ms = 5000, kind: Toast['kind'] = 'info') {
   const id = seq++
   toasts = [...toasts, {
-    id, message, kind: 'info',
+    id, message, kind,
     action: { label: actionLabel, onClick: () => { onAction(); dismissToast(id) } },
   }]
   emit()

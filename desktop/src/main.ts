@@ -178,7 +178,7 @@ function createWindow(url: string) {
 
   // 外链走系统浏览器，不在应用里开一个没有地址栏的窗口。
   win.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:/.test(target)) void shell.openExternal(target)
+    if (/^(https?|obsidian):/.test(target)) void shell.openExternal(target)   // obsidian:// 是导回 Obsidian 之后「打开」那一下
     return { action: 'deny' }
   })
 
@@ -285,6 +285,28 @@ ipcMain.on('remember-user', (_e, user: unknown) => {
     saveIdentity(user)
     remember(`[desktop] 记住身份 ${user}`)
   }
+})
+/** 导回 Notion / 飞书的凭证记在 identity.json 旁边（`export-credentials.json`，0600）。
+ *  P2 验证（docs/_research/export-verification-P2.md §4.5）：「凭证不落库」对单用户桌面版是自找麻烦——
+ *  每次导回都要重新抄三段，第一次用的人卡在「去哪拿 App Secret」。Obsidian 的路径早就存在 localStorage 里，
+ *  同一条理由；网页版仍然不存（浏览器可能是共用的）。 */
+const credsFile = () => path.join(app.getPath('userData'), 'export-credentials.json')
+function loadCreds(): Record<string, string> {
+  try {
+    const raw = JSON.parse(readFileSync(credsFile(), 'utf8')) as Record<string, unknown>
+    return Object.fromEntries(Object.entries(raw).filter(([k, v]) => /^[a-z_]{1,32}$/.test(k) && typeof v === 'string').map(([k, v]) => [k, (v as string).slice(0, 512)]))
+  } catch { return {} }
+}
+ipcMain.handle('export-creds:load', () => loadCreds())
+ipcMain.handle('export-creds:save', (_e, patch: unknown) => {
+  if (!patch || typeof patch !== 'object') return
+  const merged = { ...loadCreds() }
+  for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+    if (!/^[a-z_]{1,32}$/.test(k)) continue
+    if (typeof v === 'string' && v.trim()) merged[k] = v.trim().slice(0, 512)
+    else if (v === '' || v === null) delete merged[k]
+  }
+  try { writeFileSync(credsFile(), JSON.stringify(merged, null, 2), { mode: 0o600 }) } catch { /* 写不了就下次再填 */ }
 })
 // 导回 Obsidian 要选 vault 目录：网页拿不到本机路径，只能主进程弹系统对话框
 ipcMain.handle('pick-directory', async (_e, title: unknown) => {
@@ -409,6 +431,8 @@ function installMenu() {
 // localStorage 会静默变成内存版——实拍「选了深色重开是浅色」查了三层
 // （端口、刷盘）最后是这个。
 if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + '-dev')
+// 探针从 worktree 里跑时连 -dev 那份也不碰：`MEMOKET_USER_DATA=<目录>` 整个 userData 挪走（只在开发模式认）
+if (!app.isPackaged && process.env.MEMOKET_USER_DATA) app.setPath('userData', process.env.MEMOKET_USER_DATA)
 
 // 单实例（Trilium 同款）：第二份直接把第一份的窗口拉到前面。两份同时跑会
 // 抢同一个 sqlite 和 localStorage，界面看着正常、数据各写各的。

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { notePaths, noteRemotes, type Note, type NoteRemote, type TreeRow } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate, fmtDateTime } from '../util/time'
+import { openRemote, remoteUrl } from '../util/useExportBack'
 import { readingMinutes, wordCount } from '../util/wordCount'
 import Icon from './Icon'
 
@@ -34,7 +35,12 @@ export function NoteInfoPanel({ note, content, row }: { note: Note; content: str
       <dt>引用</dt><dd>{row?.cite_count ? `${row.cite_count} 条知识库记录` : '无'}</dd>
       <dt>摄入</dt><dd>{row?.ingested_at ? `已摄入（${fmtDate(row.ingested_at)}）` : '未摄入'}</dd>
       {note.source && <><dt>来源</dt><dd>{SOURCE_LABEL[note.source] ?? note.source}{note.imported_at ? ` · ${fmtDate(note.imported_at)} 导入` : ''}{note.imported_at && note.updated_at > note.imported_at ? ' · 本地改过' : ''}</dd></>}
-      {remotes.length > 0 && <><dt>副本</dt><dd>{remotes.map((r) => `${SOURCE_LABEL[r.platform] ?? r.platform} · ${fmtDate(r.exported_at)} 导回${r.exported_at < note.updated_at ? '（之后改过）' : ''}`).join('；')}</dd></>}
+      {/* 副本能点去对面那一篇：Notion / 飞书存的就是 URL，Obsidian 拼 obsidian://（P2-fix，之前只有一个日期，用户不知道东西在哪） */}
+      {remotes.length > 0 && <><dt>副本</dt><dd>{remotes.map((r, i) => {
+        const url = remoteUrl(r)
+        const label = `${SOURCE_LABEL[r.platform] ?? r.platform} · ${fmtDate(r.exported_at)} 导回${r.exported_at < note.updated_at ? '（之后改过）' : ''}`
+        return <span key={r.platform}>{i > 0 && '；'}{url ? <a href={url} className="link" title={url} onClick={(e) => { e.preventDefault(); openRemote(url) }}>{label}<Icon n="bx-link-external" /></a> : label}</span>
+      })}</dd></>}
       <dt>位置</dt><dd>{row?.branch_count && row.branch_count > 1 ? `${row.branch_count} 处（克隆）` : '1 处'}</dd>
       <dt>id</dt><dd><code style={{ fontSize: 'var(--t-xs)' }}>{note.id}</code></dd>
     </dl>
