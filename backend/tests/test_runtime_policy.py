@@ -398,8 +398,10 @@ async def test_打分器手上拿不到上一轮的任何东西(monkeypatch):
 
     await loop._evaluate(st)
 
-    assert set(seen) == {"content", "dimensions", "dup_hints", "context"}, \
+    assert set(seen) == {"content", "dimensions", "dup_hints", "context",
+                         "tail_context"}, \
         f"打分器多收/少收了东西：{sorted(seen)}"
     prompt = _build_prompt(seen["content"], seen["dimensions"],
-                           seen["context"], tuple(seen["dup_hints"]))
+                           seen["context"], tuple(seen["dup_hints"]),
+                           seen["tail_context"])
     assert sentinel not in prompt, "上一轮的评判漏进了这一轮的打分 prompt"

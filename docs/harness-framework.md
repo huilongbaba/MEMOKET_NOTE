@@ -58,7 +58,7 @@ flowchart TB
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
     MW["Middleware ×15<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save"]
-    CHK["checks/ ×10 代码判据<br/>+ rubric 模型打分"]
+    CHK["checks/ ×11 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 15 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 19 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -188,7 +188,8 @@ backend/app/
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
     events.py                AG-UI 事件 + 12 个 CUSTOM 名字 + to_sse()
     score_context.py         打分器除了正文还能看到什么：block 的前后文 / 指令 / 选区（for_block）
-                             ＋这次跑累积的材料（with_material，loop 每轮现拼）
+                             ＋这次跑累积的材料（with_material，loop 每轮现拼。
+                             批 16 起材料排在 `[Content]` **之后**，拆分由这个模块说了算）
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
     middleware/              15 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
@@ -197,8 +198,10 @@ backend/app/
       · provenance · revise · repeats · replan · repair · runtime · save · _order
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
-    checks/                  15 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
-      citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
+    checks/                  19 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+      citations · grounding · grounding_rules · structure · charts · numbers · blockcheck · rubric · pick
+        （numbers 是批 16 / 阶段 5 新加的：图 · 表 · 正文里的数跟工具返回逐个 diff——
+         三条判词原话都是「每个数字都能追到源」，那是一次比对不是一次判断）
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
         不进闭环——幻灯片是一次成型的重构，判据结果跟着产物一起显示）
     tools/                   22 个工具 + registry（分组授权）
@@ -304,7 +307,7 @@ RUN_FINISHED(content, reason, run_id?)
 正文，必须在 `Sections` 拼「小节索引 + 当前小节逐字」之前——否则续写 prompt 拿到的
 是**修订前**的正文（这条依赖是从 `Compact` 原样继承的，它当年就是为这件事写的）。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（15 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（19 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 **打分器能看见什么**（批 8 改过一轮，改之前这里是一笔空账）：
@@ -497,7 +500,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 15 条 check（代码判据）
+## 8. 19 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -516,6 +519,10 @@ Mode 按需追加的：
 | `no_fake_charts` | has_charts / chart_validity / coherence | | 用文字描述的图（`[柱状图：…]`），以及把一条流程写成箭头链（`A → B → C → D`，第 592 轮） |
 | `charts_from_tools` | has_charts / chart_validity / coherence | | 手写的 mermaid——不是工具原样返回的 |
 | `table_present` | table_validity / coherence | | 生成表格那条路的产出里没有 markdown 表（模型写「[tool call needed]」交卷） |
+| `table_columns_match` | table_validity / coherence | | 表头和数据行列数对不上。`table_validity` 的达标线原话就是「header and rows have matching column counts」——**一句纯粹能用代码判准的话**，而批 16 之前仓里没有一处在数列（`table_present` 只查有没有表、`blockcheck.has_table` 只查有没有分隔行）。实现是从 bench 侧搬进来的，bench 反过来 import 它 |
+| `chart_numbers_grounded` | data_grounding / numbers_from_tools / coherence | | **图和表的数值位**上的数在工具返回和笔记原文里都找不到出处。只取数值位（mermaid 的 `bar [...]` / pie 的 `"标签" : 值`、整格就是一个数的表格子），标题 / 轴名 / x 轴标签 / 表头一个不取——位置即判据（批 16 / 阶段 5.1，[IND] §2–3） |
+| `numbers_from_tools` | numbers_from_tools / data_grounding / coherence | | 正文里的**统计量**追不到工具结果（eda / analysis，这两个模式的 task 明写「所有数字都来自工具返回，不要自己算」）。判据窄成三道：先挖掉 `tabular._NOT_A_QUANTITY`（引用 id / 链接 / 日期 / 第 N / 型号）再挖掉五条正文专属的（「2026 年」、`## 2.1`、有序列表编号、版本号、`3:2`），最后只留带 % / 带小数 / ≥100 的——小整数一律不算（批 16 / 阶段 5.2） |
+| `chart_readable` | has_charts / chart_validity / coherence | | VisEval 的 **readability 档**：y 轴没名字、多系列图的图例数不上、类目多到读不出、x 轴标签被 `safe_label` 截断（「三月Kickstarte…」）、流程图节点过多（批 16 / 阶段 5.3） |
 
 - `pick_dimension(st, *candidates)`：一条 check 被多个 Mode 共用，打翻的维度按当前
   Mode 实际有的挑；`tests/test_harness_modes.py` 断言每条 check 在一段「踩满所有毛病

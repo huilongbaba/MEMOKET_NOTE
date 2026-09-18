@@ -292,13 +292,21 @@ async def _evaluate(st: State):
     传的必须是 `st.facts`（这次跑累积的那一份），**不是在这儿重新检索一遍**：
     重新检索出来的是第三批事实，打分器会拿它去判正文，报「知识库里查无此事」，
     而那一句正是写作那一步刚用过的材料。
+
+    **材料走 `tail_context`，排在 `[Content]` 之后**（批 16 / 计划外发现 ①）。
+    它每一轮都在长，排在正文前面会让前缀缓存的断点落在正文之前——批 15 实测
+    judge 那一路命中率恒 **0.0%**。拆成前后两份的是
+    `score_context.split_for_prompt`，**生产和灵敏度 bench 共用它**。
     """
+    ctx, tail = score_context.split_for_prompt(
+        score_context.with_material(st.bag.get("score_context"), st.facts))
     return await evaluate(
         harness_adapter.AppLLMClient(),
         content=st.content,
         dimensions=list(st.mode.dims),
         dup_hints=st.bag.get("dup_hints") or [],
-        context=score_context.with_material(st.bag.get("score_context"), st.facts),
+        context=ctx,
+        tail_context=tail,
     )
 
 

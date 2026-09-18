@@ -125,11 +125,22 @@ def test_单条材料超长时只切这一条():
     assert "- 第二条" in out.splitlines()[1]
 
 
-def test_材料排在打分上下文的最后一项():
-    """`rubric._build_prompt` 按插入顺序渲染，最后一项紧挨着 `[Content]`——
-    判词要的是「正文对不对得上材料」，两块离得越近越好。"""
+def test_材料从打分上下文里被拆到尾部那一份():
+    """材料排在 `[Content]` **之后**（批 16）。`with_material` 仍然交一整份
+    （probe 要按 `MATERIAL_KEY` 查它），排布由 `split_for_prompt` 决定。"""
     ctx = score_context.with_material({"核心张力": "x", "结构节拍": "y"}, ["一条事实"])
-    assert list(ctx)[-1] == score_context.MATERIAL_KEY
+    head, tail = score_context.split_for_prompt(ctx)
+    assert score_context.MATERIAL_KEY not in head
+    assert score_context.MATERIAL_KEY in tail
+    assert list(head) == ["核心张力", "结构节拍"], "别的项一个都不许被顺走"
+
+
+def test_没有材料时尾部那一份是空的():
+    """一条材料都没有的跑（block 模式常态）不该多出一个空块——
+    空块会在 prompt 里多出一段标题，前缀就又不一样了。"""
+    head, tail = score_context.split_for_prompt(score_context.with_material(
+        {"核心张力": "x"}, []))
+    assert tail == {} and head == {"核心张力": "x"}
 
 
 def test_材料块的标题必须逐字是知识库事实():
@@ -214,7 +225,65 @@ async def test_每一轮的材料都跟着进打分prompt(monkeypatch):
     await loop._evaluate(st)
 
     prompt = _build_prompt(seen["content"], seen["dimensions"],
-                           seen["context"], tuple(seen["dup_hints"]))
+                           seen["context"], tuple(seen["dup_hints"]),
+                           seen["tail_context"])
     assert "续航实测 11 小时" in prompt, "材料没进打分 prompt"
-    assert prompt.index("续航实测") < prompt.index("[Content]"), \
-        "材料要排在正文前面紧挨着它"
+    assert prompt.index("续航实测") > prompt.index("[Content]"), \
+        "材料要排在正文后面（批 16：排在前面时 judge 的缓存命中率恒为 0）"
+    # **真的紧挨着**：正文块结束的下一块就是材料块，中间不许再插东西。
+    # 原来那句「排在 context 末尾也就是紧挨着 [Content]」是错的——
+    # 中间隔着整块 `[Dimensions to score]`。
+    assert f"[Content]\n正文\n\n[{score_context.MATERIAL_KEY}]" in prompt
+
+
+@pytest.mark.anyio
+async def test_生产走的是拆分那一道而不是把材料塞进context(monkeypatch):
+    """**接线闸**：`split_for_prompt` 写得再对，`loop._evaluate` 不用它，
+    材料照样排在正文前面、命中率照样是 0——而这条性质**不会报错**，
+    只会悄悄退回去。"""
+    from app.harness import loop
+
+    seen: dict = {}
+
+    async def _fake_evaluate(_llm, **kw):
+        seen.update(kw)
+        return None
+
+    monkeypatch.setattr(loop, "evaluate", _fake_evaluate)
+    monkeypatch.setattr(loop.harness_adapter, "AppLLMClient", lambda: object())
+
+    st = State(mode=_tiny_mode(), ctx=ToolContext(user="u", note_id="n"))
+    st.content = "正文"
+    st.bag["score_context"] = {"核心张力": "一句话主线"}
+    st.facts = ["[2026-04-10] 硬件那版续航实测 11 小时"]
+    await loop._evaluate(st)
+
+    assert score_context.MATERIAL_KEY in (seen["tail_context"] or {})
+    assert score_context.MATERIAL_KEY not in (seen["context"] or {})
+    assert seen["context"]["核心张力"] == "一句话主线", "稳定那几项要留在前缀里"
+
+
+def test_材料每轮变长也不动正文那段前缀():
+    """**这条才是这一改要守的性质**，不是"顺序对不对"。
+
+    前缀缓存按**逐字前缀**匹配：第 N+1 轮的 prompt 必须把第 N 轮
+    「一直到正文结尾」那一整段原样包含在开头。材料一长、断点落在正文前面，
+    正文那几千 token 就永远不会命中——批 15 实测 judge 恒 0.0%。
+    """
+    from app.harness.checks.rubric import _build_prompt
+    from app.harness.types import Dimension
+
+    dims = [Dimension("d0", "判词写得长一点，撑出一块像样的维度描述。" * 5)]
+    ctx = {"核心张力": "一句话主线"}
+    r1 = score_context.with_material(ctx, [f"[F{i}] 第 {i} 条材料" for i in range(20)])
+    r2 = score_context.with_material(ctx, [f"[F{i}] 第 {i} 条材料" for i in range(45)])
+    body1 = "第一轮写的正文。" * 200
+    body2 = body1 + "第二轮接着写的。" * 200
+
+    p1 = _build_prompt(body1, dims, *score_context.split_for_prompt(r1)[:1],
+                       (), score_context.split_for_prompt(r1)[1])
+    p2 = _build_prompt(body2, dims, *score_context.split_for_prompt(r2)[:1],
+                       (), score_context.split_for_prompt(r2)[1])
+    shared = p1[:p1.index(body1) + len(body1)]
+    assert p2.startswith(shared), "第 2 轮的前缀里没有完整包含第 1 轮的正文"
+    assert len(shared) > 1000, "共享前缀太短，说明这条测试自己没测到东西"

@@ -101,20 +101,34 @@ def _render_dup_hints(dup_hints: tuple[DupHint, ...]) -> str:
     return "Mechanically detected candidate near-duplicate passages (verify, don't assume):\n" + "\n".join(lines)
 
 
+def _render_context(context: dict[str, str] | None) -> list[str]:
+    return [f"[{title}]\n{text}" for title, text in (context or {}).items() if text]
+
+
 def _build_prompt(
     content: str,
     dimensions: list[Dimension],
     context: dict[str, str] | None,
     dup_hints: tuple[DupHint, ...],
+    tail_context: dict[str, str] | None = None,
 ) -> str:
-    parts = []
-    if context:
-        for title, text in context.items():
-            if text:
-                parts.append(f"[{title}]\n{text}")
+    parts = _render_context(context)
     dim_lines = "\n".join(f"- {d.name}: {d.guidance}" for d in dimensions)
     parts.append(f"[Dimensions to score]\n{dim_lines}")
     parts.append(f"[Content]\n{content}")
+    # **`tail_context` 是「每一轮都在变的那几块」，排在 `[Content]` 之后。**
+    # 规则跟下面 dup_hints 那一条是同一条，只是晚了十四批才被发现还有第二处：
+    # 材料块（`score_context.MATERIAL_KEY`）每轮都在长（批 15 真跑实测
+    # `facts_new` 每轮 41~46 条），而它原来是 `context` 的一项、排在正文
+    # **之前**——于是断点落在正文前，**judge 那一路的缓存命中率恒为 0.0%**
+    # （批 15：38 次真跑 / 24 次 judge 调用，命中 0 token；同一次跑里检索规划
+    # 60.3%、续写 30.7%）。
+    #
+    # 顺手纠正 `with_material` 原来那句注释：它写着材料排在 context 末尾
+    # 「也就是紧挨着 `[Content]`」——**并不是**，中间隔着整块
+    # `[Dimensions to score]`（八组维度里最长的那组 1000+ 字）。挪到这里之后
+    # 材料才第一次真的跟正文相邻。
+    parts += _render_context(tail_context)
     # **dup_hints 排在 content 之后，不是之前。** 它每一轮都变（这一轮查出来的
     # 候选对），而 content 在不被修订改动时是追加式的。放在前面的时候，
     # 前缀缓存的断点落在大约 1300–2000 token 处，**正文那几千 token 从来
@@ -134,6 +148,7 @@ async def evaluate(
     dimensions: list[Dimension],
     context: dict[str, str] | None = None,
     dup_hints: list[DupHint] = (),
+    tail_context: dict[str, str] | None = None,
     system_prompt: str | None = None,
     max_tokens: int = 600,
     temperature: float = 0.1,
@@ -159,7 +174,8 @@ async def evaluate(
     if not dimensions:
         raise ValueError("evaluate() needs at least one dimension")
 
-    prompt = _build_prompt(content, dimensions, context, tuple(dup_hints))
+    prompt = _build_prompt(content, dimensions, context, tuple(dup_hints),
+                           tail_context)
     raw = await llm.complete(
         [
             {"role": "system", "content": system_prompt or DEFAULT_SYSTEM_PROMPT},

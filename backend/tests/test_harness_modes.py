@@ -223,10 +223,21 @@ def test_每条check打翻的维度这个mode真的有():
                         "验货通过后开票，付清尾款，之后才发货 [u-111-1F1] [u-111-1F2]。"
                         "\n\n商业动作还要按付款、验货、发货、使用拆开，不能把收款直接记成履约完成；"
                         "供应商完成生产后需先验货，确认无误再开票付尾款 [u-111-1F1] [u-111-1F2]。")
+    # 批 16 又往里加了三样，每样对应一条新判据（阶段 5）：
+    #   · 一张列数对不上的表（`table_columns_match`）
+    #   · 正文里一个工具没算过的统计量（`numbers_from_tools`）
+    #   · 那张 mermaid 里的数值同样无据（`chart_numbers_grounded`）
+    # **加进来是被这条断言逼的**：它要求每条 check 在这段素材上至少响一次，
+    # 否则一条永远返回 None 的坏判据能安然通过。
     CONTENT = ("## 标题\n[柱状图：各渠道点击量]\n（此处待补充）\n"
                "现有材料不足以说明这一点 [u-999-FF]。\n"
+               "三个渠道的转化率合计 47.3%，平均每天 8271 次曝光。\n"
                "```mermaid\nxychart-beta\n bar [1,2]\n```\n"
                "## Summary\n收个尾。\n")
+    # **表格那一条得有两份，跟 FRESH 那一对同一个道理**：`table_present` 要的是
+    # 「一张表都没有」，`table_columns_match` 要的是「有一张列数对不上的表」
+    # ——同一段正文不可能两样都满足，硬塞在一起就是按下葫芦浮起瓢。
+    BROKEN_TABLE = "\n| 渠道 | 点击 | 下单 |\n|---|---|---|\n| 甲 | 12700 |\n"
 
     bad = []
     fired: collections.Counter = collections.Counter()
@@ -237,9 +248,11 @@ def test_每条check打翻的维度这个mode真的有():
                 shaped = modes.for_run(mode, has_profile=has_profile, polish=polish)
                 names = {d.name for d in shaped.dims}
                 st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
-                for fresh in (FRESH_NO_CITE, FRESH_SAME_CITES):
+                for fresh, table in ((FRESH_NO_CITE, ""),
+                                     (FRESH_SAME_CITES, ""),
+                                     (FRESH_NO_CITE, BROKEN_TABLE)):
                     st.fresh = fresh
-                    st.content = CONTENT + "\n\n" + fresh
+                    st.content = CONTENT + table + "\n\n" + fresh
                     st.before, st.after = BEFORE, AFTER
                     st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
                     st.charts = []

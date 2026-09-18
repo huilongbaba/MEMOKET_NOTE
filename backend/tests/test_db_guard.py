@@ -241,3 +241,61 @@ def test_跑批脚本不许自己拼只读连接():
     assert not offenders, (
         f"这些脚本自己拼了 sqlite3 连接：{offenders}。只读走 db_guard.readonly()，"
         "真要写走 db_guard.writable(why=...)")
+
+
+# ---------------------------------------------------- 批 16：写库只有一个出口
+
+def test_harness里只有一处在写用户的笔记():
+    """**这条是拿两篇真实笔记换来的**（2026-09-18，批 16，第三次写坏真库）。
+
+    跑批脚本一直靠 `rails_off=("save",)` 保证「这次跑不碰用户的笔记」，
+    而 `loop.run` 只是按 `name` 把 middleware 过滤掉——**`middleware/revise.py`
+    自己也在调 `store.update_note`**，那条根本没被摘掉。批 14 的复盘写着
+    「`rails_off=("save",)` 本身是好的」，然后去猜是不是有人直接打了 HTTP
+    路由；**不是，答案一直在第二个 middleware 里**。
+
+    所以判据盯的是「出口只有一个」这个**性质**，不是「revise 里有没有那一行」
+    这个写法：再加一个会写库的 middleware，这条当场变红。
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "app" / "harness"
+    writers = []
+    for path in sorted(root.rglob("*.py")):
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "store.update_note(" in line and not line.lstrip().startswith("#"):
+                writers.append(f"{path.relative_to(root)}:{i}")
+    assert writers == ["middleware/save.py:64"] or len(writers) == 1, (
+        "harness 里写用户笔记的地方不止一处了：" + "、".join(writers)
+        + "\n写库只许走 middleware/save.persist——理由见它的 docstring")
+
+
+def test_rails_off挡住save时一个字都不许落库():
+    """**词法闸挡不住这一条**：出口收成一个函数之后，只要 `persist` 自己不认
+    `rails_off`，调用方照样会把用户的笔记写坏（批 16 就是这么发生的）。
+    所以这里直接跑一遍：`rails_off=("save",)` 的 Mode，`persist` 必须不写。
+    """
+    import dataclasses
+
+    from app.harness.middleware import save as save_mod
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+    from app.harness.types import Dimension, Mode
+
+    wrote: list[str] = []
+    real = save_mod.store.update_note
+    save_mod.store.update_note = lambda u, n, t, c: wrote.append(c)
+    try:
+        base = Mode(key="t", label="t", skill_scope="s", task="做点什么",
+                    dims=(Dimension("d0", "..."),))
+        st = State(mode=dataclasses.replace(base, rails_off=("save",)),
+                   ctx=ToolContext(user="u", note_id="真实笔记"))
+        st.content = "这一轮写出来的正文"
+        assert save_mod.persist(st) is False
+        assert wrote == [], "rails_off 挡住了 save，却还是写了库"
+
+        st.mode = base                       # 没挡的时候必须照写
+        assert save_mod.persist(st) is True
+        assert wrote == ["这一轮写出来的正文"]
+    finally:
+        save_mod.store.update_note = real

@@ -113,7 +113,7 @@ spine_fidelity 1.88–1.96 封顶（对着没人验过的计划打分，太容�
 |---|---|---|---|
 | 3.1 | ✅ 小节索引 + `read_section`（`middleware/sections.py` + `tools/longform_tools.py`，开关 `params.SECTION_INDEX`）。`Compact` 从两条长文 harness 退休，`compact_context` 仍服务「智能续写」那条一次性路径（那条没有工具循环，给指针取不回来） | **[CE] §7** `P0` | 截断是最差的一档；`Verbatim Chunks Beat Extracted Artifacts`。批 15 真跑（`terrence` 真库、38 次跑、`rails_off=("save",)`）：**模型真的会去调 `read_section`**（索引真正生效的那个种子上，12 次跑里 11 次调过，共读回 25 节；对照臂 0 次），[CE] §7 那条「模型不去调那个工具」的风险实测没有兑现 |
 | 3.2 | ✅ 事实索引取代 `[-40:]`（`facts_all` 全量只追加；进 prompt 的是「账本那一行索引 + 最近 40 条逐字」，开关 `params.FACT_INDEX`） | **[CE] §7 / [MR] §3.5** `P0` | `[-40:]` 从头丢 → 整块平移 → 换进换出 + 断缓存。索引那一行**取自账本**（`ledger.facts[fid]["line"]`），不另造一份 |
-| 3.3 | ✅ `prompt_cache_key`（`llm.set_cache_key(note_id, mode)` + `ctx_feature` 的步骤名） | **[CE] §4.6** | 按 note + mode + 步骤分账。**它只改路由、不改命不命中**——真正卡住 judge 命中率的是 `score_context.with_material`（见批 15 计划外发现①） |
+| 3.3 | ✅ `prompt_cache_key`（`llm.set_cache_key(note_id, mode)` + `ctx_feature` 的步骤名） | **[CE] §4.6** | 按 note + mode + 步骤分账。**它只改路由、不改命不命中**。批 15 以为卡住 judge 的是 `score_context.with_material` 的排布；**批 16 实测证明不是**——这个端点的前缀缓存是**按 message 为单位**的，同一条 message 内部再长的共享前缀一个 token 都不算（见 TRACELOG 批 16 计划外发现 ①） |
 
 ### 阶段 4 · 评判形态 —— 2/7（批 3 做了 4.7，批 8 做了 4.1）
 
@@ -127,15 +127,19 @@ spine_fidelity 1.88–1.96 封顶（对着没人验过的计划打分，太容�
 | 4.6 | block 模式的 `stop_when`（现在 6 个模式 0 条） | [EVAL] 问题三 | 「这一轮什么都没变」在 block 模式完全不起作用 |
 | 4.7 | ✅ 清 `last_scores` 死状态 + 注释钉住 | [LED] §10⑥ | 写了没人读；论文指出喂先前分数会破坏评判独立性 |
 
-### 阶段 5 · 有 oracle 的那几个模式 —— 0/3 `P0`
+### 阶段 5 · 有 oracle 的那几个模式 —— 3/3 `P0`（批 16）
 
 **[IND] 自己排在第 1 位的一条。** 图表 / 表格 / 分析三个模式**本来有执行 oracle**。
 
 | # | 做什么 | reference | 证据 |
 |---|---|---|---|
-| 5.1 | `data_grounding` 确定性化：图 / 表里的数字跟工具返回逐个 diff | **[IND] §2–3** `P0` | 判据原文是「每个数字都能追到源表」——那是比对不是判断；实测 2/2 满分 |
-| 5.2 | `numbers_from_tools` 同上（eda · analysis） | **[IND] §2** `P0` | VisEval：一组异构 checker，几乎不用打分模型 |
-| 5.3 | readability 档：图例有没有、类别数是否多到读不出来 | **[IND] §2** | VisEval 的三档之一，我们只有 validity/legality |
+| 5.1 | ✅ `data_grounding` 确定性化：图 / 表里的数字跟工具返回逐个 diff（`checks/numbers.chart_numbers_grounded`）**＋ `table_columns_match`**（`table_validity` 的达标线原话「header and rows have matching column counts」，从 bench 侧搬进 `checks/`） | **[IND] §2–3** `P0` | 判据原文是「每个数字都能追到源表」——那是比对不是判断；实测 2/2 满分。批 16 在 24 篇真实用户笔记上量误伤：图/表数值位候选 32、正文统计量候选 474，**开火 0** |
+| 5.2 | ✅ `numbers_from_tools` 同上（eda · analysis，`checks/numbers.numbers_from_tools`） | **[IND] §2** `P0` | VisEval：一组异构 checker，几乎不用打分模型。判据窄成三道：`tabular._NOT_A_QUANTITY` + 五条正文专属 + 「带 % / 带小数 / ≥100」 |
+| 5.3 | ✅ readability 档（`checks/charts.chart_readable`）：y 轴有没有名字、多系列图的图例数不数得上、类目多不多到读不出、x 轴标签有没有被 `safe_label` 截断、流程图节点数 | **[IND] §2** | VisEval 的三档之一，我们只有 validity/legality。每一条都对着一个**我们自己的工具真会吐出来**的形状（`blocks.py` 记着「三月Kickstarte…」那次实拍） |
+
+**验收靠单测 + 构造用例，不靠 bench**（批 11/13 的硬约束：图表那一组只有 1 篇真实
+用户语料带图、1 篇带表，而那篇的表每个格子都是占位符、那张 mermaid 本身就是坏的）。
+`tests/test_number_grounding.py` 43 条；突变验 21 条全红。
 
 ### 阶段 6 · 指令类：从用户那条指令现场生成 checklist —— 0/2 `P0`
 
@@ -209,7 +213,7 @@ spine_fidelity 1.88–1.96 封顶（对着没人验过的计划打分，太容�
  └→ 1.3 1.4 1.5 1.7 4.7      （代码侧小改，快）
  └→ 1.6 植入缺陷测灵敏度  P0  ← ✅ 批 5。结论把 2.6 提到了 2.1 前面
  └→ 2.1 2.2 2.3           P0  （账本，不碰 prompt）
- └→ 5.1 5.2 5.3           P0  （有 oracle 的，便宜且确定）
+ └→ 5.1 5.2 5.3           P0  ← ✅ 批 16。有 oracle 的三条，验收靠单测不靠 bench
  └→ 2.4 2.5               P0  ← ✅ 批 13。账本接进 prompt，`LEDGER_IN_PROMPT` 单独回退
  └→ 3.1 3.2 3.3           P0  （取消截断）
  └→ 6.1 6.2               P0  （指令类 checklist）
@@ -244,9 +248,10 @@ spine_fidelity 1.88–1.96 封顶（对着没人验过的计划打分，太容�
 | 反复跑同一篇分数单调下滑 | **3/6** | 0/6 | [EFF] |
 | 收尾仍 `continue` | **54%** | 能拆成三种 | [EFF] |
 | 一次跑内重复查询占比 | 批 10 实测 **33.3%**（算上 prepare 直接调的 40%）；批 13 三臂 × 16 次跑**按轮归一化**：都关 **32.5%** → 只开 2.5 **17.2%** → 都开 **3.5%** | 0 | **[MR]** |
-| judge 调用缓存命中率（第 2 轮起） | 批 15 实测 **0.0%**（38 次真跑 / 24 次 judge 调用）。根因已定位：`score_context.with_material` 把**逐轮增长**的材料块排在 `[Content]` **之前**，断点落在正文之前——**跟批 2 修掉的 `dup_hints` 一模一样的形状**。检索规划那一路是 60~62%、续写那一路 30% | > 0.7 | **[CE]** |
+| judge 调用缓存命中率（第 2 轮起） | 批 15 实测 **0.0%**；批 16 把材料挪到 `[Content]` 之后，**仍然 0.0%**——根因不是排布。**批 16 的受控实验**（5 组、每组 3–5 次调用）测出这个端点的规则：命中的前提是**之前发过的某一条完整请求的整个 message 列表是这一条的前缀**；同一条 message 内部 6019 token 的共享前缀命中 **0**，而把新增内容做成新 message 追加时命中 **99.6%**。judge 只有一条 user message、整段每轮重拼，所以它结构上不可能命中。检索规划 60~62% 正是因为工具循环天然是「追加 message」 | > 0.7 | **[CE]** |
+| `data_grounding` / `numbers_from_tools` / `table_validity` 判法 | 批 16 起：**算出来的**（`checks/numbers` + `table_columns_match`），24 篇真实用户笔记上误伤 0 | 保持 0 误伤 | **[IND] §2–3** |
 | 没有位置级探测器的内在质量维度 | **2** | 0 | [MECH] |
 | `material_use` / `fits_context` 满分率 | 24/25、4/4 | 不再是「无从判断默认给过」 | [EVAL]/[LED] |
 | `material_use` 对「材料全剔光」的灵敏度 | **2.0 → 1.92**（批 5 实测，给了事实块也一样） | 掉 ≥ 1 档 | **[IND] §8④** |
 | `right_kind` 对「换成不存在的图片引用」 | **0.11 → 2.0**（反的） | 掉分 | **[IND] §8④** |
-| `data_grounding` 判法 | 模型判 | **算出来的** | **[IND] §2–3** |
+| `data_grounding` 判法 | ~~模型判~~ → 批 16 起代码判 | **算出来的** ✅ | **[IND] §2–3** |

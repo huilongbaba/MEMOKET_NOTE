@@ -24,11 +24,15 @@ from app.harness.types import Dimension, Mode
 
 @pytest.fixture(autouse=True)
 def _no_db(monkeypatch):
-    """不让它写真库。存不存是另一条断言，用 saved 记下来。"""
-    from app.harness.middleware import revise as mod
+    """不让它写真库。存不存是另一条断言，用 saved 记下来。
+
+    批 16 起 `Revise` 不再自己调 `store.update_note`，而是走
+    `middleware/save.persist`（写库全仓只有一个出口，而且那个出口自己认
+    `rails_off`）——所以桩打在 `save.store` 上。"""
+    from app.harness.middleware import save as save_mod
 
     saved: list[str] = []
-    monkeypatch.setattr(mod.store, "update_note",
+    monkeypatch.setattr(save_mod.store, "update_note",
                         lambda user, nid, title, content: saved.append(content))
     return saved
 

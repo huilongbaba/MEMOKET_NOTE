@@ -16,11 +16,12 @@ import dataclasses
 from .types import Dimension
 
 from .checks import grounding_rules as grounding_check
-from .checks import (charts_from_tools, citations_exist, citations_present, citations_hold, heading_fits,
+from .checks import (chart_numbers_grounded, chart_readable, charts_from_tools,
+                     citations_exist, citations_present, citations_hold, heading_fits,
                      material_used, no_audit_voice, no_fake_charts,
                      no_placeholder, no_repeated_lists, no_restated_paragraph,
-                     no_same_sources_twice, outline_intact,
-                     table_present, tail_clashes)
+                     no_same_sources_twice, numbers_from_tools, outline_intact,
+                     table_columns_match, table_present, tail_clashes)
 from .middleware import Repair, Replan, Runtime, Save, Sections
 from .middleware.revise import Revise
 from .state import State
@@ -512,7 +513,11 @@ EDA = Mode(
     focus_groups=("chart",),
     skill_scope="block_write",
     dims=EDA_DIMS,
-    checks=(no_fake_charts, charts_from_tools, heading_fits, tail_clashes),
+    # 后三条是批 16 的阶段 5（[IND] §2 把它排在第 1 位）：这个模式**本来有
+    # 执行 oracle**——图里画的数、正文里的统计量，跟工具返回的逐个 diff 就行，
+    # 那是一次精确比对，不是一次判断。
+    checks=(no_fake_charts, charts_from_tools, heading_fits, tail_clashes,
+            chart_numbers_grounded, numbers_from_tools, chart_readable),
     precheck=_eda_has_data,
     max_rounds=3,
 )
@@ -529,7 +534,8 @@ CHART = Mode(
     groups=("data", "chart", "image", "memory", "skill"),
     skill_scope="block_write",
     dims=CHART_DIMS,
-    checks=(no_fake_charts, charts_from_tools, heading_fits),
+    checks=(no_fake_charts, charts_from_tools, heading_fits,
+            chart_numbers_grounded, chart_readable),
     max_rounds=3,
 )
 
@@ -542,7 +548,11 @@ TABLE = Mode(
     groups=("data", "table", "memory", "skill"),
     skill_scope="block_write",
     dims=TABLE_DIMS,
-    checks=(table_present, heading_fits),
+    # `table_validity` 的达标线原话是「header and rows have matching column
+    # counts」，`data_grounding` 是「every cell traces to …」——**两条都是代码
+    # 能判准的**，而在批 16 之前这个模式的三条维度全交给了打分模型。
+    checks=(table_present, table_columns_match, chart_numbers_grounded,
+            heading_fits),
     max_rounds=3,
 )
 
@@ -556,7 +566,8 @@ ANALYSIS = Mode(
     focus_groups=("chart",),
     skill_scope="block_write",
     dims=ANALYSIS_DIMS,
-    checks=(no_fake_charts, charts_from_tools, heading_fits),
+    checks=(no_fake_charts, charts_from_tools, heading_fits,
+            chart_numbers_grounded, numbers_from_tools, chart_readable),
     max_rounds=3,
 )
 

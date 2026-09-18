@@ -219,3 +219,161 @@ def repeated_lists(text: str, fresh: str = "", limit: int = 2) -> list[tuple[str
                 if len(out) >= limit:
                     return out
     return out
+
+
+# ---------------------------------------------------------------- 表格 ---
+#
+# 整块表：连着两行以上以 `|` 开头结尾的行。**末尾那一行后面可能没有换行**
+# （表格就在正文结尾）——这条正则写死 `\n` 的那一版让 `603dca25403a` 那张
+# 真实的表最后一整行落在匹配之外（台账批 7）。
+_TABLE_BLOCK = re.compile(r"(?m)^(\|.*\|[ \t]*(?:\n|$)){2,}")
+# 一个格子算不算「一个数」：整格就是数字（可带千分位、小数、百分号），
+# **不做任何抽取**。「2026-09-18」「第 3 版」「约 40 台」一律不算——
+# 判据宁可窄，一个格子里混着文字就说明它不是一个纯粹的数据格。
+_NUM_CELL = re.compile(r"^-?[\d,]+(?:\.\d+)?\s*[%％]?$")
+
+
+def table_blocks(text: str) -> list[str]:
+    return [m.group(0) for m in _TABLE_BLOCK.finditer(text or "")]
+
+
+def table_column_mismatch(text: str) -> bool:
+    """markdown 表的表头 / 分隔行 / 数据行列数对不对得上。
+
+    `table_validity` 的达标线原话就是「header and rows have matching column
+    counts」——**那是一句纯粹能用代码判准的话**，而在批 16 之前仓里没有任何
+    一处在判它：`structure.table_present` 只查"有没有表"，`has_table` 只查
+    "表头下面有没有分隔行"，**两者都不数列**。
+
+    这份实现原来住在 `scripts/dimension_sensitivity_bench.py` 里（批 12 写的，
+    用途是自验植入器真的把列数弄错了）。搬进来之后 bench 反过来 import 它，
+    **一份实现两个用途**——bench 那边留一份副本的话，"植入器植没植进去"和
+    "生产判不判得出来"就会各判各的。
+    """
+    for block in table_blocks(text):
+        rows = [r for r in block.strip().split("\n") if r.strip()]
+        widths = {len(r.strip().strip("|").split("|")) for r in rows}
+        if len(widths) > 1:
+            return True
+    return False
+
+
+def table_numbers(text: str) -> list[float]:
+    """表里那些**整格就是一个数**的格子。表头行和分隔行不算。
+
+    百分号原样剥掉（`38%` → 38.0），换算留给调用方——比对那一侧要同时试
+    `v` 和 `v/100`，在这里定死会把「源表里写 0.38」那一档判成无据。
+    """
+    out: list[float] = []
+    for block in table_blocks(text):
+        rows = [r for r in block.strip().split("\n") if r.strip()]
+        for row in rows[1:]:                     # 第一行是表头
+            if set(row.replace("|", "").strip()) <= set("-: \t"):
+                continue                          # 分隔行
+            for cell in row.strip().strip("|").split("|"):
+                cell = cell.strip()
+                if not _NUM_CELL.match(cell):
+                    continue
+                try:
+                    v = float(cell.rstrip("%％").replace(",", ""))
+                except ValueError:
+                    continue
+                if _looks_like_a_year(cell, v):
+                    continue
+                out.append(v)
+    return out
+
+
+def _looks_like_a_year(raw: str, value: float) -> bool:
+    """光秃秃一个四位整数，落在 1900–2100：当年份看，不当数据。
+
+    **这是"判据宁可窄"的那一刀**：表格里真有一列是年份时，它每一格都会被
+    当成"查无出处的数字"报上去，而报错的代价是模型去删一整列真内容。
+    带小数点、带百分号、带千分位的一律不算年份——那些形状不会是年份。
+    """
+    return (value.is_integer() and 1900 <= value <= 2100
+            and raw.strip().isdigit() and len(raw.strip()) == 4)
+
+
+# ------------------------------------------------------------ mermaid ---
+#
+# 工具拼出来的三种形状（`tools/blocks.py`）：
+#   pie        `pie title X` + `    "标签" : 数值`
+#   xychart    `xychart-beta` + title / x-axis [..] / y-axis ".." + `bar [..]`
+#   flowchart  `flowchart LR` + 节点和箭头（没有数值）
+# 这里只认**数值位**：x 轴标签、标题、轴名一律不取。
+# 理由是"位置即判据"——一个数出现在 `bar [...]` 里，它就是数据；
+# 出现在标题里（「2026 年复盘」）它不是。
+_PIE_SLICE = re.compile(r'^\s*"[^"]*"\s*:\s*(-?[\d.]+)\s*$')
+_XY_SERIES = re.compile(r"^\s*(?:bar|line)\s*\[([^\]]*)\]\s*$")
+_XY_XAXIS = re.compile(r"^\s*x-axis\s*\[([^\]]*)\]\s*$")
+_XY_YAXIS = re.compile(r'^\s*y-axis\s+"([^"]*)"\s*$')
+_XY_TITLE = re.compile(r'^\s*title\s+"([^"]*)"\s*$')
+
+
+def chart_numbers(block: str) -> list[float]:
+    """一块 mermaid 里的**数值位**上的数。"""
+    out: list[float] = []
+    for line in (block or "").splitlines():
+        m = _PIE_SLICE.match(line)
+        if m:
+            out += _floats([m.group(1)])
+            continue
+        m = _XY_SERIES.match(line)
+        if m:
+            out += _floats(m.group(1).split(","))
+    return out
+
+
+def _floats(raw: list[str]) -> list[float]:
+    out = []
+    for piece in raw:
+        piece = piece.strip().strip('"')
+        try:
+            v = float(piece.replace(",", ""))
+        except ValueError:
+            continue
+        if _looks_like_a_year(piece, v):
+            continue
+        out.append(v)
+    return out
+
+
+def chart_shape(block: str) -> dict:
+    """一块 mermaid 的可读性画像：类型、标题、类目、系列条数、轴名。
+
+    只描述，不判断——判断在 `checks/charts.chart_readable` 里，
+    那样阈值改动跟解析改动能分开测。
+    """
+    lines = [ln for ln in (block or "").strip().splitlines() if ln.strip()]
+    head = lines[0].strip() if lines else ""
+    shape: dict = {"kind": "", "title": "", "categories": [], "series": 0,
+                   "axis": "", "nodes": 0}
+    if head.startswith("pie"):
+        shape["kind"] = "pie"
+        shape["title"] = head[3:].replace("title", "", 1).strip()
+        shape["categories"] = [ln.split('"')[1] for ln in lines[1:]
+                               if ln.count('"') >= 2 and _PIE_SLICE.match(ln)]
+        shape["series"] = 1
+        return shape
+    if head.startswith("xychart"):
+        shape["kind"] = "xy"
+        for ln in lines[1:]:
+            m = _XY_TITLE.match(ln)
+            if m:
+                shape["title"] = m.group(1)
+            m = _XY_XAXIS.match(ln)
+            if m:
+                shape["categories"] = [x.strip().strip('"')
+                                       for x in m.group(1).split(",") if x.strip()]
+            m = _XY_YAXIS.match(ln)
+            if m:
+                shape["axis"] = m.group(1)
+            if _XY_SERIES.match(ln):
+                shape["series"] += 1
+        return shape
+    if head.startswith(("graph", "flowchart")) or head.startswith("---"):
+        shape["kind"] = "flow"
+        shape["nodes"] = sum(1 for ln in lines if "-->" in ln or "---" in ln) + 1
+        return shape
+    return shape

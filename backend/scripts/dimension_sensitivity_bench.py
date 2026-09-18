@@ -982,26 +982,18 @@ def _gate_handwritten_chart(text: str) -> bool:
     return bool(blockcheck.unauthorized_charts(text, []))
 
 
-def table_column_mismatch(text: str) -> bool:
-    """markdown 表的表头 / 分隔行 / 数据行列数对不对得上。
-
-    `table_validity` 的达标线原话就是「header and rows have matching column
-    counts」——**那是一句纯粹能用代码判准的话**，而仓里没有任何一处在判它：
-    `checks/structure.py` 的 `table_present` 只查"有没有表"，
-    `blockcheck.has_table` 只查"表头下面有没有分隔行"，两者都不数列。
-    这里先在 bench 侧把它实现出来，用途是自验植入器真的把列数弄错了；
-    它同时也是 5.x 那几条"有 oracle 的模式"要接进 `checks/` 的东西。
-    """
-    for m in _TABLE_BLOCK.finditer(text or ""):
-        rows = [r for r in m.group(0).strip().split("\n") if r.strip()]
-        widths = {len(r.strip().strip("|").split("|")) for r in rows}
-        if len(widths) > 1:
-            return True
-    return False
-
-
 def _gate_no_table(text: str) -> bool:
-    return table_column_mismatch(text)
+    """植入器真的把表的列数弄错了没有。
+
+    **实现在生产侧**（`checks/blockcheck.table_column_mismatch`，批 16 阶段 5.1
+    把它从这里搬过去了）。当初写在 bench 里是因为生产没有这条判据；现在有了，
+    这边就只能 import——两边各留一份的话，「植入器植没植进去」和
+    「生产判不判得出来」会各判各的，而这个 gate 的全部作用就是保证两者说的
+    是同一件事。
+    """
+    from app.harness.checks import blockcheck
+
+    return blockcheck.table_column_mismatch(text)
 
 
 GATES: dict[str, Callable[[str], bool]] = {
@@ -1719,9 +1711,14 @@ async def run_one(task: Task) -> dict:
     from app.harness.checks.rubric import ScoreParseError, evaluate
     dims = mode_dims(task.mode)
     t0 = time.monotonic()
+    # 材料块排在 `[Content]` 之后（批 16）。**拆分必须走生产那个函数**：
+    # `production_context()` 交出来的是"打分器该看见的全部"，怎么排布由
+    # `score_context.split_for_prompt` 说了算——bench 自己写一份 `pop` 就又是
+    # 一处会漂的分支（`as-deployed` 这一列的全部意义就是别漂）。
+    head, tail = score_context.split_for_prompt(task.context)
     try:
         ev = await evaluate(adapter.AppLLMClient(), content=task.text,
-                            dimensions=dims, context=task.context)
+                            dimensions=dims, context=head, tail_context=tail)
         scores = {k: v.level for k, v in ev.scores.items()}
         rec = {"key": task.key, "note": task.note_id, "probe": task.probe_id,
                "arm": task.arm, "rep": task.rep, "scores": scores, "pre": task.pre,

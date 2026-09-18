@@ -14,16 +14,19 @@ testable against real failing output, and means a check can never be the
 thing that breaks a run.
 """
 
-from .charts import charts_from_tools, no_fake_charts
+from .charts import chart_readable, charts_from_tools, no_fake_charts
 from .grounding import (citations_exist, citations_present, citations_hold, material_used,
                         no_audit_voice, no_placeholder)
+from .numbers import chart_numbers_grounded, numbers_from_tools
 from .pick import pick_dimension
 from .structure import (heading_fits, no_repeated_lists, no_restated_paragraph,
-                        no_same_sources_twice, outline_intact, table_present,
-                        tail_clashes)
+                        no_same_sources_twice, outline_intact, table_columns_match,
+                        table_present, tail_clashes)
 
 __all__ = [
     "pick_dimension",
+    "chart_numbers_grounded",
+    "chart_readable",
     "charts_from_tools",
     "citations_exist",
     "citations_present",
@@ -32,11 +35,13 @@ __all__ = [
     "no_same_sources_twice",
     "citations_hold",
     "heading_fits",
+    "table_columns_match",
     "table_present",
     "material_used",
     "no_audit_voice",
     "no_fake_charts",
     "no_placeholder",
+    "numbers_from_tools",
     "outline_intact",
     "tail_clashes",
 ]

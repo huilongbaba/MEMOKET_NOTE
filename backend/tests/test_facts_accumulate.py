@@ -76,7 +76,8 @@ def test_打分拿到的是累积正文和这个mode的维度(monkeypatch):
     # `context == {"核心张力": "张力"}`——也就是把「一条事实都没传」钉成了
     # 正确行为，而 `material_use` / `factual_grounding` 的判词全都写着对着
     # 材料判。这条测试因此曾经是这个 bug 的**看守**，不是它的探测器。
-    material = ctx["知识库事实"]
+    # 批 16 起它走 `tail_context`（排在 `[Content]` 之后，见 score_context）。
+    material = seen["kw"]["tail_context"]["知识库事实"]
     assert "第一轮查到的" in material and "第二轮查到的" in material, \
         "打分拿到的必须是跨轮累积的那一份材料"
     assert "只有第二轮的" not in material, \

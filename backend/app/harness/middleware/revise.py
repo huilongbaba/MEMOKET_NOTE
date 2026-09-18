@@ -19,12 +19,12 @@ from __future__ import annotations
 from typing import AsyncIterator
 
 from .. import prompts
-from ...database import store
 from ...util import llm
 from ...editor import outline
 from ..checks import grounding_rules as grounding_check
 from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, CUSTOM_SCRUB, Event
 from ..revision import apply_revision, breakage, expand_sources, tidy_blank_lines, reject_revision
+from . import save
 from ..state import State
 
 # One pass proposes at most this many edits. Beyond it the model stops
@@ -208,8 +208,12 @@ class Revise:
                 "detail": f"删掉一句元话语（不该出现在你的笔记里）：{sentence[:60]}"})
 
         if applied or meta_gone:
-            store.update_note(st.ctx.user, st.ctx.note_id, st.ctx.note_title,
-                              st.content)
+            # **走 `save.persist`，不自己调 `store.update_note`**（批 16）：
+            # 这里自己写库是这个仓第三次写坏用户真实笔记的直接原因——
+            # 跑批脚本用 `rails_off=("save",)` 挡写，而那条只摘掉了 `Save`
+            # 这一个 middleware，这一行照写不误。写库只许有一个出口，
+            # 由它自己认 rails（理由写在 `save.persist` 的 docstring 里）。
+            save.persist(st)
         st.bag["revisions_applied"] = applied
         st.bag["no_change_rounds"] = 0 if applied else st.bag.get("no_change_rounds", 0) + 1
 

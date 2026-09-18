@@ -45,6 +45,29 @@ def table_present(st: State) -> Verdict | None:
     )
 
 
+def table_columns_match(st: State) -> Verdict | None:
+    """表头和数据行的列数对不对得上（计划 5.1 / [IND] §3）。
+
+    `table_validity` 的达标线原话是「a complete markdown table whose header
+    and rows have matching column counts」——**一句纯粹能用代码判准的话**，
+    而在批 16 之前它整条交给了打分模型：`table_present` 只查"有没有表"、
+    `blockcheck.has_table` 只查"表头下面有没有分隔行"，**两者都不数列**。
+
+    实现（`blockcheck.table_column_mismatch`）是从
+    `scripts/dimension_sensitivity_bench.py` 搬过来的——批 12 在 bench 侧写它，
+    是为了自验「列数植入器真的把列数弄错了」。同一件事两边各写一份的话，
+    "植入器植没植进去"和"生产判不判得出来"会各判各的。
+    """
+    if not blockcheck.table_column_mismatch(st.content):
+        return None
+    return Verdict(
+        pick_dimension(st, "table_validity", "coherence"),
+        "这张表的列数对不上：有的行比表头多一格或少一格，渲染出来会错位。"
+        "**重新调用 render_table**（它按 columns / rows 拼，列数不会错），"
+        "不要手动补竖线——空着的格子留空就行，别为了对齐去编一个值。",
+    )
+
+
 def heading_fits(st: State) -> Verdict | None:
     """Headings must sit *below* the surrounding section, not beside it."""
     gap = blockcheck.heading_gap(st.before, st.content)

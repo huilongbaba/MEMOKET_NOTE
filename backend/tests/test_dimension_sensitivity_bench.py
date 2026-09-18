@@ -224,15 +224,30 @@ def test_截断代码块之后收尾围栏没了():
 
 
 def test_表头少一列能被列数判据抓到():
-    assert not bench.table_column_mismatch(TABLE)
+    """判据本体在生产侧（批 16 阶段 5.1 搬过去的），bench 这边只 import。"""
+    from app.harness.checks.blockcheck import table_column_mismatch
+
+    assert not table_column_mismatch(TABLE)
     dirty = bench.inj_drop_table_column(TABLE, "")
-    assert bench.table_column_mismatch(dirty)
+    assert table_column_mismatch(dirty)
+    assert bench.GATES["broken_table"](dirty), "bench 的 gate 要走的就是这一条"
 
 
 def test_列数判据不把正常表报成错():
     """判据宁可窄一点：只在同一张表内部列数不一致时才算。"""
-    assert not bench.table_column_mismatch("正文里有个竖线 a|b 而已")
-    assert not bench.table_column_mismatch(TABLE + "\n\n| 甲 |\n|---|\n| 1 |\n")
+    from app.harness.checks.blockcheck import table_column_mismatch
+
+    assert not table_column_mismatch("正文里有个竖线 a|b 而已")
+    assert not table_column_mismatch(TABLE + "\n\n| 甲 |\n|---|\n| 1 |\n")
+
+
+def test_bench不再自己留一份列数判据():
+    """**一份实现两个用途**（批 16）：bench 用它自验植入器、生产用它判产出。
+    两边各写一份的话，「植入器植没植进去」和「生产判不判得出来」会各判各的
+    ——而那正是这个 gate 存在的全部意义。"""
+    src = pathlib.Path(bench.__file__).read_text(encoding="utf-8")
+    assert "def table_column_mismatch" not in src
+    assert "blockcheck.table_column_mismatch" in src
 
 
 def test_往表里填的是笔记里查无此事的数():
@@ -511,6 +526,24 @@ def test_as_deployed的上下文是生产那个函数拼的():
     assert "score_context.for_block" in src and "score_context.material" in src
     assert "这一块前面的正文" not in src, \
         "bench 又把打分上下文的形状抄了一份——它只能由 score_context 说了算"
+
+
+def test_bench的材料也排在正文之后():
+    """批 16：材料块挪到 `[Content]` 之后。**bench 也必须挪**，否则
+    `as-deployed` 这一列量的就不再是生产那份 prompt 了——而这次改的正是
+    "同一份内容排在哪"，排布不一致等于整张灵敏度表换了一个自变量。
+
+    判据盯的是 `run_one` 那一行真的调了拆分函数，**并且没有自己 pop 一份**
+    （批 15 计划外发现 5：判据去读源码的时候，注释也是源码，所以匹配的是
+    真实调用形态，不是一个能写进注释的子串）。
+    """
+    src = pathlib.Path(bench.__file__).read_text(encoding="utf-8")
+    assert re.search(r"^\s*head, tail = score_context\.split_for_prompt\(",
+                     src, re.M), "bench 的 run_one 没走生产那道拆分"
+    assert re.search(r"^\s*ev = await evaluate\(.*tail_context=tail", src,
+                     re.M | re.S), "拆出来了却没用 tail_context 传给 evaluate"
+    assert not re.search(r"^\s*\w+\.pop\(score_context\.MATERIAL_KEY", src, re.M), \
+        "bench 又自己拆了一份——排布只能由 score_context 说了算"
 
 
 def test_block模式的as_deployed带上了前后文():

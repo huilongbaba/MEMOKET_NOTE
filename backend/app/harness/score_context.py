@@ -142,14 +142,48 @@ def with_material(context: dict[str, str] | None,
                   facts: Sequence[str]) -> dict[str, str]:
     """`score_context` + 这次跑累积的材料。`loop._evaluate` 每轮调一次。
 
-    材料排在 context 的**最后一项**（`rubric._build_prompt` 按插入顺序渲染），
-    也就是紧挨着 `[Content]`：判词要的是「正文对不对得上材料」，两块离得越近
-    越好。代价是材料每轮增长会把正文那段前缀缓存顶掉（`docs/harness-context-
-    engineering.md` §2② 记着 dup_hints 踩过的同一件事）——这里选了准确率，
-    铁律 7：质量优先于省钱。
+    **这一份是"打分器这一轮该看见的全部"，不管它最后排在 prompt 的哪一段。**
+    排布由 `split_for_prompt()` 决定——两件事分开，是因为读这份 context 的不
+    只有 `rubric._build_prompt`：`dimension_sensitivity_bench` 的几条 probe
+    （`SUPERSEDE_PROBE` / `_has_material`）也在按 `MATERIAL_KEY` 查这一份里
+    到底给没给材料。
     """
     out = dict(context or {})
     block = material(facts)
     if block:
         out[MATERIAL_KEY] = block
     return out
+
+
+# 排在 `[Content]` **之后**的那几块。今天只有材料一块。
+#
+# **这是批 16 的头一件事，根因是批 15 实测出来的**：judge 那一路的缓存命中率
+# 恒为 **0.0%**（38 次真跑 / 24 次 judge 调用，命中 0 token），而同一次跑里
+# 检索规划 60.3%、续写 30.7%。根因是材料块原来是 `context` 的一项、排在
+# `[Content]` **之前**，而它**每一轮都在长**（实测 `facts_new` 每轮 41~46 条）
+# ——前缀缓存的断点就落在正文之前，**正文那几千 token 从来没被缓存过一次**。
+#
+# **跟批 2 修掉的 `dup_hints` 是一模一样的形状**（`rubric._build_prompt` 里那段
+# 注释记着那一次）：每轮变的小块卡在最大那块前面。
+#
+# 原来那句「材料排在 context 末尾，也就是紧挨着 `[Content]`」**是错的，而且
+# 错了八批没人再看一眼**：`_build_prompt` 的顺序是 `context → [Dimensions to
+# score] → [Content]`，中间隔着整块维度判词（八组里最长的 EDA 那组 1000+ 字）。
+# 挪到 `[Content]` 之后，材料才**第一次真的**跟正文相邻——所以这一改
+# **相邻性不但没丢，还是变好了**，"准确率 vs 省钱"那个取舍在这里根本不存在。
+TAIL_KEYS = (MATERIAL_KEY,)
+
+
+def split_for_prompt(context: dict[str, str] | None,
+                     ) -> tuple[dict[str, str], dict[str, str]]:
+    """`(排在 [Content] 前面的, 排在 [Content] 后面的)`。
+
+    **凡是要把 `with_material()` 的结果递给 `evaluate()` 的地方都得过这一道**
+    （生产是 `loop._evaluate`，测量台是 `dimension_sensitivity_bench.run_one`）。
+    两边共用这一个函数，而不是各自记得「材料要用 tail_context 传」——
+    「建了判据不等于用了判据」，何况这次要守的是一个**看不见的**性质：
+    漏掉它不会报错，只会让命中率悄悄回到 0。
+    """
+    ctx = dict(context or {})
+    tail = {k: ctx.pop(k) for k in TAIL_KEYS if k in ctx}
+    return ctx, tail
