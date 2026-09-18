@@ -27,7 +27,7 @@ from ..editor.preconditions import note_precondition
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
-from ..harness.checks.skeleton import check_skeleton
+from ..harness.checks.skeleton import beats_budget, check_skeleton, skeleton_length_rule, verify_beats
 from ..harness.checks.tap import check_tap
 from ..harness.checks.slides import check_slides
 from ..database import store
@@ -117,12 +117,15 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     if why := note_precondition("skeleton", body.content, body.title):
         raise HTTPException(400, why)   # 空正文也会花一次模型调用，答一句「内容尚未提供」；前端同一句话先拦
     t0 = time.perf_counter()
-    system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user)
+    # P7（P4 #1/#3）：条数按正文长度定（每 2k 字一条、6–12）、每条 ≤120 字、开头标「已写：/待补：」——
+    # 作为附加段拼进 system，提示词本身（`prompts/writing.py`）不动。
+    budget = beats_budget(len(body.content))
+    system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user) + skeleton_length_rule(len(body.content))
     parsed, text = await llm.complete_json_raw(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.skeleton_user(
              body.title, body.content, _profile(user))}],
-        max_tokens=800, temperature=0.4)
+        max_tokens=1600, temperature=0.4)
     spine = ""
     beats: list[str] = []
     if isinstance(parsed, dict):
@@ -136,8 +139,12 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
                  for ln in text.splitlines() if ln.strip()]
         if lines:
             spine = lines[0]
-            beats = lines[1:7]
-    beats = beats[:6]
+            beats = lines[1:budget + 1]
+    beats = beats[:budget]
+    # 所见即所存（P4 #1）：返回前就按落库同一条规则收（按句 / 顿号，不按字硬切）
+    spine, beats = store.clamp_skeleton(spine, beats)
+    # 「待补」的正文里有没有——代码核对（P4 #2），标签统一成「已写：」「待补：」，翻过来的带正文行号
+    beats = verify_beats(beats, body.content)
     # 骨架的确定性体检（计划 4.3）。**判了不拦着返回**——照 `slides` 那一档：
     # 骨架是一次成型的产物，不进多轮闭环，判据的结果跟产物一起显示，用户自己
     # 决定要不要重新生成。零模型调用。

@@ -534,7 +534,7 @@ export const recall = (query: string, limit = 8) =>
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ query, limit, scope: memoryScope() }),
-  }).then(json<{ facts: Fact[]; took_ms: number; terms: string[]; kb_empty?: boolean }>)
+  }).then(json<{ facts: Fact[]; took_ms: number; terms: string[]; kb_empty?: boolean; why_empty?: '' | 'no_terms' | 'weak' }>)
 
 /** 「来龙去脉」：给一段正文，回它涉及的事情按时间怎么演进的。
  *

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ..database import store
 from ..database.kb import pages
 from ..database.kb import relations as kb_relations
+from ..database.kb import search
 from ..database.kite.kite_memory import UserMemory
 from ..harness import prompts
 from ..util import llm
@@ -38,8 +39,18 @@ def rows_to_facts(mem: UserMemory, rows: list[dict]) -> list[FactOut]:
 def recall(body: RecallIn, user: str = Depends(current_user)):
     mem = UserMemory(user)
     rows, terms, took = mem.recall(body.query, limit=body.limit, scope=body.scope)
+    # 空着的时候说清楚为什么（P4 #6）：是这段没有可查的词，还是有词但没有一条记录同时命中两个——
+    # 右栏据此写「这段没有可查的关键词」，而不是「暂时没有找到相关内容」一句话糊过去。
+    why = ""
+    if not rows:
+        try:
+            why = "no_terms" if not search._terms(mem, search.clean_query(body.query)) else "weak"
+        except Exception:      # noqa: BLE001 — 解释是附赠的
+            why = ""
     return RecallOut(facts=rows_to_facts(mem, rows), took_ms=round(took, 3),
-                     terms=terms, kb_empty=mem.is_empty())
+                     # 给人看的是整词，不是「小时预」「号上众」这种切碎的 n-gram（P4 #6）
+                     terms=search.display_terms(terms, body.query), kb_empty=mem.is_empty(),
+                     why_empty=why)
 
 
 @router.get("/stats", response_model=StatsOut)

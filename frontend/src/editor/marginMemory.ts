@@ -22,7 +22,11 @@ export const RELATION_LABEL: Record<MemoryRelationKind, string> = {
 
 /** 圆点的规则，一句话（P1-1d，用户第 768 轮问「一个点代表一行还是一段？绿色黄色是什么？」）。
  *  写在这里而不是散在各处：悬停提示、右栏图例读的是同一句。 */
-export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段），只看含数字 / 日期的段落——判的是量的比对，零模型'
+export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段），只看含数字 / 日期的段落——判的是量的比对，圆点零模型'
+
+/** 图例里「零模型」差的那一个条件（P4 #10）：右栏关系卡判到「冲突」时，后端会让模型把那句人话复核 / 改写一次
+ *  （`routers/memory.py` `relations`，只对 conflict 候选）；圆点（`relations/batch`）不会。 */
+export const MODEL_NOTE = '关系卡里判到「冲突」时会让模型复核一次那句话；其余（圆点、印证、缺依据、叠加、合并、延续）全是代码判的。'
 
 /** 悬停在点上看到的话：这一段 · 关系 · 那句人话 · 规则 · 还有别的没有。 */
 export function markTitle(m: MarginMark): string {

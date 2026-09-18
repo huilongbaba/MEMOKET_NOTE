@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { parseHeadings } from '../../components/DocumentOutline'
+import { parseFallbackAnchors, parseHeadings } from '../../components/DocumentOutline'
 
 const 带代码的笔记 = [
   '## 背景', '', '一段正文。', '',
@@ -47,5 +47,44 @@ describe('parseHeadings', () => {
   it('没有代码块时照常工作', () => {
     expect(parseHeadings('# 甲\n## 乙\n### 丙').map((h) => h.text))
       .toEqual(['甲', '乙', '丙'])
+  })
+})
+
+// —— P7（P4 #3）：没有 `#` 标题时的退路 ————————————————————————
+const 展厅讲解词 = [
+  '公司汇报：', '',
+  '去年公司稳健发展，营收几乎与2020年的巅峰持平。其中主力是 ICT 基础设施和终端。', '',
+  '算力底座：', '',
+  '首屏：在计算产业，大家讨论最多的是超节点，华为的 950 超节点用全光互联。', '',
+  '案例：', '',
+  '2025 年昇腾在国内的新增市场份额达到六成。', '',
+  '英伟达对比：', '',
+  '单芯片能力非常强大，且 CUDA 生态很成熟。', '',
+].join('\n')
+
+describe('parseFallbackAnchors', () => {
+  it('短行 + 冒号结尾 ≥ 3 个 → 当伪标题，去掉冒号，位置对', () => {
+    const r = parseFallbackAnchors(展厅讲解词)
+    expect(r.how).toBe('colon')
+    expect(r.items.map((h) => h.text)).toEqual(['公司汇报', '算力底座', '案例', '英伟达对比'])
+    expect(r.items[1].pos).toBe(展厅讲解词.indexOf('算力底座：'))
+  })
+  it('没有冒号短行 → 按段落列、每段取首句', () => {
+    const r = parseFallbackAnchors('第一段讲的是卖房中介的对比。后面还有很多。\n\n第二段讲三类信息：事实、推测、冲突的判断，要分开。\n')
+    expect(r.how).toBe('paragraph')
+    expect(r.items.map((h) => h.text)).toEqual(['第一段讲的是卖房中介的对比…', '第二段讲三类信息：事实、推测、冲突的判断，要分开…'])
+  })
+  it('段落前的列表符 / 编号剥掉', () => {
+    const r = parseFallbackAnchors('- 第一条内容够长了吧这一段肯定够二十个字了，再补几个字\n\n3. 第三条也够长了这一段要二十个字才行，再补几个字\n')
+    expect(r.items.map((h) => h.text)[0].startsWith('第一条')).toBe(true)
+    expect(r.items.map((h) => h.text)[1].startsWith('第三条')).toBe(true)
+  })
+  it('代码块里的行不算段落', () => {
+    const r = parseFallbackAnchors('```\n# 看着像标题：\nx = 1\n```\n\n一段正文，够二十个字了吧应该是够了，再补几个字。\n\n再来一段正文，同样够二十个字了吧，再补几个字。\n')
+    expect(r.how).toBe('paragraph')
+    expect(r.items.every((h) => !h.text.includes('看着像'))).toBe(true)
+  })
+  it('太短的笔记 → none', () => {
+    expect(parseFallbackAnchors('一句话。').how).toBe('none')
   })
 })

@@ -517,6 +517,9 @@ class RecallOut(BaseModel):
     # 实拍发现 `@` 引用这条路上同样在说「知识库里没找到跟"样机"相关的记录」
     # ——那句话对一个还没导过任何东西的人是误导。
     kb_empty: bool = False
+    # 空结果的原因（P7）：no_terms = 查询里没有可查的内容词；weak = 有词，但没有一条记录同时命中
+    # 两个不同的词（长查询不硬凑）；"" = 有结果或说不清。
+    why_empty: str = ""
 
 
 class IngestTextIn(BaseModel):

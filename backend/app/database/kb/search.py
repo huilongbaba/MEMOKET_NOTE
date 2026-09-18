@@ -107,12 +107,15 @@ def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
 _IMG_MD = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _LINK_MD = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _CITE_MARK = re.compile(r"\[[A-Za-z][\w-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\]")
+# `<|start|>` 这种转写残留的乱码（P4 表 A #3）：`start` 被当成英文查询词，8 条候选全是 start-up。
+_GARBAGE = re.compile(r"<\|[^|>]*\|>")
 
 
 def clean_query(text: str) -> str:
     s = _IMG_MD.sub("", text or "")
     s = _LINK_MD.sub(r"\1", s)
     s = _CITE_MARK.sub("", s)
+    s = _GARBAGE.sub(" ", s)
     return re.sub(r"[ \t]{2,}", " ", s)
 
 
@@ -227,6 +230,76 @@ def _hits(terms: list[str], text: str) -> list[str]:
     return out
 
 
+def _clusters(hits: list[str]) -> list[str]:
+    """命中的词里**互不包含**的那些：「华为」「华为的」是同一个词，「ui」「uiux」也是。
+    P4 #6：查询退化到一个泛词（`记录`）时，5 条候选各自只靠这一个词得分——
+    「至少命中 2 个不同内容词」要按这个数，不按 n-gram 片段数。"""
+    hs = sorted(set(hits), key=lambda h: (-len(h), h))
+    out: list[str] = []
+    for h in hs:
+        if not any(h in o for o in out):
+            out.append(h)
+    return out
+
+
+# 自动召回（拿一段正文当查询）跟用户主动搜一个词不是一回事：查询 ≥ 这么多字就按「长查询」对待——
+# 每条候选至少命中 2 个不同的内容词、且不能全靠 ≤2 字的碎片，不够就宁可空着（P4 #6：N5 末段只剩
+# `记录` 一个词，凑出 Vlog / 日志 5 条不相干的；N3 末段讲学位，5 条全是 `ui`）。
+LONG_QUERY = 100
+LONG_QUERY_MIN_WORDS = 2
+
+
+def _strong_enough(hits: list[str]) -> bool:
+    cl = _clusters(hits)
+    return len(cl) >= LONG_QUERY_MIN_WORDS and any(len(h) >= 3 for h in cl)
+
+
+def display_terms(terms: list[str], query: str) -> list[str]:
+    """给右栏看的查询词：英文词 / 数字原样；中文 n-gram 片段（「小时预」「号上众」「并以」）合成它们在
+    查询里连成的整段、再剥掉两端的虚词——用户看到的是「众筹」「学位」这种词，不是切碎的三个字（P4 #6）。
+    没有分词器，这是最接近「整词」的做法；合不出 ≥2 字的就不显示。"""
+    squeezed = _WS.sub("", (query or "").lower())
+    plain: list[str] = []
+    spans: list[tuple[int, int]] = []
+    for t in terms:
+        if not t or (t.isascii() and t[0].isalpha()) or t[0].isdigit():
+            if t and t not in plain:
+                plain.append(t)
+            continue
+        start = 0
+        while True:
+            i = squeezed.find(t, start)
+            if i < 0:
+                break
+            spans.append((i, i + len(t)))
+            start = i + 1
+    spans.sort()
+    merged: list[list[int]] = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    out = list(plain)
+    for a, b in merged:
+        # 片段常常在词中间断掉（「号上众」← 号上众筹）：往后接到这一串汉字的尽头（最多 3 个字、遇虚词停）
+        while b < len(squeezed) and b - a < 8 and _IS_CJK(squeezed[b]) and squeezed[b] not in _EDGE_STOP:
+            b += 1
+        w = squeezed[a:b].strip(_EDGE_STOP)
+        # 「众筹」已经在了就不再列「众筹里面会」；反过来「众筹里面会」在了也不列「众筹」
+        if len(w) >= 2 and not any((w in o or o in w) for o in out if not o.isascii()):
+            out.append(w)
+    return out[:8]
+
+
+def _IS_CJK(ch: str) -> bool:
+    return "一" <= ch <= "鿿"
+
+
+# 显示时从整段词两端剥掉的字：虚词、方位、「号 / 日」这种日期后缀（「3月10号上众筹」切出的「号上众」剥完就是「众筹」）
+_EDGE_STOP = "的了在是和与及或把被对到从这那我们你他她它就也都还又很不没有个一着过为以上里并且而但号日上下前后中"
+
+
 def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
     """The query terms that actually appear in the results.
 
@@ -276,12 +349,16 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
         except Exception:      # noqa: BLE001 — 假的 memory 没这些，按纯词面
             group_codes = set()
     ENTITY_BONUS = 4
+    long_query = len((query or "").strip()) >= LONG_QUERY
 
     def score(row: dict) -> tuple[int, str]:
         fact = store.facts.get(row.get("id"))
         text = (fact.text if fact else "") or ""
         # 数字命中比同长度的字词更硬（「4月16」几乎就是在指那一天），多给 2 分
         hits = _hits(terms, text)
+        # 长查询（自动召回）：只靠一个泛词命中的候选不要——那不是相关，是凑数（P4 #6）
+        if long_query and not _strong_enough(hits):
+            return (0, row.get("date") or "")
         s = sum(len(t) + (2 if t[0].isdigit() else 0) for t in hits)
         # 同一个词出现不止一次再加一点（每多一次 +1，最多 +2）：查询只剩一个内容词时（「…no ideas now but
         # will have ideas later」剔掉虚词只剩 ideas），几十条都提到 ideas 的事实靠日期断结，

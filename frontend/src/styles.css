@@ -1719,5 +1719,9 @@ kbd {
    四处「把规则写到界面上」的说明文字。都是元信息，走 muted；正文一律 --fg（P1-3）。 */
 .tap-why { line-height: 1.6; }                                 /* 续写一条材料都没取到时的原因 */
 .mem-legend .mm-dot { display: inline-block; }                 /* 右栏「记忆」顶部的圆点图例 */
+.mem-terms { word-break: break-all; line-height: 1.6; }        /* 右栏「记忆」：按哪几个词找的（P7，A5 第一步） */
+.mem-inbody summary { user-select: none; }                     /* 右栏「记忆」：已在正文里的原话折叠（P7 #8） */
+.mem-inbody[open] summary { margin-bottom: 2px; }
+.outline-fallback-note { word-break: break-all; }              /* 目录：没有 # 标题时按什么列的说明（P7 #3） */
 .skills-rule code { font-family: var(--mono); font-size: var(--t-xs); }   /* 技能面板：什么时候生效 */
 .agent-skills { line-height: 1.6; }                            /* 轮次卡片：这次带了哪几条技能 */

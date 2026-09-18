@@ -147,6 +147,153 @@ class SkeletonCheck:
         return out
 
 
+# ---------------------------------------------------------------- P7：节拍的长度 / 条数 / 「待补」核对
+#
+# P4（第 771 轮）人读 5 篇真实笔记 31 条节拍，读出三件事，这一节各治一件：
+#   1. 生成时 beats 57–185 字，落库被 `store.BEAT_MAX = 60` 截成半句（真库 4 篇已是「…并将问」）；
+#   2. 「待补」的东西正文里已经有了（N2 B5、N4 B5）——用户以为没写 → 点续写 → 再写一遍；
+#   3. 26.7k 字给 6 条节拍，6 个行业段约 15k 字一条都没盖住。
+# 提示词那份（`prompts/writing.py`）不在这里改：条数和长度的要求作为一段附加说明由 router 拼进 system。
+
+# 每条节拍对模型的字数要求（一到两句）。P4 实测分布 57–185，历史 28–185；要求 ≤120，
+# 超出的由 `store.clamp_skeleton` 按句 / 顿号收（上限 `store.BEAT_MAX = 200`，不再按字硬切）。
+BEAT_TARGET_CHARS = 120
+
+# 节拍条数按正文长度定：每 2000 字一条，最少 6、最多 12（26.7k 字 → 12 条，每条盖 2.2k 字）。
+BEATS_PER_CHARS = 2000
+BEATS_MIN_BUDGET = 6
+BEATS_MAX_BUDGET = 12
+
+
+def beats_budget(n_chars: int) -> int:
+    """这篇正文最多给几条节拍。"""
+    import math
+    return max(BEATS_MIN_BUDGET, min(BEATS_MAX_BUDGET, math.ceil(max(0, n_chars) / BEATS_PER_CHARS)))
+
+
+def skeleton_length_rule(n_chars: int) -> str:
+    """拼进 system 的那段附加要求：条数、每条字数、状态标签。**只描述形状，不碰提示词本身的判断规则。**"""
+    k = beats_budget(n_chars)
+    return (f"\n补充要求（按这篇正文的长度定）：\n"
+            f"- 正文约 {n_chars} 字，\"beats\" 给 3–{k} 条；正文越长越要盖住每个主要段落，"
+            f"不要把好几个大段落合成一条。\n"
+            f"- 每条 beat 不超过 {BEAT_TARGET_CHARS} 字（一到两句），不要写成小段落。\n"
+            f"- 每条 beat 开头用「已写：」或「待补：」标明正文里有没有这一部分；"
+            f"只有正文里**确实没有**的才标「待补」，已经写了的一律标「已写」。\n")
+
+
+# 状态标签的各种写法（P4 五篇五种：「已写：」「【已写】」「已写并需继续收紧」「待补」「尚缺」，N1/N3 不标）。
+_STATUS = re.compile(
+    r"^\s*[【\[（(]?\s*(?P<w>已写(?:并需继续收紧|并需收紧|但需收紧)?|已有|已完成)"
+    r"|^\s*[【\[（(]?\s*(?P<m>待补充|待补|尚缺|缺失|未写|待写|尚未写|待写入)"
+)
+# 标签后面可能跟着 verify_beats 自己加的「（正文第 N 行起）」——再核一遍时要剥掉，不然行号会被当成正文词
+_STATUS_TAIL = re.compile(r"^\s*[】\]）)]?\s*(?:（正文第\s*\d+\s*行起）)?\s*[:：,，、—-]*\s*")
+_LINE_MARK = re.compile(r"^\s*已写（正文第\s*(\d+)\s*行起）")
+BEAT_WRITTEN = "已写："
+BEAT_MISSING = "待补："
+
+
+def split_beat_label(beat: str) -> tuple[str | None, str]:
+    """把一条节拍拆成 (状态, 正文)：状态是 'written' / 'missing' / None（没标）。"""
+    m = _STATUS.match(beat or "")
+    if not m:
+        return None, (beat or "").strip()
+    status = "written" if m.group("w") else "missing"
+    rest = _STATUS_TAIL.sub("", beat[m.end():], count=1)
+    return status, rest.strip()
+
+
+_COV_EN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}")
+_COV_NUM = re.compile(r"\d+(?:\.\d+)?")
+_COV_CJK = re.compile(r"[一-鿿]+")
+_COV_STOP = set("的了在是和与及或把被对到从这那我们你他她它就也都还又很不没有个一了着过为以及以并将其"
+                "并且而且但是如果那么这样这些那些什么怎么已经可以需要必须应该能够通过进行作为")
+
+
+def _cov_terms(text: str) -> set[str]:
+    out = {w.lower() for w in _COV_EN.findall(text or "") if len(w) >= 2}
+    out |= set(_COV_NUM.findall(text or ""))
+    for run in _COV_CJK.findall(text or ""):
+        for i in range(len(run) - 1):
+            g = run[i:i + 2]
+            if g[0] not in _COV_STOP and g[1] not in _COV_STOP:
+                out.add(g)
+    return out
+
+
+def _paragraphs(content: str) -> list[tuple[int, str]]:
+    """(段首行号 1 起, 段文本)，空行分段——跟前端 `paragraphsWithLines` 同一条规则。"""
+    out: list[tuple[int, str]] = []
+    lines = (content or "").split("\n")
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip():
+            i += 1
+            continue
+        start, buf = i, []
+        while i < len(lines) and lines[i].strip():
+            buf.append(lines[i])
+            i += 1
+        out.append((start + 1, "\n".join(buf)))
+    return out
+
+
+# 「待补」翻成「已写」的门槛。在 P4 那 5 篇 31 条上量的（scratch `p7_beat_coverage.py`，零模型）：
+#   两条误标「待补」的（N2 B5、N4 B5）覆盖 0.39 / 0.46；真编的那条（N1 B5）0.19；
+#   标「已写」的 19 条 0.35–0.76（中位 0.56）；N1 没标的 5 条 0.17–0.38（B4 串了 14 个行业段里的 5 个，
+#   3 段窗口盖不住它，0.17——它没标，按规则不动）。
+# 0.30 落在「编的」（≤0.19）和「写了的」（≥0.35）中间，两边各留 0.1 以上。
+COVER_WINDOW = 3
+COVER_MIN = 0.30
+
+
+def beat_coverage(body: str, content: str) -> tuple[float, int | None]:
+    """一条节拍在正文里被盖住多少：节拍的词元有多大比例出现在连续 3 段的窗口里，取最高的窗口；
+    回 (覆盖率, 窗口里贡献最大那一段的行号)。零模型，几毫秒。"""
+    bt = _cov_terms(body)
+    if not bt:
+        return 0.0, None
+    paras = _paragraphs(content)
+    if not paras:
+        return 0.0, None
+    pterms = [(ln, _cov_terms(t)) for ln, t in paras]
+    best, best_line = 0.0, None
+    for i in range(len(pterms)):
+        win = pterms[i:i + COVER_WINDOW]
+        union: set[str] = set()
+        for _ln, t in win:
+            union |= t
+        score = len(bt & union) / len(bt)
+        if score > best:
+            best = score
+            best_line = max(win, key=lambda x: len(bt & x[1]))[0]
+    return round(best, 3), best_line
+
+
+def verify_beats(beats: list[str], content: str, *, threshold: float = COVER_MIN) -> list[str]:
+    """生成后的代码核对（零模型）：标「待补」的在正文里找覆盖，找到就改标「已写（正文第 N 行起）：」；
+    标签统一成「已写：」「待补：」；没标的，正文里盖住了就标「已写：」，盖不住的不乱标（不能确定是编的还是修辞功能）。"""
+    out: list[str] = []
+    for b in beats or []:
+        status, body = split_beat_label(b)
+        if not body:
+            continue
+        score, line = beat_coverage(body, content)
+        if status == "missing":
+            if score >= threshold and line:
+                out.append(f"已写（正文第 {line} 行起）：{body}")
+            else:
+                out.append(BEAT_MISSING + body)
+        elif status == "written":
+            # 上一次核对翻过来的带着行号——再核一遍时保留（幂等），别退化成光秃秃的「已写：」
+            kept = _LINE_MARK.search(b or "")
+            out.append((f"已写（正文第 {kept.group(1)} 行起）：" if kept else BEAT_WRITTEN) + body)
+        else:
+            out.append((BEAT_WRITTEN + body) if score >= threshold else body)
+    return out
+
+
 def check_skeleton(spine: str, beats: list[str]) -> SkeletonCheck:
     """一份骨架的体检。**纯函数**：给两个字符串就能测，不碰 State、不碰 DB。"""
     clean = [str(b).strip() for b in (beats or []) if str(b).strip()]
