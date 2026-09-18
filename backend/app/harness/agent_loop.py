@@ -114,6 +114,17 @@ class ToolTrace:
     # （**`truncated` 今天没有任何策略在读**，见下面 break 那里的注释。）
     barren_calls: int = 0            # 这一轮有几次调用一条新 id 都没带回来
     stopped_barren: bool = False     # 是不是因为连着空手而提前停的
+    # **深度门丢掉了几发**（批 24）。`_cap_calls` 从第 2 轮起把纯广度的调用
+    # 整批丢掉，而这件事此前在 trace / 落库 / SSE 上**一点痕迹都没有**：
+    # `truncated` 特意不把它算进去（「那是刻意的取舍，不是资源不够」），
+    # 于是「模型这一轮发的全被丢了」跟「模型这一轮什么都没发」在数据上长得
+    # 一模一样。而 `DEPTH_TOOLS` 上面那段注释记着的实测说这是**观测到的常态**
+    # ——一个被当成常态的行为，却没有任何一个数在数它。
+    dropped_depth: int = 0           # 累计有几发被深度门丢掉
+    # 整批被丢光、于是这一轮收工（下面 `if not kept: break` 那一发）。
+    # 跟 `dropped_depth > 0` 不是一回事：丢掉两发留下一发是正常取舍，
+    # 一发不剩才是「花了一次 20-90 秒的调用、整轮什么都没拿到」。
+    stopped_all_dropped: bool = False
 
     @property
     def used(self) -> bool:
@@ -138,8 +149,11 @@ class ToolTrace:
         self.calls += other.calls
         self.iters += other.iters
         self.barren_calls += other.barren_calls
+        self.dropped_depth += other.dropped_depth
         self.truncated = self.truncated or other.truncated
         self.stopped_barren = self.stopped_barren or other.stopped_barren
+        self.stopped_all_dropped = (self.stopped_all_dropped
+                                    or other.stopped_all_dropped)
         # 先出的那个错更接近根因；两次都挂的话第二条只是它的后果。
         self.error = self.error or other.error
 
@@ -199,22 +213,65 @@ def fact_ids_in(trace_or_text) -> list[str]:
 
 def _parse_call(call: dict) -> tuple[str, str, str]:
     """从一条 tool_call 里取出 (id, 名字, 原始参数字符串)。不同端点在
-    嵌套层级上略有差异，这里一并容错。"""
+    嵌套层级上略有差异，这里一并容错。
+
+    兜的两种非 OpenAI 形状：``function.arguments`` 是 dict 不是 string；
+    ``name`` / ``arguments`` 平铺在顶层、没有 ``function`` 层。
+
+    **平铺那一种原来会把参数二次编码**（批 24 实拍）：`fn.get("arguments")`
+    是 None，于是走到 `json.dumps(... or call.get("arguments") or {})`，
+    而顶层的 `arguments` 本来已经是一个 JSON 字符串——`json.dumps` 把它当成
+    普通字符串又包了一层，`dispatch` 那边 `json.loads` 回来拿到的是 `str`
+    不是对象，工具当场报「参数必须是一个对象，收到的是 str」。
+    拿不拿得到参数跟它嵌在哪一层无关，所以**先取到值、再决定要不要编码**。
+    """
     fn = call.get("function") or {}
+    args = fn.get("arguments")
+    if args is None:
+        args = call.get("arguments")
+    if not isinstance(args, str):
+        args = json.dumps(args or {}, ensure_ascii=False)
     return (
         str(call.get("id") or ""),
         str(fn.get("name") or call.get("name") or ""),
-        fn.get("arguments") if isinstance(fn.get("arguments"), str) else json.dumps(
-            fn.get("arguments") or call.get("arguments") or {}, ensure_ascii=False),
+        args,
     )
 
 
-def _cap_calls(calls: list[dict], iteration: int = 0) -> tuple[list[dict], bool]:
+def _rebuild_call(call: dict, *, iteration: int, index: int) -> dict:
+    """把端点给的那条 tool_call 归一成**协议要求的标准形状**。
+
+    **为什么要有这个函数**（批 24 的 R1）：`_parse_call` 只在**读**的那一侧
+    容错——取名字、取参数的时候它认得两种异形。但 `gather_context` 写回
+    `msg["tool_calls"] = kept` 的时候塞回去的是**端点原样给的那份 dict**
+    （`util/llm.complete_raw` 也是原样透传 `msg["tool_calls"]`），于是异形
+    原封不动地进了 `extra`，而 `extra` 是要被 `hooks/block.prepare` 拿去
+    `msgs + extra` 喂给补图那一轮的。实拍出来三处违反协议：
+    ① `arguments` 是对象不是字符串；② 第二条整个没有 `function` 对象；
+    ③ **两条 tool 回复的 `tool_call_id` 都是空串**（`str(call.get("id") or "")`）。
+    后果跟批 13 / 批 22 那条 bug 一模一样：下一次调用 400 → 被 `except` 吞掉
+    → **图画不出来而且一点痕迹都没有**。这是同一件事的第三个入口。
+
+    **合成 id 而不是留空**：批 13 那道闸比的是「宣称的 id 列表 == 回复的 id
+    列表」，而 `["", ""] == ["", ""]` 照样通过——一条谁都满足的断言没有在断言
+    任何东西。id 只在这一段对话里要求唯一，所以按 (第几轮, 第几个) 生成，
+    确定性、可读、跟端点自己的 id（`call_xxx`）不会撞。
+    """
+    cid, name, raw_args = _parse_call(call)
+    return {"id": cid or f"tc_{iteration}_{index}",
+            "type": "function",
+            "function": {"name": name, "arguments": raw_args}}
+
+
+def _cap_calls(calls: list[dict], iteration: int = 0) -> tuple[list[dict], bool, int]:
     """按「每个工具每轮最多调几次」+ 总数上限 + **深度优先**截断。
 
     ``iteration`` 是第几轮（从 0 开始）。第二轮起丢掉纯广度的关键词撒网，
     只放行 DEPTH_TOOLS——理由见上面 DEPTH_TOOLS 的注释：实测模型会在第一轮
     就把预算全花在广度上，导致 fact_sources 这类两级用法永远轮不到。
+
+    返回 ``(留下的, 撞没撞预算上限, 被深度门丢掉几发)``。**第三个值是批 24
+    补的**：深度门丢掉的那些故意不算进 `truncated`，于是它们此前谁都数不到。
     """
     per_tool: dict[str, int] = {}
     kept: list[dict] = []
@@ -232,7 +289,7 @@ def _cap_calls(calls: list[dict], iteration: int = 0) -> tuple[list[dict], bool]
         kept.append(call)
     # 只因为深度优先被丢掉的，不算"撞预算上限"——那是刻意的取舍，不是资源不够
     truncated = len(kept) < (len(calls) - dropped_breadth)
-    return kept, truncated
+    return kept, truncated, dropped_breadth
 
 
 async def gather_context(
@@ -294,8 +351,13 @@ async def gather_context(
             # 工具结果，把正文丢掉，让下游重新流式生成。
             break
 
-        kept, truncated = _cap_calls(calls, iteration=trace.iters)
+        # **归一化放在截断之前**，这样 `kept` 里的每一条都已经是协议形状，
+        # 塞回 `msg["tool_calls"]` 的就不再是端点原样那份（见 `_rebuild_call`）。
+        calls = [_rebuild_call(c, iteration=trace.iters, index=i)
+                 for i, c in enumerate(calls)]
+        kept, truncated, dropped_depth = _cap_calls(calls, iteration=trace.iters)
         trace.truncated = trace.truncated or truncated
+        trace.dropped_depth += dropped_depth
         # **一条都没留下就当这一轮没发生，不许把空的 `tool_calls` 摆进消息列表。**
         # 批 22 查出来的，跟批 13 那条是同一个形状的另一个入口：那次是
         # 「assistant 宣称了 3 个 tool_call，后面只跟了 2 条 tool 回复」，这次是
@@ -317,6 +379,13 @@ async def gather_context(
         # 为什么是 `break` 不是 `continue`：`convo` 没变、`spec` 也没变，再问
         # 一次模型只会再发同一批广度调用，白烧一次 20-90 秒的调用。
         if not kept:
+            # **留下痕迹再走。** 原来这一发是光秃秃的 `break`：`trace.iters`
+            # 不加、`truncated` 不置、什么都不记，于是「花了一次 20-90 秒的
+            # 调用、整轮被深度门丢光」在 trace / 落库 / SSE 上完全看不见——
+            # 而上面那段注释说的正是这件事是观测到的常态。
+            # 不动 `iters`（它的含义是「真的执行了几轮工具」，`merge` 和
+            # `policy` 都按这个读），另记一个只说这件事的标记。
+            trace.stopped_all_dropped = True
             break
         msg = dict(msg)
         msg["tool_calls"] = kept

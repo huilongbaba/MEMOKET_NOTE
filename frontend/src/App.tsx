@@ -18,6 +18,8 @@ import DocumentOutline from './components/DocumentOutline'
 import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
 import { insertStreamed, tidyBlankLines, applyScrub, prepareInsert } from './editor/streamJoin'
+// 一轮里可以先后命中好几条判据，攒起来别互相盖掉（批 24 / 计划 12.1）
+import { withCheckHit } from './editor/agentRound'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
@@ -1877,6 +1879,18 @@ export default function App() {
         patchRound(d.round, {
           cleanupOnly: !!d.skipped_continue,
           revisions: d.revisions_applied,
+          // 「这一轮为什么这么跑」（后端计划 12.1）：上一轮诊断出了什么、
+          // 它进没进这一轮的检索计划、这个模式一共几条代码判据、
+          // 有几发检索被深度门丢掉。
+          steer: d.steer ?? '',
+          steerDim: d.steer_dim ?? '',
+          steerMaterial: !!d.steer_material,
+          // **`undefined` 和 `false` 不是一回事**，所以不许 `?? false`：
+          // 前者是「这一轮压根没有检索规划这一步」。
+          steerInPlan: d.steer_in_plan,
+          checksTotal: d.checks_total,
+          depthDropped: d.depth_dropped ?? 0,
+          depthDroppedAll: !!d.depth_dropped_all,
     })
         if (d.skipped_continue) {
           setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
@@ -2097,11 +2111,16 @@ export default function App() {
         // 用户看到一个 0 分，不知道是谁判的、为什么这轮这么快。
         // 带 `stuck_rounds` 的是另一回事：这条连着卡了几轮改不动，后端已经
         // 放行、照常打分了，得说清楚，否则「报了错还给了分」看着像矛盾。
+        //
+        // **攒成一串，不是留最后一条**（计划 12.1）：一轮里可以先到几条
+        // 「卡住了放行」的、最后才到短路的那一条，原来后到的把先到的盖掉
+        // ——判据真的命中了，用户看不见。
         if (currentRef.current?.id !== noteId) return
         setAgentRounds((rs) => {
           if (!rs.length) return rs
           const next = [...rs]
-          next[next.length - 1] = { ...next[next.length - 1], checkHit: d }
+          const last = next[next.length - 1]
+          next[next.length - 1] = withCheckHit(last, d)
           return next
         })
       },

@@ -154,3 +154,41 @@ def test_补图那一轮的停机和报错要折回主trace(monkeypatch):
     assert trace.truncated
     assert trace.barren_calls == 2
     assert trace.iters == 2 and len(trace.calls) == 2
+
+
+def test_补图那一轮的工具组里不许出现事实类或广度类工具():
+    """批 24 的 R2——**把一个「分母为 0」的决定钉住**。
+
+    `hooks/block.prepare` 的第二发 `gather_context` 进去那一侧既不喂
+    `known_ids` 也不接着数迭代：`seen_ids` 从空集起步（`BARREN_STOP` 失效）、
+    `trace2.iters` 从 0 起步（`_cap_calls` 的深度门整个放开）。
+    `hooks/note.py` 恰恰是特意把账本喂进来的，两处做法相反——形状上这正是
+    §21「同一件事挡住一半等于没挡」。
+
+    **但分母是 0，而且是结构性的 0**：这一发的 groups 写死成
+    `mode.focus_groups`，而 `seen_ids` 只在 `name in FACT_TOOLS` 里被读、
+    深度门只丢 `name in BREADTH_TOOLS`——focus 那一轮一个这样的工具都够不着。
+    所以批 24 决定**不改**（批 22 的规矩：分母为 0 就写「不改」并说清理由），
+    改成把这个分母变成一条会说话的断言。
+
+    哪天有人给某个模式的 `focus_groups` 加上 `memory`，这条当场变红，
+    那时候要做的正是把 `known_ids` 和迭代序号接上去，而不是删掉这条闸。
+    """
+    from app.harness import agent_loop as al
+    from app.harness.tools import registry
+
+    interesting = al.FACT_TOOLS | al.BREADTH_TOOLS
+    checked = 0
+    for mode in modes.ALL:
+        groups = tuple(getattr(mode, "focus_groups", ()) or ())
+        if not groups:
+            continue
+        checked += 1
+        names = set(registry.names(list(groups)))
+        assert names, f"{mode.key} 的 focus_groups 一个工具都注册不到：{groups}"
+        overlap = sorted(names & interesting)
+        assert not overlap, (
+            f"{mode.key} 的补图那一轮够得着 {overlap}——"
+            "这时候 hooks/block 必须把 known_ids 和迭代序号一起传进第二发 "
+            "gather_context，否则 BARREN_STOP 和深度门在那一轮都是失效的")
+    assert checked == 2, "声明了 focus_groups 的模式变了（原来是 EDA / ANALYSIS）"

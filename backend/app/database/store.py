@@ -404,6 +404,14 @@ _ADDED_COLUMNS = (
     # 「用户看不到、我们也没统计」里最看不见的一半。
     ("harness_rounds", "revisions_proposed", "INTEGER NOT NULL DEFAULT 0"),
     ("harness_rounds", "revisions_dropped", "INTEGER NOT NULL DEFAULT 0"),
+    # 这一轮工具循环里有几发被**深度门**丢掉（批 24）。`agent_loop._cap_calls`
+    # 从第 2 轮起把纯广度的关键词撒网整批丢掉，而这件事故意不算进 `truncated`
+    # （「那是刻意的取舍，不是资源不够」）——于是它此前**在任何一个数上都不
+    # 存在**：「模型发了 4 个调用全被丢了」跟「模型一个都没发」落到库里长得
+    # 一模一样。而 `DEPTH_TOOLS` 的注释说这是观测到的常态（4 次真实采样全部
+    # 撞上限）。**一个被当成常态的行为，得有个数在数它**，否则「深度门是不是
+    # 太狠」永远答不出来。
+    ("harness_rounds", "depth_dropped", "INTEGER NOT NULL DEFAULT 0"),
     # 这次跑一共花了多少（计划 12.3）。**没有这两列，「单次跑的成本」只能靠
     # 把 `llm_usage` 按时间窗口贴回 `harness_rounds` 来重建**——批 23 就是这么
     # 量的（158 次跑、1943 行用量，63 行贴不上），而那份重建在两次跑重叠时
@@ -2198,7 +2206,8 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
                          tool_calls: int = 0, repeat_calls: int = 0,
                          cached_calls: int = 0, superseded: int = 0,
                          revisions_proposed: int = 0,
-                         revisions_dropped: int = 0) -> None:
+                         revisions_dropped: int = 0,
+                         depth_dropped: int = 0) -> None:
     """记一轮。**记账失败不能影响这一轮的产出**——这张表是给分析用的，
     不是承重的，所以调用方把它包在 try 里。"""
     with connect() as c:
@@ -2206,14 +2215,15 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
             "INSERT INTO harness_rounds (id,key,run_id,round,scores,status,weakest,"
             "content_len,facts_new,facts_total,tool_calls,repeat_calls,"
             "cached_calls,superseded,revisions_proposed,revisions_dropped,"
-            "created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "depth_dropped,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), key, run_id, int(round_),
              json.dumps(scores, ensure_ascii=False), status, weakest,
              int(content_len), int(facts_new), int(facts_total),
              int(tool_calls), int(repeat_calls),
              int(cached_calls), int(superseded),
-             int(revisions_proposed), int(revisions_dropped), _now()))
+             int(revisions_proposed), int(revisions_dropped),
+             int(depth_dropped), _now()))
         # 跟 harness_runs 同一条修剪规矩：一个 key 只留最近 400 行
         # （50 次跑 × 8 轮），再往前的除了占地方没有用。
         c.execute("DELETE FROM harness_rounds WHERE key=? AND id NOT IN ("

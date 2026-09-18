@@ -1,6 +1,6 @@
-"""把「维度怎么建立」那六条方法里**可机械验的两条**钉住（计划 10.2 / [EVAL] §5.3）。
+"""把「维度怎么建立」那七条方法里**可机械验的两条**钉住（计划 10.2 / [EVAL] §5.3）。
 
-六条方法写在 `docs/harness-framework.md`「§N 维度是怎么建立的」。其中四条是
+七条方法写在 `docs/harness-framework.md`「§N 维度是怎么建立的」。其中四条是
 判断（先读产出、代码能判准的不写成维度、guidance 写成句子、放宽要有据），
 没法用脚本验；剩下两条是**结构性质**，可以：
 
@@ -187,25 +187,28 @@ def test_有档案有写作权的那一跑_那几维要真的回来():
     assert {"style_fit", "material_use", "section_coverage"} <= section
 
 
-# ------------------------------------------------- 六条方法本身也要有闸 ---
+# ------------------------------------------------- 七条方法本身也要有闸 ---
 #
-# **突变验第一轮 B6 / B7 都没被抓住**：把「六条方法」那一节从
+# **突变验第一轮 B6 / B7 都没被抓住**：把「七条方法」那一节从
 # `harness-framework.md` 里整块删掉、或者少掉其中一条，全套 1759 条照绿。
 # 也就是说 10.1 交付的是**一段没人盯着的文字**——而 10.1 的全部理由正是
 # 「这六条只活在注释里，下一个人未必读得到」。挪个地方要是照样没人盯着，
 # 等于把注释搬进了另一份注释。
 #
 # 数量类的同步由 `test_doc_counts` 管（几个 Mode / 几条 check），
-# 这里管的是**这一节在不在、六条齐不齐**。
+# 这里管的是**这一节在不在、七条齐不齐**。
 DOC = Path(__file__).resolve().parents[2] / "docs" / "harness-framework.md"
 
-SIX_METHODS = (
+SEVEN_METHODS = (
     "① 先读产出，再加维度",
     "② 代码能判准的，不许写成维度",
     "③ guidance 写成句子，不是标签",
     "④ 放宽判据也要有据",
     "⑤ 永远不要用一个「这次跑无权改善」的维度去打分",
     "⑥ 每条判据必须落在这个模式真有的维度上",
+    # 批 24 / 计划 10.3 / [IND] §8③：前六条管「怎么加一条」，第⑦条管
+    # 「已经加好的那些什么时候失效」——判据是读着当时那批产出长出来的。
+    "⑦ 判据会随语料漂",
 )
 
 # 十几批攒下来的规矩，每一条都是栽过之后写下来的。删一条就少一份账。
@@ -236,10 +239,25 @@ def _section(head: str) -> str:
     return doc[at: nxt if nxt > 0 else len(doc)]
 
 
-def test_六条方法在架构文档里_一条都不许少():
-    body = _section("## 20. 维度是怎么建立的（六条方法）")
-    missing = [m for m in SIX_METHODS if m not in body]
+def test_七条方法在架构文档里_一条都不许少():
+    body = _section("## 20. 维度是怎么建立的（七条方法）")
+    missing = [m for m in SEVEN_METHODS if m not in body]
     assert not missing, f"少了这几条方法：{missing}"
+
+
+def test_第七条指到的那个入口真的在():
+    """§20⑦ 说「入口是 `backend/scripts/criteria_drift.py`」。
+    **说有入口而没有入口，比不说更糟**——跟下面那条「说有闸就得有闸」
+    是同一条纪律。"""
+    body = _section("## 20. 维度是怎么建立的（七条方法）")
+    assert "criteria_drift.py" in body
+    script = DOC.parent.parent / "backend" / "scripts" / "criteria_drift.py"
+    assert script.exists(), "文档指到一个不存在的入口"
+    src = script.read_text(encoding="utf-8")
+    # 文档承诺的三件事，逐条对着实现查
+    assert "--show" in src, "文档说能一键列出原文命中片段"
+    assert "corpus_lineage" in src, "文档说三类血缘分开给数"
+    assert "db_guard" in src, "文档说它只读"
 
 
 def test_这十几批的规矩也一条都不许少():
@@ -251,7 +269,7 @@ def test_这十几批的规矩也一条都不许少():
 def test_可机械验的那两条要指得到真的闸():
     """文档里说「这两条有闸钉着」，那两条闸就必须真的在这个文件里。
     说有闸而没有闸，比不说更糟。"""
-    body = _section("## 20. 维度是怎么建立的（六条方法）")
+    body = _section("## 20. 维度是怎么建立的（七条方法）")
     here = Path(__file__).read_text(encoding="utf-8")
     for name in ("test_每个模式至少有一维是这次跑有权改善的",
                  "test_每条判据都落在这个模式真有的维度上"):

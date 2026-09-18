@@ -1041,7 +1041,18 @@ export type NoteHarnessHandlers = {
    * **判了不拦着往下跑**——跟 `slides` 同一档，结果跟产物一起显示，
    * 重不重新生成由用户定。 */
   onSkeleton?: (spine: string, beats: string[], notes?: string[]) => void
-  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean }) => void
+  /** 这一轮开跑前的全部背景。`steer*` / `checks_total` / `depth_dropped` 是
+   * 后端计划 12.1 补的「这一轮为什么这么跑」：
+   * - `steer` 上一轮最弱那一维的诊断原话，`steer_dim` 是它的维度名；
+   * - `steer_material` 这一维是不是**检索**能改善的那一类；不是的话它按设计
+   *   走修订那条线，不进检索计划（后端 `policy.MATERIAL_DIMS`）；
+   * - `steer_in_plan` 它有没有真的进这一轮的检索规划 prompt。
+   *   **`undefined` = 这一轮压根没有检索规划这一步**（打磨 / 只清理），
+   *   跟 `false`（有这一步但没进去）不是一回事；
+   * - `checks_total` 这个模式一共几条代码判据——命中的那几条走 `check_hit`，
+   *   分母只有这里给得出来；
+   * - `depth_dropped` 这一轮有几发工具调用被深度门丢掉（不算进 `truncated`）。 */
+  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean; steer?: string; steer_dim?: string; steer_material?: boolean; steer_in_plan?: boolean | null; checks_total?: number; depth_dropped?: number; depth_dropped_all?: boolean }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
   /** 这一轮的续写流结束（TEXT_MESSAGE_END）：客户端在这里做服务端收尾时也做的归一化（fixBoldPunct） */
@@ -1071,8 +1082,15 @@ export type NoteHarnessHandlers = {
   onScrub?: (v: { sentence: string; why: string }) => void
   /** 服务端把流给我们的某一段 / 某一行（重复的段落、模型自己写的标题）剥掉了：本地删同一段 */
   onDedup?: (v: { paragraph: string }) => void
-  /** 代码判据当场判这一轮不合格。命中时跳过模型打分，分数就是这条判据给的。 */
-  onCheckHit?: (d: { dimension: string; note: string; stuck_rounds?: number }) => void
+  /** 代码判据当场判这一轮不合格。命中时跳过模型打分，分数就是这条判据给的。
+   *
+   * `check` 是**判据自己的名字**（`no_placeholder` / `citations_exist`…）。
+   * 光有 `dimension` 答不了「哪条判据命中了」：五条判据都落在
+   * `factual_grounding` 这一维上，用户看到「事实依据 0 分」不知道是谁判的。
+   * `ran` 是这一轮跑到第几条，分母 `checks_total` 在 round_summary 里。
+   * **一轮可能到达好几条**（卡住放行的 + 最后短路的那条），所以调用方要攒
+   * 成一串，不能只留最后一条。 */
+  onCheckHit?: (d: { round?: number; check?: string; ran?: number; dimension: string; note: string; stuck_rounds?: number }) => void
   /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
    * 但**不能是静默的**——这一轮少了那个能力，用户得知道。 */
   onWarning?: (d: { middleware: string; hook: string; error: string }) => void

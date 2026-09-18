@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { consumeHarnessStream } from '../../api'
+import { withCheckHit } from '../agentRound'
 
 /** 用户实拍：Agent 运行面板里「第 0 轮」排在「第 1 轮」下面——活动快照 / 工具结果事件不带轮次，
  * 之前一律记成第 0 轮。 */
@@ -67,5 +68,58 @@ describe('批 23 新加的两条 CUSTOM', () => {
 
     expect(worse).toHaveLength(1)
     expect([worse[0].last_met, worse[0].met]).toEqual([3, 2])
+  })
+})
+
+describe('批 24：「这一轮为什么这么跑」的两样（计划 12.1）', () => {
+  it('轮次载荷里的 steer 一路到面板，而且「没有检索规划这一步」不能退化成 false', async () => {
+    const seen: { round: number; steer?: string; in_plan?: boolean | null }[] = []
+    await consumeHarnessStream(sse([
+      { event: 'CUSTOM', data: { name: 'round_summary', value: {
+        round: 2, max_rounds: 8, revisions_applied: 0,
+        steer: 'non_repetition: 同一件事说了两遍', steer_dim: 'non_repetition',
+        steer_material: false, steer_in_plan: false, checks_total: 14 } } },
+      // 打磨轮压根没有检索规划这一步：后端给的是 null，不是 false
+      { event: 'CUSTOM', data: { name: 'round_summary', value: {
+        round: 3, max_rounds: 8, revisions_applied: 0,
+        steer: 'coherence: 标题层级乱了', steer_dim: 'coherence',
+        steer_material: false, steer_in_plan: null, checks_total: 14 } } },
+      { event: 'RUN_FINISHED', data: { reason: 'complete' } },
+    ]), { onRoundStart: (d) => seen.push({ round: d.round, steer: d.steer, in_plan: d.steer_in_plan }) })
+
+    expect(seen.map((s) => s.round)).toEqual([2, 3])
+    expect(seen[0].steer).toContain('同一件事说了两遍')
+    // **`false` 和 `null` 不是一回事**：前者是「有这一步但诊断没进去」，
+    // 后者是「这一轮压根没有这一步」。混成一个值，面板只能瞎说一句。
+    expect(seen[0].in_plan).toBe(false)
+    expect(seen[1].in_plan).toBeNull()
+  })
+
+  it('一轮里命中好几条判据时，每一条都到得了面板（原来后到的把先到的盖掉）', async () => {
+    const hits: { check?: string; ran?: number; stuck_rounds?: number }[] = []
+    await consumeHarnessStream(sse([
+      { event: 'CUSTOM', data: { name: 'round_summary', value: { round: 4, max_rounds: 8, revisions_applied: 0, checks_total: 14 } } },
+      // 先到的是「连着卡满、这一轮放行」的那条，最后才是真正短路的那条
+      { event: 'CUSTOM', data: { name: 'check_hit', value: { round: 4, check: 'no_placeholder', ran: 1, dimension: 'factual_grounding', note: '有占位句', stuck_rounds: 3 } } },
+      { event: 'CUSTOM', data: { name: 'check_hit', value: { round: 4, check: 'citations_exist', ran: 5, dimension: 'factual_grounding', note: '引用是编的' } } },
+      { event: 'RUN_FINISHED', data: { reason: 'complete' } },
+    ]), { onCheckHit: (d) => hits.push(d) })
+
+    // 两条判据落在**同一个维度**上——光有 dimension 答不了「哪条判据命中了」
+    expect(hits.map((h) => h.check)).toEqual(['no_placeholder', 'citations_exist'])
+    expect(hits.map((h) => h.ran)).toEqual([1, 5])
+  })
+})
+
+describe('批 24：一轮里的判据命中要攒起来（计划 12.1）', () => {
+  it('后到的不许把先到的盖掉', () => {
+    const stuck = { check: 'no_placeholder', ran: 1, dimension: 'factual_grounding', note: '有占位句', stuck_rounds: 3 }
+    const short = { check: 'citations_exist', ran: 5, dimension: 'factual_grounding', note: '引用是编的' }
+    // 连着卡满被放行的那条先到，真正短路的那条后到——两条都得留下
+    const r1 = withCheckHit({} as { checkHits?: typeof stuck[] }, stuck)
+    const r2 = withCheckHit(r1, short)
+    expect(r2.checkHits?.map((h) => h.check)).toEqual(['no_placeholder', 'citations_exist'])
+    // 原来的轮次对象不许被就地改（setState 要的是新对象）
+    expect(r1.checkHits).toHaveLength(1)
   })
 })

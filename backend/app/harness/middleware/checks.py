@@ -58,10 +58,17 @@ class Checks:
         cur: dict[str, int] = {}
         st.bag["check_streak"] = cur
 
-        for check in st.mode.checks:
+        for ran, check in enumerate(st.mode.checks, start=1):
             verdict = check(st)
             if not verdict:
                 continue
+            # **哪一条判据命中了**（计划 12.1）。`dimension` 答不了这个问题：
+            # `no_placeholder` / `citations_hold` / `citations_exist` /
+            # `material_thin` / `unsupported_specifics` 五条判据全都落在
+            # `factual_grounding` 这一维上，用户看到的「事实依据 0 分」不知道
+            # 是这五条里的哪一条判的。`ran` / `checks_total`（后者在
+            # `round_summary` 里）一起说「这一轮跑到第几条、一共几条」。
+            fired = getattr(check, "__name__", "") or str(check)
 
             if verdict.fix:
                 # **Fixes are atomic**: apply to a copy, keep it only if the
@@ -81,6 +88,9 @@ class Checks:
                 # 卡死了，不短路。**继续往下看别的判据**：这一条动不了，不等于
                 # 后面那条也动不了，短路本来就是为了「一次只给一个清楚的指令」。
                 yield Event.custom(CUSTOM_CHECK_HIT, {
+                    "round": st.round,
+                    "check": fired,
+                    "ran": ran,
                     "dimension": verdict.dimension,
                     "note": verdict.message,
                     "stuck_rounds": streak,
@@ -94,6 +104,9 @@ class Checks:
             )
             st.skip_judge = True        # explicit, not "ev happens to be set"
             yield Event.custom(CUSTOM_CHECK_HIT, {
+                "round": st.round,
+                "check": fired,
+                "ran": ran,
                 "dimension": verdict.dimension,
                 "note": verdict.message,
             })

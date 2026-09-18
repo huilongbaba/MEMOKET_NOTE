@@ -637,6 +637,10 @@ async def test_停机那一发不能把同一条消息里剩下的工具调用�
     assert answered == asked, (
         "assistant 消息里的每一个 tool_call 都必须有对应的 tool 结果消息，"
         "否则 hooks/block 把 msgs+extra 喂给下一次调用时接口直接 400")
+    # **两边都得是非空的**（批 24）：`["", ""] == ["", ""]` 照样成立，
+    # 而端点没给 id 时原来两边正好都是空串——一条谁都满足的断言没有在
+    # 断言任何东西（§21）。
+    assert all(asked) and all(answered), "tool_call 的 id 不许是空串"
 
 
 # --------------------------------------------------- 批 22：工具循环的两处半挡
@@ -683,6 +687,7 @@ async def test_深度门把整轮丢光时不许留一条空的tool_calls(clean_
              for c in (m.get("tool_calls") or [])}
     answered = {m["tool_call_id"] for m in extra if m.get("role") == "tool"}
     assert asked == answered
+    assert all(asked), "tool_call 的 id 不许是空串（批 24）"
     # 而且不该再问模型一次：convo 和 spec 都没变，只会拿回同一批广度调用
     assert len(fake.seen) == 2, "全被深度门丢掉之后应该直接收工，别再烧一次调用"
     assert trace.calls, "第 1 轮查到的东西要留着"
@@ -721,6 +726,7 @@ async def test_中途调用挂了已经配平的那几条照样交出去(clean_r
     asked = {c["id"] for m in extra if m.get("role") == "assistant"
              for c in (m.get("tool_calls") or [])}
     assert asked == {m["tool_call_id"] for m in extra if m.get("role") == "tool"}
+    assert all(asked), "tool_call 的 id 不许是空串（批 24）"
 
 
 def test_ToolTrace_merge_每个字段都合并了():
@@ -734,12 +740,14 @@ def test_ToolTrace_merge_每个字段都合并了():
 
     fields = [f.name for f in dataclasses.fields(al.ToolTrace)]
     assert set(fields) == {"calls", "iters", "truncated", "error",
-                           "barren_calls", "stopped_barren"}, \
+                           "barren_calls", "stopped_barren",
+                           "dropped_depth", "stopped_all_dropped"}, \
         "ToolTrace 加了新字段：merge 和这条闸都要跟着改"
 
     nondefault = {
         "calls": [("t", {}, "r")], "iters": 1, "truncated": True,
         "error": "boom", "barren_calls": 1, "stopped_barren": True,
+        "dropped_depth": 1, "stopped_all_dropped": True,
     }
     for name in fields:
         base = al.ToolTrace()
@@ -747,3 +755,130 @@ def test_ToolTrace_merge_每个字段都合并了():
         base.merge(other)
         assert getattr(base, name) == nondefault[name], \
             f"merge 漏掉了 {name}——第二次工具循环的这个信号会静默消失"
+
+
+# --------------------------------------------- 批 24 R1：写回去的那一侧也要归一
+
+
+@pytest.mark.asyncio
+async def test_异形tool_call写回消息时被归一成协议形状(clean_registry, monkeypatch):
+    """`_parse_call` 只在**读**的那一侧容错，写回 `extra` 的还是端点原样那份。
+
+    实拍（真 registry，当前 HEAD）：喂进两种它明确兜住的异形之后，`extra` 里
+    三处违反协议——① `arguments` 是对象不是字符串；② 第二条整个没有
+    `function` 对象；③ 两条 tool 回复的 `tool_call_id` 都是空串。
+    `hooks/block.prepare` 会把 `msgs + extra` 喂给补图那一轮 → 400 → 被
+    `except` 吞掉 → **图画不出来而且没有任何痕迹**。这是批 13 / 批 22 那条
+    bug 的第三个入口。
+    """
+
+    @registry.register(name="filter_facts", description="",
+                       params={"topic": {"type": "string"}}, required=["topic"])
+    def filter_facts(ctx, topic):
+        return f"[f-1] {topic}"
+
+    @registry.register(name="fact_sources", description="",
+                       params={"fact_id": {"type": "string"}}, required=["fact_id"])
+    def fact_sources(ctx, fact_id):
+        return f"[{fact_id}] 原话"
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "", "tool_calls": [
+            # ① arguments 是 dict，而且没有 id
+            {"id": "", "type": "function",
+             "function": {"name": "filter_facts", "arguments": {"topic": "定价"}}},
+            # ② name/arguments 平铺在顶层，没有 function 层，也没有 id
+            {"name": "fact_sources", "arguments": json.dumps({"fact_id": "f1"})},
+        ]},
+        {"role": "assistant", "content": "好了"},
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx())
+
+    calls = [c for m in extra if m.get("role") == "assistant"
+             for c in (m.get("tool_calls") or [])]
+    assert len(calls) == 2
+    for c in calls:
+        assert isinstance(c.get("function"), dict), f"没有 function 对象：{c}"
+        assert isinstance(c["function"].get("arguments"), str), \
+            f"arguments 不是字符串：{c}"
+        assert c["function"].get("name"), f"没有名字：{c}"
+        assert c.get("id"), f"tool_call 的 id 是空的：{c}"
+    # **id 必须互不相同**：批 13 那道闸比的是两个列表相等，而 `["",""]`
+    # 跟 `["",""]` 是相等的——一条谁都满足的断言没有在断言任何东西。
+    ids = [c["id"] for c in calls]
+    assert len(set(ids)) == len(ids), f"合成的 id 撞了：{ids}"
+    answered = [m["tool_call_id"] for m in extra if m.get("role") == "tool"]
+    assert answered == ids
+    assert all(answered), "tool 回复的 tool_call_id 不许是空串"
+    assert [n for n, _a, _r in trace.calls] == ["filter_facts", "fact_sources"]
+
+
+@pytest.mark.asyncio
+async def test_平铺在顶层的参数字符串不再被二次编码(clean_registry, monkeypatch):
+    """`fn.get("arguments")` 是 None 时原来走的是
+    `json.dumps(... or call.get("arguments") or {})`——而顶层那个
+    `arguments` **本来已经是一个 JSON 字符串**，`json.dumps` 又包了一层，
+    工具那边 `json.loads` 回来拿到的是 `str` 不是对象。
+
+    实拍的症状：`fact_sources` 报「参数必须是一个对象，收到的是 str」。
+    `_parse_call` 号称兜住了这种形状，其实只兜住了「取得到名字」。
+    """
+    seen: list[str] = []
+
+    @registry.register(name="fact_sources", description="",
+                       params={"fact_id": {"type": "string"}}, required=["fact_id"])
+    def fact_sources(ctx, fact_id):
+        seen.append(fact_id)
+        return f"[{fact_id}] 原话"
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"name": "fact_sources", "arguments": json.dumps({"fact_id": "f1"})}]},
+        {"role": "assistant", "content": "好了"},
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+    _extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx())
+    assert seen == ["f1"], "参数被二次编码了，工具根本没拿到 fact_id"
+    assert trace.calls[0][1] == {"fact_id": "f1"}
+
+
+def test_归一化不会动端点已经给对的那份():
+    """标准形状进去必须原样出来——归一化不许顺手改写正常的 id / 参数。"""
+    good = {"id": "call_abc", "type": "function",
+            "function": {"name": "look", "arguments": '{"q": "定价"}'}}
+    assert al._rebuild_call(good, iteration=1, index=3) == good
+
+
+@pytest.mark.asyncio
+async def test_整轮被深度门丢光时留得下痕迹(clean_registry, monkeypatch):
+    """批 24 的观测性那一条：`if not kept: break` 之前什么都不记，于是
+    「花了一次 20-90 秒的调用、整轮被深度门丢光」在 trace / 落库 / SSE 上
+    完全没有痕迹——而 `DEPTH_TOOLS` 的注释说这是**观测到的常态**。
+    `truncated` 特意不算它们（那是刻意的取舍，不是资源不够），所以得有一个
+    只说这件事的数。"""
+
+    @registry.register(name="search_memory", description="",
+                       params={"q": {"type": "string"}}, required=["q"])
+    def search_memory(ctx, q):
+        return "[f-1] 查到了"
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("search_memory", {"q": "第一轮"}, cid="c1")]},
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("search_memory", {"q": "第二轮"}, cid="c2"),
+                        _call("search_memory", {"q": "再来"}, cid="c3")]},
+        {"role": "assistant", "content": "好了"},
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+    _extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=3)
+
+    assert trace.dropped_depth == 2, "第 2 轮那两发被深度门丢掉，得数得出来"
+    assert trace.stopped_all_dropped is True
+    assert trace.truncated is False, \
+        "深度门丢掉的不算撞预算上限——两件事合成一个字段就再也分不开"

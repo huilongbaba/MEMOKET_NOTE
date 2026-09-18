@@ -367,6 +367,9 @@ class Ledger:
         # 那三处直接调用（主题树 / 回溯原话 / 多跳）根本不进 `trace.calls`，
         # 光靠账本里的 `repeat_calls` 会把它们整个漏掉。
         stat["cached_calls"] = int(query_cache.stats(st.ctx)["this_round"]["hits"])
+        # 深度门丢掉几发（批 24）。**只有 trace 知道**：被丢掉的那些从来没进
+        # 过 `trace.calls`，账本 fold 一个都看不见。
+        stat["depth_dropped"] = int(getattr(st.trace, "dropped_depth", 0) or 0)
         st.bag["ledger_round"] = stat
 
     async def after_judge(self, st: State) -> None:
@@ -412,6 +415,7 @@ class Ledger:
                 # 里写进 bag，这里是 `after_judge`，先后是稳的；没挂 `Revise`
                 # 的模式（六个 block）拿不到这两个键，默认 0。
                 revisions_proposed=int(st.bag.get("revisions_proposed") or 0),
-                revisions_dropped=int(st.bag.get("revisions_dropped") or 0))
+                revisions_dropped=int(st.bag.get("revisions_dropped") or 0),
+                depth_dropped=int(stat.get("depth_dropped") or 0))
         except Exception:                                   # noqa: BLE001
             pass        # 记账不承重：写不进去也不能影响这一轮的产出

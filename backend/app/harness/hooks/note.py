@@ -188,6 +188,19 @@ class NoteHooks:
                 ledger_gaps=(ledger_mw.gap_summary(led) if LEDGER_IN_PROMPT else ""),
                 section=target[0] if target else "")},
         ]
+        # **诊断到底有没有进这一轮的检索规划**（计划 12.1）。不是记「我打算传
+        # 进去」，是**回头在真正发出去的那条 user 消息里找它**——
+        # `prompts.retrieval_plan_user` 里那一句是 `if steer:` 才加的，而
+        # `policy.steer` 自己又被 `MATERIAL_DIMS` 过滤过（重复 / 不连贯 /
+        # 跑题这三类再查十条事实也修不好，它们走修订那条线）。§21：
+        # **凡是只能靠自报来保证的性质，迟早会被报错一次。**
+        #
+        # bag 是跨轮活着的，所以这个键由 `Provenance` 读完就 pop——打磨轮 /
+        # 只清理轮根本走不到这儿（上面那两个 early return），**键不在**就是
+        # 「这一轮压根没有检索规划这一步」，跟「有但没进去」不是一回事。
+        plan_steer = getattr(policy, "steer", "") or ""
+        st.bag["steer_in_plan"] = bool(plan_steer) and plan_steer in msgs[-1]["content"]
+
         # Mode decides which groups exist; the policy may add to them for a
         # round (escalating to verification tools, say). It may not replace
         # them -- doing so is how the skill tools became unreachable.

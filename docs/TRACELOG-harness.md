@@ -5185,3 +5185,391 @@ d3ac1074cb98  重建 166,917  落库 166,902  +15   ← 多算了 1 次调用
    `harness_runs.tokens` 攒够，去看一眼实际分布的右尾有没有长出新的形状。
 5. **10.3（criteria drift 的重新校准入口）是阶段 10 最后一条**，连着两批没做。
    12.1（「这一轮为什么这么跑」补 `steer` 和判据命中）是阶段 12 最后一条。
+
+---
+
+## 批 24 · 阶段 10.3 + 12.1 + 两条审计遗留（2026-09-18）
+
+**这一批一次模型调用都没发。** 10.3 的数量在 470 篇现存笔记上
+（`scripts/criteria_drift.py`，只读 + `db_guard.Watch()`），R1 的复现用真 registry
++ 打桩端点，R2 的分母是**结构性**的（从 `Mode.focus_groups` × 工具注册表算出来）。
+验收靠 **27 条突变验** + 全量闸。
+
+**四条的处置：10.3 入口开张并复现了批 21 手工那一次、顺手查出三条判据没有量程
+（只报不改）；12.1 前端第一次看得见诊断去了哪儿和哪条判据命中；R1 是真 bug、
+复现了、修了；R2 分母为 0，不改，改成把这个 0 钉成一条会说话的断言。**
+
+---
+
+### 10.3 —— criteria drift 的重新校准入口
+
+`scripts/criteria_drift.py`，**只读、只报不改**。三个口径 × 三类血缘：
+
+| 口径 | State 怎么摆 | 回答什么 |
+|---|---|---|
+| **whole** | `content_at_start=""` · `fresh=正文` | 判据的上界：它一共会对这批文字开几次火 |
+| **stale** | `content_at_start=正文` · `fresh=""` | **量程**：这一档命中的每一句，都是判据在打不是这次跑写的字 |
+| **probe / facts** | 合成探针；同 whole 但 `st.facts` 非空 | 两个 yes/no：前提成不成立、开的火是不是这个脚本自己造的 |
+
+#### 语料（`corpus_lineage` 分的三类）
+
+`user` **18** 篇 · `script` **19** 篇 · `fixture` **433** 篇（共 470 篇非空笔记）。
+比例只在 `user` 上说，`script` 只看形状，`fixture` 是噪声——这是批 4 / 批 6 的账。
+
+#### 真实漂移数字（分血缘，whole / stale）
+
+| 判据 | 活 | user whole | user stale | script whole | script stale | fixture whole | fixture stale |
+|---|:-:|---:|---:|---:|---:|---:|---:|
+| `no_audit_voice` | 活 | **5/18 = 27.8%** | **0** | 3/19 | 0 | 1/433 | 0 |
+| `material_thin` | 活 | 13/18 = 72.2% | 0 | 14/19 | 0 | 291/433 | 0 |
+| `no_repeated_lists` | 活 | **3/18 = 16.7%** | **3/18** | 1/19 | 1/19 | 1/433 | 1/433 |
+| `no_restated_paragraph` | 活 | **1/18 = 5.6%** | **1/18** | 2/19 | 2/19 | 0 | 0 |
+| `no_fake_charts` | 活 | **1/18 = 5.6%** | **1/18** | 0 | 0 | 0 | 0 |
+| `charts_from_tools` | 活 | 2/18 = 11.1% | **0** | 2/19 | 0 | 0 | 0 |
+| `citations_exist` | 活 | 0 | 0 | 0 | 0 | 1/433 | 1/433 |
+| `no_placeholder` · `outline_intact` · `citations_hold` · `citations_present` · `material_used` · `no_same_sources_twice` · `unsupported_specifics` · `section_budget` | 否 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+另有 7 条（`heading_fits` / `tail_clashes` / `table_present` / `table_columns_match` /
+`chart_numbers_grounded` / `chart_readable` / `numbers_from_tools`）**这份语料量不了**：
+它们判的是光标旁边那一块，拿整篇笔记喂它们是范畴错误（`table_present` 会在每一篇
+没有表的笔记上开火，那个 100% 什么都不说明）。报告里单独一栏列着并写明理由——
+**不是悄悄漏掉**，有一条闸盯着「一条判据都不许既不被量也不说为什么」。
+
+#### 入口先验了一次自己
+
+`no_audit_voice` 在 18 篇 `origin=user` 上开火 **5 篇 = 27.8%**，**命中的正是批 21
+逐句读过的那 5 篇**（`06647b9c2031` / `ecfac1f3c0aa` / `574f4ff29956` /
+`309f19202309` / `715266c1fcb4`），而 stale 那一档 **0 篇**——批 21 收的那个量程
+到今天还在。**一个复现不了已知结论的校准入口，报出来的新结论也不值钱。**
+
+#### 哪几条漂了：**三条判据没有量程**
+
+| 判据 | 量程绑在哪 | 结果 |
+|---|---|---|
+| `no_audit_voice` | `st.bag["content_at_start"]` | stale **0**（批 21 收的） |
+| `charts_from_tools` | `st.bag["content_at_start"]` | stale **0** |
+| `no_repeated_lists` | `st.fresh`，而且写的是 `if fresh and …` | stale **3/18**：**打磨轮 / 只清理轮的 `st.fresh` 是空的，那一句直接短路，量程当场静默失效** |
+| `no_restated_paragraph` | **没有** | stale 1/18 |
+| `no_fake_charts` | **没有** | stale 1/18 |
+
+**「这一轮写了什么」会是空的，「开跑时有什么」不会。** 这条进了
+`harness-framework.md` §20④。
+
+#### 逐条读完再说（§21：顺手量出来的数，当分母用之前得先逐条读）
+
+`--show` 把每一条命中的**正文原文**连上下文列出来，读完 + 查这几篇的
+`harness_runs` / `note_revisions` 血缘：
+
+| 笔记 | 判据 | 跑过 harness 吗 | 读出来是什么 |
+|---|---|---|---|
+| `92d07b760f1e` | `no_repeated_lists` | **一次都没有**（`harness_runs` 0 行、`note_revisions` 0 行） | 用户自己把「录制信任、关联即时反馈、总结行动化、图谱自维护」在「框架」和「下一步」各写了一次——**纯误伤** |
+| `e78306202d78` | `no_repeated_lists` | 跑过 29 次，但**已经还原回 09-02 的原文**（`before_restore` 那一版） | 用户原文里的一处逐字重复——**纯误伤** |
+| `06647b9c2031` | `no_repeated_lists` · `no_restated_paragraph` | 跑过，且笔记 `updated_at` 在那次跑之后 | 「下一轮 10 台到货为 6 月 15 日…」逐字两遍——更像**上一次跑写进去的真缺陷** |
+| `3a3a96354546` | `no_fake_charts` | 跑过（09-03T08:32 complete/4 轮），笔记 09-03T08:48 才更新 | 「先看硬件参数 → 跳到软件功能列表 → 回到定价 →」箭头链——更像**这次跑之后留下的真缺陷** |
+
+**2 篇纯误伤 + 2 篇真缺陷**，正是批 20/21 那个形状的第二次。
+所以这一批**按入口自己的规矩只报不改**：真要收量程，得先决定「修订那条线能不能
+改掉上一次跑留下的那两处」，那是独立一件事，不能拿一次统计去顺手做。
+
+#### 一个会骗人的数，入口自己把它摘出去了
+
+`material_thin` 在 18 篇真实笔记上开火 **13 篇 = 72.2%**，看着比 `no_audit_voice`
+还严重——**而那个数说的是这个脚本没去检索**：它的第一个触发条件就是「手上一条
+材料都没有」，而这个入口不发任何调用、`st.facts` 恒空。把同一批开火的换成
+「手上有材料」再判一次：**13 → 0**。所以入口多了一档 `with_facts`，
+报告里直接写「这个数说的是这个脚本的形态，不是这批文字」。
+**一个会被下一个人当成结论直接用的数，比没有这个数更糟。**
+
+#### 「和上次跑比变了多少」
+
+基线存 `.local/criteria_drift/latest.json`（**不进 git**：里面带笔记 id 和命中片段，
+那是用户内容）。第二次跑起报「哪条判据的哪个血缘的哪个口径从 N 变成了 M」、
+新增的判据、以及**消失的判据**（被删掉或者从模式上摘了）。
+
+---
+
+### 12.1 —— 「这一轮为什么这么跑」补上 `steer` 和判据命中
+
+`AgentActivity.tsx` 原来显示的是检索预算和温度，而那两个是 `policy.adjust()` 的
+**结果**。补的两样都走已有的事件，没加新的 CUSTOM 名。
+
+#### ① 诊断去了哪儿
+
+`round_summary` 多四个键：`steer`（上一轮最弱那一维的诊断原话）、`steer_dim`、
+`steer_material`（这一维是不是**检索**改善得了的那一类，`policy.MATERIAL_DIMS`，
+由后端算——那份名单跟 `repair.INNER_QUALITY` 是互补的一对，前端再抄一份必然漂）、
+`steer_in_plan`。
+
+`steer_in_plan` **不是自报**：`hooks/note.prepare` 是**回头在真正发出去的那条 user
+消息里找它**（`plan_steer in msgs[-1]["content"]`）——`retrieval_plan_user` 那一句是
+`if steer:` 才加的，而 `policy.steer` 自己又被 `MATERIAL_DIMS` 过滤过。
+§21：凡是只能靠自报来保证的性质，迟早会被报错一次。
+
+**`null` 和 `false` 是两回事，界面上也说两句话**：`null` = 这一轮压根没有检索规划
+这一步（打磨 / 只清理 / 关了 `AGENT_TOOLS`），`false` = 有这一步但诊断没进去。
+混成一个值，面板只能瞎说一句。这个键读完就 `pop`——`bag` 是跨轮活着的，
+留着不 pop 的话打磨轮会顶着上一轮的答案报「进了检索计划」（突变验 12.1-M2）。
+
+界面上于是能说出这三句的其中一句：
+「→ 这句话进了这一轮的检索计划。」/
+「→ 不进检索计划：这一维再查十条事实也修不好，它走的是修订那条线。」/
+「→ 这一轮没有检索规划这一步（只清理 / 打磨）。」
+
+#### ② 哪几条判据命中了
+
+`check_hit` 多三个键：`round` · **`check`（判据自己的名字）** · `ran`（跑到第几条）；
+分母 `checks_total` 在 `round_summary` 里。
+
+**为什么非要判据名**：`no_placeholder` / `citations_hold` / `citations_exist` /
+`material_thin` / `unsupported_specifics` **五条判据全落在 `factual_grounding` 这一维
+上**，用户看到的「事实依据 0 分」根本不知道是谁判的。而原来界面上还是原样打英文
+维度名（`<b>{r.checkHit.dimension}</b>`）。前端补了一张 23 条的中文名表
+（`editor/dimLabel.checkLabel`），**后端每挂一条判据它就必须有一个中文名**，
+`tests/test_why_this_round.py` 按模式逐个 parametrize 钉着（动态挂上去的
+`instruction_constraints` 另有一条，因为 parametrize 看不见它）。
+
+**前端原来是单数字段、后到的把先到的盖掉。** 一轮里可以先后到达好几条：
+连着卡满被放行的那几条（`STUCK_ROUNDS` 之后后端照发）+ 最后真正短路的那一条。
+**判据命中了但界面不显示，等于用户看不见**——跟「建了判据不等于用了判据」是
+同一个形状。改成攒成一串，并且在一条都没命中时明说「N 条代码判据全过，
+这一轮的分是打分模型给的」（没有分母，「全过了」跟「判据根本没跑」长得一样）。
+
+**那一行 setState 回调没有任何测试够得着**：把它改回覆盖式，全套前端闸照绿
+（实测）。所以抽成纯函数 `editor/agentRound.withCheckHit` 才钉得住。
+
+#### ③ 顺手：整轮被深度门丢光，此前完全无声（观测性，不是 bug）
+
+`if not kept: break` 之前不加 `trace.iters`、不置 `truncated`（`_cap_calls` 特意
+不把深度门丢掉的算进去——「那是刻意的取舍，不是资源不够」），于是
+**「模型发了 4 个调用全被丢了」跟「模型一个都没发」在 trace / 落库 / SSE 上
+长得一模一样**，而 `DEPTH_TOOLS` 的注释说这是观测到的常态（4 次真实采样全部
+撞上限）。做了：`ToolTrace` 加 `dropped_depth` / `stopped_all_dropped`（`merge`
+跟上，逐字段闸当场变红把我拦了一次）、`harness_rounds` 加 `depth_dropped` 一列
+（`Ledger` 写，**真跑一遍 `Ledger` 再把行读回来**，不是 grep 源码）、
+`round_summary` 带上、面板上一行「有 N 发检索被『第 2 轮起只深挖』这条规则丢掉」。
+**不动 `iters`**：它的含义是「真的执行了几轮工具」，`merge` 和 `policy` 都按这个读。
+
+---
+
+### R1（真 bug）—— `_parse_call` 只在**读**的那一侧容错
+
+#### 复现（真 registry，打桩端点，当前 HEAD `9de1c7c`）
+
+喂进两种 `_parse_call` **明确兜住**的异形：
+① `function.arguments` 是 dict 不是 string、而且没有 `id`；
+② `name` / `arguments` 平铺在顶层、没有 `function` 层、也没有 `id`。
+`gather_context` 返回的 `extra` 原样打出来：
+
+```json
+{"role": "assistant", "content": "", "tool_calls": [
+  {"id": "", "type": "function",
+   "function": {"name": "filter_facts", "arguments": {"topic": "定价"}}},
+  {"name": "fact_sources", "arguments": "{\"fact_id\": \"f1\"}"}]}
+{"role": "tool", "tool_call_id": "", "name": "filter_facts",  "content": "（没有匹配的事实）"}
+{"role": "tool", "tool_call_id": "", "name": "fact_sources",
+ "content": "（fact_sources 的参数必须是一个对象，收到的是 str）"}
+```
+
+**五处违反协议**：`arguments` 是对象不是字符串 · 第二条没有 `function` 对象 ·
+两个 `tool_call.id` 是空的 · **两条 tool 回复的 `tool_call_id` 都是空串**。
+根因一句话：`_parse_call` 只管**取值**，而 `msg["tool_calls"] = kept` 塞回去的是
+端点原样给的 dict（`util/llm.complete_raw` 也是 `out["tool_calls"] = msg["tool_calls"]`
+原样透传）。**容错只做在读的那一侧，等于把问题藏到下一跳。**
+
+后果跟批 13 / 批 22 那条一模一样：`hooks/block.prepare` 把 `msgs + extra` 喂给补图
+那一轮 → 400 → 被 `except` 吞掉 → **图画不出来而且一点痕迹都没有**。
+**这是同一条 bug 的第三个入口。**
+
+批 13 那道闸比的是 `asked == answered` 的 id 列表，而实拍下来两边都是 `["", ""]`
+——**相等，照样通过**。§21：一个谁都满足的断言没有在断言任何东西。
+
+#### 计划外：`_parse_call` 的读那一侧**本身也是坏的**
+
+第二条 tool 回复的原话是「**参数必须是一个对象，收到的是 str**」。平铺形状下
+`fn.get("arguments")` 是 `None`，于是走到
+`json.dumps(… or call.get("arguments") or {})`——而顶层那个 `arguments`
+**本来已经是一个 JSON 字符串**，`json.dumps` 又包了一层，工具那边
+`json.loads` 回来拿到的是 `str` 不是对象。**它号称兜住了这种形状，其实只兜住了
+「取得到名字」。**
+
+#### 修法
+
+* `_parse_call`：**先取到值、再决定要不要编码**（拿不拿得到参数跟它嵌在哪一层无关）；
+* 新增 `_rebuild_call()`：拿归一化之后的结果**重建**那条 call（`id` 缺失时按
+  `(第几轮, 第几个)` 补一个确定性的合成 id，不跟端点自己的 `call_xxx` 撞）；
+* 归一化放在 `_cap_calls` **之前**，于是 `kept` 里每一条都已经是协议形状，
+  塞回 `msg["tool_calls"]` 的不再是端点原样那份。
+
+修完同一段复现：违反协议 **0 处**，`asked == answered == ["tc_0_0", "tc_0_1"]`，
+而且 `fact_sources` 真的拿到了 `fact_id=f1`（报「找不到事实 f1」而不是类型错）。
+批 13 的三条老闸也一起收紧成「**id 不许是空串**」。
+
+---
+
+### R2（可疑）—— `hooks/block` 第二次 `gather_context` 的**入口**状态：**分母为 0，不改**
+
+形状确实是「同一件事挡住一半」的第五种：第二发的 `seen_ids` 从空集起步
+（`BARREN_STOP` 失效）、`trace2.iters` 从 0 起步（`_cap_calls` 的深度门整个放开），
+而 `hooks/note.py` 恰恰是特意把账本的 `known_ids` 喂进来的，两处做法相反。
+批 22 的 `merge()` 修的是**出来**那一侧，进去那一侧没动。
+
+**先量分母，而且量出来是结构性的 0：**
+
+| | 值 |
+|---|---|
+| 声明了 `focus_groups` 的模式 | **2**（EDA / ANALYSIS），两个都是 `("chart",)` |
+| `chart` 组注册的工具 | `chart_column` · `chart_from_text` · `render_chart` |
+| 跟 `FACT_TOOLS` 的交集 | **空** —— 而 `seen_ids` 只在 `if name in FACT_TOOLS` 里被读 |
+| 跟 `BREADTH_TOOLS` 的交集 | **空** —— 而深度门只丢 `name in BREADTH_TOOLS` |
+| 库里两个模式的轮次 | eda 18 轮 / analysis 18 轮（tool_calls 85 / 33），**一发都够不着那两条判据** |
+
+补图那一轮的 `groups` 是写死的 `st.mode.focus_groups`，模型在那一发**根本发不出**
+事实类或广度类调用。所以**不改**（批 22 的规矩：分母为 0 就写「不改」并说清理由）。
+改成传进去，加的是两条谁也证明不了它在挡什么的守卫——§21 说那比没有更糟。
+
+**改成把这个 0 钉住**（批 23 的那一档：把守卫挡的事变成可观测的断言）：
+`test_补图那一轮的工具组里不许出现事实类或广度类工具` —— 哪天有人给某个模式的
+`focus_groups` 加上 `memory`，这条当场变红，那时候要做的正是把 `known_ids` 和
+迭代序号接上去，而不是删掉这条闸。（突变验 R2-M1 实拍变红。）
+
+---
+
+### 突变验（27 条，27 条变红——**4 条第一版没抓住**）
+
+**基线 1830 绿 / 前端 260 绿。** 每条单独改坏，跑目标用例，跑前后都清 `__pycache__`。
+
+| # | 把什么改坏 | 结果 |
+|---|---|---|
+| R1-M1 | 写回消息的还是端点原样那份（撤掉归一化） | ✅ |
+| R1-M2 | 缺 id 时不补合成 id | ✅ |
+| R1-M3 | 合成 id 用同一个常量（两条撞一起） | ✅ |
+| R1-M4 | `_parse_call` 回到二次编码那一版 | ✅ |
+| R1-M5 | 归一化顺手改写端点已经给对的 id | ✅ |
+| OBS-M1 | `_cap_calls` 不报被深度门丢掉几发 | ✅ |
+| OBS-M2 | 整轮丢光时又不留痕迹 | ✅ |
+| OBS-M3 | `merge` 漏掉 `dropped_depth` | ✅ |
+| OBS-M4 | `Ledger` 不写 `depth_dropped` | ✅ |
+| OBS-M5 | 落库那个数写死成 0 | ✅ |
+| R2-M1 | 给 EDA 的 `focus_groups` 加上 `memory` | ✅ |
+| 12.1-M1 | steer 进没进检索计划改成自报 | ✅ |
+| 12.1-M2 | 读完不 pop（上一轮的答案漏给下一轮） | ✅ |
+| 12.1-M3 | `steer_material` 恒真 | ✅ |
+| 12.1-M4 / M5 | 命中事件不带判据名（两个发射点各一次） | ✅ |
+| 12.1-M6 | 卡满那条不再继续往下看别的判据（一轮只报一条） | ✅ |
+| 12.1-M7 | 轮次载荷里不给判据分母 | ✅ |
+| 12.1-M8 | 前端少掉一条判据的中文名 | ✅ |
+| FE-M1 | 前端把命中改回覆盖式（后到的盖先到的） | ✅（**第一版没抓住**，见下） |
+| 10.3-M1 | 「活着」只看探针 | ✅ |
+| 10.3-M2 | stale 那一档不把正文当开跑前就有的 | ✅ |
+| 10.3-M3 | 三个血缘桶合着算 | ✅ |
+| 10.3-M4 | 「量不了」那一栏空着（判据被静默漏掉） | ✅ |
+| 10.3-M5 | `--show` 不列原文片段 | ✅（**第一版没抓住**） |
+| 10.3-M6 | 判据抛异常被当成没开火且不出声 | ✅（**第一版没抓住**） |
+| 10.3-M7 | 「换成手上有材料」那一档不再重判 | ✅（**第一版没抓住**） |
+
+**四条第一版没抓住，四条都是用例不够**（连着十六批了）：
+
+* **FE-M1**：那一行是 `App.tsx` 里 setState 回调的一部分，**前端一条闸都够不着它**
+  （`npm test` 的 `tsc -b` 也拦不住——改成 `[d]` 类型照样对）。抽成纯函数
+  `editor/agentRound.withCheckHit` 才钉得住。*一段只活在 setState 回调里的逻辑，
+  等于没有测试。*
+* **10.3-M5**「`--show` 不列原文片段」照绿——因为我的断言写的是「命中的那句话出现
+  在输出里」，而**诊断本身就逐字引着那句话**（§21「一个在别处顺手被满足的断言」，
+  第五次）。断言改成只看「原文：」那几行，素材里给那句话加上**只有原文才带得出来
+  的上下文**（前后各一句）。*而这一改当场发现 `_snippets` 从来就是坏的*：它只按
+  `；` 切，`piece[:30]` 落在诊断自己的措辞上，正文里根本找不到——
+  **`--show` 从写下那天起一行原文都没列出来过，而那正是这个入口的全部价值。**
+  修完在真库上又露出第二个形态：`no_repeated_lists` 的判词把两段原文用
+  「甲」和「乙」串在一条里，按分隔符切完还是一整串，所以**先按直角引号取**。
+* **10.3-M6 / M7**：`_fire` 的异常分支和 `with_facts` 那一档**一条用例都没有**。
+  补了两条，其中 M7 那条正是「`material_thin` 72.2% 是脚本造出来的」这个结论的闸。
+
+---
+
+### 闸
+
+后端 **1830 → 1871**（+41）：`test_why_this_round` 新建 21 条、
+`test_criteria_drift` 新建 13 条、`test_tools` +4、`test_block_harness` +1、
+`test_dimension_method_gates` +1（第⑦条方法指到的入口必须真的在）、
+`test_scripts_import` +1（新脚本自动被参数化进去）；
+`test_tools` 改了 3 条断言（批 13 那三条 `asked == answered` 一起收紧成「id 不许是
+空串」）、`test_dimension_method_gates` 的方法名单 +1。
+前端 **52 个文件 260 → 263 条**（`harnessStreamRounds.test.ts` +3）。
+
+`harness-framework.md`：§20 加第⑦条（标题「六条方法」→「七条方法」，目录跟着改）、
+§20④ 补「量程要绑在开跑时有没有上」那一段、§21「同一件事挡住一半」那一行补第六种
+形态、§11 的 `round_summary` / `check_hit` 两行补载荷、§12 的 handler 表 +1 行。
+**Mode / 工具 / check / middleware 四个数一个没动**，`test_doc_counts` /
+`test_directory_map` 照绿。
+
+---
+
+### 计划外发现
+
+1. **`_parse_call` 的读那一侧本身是坏的。** 平铺形状下参数被 `json.dumps` 二次编码，
+   工具收到的是一个 JSON 字符串而不是对象，当场报「参数必须是一个对象，收到的是
+   str」。它号称兜住了这种形状，**其实只兜住了「取得到名字」**——
+   *一个写着「这里一并容错」的函数，容错到哪一步得自己验一次。*
+2. **`--show` 从写下那天起就没列出过一行原文**（10.3-M5）。而「一键列出原文命中片段
+   供人逐条读」正是这个入口存在的理由——**功能的核心那一半坏着，报告还是照常打印
+   出一堆数**。抓住它的不是我，是突变验。
+3. **`st.steer` 在 note / section 两个模式里写了没人读。** `loop.py` 每轮末尾都算
+   `st.steer = _steer(st)`，而 `hooks/note` 读的是 `policy.steer`（Runtime 那条线）、
+   `hooks/section` 压根没有 policy（`SECTION.extra_mw` 里没有 `Runtime`），
+   **全仓唯一真读 `st.steer` 的是 `hooks/block.produce`**。诊断在长文那两个模式里
+   走的是另一条线（`bag["focus"]` / `focus_note` → `Revise`）。12.1 把两条线都摆到
+   界面上了，但「`st.steer` 在长文模式里是个死字段」这件事本身还在。
+4. **`test_event_contract` 里那条 `missing -= {"warning", "check_hit"}` 的
+   `check_hit` 是死的**：前端 `api.ts` 明明有 `payload.name === 'check_hit'` 分支，
+   正则取得到，减不减都一样。*一条永远不生效的豁免，读起来像「这个事件前端没接」。*
+   这一批没动它（不在范围内），记在这儿。
+5. **`no_repeated_lists` 的量程写成 `if fresh and …`**，于是「这一轮没写东西」
+   （打磨 / 只清理）和「这一轮写的里没有这些」被当成了同一件事——
+   **前者会让整条量程静默消失**。这跟批 21 选 `content_at_start` 而不是 `st.fresh`
+   是同一个理由的另一面：那次的理由是「修订就地改写旧段落，改出来的不进 `st.fresh`」，
+   这次是「`st.fresh` 会是空的」。*一个可能为空的量程，就不是量程。*
+
+---
+
+### 开工前后的 `notes` 指纹（自己核对过，不是自报）
+
+|  | 开工前（= 批 23 收尾） | 收尾 |
+|---|---|---|
+| `notes` 行数 | 482 | **482** |
+| `notes` `max(updated_at)` | `2026-09-16T02:53:27+00:00` | **`2026-09-16T02:53:27+00:00`** |
+| 正文总字数 | 321,250 | **321,250** |
+| 482 篇逐篇摘要再取一次摘要 | `47dcc54be60aa4f2` | **`47dcc54be60aa4f2`** |
+| `note_revisions` 行数 | 44 | **44** |
+| `harness_edits` 行数 | 0 | **0** |
+
+这一批**一次跑批都没有**（零模型调用）。唯一碰真库的两处都只读、夹在
+`db_guard.Watch()` 里、**命令不经过任何管道**、单独打印 `EXIT=$?`：
+`scripts/criteria_drift.py`（10.3 的全部数字）和一次血缘核对查询（读
+`harness_runs` / `note_revisions` 判那四篇笔记的出身）。
+
+### 这一批的实际成本
+
+**模型调用 0 次、0 token。** 10.3 的数量全部量在已经存在的 470 篇笔记上，
+R1 的复现是真 registry + 打桩端点（零网络），R2 的分母是从 `Mode.focus_groups`
+× 工具注册表算出来的**结构性 0**。验收靠 27 条突变验（每条一次 targeted
+`pytest -x`，跑前后清 `__pycache__`）+ 后端 / 前端各两次全量闸。
+
+### 下一步
+
+1. **三条判据的量程要不要收，是一件独立的事。** 10.3 只报不改是对的，但它报出来
+   的东西得有人接：`no_restated_paragraph` / `no_fake_charts` 完全没有量程、
+   `no_repeated_lists` 的量程在打磨轮会消失。收之前要先答一个问题——
+   **修订那条线能不能改掉「上一次跑写进用户笔记里的重复」**？答得出来才知道
+   收量程是止损还是丢真阳性（批 21 的 A 就是这么过来的）。
+2. **`criteria_drift.py` 要定期跑，而且下一次跑之前不要动 `.local` 那份基线。**
+   它现在只有一份快照，「变了多少」这一栏第二次跑才有内容。
+3. **`harness_rounds.depth_dropped` 今天一行数据都没有**（这一批零真跑）。
+   攒出来之后能第一次回答「深度门是不是太狠」——那条规则从写下起就没有任何数。
+   同批 23 的 `RUN_TOKEN_CAP` 一样：*从来不开火* 和 *拦不住真正该拦的* 在数据上
+   长得一模一样。
+4. **`st.steer` 在长文模式里是个死字段**（计划外发现 3）。要么接上、要么删掉，
+   但别留着——一个每轮都算、没人读的字段，下一个人会以为诊断已经喂回去了。
+5. 阶段 10 / 11 / 12 到这一批全部做完。剩下的是 **9.2（judge-vs-人 一致率）**
+   和 **9.4（judge 模型槽）**，两条都在等 9.1 攒样本，而 `harness_edits`
+   到今天仍然是 **0 行**——**它只会在真实用户真的改了 AI 写的正文之后才长**，
+   跑批脚本按设计一条都采不到。

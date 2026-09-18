@@ -35,3 +35,45 @@ export function dimLabel(dim: string): string {
   if (m) return `你的要求 ${m[1]}`
   return FIXED[dim] ?? dim
 }
+
+/** **判据**在界面上叫什么（计划 12.1）。
+ *
+ * 跟上面那张表是两件事，不能合并：一条判据挑哪个维度是运行时决定的
+ * （后端 `checks/pick.pick_dimension`），而**五条判据同时落在
+ * `factual_grounding` 上**——用户看到「事实依据 0 分」根本不知道是
+ * `no_placeholder` 还是 `citations_exist` 判的。判据名是它自己的身份。
+ *
+ * 名单跟后端 `Mode.checks` 逐条对账：`backend/tests/test_event_contract.py`
+ * 里有一条闸，后端挂上去的每一条判据这里都必须有中文名，否则界面上会原样
+ * 蹦出 `no_same_sources_twice` 这种字样。
+ */
+const CHECKS: Record<string, string> = {
+  no_placeholder: '占位符代替内容',
+  no_audit_voice: '审计腔',
+  outline_intact: '大纲被压平',
+  citations_hold: '引用对不上材料',
+  citations_exist: '引用的事实不存在',
+  material_thin: '材料太薄',
+  citations_present: '整段没有一条引用',
+  material_used: '查到的材料没写进去',
+  no_repeated_lists: '列表重复',
+  no_restated_paragraph: '整段换个说法又说一遍',
+  no_same_sources_twice: '同一条材料用了两次',
+  no_fake_charts: '用文字冒充图',
+  charts_from_tools: '图不是工具画的',
+  unsupported_specifics: '具体数字查无出处',
+  section_budget: '这一节还没写够',
+  chart_numbers_grounded: '图里的数字没依据',
+  chart_readable: '图读不出来',
+  heading_fits: '标题层级不合上文',
+  tail_clashes: '结尾跟下文撞了',
+  table_present: '该有表却没有表',
+  table_columns_match: '表格列数对不上',
+  numbers_from_tools: '数字不是工具算的',
+  instruction_constraints: '你指令里的硬要求',
+}
+
+export function checkLabel(check?: string): string {
+  if (!check) return '代码判据'
+  return CHECKS[check] ?? check
+}

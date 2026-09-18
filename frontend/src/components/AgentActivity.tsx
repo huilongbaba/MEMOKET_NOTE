@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { NoteHarnessToolCall } from '../api'
 import Icon from './Icon'
-import { dimLabel } from '../editor/dimLabel'
+import { dimLabel, checkLabel } from '../editor/dimLabel'
+import type { CheckHit } from '../editor/agentRound'
 
 /** 一轮里 agent 干了什么。按轮聚合而不是按事件平铺——用户关心的是
  * "这一轮它查了什么、改了什么、打了几分、然后决定下一轮怎么跑"这条
@@ -27,8 +28,24 @@ export type AgentRound = {
    * 混在报错里会让界面变成一片红。 */
   dropped: string[]
   /** 代码判据（不是模型）当场判这一轮不合格。命中时这一轮**不会**再花一次
-   * 模型调用去打分——所以要标出来，否则用户看到一个 0 分却不知道是谁判的。 */
-  checkHit?: { dimension: string; note: string; stuck_rounds?: number }
+   * 模型调用去打分——所以要标出来，否则用户看到一个 0 分却不知道是谁判的。
+   *
+   * **一轮可以命中好几条**（连着卡住被放行的那几条 + 最后短路的那一条），
+   * 原来这里是单数、后到的把先到的盖掉：判据真的命中了，界面上却看不见——
+   * 跟「建了判据不等于用了判据」是同一个形状。 */
+  checkHits?: CheckHit[]
+  /** 这个模式一共有几条代码判据。没有分母的话，「这一轮全过了」跟
+   * 「判据根本没跑」在界面上长得一模一样。 */
+  checksTotal?: number
+  /** 上一轮诊断出了什么、它这一轮去了哪儿（后端计划 12.1）。 */
+  steer?: string
+  steerDim?: string
+  steerMaterial?: boolean
+  /** `undefined` = 这一轮没有检索规划这一步（打磨 / 只清理）。 */
+  steerInPlan?: boolean | null
+  /** 这一轮有几发工具调用被深度门丢掉（第 2 轮起只放行深挖类工具）。 */
+  depthDropped?: number
+  depthDroppedAll?: boolean
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
   phaseLabel?: string
@@ -66,6 +83,13 @@ const TOOL_LABEL: Record<string, string> = {
   facts_in_range: '按时间范围取',
   fact_sources: '回溯到原始对话',
   search_session_context: '回到原始对话里追问',
+}
+
+/** 诊断原话是 `dim: note` 的形状（后端 `loop._steer`），维度名已经单独显示
+ * 过一次，这里去掉前缀免得同一个词在一行里出现两遍。 */
+function stripDim(steer: string): string {
+  const at = steer.indexOf(': ')
+  return at > 0 ? steer.slice(at + 2) : steer
 }
 
 /** 0/1/2 三档画成三格信号条——比纯数字更容易一眼扫过一排维度看出哪个塌了。 */
@@ -172,6 +196,31 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               </span>
             )}
           </div>
+
+          {/* 「这一轮为什么这么跑」的第一样：上一轮诊断出了什么，以及这条
+              诊断**这一轮去了哪儿**。面板此前只显示 `adjust()` 的结果
+              （检索预算 / 温度），而真正决定这一轮去查什么的是这句话。 */}
+          {r.steer && (
+            <p className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}>
+              上一轮诊断：{r.steerDim ? `「${dimLabel(r.steerDim)}」` : ''}{stripDim(r.steer)}
+              <br />
+              {r.steerInPlan === true && '→ 这句话进了这一轮的检索计划。'}
+              {r.steerInPlan === false && (r.steerMaterial
+                ? '→ 这一轮的检索计划里没有它（策略控制器这一轮没为它生成方向）。'
+                : '→ 不进检索计划：这一维再查十条事实也修不好，它走的是修订那条线。')}
+              {r.steerInPlan == null && '→ 这一轮没有检索规划这一步（只清理 / 打磨）。'}
+            </p>
+          )}
+
+          {/* 第二样的一半：模型发了调用、但整批被深度门丢掉。第 2 轮起只放行
+              深挖类工具，纯关键词撒网会被整批丢掉——而这件事既不算「撞上限」
+              也不进任何一个数，此前在界面上完全无声。 */}
+          {!!r.depthDropped && (
+            <div className="muted" style={{ marginBottom: 3 }}>
+              有 {r.depthDropped} 发检索被「第 2 轮起只深挖」这条规则丢掉
+              {r.depthDroppedAll && '（整批丢光，这一轮的工具循环就此收工）'}
+            </div>
+          )}
 
           {(r.toolCalls ?? []).length > 0 && (
             <>
@@ -280,23 +329,34 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             </details>
           )}
 
-          {r.checkHit && (
-            <p className="muted" style={{ margin: '4px 0 0', lineHeight: 1.55,
-                                          display: 'flex', gap: 5 }}>
+          {/* 代码判据这一轮的全貌：命中了哪几条（不是只留最后一条），
+              以及分母——全过的时候也要说一句，否则「判据跑了而且都过了」
+              跟「判据根本没接上」在界面上完全一样。 */}
+          {(r.checkHits ?? []).map((h, i) => (
+            <p key={i} className="muted" style={{ margin: '4px 0 0', lineHeight: 1.55,
+                                                  display: 'flex', gap: 5 }}>
               <span style={{ flexShrink: 0 }}>⚑</span>
               <span>
-                {r.checkHit.stuck_rounds ? (
+                {h.stuck_rounds ? (
                   <>
-                    <b>{r.checkHit.dimension}</b> 这条已经连着 {r.checkHit.stuck_rounds} 轮
-                    原样卡在这里，改不动——这一轮不再拦，照常打分。{r.checkHit.note}
+                    判据 <b>{checkLabel(h.check)}</b>（{dimLabel(h.dimension)}）已经连着
+                    {' '}{h.stuck_rounds} 轮原样卡在这里，改不动——这一轮不再拦，
+                    照常打分。{h.note}
                   </>
                 ) : (
                   <>
-                    代码判据判了 <b>{r.checkHit.dimension}</b> 不合格，这一轮没再花模型
-                    调用去打分。{r.checkHit.note}
+                    代码判据 <b>{checkLabel(h.check)}</b> 判了{dimLabel(h.dimension)}不合格
+                    {h.ran && r.checksTotal ? `（${r.checksTotal} 条里的第 ${h.ran} 条）` : ''}
+                    ，这一轮没再花模型调用去打分。{h.note}
                   </>
                 )}
               </span>
+            </p>
+          ))}
+          {!!r.checksTotal && !(r.checkHits ?? []).length
+            && Object.keys(r.scores ?? {}).length > 0 && (
+            <p className="muted" style={{ margin: '4px 0 0', lineHeight: 1.55 }}>
+              {r.checksTotal} 条代码判据全过，这一轮的分是打分模型给的。
             </p>
           )}
 

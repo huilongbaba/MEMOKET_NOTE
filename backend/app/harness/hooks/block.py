@@ -45,6 +45,28 @@ class BlockHooks:
             msgs, st.ctx, groups=list(st.mode.groups), max_iters=3)
 
         if st.mode.focus_groups and not _produced(trace, st.mode.focus_groups):
+            # **进去那一侧故意不喂 `known_ids`、也不接着数迭代**（批 24 的 R2）。
+            #
+            # 看起来这是「同一件事只挡住一半」的又一例：第二次循环的
+            # `seen_ids` 从空集起步，第一轮已经取到的事实在它眼里全是新的，
+            # `BARREN_STOP` 失效；`trace2.iters` 也从 0 起步，`_cap_calls`
+            # 的深度门在补图那一轮整个放开。`hooks/note.py` 恰恰是特意把账本
+            # 的 `known_ids` 喂进来的，两处做法相反。
+            #
+            # **量完是分母为 0，而且是结构性的 0**：这一发的 `groups` 写死成
+            # `st.mode.focus_groups`，全仓只有 EDA / ANALYSIS 两个模式声明过
+            # 它，两个都是 `("chart",)`；`chart` 组里就 `chart_column` /
+            # `chart_from_text` / `render_chart` 三个工具，
+            # **跟 `FACT_TOOLS` / `BREADTH_TOOLS` 的交集都是空的**。
+            # 而 `seen_ids` 只在 `if name in FACT_TOOLS` 里被读，深度门只丢
+            # `name in BREADTH_TOOLS`——补图那一轮两条都走不到。
+            #
+            # 所以**不改**（批 22 的规矩：分母为 0 就写「不改」并说清理由）。
+            # 改成把这两样传进来，加的是两条谁也证明不了它在挡什么的守卫
+            # ——§21 说这比没有更糟。
+            # **改成把分母钉住**：`tests/test_block_harness.py` 有一条闸，
+            # 哪天有哪个模式的 `focus_groups` 里出现了事实类 / 广度类工具，
+            # 它当场变红，那时候要做的正是把这两样接上。
             extra2, trace2 = await agent_loop.gather_context(
                 msgs + extra + [{"role": "user", "content": _FOCUS_NUDGE}],
                 st.ctx, groups=list(st.mode.focus_groups), max_iters=3)
