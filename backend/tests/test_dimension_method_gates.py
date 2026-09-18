@@ -73,10 +73,7 @@ def _shapes():
 FALLS_IN_BUCKET = {
     # 长文两个模式都没有 `has_charts` / `chart_validity`：它们手上确实没有
     # 画图那一轴，判据说的是「调 chart_from_text 画出来」，归兜底桶。
-    ("note", (False, False), "no_fake_charts"),
-    ("note", (False, True), "no_fake_charts"),
-    ("note", (True, False), "no_fake_charts"),
-    ("note", (True, True), "no_fake_charts"),
+    # P8 起 `note` 不挂 `no_fake_charts`（不带 chart 组：续写整篇不画图，要图走「/ 智能插图」）。
     ("note", (False, False), "charts_from_tools"),
     ("note", (False, True), "charts_from_tools"),
     ("note", (True, False), "charts_from_tools"),
@@ -85,6 +82,17 @@ FALLS_IN_BUCKET = {
     ("section", (True, False), "no_fake_charts"),
     ("section", (False, False), "charts_from_tools"),
     ("section", (True, False), "charts_from_tools"),
+    # P8：换语言打 `style_fit`（没档案时落桶，跟审计腔同一条理由）；乱码字符打 `fits_context`
+    # （block 模式才有），长文八格全落桶——它带 `fix`，一定修得掉，维度实际到不了打分器。
+    ("note", (False, False), "language_consistent"),
+    ("note", (False, True), "language_consistent"),
+    ("section", (False, False), "language_consistent"),
+    ("note", (False, False), "no_foreign_script"),
+    ("note", (False, True), "no_foreign_script"),
+    ("note", (True, False), "no_foreign_script"),
+    ("note", (True, True), "no_foreign_script"),
+    ("section", (False, False), "no_foreign_script"),
+    ("section", (True, False), "no_foreign_script"),
     # 长文没有 `fits_context`（那是六个 block 模式的维度）。
     ("note", (False, False), "outline_intact"),
     ("note", (False, True), "outline_intact"),

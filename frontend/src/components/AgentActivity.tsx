@@ -46,6 +46,9 @@ export type AgentRound = {
   /** 这一轮有几发工具调用被深度门丢掉（第 2 轮起只放行深挖类工具）。 */
   depthDropped?: number
   depthDroppedAll?: boolean
+  /** 进 prompt 前被相关性筛剔掉的材料（P8 问题 5）：从上千条的主题里抽样回来、跟这篇零重合的。 */
+  factsIrrelevant?: number
+  irrelevantSample?: string[]
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
   phaseLabel?: string
@@ -228,6 +231,16 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             <div className="muted" style={{ marginBottom: 3 }}>
               有 {r.depthDropped} 发检索被「第 2 轮起只深挖」这条规则丢掉
               {r.depthDroppedAll && '（整批丢光，这一轮的工具循环就此收工）'}
+            </div>
+          )}
+
+          {/* P8 问题 5：从上千条的主题里抽样回来、跟这篇零重合的材料，进 prompt 前就筛掉了。
+              不报的话用户看到「查到 12 条」却只用了 5 条，会以为模型偷懒。 */}
+          {!!r.factsIrrelevant && (
+            <div className="muted" style={{ marginBottom: 3 }}
+                 title={(r.irrelevantSample ?? []).join('\n')}>
+              筛掉 {r.factsIrrelevant} 条跟这篇无关的材料（从上千条的主题里抽样来的、跟正文零重合）
+              {(r.irrelevantSample ?? []).length > 0 && `：${(r.irrelevantSample ?? [])[0]}…`}
             </div>
           )}
 

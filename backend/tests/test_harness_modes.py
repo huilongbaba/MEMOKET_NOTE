@@ -249,6 +249,19 @@ def test_每条check打翻的维度这个mode真的有():
                     "就从说服用户支持一个方向，转成按承诺把产品交到用户手里。\n")
     # 「问了，库里一条都没有」：账本里一条发过的查询 + 一个分母为 0 的轴。
     # 形状照 `middleware/ledger.fold` 真的会写出来的那一份。
+    # P8 的第六份素材（理由见下面 for 循环里那条注释）。
+    P8_BEFORE = ("## 验收链路\n\n验收链路可以压缩成四个连续动作，每一步都要在现场留下结果，"
+                 "否则自动这两个字只在顺利录制时成立。\n\n"
+                 "1. 录制结束后，原始素材自动进入处理流程，不要求教师手动上传。\n"
+                 "2. 转码和摘要完成后，内容带着课程标签进入指定 Discord 共创群。\n"
+                 "3. 教师能够直接在群内补充、修正和讨论。\n"
+                 "4. 修订后的内容回到案例库，下一次跨校研讨可以直接调用。\n")
+    P8_FRESH = ("```mermaid\ngraph LR\nA[录制结束原始素材进入处理流程] --> B[转码摘要课程标签 Discord 共创群]\n"
+                "B --> C[教师群内补充修正讨论]\nC --> D[修订内容回到案例库跨校研讨调用]\n```\n\n"
+                "The pilot should verify one real path end to end: the teacher starts recording, "
+                "the material enters processing automatically, the summary is tagged and pushed to "
+                "the Discord group, and the revised version returns to the case library for the next "
+                "session to reuse without digging through chat history. મંત્રી")
     ASKED_AND_EMPTY = {
         "queries": [{"key": "filter_facts\t{\"topic\": \"work_pricing\"}",
                      "tool": "filter_facts", "hit": 0, "empty": True}],
@@ -280,9 +293,20 @@ def test_每条check打翻的维度这个mode真的有():
                         (FRESH_SAME_CITES, "", FACTS, {}, False),
                         (FRESH_NO_CITE, BROKEN_TABLE, FACTS, {}, False),
                         (FRESH_NO_CITE, "", [], ASKED_AND_EMPTY, False),
-                        (OPENING_ONLY, "", FACTS * 6, {}, True)):
+                        (OPENING_ONLY, "", FACTS * 6, {}, True),
+                        # P8 的第六份：**开跑前是一篇中文正文**（`content_at_start`），这次跑
+                        # 写出来的是一段英文（`language_consistent`）+ 一个古吉拉特文乱码
+                        # （`no_foreign_script`，e783 实拍「મંત્રી」）+ 一张把上面那条四步清单
+                        # 逐节点重画的流程图（`chart_restates_list`，e783 P6 实拍的形状）。
+                        # 三条都要「开跑前有什么」这个量程，前五份没有它，所以单开一份。
+                        (P8_FRESH, "", FACTS, {}, "p8")):
                     st.fresh = fresh
-                    st.content = fresh if short else CONTENT + table + "\n\n" + fresh
+                    if short == "p8":
+                        st.bag["content_at_start"] = P8_BEFORE
+                        st.content = P8_BEFORE + "\n\n" + fresh
+                    else:
+                        st.bag.pop("content_at_start", None)
+                        st.content = fresh if short else CONTENT + table + "\n\n" + fresh
                     st.before, st.after = BEFORE, AFTER
                     st.facts = list(facts)
                     st.charts = []
@@ -314,10 +338,14 @@ def test_每条check打翻的维度这个mode真的有():
     # 掉进来，谁也不会发现。所以这个集合逐对写死，多一对少一对都要解释。
     assert bucketed == {
         ("note", "no_audit_voice"),        # 审计腔：note 无 profile 时没有 style_fit
-        ("note", "no_fake_charts"),        # 文字画的图：长文没有 has_charts
-        ("note", "charts_from_tools"),     # 手写 mermaid：同上
+        # P8 起 `note` 不挂 `no_fake_charts`（不带 chart 组，见 modes.NOTE 上面那段）
+        ("note", "charts_from_tools"),     # 手写 mermaid：长文没有 has_charts
         ("note", "outline_intact"),        # 大纲被压平：长文没有 fits_context
+        ("note", "language_consistent"),   # 换语言（P8）：无 profile 时没有 style_fit
+        ("note", "no_foreign_script"),     # 乱码字符（P8）：打 fits_context，长文没有
         ("section", "no_audit_voice"),
+        ("section", "language_consistent"),
+        ("section", "no_foreign_script"),
         ("section", "no_fake_charts"),
         ("section", "charts_from_tools"),
     }, f"落进 mechanics 兜底桶的判据变了：{sorted(bucketed)}"
