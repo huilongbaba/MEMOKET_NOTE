@@ -219,10 +219,19 @@ class Dimension:
     a sentence describing what a low vs. high score looks like for this
     dimension, not as a bare label. The model scores against this text, not
     against any assumption baked into this package.
+
+    ``binary`` 把这一维压成两档（0 / 2），判词和解析两侧一起管
+    （`checks/rubric.py`）。**只有现场生成的 checklist 条目在用它**
+    （计划 6.1 / [IND] §6②）：二元 pass/fail 逼着先定义清楚「什么叫可以接受」，
+    而我们的反面证据是 `non_repetition` 九批 2160 次实测**稳在 1.3 下不来**
+    ——中间那档吸收了所有说不清的情况，既不推动修改也不放行。
+    **写死的那 25 维一维都没改**：计划 7.4 写着「先按维度量一致率再决定改
+    哪几维」，那一步（阶段 9.2）还没做。
     """
 
     name: str
     guidance: str
+    binary: bool = False
 
 
 @dataclass(frozen=True)

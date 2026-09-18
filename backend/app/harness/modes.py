@@ -22,7 +22,7 @@ from .checks import (chart_numbers_grounded, chart_readable, charts_from_tools,
                      no_placeholder, no_repeated_lists, no_restated_paragraph,
                      no_same_sources_twice, numbers_from_tools, outline_intact,
                      table_columns_match, table_present, tail_clashes)
-from .middleware import Repair, Replan, Runtime, Save, Sections
+from .middleware import Checklist, Repair, Replan, Runtime, Save, Sections
 from .middleware.revise import Revise
 from .state import State
 from .types import Mode
@@ -411,6 +411,12 @@ _NO_FABRICATION = Dimension(
 # the whole point: PROMPT writes at a cursor, so it is judged on fitting the
 # surrounding text; CUSTOM overwrites a selection, so it is judged on dropping
 # in cleanly over it.
+#
+# **这三条是「所有指令共用的那一份」，也就是 RaR 论文里效果明显更差的
+# RaR-Predefined 那一档**（[IND] §4）。批 17 起，这两个模式在它们之上再挂一份
+# **这一次专属**的判据：`middleware/checklist.Checklist` 跑前从用户那条指令
+# 生成二元条目，`checks/instructions` 把能用代码判准的那几类单独拎出来。
+# 下面这三条**一个字都没改**——计划 7.4 写着「先按维度量一致率再决定改哪几维」。
 PROMPT_DIMS = (_FOLLOWS_PROMPT, _FITS_CONTEXT, _NO_FABRICATION)
 CUSTOM_DIMS = (_FOLLOWS_PROMPT, _REPLACES_CLEANLY, _NO_FABRICATION)
 
@@ -580,6 +586,10 @@ PROMPT = Mode(
     skill_scope="block_prompt",
     dims=PROMPT_DIMS,
     checks=(no_placeholder, heading_fits),
+    # 用户那条指令 → 这一次专属的判据（计划 6.1 + 6.2）。**挂在这儿而不是写进
+    # `checks` / `dims`**：那两样是纯数据、开跑前就定死，而这一份的内容来自
+    # 用户刚打的那句话。
+    extra_mw=(Checklist(),),
     max_rounds=3,
 )
 
@@ -595,6 +605,9 @@ CUSTOM = Mode(
     skill_scope="block_prompt",
     dims=CUSTOM_DIMS,
     checks=(no_placeholder,),
+    # 跟 PROMPT 同一件事。`custom` 这边生成清单时还会看到被替换掉的那一段
+    # （`bag["selection"]`）——「把这段改得更口语」这类指令不看原文拆不出条目。
+    extra_mw=(Checklist(),),
     max_rounds=3,
 )
 

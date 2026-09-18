@@ -1490,7 +1490,16 @@ PROBES: tuple[Probe, ...] = (
     # ---- prompt / custom 模式（follows_prompt / no_fabrication / replaces_cleanly）
     Probe("prompt", "paragraph", "answer_swap", ("follows_prompt",)),
     Probe("prompt", "paragraph", "fabricate_specifics", ("no_fabrication",)),
+    Probe("custom", "paragraph", "answer_swap", ("follows_prompt",)),
     Probe("custom", "paragraph", "lead_in", ("replaces_cleanly",)),
+    # ---- 第三档条件：**同一份上下文，多一份现场生成的 checklist**（批 17 / 阶段 6.1）
+    # 跟 `with-evidence` 那一档不是一回事：那一档改的是**给打分器看什么**，
+    # 这一档改的是**拿什么去判**（维度表多几条二元条目）。所以它跟自己的
+    # `as-deployed` 兄弟行是严格配对的前后对照——正文、上下文、材料一个字不差。
+    Probe("prompt", "paragraph", "answer_swap", ("follows_prompt",),
+          condition="checklist"),
+    Probe("custom", "paragraph", "answer_swap", ("follows_prompt",),
+          condition="checklist"),
 )
 
 
@@ -1499,6 +1508,45 @@ def mode_dims(mode_key: str) -> list:
     from app.harness import modes
     m = {x.key: x for x in modes.ALL}[mode_key]
     return list(modes.for_run(m, has_profile=True, polish=False).dims)
+
+
+# ---------------------------------------- checklist 那一档（批 17 / 阶段 6.1）
+#
+# `condition="checklist"` 的格子，维度表在这个模式固定那几条后面**再接上现场
+# 生成的条目**。生成走的是生产那个函数（`app.harness.checklist.synthesize`），
+# 脚本不另写一份 prompt——跟 `score_context` 同一条纪律：这一列的全部意义
+# 就是"跟生产一样"，自己抄一份就必然漂。
+#
+# 按指令缓存：一次 bench 里同一篇笔记的指令是同一句话，prompt 和 custom 两条
+# probe 共用一份。**生成本身是要花钱的**（每篇一次调用），缓存让这笔钱只花
+# 一次，同时保证前后对照的两臂用的是**同一张清单**。
+_CHECKLIST_CACHE: dict[str, tuple] = {}
+_CHECKLIST_LOCK: asyncio.Lock | None = None
+CHECKLIST_CONDITION = "checklist"
+
+
+async def checklist_dims(instruction: str) -> tuple:
+    """这条指令现场生成出来的那几条二元维度（缓存）。生成不出来就是空的。"""
+    global _CHECKLIST_LOCK
+    from app.harness import adapter
+    from app.harness import checklist as synth
+    from app.harness.checks import instructions as instr
+
+    key = (instruction or "").strip()
+    if not key:
+        return ()
+    if _CHECKLIST_LOCK is None:
+        _CHECKLIST_LOCK = asyncio.Lock()
+    async with _CHECKLIST_LOCK:
+        if key not in _CHECKLIST_CACHE:
+            items = await synth.synthesize(
+                adapter.AppLLMClient(), key,
+                constraints=instr.extract(key))
+            _CHECKLIST_CACHE[key] = tuple(items)
+            print(f"\n[checklist] 指令：{key[:60]}…")
+            for it in items:
+                print(f"           · {it.text}（依据：{it.quote}）")
+    return synth.to_dimensions(_CHECKLIST_CACHE[key])
 
 
 def covered_dimensions() -> dict[str, list[str]]:
@@ -1710,6 +1758,13 @@ async def run_one(task: Task) -> dict:
     from app.harness import adapter
     from app.harness.checks.rubric import ScoreParseError, evaluate
     dims = mode_dims(task.mode)
+    items: tuple = ()
+    if task.probe_id.endswith("/" + CHECKLIST_CONDITION):
+        # **指令从 context 里取**（`score_context.PROMPT_KEY`），不是这里另拼一句：
+        # 生产里 `middleware/checklist` 拿的就是递给打分器的那同一句话。
+        extra = await checklist_dims(task.context.get(score_context.PROMPT_KEY, ""))
+        dims = dims + list(extra)
+        items = tuple(d.name for d in extra)
     t0 = time.monotonic()
     # 材料块排在 `[Content]` 之后（批 16）。**拆分必须走生产那个函数**：
     # `production_context()` 交出来的是"打分器该看见的全部"，怎么排布由
@@ -1723,6 +1778,8 @@ async def run_one(task: Task) -> dict:
         rec = {"key": task.key, "note": task.note_id, "probe": task.probe_id,
                "arm": task.arm, "rep": task.rep, "scores": scores, "pre": task.pre,
                "status": ev.status, "ms": int((time.monotonic() - t0) * 1000)}
+        if items:
+            rec["checklist"] = list(items)
     except ScoreParseError as exc:
         # **没打上分 ≠ 打了 0 分**（批 3 的 1.7）。这一格作废，不进统计。
         rec = {"key": task.key, "note": task.note_id, "probe": task.probe_id,

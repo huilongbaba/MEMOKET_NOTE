@@ -13,6 +13,7 @@ things get forgotten.
 from ._order import OrderError, describe, verify
 from .best_of import BestOf
 from .checks import Checks
+from .checklist import Checklist
 from .compact import Compact
 from .facts import Facts
 from .history import History
@@ -45,6 +46,8 @@ from .provenance import Provenance
 #   BestOf       after_judge       needs the score to rank the round
 #   History      after_run         final scores only exist at the end
 #   ---- not in BASE, attached per Mode via extra_mw ----
+#   Checklist    before_run        用户那条指令 → 这一次专属的判据，整趟一次
+#                                  （prompt / custom；计划 6.1 + 6.2）
 #   Revise       before_produce    fix what's written before writing more
 #   Sections     before_round /    小节索引发布给 read_section（before_round，
 #                before_produce    因为工具循环在 prepare 里、比 before_produce 早）
@@ -67,11 +70,16 @@ BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Supersede(), Repeats()
 #              摘要是有损的替换，索引是无损的指针）。`compact_context` 那个
 #              函数本身还在，magic tap 那条一次性路径仍然用它——那条路**没有
 #              工具循环**，给指针它取不回来，所以摘要在那里仍然是较优的一档。
+#   Checklist -- 从用户那条指令现场生成 checklist（[IND] §4 的 TICK / RaR）。
+#              只有 prompt / custom 有"用户刚打进来的那条指令"这个原料；
+#              别的模式挂上去，生成出来的只会是通用条目——正是 RaR 消融里
+#              效果明显更差的 RaR-Predefined 那一档。
 #   Save    -- persist every round; blocks aren't persisted at all.
 #   Repair  -- repair-instead-of-continue; long-form only.
 #   Runtime / Replan -- note_harness only.
 
-__all__ = ["BASE", "BestOf", "Checks", "Compact", "Facts", "History", "Ledger",
+__all__ = ["BASE", "BestOf", "Checklist", "Checks", "Compact", "Facts", "History",
+           "Ledger",
            "Sections",
            "OrderError", "Provenance", "Repair", "Replan", "Repeats",
            "Runtime", "Save", "Skills", "Supersede", "describe", "verify"]

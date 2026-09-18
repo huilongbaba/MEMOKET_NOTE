@@ -54,6 +54,7 @@ import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
 import { loadSpots, putSpot, saveSpots } from './util/spots'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
+import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
 import { setIngestActive } from './util/ingestActive'
 import { ConfirmDialog, NotePicker, TextPrompt, type ConfirmRequest, type PickerRequest, type PromptRequest } from './components/Dialogs'
@@ -2705,7 +2706,7 @@ export default function App() {
             push(logRun.of({
               id, at: '打分',
               text: status === 'complete' ? '都达标了'
-                : weak.map(([k, v]) => `${k}：${v.note}`).join('；') || status,
+                : weak.map(([k, v]) => `${dimLabel(k)}：${v.note}`).join('；') || status,
             }))
           },
           onError: (d) => { lastError = d; push(logRun.of({ id, at: '出错', text: d })) },

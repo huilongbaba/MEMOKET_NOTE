@@ -1427,3 +1427,70 @@ def test_报告里要标明材料那几维是上界():
     for dim in ("material_use", "factual_grounding", "numbers_from_tools",
                 "data_grounding"):
         assert dim in head, dim
+
+
+# ------------------------------------------- checklist 那一档（批 17 / 6.1）---
+#
+# 这一档改的**不是给打分器看什么**（那是 `with-evidence`），而是**拿什么去判**：
+# 同一份正文、同一份上下文，维度表后面多接几条现场生成的二元条目。
+# 所以它和自己的 `as-deployed` 兄弟行必须严格配对，否则前后对照比的是两件事。
+
+def test_checklist那一档跟as_deployed严格配对():
+    pairs = {(p.mode, p.selector, p.injector, p.targets)
+             for p in bench.PROBES if p.condition == "as-deployed"}
+    for p in bench.PROBES:
+        if p.condition == bench.CHECKLIST_CONDITION:
+            assert (p.mode, p.selector, p.injector, p.targets) in pairs, (
+                f"{p.id} 没有对照行——单独一条 checklist 行没有任何可比的对象")
+
+
+def test_checklist那一档只在指令类两个模式上():
+    """别的模式在生产里根本不挂这个 middleware，给它们量等于量一个不存在的配置。"""
+    modes_ = {p.mode for p in bench.PROBES if p.condition == bench.CHECKLIST_CONDITION}
+    assert modes_ <= {"prompt", "custom"}
+
+
+def test_bench取指令走的是生产那个键名():
+    """**批 16 的形状**：两处各写一份字符串，一处改名另一处静默取到空串——
+    而空串跟「用户没打指令」长得一模一样，这一档会安静地退化成 as-deployed。"""
+    from app.harness import score_context
+
+    ctx = score_context.for_block(prompt="随便一条指令")
+    assert score_context.PROMPT_KEY in ctx
+
+
+def test_同一条指令只生成一次清单(monkeypatch):
+    """生成是要花钱的，而且两臂必须用**同一张清单**——重生成一次，
+    clean 和 dirty 就在拿两套判据比分数。"""
+    import asyncio
+
+    from app.harness import adapter
+
+    calls = {"n": 0}
+
+    class LLM:
+        async def complete(self, messages, **kw):
+            calls["n"] += 1
+            return '{"items": [{"check": "围绕原主题写", "quote": "按原主题"}]}'
+
+    monkeypatch.setattr(adapter, "AppLLMClient", lambda *a, **kw: LLM())
+    monkeypatch.setattr(bench, "_CHECKLIST_CACHE", {})
+    monkeypatch.setattr(bench, "_CHECKLIST_LOCK", None)
+
+    async def go():
+        a = await bench.checklist_dims("按原主题把这一段写清楚")
+        b = await bench.checklist_dims("按原主题把这一段写清楚")
+        return a, b
+
+    a, b = asyncio.run(go())
+    assert calls["n"] == 1
+    assert [d.name for d in a] == ["checklist_1"] == [d.name for d in b]
+    assert a[0].binary is True                  # 条目一律二元（[IND] §6②）
+    assert "围绕原主题写" in a[0].guidance       # 判词里带着条目原文
+
+
+def test_没有指令就不生成(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr(bench, "_CHECKLIST_CACHE", {})
+    assert asyncio.run(bench.checklist_dims("  ")) == ()

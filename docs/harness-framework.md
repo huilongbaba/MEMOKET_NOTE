@@ -57,8 +57,8 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×15<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save"]
-    CHK["checks/ ×11 代码判据<br/>+ rubric 模型打分"]
+    MW["Middleware ×16<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
+    CHK["checks/ ×12 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -110,7 +110,7 @@ flowchart TB
 |---|---|---|
 | **Mode** | 一个功能的全部配置：工具组、维度、判据、停止条件、额外 middleware、轮数 | `harness/modes.py`，8 个 |
 | **Hooks** | 三条 harness 真正不同的三件事：怎么取材料、怎么写、怎么收尾 | `harness/hooks/{note,section,block}.py` |
-| **Middleware** | 一项能力，挂在循环的 9 个钩子上，自带状态字段；默认全开 | `harness/middleware/`，15 个 |
+| **Middleware** | 一项能力，挂在循环的 9 个钩子上，自带状态字段；默认全开 | `harness/middleware/`，16 个 |
 
 ### 六条核心判断
 
@@ -192,14 +192,18 @@ backend/app/
                              批 16 起材料排在 `[Content]` **之后**，拆分由这个模块说了算）
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
-    middleware/              15 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
+    middleware/              16 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
                              + _order.py（顺序依赖，verify() 起跑时校验）
       skills · facts · history · ledger · supersede · compact · sections · best_of · checks
-      · provenance · revise · repeats · replan · repair · runtime · save · _order
+      · checklist · provenance · revise · repeats · replan · repair · runtime · save · _order
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
     checks/                  19 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
-      citations · grounding · grounding_rules · structure · charts · numbers · blockcheck · rubric · pick
+      citations · grounding · grounding_rules · structure · charts · numbers · instructions
+      · blockcheck · rubric · pick
+        （instructions 是批 17 / 阶段 6.2：用户那条指令里**能用代码判准**的那几类约束
+         ——字数 / 段数 / 「必须提到 X」/ 「用表格」。它挂在 Mode 上的方式跟别的判据不同，
+         由 `middleware/checklist` 在开跑时按这一次的指令装，所以不算进上面那个 19）
         （numbers 是批 16 / 阶段 5 新加的：图 · 表 · 正文里的数跟工具返回逐个 diff——
          三条判词原话都是「每个数字都能追到源」，那是一次比对不是一次判断）
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
@@ -218,6 +222,8 @@ backend/app/
     policy.py                Runtime 策略控制器：上一轮反馈 → 下一轮参数
     replan_rules.py          骨架重规划的约束
     revision.py              定位 / 应用修订：纯函数
+    checklist.py             从用户那条指令现场生成 instruction-specific checklist
+                             （二元条目 → 维度；批 17 / 阶段 6.1，[IND] §4 的 TICK / RaR）
     snapshot.py              轮末暂停：冻结 / 解冻 State
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
@@ -469,7 +475,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 ---
 
-## 7. 15 个 middleware
+## 7. 16 个 middleware
 
 `BASE`（默认全开，顺序即执行顺序）：
 
@@ -495,6 +501,7 @@ Mode 按需追加的：
 | **Replan** | note | 骨架中途重规划（`replan_rules.py` 约束：能更新，不能把目标改到不收敛） |
 | **Sections** | note · section | 续写 prompt 里的正文：**小节索引（每节一行）+ 按需读回的小节 + 当前小节逐字**，配 `read_section(n)` 工具（修订和打分仍读全文）。批 15 顶替了 `Compact`：摘要是**有损的替换**，索引是**无损的指针**（[CE] §7）。`compact_context` 那个函数还在，「智能续写」那条一次性路径仍然用它——**那条路没有工具循环，给指针取不回来**。开关 `params.SECTION_INDEX` 能整条退回 |
 | **Save** | note · section | 每轮落盘（块生成不落盘） |
+| **Checklist** | prompt · custom | **跑之前把用户那条指令变成这一次专属的判据**（批 17 / 阶段 6）：能用代码判准的那几类（字数 / 段数 / 必须提到 X / 用表格）抽成约束挂一条 `Check`；判不准的花一次调用生成 instruction-specific checklist，每条一个**二元**维度接在原来那三条后面。依据是 RaR（ICLR 2026）的消融——**对所有 prompt 用同一份通用 rubric 明显更差**，而我们八个功能全是那一档。三道闸兜底：条目的依据要能在指令里逐字找到、程序已经判了的不许重复、生成不出来就退回原来那三条维度。开关 `params.PROMPT_CHECKLIST` |
 
 每个 middleware 一个文件、不认识循环、能拿假 State 单测。
 
@@ -524,6 +531,11 @@ Mode 按需追加的：
 | `numbers_from_tools` | numbers_from_tools / data_grounding / coherence | | 正文里的**统计量**追不到工具结果（eda / analysis，这两个模式的 task 明写「所有数字都来自工具返回，不要自己算」）。判据窄成三道：先挖掉 `tabular._NOT_A_QUANTITY`（引用 id / 链接 / 日期 / 第 N / 型号）再挖掉五条正文专属的（「2026 年」、`## 2.1`、有序列表编号、版本号、`3:2`），最后只留带 % / 带小数 / ≥100 的——小整数一律不算（批 16 / 阶段 5.2） |
 | `chart_readable` | has_charts / chart_validity / coherence | | VisEval 的 **readability 档**：y 轴没名字、多系列图的图例数不上、类目多到读不出、x 轴标签被 `safe_label` 截断（「三月Kickstarte…」）、流程图节点过多（批 16 / 阶段 5.3） |
 
+- **第 20 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
+  `instruction_constraints`（批 17 / 阶段 6.2）判的是用户那条指令里可程序验证的约束，
+  内容来自用户刚打的那句话，所以由 `middleware/checklist` 在 `before_run` 里
+  `dataclasses.replace` 进这一次跑的 Mode。上面那个 19 是「写死在 Mode 上的判据」，
+  `tests/test_doc_counts.py` 数的也是那一个。
 - `pick_dimension(st, *candidates)`：一条 check 被多个 Mode 共用，打翻的维度按当前
   Mode 实际有的挑；`tests/test_harness_modes.py` 断言每条 check 在一段「踩满所有毛病
   的正文」上至少触发一次、且打的维度这个 Mode 真的有。

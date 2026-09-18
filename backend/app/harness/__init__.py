@@ -37,6 +37,11 @@ this package. The short version:
     score_context.py  打分器除了正文还能看到什么：block 的前后文 / 指令 /
                   选区，加上这次跑累积的材料（批 8 之前这三样一样都没传，
                   而好几条判词明写着要对着它们判）
+    checklist.py  用户那条指令 → 这一次专属的验收清单（二元条目 → 维度）。
+                  依据是 RaR / TICK：**对所有 prompt 用同一份通用 rubric 明显
+                  更差**，而我们 25 个维度全是写死的那一档。三道闸：条目的依据
+                  要能在指令里逐字找到、程序已经判了的不许重复、生成不出来就
+                  退回原来那几条维度   → middleware/checklist
     snapshot.py   State ⇄ JSON，轮末暂停用
     conflict_confirm.py  摄入时那批冲突候选，进收件箱之前让模型确认一遍
                   （由 routers 注入给 database/kb/inbox——层次只能从上往下递）

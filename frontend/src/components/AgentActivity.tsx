@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { NoteHarnessToolCall } from '../api'
 import Icon from './Icon'
+import { dimLabel } from '../editor/dimLabel'
 
 /** 一轮里 agent 干了什么。按轮聚合而不是按事件平铺——用户关心的是
  * "这一轮它查了什么、改了什么、打了几分、然后决定下一轮怎么跑"这条
@@ -49,16 +50,6 @@ const LEVEL_LABEL: Record<number, string> = { 0: '不足', 1: '部分', 2: '达�
 
 /** 维度的中文名。后端用英文 key 是因为 writer_harness 是要开源出去的独立包，
  * 不带任何中文领域词汇；中文只在展示层出现。 */
-const DIM_LABEL: Record<string, string> = {
-  spine_fidelity: '扣题',
-  topic_fidelity: '扣题',
-  beat_coverage: '节拍覆盖',
-  non_repetition: '不重复',
-  coherence: '连贯自洽',
-  factual_grounding: '事实依据',
-  material_use: '用上你的材料',
-  style_fit: '风格贴合',
-}
 
 const PHASE_LABEL: Record<string, string> = {
   retrieval: '① 判断要不要查知识库',
@@ -204,7 +195,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 >
                   <LevelBars level={sc.level} />
                   <span style={{ color: sc.level < 2 ? LEVEL_COLOR[sc.level] : 'inherit' }}>
-                    {DIM_LABEL[dim] ?? dim}
+                    {dimLabel(dim)}
                   </span>
                 </span>
               ))}
@@ -215,7 +206,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               让用户看到它，才能理解下一轮为什么那么跑 */}
           {r.weakest && r.scores[r.weakest]?.note && (
             <p className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}>
-              最弱是「{DIM_LABEL[r.weakest] ?? r.weakest}」：{r.scores[r.weakest].note}
+              最弱是「{dimLabel(r.weakest)}」：{r.scores[r.weakest].note}
             </p>
           )}
 

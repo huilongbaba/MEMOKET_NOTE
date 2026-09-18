@@ -42,6 +42,12 @@ SELECTION_CHARS = 2000
 # 「没给材料 = 达标」那条分支。
 MATERIAL_KEY = "知识库事实"
 
+# 用户那条指令在 context 里的键名。**有名字是因为有第二个读者**：批 17 起
+# `dimension_sensitivity_bench` 要从这一份 context 里把指令取回来，现场生成
+# checklist（跟生产 `middleware/checklist` 拿的是同一句话）。写死两份字符串
+# 的话，这边一改名，那边静默取到空串——而空串跟"用户没打指令"长得一模一样。
+PROMPT_KEY = "用户的指令"
+
 # 单条材料的上限 / 整块的上限。一条材料在 block 模式里可能是工具原样返回的
 # 一整张表或一整段 mermaid（`hooks/block.prepare` 把 raw 也塞进 facts），
 # 而 `numbers_from_tools` 判的正是「每个数字都追得到工具结果」——切太狠就把
@@ -86,7 +92,7 @@ def for_block(*, before: str = "", after: str = "",
     ctx: dict[str, str] = {}
     prompt = (prompt or "").strip()
     if prompt:
-        ctx["用户的指令"] = prompt
+        ctx[PROMPT_KEY] = prompt
     selection = (selection or "").strip()
     if selection:
         ctx["用户选中、要被这一块替换掉的原文"] = selection[:SELECTION_CHARS]

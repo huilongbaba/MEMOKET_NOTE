@@ -105,6 +105,16 @@ def _render_context(context: dict[str, str] | None) -> list[str]:
     return [f"[{title}]\n{text}" for title, text in (context or {}).items() if text]
 
 
+# 二元维度那一行前面的话。**两侧一起管**：这里告诉模型别给中间档，
+# `evaluate()` 里再把漏网的 1 压成 0——只靠 prompt 说一句是「靠自报保证的性质」，
+# 而那种性质迟早会被报错一次。
+_BINARY_PREFIX = "【只判满足 / 不满足：满足给 2，不满足给 0，**不要给 1**】"
+
+
+def _guidance(dim: Dimension) -> str:
+    return f"{_BINARY_PREFIX}{dim.guidance}" if dim.binary else dim.guidance
+
+
 def _build_prompt(
     content: str,
     dimensions: list[Dimension],
@@ -113,7 +123,7 @@ def _build_prompt(
     tail_context: dict[str, str] | None = None,
 ) -> str:
     parts = _render_context(context)
-    dim_lines = "\n".join(f"- {d.name}: {d.guidance}" for d in dimensions)
+    dim_lines = "\n".join(f"- {d.name}: {_guidance(d)}" for d in dimensions)
     parts.append(f"[Dimensions to score]\n{dim_lines}")
     parts.append(f"[Content]\n{content}")
     # **`tail_context` 是「每一轮都在变的那几块」，排在 `[Content]` 之后。**
@@ -197,6 +207,13 @@ async def evaluate(
             if isinstance(level_raw, (int, float)) and int(level_raw) in (0, 1, 2):
                 level = int(level_raw)
                 judged += 1
+                # **二元维度上「一半」算没做到**（计划 6.1 / [IND] §6②）。
+                # 往上圆会让这一维永远达标（判词里写着二元，模型还是给了 1，
+                # 说明它自己也觉得没完全做到）；往下圆最多多跑一轮，而一轮的
+                # 代价是有限的、可见的。checklist 条目本来就是「用户明确要求
+                # 的一件事」，做到一半就是没做到。
+                if dim.binary and level == 1:
+                    level = 0
             note = str(entry.get("note") or "")
         scores[dim.name] = DimensionScore(level=level, note=note)
 

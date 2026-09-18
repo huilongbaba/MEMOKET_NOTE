@@ -86,3 +86,19 @@ CONTINUE_MAX_TOKENS = 4000
 # 撞上限之后用来把话补完的额度。只补当前这一段的收尾，不该太大——大了
 # 等于又续了一轮，会绕过打分环节。
 CONTINUE_TAIL_TOKENS = 400
+
+
+# `prompt` / `custom` 跑之前要不要从用户那条指令现场生成 checklist（计划 6.1/6.2）。
+#
+# **这是会改产品行为的一批，所以它必须能单独关掉**——形状照 `LEDGER_IN_PROMPT`
+# （批 13）和 `SECTION_INDEX`（批 15）。关掉之后这两个模式退回 `PROMPT_DIMS` /
+# `CUSTOM_DIMS` 那三条固定维度，不生成清单、不抽约束、不多花那一次调用，
+# 跟批 16 之前一字不差。
+#
+# 反向风险是实打实的（`harness-evaluator-industry.md` §4 的 RaR 消融里，
+# rubric 质量本身就是核心变量）：生成出来的条目要是抓错了重点，模型会被一条
+# **用户没提过的要求**牵着改。代码这一侧的三道闸（依据逐字核对 / 不跟程序判的
+# 重复 / 生成不出来就退回）挡的是能挡的那部分，挡不住"条目本身跑偏"——
+# 那一档只能靠这个开关。
+PROMPT_CHECKLIST = os.getenv("MEMOKET_PROMPT_CHECKLIST", "1").lower() not in (
+    "0", "false", "no")
