@@ -385,24 +385,51 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     if (n) { harnessProbeDone.current = true; void (async () => { await switchTo(n); setTimeout(() => setPaneFocus({ id: probe.slice(5), n: 1 }), 1200) })() }
   }
   if (probe?.startsWith('search:')) setTimeout(() => setNoteQuery(decodeURIComponent(probe.slice(7))), 900)
-  // `export-one:<id>` → 打开某篇 → 「⋯」→「导回到…」，验单篇导回那个入口（第 628 轮）
+  // `export-one:<id>[:<where>[:<mode>]]` → 打开某篇 → 「⋯」→「导回到…」，验单篇导回那个入口（第 628 轮）。
+  // P2-fix 加的两段：带 where（obsidian / notion / feishu）就切到那个去处；mode=bad 填一组错的凭证再点「写入」
+  // （看失败提示长什么样），mode=badfolder 只把文件夹 token 填错（App ID / Secret 用桌面壳记着的那份），
+  // mode=go 直接点「写入」（凭证由桌面壳记着的那份填好）——前后对比截图靠它。
   if (probe?.startsWith('export-one:') && notes.length && !harnessProbeDone.current) {
     harnessProbeDone.current = true
-    const n = notes.find((x) => x.id === probe.slice(11)) ?? notes[0]
+    // 第四段：Obsidian 的 vault 路径（URL 编码），mode=go 时填进输入框——网页里没别的地方能拿到本机路径
+    const [id, where, mode, extra] = probe.slice(11).split(':')
+    const n = notes.find((x) => x.id === id) ?? notes[0]
+    const setInput = (label: string, v: string) => {
+      const el = document.querySelector(`.export-note input[aria-label="${label}"]`) as HTMLInputElement | null
+      if (!el) { void api.clientLog('warn', `export-one: 没有输入框「${label}」`, '', 'probe'); return }
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, v)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
     void (async () => {
       await switchTo(n)
-      setTimeout(() => {
-        const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
-          .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
-        if (!more) { void api.clientLog('warn', 'export-one: 找不到「更多」', '', 'probe'); return }
-        more.click()
-        setTimeout(() => {
-          const item = Array.from(document.querySelectorAll('.context-menu button, .context-menu [role="menuitem"]'))
-            .find((x) => (x.textContent ?? '').includes('导回到')) as HTMLElement | undefined
-          if (item) item.click()
-          else void api.clientLog('warn', 'export-one: 「更多」里没有「导回到…」', '', 'probe')
-        }, 400)
-      }, 1200)
+      await wait(1200)
+      const more = Array.from(document.querySelectorAll('.floating-buttons .fb-btn'))
+        .find((x) => x.getAttribute('title') === '更多') as HTMLElement | undefined
+      if (!more) { void api.clientLog('warn', 'export-one: 找不到「更多」', '', 'probe'); return }
+      more.click()
+      await wait(400)
+      const item = Array.from(document.querySelectorAll('.context-menu button, .context-menu [role="menuitem"]'))
+        .find((x) => (x.textContent ?? '').includes('导回到')) as HTMLElement | undefined
+      if (!item) { void api.clientLog('warn', 'export-one: 「更多」里没有「导回到…」', '', 'probe'); return }
+      item.click()
+      await wait(900)
+      if (where) {
+        const label = { obsidian: 'Obsidian', notion: 'Notion', feishu: '飞书' }[where] ?? where
+        const seg = Array.from(document.querySelectorAll('.export-note-seg button'))
+          .find((x) => (x.textContent ?? '').trim().startsWith(label)) as HTMLElement | undefined
+        seg?.click()
+        await wait(400)
+      }
+      if (mode === 'bad' && where === 'notion') { setInput('Notion Integration token', 'ntn_bad'); setInput('Notion 父页面 id', 'deadbeefdeadbeefdeadbeefdeadbeef') }
+      if (mode === 'bad' && where === 'feishu') { setInput('飞书 App ID', 'cli_wrong'); setInput('飞书 App Secret', 'wrong-secret'); setInput('飞书文件夹 token', 'fldcnNotARealToken') }
+      if (mode === 'badfolder') setInput('飞书文件夹 token', 'fldcnNotARealToken')
+      if (where === 'obsidian' && extra) setInput('Obsidian vault 文件夹路径', decodeURIComponent(extra))
+      if (mode) {
+        await wait(400)
+        const go = document.querySelector('.export-note button.primary') as HTMLButtonElement | null
+        if (!go || go.disabled) { void api.clientLog('warn', `export-one: 「写入」${go ? '是禁用的' : '不在'}`, '', 'probe'); return }
+        go.click()
+      }
     })()
   }
   // `reopen-right` → 点「展开右栏」那个小钮。验的是「明确的动作要赢过被动布局规则」：

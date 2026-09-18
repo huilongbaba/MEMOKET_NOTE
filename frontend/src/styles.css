@@ -421,6 +421,10 @@ h2:first-child { margin-top: 0; }
   box-shadow: none;
   font-size: var(--t-base); padding: 14px 16px;
 }
+/* 上一条是给面板里的**文本框**的，但它跟 `input[type=checkbox]` 同权重（0,1,1）又排在后面，
+   会把导回弹层里的「覆盖对方改过的」勾选框压成一根 100% 宽的下划线（P2-fix 实拍）。 */
+.palette input[type=checkbox] { border: 1.6px solid var(--ink-3); border-radius: var(--r-xs); padding: 0; width: 17px; }
+.palette input[type=checkbox]:checked { border-color: var(--brand-fill); }
 .palette-results { overflow-y: auto; padding: var(--s-3); }
 /* 命令面板里的分组标题跟别处同一套字形（§2.6）。原来只设了字号——于是
    「最近编辑 / 前往」跟下面的条目粗细一样，扫的时候分不出这是标题还是一条。 */

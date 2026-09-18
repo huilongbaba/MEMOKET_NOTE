@@ -192,8 +192,9 @@ CREATE TABLE IF NOT EXISTS note_remotes (
     note_id     TEXT NOT NULL,
     platform    TEXT NOT NULL,
     remote_id   TEXT NOT NULL DEFAULT '',
-    remote_path TEXT NOT NULL DEFAULT '',
+    remote_path TEXT NOT NULL DEFAULT '',   -- Obsidian：vault 里的相对路径；Notion / 飞书：对面文档的 URL（P2-fix）
     exported_at TEXT NOT NULL,
+    remote_rev  TEXT NOT NULL DEFAULT '',   -- 我们写完时对面的版本（Notion last_edited_time / 飞书 revision_id）：下次不一样 = 对方改过
     PRIMARY KEY (user_id, note_id, platform)
 );
 
@@ -412,6 +413,8 @@ _ADDED_COLUMNS = (
     # 撞上限）。**一个被当成常态的行为，得有个数在数它**，否则「深度门是不是
     # 太狠」永远答不出来。
     ("harness_rounds", "depth_dropped", "INTEGER NOT NULL DEFAULT 0"),
+    # P2-fix：Notion / 飞书也要「对方改过就先提示」（Obsidian 早就有）。记我们写完时对面的版本号。
+    ("note_remotes", "remote_rev", "TEXT NOT NULL DEFAULT ''"),
     # ---- 三列探针（批 27 / §5 第 8、9 行）。加之前先把取值列全、逐个问
     # 「它真写得进去吗」——批 22 的 `stopped` 从加进来那天起就记不到
     # `max_rounds`，这条规矩就是那么来的。取值表在
@@ -840,10 +843,10 @@ def drop_conflicts_for_facts(user_id: str, fact_ids: set[str]) -> int:
         return n
 
 
-def record_remote(user_id: str, note_id: str, platform: str, remote_id: str = "", remote_path: str = "") -> None:
+def record_remote(user_id: str, note_id: str, platform: str, remote_id: str = "", remote_path: str = "", remote_rev: str = "") -> None:
     with connect() as c:
-        c.execute("INSERT OR REPLACE INTO note_remotes (user_id,note_id,platform,remote_id,remote_path,exported_at) VALUES (?,?,?,?,?,?)",
-                  (user_id, note_id, platform, remote_id, remote_path, _now()))
+        c.execute("INSERT OR REPLACE INTO note_remotes (user_id,note_id,platform,remote_id,remote_path,exported_at,remote_rev) VALUES (?,?,?,?,?,?,?)",
+                  (user_id, note_id, platform, remote_id, remote_path, _now(), remote_rev))
 
 
 def get_remote(user_id: str, note_id: str, platform: str) -> dict | None:

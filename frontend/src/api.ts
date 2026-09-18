@@ -1313,16 +1313,19 @@ export const importFeishu = (appId: string, appSecret: string, scope: 'wiki' | '
 }
 
 // ---- 导回（docs/import-sync-plan.md §2）：这里是真相，按 memoket_id 覆盖远端副本 ----
-export type ExportBackOut = { created?: number; updated?: number; written?: number; skipped?: number; conflicts?: string[]; failed?: string[]; files?: string[] }
-export type NoteRemote = { platform: string; remote_id: string; remote_path: string; exported_at: string }
+/** P2-fix：`url` 只在恰好写了一篇时给（toast 的「打开」）；`urls` 是每篇的；`missing` 是 note_ids 里库里没有的；
+ *  `untried` 是同一类错误连着来、后端停手没再试的篇数。 */
+export type ExportBackOut = { created?: number; updated?: number; written?: number; skipped?: number; conflicts?: string[]; failed?: string[]; files?: string[]; missing?: string[]; untried?: number; url?: string; urls?: { note_id: string; title: string; url: string }[] }
+/** `remote_path`：Obsidian 是 vault 里的相对路径；Notion / 飞书是对面文档的 URL（P2-fix 起） */
+export type NoteRemote = { platform: string; remote_id: string; remote_path: string; exported_at: string; remote_rev?: string }
 export const exportObsidian = (vaultDir: string, noteIds: string[] = [], force = false) =>
   fetch('/api/export/obsidian', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ vault_dir: vaultDir, note_ids: noteIds, force }) })
     .then(json<ExportBackOut>)
-export const exportNotion = (token: string, parentPageId: string, noteIds: string[] = []) =>
-  fetch('/api/export/notion', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ token, parent_page_id: parentPageId, note_ids: noteIds }) })
+export const exportNotion = (token: string, parentPageId: string, noteIds: string[] = [], force = false) =>
+  fetch('/api/export/notion', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ token, parent_page_id: parentPageId, note_ids: noteIds, force }) })
     .then(json<ExportBackOut>)
-export const exportFeishu = (appId: string, appSecret: string, folderToken: string, noteIds: string[] = []) =>
-  fetch('/api/export/feishu', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ app_id: appId, app_secret: appSecret, folder_token: folderToken, note_ids: noteIds }) })
+export const exportFeishu = (appId: string, appSecret: string, folderToken: string, noteIds: string[] = [], force = false) =>
+  fetch('/api/export/feishu', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ app_id: appId, app_secret: appSecret, folder_token: folderToken, note_ids: noteIds, force }) })
     .then(json<ExportBackOut>)
 export const noteRemotes = (noteId: string) =>
   fetch(`/api/export/remotes/${noteId}`, { headers: headers() }).then(json<NoteRemote[]>)
