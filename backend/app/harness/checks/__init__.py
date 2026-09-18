@@ -14,6 +14,7 @@ testable against real failing output, and means a check can never be the
 thing that breaks a run.
 """
 
+from .budget import section_budget
 from .charts import chart_readable, charts_from_tools, no_fake_charts
 from .claims import unsupported_specifics
 from .grounding import (citations_exist, citations_present, citations_hold, material_thin,
@@ -26,6 +27,7 @@ from .structure import (heading_fits, no_repeated_lists, no_restated_paragraph,
 
 __all__ = [
     "pick_dimension",
+    "section_budget",
     "chart_numbers_grounded",
     "chart_readable",
     "charts_from_tools",

@@ -244,6 +244,9 @@ def test_每条check打翻的维度这个mode真的有():
     # ——同一段正文不可能两样都满足，硬塞在一起就是按下葫芦浮起瓢。
     BROKEN_TABLE = "\n| 渠道 | 点击 | 下单 |\n|---|---|---|\n| 甲 | 12700 |\n"
     FACTS = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
+    # 只开了个头的一节（阶段 7.3）：一轮的量，一条材料都没落进去。
+    OPENING_ONLY = ("## 从募集支持转入兑现承诺\n\n众筹结束后，项目的主要任务"
+                    "就从说服用户支持一个方向，转成按承诺把产品交到用户手里。\n")
     # 「问了，库里一条都没有」：账本里一条发过的查询 + 一个分母为 0 的轴。
     # 形状照 `middleware/ledger.fold` 真的会写出来的那一份。
     ASKED_AND_EMPTY = {
@@ -268,13 +271,18 @@ def test_每条check打翻的维度这个mode真的有():
                 # `material_thin` 要的是「facts 为空」，`citations_hold` /
                 # `material_used` / `unsupported_specifics` 要的是「facts 非空」，
                 # 同一份 State 不可能两样都满足。
-                for fresh, table, facts, ledger in (
-                        (FRESH_NO_CITE, "", FACTS, {}),
-                        (FRESH_SAME_CITES, "", FACTS, {}),
-                        (FRESH_NO_CITE, BROKEN_TABLE, FACTS, {}),
-                        (FRESH_NO_CITE, "", [], ASKED_AND_EMPTY)):
+                # 批 20 / 阶段 7.3 加了第五份：**正文还只有一轮的量，而手上
+                # 一大把材料没用上**。它也必须单开一份——`section_budget` 要的是
+                # 「正文短」，而前四份的正文是长的（那是 `citations_present` /
+                # `no_repeated_lists` 要的），同一份 State 不可能两样都满足。
+                for fresh, table, facts, ledger, short in (
+                        (FRESH_NO_CITE, "", FACTS, {}, False),
+                        (FRESH_SAME_CITES, "", FACTS, {}, False),
+                        (FRESH_NO_CITE, BROKEN_TABLE, FACTS, {}, False),
+                        (FRESH_NO_CITE, "", [], ASKED_AND_EMPTY, False),
+                        (OPENING_ONLY, "", FACTS * 6, {}, True)):
                     st.fresh = fresh
-                    st.content = CONTENT + table + "\n\n" + fresh
+                    st.content = fresh if short else CONTENT + table + "\n\n" + fresh
                     st.before, st.after = BEFORE, AFTER
                     st.facts = list(facts)
                     st.charts = []

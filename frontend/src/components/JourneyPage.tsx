@@ -155,7 +155,8 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
     setWriting(true)
     try {
       const r = await journeyReport(date)
-      setDay((d) => (d ? { ...d, report: r.report, report_segments: r.segments, report_at: r.report_at } : d))
+      setDay((d) => (d ? { ...d, report: r.report, report_segments: r.segments,
+                           report_at: r.report_at, report_notes: r.notes ?? [] } : d))
       toast(`日报写好了（${r.segments} 段，${(r.took_ms / 1000).toFixed(0)} 秒）`)
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setWriting(false) }
   }
@@ -331,6 +332,14 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
             </button>
           </div>
           <ReportBody md={day.report} />
+          {/* 日报的确定性体检（后端 `harness/checks/journey.py`，计划 8.2）。
+              **判了不拦**——一次模型调用、一次成型的产物，判据结果摆在它下面，
+              要不要「重写」由用户定。跟幻灯片、骨架、续写是同一档。 */}
+          {(day.report_notes ?? []).length > 0 && (
+            <ul className="journey-report-notes">
+              {(day.report_notes ?? []).map((n, i) => <li key={i} style={{ marginBottom: 4 }}>{n}</li>)}
+            </ul>
+          )}
         </div>
       ) : described > 0 && (
         <div className="row">

@@ -27,6 +27,7 @@ from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
 from ..harness.checks.skeleton import check_skeleton
+from ..harness.checks.tap import check_tap
 from ..harness.checks.slides import check_slides
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
@@ -181,8 +182,13 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         # 在别的维度上都是满分。这里不打断、不重写，只回一个信号让用户自己
         # 决定要不要重来。
         used, _u = grounding_check.fact_usage(written, facts)
+        # 另外四条确定性体检（计划 8.1，`harness/checks/tap.py`）：停在半句上、
+        # 复述了光标前已有的段落、脚手架标题、提示词里的例子被抄进正文。
+        # **判了不拦**，跟 `slides` / `skeleton` 同一档——流已经送出去了，这里
+        # 只把结果跟产物一起给用户，重不重来由他定。零模型调用。
         yield sse("grounding", {
             "facts": len(facts), "used": used,
+            "notes": check_tap(written, body.content).notes(),
             "hint": ("" if used or not facts else
                      "这段没用上检索到的记录，写的是通用内容——"
                      "重新点一次，或者先补一句具体的再续写")})

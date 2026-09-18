@@ -774,6 +774,9 @@ class JourneyDayOut(BaseModel):
     # 不带这两个数，用户下午看到的还是上午那份，却没有任何迹象说明它过期了。
     report_segments: int = 0
     report_at: str = ""
+    # 那份日报的确定性体检结果（`harness/checks/journey.py`，计划 8.2）。
+    # **判了不拦**——跟日报一起落进 `report.json`，刷新之后还在。
+    report_notes: list[str] = Field(default_factory=list)
 
 
 class JourneyReportOut(BaseModel):
@@ -781,6 +784,8 @@ class JourneyReportOut(BaseModel):
     report: str = ""
     segments: int = 0
     report_at: str = ""
+    # 见 `JourneyDayOut.report_notes`。
+    notes: list[str] = Field(default_factory=list)
     took_ms: float = 0.0
 
 

@@ -230,6 +230,11 @@ ALLOWED_DB_CLAIMS: dict[str, dict[str, str]] = {
             "出自 `terrence` 真库上的一次真跑（硬件那一档的事实条数），"
             "是真实用户自己的数据，不是把一堆来路不明的行放在一起算比例",
     },
+    "app/harness/checks/budget.py": {
+        "库里有**412条":
+            "跟 `modes.py` 那条**是同一次真跑**（第 605 轮，硬件那一档）——"
+            "7.3 这条判据就是为那次实拍写的，它必须能引用那次的数",
+    },
     "app/harness/prompts/writing.py": {
         "库里341条":
             "同上，出自实测那次「定价要覆盖哪些成本」的真跑："

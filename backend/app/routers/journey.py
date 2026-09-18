@@ -42,6 +42,7 @@ from ..editor.vision import VisionError, ask_image
 from ..journey import day_stats, group_runs, render_time_block
 from ..journey.stats import render_churn
 from ..journey.prompt import REPORT_SYSTEM, SPAN_SYSTEM, report_user, span_user
+from ..harness.checks.journey import check_report
 from .deps import current_user
 from .schemas import (JourneyDayOut, JourneyDenyIn, JourneyDenyOut, JourneyReportOut,
                       JourneyRunOut, JourneySegment, JourneySpanOut)
@@ -322,7 +323,7 @@ def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
     return JourneyDayOut(
         date=day_s,
         **{k: v for k, v in _load_report(day_s).items() if k in
-           ("report", "report_segments", "report_at")},
+           ("report", "report_segments", "report_at", "report_notes")},
         # 以前存下来的那些也收一收（`tighten` 是纯删、幂等）。**不回写盘**：
         # 这一步纯粹是显示，不值得为它跟壳抢一次写。
         segments=[JourneySegment(**{k: s.get(k, "") for k in
@@ -466,13 +467,20 @@ async def report(date: str = "", user: str = Depends(current_user)) -> JourneyRe
         max_tokens=1200, temperature=0.3)
 
     md = render_time_block(st) + "\n" + text.strip() + "\n"
+    # 确定性体检（计划 8.2，`harness/checks/journey.py`）。**判的是模型写的那
+    # 一半**——`render_time_block` 那一节是程序算的，判自己算的东西没有意义；
+    # 比对的也是**真正进了提示词的那几行**，模型只可能依据它看见的东西写。
+    # **判了不拦**：日报是一次成型的产物，结果跟着它一起给用户（也落进
+    # `report.json`，刷新之后还在），要不要「重写」由用户定。零模型调用。
+    notes = check_report(text.strip(), lines).notes()
     d = _day_dir(day_s)
     d.mkdir(parents=True, exist_ok=True)
     meta = {"report": md, "report_segments": len(told),
-            "report_at": _dt.now().astimezone().isoformat(timespec="seconds")}
+            "report_at": _dt.now().astimezone().isoformat(timespec="seconds"),
+            "report_notes": notes}
     (d / "report.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return JourneyReportOut(date=day_s, report=md, segments=len(told),
-                            report_at=meta["report_at"],
+                            report_at=meta["report_at"], notes=notes,
                             took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 

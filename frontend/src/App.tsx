@@ -330,6 +330,9 @@ export default function App() {
   // 的旧值。
   const pausedRef = useRef(false)
   const [tapMeta, setTapMeta] = useState<TapMeta | null>(null)
+  /** 刚写的那一段的确定性体检（后端 `harness/checks/tap.py`，计划 8.1）。
+   *  **判了不拦**——跟产物一起摆在正文上方那条来源行下面，重不重来由用户定。 */
+  const [tapNotes, setTapNotes] = useState<string[]>([])
   const [writingPlanParent, setWritingPlanParent] = useState<TreeRow | null>(null)
   const [harness, setHarness] = useState<HarnessState | null>(null)
   const [mdToKb, setMdToKb] = useState(false)
@@ -1191,6 +1194,7 @@ export default function App() {
     lastSkeletonContent.current = n.spine ? n.content : ''
     setRevisions([])
     setTapMeta(null)
+    setTapNotes([])
     if (loading !== 'note-harness') { setHarnessDone(false); harnessDoneRef.current = false; if (!pausedRef.current) setNoteHarnessStatus('') }
     setPausedRun(null)
     syncTab(n)
@@ -1692,6 +1696,7 @@ export default function App() {
     if (!content.trim() && !title.trim()) { toast('先写个标题或几句话，AI 才知道往哪写'); return }
     setLoading('tap')
     setTapMeta(null)
+    setTapNotes([])
     const ctrl = new AbortController()
     abortRef.current = ctrl
     // **从光标处续写**（Notion / Craft 的「继续写」都在光标处）。光标在文末或
@@ -1735,7 +1740,7 @@ export default function App() {
         // 写完之后的确定性检查：检索到了材料却一条没用上，说明这段写的是
         // 通用内容。magic tap 刻意不套完整闭环（它的定位是点一下几秒出一段），
         // 所以这里不打断也不重写，只提示一句让用户自己决定要不要重来。
-        (g) => { if (g.hint) toast(g.hint, 'error') },
+        (g) => { if (g.hint) toast(g.hint, 'error'); setTapNotes(g.notes ?? []) },
         following,
         title,
       )
@@ -3364,7 +3369,8 @@ export default function App() {
               </div>
             )}
 
-            {tapMeta && <TapProvenance meta={tapMeta} onDismiss={() => setTapMeta(null)} />}
+            {tapMeta && <TapProvenance meta={tapMeta} notes={tapNotes}
+                                       onDismiss={() => { setTapMeta(null); setTapNotes([]) }} />}
             {/* 整篇缩进了 4 格以上（从别处粘来的常见）：markdown 会把它整个当成代码块，
                 标题不是标题、一片等宽字。给一键去缩进，别让人自己猜为什么渲染不对。 */}
             {current && content.length > 40 && stripCommonIndent(content) !== content && (

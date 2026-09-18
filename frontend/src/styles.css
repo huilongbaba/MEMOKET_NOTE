@@ -1592,6 +1592,14 @@ kbd {
 }
 /* 日报排在页首：它是结论，下面那条带和时间轴是证据 */
 .journey-report { padding: 10px 12px; }
+/* 日报 / 续写的确定性体检结果（批 20 / 阶段 8）。**判了不拦**，所以它是一条
+   提示的样子（警示色左边框），不是错误框——重不重来由用户自己定。 */
+.journey-report-notes, .tap-notes {
+  margin: 8px 0 0; padding: 8px 10px 8px 24px; list-style: disc;
+  background: var(--card-alt); border-left: 3px solid var(--warn);
+  font-size: var(--t-sm);
+}
+.tap-notes { margin-top: 4px; }
 .journey-report .cm-editor { background: transparent; }
 /* 日报写完之后这一天又长了：重写那个按钮点亮一下——不然用户不知道它过期了 */
 .chip.chip-action.hot { border-color: var(--accent); color: var(--accent); }

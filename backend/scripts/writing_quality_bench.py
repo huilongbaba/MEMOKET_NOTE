@@ -49,6 +49,12 @@ _STOP = set("的了和与及或对于关于如何什么怎样怎么具体设计�
 # 自动核对笔记表的指纹（行数 / max(updated_at) / 正文总字数 / 逐篇正文摘要），
 # 动了就抛，不接受任何人的口头保证。
 import db_guard  # noqa: E402
+# 「脚手架标题」和「提示词示例泄漏」两张表**只定义在 app 那一份里**
+# （`app/harness/checks/tap.py`，计划 8.1）。它们现在有两个消费者——这个 bench
+# 和 magic tap 的体检——而 `LEAK_PHRASES` 那次的教训是同一张表放两处一定会漂：
+# 搬过来的时候当场发现名单里有一条在现在的提示词里一个字都找不到了。
+from app.harness.checks.tap import (leaked_prompt_examples,  # noqa: E402
+                                    scaffold_headings)
 
 def _title_tokens(title: str) -> set[str]:
     """把标题切成 2-gram 主题词集合。中文没有空格，2-gram 比单字稳，
@@ -92,18 +98,7 @@ def _no_topic_collision(text: str) -> tuple[bool, str]:
 
 
 def _no_template_heading(text: str) -> tuple[bool, str]:
-    bad = []
-    for l in text.splitlines():
-        m = re.match(r"^#{2,4}\s*(.+?)\s*$", l.strip())
-        if m:
-            t = re.sub(r"[：:].*$", "", m.group(1)).strip()
-            if t in {"收束", "总结", "小结", "结语", "展开", "过渡", "补充",
-                     "结论", "呼应", "承接", "铺垫"}:
-                # 报完整标题而不是只报那个功能词——"## 收束"和
-                # "## 收束：从个案到复盘框架"都算问题（功能名前缀是模板
-                # 漏进了读者能看到的正文），但严重程度差很多，人工复核
-                # 判定对不对的时候得看得见区别
-                bad.append(m.group(1))
+    bad = scaffold_headings(text)
     return (not bad, f"模板标题 {bad or '无'}")
 
 
@@ -182,34 +177,8 @@ def _figures_are_hedged(text: str, seed: str = "") -> tuple[bool, str]:
     return (not bad, f"未标注的凭空数字 {bad or '无'}")
 
 
-# 提示词里用来举例说明规则的字面内容。这些话只该出现在 prompts.py 里，
-# 一旦出现在产出正文里，说明模型把"规则的示例"当成了"要写的内容"。
-# 真实踩过：规则里写"不要写'## 收束'，而要写'## 混合形态：买断覆盖硬件，
-# 订阅覆盖运营'"，模型给一篇定价笔记原样起了后面这个标题——因为例子恰好
-# 跟笔记主题撞了。这类污染肉眼几乎发现不了（读起来完全合理），只有认得
-# 出自己写过的提示词才能察觉，所以必须自动查。
-# 维护约定：往 prompts.py 里加带具体内容的例子时，同步往这里加一条。
-_PROMPT_EXAMPLES = [
-    "混合形态：买断覆盖硬件，订阅覆盖运营",
-    "订阅分层与用量计费的落地细节",
-    "订阅制的具体设计",
-    "从个案到复盘框架",
-    "唯一重要的就是速度",
-    "速度只有在验证充分的前提下才算数",
-    "A10 GPU",
-    "缺少……的洞察的不是",
-    "以编号错位呈现",
-    "统一排序与重编号",
-    "决策、冲突与升级机制",
-    "决策与冲突处理规范",
-    "工时、在线状态与可预期性",
-    "可预期工作时段与在线状态管理",
-    "统一编号与体例",
-]
-
-
 def _no_prompt_example_leak(text: str) -> tuple[bool, str]:
-    hits = [e for e in _PROMPT_EXAMPLES if e in text]
+    hits = leaked_prompt_examples(text)
     return (not hits, f"提示词示例泄漏 {hits or '无'}")
 
 

@@ -11,7 +11,23 @@ import Icon from './Icon'
  * /api/memory/facts/{id}/sources already serves for the facts table), not
  * just the paraphrased fact text.
  */
-export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDismiss?: () => void }) {
+/** 刚写的那一段的确定性体检结果（后端 `harness/checks/tap.py`，计划 8.1）。
+ *  **判了不拦**：magic tap 的定位是「点一下几秒出一段」，套完整闭环就变成
+ *  智能续写了。所以这几条只是摆在来源行下面，重不重来由用户自己定。 */
+function TapNotes({ notes }: { notes: string[] }) {
+  if (notes.length === 0) return null
+  return (
+    <ul className="tap-notes">
+      {notes.map((n, i) => (
+        <li key={i} style={{ marginBottom: i === notes.length - 1 ? 0 : 4 }}>{n}</li>
+      ))}
+    </ul>
+  )
+}
+
+export default function TapProvenance(
+  { meta, notes = [], onDismiss }: { meta: TapMeta; notes?: string[]; onDismiss?: () => void },
+) {
   const [openId, setOpenId] = useState<string | null>(null)
   // 默认折成一行：六条来源摊开在正文上方会把标题挤到屏幕外（r3 实拍），
   // 用户点一下「来源」再展开。
@@ -28,10 +44,13 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
 
   if (!meta.grounded) {
     return (
-      <p className="muted tap-prov" style={{ fontSize: 'var(--t-sm)' }}>
-        <span className="badge">自由续写</span> 知识库中没有相关记录
-        {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><Icon n="bx-x" /></button>}
-      </p>
+      <div className="muted tap-prov" style={{ fontSize: 'var(--t-sm)' }}>
+        <p style={{ margin: 0 }}>
+          <span className="badge">自由续写</span> 知识库中没有相关记录
+          {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><Icon n="bx-x" /></button>}
+        </p>
+        <TapNotes notes={notes} />
+      </div>
     )
   }
 
@@ -64,6 +83,7 @@ export default function TapProvenance({ meta, onDismiss }: { meta: TapMeta; onDi
           </div>
         )
       })}
+      <TapNotes notes={notes} />
     </div>
   )
 }

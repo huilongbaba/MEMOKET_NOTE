@@ -357,7 +357,7 @@ export async function magicTap(
   /** 写完之后的确定性检查：检索到了多少条材料、正文里真的用上了几条。
    * 一条都没用上时 hint 会给一句诊断——magic tap 刻意不套完整的打分闭环
    * （它的定位是点一下几秒出一段），所以这里只提示，不打断也不重写。 */
-  onGrounding?: (g: { facts: number; used: number; hint: string }) => void,
+  onGrounding?: (g: { facts: number; used: number; hint: string; notes?: string[] }) => void,
   /** 光标后面已有的正文：有它就是在中间插一段（接着 content、衔接 following）。 */
   following = '',
   /** 笔记标题：正文还很短的时候，它是模型唯一知道的方向 */
@@ -1422,8 +1422,11 @@ export type JourneyDay = {
   date: string; segments: JourneySegment[]; minutes: number
   /** 已经写过的日报，连同**它是按几段写的**——日报是快照，这一天还在长。 */
   report: string; report_segments: number; report_at: string
+  /** 日报的确定性体检结果（后端 `harness/checks/journey.py`，计划 8.2）。
+   *  **判了不拦**：跟日报一起落盘，刷新之后还在。 */
+  report_notes?: string[]
 }
-export type JourneyReport = { date: string; report: string; segments: number; report_at: string; took_ms: number }
+export type JourneyReport = { date: string; report: string; segments: number; report_at: string; notes?: string[]; took_ms: number }
 export type JourneyRun = {
   date: string; described: number; ingested: number
   skipped: number; left: number; removed_facts: number

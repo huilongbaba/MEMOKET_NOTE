@@ -58,7 +58,7 @@ flowchart TB
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
     MW["Middleware ×16<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
-    CHK["checks/ ×14 代码判据<br/>+ rubric 模型打分"]
+    CHK["checks/ ×17 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 21 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 22 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -198,9 +198,9 @@ backend/app/
       · checklist · provenance · revise · repeats · replan · repair · runtime · save · _order
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
-    checks/                  21 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+    checks/                  22 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · numbers · instructions · claims
-      · blockcheck · rubric · pick
+      · budget · blockcheck · rubric · pick
         （instructions 是批 17 / 阶段 6.2：用户那条指令里**能用代码判准**的那几类约束
          ——字数 / 段数 / 「必须提到 X」/ 「用表格」。它挂在 Mode 上的方式跟别的判据不同，
          由 `middleware/checklist` 在开跑时按这一次的指令装，所以不算进上面那个 19）
@@ -214,6 +214,15 @@ backend/app/
         的一步，而 `spine_fidelity` 实测 1.88–1.96 封顶，那不是扣题扣得好，是
         「对着一个从没被验过的计划打分，太容易满足」。五条的阈值都在 20 份真实骨架
         上量过，那 20 份上开火 0）
+      · tap（magic tap 那四条：停在半句上 / 复述了光标前已有的段落 / 脚手架标题 /
+        提示词里的例子被抄进正文。批 20 / 阶段 8.1，形态同 slides——magic tap 的
+        定位是「点一下几秒出一段」，套完整闭环就变成智能续写了。四条在 18 篇真实
+        笔记上误伤 0；另有三条量完之后**不做**，见模块文档）
+      · journey（屏幕活动日报那五条：模型自己算了时长 / 写出规定之外的小节 /
+        有条目一个具体东西都不带 / 同一节里两条说同一件事 / 条目里的名字在记录里
+        查无出处。批 20 / 阶段 8.2。最后那一条正是日报提示词注释里写着的
+        「跟 `material_used` 是同一场仗」。阈值在两份真实日报（18 条 bullet）上量，
+        五条开火 0；两条量完不做）
     tools/                   22 个工具 + registry（分组授权）
       memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools
       · longform_tools（read_section：把自己这篇笔记的某一节原文读回来，只给两条长文 harness）
@@ -319,7 +328,7 @@ RUN_FINISHED(content, reason, run_id?)
 正文，必须在 `Sections` 拼「小节索引 + 当前小节逐字」之前——否则续写 prompt 拿到的
 是**修订前**的正文（这条依赖是从 `Compact` 原样继承的，它当年就是为这件事写的）。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（21 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（22 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 **打分器能看见什么**（批 8 改过一轮，改之前这里是一笔空账）：
@@ -513,7 +522,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 21 条 check（代码判据）
+## 8. 22 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -524,6 +533,7 @@ Mode 按需追加的：
 | `citations_present` | factual_grounding / material_use / no_fabrication | | 这一轮写了 ≥300 字、手上有材料，却一个 `[事实编号]` 都没有（第 593 轮真跑：1066 字零引用，写的还是另一个项目的内容，整条判据链都放行了）|
 | `material_used` | material_use / factual_grounding | | 查到了材料一条都没用（大纲模式下关闭） |
 | `material_thin` | factual_grounding / material_use / no_fabrication | | **这一节压根没有材料，正文却照样写满了**（批 18 / 阶段 7.2，[LED] §10③ 的 `Sufficient Context`：材料不够时强模型不会弃答而是直接答错，RAG 系统在材料不足时仍有 35–62% 给出答案）。两个触发条件都窄：①「这次跑查过，而手上一条材料都没有」；②「问过的方向库里一条都没有 + 这一轮零新材料 + 这一轮零引用」。**看的只有分母，从不看用掉的比例**——[LED] §4 那条边界写死了「覆盖率是诊断不是指标」，报出来的话里一个「你还有 N 条没用」都不许出现。触发时给的是**弃答的正确形态**（「这里需要补上 XX 的实际记录」，`grounding_rules.abstention_lines` 认得出来，照做了就不再拦）。开关 `params.SUFFICIENT_CONTEXT` |
+| `section_budget` | section_coverage / beat_coverage / material_use | | **这一节只开了个头就要收尾**（批 20 / 阶段 7.3，[LONG] 建议四的 AgentWrite 字数预算）。第 605 轮实拍：三条线各写一篇，三节各跑一轮就五维全 2 判 `complete`，交出来 620 / 434 / 429 字，而那一档知识库里 412 条事实这一节用上四条——**短、干净、扣题、有引用、不重复的残篇是这个闭环的最优解，因为没人问它够不够**。两个条件同时成立才开火：正文还只有一轮的量（< 600 字，在 13 条真实分段正文上量的，只有最短那条在门槛以下）**且**手上的材料还剩一大半没写进去（`material_used` 只在一条都没用上时开火，用了四条就放行）。**它是下限不是目标**：诊断里一个「还差多少字」都不许出现（[LONG] §6 明确不建议为写得更长优化），说的只有「接着写还没写到的那一面」。大纲 / 打磨模式和最后一轮不开火 |
 | `outline_intact` | fits_context / coherence | | 这篇是大纲，标题层级被压平了 |
 | `heading_fits` | fits_context / coherence | ✔ 标题整体下沉 | 插入块的标题跟周围平级而不是下级 |
 | `tail_clashes` | fits_context / coherence | ✔ 去掉收尾小节 | 插入块自己写了「总结」而下文已有 |

@@ -113,7 +113,12 @@ def test_figures_must_be_hedged_only_when_invented():
 
 
 def test_prompt_example_leak_detects_verbatim_copy():
-    assert writing._no_prompt_example_leak("## 混合形态：买断覆盖硬件，订阅覆盖运营\nx\n")[0] is False
+    """名单搬进了 `app/harness/checks/tap.py`（批 20 / 计划 8.1）：magic tap 也
+    要用它，而同一张表放两处一定会漂。搬的时候当场发现名单已经漂了一条
+    ——「混合形态：买断覆盖硬件，订阅覆盖运营」在现在的提示词里一个字都找不到，
+    所以这条用例换成一条**现在真的在提示词里**的例子（`tap.py` 那边有闸钉着
+    名单里每一条都必须逐字出现在 `prompts/` 里）。"""
+    assert writing._no_prompt_example_leak("## 从个案到复盘框架\nx\n")[0] is False
     assert writing._no_prompt_example_leak("## 定价的收支节奏\nx\n")[0] is True
 
 

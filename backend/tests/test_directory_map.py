@@ -239,6 +239,15 @@ def test_checks_下的每个文件都列在图里_checks_那一块下面():
     ——那条词袋断言的宽度是它自己的事，这一批只把踩到的这一格收紧。
     """
     block = _block_under(_map_section(), "checks/")
+    # **按「列表项」找，不按子串找**（批 20 补的）：第一版是 `stem not in block`，
+    # 于是把 `· tap（magic tap 那四条…` 整条摘掉它照样绿——同一块里
+    # 「magic tap」这几个字顺手把 `tap` 满足了。**词袋在这一格里又长回来了一次**
+    # （批 19 ㉜ 刚为同一个病把这条断言从整张图收到这一块）。
+    # 现在要求文件名出现在行首或者一个 `·` 后面，后面跟的是空白 /「（」/「·」。
+    def listed(stem: str) -> bool:
+        return bool(re.search(r"(?m)(?:^\s*|·\s*)" + re.escape(stem) + r"(?=[\s（(·]|$)",
+                              block))
+
     missing = sorted(p.stem for p in (ROOT / "app" / "harness" / "checks").glob("*.py")
-                     if p.name != "__init__.py" and p.stem not in block)
+                     if p.name != "__init__.py" and not listed(p.stem))
     assert not missing, f"这些判据文件没列在图上 checks/ 那一块里：{missing}"

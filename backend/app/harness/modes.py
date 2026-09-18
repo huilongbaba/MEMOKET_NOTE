@@ -21,8 +21,8 @@ from .checks import (chart_numbers_grounded, chart_readable, charts_from_tools,
                      material_thin, material_used, no_audit_voice, no_fake_charts,
                      no_placeholder, no_repeated_lists, no_restated_paragraph,
                      no_same_sources_twice, numbers_from_tools, outline_intact,
-                     table_columns_match, table_present, tail_clashes,
-                     unsupported_specifics)
+                     section_budget, table_columns_match, table_present,
+                     tail_clashes, unsupported_specifics)
 from .middleware import Checklist, Repair, Replan, Runtime, Save, Sections
 from .middleware.revise import Revise
 from .state import State
@@ -550,10 +550,14 @@ SECTION = Mode(
     groups=("memory", "skill", "chart", "longform"),
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
+    # `section_budget` 排在**最后**（计划 7.3）：它说的是「接着写还没写到的
+    # 那一面」，而前面每一条说的都是「已经写的这些有毛病」。一条「接着写」的
+    # 诊断压在一条「这里有占位符 / 引用是编的」前面，等于让模型在一堆烂摊子
+    # 上再加一段——第 606 轮那次死锁的教训是判据之间的**先后本身就是设计**。
     checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist,
             material_thin, citations_present, material_used, no_repeated_lists,
             no_restated_paragraph, no_same_sources_twice, no_fake_charts,
-            charts_from_tools, unsupported_specifics),
+            charts_from_tools, unsupported_specifics, section_budget),
     stop_when=(material_used_up, pause_for_review),
     extra_mw=(Revise(), Repair(), Sections(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
