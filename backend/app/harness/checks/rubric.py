@@ -245,3 +245,79 @@ async def evaluate(
     if weakest_level >= 2:
         return Evaluation(scores=scores, status="complete")
     return Evaluation(scores=scores, status="continue", weakest=weakest_name)
+
+
+# ------------------------------------------------ 打分器点名的「原文」正文里有没有（P11 #5）
+#
+# 实拍四次（P5 da080 第 1 轮「末尾出现“अ”这一明显残留字符」；P8 da080 第 3 / 4 / 6 轮「من」「م...」
+# 「մե...」）：打分器的判词点名一个正文里**根本没有**的字符串，然后据此扣分。`no_foreign_script`
+# 只认正文里真有的字（那是另一条线）；这里做的是**判据命中但正文没有 → 那一维不计入分数**。
+# 判法是代码：判词里 「」『』“” "" 引起来的每一段，去掉空白 / markdown 记号 / 标点之后，
+# 在「正文 + 开跑前正文 + 材料 + 打分上下文」里找不到 → 这一维的分数丢掉，`evaluate` 事件记
+# `judge_hallucinated`。**只认引号里的**：判词里不带引号的复述不算。
+
+import re as _re
+
+_QUOTED = _re.compile(r"[「『“\"‘]([^」』”\"’]{1,120})[」』”\"’]")
+_STRIP = _re.compile(r"[\s*_`#>~\[\]，。、；：！？,.;:!?()（）【】\-—–…·|]+")
+_MEANINGFUL = _re.compile(r"[0-9A-Za-z-￿]")
+
+
+def quoted_spans(note: str) -> list[str]:
+    """判词里引号引起来的那几段（保序去重）。"""
+    out: list[str] = []
+    for m in _QUOTED.finditer(note or ""):
+        q = m.group(1).strip()
+        if q and q not in out:
+            out.append(q)
+    return out
+
+
+def _norm(text: str) -> str:
+    return _STRIP.sub("", (text or "")).lower()
+
+
+def unfound_quotes(note: str, haystack: str) -> list[str]:
+    """判词里引着、`haystack` 里却找不到的那几段。「…」/「...」切开各查一段；
+    切完没有一个字母 / 数字 / 汉字的片段（纯标点）不算。"""
+    hay = _norm(haystack)
+    bad: list[str] = []
+    for q in quoted_spans(note):
+        for piece in _re.split(r"…|\.{3,}", q):
+            np = _norm(piece)
+            if not _MEANINGFUL.search(np):
+                continue
+            if np not in hay:
+                bad.append(piece.strip() or q)
+                break
+    return bad
+
+
+def drop_hallucinated(ev: Evaluation, haystack: str) -> tuple[Evaluation | None, list[dict]]:
+    """把「判词点名的原文正文里没有」的那几维从分数里拿掉。
+
+    返回 ``(新的 Evaluation 或 None, [{dimension, quotes, note}])``。一维都不剩 → None
+    （跟 `loop._score` 的「这一轮没打上分」是同一种表示法）；`blocked` 照旧带过去——那是
+    模型对整篇的裁决，不是对某一段的点名。状态按 `evaluate()` 同一条规则重算。
+    """
+    bad: list[dict] = []
+    keep: dict[str, DimensionScore] = {}
+    for dim, sc in ev.scores.items():
+        missing = unfound_quotes(sc.note, haystack)
+        if missing:
+            bad.append({"dimension": dim, "quotes": missing[:3], "note": sc.note[:200]})
+        else:
+            keep[dim] = sc
+    if not bad:
+        return ev, []
+    if not keep:
+        return None, bad
+    if ev.status == "blocked":
+        return Evaluation(scores=keep, status="blocked", blocked_reason=ev.blocked_reason), bad
+    weakest_name, weakest_level = None, 3
+    for dim, sc in keep.items():
+        if sc.level < weakest_level:
+            weakest_name, weakest_level = dim, sc.level
+    if weakest_level >= 2:
+        return Evaluation(scores=keep, status="complete"), bad
+    return Evaluation(scores=keep, status="continue", weakest=weakest_name), bad

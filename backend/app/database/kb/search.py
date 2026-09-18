@@ -371,7 +371,8 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
 
     # 一个查询词都没命中的候选不要：它们只是 grep 通道子串撞进来的（`md` 撞 SMD），
     # 排在后面照样会被当成「相关记忆」显示出来（第 224 轮实拍）
-    scored = [(score(r), r) for r in rows if score(r)[0] > 0]
+    # 每行只打一次分（P11 #3：原来 `if score(r)[0] > 0` 又算一遍，4.4 万行 × 2）
+    scored = [(sc, r) for r in rows if (sc := score(r))[0] > 0]
     scored.sort(key=lambda x: x[0], reverse=True)
     # 伪相关反馈（第 533 轮实验）：词面排前两名的事实挂着什么主题，其余候选挂同一主题的 +1 再排一次——
     # 「给一个片段找同主题的别的事实」这条口径靠它；查询片段本身很少能直接认出主题（TOPIC_BONUS 试过零效果）

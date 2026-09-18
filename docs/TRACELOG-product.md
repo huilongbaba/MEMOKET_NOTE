@@ -1709,3 +1709,109 @@ P8b 同一位置的原文——`3a3a` 指标段之后（P8 是一句弃答 + 两
 - 真模型调用 **0 次**（全部假服务 `ok` / `slowstream`）；桌面壳截图 / 探针跑了约 25 次。
 - 截图：`p10-card-after-{light,dark}.png`（before 是 P9 的 `p9-margin-after-{light,dark}.png`）；`p10-dots-before-{light,dark}.png` → `p10-dots-after-{light,dark}.png`；
   五条基本功的证据是日志 `p10-{keys,undo,paste,ime,perf}-before.log` → `-after.log`（截图 `p10-*-before/after.png` 只是当时的画面）。
+
+## P11 · 第 775 轮：文档意图接进 harness + P8 / P10 在后端和 harness 侧的遗留（2026-09-19）
+
+> HEAD 开工时 `e54f285`（worktree `agent-ab7ff4604cbe04315`）。**没碰**布局（`App.tsx` 只改 handler / 一个 prop / 一个实参、`styles.css` 一字没动、右栏没动）——另一个 agent 在做 agent-native 前端。
+> 五条各一小节；用户看得见的前后对比：#1 同一篇同一意图前后各一跑贴原文、#2 真实 app 里 ⌘Z 次数、#3 首开秒数、#4 / #5 从 P8 真跑日志和这次两跑里数出来。
+> 真模型只在 #1 的两跑里用（scratch 库 `p11data`，`rails_off=("save",)`，`docs/_research/p11-d3-runs/`），其余全是假服务（`fakellm11.py` 加了能把智能续写完整跑下来的 `harness` 模式）
+> 或纯代码；探针 `probesP11.ts`（`p11:undo-harness:<id>`），截图 `$S/p11-undo-{before,after}.png`，日志 `$S/p11-undo-{before,after}.log`。
+> 六栏：用户怎么发现 · 复现 · 改了什么 · 依据 · 前后对比 · 下一步。
+
+### 1. 文档意图进 harness 的 system ✔
+
+- **用户怎么发现**：P9 在标题下面放了「目标 · 读者 · 完成标准」，骨架 / 续写 / 润色都按它办——**唯独智能续写和 `/` 块不认**（它们走 harness，P9 / P10 两批都撞文件没接）。
+  一篇「读者：团队」的笔记，点智能续写写出来的还是给自己看的口气。
+- **复现**：`docs/_research/p11-d3-runs/da080ca847cf-noint.md`——同一篇（创业一年的回顾，864 字，「历程」空节）不带意图跑一次，第 1 轮写的第一段全程第三人称：「团队的关注点开始从…转向…」。
+- **改了什么**：`ToolContext.intent`（`harness/tools/registry.py`）；`NoteHarnessRunIn.intent`（前端 `api.runNoteHarness` 带 `intentText(intent)`，不带就用库里 `notes.intent`——落库有 800ms 延迟，请求带的优先）、`ComposeBlockIn.intent` 进 `ctx`；快照 `ctx.intent` 跟着走；
+  **五发 system 第一段都是 `intent.block(ctx.intent)`**：`hooks/note.skeleton`（自动骨架）、`_plan_system`（检索规划）、`produce`（写正文——口气 / 读者是在这一发起作用的，只接检索规划那一发材料对了口气还是错的）、`middleware/revise`（修订：删不删「卡在哪」取决于给谁看）、`hooks/block._system`（`/` 块取材 + 写块）。空意图一个字不加。
+  测试 `tests/test_p11.py` 1 组 5 条（五发 system 开头 / 空意图原样 / 路由请求优先库里兜底 / `/block` / 快照）。
+- **依据**：P9 定的规矩「所有作用在这篇上的 AI 动作把它当 system 第一段」；P10 台账写了两处位置（`_plan_system` / `block._system`），这批多接了写正文 / 修订 / 骨架三处——同一条规矩没理由只接一半。
+- **前后对比（真跑，同一篇 `da080ca847cf`、同一份代码、只差 `ctx.intent`；意图 = 「目标：创业一年的回顾——关键决策与节点、预期与实际的差异；读者：团队全员；完成标准：写给团队看的口气（用「我们」、说清每个节点对大家意味着什么），每个节点带日期和依据」）**：
+
+  | | 轮 / 秒 | 调用 / prompt / cached / completion | 第 1 轮写的第一段（逐字） | 正文里「我们」 |
+  |---|---|---|---|---:|
+  | 不带意图 | 5 / 128.1 | 21 / 119,116 / 51,659 / 9,054 | 「4月16日，EVT先落在纯主机阶段，准备4台主机和15套PCBA；手表、手环以及机甲、项链的EVT也仍是手板，包装尚未进入这一节点。[…] 这说明当时的“启动”主要还是工程样机和硬件准备，距离完整产品交付仍有一段距离。」第二段「到5月15日前后，T0节点才基本到位。[…] **团队的关注点**开始从“能不能做出样机”转向“用户是否认可具体能力”。」 | 5（全在日志 / 材料里，正文 0） |
+  | 带意图（读者：团队全员） | 7 / 174.5 | 34 / 241,234 / 128,865 / 14,034 | 「这一年的几个关键节点，构成了判断变化的前因。4月，团队启动数据与“记忆 OS”建设，原先更接近于先把基础能力搭起来；但用户出现后，**我们发现**这部分能力仍需要继续补齐，启动本身并不等于已经具备支撑运营的结果。[…]」第二段「[…] 与其押注一个结果，**我们开始**把不同结果纳入计划。」最终正文「历程」里：「**对团队来说**，2月27日意味着项目从付款后的计划进入正式开发；4月16日意味着**我们需要**核对EVT实际形成的是哪些硬件…」 | 27 |
+
+  两跑的判据 / 引用都正常（新写的引用都存在、`judge_hallucinated` 两跑 12 次打分 0 命中、`facts_irrelevant` 各标出 8 / 10 条只记不剔）。**代价**：带意图那一跑多 2 轮、prompt 翻倍（19 次工具调用 vs 8 次——「每个节点带日期和依据」这条完成标准让它多查了两轮）。
+- **下一步**：「完成标准」还只是 prompt 里一句话（`DONE_HINT`），做成可检查的判据要进 `checks/`；`section` harness（文件夹写作计划）没有笔记级意图，那条线用的是计划的 goal。
+
+### 2. 智能续写的撤销：一轮 = 一次 ⌘Z ✔
+
+- **用户怎么发现**：智能续写跑完不满意按 ⌘Z——P10 只封了「续写」那一段，智能续写一轮是多处落地（修订 replace / delete + 续写 insert，流式四片各隔 900ms），⌘Z 一次只退一小片，按十几次才干净，中间还会把一条修订单独退回去。
+- **复现**（真实 app，`p11:undo-harness:0eecee3d7b94`，假模型 `harness` 模式：3 轮，每轮四片续写各隔 900ms，第 2 轮起一条 replace + 一条 delete 修订；探针先替用户打一句「用户自己打的一句。」再点「智能续写」，跑完逐次 ⌘Z 记正文长度）：
+  `p11-undo-before.log`：3 轮 +154 字，**⌘Z 按 12 次**才回到开跑前（`721→708→695→682→667→666→653→640→627→608→595→582→567`，第 5 次 -1 字是把一条修订单独退了回去），第 13 次撤掉用户自己那句。
+- **改了什么**：第一版照 P10 的思路「轮末按 diff 逐处回退（不记历史）再应用回来（记历史）」——**单测就抓到它不成立**：第 2 轮删掉第 1 轮的半句再封，⌘Z 两次之后那半句留在正文里。根因：多处回退是一笔不记历史的改动，CM 会拿它去**映射更早的撤销事件**，上一轮那条的范围被沿途改坏。
+  改成**落地时就并进同一条**（`editor/undoUnit.aiSyncSpec`）：编辑器只读（AI 在写）时 `MarkdownEditor` 的 content 同步带标注——一轮的第一片 `isolateHistory('before')` + `input.ai`（不许并进用户刚打的字），之后每一片 `userEvent: 'input.type.compose'`：CM 的 history 对 compose 事件**无视 500ms 分组和相邻与否**一律并进上一条（`HistoryState.addChanges` 的 compose 分支）。
+  「一轮」的边界由 App 给：`undoGroup` 状态在 `onRoundStart` 加一（在预留空行**之前**——空行也是这一轮插的），编辑器看见它变了就另起一条。没有任何不记历史的改动，更早的事件一个都不会被映射坏。
+  测试 `p11Editor.test.ts` 4 条（两轮各一条：⌘Z ×1 撤第 2 轮三处、×2 撤第 1 轮含空行、×3 才吃用户的字、⇧⌘Z 逐轮回来；修前的形状钉住；`aiSyncSpec` 两种形状；源码里的接线顺序）。
+- **依据**：`@codemirror/commands` history：`joinableUserEvent = /^(input\.type|delete)($|\.)/`，`addChanges` 里 `userEvent == "input.type.compose"` 那个分支不看时间也不看相邻；Notion 里 AI 的一轮改动是一个撤销步。
+- **前后对比**（同一探针、同一假模型、同一篇，before 是 HEAD 的 `undoUnit.ts` / `MarkdownEditor.tsx` / `App.tsx` 三个文件换回去重新 `vite build`）：
+  `p11-undo-before.log` **⌘Z ×12** → `p11-undo-after.log` **⌘Z ×3**（`721→667→621→567`，一次一轮，正好对上三轮各 +54 / +46（含一条 replace +1、一条 delete -9）/ +54）；两边第 4（前：第 13）次都撤掉用户自己那句（`567→556`）、⇧⌘Z 都回到 721。
+- **下一步**：「续写」（magic tap）还用 P10 的 `sealAsOneUndo`，两套机制可以并成一套（tap 时也只读、同步已经走 compose，把 `undoSeal` 那条去掉就行）；暂停 → 逐条接受 → 「接着写」那条路的 `undoGroup` 没实拍。
+
+### 3. 首次打开圆点 15 s：12.8 s → 3.9 s，判定一字不变 ✔（< 3 s 没到）
+
+- **用户怎么发现**：P10 C3-5 量到的——30k 字笔记打开 15 s 页边圆点才出现（`relations/batch` 每段 ~90 ms）。
+- **复现**（`$S/p11/time_batch.py`，scratch 拷贝 `p11data`，`309f19202309` 30,588 字 / 143 个含数字段，按前端的分批方式 80 + 63 两批直接调 `relations_batch`）：**12,827 ms（7,277 + 5,550）= 89.7 ms / 段**，112 个点。
+  `cProfile`（`$S/p11/prof_batch.py`，80 段）：21.5 s 里 **14.4 s 在 `re` 的编译**——`_match_vocab` 拿词表里几千个表层词逐个 `re.search(动态拼的 pattern)`，`re` 的编译缓存只有 512 条，几千个 pattern 轮着来**每一次都重新编译**（80 段 554,700 次 search、275,256 次 compile）。召回本身（`execute_plan`）3.0 s，判定（`detect`）17 ms，序列化 0。
+- **改了什么**（三处，都是代码效率、判定语义没动）：
+  ① `kite_memory._surface_in`：ASCII 表层词先 `sl in lowered` 子串预检（整词正则的字面量必须是子串，不在就是 False——99% 的表层词在这一步退出），再走**按表层词 `lru_cache` 的**整词正则；
+  ② `_match_vocab` 按（文本, 词表对象）记住（同一次 recall 要算三遍：recall / `search.plan` / `search.rank`），返回拷贝、词表重建自然失配；
+  ③ `search.rank` 每行只打一次分（原来 `if score(r)[0] > 0` 又算一遍）。
+  测试 5 条（整词 / 子串 11 组参数化——`ev` 不许命中 `EVT`、`pcb` 不许命中 `PCBA` 那条老规矩钉着；编译缓存命中；memo 拷贝 + 失配；`rank` 源码；修前修后判定对拍）。
+- **依据**：profile 数字；`marks` 的 sha256 修前修后**一字不差**（`bc385fd1fd9e445d`，143 段 112 个点）。
+- **前后对比**：**12,827 ms → 3,893 ms（2,380 + 1,514）= 27.2 ms / 段**，3.3×；在 app 里首开 ≈ 15 s → ≈ 5.4 s（含 1.5 s 防抖）。
+- **没到的**：目标 < 3 s。剩下 70% 在 `memoket_kite.core.algebra.execute` 的全表 grep（每段 7 个查询各扫一遍全部事实的正则，库代码），app 侧再压只剩「少查」——那是判定语义。下一步要么在 kite 里给 grep 建倒排、要么第二次打开走 localStorage 缓存（P10 提过）。
+
+### 4. `search_memory` 带进来的另一来源事实也走筛 ✔（默认照旧只记）
+
+- **用户怎么发现**：P8 计划外发现 3——da080 / e783 的 prompt 里各进了 9 / 6 条 `apple-74b508a0612feb7e-*`「公司计算产业的芯片包括…鲲鹏 CPU」，`search_memory("cross-comparison intelligence 消费者 反馈")` 取回来的，跟查询、跟这两篇都零关系；P8 的筛只认 `filter_facts` 的抽样，「按查询取的不走筛」——**同一件事挡住一半等于没挡**。
+- **复现**：`tests/test_p11.py::test_4_*` 的素材就是 P8 真跑 da080 第 6 轮那次 `search_memory` 的返回（两条 terrence 真命中 + 两条 apple 鲲鹏）。
+- **改了什么**：`checks/relevance.queried_ids(calls)`：`search_memory` / `gather_subject` 返回的、**跟取回它的那句查询零重合**的事实 id（同一条被别的查询真命中过就不算）；`gate()` 的候选 = `sampled_ids | queried_ids`，后面那道「跟标题 + 骨架 + 正文 + 查询零重合」不变，**两个条件同时成立才剔，默认 `RELEVANCE_FILTER` 关只记**。多跳（`search_session_context`）/ 回溯原话不算。测试 2 条。
+- **依据**：来处说得清——词法检索返回的事实必然跟查询共用词元，零重合的那条是从查询解析到的主题 / 实体桶按时间取回来的（`kb/search.plan` 的符号通路），跟 `filter_facts` 的抽样是同一个形状；P8 量过「跟正文的重合分不开相关 / 无关，来处分得开」，这条沿用。
+- **前后对比**：同一份 P8 返回，修前 `gate` 一条不标，修后标出 apple 两条（+ 跟着走的两行元信息）、terrence 两条不动；跟正文有重合的（来填空节的材料）不标。这次两跑 `facts_irrelevant` 各 8 / 10 条（不带 / 带意图，只记不剔）。
+- **下一步**：跟 P8 第 5 条一样等 `harness_edits` 攒出「用户留没留」再决定开不开剔。
+
+### 5. 打分器引了正文里没有的「原文」→ 那一维不计分 ✔
+
+- **用户怎么发现**：P5 da080「末尾出现“अ”这一明显残留字符」、P8 da080 三轮「من」「م...」「մե...」——回正文核对都不在；打分器据此给 `coherence` 判 1，下一轮修订就去找一个不存在的字符。
+- **复现**（`$S/p11/judge_halluc_scan.py`，p5 / p6 / p8 / p8b 四组真跑日志，haystack = 日志里 eval 行之外的一切，保守口径）：**255 条判词，58 条带引号，10 条引了不存在的原文**：5 条是末尾异常字符（अ / من / م / մե / P8b 的 אלעד），5 条是判词把复述加了引号（「补齐价格、买家和周期依据后再决策」「启动不等于进展」这种——原文和日志里都没有这句）。
+- **改了什么**：`checks/rubric.quoted_spans / unfound_quotes / drop_hallucinated`（纯代码）：判词里 「」『』“” "" ‘’ 引着的每一段（「…」切开各查），去空白 / markdown 记号 / 标点、小写之后在 haystack 里找不到 → 这一维从分数里拿掉、状态按 `evaluate()` 同一条规则重算；一维都不剩 = 「这一轮没打上分」（跟 `_score` 的 None 同一种表示法）；`blocked` 照旧带过去。
+  接在 `loop._evaluate`（装配函数的返回值，循环体一行没动）：haystack = 整篇正文（不是 `body_for_scoring` 压过的那份）+ 开跑前正文 + 材料 + 已引事实 + 打分上下文——判词引材料里的原话是正当的。`evaluate` 事件多一个 `judge_hallucinated`（pop 不是 get），界面轮次卡片写「「连贯」这一维没计分：打分器说正文里有「մե」，正文里没有这几个字」。测试 5 条（P5 / P8 三句原话；材料 / 骨架 / 大小写 / 记号 / 省略号；一维不剩 / blocked；接在 `_evaluate` 上 + 事件 pop；四组真跑扫描钉住五个脚本字符）。
+- **依据**：上面的 10 / 255；`no_foreign_script` 管的是正文里真有的（P6 e783「મંત્રી」），两条线各管一头。
+- **前后对比**：修前那 10 条判词全部计分（P8 da080 三轮的 `coherence=1` 都算数、`steer` 带着它进了修订）；修后同样的判词那一维不计分、事件里写清楚。这次两跑 12 次打分 **0 命中**（真模型这两跑没再幻觉）。
+- **下一步**：5 条复述加引号的会被当幻觉摘掉——那一轮少一维分数，代价是有限的（下一轮照打）；攒几次真跑看 `judge_hallucinated` 的分布再决定要不要只认「不含汉字 / 拉丁字母」的那一类。
+
+### 突变验（`$S/p11/p11_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复；**12 条全红**）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `_plan_system` 不加意图 / `block._system` 不加意图 | `test_1_检索规划_写正文_骨架_块_修订的_system_都以意图开头` |
+| `note_harness` 不读库里的意图 | `test_1_note_harness_请求带的意图优先_不带用库里那份` |
+| 快照不存 `intent` | `test_1_快照带着意图走` |
+| `_surface_in` 退回子串 | `test_3_surface_in_预检不改判定[ev/pcb]` |
+| `_match_vocab` 缓存不拷贝 | `test_3_match_vocab_按文本和词表记住_返回拷贝`（第一版没抓住：只改了第一次返回的那份，第二次命中缓存的没改——补了第三次调用才红） |
+| `gate` 不收 `queried_ids` | `test_4_跟_prepare_拉的走同一道_gate_默认只记_开着才剔` |
+| `queried_ids` 不排除别的查询真命中的 | `test_4_search_memory_取回却跟查询零重合的_是候选_真命中的不是` |
+| `drop_hallucinated` 恒不摘 | `test_5_判词引了正文没有的字_那一维不计分_记进_judge_hallucinated` |
+| `_evaluate` 不接 `drop_hallucinated` | `test_5_接在_evaluate_装配函数上_evaluate事件带judge_hallucinated` |
+| `aiSyncSpec` 后面的片段不 compose | `p11Editor` 「两轮各一条」 |
+| `MarkdownEditor` 只读时同步不带 `aiSyncSpec` | `p11Editor` 源码接线那条 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2158 passed**（基线 2131；+27 `tests/test_p11.py`）。老测试改动 0；`test_no_undefined_names` 抓过一次没用的 import。
+- 前端 `npm test`：**59 文件 / 347 条**（基线 58 / 343；+`p11Editor.test.ts` 4 条）+ 全部 check 脚本 OK。
+- 真库指纹（`db_guard.fingerprint` 只读；开工 1 次 + 两跑前后各 1 次 + 收尾 1 次共 6 次）：**482 / 2026-09-16T02:53:27 / 321,250 / `47dcc54be60aa4f2` / note_revisions 44**，一字不差；`~/Library/Application Support` 没碰（桌面壳 `MEMOKET_USER_DATA=$S/p11userdata`，数据 `KITE_DATA_DIR=$S/p11udata` = p10data 的拷贝，每跑前重拷）。
+- 成本（scratch 库 `llm_usage` id > 5735，端点 `gpt-5.6-luna`，只有 #1 的两跑）：
+
+  | | 调用 | prompt | 其中 cached | completion |
+  |---|---:|---:|---:|---:|
+  | 不带意图 | 21 | 119,116 | 51,659 | 9,054 |
+  | 带意图 | 34 | 241,234 | 128,865 | 14,034 |
+  | **合计** | **55** | **360,350** | 180,524（50.1%） | **23,088** |
+
+  **先估后跑**：估 0.2M，实际 **0.38M，估低 1.9 倍**——带意图那一跑「每个节点带日期和依据」逼它多查了两轮（19 次工具调用）。跟 P8 同一条教训：轮数由第 1 轮拿到什么定。
+- 假服务 / 桌面壳探针跑了 4 次（after ×2、before ×2——第一版假模型四片没换行，`hooks/note.produce` 攒到一个 delta，修前量不出片段级撤销，改成带换行重跑）。

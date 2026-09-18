@@ -35,6 +35,16 @@ P6 没逼，模型照样把 EVT 写进了网页文案笔记——材料在 promp
 2-gram，以及首尾是「的了在是…」这类单字虚词的）。「[X 的原话]」展开行和
 「（日期 · 说话人 · 类型）」元信息行跟着它的母事实走。
 
+## P11：按查询取回的那一路也走同一道筛（`search_memory` / `gather_subject`）
+
+P8 记着一条没筛住的：da080 / e783 的 prompt 里各进了 9 / 6 条 `apple-74b508a0612feb7e-*`
+「公司计算产业的芯片包括…鲲鹏 CPU」——`search_memory("cross-comparison intelligence 消费者 反馈")`
+取回来的，跟查询、跟这两篇都零关系；**同一件事挡住一半等于没挡**（§21）。它的「来处」也说得清：
+词法检索返回的事实必然跟查询共用词元，一条**跟取回它的那句查询零重合**的事实，是从查询解析到的
+主题 / 实体桶里按时间取回来的——跟 `filter_facts` 的抽样是同一个形状。所以候选多一档：
+`queried_ids`（search_memory / gather_subject 返回的、跟自己那句查询零重合的），再过同一道
+「跟标题 + 骨架 + 正文 + 查询零重合」——两个条件同时成立才剔，默认照旧只记不剔。
+
 ## P8 退回：默认只记不剔（`params.RELEVANCE_FILTER`）
 
 真跑五篇：剔的没剔错，但 da080 第 1 轮三批全是抽样、筛完剩 2 条 → 8 轮（P6 1 轮）、留下 95% → 50%；
@@ -131,6 +141,37 @@ def sampled_ids(calls) -> set[str]:
     return out
 
 
+# 按查询取材料的两个工具（`tools/memory_tools.py`）。`search_session_context` 是多跳、
+# `fact_sources` 是回溯原话，都不是「按查询撒网」，不算。
+_QUERY_TOOLS = ("search_memory", "gather_subject")
+
+
+def _query_text(args) -> str:
+    return " ".join(str((args or {}).get(k) or "") for k in _QUERY_KEYS
+                    if isinstance((args or {}).get(k), str)).strip()
+
+
+def queried_ids(calls) -> set[str]:
+    """按查询取回、却跟取回它的那句查询**零重合**的事实 id（P11）——来处说明它不是词法命中，
+    是查询解析到的主题 / 实体桶按时间取的，跟 `filter_facts` 的抽样同一个形状。
+    同一条事实被别的查询真命中过就不算。"""
+    hit: set[str] = set()
+    miss: set[str] = set()
+    for name, args, result in calls or ():
+        if name not in _QUERY_TOOLS:
+            continue
+        qterms = terms(_query_text(args))
+        for line in (result or "").splitlines():
+            fid, is_src = fact_key(line.strip())
+            if not fid or is_src:
+                continue
+            if qterms and shared_terms(line, qterms) >= MIN_SHARED_TERMS:
+                hit.add(fid)
+            else:
+                miss.add(fid)
+    return miss - hit
+
+
 def queries_of(calls) -> str:
     """模型这次跑自己发过的查询词——它对「要找什么」的陈述，算进相关性的量程。"""
     parts: list[str] = []
@@ -153,7 +194,7 @@ def gate(facts: list[str], calls, context: str, *,
          apply: bool = True) -> tuple[list[str], list[tuple[str, int]]]:
     """材料分成 ``(留下的, [(剔掉的, 重合数)])``，顺序保持。
 
-    只剔「从超大主题抽样回来 **且** 跟 `context`（标题 + 骨架 + 正文 + 查询）零重合」的；
+    只剔「从超大主题抽样回来（或按查询取回却跟查询零重合，P11）**且** 跟 `context`（标题 + 骨架 + 正文 + 查询）零重合」的；
     元信息行 / 「的原话」行跟着母事实（前一条有 id 的）走。`context` 为空一条都不剔。
 
     `apply=False`（`params.RELEVANCE_FILTER` 关着，P8 退回后的默认）：**只记不剔**——第二项照样
@@ -161,7 +202,8 @@ def gate(facts: list[str], calls, context: str, *,
     候选按重合度从高到低补回来，直到留下的够数。
     """
     ctx = terms(context or "")
-    sampled = sampled_ids(calls)
+    # 两档来处（`sampled_ids` 抽样 + `queried_ids` 按查询取回却跟查询零重合），同一道筛
+    sampled = sampled_ids(calls) | queried_ids(calls)
     if not ctx or not sampled:
         return list(facts), []
     scored: dict[str, int] = {}

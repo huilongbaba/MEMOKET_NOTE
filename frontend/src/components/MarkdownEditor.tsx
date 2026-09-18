@@ -14,7 +14,7 @@ import { imageEmbed } from '../editor/imageEmbed'
 import { imagePaste } from '../editor/imagePaste'
 import { htmlPaste } from '../editor/htmlPaste'
 import { listExitKeymap } from '../editor/listExit'
-import { sealAsOneUndo } from '../editor/undoUnit'
+import { aiSyncSpec, sealAsOneUndo } from '../editor/undoUnit'
 import { linkClick } from '../editor/linkClick'
 import { markdownKeymap } from '../editor/markdownCommands'
 import { factCite } from '../editor/factCite'
@@ -45,6 +45,9 @@ import { frontmatterDim } from '../editor/frontmatter'
  * blocks, and revision highlights as native decorations instead of the old
  * transparent-textarea-over-backdrop hack.
  */
+/** 续写写完之后封成一个撤销单位的那一段（P10 C3-2）。seq 变了才做。 */
+export type UndoSeal = { from: number; text: string; seq: number }
+
 type Props = {
   content: string
   onChange?: (v: string) => void
@@ -64,7 +67,11 @@ type Props = {
   roundDiff?: DiffPush | null
   /** 把 `from` 起的 `text` 那一段封成一个撤销单位（续写写完之后；P10 C3-2）。seq 变了才做；
    *  正文对不上（用户已经在改）就不动。**排在 content 之后、roundDiff 之前**——见下面 effect 的顺序。 */
-  undoSeal?: { from: number; text: string; seq: number } | null
+  undoSeal?: UndoSeal | null
+  /** 撤销分组（P11 #2）：AI 在写（readOnly）的时候，content 同步进编辑器的每一片都并进**同一条**撤销事件；
+   *  这个数变了 = 另起一条（智能续写每一轮开跑时 App 加一）。于是 ⌘Z 一次撤一轮（修订 + 续写一起），
+   *  再按才轮到用户自己的字。机制见 `editor/undoUnit.aiSyncSpec`。 */
+  undoGroup?: number
   /** 还剩几处 harness 改动没被接受/撤回。用来在编辑器上方显示「N 处改动 ·
    * 全部接受」——逐处点是主路径，但改动多的时候必须有个一次性收尾的出口。 */
   onPendingDiff?: (n: number) => void
@@ -104,7 +111,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, undoSeal = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
+  roundDiff = null, undoSeal = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -245,6 +252,9 @@ export default function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 撤销分组的两个游标（P11 #2）：只读刚开始 → 下一片另起一条；`undoGroup` 变了 → 另起一条
+  const freshRef = useRef(true)
+  const lastGroup = useRef(undoGroup)
   useEffect(() => {
     const view = actualViewRef.current
     if (!view) return
@@ -254,7 +264,13 @@ export default function MarkdownEditor({
     // 只改真正变了的那一段（editor/minimalChange.ts）。整篇替换会把光标和视口
     // 拽到文末，流式往中间插一段时用户根本看不到写在哪；选区交给 CM 映射。
     const change = minimalChange(current, content)
-    if (change) view.dispatch({ changes: change })
+    if (change) {
+      // AI 在写（readOnly）的时候，流进来的每一片都并进同一条撤销事件（P11 #2；`editor/undoUnit.aiSyncSpec`）：
+      // 只读刚开始、或 `undoGroup` 变了（智能续写新的一轮）的第一片另起一条，之后的并进去。
+      const fresh = freshRef.current || undoGroup !== lastGroup.current
+      view.dispatch({ changes: change, ...(readOnly ? aiSyncSpec(fresh) : {}) })
+      if (readOnly) { freshRef.current = false; lastGroup.current = undoGroup }
+    }
     lastEmitted.current = content
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content])
@@ -265,6 +281,8 @@ export default function MarkdownEditor({
   }, [revisions])
 
   useEffect(() => {
+    // AI 一开始写（readOnly 变 true），下一片同步另起一条撤销事件——不许并进用户刚打的字
+    if (readOnly) freshRef.current = true
     actualViewRef.current?.dispatch({
       effects: readOnlyComp.current.reconfigure(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
     })

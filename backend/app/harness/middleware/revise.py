@@ -116,8 +116,10 @@ class Revise:
         focus = st.bag.get("focus", "")
 
         protected = _protected(st)
-        system = prompts.compose_system(prompts.EDIT_SYSTEM, "edit", st.ctx.user,
-                                        st.skill_menu, None)
+        # 修订那一发也以文档意图开头（P11）：删不删「卡在哪」那一段，取决于这篇是写给谁看的。
+        from ...editor import intent as doc_intent
+        system = doc_intent.block(st.ctx.intent) + prompts.compose_system(
+            prompts.EDIT_SYSTEM, "edit", st.ctx.user, st.skill_menu, None)
         user = prompts.edit_user(
             st.bag.get("spine", ""), st.bag.get("beats") or [], st.content,
             # 正文里已经引着的事实（`middleware/cited.py` 展开的）跟这次跑的材料

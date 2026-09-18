@@ -51,6 +51,8 @@ export type AgentRound = {
   /** true = 真的从材料里拿掉了（开关 RELEVANCE_FILTER 开着）；false = 只标出来，还在 prompt 里（P8 退回后的默认）。 */
   irrelevantDropped?: boolean
   irrelevantSample?: string[]
+  /** 打分器判词引了正文里没有的「原文」、被摘掉不计分的那几维（P11 #5；P5「अ」、P8「من」「մե」那种）。 */
+  judgeHallucinated?: { dimension: string; quotes: string[]; note: string }[]
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
   phaseLabel?: string
@@ -287,6 +289,14 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               最弱是「{dimLabel(r.weakest)}」：{r.scores[r.weakest].note}
             </p>
           )}
+
+          {/* 打分器点名了正文里没有的「原文」（P11 #5）：那一维这一轮不计分，说清楚为什么少了一维 */}
+          {(r.judgeHallucinated ?? []).map((h) => (
+            <p key={h.dimension} className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}
+               title={h.note}>
+              「{dimLabel(h.dimension)}」这一维没计分：打分器说正文里有「{h.quotes.join('」「')}」，正文里没有这几个字
+            </p>
+          ))}
 
           {(r.policyReasons ?? []).length > 0 && (
             <div

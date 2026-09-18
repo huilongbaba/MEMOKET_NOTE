@@ -21,6 +21,7 @@ from ..prompts import BLOCK_SYSTEM
 from ..state import State
 from ..score_context import AFTER_CHARS, BEFORE_CHARS, SELECTION_CHARS
 from ..checks.grounding_rules import fix_bold_punct
+from ...editor import intent as doc_intent
 
 # Sent into the focus round. The model has already explored by this point;
 # this round exists only to turn what it found into a chart.
@@ -130,9 +131,11 @@ class BlockHooks:
         of the rest. Same treatment as the two long-form harnesses -- the six
         block modes had no skill scope at all until now, so anything a user
         configured for them silently did nothing."""
-        return prompts.compose_system(BLOCK_SYSTEM, st.mode.skill_scope,
-                                      st.ctx.user, st.skill_menu,
-                                      st.skill_bodies)
+        # 文档意图是 system 的**第一段**（P9 §3.1 定的规矩，P11 接到 harness 这条线）：
+        # 取材料那一发和写块那一发都读它——一段周报里的表格该为谁服务，取材和写法都得知道。
+        return doc_intent.block(st.ctx.intent) + prompts.compose_system(
+            BLOCK_SYSTEM, st.mode.skill_scope, st.ctx.user, st.skill_menu,
+            st.skill_bodies)
 
 
     def _user(self, st: State, *, facts: str, gaps: str = "") -> str:

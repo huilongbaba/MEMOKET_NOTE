@@ -49,6 +49,10 @@ class ToolContext:
     content: str = ""
     cursor: int = 0
     scope: str = "all"      # 记忆范围：取材料的工具只看这一档（database/kb/scope.py）
+    # 文档意图那句（P9 §3.1 / P11）：「目标：…；读者：…；完成标准：…」。harness 的每一发 system
+    # 第一段都是它（`editor/intent.block`）。挂在 ctx 上是因为它跟 note_id / note_title 一样是
+    # 「这次跑作用在哪篇上」的一部分，hooks 拿着 State 就能读到；空串 = 这篇没写意图，一个字不加。
+    intent: str = ""
 
     # Scratch space the caller owns; the tool pool never interprets it.
     #

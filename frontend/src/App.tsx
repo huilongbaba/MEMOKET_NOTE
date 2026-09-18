@@ -17,7 +17,7 @@ import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, Writ
 import AudioRecorder from './components/AudioRecorder'
 import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
-import MarkdownEditor from './components/MarkdownEditor'
+import MarkdownEditor, { type UndoSeal } from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
 import { insertStreamed, tidyBlankLines, applyScrub, prepareInsert } from './editor/streamJoin'
 // 一轮里可以先后命中好几条判据，攒起来别互相盖掉（批 24 / 计划 12.1）
@@ -288,8 +288,11 @@ export default function App() {
   // 编辑、下一轮写入都会让它变，React 这边只是拿来决定要不要显示那条工具栏。
   const [pendingDiff, setPendingDiff] = useState(0)
   /** 续写写完之后把那一段封成一个撤销单位（P10 C3-2，`editor/undoUnit`）；seq 变了编辑器才动手。 */
-  const [undoSeal, setUndoSeal] = useState<{ from: number; text: string; seq: number } | null>(null)
+  const [undoSeal, setUndoSeal] = useState<UndoSeal | null>(null)
   const undoSealSeq = useRef(0)
+  // 撤销分组（P11 #2）：智能续写每一轮开跑加一，编辑器把这一轮落地的所有片段（修订 + 续写）并成一条撤销事件，
+  // ⌘Z 一次撤一轮（机制在 `editor/undoUnit.aiSyncSpec` / `MarkdownEditor` 的 content 同步）
+  const [undoGroup, setUndoGroup] = useState(0)
   // `/` 菜单选中的那一项。needsPrompt 的会先弹输入框，其余的直接执行。
   // 运行状态**不在这里**：跑起来之后状态在光标处的占位块里
   // （editor/runningBlocks.ts）——离产出最近，而且支持同时跑好几个。
@@ -1971,6 +1974,9 @@ export default function App() {
       },
       onRoundStart: (d) => {
         if (currentRef.current?.id !== noteId) return
+        // 新的一轮 = 新的一条撤销事件（P11 #2）：这一轮落地的修订 + 续写全并进它，⌘Z 一次撤一轮。
+        // **在预留空行之前加**——那个空行也是这一轮插的，⌘Z 之后不该剩下它。
+        setUndoGroup((g) => g + 1)
         // skipped_continue：上一轮评分说重复是当前最弱的一项，这一轮
         // 后端直接跳过续写、只再跑一次聚焦修订，不会有 delta 事件
         // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
@@ -2124,6 +2130,8 @@ export default function App() {
           next[next.length - 1] = {
             ...next[next.length - 1],
             scores: d.scores, status: d.status, weakest: d.weakest,
+            // P11 #5：打分器引了正文里没有的原文、被摘掉不计分的那几维
+            judgeHallucinated: d.judge_hallucinated ?? [],
           }
           return next
     })
@@ -2374,6 +2382,7 @@ export default function App() {
         ctrl.signal,
         mode,
         reviewEachRound,
+        intentText(intent),          // 文档意图进 harness 的 system 第一段（P11）
       )
     } catch (e) {
       if ((e as Error).name !== 'AbortError') toast(
@@ -3667,6 +3676,7 @@ export default function App() {
               onAcceptInline={acceptRevision}
               roundDiff={roundDiff}
               undoSeal={undoSeal}
+              undoGroup={undoGroup}
               onPendingDiff={setPendingDiff}
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
               onCursorParagraph={setCursorPara}

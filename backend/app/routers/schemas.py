@@ -94,7 +94,7 @@ class ComposeBlockIn(BaseModel):
     # 用户选中的那段。给了就是「对这段做点什么」（右键 → 自定义提示），
     # 没给就是「在光标这里插一块」（`/` 唤起）。同一套 harness，差的是作用域。
     selection: str = ""
-    # 文档意图那句（P9）。智能排版用；`/block` 走 harness loop，那条线另接（见台账 P9）
+    # 文档意图那句（P9）。智能排版用；`/block` 走 harness loop 那条线 P11 接上了（`hooks/block._system`）
     intent: str = ""
 
 
@@ -263,6 +263,9 @@ class NoteHarnessRunIn(BaseModel):
     # `e78306202d78` 跑了 15 轮 385 秒 421k token。轮数是模式的属性，不是每个
     # 请求的参数；显式传只给脚本 / 测试用，仍受 `MAX_ROUNDS_CAP` 封顶。
     max_rounds: int | None = None
+    # 文档意图那句（P11）：前端带过来的是标题下那一行**此刻**的值（落库有 800ms 延迟）；
+    # 不带就用库里 `notes.intent` 那份。
+    intent: str = ""
     # 每轮写完停下来等用户逐条接受/拒绝。**是用户的选择，不是功能的属性**
     # ——同一个人在重要文档上想要、在草稿上不想要。
     review_each_round: bool = False

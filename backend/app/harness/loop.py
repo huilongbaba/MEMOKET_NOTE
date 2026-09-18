@@ -20,6 +20,7 @@ import functools
 import inspect
 from typing import AsyncIterator, Sequence
 
+from .checks import rubric
 from .checks.rubric import evaluate
 
 from . import adapter as harness_adapter
@@ -324,7 +325,7 @@ async def _evaluate(st: State):
                 st.bag.get("score_context"),
                 list(st.facts) + list(st.bag.get("cited_facts") or [])),
             st.content, str(st.bag.get("content_at_start") or "")))
-    return await evaluate(
+    ev = await evaluate(
         harness_adapter.AppLLMClient(),
         content=score_context.body_for_scoring(
             st.content, keep_last_chars=st.mode.context_keep_last),
@@ -333,17 +334,33 @@ async def _evaluate(st: State):
         context=ctx,
         tail_context=tail,
     )
+    # P11 #5：打分器点名的「原文」正文里没有（P5「अ」、P8「من」「մե」）→ 那一维不计入分数。
+    # 对着**整篇**正文核（不是 `body_for_scoring` 压过的那份：早几节换成了目录行，引一句
+    # 早几节的原话在那份里也找不到），再加开跑前正文 / 材料 / 打分上下文——判词引材料里的
+    # 原话是正当的。跟上面同一条理由：这是装配函数的返回值，循环体一行没动。
+    haystack = "\n".join([st.content, str(st.bag.get("content_at_start") or ""),
+                          *(st.facts or []), *(st.bag.get("cited_facts") or []),
+                          *[str(v) for v in (st.bag.get("score_context") or {}).values()]])
+    if ev is None:                      # 假打分器 / 没打上分：没有判词可核
+        return None
+    ev, bad = rubric.drop_hallucinated(ev, haystack)
+    st.bag["judge_hallucinated"] = bad
+    return ev
 
 
 def _ev_payload(st: State) -> dict:
+    # 打分器点名了正文里没有的原文、被摘掉的那几维（P11 #5）：跟分数一起给界面，
+    # 用户才知道「这一维为什么没分」。pop 不是 get：下一轮没判到就不该还带着上一轮的。
+    bad = st.bag.pop("judge_hallucinated", None) or []
     if not st.ev:
-        return {"round": st.round, "status": "unknown", "scores": {}}
+        return {"round": st.round, "status": "unknown", "scores": {}, "judge_hallucinated": bad}
     return {
         "round": st.round,
         "status": st.ev.status,
         "weakest": st.ev.weakest,
         "scores": {k: {"level": s.level, "note": s.note}
                    for k, s in st.ev.scores.items()},
+        "judge_hallucinated": bad,
     }
 
 

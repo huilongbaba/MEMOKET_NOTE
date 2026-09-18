@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import os
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -282,9 +283,22 @@ def _surface_in(sl: str, lowered: str) -> bool:
     按整词匹配——「ev」「pc」「pcb」这些两三个字母的实体码之前靠子串命中「EVT」「PCBA」，
     把电动车 / 电脑的事实拉进候选池，回给用户看的「搜了什么」也跟着多出三个半截词
     （第 192 轮真库实测）。"""
+    # **先做子串预检，再做整词正则**（P11 #3）。整词正则的字面量必须是查询的子串，所以
+    # `sl not in lowered` 时答案已经是 False——而词表里几千个 ASCII 表层词里 99% 都不在这一段里。
+    # 之前每个表层词都走 `re.search(动态拼的 pattern)`：`re` 的编译缓存只有 512 条，几千个
+    # 不同 pattern 轮着来，**每一次都重新编译**。实测 `relations/batch` 一段 ~90 ms 里 2/3 是
+    # 这里的正则编译（80 段 27.5 万次 compile）。预检之后编译的是真出现过的那几十个，再按
+    # 表层词缓存住。判定语义一个字没变（`test_surface_in_预检不改判定`）。
     if sl.isascii():
-        return re.search(r"(?<![a-z0-9])" + re.escape(sl) + r"(?![a-z0-9])", lowered) is not None
+        if sl not in lowered:
+            return False
+        return _word_pattern(sl).search(lowered) is not None
     return sl in lowered
+
+
+@functools.lru_cache(maxsize=4096)
+def _word_pattern(sl: str) -> "re.Pattern[str]":
+    return re.compile(r"(?<![a-z0-9])" + re.escape(sl) + r"(?![a-z0-9])")
 
 
 class UserMemory:
@@ -425,7 +439,25 @@ class UserMemory:
     def _surface_in(sl: str, lowered: str) -> bool:
         return _surface_in(sl, lowered)
 
+    # 同一次 recall 里 `_match_vocab(同一段, 同一份词表)` 要算三遍（recall 本身 / `search.plan` /
+    # `search.rank`），`relations/batch` 一段一段来，每段都是三遍全表扫描（P11 #3 实测 80 段 277 次）。
+    # 按 (文本, 词表对象) 记住结果；词表换了（`_index` 按 mtime 重建）自然失配。返回的是拷贝，
+    # 调用方改自己那份不会污染缓存。
+    _MV_MEMO_MAX = 256
+
     def _match_vocab(self, text: str, vocab) -> tuple[list[dict], list[str], list[str]]:
+        memo = self.__dict__.setdefault("_mv_memo", {})
+        hit = memo.get(text)
+        if hit is not None and hit[0] is vocab:
+            t, e, s = hit[1]
+            return [dict(x) for x in t], list(e), list(s)
+        out = self._match_vocab_uncached(text, vocab)
+        if len(memo) >= self._MV_MEMO_MAX:
+            memo.clear()
+        memo[text] = (vocab, ([dict(x) for x in out[0]], list(out[1]), list(out[2])))
+        return out
+
+    def _match_vocab_uncached(self, text: str, vocab) -> tuple[list[dict], list[str], list[str]]:
         """把查询映射到符号码。
 
         两条通路：

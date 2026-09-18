@@ -5,6 +5,7 @@ import dataclasses
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..database import store
+from ..editor import intent as doc_intent
 from ..harness import tools
 from ..harness import loop, modes
 from ..harness.events import to_sse
@@ -91,7 +92,9 @@ async def run(body: NoteHarnessRunIn, request: Request,
                 max_rounds=rounds_for(body.max_rounds, modes.NOTE),
                 review_each_round=body.review_each_round),
             ctx=tools.ToolContext(user=user, note_id=body.note_id, scope=body.scope,
-                                  note_title=note["title"]),
+                                  note_title=note["title"],
+                                  # 文档意图（P11）：请求带的优先（标题下那一行此刻的值），没带用库里那份
+                                  intent=body.intent or doc_intent.as_text(note.get("intent") or {})),
             request=request,
             content=body.content,
         )

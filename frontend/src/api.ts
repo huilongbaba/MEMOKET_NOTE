@@ -1087,7 +1087,8 @@ export type NoteHarnessHandlers = {
    *  前端按自己的正文重算位置），在第一个 delta 之前到达；没有它就追加到文末。 */
   onInsertAt?: (d: { section: string; pos: number }) => void
   onRoundEnd?: (round: number, content?: string) => void
-  onEvaluate?: (d: { scores: Record<string, NoteHarnessDimensionScore>; status: string; weakest: string | null }) => void
+  /** `judge_hallucinated`（P11 #5）：打分器判词引了正文里没有的「原文」（P5「अ」、P8「من」）、被摘掉不计分的那几维。 */
+  onEvaluate?: (d: { scores: Record<string, NoteHarnessDimensionScore>; status: string; weakest: string | null; judge_hallucinated?: { dimension: string; quotes: string[]; note: string }[] }) => void
   /** `reason` 是 awaiting_review 时带 `runId`：这一轮停下来等你逐条处置，
    *  处置完把留下来的正文用 resumeHarness(runId, content) 送回去接着跑。 */
   onDone?: (reason: string, blockedReason?: string, runId?: string, content?: string) => void
@@ -1149,6 +1150,9 @@ export async function runNoteHarness(
   /** 每轮写完停下来等你逐条接受/拒绝。关着的时候是原来的行为：一口气跑完
    *  再处置——而那意味着你在编辑器里的处置会被下一轮盖掉。 */
   reviewEachRound = false,
+  /** 文档意图那句（`util/docIntent.intentText`，P11）：标题下那一行**此刻**的值。落库有 800ms 延迟，
+   *  所以随请求带过去；空串 = 后端用库里那份（也可能是空的，那就一个字不加）。 */
+  intent = '',
 ) {
   const res = await fetch('/api/note-harness/run', {
     method: 'POST',
@@ -1157,7 +1161,7 @@ export async function runNoteHarness(
     // 模式上的 8 盖掉——P5 实拍一篇跑了 15 轮 385 秒（P6 问题 4）。
     body: JSON.stringify({
       note_id: noteId, content, spine, beats, mode, scope: memoryScope(),
-      review_each_round: reviewEachRound,
+      review_each_round: reviewEachRound, intent,
     }),
     signal,
   })

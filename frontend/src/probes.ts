@@ -18,6 +18,7 @@ import { SLASH_ITEMS } from './editor/slashMenu'
 import type { SelectionAction } from './components/SelectionMenu'
 import type { Note, TreeRow } from './api'
 import { runP10 } from './probesP10'
+import { runP11 } from './probesP11'
 
 export type ProbeCtx = Record<string, any>
 
@@ -31,6 +32,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.includes(';;')) { for (const one of probe.split(';;')) runProbe(one, ctx); return }
   // P10：编辑器基本功五条（快捷键 / 撤销 / 粘贴 / 输入法 / 长文性能），代码在 probesP10.ts
   if (probe?.startsWith('p10:')) { void runP10(probe, ctx as ProbeCtx & { notes: Note[] }); return }
+  // P11：智能续写跑完 ⌘Z 几次撤干净（撤销分组），代码在 probesP11.ts
+  if (probe?.startsWith('p11:')) { void runP11(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
   const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }

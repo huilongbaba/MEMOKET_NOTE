@@ -24,6 +24,7 @@ from .. import agent_loop
 from .. import query_cache
 from ...util import llm
 from ...editor import outline
+from ...editor import intent as doc_intent
 from .mirror import _record_dropped, _scrub_and_record
 from ..tailing import acceptable_tail, needs_tail
 from ..agent_loop import ToolTrace
@@ -91,7 +92,8 @@ class NoteHooks:
             # 条数 / 每条字数 / 「已写：待补：」标签的要求跟 `routers/compose.skeleton` 同一份
             # （P7 改了那边的 `[:6]` → `beats_budget`，这里 P8 同步；P4 #1/#3 的理由在 `checks/skeleton.py`）。
             budget = beats_budget(len(content))
-            system = (prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", st.ctx.user)
+            system = (doc_intent.block(st.ctx.intent)
+                      + prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", st.ctx.user)
                       + skeleton_length_rule(len(content)))
             try:
                 parsed = await llm.complete_json(
@@ -295,7 +297,9 @@ class NoteHooks:
         writing skill has an opinion about, and they land in the writing
         prompt where they belong.
         """
-        return prompts.compose_system(
+        # 文档意图是 system 的第一段（P11；P9 定的规矩「所有作用在这篇上的 AI 动作把它当 system
+        # 第一段」）。检索规划也要它：给团队看的周报该去查什么，跟写给自己看的不一样。
+        return doc_intent.block(st.ctx.intent) + prompts.compose_system(
             prompts.RETRIEVAL_PLAN_SYSTEM, st.mode.skill_scope, st.ctx.user,
             st.skill_menu, [])
 
@@ -311,8 +315,10 @@ class NoteHooks:
                 if os.getenv("MEMOKET_LEAN_PROMPT") == "1"
                 else prompts.MAGIC_TAP_SYSTEM if "chart" in st.mode.groups
                 else prompts.MAGIC_TAP_SYSTEM_NOCHART)
-        system = prompts.compose_system(base, st.mode.skill_scope, st.ctx.user,
-                                    st.skill_menu, st.skill_bodies)
+        # 写正文那一发同样以文档意图开头（P11）——口气、读者、完成标准是在这里起作用的：
+        # 只接检索规划那一发的话，材料对了、写出来的还是给自己看的口气。
+        system = doc_intent.block(st.ctx.intent) + prompts.compose_system(
+            base, st.mode.skill_scope, st.ctx.user, st.skill_menu, st.skill_bodies)
 
         note_block = ""
         target = st.bag.get("outline_target")
