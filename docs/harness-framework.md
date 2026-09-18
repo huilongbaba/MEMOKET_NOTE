@@ -259,6 +259,8 @@ backend/app/
     checklist.py             从用户那条指令现场生成 instruction-specific checklist
                              （二元条目 → 维度；批 17 / 阶段 6.1，[IND] §4 的 TICK / RaR）
     snapshot.py              轮末暂停：冻结 / 解冻 State
+    round_snapshot.py        每轮烧进正文之前存一版 note_revisions（P16 分层历史，agent-native-editor §3.2）：套在 loop.run 的事件流外面，
+                             STEP_STARTED → reason='round'、RUN_FINISHED → 'run_end'；只在会写这篇笔记的跑上存（writes_note）
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
     conflict_confirm.py      摄入时那批冲突候选进收件箱前让模型确认一遍；

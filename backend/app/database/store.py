@@ -470,6 +470,10 @@ _ADDED_COLUMNS = (
     ("harness_runs", "calls", "INTEGER NOT NULL DEFAULT 0"),
     # 这一版正文是哪一次跑交出来的（计划 9.1）。空串 = 用户自己保存时留的版本。
     ("note_revisions", "run_id", "TEXT NOT NULL DEFAULT ''"),
+    # 这一版是哪一轮**烧进正文之前**的快照（P16，agent-native-editor §3.2「历史版本保留每次烧之前的快照」）。
+    # `reason='round'` 的行每轮一行、`round_no` = 那一轮的序号；`reason='run_end'` 是这次跑收尾时的正文（round_no = 最后一轮）。
+    # 0 = 跟轮次无关的版本（auto / manual / before_restore / harness）。
+    ("note_revisions", "round_no", "INTEGER NOT NULL DEFAULT 0"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
     # 笔记图标（boxicons 的类名，如 bx-rocket；空 = 按文件夹 / 笔记默认）。Trilium 的 NoteIcon，
     # 那边存成 #iconClass 属性，我们没有属性系统就直接一列。
@@ -959,7 +963,7 @@ REVISION_KEEP = 100
 
 def _snapshot_locked(c: sqlite3.Connection, user_id: str, note_id: str, title: str,
                      content: str, reason: str, *, force: bool,
-                     run_id: str = "") -> str:
+                     run_id: str = "", round_no: int = 0) -> str:
     """在已开的连接里存一版。不强制时受间隔限制；空正文不存。
 
     返回这一版的 id，没存返回空串。**原来返回的是 bool**——计划 9.1 要拿这个
@@ -977,9 +981,9 @@ def _snapshot_locked(c: sqlite3.Connection, user_id: str, note_id: str, title: s
             if age < REVISION_INTERVAL_S:
                 return ""
     rev_id = uuid.uuid4().hex[:12]
-    c.execute("INSERT INTO note_revisions (id,user_id,note_id,title,content,reason,run_id,created_at)"
-              " VALUES (?,?,?,?,?,?,?,?)",
-              (rev_id, user_id, note_id, title, content, reason, run_id, _now()))
+    c.execute("INSERT INTO note_revisions (id,user_id,note_id,title,content,reason,run_id,round_no,created_at)"
+              " VALUES (?,?,?,?,?,?,?,?,?)",
+              (rev_id, user_id, note_id, title, content, reason, run_id, int(round_no or 0), _now()))
     c.execute("DELETE FROM note_revisions WHERE user_id=? AND note_id=? AND id NOT IN ("
               "SELECT id FROM note_revisions WHERE user_id=? AND note_id=?"
               " ORDER BY created_at DESC, rowid DESC LIMIT ?)",
@@ -1056,6 +1060,27 @@ def snapshot_note(user_id: str, note_id: str, reason: str = "manual",
 REVISION_REASON_HARNESS = "harness"
 """跑完落的那一版正文的 `reason`。用户在历史面板里看得见它，这是有意的：
 「恢复到 AI 跑完那一版」本来就是这个产品该有的一步。"""
+
+REVISION_REASON_ROUND = "round"
+"""智能续写 / 打磨**每一轮开始前**的正文（P16，agent-native-editor §3.2「历史版本保留每次烧之前的快照」）。
+`run_id` 指回这次跑、`round_no` 是轮次。烧进正文之后，「回到第 N 轮之前」= 恢复这一版；
+「只撤第 N 轮」= 拿这一版和它后面那一版做 diff 反向应用（前端 `editor/undoRound`）。"""
+
+REVISION_REASON_RUN_END = "run_end"
+"""这次跑收尾时（跑完 / 暂停等处置）的正文，`round_no` = 最后一轮。它是最后一轮的「之后」——
+没有它，最后一轮只有「之前」，「只撤最后一轮」就没有另一端可比。"""
+
+
+def snapshot_content(user_id: str, note_id: str, title: str, content: str, reason: str,
+                     *, run_id: str = "", round_no: int = 0) -> str:
+    """把**给定的**正文强制存一版（不读 `notes` 表）。返回版本 id，空正文 / 存不下回空串。
+
+    `snapshot_note` 存的是库里此刻的正文；harness 跑到第 N 轮开头时库里那份是上一轮落盘的、
+    可能还被修订 pass 改过一截，**真正「烧之前」的是 loop 手里的 `st.content`**，所以要能直接给正文。
+    """
+    with connect() as c:
+        return _snapshot_locked(c, user_id, note_id, title, content, reason, force=True,
+                                run_id=run_id, round_no=round_no)
 
 
 def open_harness_edit(user_id: str, note_id: str, *, run_id: str, key: str,
@@ -1152,7 +1177,7 @@ def list_revisions(user_id: str, note_id: str) -> list[dict]:
     """新的在前。不带正文——列表只要知道什么时候、多少字。"""
     with connect() as c:
         rows = c.execute(
-            "SELECT id, note_id, title, reason, created_at, content"
+            "SELECT id, note_id, title, reason, run_id, round_no, created_at, content"
             # 同一秒内可能存两版（恢复前的强制快照紧跟手动版），rowid 兜底定序
             " FROM note_revisions WHERE user_id=? AND note_id=? ORDER BY created_at DESC, rowid DESC",
             (user_id, note_id)).fetchall()
@@ -1168,7 +1193,7 @@ def list_revisions(user_id: str, note_id: str) -> list[dict]:
 def get_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
     with connect() as c:
         row = c.execute(
-            "SELECT id, note_id, title, content, reason, created_at FROM note_revisions"
+            "SELECT id, note_id, title, content, reason, run_id, round_no, created_at FROM note_revisions"
             " WHERE user_id=? AND note_id=? AND id=?", (user_id, note_id, rev_id)).fetchone()
     return dict(row) if row else None
 

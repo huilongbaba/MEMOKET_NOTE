@@ -5,8 +5,7 @@ import { toast } from '../toast'
 import MarkdownEditor from './MarkdownEditor'
 import { diffParts } from '../editor/roundDiff'
 import Icon from './Icon'
-
-const REASON: Record<string, string> = { auto: '自动', manual: '手动', before_restore: '恢复前' }
+import { historyGroups, revisionLabel } from '../util/runRounds'
 
 function when(iso: string) {
   const d = new Date(iso)
@@ -70,12 +69,28 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
       </div>
       {revs.length > 0 && (
         <div className="revision-list">
-          {revs.map((r) => (
+          {/* 同一次智能续写的轮次折成一组（P16）：每轮开始前一版 + 收尾一版，展开才看单版 */}
+          {historyGroups(revs).map((g) => g.kind === 'rev' ? row(g.rev) : (
+            <details key={'run:' + g.run_id} className="revision-run">
+              <summary className="run-title">
+                <Icon n="bx-git-compare" /> 智能续写 ·{g.revs.filter((x) => x.reason === 'round').length} 轮 · {when(g.revs[g.revs.length - 1].created_at)}
+                <span className="muted" style={{ fontSize: 'var(--t-xs)' }}> · 每轮开始前各留一版，展开看</span>
+              </summary>
+              {g.revs.map(row)}
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  function row(r: api.NoteRevision) {
+    return (
             <div key={r.id} className={'revision-row' + (open?.id === r.id ? ' open' : '')}>
               <a className="kb-link" onClick={() => void view(r)}>
                 <Icon n={(open?.id === r.id ? 'bx-chevron-down' : 'bx-chevron-right')} />
                 <span>{when(r.created_at)}</span>
-                <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{REASON[r.reason] ?? r.reason} · {r.chars} 字
+                <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{revisionLabel(r)} · {r.chars} 字
                   {r.chars !== currentChars && <> · {r.chars > currentChars ? '+' : ''}{r.chars - currentChars}</>}</span>
                 <span style={{ flex: 1 }} />
                 <button className="chip chip-action" disabled={busy} onClick={(e) => { e.stopPropagation(); void restore(r) }}><Icon n="bx-undo" /> 恢复到这一版</button>
@@ -92,11 +107,8 @@ export default function RevisionHistoryPanel({ noteId, currentChars, currentCont
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+    )
+  }
 }
 
 

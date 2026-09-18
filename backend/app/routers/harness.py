@@ -28,6 +28,7 @@ from ..harness.events import CUSTOM_WARNING, Event, to_sse
 from ..harness.hooks.block import BlockHooks
 from ..harness.hooks.note import NoteHooks
 from ..harness.hooks.section import SectionHooks
+from ..harness.round_snapshot import with_round_snapshots
 from ..editor.profile import entries as _profile
 from .schemas import HarnessResumeIn
 from .deps import current_user, sse_response
@@ -89,7 +90,8 @@ async def resume(run_id: str, body: HarnessResumeIn, request: Request,
                 "error": "这次暂停没能完整存下来，恢复之后下面这些中间状态是空的："
                          + "、".join(sorted(set(dropped))),
             }))
-        async for event in loop.run(st, hooks):
+        # 恢复的跑接着存每轮烧之前的快照（P16）：同一个 run_id（快照里带着），轮次接着数
+        async for event in with_round_snapshots(loop.run(st, hooks), st):
             yield to_sse(event)
 
     return sse_response(gen())

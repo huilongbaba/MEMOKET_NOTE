@@ -692,7 +692,8 @@ export const purgeTrash = (id: string) => fetch(`/api/notes/trash/${id}`, { meth
 export type CitingNote = { id: string; title: string; updated_at: string; preview?: string; icon?: string }
 
 /** 历史版本（Trilium 的 note revisions）。列表不带正文，点开一版才取。 */
-export type NoteRevision = { id: string; note_id: string; title: string; reason: string; created_at: string; chars: number }
+/** `run_id` / `round_no`（P16 改动的分层历史）：`reason='round'` = 那一轮烧进正文之前的快照、`run_end` = 这次跑收尾时；跟跑无关的版本是 '' / 0。 */
+export type NoteRevision = { id: string; note_id: string; title: string; reason: string; created_at: string; chars: number; run_id: string; round_no: number }
 export const listRevisions = (noteId: string) =>
   fetch(`/api/notes/${noteId}/revisions`, { headers: headers() }).then(json<NoteRevision[]>)
 export const snapshotNote = (noteId: string) =>

@@ -23,6 +23,7 @@ import { runP12 } from './probesP12'
 import { runP13 } from './probesP13'
 import { runP14 } from './probesP14'
 import { runP15 } from './probesP15'
+import { runP16 } from './probesP16'
 
 export type ProbeCtx = Record<string, any>
 
@@ -46,6 +47,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.startsWith('p14:')) { void runP14(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // P15：导入 / 录音 / 剪藏默认进托盘、托盘项标题回退，代码在 probesP15.ts
   if (probe?.startsWith('p15:')) { void runP15(probe, ctx as ProbeCtx & { notes: Note[] }); return }
+  // P16：改动的分层历史（烧之后逐轮撤）+ ⌥ 悬停来龙去脉贴词边，代码在 probesP16.ts
+  if (probe?.startsWith('p16:')) { void runP16(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
   const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }

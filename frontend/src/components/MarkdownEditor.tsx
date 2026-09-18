@@ -31,6 +31,7 @@ import { revisionField, setRevisions, revisionClickHandler } from '../editor/rev
 import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
   from '../editor/roundDiff'
 import { marginMemory, setMarginMarks, type MarginMark, type MarginOpen } from '../editor/marginMemory'
+import { altHover, type AltHoverOpen } from '../editor/altHover'
 import { slashMenu, type SlashItem } from '../editor/slashMenu'
 import { markdownHighlight, dimSyntaxMarks, editorTheme, scrollPadding, syntaxHighlighting } from '../editor/theme'
 import { frontmatterDim } from '../editor/frontmatter'
@@ -83,6 +84,8 @@ type Props = {
   marginMarks?: MarginMark[]
   /** 圆点被悬停 / 点了 / 光标进了它的段：把关系卡贴到圆点旁边（P9） */
   onMarginClick?: MarginOpen
+  /** ⌥ 悬停 / ⌥↩ 停在一个词上（P16，§3.3）：上层在词边画来龙去脉卡 */
+  onAltHover?: AltHoverOpen
   /** `/` 唤起的插入菜单选中了某一项。扩展只负责"选了哪一项、`/` 从哪到哪"，
    * 具体做什么（跑 harness、传图、录音）由上层决定——CM6 扩展里不该出现网络
    * 请求和文件上传。 */
@@ -107,7 +110,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
+  roundDiff = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -117,10 +120,10 @@ export default function MarkdownEditor({
   // being torn down/recreated on every prop change -- only `content` and
   // `revisions` need an actual dispatch into CM6 state, callbacks don't.
   const liveRef = useRef({ onChange, onAcceptInline, revisions, onPendingDiff,
-                          onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick })
+                          onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick, onAltHover })
   useEffect(() => {
     liveRef.current = { onChange, onAcceptInline, revisions, onPendingDiff,
-                        onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick }
+                        onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick, onAltHover }
   })
   const lastPara = useRef('')
 
@@ -150,6 +153,8 @@ export default function MarkdownEditor({
           // ⌘/ 是快捷键表；defaultKeymap 把它绑成 toggleComment，markdown 有 HTML 注释符，会真的插 <!-- -->
           { key: 'Mod-/', run: () => { window.dispatchEvent(new CustomEvent('show-shortcuts')); return true } },
         ]),
+        // ⌥ 悬停 / ⌥↩ = 来龙去脉贴在词边（P16，§3.3）：排在 defaultKeymap 前面，⌥↩ 才轮得到它
+        altHover((phrase, anchor, reason, range) => liveRef.current.onAltHover?.(phrase, anchor, reason, range)),
         // 空的列表项 / 引用行上 Enter = 退出（一次），排在 lang-markdown 的续项键前面（P10 C3-1）
         listExitKeymap,
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, ...searchKeymap, indentWithTab]),

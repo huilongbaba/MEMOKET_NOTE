@@ -62,6 +62,8 @@ import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
 import { loadSpots, putSpot, saveSpots } from './util/spots'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
+import { undoRound } from './editor/undoRound'
+import { groupRuns, type RunRound } from './util/runRounds'
 import { checkLabel } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
@@ -84,6 +86,7 @@ import DocIntentRow from './components/DocIntentRow'
 import PlanChecks from './components/PlanChecks'
 import { checkDone, doneSummary } from './util/doneChecks'
 import MarginCard from './components/MarginCard'
+import TraceCard, { type TraceCardState } from './components/TraceCard'
 import { intentText, resolveIntent, type DocIntent } from './util/docIntent'
 import SettingsPanel, { AboutLine } from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
@@ -145,6 +148,8 @@ const BUSY_LABEL: Record<string, string> = {
   slides: '做幻灯片…',
   restructure: '智能排版…',
   skeleton: '生成骨架…',
+  // P16 分层历史：「回到这轮之前」/「只撤这一轮」在取那两版快照、改正文
+  rounds: '按那一轮的快照改正文…',
 }
 
 export default function App() {
@@ -275,7 +280,7 @@ export default function App() {
   // 静态清单。
   const [beatCoverage, setBeatCoverage] = useState<{ level: number; note: string } | null>(null)
   const [revisions, setRevisions] = useState<Revision[]>([])
-  const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness' | 'slides'>('')
+  const [loading, setLoading] = useState<'' | 'skeleton' | 'restructure' | 'edit' | 'tap' | 'ingest' | 'note-harness' | 'slides' | 'rounds'>('')
   // 单篇 harness 正在写哪篇：标签行给那个标签顶上一道 3px 色条（Trilium 工作区色条的位置，第 511 轮）
   const [noteHarnessNoteId, setNoteHarnessNoteId] = useState<string | null>(null)
   // 每篇看到哪儿了：切走时记下光标和滚动位置，切回来放回去（痛点 12：查完一篇旧笔记回来，
@@ -432,6 +437,19 @@ export default function App() {
   const [marginMarks, setMarginMarks] = useState<MarginMark[]>([])
   /** 页边圆点旁边的关系卡（P9，agent-native-editor §3.3）：悬停 / 点圆点、或光标进了亮黄点的段就贴在那一行旁边。 */
   const [marginCard, setMarginCard] = useState<{ m: MarginMark; anchor: DOMRect; reason: 'hover' | 'click' | 'cursor' } | null>(null)
+  // ⌥ 悬停 / ⌥↩ 的来龙去脉卡（P16，§3.3 场景 B）：贴在词边、零模型；「查完整来龙去脉」才打模型
+  const [traceCard, setTraceCard] = useState<TraceCardState | null>(null)
+  // 烧过的跑（P16 改动的分层历史）：这篇历史版本里 reason='round' 的行按 run_id 组回轮次，烧之后还能逐轮撤
+  const [runRevs, setRunRevs] = useState<api.NoteRevision[]>([])
+  const [runsTick, setRunsTick] = useState(0)
+  const runs = useMemo(() => groupRuns(runRevs), [runRevs])
+  useEffect(() => {
+    const id = current?.id
+    if (!id) { setRunRevs([]); return }
+    let alive = true
+    api.listRevisions(id).then((r) => { if (alive) setRunRevs(r) }).catch(() => { if (alive) setRunRevs([]) })
+    return () => { alive = false }
+  }, [current?.id, current?.updated_at, harnessDone, runsTick])
   /** 文档意图（P9，§3.1）：这篇要干什么。打开时从库里读，没有就按标题预填（零模型）。 */
   const [intent, setIntent] = useState<DocIntent>(() => resolveIntent(null, ''))
   /** 意图改了（字段、或「完成标准」勾了一条）：本地先更新、落库、树上那份跟着变。用户改字段的路和勾选的路同一条。 */
@@ -1291,6 +1309,7 @@ export default function App() {
     setSkeletonNotes([])
     setIntent(resolveIntent(n.intent, d.title))
     setMarginCard(null)
+    setTraceCard(null)
     // 已经有骨架的笔记，打开时不要 8 秒后又生成一遍——之前每开一篇就一次模型
     // 调用，模型连不上时每开一篇弹一个错（实拍）。以打开时的正文为基线，改够
     // 20 字才重算。
@@ -1574,10 +1593,7 @@ export default function App() {
         // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
         // 问题由后端拼（判据 1）。结果落在右栏的「来龙去脉」标签里，
         // 不是弹层：判据 2，看一条旧记录不该离开这一页。
-        const r = await api.traceMemory(selection, 10, signal)
-        setTrace({ answer: r.answer, facts: r.facts, at: new Date().toISOString() })
-        // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
-        setPaneFocus({ id: 'trace', n: Date.now() })
+        await traceFull(selection, signal)
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection, signal, intentText(intent), current?.id ?? '')
         if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
@@ -2611,6 +2627,55 @@ export default function App() {
     await ingest(made)
     await toTray(made)
     open(first ?? parent)
+  }
+
+  /** 完整来龙去脉（模型、20 秒左右）：右键菜单和 ⌥ 悬停卡上的「查完整来龙去脉」都走这条；结果在右栏「脉络」。
+   *  **用户不写问题**——问题由后端拼（判据 1）；结果不是弹层（判据 2）。 */
+  async function traceFull(text: string, signal?: AbortSignal) {
+    const r = await api.traceMemory(text, 10, signal)
+    setTrace({ answer: r.answer, facts: r.facts, at: new Date().toISOString() })
+    // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
+    setPaneFocus({ id: 'trace', n: Date.now() })
+  }
+  async function traceFromCard(phrase: string) {
+    if (!llmGate()) return
+    toast(`正在查「${phrase}」的完整来龙去脉，20 秒左右，结果在右栏「脉络」`)
+    try { await traceFull(phrase) } catch (e) { toast('来龙去脉查不了：' + friendlyError(e), 'error') }
+  }
+
+  /** 「回到这轮之前」（P16 分层历史）：恢复第 N 轮开始前那一版——后端恢复前会再存一版（before_restore），永远可逆。 */
+  async function restoreBeforeRound(r: RunRound) {
+    if (!current) return
+    setLoading('rounds')
+    try {
+      const n = await api.restoreRevision(current.id, r.before.id)
+      setCurrent(n); setTitle(n.title); setContent(n.content); liveContentRef.current = n.content
+      void reload()
+      setRunsTick((t) => t + 1)
+      toast(`已回到第 ${r.round_no} 轮之前（回来之前的正文也留了一版）`)
+    } catch (e) { toast('回不去：' + friendlyError(e), 'error') }
+    finally { setLoading('') }
+  }
+  /** 「只撤这一轮」（P16 分层历史）：拿这一轮前后两版做 diff、反向应用到现在的正文（`editor/undoRound`）；
+   *  结果作为一层提案标出来（「撤掉第 N 轮」），不对就在「改动」里撤回这一层。对不上的地方说清楚，不猜。 */
+  async function undoRoundOnly(r: RunRound) {
+    if (!current || !r.after) return
+    setLoading('rounds')
+    try {
+      const [before, after] = await Promise.all([api.getRevision(current.id, r.before.id), api.getRevision(current.id, r.after.id)])
+      // 从编辑器的实时文档读（同 applyAsDiff）：await 之后闭包里的 content 可能已经过时
+      const cur = editorViewRef.current?.state.doc.toString() ?? content
+      const res = undoRound(before.content, after.content, cur)
+      if (res.undone === 0) {
+        toast(`第 ${r.round_no} 轮改的 ${res.total} 处在现在的正文里都对不上，没有改动。${res.conflicts[0] ?? ''}`, 'error')
+        return
+      }
+      setContent(res.text)
+      pushDiff(`撤掉第 ${r.round_no} 轮`, cur, res.text)
+      if (res.conflicts.length) toast(`撤掉了第 ${r.round_no} 轮的 ${res.undone} 处；${res.conflicts.length} 处对不上没动：${res.conflicts.join('；')}`, 'error')
+      else toast(`撤掉了第 ${r.round_no} 轮的 ${res.undone} 处，别的轮留着；不对就在「改动」里撤回这一层`)
+    } catch (e) { toast('撤不了：' + friendlyError(e), 'error') }
+    finally { setLoading('') }
   }
 
   /** 全部接受：只是把标记清掉，正文保持现状。 */
@@ -3752,6 +3817,7 @@ export default function App() {
               onCursorParagraph={setCursorPara}
               marginMarks={marginMarks}
               onMarginClick={(m, anchor, reason) => { if (!m || !anchor) { setMarginCard(null); return } setMarginCard({ m, anchor, reason }) }}
+              onAltHover={(phrase, anchor, reason, range) => { if (!anchor) return; setTraceCard((c) => (c && c.phrase === phrase && c.reason === reason ? c : { phrase, anchor, reason, range })) }}
               onSlash={onSlash}
               onStopRun={stopRun}
               /* 空文档那一刻是**唯一一个用户愿意读提示的时刻**，别拿去讲 Markdown。
@@ -3772,6 +3838,11 @@ export default function App() {
             {marginCard && current && (
               <MarginCard card={marginCard} content={content} onClose={() => setMarginCard(null)} onInsert={insertAtCursor}
                           onSeeAll={() => { setMarginCard(null); setPaneFocus({ id: 'memory', n: Date.now() }) }} />
+            )}
+            {/* ⌥ 悬停 / ⌥↩ 的来龙去脉卡：贴在词边、零模型（P16，§3.3 场景 B） */}
+            {traceCard && current && (
+              <TraceCard card={traceCard} content={content} onClose={() => setTraceCard(null)} onInsert={insertAtCursor}
+                         onTrace={(p) => void traceFromCard(p)} />
             )}
           </>
         )}
@@ -3820,8 +3891,10 @@ export default function App() {
               body: <SlidesPanel content={content} viewRef={editorViewRef} />,
             }] : []),
             // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
-            { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0,
-              body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff} /> },
+            // P16：烧进正文之后这次跑的每一轮还在（后端每轮开始前存一版）——有烧过的跑时这个标签也留着，逐轮「回到之前 / 只撤这一轮」
+            { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0 || runs.length > 0,
+              body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff} runs={runs} busy={loading === 'rounds'}
+                                       onRestoreBefore={(r) => void restoreBeforeRound(r)} onUndoRound={(r) => void undoRoundOnly(r)} /> },
             // 计划 = 完成标准（判据）+ 目录（每节状态）+ 写作骨架 + 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
             // P12（§3.1 / §3.5）：「完成标准」逐条核、目录每一节带「空 / 草稿 / 有依据」——目录就是计划，不再单开一个页签。
