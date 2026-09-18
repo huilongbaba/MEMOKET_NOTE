@@ -43,6 +43,8 @@ this package. The short version:
                   要能在指令里逐字找到、程序已经判了的不许重复、生成不出来就
                   退回原来那几条维度   → middleware/checklist
     snapshot.py   State ⇄ JSON，轮末暂停用
+    round_snapshot.py  每轮烧进正文之前存一版 note_revisions（P16 分层历史）：套在 loop.run 事件流外面，
+                  routers/{note_harness,harness} 用；只在会写这篇笔记的跑上存 → middleware/save.writes_note
     conflict_confirm.py  摄入时那批冲突候选，进收件箱之前让模型确认一遍
                   （由 routers 注入给 database/kb/inbox——层次只能从上往下递）
 

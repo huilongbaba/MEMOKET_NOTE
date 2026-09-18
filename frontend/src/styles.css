@@ -1299,6 +1299,19 @@ input[type=file]:hover { border-color: var(--accent); }
 .margin-card-actions { gap: var(--s-2); margin-top: 8px; flex-wrap: wrap; align-items: center; }
 .margin-card-actions button:not(.linklike) { font-size: var(--t-sm); padding: 2px 8px; }
 .margin-card-more { margin-inline-start: auto; font-size: var(--t-xs); color: var(--muted); }
+/* ⌥ 悬停的来龙去脉卡（P16，§3.3 场景 B）：跟页边关系卡同一副骨架，多「第一次 / 最近 / 相关」三种行；记录原话是正文色 */
+.trace-card .trace-phrase { color: var(--fg); font-size: var(--t-sm); }
+.trace-card .trace-when { flex-shrink: 0; color: var(--muted); font-size: var(--t-xs); white-space: nowrap; }
+.trace-card .trace-row > span:last-child { color: var(--fg); }
+.trace-card:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 烧过的轮次（P16 改动的分层历史）：右栏「改动」里每轮一张卡，「历史」里同一次跑折成一组 */
+.run-history { border-top: 1px solid var(--mk-line-2); padding-top: 8px; }
+.run-card > summary, .revision-run > summary { cursor: pointer; list-style: none; padding: 4px 2px; font-size: var(--t-md); color: var(--fg); }
+.run-card > summary::-webkit-details-marker, .revision-run > summary::-webkit-details-marker { display: none; }
+.run-title::before { content: '▸'; display: inline-block; width: 12px; color: var(--muted); }
+details[open] > .run-title::before { content: '▾'; }
+.run-round strong { color: var(--fg); }
+.revision-run .revision-row { margin-inline-start: 14px; }
 /* 记忆的关系：左边一条色带说是哪种关系 */
 .rel-card { padding: 8px 10px; border-inline-start: 3px solid var(--line); }
 .rel-card.rel-conflict { border-inline-start-color: var(--warn); }

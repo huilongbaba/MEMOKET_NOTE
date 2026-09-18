@@ -2067,3 +2067,90 @@ P9 / P12 两次都把托盘往后推（「要新表 + 托盘 UI + 三个按钮�
   （截图在 `p14data`、真跑在 `p14/p14data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p14userdata`）。
 - 真模型：**1 次跑**，32 次调用，prompt 261,998 / completion 18,449 / cached 95,788 ≈ **0.28M**（预估 0.2M；端点 `gpt-5.6-luna`，scratch 库 `llm_usage`）；桌面壳截图跑了 14 次（zsh 里 `"$N:empty"` 又被当成 `:e` 修饰符，前 4 张探针拿到的是 `mpty`，重拍——P9 记过同一个坑，要写 `${N}`）。
 - 截图（浅 / 深各一张）：`p14-tray-empty-{light,dark}`、`p14-tray-three-{light,dark}`、`p14-tray-slash-{light,dark}` + `p14-tray-linkmenu-light`。
+
+---
+
+## P16 · 第 777 轮：C2 agent-native 剩下两条——改动的分层历史（烧之前的快照）+ ⌥ 悬停来龙去脉贴词边（2026-09-19）
+
+> HEAD 开工时 `2632bfe`（worktree `agent-a7e7b9d4e1ebc8470`）。**没碰** `app/harness/checks/**`、`middleware/**`、`tray.py`、`relations` 后端（另一个 agent 在改）——
+> 每轮快照没做成 middleware，是套在 `loop.run` 事件流外面的一层（`harness/round_snapshot.py`），两条跑 harness 的路由各套一次。
+> 截图全部跑在 `KITE_DATA_DIR=$S/p16data`（p14data 的拷贝）+ 假模型 `fakellm13.py` 的 `harness` 模式（三轮停；**零真调用**），`p16run.sh` 一条前台命令；
+> 每次三轮之前 `p16reset.py` 把那篇还原（正文 + 清掉它的历史版本），截图可复现。探针 `probesP16.ts`（`p16:rounds:<id>:{burn,undo3,history}` / `p16:hover:<id>:<词>[:key][:insert]`）。截图 `$S/p16-*.png`（16 张）。
+> 六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### 0. 这两条是什么、为什么现在做
+
+P12 §0 核过：分层账本（`ChangeLayersPanel` + `roundDiff` 的层开关 / 接受 / 撤回）9/12 已做，**只差「历史版本保留每次烧之前的快照」在 revision 后端**；⌥ 悬停来龙去脉（§3.3「⌥ 悬停任何词就是来龙去脉，结果贴在词边上」）P11 / P12 两次列在「没接的」里。
+这两条是 `agent-native-editor.md` §1 六行里最后没落地的（第 4 行「只有这一轮的改动」、第 2 行「记忆是右栏旁观者」的后半）。
+
+| 挑的 | 兑现哪条判据 | 解哪个痛点 | 用户第一天怎么感受到 |
+|---|---|---|---|
+| **A. 改动的分层历史——烧之前的快照**（§3.2）：智能续写每轮开始前后端存一版（`note_revisions.reason='round'`，带 `run_id` / `round_no`），收尾再存一版（`run_end`）；烧进正文之后「改动」页签仍列出这次跑的每一轮，逐轮「回到这轮之前」/「只撤这一轮」；ribbon「历史」里同一次跑折成一组 | 判据 1「结果要可逐条接受 / 撤回」——接受之后也还能撤某一轮 | 8（AI 改了三轮，想留第一轮、丢第三轮，结果一团乱） | 跑三轮、点「全部接受」，右栏「改动」还在：第 1 / 2 / 3 轮各一张卡；点第 3 轮「只撤这一轮」，正文里一二轮的在、第三轮的没了 |
+| **B. ⌥ 悬停来龙去脉贴词边**（§3.3 / 场景 B）：按住 ⌥ 停在一个词上 ≥ 400ms（或 ⌥↩）→ 词边一张卡：这个词在知识库里第一次出现 / 最近一次 / 相关两条；「查完整来龙去脉」（模型、20 秒、右栏「脉络」）才是按钮 | 判据 2「不离开页面就用得上记忆」——原来右键 → `trace` → 三次调用 20–30 秒、结果在右栏 | 11、12 | 写到「众筹」，⌥ 停一下：「众筹 · 知识库里 8 条 · 第一次 2026-01-21 …最近 2026-05 …」，几十毫秒、零模型 |
+
+### 1. 改动的分层历史：烧之前的快照 ✔
+
+- **用户怎么发现**：智能续写跑完，正文里每一轮写的都标绿、能逐处 / 整层接受撤回；点「全部接受」之后**层没了、「改动」页签也没了**——想留一二轮、丢第三轮，只能手删。
+- **复现**：`p16-rounds-before-{light,dark}.png`：`da080ca847cf`「创业一年的回顾」跑三轮（假模型每轮写「第 N 轮假模型写的第一句…」+ 一段推论）→「全部接受」→ 右栏只剩「记忆 / 计划」，探针 `panel rounds listed=0`。
+- **依据**：§3.2「历史版本保留每次烧之前的快照」；§1 第 4 行「痛点 8 要的是保留第一次改的、放弃第三次改的——那是改动的分层历史，不是一层高亮」；北极星判据 1 推论「结果要可逐条接受 / 撤回，不是让用户再跟它说一遍」。
+- **改了什么**：
+  后端 `database/store.py`：`note_revisions` 加列 `round_no`（批 23 已有 `run_id`）；`snapshot_content()` 直接存**给定的**正文（`snapshot_note` 存的是库里此刻那份，而第 N 轮开头库里那份是上一轮落盘的、真正「烧之前」的是 loop 手里的 `st.content`）；`REVISION_REASON_ROUND / RUN_END`；`list_revisions / get_revision` 带 `run_id / round_no`（`schemas.RevisionOut` 同）。
+  `harness/round_snapshot.py::with_round_snapshots(loop.run(st, hooks), st)`：`STEP_STARTED`（`before_round` 还没跑）→ `round` 行、`RUN_FINISHED` → `run_end` 行（一轮都没跑不存）；**只在会写这篇笔记的跑上存**（`middleware/save.writes_note`：`rails_off=("save",)` / block 模式一行都不落——`note_revisions` 是 `db_guard` 指纹盯着的表）；
+  `run_id` 是 `Ledger` 第 1 轮 `after_prepare` 才生成的、比第 1 轮的 `STEP_STARTED` 晚，所以这里先生成（`Ledger` 只在没有时才生成，同一个值）；存不进去不影响事件流。`routers/note_harness.py` + `routers/harness.py::resume` 各套一次（恢复的跑同一个 `run_id`、轮次接着数）。
+  前端 `util/runRounds.ts`（纯函数）：`groupRuns`（按 `run_id` 组、第 N 轮的「之后」= 同一次跑里紧跟着它的下一行：第 N+1 轮的 round 行 / `run_end` / Edits 的 `harness` 行）、`historyGroups`（历史面板折组）、`revisionLabel`（`round` →「第 N 轮之前」、`run_end` →「跑完（第 N 轮之后）」、`harness` →「AI 交稿」）、`runTitle`。
+  `editor/undoRound.ts`（纯函数）：拿这一轮前后两版做词级 diff（同一个 `diffParts / toHunks`），每一处靠**文字**定位——改成的新文字带前后各 24 字上下文在现在的正文里找，唯一命中才换回原文；上下文被后来改过就缩到 12 / 6 / 0 再找；多处命中 / 找不到 = 冲突，说清是哪一处，不猜。
+  `ChangeLayersPanel`：活着的层照旧；下面「烧过的轮次」每轮一张卡（时间 · ±字数）：「回到这轮之前」（`restoreRevision`，后端恢复前再存一版 `before_restore`，可逆）、「只撤这一轮」（`undoRound` → 结果作为一层提案「撤掉第 N 轮」标出来，能再撤；没收尾的轮禁用并说为什么）。
+  `App.tsx`：这篇的历史列表在换篇 / 落库 / 跑完时重查，`runs` 非空时「改动」页签留着（`hasContent`）；`RevisionHistoryPanel`：同一次跑折成一组（`<details>`，「智能续写 · 3 轮 · 时间 · 每轮开始前各留一版，展开看」）。
+  测试：后端 `test_p16_round_snapshots.py` 8 条（每轮一行 + 正文是之前的 + `run_id` 同一个 / 恢复的跑沿用 `run_id` / 一轮没跑无收尾行 / `rails_off` 与 block 一行不落 / 空正文与写库失败不影响事件流 / API 带 `run_id round_no` 老数据为空 / 两条路由都套着）；
+  前端 `p16.test.ts` 分组配对 / 没收尾 / 两次跑 / 历史折组 / 撤最后一轮精确回到之前 / 撤中间那轮后面留着 / 被后一轮改过报冲突 / 前文改过缩短上下文还能定位 / 多处命中报冲突 / 纯删除补回来 / 面板三张卡两个按钮 + 没收尾禁用 / App 页签留着。
+- **落库加行核过「每个取值都写得进去吗」**（scratch 库真跑三轮后 `SELECT reason, run_id, round_no, length(content)`）：`round` 行 1 / 2 / 3 各**恰好一行**、正文 864 / 950 / 1036 字（= 每轮开始前）、`run_end` 1122 字 `round_no=3`、Edits 的 `harness` 行 1122 字；五行 `run_id` 全是 `0656ec02ff05`，空 `run_id` 0 行。
+- **前后对比**：`p16-rounds-before-{light,dark}` → `p16-rounds-burned-{light,dark}`（全部接受之后：「改动」页签还在，「智能续写 · 3 轮 · +186 字」下第 1 / 2 / 3 轮各一张卡「+62 字 · 回到这轮之前 · 只撤这一轮」）；
+  → `p16-rounds-undo3-{light,dark}`（点第 3 轮「只撤这一轮」：探针 `before undo: r1=in r2=in r3=in` → `after undo: r1=in r2=in r3=OUT`，正文里第三轮那两段折成「已删 83 字」，顶上多一层「撤掉第 3 轮 · 1 处」带开关，toast「撤掉了第 3 轮的 1 处，别的轮留着；不对就在「改动」里撤回这一层」）；
+  `p16-rounds-history-light`（ribbon「历史」：`history run groups=1: ["智能续写 · 3 轮 · 2026-09-19 06:52 · 每轮开始前各留一版，展开看"]`）。
+- **下一步**：① 「只撤第 1 轮」在第 2 轮改过第 1 轮的句子时报冲突（对：不猜），但可以拿后面几轮的 diff 把第 1 轮的那处**映射**过去再撤——现在没做；
+  ② 收尾时 `run_end` 行和 Edits 的 `harness` 行是同一份正文存了两行（middleware 另一条线在改，没合）；③ ⌥↩ 不在 `markdownKeymap` 里，`check-shortcuts` ① 闸不到它，是手工写进表的。
+
+### 2. ⌥ 悬停来龙去脉贴词边 ✔
+
+- **用户怎么发现**：写到「众筹」想查当初怎么定的：选中 → 右键 →「来龙去脉」→ 转 20–30 秒（KITE 三次调用）→ 结果在右栏「脉络」——要转头、要等、要花模型。
+- **复现**：`p16-hover-before-{light,dark}.png`：⌥ 停在「众筹」上什么都不发生（探针 `card=false`）。
+- **依据**：§3.3「⌥ 悬停任何词就是来龙去脉（现在右键菜单里的那个），结果贴在词边上」；场景 B「把光标放在 199 上，按 ⌥（或者悬停半秒），旁边弹出来龙去脉卡：三条按时间排的记录」；判据 2；痛点 11 / 12。**零模型**是铁律：这条只走 `/recall`（P7 / P11 已快到几十毫秒）。
+- **改了什么**：
+  `editor/altHover.ts`：CM 扩展——`mousemove` 带 `altKey` 时按 `posAtCoords` 找词，同一个词停满 400ms → `onOpen(词, 词的矩形, 'hover')`；松开 ⌥ / 移开 / 离开编辑器取消；`Alt-Enter` keymap = 光标所在的词（`'key'`），排在 `defaultKeymap` 前面。
+  词怎么切（`phraseAt`，纯函数）：`Intl.Segmenter('zh-Hans', word)`——实测 Node / Chromium 同一份 ICU 词典：「服从」「外部」「节点」都对，**「众筹」不在词典里，切成 众 | 筹**。所以分词器给单字时把左右相邻的单字段连成一串（「众筹等」，封顶 6 字）带上停的是哪个字交给知识库认；
+  英文 / 数字按词、标点空白上没有词；选区里就用选区（一行以内 ≤ 80 字）；停在词尾也算。
+  `util/traceCard.ts`（纯函数）：`candidates(串, focus)` = 盖住那个字的两字窗口（左、右）+ 整串；`summarizeTrace`（按 `when` 排：第一次 / 最近 / 相关两条按召回顺序）；`emptyReason`（`kb_empty` / `no_terms` / 没有）。
+  第一版用 `/recall` 回的 `terms`（`display_terms`）挑整词——实拍合成了「众筹等」（「众筹」「筹等」两个 gram 都在库里就合并），撤了；改成两字窗口各查一次、谁有记录用谁（都有取多的），都没有再整串——三次都是词法、并行、几十毫秒。
+  `components/TraceCard.tsx`：卡 = 「来龙去脉 · 「词」· 知识库里 N 条」+ 第一次 / 最近 / 相关行（日期 + 原话，点开那条记录）+「引用最近这条」「查完整来龙去脉」（走原来的 `trace`，结果在右栏「脉络」，20 秒）；没结果说「知识库里没有「词」」/「太短或太泛」/「知识库还是空的」；
+  位置走 P9 / P10 的 `cardPlacement`（正文栏内贴词右边、放不下挂在这一行下面、绝不伸出正文栏）；悬停来的移开就收，键盘来的卡拿焦点、Esc 收、焦点回编辑器（a11y 闸）。`MarkdownEditor` 加 `onAltHover`，`App` 画卡、`traceFull()` 抽出来给右键和卡共用；快捷键表加「⌥悬停 / ⌥↩」。
+  测试：`p16.test.ts` 分词（词典认识 / 不认识连成串 + focus / 英文 / 标点 / 封顶）、`candidates`、选区优先 / 词尾 / 跨行选区退回词、`summarizeTrace` 三种、空态三句、门槛 400ms、表里查得到、编辑器接了、App 画卡。
+- **前后对比**：`p16-hover-before-{light,dark}` → `p16-hover-after-{light,dark}`（「众筹」· 知识库里 8 条：第一次 2026-01-21「Speaker D 说在众筹上宣讲这些功能…」· 最近 2026-05「众筹在 4 月份结束，5 月份到 6 月份会回到官网做预购」· 相关 2026-03「众筹时间是3月7号众筹，3月10号众筹」· 2026-02-24「…4月20几号上众筹需要一个众筹页面」；
+  卡挂在这一行下面、`inside=true` 没伸出正文栏）；`p16-hover-evt-{light,dark}`（`06647b9c2031`「EVT」· 8 条：第一次 2026-02-27 · 最近 2026-05-10 · 相关 2026-04-10「EVT是4月10号…」/ 2026-03-10「不要假设时间轴，先盯着 EVT 样品的时间」）；
+  `p16-hover-none-light`（文末打「火星车」再 ⌥ 停：「知识库里没有「火星」」，不是空白）；`p16-hover-key-light`（光标停在「众筹」上 ⌥↩：同一张卡，`focus in card=true`，脚注「Esc 收起」）。
+- **下一步**：① 分词器不认识的词靠两字窗口——三字以上的领域词（「记忆 OS」这种带空格的还好，「众筹页面」这种整词）会拆成两字；`/api/memory/entities` 的实体名可以喂给前端当词典（`Intl.Segmenter` 没有自定义词典，得自己先匹配）；
+  ② 没结果时说的是左边那个两字窗口（「火星」而不是「火星车」）；③ 卡上「引用最近这条」引的可能是这篇自己抽出来的事实（P7 #8 同一个问题，`/recall` 没有「排除本篇」的口径）；④ 卡跟 P9 的边缘记忆卡各自一份收起逻辑（Esc / 点外面 / 移开），可以合成一个 hook。
+
+### 突变验（`$S/p16_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复，12/12 红）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `note_harness.py` 不套 `with_round_snapshots` | `test_两条跑harness的路由都套着它` |
+| 快照存在 `STEP_FINISHED`（烧之后才存） | `test_每轮开始前存一版…`（正文不是之前的） |
+| 不认 `writes_note`（`rails_off` / block） | `test_rails_off_save_的跑一行都不落` / `test_block模式一行都不落` |
+| `run_end` 不带最后一轮的 `round_no` | `test_每轮开始前存一版…` |
+| `groupRuns` 不给「之后」 | p16「第 N 轮的「之前」…「之后」…」 |
+| `undoRound` 多处命中也撤 | p16「同一段…出现了两次…报冲突」 |
+| `undoRound` 找不到不缩短上下文 | p16「用户改的是那一轮前面的正文…缩短到 12 字还能定位」（第一版这条只断言 `undone + conflicts == total`，突变仍绿，收紧了） |
+| `phraseAt` 单字不连成串 | p16「词典里没有的词…连成串、带上停的是哪个字」 |
+| `candidates` 只查整串 | p16「盖住那个字的两字窗口先查」 |
+| `summarizeTrace` 不按日期排 | p16「按日期排：第一次 / 最近」 |
+| 「改动」页签烧之后又藏起来 | p16「App：有烧过的跑时「改动」页签留着」 |
+| 没收尾的轮「只撤」不禁用 | p16「ChangeLayersPanel…第 3 轮…禁用」（第一版只查了 title 文案，突变仍绿，加了 `disabled=""` 断言） |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2229 passed**（基线 2221；+8 `test_p16_round_snapshots.py`；`test_directory_map` 两条要求新文件上图——`harness/__init__.py` 地图 + `docs/harness-framework.md` §3 各加一行）。
+- 前端 `npm test`：**63 文件 / 436 条**（基线 62 / 416；+`p16.test.ts` 20 条），exit 0；全部 check-* 绿（第一版被 `check-icons` 抓到 `bx-layer` 不在映射表、被 `check-busy` 抓到 `setLoading('round-history')` 没有可见反馈且带引号的键它读不到——改成 `rounds` 进 `BUSY_LABEL`）。
+- 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**（所有探针跑在 `p16data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p16userdata`）。
+- 真模型调用 **0 次**（三轮都是假模型；⌥ 卡零模型；「查完整来龙去脉」按钮没按）；桌面壳截图跑了 19 次（前 3 张 hover 用的是 `terms` 那版，重拍）。
+- 截图（浅 / 深各一张）：`p16-rounds-before-{light,dark}` → `p16-rounds-burned-{light,dark}` → `p16-rounds-undo3-{light,dark}`、`p16-rounds-history-light`；`p16-hover-before-{light,dark}` → `p16-hover-after-{light,dark}`、`p16-hover-evt-{light,dark}`、`p16-hover-none-light`、`p16-hover-key-light`。

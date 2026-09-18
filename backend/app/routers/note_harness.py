@@ -10,6 +10,7 @@ from ..harness import tools
 from ..harness import loop, modes
 from ..harness.events import to_sse
 from ..harness.hooks.note import NoteHooks
+from ..harness.round_snapshot import with_round_snapshots
 from ..harness.state import State
 from ..editor.profile import entries as _profile
 from .schemas import NoteHarnessRunIn
@@ -116,7 +117,8 @@ async def run(body: NoteHarnessRunIn, request: Request,
 
         st.bag["score_context"] = _score_context(st)
 
-        async for event in loop.run(st, hooks):
+        # 每轮烧进正文之前存一版（P16 分层历史）：套在事件流外面，loop 自己不知道
+        async for event in with_round_snapshots(loop.run(st, hooks), st):
             yield to_sse(event)
 
     return sse_response(gen())
