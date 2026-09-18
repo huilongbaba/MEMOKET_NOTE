@@ -8,7 +8,8 @@ import { chunked, MARGIN_BATCH, marginParagraphs, type MarginMark } from './edit
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
-import { friendlyError, isLlmUnreachable } from './util/friendlyError'
+import { friendlyError, isBackendDown, isLlmUnreachable } from './util/friendlyError'
+import { llmGateMessage, notePrecondition } from './editor/preconditions'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
 import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
@@ -311,7 +312,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -359,6 +360,15 @@ export default function App() {
       setHealthMsg(!h.llm?.ok ? 'LLM 不可达 (' + h.llm?.base_url + ')' : '')
       setAsrOffline(!h.asr?.ok ? (h.asr?.base_url ?? '') : '')
     } catch { setHealthMsg('后端不可达') }
+  }
+  /** 要模型的动作开跑前先看一眼健康检查（P3「离线」列）：状态栏已经红着说「LLM 不可达」，
+   *  再发请求只是转到连接超时才报同一句话。拦下、给「打开设置」、顺手再测一次好让红字自己消掉。 */
+  function llmGate(): boolean {
+    const why = llmGateMessage(healthMsg)
+    if (!why) return true
+    toastAction(why, '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
+    void checkHealth()
+    return false
   }
   const [focusMode, setFocusMode] = useState(false)
   // 左右栏各自可拖宽、可独立折叠，按用户存本机（Trilium 存 leftPaneWidth /
@@ -420,6 +430,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, current?.id, ingestTick, scopeTick])
   const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
+  // 右键菜单那五个动作的「停止」（P3：模型卡住时原来只能干等 300 秒，连 Esc 都关不掉那个转圈）
+  const selectionAbortRef = useRef<AbortController | null>(null)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
    *  不该离开这一页，弹层要么盖住正文、要么关掉就没了。 */
@@ -891,7 +903,8 @@ export default function App() {
   }
 
   async function newNoteUnder(parentId: string) {
-    const n = await api.createNote('', '', parentId)
+    let n: Note
+    try { n = await api.createNote('', '', parentId) } catch (e) { toast('新建笔记失败：' + friendlyError(e), 'error'); return }
     freshEmpty.current.add(n.id)
     await Promise.all([reload(), reloadTree()])
     void switchTo(n)
@@ -1240,7 +1253,7 @@ export default function App() {
   useEffect(() => {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
-    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus }), 800)
+    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus, setSlash }), 800)
     return () => clearTimeout(timer)
     // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
     // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针
@@ -1335,7 +1348,9 @@ export default function App() {
 
   async function newNote() {
     await save()
-    const n = await api.createNote('', '')
+    // P3 实拍：后端没起来时点「新建」什么都不发生（promise 静默拒绝）。建不了就说一句。
+    let n: Note
+    try { n = await api.createNote('', '') } catch (e) { toast('新建笔记失败：' + friendlyError(e), 'error'); return }
     freshEmpty.current.add(n.id)
     // 树也要刷：不刷的话新笔记不在树上，用户以为「没存」（实拍反馈）
     await Promise.all([reload(), reloadTree()])
@@ -1458,28 +1473,33 @@ export default function App() {
       })
       return
     }
+    if (!llmGate()) { setSelectionMenu(null); return }
     // Keep the menu open (showing a spinner via selectionBusy) instead of
     // closing it immediately -- otherwise a slow LLM call leaves no
     // indication anything is happening at the spot the user right-clicked.
     setSelectionBusy(action)
+    // 「停止」（P3）：模型卡住时这个转圈原来要转满后端 300 秒的超时，Esc 也关不掉
+    const ctrl = new AbortController()
+    selectionAbortRef.current = ctrl
+    const signal = ctrl.signal
     try {
       if (action === 'verify') {
-        const r = await api.verifySelection(content, selection)
+        const r = await api.verifySelection(content, selection, signal)
         setVerifyFindings(r.findings)
       } else if (action === 'trace') {
         // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
         // 问题由后端拼（判据 1）。结果落在右栏的「来龙去脉」标签里，
         // 不是弹层：判据 2，看一条旧记录不该离开这一页。
-        const r = await api.traceMemory(selection)
+        const r = await api.traceMemory(selection, 10, signal)
         setTrace({ answer: r.answer, facts: r.facts, at: new Date().toISOString() })
         // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
         setPaneFocus({ id: 'trace', n: Date.now() })
       } else if (action === 'expand') {
-        const r = await api.expandSelection(content, selection)
+        const r = await api.expandSelection(content, selection, signal)
         if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, '扩展上下文')) toast('建议对不上正文（锚点找不到），没有改动。')
       } else if (action === 'rewrite' || action === 'polish') {
-        const r = await api.rewriteSelection(content, selection, action, spine, beats)
+        const r = await api.rewriteSelection(content, selection, action, spine, beats, signal)
         if (r.revisions.length === 0) toast(r.note || '模型没有给出修改建议。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, action === 'polish' ? '润色' : '重写')) toast('建议对不上正文（锚点找不到），没有改动。')
       } else {
@@ -1493,8 +1513,12 @@ export default function App() {
         toast(`「${String(missed)}」这个动作还没接上`, 'error')
       }
     } catch (e) {
-      toast(`操作失败：${friendlyError(e)}`, 'error')
+      if ((e as Error).name === 'AbortError') toast('已停止')
+      else if (isBackendDown(e)) toast(`操作失败：${friendlyError(e)}`, 'error')
+      else if (isLlmUnreachable(e)) toastAction(`操作失败：${friendlyError(e)}`, '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
+      else toast(`操作失败：${friendlyError(e)}`, 'error')
     } finally {
+      selectionAbortRef.current = null
       setSelectionBusy(false)
       setSelectionMenu(null)
     }
@@ -1678,6 +1702,12 @@ export default function App() {
   }
 
   async function runSkeleton(background = false) {
+    // **`background === true` 才是后台**：原来 `onClick={onRun}` 把鼠标事件当成了 background，
+    // 用户亲手点「生成骨架」失败时一个字都不说（P3 实拍：空正文 / 模型 500 / 后端没起来三种都静默）。
+    const quiet = background === true
+    const why = notePrecondition('skeleton', content, title)
+    if (why) { if (!quiet) toast(why); return }             // 不发请求：后端同一句话
+    if (!quiet && !llmGate()) return
     setLoading('skeleton')
     try {
       const r = await api.genSkeleton(title, content)
@@ -1687,7 +1717,8 @@ export default function App() {
       await persistSkeleton(r.spine, r.beats)
     } catch (e) {
       // 后台自动跑的失败不打扰人（用户没点任何东西）；点「生成骨架」失败才提示
-      if (background) void api.clientLog('warn', '后台骨架生成失败：' + friendlyError(e), '', 'skeleton')
+      if (quiet) void api.clientLog('warn', '后台骨架生成失败：' + friendlyError(e), '', 'skeleton')
+      else if (isLlmUnreachable(e)) toastAction('生成骨架失败：' + friendlyError(e), '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
       else toast('生成骨架失败：' + friendlyError(e), 'error')
     } finally {
       setLoading('')
@@ -1701,7 +1732,8 @@ export default function App() {
       return
     }
     // 一个字都没有、标题也空：模型只能编。让用户先给个方向
-    if (!content.trim() && !title.trim()) { toast('先写个标题或几句话，AI 才知道往哪写'); return }
+    { const why = notePrecondition('tap', content, title); if (why) { toast(why); return } }   // 后端同一句话
+    if (!llmGate()) return
     setLoading('tap')
     setTapMeta(null)
     setTapNotes([])
@@ -1785,7 +1817,9 @@ export default function App() {
    *  把人送到那篇子笔记上——产物是一篇笔记，那就该像打开一篇笔记一样看见它。
    *  判据不合格不拦着落库，用一条提示说出来，要不要重做由用户定。 */
   async function runSlides(style: 'points' | 'talk') {
-    if (!current || !content.trim()) return
+    if (!current) return
+    { const why = notePrecondition('slides', content); if (why) { toast(why); return } }
+    if (!llmGate()) return
     setLoading('slides')
     slidesText.current = ''; setSlidePhase('')
     const ctrl = new AbortController()
@@ -1814,7 +1848,8 @@ export default function App() {
                 : `${r.pages} 页 · ${Math.round(r.cite_coverage * 100)}% 的页带着引用`,
             bad ? 'error' : undefined)
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') toast('做幻灯片失败：' + friendlyError(e), 'error')
+      if ((e as Error).name === 'AbortError') toast('已停止做幻灯片')
+      else toast('做幻灯片失败：' + friendlyError(e), 'error')
     } finally { setLoading(''); setSlidePhase(''); abortRef.current = null }
   }
 
@@ -2157,8 +2192,12 @@ export default function App() {
       },
       onError: (detail) => {
         if (currentRef.current?.id !== noteId) return
-        // 后端的 error 事件都是可恢复的降级，流还在继续——记在这一轮上
-        // 给用户看，但不打断运行
+        // `loop.run` 只在整个跑挂掉时才发 RUN_ERROR（之后没有 RUN_FINISHED）。P3 实拍：模型 500 时
+        // 轮次卡片上挂着一段红字、状态却停在「在写…」，没有 toast、没有「停下了」。这里把话说全。
+        setHarnessDone(true); harnessDoneRef.current = true
+        setNoteHarnessStatus(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`)
+        if (/连不上|拒绝|返回 \d{3}|没应答/.test(detail)) toastAction(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
+        else toast(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, 'error')
         setAgentRounds((rs) => {
           if (!rs.length) return rs
           const next = [...rs]
@@ -2236,7 +2275,8 @@ export default function App() {
       return
     }
     if (!current) return
-    if (!content.trim() && !title.trim()) { toast('先写个标题或几句话，智能续写才有东西可接'); return }
+    { const why = notePrecondition(mode === 'polish' ? 'polish' : 'harness', content, title); if (why) { toast(why); return } }
+    if (!llmGate()) return
     const noteId = current.id
     // 起跑时记一笔发出去的是什么：哪篇、多少字、骨架开头——探针实拍过一次
     // 「跑在了另一篇上」，没有这条日志只能猜。
@@ -2331,7 +2371,9 @@ export default function App() {
   }, [content, autoSync, current?.id])
 
   async function ingestCurrentNote() {
-    if (!content.trim()) return
+    { const why = notePrecondition('ingest', content); if (why) { toast(why); return } }
+    // P3 实拍：「⋯ → 存入知识库」连点两下发了两个 job，同一篇抽两遍事实。ribbon「引用」那个钮本来就按 job 禁用，这里补齐
+    if (job || loading === 'ingest') { toast('这篇正在存入知识库，等它跑完再点'); return }
     setLoading('ingest')
     try {
       const r = await api.ingestText(content, title || '未命名', 'note', current?.id ?? '')
@@ -2399,8 +2441,14 @@ export default function App() {
    *  的父节点，每个文件是它的子节点。几十篇散在树根上没法收拾。 */
   async function importMarkdown(files: FileList | null, under: string = api.ROOT_ID, toKb = false) {
     const list = Array.from(files ?? []).filter((f) => /\.(md|markdown|txt)$/i.test(f.name))
-    if (list.length === 0) return
+    if (list.length === 0) { if (files?.length) toast('只认 .md / .markdown / .txt——选的文件里没有这几种'); return }
     await save()
+    // P3 实拍：后端没起来时选完文件什么都不发生。整段兜住，建到一半失败也说清建了几篇。
+    try { await importMarkdownFiles(list, under, toKb) }
+    catch (e) { toast('导入失败：' + friendlyError(e), 'error'); void reload(); void reloadTree() }
+  }
+
+  async function importMarkdownFiles(list: File[], under: string, toKb: boolean) {
     const strip = (name: string) => name.replace(/\.(md|markdown|txt)$/i, '')
     // 顺带抽进知识库。**这一条是补一个路由上的坑**（第 678 轮）：知识库空态页
     // 上那个主按钮「导入」把人送到这一页，而这一页最上面、最显眼的就是这张
@@ -2535,7 +2583,9 @@ export default function App() {
     const view = editorViewRef.current
     if (!view || !current) return
     const before = view.state.doc.toString()
-    if (!before.trim()) return
+    // P3 实拍：空白笔记上点「智能排版」什么都不发生——不发请求，但要说一句（后端同一句话）
+    { const why = notePrecondition('restructure', before); if (why) { toast(why); return } }
+    if (!llmGate()) return
     // 之前复用 'skeleton'：打开一篇没骨架的笔记自动生成骨架时，「智能排版」也跟着转圈（实拍）
     setLoading('restructure')
     try {
@@ -2684,21 +2734,35 @@ export default function App() {
         pushDiff('图片转表格', before, after)       // 识别结果一样可以接受/撤回
         return
       }
-      // 音频：先传上去插一个播放器，再转写出文字稿
+      // 音频：先传上去、**先把播放器插进正文**，再转写出文字稿。
+      // P3 实拍：语音服务没开时，原来传完就去转写、转写失败整段跳到 catch——用户选的音频
+      // 传上去了却没插进笔记，报错还指去「LLM 供应商」。播放器不需要语音服务，先落下来；
+      // 转写是附赠的，失败只说转写没成。语音服务明知不可达时连转写请求都不发。
       push(patchRun.of({ id, phase: '上传中…' }))
       const a = await api.uploadAsset(f)
       push(logRun.of({ id, at: '已上传', text: `${a.name}（${Math.round(a.bytes / 1024)}KB）` }))
-      push(patchRun.of({ id, phase: '转写中…' }))
-      const t = await api.transcribeOnly(f, f.name)
-      const text = (t.text || '').trim()
       const v = editorViewRef.current!
       const before = v.state.doc.toString()
       const player = `\n<audio controls src="${a.url}"></audio>\n\n`
-      v.dispatch({
-        changes: { from: at(), insert: player + (text ? text + '\n\n' : '') },
-        effects: endRun.of(id),
-      })
-      const after = v.state.doc.toString()
+      v.dispatch({ changes: { from: at(), insert: player } })
+      setContent(v.state.doc.toString())
+      if (asrOffline) {
+        push(patchRun.of({ id, expanded: true, error: `音频已插入；语音服务不可达（${asrOffline}），这次没转写——在设置里检查语音服务地址` }))
+        pushDiff('插入音频', before, v.state.doc.toString())
+        return
+      }
+      push(patchRun.of({ id, phase: '转写中…' }))
+      let text = ''
+      try {
+        text = ((await api.transcribeOnly(f, f.name)).text || '').trim()
+      } catch (e) {
+        push(patchRun.of({ id, expanded: true, error: `音频已插入，转写没成：${friendlyError(e)}` }))
+        pushDiff('插入音频', before, editorViewRef.current!.state.doc.toString())
+        return
+      }
+      const v2 = editorViewRef.current!
+      v2.dispatch({ changes: { from: at(), insert: text ? text + '\n\n' : '' }, effects: endRun.of(id) })
+      const after = v2.state.doc.toString()
       setContent(after)
       pushDiff('插入音频', before, after)
       if (!text) toast('音频已插入，但转写没有出内容')
@@ -2737,6 +2801,7 @@ export default function App() {
       toast(why, 'error')
       return
     }
+    if (!llmGate()) { if (item.key !== 'custom' && to > from) view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } }); setSlash(null); return }
     const id = Math.random().toString(36).slice(2, 10)
     const ctrl = new AbortController()
     runAborts.current.set(id, ctrl)
@@ -2805,9 +2870,8 @@ export default function App() {
       if (ctrl.signal.aborted) {
         push(endRun.of(id))                          // 用户自己停的，不留残骸
       } else {
-        push(patchRun.of({
-          id, error: e instanceof Error ? e.message : String(e), expanded: true,
-        }))
+        // P3 实拍：占位块上原样写着 `Failed to fetch`——翻成人话（后端没起来 / 模型连不上各说各的）
+        push(patchRun.of({ id, error: friendlyError(e), expanded: true }))
       }
     } finally {
       runAborts.current.delete(id)
@@ -2864,7 +2928,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
@@ -2976,6 +3040,7 @@ export default function App() {
           y={selectionMenu.y}
           busy={selectionBusy}
           onAction={handleSelectionAction}
+          onStop={() => selectionAbortRef.current?.abort()}
           onClose={() => { if (!selectionBusy) setSelectionMenu(null) }}
         />
       )}
@@ -3191,7 +3256,7 @@ export default function App() {
         {current && (
           <Ribbon
             noteKey={current.id}
-            defaultOpen={(() => { const pr = new URLSearchParams(location.search).get('probe') ?? ''; return pr === 'kb-tab' || pr.startsWith('notekb:') ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : pr.startsWith('blank:ribbon:') ? pr.slice(13) : (/^note:[^:]+:ribbon:([^:]+)/.exec(pr)?.[1]) })()}
+            defaultOpen={(() => { const pr = (new URLSearchParams(location.search).get('probe') ?? '').split(';;')[0]; return pr === 'kb-tab' || pr.startsWith('notekb:') ? 'cites' : pr === 'history-open' ? 'history' : pr.startsWith('ribbon:') ? pr.slice(7) : pr.startsWith('blank:ribbon:') ? pr.slice(13) : (/^note:[^:]+:ribbon:([^:]+)/.exec(pr)?.[1]) })()}
             tabs={[{
               /* **不给 activate**：它是全应用唯一一个，等于每开一篇笔记都把
                  13 个钮的工具条强行摊开——而 Ribbon 自己的注释写的是
@@ -3340,7 +3405,10 @@ export default function App() {
               {/* 跑得久的动作要有反馈（第 733 轮）。`BUSY_LABEL` 只列真会让用户等的；
                   续写 / 智能续写自己会把按钮变成「停止」，不在这里重复一遍。 */}
               {BUSY_LABEL[loading] && (
-                <span className="fb-busy muted"><span className="spinner" /><span>{slidePhase || BUSY_LABEL[loading]}</span></span>
+                <span className="fb-busy muted"><span className="spinner" /><span>{slidePhase || BUSY_LABEL[loading]}</span>
+                  {/* 做幻灯片有 abortRef 却一直没有停止钮（P3：模型卡住时要等满 600 秒） */}
+                  {loading === 'slides' && <button className="linklike link" style={{ marginInlineStart: 6 }} onClick={() => abortRef.current?.abort()}>停止</button>}
+                </span>
               )}
               {fbMenu && (
                 <ContextMenu at={fbMenu.at} onClose={() => setFbMenu(null)} items={fbMenu.kind === 'harness' ? [
@@ -3351,8 +3419,8 @@ export default function App() {
                     hint: '每轮停下来等你逐条接受/撤回', disabled: loading === 'note-harness',
                     onSelect: () => setReviewEachRound((v) => !v) },
                 ] : [
-                  { label: '存入知识库', icon: 'bx-brain', disabled: !content.trim() || loading === 'ingest',
-                    hint: !content.trim() ? '正文是空的' : undefined, onSelect: () => void ingestCurrentNote() },
+                  { label: '存入知识库', icon: 'bx-brain', disabled: !content.trim() || loading === 'ingest' || !!job,
+                    hint: !content.trim() ? '正文是空的' : job ? '正在存入知识库中' : undefined, onSelect: () => void ingestCurrentNote() },
                   /* 无限续写：**不在标题行上常驻**（用户第 625 轮：「无限续写的按钮不要显示了行吗？」）。
                      收进这里而不是只留树上右键——右键是「知道了才会去用」的地方，不承担发现；
                      这个菜单至少是看得见的一个入口。作用域仍然是当前这篇：分段会建成它的子笔记。 */

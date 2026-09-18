@@ -33,7 +33,9 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], 
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>写作骨架</h2>
-        <button onClick={onRun} disabled={loading}>
+        {/* **不要写 `onClick={onRun}`**：鼠标事件会当成 runSkeleton 的 background 参数，
+            用户亲手点的失败就全进了后台日志（P3 实拍：三种失败都静默）。 */}
+        <button onClick={() => onRun()} disabled={loading}>
           {loading ? <span className="spinner" /> : '生成骨架'}
         </button>
       </div>

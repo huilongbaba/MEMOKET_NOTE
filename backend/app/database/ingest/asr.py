@@ -59,10 +59,24 @@ def drop_hallucinations(text: str) -> str:
 _NORMALIZED = {"".join(p.split()).strip("。！？!?、,，") for p in _HALLUCINATED}
 
 
+def describe_error(exc: BaseException) -> str:
+    """转写失败给用户看的那句话。**说清楚是语音服务不是模型**（P3 实拍：语音服务没开，
+    「插入音频」的报错说的是「去设置里检查 LLM 供应商」——指错了地方）。"""
+    base = store.get_asr_base_url()
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return f"语音服务连不上（{base}）——去设置里检查语音服务地址，或确认那台服务开着"
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"语音服务返回 {exc.response.status_code}（{base}）——转写没成，稍后再试"
+    if isinstance(exc, httpx.HTTPError):
+        return f"语音服务连接出错（{base}）：{type(exc).__name__}"
+    return f"转写失败：{str(exc).strip() or type(exc).__name__}"[:200]
+
+
 async def transcribe(data: bytes, filename: str = "audio.wav",
                      language: str = "auto") -> str:
     base = store.get_asr_base_url()
-    async with httpx.AsyncClient(timeout=1800.0) as client:
+    # 连接 10 秒、转写 30 分钟：长录音真的要转很久，但「根本连不上」不该等那么久（P3）
+    async with httpx.AsyncClient(timeout=httpx.Timeout(1800.0, connect=10.0)) as client:
         r = await client.post(
             f"{base}/v1/audio/transcriptions",
             files={"file": (filename, data)},

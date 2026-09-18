@@ -270,19 +270,21 @@ export const genSkeleton = (title: string, content: string) =>
 // 复用同一套接受/拒绝 UI。
 
 export const rewriteSelection = (
-  content: string, selection: string, intent: 'rewrite' | 'polish', spine: string, beats: string[],
+  content: string, selection: string, intent: 'rewrite' | 'polish', spine: string, beats: string[], signal?: AbortSignal,
 ) =>
   fetch('/api/rewrite', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection, intent, spine, beats }),
+    signal,
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
-export const expandSelection = (content: string, selection: string) =>
+export const expandSelection = (content: string, selection: string, signal?: AbortSignal) =>
   fetch('/api/expand', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection, scope: memoryScope() }),
+    signal,
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
 export type VerifyFinding = {
@@ -293,11 +295,12 @@ export type VerifyFinding = {
   sources: string[]
 }
 
-export const verifySelection = (content: string, selection: string) =>
+export const verifySelection = (content: string, selection: string, signal?: AbortSignal) =>
   fetch('/api/verify', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection, scope: memoryScope() }),
+    signal,
   }).then(json<{ findings: VerifyFinding[]; took_ms: number }>)
 
 export type TapMeta = {
@@ -674,11 +677,12 @@ export const notesCiting = (factId: string) =>
 
 export type TraceOut = { answer: string; facts: Fact[]; took_ms: number }
 
-export const traceMemory = (passage: string, limit = 10) =>
+export const traceMemory = (passage: string, limit = 10, signal?: AbortSignal) =>
   fetch('/api/memory/trace', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ passage, limit }),
+    signal,
   }).then(json<TraceOut>)
 
 export type MemoryStats = {

@@ -85,7 +85,10 @@ def test_骨架生成挂了退回空骨架继续跑(monkeypatch):
     st = _st("一段普通正文，写得够长，不像大纲。" * 4)
     events = _drive(hooks, st)
     assert st.bag["spine"] == "" and st.bag["beats"] == []
-    assert any(e.type.value == "RUN_ERROR" for e in events)
+    # P3 起是 warning 不是 RUN_ERROR：RUN_ERROR 现在只由 loop.run 在整个跑挂掉时发，
+    # 前端据此说「出错停下」——骨架失败跑还在继续，说「停下」就是撒谎
+    assert not any(e.type.value == "RUN_ERROR" for e in events)
+    assert any(e.data.get("name") == "warning" and "骨架" in e.data.get("value", {}).get("error", "") for e in events)
     assert any(e.data.get("name") == "skeleton" for e in events), \
         "失败也要把骨架事件发出去，前端面板才不会一直空着"
 

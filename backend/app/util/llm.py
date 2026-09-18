@@ -38,6 +38,53 @@ import httpx
 from ..database import store
 
 
+# 连接超时单独收紧到 10 秒（P3，`docs/edge-cases.md`「离线」那一列）：地址填错成一个
+# 不回包的主机（实拍 192.168.77.8 关机）时，原来 300 秒的总超时让每个按钮都要转满
+# 操作系统的 SYN 重试（macOS ≈ 75 秒）才报错。**连得上但慢**（本地模型算得久）的
+# 读超时不动，仍是 300 / 600 秒——收的只是「根本连不上」这一种。
+CONNECT_TIMEOUT = 10.0
+TIMEOUT = httpx.Timeout(300.0, connect=CONNECT_TIMEOUT)
+STREAM_TIMEOUT = httpx.Timeout(600.0, connect=CONNECT_TIMEOUT)
+
+
+def describe_error(exc: BaseException) -> str:
+    """把 httpx / 模型侧的异常翻成用户看得懂的一句话。
+
+    P3 实拍：`/` 块生成和智能续写的错误直接把 `HTTPStatusError: Server error '500
+    Internal Server Error' for url 'http://…/chat/completions' For more information
+    check: https://developer.mozilla.org/…` 整段写进了正文里的运行块和轮次卡片——
+    带着模型地址、带着 MDN 链接。这是**唯一**的翻译点：SSE 的 RUN_ERROR、非流式路由的
+    502 都从这里拿话。前端 `friendlyError` 认得出这些句子（含中文就原样显示）。
+    """
+    base = ""
+    try:
+        base = store.get_active_llm_config()["base_url"]
+    except Exception:      # noqa: BLE001 — 解释是附赠的
+        pass
+    where = f"（{base}）" if base else ""
+    if isinstance(exc, httpx.ConnectTimeout):
+        return f"模型连不上：{int(CONNECT_TIMEOUT)} 秒内没连上模型服务{where}——去设置里检查 LLM 供应商的地址"
+    if isinstance(exc, httpx.ConnectError):
+        return f"模型连不上：模型服务拒绝了连接{where}——去设置里检查 LLM 供应商的地址，或确认那台服务开着"
+    if isinstance(exc, (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout)):
+        return f"模型太久没应答{where}——本地模型可能卡住了，稍后再试或换个供应商"
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code in (401, 403):
+            return "模型服务拒绝了请求：API key 不对或没权限，去设置里改"
+        if code == 429:
+            return "模型服务限流了，等一会儿再试"
+        if code == 404:
+            return f"模型服务上没有这个接口或模型{where}——检查设置里的地址和模型名"
+        if code >= 500:
+            return f"模型服务返回 {code}{where}——多半是那边出错了，稍后再试"
+        return f"模型服务返回 {code}{where}"
+    if isinstance(exc, httpx.HTTPError):
+        return f"跟模型服务的连接出错{where}：{type(exc).__name__}"
+    text = str(exc).strip() or type(exc).__name__
+    return text[:200]
+
+
 def _headers() -> dict[str, str]:
     cfg = store.get_active_llm_config()
     return {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
@@ -285,7 +332,7 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
     payload = _payload(messages, stream=False, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
     t0 = time.perf_counter()
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         r = await client.post(f"{cfg['base_url']}/chat/completions",
                               headers=_headers(), json=payload)
         if _drop_rejected_param(payload, r.status_code, r.content):
@@ -346,7 +393,7 @@ async def complete_raw(messages: list[dict], *, max_tokens: int = 1500,
     payload = _payload(messages, stream=False, max_tokens=max_tokens,
                        temperature=temperature, effort=effort, tools=tools)
     t0 = time.perf_counter()
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         r = await client.post(f"{cfg['base_url']}/chat/completions",
                               headers=_headers(), json=payload)
         if _rejects_effort_with_tools(r.status_code, r.content):
@@ -390,7 +437,7 @@ async def stream(messages: list[dict], *, max_tokens: int = 1200,
     payload = _payload(messages, stream=True, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
     t0 = time.perf_counter()
-    async with httpx.AsyncClient(timeout=600.0) as client:
+    async with httpx.AsyncClient(timeout=STREAM_TIMEOUT) as client:
         url = f"{cfg['base_url']}/chat/completions"
         # 先按原样发一次；如果撞上"这个模型不支持自定义 temperature"，把
         # 请求体读完（流式响应不会自动缓冲 body，要 aread() 才能拿到内容
@@ -433,7 +480,7 @@ async def stream_events(messages: list[dict], *, max_tokens: int = 1200,
     t0 = time.perf_counter()
     payload = _payload(messages, stream=True, max_tokens=max_tokens,
                        temperature=temperature, effort=effort)
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         url = f"{cfg['base_url']}/chat/completions"
         async with client.stream("POST", url, headers=_headers(), json=payload) as probe:
             if probe.status_code == 400 and _drop_rejected_param(

@@ -33,7 +33,7 @@ from ..middleware import ledger as ledger_mw
 from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
                       LEDGER_IN_PROMPT)
 from ..checks.skeleton import check_skeleton
-from ..events import CUSTOM_SKELETON, Event
+from ..events import CUSTOM_WARNING, CUSTOM_SKELETON, Event
 from ..state import State
 
 # How many of the user's own headings become beats. Past this the skeleton
@@ -103,7 +103,11 @@ class NoteHooks:
                 # Scoring still works without a skeleton -- spine_fidelity and
                 # beat_coverage judge on weaker evidence, not on none. Losing
                 # the whole session over it would be the worse trade.
-                yield Event.run_error(f"骨架生成失败，退回空骨架继续: {exc}")
+                # **不是 RUN_ERROR**：那个事件现在只由 `loop.run` 在整个跑挂掉时发（前端据此
+                # 说「出错停下」）。这里跑还在继续，走「某一步出错、本轮少了这个能力」那条 warning。
+                from ...util import llm as _llm
+                yield Event.custom(CUSTOM_WARNING, {"middleware": "骨架", "hook": "skeleton",
+                                                    "error": f"骨架生成失败，退回空骨架继续：{_llm.describe_error(exc)}"})
 
         st.bag["spine"], st.bag["beats"] = self.spine, self.beats
         st.bag["profile"] = self.profile

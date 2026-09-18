@@ -193,7 +193,11 @@ async def run(st: State, hooks: Hooks,
     except asyncio.CancelledError:
         raise                       # persistence happens in finally
     except Exception as exc:        # noqa: BLE001
-        yield Event.run_error(f"{type(exc).__name__}: {exc}")
+        # 给用户看的那句话由 `llm.describe_error` 统一翻（P3）：原来这里把
+        # `HTTPStatusError: Server error '500 …' for url 'http://…'` 连模型地址
+        # 一起写进了正文里的运行块和轮次卡片。
+        from ..util import llm as _llm
+        yield Event.run_error(_llm.describe_error(exc))
     finally:
         # Losing five rounds of writing because round six blew up is the
         # worst possible failure. Shield it: after a CancelledError, a plain

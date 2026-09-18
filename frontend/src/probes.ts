@@ -21,6 +21,7 @@ import type { Note, TreeRow } from './api'
 export type ProbeCtx = Record<string, any>
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const ranOnce = new Set<string>()
 
 export function runProbe(probe: string, ctx: ProbeCtx): void {
   /* 用 `;;` 串起来就是「先跑这个再跑那个」：`open:kb;;rect:.kb-search`。
@@ -354,6 +355,128 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       // 跑完把正文滚回顶部：「引用知识库 / 自由续写」那一行在编辑器上方，续写会把视口滚到插入处
       setTimeout(() => void actionsRef.current.runMagicTap().then(() => { const el = document.querySelector('.note-scroll'); if (el) el.scrollTop = 0 }), 1500)
     })() }
+  }
+  // ---- P3（临界条件表 docs/edge-cases.md）：四种可用 `;;` 拼接的步骤 + 两种场景。
+  //   netdown[:<ms>]          把 fetch 换成「后端没起来」：/api/* 一律 TypeError('Failed to fetch')
+  //                            （/api/client-log 放行——日志还要靠它写）；ms = 几毫秒之后再换，好让笔记先打开
+  //   click:<ms>:<选择器>      等 ms 毫秒点一下。选择器可以写 text=<文字>：在 button / [role=menuitem] /
+  //                            .palette-item / .chip 里找文字相等（去空白）的那个
+  //   toasts:<ms>              等 ms 毫秒把 toast / 红字 / 运行块 / 忙态写进日志——「静默什么都不发生」靠它证
+  //   type:<ms>:<文字>          等 ms 毫秒往编辑器文末插一段（不落库）
+  //   selact:<id>:<动作>       选第一段正文 → 右键菜单 → 点那一项（verify / rewrite / polish / expand / trace / custom）
+  //   audiopick:<id>[:bad]     打开笔记 → `/` 插入音频 → 选一个合成的小 wav（bad = 选一个 .txt 冒充音频）
+  // 这几种步骤没有 harnessProbeDone 挡着，而 App 的探针 effect 在 notes / tree 变时会重跑——
+  // 每一步只跑一次（实拍：click 步骤被重跑，toast 出现两遍）。
+  if (/^(netdown|click:|toasts:|type:)/.test(probe ?? '')) {
+    if (ranOnce.has(probe)) return
+    ranOnce.add(probe)
+  }
+  if (probe?.startsWith('netdown')) {
+    const ms = Number(probe.split(':')[1] ?? 0)
+    setTimeout(() => {
+      const real = window.fetch.bind(window)
+      window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        // 拼出来写：test_api_contract 会把源码里每个 `/api/…` 字面量当成「前端调的端点」
+        if (url.startsWith('/' + 'api/') && !url.startsWith('/' + 'api/client-log')) return Promise.reject(new TypeError('Failed to fetch'))
+        return real(input, init)
+      }) as typeof fetch
+      void api.clientLog('warn', 'netdown: /api/* 从现在起全部 Failed to fetch', '', 'probe')
+    }, ms)
+    return
+  }
+  if (probe?.startsWith('click:')) {
+    const [, ms, ...rest] = probe.split(':')
+    const sel = decodeURIComponent(rest.join(':'))
+    setTimeout(() => {
+      const el = probeFind(sel)
+      void api.clientLog('warn', `click ${sel} found=${!!el} disabled=${String((el as HTMLButtonElement | null)?.disabled ?? '-')}`, '', 'probe')
+      el?.click()
+    }, Number(ms))
+    return
+  }
+  if (probe?.startsWith('toasts:')) {
+    setTimeout(() => {
+      const texts = (q: string) => Array.from(document.querySelectorAll(q)).map((t) => (t.textContent ?? '').trim().slice(0, 160)).filter(Boolean)
+      void api.clientLog('warn', `toasts=${JSON.stringify(texts('.toaster .toast'))} alerts=${JSON.stringify(texts('[role=alert]'))} runs=${JSON.stringify(texts('.cm-run-head'))} runlog=${JSON.stringify(texts('.cm-run-log'))} busy=${JSON.stringify(texts('.fb-busy, .fb-btn.running, .fb-btn[disabled], .palette .spinner'))} chars=${document.querySelector('.note-scroll .cm-content') ? EditorView.findFromDOM(document.querySelector('.note-scroll .cm-content') as HTMLElement)?.state.doc.length : '-'}`, '', 'probe')
+    }, Number(probe.slice(7)))
+    return
+  }
+  if (probe?.startsWith('type:')) {
+    const [, ms, ...rest] = probe.split(':')
+    setTimeout(() => {
+      const el = document.querySelector('.note-scroll .cm-content')
+      const v = el && EditorView.findFromDOM(el as HTMLElement)
+      if (v) { const end = v.state.doc.length; v.dispatch({ changes: { from: end, insert: decodeURIComponent(rest.join(':')) }, selection: { anchor: end } }) }
+    }, Number(ms))
+    return
+  }
+  //   selact:new:<动作>        先新建一篇、写两段再选（给「无知识库」那一列：换个空库用户跑）
+  //   mdpick[:netdown]         启动栏「导入」那张 Markdown 卡：选一个合成的 .md（netdown = 选之前先把后端「拔掉」）
+  if (probe?.startsWith('mdpick') && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    void (async () => {
+      await wait(500)
+      if (probe.endsWith(':netdown')) runProbe('netdown', ctx)
+      const file = new File([new TextEncoder().encode('# 导入测试\n\n这是一篇从 .md 导进来的笔记。')], 'imported.md', { type: 'text/markdown' })
+      const dt = new DataTransfer(); dt.items.add(file)
+      void api.clientLog('warn', 'mdpick start', '', 'probe')
+      try { await actionsRef.current.importMarkdown(dt.files, 'root', false); void api.clientLog('warn', 'mdpick returned', '', 'probe') }
+      catch (e) { void api.clientLog('warn', `mdpick threw ${String(e)}`, '', 'probe') }
+    })()
+    return
+  }
+  if (probe?.startsWith('selact:') && (notes.length || probe.startsWith('selact:new:')) && !harnessProbeDone.current) {
+    const [, id, action] = probe.split(':')
+    const n = id === 'new' ? ({} as Note) : notes.find((x) => x.id === id)
+    if (n) { harnessProbeDone.current = true; void (async () => {
+      if (id === 'new') {
+        await newNote(); await wait(1200)
+        const el = document.querySelector('.note-scroll .cm-content'); const v0 = el && EditorView.findFromDOM(el as HTMLElement)
+        if (v0) v0.dispatch({ changes: { from: 0, insert: '# 空库上的一篇\n\n今天跟供应商确认了 PCBA 样品的交期，4 月 10 日拿到手板之后再定下一步的测试安排。\n\n第二段是关于预算的：这一批的成本比上一批高了 12%。\n' } })
+      } else await switchTo(n)
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      const text = v.state.doc.toString()
+      let from = 0
+      for (const line of text.split('\n')) { if (line.trim().length >= 12 && !line.startsWith('#') && !line.startsWith('```')) break; from += line.length + 1 }
+      const to = Math.min(text.length, (text.indexOf('\n', from) < 0 ? text.length : text.indexOf('\n', from)))
+      v.focus(); v.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) })
+      await wait(300)
+      const c = v.coordsAtPos(from)
+      setSelectionMenu({ x: (c?.left ?? 400) + 40, y: (c?.bottom ?? 300) + 4, text: text.slice(from, to) })
+      await wait(500)
+      void api.clientLog('warn', `selact ${action} start chars=${text.length}`, '', 'probe')
+      await actionsRef.current.handleSelectionAction(action as SelectionAction)
+      void api.clientLog('warn', `selact ${action} returned chars=${editorViewRef.current?.state.doc.length ?? '-'}`, '', 'probe')
+    })() }
+    return
+  }
+  if (probe?.startsWith('audiopick:') && notes.length && !harnessProbeDone.current) {
+    const [, id, bad] = probe.split(':')
+    const n = notes.find((x) => x.id === id)
+    const item = SLASH_ITEMS.find((x) => x.key === 'audio')
+    if (n && item) { harnessProbeDone.current = true; void (async () => {
+      await switchTo(n)
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      const end = v.state.doc.length
+      v.focus(); v.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 } })
+      ctx.setSlash({ item, from: end + 2, to: end + 2, x: 300, y: 300 })
+      await wait(300)
+      // 0.2 秒的 8kHz 静音 wav：够小，真语音服务也认
+      const wav = () => { const n = 1600; const b = new ArrayBuffer(44 + n); const d = new DataView(b); const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)) }
+        w(0, 'RIFF'); d.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 8000, true); d.setUint16(32, 1, true); d.setUint16(34, 8, true); w(36, 'data'); d.setUint32(40, n, true); return b }
+      const file = bad ? new File([new TextEncoder().encode('这不是音频')], 'notes.txt', { type: 'text/plain' }) : new File([wav()], 'probe.wav', { type: 'audio/wav' })
+      const dt = new DataTransfer(); dt.items.add(file)
+      void api.clientLog('warn', `audiopick ${bad ? 'bad' : 'wav'} chars=${v.state.doc.length}`, '', 'probe')
+      await actionsRef.current.onPickFile(dt.files)
+      void api.clientLog('warn', `audiopick returned chars=${editorViewRef.current?.state.doc.length ?? '-'}`, '', 'probe')
+      // 占位块在文末，CM 只渲染视口内的东西——滚到底，截图和 toasts 步骤才看得见它
+      const v2 = editorViewRef.current
+      if (v2) v2.dispatch({ effects: EditorView.scrollIntoView(v2.state.doc.length, { y: 'end', yMargin: 40 }) })
+    })() }
+    return
   }
   // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
   // `slash:<词>` = 打完 `/` 再打一个过滤词，看筛选之后的菜单（第 705 轮加排版组时要看）
@@ -931,4 +1054,13 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTreeMenu({ row, at: { x: 260, y: 180 } })
     setTimeout(() => void api.clientLog('warn', `tree-menu row=${row.title} ctx-target=${document.querySelectorAll('.tree-node.ctx-target').length} title=${(document.querySelector('.tree-node.ctx-target .tree-title') as HTMLElement | null)?.textContent ?? '-'}`, '', 'probe'), 1500)
   }
+}
+
+/** `click:` 用的查找：`text=<文字>` 在可点的元素里按文字找（去空白后相等），否则当 CSS 选择器。 */
+function probeFind(sel: string): HTMLElement | null {
+  if (!sel.startsWith('text=')) return document.querySelector(sel) as HTMLElement | null
+  const want = sel.slice(5).replace(/\s+/g, '')
+  return Array.from(document.querySelectorAll<HTMLElement>('button, [role=menuitem], .palette-item, .chip, a.link, .fb-btn'))
+    .find((e) => (e.textContent ?? '').replace(/\s+/g, '') === want
+      || (e.querySelector('.cm-label, .fb-label')?.textContent ?? '').replace(/\s+/g, '') === want) ?? null
 }

@@ -106,6 +106,14 @@ _settings = get_settings()
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
+@app.exception_handler(httpx.HTTPError)
+async def _llm_unreachable(_request: Request, exc: httpx.HTTPError):
+    """模型侧的 httpx 异常从非流式路由（校验 / 重写 / 扩展 / 骨架 / 来龙去脉…）冒出来时，
+    原来是一个光秃秃的 500，前端只能说「后端处理出错（多半是模型没应答）」。
+    统一翻成 502 + `llm.describe_error` 那句话（P3）：连不上、拒绝、401、限流各说各的。"""
+    return JSONResponse({"detail": llm.describe_error(exc)}, status_code=502)
+
+
 @app.middleware("http")
 async def _reject_cross_site_writes(request: Request, call_next):
     # 顺手给模型用量账本记下「谁、哪个功能」：路径去掉 /api/ 和 id 段（/api/notes/abc/sync → notes/sync）

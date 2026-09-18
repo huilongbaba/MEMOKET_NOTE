@@ -23,6 +23,7 @@ TAP_KEEP_LAST = 6000
 TAP_SUMMARY_MAX = 2000
 from ..database import retrieval
 from ..editor import profile
+from ..editor.preconditions import note_precondition
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
@@ -113,8 +114,8 @@ def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int 
 @router.post("/skeleton", response_model=SkeletonOut)
 async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     """线 1：生成核心张力（spine）+ 结构节拍（beats）。"""
-    if not body.content.strip() and not body.title.strip():
-        raise HTTPException(400, "先写点内容（或标题）再生成骨架")   # 空正文也会花一次模型调用，答一句「内容尚未提供」
+    if why := note_precondition("skeleton", body.content, body.title):
+        raise HTTPException(400, why)   # 空正文也会花一次模型调用，答一句「内容尚未提供」；前端同一句话先拦
     t0 = time.perf_counter()
     system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user)
     parsed, text = await llm.complete_json_raw(
@@ -154,8 +155,8 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         event: delta  —— 正文增量
         event: done
     """
-    if not body.content.strip() and not body.title.strip():
-        raise HTTPException(400, "先写点内容（或标题）再续写")   # 空正文空标题照样开流、白花一次模型调用（第 265 轮实测）
+    if why := note_precondition("tap", body.content, body.title):
+        raise HTTPException(400, why)   # 空正文空标题照样开流、白花一次模型调用（第 265 轮实测）
     facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6, scope=body.scope)
 
     system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
@@ -250,7 +251,7 @@ async def slides(body: SlidesIn, user: str = Depends(current_user)):
         event: done
     """
     if not body.content.strip():
-        raise HTTPException(400, "这篇还没有正文，没有可以做成幻灯片的内容")
+        raise HTTPException(400, note_precondition("slides", ""))
     note = store.get_note(user, body.note_id) if body.note_id else None
 
     base = prompts.SLIDES_SYSTEM + (prompts.SLIDES_TALK_EXTRA if body.style == "talk" else "")

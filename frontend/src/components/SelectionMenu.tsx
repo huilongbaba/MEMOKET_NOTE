@@ -15,12 +15,14 @@ const BUSY_LABEL: Record<SelectionAction, string> = {
   verify: '校验中…', rewrite: '重写中…', polish: '润色中…', expand: '找上下文…', trace: '查来龙去脉…', custom: '处理中…',
 }
 
-export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
+export default function SelectionMenu({ x, y, busy, onAction, onStop, onClose }: {
   x: number
   y: number
   /** false = 没在忙；否则是正在跑的那个动作（实拍：一个光秃秃的转圈，不知道在等什么） */
   busy: false | SelectionAction
   onAction: (action: SelectionAction) => void
+  /** 「停止」：模型卡住时别让人干等后端 300 秒的超时（P3） */
+  onStop?: () => void
   onClose: () => void
 }) {
   useRestoreFocus()   // 关掉之后焦点回到打开之前的地方（编辑器 / 树行）
@@ -59,7 +61,9 @@ export default function SelectionMenu({ x, y, busy, onAction, onClose }: {
       style={{ position: 'fixed', left, top, width: 160, padding: 4, zIndex: 250 }}
     >
       {busy ? (
-        <div className="muted" style={{ padding: 10, textAlign: 'center', fontSize: 'var(--t-sm)' }}><span className="spinner" /> {BUSY_LABEL[busy]}</div>
+        <div className="muted" style={{ padding: 10, textAlign: 'center', fontSize: 'var(--t-sm)' }}><span className="spinner" /> {BUSY_LABEL[busy]}
+          {onStop && <button className="linklike link" style={{ marginInlineStart: 8 }} onClick={onStop}>停止</button>}
+        </div>
       ) : (
         <div className="palette-results" style={{ padding: 0 }}>
           <div className="palette-item" onClick={() => onAction('verify')}><Icon n="bx-check-shield" /> 校验</div>

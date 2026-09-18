@@ -4,7 +4,8 @@ import { friendlyError, isLlmUnreachable } from '../../util/friendlyError'
 describe('friendlyError', () => {
   it('连接类错误指向设置页', () => {
     expect(friendlyError(new Error('All connection attempts failed'))).toContain('设置')
-    expect(friendlyError('TypeError: Failed to fetch')).toContain('模型连不上')
+    // P3：浏览器连不上后端 ≠ 后端连不上模型——这一句不再指去设置页
+    expect(friendlyError('TypeError: Failed to fetch')).toContain('连不上应用后台')
     expect(isLlmUnreachable(new Error('500 Internal Server Error'))).toBe(true)
   })
   it('其它错误原样保留，去掉 Error: 前缀', () => {

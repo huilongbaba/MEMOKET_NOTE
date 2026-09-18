@@ -140,7 +140,7 @@ async def ingest_audio(bg: BackgroundTasks,
         text = await asr.transcribe(data, filename=file.filename or "audio.wav",
                                     language=language)
     except Exception as exc:
-        raise HTTPException(502, f"transcription failed: {exc}") from exc
+        raise HTTPException(502, asr.describe_error(exc)) from exc
     if not text:
         return IngestOut(job_id="", status="done", facts=0,
                          detail="转写结果为空，可能是静音音频")
@@ -162,7 +162,7 @@ async def transcribe_only(file: UploadFile = File(...),
         text = await asr.transcribe(data, filename=file.filename or "audio.wav",
                                     language=language)
     except Exception as exc:
-        raise HTTPException(502, f"transcription failed: {exc}") from exc
+        raise HTTPException(502, asr.describe_error(exc)) from exc
     return {"text": text}
 
 

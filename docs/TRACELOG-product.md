@@ -173,3 +173,69 @@
 - `notes` 指纹开工 / 收尾：482 行 / `max(updated_at)=2026-09-16T02:53:27` / 321,250 字 /
   `47dcc54be60aa4f2` / `note_revisions` 44 / `harness_edits` 0 —— **一个字没动**。
 - 真跑 8 次（magic tap ×4、`/` 块生成 ×4，含 before 那几次），全在探针模式下、不落库。
+
+
+## P3 · 第 770 轮：B 线临界条件表 + 修第一批（2026-09-18）
+
+> HEAD 开工时 `1276a5f`。**一个真笔记都没碰**：所有探针跑在 scratch 拷贝上（`KITE_DATA_DIR=$S/p3data`，
+> `notes.sqlite3` + `terrence/` 拷贝），供应商指向一个假模型 / 假语音服务（`$S/fakellm.py`，`ok / err500 / err401 / hang`
+> + `asr-ok / asr-err` 六种模式，`$S/p3cfg.py` 切），黑洞用真关机的 `192.168.77.8`，「后端没起来」用 `netdown` 探针把
+> `fetch` 换成一律 `Failed to fetch`。截图 `$S/p3-*.png`（52 张）。导出那几个文件另一个 agent 在改，一行没碰。
+
+- **用户怎么发现**：第 768 轮原话「容错根本没做……好好查一下这些功能的临界条件、容错处理」。第一次用最容易栽的三种形状：
+  点了**什么都不发生**（新建 / 导入 / 智能排版 / 生成骨架）；**指错地方**的报错（后端没起来说「去设置里检查 LLM 供应商」，
+  语音服务没开也说 LLM）；**明知不可达还转圈**（状态栏红着「LLM 不可达」，每个按钮照样发请求，黑洞主机下转 75 秒+，
+  非流式动作没有停止、要等满 300 秒）。
+- **复现**：先从代码数出动作清单（`SLASH_ITEMS` 18 项、`SelectionAction` 6 项、浮动按钮 + ▾ + ⋯ 19 项、ribbon 六页签 12 行、
+  右栏 6 行、侧栏 / 导入 / 树右键 16 行 = 67 行），逐格填 `docs/edge-cases.md`（555 格）。**表的统计：✅ 189 / ✅P3 55 /
+  ❌ 2 / ？ 19 / — 286**。❌ 全部先复现：新加 7 种可拼接探针（`netdown` / `click` / `toasts` / `type` / `selact` / `audiopick` /
+  `mdpick`），`toasts:` 把 toast、红字、运行块、忙态写进日志——「静默」靠 `toasts=[] runs=[]` + 后端 0 个请求证，
+  不靠推理。修前复现到 18 格（表末「复现记录」逐条：探针串 + before/after 截图名）。
+  最扎眼的五个：① 生成骨架三种失败全静默（`onClick={onRun}` 把鼠标事件当成了 `background`）；② 后端没起来时
+  新建 / 导入 .md 什么都不发生（promise 静默拒绝）；③ `/` 块和智能续写的错误把 `HTTPStatusError … for url 'http://…'
+  For more information check: https://developer.mozilla.org/…` 整段写进正文的运行块 / 轮次卡片，状态还停在「在写…」；
+  ④ 插入音频在语音服务没开时音频传上去了却没插进笔记、报错指去 LLM 供应商；⑤ 校验在黑洞主机下 11 秒仍在转、
+  状态栏同时红着「LLM 不可达」。计划外发现两条：`custom-empty` / `click` 这类无 `harnessProbeDone` 的探针步骤会被
+  App 的探针 effect 在 notes 变化时重跑（toast 出两遍，`ranOnce` 兜住）；`ribbon:` 的 defaultOpen 读整条探针串，
+  `;;` 后面的东西被当成页签名（改成只读第一段）。另：开发端口 47232 会跟另一个 agent 的实例撞（一次「address already in use」，重跑即可）。
+- **依据**：`friendlyError` 把 `Failed to fetch`（浏览器→后端）和 `All connection attempts failed`（后端→模型）都翻成
+  「模型连不上——去设置」；`loop.run` 的 `except` 直接 `f"{type(exc).__name__}: {exc}"`；`llm.py` 四个 `httpx.AsyncClient(timeout=300/600)`
+  连接超时也是 300 秒；`runSlides` 有 `abortRef` 却没有停止钮；`SelectionMenu` 忙态只有转圈；⋯ 菜单「存入知识库」只按
+  `loading==='ingest'` 禁用、不看 `job`（ribbon 那处看了）；`onPickFile` 音频路径先转写后插播放器；`newNote` / `newNoteUnder` /
+  `importMarkdown` 没有 catch；`restructureNote` 空正文 `return`。九种条件的摆法记在表头。
+- **改了什么**（9 处根因，覆盖 55 格；前后端共用同一份前置判断）：
+  ① 新增 `editor/preconditions.py` ↔ `editor/preconditions.ts`（骨架 / 续写 / 智能续写 / 打磨 / 排版 / 幻灯片 / 存入知识库的
+  空正文那句话，一份两处，`test_p3_edge_cases::test_precondition_strings_exist_in_frontend_verbatim` 逐句核对），
+  骨架 / 续写 / 排版路由改用它，前端各入口先拦不发请求；② `SkeletonPanel` 改 `onClick={() => onRun()}`，`runSkeleton` 只认
+  `background === true`；③ `friendlyError` 分三档：后端没起来 / 语音服务 / 后端翻好的中文原样给；④ `llm.describe_error()`
+  一处翻译：`loop.run` 的 RUN_ERROR、`main.py` 全局 `httpx.HTTPError → 502`、排版的 502 都从这里拿话；`hooks/note.py`
+  骨架失败改发 `warning`（RUN_ERROR 现在只在整个跑挂掉时发，前端据此说「出错停下」+ toast + 状态行）；⑤ 连接超时
+  `httpx.Timeout(300/600, connect=10)`，语音同款 `(1800, connect=10)`；⑥ 前端 `llmGate()`：健康检查红着「LLM 不可达」就拦
+  （续写 / 智能续写 / 打磨 / 骨架 / 排版 / 幻灯片 / `/` 块 / 右键五项），带「打开设置」并顺手重测；⑦ 右键菜单忙态「停止」
+  （`selectionAbortRef` + 四个 api 加 `signal`）、幻灯片忙态胶囊「停止」；⑧ 插入音频：先插播放器，语音离线不发转写，
+  失败保留播放器只说转写没成；`asr.describe_error` 说语音服务；⑨ 新建 / 插入子笔记 / 导入 .md 兜 catch → toast；
+  ⋯「存入知识库」按 `job` 禁用 + 函数里再拦；`runBlock` 的 catch 走 `friendlyError`；`runSlides` 中止有 toast。
+  测试：后端 `test_p3_edge_cases.py` 28 条（+ `test_note_hooks` 改 1 条）；前端 `p3EdgeCases.test.ts` 8 条（+ `friendlyError.test.ts` 改 1 条）。
+- **前后对比**（18 对，全在 `docs/edge-cases.md`「复现记录」，这里点名）：`p3-skeleton-blank-before.png`（点了没反应）→
+  `-after.png`（toast「先写点内容（或标题）再生成骨架」，0 请求）；`p3-newnote-netdown-before/after`；`p3-mdpick-netdown-before/after`；
+  `p3-restructure-blank-before/after`；`p3-ingest-double-before`（两个 POST）→ `-after`（第二下禁用）；`p3-slashprompt-err500-before`
+  （运行块一段 httpx 英文 + MDN 链接）→ `-after`（「模型服务返回 500（地址）——多半是那边出错了」）；`p3-harness-err500-before/after`；
+  `p3-tap-netdown-before`（「去设置里检查 LLM 供应商」+ 打开设置）→ `-after`（「连不上应用后台…」）；`p3-selact-verify-blackhole-before`
+  （红字 + 转圈）→ `-after`（10 秒报「10 秒内没连上（地址）」）+ `p3-tap-blackhole-gate-after`（红着就拦）；
+  `p3-selact-rewrite-hang-before`（只有转圈）→ `-after`（停止 → 「已停止」）；`p3-slides-hang-before/after`；
+  `p3-audiopick-asrdown-before`（音频没插进笔记、报错指 LLM）→ `-after`（播放器已插入 + 「语音服务不可达…这次没转写」，0 转写请求）；
+  `p3-audiopick-asrerr-before/after`。
+- **下一步（剩下的 ❌ / ？ 排序）**：1) 智能排版 × 超时、生成骨架 × 超时——两格 ❌，加停止（AbortController + 忙态钮，跟幻灯片同款）；
+  2) 图片转表格 / 语音输入 / 录音 / 存入知识库 的超时与「停止只撤块、请求照跑、跑完仍插进正文」（？×5，先复现）；
+  3) 导入页 Obsidian / Notion / 飞书和关系卡的 toast 用 `e.message` 原样（英文 `Failed to fetch`），改走 `friendlyError`（？×4）；
+  4) 复制路径 / 删除 5 秒后真删失败 的静默（？×2）；5) 来龙去脉在模型报错下 KITE 内部重试转多久（？×1）；6) 零库时校验 / 扩展
+  要不要零调用直接拦（表里两条备注）；7) 续写 / 智能续写第二下 = 停止但没有一句「已停止」。
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**1988 passed**（基线 1960；+28 `test_p3_edge_cases.py`；`test_note_hooks` 一条改成认 warning）。
+- 前端 `npm test`：**54 文件 / 284 条**（基线 53 / 276；+`p3EdgeCases.test.ts` 8 条），exit 0（27 个 check 脚本全绿）。
+- `notes` 指纹开工 / 收尾：482 行 / `max(updated_at)=2026-09-16T02:53:27` / 321,250 字 / `47dcc54be60aa4f2` / `note_revisions` 44
+  —— **一个字没动**（探针全在 scratch 拷贝上跑；真库连读都只读了一次算指纹）。
+- 真模型调用 **0 次**（全部假服务）；探针跑 57 次。
+
