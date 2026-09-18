@@ -1,4 +1,5 @@
 /** 后端 API 封装。用户身份走 X-User-Id 头，原型阶段不做认证。 */
+import type { DocIntent } from './util/docIntent'
 
 export type Note = {
   id: string
@@ -18,6 +19,8 @@ export type Note = {
    * 跟随切页就没了——而 harness 每轮都拿它当主线依据。 */
   spine: string
   beats: string[]
+  /** 文档意图（P9，agent-native-editor §3.1）：目标 / 读者 / 完成标准；source = prefill / user / 空 */
+  intent?: DocIntent
   created_at: string
   updated_at: string
 }
@@ -257,12 +260,21 @@ export const deleteProfileEntry = (id: string) =>
 
 // ---------------------------------------------------------------- 写作
 
-export const genSkeleton = (title: string, content: string) =>
+/** `intent` 是文档意图那句（`util/docIntent.intentText`），后端拼进 system 第一段（P9）；
+ *  `signal`：模型卡住时的「停止」（P3 遗留：骨架 × 超时原来只能干等 300 秒）。 */
+export const genSkeleton = (title: string, content: string, intent = '', signal?: AbortSignal) =>
   fetch('/api/skeleton', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify({ title, content, intent }),
+    signal,
   }).then(json<{ spine: string; beats: string[]; notes?: string[]; took_ms: number }>)
+
+/** 存文档意图（P9）。三个字段全空也照存 = 「这篇不要意图」。 */
+export const saveIntent = (noteId: string, intent: DocIntent) =>
+  fetch(`/api/notes/${noteId}/intent`, {
+    method: 'PUT', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(intent),
+  }).then(json<Note>)
 
 // ---------------------------------------------------------------- 选中文本操作
 //
@@ -271,19 +283,21 @@ export const genSkeleton = (title: string, content: string) =>
 
 export const rewriteSelection = (
   content: string, selection: string, intent: 'rewrite' | 'polish', spine: string, beats: string[], signal?: AbortSignal,
+  /** 文档意图那句（P9）——润色终于知道这篇是给谁看的 */
+  docIntent = '',
 ) =>
   fetch('/api/rewrite', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection, intent, spine, beats }),
+    body: JSON.stringify({ content, selection, intent, spine, beats, doc_intent: docIntent }),
     signal,
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
-export const expandSelection = (content: string, selection: string, signal?: AbortSignal) =>
+export const expandSelection = (content: string, selection: string, signal?: AbortSignal, intent = '') =>
   fetch('/api/expand', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection, scope: memoryScope() }),
+    body: JSON.stringify({ content, selection, scope: memoryScope(), intent }),
     signal,
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
@@ -295,11 +309,11 @@ export type VerifyFinding = {
   sources: string[]
 }
 
-export const verifySelection = (content: string, selection: string, signal?: AbortSignal) =>
+export const verifySelection = (content: string, selection: string, signal?: AbortSignal, intent = '') =>
   fetch('/api/verify', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection, scope: memoryScope() }),
+    body: JSON.stringify({ content, selection, scope: memoryScope(), intent }),
     signal,
   }).then(json<{ findings: VerifyFinding[]; took_ms: number }>)
 
@@ -369,11 +383,13 @@ export async function magicTap(
   following = '',
   /** 笔记标题：正文还很短的时候，它是模型唯一知道的方向 */
   title = '',
+  /** 文档意图那句（P9）：system 的第一段 */
+  intent = '',
 ): Promise<{ truncated: boolean; fakeCitations: string[] }> {
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, spine, beats, following, title, scope: memoryScope() }),
+    body: JSON.stringify({ content, spine, beats, following, title, scope: memoryScope(), intent }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
@@ -750,7 +766,7 @@ export const memoryRelationsBatch = (passages: string[]) =>
   fetch('/api/memory/relations/batch', {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ passages, scope: memoryScope() }),
-  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[]; kinds?: number } | null)[]; took_ms: number }>)
+  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[]; kinds?: number; facts?: Fact[] } | null)[]; took_ms: number }>)
 export const supersedeFact = (oldId: string, newId: string) =>
   fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {
     method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ superseded_by: newId }),
@@ -864,20 +880,20 @@ export const addFact = (noteId: string, text: string, when = '') =>
     body: JSON.stringify({ note_id: noteId, text, when }),
   }).then(json<NoteKbFact>)
 
-export const ingestAudio = (file: Blob, filename = 'recording.webm', title = '') => {
+export const ingestAudio = (file: Blob, filename = 'recording.webm', title = '', signal?: AbortSignal) => {
   const fd = new FormData()
   fd.append('file', file, filename)
   fd.append('title', title)
   fd.append('language', 'auto')
-  return fetch('/api/ingest/audio', { method: 'POST', headers: headers(), body: fd })
+  return fetch('/api/ingest/audio', { method: 'POST', headers: headers(), body: fd, signal })
     .then(json<{ job_id: string; status: string; detail: string }>)
 }
 
-export const transcribeOnly = (file: Blob, filename = 'recording.webm') => {
+export const transcribeOnly = (file: Blob, filename = 'recording.webm', signal?: AbortSignal) => {
   const fd = new FormData()
   fd.append('file', file, filename)
   fd.append('language', 'auto')
-  return fetch('/api/ingest/transcribe', { method: 'POST', headers: headers(), body: fd })
+  return fetch('/api/ingest/transcribe', { method: 'POST', headers: headers(), body: fd, signal })
     .then(json<{ text: string }>)
 }
 
@@ -1425,11 +1441,12 @@ export async function composeBlock(
  * **模型只输出「第几行改成什么结构」，一个字的原文都不输出**，原文由后端按行
  * 搬运（见 app/restructure.py）。所以"排版顺手改了内容"在结构上就不可能发生，
  * 不是靠提示词说「不要改内容」。 */
-export const restructureNote = (noteId: string, title: string, content: string) =>
+export const restructureNote = (noteId: string, title: string, content: string, intent = '', signal?: AbortSignal) =>
   fetch('/api/compose/restructure', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ note_id: noteId, title, content }),
+    body: JSON.stringify({ note_id: noteId, title, content, intent }),
+    signal,
   }).then(json<{ changed: boolean; content: string; ops: number
                  skipped: string[]; detail: string }>)
 
@@ -1448,10 +1465,10 @@ export const uploadAsset = (file: File) => {
 /** 一张图 → markdown 表格。看图走**本地**那台带视觉的模型，图片不出内网。
  * 识别不出表格时 detected=false，前端如实说「没有检测到表格」——比硬塞一张
  * 空表进用户笔记好得多。 */
-export const tableFromImage = (file: File) => {
+export const tableFromImage = (file: File, signal?: AbortSignal) => {
   const fd = new FormData()
   fd.append('file', file, file.name)
-  return fetch('/api/compose/table-from-image', { method: 'POST', headers: headers(), body: fd })
+  return fetch('/api/compose/table-from-image', { method: 'POST', headers: headers(), body: fd, signal })
     .then(json<{ detected: boolean; table: string; raw: string }>)
 }
 

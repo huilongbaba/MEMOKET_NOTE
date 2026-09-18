@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import copy
 import os
+from contextlib import contextmanager
+from types import SimpleNamespace
 import re
 
 from ..kb.who import norm_who
@@ -116,6 +118,54 @@ def _export_provider_env() -> None:
     cfg = store.get_active_llm_config()
     os.environ["OPENAI_API_KEY"] = cfg["api_key"]
     os.environ["OPENAI_BASE_URL"] = cfg["base_url"]
+
+
+class ProviderFailed(RuntimeError):
+    """KITE 内部有模型调用失败、且最终没拿到任何依据——答案是回退出来的，不能当「没记录」给用户。"""
+
+
+@contextmanager
+def _watch_provider():
+    """给 `memoket_kite.providers.llm._http_llm` 装观察器（它在 `llm()` 里按模块全局名查，运行时可换）：
+    记下第一次失败的那句；之后的调用直接抛（不再打模型），退避的 `time.sleep` 也跳过——
+    模型 500 时 30 秒变 1 秒。用完原样装回去。"""
+    from memoket_kite.providers import llm as kite_llm
+    failures: list[str] = []
+    real_http = kite_llm._http_llm
+    real_time = kite_llm.time          # 那个模块只用 time.sleep；换成一个壳，别去改全局 time.sleep
+    real_sleep = real_time.sleep
+
+    def http(*a, **kw):
+        if failures:
+            raise RuntimeError(failures[0])
+        try:
+            return real_http(*a, **kw)
+        except Exception as exc:      # noqa: BLE001 — 什么错都记，翻译交给路由
+            failures.append(_describe(exc))
+            raise
+
+    def sleep(sec):
+        if not failures:
+            real_sleep(sec)
+
+    kite_llm._http_llm = http
+    kite_llm.time = SimpleNamespace(sleep=sleep)
+    try:
+        yield failures
+    finally:
+        kite_llm._http_llm = real_http
+        kite_llm.time = real_time
+
+
+def _describe(exc: BaseException) -> str:
+    """urllib 的错翻成一句：HTTP 状态码 / 连不上 / 超时。"""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return f"模型服务返回 {code}"
+    reason = getattr(exc, "reason", None)
+    if reason is not None:
+        return f"模型连不上（{reason}）"
+    return f"模型调用失败（{type(exc).__name__}: {exc})"
 
 
 _CJK_RE = re.compile(r"[一-鿿]")
@@ -820,12 +870,20 @@ class UserMemory:
         能处理 recall() 做不到的意图理解和时序推理（"现在谁负责" 这类需要
         按时间取最新的问题）。代价是本地模型上约 40-50s、3-4 次 LLM 调用。
         所以只用在用户主动提问的路径，写作路径一律走 recall()。
+
+        **模型出错时要说出错，不能说「没记录」**（P9，edge-cases「来龙去脉 × 模型报错」实拍）：
+        KITE 的 pipeline 把 provider 异常全吞了（`except Exception` → 词法回退 → 「No information」），
+        模型 500 时用户等 3 次调用 × 3 次重试（退避 2s + 4s）≈ 30 秒，然后看到一句
+        「知识库里没有跟这段沾边的记录」——那是假的。这里给 provider 装一个观察器：
+        第一次失败之后后面的调用直接失败、不再睡退避，跑完若有失败且没有依据就抛
+        `ProviderFailed`，路由翻成 502 + 一句人话。
         """
         cfg = store.get_active_llm_config()
         _export_provider_env()
         self.ensure()
         memory = Memory.load(self.path, model=cfg["model"])
-        result = memory.answer_with_evidence(question, limit=limit)
+        with _watch_provider() as failures:
+            result = memory.answer_with_evidence(question, limit=limit)
         # KITE 的 Answer 把依据叫 ``evidence``（Fact 元组）；早期版本叫 ``facts``。
         # 实拍：「来龙去脉」直接 500——AttributeError: 'Answer' object has no attribute
         # 'facts'。两个名字都认，别再跟着上游改名炸一次。
@@ -837,6 +895,8 @@ class UserMemory:
                   "sources": [str(x.get("content", "")) if isinstance(x, dict) else str(x)
                               for x in (getattr(f, "sources", None) or [])]}
                  for f in evidence]
+        if failures and not facts:
+            raise ProviderFailed(failures[0])
         return result.text, facts
 
     # ------------------------------------------------------------ 实体去重（手动触发）

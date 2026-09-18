@@ -39,10 +39,12 @@ const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: Editor
  * SelectionMenu actions).
  */
 export default function MarkdownToolbar(
-  { viewRef, onFormat, onRestructure, restructuring }: {
+  { viewRef, onFormat, onRestructure, onStopRestructure, restructuring }: {
     viewRef: RefObject<EditorView | null>
     onFormat?: () => void
     onRestructure?: () => void
+    /** 排版跑着的时候「停止」（P3 遗留 ❌：模型卡住原来转圈 300 秒、按钮禁用、没有出口） */
+    onStopRestructure?: () => void
     restructuring?: boolean
   },
 ) {
@@ -58,8 +60,11 @@ export default function MarkdownToolbar(
           ⌗ 格式化
         </button>
       )}
-      {onRestructure && (
-        <button
+      {onRestructure && (restructuring && onStopRestructure
+        ? <button title="撤掉这次排版，正文不动" style={{ marginRight: 6 }} onMouseDown={(e) => e.preventDefault()} onClick={onStopRestructure}>
+            <span className="spinner" /> 停止
+          </button>
+        : <button
           title="智能排版：判断哪行该是标题、哪几行该是列表——规则算不出来的语义判断。模型只决定结构，原文由代码搬运，改不到内容。"
           disabled={restructuring}
           style={{ marginRight: 6 }}

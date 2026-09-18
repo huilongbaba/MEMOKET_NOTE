@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from .wordcount import word_count
+from ..editor import intent as intent_mod
 from ..util.config import get_settings
 
 _SCHEMA = """
@@ -463,6 +464,9 @@ _ADDED_COLUMNS = (
     # beats 存成 JSON 数组字符串。
     ("notes", "spine", "TEXT NOT NULL DEFAULT ''"),
     ("notes", "beats", "TEXT NOT NULL DEFAULT ''"),
+    # 文档意图（P9，agent-native-editor §3.1）：目标 / 读者 / 完成标准 + 来源（prefill / user），JSON。
+    # 标题下面常驻一行；所有作用在这篇上的 AI 动作把它当 system 的第一段。
+    ("notes", "intent", "TEXT NOT NULL DEFAULT ''"),
     # skill_config 是这一版新建的，但真实库里已经跑过一轮，
     # CREATE TABLE IF NOT EXISTS 不会给它补上后加的列。
     ("skill_config", "idx", "INTEGER NOT NULL DEFAULT 0"),
@@ -665,6 +669,12 @@ def _note(row) -> dict:
     if not isinstance(d["beats"], list):
         d["beats"] = []
     d["spine"] = d.get("spine") or ""
+    # 文档意图同 beats：库里是 JSON 字符串，出去是 dict（坏 JSON 当空意图，别让整个接口 500）
+    try:
+        raw = json.loads(d.get("intent") or "{}")
+    except (TypeError, ValueError):
+        raw = {}
+    d["intent"] = intent_mod.normalize(raw)
     return d
 
 
@@ -1219,6 +1229,17 @@ def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
         cur = c.execute(
             "UPDATE notes SET pinned=? WHERE user_id=? AND id=?",
             (1 if pinned else 0, user_id, note_id))
+        if cur.rowcount == 0:
+            return None
+    return get_note(user_id, note_id)
+
+
+def set_intent(user_id: str, note_id: str, intent: dict) -> dict | None:
+    """存文档意图（P9）。三个字段各自收成一行、封顶；`source` 记的是这份是预填的还是用户改过的。"""
+    d = intent_mod.normalize(intent)
+    with connect() as c:
+        cur = c.execute("UPDATE notes SET intent=? WHERE user_id=? AND id=?",
+                        (json.dumps(d, ensure_ascii=False), user_id, note_id))
         if cur.rowcount == 0:
             return None
     return get_note(user_id, note_id)

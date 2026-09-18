@@ -230,6 +230,27 @@
 /* 栏一窄就降一档，再窄再降一档。分屏、收起左栏、小窗口都走这条。 */
 @container notepane (max-width: 760px) { .note-title { font-size: var(--t-page); } }
 @container notepane (max-width: 560px) { .note-title { font-size: var(--t-2xl); } }
+/* 「这篇要干什么」（P9，agent-native-editor §3.1）：标题下面常驻一行，三个字段就地改。
+   标签是元信息（--muted），**值是正文级内容（--fg）**；输入框无边框，插入符就是焦点（跟标题一个做法）。 */
+.doc-intent {
+  flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-5);
+  padding: 0 var(--content-margin-inline) var(--s-3);
+  font-size: var(--t-sm); line-height: 1.6;
+}
+.doc-intent-head { color: var(--muted); font-weight: var(--w-semi); white-space: nowrap; cursor: help; }
+.doc-intent-field { display: inline-flex; align-items: baseline; gap: var(--s-2); min-width: 0; max-width: 100%; flex: 0 1 auto; }
+.doc-intent-label { color: var(--muted); white-space: nowrap; }
+.doc-intent-label::after { content: '：'; }
+.doc-intent .doc-intent-input {
+  /* 输入框按内容定宽（field-sizing，Chromium 123+；Electron 44 有）：三个字段像三句话排在一行，放不下就折到下一行，
+     不再各占三分之一把长的那句截掉（第一版实拍「完成标准」被推到右边只剩半截） */
+  field-sizing: content; width: auto; min-width: 8ch; max-width: 100%; height: auto !important; padding: 0 !important; margin: 0;
+  border: none !important; background: transparent !important; box-shadow: none !important; border-radius: 0;
+  font: inherit; font-size: var(--t-sm); color: var(--fg);
+}
+.doc-intent .doc-intent-input::placeholder { color: var(--ink-3); }
+.doc-intent .doc-intent-input:focus-visible { outline: none; border-bottom: 1px solid var(--brand) !important; }
+.doc-intent-src { color: var(--ink-3); font-size: var(--t-xs); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0 6px; cursor: help; white-space: nowrap; }
 /* 正文的滚动容器。左右边距 --content-margin-inline（scrolling_container.css） */
 .note-scroll {
   flex: 1; min-height: 0; overflow-y: auto;

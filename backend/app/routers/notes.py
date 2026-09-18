@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
+from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -202,6 +202,19 @@ def save_skeleton(note_id: str, body: SkeletonSaveIn, user: str = Depends(curren
         # P7：落库不再静默截成半句（P4 #1）——超长就把原因回给调用方
         raise HTTPException(400, str(exc)) from exc
     return store.get_note(user, note_id)
+
+
+@router.put("/{note_id}/intent", response_model=Note)
+def save_intent(note_id: str, body: NoteIntentIn, user: str = Depends(current_user)):
+    """存文档意图（P9，agent-native-editor §3.1）：目标 / 读者 / 完成标准。
+
+    它是这篇的元数据，跟骨架一样跟着笔记走；前端把它拼成一句随每个 AI 动作带过去，
+    成为 system 的第一段。三个字段全空也照存——用户把预填的清掉就是「这篇不要意图」。
+    """
+    updated = store.set_intent(user, note_id, body.model_dump())
+    if not updated:
+        raise HTTPException(404, "note not found")
+    return updated
 
 
 @router.delete("/{note_id}")

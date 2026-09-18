@@ -10,7 +10,7 @@ from ..database import store
 from ..database.kb import pages
 from ..database.kb import relations as kb_relations
 from ..database.kb import search
-from ..database.kite.kite_memory import UserMemory
+from ..database.kite.kite_memory import ProviderFailed, UserMemory
 from ..harness import prompts
 from ..util import llm
 from .schemas import AskIn, AskOut, CitingNoteOut, FactPeekOut, TraceIn, EntityOut, FactDetailOut, FactOut, FactsPageOut, RecallIn, RecallOut, SourceLineOut, StatsOut, TimelineBucket, TimelineOut, TopicCreateIn, TopicEntityLink, TopicOut
@@ -256,8 +256,15 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
         # 叠加 > 合并 > 印证 排好，`cands[0]` 就是它（P1-1d 核过，有闸钉着这个顺序）。
         # `kinds` 是这段一共判出几种关系，悬停时告诉用户「点开还有别的」。
         top = cands[0] if cands else None
+        if not top:
+            out.append(None)
+            continue
+        # P9（§3.3 边缘记忆）：圆点旁边的卡要能直接说「上次记的是 6/3」——把那几条事实（id / 原话 / 日期）
+        # 一起带回去，前端不用再为每个点发一次 /relations。rows 已经在手里，零额外查询。
+        by_id = {r["id"]: r for r in rows}
+        facts = [f.model_dump() for f in rows_to_facts(mem, [by_id[i] for i in top["fact_ids"] if i in by_id])]
         out.append({"relation": top["relation"], "say": top["say"], "fact_ids": top["fact_ids"],
-                    "kinds": len({c["relation"] for c in cands})} if top else None)
+                    "kinds": len({c["relation"] for c in cands}), "facts": facts})
     return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 
@@ -304,7 +311,11 @@ def trace(body: TraceIn, user: str = Depends(current_user)):
         # 空库：KITE 的 ask() 照样会花一次规划调用（实拍 12 秒）然后答「No information」
         return AskOut(answer="知识库还是空的——先导入一些记录，或者把写好的笔记「存入知识库」。",
                       facts=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
-    text, facts = mem.ask(question, limit=body.limit)
+    try:
+        text, facts = mem.ask(question, limit=body.limit)
+    except ProviderFailed as exc:
+        # P9：模型出错要说出错，不能翻成「知识库里没有沾边的记录」（那是 KITE 回退出来的假答案）
+        raise HTTPException(502, f"来龙去脉没查成：{exc}（{store.get_active_llm_config()['base_url']}）——去设置里看一眼 LLM 供应商") from exc
     text = _no_info_to_chinese(text, bool(facts))
     return AskOut(
         answer=text,

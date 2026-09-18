@@ -1133,3 +1133,121 @@ P6 新写的（接在指标段后）：
   `p7data/backups/notes-20260919.sqlite3` 是它写的）。
 - 真模型 **5 次**（全在 D1），36,550 token；D2、截图、单测 0 次。
 - 截图：`p7-outline-before/after.png`、`p7-margin-before/after.png`（after 是 25 s 延迟的那张——12 s 时 136 段的圆点还没算完）、`p7-recall-before/after.png`。
+
+## P9 · 第 773 轮：C 线 agent-native 头两条落地 + P3 遗留的 ❌ / ？（2026-09-19）
+
+> HEAD 开工时 `c5651ba`（worktree `agent-a01e93e0b584594a8`）。**没碰** `app/harness/**`、`hooks/note.py`、`revision.py`、`corpus_lineage.py`、
+> `AgentActivity.tsx` 和 `api.ts` 的 harness handler（另一个 agent 在改）。截图全部跑在 `KITE_DATA_DIR=$S/p9data`（p7data 的拷贝）+ 假服务
+> `fakellm9.py`（P3 那份加 `slow / vslow / asr-slow / asr-hang` 四种模式）上，`p9run.sh` 一条前台命令：起假服务 → 切模式 → worktree 的桌面壳截图 → 收假服务；
+> 真库只用 `db_guard.readonly` 读了两次算指纹。截图 `$S/p9-*.png`（34 张）。六栏：用户怎么发现 · 复现 · 改了什么 · 依据 · 前后对比 · 下一步。
+
+### 0. 挑了哪两条、为什么
+
+`agent-native-editor.md` §1 六行里，第 4 行（改动分层）、第 6 行（同步）和 §3.3.1 六种关系、链接层 9 月 12 日已经做了（`PROGRESS.md` 优先队列 1–4）。
+剩下能落的：§1 第 2 行「记忆是右栏旁观者」（§3.3 边缘记忆的后半段）、第 1 + 3 行「按钮之间没有共享的意图 / 默认状态下文档不知道自己要干什么」（§3.1 Doc Intent）、
+第 5 行「材料托盘」（§3.4，要新表 + 新 UI + 三个按钮改范围，一批装不下）。按「最能兑现三条判据、用户第一天就会感受到」挑了两条：
+
+| 挑的 | 兑现哪条判据 | 解哪个痛点 | 用户第一天怎么感受到 |
+|---|---|---|---|
+| **A. 文档意图**（§3.1）：标题下面常驻一行「这篇要干什么：目标 · 读者 · 完成标准」，按标题预填、就地改，所有作用在这篇上的 AI 动作把它当 system 第一段 | 判据 3「用户说的是我要什么」；也是 §1 第 1 行「按钮彼此不认识」的解——它们现在共享同一个意图 | 5（润色丢结构：因为不知道结构为谁服务）、7、3 / 13（周报 / 汇总） | 新建「第 37 周周报」，标题下面自己出现「目标：…这段时间做了什么、进展到哪、卡在哪 · 读者：老板 / 团队 · 完成标准：每条进展有日期、有依据」，之后点润色 / 校验 / 骨架都按它办 |
+| **B. 边缘记忆贴到行边上**（§3.3）：圆点旁边的关系卡——那句人话、那几条记录（日期 + 原话）、五个动作；写到亮黄点 / 紫点的段，卡自己出来 | 判据 2「为了看一条旧记录而离开当前页面 = 失败」——P7 之后圆点准了，但看它还得转头去右栏；现在连头都不用转 | 11、12、13 | 写「众筹页面定在 3月12号 上线」，行边亮黄点，卡贴过来：「日期跟知识库 2026-03 的记录不一致：那里是 3-10，你写的是 3-12」+ 那条原话 + 「引用这条 / 新的取代旧的 / 忽略」 |
+
+没挑材料托盘：它是 M2 的地基（`note_materials` 表、托盘 UI、起草 / 核对 / 补图三个按钮改范围），一批做不完；先把「文档知道自己要干什么」立住，托盘是它的材料范围。
+
+### 1. 文档意图（Doc Intent，§3.1）✔
+
+- **用户怎么发现**：每个 AI 按钮都得重新猜这篇是什么：润色一段周报把「卡在哪」的口吻改没了，校验不知道「每条进展要有日期」是这篇的要求；
+  骨架是「点一下生成」的元数据，默认状态下文档不知道自己要干什么（§1 第 3 行原话）。
+- **复现**：`p9-intent-before-light.png`：「创业反思」标题下面直接是 ribbon 页签，全篇没有任何一处写着这篇要干什么、给谁看。
+- **改了什么**：
+  后端 `editor/intent.py`（`normalize / as_text / block` 三个纯函数）；`notes.intent` 列（JSON：goal / reader / done / source）+ `PUT /api/notes/{id}/intent`
+  + `GET /api/notes` 带回（坏 JSON 当空意图，不 500）；骨架 / 续写 / 重写 / 润色 / 扩展 / 校验（`compose.py`）和智能排版（`compose_block.py`）的 system
+  **第一段** = `intent.block(那句)`（空意图一个字不加）。请求不带 note_id 的路由拿不到库里那份，所以前端把 `intentText()` 那句随请求带过去（`SkeletonIn.intent`
+  / `MagicTapIn.intent` / `RewriteIn.doc_intent` / `ExpandIn.intent` / `VerifyIn.intent` / `ComposeBlockIn.intent`）。
+  前端 `util/docIntent.ts`：预填是**代码**按标题推的（周报 / 复盘 / 会议 / 方案 / 调研 / 日记六套 + 中性兜底；空标题不猜——方案 §7「不做 AI 猜你想写什么」），
+  `resolveIntent`：用户改过一个字（source=user）永远不被标题覆盖，预填的跟标题重推；`components/DocIntentRow.tsx`：标题下面一行，三个字段无边框输入
+  （`field-sizing: content` 按内容定宽，放不下折行——第一版三等分把「完成标准」截成半截），失焦 / 停 800ms 落库，预填的带「预填」小标。
+  测试：后端 `test_p9_agent_native.py` 前 9 条（纯函数 / 落库 / 坏 JSON / 三条路由 system 第一段 / 空意图原样 / 前后端标签逐字核对）；前端 `p9AgentNative.test.ts` 前 6 条。
+- **依据**：§3.1「把 spine/beats/goal 合并成 Doc Intent，放在标题下面（不是 ribbon 的一个标签），新建笔记时自动预填，所有 prompt 的第一段都是它」；
+  §5 表「3.1 → 合并为一个结构、预填、进所有 prompt、完成标准可检查」。P1 定的「正文永远 `--fg`，灰色只给元信息」：三个值是 `--fg`，标签 / 「预填」标是 `--muted` / `--ink-3`。
+- **前后对比**：`p9-intent-before-light.png` / `p9-intent-before-dark.png` → `p9-intent-after-light.png` / `p9-intent-after-dark.png`
+  （「创业反思」命中复盘那套：目标「创业反思：发生了什么、为什么、下次怎么做」· 读者「自己 / 团队」· 完成标准「每个结论有事实支撑；下次怎么做写成可执行的条目」· 预填）；
+  `p9-margin-click-after-light.png` 顶部是「公司汇报：」命中汇报那套（读者「老板 / 团队」）。
+- **没做 / 下一步**：① **智能续写（harness）那条线没接**：`/api/note-harness` 和 `/compose/block` 都走 `harness/loop` + hooks，prompt 在 `app/harness/**` 里拼，
+  这批不许碰——另一个 agent 那条线接的时候只要把 `intent.block(ctx.intent)` 放进 system 第一段（`NoteHooks` / `BlockHooks` 各一处）；② 「完成标准」现在只是 prompt
+  里的一句（`DONE_HINT`：不满足就在产出里指出来），方案说它「可检查」（每条进展有日期、≤800 字…）——要做成判据得进 harness 的 checks，同上；③ 预填只看标题，
+  方案说还看日期和最近材料——等托盘；④ 骨架（spine / beats）没合并进来，还是「计划」页签里的东西，合并等 §3.5 目录 = 计划那批。
+
+### 2. 边缘记忆：卡贴到圆点旁边（§3.3）✔
+
+- **用户怎么发现**：P7 之后圆点准了，但它只有一个原生 `title` 悬停（一段灰字要等一秒）和「点一下切到右栏」——知识库有话要说，还得转头去右栏读；
+  §1 第 2 行原话「真正的记忆应该在你写到「DVT 延期」的那一行旁边告诉你」。
+- **复现**：`p9-margin-before-light.png`：「公司汇报」第一段右边一个灰点，卡在右栏。真库 16 篇里**一个冲突 / 延续的点都没有**（`p9_find_marks.py`：
+  缺依据 ×186、印证 ×20、叠加 ×3、合并 ×4）——写作者写到跟库里不一样的东西那一刻才会亮黄点，所以复现用 `blank:margin:<一句>` 探针现写一句
+  「众筹页面定在 3月12号 上线」（`p9_try_passages.py` 先在 p9data 上试了 7 句，这句判成冲突：库里 `1238-7F4`「3月10号上众筹」）。
+- **改了什么**：
+  `relations/batch` 每个点连事实一起回（`facts`：id / 原话 / 日期，rows 已在手里、零额外查询）；`editor/marginMemory.ts`：圆点带 `data-line`，
+  `mouseover` / `mousedown` 把圆点的矩形交给 `onOpen(m, rect, 'hover' | 'click')`；`updateListener` 看光标进了哪一段（`paragraphStartLine`），
+  那段的点是**冲突 / 延续**（`AUTO_SHOW`，知识库有话要说的两种）就自己弹一次（`markKey` = 关系 + 事实，正文改了行号变、身份不变；关掉不再烦人）；
+  `components/MarginCard.tsx`：`position: fixed` 贴在圆点右边（放不下贴左边 / 往上顶），正文滚动跟着圆点走、滚出视口就收，Esc / 点外面收，
+  悬停来的鼠标离开圆点和卡就收；卡上：关系标 + 「这一段（第 N 行起）· 还判出 K 种」+ 那句人话 + 每条记录（点开这条）+ 引用这条 / 新的取代旧的 /
+  补进来 / 合成一条 / 忽略 / 右栏看全部。五个动作抽成 `util/relationActions.ts`——右栏 `RelatedMemory` 和这张卡**同一份**（原来的 `supersede / merge /
+  fillIn` 三个函数搬过去），「忽略」名单也是同一份（`relation-ignored` 事件：一边忽略另一边跟着灭，圆点当场灭）。
+  测试：后端 `test_relations_batch_每个点带事实`；前端 `p9AgentNative.test.ts` 边缘记忆 3 条 + 关系卡动作 3 条。
+- **依据**：§3.3「正文每一段的右缘是一条记忆带…悬停展开，点一下引用…不一致才亮黄点（上次记的是 6/3）」；§3.3.1 表的「颜色」列和「agent 应该说」列；
+  卡的色带 / 标复用 `.rel-card.rel-*` / `.badge.rel-*`（同一套令牌，浅深各一张核过）。
+- **前后对比**：`p9-margin-before-light.png` / `-dark.png`（点在右缘、卡在右栏）→ `p9-margin-after-light.png` / `-dark.png`（光标停在「众筹页面定在 3月12号 上线」
+  段尾，黄点旁边贴着卡：「冲突 · 这一段（第 1 行起）· 还判出 1 种 / 日期跟知识库 2026-03 的记录不一致：那里是 3-10，你写的是 3-12。/ 2026-03 因为3月10号上众筹…
+  / 引用这条 · 新的取代旧的 · 忽略 · 右栏看全部」）；`p9-margin-click-after-light.png`（点「公司汇报」第一段的灰点：缺依据卡 + 忽略 / 右栏看全部）。
+- **下一步**：① 冲突卡上那句还是代码判的（右栏那张让模型复核一次）——要不要在卡上也复核，看用户嫌不嫌那句生硬；② §3.3「⌥ 悬停任何词就是来龙去脉」没做，
+  「来龙去脉」的结果还落右栏「脉络」；③ 冲突 / 延续在真库里一次都没出现，「黄点会不会在该亮的时候亮」要等用户真写出跟库里不一样的东西再看（D2 那套 10 个位置里 0 个冲突）。
+
+### 3. P3 遗留：❌ ×2 全修、？ ×19 复现 13 修 13（`docs/edge-cases.md` 复现记录 #19–30）
+
+按 P3 排的序，每格先复现（HEAD 的前端构建：把改过的十个前端文件临时换回 `c5651ba` 那版 + `vite build`，改后再构建一次同一套探针）：
+
+| # | 格子 | 复现到（before） | 修了什么（after） |
+|---|---|---|---|
+| 1 | 智能排版 × 超时 ❌ / 生成骨架 × 超时 ❌ | P3 的 `p3-*-hang-before`：转圈、禁用、没有出口 | `AbortController` + 忙态钮变「停止」（`MarkdownToolbar.onStopRestructure` / `SkeletonPanel.onStop`）→ toast「已停止智能排版，正文没动」/「已停止生成骨架」。后端那次调用照跑到超时（非流式，客户端断开不取消 handler），界面不再被拖着 |
+| 2 | 图片转表格 × 超时 ？ | **真的**：看图模型慢 12s，5s 点「停止」块没了，`imagepick returned chars=594`——表格在停止之后照样插进正文（558 → 594） | `tableFromImage` 带 signal，注册进 `runAborts`，`signal.aborted` 就不插 + toast「已停止，什么都没插进正文」；20s 时 558 字不变 |
+| 3 | 语音输入 × 超时 ？ | **真的**：转写中点「停止」块没了，20s 时文末多出「这是假语音服务转出来的一句话。」（521 → 536） | `transcribeOnly` 带 signal，`voiceStopById` 删掉之后第二下「停止」走 `runAborts`；toast「已停止，这段录音没有转写」 |
+| 4 | 插入音频 × 超时 ？ | 同一处代码（未单独实拍） | 转写那一步同款 signal，「停止」撤转写、播放器留着 |
+| 5 | 录音钮 → 插入正文 / 存入知识库 × 超时 ？ | **真的**：停录音后按钮「转写中…」禁用，`text=转写中…停止 found=false` | `AudioRecorder` 挂 `AbortController`，忙态钮可点「停止」→ toast「已停止，这段录音没有转写」；`ingestAudio` 也带 signal |
+| 6 | ⋯ / 引用 · 存入知识库 × 超时 ？ | **真的**：模型卡住，状态栏「存入知识库中…」转着，`text=取消 found=false` | 状态栏那一行加「取消」（后端 `POST /ingest/jobs/{id}/cancel` 本来就有、前端没接）；`cancelling` 时显示「取消中（等这一块的模型调用结束）」 |
+| 7 | 导入页 Obsidian / Evernote / Notion / 飞书 / Apple × 后端没起来 ？×2 | **真的**：右下角一条光秃秃的 `Failed to fetch`（Evernote 实拍） | 四个 catch 走 `friendlyError`：「导入失败：连不上应用后台（后端进程没在跑…）」 |
+| 8 | 记忆 · 关系卡 × 后端没起来 ？ | 实拍两次摆不出卡（那篇的数字全在引用编号里）；代码是 `String(e)` | 动作抽成 `relationActions` 走 `friendlyError`；单测：fetch 拒绝 → 「标不上：连不上应用后台…」。顺手把 `NoteKbPanel` 三个 `String(e)`（加不上 / 改不了 / 删不了）也换了 |
+| 9 | 树右键 · 复制笔记路径 × 后端没起来 ？ | **真的**：点了什么都没有，只有日志 `promise Failed to fetch` | toast「复制不了路径：连不上应用后台…」 |
+| 10 | 树右键 · 删除 × 后端没起来 ？ | **真的**：乐观删除 5 秒后真删失败，静默 | toast「没删成「x」——它还在库里，列表刷新后会长回来：…」 |
+| 11 | 来龙去脉 × 模型报错 ？ | **真的，而且比 P3 猜的糟**：模型 500 时假服务收到 **9** 个 POST（KITE 3 次调用 × 3 次重试，退避 2s + 4s），转 20–30 秒，然后右栏「脉络」写「知识库里没有跟这段沾边的记录。」——**假的**：KITE 的 pipeline `except Exception` 把 provider 异常吞成词法回退 + No information（`memoket_kite/pipeline/answer.py` 十几处） | `kite_memory._watch_provider()`：给 `memoket_kite.providers.llm._http_llm` 装观察器（它在 `llm()` 里按模块全局名查，运行时可换；`time` 换成只有 `sleep` 的壳，不动全局）——第一次失败之后后面的调用直接抛、退避不睡；跑完有失败且空手就抛 `ProviderFailed`，`/api/memory/trace` 回 502「来龙去脉没查成：模型服务返回 500（地址）——去设置里看一眼 LLM 供应商」。实拍：假服务只收到 1 个 POST，5 秒内 toast；有真依据（词法路径拿到的）照常返回 |
+| 12 | 续写 / 智能续写 第二下 = 停止 | `p3-tap-double-hang-before`：停了一个字不说 | toast「已停止续写，写到哪算哪——不要的话用正文上的「撤回」」/「已停止智能续写…改动在右栏「改动」里可以整层撤回」（`runNoteHarness` 停止分支只加了这一行） |
+
+没动的 ？ ×6：语音输入 × 重复点击（录音中再 `/`）、写作计划「生成写作计划」转圈无停止、引用「补一条」/「改」空文本、导入页 × 超时（job 有「取消」，没实拍）；
+备注两条（零库时校验 / 扩展要不要零调用拦）也没动。表的统计：✅ 189 / ✅P3 55 / **✅P9 15** / ❌ **0** / ？ **6** / — 286。
+
+新探针（`probes.ts`）：`mdown:` `fill:` `filefill:` `mic`（getUserMedia 换成合成音轨，不要麦克风权限）`imagepick:` `tree-menu-leaf` `cursorline:` `title:` `blank:margin:` `margin:<id>:card[:<关系>]`。
+踩的坑：zsh 里 `"$N:trace"` 会被当成 `:t` 修饰符（跑成 `0eecee3d7b94race`），要写 `${N}:trace`；右栏「计划」页签带角标时 `text=计划` 匹配不到（文字是「计划5」），用没骨架的那篇。
+
+### 突变验（每条撤掉修法 → 对应测试红）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `intent.block` 恒回空串 | `test_intent_是_system_的第一段`（3 条参数化）、`test_intent_block_…` |
+| `_note()` 不解析 intent | `test_intent_put_get_roundtrip`（`intent` 缺字段 → 响应模型校验失败） |
+| `relations_batch` 不带 `facts` | `test_relations_batch_每个点带事实` |
+| `_watch_provider` 里 `if failures: raise` 去掉 | `test_watch_provider_…`（calls 变 3、时长 > 1s） |
+| `ask()` 不抛 `ProviderFailed` | `test_trace_模型报错回502不说没记录` |
+| `prefillIntent` 对「未命名」也预填 / `resolveIntent` 让标题覆盖 user | `p9AgentNative` 预填 / 校准两条 |
+| `AUTO_SHOW` 加 `corroborated` | `p9AgentNative` 「只有冲突 / 延续两种自己贴到行边上」 |
+| `supersedeRelation` 换回 `String(e)` | `p9AgentNative` 「后端没起来：「标不上」说人话」 |
+| `SkeletonPanel` 忙态不给「停止」 | `p9AgentNative` 「生成骨架：转圈时按钮变「停止」」 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2101 passed**（基线 2087；+14 `test_p9_agent_native.py`）。
+- 前端 `npm test`：**57 文件 / 321 条**（基线 56 / 307；+`p9AgentNative.test.ts` 14 条），exit 0；`check-css-classes` / `check-ui-tokens` / `check-a11y` / `check-api-wired` / `check-busy` 全绿
+  （第一版被 `check-css-classes` 抓到 `'rel-' + m.relation` 拼类名、被 `check-ui-tokens` 抓到 `gap: 2px`——都改了）。
+- 真库指纹开工 / 收尾：482 / `max(updated_at)=2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**
+  （所有探针跑在 `p9data` 上；`~/Library/Application Support` 没碰，桌面壳的 userData 用 `MEMOKET_USER_DATA=$S/p9userdata` 挪进 scratch）。
+- 真模型调用 **0 次**（全部假服务：ok / hang / err500 / slow / vslow / asr-slow）；桌面壳截图跑了 34 次。
+- 截图（浅 / 深各一张的四对）：`p9-intent-before-{light,dark}.png` → `p9-intent-after-{light,dark}.png`；`p9-margin-before-{light,dark}.png` → `p9-margin-after-{light,dark}.png`
+  （+ `p9-margin-click-after-light.png`）；P3 遗留 11 对见 `docs/edge-cases.md` #19–30。

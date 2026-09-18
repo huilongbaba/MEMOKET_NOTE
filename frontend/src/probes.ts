@@ -637,11 +637,127 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     for (const t of [2000, 4000, 11000, 30000]) setTimeout(() => { const sc = document.querySelector('.note-scroll'); if (sc) sc.scrollTop = sc.scrollHeight }, t)
   }
   // 边缘记忆：打开笔记，等页边圆点算出来
+  // P9：`cursorline:<ms>:<行号>` 把光标放到第 N 行（右栏「记忆」按光标段查关系）
+  if (probe?.startsWith('cursorline:')) {
+    const [, ms, ln] = probe.split(':')
+    setTimeout(() => {
+      const v = editorViewRef.current; if (!v) return
+      const line = v.state.doc.line(Math.min(Number(ln), v.state.doc.lines))
+      v.focus(); v.dispatch({ selection: { anchor: line.from + 1 }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) })
+      setPaneFocus({ id: 'memory', n: Date.now() })
+    }, Number(ms))
+    return
+  }
+  // P9：`mdown:<ms>:<选择器>` 发一次 mousedown（占位块的「停止」、`/` 菜单行这些只听 mousedown 的）
+  if (probe?.startsWith('mdown:')) {
+    const [, ms, ...rest] = probe.split(':')
+    const sel = decodeURIComponent(rest.join(':'))
+    setTimeout(() => {
+      const el = document.querySelector(sel) as HTMLElement | null
+      void api.clientLog('warn', `mdown ${sel} found=${!!el}`, '', 'probe')
+      el?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    }, Number(ms))
+    return
+  }
+  // P9：`fill:<ms>:<选择器>:<文字>` 往任意输入框里填字（React 认的 input 事件）；`filefill:<ms>:<选择器>:<文件名>` 往 file 输入框里塞一个合成文件
+  if (probe?.startsWith('fill:') || probe?.startsWith('filefill:')) {
+    const isFile = probe.startsWith('filefill:')
+    const [, ms, sel, ...rest] = probe.split(':')
+    setTimeout(() => {
+      const el = document.querySelector(decodeURIComponent(sel)) as HTMLInputElement | null
+      void api.clientLog('warn', `${isFile ? 'filefill' : 'fill'} ${sel} found=${!!el}`, '', 'probe')
+      if (!el) return
+      if (isFile) {
+        const name = decodeURIComponent(rest.join(':'))
+        const dt = new DataTransfer(); dt.items.add(new File([new TextEncoder().encode('<?xml version="1.0"?><en-export></en-export>')], name, { type: 'application/octet-stream' }))
+        el.files = dt.files
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+      } else {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, decodeURIComponent(rest.join(':')))
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }, Number(ms))
+    return
+  }
+  // P9：`mic` 把 getUserMedia 换成一条合成的静音音轨（不要麦克风权限），之后语音输入 / 录音钮就能走完整个流程
+  if (probe === 'mic') {
+    const ac = new AudioContext(); const dest = ac.createMediaStreamDestination()
+    const osc = ac.createOscillator(); osc.connect(dest); osc.start()
+    navigator.mediaDevices.getUserMedia = () => Promise.resolve(dest.stream)
+    return
+  }
+  // P9：`imagepick:<id>` 打开笔记 → `/` 图片转表格 → 选一张合成的 png（看图模型慢 / 卡时占位块「停止」的行为）
+  if (probe?.startsWith('imagepick:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(10))
+    const item = SLASH_ITEMS.find((x) => x.key === 'table-image')
+    if (n && item) { harnessProbeDone.current = true; void (async () => {
+      await switchTo(n)
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      const end = v.state.doc.length
+      v.focus(); v.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 } })
+      ctx.setSlash({ item, from: end + 2, to: end + 2, x: 300, y: 300 })
+      await wait(300)
+      const cv = document.createElement('canvas'); cv.width = 64; cv.height = 32
+      const g = cv.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 32); g.fillStyle = '#000'; g.fillRect(8, 8, 48, 2)
+      const blob: Blob = await new Promise((r) => cv.toBlob((b) => r(b!), 'image/png'))
+      const dt = new DataTransfer(); dt.items.add(new File([blob], 'probe.png', { type: 'image/png' }))
+      void api.clientLog('warn', `imagepick chars=${v.state.doc.length}`, '', 'probe')
+      await actionsRef.current.onPickFile(dt.files)
+      void api.clientLog('warn', `imagepick returned chars=${editorViewRef.current?.state.doc.length ?? '-'}`, '', 'probe')
+      const v2 = editorViewRef.current
+      if (v2) v2.dispatch({ effects: EditorView.scrollIntoView(v2.state.doc.length, { y: 'end', yMargin: 40 }) })
+    })() }
+    return
+  }
+  // P9：`tree-menu-leaf` 同 tree-menu，但挑一篇没有子节点的（「删除」不走确认框，直接乐观删）
+  if (probe === 'tree-menu-leaf' && tree.length) {
+    const row = tree.find((r) => r.child_count === 0 && r.parent_note_id === api.ROOT_ID && (r.title || '').length > 0) ?? tree.find((r) => r.child_count === 0) ?? tree[0]
+    setTreeMenu({ row, at: { x: 260, y: 180 } })
+    return
+  }
+  // P9：`title:<ms>:<文字>` 把标题输入框改成这段（走 React 认的 input 事件）——看「这篇要干什么」按标题预填
+  if (probe?.startsWith('title:')) {
+    const [, ms, ...rest] = probe.split(':')
+    setTimeout(() => {
+      const el = document.querySelector('.note-title') as HTMLInputElement | null
+      if (!el) return
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      set?.call(el, decodeURIComponent(rest.join(':')))
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }, Number(ms))
+    return
+  }
+  // P9：`blank:margin:<文字>` 新建一篇、写进这段、光标停在段尾——看光标进了黄点 / 紫点的段时卡自己贴到行边上
+  if (probe?.startsWith('blank:margin:') && !harnessProbeDone.current) {
+    harnessProbeDone.current = true
+    setTimeout(() => void newNote(), 600)
+    setTimeout(() => {
+      const el = document.querySelector('.note-scroll .cm-content')
+      const v = el && EditorView.findFromDOM(el as HTMLElement)
+      if (!v) return
+      const text = decodeURIComponent(probe.slice(13))
+      v.focus()
+      v.dispatch({ changes: { from: v.state.doc.length, insert: text }, selection: { anchor: v.state.doc.length + text.length } })
+    }, 2500)
+    return
+  }
   if (probe?.startsWith('margin:') && notes.length && !harnessProbeDone.current) {
     const [, id, opt] = probe.split(':')
     const n = notes.find((x) => x.id === id)
     if (n) { harnessProbeDone.current = true; void (async () => {
       await switchTo(n)
+      // P9：`margin:<id>:card[:<关系>]` 等页边圆点算出来，点第一个（或第一个该关系的）圆点——看贴在行边的关系卡
+      if (opt === 'card') {
+        const want = probe.split(':')[3]
+        for (let i = 0; i < 60; i++) {
+          await wait(500)
+          const dot = document.querySelector(want ? `.cm-memory-gutter .mm-dot.mm-${want}` : '.cm-memory-gutter .mm-dot') as HTMLElement | null
+          if (dot) { dot.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); void api.clientLog('warn', `margin card: clicked dot after ${(i + 1) * 0.5}s`, '', 'probe'); return }
+        }
+        void api.clientLog('warn', 'margin card: no dot in 30s', '', 'probe')
+        return
+      }
       if (opt !== 'memory') return
       await wait(1500)
       const v = editorViewRef.current; if (!v) return

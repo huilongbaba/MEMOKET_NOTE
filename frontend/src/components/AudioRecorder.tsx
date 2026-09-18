@@ -28,6 +28,8 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const target = useRef<'insert' | 'memory'>('insert')
+  // 转写中的「停止」（P3 遗留 ？：语音服务卡住原来按钮禁用、要等满 1800 秒）
+  const abortRef = useRef<AbortController | null>(null)
 
   async function start(to: 'insert' | 'memory') {
     target.current = to
@@ -39,17 +41,19 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
         const blob = new Blob(chunks.current, { type: 'audio/webm' })
+        const ctrl = new AbortController()
+        abortRef.current = ctrl
         try {
           if (target.current === 'insert') {
             setBusy('转写中')
-            const { text } = await transcribeOnly(blob)
+            const { text } = await transcribeOnly(blob, 'recording.webm', ctrl.signal)
             // 静音/没转写出内容时之前是彻底没反应——用户录完音，点了停止，
             // 什么都没发生，分不清是没录上还是哪里坏了。
             if (text) onTranscript(text)
             else toast('没有转写出内容，可能是静音录音，检查一下麦克风', 'error')
           } else {
             setBusy('转写并入库')
-            const { job_id, detail } = await ingestAudio(blob)
+            const { job_id, detail } = await ingestAudio(blob, 'recording.webm', '', ctrl.signal)
             // 后端在转写为空时会返回 job_id="" + detail="转写结果为空……"
             // （detail 这个字段在成功路径下装的是转写文字预览，不是错误信息，
             // 两种含义不一样，只在没有 job_id 的失败路径下才该当错误展示）。
@@ -60,8 +64,10 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
             else toast(detail || '录音处理失败', 'error')
           }
         } catch (err) {
-          toast(`语音处理失败：${friendlyError(err)}`, 'error')
+          if ((err as Error).name === 'AbortError') toast('已停止，这段录音没有转写')
+          else toast(`语音处理失败：${friendlyError(err)}`, 'error')
         } finally {
+          abortRef.current = null
           setBusy('')
         }
       }
@@ -79,7 +85,7 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
   }
 
   // 一个麦克风钮，两个去处在菜单里（正文右上角的浮动按钮位）。
-  if (busy) return <button className="fb-btn" disabled><span className="spinner" /> {busy}…</button>
+  if (busy) return <button className="fb-btn" title="撤掉这次转写；录下的这段就不要了" onClick={() => abortRef.current?.abort()}><span className="spinner" /> {busy}… 停止</button>
   if (recording) {
     return <button className="fb-btn rec" onClick={stop} title="停止录音"><Icon n="bx-stop-circle" /> 停止录音</button>
   }

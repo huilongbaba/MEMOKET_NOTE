@@ -20,6 +20,8 @@ type Props = {
   notes?: string[]
   loading: boolean
   onRun: () => void
+  /** 跑着的时候「停止」（P3 遗留 ❌：模型卡住原来只能干等 300 秒） */
+  onStop?: () => void
 }
 
 const LEVEL_LABEL: Record<number, string> = { 0: '还不够', 1: '部分覆盖', 2: '已覆盖' }
@@ -28,16 +30,18 @@ const LEVEL_COLOR: Record<number, string> = { 0: 'var(--del)', 1: 'var(--warn)',
 /** 线 1：核心张力（spine）+ 结构节拍（beats）。也是 magic tap 和智能编辑的输入。
  * beats 是这篇东西各部分承担的修辞/叙事功能，不是内容大纲——所以不用 <ol>
  * 编号呈现成待办事项，用带标签的列表强调"这是一个功能位"。 */
-export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], loading, onRun }: Props) {
+export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], loading, onRun, onStop }: Props) {
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>写作骨架</h2>
         {/* **不要写 `onClick={onRun}`**：鼠标事件会当成 runSkeleton 的 background 参数，
             用户亲手点的失败就全进了后台日志（P3 实拍：三种失败都静默）。 */}
-        <button onClick={() => onRun()} disabled={loading}>
-          {loading ? <span className="spinner" /> : '生成骨架'}
-        </button>
+        {loading && onStop
+          ? <button onClick={onStop} title="撤掉这次生成，按钮复位；正文和已有骨架都不动"><span className="spinner" /> 停止</button>
+          : <button onClick={() => onRun()} disabled={loading}>
+              {loading ? <span className="spinner" /> : '生成骨架'}
+            </button>}
       </div>
       {!spine && beats.length === 0 && !loading && (
         <p className="muted">还没有骨架。生成后会作为智能编辑和续写的主线依据。</p>

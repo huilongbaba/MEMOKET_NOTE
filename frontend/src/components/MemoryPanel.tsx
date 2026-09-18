@@ -5,6 +5,7 @@ import {
 } from '../api'
 import type { FactDetail, JobOut } from '../api'
 import { toast } from '../toast'
+import { friendlyError } from '../util/friendlyError'
 import ExportBack from './ExportBack'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -74,7 +75,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       setInterrupted((xs) => xs.filter((x) => x.job_id !== j.job_id))
       setBatchJob(r)
       watchJob(r.job_id, (x) => { setBatchJob(x); void pollRecentFacts(x.facts) }, () => { void refresh(); setRecentFacts([]); void loadInterrupted() })
-    } catch (e) { toast('继续不了：' + (e instanceof Error ? e.message : String(e)), 'error') }
+    } catch (e) { toast('继续不了：' + friendlyError(e), 'error') }
   }
   // 开始前的预估：这一批要跑多久、大概多少 token
   function announceEstimate(r: JobOut) {
@@ -138,7 +139,8 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error')
+      // P3 遗留（？）：原来 `e.message` 原样——后端没起来时是英文 `Failed to fetch`
+      toast('导入失败：' + friendlyError(e), 'error')
     } finally {
       setImporting(false)
     }
@@ -153,7 +155,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error')
+      toast('导入失败：' + friendlyError(e), 'error')
     } finally {
       setImporting(false)
     }
@@ -168,7 +170,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error')
+      toast('导入失败：' + friendlyError(e), 'error')
     } finally {
       setImporting(false)
     }
@@ -183,7 +185,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
         () => { void refresh(); setRecentFacts([]) })
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error')
+      toast('导入失败：' + friendlyError(e), 'error')
     } finally {
       setImporting(false)
     }

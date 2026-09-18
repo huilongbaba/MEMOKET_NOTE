@@ -27,7 +27,7 @@ import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
 import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
   from '../editor/roundDiff'
-import { marginMemory, setMarginMarks, type MarginMark } from '../editor/marginMemory'
+import { marginMemory, setMarginMarks, type MarginMark, type MarginOpen } from '../editor/marginMemory'
 import { slashMenu, type SlashItem } from '../editor/slashMenu'
 import { markdownHighlight, dimSyntaxMarks, editorTheme, scrollPadding, syntaxHighlighting } from '../editor/theme'
 import { frontmatterDim } from '../editor/frontmatter'
@@ -72,7 +72,8 @@ type Props = {
   onCursorParagraph?: (text: string) => void
   /** 边缘记忆：哪几段跟知识库有关系，段首行右边亮点 */
   marginMarks?: MarginMark[]
-  onMarginClick?: (m: MarginMark) => void
+  /** 圆点被悬停 / 点了 / 光标进了它的段：把关系卡贴到圆点旁边（P9） */
+  onMarginClick?: MarginOpen
   /** `/` 唤起的插入菜单选中了某一项。扩展只负责"选了哪一项、`/` 从哪到哪"，
    * 具体做什么（跑 harness、传图、录音）由上层决定——CM6 扩展里不该出现网络
    * 请求和文件上传。 */
@@ -173,7 +174,7 @@ export default function MarkdownEditor({
         frontmatterDim,
         editorTheme,
         scrollPad ? scrollPadding : [],
-        marginMemory((m) => liveRef.current.onMarginClick?.(m)),
+        marginMemory((m, anchor, reason) => liveRef.current.onMarginClick?.(m, anchor, reason)),
         cmPlaceholder(placeholder ?? ''),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {

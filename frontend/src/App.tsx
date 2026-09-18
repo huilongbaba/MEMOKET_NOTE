@@ -4,7 +4,8 @@ import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
-import { chunked, MARGIN_BATCH, marginParagraphs, type MarginMark } from './editor/marginMemory'
+import { chunked, MARGIN_BATCH, marginParagraphs, markKey, type MarginMark } from './editor/marginMemory'
+import { ignoredSet } from './util/relationActions'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
@@ -74,6 +75,9 @@ import TabBar, { type Tab } from './components/TabBar'
 import Ribbon, { type RibbonTab } from './components/Ribbon'
 import RightPane, { type PaneTab } from './components/RightPane'
 import SkeletonPanel from './components/SkeletonPanel'
+import DocIntentRow from './components/DocIntentRow'
+import MarginCard from './components/MarginCard'
+import { intentText, resolveIntent, type DocIntent } from './util/docIntent'
 import SettingsPanel, { AboutLine } from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
 import TapProvenance from './components/TapProvenance'
@@ -404,11 +408,27 @@ export default function App() {
   const [cursorPara, setCursorPara] = useState('')
   // 边缘记忆：停止编辑 1.5s 后把含数字的段落批量拿去判关系，段首行右边亮点（零 LLM）
   const [marginMarks, setMarginMarks] = useState<MarginMark[]>([])
+  /** 页边圆点旁边的关系卡（P9，agent-native-editor §3.3）：悬停 / 点圆点、或光标进了亮黄点的段就贴在那一行旁边。 */
+  const [marginCard, setMarginCard] = useState<{ m: MarginMark; anchor: DOMRect; reason: 'hover' | 'click' | 'cursor' } | null>(null)
+  /** 文档意图（P9，§3.1）：这篇要干什么。打开时从库里读，没有就按标题预填（零模型）。 */
+  const [intent, setIntent] = useState<DocIntent>(() => resolveIntent(null, ''))
+  // 生成骨架 / 智能排版的「停止」（P3 遗留 ❌×2：模型卡住只能干等 300 秒）
+  const skeletonAbortRef = useRef<AbortController | null>(null)
+  const restructureAbortRef = useRef<AbortController | null>(null)
+  // 标题变了、意图还是预填的 → 跟着标题重推；用户改过一个字的（source=user）永远不覆盖
+  useEffect(() => {
+    if (!current) return
+    setIntent((i) => (i.source === 'user' ? i : resolveIntent(null, title)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, current?.id])
   const [scopeTick, setScopeTick] = useState(0)
   useEffect(() => {
     const on = () => setScopeTick((t) => t + 1)
     window.addEventListener('memory-scope-changed', on)
-    return () => window.removeEventListener('memory-scope-changed', on)
+    // 卡上点了「忽略」：那个点当场灭掉，不等下一轮重算
+    const gone = (e: Event) => setMarginMarks((prev) => prev.filter((m) => markKey(m) !== (e as CustomEvent<string>).detail))
+    window.addEventListener('relation-ignored', gone)
+    return () => { window.removeEventListener('memory-scope-changed', on); window.removeEventListener('relation-ignored', gone) }
   }, [])
   useEffect(() => {
     if (!current) { setMarginMarks([]); return }
@@ -423,11 +443,13 @@ export default function App() {
       for (const chunk of chunked(paras, MARGIN_BATCH)) {
         try {
           const r = await api.memoryRelationsBatch(chunk.map((p) => p.text))
-          r.marks.forEach((m, i) => { if (m) marks.push({ line: chunk[i].line, relation: m.relation, say: m.say, kinds: m.kinds }) })
+          r.marks.forEach((m, i) => { if (m) marks.push({ line: chunk[i].line, relation: m.relation, say: m.say, kinds: m.kinds, fact_ids: m.fact_ids, facts: m.facts }) })
         } catch { return }
         if (stale) return                            // 正文又改了，这一批作废，等下一轮
       }
-      setMarginMarks(marks)
+      // 「忽略」过的那一对不再亮点（右栏的卡同一份名单）
+      const ignored = ignoredSet()
+      setMarginMarks(marks.filter((m) => !ignored.has(markKey(m))))
     }, 1500)
     return () => { stale = true; clearTimeout(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -999,7 +1021,9 @@ export default function App() {
   }
 
   async function copyNotePath(row: TreeRow) {
-    const paths = await api.notePaths(row.note_id)
+    let paths: string[][]
+    // P3 遗留（？）：后端没起来时这里原来直接抛出去没人接——点了什么都没有
+    try { paths = await api.notePaths(row.note_id) } catch (e) { toast('复制不了路径：' + friendlyError(e), 'error'); return }
     const byId = new Map(tree.map((r) => [r.note_id, r.title || '未命名']))
     // 克隆之后路径不止一条，全给出来——用户自己知道他要哪条
     const text = paths.map((p) => p.map((id) => byId.get(id) ?? id).join(' / ')).join('\n')
@@ -1212,6 +1236,8 @@ export default function App() {
     setSpine(n.spine ?? '')
     setBeats(n.beats ?? [])
     setSkeletonNotes([])
+    setIntent(resolveIntent(n.intent, d.title))
+    setMarginCard(null)
     // 已经有骨架的笔记，打开时不要 8 秒后又生成一遍——之前每开一篇就一次模型
     // 调用，模型连不上时每开一篇弹一个错（实拍）。以打开时的正文为基线，改够
     // 20 字才重算。
@@ -1487,7 +1513,7 @@ export default function App() {
     const signal = ctrl.signal
     try {
       if (action === 'verify') {
-        const r = await api.verifySelection(content, selection, signal)
+        const r = await api.verifySelection(content, selection, signal, intentText(intent))
         setVerifyFindings(r.findings)
       } else if (action === 'trace') {
         // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
@@ -1498,11 +1524,11 @@ export default function App() {
         // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
         setPaneFocus({ id: 'trace', n: Date.now() })
       } else if (action === 'expand') {
-        const r = await api.expandSelection(content, selection, signal)
+        const r = await api.expandSelection(content, selection, signal, intentText(intent))
         if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, '扩展上下文')) toast('建议对不上正文（锚点找不到），没有改动。')
       } else if (action === 'rewrite' || action === 'polish') {
-        const r = await api.rewriteSelection(content, selection, action, spine, beats, signal)
+        const r = await api.rewriteSelection(content, selection, action, spine, beats, signal, intentText(intent))
         if (r.revisions.length === 0) toast(r.note || '模型没有给出修改建议。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, action === 'polish' ? '润色' : '重写')) toast('建议对不上正文（锚点找不到），没有改动。')
       } else {
@@ -1675,7 +1701,8 @@ export default function App() {
     }
     let undone = false
     const timer = setTimeout(() => {
-      if (!undone) api.deleteNote(n.id).then(() => { void reloadTree(); void reload() }).catch(() => { void reloadTree(); void reload() })
+      // P3 遗留（？）：5 秒后真删失败原来只 reload()，笔记长回来没有一句解释
+      if (!undone) api.deleteNote(n.id).then(() => { void reloadTree(); void reload() }).catch((e) => { toast(`没删成「${displayTitle(n)}」——它还在库里，列表刷新后会长回来：` + friendlyError(e), 'error'); void reloadTree(); void reload() })
     }, 5000)
     toastAction(`已删除「${displayTitle(n)}」${ids.size > 1 ? `和它下面的 ${ids.size - 1} 篇` : ''}（30 天内可在「最近删除」找回）`, '撤销', () => {
       undone = true
@@ -1712,26 +1739,34 @@ export default function App() {
     if (why) { if (!quiet) toast(why); return }             // 不发请求：后端同一句话
     if (!quiet && !llmGate()) return
     setLoading('skeleton')
+    const ctrl = new AbortController()
+    skeletonAbortRef.current = ctrl
     try {
-      const r = await api.genSkeleton(title, content)
+      const r = await api.genSkeleton(title, content, intentText(intent), ctrl.signal)
       setSpine(r.spine)
       setBeats(r.beats)
       setSkeletonNotes(r.notes ?? [])
       await persistSkeleton(r.spine, r.beats)
     } catch (e) {
       // 后台自动跑的失败不打扰人（用户没点任何东西）；点「生成骨架」失败才提示
+      if ((e as Error).name === 'AbortError') { if (!quiet) toast('已停止生成骨架'); return }
       if (quiet) void api.clientLog('warn', '后台骨架生成失败：' + friendlyError(e), '', 'skeleton')
       else if (isLlmUnreachable(e)) toastAction('生成骨架失败：' + friendlyError(e), '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
       else toast('生成骨架失败：' + friendlyError(e), 'error')
     } finally {
+      skeletonAbortRef.current = null
       setLoading('')
     }
   }
+  /** 「停止」生成骨架：撤掉请求、按钮复位。后端那次调用照跑到超时，但界面不再被它拖着。 */
+  function stopSkeleton() { skeletonAbortRef.current?.abort() }
 
   /** magic tap：流式续写，边到边写进编辑器。再点一次可中断。 */
   async function runMagicTap() {
     if (loading === 'tap') {
+      // 第二下 = 停止（P3 遗留：停下来原来一个字不说，用户分不清是停了还是卡了）
       abortRef.current?.abort()
+      toast('已停止续写，写到哪算哪——不要的话用正文上的「撤回」')
       return
     }
     // 一个字都没有、标题也空：模型只能编。让用户先给个方向
@@ -1786,6 +1821,7 @@ export default function App() {
         (g) => { if (g.hint) toast(g.hint, 'error'); setTapNotes(g.notes ?? []) },
         following,
         title,
+        intentText(intent),
       )
       // 流完了再统一修一次「**标题：**」这类粗体（后端落盘路径有同样一步，续写是纯客户端拼的）
       let fixed = fixBoldPunct(inserted)
@@ -2283,6 +2319,7 @@ export default function App() {
       abortRef.current = null
       setLoading('')
       setNoteHarnessStatus('')
+      toast('已停止智能续写，写到哪算哪——改动在右栏「改动」里可以整层撤回')   // P3 遗留：第二下 = 停止但原来一个字不说
       return
     }
     if (!current) return
@@ -2599,8 +2636,10 @@ export default function App() {
     if (!llmGate()) return
     // 之前复用 'skeleton'：打开一篇没骨架的笔记自动生成骨架时，「智能排版」也跟着转圈（实拍）
     setLoading('restructure')
+    const ctrl = new AbortController()
+    restructureAbortRef.current = ctrl
     try {
-      const r = await api.restructureNote(current.id, title, before)
+      const r = await api.restructureNote(current.id, title, before, intentText(intent), ctrl.signal)
       if (r.detail) toast(r.detail, 'error')
       if (!r.changed) { toast(r.detail ? '没有改动' : '结构已经很清楚了，没什么可调的'); return }
       const after = formatMarkdown(r.content)
@@ -2620,11 +2659,14 @@ export default function App() {
       const skipped = r.skipped.length ? `，跳过 ${r.skipped.length} 处` : ''
       toast(`调整了 ${r.ops} 处结构${skipped}，可以逐处接受或撤回`)
     } catch (e) {
-      toast(`排版失败：${friendlyError(e)}`, 'error')
+      if ((e as Error).name === 'AbortError') toast('已停止智能排版，正文没动')
+      else toast(`排版失败：${friendlyError(e)}`, 'error')
     } finally {
+      restructureAbortRef.current = null
       setLoading('')
     }
   }
+  function stopRestructure() { restructureAbortRef.current?.abort() }
 
   /** `/` 选中一项之后的入口。需要提示词的先弹输入框，其余的当场做完。 */
   function onSlash(item: SlashItem, from: number, to: number) {
@@ -2679,8 +2721,12 @@ export default function App() {
       stream.getTracks().forEach((t) => t.stop())
       voiceStopById.current.delete(id)
       push(patchRun.of({ id, phase: '转写中…' }))
+      // P3 遗留（？）：录完之后「停止」原来只撤块，转写请求照跑、回来还往正文里插——挂上 AbortController
+      const ctrl = new AbortController()
+      runAborts.current.set(id, ctrl)
       try {
-        const r = await api.transcribeOnly(new Blob(chunks, { type: 'audio/webm' }))
+        const r = await api.transcribeOnly(new Blob(chunks, { type: 'audio/webm' }), 'recording.webm', ctrl.signal)
+        if (ctrl.signal.aborted) return
         const text = (r.text || '').trim()
         if (!text) {
           push(patchRun.of({ id, error: '没听清，什么都没转出来', expanded: true }))
@@ -2696,9 +2742,12 @@ export default function App() {
         setContent(after)
         pushDiff('语音输入', before, after)
       } catch (e) {
+        if ((e as Error).name === 'AbortError') { toast('已停止，这段录音没有转写'); return }
         push(patchRun.of({
           id, error: `转写失败：${friendlyError(e)}`, expanded: true,
         }))
+      } finally {
+        runAborts.current.delete(id)
       }
     }
     mr.start()
@@ -2728,7 +2777,12 @@ export default function App() {
     try {
       if (ctx.item.key === 'table-image') {
         push(patchRun.of({ id, phase: '在看这张图里有没有表格…' }))
-        const r = await api.tableFromImage(f)
+        // P3 遗留（？）：占位块「停止」原来只撤块，看图请求照跑、跑完仍插进正文——挂上 AbortController
+        const ctrl = new AbortController()
+        runAborts.current.set(id, ctrl)
+        let r: Awaited<ReturnType<typeof api.tableFromImage>>
+        try { r = await api.tableFromImage(f, ctrl.signal) } finally { runAborts.current.delete(id) }
+        if (ctrl.signal.aborted) return
         if (!r.detected) {
           // 如实说没检测到，**不要硬塞一张空表进用户笔记**
           push(patchRun.of({
@@ -2764,12 +2818,18 @@ export default function App() {
       }
       push(patchRun.of({ id, phase: '转写中…' }))
       let text = ''
+      // 转写这一步也挂 AbortController（P9，同语音输入）：占位块「停止」撤掉转写，播放器留着
+      const tctrl = new AbortController()
+      runAborts.current.set(id, tctrl)
       try {
-        text = ((await api.transcribeOnly(f, f.name)).text || '').trim()
+        text = ((await api.transcribeOnly(f, f.name, tctrl.signal)).text || '').trim()
       } catch (e) {
+        if ((e as Error).name === 'AbortError') { pushDiff('插入音频', before, editorViewRef.current!.state.doc.toString()); toast('已停止转写，音频留在正文里'); return }
         push(patchRun.of({ id, expanded: true, error: `音频已插入，转写没成：${friendlyError(e)}` }))
         pushDiff('插入音频', before, editorViewRef.current!.state.doc.toString())
         return
+      } finally {
+        runAborts.current.delete(id)
       }
       const v2 = editorViewRef.current!
       v2.dispatch({ changes: { from: at(), insert: text ? text + '\n\n' : '' }, effects: endRun.of(id) })
@@ -2778,6 +2838,7 @@ export default function App() {
       pushDiff('插入音频', before, after)
       if (!text) toast('音频已插入，但转写没有出内容')
     } catch (e) {
+      if ((e as Error).name === 'AbortError') { toast('已停止，什么都没插进正文'); return }
       push(patchRun.of({
         id, expanded: true,
         error: `处理失败：${friendlyError(e)}`,
@@ -3260,6 +3321,17 @@ export default function App() {
             )}
           </div>
         )}
+        {/* 这篇要干什么（P9，agent-native-editor §3.1）：标题下面常驻一行，所有 AI 动作的前提。
+            专注模式收起——那会儿只剩正文。 */}
+        {current && !focusMode && (
+          <DocIntentRow intent={intent} onChange={(next) => {
+            setIntent(next)
+            const id = current.id
+            api.saveIntent(id, next)
+              .then((n) => setNotes((prev) => prev.map((x) => (x.id === n.id ? { ...x, intent: n.intent } : x))))
+              .catch((e) => toast('意图没存上：' + friendlyError(e), 'error'))
+          }} />
+        )}
         {/* ribbon —— 这篇笔记的元数据。第一件放进来的是**写作骨架**：
             判据 3 说「自主规划、自主执行、检查结果」，那**计划就得看得见**，
             跟正文一起，而不是右栏某个要切过去才有的面板。把计划藏起来，
@@ -3281,6 +3353,7 @@ export default function App() {
                   viewRef={editorViewRef}
                   onFormat={formatNote}
                   onRestructure={restructureNote}
+                  onStopRestructure={stopRestructure}
                   restructuring={loading === 'restructure'}
                 />
               ),
@@ -3571,7 +3644,7 @@ export default function App() {
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
               onCursorParagraph={setCursorPara}
               marginMarks={marginMarks}
-              onMarginClick={() => setPaneFocus({ id: 'memory', n: Date.now() })}
+              onMarginClick={(m, anchor, reason) => { if (!m || !anchor) { setMarginCard(null); return } setMarginCard({ m, anchor, reason }) }}
               onSlash={onSlash}
               onStopRun={stopRun}
               /* 空文档那一刻是**唯一一个用户愿意读提示的时刻**，别拿去讲 Markdown。
@@ -3588,6 +3661,11 @@ export default function App() {
               placeholder="在这里写。　打一个 / 唤出菜单：AI 写作、插图、表格、排版"
               viewRef={editorViewRef}
             />
+            {/* 边缘记忆的关系卡：贴在圆点旁边，不用转头去右栏（P9，§3.3） */}
+            {marginCard && current && (
+              <MarginCard card={marginCard} content={content} onClose={() => setMarginCard(null)} onInsert={insertAtCursor}
+                          onSeeAll={() => { setMarginCard(null); setPaneFocus({ id: 'memory', n: Date.now() }) }} />
+            )}
           </>
         )}
         </div>{/* note-body */}
@@ -3652,6 +3730,7 @@ export default function App() {
                     notes={skeletonNotes}
                     loading={loading === 'skeleton'}
                     onRun={runSkeleton}
+                    onStop={stopSkeleton}
                   />
                 )
                 const activity = (current || loading === 'note-harness' || harness?.running) && <AgentActivity
@@ -3723,7 +3802,12 @@ export default function App() {
         {pausedRun && <span style={{ color: 'var(--accent)' }}><Icon n="bx-pause-circle" /> 等你处置</span>}
         {harness?.running && <span style={{ color: 'var(--accent)' }}><Icon n="bx-folder-open" /> {harness.folderName}</span>}
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 12, alignItems: 'center' }}>
-          {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.total > 0 ? ` 第 ${Math.min(jobInfo.done + 1, jobInfo.total)}/${jobInfo.total} 块` : ''}{jobInfo.eta > 0 ? ` · 还要约 ${jobInfo.eta < 90 ? `${jobInfo.eta} 秒` : `${Math.round(jobInfo.eta / 60)} 分钟`}` : ''}{jobInfo.facts > 0 ? ` · 已抽出 ${jobInfo.facts} 条` : ''}</span>}
+          {jobInfo && <span className="muted"><span className="spinner" /> 存入知识库中…{jobInfo.total > 0 ? ` 第 ${Math.min(jobInfo.done + 1, jobInfo.total)}/${jobInfo.total} 块` : ''}{jobInfo.eta > 0 ? ` · 还要约 ${jobInfo.eta < 90 ? `${jobInfo.eta} 秒` : `${Math.round(jobInfo.eta / 60)} 分钟`}` : ''}{jobInfo.facts > 0 ? ` · 已抽出 ${jobInfo.facts} 条` : ''}
+            {/* P3 遗留（？）：后台 job 原来没有取消——模型卡住时这一行要转到 job 自己超时。后端本来就有 cancel，接上 */}
+            {jobInfo.status === 'cancelling'
+              ? <>{' '}· 取消中（等这一块的模型调用结束）</>
+              : <>{' '}<button className="linklike" title="取消这次存入知识库（已抽出的留着）" onClick={() => { void api.cancelJob(job).catch((e) => toast('取消不了：' + friendlyError(e), 'error')) }}>取消</button></>}
+          </span>}
           {/* 红字可点：装好的包第一次开、或换了台机器没填模型，红字只说「不可达」用户不知道去哪修 */}
           {healthMsg && (
             <button className="health-bad linklike" title="点开设置页填模型地址 / 密钥" onClick={() => void openVirtual('app:settings', '设置')}>

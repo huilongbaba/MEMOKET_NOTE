@@ -1,10 +1,17 @@
 /** 边缘记忆（docs/agent-native-editor.md §3.3）：正文右缘一条「记忆带」——哪一段跟知识库
  *  有关系（冲突 / 延续 / 叠加 / 合并 / 印证 / 缺依据）就在那一段的第一行右边亮一个点，颜色 = 关系。
- *  点一下：光标落到那段，右栏「记忆」的关系卡就出来了。数据由上层批量算好塞进来
- *  （零 LLM 的代码候选），这里只管画和跟着文档改动映射行号。 */
+ *
+ *  P9 之前点只有一个原生 `title` 悬停 + 点一下切到右栏；方案 §1 第 2 行说这还是「右栏旁观者」：
+ *  真正的记忆应该在你写到「DVT 延期」的那一行旁边告诉你「上次记的是 6/3」。所以现在：
+ *    · 悬停 / 点圆点 → 关系卡贴在圆点旁边（`onOpen(m, 圆点的矩形, 'hover' | 'click')`）
+ *    · 光标进了亮**黄点（冲突）/ 紫点（延续）**的段落 → 卡自己出来一次（`'cursor'`）：这两种是
+ *      「知识库有话要说」的关系；印证 / 缺依据 / 叠加 / 合并 静默，要看才悬停
+ *    · 每个点（关系 + 事实）自动弹一次，用户关掉就不再自动弹
+ *  数据由上层批量算好塞进来（零 LLM 的代码候选，`relations/batch` 连事实一起回），
+ *  这里只管画、跟着文档改动映射行号、和「什么时候把卡叫出来」。 */
 import { StateEffect, StateField, type Extension } from '@codemirror/state'
 import { EditorView, gutter, GutterMarker } from '@codemirror/view'
-import type { MemoryRelationKind } from '../api'
+import type { Fact, MemoryRelationKind } from '../api'
 
 export type MarginMark = {
   /** 1 起的行号（段落第一行） */
@@ -13,6 +20,9 @@ export type MarginMark = {
   say: string
   /** 这段一共判出几种关系；点只画最要紧的一种 */
   kinds?: number
+  /** 卡上要列的那几条记录（日期 + 原话），`relations/batch` 一起回（P9） */
+  fact_ids?: string[]
+  facts?: Fact[]
 }
 
 /** 六种关系的人话。右栏关系卡、页边圆点的悬停、图例三处同一份。 */
@@ -28,7 +38,13 @@ export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段�
  *  （`routers/memory.py` `relations`，只对 conflict 候选）；圆点（`relations/batch`）不会。 */
 export const MODEL_NOTE = '关系卡里判到「冲突」时会让模型复核一次那句话；其余（圆点、印证、缺依据、叠加、合并、延续）全是代码判的。'
 
-/** 悬停在点上看到的话：这一段 · 关系 · 那句人话 · 规则 · 还有别的没有。 */
+/** 哪几种关系值得**自己**贴到行边上来（不用悬停）：知识库有话要说的两种。其余静默，要看才悬停。 */
+export const AUTO_SHOW: ReadonlySet<MemoryRelationKind> = new Set<MemoryRelationKind>(['conflict', 'continuation'])
+
+/** 一个点的身份：关系 + 事实。行号会变，这个不变——「自动弹过一次」按它记。 */
+export function markKey(m: MarginMark): string { return m.relation + ':' + (m.fact_ids ?? []).join(',') }
+
+/** 悬停在点上看到的话（卡片顶上那行；原生 title 保留给读屏）：这一段 · 关系 · 那句人话。 */
 export function markTitle(m: MarginMark): string {
   const more = (m.kinds ?? 1) > 1 ? `这段还判出另外 ${(m.kinds ?? 1) - 1} 种关系，` : ''
   return `这一段（第 ${m.line} 行起）· ${RELATION_LABEL[m.relation]}\n${m.say}\n${MARGIN_RULE}\n${more}点一下在右栏「记忆」看全部`
@@ -52,11 +68,12 @@ export const setMarginMarks = StateEffect.define<MarginMark[]>()
 
 class Dot extends GutterMarker {
   constructor(readonly m: MarginMark) { super() }
-  eq(other: Dot) { return other.m.relation === this.m.relation && other.m.say === this.m.say }
+  eq(other: Dot) { return other.m.relation === this.m.relation && other.m.say === this.m.say && other.m.line === this.m.line }
   toDOM() {
     const el = document.createElement('span')
     el.className = 'mm-dot mm-' + this.m.relation
     el.title = markTitle(this.m)
+    el.dataset.line = String(this.m.line)
     el.setAttribute('aria-label', RELATION_LABEL[this.m.relation])
     return el
   }
@@ -77,7 +94,29 @@ export const marginField = StateField.define<MarginMark[]>({
   },
 })
 
-export function marginMemory(onClick: (m: MarginMark) => void): Extension {
+/** 光标所在段落的第一行行号（空行隔开算一段）——跟 `paragraphsWithLines` 同一种分段。 */
+export function paragraphStartLine(doc: { lines: number; line(n: number): { text: string } }, lineNo: number): number {
+  let n = Math.min(Math.max(1, lineNo), doc.lines)
+  if (!doc.line(n).text.trim()) return 0            // 光标在空行上：不属于任何段
+  while (n > 1 && doc.line(n - 1).text.trim()) n--
+  return n
+}
+
+/** 圆点在屏幕上的位置（画出来了才有；不在视口里的行 CM 不画） */
+function dotRect(view: EditorView, line: number): DOMRect | null {
+  const el = view.dom.querySelector(`.cm-memory-gutter .mm-dot[data-line="${line}"]`)
+  return el ? el.getBoundingClientRect() : null
+}
+
+export type MarginOpen = (m: MarginMark | null, anchor: DOMRect | null, reason: 'hover' | 'click' | 'cursor') => void
+
+export function marginMemory(onOpen: MarginOpen): Extension {
+  // 自动弹过的点：一个点只自己出来一次，关掉就不再烦人；换一批标记（正文改了）重新算
+  const autoShown = new Set<string>()
+  const find = (view: EditorView, lineFrom: number) => {
+    const n = view.state.doc.lineAt(lineFrom).number
+    return view.state.field(marginField).find((x) => x.line === n) ?? null
+  }
   return [
     marginField,
     gutter({
@@ -91,14 +130,35 @@ export function marginMemory(onClick: (m: MarginMark) => void): Extension {
       lineMarkerChange: (u) => u.docChanged || u.transactions.some((t) => t.effects.some((e) => e.is(setMarginMarks))),
       domEventHandlers: {
         mousedown(view, line) {
-          const n = view.state.doc.lineAt(line.from).number
-          const m = view.state.field(marginField).find((x) => x.line === n)
+          const m = find(view, line.from)
           if (!m) return false
           view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'nearest' }) })
-          onClick(m)
+          onOpen(m, dotRect(view, m.line), 'click')
           return true
         },
+        mouseover(view, line, event) {
+          if (!(event.target as HTMLElement | null)?.classList?.contains('mm-dot')) return false
+          const m = find(view, line.from)
+          if (m) onOpen(m, (event.target as HTMLElement).getBoundingClientRect(), 'hover')
+          return false
+        },
       },
+    }),
+    // 光标进了「知识库有话要说」的段落：卡自己贴到行边上来（一次）
+    EditorView.updateListener.of((u) => {
+      const marksChanged = u.transactions.some((t) => t.effects.some((e) => e.is(setMarginMarks)))
+      if (!u.selectionSet && !marksChanged) return
+      if (marksChanged) autoShown.clear()
+      const head = u.state.selection.main.head
+      const start = paragraphStartLine(u.state.doc, u.state.doc.lineAt(head).number)
+      if (!start) return
+      const m = u.state.field(marginField).find((x) => x.line === start)
+      if (!m || !AUTO_SHOW.has(m.relation)) return
+      const key = markKey(m)
+      if (autoShown.has(key)) return
+      autoShown.add(key)
+      // 圆点要等这次更新画完才在 DOM 里
+      requestAnimationFrame(() => { const r = dotRect(u.view, m.line); if (r) onOpen(m, r, 'cursor') })
     }),
   ]
 }

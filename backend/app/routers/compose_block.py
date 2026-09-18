@@ -23,6 +23,7 @@ from ..util import llm
 from ..editor import vision
 from ..editor import restructure, textshape
 from ..editor.preconditions import note_precondition
+from ..editor import intent as doc_intent
 from ..harness import loop, modes, score_context
 from ..harness.events import to_sse
 from ..harness.hooks.block import BlockHooks
@@ -202,7 +203,7 @@ async def restructure_note(body: ComposeBlockIn, user: str = Depends(current_use
         raise HTTPException(400, why)   # 前端同一句话先拦，不发请求（P3）
     try:
         text = await llm.complete(
-            [{"role": "system", "content": _RESTRUCTURE_SYSTEM},
+            [{"role": "system", "content": doc_intent.block(body.intent) + _RESTRUCTURE_SYSTEM},
              {"role": "user", "content": restructure.numbered(src)}],
             max_tokens=1500, temperature=0.1)
     except Exception as exc:                       # noqa: BLE001

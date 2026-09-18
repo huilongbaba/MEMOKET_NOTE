@@ -29,6 +29,19 @@ class NoteIn(BaseModel):
         return _one_line_title(v)
 
 
+class NoteIntent(BaseModel):
+    """文档意图（P9，agent-native-editor §3.1）：这篇要干什么。三个字段各一行；
+    source = prefill（代码按标题预填的）/ user（用户改过一个字就是校准）/ 空。"""
+    goal: str = ""
+    reader: str = ""
+    done: str = ""
+    source: Literal["", "prefill", "user"] = ""
+
+
+class NoteIntentIn(NoteIntent):
+    pass
+
+
 class Note(BaseModel):
     # 摄入过没有（空 = 没有）。前端拿它判「改过没同步」、决定要不要自动同步。
     ingested_at: str = ""
@@ -48,6 +61,8 @@ class Note(BaseModel):
     # 跟随切页，骨架就没了——而 harness 每轮都要拿它当主线依据。
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
+    # 文档意图跟着笔记走（P9）。库里没有就是四个空串。
+    intent: NoteIntent = Field(default_factory=NoteIntent)
     created_at: str
     updated_at: str
 
@@ -79,6 +94,8 @@ class ComposeBlockIn(BaseModel):
     # 用户选中的那段。给了就是「对这段做点什么」（右键 → 自定义提示），
     # 没给就是「在光标这里插一块」（`/` 唤起）。同一套 harness，差的是作用域。
     selection: str = ""
+    # 文档意图那句（P9）。智能排版用；`/block` 走 harness loop，那条线另接（见台账 P9）
+    intent: str = ""
 
 
 class SkeletonSaveIn(BaseModel):
@@ -601,6 +618,8 @@ class SkeletonIn(BaseModel):
     """线 1：为当前写作内容生成主线骨架。"""
     content: str
     title: str = ""
+    # 文档意图那句（`editor/intent.as_text`），拼进 system 第一段；空 = 不加（P9）
+    intent: str = ""
 
 
 class SkeletonOut(BaseModel):
@@ -661,6 +680,7 @@ class MagicTapIn(BaseModel):
     # 标题：正文还很短时它是模型唯一知道的方向（智能续写走 ctx.note_title，续写这条路之前没带）
     title: str = ""
     scope: str = "all"      # 记忆范围（同 RecallIn.scope）
+    intent: str = ""       # 文档意图那句（P9）
 
 
 # ---------------------------------------------------------------- 选中文本操作
@@ -674,18 +694,21 @@ class RewriteIn(BaseModel):
     intent: Literal["rewrite", "polish"] = "rewrite"
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
+    doc_intent: str = ""   # 文档意图那句（P9；这里 `intent` 已经被「重写 / 润色」占了）
 
 
 class ExpandIn(BaseModel):
     content: str
     selection: str
     scope: str = "all"      # 记忆范围（database/kb/scope.py）
+    intent: str = ""       # 文档意图那句（P9）
 
 
 class VerifyIn(BaseModel):
     content: str
     selection: str
     scope: str = "all"      # 记忆范围：词法召回只看这一档；正文里显式引用的事实不受限
+    intent: str = ""       # 文档意图那句（P9）：校验按「完成标准」核
 
 
 class VerifyFinding(BaseModel):

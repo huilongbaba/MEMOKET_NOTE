@@ -14,6 +14,7 @@ import { fmtDate } from '../util/time'
 import { addFact, deleteFact, factPeek, noteKb, notesCiting, updateFact, type CitingNote, type FactPeek, type NoteKb, type TreeRow, noteGraph, type NoteGraph } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { toast } from '../toast'
+import { friendlyError } from '../util/friendlyError'
 import Icon from './Icon'
 
 export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, ingesting, onOpenNote, refreshTick = 0, empty = false, onStripMissing }: {
@@ -52,13 +53,13 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
       const f = await updateFact(editing.id, text)
       setKb((k) => (k ? { ...k, facts: k.facts.map((x) => (x.id === f.id ? { ...x, text: f.text } : x)) } : k))
       setEditing(null)
-    } catch (e) { toast('改不了：' + String(e), 'error') }
+    } catch (e) { toast('改不了：' + friendlyError(e), 'error') }
   }
   async function remove(id: string) {
     try {
       await deleteFact(id)
       setKb((k) => (k ? { ...k, facts: k.facts.filter((x) => x.id !== id) } : k))
-    } catch (e) { toast('删不了：' + String(e), 'error') }
+    } catch (e) { toast('删不了：' + friendlyError(e), 'error') }
   }
   async function saveAdd() {
     const text = (adding ?? '').trim()
@@ -67,7 +68,7 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
       const f = await addFact(noteId, text)
       setKb((k) => (k ? { ...k, ingested_at: k.ingested_at || new Date().toISOString(), facts: [...k.facts, f] } : k))
       setAdding(null)
-    } catch (e) { toast('加不上：' + String(e), 'error') }
+    } catch (e) { toast('加不上：' + friendlyError(e), 'error') }
   }
 
   // 反向链接：同一条依据还被哪几篇引用。Trilium 的 Backlinks 是「谁链到我」，

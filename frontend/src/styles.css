@@ -1277,6 +1277,24 @@ input[type=file]:hover { border-color: var(--accent); }
 .mm-unsupported { background: var(--muted); }
 .mm-accumulation { background: var(--accent); opacity: .6; }
 .mm-merge { background: var(--muted); opacity: .6; }
+/* 圆点旁边的关系卡（P9，§3.3）：浮在正文右缘、压在右栏上；跟右栏的 .rel-card 同一套色带 */
+.margin-card {
+  position: fixed; z-index: var(--z-float);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow-float); padding: 8px 10px 8px 12px;
+  font-size: var(--t-sm); line-height: 1.6; color: var(--fg);
+}
+.margin-card-head { gap: var(--s-3); align-items: center; }
+.margin-card-where { font-size: var(--t-xs); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.margin-card-close { margin-inline-start: auto; }
+.margin-card-say { margin-top: 4px; font-size: var(--t-md); }
+.margin-card-facts { gap: var(--s-1); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--mk-line-2); }
+.margin-card-fact { display: flex; gap: var(--s-2); align-items: baseline; cursor: pointer; color: var(--muted); }
+.margin-card-fact:hover { color: var(--fg); }
+.margin-card-fact .badge { flex-shrink: 0; }
+.margin-card-actions { gap: var(--s-2); margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.margin-card-actions button:not(.linklike) { font-size: var(--t-sm); padding: 2px 8px; }
+.margin-card-more { margin-inline-start: auto; font-size: var(--t-xs); color: var(--muted); }
 /* 记忆的关系：左边一条色带说是哪种关系 */
 .rel-card { padding: 8px 10px; border-inline-start: 3px solid var(--line); }
 .rel-card.rel-conflict { border-inline-start-color: var(--warn); }

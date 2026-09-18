@@ -24,6 +24,7 @@ TAP_SUMMARY_MAX = 2000
 from ..database import retrieval
 from ..editor import profile
 from ..editor.preconditions import note_precondition
+from ..editor import intent as doc_intent
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
@@ -120,7 +121,8 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     # P7（P4 #1/#3）：条数按正文长度定（每 2k 字一条、6–12）、每条 ≤120 字、开头标「已写：/待补：」——
     # 作为附加段拼进 system，提示词本身（`prompts/writing.py`）不动。
     budget = beats_budget(len(body.content))
-    system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user) + skeleton_length_rule(len(body.content))
+    # 文档意图是 system 的第一段（P9，§3.1）：骨架按「这篇要干什么」定，不是按正文猜
+    system = doc_intent.block(body.intent) + prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", user) + skeleton_length_rule(len(body.content))
     parsed, text = await llm.complete_json_raw(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.skeleton_user(
@@ -166,7 +168,7 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
         raise HTTPException(400, why)   # 空正文空标题照样开流、白花一次模型调用（第 265 轮实测）
     facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6, scope=body.scope)
 
-    system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
+    system = doc_intent.block(body.intent) + prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompts.magic_tap_user(
@@ -345,7 +347,7 @@ async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
         return EditOut(revisions=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
     base = prompts.POLISH_SYSTEM if body.intent == "polish" else prompts.REWRITE_SYSTEM
     scope = "polish" if body.intent == "polish" else "rewrite"
-    system = prompts.compose_system(base, scope, user)
+    system = doc_intent.block(body.doc_intent) + prompts.compose_system(base, scope, user)
     stats: dict = {}
     text = await llm.complete(
         [{"role": "system", "content": system},
@@ -391,7 +393,7 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
     # 纳入关键路径评审"这类具体但没有任何依据的细节）。查询用选中片段本身
     # 当线索，跟校验（verify）用同一个思路。
     facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6, scope=body.scope)
-    system = prompts.compose_system(prompts.EXPAND_SYSTEM, "expand", user)
+    system = doc_intent.block(body.intent) + prompts.compose_system(prompts.EXPAND_SYSTEM, "expand", user)
     stats: dict = {}
     text = await llm.complete(
         [{"role": "system", "content": system},
@@ -455,7 +457,7 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
     hits += [r for r in rows if r.get("text") and r["id"] not in seen]
     facts = [r["text"] for r in hits]
 
-    system = prompts.compose_system(prompts.VERIFY_SYSTEM, "verify", user)
+    system = doc_intent.block(body.intent) + prompts.compose_system(prompts.VERIFY_SYSTEM, "verify", user)
     text = await llm.complete(
         [{"role": "system", "content": system},
          {"role": "user", "content": prompts.verify_user(body.content, body.selection, facts)}],
