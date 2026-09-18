@@ -78,7 +78,8 @@ describe('`/` 块生成的临界条件（P1-2-B1 / 2-B2）', () => {
     // 走块生成的四条拦；prompt 靠指令；其余三条（图片转表格 / 语音 / 插音频）不吃正文
     const ai = SLASH_ITEMS.filter((i) => i.group === 'AI')
     const verdict = Object.fromEntries(ai.map((i) => [i.key, blockPrecondition(i, i.needsPrompt && !i.promptOptional ? '有指令' : '', '', '') ? 'blocked' : 'allowed']))
-    expect(verdict).toEqual({ prompt: 'allowed', chart: 'blocked', table: 'blocked', 'table-image': 'allowed', eda: 'blocked', analysis: 'blocked', voice: 'allowed', audio: 'allowed' })
+    // P14：「从托盘写」在空白笔记上放行（它靠托盘不靠正文）；托盘空着那一档由 `util/tray.trayPrecondition` 在 runBlock 里拦，不在这张表里
+    expect(verdict).toEqual({ prompt: 'allowed', tray: 'allowed', chart: 'blocked', table: 'blocked', 'table-image': 'allowed', eda: 'blocked', analysis: 'blocked', voice: 'allowed', audio: 'allowed' })
   })
 })
 

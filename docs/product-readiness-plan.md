@@ -95,6 +95,13 @@ ribbon 每个 tab 的每个按钮、导入导出、录音），列 §1.3 那九�
   —— **P13 ✔ 完成标准进 harness**（台账 P13 节 #1 / #2）：`checks/done.py` 跟 `util/doneChecks.ts` 是同一份判定（`shared/done-cases.json` 两边各跑 + 正则 / 措辞字面逐条核对），`DoneCriteria` 开跑时挂成第 17 条判据，命中走 `check_hit` 进下一轮 steer，只判这次写的单位、勾过的不判；
   假模型同一篇「16 条全过」→「⚑ 你定的完成标准 判了事实依据不合格…这次写的 2 段里 1 段没有出处」+ 下一轮「上一轮诊断」带着它（`p13-check-before/after-{light,dark}`）；真跑 1 次 0.10M：判据挂上了但 4 轮没轮到（`citations_present` ×1、`no_same_sources_twice` 连响 3 轮停机）——排第几是下一步。
   「每条」单位：紧跟列表项的段落算给那一条（周会 7/7 没出处 → 5/7，`p13-weekly-before/after-{light,dark}`）；目录点最后一节高亮的是上一节修了（`p13-jump-after-light`）。
+  —— **P14 ✔ 材料托盘**（台账 P14 节；§1 第 5 行「把这八篇笔记摊在桌上」；痛点 10 / 12；判据 2）：
+  新表 `note_tray`（note / fact / import / selection 四种 kind，四条真写真读）+ `GET / PUT / DELETE /api/notes/{id}/tray`；`ToolContext.tray` 跟 intent 同一条路进 harness（router 装、快照跟着走）；
+  harness 侧只加三条——**优先**（prompt 里单独一块 `tray_block` 摆在检索材料前）· **不筛**（拼在 `relevance.gate` 之后）· **不滚出窗口**（`middleware/facts` 钉在 `st.facts` 头上、不进一行索引）；续写 / 扩展 / 校验 / `/` 块 / 智能续写五条路都接；
+  前端：右栏「记忆」顶上一格 `TrayPanel`（不开新页签），入口 = 记忆卡「放进托盘」/ `[[` 链接右键「摊到这篇桌上」/ `/` 菜单「从托盘写」（prompt 模式 + `from_tray`，托盘空着前后端都拦），托盘项可拖序 / 上下移 / 点开原文 / 移除。
+  真跑 da080 同一意图对照 P11：托盘放「创业反思」+「产品当前的挑战」+ 事实 `1238-7F4`，第 1 轮第一段从「4月，团队启动数据与记忆 OS…」变成「**3月10日**：团队原先把 Kickstarter 上线视为…[未命名](note://92d07b760f1e)」，
+  最终正文引到托盘三条全部（`[terrence-1238-7F4]` ×1、`note://92d07…` ×2、`note://0eecee…` ×3）；0.28M（`p14-tray-{empty,three,slash}-{light,dark}`、`p14-tray-linkmenu-light`）。
+  **没接的**：`citations_present` 判据不认 `note://` 链接（第 1–2 轮被它短路一次）——在 checks，另一条线；导入默认进托盘、「按材料核对 / 补图」以托盘为范围、录音 / 网页 / 截图进托盘（§3.4 后半）
 - C3 编辑器基本功：快捷键、撤销粒度、粘贴、中文输入法、长文性能——每条一个用例。 —— **P10 ✔**（台账 P10 节，五条各一小节，探针 `probesP10.ts` 在真实 app 里量、日志当证据）：
   **快捷键** 17 条逐试，2 条不合格都修了（空列表项 / 任务项 / 引用行 Enter 一次退出，原来要两次还多出空行；⌘/ 被 CM keymap + App 监听双触发抵消、正文里永远打不开快捷键表）；缺行内代码 / 删除线的键。
   **撤销** 打字按停顿分组合格；续写四片流式停顿 >500ms 时 ⌘Z 要按四次、第五次吃用户的字 → `sealAsOneUndo` 封成一步（48/48）；「全部接受」后 ⌘Z 照样能撤。
@@ -150,6 +157,8 @@ P11 意图接进 harness + P8 遗留（search_memory 走筛 / 打分器引不存
 P12 C2 再两条（完成标准可检查 / 目录 = 计划）—— 第 775 轮，台账 P12 节，0 真调用
 P13 完成标准清单进 harness checks + P11/P12 编辑器侧遗留（每条单位 / 目录最后一节 / ⌘E ⇧⌘X / 撤销并成一套）—— 第 776 轮，台账 P13 节，1 次真跑 0.10M
 P14+ C2 继续（材料托盘 §3.4 另一条线在做）；done_criteria 排第几（再跑两篇）；D3 下一轮先看第 1 轮拿到什么；首开圆点剩下的 70% 在 memoket_kite 的全表 grep
+P14 C2 材料托盘（§3.4：新表 + 托盘 UI + harness 三条 + 五条取材路）—— 第 776 轮，台账 P14 节，1 次真跑 0.28M
+P15+ C2 继续（导入默认进托盘 / 按材料核对 / `citations_present` 认 note:// 链接）；D3 下一轮先看第 1 轮拿到什么；行内代码 / 删除线键；首开圆点剩下的 70% 在 memoket_kite 的全表 grep
 ```
 
 ## 4. 不做

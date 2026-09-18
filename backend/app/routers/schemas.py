@@ -44,6 +44,31 @@ class NoteIntentIn(NoteIntent):
     pass
 
 
+class TrayItemIn(BaseModel):
+    """材料托盘的一条（P14，agent-native-editor §3.4）。kind：note = 另一篇笔记（ref_id 是它的 id）/
+    fact = 知识库里一条事实（ref_id 是 fact id）/ import = 导入进来的一段 / selection = 从别处摘的一段。
+    excerpt 是进 prompt 的那段（后端封顶 `store.TRAY_EXCERPT_MAX`）。"""
+    id: str = ""
+    kind: Literal["note", "fact", "import", "selection"]
+    ref_id: str = ""
+    title: str = ""
+    excerpt: str = ""
+
+
+class TrayItem(TrayItemIn):
+    position: int = 0
+    added_at: str = ""
+
+
+class TrayIn(BaseModel):
+    """整份托盘（顺序 = 数组顺序）。加一条 / 删一条 / 拖序都是 PUT 整份——托盘最多 24 条，整份比补丁简单。"""
+    items: list[TrayItemIn] = Field(default_factory=list)
+
+
+class TrayOut(BaseModel):
+    items: list[TrayItem] = Field(default_factory=list)
+
+
 class Note(BaseModel):
     # 摄入过没有（空 = 没有）。前端拿它判「改过没同步」、决定要不要自动同步。
     ingested_at: str = ""
@@ -98,6 +123,8 @@ class ComposeBlockIn(BaseModel):
     selection: str = ""
     # 文档意图那句（P9）。智能排版用；`/block` 走 harness loop 那条线 P11 接上了（`hooks/block._system`）
     intent: str = ""
+    # `/` 菜单「从托盘写」（P14）：只用托盘里摊开的材料写这一块。托盘空着就 400——不花模型调用。
+    from_tray: bool = False
 
 
 class SkeletonSaveIn(BaseModel):
@@ -686,6 +713,8 @@ class MagicTapIn(BaseModel):
     title: str = ""
     scope: str = "all"      # 记忆范围（同 RecallIn.scope）
     intent: str = ""       # 文档意图那句（P9）
+    # 这篇的 id（P14）：给了就把它的材料托盘取出来摆在材料最前面；空 = 没有托盘（老调用方照旧）
+    note_id: str = ""
 
 
 # ---------------------------------------------------------------- 选中文本操作
@@ -707,6 +736,7 @@ class ExpandIn(BaseModel):
     selection: str
     scope: str = "all"      # 记忆范围（database/kb/scope.py）
     intent: str = ""       # 文档意图那句（P9）
+    note_id: str = ""      # 这篇的 id（P14）：托盘里的材料先摆
 
 
 class VerifyIn(BaseModel):
@@ -714,6 +744,7 @@ class VerifyIn(BaseModel):
     selection: str
     scope: str = "all"      # 记忆范围：词法召回只看这一档；正文里显式引用的事实不受限
     intent: str = ""       # 文档意图那句（P9）：校验按「完成标准」核
+    note_id: str = ""      # 这篇的 id（P14）：托盘里的材料先摆、当证据
 
 
 class VerifyFinding(BaseModel):

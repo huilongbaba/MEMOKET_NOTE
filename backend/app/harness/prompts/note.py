@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from .fragments import (content_block, facts_block, facts_index_block,
+from .fragments import (content_block, facts_block, facts_index_block, tray_block,
                         heading_format_reminder,
                         profile_block, spine_beats_block)
 
@@ -186,7 +186,8 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
                                facts: list[str], profile: list[str],
                                outline_note: str = "",
                                sections: list[str] | None = None,
-                               facts_index: list[str] | None = None) -> str:
+                               facts_index: list[str] | None = None,
+                               tray: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -196,6 +197,12 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
     spine_block = spine_beats_block(spine, beats)
     if spine_block:
         parts.append(spine_block)
+    # 托盘（P14）摆在所有材料**最前面**：它是用户放的，比索引和检索材料都稳定（整次跑不变）。
+    # `facts` 里钉在头上的那几条托盘行在这里不再重复（`middleware/facts.py` 钉、这里拆开渲染）。
+    tray = list(tray or [])
+    if tray:
+        parts.append(tray_block(tray))
+        facts = [f for f in facts if f not in set(tray)]
     if facts_index:
         # 更早几轮的材料，一行一条的索引（计划 3.2）。**摆在逐字事实前面**：
         # 索引只追加、逐字那一窗每轮在移，稳定的放前面。

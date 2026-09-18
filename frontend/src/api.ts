@@ -276,6 +276,25 @@ export const saveIntent = (noteId: string, intent: DocIntent) =>
     method: 'PUT', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(intent),
   }).then(json<Note>)
 
+/** 材料托盘（P14，agent-native-editor §3.4）：这篇显式「摊在桌上」的材料。
+ *  note = 另一篇笔记 / fact = 知识库里一条事实 / import = 导入的一段 / selection = 摘的一段。
+ *  续写 / 智能续写 / `/` 块 / 右键动作取材料时托盘里的排最前、不被筛、不滚出窗口（后端 `harness/tray.py`）。 */
+export type TrayKind = 'note' | 'fact' | 'import' | 'selection'
+export type TrayItem = {
+  id: string; kind: TrayKind; ref_id: string; title: string; excerpt: string; position: number; added_at: string
+}
+export type TrayItemIn = { id?: string; kind: TrayKind; ref_id?: string; title?: string; excerpt?: string }
+export const listTray = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/tray`, { headers: headers() }).then(json<{ items: TrayItem[] }>).then((r) => r.items)
+/** 整份换掉（顺序 = 数组顺序）：加一条、删一条、拖序都走这里。回的是落库后的那份。 */
+export const putTray = (noteId: string, items: TrayItemIn[]) =>
+  fetch(`/api/notes/${noteId}/tray`, {
+    method: 'PUT', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ items }),
+  }).then(json<{ items: TrayItem[] }>).then((r) => r.items)
+export const deleteTrayItem = (noteId: string, itemId: string) =>
+  fetch(`/api/notes/${noteId}/tray/${itemId}`, { method: 'DELETE', headers: headers() })
+    .then(json<{ items: TrayItem[] }>).then((r) => r.items)
+
 // ---------------------------------------------------------------- 选中文本操作
 //
 // 右键选中一段文本触发。都产出同一个 Revision 形状的结果，
@@ -293,11 +312,12 @@ export const rewriteSelection = (
     signal,
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
-export const expandSelection = (content: string, selection: string, signal?: AbortSignal, intent = '') =>
+export const expandSelection = (content: string, selection: string, signal?: AbortSignal, intent = '', noteId = '') =>
   fetch('/api/expand', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection, scope: memoryScope(), intent }),
+    // note_id（P14）：后端拿它把托盘里的材料摆在最前
+    body: JSON.stringify({ content, selection, scope: memoryScope(), intent, note_id: noteId }),
     signal,
   }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
 
@@ -309,11 +329,11 @@ export type VerifyFinding = {
   sources: string[]
 }
 
-export const verifySelection = (content: string, selection: string, signal?: AbortSignal, intent = '') =>
+export const verifySelection = (content: string, selection: string, signal?: AbortSignal, intent = '', noteId = '') =>
   fetch('/api/verify', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, selection, scope: memoryScope(), intent }),
+    body: JSON.stringify({ content, selection, scope: memoryScope(), intent, note_id: noteId }),
     signal,
   }).then(json<{ findings: VerifyFinding[]; took_ms: number }>)
 
@@ -385,11 +405,13 @@ export async function magicTap(
   title = '',
   /** 文档意图那句（P9）：system 的第一段 */
   intent = '',
+  /** 这篇的 id（P14）：后端拿它把托盘里的材料摆在最前；空 = 没托盘 */
+  noteId = '',
 ): Promise<{ truncated: boolean; fakeCitations: string[] }> {
   const res = await fetch('/api/magic-tap', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ content, spine, beats, following, title, scope: memoryScope(), intent }),
+    body: JSON.stringify({ content, spine, beats, following, title, scope: memoryScope(), intent, note_id: noteId }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`magic-tap failed: ${res.status}`)
@@ -1397,7 +1419,9 @@ export type BlockMode = typeof BLOCK_MODES[number]
 
 export async function composeBlock(
   body: { note_id: string; title: string; content: string; cursor: number;
-          mode: BlockMode; prompt: string; selection?: string },
+          mode: BlockMode; prompt: string; selection?: string
+          /** `/` 菜单「从托盘写」（P14）：只用托盘里的材料写这一块；托盘空着后端 400 */
+          from_tray?: boolean },
   on: {
     onPhase?: (label: string) => void
     onTools?: (calls: NoteHarnessToolCall[]) => void

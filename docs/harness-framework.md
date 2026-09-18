@@ -185,6 +185,9 @@ backend/app/
     types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition · Dimension
     state.py                 State：一次 run 的全部状态，middleware 的 bag 也在这
     tailing.py               撞 token 上限后：要不要续尾 / 续回来的像不像半句
+    tray.py                  材料托盘（P14，agent-native-editor §3.4）进 harness 的**只有三条**：优先（prompt 里单独一块摆在检索材料前）·
+                             不筛（拼在 relevance.gate 之后）· 不滚出窗口（middleware/facts 钉在 st.facts 头上、不进一行索引）。
+                             托盘 ≠ 账本：不经工具循环、不进 ledger、facts_irrelevant 数不到它
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
     events.py                AG-UI 事件 + 14 个 CUSTOM 名字 + to_sse()
     score_context.py         打分器除了正文还能看到什么：block 的前后文 / 指令 / 选区（for_block）
@@ -320,7 +323,7 @@ before_run
 for round:
     STEP_STARTED(round, mode.label)
     before_round                                      # Sections（发布分节给 read_section）/ Revise（改已有正文）
-    facts, trace = hooks.prepare(st)                  # agent 工具循环：模型自己决定查什么
+    facts, trace = hooks.prepare(st)                  # agent 工具循环：模型自己决定查什么；托盘（ctx.tray）拼在 relevance.gate 之后、排最前（P14）
     after_prepare                                     # Facts 累积 · Provenance（工具真的返回了什么）· Skills
     TEXT_MESSAGE_START
     for piece in hooks.produce(st): TEXT_MESSAGE_CONTENT   # 正文已有目录时先发 CUSTOM insert_at（定向续写，见 §4.1）
@@ -467,7 +470,7 @@ Dimension(name, guidance)                         # guidance 直接渲染进打�
 
 ```python
 # harness/state.py —— 一次 run 的全部状态；middleware 的临时数据放 bag
-State: mode · ctx(user/note/cursor) · request · round
+State: mode · ctx(user/note/cursor/intent/tray) · request · round        # ctx.tray = 材料托盘那几条（P14，router 装、快照跟着走）
        before / after / content / fresh          # 光标前后 / 当前正文 / 这一轮写的
        facts / facts_new / charts / trace        # 材料 · 工具真的画出来的图 · 工具轨迹
        skill_bodies / skill_menu
@@ -515,7 +518,7 @@ State: mode · ctx(user/note/cursor) · request · round
 | 名字 | 钩子 | 做什么 |
 |---|---|---|
 | **Skills** | after_prepare | 把「有哪些 skill」放进上下文（菜单一行一条；命中才 `load_skill`） |
-| **Facts** | after_prepare / before_round | 跨轮累积材料并修剪——只做一半各出过一个 bug |
+| **Facts** | after_prepare / before_round | 跨轮累积材料并修剪——只做一半各出过一个 bug。**托盘行钉在 `st.facts` 头上**（P14）：不进 `facts_all`、不算 fresh、不受 `fact_budget` 窗口滚动、不压进一行索引 |
 | **Provenance** | after_prepare | 把工具真的返回了什么给用户看（`round_summary`），依据不能靠模型自报 |
 | **Repeats** | after_produce | 机械近重复检测（difflib），结果作为打分的证据 |
 | **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit`；同一条原样卡满 `STUCK_ROUNDS` 轮就只发事件不再短路（改不动的老正文不该把剩余轮数烧掉） |

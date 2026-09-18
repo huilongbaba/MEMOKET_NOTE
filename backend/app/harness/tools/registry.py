@@ -56,6 +56,10 @@ class ToolContext:
     # 「完成标准」里用户勾过的那几条原文（`notes.intent.checked`，P12）。P13 #1 的 `done_criteria`
     # 判据跳过它们——勾了就是「我认了」。跟 intent 一样是这次跑作用在哪篇上的一部分。
     intent_checked: tuple[str, ...] = ()
+    # 材料托盘（P14 §3.4）：这篇显式摊在桌上的材料，`store.list_tray` 那份原样（kind / ref_id / title / excerpt）。
+    # 跟 intent 同一条路带进来（router 装、快照跟着走）：hooks 取材料时它排最前、不筛、不滚出窗口
+    # （`harness/tray.py`）。空 = 没摊东西，一个字不加。
+    tray: list[dict] = field(default_factory=list)
 
     # Scratch space the caller owns; the tool pool never interprets it.
     #

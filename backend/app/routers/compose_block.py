@@ -18,6 +18,7 @@ mermaid 会出语法错（用户碰到过"mermaid 语法错误，自动修复也
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from ..database import store
 from ..harness import tools
 from ..util import llm
 from ..editor import vision
@@ -80,6 +81,10 @@ async def compose_block(body: ComposeBlockIn, request: Request,
     reason = block_precondition(body.mode, body.prompt, body.selection)
     if reason:
         raise HTTPException(400, reason)
+    # 材料托盘（P14）：这篇摊在桌上的材料，跟 intent 同一条路进 ctx；「从托盘写」托盘空着就不花模型调用
+    tray = store.list_tray(user, body.note_id) if body.note_id else []
+    if body.from_tray and not tray:
+        raise HTTPException(400, "托盘是空的——先把要用的笔记 / 事实放进右栏「记忆」顶上的托盘，再「从托盘写」。")
 
     async def gen():
         before, after = _context_block(body.content, body.cursor)
@@ -88,7 +93,7 @@ async def compose_block(body: ComposeBlockIn, request: Request,
             ctx=tools.ToolContext(user=user, note_id=body.note_id, scope=body.scope,
                                   note_title=body.title,
                                   content=body.content, cursor=body.cursor,
-                                  intent=body.intent),
+                                  intent=body.intent, tray=tray),
             request=request,
             before=before,
             after=after,
@@ -103,10 +108,10 @@ async def compose_block(body: ComposeBlockIn, request: Request,
             before=before, after=after,
             prompt=body.prompt, selection=body.selection)
         hooks = BlockHooks(prompt=body.prompt, selection=body.selection,
-                           profile=_profile(user), title=body.title)
+                           profile=_profile(user), title=body.title, from_tray=body.from_tray)
         # 恢复时靠这些重建 hooks（见 routers/harness.py 的 _hooks_for）
         st.bag.update(prompt=body.prompt, selection=body.selection,
-                      profile=_profile(user))
+                      profile=_profile(user), from_tray=body.from_tray)
         async for event in loop.run(st, hooks):
             yield to_sse(event)
 

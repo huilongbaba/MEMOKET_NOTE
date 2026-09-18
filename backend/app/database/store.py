@@ -50,6 +50,24 @@ CREATE TABLE IF NOT EXISTS note_citations (
 );
 CREATE INDEX IF NOT EXISTS idx_citations_fact ON note_citations(user_id, fact_id);
 
+-- 材料托盘（P14，agent-native-editor §3.4）：这篇笔记显式「摊在桌上」的材料——别的笔记 / 一条事实 /
+-- 导入的一段 / 从别处摘的一段。**跟 note_citations 相反：这张表是用户维护的，不从正文重建**——
+-- 引用是「正文里写了」，托盘是「写之前先摆出来」。harness 取材料时托盘里的排最前、不受筛、不滚出窗口。
+-- kind ∈ note | fact | import | selection；ref_id 是 note id / fact id（import / selection 可以为空）；
+-- excerpt 是进 prompt 的那段（笔记是开头几百字、事实是原话）；position 是托盘里的顺序（用户拖的）。
+CREATE TABLE IF NOT EXISTS note_tray (
+    id        TEXT PRIMARY KEY,
+    user_id   TEXT NOT NULL,
+    note_id   TEXT NOT NULL,
+    kind      TEXT NOT NULL,
+    ref_id    TEXT NOT NULL DEFAULT '',
+    title     TEXT NOT NULL DEFAULT '',
+    excerpt   TEXT NOT NULL DEFAULT '',
+    position  INTEGER NOT NULL DEFAULT 0,
+    added_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tray_note ON note_tray(user_id, note_id, position);
+
 -- 树的边。**照 Trilium 的模型：notes 表里没有父子关系，全在这儿。**
 --
 -- 一个笔记可以有多条 branch —— 那就是「克隆」：同一篇笔记同时出现在树的
@@ -1245,6 +1263,83 @@ def set_intent(user_id: str, note_id: str, intent: dict) -> dict | None:
     return get_note(user_id, note_id)
 
 
+# ---------------------------------------------------------------- 材料托盘（P14）
+
+TRAY_KINDS = ("note", "fact", "import", "selection")
+TRAY_MAX_ITEMS = 24          # 托盘是「摊在桌上的这几篇」，不是第二个知识库
+TRAY_EXCERPT_MAX = 600       # 每条进 prompt 的那段；笔记开头几百字 / 事实原话都够
+TRAY_TITLE_MAX = 120
+
+
+def _tray_row(row) -> dict:
+    d = dict(row)
+    return {"id": d["id"], "kind": d["kind"], "ref_id": d.get("ref_id") or "", "title": d.get("title") or "",
+            "excerpt": d.get("excerpt") or "", "position": int(d.get("position") or 0), "added_at": d.get("added_at") or ""}
+
+
+def normalize_tray_item(item: dict) -> dict | None:
+    """一条托盘项收成能落库的形状；不成立的（kind 不认识、note / fact 没有 ref_id、什么都没有）回 None。
+
+    **落库前先问「每个取值都写得进去吗」**（框架 §21）：四种 kind 各有一条测试真写真读。
+    """
+    kind = str((item or {}).get("kind") or "").strip()
+    if kind not in TRAY_KINDS:
+        return None
+    ref_id = str(item.get("ref_id") or "").strip()[:80]
+    title = str(item.get("title") or "").strip()[:TRAY_TITLE_MAX]
+    excerpt = str(item.get("excerpt") or "").strip()[:TRAY_EXCERPT_MAX]
+    if kind in ("note", "fact") and not ref_id:
+        return None                     # 指不到东西的笔记 / 事实没法「点开看原文」，也没法引用
+    if kind in ("import", "selection") and not excerpt:
+        return None                     # 摘录 / 导入段落的内容就是它本身
+    iid = str(item.get("id") or "").strip()[:32] or uuid.uuid4().hex[:12]
+    return {"id": iid, "kind": kind, "ref_id": ref_id, "title": title, "excerpt": excerpt}
+
+
+def list_tray(user_id: str, note_id: str) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM note_tray WHERE user_id=? AND note_id=? ORDER BY position, added_at",
+                         (user_id, note_id)).fetchall()
+    return [_tray_row(r) for r in rows]
+
+
+def replace_tray(user_id: str, note_id: str, items: list[dict]) -> list[dict]:
+    """整份换掉（顺序 = 数组顺序）。同一个 ref 放两次只留一次；封顶 `TRAY_MAX_ITEMS`。
+    保留原来的 `added_at`（同 id 的）——重排不该把「什么时候放进来的」抹掉。"""
+    now = _now()
+    seen: set[tuple[str, str, str]] = set()
+    kept: list[dict] = []
+    for raw in items or ():
+        d = normalize_tray_item(raw)
+        if not d:
+            continue
+        key = (d["kind"], d["ref_id"], d["excerpt"] if d["kind"] in ("import", "selection") else "")
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(d)
+        if len(kept) >= TRAY_MAX_ITEMS:
+            break
+    with connect() as c:
+        old = {r["id"]: r["added_at"] for r in c.execute(
+            "SELECT id, added_at FROM note_tray WHERE user_id=? AND note_id=?", (user_id, note_id))}
+        c.execute("DELETE FROM note_tray WHERE user_id=? AND note_id=?", (user_id, note_id))
+        for pos, d in enumerate(kept):
+            c.execute("INSERT INTO note_tray (id,user_id,note_id,kind,ref_id,title,excerpt,position,added_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)",
+                      (d["id"], user_id, note_id, d["kind"], d["ref_id"], d["title"], d["excerpt"], pos,
+                       old.get(d["id"]) or now))
+        c.commit()
+    return list_tray(user_id, note_id)
+
+
+def delete_tray_item(user_id: str, note_id: str, item_id: str) -> bool:
+    with connect() as c:
+        cur = c.execute("DELETE FROM note_tray WHERE user_id=? AND note_id=? AND id=?", (user_id, note_id, item_id))
+        c.commit()
+    return cur.rowcount > 0
+
+
 def set_icon(user_id: str, note_id: str, icon: str) -> dict | None:
     """给笔记设图标（boxicons 类名）。空串 = 清掉，回到默认。"""
     with connect() as c:
@@ -1318,6 +1413,8 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             # 采集来的编辑样本也一起走：它的两个指针（`note_revisions` 里那一版
             # 正文、`notes.content`）都刚被删掉，留着就是一行指向空气的数。
             c.execute("DELETE FROM harness_edits WHERE user_id=? AND note_id=?", (user_id, nid))
+            # 托盘是这篇的（P14）：笔记没了，摊在它桌上的材料也一起收
+            c.execute("DELETE FROM note_tray WHERE user_id=? AND note_id=?", (user_id, nid))
             removed.append(nid)
 
         drop(note_id)

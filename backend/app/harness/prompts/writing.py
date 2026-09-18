@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from .fragments import (FOCUS_LABELS, content_block, facts_block,
-                        heading_format_reminder, profile_block, spine_beats_block)
+                        heading_format_reminder, profile_block, spine_beats_block, tray_block)
 
 
 # 骨架不是内容大纲（"这段该讲什么"），是结构：spine 是这篇东西真正在处理的
@@ -490,7 +490,7 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
 
 def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
                    profile: list[str], folder_context: str = "",
-                   following: str = "", title: str = "") -> str:
+                   following: str = "", title: str = "", tray: list[str] | None = None) -> str:
     parts = []
     if title.strip():
         parts.append(f"【笔记标题】\n{title.strip()}")
@@ -502,6 +502,10 @@ def magic_tap_user(spine: str, beats: list[str], content: str, facts: list[str],
         parts.append(spine_block)
     if folder_context:
         parts.append(folder_context)
+    if tray:
+        # 托盘（P14）在检索材料前面：用户摊在桌上的那几条先摆
+        parts.append(tray_block(list(tray)))
+        facts = [f for f in facts if f not in set(tray)]
     if facts:
         parts.append(facts_block(facts))
     if following.strip():

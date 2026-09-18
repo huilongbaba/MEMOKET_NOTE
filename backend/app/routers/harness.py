@@ -133,4 +133,4 @@ def _hooks_for(key: str, st):
     return BlockHooks(prompt=bag.get("prompt", ""),
                       selection=bag.get("selection", ""),
                       profile=list(bag.get("profile") or _profile(st.ctx.user)),
-                      title=st.ctx.note_title)
+                      title=st.ctx.note_title, from_tray=bool(bag.get("from_tray")))
