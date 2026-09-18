@@ -23,7 +23,8 @@ from ...util import llm
 from ...editor import outline
 from ..checks import grounding_rules as grounding_check
 from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, CUSTOM_SCRUB, Event
-from ..revision import apply_revision, breakage, expand_sources, tidy_blank_lines, reject_revision
+from ..revision import (apply_revision, breakage, expand_sources, tidy_blank_lines,
+                        reject_revision, user_text_touched)
 from . import save
 from ..state import State
 
@@ -44,10 +45,39 @@ def _started_with(st: State) -> str:
     return str(st.bag.get("content_at_start") or "")
 
 
+def _protected(st: State) -> str:
+    """replace / delete 不许动的那一段正文（P6 问题 1）。
+
+    就是 `_started_with`，**除了打磨模式**：那个模式的全部目的是改已有内容，
+    用户点的就是「改我写的」，这时开跑前的正文不受保护。空串 = 什么都不拦。
+    """
+    return "" if st.bag.get("polish") else _started_with(st)
+
+
+def fresh_paragraphs(content: str, before: str) -> list[str]:
+    """这次跑新写的段落（现在有、开跑时没有的）。给修订提示词列「只有这些能改」。"""
+    if not (before or "").strip():
+        return []
+    import re
+    return [p.strip() for p in re.split(r"\n\s*\n", content or "")
+            if p.strip() and p.strip() not in before]
+
+
 class Revise:
     name = "revise"
-    hooks = ("before_produce",)
+    hooks = ("before_produce", "after_run")
     after: tuple[str, ...] = ("repeats",)   # the pass wants this round's pairs
+
+    async def after_run(self, st: State) -> AsyncIterator[Event]:
+        # 「拦下了 N 条改你原文的修订」要让用户看见（P1 12.1：建了判据不等于
+        # 用了判据——判据拦了、用户不知道，跟没拦在他眼里是一回事）。逐条的
+        # `dropped` 事件在各轮卡片上已经有了，这里是整次跑的合计。
+        n = int(st.bag.get("revisions_user_guarded") or 0)
+        if n:
+            yield Event.custom(CUSTOM_DROPPED, {
+                "round": st.round,
+                "detail": (f"这次跑一共拦下了 {n} 条要改你原文的修订——续写只在你写的内容之外补写"
+                           "（改编号 / 标题层级 / 标点这类不换字的修正除外）。要它改已有内容，用「打磨」。")})
 
     async def before_produce(self, st: State) -> AsyncIterator[Event]:
         # Reset first: the loop's no-progress check reads this, and a stale
@@ -76,12 +106,20 @@ class Revise:
         tried: dict[str, str] = st.bag.setdefault("dropped_spans", {})
         focus = st.bag.get("focus", "")
 
+        protected = _protected(st)
         system = prompts.compose_system(prompts.EDIT_SYSTEM, "edit", st.ctx.user,
                                         st.skill_menu, None)
         user = prompts.edit_user(
             st.bag.get("spine", ""), st.bag.get("beats") or [], st.content,
-            st.facts, st.bag.get("profile") or [], focus,
+            # 正文里已经引着的事实（`middleware/cited.py` 展开的）跟这次跑的材料
+            # 一起给（P6 问题 2）：不然模型拿「不在本轮材料里」当理由删用户贴的
+            # 正确引用——a941 那篇 8 条存在的引用被删了 8 条。
+            list(st.facts) + list(st.bag.get("cited_facts") or []),
+            st.bag.get("profile") or [], focus,
             st.bag.get("dup_hints") or [],
+            # 这次跑新写的段落（P6 问题 1）：replace / delete 只许落在这些上；
+            # 打磨模式 `protected` 为空 → 不列，整篇都能改。
+            fresh_paras=fresh_paragraphs(st.content, protected) if protected else None,
             # Deterministic defects go in as concrete lines. Asking the model
             # to find placeholders and audit voice by reading is strictly
             # worse than telling it which lines they are.
@@ -167,8 +205,18 @@ class Revise:
             reason = str(item.get("reason") or "")
             key = " ".join(anchor.split())[:40]
 
+            # **用户原文守卫排在最前**（P6 问题 1）：这条动的是不是开跑前就有的
+            # 字，跟它改得好不好无关。理由和量程见 `revision.user_text_touched`。
+            why_not = user_text_touched(st.content, op, anchor, body, anchor_end,
+                                        before=protected)
+            if why_not:
+                st.bag["revisions_user_guarded"] = int(st.bag.get("revisions_user_guarded") or 0) + 1
+                tried[key[:24]] = "改的是用户开跑前写好的内容，只能 insert 或做不换字的机械修正"
+                yield Event.custom(CUSTOM_DROPPED,
+                                   {"round": st.round, "detail": why_not})
+                continue
             why_not = reject_revision(st.content, op, anchor, body, anchor_end,
-                                      edited)
+                                      edited, before=_started_with(st))
             if why_not:
                 # Dropping a revision is **the guards working**, not an error.
                 # Reported as an error it renders as a wall of red, and

@@ -31,13 +31,36 @@ AUDIT_PHRASES = ("不能证明", "无法证明", "不能据此", "不足以说�
                  "逐项核对", "待核对", "待补证据", "无法判断", "尚无法判断",
                  "不能据以", "无从判断", "难以证实")
 
+# 第三类（P6）：**修订在跟读者解释「该怎么写」**——不是审计腔（谈证据够不够），
+# 也不是机制泄漏（提到知识库），是编辑的批注漏进了正文。每一条都是 P5 五篇真实
+# 笔记的真跑里逐字出现过的（`docs/_research/p5-d3-runs/`），**判据宁可窄一点**，
+# 没实拍过的形状不收：
+#   「这里应改为：」「因此应改为：快速推进…」            （e783 正文第一行 / a941 scrub）
+#   「不能在正文中写成已经由特定学校、校长或教授确认的共识」（e783）
+#   「这里不应把…写成已经确认的产品能力…更准确的写法是：」（e783）
+#   「应把它写成拟议方案而非已确定安排」「不宜直接写成 Memocad 或 Discord 已经确定」（e783）
+#   「因此，这里最多可以写成：」「不能仅凭这几句原话推断」   （a941）
+#   「这几段不能继续作为访谈事实保留…应明确标注为待补充访谈证据」（a941）
+#   「就现有材料而言，不应把这些例子写成已经得到访谈证实的事实」（a941）
+#   「给定访谈片段只明确显示」「目前给定的知识库没有提供」    （a941）
+# 写成正则片段而不是词：「不应把 X 写成已经…」中间夹的是正文里的词，按词表收不到。
+REWRITE_PHRASES = (
+    r"应改为[：:]", r"不能在正文中写成", r"更准确的写法是",
+    r"不应把[^。！？\n]{0,40}写成已经", r"应把[^。！？\n]{0,12}写成拟议", r"不宜直接写成",
+    r"最多可以写成", r"不能仅凭[^。！？\n]{0,16}(?:推断|判断)",
+    r"不能继续作为[^。！？\n]{0,12}保留", r"应明确标注为待补充",
+    r"就现有材料而言", r"给定的?(?:访谈片段|材料|知识库)",
+)
+
 # 三个正则都由上面的词表拼出来，别再各写各的。
 _MECHANISM = re.compile("|".join(
     "(?<![A-Za-z])KB(?![A-Za-z])" if w == "KB" else re.escape(w) for w in LEAK_PHRASES))
 _AUDIT_VOICE = re.compile("|".join(re.escape(w) for w in AUDIT_PHRASES)
                           + "|缺少.{0,12}记录，因此")
-# 机制泄漏 + 审计腔，两类元话语一起删
-_META_SENT = re.compile(_MECHANISM.pattern + "|" + _AUDIT_VOICE.pattern)
+_REWRITE_NOTE = re.compile("|".join(REWRITE_PHRASES))
+# 机制泄漏 + 审计腔 + 编辑批注，三类元话语一起删
+_META_SENT = re.compile(_MECHANISM.pattern + "|" + _AUDIT_VOICE.pattern
+                        + "|" + _REWRITE_NOTE.pattern)
 
 
 # 事实文本前面的元信息前缀，比对时要剥掉：``[2026-04-10] 正文……``、
@@ -271,6 +294,16 @@ def audit_voice_lines(content: str, *, limit: int = 5,
     return out
 
 
+def meta_sentences(text: str, before: str = "") -> list[str]:
+    """一段文字里**全部**元话语句子（三类：机制泄漏 / 审计腔 / 编辑批注）。
+
+    给 `revision.meta_in_text` 用：修订的 `text` 里有一句就整条丢。跟
+    `audit_voice_lines` 同一条正则、同一个 `before` 量程，只是不封顶——
+    那边是给修订提示词列「这几行要改」，这边是判「这条修订能不能落」。
+    """
+    return audit_voice_lines(text, limit=10_000, before=before)
+
+
 # 只有"把工作机制写进正文"这一类才直接删。审计腔（"不能据此判断…"）里往往
 # 还带着真实信息（哪一块缺记录），交给修订去改写成「这里需要补上 XX 的实际
 # 记录」；而"目前 KB 中可核对的记录集中在…"这种句子对用户零价值，是纯噪声。
@@ -280,7 +313,12 @@ def audit_voice_lines(content: str, *, limit: int = 5,
 # 右侧定界规则：闭合 ** 前面是标点、后面紧跟汉字，就不算闭合，整段粗体渲染成
 # 一串裸星号（实拍）。把标点挪到粗体外面，语义不变、渲染就对了。
 # 放在这个纯模块里（不是 editor/textshape）：这里不许依赖 app 内其它包，见 test_layering。
-_BOLD_PUNCT = re.compile(r"\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*")
+# 开头那个 `**` 前面不许紧贴着字（P6 计划外发现）：`**保留**以…做法；**停止**在…`
+# 这一句里，「保留」后面的闭合 `**` 会被当成开头，跟「停止」前面的开头 `**` 配成一对，
+# 把用户的段落改成 `做法**；停止**`——P6 重放 `da080ca847cf` 第 1 轮实拍，这条路
+# （`hooks/mirror._scrub_and_record`）每轮对整篇跑一遍，用户原文也在内。
+# 前端 `editor/format.fixBoldPunct` 同一条正则，`scripts/check-scrub-parity` 对拍。
+_BOLD_PUNCT = re.compile(r"(?<![\w一-鿿])\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*")
 
 
 def fix_bold_punct(md: str) -> str:

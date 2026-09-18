@@ -149,21 +149,32 @@ def test_大纲模式下动到用户标题的修订被丢弃(monkeypatch):
     assert any("动到你写的标题" in d["detail"] for d in _named(events, "dropped"))
 
 
-def test_元话语在修订之后也要清掉(monkeypatch):
-    """一条 replace 能把审计腔重新塞回正文里。清理只挂在续写那一侧的时候，
-    文件夹那条路径上实测漏过。"""
-    # 注意替换文本不带句号：带的话会跟锚点后面那个句号连成「。。」，被
-    # breakage 那道防线先一步拦下来——素材本身要先过得了前面几道防线，
-    # 才测得到最后这一道清理。
+def test_带元话语的修订整条丢弃_不落地再切句(monkeypatch):
+    """一条 replace 能把审计腔重新塞回正文里——P6 之前的做法是让它落地、再由
+    收尾的 scrub 按句删。P5 实拍那条路的漏洞：「这里应改为：」以冒号收尾，
+    切句留下半句，成了 `e78306202d78` 最终正文的第一行。现在 `reject_revision`
+    在应用之前整条丢（`revision.meta_in_text`），正文一个字不动、不发 scrub。"""
     _stub_llm(monkeypatch, [{"op": "replace", "anchor": "占位",
                              "text": "现有材料不足以说明这一点"}])
     st = _st("正文开头。占位。正文结尾。")
     events = _drive(st)
+    assert st.content == "正文开头。占位。正文结尾。", "带元话语的修订不许落地"
+    assert any("元话语" in d["detail"] and "整条已丢弃" in d["detail"]
+               for d in _named(events, "dropped"))
+    assert _named(events, "scrub") == [], "没落地就没有要客户端镜像删的句子"
+
+
+def test_修订之后的收尾scrub仍在_删的是这次跑写进去的句子(monkeypatch):
+    """上一条把元话语挡在应用之前，**不等于收尾那道 scrub 可以拆**：它管的还有
+    续写那一侧塞进来、修订这一轮才第一次经过整篇清理的句子。这条用一句开跑后
+    才出现在正文里的审计腔（不经修订）证明那道线还活着。"""
+    _stub_llm(monkeypatch, [])
+    st = _st("正文开头。占位。正文结尾。现有材料不足以说明这一点。",
+             content_at_start="正文开头。占位。正文结尾。")
+    events = _drive(st)
     assert "不足以说明" not in st.content
-    assert any("元话语" in d["detail"] for d in _named(events, "dropped"))
-    # 客户端要在本地删同一句：scrub 事件带全量整句（dropped 那条是给面板看的、截过）
     (sc,) = _named(events, "scrub")
-    assert sc["why"] == "元话语" and "不足以说明" in sc["sentence"] and sc["sentence"].strip() == sc["sentence"]
+    assert sc["why"] == "元话语" and "不足以说明" in sc["sentence"]
 
 
 # -------------------------------------------------------------------- 降级 ---

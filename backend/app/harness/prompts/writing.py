@@ -77,7 +77,14 @@ EDIT_SYSTEM = """你是写作编辑。给你这篇正文应该服务的核心目
   却通篇在罗列流水账，没有回应这个目标），提出调整
 - 给定的某个结构要点该出现但正文里完全没有对应内容的地方，提出补充——
   注意补的是"让这个功能成立的内容"，不是直接把要点的抽象描述抄进正文
-- 正文与知识库事实矛盾的地方，以事实为准提出更正
+- 正文与知识库事实矛盾的地方，以事实为准提出更正。**「材料里没有」不等于「矛盾」**：
+  正文里出现了材料里查不到的人名 / 日期 / 数字，那是用户亲历、材料没摘到的事，
+  不是错——不要以「不在本轮提供的知识库事实中」为由去删或改写它；正文里带
+  `[编号]` 的句子已经有出处，更不许因为编号不在本轮材料里就删掉
+- **用户开跑前就写好的段落，不许 replace / delete**（改错别字、编号、标题层级、
+  粗体标点这类不换字的机械修正除外）。要补充，用 insert 接在它后面。下面会列出
+  「这次跑新写的段落」——replace / delete 只能落在那些段落上；没列的都是用户的。
+  这一条有代码守卫，落在用户段落上的 replace / delete 会被整条丢掉
 - 正文里含糊、可以用知识库事实补实的地方，提出补充
 - 正文的风格/表达明显违背个人偏好的地方（比如偏好要简洁但正文很啰嗦），也可以提出修订
 - 已经有的内容不要用换一种说法重复提一遍——检查一下 text 里要写的结论是不是
@@ -390,7 +397,8 @@ def skeleton_user(title: str, content: str, profile: list[str]) -> str:
 def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
               profile: list[str], focus: str = "", dup_hints: list | None = None,
               outline_note: str = "", defect_lines: list[str] | None = None,
-              focus_note: str = "", tried: list[tuple[str, str]] | None = None) -> str:
+              focus_note: str = "", tried: list[tuple[str, str]] | None = None,
+              fresh_paras: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -398,6 +406,18 @@ def edit_user(spine: str, beats: list[str], content: str, facts: list[str],
     if outline_note:
         # 用户已有结构的保护说明放最前面——它比其他任何指令都优先
         parts.append(outline_note)
+    if fresh_paras is not None:
+        # 这次跑新写的段落（P6 问题 1）。**None 和 [] 不一样**：None 是打磨模式
+        # （整篇都能改，不列）；[] 是写作模式下这次跑还一段都没写——那这一轮
+        # 只能做机械修正和 insert，得明说，不然模型会去改用户的段落再被守卫丢掉。
+        if fresh_paras:
+            listed = "\n".join(f"- {p[:60]}{'…' if len(p) > 60 else ''}" for p in fresh_paras[:20])
+            parts.append("【这次跑新写的段落——replace / delete 只能落在这些上】\n" + listed
+                         + "\n没列出来的段落都是用户开跑前自己写的：只能 insert 接在后面，"
+                           "或做不换字的机械修正（编号 / 标题层级 / 标点）。")
+        else:
+            parts.append("【这次跑还没写出新段落】\n正文现在全是用户自己写的：这一轮只能 insert，"
+                         "或做不换字的机械修正（编号 / 标题层级 / 标点），不要 replace / delete 任何段落。")
     spine_block = spine_beats_block(spine, beats)
     if spine_block:
         parts.append(spine_block)

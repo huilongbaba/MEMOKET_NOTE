@@ -239,7 +239,7 @@ def test_edited_spans_block_second_rewrite_of_same_place():
               / "app" / "harness" / "middleware" / "revise.py").read_text(encoding="utf-8")
     assert 'st.bag.setdefault("edited_spans", set())' in revise, \
         "跨轮集合要放在 bag 里，放局部变量就只在一轮内有效"
-    assert "edited)" in revise, "集合要传进 reject_revision"
+    assert "edited, before=" in revise, "集合要传进 reject_revision（P6 起后面还跟着量程 before）"
 
     rev = (Path(__file__).resolve().parent.parent
            / "app" / "harness" / "revision.py").read_text(encoding="utf-8")

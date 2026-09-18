@@ -241,7 +241,11 @@ class NoteHarnessRunIn(BaseModel):
     mode: Literal["write", "polish"] = "write"
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
-    max_rounds: int = 20
+    # **不传就用模式默认**（`modes.NOTE.max_rounds` = 8）。P6 问题 4：这里原来
+    # 默认 20、前端 `api.ts` 也硬传 20，两处一起把模式上那个 8 盖掉——P5 实拍
+    # `e78306202d78` 跑了 15 轮 385 秒 421k token。轮数是模式的属性，不是每个
+    # 请求的参数；显式传只给脚本 / 测试用，仍受 `MAX_ROUNDS_CAP` 封顶。
+    max_rounds: int | None = None
     # 每轮写完停下来等用户逐条接受/拒绝。**是用户的选择，不是功能的属性**
     # ——同一个人在重要文档上想要、在草稿上不想要。
     review_each_round: bool = False

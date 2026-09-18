@@ -162,10 +162,12 @@ def test_达标那一轮永远先停在complete上():
 def test_长文那两条没被这两条顶掉():
     """block 的停机条件不许挂到长文上：`material_used_up` / `stalled` /
     `nothing_left_to_fix` / `pause_for_review` 是两批人花了好几轮定下来的。"""
+    # `check_stuck`（P6 问题 4）是长文自己的：同一条判据连响三轮就停，block 模式
+    # 三轮封顶本来就到不了那一档。
     assert {f.__name__ for f in modes.NOTE.stop_when} == {
-        "material_used_up", "stalled", "nothing_left_to_fix", "pause_for_review"}
+        "check_stuck", "material_used_up", "stalled", "nothing_left_to_fix", "pause_for_review"}
     assert {f.__name__ for f in modes.SECTION.stop_when} == {
-        "material_used_up", "pause_for_review"}
+        "check_stuck", "material_used_up", "pause_for_review"}
 
 
 def test_停机条件是只读的():

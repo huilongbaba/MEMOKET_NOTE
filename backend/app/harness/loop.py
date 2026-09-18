@@ -314,8 +314,16 @@ async def _evaluate(st: State):
     那才是改循环结构。改的是 `_evaluate` 这个装配函数的一个入参，循环体、
     钩子序列、停机规则一行没动；批 16 为同一类理由改过同一个函数。
     """
+    # P6 问题 2：材料 = 这次跑的 `st.facts` **加上正文里已经引着的事实**
+    # （`middleware/cited.py` 展开，滚出窗口的 / 用户自己贴的都在）；再加一块
+    # 「这次跑新写的句子」，`factual_grounding` 的判词只判那一块。两处都是这个
+    # 装配函数的入参，循环体一行没动（同批 16 / 批 19 改这里的理由）。
     ctx, tail = score_context.split_for_prompt(
-        score_context.with_material(st.bag.get("score_context"), st.facts))
+        score_context.with_fresh(
+            score_context.with_material(
+                st.bag.get("score_context"),
+                list(st.facts) + list(st.bag.get("cited_facts") or [])),
+            st.content, str(st.bag.get("content_at_start") or "")))
     return await evaluate(
         harness_adapter.AppLLMClient(),
         content=score_context.body_for_scoring(
@@ -468,7 +476,11 @@ def _over_budget(st: State) -> str | None:
 # 这一轮写得好不好无关**，那正是「最后一轮最不可能是最好那轮」的时候
 # （`else:` 分支的注释原话）。写成常量而不是 `hit in ("a","b")`：下一个加
 # 停机原因的人得先决定自己属于哪一档，而不是顺手在条件里再或一个字符串。
-SHIP_BEST_ON = ("regressed", "cost_cap")
+#
+# `check_stuck`（P6 问题 4）属于这一档：同一条代码判据连响 ≥3 轮，说明这次跑的
+# 写作动不了它，再跑只是烧轮数——停机理由跟这一轮写得好不好无关。判据本身在
+# `modes.check_stuck`，事件在 `middleware/checks.Checks.after_run`。
+SHIP_BEST_ON = ("regressed", "cost_cap", "check_stuck")
 
 BUILTIN_STOPS = (_complete, _blocked, _over_budget, _no_progress, _regressed)
 

@@ -44,12 +44,30 @@ class Checks:
     """
 
     name = "checks"
-    hooks = ("before_judge",)
+    hooks = ("before_judge", "after_run")
     # Repeats fills dup_hints for the scoring call. Checks may
     # short-circuit scoring entirely, so it has to run second --
     # otherwise a fired check means dup_hints never gets computed,
     # and the next round wants it.
     after: tuple[str, ...] = ("repeats",)
+
+    async def after_run(self, st: State) -> AsyncIterator[Event]:
+        # 停机原因是「判据连响」时，把**哪条、连了几轮**发出去（P6 问题 4）。
+        # `run_finished` 只带一个 reason 字符串，用户看到「check_stuck」不知道
+        # 是谁；这条事件落在最后一轮的卡片上，前端拿它拼收工那句话。
+        from ..modes import check_stuck_detail
+        if st.stopped != "check_stuck":
+            return
+        name, n = check_stuck_detail(st)
+        yield Event.custom(CUSTOM_CHECK_HIT, {
+            "round": st.round,
+            "check": name,
+            "ran": 0,
+            "dimension": "",
+            "note": f"「{name}」这条判据连响 {n} 轮，模型一次都没照做——停下，交最好的一轮",
+            "stuck_rounds": n,
+            "stopped": True,
+        })
 
     async def before_judge(self, st: State) -> AsyncIterator[Event]:
         # 上一轮报过什么 → 这一轮报了什么。**先攒后落**：一轮里可能有两条
@@ -58,6 +76,12 @@ class Checks:
         prev: dict[str, int] = st.bag.get("check_streak") or {}
         cur: dict[str, int] = {}
         st.bag["check_streak"] = cur
+        # 同一件事按**判据名**再数一份（P6 问题 4）：上面那份的键带着原话，而
+        # `citations_present` 的原话里有「这一轮写了 N 字」，每轮都不一样——
+        # 按它数，连响 10 轮也永远是 1。停机规则 `modes.check_stuck` 读这份。
+        prev_name: dict[str, int] = st.bag.get("check_name_streak") or {}
+        cur_name: dict[str, int] = {}
+        st.bag["check_name_streak"] = cur_name
 
         # ---- 三列探针（批 27 / §5 第 8、9 行）。读者是 `Ledger.after_judge`，
         # 它读完就 `pop`——bag 是跨轮活着的，留着会让下一轮继承上一轮的数。
@@ -111,6 +135,7 @@ class Checks:
             # 对下一轮一个要求都没提——第 9 行问的是「上一轮提的要求，下一轮
             # 照做没有」，把它算进来会给分母灌一批没有要求的轮。
             fired_all.append(fired)
+            cur_name[fired] = prev_name.get(fired, 0) + 1
             key = f"{verdict.dimension}\u0000{verdict.message}"
             streak = cur[key] = prev.get(key, 0) + 1
             if streak > STUCK_ROUNDS:

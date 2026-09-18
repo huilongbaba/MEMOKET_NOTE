@@ -48,7 +48,9 @@ def test_weak_grounding_raises_tool_budget_and_feeds_the_note_back():
     assert new.tool_iters == 3                      # 2 -> 3
     assert new.require_verification is True
     assert "使用了知识库中未出现的具体日期和人物" in new.steer   # 原话喂回去
-    assert "查不到就把那句改写成不含具体人名" in new.steer
+    # P6 问题 1：「改写掉」只对这一轮新写的说，用户开跑前的段落不动
+    assert "只对这一轮新写的句子" in new.steer and "改写成不含具体人名" in new.steer
+    assert "用户开跑前写好的段落" in new.steer
     assert any("factual_grounding" in r for r in reasons)
 
 

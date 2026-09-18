@@ -23,6 +23,15 @@ router = APIRouter(prefix="/api/note-harness", tags=["note-harness"])
 MAX_ROUNDS_CAP = 30
 
 
+def rounds_for(requested: int | None, mode) -> int:
+    """这次跑几轮：没传就用模式默认，传了也封在 `MAX_ROUNDS_CAP` 以内（P6 问题 4）。
+
+    P5 实拍：schema 默认 20 + 前端硬传 20，`modes.NOTE.max_rounds = 8` 从来没生效过
+    ——`e78306202d78` 跑了 15 轮。轮数是模式的属性；请求只在脚本 / 测试里显式给。
+    """
+    return max(1, min(requested or mode.max_rounds, MAX_ROUNDS_CAP))
+
+
 def _score_context(st: State) -> dict[str, str]:
     """What the scorer needs beyond the text itself.
 
@@ -79,7 +88,7 @@ async def run(body: NoteHarnessRunIn, request: Request,
             mode=dataclasses.replace(
                 modes.for_run(modes.NOTE, has_profile=bool(_profile(user)),
                               polish=polish),
-                max_rounds=max(1, min(body.max_rounds, MAX_ROUNDS_CAP)),
+                max_rounds=rounds_for(body.max_rounds, modes.NOTE),
                 review_each_round=body.review_each_round),
             ctx=tools.ToolContext(user=user, note_id=body.note_id, scope=body.scope,
                                   note_title=note["title"]),

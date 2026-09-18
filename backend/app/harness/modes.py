@@ -24,6 +24,7 @@ from .checks import (chart_numbers_grounded, chart_readable, charts_from_tools,
                      section_budget, table_columns_match, table_present,
                      tail_clashes, unsupported_specifics)
 from .middleware import Checklist, Repair, Replan, Runtime, Save, Sections
+from .middleware.cited import Cited
 from .middleware.revise import Revise
 from .state import State
 from .types import Mode
@@ -72,6 +73,41 @@ STALL_ROUNDS = 2
 def stalled(st: State) -> str | None:
     """Stop when rounds stop changing anything."""
     return "stalled" if st.bag.get("no_change_rounds", 0) >= STALL_ROUNDS else None
+
+
+# ---------------------------------------------- 同一条判据连响（P6 问题 4）---
+#
+# P5 实拍：`e78306202d78` 15 轮 385 秒 421k prompt token，`citations_present`
+# 连响 **10 轮**，模型一次编号都没写；`da080ca847cf` `no_same_sources_twice`
+# 连响 5 轮。`STUCK_ROUNDS`（`middleware/checks.py`）卡满两轮之后只是「不再短路
+# 打分」，**没有任何停机规则看「同一条判据连响 N 轮」**——判据每轮把同一句话再
+# 说一遍，模型每轮照样不做，剩下的轮数就这么烧掉。
+#
+# 规则：同一条判据（按判据名，不按原话——`citations_present` 的原话里带「这一轮
+# 写了 N 字」，每轮都不一样）连响 ≥ CHECK_STUCK_ROUNDS 轮 → 停，交最好的一轮
+# （`loop.SHIP_BEST_ON`）。三轮是给修订两次机会之后的第一轮：卡满两轮放行、第
+# 三轮真打了分还是这条，就是这次跑动不了它。
+CHECK_STUCK_ROUNDS = 3
+
+
+def check_stuck_detail(st: State) -> tuple[str, int]:
+    """连响最久的那条判据和它连了几轮。`(名字, 轮数)`，没有就 `("", 0)`。
+
+    `middleware/checks.Checks.before_judge` 每轮把 `bag["check_name_streak"]`
+    整只换掉，所以这里读到的永远是「连续」，不是「累计」。停机规则和停机事件
+    （`Checks.after_run`）都读这一处——两处各算一份会飘。
+    """
+    streaks: dict[str, int] = st.bag.get("check_name_streak") or {}
+    if not streaks:
+        return "", 0
+    name = max(streaks, key=lambda k: (streaks[k], k))
+    return name, int(streaks[name])
+
+
+def check_stuck(st: State) -> str | None:
+    """同一条代码判据连响 ≥ CHECK_STUCK_ROUNDS 轮：这次跑的写作动不了它，停。"""
+    _name, n = check_stuck_detail(st)
+    return "check_stuck" if n >= CHECK_STUCK_ROUNDS else None
 
 
 def pause_for_review(st: State) -> str | None:
@@ -226,6 +262,14 @@ _FACTUAL_GROUNDING = Dimension(
     "说法，也没有编造知识库里根本没有的具体人名、日期、数字；"
     "不足：正文里有跟知识库事实明显矛盾的陈述，或者写了具体的人名/日期/"
     "数字但知识库里查无此事。"
+    # P6 问题 2：判的范围只有这次跑新写的；用户原文和带编号的句子不判。
+    # P5 实拍打分器判 0 点名的「陈校、教授、Memocad、Discord」全是用户开跑前
+    # 写的；「terrence-1604-18F4 在知识库中没有对应事实」——它存在，只是滚出了
+    # 材料窗口。判 0 → steer 喊改写 → 修订落在用户段落上，五篇五篇都中。
+    "**判的范围只有「这次跑新写的句子」那一块列出来的句子**（有这一块时）："
+    "正文其余部分是用户开跑前自己写的、或上一次留下的，那里的人名/日期/数字是"
+    "用户亲历的事，不判、更不算「查无此事」。**带 `[编号]` 的句子一律不算编造**"
+    "——编号本身就是出处，材料块没列全不代表知识库里没有。"
     "**明确不算不足的情况**：检索到的事实没有被全部用上。检索是按关键词"
     "近似匹配的，命中的事实里经常有跟当前这段内容根本不相关的（真实例子："
     "写「硬件续航」命中了「Speaker E 问3月31号能否有APP可以对外」），"
@@ -537,9 +581,12 @@ NOTE = Mode(
             citations_exist, material_thin, citations_present, material_used,
             no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
             no_fake_charts, charts_from_tools, unsupported_specifics),
-    stop_when=(material_used_up, stalled, nothing_left_to_fix,
+    # `check_stuck` 排在最前（P6 问题 4）：判据连响三轮说的是「这次跑动不了
+    # 它」，比材料用完 / 卡住更早该看见；两条同时成立时用户更需要知道前者。
+    stop_when=(check_stuck, material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
-    extra_mw=(Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),
+    # `Cited`（P6 问题 2）：正文里已经引着的事实展开成材料，打分 / 修订都读。
+    extra_mw=(Cited(), Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),
     max_rounds=8,
     context_keep_last=4000,
 )
@@ -558,8 +605,8 @@ SECTION = Mode(
             material_thin, citations_present, material_used, no_repeated_lists,
             no_restated_paragraph, no_same_sources_twice, no_fake_charts,
             charts_from_tools, unsupported_specifics, section_budget),
-    stop_when=(material_used_up, pause_for_review),
-    extra_mw=(Revise(), Repair(), Sections(), Save()),
+    stop_when=(check_stuck, material_used_up, pause_for_review),
+    extra_mw=(Cited(), Revise(), Repair(), Sections(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
     # scoring 'continue' must not hold the whole plan hostage.
     max_rounds=4,

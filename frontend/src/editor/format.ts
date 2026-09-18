@@ -133,7 +133,9 @@ export function fixBoldPunct(s: string): string {
   let fenced = false
   for (const line of s.split('\n')) {
     if (/^\s*(`{3,}|~{3,})/.test(line)) { fenced = !fenced; out.push(line); continue }
-    out.push(fenced ? line : line.replace(/\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*/g, '**$1**$2'))
+    // 开头那个 ** 前面不许紧贴着字：「**保留**以…做法；**停止**」里「保留」后面的闭合 **
+    // 会被当成开头跟「停止」前面的配成一对，把用户的段落改成「做法**；停止**」（P6 实拍）。
+    out.push(fenced ? line : line.replace(/(?<![\w一-鿿])\*\*([^*\n]+?)([：:，,。；;！!？?、）)])\*\*/g, '**$1**$2'))
   }
   return out.join('\n')
 }

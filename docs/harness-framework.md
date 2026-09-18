@@ -57,7 +57,7 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×19<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
+    MW["Middleware ×20<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Cited Revise Repair Runtime Replan Sections Save Checklist"]
     CHK["checks/ ×17 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
@@ -194,7 +194,7 @@ backend/app/
       note · section · block · mirror
     middleware/              19 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
                              + _order.py（顺序依赖，verify() 起跑时校验）
-      skills · facts · history · ledger · supersede · compact · sections · best_of · checks
+      skills · facts · history · ledger · supersede · cited · compact · sections · best_of · checks
       · checklist · provenance · revise · repeats · replan · repair · runtime · save · _order
       · cost（这次跑花了多少 + 超了就停，计划 12.3）
       · cross_run（这次跑完比**上一次跑**差就报一句，只报不回滚，计划 9.3）
@@ -470,8 +470,8 @@ State: mode · ctx(user/note/cursor) · request · round
 
 | key | label | 工具组 | extra_mw | stop_when | 轮数 | 维度 |
 |---|---|---|---|---|---|---|
-| `note` | 续写整篇 | memory · skill · chart · longform | Revise Repair Runtime Replan Sections Save | material_used_up · stalled · nothing_left_to_fix · pause_for_review | 8 | spine_fidelity · beat_coverage · non_repetition · factual_grounding · coherence · material_use · style_fit |
-| `section` | 分段写作 | memory · skill · chart · longform | Revise Repair Sections Save | material_used_up · pause_for_review | 4 | topic_fidelity · non_repetition · factual_grounding · material_use · coherence · style_fit |
+| `note` | 续写整篇 | memory · skill · chart · longform | Cited Revise Repair Runtime Replan Sections Save | check_stuck · material_used_up · stalled · nothing_left_to_fix · pause_for_review | 8 | spine_fidelity · beat_coverage · non_repetition · factual_grounding · coherence · material_use · style_fit |
+| `section` | 分段写作 | memory · skill · chart · longform | Cited Revise Repair Sections Save | check_stuck · material_used_up · pause_for_review | 4 | topic_fidelity · non_repetition · factual_grounding · material_use · coherence · style_fit |
 | `eda` | 数据可视化 | data · chart · memory · skill | — | — | 3 | numbers_from_tools · honest_caveats · has_charts · no_duplicate_charts · covers_the_data · fits_context · actionable |
 | `chart` | 智能插图 | data · chart · image · memory · skill | — | — | 3 | chart_validity · data_grounding · right_kind · fits_context |
 | `table` | 生成表格 | data · table · memory · skill | — | — | 3 | table_validity · data_grounding · fits_context |
@@ -481,7 +481,11 @@ State: mode · ctx(user/note/cursor) · request · round
 
 - `note` / `section` 的维度由 `for_run(mode, has_profile, polish)` 塑形：有个人偏好才
   加 `style_fit`；打磨模式（只修不写）去掉覆盖类维度。
-- Mode 的停止条件（`modes.py`）：`material_used_up`（材料用完就停，不然覆盖维度会
+- Mode 的停止条件（`modes.py`）：**`check_stuck`**（P6：同一条代码判据**按名字**连响
+  `CHECK_STUCK_ROUNDS` = 3 轮就停、交最好的一轮——`STUCK_ROUNDS` 卡满只是不再短路打分，
+  在这之前没有任何规则看「连响」；P5 实拍 `citations_present` 连响 10 轮跑到 15 轮 385 秒。
+  哪条、几轮由 `Checks.after_run` 发一条带 `stopped` 的 `check_hit`）·
+  `material_used_up`（材料用完就停，不然覆盖维度会
   逼它编）· `stalled`（连续几轮没变化）· `nothing_left_to_fix`（打磨模式一轮零修订）·
   `pause_for_review`（每轮停下等用户）。内置三条在 `loop.py`：`complete` / `blocked` /
   `no_progress`。**`regressed`**：最好的一轮只差一个维度没达标、这一轮排名反而更低——别再跑了，
@@ -493,7 +497,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 ---
 
-## 7. 19 个 middleware
+## 7. 20 个 middleware
 
 `BASE`（默认全开，顺序即执行顺序）：
 
@@ -516,7 +520,8 @@ Mode 按需追加的：
 
 | 名字 | 谁用 | 做什么 |
 |---|---|---|
-| **Revise** | note · section | 写新的之前先改已有正文（修订 pass，`max_tokens=4000`，截断时报 `dropped`） |
+| **Cited** | note · section | **正文里已经引着的事实展开成材料**（P6 问题 2）：正文里的 `[id]` 不在 `st.facts` 里的，先从这次跑攒下的全量 `facts_all` 按 id 找（滚出 `fact_budget` 窗口的就在这儿，零 I/O），找不到的（用户自己贴的、上一次跑留下的）才 `fact_by_id`，一次跑每个 id 只查一次。结果放 `bag["cited_facts"]`，打分（`loop._evaluate`）和修订（`Revise`）都读；**不进 `st.facts`**——那份是「这次检索回来的」，`dry_rounds` / `material_used` 按它算。P5 实拍：a941 用户贴的 9 条正确引用被删 8 条、理由全是「不在本轮材料里」；603dca 第 6 轮打分说滚出窗口的 `1604-18F4`「没有对应事实」→ `regressed` 扔掉 5 轮 |
+| **Revise** | note · section | 写新的之前先改已有正文（修订 pass，`max_tokens=4000`，截断时报 `dropped`）。**P6 起 replace / delete 不许落在开跑前就有的段落上**（`revision.user_text_touched`，量程 `content_at_start`；打磨模式不拦；编号 / 层级 / 标点这类不换字的机械修正放行），拦下的逐条发 `dropped`、跑完发一条合计；`text` 里带元话语的整条丢（`revision.meta_in_text`），不再落地后切句 |
 | **Repair** | note · section | 把这一轮的打分读成下一轮的计划（弱在覆盖 → 多写；弱在质量 → 多改）。内在质量 = `non_repetition` · `coherence` · `topic_fidelity`（**跑题是已写文字的缺陷，后面补几段切题的不会让它不跑题**——所以跟重复同一族，排「只修不写」）；覆盖度 = `beat_coverage` · `section_coverage` · `material_use`。两族必须互不重叠、且长文维度不能一族都不落（孤儿的分数只能停机、驱动不了修复），`tests/test_check_stuck.py` 有两条断言钉着 |
 | **Runtime** | note | 策略控制器（`policy.py`）：上一轮反馈 → 下一轮的工具预算 / 温度 / 修订额度 / 是否要求溯源 |
 | **Replan** | note | 骨架中途重规划（`replan_rules.py` 约束：能更新，不能把目标改到不收敛） |
@@ -1021,6 +1026,7 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | **血缘判的是「笔记」，不是「跑」** | 批 26：`corpus_lineage` 是**笔记**分类器，而 `harness_runs` / `harness_rounds` 的每一行是一次**跑**。按 `key` 里的 note_id 去分，`user` 那一桶看着很干净（反复跑单调下滑 0/7、最弱维度持平 51%）——**那是假的**：探针脚本刻意拿真实 `note_id` 当种子（`block_rounds_probe.py` / `revision_ledger_probe.py` 的 docstring 逐字写着「拿假笔记跑出来的分布不作数」），于是一次脚本触发的跑会被判成 `user`。`run_cost_probe.py` 的 docstring 早写过同一句：这两张表里「绝大多数是测量脚本触发的」，**只看形状，不算生产发生率**。这是批 6 那条规矩的新形态——批 6 是「真实产出≠用户写的」，这一次是**一个分类器的输入类型，跟你要分类的那个东西的类型，可能根本不是一个东西**。要真判跑的血缘，得记触发者（`llm_usage.user_id` 那一路有 `sensitivity-bench` 这种值，`harness_runs` 没有），**在那之前这两张表出来的数一律标「形状」** |
 | **落库加一列之后要问「它的每个取值都真写得进去吗」** | 批 22：`harness_runs.stopped` 从加进来那天起就记不到 `max_rounds`——实测 158 次跑里 17 次跑满，而库里那一档 **0 行**，因为 `History` 那一侧把「跑满」和「打分失败」混成了同一个 `st.ev is None`。**批 27 把它当成加列的前置动作做了一次**：三列探针（`claim_atoms` / `fired_checks` / `abstained`）落库之前先把取值列全，再**逐个构造真能出现的那个局面**验一遍（`tests/test_round_probes.py`，一个取值一条，不是往 bag 里塞值）。这条规矩逼出了三处设计：① `claim_atoms` 用 **-1** 表示「这个模式压根没有那条判据」，跟「判了、0 个候选」分开；② 探针**算在判据循环之前**而不是挂在 `unsupported_specifics` 里面——循环是「第一条命中的赢」，挂在里面的话别的判据先短路这一轮就什么都记不到，而那正是最该看的那些轮；③ `fired_checks` 是**数组**，因为 `STUCK_ROUNDS` 卡死放行之后后面还能再命中一条。库里还会有一个 `DEFAULT ''`——**活着的跑一次都写不出它**，这件事明写在取值表里，免得下一个人把它当成一档 |
 | **一个可能为空的量程，就不是量程** | 批 27：修 bench 的 `derived_facts` 切句口径时，第一版把 markdown 结构（表格行、围栏内容）整条剔了——干净利落，而且两篇 markdown 重的笔记上效果立竿见影。**但 `chart-block` / `table-block` 那几条 probe 的选区本身就是一整块图或表**，剔干净之后材料是空的，而 `data_grounding` / `numbers_from_tools` 正是靠材料里那几个数判的。抓住它的是一条**批 8 留下的老闸**（`test_真正发出去的那一格带的就是生产那份上下文`），不是新写的。改法不是「删掉」是「**排序**」：散文一档、只能当语法读的一档，散文摘得够就轮不到后者。*剔排版的时候，先问被剔掉的那一块是不是某个量程的唯一来源* |
+| **「报不报」和「动不动」是同一条量程；判据不看它，修订也不看它，两边都会去打用户的字** | P6（第 772 轮）：批 21 把 `no_audit_voice` 的量程收到 `content_at_start`，收的是「报不报」；同一个量程在**三处**没接上——修订的 replace / delete 锚点、打分器 `factual_grounding` 判的范围、修订提示词里「哪些段落能改」——于是 P5 五篇真实笔记 85 条修订 40 条落在用户段落上、四篇被打分器拿用户原文判「查无此事」。修法不是三处各写一份判断，是一条 `user_text_touched(before=)` + 一块「这次跑新写的句子」，量程都从 `content_at_start` 来。**顺手第七次**：`fix_bold_punct` 在同一条落盘路上对整篇跑，把用户的 `**保留**…；**停止**` 配错对——一条对「整篇」跑的变换，默认就在动用户的字 |
 | **一个「判 0 率」下面可能是三种病，读比例之前先看同格的其他维** | 批 28：批 27 修完 bench 的材料切句和量程，确定性对照五篇全绿，真跑 336 格回来 `factual_grounding` 干净臂判 0 率 **48.1% → 48.7%，双峰原地不动**。逐格读才看出三个峰是三种东西：`06647b9c2031` 的 42 格**全部 ≥3 维同时为 0**（`non_repetition` / `coherence` 均值 0.00）——打分器给整篇机器损伤笔记判死刑，`factual_grounding` 只是陪葬，修材料修不动；`309f19202309` 的 `whole-piece` 档是「材料上限 12 条」对三万字正文的结构性结果；只有 `e78306202d78` 是真的「材料撑不住正文」。而代码可数的「材料盖不住的原子」跟模型的判 0 不相关（`ecfac` 3 个原子判 0 率 0%，`06647` 1 个原子 97.6%）。**修法先是分母口径**（损伤笔记从干净臂里拿出来单独成表），不是判据。同一批还有个同形状的：`eda` 的重复查询率 34.1% → 32.5% 没动，因为 `repeat_calls` 数的是全部工具、而 2.4 的缺口摘要只列 `CACHEABLE` 那八个——**一个分母里混着两种东西，量出来的比例谁也不代表** |
 
 ---

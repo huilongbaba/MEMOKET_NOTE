@@ -28,6 +28,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Sequence
 
 from .params import SECTION_SCORING
@@ -179,7 +180,57 @@ def with_material(context: dict[str, str] | None,
 # score] → [Content]`，中间隔着整块维度判词（八组里最长的 EDA 那组 1000+ 字）。
 # 挪到 `[Content]` 之后，材料才**第一次真的**跟正文相邻——所以这一改
 # **相邻性不但没丢，还是变好了**，"准确率 vs 省钱"那个取舍在这里根本不存在。
-TAIL_KEYS = (MATERIAL_KEY,)
+TAIL_KEYS = (MATERIAL_KEY, "这次跑新写的句子")
+
+# ------------------------------------------- 这次跑新写的句子（P6 问题 2）---
+#
+# P5 人读：打分器 `factual_grounding` 判的是整篇，而整篇里一大半是用户自己写的
+# 字——run1 第 1–2 轮判 0 点名的「消费者反馈、2.0 版本日期、三档销售预测」、
+# run2 第 13 轮点名的「陈校、教授、Memocad、Discord」，**全是用户原文**。判 0 →
+# steer 喊改写 → 修订落在用户段落上（问题 1 的链条从这儿起头）。
+#
+# 修法跟 `citations_present` 一样按「这次跑写的」口径：把开跑后新出现的句子单独
+# 列一块递给打分器，判词（`modes._FACTUAL_GROUNDING`）明写「只判这一块里的」。
+# **口径是 `content_at_start` 不是 `st.fresh`**（批 21 的理由）：修订就地改写出来
+# 的句子不在 `st.fresh` 里，但确实是这次跑写的。
+#
+# 这一块跟材料块一样**每轮在变**，所以走 `TAIL_KEYS` 排在 `[Content]` 之后
+# （批 16 的前缀缓存理由）。封顶 `FRESH_CHARS`：超出的部分打分器看不到 → 那些
+# 句子按「用户写的」处理 → 漏判。漏判比误伤便宜（铁律第 3 条）。
+FRESH_KEY = TAIL_KEYS[1]
+FRESH_CHARS = 3000
+
+
+def new_sentences(content: str, before: str) -> list[str]:
+    """现在的正文里有、开跑时没有的句子（原样字面比，同 `grounding_rules._seen`）。"""
+    if not (before or "").strip():
+        return []
+    out: list[str] = []
+    for sent in re.split(r"(?<=[。！？!?\n])", content or ""):
+        s = sent.strip()
+        if s and s not in before and not s.startswith(("```", "|")):
+            out.append(s)
+    return out
+
+
+def with_fresh(context: dict[str, str] | None, content: str,
+               before: str) -> dict[str, str]:
+    """`score_context` + 「这次跑新写的句子」一块。开跑时正文为空（block 模式、
+    新笔记）就不加：那时整篇都是新的，列一遍等于把正文抄两遍。"""
+    out = dict(context or {})
+    fresh = new_sentences(content, before)
+    if not fresh:
+        return out
+    lines: list[str] = []
+    used = 0
+    for s in fresh:
+        if used + len(s) > FRESH_CHARS and lines:
+            lines.append(f"（还有 {len(fresh) - len(lines)} 句没列，按用户写的处理）")
+            break
+        lines.append("- " + s)
+        used += len(s)
+    out[FRESH_KEY] = "\n".join(lines)
+    return out
 
 
 def split_for_prompt(context: dict[str, str] | None,

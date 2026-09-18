@@ -1100,7 +1100,9 @@ export type NoteHarnessHandlers = {
    * `ran` 是这一轮跑到第几条，分母 `checks_total` 在 round_summary 里。
    * **一轮可能到达好几条**（卡住放行的 + 最后短路的那条），所以调用方要攒
    * 成一串，不能只留最后一条。 */
-  onCheckHit?: (d: { round?: number; check?: string; ran?: number; dimension: string; note: string; stuck_rounds?: number }) => void
+  /** `stopped` 为真的那条不是「这一轮命中」，是收工通知：同一条判据连响 `stuck_rounds` 轮，
+   *  后端停了、交最好的一轮（reason=check_stuck）。收工那句话拿它拼「哪条、几轮」。 */
+  onCheckHit?: (d: { round?: number; check?: string; ran?: number; dimension: string; note: string; stuck_rounds?: number; stopped?: boolean }) => void
   /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
    * 但**不能是静默的**——这一轮少了那个能力，用户得知道。 */
   onWarning?: (d: { middleware: string; hook: string; error: string }) => void
@@ -1135,8 +1137,10 @@ export async function runNoteHarness(
   const res = await fetch('/api/note-harness/run', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
+    // 轮数不传：由模式定（`modes.NOTE.max_rounds` = 8）。这里原来硬传 20，把后端
+    // 模式上的 8 盖掉——P5 实拍一篇跑了 15 轮 385 秒（P6 问题 4）。
     body: JSON.stringify({
-      note_id: noteId, content, spine, beats, max_rounds: 20, mode, scope: memoryScope(),
+      note_id: noteId, content, spine, beats, mode, scope: memoryScope(),
       review_each_round: reviewEachRound,
     }),
     signal,

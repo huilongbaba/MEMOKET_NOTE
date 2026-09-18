@@ -321,6 +321,9 @@ export default function App() {
   // 摄入完成后让「记忆」重新召回一次：正文没变它不会自己再查，而刚入库的事实正是用户想看到的
   const [ingestTick, setIngestTick] = useState(0)
   const harnessDoneRef = useRef(false)
+  /** reason=check_stuck 收工时「哪条判据、连响几轮」——后端在 RUN_FINISHED 之前
+   *  发一条带 `stopped` 的 check_hit 事件（P6 问题 4），收工那句话从这儿取。 */
+  const stuckCheckRef = useRef<{ check: string; rounds: number } | null>(null)
   const agentRoundsRef = useRef(0)
   // 逐轮处置：开着的话每轮写完就停下来，等你在编辑器里逐条接受/撤回，
   // 处置完再点「接着写」。关着是原来的行为——一口气跑完再处置，而那意味着
@@ -2163,6 +2166,7 @@ export default function App() {
         // 「卡住了放行」的、最后才到短路的那一条，原来后到的把先到的盖掉
         // ——判据真的命中了，用户看不见。
         if (currentRef.current?.id !== noteId) return
+        if (d.stopped) stuckCheckRef.current = { check: d.check || '', rounds: d.stuck_rounds || 0 }
         setAgentRounds((rs) => {
           if (!rs.length) return rs
           const next = [...rs]
@@ -2237,7 +2241,14 @@ export default function App() {
           : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
           : reason === 'regressed' ? '再改反而更差，留下了最好的那轮'
           : reason === 'cost_cap' ? '这次跑到了成本上限，留下了最好的那轮'
+          : reason === 'material_used_up' ? '知识库里能用的材料用完了，自动停止'
+          // P6 问题 4：同一条判据连响几轮、模型一次都没照做，后端停了交最好的一轮。
+          // 「哪条、几轮」来自收工前那条带 stopped 的 check_hit 事件。
+          : reason === 'check_stuck' ? (stuckCheckRef.current
+              ? `「${stuckCheckRef.current.check}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮`
+              : '同一条判据连响几轮都没解决，停下留了最好的那轮')
           : '到达轮数上限，自动停止'
+        stuckCheckRef.current = null
         const delta = liveContentRef.current.length - runBaseRef.current.length
         const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`
         setNoteHarnessStatus(summary)

@@ -25,8 +25,9 @@ and the point of this move is to change where they live, not what they do:
 
 The comments below are the original ones; they carry the specific evidence.
 
-对外的是这五个：``apply_revision`` · ``reject_revision`` · ``breakage`` ·
-``expand_sources`` · ``tidy_blank_lines``，``middleware/revise.py`` 全用。
+对外的是这六个：``apply_revision`` · ``reject_revision`` · ``breakage`` ·
+``expand_sources`` · ``tidy_blank_lines`` · ``user_text_touched``，
+``middleware/revise.py`` 全用。
 其余（``_locate`` · ``_replaced_span`` · ``_is_same_meaning_rewrite``）才是
 真私有。**下划线只用来标真私有**——之前那四个明明被别的模块 import，却顶着
 下划线，读的人无从知道这个模块的契约到底是哪几个。
@@ -192,8 +193,111 @@ def _is_same_meaning_rewrite(old: str, new: str) -> bool:
     return difflib.SequenceMatcher(None, old, new).ratio() > _REWRITE_SAME
 
 
+# ============================================ 用户原文不许 replace / delete（P6）===
+#
+# P5 人读五篇真实笔记（`docs/TRACELOG-product.md` P5 节）：**85 条落地的修订里
+# 40 条的锚点落在开跑前就有的正文上**（20/36、7/15、5/11、4/14、4/9），5/5 篇都被
+# 改了用户自己写的段落。链条是：打分器把用户原文判成「知识库查无此事」→ steer
+# 「查不到就把那句改写掉」→ `EDIT_SYSTEM`「与事实矛盾以事实为准」→ replace /
+# delete 落在用户段落上。实拍原话：
+#
+#   `e78306202d78` 开头两段「与陈校的沟通从招生策略切入…双方在方向上达成一致」
+#   → 「项目目前仍处于…不能在正文中写成已经由特定学校、校长或教授确认的共识」
+#   理由：「知识库没有陈校、教授…的事实记录」——陈校是用户在笔记里写的人。
+#   `a941efecd390` 四段访谈原话 + 8 条正确引用 → 一段「目前给定的知识库没有提供…」
+#
+# 这一档跟 `no_audit_voice` 的量程（批 21）是同一个形状：**判据看的是整篇，而
+# 整篇里一大半是用户自己写的字**。那次收的是「报不报」，这次收的是「动不动」：
+# **replace / delete 的锚段必须整段落在这次跑写出来的差集里**（`content_at_start`
+# 之外）。用户原文只允许两种动法：insert 接在它后面；或「机械性修正」——编号 /
+# 标题层级 / 粗体 / 标点这类不换字的改动（`_core` 相等）。
+#
+# **为什么是段落 / 句子级而不是整段字面比**：一条 delete 的范围可以从用户段落的
+# 中间起、到这次新写的段落结束——整段字面不在 `before` 里，但它吃掉了用户的半段。
+# 所以把范围切成段落、再切成句子，任何一片在开跑前的正文里逐字出现过，就算动了
+# 用户的字。**去重是唯一的例外**：这次跑把用户的一节又写了一遍，删掉多出来的那份
+# 是对的——判法是「这一片在现在的正文里出现的次数 > 开跑时的次数」，多出来的那份
+# 才是这次跑写的。
+#
+# **打磨模式不走这条**：那个模式的全部目的就是改已有内容，用户点的就是「改我写的」。
+# 调用方（`middleware/revise.py`）按 `st.bag["polish"]` 决定给不给 `before`。
+
+_CORE_STRIP = re.compile(r"[\s#*_`>|\-\d\.,;:!?，。；：！？、（）()\[\]【】「」『』“”‘’\"']+")
+
+
+def _core(s: str) -> str:
+    """机械性修正前后不该变的那部分：去掉空白、markdown 记号、标点、数字。"""
+    return _CORE_STRIP.sub("", s or "").lower()
+
+
+def _pieces(span: str) -> list[tuple[str, bool]]:
+    """一段范围 → 段落 + 句子两级的片 `(片, 是不是整段)`。短于 4 字的片不算
+    （「- 」「1.」这类只是排版）。"""
+    out: list[tuple[str, bool]] = []
+    for para in re.split(r"\n\s*\n", span or ""):
+        p = para.strip()
+        if len(p) >= 4:
+            out.append((p, True))
+        for sent in re.split(r"(?<=[。！？!?\n])", p):
+            t = sent.strip()
+            if len(t) >= 4 and t != p:
+                out.append((t, False))
+    return out
+
+
+def _is_mechanical(old: str, new: str) -> bool:
+    """只动了编号 / 层级 / 粗体 / 标点，一个字没换。"""
+    return _core(old) == _core(new) and _core(old) != ""
+
+
+def user_text_touched(content: str, op: str, anchor: str, text: str,
+                      anchor_end: str = "", before: str = "") -> str:
+    """这条 replace / delete 是不是在动用户开跑前就写好的字。要丢就返回理由，否则空串。
+
+    `before` = 开跑时的正文（`st.bag["content_at_start"]`）。**不给 `before` 就什么
+    都不拦**（老行为）——这一句是量程，撤掉它这条守卫就是空的，
+    `tests/test_p6_user_text.py` 的突变验钉着。
+    """
+    if op not in ("replace", "delete") or not (before or "").strip():
+        return ""
+    span = _replaced_span(content, anchor, anchor_end)
+    if not span.strip():
+        return ""
+    # 去重例外只给**整段**：这次跑把用户的一段又写了一遍，多出来的那份是这次跑的。
+    # 句子级的片不给——P6 重放 a941 实拍：一条 replace 锚在用户句子的尾巴
+    # 「to the next step.」上，恰好这次跑在别处也写过这几个字，按次数比就放行了，
+    # 落点却是 `find` 找到的第一处、用户那句，把它从中间劈成两段。
+    whole = "\n" in span.strip() or any(p == span.strip() for p, _ in _pieces(span))
+    touched = [p for p, is_para in [(span.strip(), whole), *_pieces(span)]
+               if p in before and (not is_para or content.count(p) <= before.count(p))]
+    if not touched:
+        return ""
+    if op == "replace" and _is_mechanical(span, text):
+        return ""
+    key = " ".join(touched[0].split())[:24]
+    return (f"这条要{'删掉' if op == 'delete' else '改写'}你开跑前就写好的内容，已拦下"
+            f"（续写只在你的正文之外补写；改编号 / 标题层级 / 标点这类不换字的修正除外）：{key}…")
+
+
+# ============================================ 元话语整条丢弃（P6）===
+#
+# P5 实拍：修订的 `text` 本身带着「这里应改为：」「不能在正文中写成…」「更准确的
+# 写法是」「应明确标注为待补充访谈证据」，落进正文之后 `scrub_meta_sentences_v`
+# 按「。！？」切句，冒号收尾的半句留下——`e78306202d78` 最终正文的第一行就是
+# 「这里应改为：」。在这里整条丢掉比落盘后再切句稳：一条修订的 text 里有元话语，
+# 说明它整条都是在跟读者解释「材料不够」，不是在写正文。词表在
+# `checks/grounding_rules.REWRITE_PHRASES`（只收 P5 真出现过的形状）。
+
+def meta_in_text(text: str, before: str = "") -> str:
+    """修订 text 里第一句元话语（开跑前正文里就有的那句不算）。没有返回空串。"""
+    from .checks.grounding_rules import meta_sentences
+    hits = meta_sentences(text or "", before)
+    return hits[0] if hits else ""
+
+
 def reject_revision(content: str, op: str, anchor: str, text: str,
-                    anchor_end: str = "", edited: set[str] | None = None) -> str:
+                    anchor_end: str = "", edited: set[str] | None = None,
+                    before: str = "") -> str:
     """这条修订该不该丢。要丢就返回一句给用户看的理由，否则返回空串。
 
     三类都是在真实产出上抓到的，且都是**确定性可判**的——整晚反复验证过，
@@ -201,8 +305,14 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
 
     ``note_harness`` 和 ``writing_plan`` 共用 ``apply_revision``，所以这三道
     防线也必须共用：只修一边，等于另一条路径上的 bug 还活着。
+
+    P6 加的第四类：``text`` 里带元话语的整条丢（``meta_in_text``），排在最前面
+    ——别的守卫说的是「改哪儿」，这条说的是「写的根本不是正文」。
     """
     key = " ".join(anchor.split())[:40]
+    meta = meta_in_text(text, before) if op != "delete" else ""
+    if meta:
+        return (f"这条修订写的是元话语（「{meta[:30]}…」），不是正文，整条已丢弃：{key[:24]}…")
     if op in ("replace", "delete") and _span_missing(content, anchor, anchor_end):
         return f"这条的结尾标记在正文里找不到，范围划不出来，已丢弃：{key[:24]}…"
     if op == "replace" and edited is not None and key in edited:
