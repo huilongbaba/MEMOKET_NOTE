@@ -1885,3 +1885,99 @@ P9 剩下四条候选。**改动的分层历史**（§1 第 4 行）看了一遍
 - 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**（所有探针跑在 `p12data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p12userdata`）。
 - 真模型调用 **0 次**（两条都是零模型；假服务只是陪跑）；桌面壳截图跑了 16 次。
 - 截图（浅 / 深各一张）：`p12-checks-before-{light,dark}` → `p12-checks-after-{light,dark}`；`p12-outline-before-{light,dark}` → `p12-outline-after-{light,dark}`；加 `p12-sourced-after-{light,dark}`、`p12-tick-after-light`、`p12-jump-after-light`。
+
+---
+
+## P13 · 第 776 轮：完成标准清单进 harness + P11 / P12 编辑器侧遗留（2026-09-19）
+
+> HEAD 开工时 `3d92f66`（worktree `agent-adc81c40406671aa5`）。**没碰**右栏布局和 `store.py` 的表定义（另一个 agent 在做材料托盘）：
+> `App.tsx` 只改了收工那句话的判据名、删掉 `undoSeal` 状态；右栏一个组件没动。
+> 真模型只在 #1 的一跑里用（scratch 库 `p13real`，`rails_off=("save",)`，`docs/_research/p13-runs/`），其余全是假服务
+> （`fakellm13.py` = P11 那份 + 续写改成「一段带出处 + 一段没出处」，出处 id 取检索结果里真有的一条，别的判据才都过得去）或纯代码；
+> 探针 `probesP13.ts`（`p13:check / undo-tap / keys`）+ P12 的 `p12:tab / jump`；截图 `$S/p13-*.png`，日志 `$S/p13-*.log`。
+> 六栏：用户怎么发现 · 复现 · 改了什么 · 依据 · 前后对比 · 下一步。
+
+### 1. 完成标准清单进 harness checks ✔（P12 下一步③）
+
+- **用户怎么发现**：P12 把「完成标准」拆成右栏能打勾的清单，可点「智能续写」的时候模型手里只有 prompt 里一句 `DONE_HINT`——写完了达没达标它自己说了算，右栏那个 ✗ 只能等用户回头看。
+  同一篇「创业反思」（完成标准「每个结论有事实支撑」）跑智能续写，执行面板写着「16 条代码判据全过」，右栏清单却是 ✗「11 段里 8 段没出处」。
+- **复现**：`p13-check-before-light.png` + 日志（假模型 harness 模式，3 轮）：三轮都「16 条代码判据全过，这一轮的分是打分模型给的」；同一份正文右栏 ✗。
+- **改了什么**：
+  `checks/done.py`——**跟前端 `util/doneChecks.ts` 是同一份判定**（P1 `block_precondition` 的模式：后端 Python 实现，闸逐句核对前端 TS）：
+  `RULES`（19 条正则）/ `WHY`（16 句措辞）两边字面一字不差（`tests/test_p13.py::test_1_规则正则和措辞…` 逐条核对 + 键集合相等；前端反引号写成 `\x60`，闸先换回来），
+  `shared/done-cases.json`（22 条判定 + 3 组单位 + 4 组拆条）两边各跑一遍（后端 `test_p13.py` 参数化、前端 `p13.test.ts` + `scripts/check-done-parity.mts` 接在 `npm test` 里）。
+  `done_criteria(st)` 是一条 `Check`：拆条 → 跳过勾过的（`ToolContext.intent_checked`，路由从库里 `notes.intent.checked` 装、快照跟着走）→ 第一条没过的报出去，
+  `Verdict.message` = 「你定的完成标准「每个结论有事实支撑」还没满足：这次写的 2 段里 1 段没有出处。给没出处的那几条补上材料编号…没出处的比如：「…」」（点名前两条，模型才知道补哪里）。
+  **量程**：「每条有日期 / 出处」只判**这次跑新写的单位**（不在 `content_at_start` 里的）——用户自己那几条没出处，修订那条线碰不了（P6 守卫），判了只会连响两轮然后停机；字数 / 各有一节 / 结论在前看整篇；打磨模式不判要它写的那三类。
+  打翻哪一维按类挑（`pick_dimension`）：没出处 / 没日期 → `factual_grounding`（材料族，进检索规划的 steer）；不够长 / 缺一节 → `beat_coverage`；超长 / 结论没在前 → `MECHANICS` 兜底（第一版写了 `coherence`，`test_coherence_bucket` 的词法闸当场红：它是评分维度不是垃圾桶）。
+  `middleware/done.DoneCriteria`（`before_run`，跟 `Checklist` 一个做法）：这篇有代码判得了、又没勾掉的条目才 `dataclasses.replace` 挂上（`Mode` 是纯数据；一条都判不了就一条都不挂，`checks_total` 跟没这功能一样）；`NOTE.extra_mw` 第一个。
+  界面：`dimLabel.CHECKS.done_criteria = '你定的完成标准'`；**顺手**：收工那句「「X」这条判据连响 N 轮」原来直接拼判据名（实拍「done_criteria」原样蹦出来，P6 起就这样，之前的判据名都没被人读到过），改走 `checkLabel`。
+  测试：后端 `test_p13.py` 42 条；前端 `p13.test.ts` 39 条 + `check-done-parity.mts`。
+- **依据**：铁律「能用代码判准的不交给模型」；P12 下一步③「进了之后「代码判的」和「模型判的」才能并排」；§20 ④「报不报和动不动是同一条量程」——所以只判这次写的；`instructions.instruction_constraints` 的挂法（内容来自用户那句话的判据不写死在 Mode 上）。
+- **前后对比**：
+  · 假模型同一篇 3 轮：`p13-check-before-light.png`「16 条代码判据全过」×3 → `p13-check-after-{light,dark}.png`：第 1 轮「⚑ 代码判据 **你定的完成标准** 判了事实依据不合格（17 条里的第 17 条），这一轮没再花模型调用去打分。你定的完成标准「每个结论有事实支撑」还没满足：这次写的 2 段里 1 段没有出处。…没出处的比如：「第1轮假模型另写的一段推论…」」，
+    第 2 轮卡片「上一轮诊断：「事实依据」你定的完成标准「每个结论有事实支撑」还没满足…」（**进了下一轮 steer**），第 3 轮「6 段里 3 段」，收工「「你定的完成标准」这条判据连响 3 轮都没解决，停下留了最好的那轮 · 3 轮 · +258 字」。
+  · **真跑**（`docs/_research/p13-runs/0eecee3d7b94.md`，同一篇、同一意图、勾过第二条，4 轮 75 s）：`checks_total` 16 → **17**（判据挂上了），**但 4 轮一次都没轮到它**——第 1 轮 `citations_present`（第 10 条）先响，第 2–4 轮 `no_same_sources_twice`（第 14 条）连响三轮 `check_stuck` 停机；
+    `Checks` 是「第一条响的赢」，它排第 17。离线拿四轮正文重放，每轮都会响：3/3 → 7 条里 5 条 → 6 里 4 → 6 里 5 没出处。下一轮补没补出处这件事真跑里没量到（前面那条判据说的也是「补编号」，第 2 轮新写 7 条带了 2 条）。
+- **下一步**：① 它该排第几——排最后是照 `instruction_constraints` 抄的；但用户明写的「每个结论有事实支撑」被一条重复判据挡三轮不合理，候选是插在材料族（`material_used` 之后、`no_repeated_lists` 之前），要再跑两篇看 `no_same_sources_twice` 那三轮是不是常态；
+  ② `section` harness（文件夹写作计划）没有笔记级意图，没挂；③ 「有负责人」照旧判不了。
+
+### 2. 「每条」单位：紧跟列表项的段落算给那一条 ✔（P12 下一步①）
+
+- **用户怎么发现**：shot-demo「4 月 10 日产品周会」是「要点列表 + 带出处的展开段」，右栏清单判「每条进展有出处：**7 条里 7 条没有出处**」——出处明明都在列表下面那几段里。
+- **复现**：`p13-weekly-before-{light,dark}.png`（p13data 里给这篇写了完成标准「每条进展有出处；卡住的说清要什么」）：`✗ 每条进展有出处 · 7 条里 7 条没有出处`。
+- **改了什么**：`units()`（前后端同一份）：列表项后面直到下一条列表项 / 标题 / 围栏之前的段落（空行隔开也算）并进它前面那一条；列表**前面**的段落不算给任何一条；标题断开。共享用例表加了周会 / 「先文后列」两组，钉住 7 条的单位原文。
+- **依据**：P12 下一步①的原话；markdown 里条目下面缩进的段落本来就是条目的一部分，用户写纪要不会缩进。
+- **前后对比**：`p13-weekly-before-*` **7 条里 7 条没有出处** → `p13-weekly-after-{light,dark}.png` **7 条里 5 条没有出处**（硬件第 3 条、APP 第 2 条各拿到它们展开段里的 `[note-…]`；市场两条的展开段本来就没出处，照旧 ✗）；日期那条同一篇 7 里 2 没日期（原来 3）。
+- **下一步**：展开段是对整节说的，只算给最后一条是字面规则；「一节里有出处就算全节的条都有」是另一种口径，会让「每条」空掉——两个都不对的时候先留字面的，等用户勾 / 不勾的记录攒出来再定。
+
+### 3. 目录点最后一节高亮的是上一节 ✔（P12 下一步④）
+
+- **用户怎么发现**：P12 `p12-jump` 实拍：点目录第 9 节「反思与展望」跳过去，高亮的是「团队建设」。
+- **复现**：`p12-jump-after-light.png` + 日志 `active=团队建设`——文末那一节短到撑不满一屏，「顶上那一行属于哪一节」的老规则（Obsidian 同款）永远指上一节。
+- **改了什么**：`DocumentOutline.activeHeadingPos(headings, topPos, bottomPos, atBottom, pinned)` 纯函数：老规则不变，多两条——**滚到底了**亮视口里最后一个标题；**刚点过**的那一节（`pinnedRef`）标题还在视口里就亮它，滚走了才交回老规则。`jump()` 钉住并立即 `setActivePos`。测试 3 条。
+- **依据**：P12 下一步④；两条都是「顶上那一行」量不到的情形，各自有一个用户能重放的动作（滚到底 / 点目录）。
+- **前后对比**：同一探针 `p12:jump:574f4ff29956:8`：`active=团队建设`（P12）→ `p13-jump-after-light.png` `active=反思与展望`。
+- **下一步**：`posAtCoords` 取的是 x=left+60 那一列，超宽表格行上可能落空（回退到 `false` 那一档已经兜了）。
+
+### 4. ⌘E 行内代码 / ⇧⌘X 删除线 ✔（P10 C3-1 遗留）
+
+- **用户怎么发现**：P10 快捷键 17 条逐试时记的「缺行内代码 / 删除线的键」；工具栏有 `<>` 没有键，删除线连按钮都没有。
+- **复现**：`markdownKeymap` 里没有 `Mod-e` / `Mod-Shift-x`。
+- **改了什么**：`strikeCmd`（`~~`，同一套包 / 解包）；`Mod-e` → 行内代码、`Mod-Shift-x` → 删除线；快捷键表加一行「⌘E / ⇧⌘X」（`check-shortcuts` 闸：表里查不到的键等于没有）；工具栏 `<>` 标 ⌘E、加 `S̶` 删除线钮。测试 2 条。
+- **依据**：Obsidian（⌘E 切换源码 / 阅读，但 Notion / Typora / Bear 的 ⌘E 都是行内代码）、Notion ⇧⌘X 删除线——不发明。
+- **前后对比**：`p13-keys-after-light.log`：`⌘E on 「代码片段」 → `代码片段`` / 再按 → `代码片段` / `⇧⌘X → ~~代码片段~~` / 再按 → 去掉；`p13-keys-after-light.png` 快捷键表那一行。
+- **下一步**：无。
+
+### 5. 「续写」和「智能续写」的撤销并成一套 ✔（P11 提醒）
+
+- **用户怎么发现**：看不出来——两个入口 ⌘Z 都是一次一轮。但仓里有两套机制：「续写」用 P10 的 `sealAsOneUndo`（写完之后不记历史地删掉、再记历史地插回），智能续写用 P11 的 `aiSyncSpec`（落地时 compose 并组）；前者那一笔不记历史的改动会把更早的撤销事件映射坏（P11 实拍），只是「续写」只有一处落地才没露馅。
+- **复现**：`grep sealAsOneUndo` 三处（`undoUnit.ts` / `MarkdownEditor.tsx` 的 `undoSeal` effect / `App.tsx` 的 `setUndoSeal`）。
+- **改了什么**：删掉 `sealAsOneUndo` / `UndoSeal` / `undoSeal` prop / App 的 `undoSeal` 状态——「续写」跑的时候编辑器本来就只读（`loading === 'tap'`），流进去的每一片已经走 `aiSyncSpec`。
+  **抓到一条边界**：流完之后 `fixBoldPunct` 修粗体标点那一笔跟 `setLoading(null)` 落在同一次 render，那一帧 `readOnly` 已经是 false，那一笔会另起一条撤销事件——`MarkdownEditor` 加 `aiRef`（上一帧的 readOnly；content effect 排在 readOnly effect 前面，读到的是旧值），`ai = readOnly || aiRef.current` 才决定要不要并组。
+  闸：`p13.test.ts` 两个入口各一条（续写：四片各隔 900ms + 3 秒后的收尾一笔 → ⌘Z ×1 回开跑前、×2 才吃用户的字；智能续写：两轮 → ×2）+ 源码里 `sealAsOneUndo` / `undoSeal` 为零；P10 的 C3-2 用例改写成走 `aiSyncSpec`。
+- **依据**：P11 #2 的结论「不是事后封，是落地时就并进同一条」；一个信号两个载体迟早漂（§21）。
+- **前后对比**：真实 app `p13-undo-tap-after.log`（假模型 slowstream 四片各隔 900ms）：`⌘Z presses to get back to base: 1 (exact)`（1389→1341），再按一次才撤用户自己那句（1341→1330），⇧⌘Z 回到 1389——跟 P10 封之后的 48/48 一样，机制从两套变一套。
+- **下一步**：暂停 → 逐条接受 → 「接着写」那条路的 `undoGroup` 仍没实拍（P11 记的）。
+
+### 突变验（`$S/p13/p13_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复；**16 条全红**）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| 后端 `units` 展开段不并进前一条 / 前端同一处 | `test_2_每条的单位按共享用例表` / `p13.test` 周会 5 条 |
+| `done_criteria` 不按「这次写的」过滤 | `test_1_只判这次跑新写的单位` |
+| `judgeable` 勾过的照判 | `test_1_…勾过的不判` |
+| `_dimension` 没出处打错维度 | `test_1_只判…`（`dimension == factual_grounding`） |
+| `DoneCriteria` 不挂 / 路由不装 `intent_checked` | `test_1_DoneCriteria_…` / `test_1_note_harness_…` |
+| 后端 `RULES` 改一条前端没改 | `test_1_规则正则和措辞…逐条原样有一份` |
+| 目录滚到底不亮最后一节 / 刚点过的不钉住 | `p13.test` #3 两条 |
+| 删除线包错记号 / ⇧⌘X 没绑 / 快捷键表少一行 | `p13.test` #4 / `check-shortcuts.mts` |
+| `aiRef` 不看上一帧 / 片段不 compose / 收工那句不走 `checkLabel` | `p13.test` #5 三条 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2203 passed**（基线 2161；+42 `tests/test_p13.py`）。老测试改动：`test_coherence_bucket` 抓过一次（第一版超长打 `coherence`）。
+- 前端 `npm test`：**61 文件 / 402 条**（基线 60 / 363；+`p13.test.ts` 39 条）+ 新闸 `check-done-parity.mts`，全部 check 脚本 OK。`harness-framework.md`：middleware 20 → 21、`checks/ ×19` → 20、§7 / §8 / §3 图各加一条。
+- 真库指纹（`db_guard.fingerprint` 只读；真跑前后各 1 次）：**482 / 2026-09-16T02:53:27 / 321,250 / `47dcc54be60aa4f2` / note_revisions 44**，一字不差；`~/Library/Application Support` 没碰（桌面壳 `MEMOKET_USER_DATA=$S/p13/p13userdata`，数据 `KITE_DATA_DIR=$S/p13/p13data`（p12data 拷贝，每次假模型 harness 跑前把这篇从 p12data 恢复——假模型每轮写的字是确定的，不恢复第二次「这次写的」全在 `content_at_start` 里，判据就不响，实拍过一张「17 条全过」）；真跑 `p13real`（另一份拷贝，provider 指真端点））。
+- 成本（scratch 库 `p13real/llm_usage`，端点 `gpt-5.6-luna`，只有 #1 的一跑）：**16 次调用 / prompt 97,200（cached 47,555）/ completion 5,700 ≈ 0.10M**——估 0.15M，实际 0.10M（4 轮封顶、第 4 轮 `check_stuck` 停）。
+- 假服务 / 桌面壳探针跑了 12 次（check ×4 含一次没恢复正文的废片、undo-tap、keys、weekly ×4、jump）。

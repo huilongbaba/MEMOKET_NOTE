@@ -57,6 +57,15 @@ def as_text(intent: dict) -> str:
     return "；".join(parts)
 
 
+def done_of(text: str) -> str:
+    """从 as_text() 那句里把「完成标准」拆回来（harness 的 `ctx.intent` 只带这一句；P13 #1）。
+    「完成标准」是三个字段里最后一个，所以取到句尾；它自己里面的分号是条目分隔，原样留着。"""
+    label = FIELD_LABEL["done"] + "："
+    t = text or ""
+    i = t.find(label)
+    return t[i + len(label):].strip() if i >= 0 else ""
+
+
 def block(text: str) -> str:
     """system prompt 的第一段。`text` 是 as_text() 那句（前端带过来的），空 = 不加。"""
     t = " ".join((text or "").split())[:FIELD_MAX * 4]

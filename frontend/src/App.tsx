@@ -17,7 +17,7 @@ import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, Writ
 import AudioRecorder from './components/AudioRecorder'
 import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
-import MarkdownEditor, { type UndoSeal } from './components/MarkdownEditor'
+import MarkdownEditor from './components/MarkdownEditor'
 import SplitEditor from './components/SplitEditor'
 import { insertStreamed, tidyBlankLines, applyScrub, prepareInsert } from './editor/streamJoin'
 // 一轮里可以先后命中好几条判据，攒起来别互相盖掉（批 24 / 计划 12.1）
@@ -58,6 +58,7 @@ import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
 import { loadSpots, putSpot, saveSpots } from './util/spots'
 import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
+import { checkLabel } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
 import { setIngestActive } from './util/ingestActive'
@@ -290,8 +291,6 @@ export default function App() {
   // 编辑、下一轮写入都会让它变，React 这边只是拿来决定要不要显示那条工具栏。
   const [pendingDiff, setPendingDiff] = useState(0)
   /** 续写写完之后把那一段封成一个撤销单位（P10 C3-2，`editor/undoUnit`）；seq 变了编辑器才动手。 */
-  const [undoSeal, setUndoSeal] = useState<UndoSeal | null>(null)
-  const undoSealSeq = useRef(0)
   // 撤销分组（P11 #2）：智能续写每一轮开跑加一，编辑器把这一轮落地的所有片段（修订 + 续写）并成一条撤销事件，
   // ⌘Z 一次撤一轮（机制在 `editor/undoUnit.aiSyncSpec` / `MarkdownEditor` 的 content 同步）
   const [undoGroup, setUndoGroup] = useState(0)
@@ -1873,9 +1872,8 @@ export default function App() {
         toast(`摘掉了 ${fakeCitations.length} 个知识库里查不到的引用`)
       }
       if (fixed !== inserted) { inserted = fixed; setContent(head + inserted + tail) }
-      // ⌘Z 一次撤掉整段（流式是一片片进来的，中途停顿 >500ms 就会被 CM 拆成好几步——实拍要按四次）。
-      // 范围取整篇前后真正变了的那一段：head 补的那个空行也算续写插的（第一版只封模型吐的字，⌘Z 之后剩一个空行）
-      { const ch = minimalChange(full, head + inserted + tail); if (ch && ch.insert.trim()) setUndoSeal({ from: ch.from, text: ch.insert, seq: ++undoSealSeq.current }) }
+      // ⌘Z 一次撤掉整段：编辑器只读（`loading === 'tap'`）期间流进去的每一片都并进同一条撤销事件
+      // （`editor/undoUnit.aiSyncSpec`，跟智能续写同一套；P13 #5）——head 补的空行、上面修粗体标点那一笔都在里面。
       /* **接受 / 撤回。** 续写原来是全应用**唯一**一条不进修订层的插入路径——
          格式化、智能排版、语音输入、图片转表格、插入音频、`/` 菜单的块、
          智能续写全都调了 `pushDiff`，**最常用的这一个反而没有**
@@ -2336,7 +2334,7 @@ export default function App() {
           // P6 问题 4：同一条判据连响几轮、模型一次都没照做，后端停了交最好的一轮。
           // 「哪条、几轮」来自收工前那条带 stopped 的 check_hit 事件。
           : reason === 'check_stuck' ? (stuckCheckRef.current
-              ? `「${stuckCheckRef.current.check}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮`
+              ? `「${checkLabel(stuckCheckRef.current.check)}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮`
               : '同一条判据连响几轮都没解决，停下留了最好的那轮')
           : '到达轮数上限，自动停止'
         stuckCheckRef.current = null
@@ -3692,7 +3690,6 @@ export default function App() {
               revisions={revisions}
               onAcceptInline={acceptRevision}
               roundDiff={roundDiff}
-              undoSeal={undoSeal}
               undoGroup={undoGroup}
               onPendingDiff={setPendingDiff}
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}

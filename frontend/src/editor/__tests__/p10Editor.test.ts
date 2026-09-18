@@ -3,7 +3,8 @@
  * P10（产品就绪计划 §2 C3 编辑器基本功 + 三个小毛病，`docs/TRACELOG-product.md` P10 节）：
  *
  *   C3-1 快捷键：空的列表项 / 任务项 / 引用行上 Enter 一次退出（`editor/listExit`）；⌘/ 不再被 App 的 toggle 抵消
- *   C3-2 撤销：续写那一段封成一个撤销单位（`editor/undoUnit`），流式停顿 >500ms 也是一次 ⌘Z
+ *   C3-2 撤销：续写那一段是一个撤销单位（`editor/undoUnit`），流式停顿 >500ms 也是一次 ⌘Z——P13 #5 起跟智能续写
+ *        同一套 `aiSyncSpec`（只读时落地的每一片并进同一条），P10 的 `sealAsOneUndo` 删了
  *   C3-3 粘贴：HTML → markdown（`editor/htmlPaste`），VS Code 那种只有 span 的 HTML 不转
  *   C3-5 长文：圆点按段落文本缓存（`marginMemory.splitCached`），改一段只问一段
  *   小毛病：关系卡的边界是正文栏（`util/cardPlacement`）；缺依据的灰点改空心圈——样式在 `scripts/check-margin-dots.mts` 钉着（vitest 读不到 .css）
@@ -16,7 +17,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { GFM } from '@lezer/markdown'
 
 import { EMPTY_ITEM, exitEmptyItem } from '../listExit'
-import { sealAsOneUndo } from '../undoUnit'
+import { aiSyncSpec } from '../undoUnit'
 import { htmlToMarkdown, shouldConvertHtml } from '../htmlPaste'
 import { splitCached, type MarginVerdict } from '../marginMemory'
 import { placeCard } from '../../util/cardPlacement'
@@ -52,21 +53,17 @@ describe('C3-1 空项 Enter 一次退出（listExit）', () => {
   })
 })
 
-describe('C3-2 续写封成一个撤销单位（undoUnit）', () => {
-  it('四片隔 >500ms 流进来 → 封住之后一次 undo 全撤、redo 全回，用户自己的字不动', () => {
+describe('C3-2 续写是一个撤销单位（undoUnit，P13 #5 起跟智能续写同一套 aiSyncSpec）', () => {
+  it('四片隔 >500ms 流进来（只读时落地、带 aiSyncSpec）→ 一次 undo 全撤、redo 全回，用户自己的字不动', () => {
     const v = mkView('用户写的。')
-    const base = v.state.doc.length
     let t = 1000
-    v.dispatch({ changes: { from: v.state.doc.length, insert: '第一片' }, annotations: Transaction.time.of(t) })
-    for (const piece of ['第二片', '第三片', '第四片']) {
-      t += 900
-      v.dispatch({ changes: { from: v.state.doc.length, insert: piece }, annotations: Transaction.time.of(t) })
+    const land = (piece: string, fresh: boolean) => {
+      const spec = aiSyncSpec(fresh)
+      v.dispatch({ changes: { from: v.state.doc.length, insert: piece }, userEvent: spec.userEvent, annotations: [...(spec.annotations as never[] ?? []), Transaction.time.of(t)] })
     }
+    land('第一片', true)
+    for (const piece of ['第二片', '第三片', '第四片']) { t += 900; land(piece, false) }
     const full = '第一片第二片第三片第四片'
-    expect(v.state.doc.toString()).toBe('用户写的。' + full)
-    // 封之前：一次 undo 只撤最后一片（CM 的 500ms 分组）
-    undo(v); expect(v.state.doc.toString()).toBe('用户写的。第一片第二片第三片'); redo(v)
-    expect(sealAsOneUndo(v, base, base + full.length, full)).toBe(true)
     expect(v.state.doc.toString()).toBe('用户写的。' + full)
     undo(v)
     expect(v.state.doc.toString()).toBe('用户写的。')
@@ -74,11 +71,12 @@ describe('C3-2 续写封成一个撤销单位（undoUnit）', () => {
     expect(v.state.doc.toString()).toBe('用户写的。' + full)
     v.destroy()
   })
-  it('正文跟预期对不上（用户已经在改）就不动；空区间不动', () => {
-    const v = mkView('abc')
-    expect(sealAsOneUndo(v, 0, 3, 'xyz')).toBe(false)
-    expect(sealAsOneUndo(v, 2, 2)).toBe(false)
-    expect(sealAsOneUndo(v, 0, 9)).toBe(false)
+  it('修前的形状：片段按默认记历史，⌘Z 一次只撤最后一片——钉住为什么要 compose 并组', () => {
+    const v = mkView('用户写的。')
+    let t = 1000
+    for (const piece of ['第一片', '第二片', '第三片', '第四片']) { t += 900; v.dispatch({ changes: { from: v.state.doc.length, insert: piece }, annotations: Transaction.time.of(t) }) }
+    undo(v)
+    expect(v.state.doc.toString()).toBe('用户写的。第一片第二片第三片')
     v.destroy()
   })
 })

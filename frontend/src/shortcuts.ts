@@ -27,6 +27,7 @@ export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: stri
     { keys: '⌘F', what: '页内查找 / 替换' },
     { keys: '⇧⌘F', what: '格式化整篇 Markdown' },
     { keys: '⌘B / ⌘I / ⇧⌘K', what: '粗体 / 斜体 / 插入链接' },
+    { keys: '⌘E / ⇧⌘X', what: '行内代码 / 删除线（选中再按是加，已经包着的再按一次是去掉）' },
     { keys: '⌥⌘1 / ⌥⌘2 / ⌥⌘3', what: '一 / 二 / 三级标题（⌘1…⌘9 是切标签，所以带 ⌥）' },
     { keys: '⇧⌘7 / ⇧⌘8 / ⇧⌘9', what: '有序 / 无序 / 任务列表' },
     { keys: '选中后右键', what: '校验 / 重写 / 润色 / 扩展 / 来龙去脉' },

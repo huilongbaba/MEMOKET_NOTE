@@ -62,6 +62,8 @@ const CHECKS: Record<string, string> = {
   no_fake_charts: '用文字冒充图',
   charts_from_tools: '图不是工具画的',
   unsupported_specifics: '具体数字查无出处',
+  // P13 #1：「完成标准」里代码判得了的那几条（`checks/done.py`，跟 `util/doneChecks` 同一份判定；动态挂上去的）
+  done_criteria: '你定的完成标准',
   // P8 的三条（问题 7 / 8 / 10）
   chart_restates_list: '图只是把清单再画一遍',
   language_consistent: '换了语言',

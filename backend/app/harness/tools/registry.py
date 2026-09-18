@@ -53,6 +53,9 @@ class ToolContext:
     # 第一段都是它（`editor/intent.block`）。挂在 ctx 上是因为它跟 note_id / note_title 一样是
     # 「这次跑作用在哪篇上」的一部分，hooks 拿着 State 就能读到；空串 = 这篇没写意图，一个字不加。
     intent: str = ""
+    # 「完成标准」里用户勾过的那几条原文（`notes.intent.checked`，P12）。P13 #1 的 `done_criteria`
+    # 判据跳过它们——勾了就是「我认了」。跟 intent 一样是这次跑作用在哪篇上的一部分。
+    intent_checked: tuple[str, ...] = ()
 
     # Scratch space the caller owns; the tool pool never interprets it.
     #

@@ -57,8 +57,8 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×20<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Cited Revise Repair Runtime Replan Sections Save Checklist"]
-    CHK["checks/ ×19 代码判据<br/>+ rubric 模型打分"]
+    MW["Middleware ×21<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Cited Revise Repair Runtime Replan Sections Save Checklist DoneCriteria"]
+    CHK["checks/ ×20 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -196,6 +196,7 @@ backend/app/
                              + _order.py（顺序依赖，verify() 起跑时校验）
       skills · facts · history · ledger · supersede · cited · compact · sections · best_of · checks
       · checklist · provenance · revise · repeats · replan · repair · runtime · save · _order
+      · done（P13 #1：这篇「完成标准」里代码判得了的那几条 → 一条判据，before_run 挂上；跟 checklist 一个做法）
       · cost（这次跑花了多少 + 超了就停，计划 12.3）
       · cross_run（这次跑完比**上一次跑**差就报一句，只报不回滚，计划 9.3）
       · edits（跑完落一版正文 + 开一行采集用户接下来对它做了什么，计划 9.1）
@@ -213,6 +214,10 @@ backend/app/
         （instructions 是批 17 / 阶段 6.2：用户那条指令里**能用代码判准**的那几类约束
          ——字数 / 段数 / 「必须提到 X」/ 「用表格」。它挂在 Mode 上的方式跟别的判据不同，
          由 `middleware/checklist` 在开跑时按这一次的指令装，所以不算进上面那个 19）
+      · done（P13 #1：「完成标准」可检查的那几类——字数上下限 / 每条有日期 / 有出处 / 各有一节 / 结论在前——
+        的**后端版**，跟前端 `util/doneChecks.ts` 是同一份判定（`shared/done-cases.json` 两边各跑一遍、
+        正则 / 措辞字面逐条核对）；`done_criteria` 由 `middleware/done` 在开跑时按这篇的意图装，
+        同 instructions 那样不算进 Mode 上写死的判据数；量程「每条有日期 / 出处」只判这次跑新写的单位）
         （numbers 是批 16 / 阶段 5 新加的：图 · 表 · 正文里的数跟工具返回逐个 diff——
          三条判词原话都是「每个数字都能追到源」，那是一次比对不是一次判断）
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
@@ -503,7 +508,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 ---
 
-## 7. 20 个 middleware
+## 7. 21 个 middleware
 
 `BASE`（默认全开，顺序即执行顺序）：
 
@@ -533,6 +538,7 @@ Mode 按需追加的：
 | **Replan** | note | 骨架中途重规划（`replan_rules.py` 约束：能更新，不能把目标改到不收敛） |
 | **Sections** | note · section | 续写 prompt 里的正文：**小节索引（每节一行）+ 按需读回的小节 + 当前小节逐字**，配 `read_section(n)` 工具（修订和打分仍读全文）。批 15 顶替了 `Compact`：摘要是**有损的替换**，索引是**无损的指针**（[CE] §7）。`compact_context` 那个函数还在，「智能续写」那条一次性路径仍然用它——**那条路没有工具循环，给指针取不回来**。开关 `params.SECTION_INDEX` 能整条退回 |
 | **Save** | note · section | 每轮落盘（块生成不落盘） |
+| **DoneCriteria** | note | **跑之前把这篇「完成标准」里代码判得了的那几条挂成一条判据**（P13 #1）：意图里那句「完成标准」拆条，字数上下限 / 每条有日期 / 有出处 / 各有一节 / 结论在前 由 `checks/done.py` 判——**跟前端 `util/doneChecks.ts` 是同一份判定**（`shared/done-cases.json` 一张表两边各跑一遍、正则和措辞字面逐条核对），命中走 `check_hit` 进下一轮 steer。量程：「每条有日期 / 出处」只判这次跑新写的单位（用户自己那几条修订碰不了）；勾过的（`intent.checked`）不判；打磨模式不判要它写的那几类。一条都判不了就一条都不挂 |
 | **Checklist** | prompt · custom | **跑之前把用户那条指令变成这一次专属的判据**（批 17 / 阶段 6）：能用代码判准的那几类（字数 / 段数 / 必须提到 X / 用表格）抽成约束挂一条 `Check`；判不准的花一次调用生成 instruction-specific checklist，每条一个**二元**维度接在原来那三条后面。依据是 RaR（ICLR 2026）的消融——**对所有 prompt 用同一份通用 rubric 明显更差**，而我们八个功能全是那一档。三道闸兜底：条目的依据要能在指令里逐字找到、程序已经判了的不许重复、生成不出来就退回原来那三条维度。开关 `params.PROMPT_CHECKLIST` |
 
 每个 middleware 一个文件、不认识循环、能拿假 State 单测。
@@ -575,6 +581,13 @@ Mode 按需追加的：
   内容来自用户刚打的那句话，所以由 `middleware/checklist` 在 `before_run` 里
   `dataclasses.replace` 进这一次跑的 Mode。上面那个 19 是「写死在 Mode 上的判据」，
   `tests/test_doc_counts.py` 数的也是那一个。
+- **第 27 条同理**：`done_criteria`（P13 #1）判的是这篇文档意图里的「完成标准」（字数上下限 /
+  每条有日期 / 有出处 / 「X、Y 各有一节」/ 结论在前），内容来自用户在标题下写的那句话，由
+  `middleware/done.DoneCriteria` 在 `before_run` 挂进 `note` 这次跑的 Mode。**它跟前端右栏
+  「计划」第一格用的是同一份判定**（`checks/done.py` ↔ `util/doneChecks.ts`：`shared/done-cases.json`
+  两边各跑一遍 + `tests/test_p13.py` 逐条核对正则 / 措辞字面），差别只在量程——后端「每条有日期 /
+  出处」只判这次跑新写的单位。打翻哪一维按类挑：没出处 / 没日期 → `factual_grounding`（进检索规划的
+  steer），不够长 / 缺一节 → `beat_coverage`，超长 / 结论没在前没有对应的评分轴 → `mechanics` 兜底桶（不拿 `coherence` 当垃圾桶，诊断逐字在 message 里、修订那条线读的是 `focus_note`）。
 - `pick_dimension(st, *candidates)`：一条 check 被多个 Mode 共用，打翻的维度按当前
   Mode 实际有的挑；`tests/test_harness_modes.py` 断言每条 check 在一段「踩满所有毛病
   的正文」上至少触发一次、且打的维度这个 Mode 真的有。

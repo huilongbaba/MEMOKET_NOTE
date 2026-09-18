@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // 测试要读仓库根下 shared/ 的共享用例表（done-cases.json，P13）：Vite 默认只允许 root 之内
+    fs: { allow: ['..'] },
     port: 5173,
     // 把 /api 代理到后端，前端代码里就不用关心跨域和端口
     proxy: {

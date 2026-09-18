@@ -94,7 +94,9 @@ async def run(body: NoteHarnessRunIn, request: Request,
             ctx=tools.ToolContext(user=user, note_id=body.note_id, scope=body.scope,
                                   note_title=note["title"],
                                   # 文档意图（P11）：请求带的优先（标题下那一行此刻的值），没带用库里那份
-                                  intent=body.intent or doc_intent.as_text(note.get("intent") or {})),
+                                  intent=body.intent or doc_intent.as_text(note.get("intent") or {}),
+                                  # 勾过的「完成标准」条目（P13 #1）：勾选是即时 PUT 落库的，库里那份就是此刻的
+                                  intent_checked=tuple(doc_intent.normalize(note.get("intent") or {})["checked"])),
             request=request,
             content=body.content,
         )

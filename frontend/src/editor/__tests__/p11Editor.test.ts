@@ -82,7 +82,7 @@ describe('P11 #2 一轮智能续写（修订 + 续写，多处）= 一个撤销�
 
   it('MarkdownEditor：只读（AI 在写）时 content 同步带 aiSyncSpec；App 每一轮开跑 undoGroup 加一（在预留空行之前）', () => {
     expect(editorSrc).toMatch(/const fresh = freshRef\.current \|\| undoGroup !== lastGroup\.current/)
-    expect(editorSrc).toMatch(/\.\.\.\(readOnly \? aiSyncSpec\(fresh\) : \{\}\)/)
+    expect(editorSrc).toMatch(/\.\.\.\(ai \? aiSyncSpec\(fresh\) : \{\}\)/)   // P13 #5 起 `ai = readOnly || aiRef.current`
     expect(editorSrc).toMatch(/if \(readOnly\) freshRef\.current = true/)
     const bump = appSrc.indexOf('setUndoGroup((g) => g + 1)')
     const spare = appSrc.indexOf("c.replace(/\\n*$/, '') + '\\n\\n'", bump)

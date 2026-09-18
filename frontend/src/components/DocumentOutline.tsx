@@ -82,6 +82,24 @@ export function parseFallbackAnchors(content: string): FallbackOutline {
   return { how: 'none', items: [] }
 }
 
+/** 目录里该亮哪一节（P13 #3；P12 下一步④）。纯函数，`headings` 按位置升序。
+ *
+ *  老规则：滚动区顶部那一行属于哪一节（Obsidian 的 outline 也这么做）。它有两个漏：
+ *   · **滚到底了**：文末那一节短到撑不满一屏时，顶上那一行永远属于上一节——点目录最后一节跳过去，
+ *     高亮的却是上一节（P12 `p12-jump` 实拍 `active=团队建设`）。滚到底就亮视口里最后一个标题。
+ *   · **刚点过目录**：`pinned` 是刚点的那一节，只要它的标题还在视口里就亮它——用户点了「反思」，
+ *     就不该因为顶上那一行是「团队建设」的尾巴而亮「团队建设」；滚走了（标题出了视口）才交回老规则。 */
+export function activeHeadingPos(
+  headings: { pos: number }[],
+  topPos: number, bottomPos: number, atBottom: boolean, pinned: number | null = null,
+): number {
+  if (pinned != null && headings.some((h) => h.pos === pinned) && pinned >= topPos && pinned <= bottomPos) return pinned
+  let active = -1
+  for (const h of headings) if (h.pos <= topPos) active = h.pos
+  if (atBottom) for (const h of headings) if (h.pos <= bottomPos) active = h.pos
+  return active
+}
+
 /** Jump-to-heading outline -- cheap to add now that the editor is real
  * markdown with real heading syntax, and it's table-stakes for anything
  * pitching itself as a Notion-class editor for longer documents. */
@@ -102,15 +120,20 @@ export default function DocumentOutline({ content, viewRef, withStatus = false }
   // 滚动的是 .note-scroll 不是 CM 自己，所以听它。
   const [activePos, setActivePos] = useState(-1)
   const listRef = useRef<HTMLDivElement>(null)
+  // 刚点过目录的那一节（P13 #3）：标题还在视口里就亮它；滚走了才交回「顶上那一行」的老规则
+  const pinnedRef = useRef<number | null>(null)
   useEffect(() => {
     const view = viewRef.current
     const scroller = view?.scrollDOM.closest('.note-scroll') as HTMLElement | null
     if (!view || !scroller || headings.length === 0) return
     const update = () => {
       const r = scroller.getBoundingClientRect()
-      const pos = view.posAtCoords({ x: r.left + 60, y: r.top + 90 }) ?? view.posAtCoords({ x: r.left + 60, y: r.top + 90 }, false)
-      let active = -1
-      for (const h of headings) if (h.pos <= pos) active = h.pos
+      const at = (y: number) => view.posAtCoords({ x: r.left + 60, y }) ?? view.posAtCoords({ x: r.left + 60, y }, false) ?? 0
+      const topPos = at(r.top + 90)
+      const bottomPos = at(r.bottom - 10)
+      const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2
+      const active = activeHeadingPos(headings, topPos, bottomPos, atBottom, pinnedRef.current)
+      if (pinnedRef.current != null && active !== pinnedRef.current) pinnedRef.current = null
       setActivePos(active)
     }
     update()
@@ -130,6 +153,8 @@ export default function DocumentOutline({ content, viewRef, withStatus = false }
   function jump(pos: number) {
     const view = viewRef.current
     if (!view) return
+    pinnedRef.current = pos
+    setActivePos(pos)
     view.dispatch({
       selection: { anchor: pos },
       effects: EditorView.scrollIntoView(pos, { y: 'center' }),

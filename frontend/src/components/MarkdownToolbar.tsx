@@ -1,7 +1,7 @@
 import type { RefObject } from 'react'
 import type { EditorView } from '@codemirror/view'
 import {
-  boldCmd, italicCmd, inlineCodeCmd, heading1Cmd, heading2Cmd, heading3Cmd, quoteCmd,
+  boldCmd, italicCmd, inlineCodeCmd, strikeCmd, heading1Cmd, heading2Cmd, heading3Cmd, quoteCmd,
   bulletListCmd, orderedListCmd, taskListCmd, linkCmd, codeBlockCmd, mermaidCmd,
   tableCmd,
 } from '../editor/markdownCommands'
@@ -21,7 +21,8 @@ const BUTTONS: { label: string; icon?: string; title: string; cmd: (view: Editor
   // 这一排是**单色字形**（B / I / H1 / " / • / 1. / ☑ / <> / { } / ▦）。
   // 原来这里是彩色 emoji 🔗，在一排灰字里格外扎眼，深色下也不跟主题。
   { label: 'link', icon: 'bx-link', title: '链接 (⌘/Ctrl+K)', cmd: linkCmd },
-  { label: '<>', title: '行内代码', cmd: inlineCodeCmd },
+  { label: '<>', title: '行内代码 (⌘/Ctrl+E)', cmd: inlineCodeCmd },
+  { label: 'S̶', title: '删除线 (⌘/Ctrl+Shift+X)', cmd: strikeCmd },
   { label: '{ }', title: '代码块', cmd: codeBlockCmd },
   { label: '▦', title: '表格：插入 3 列空表格', cmd: tableCmd },
   // `⟁`（U+27C1）是个冷僻数学符号，字体支持看运气——实拍里被替换成了一个

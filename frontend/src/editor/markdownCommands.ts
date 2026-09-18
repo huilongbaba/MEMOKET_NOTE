@@ -34,6 +34,7 @@ function wrapSelection(view: EditorView, marker: string) {
 export function boldCmd(view: EditorView) { wrapSelection(view, '**') }
 export function italicCmd(view: EditorView) { wrapSelection(view, '*') }
 export function inlineCodeCmd(view: EditorView) { wrapSelection(view, '`') }
+export function strikeCmd(view: EditorView) { wrapSelection(view, '~~') }
 
 /** Toggle a line-start prefix (heading/quote/list markers) across every
  * line the selection touches. If every touched line already has the exact
@@ -199,6 +200,9 @@ export function mermaidCmd(view: EditorView) {
 export const markdownKeymap = [
   { key: 'Mod-b', run: (view: EditorView) => { boldCmd(view); return true } },
   { key: 'Mod-i', run: (view: EditorView) => { italicCmd(view); return true } },
+  // 行内代码 ⌘E / 删除线 ⇧⌘X（P13 #4，P10 C3-1 记的「缺行内代码 / 删除线的键」）：Obsidian / Notion 同款，不发明
+  { key: 'Mod-e', run: (view: EditorView) => { inlineCodeCmd(view); return true } },
+  { key: 'Mod-Shift-x', run: (view: EditorView) => { strikeCmd(view); return true } },
   // ⌘K 是外壳的搜索 / 跳转（Notion、VSCode 的约定），插链接让位到 ⇧⌘K
   { key: 'Mod-Shift-k', run: (view: EditorView) => { linkCmd(view); return true } },
   { key: 'Mod-Alt-1', run: (view: EditorView) => { heading1Cmd(view); return true } },

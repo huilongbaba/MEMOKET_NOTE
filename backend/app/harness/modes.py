@@ -24,7 +24,7 @@ from .checks import (chart_numbers_grounded, chart_readable, chart_restates_list
                      numbers_from_tools, outline_intact, section_budget,
                      table_columns_match, table_present, tail_clashes,
                      unsupported_specifics)
-from .middleware import Checklist, Repair, Replan, Runtime, Save, Sections
+from .middleware import Checklist, DoneCriteria, Repair, Replan, Runtime, Save, Sections
 from .middleware.cited import Cited
 from .middleware.revise import Revise
 from .state import State
@@ -595,7 +595,8 @@ NOTE = Mode(
     stop_when=(check_stuck, material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
     # `Cited`（P6 问题 2）：正文里已经引着的事实展开成材料，打分 / 修订都读。
-    extra_mw=(Cited(), Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),
+    # `DoneCriteria`（P13 #1）：「完成标准」里代码判得了的那几条挂成判据（before_run，跟 Checklist 一个做法）。
+    extra_mw=(DoneCriteria(), Cited(), Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),
     max_rounds=8,
     context_keep_last=4000,
 )

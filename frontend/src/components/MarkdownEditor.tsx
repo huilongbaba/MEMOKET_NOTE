@@ -14,7 +14,7 @@ import { imageEmbed } from '../editor/imageEmbed'
 import { imagePaste } from '../editor/imagePaste'
 import { htmlPaste } from '../editor/htmlPaste'
 import { listExitKeymap } from '../editor/listExit'
-import { aiSyncSpec, sealAsOneUndo } from '../editor/undoUnit'
+import { aiSyncSpec } from '../editor/undoUnit'
 import { linkClick } from '../editor/linkClick'
 import { markdownKeymap } from '../editor/markdownCommands'
 import { factCite } from '../editor/factCite'
@@ -46,7 +46,6 @@ import { frontmatterDim } from '../editor/frontmatter'
  * transparent-textarea-over-backdrop hack.
  */
 /** 续写写完之后封成一个撤销单位的那一段（P10 C3-2）。seq 变了才做。 */
-export type UndoSeal = { from: number; text: string; seq: number }
 
 type Props = {
   content: string
@@ -65,12 +64,9 @@ type Props = {
    * 自动应用完的改动，用户否则完全不知道正文被动了哪里。 */
   /** 往编辑器塞一层提案（seq 变了才 dispatch）。null = 不动。 */
   roundDiff?: DiffPush | null
-  /** 把 `from` 起的 `text` 那一段封成一个撤销单位（续写写完之后；P10 C3-2）。seq 变了才做；
-   *  正文对不上（用户已经在改）就不动。**排在 content 之后、roundDiff 之前**——见下面 effect 的顺序。 */
-  undoSeal?: UndoSeal | null
-  /** 撤销分组（P11 #2）：AI 在写（readOnly）的时候，content 同步进编辑器的每一片都并进**同一条**撤销事件；
-   *  这个数变了 = 另起一条（智能续写每一轮开跑时 App 加一）。于是 ⌘Z 一次撤一轮（修订 + 续写一起），
-   *  再按才轮到用户自己的字。机制见 `editor/undoUnit.aiSyncSpec`。 */
+  /** 撤销分组（P11 #2 / P13 #5）：AI 在写（readOnly）的时候，content 同步进编辑器的每一片都并进**同一条**撤销事件；
+   *  这个数变了 = 另起一条（智能续写每一轮开跑时 App 加一；「续写」一次就是一轮，只读一开始就是边界）。
+   *  于是 ⌘Z 一次撤一轮（修订 + 续写一起），再按才轮到用户自己的字。机制见 `editor/undoUnit.aiSyncSpec`。 */
   undoGroup?: number
   /** 还剩几处 harness 改动没被接受/撤回。用来在编辑器上方显示「N 处改动 ·
    * 全部接受」——逐处点是主路径，但改动多的时候必须有个一次性收尾的出口。 */
@@ -111,7 +107,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, undoSeal = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
+  roundDiff = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -255,6 +251,11 @@ export default function MarkdownEditor({
   // 撤销分组的两个游标（P11 #2）：只读刚开始 → 下一片另起一条；`undoGroup` 变了 → 另起一条
   const freshRef = useRef(true)
   const lastGroup = useRef(undoGroup)
+  // 上一次 effect 跑过之后的 readOnly（P13 #5）：「续写」流完之后的收尾同步（`fixBoldPunct` 修粗体标点）
+  // 跟 `setLoading(null)` 落在同一次 render 里——这一帧的 `readOnly` 已经是 false，可那一笔仍是 AI 写的字，
+  // 得并进同一条撤销事件，不然 ⌘Z 要按两次。下面的 readOnly effect 排在这个 effect 之后才更新它，
+  // 所以这里读到的是上一帧的值。
+  const aiRef = useRef(readOnly)
   useEffect(() => {
     const view = actualViewRef.current
     if (!view) return
@@ -267,9 +268,10 @@ export default function MarkdownEditor({
     if (change) {
       // AI 在写（readOnly）的时候，流进来的每一片都并进同一条撤销事件（P11 #2；`editor/undoUnit.aiSyncSpec`）：
       // 只读刚开始、或 `undoGroup` 变了（智能续写新的一轮）的第一片另起一条，之后的并进去。
+      const ai = readOnly || aiRef.current
       const fresh = freshRef.current || undoGroup !== lastGroup.current
-      view.dispatch({ changes: change, ...(readOnly ? aiSyncSpec(fresh) : {}) })
-      if (readOnly) { freshRef.current = false; lastGroup.current = undoGroup }
+      view.dispatch({ changes: change, ...(ai ? aiSyncSpec(fresh) : {}) })
+      if (ai) { freshRef.current = false; lastGroup.current = undoGroup }
     }
     lastEmitted.current = content
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -283,23 +285,13 @@ export default function MarkdownEditor({
   useEffect(() => {
     // AI 一开始写（readOnly 变 true），下一片同步另起一条撤销事件——不许并进用户刚打的字
     if (readOnly) freshRef.current = true
+    aiRef.current = readOnly
     actualViewRef.current?.dispatch({
       effects: readOnlyComp.current.reconfigure(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
     })
     // actualViewRef 是 ref，不进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly])
-
-  // 续写写完：把那一段封成一个撤销单位。排在 content 同步之后（那段字已经在 CM 里）、
-  // roundDiff 之前（封的那一笔是 docChanged，会把刚加的层映射掉）。
-  const lastSeal = useRef(0)
-  useEffect(() => {
-    const view = actualViewRef.current
-    if (!view || !undoSeal || undoSeal.seq === lastSeal.current) return
-    lastSeal.current = undoSeal.seq
-    sealAsOneUndo(view, undoSeal.from, undoSeal.from + undoSeal.text.length, undoSeal.text)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undoSeal])
 
   useEffect(() => {
     // 必须排在 content 那个 effect 之后：diff 的位置是针对新正文算的，

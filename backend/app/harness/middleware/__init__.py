@@ -17,6 +17,7 @@ from .checklist import Checklist
 from .compact import Compact
 from .cost import Cost
 from .cross_run import CrossRun
+from .done import DoneCriteria
 from .edits import Edits
 from .facts import Facts
 from .history import History
@@ -62,6 +63,8 @@ from .provenance import Provenance
 #   ---- not in BASE, attached per Mode via extra_mw ----
 #   Checklist    before_run        用户那条指令 → 这一次专属的判据，整趟一次
 #                                  （prompt / custom；计划 6.1 + 6.2）
+#   DoneCriteria before_run        这篇「完成标准」里代码判得了的那几条 → 一条
+#                                  判据（note；P13 #1，判定跟前端 doneChecks 同一份）
 #   Revise       before_produce    fix what's written before writing more
 #   Sections     before_round /    小节索引发布给 read_section（before_round，
 #                before_produce    因为工具循环在 prepare 里、比 before_produce 早）
@@ -92,7 +95,7 @@ BASE: tuple = (Cost(), Skills(), Facts(), Provenance(), Ledger(), Supersede(),
 #   Repair  -- repair-instead-of-continue; long-form only.
 #   Runtime / Replan -- note_harness only.
 
-__all__ = ["BASE", "BestOf", "Checklist", "Checks", "Compact", "Cost", "CrossRun",
+__all__ = ["BASE", "BestOf", "Checklist", "Checks", "Compact", "Cost", "CrossRun", "DoneCriteria",
            "Edits", "Facts", "History",
            "Ledger",
            "Sections",
