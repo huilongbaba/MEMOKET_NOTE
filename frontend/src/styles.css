@@ -1336,6 +1336,12 @@ input[type=file]:hover { border-color: var(--accent); }
 .tray-hint, .tray-empty { font-size: var(--t-xs); margin: var(--s-1) 0 0; line-height: 1.6; }
 .tray-empty { font-size: var(--t-sm); margin-top: var(--s-2); }
 .tray-hint code, .tray-empty code { font-family: var(--mono); }
+/* 托盘格里的两件工具（P15 #3）：「默认进托盘」开关 + 网页剪藏；说明文字是元信息（灰），输入框走全局样式 */
+.tray-tools { display: flex; flex-direction: column; gap: var(--s-1); margin-top: var(--s-2); }
+.tray-default { gap: var(--s-2); align-items: center; font-size: var(--t-xs); color: var(--muted); cursor: pointer; }
+.tray-clip { gap: var(--s-1); align-items: center; }
+.tray-clip-url { flex: 1; min-width: 0; font-size: var(--t-xs); padding: 2px var(--s-2); }
+.tray-clip-go { font-size: var(--t-xs); padding: 2px var(--s-2); display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap; }
 .tray-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .tray-item { display: flex; align-items: flex-start; gap: var(--s-1);
   border: 1px solid var(--line); border-radius: var(--r); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-1);

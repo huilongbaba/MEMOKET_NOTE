@@ -2067,3 +2067,85 @@ P9 / P12 两次都把托盘往后推（「要新表 + 托盘 UI + 三个按钮�
   （截图在 `p14data`、真跑在 `p14/p14data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p14userdata`）。
 - 真模型：**1 次跑**，32 次调用，prompt 261,998 / completion 18,449 / cached 95,788 ≈ **0.28M**（预估 0.2M；端点 `gpt-5.6-luna`，scratch 库 `llm_usage`）；桌面壳截图跑了 14 次（zsh 里 `"$N:empty"` 又被当成 `:e` 修饰符，前 4 张探针拿到的是 `mpty`，重拍——P9 记过同一个坑，要写 `${N}`）。
 - 截图（浅 / 深各一张）：`p14-tray-empty-{light,dark}`、`p14-tray-three-{light,dark}`、`p14-tray-slash-{light,dark}` + `p14-tray-linkmenu-light`。
+
+## P15 · 第 777 轮：harness / 后端侧 P13、P14、P11 的遗留——判据先量再定位、引笔记也是引用、材料默认进托盘、首开圆点（2026-09-19）
+
+> HEAD 开工时 `2632bfe`（worktree `agent-a6d6a2a7e6304cf5a`）。**没碰** `revision` 后端的快照、`ChangeLayersPanel`、`roundDiff`、`note_revisions`、⌥ 悬停（另一个 agent 在做）；
+> `loop.py` 的循环结构没动；**kite 没动**（`memoket_kite` 一行没改，改的是调用侧的问法）。
+> 真模型只在 #1 的两跑里用（scratch 库 `$S/p15/p15real` = P14 那份真库拷贝，`rails_off=("save",)`，`docs/_research/p15-runs/`），其余全是假服务（`fakellm13.py`）或纯代码；
+> 截图跑在 `KITE_DATA_DIR=$S/p15/p15shot`（p13data 的拷贝）+ `p15run.sh`，探针 `probesP15.ts`（`p15:tray:<id>:tools | clip:<url> | untitled:<n2> | recmenu | md`）+ P13 的 `p13:check`；
+> 首开圆点量在 `$S/p15/p15data`（P11 那份拷贝，同一篇 `309f19202309`）。截图 `$S/p15-*.png`（7 张）。六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### 1. `done_criteria` 排第几：先量，再定，再跑两篇 ✔（P13 下一步①）
+
+- **用户怎么发现**：P13 真跑「创业反思」：完成标准挂上了（17 条），4 轮一次都没轮到它——第 1 轮 `citations_present`（第 10 条）先响，第 2–4 轮 `no_same_sources_twice`（第 14 条）连响三轮停机。用户明写的「每个结论有事实支撑」被一条查重判据挡了三轮。
+- **复现 / 量**（`docs/_research/p15-runs/replay_done.py`；p5–p14 的 22 次真跑日志 `docs/_research/p*-d3-runs/*.md` 里的 `checks:` 行）：
+
+  | 谁在它前面响（22 次真跑、74 次命中） | 次数 | 族 | 排第几（P8 后 / P5–P6） |
+  |---|---:|---|---|
+  | `citations_present` | 36 | 材料 | 10 / 7 |
+  | `no_same_sources_twice` | 27 | 重复 | 14 / 11 |
+  | `no_repeated_lists` | 5 | 重复 | 12 / 9 |
+  | `material_thin` | 3 | 材料 | 9 |
+  | `material_used` · `no_placeholder` · `no_fake_charts` | 1 · 1 · 1 | 材料 · 材料 · 图 | 8 · 4 · 12 |
+
+  材料族 41 / 重复族 33。再把三次带完成标准的真跑（P11 带意图、P13、P14 托盘）共 19 轮离线重放 `done_criteria`：**它会响 5 轮**（P13 四轮「3/3 → 5/7 → 4/6 → 5/6 没出处」+ P11 第 7 轮「10 段里 1 段没日期」），其中 1 轮材料族先响（P13 r1 `citations_present`，**说的是同一句话**：补编号）、4 轮重复族先响（**说的是另一件事**）；P14 那跑「带日期」全轮都过，0 轮。
+- **依据**：材料族先说不亏（同一件事）；用户明写的标准不该排在重复判据后面（另一件事）→ 插在 **`material_used` 之后、`no_repeated_lists` 之前**（`middleware/done.insert_done`，第 12/17 条）。**「第一条响的赢」不改**：量出来两条同时成立的那一轮说的是同一句话，「材料族一条 + 用户标准一条同时报」只是重复，还破坏「一轮一个指令」。
+- **改了什么**：`insert_done()`（没有 `material_used` 的模式排最后）；`DoneCriteria.before_run` 走它。**顺手**（真跑第 3 轮抓到的）：`_hint` 教模型「编不出来的结论改成『这里需要补上 XX 的记录』」，模型照做了，判据却把那两句又数成「6 条里 4 条没有出处」——判据跟自己的提示打架；量程改认 `abstention_lines`（跟 `material_thin`「它已经照做了，别再拦一次」同一份），右栏那份照旧整篇数。测试 `test_p15.py` #1 四条。
+- **前后对比（真跑两篇，各 4 轮封顶，`docs/_research/p15-runs/*.json`）**：
+
+  | | 轮 / 秒 | 调用 / prompt（cached）/ completion | 逐轮命中（第几条） | 下一轮补没补出处 |
+  |---|---|---|---|---|
+  | P13 `0eecee3d7b94`（修前） | 4 / 75 | 16 / 97,200 (47,555) / 5,700 | `citations_present`(10) · `no_same_sources_twice`(14) ×3 → `check_stuck` | **0/4 轮轮到它** |
+  | `0eecee3d7b94` 创业反思（修后，同一意图、勾过第二条） | 4 / 77 | 14 / 81,055 (36,197) / 6,754 | `material_used`(11) · **`done_criteria`(12)「3 条里 3 条没出处」** · **`done_criteria`(12)「6 里 4」** · `citations_present`(10) | r2 → r3：新写单位 0 → 2 条带 `[terrence-1431-9F5]`、2 条改成「这里需要补上…的评审记录」（照提示弃答；修弃答量程后这一轮会说「4 里 2」） |
+  | `da080ca847cf` 创业一年的回顾（托盘 3 条 = P14 那三条；意图 = P11 那句 + 「每个节点有日期、有出处」） | 4 / 82 | 15 / 92,733 (29,051) / 8,278 | **无**（2 段、2 段有出处，含 `note://92d07…`）· **`done_criteria`(12)「6 段里 2 段没日期；3 段没出处」** · `done_criteria`(12) 原话重复 · `no_placeholder`(4) | r2 → r3 一字没补（6 → 7 段，带出处 3 → 3）；r4 写了一段「目前材料还缺少以下节点的可引用原始记录…待补」被 `no_placeholder` 拦 |
+
+  8 轮里 **4 轮轮到**（P13：0/4）。**读出来的两件事**：① 命中之后模型照不照办跟提示写法有关——0eecee 照「补编号 / 弃答」做了，da080 把「有日期、有出处」两件事一起收到的诊断（先报日期那半）原样再来一轮；② `done_criteria` 命中的轮次 `factual_grounding=0`，da080 只有第 1 轮真打过分（2/1/2/2/2/2），`BestOf` 最后交的是**第 1 轮**（1,433 字），后三轮写的 6 段用户看不到——这不是这批的改动造成的（任何代码判据命中都这样），但它意味着「用户标准没满足」的轮次会整轮作废，记到下一步。
+- **成本**：两跑共 29 次调用 / prompt 173,788（cached 65,248）/ completion 15,032 ≈ **0.19M**（估 0.2M）。
+
+### 2. 引笔记也是引用：`citations_present` / `check_citations` 认 `[标题](note://id)` ✔（P14 下一步①）
+
+- **用户怎么发现**：P14 真跑最终正文引了托盘那两篇 5 次、事实编号 1 次，第 1、2 轮却被 `citations_present` 短路——它只数 `[事实编号]`，把「引了两篇笔记」判成「一个编号都没有」。
+- **复现**：`docs/_research/p14-d3-runs/da080ca847cf-tray.md` 第 1、2 轮 `checks: citations_present`，同一轮 `note_links=[92d07…]`。
+- **依据**：`harness/tray.py` 定的规矩——笔记项照抄它开头的 `[标题](note://id)` 链回去，那就是出处；「这一轮一个引用都没有」这个谓词有两个读者（`citations_present` / `material_thin` (b)），只改一个是「同一件事挡住一半」（§21）。核 note:// 的门槛先量：P14 真跑 5 处引笔记的句子跟被引那篇共用 **30–51** 个特征词（`grounding_rules._terms`），编的「那篇里说过 2027 年要上市，融资五千万」0 个、「团队决定把总部搬到杭州」2 个 → `MIN_NOTE_SHARED = 3`（跟 `fact_usage` 同一个数）。
+- **改了什么**：`checks/citations.py`：`NOTE_LINK` / `note_link_ids` / `has_citation` / `note_citations_unsupported(text, get_note)`（被引句 = 上一个句读到链接之间，太短退回整行；那篇不在 → `missing`，共用 < 3 → `unsupported`）；`grounding.citations_present` 和 `material_thin` (b) 都读 `has_citation`（message 加一句「引托盘里的笔记时用它开头的 [标题](note://id) 也算」）；`citations_hold` 开头先核这一轮写的 note://（`_note_body_reader`：生产读 `store.get_note`，测试往 `bag["note_bodies"]` 塞字典），报「引了不存在的笔记 …」/「这几句引了笔记，可那篇里找不到它说的事：「…」→ [标题](note://id)」。测试 #2 五条（含真读库一条）。
+- **前后对比**：da080 真跑第 1 轮：`note_links=['92d07b760f1e']`、2 段 2 段有出处、**一条判据都没响**（P14 同一篇第 1、2 轮各被短路一次）；两跑 note:// 引用核对 0 处不认（模型引的都在那篇里）。
+- **下一步**：`no_same_sources_twice` 只比事实编号，两段都引同一篇笔记不算「同一批依据」；`middleware/cited` 只把 `[编号]` 展开成材料，note:// 没展开。
+
+### 3. 导入 / 录音 / 网页剪藏默认进托盘 + 托盘里「未命名」退回正文首行 ✔（P14 下一步② ⑤）
+
+- **用户怎么发现**：§3.4「导入的东西默认先进托盘」「录音拖进托盘…它不进正文——它变成一份材料」「网页链接贴进托盘：抓正文」；P14 做完托盘之后这三条路一条都不通：导入只进树 / 知识库，录音只有「插入正文」「存入知识库」，网页没有入口。⑤：P14 真跑 prompt 里是 `[笔记「未命名」](note://92d07…)`，模型照抄，正文里也是「未命名」。
+- **复现**：`p14-tray-empty-*`（托盘格里没有开关、没有剪藏）；P14 `da080ca847cf-tray.md` 第 1 轮「[未命名](note://92d07b760f1e)」。
+- **依据**：§3.4 后半；开关要**看得见**（用户能关，且知道东西为什么进了托盘）——放在托盘格里，不放设置深处；托盘是按篇的，导入页开着时编辑器不在，「最近开着的那篇」才是目标；`displayTitle.PLACEHOLDER` 那套回退前端早有，后端 `tray.display_title` 同一份（`PLACEHOLDER_TITLES` 相等有闸）。
+- **改了什么**：后端 `ingest_items.note_id`（`_land` 记落成哪篇：新建 / 同一份再导 / 更新都记；只进知识库空串；`IngestItemOut.note_id`）；`POST /api/notes/{id}/tray/clip`（httpx 抓页 → `importers.html_to_markdown`，剥 `<head>` / script / nav / footer、有 `<article>` 只取它；标题 = `<title>`；抓不到 400 说人话；托盘项 `ref_id` 上限 80 → 512 放得下网址；同一网址同一正文靠 `replace_tray` 去重，路由不另设守卫——突变验证明它挡不住任何东西）；`tray.lines_of` 笔记项标题占位时用摘要首行。
+  前端 `util/trayDefaults`（`memoket.tray.default`，默认开，改了广播）；`TrayPanel` 多两件工具：「导入 / 录音 / 剪藏默认进托盘」开关 + 「贴一个网址 → 抓正文进托盘」；`tray-add` 支持一批（`items`，一次 PUT——分开发会互相覆盖）；import 项 ref_id 是网址时「打开原网页」；`trayItemTitle` 回退。`MemoryPanel` 五条导入路（Obsidian / Evernote / Apple / Notion / 飞书 + 继续）job 跑完 `landImportInTray`（只收 `note_id` 非空、状态 done、同一篇一条、封顶 24；没有目标笔记说一句）；App 的 `.md` 导入同一条 `landNotesInTray`；目标 = `trayTarget`（最近开着的那篇，ref 给闭包读）。`AudioRecorder` 三个去处：开关开着且有笔记 → 「录音 → 进托盘」排第一（转写文字成一条 import 材料，不进正文），关了排最后，没笔记不给。测试：后端 #3 四条，前端 `p15.test.ts` 12 条。
+- **前后对比**（真实 app，假模型 / 假语音）：`p15-tray-tools-{light,dark}`：托盘格多了开关（默认勾着）和剪藏框；`p15-tray-clip-light`：贴 `http://127.0.0.1:18777/post.html` → 托盘 1 条「导入 · Kickstarter 上线复盘 · 博客」，摘要是正文（导航 / 页脚没进来）；`p15-tray-untitled-light`：放进库里标题为「未命名」的 `92d07…` → 托盘显示「我们产品当前遇到的挑战」，真跑 prompt 里也是 `[笔记「我们产品当前遇到的挑战」](note://92d07…)`；`p15-recmenu-light`：录音菜单第一项「录音 → 进托盘 · 默认：转写后摊在桌上，不进正文」；`p15-tray-md-light`：两个 .md 走 `importMarkdown` 导入 → 切回「创业反思」托盘 2 条「笔记 · 供应商会议」「笔记 · 众筹页面」。
+- **下一步**：录音进托盘只放转写文字前 600 字（`TRAY_EXCERPT_MAX`），长录音该走「存入知识库」再把事实放托盘；截图进托盘没做；「按材料核对 / 补图」以托盘为范围（P14 ③）没做。
+
+### 4. 首开圆点 3.9 s → 1.8 s，不换 kite、判定一字不变 ✔（P11 下一步）
+
+- **用户怎么发现**：P10 量的 30k 字笔记打开 15 s 页边圆点才出现；P11 压到 3.9 s（app 里 ≈ 5.4 s 含 1.5 s 防抖），< 3 s 没到。
+- **复现 / 量**（`$S/p15/time_batch2.py` 同 P11 的量法：`309f19202309` 143 个含数字段按 80 + 63 两批直接调 `relations_batch`；`docs/_research/p15-runs/measure_queries.py`）：修前 **3,919 ms**。profile：`_match_facts` 里的 grep setcomp 1.18 s（174 次全表、487 万次 `re.search`）+ 行级回退 0.62 s + kite 自己的池排序 ~1.3 s。**查询长什么样**：143 段 423 条子查询（kite 只取前 3 条）、322 条 grep、249 个不同的词；**162 个词在库里一个 unit 都不命中**、54 个只落在 1–8 个 unit、8 个 9–30、25 个 > 30；75 段主通路空走行级回退（875 个词、848 个不同，回退的词几乎不重复）。
+- **依据**：用户定死用 kite；kite 的 plan 语法自己有 `where.units`（多跳绑定用的）——`_match_facts` 先按 unit 取候选再在候选里 grep，`_score` 不看 units，cand 非空不 relax；`parse_plan` 只取前 3 条子查询、`units` 上限 8。所以能在调用侧把「这个词落在哪几个 unit」算好交给 kite：语义一字不变，只是不再扫那 2 万条。
+- **改了什么**（`kite_memory.py`，`_GrepIndex` / `_grep_index` / `_prescreen` / `_narrow_grep_query`）：按索引 mtime 建字符 2-gram 倒排表（casefold 交集拿候选，最后用 kite 同一个 `re.compile(词, re.I).search` 在原文上复核——同一个谓词）；`{"grep": 词}` 子查询：≤ 8 个 unit → 带 `units`；零命中 → `units: ["__memoket_no_unit__"]`（**不能删那条子查询**：删一条第 4 条会顶上来，那就是换了查询）；> 8 或复杂正则 → 原样。`_recall_via_lines` 零命中的词不发、≤ 8 的带 `units`。倒排表跟 `fact_attrs` 一样住在 `_cache`，闲置回收一起收。测试 #4 五条（含真 codebook 上预筛前后 `execute_plan` rows 逐条相等 + 整条 `recall` 开 / 关一样）。
+- **前后对比**（同一篇 143 段 112 个点）：**3,919 ms → 1,761 ms**（热）/ **2,639 ms**（冷，含一次性建表 654 ms，索引变了才重建），12.3 ms / 段；marks digest **`bc385fd1fd9e445d` 修前修后一字不差**（P7 / P11 同一个数）。app 里首开 ≈ 1.5 s 防抖 + 1.8 s ≈ 3.3 s（原 ≈ 5.4 s，P10 时 15 s）。
+- **下一步**：剩下的 1.8 s 是 kite 池排序（`_score` / `fact_specificity` / `sorted`，候选 ≤ 1,600 条 × 143 段）和 `search.rank`（0.4 s），再压只能少查（那是判定语义）或服务端按段落文本缓存（第二次打开 ≈ 0）；防抖 1.5 s 是感知的一半。
+
+### 突变验（`$S/p15/p15_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复；**22 条全红**）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `insert_done` 排最后 / `DoneCriteria` 不走它 / 弃答句照数 | `test_1_done_criteria_插在…` / `test_1_DoneCriteria_挂上去的位置…` / `test_1_照着提示弃答…` |
+| `citations_present` 只认编号 / `material_thin`(b) 只认编号 / `citations_hold` 不核 note:// / 门槛 0 / 读库那条路不读 | `test_2_*` 五条各一 |
+| 导入不记 `note_id` / 剪藏不剥导航页脚 / `ref_id` 又截到 80 / 标题不回退 | `test_3_*` 四条各一（「同一网址重复放」那条守卫撤掉照样绿——store 已经挡了，于是把守卫删了，§21） |
+| `_prescreen` 原样 / 零命中给空 `units`（= 全表扫）/ 倒排表复核不用 `re.I` / 行级回退零命中照发 | `test_4_grep_子查询…` ×2 / `test_4_倒排表…` / `test_4_行级回退…` |
+| 前端：录音菜单不把托盘排第一 / `withItems` 不封顶 / 托盘格没开关 / 笔记项标题不回退 / 一批分开 PUT / 导入只收四条路 | `p15.test.ts` 对应 6 条 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2238 passed**（基线 2221；+17 `tests/test_p15.py`）。老测试改动 0；`test_api_contract` 抓过一次没人用的导出（`requestTrayAddMany`，删了）。
+- 前端 `npm test`：**63 文件 / 428 条**（基线 62 / 416；+`p15.test.ts` 12 条）+ 全部 check 脚本 OK（`check-icons` 抓过一次 `bx-cut` 不在图标表里——换 `bx-link`）。
+- `harness-framework.md`：§8 两行判据、第 27 条那段（位置 + 弃答量程）、§7 `DoneCriteria` 行、`tray.py` 一行、§15 首开圆点一段、§21 加一行。
+- 真库指纹（`db_guard.fingerprint` 只读；两次真跑前后各核一次）：**482 / 2026-09-16T02:53:27 / 321,250 / `47dcc54be60aa4f2` / note_revisions 44**，一字不差；`~/Library/Application Support` 没碰（桌面壳 `MEMOKET_USER_DATA=$S/p15/p15userdata`，数据 `KITE_DATA_DIR=$S/p15/p15shot`）。
+- 真模型：**2 次跑**（端点 `gpt-5.6-luna`，scratch 库 `p15real/llm_usage`）：29 次调用 / prompt 173,788（cached 65,248，37.5%）/ completion 15,032 ≈ **0.19M**——估 0.2M，实际 0.19M（两跑都 4 轮封顶，没有 `check_stuck`）。
+- 假服务 / 桌面壳探针跑了 9 次（check、tools ×2、clip、untitled、recmenu ×2——第一次语音服务离线录音钮不出菜单，把 scratch 库的 `asr_base_url` 指向假服务重拍、md ×2——第一次 `importMarkdown` 闭包里读的是探针开跑那一刻的 `trayTarget`（空），改成 ref）。

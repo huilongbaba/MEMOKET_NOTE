@@ -3,7 +3,9 @@ import { ingestAudio, transcribeOnly } from '../api'
 import { toast } from '../toast'
 import { friendlyError } from '../util/friendlyError'
 import { micError } from '../util/micError'
-import ContextMenu, { type MenuAt } from './ContextMenu'
+import { requestTrayAdd } from '../util/tray'
+import { recordingTitle, trayByDefault } from '../util/trayDefaults'
+import ContextMenu, { type MenuAt, type MenuItem } from './ContextMenu'
 import Icon from './Icon'
 
 type Props = {
@@ -14,24 +16,35 @@ type Props = {
   /** 语音服务不可达时的地址（空串 = 在线）。离线时录音钮变成「离线」态：点了先说明，
    *  不让用户录完一段才在转写那一步失败。 */
   offline?: string
+  /** 开着哪篇笔记（有 = 「进托盘」这个去处可用，P15 #3；托盘是按篇的） */
+  noteId?: string
+}
+
+export type RecordTarget = 'insert' | 'memory' | 'tray'
+
+/** 录音菜单的三个去处按什么顺序摆：开关开着且有笔记 → 「进托盘」排第一（默认去处）；否则它排最后 / 没有笔记就不给 */
+export function recordMenuOrder(noteId: string | undefined, byDefault: boolean): RecordTarget[] {
+  if (!noteId) return ['insert', 'memory']
+  return byDefault ? ['tray', 'insert', 'memory'] : ['insert', 'memory', 'tray']
 }
 
 /**
- * 录音 -> Whisper。两种去处：
+ * 录音 -> Whisper。三种去处：
+ *   进托盘 —— 转写后作为一条材料摊在桌上（不进正文；默认去处，托盘格里可关）
  *   插入正文 —— 只转写，当语音输入用
  *   存入知识库 —— 转写后后台抽取成 fact
  */
-export default function AudioRecorder({ onTranscript, onIngested, offline = '' }: Props) {
+export default function AudioRecorder({ onTranscript, onIngested, offline = '', noteId }: Props) {
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState('')
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
-  const target = useRef<'insert' | 'memory'>('insert')
+  const target = useRef<RecordTarget>('insert')
   // 转写中的「停止」（P3 遗留 ？：语音服务卡住原来按钮禁用、要等满 1800 秒）
   const abortRef = useRef<AbortController | null>(null)
 
-  async function start(to: 'insert' | 'memory') {
+  async function start(to: RecordTarget) {
     target.current = to
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -44,13 +57,15 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
         const ctrl = new AbortController()
         abortRef.current = ctrl
         try {
-          if (target.current === 'insert') {
+          if (target.current === 'insert' || target.current === 'tray') {
             setBusy('转写中')
             const { text } = await transcribeOnly(blob, 'recording.webm', ctrl.signal)
             // 静音/没转写出内容时之前是彻底没反应——用户录完音，点了停止，
             // 什么都没发生，分不清是没录上还是哪里坏了。
-            if (text) onTranscript(text)
-            else toast('没有转写出内容，可能是静音录音，检查一下麦克风', 'error')
+            if (!text) toast('没有转写出内容，可能是静音录音，检查一下麦克风', 'error')
+            // 进托盘（P15 #3）：转写文字当一条 import 材料摊在桌上，不进正文；托盘那边收到就落库、说一声
+            else if (target.current === 'tray') requestTrayAdd({ kind: 'import', title: recordingTitle(), excerpt: text, noteId })
+            else onTranscript(text)
           } else {
             setBusy('转写并入库')
             const { job_id, detail } = await ingestAudio(blob, 'recording.webm', '', ctrl.signal)
@@ -97,17 +112,20 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '' }
       </button>
     )
   }
+  const order = recordMenuOrder(noteId, trayByDefault())
+  const MENU: Record<RecordTarget, MenuItem> = {
+    tray: { label: '录音 → 进托盘', icon: 'bx-layer-plus', hint: order[0] === 'tray' ? '默认：转写后摊在桌上，不进正文' : '转写后摊在桌上，不进正文', onSelect: () => void start('tray') },
+    insert: { label: '录音 → 插入正文', icon: 'bx-text', hint: '只转写', onSelect: () => void start('insert') },
+    memory: { label: '录音 → 存入知识库', icon: 'bx-brain', hint: '转写后抽成事实', onSelect: () => void start('memory') },
+  }
   return (
     <>
-      <button className="fb-btn" title="录音：转写后插入正文，或存进知识库"
+      <button className="fb-btn" title={order[0] === 'tray' ? '录音：转写后先进托盘（默认），也可以插入正文或存进知识库' : '录音：转写后插入正文，或存进知识库'}
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.left, y: r.bottom + 4 }) }}>
         <Icon n="bx-microphone" /><Icon n="bx-chevron-down" className="fb-caret" />
       </button>
       {menuAt && (
-        <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} items={[
-          { label: '录音 → 插入正文', icon: 'bx-text', hint: '只转写', onSelect: () => void start('insert') },
-          { label: '录音 → 存入知识库', icon: 'bx-brain', hint: '转写后抽成事实', onSelect: () => void start('memory') },
-        ]} />
+        <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} items={order.map((k) => MENU[k])} />
       )}
     </>
   )

@@ -300,7 +300,12 @@ def done_criteria(st: State) -> Verdict | None:
     polish = bool(st.bag.get("polish"))
     start = str(st.bag.get("content_at_start") or "")
     # 「这次跑新写的单位」：不在开跑前正文里的。开跑前正文还没记（测试里直接调）就看整篇。
-    fresh_only = (lambda s: s.strip() not in start) if start else None
+    # **照着提示弃答的那几条不再算「没出处」**（P15 #1 真跑第 3 轮实拍）：`_hint` 说「编不出来的结论就改成
+    # 『这里需要补上 XX 的记录』」，模型照做了，这条判据却把那几句又数成「6 条里 4 条没有出处」——判据跟自己的
+    # 提示打架，跟 `material_thin` 那条「它已经照做了，别再拦一次」同一个形状。弃答句的认法就用
+    # `grounding_rules.abstention_lines`（跟 `material_thin` 同一份）。右栏那份照旧看整篇、照旧数——那是给用户看的。
+    from .grounding_rules import abstention_lines
+    fresh_only = (lambda s: s.strip() not in start and not abstention_lines(s)) if start else None
     for text in judgeable(done, checked, polish=polish):
         r = check_done_item(text, st.content, unit_filter=fresh_only)
         if not r or r["status"] != "fail":

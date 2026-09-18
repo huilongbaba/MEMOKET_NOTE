@@ -4,9 +4,41 @@ import {
   appleAvailable, importApple, importFeishu, importFiles, importNotion,
 } from '../api'
 import type { FactDetail, JobOut } from '../api'
+import { getNote } from '../api'
 import { toast } from '../toast'
 import { friendlyError } from '../util/friendlyError'
+import { landNotesInTray, TRAY_MAX_ITEMS } from '../util/tray'
+import { trayByDefault } from '../util/trayDefaults'
 import ExportBack from './ExportBack'
+
+/** 导入跑完的那几篇 → 托盘项（纯函数）：只收落成了笔记的（`note_id` 非空、状态 done），同一篇只一条，封顶托盘上限 */
+export function importedTrayItems(items: { status: string; note_id?: string; filename: string }[]): { note_id: string; filename: string }[] {
+  const seen = new Set<string>()
+  const out: { note_id: string; filename: string }[] = []
+  for (const it of items) {
+    if (it.status !== 'done' || !it.note_id || seen.has(it.note_id)) continue
+    seen.add(it.note_id)
+    out.push({ note_id: it.note_id, filename: it.filename })
+    if (out.length >= TRAY_MAX_ITEMS) break
+  }
+  return out
+}
+
+/** 导入默认进托盘（P15 #3，§3.4「导入的东西默认先进托盘」）：job 跑完把落成的那几篇放进 `trayNoteId` 那篇的托盘。
+ *  导入页开着的时候编辑器不在，托盘面板没挂载，所以这里自己 PUT（同一条 `withItems` 路）；没有目标笔记就只说一句。 */
+export async function landImportInTray(jobId: string, trayNoteId: string): Promise<number> {
+  if (!trayByDefault()) return 0
+  const j = await jobStatus(jobId)
+  const landed = importedTrayItems(j.items)
+  if (!landed.length) return 0
+  if (!trayNoteId) { toast(`导入了 ${landed.length} 篇；没有打开着的笔记，这次没进托盘（打开一篇再导，会先摊到它桌上）`); return 0 }
+  const notes = await Promise.all(landed.map((l) => getNote(l.note_id).catch(() => null)))
+  const n = await landNotesInTray(trayNoteId, landed.map((l, i) => ({
+    id: l.note_id, title: notes[i]?.title || l.filename.replace(/\.[^.]+$/, ''), content: notes[i]?.content ?? '',
+  })))
+  if (n) toast(`导入的 ${n} 篇已进托盘——写那篇时优先用；不想要就在托盘里移除`)
+  return n
+}
 
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
@@ -44,7 +76,7 @@ function JobProgress({ j }: { j: JobOut }) {
  * ——五种不相干的东西叠在 300px 里。现在只剩「把东西导进来」这一件事，
  * 作为特殊笔记 app:import 占中栏。
  */
-export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
+export default function MemoryPanel({ pendingJob, trayNoteId = '' }: { pendingJob: string; trayNoteId?: string }) {
   const [stats, setStats] = useState<{ facts: number; entities: number } | null>(null)
   const [job, setJob] = useState('')
   const [batchJob, setBatchJob] = useState<JobOut | null>(null)
@@ -74,7 +106,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       const r = await resumeImportJob(j.job_id)
       setInterrupted((xs) => xs.filter((x) => x.job_id !== j.job_id))
       setBatchJob(r)
-      watchJob(r.job_id, (x) => { setBatchJob(x); void pollRecentFacts(x.facts) }, () => { void refresh(); setRecentFacts([]); void loadInterrupted() })
+      watchJob(r.job_id, (x) => { setBatchJob(x); void pollRecentFacts(x.facts) }, () => { void refresh(); setRecentFacts([]); void loadInterrupted(); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
     } catch (e) { toast('继续不了：' + friendlyError(e), 'error') }
   }
   // 开始前的预估：这一批要跑多久、大概多少 token
@@ -137,7 +169,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
     } catch (e) {
       // P3 遗留（？）：原来 `e.message` 原样——后端没起来时是英文 `Failed to fetch`
       toast('导入失败：' + friendlyError(e), 'error')
@@ -153,7 +185,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
     } catch (e) {
       toast('导入失败：' + friendlyError(e), 'error')
     } finally {
@@ -168,7 +200,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
     } catch (e) {
       toast('导入失败：' + friendlyError(e), 'error')
     } finally {
@@ -183,7 +215,7 @@ export default function MemoryPanel({ pendingJob }: { pendingJob: string }) {
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
     } catch (e) {
       toast('导入失败：' + friendlyError(e), 'error')
     } finally {

@@ -97,13 +97,16 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
             sha = store.content_sha(note.content)
             existing = store.find_note_by_source(user, note.source, note.source_id)
             note_state = "new"        # new / same / updated / local-modified
+            # 这一条落成了哪篇（P15 #3：前端等 job 跑完拿它把导入的几篇放进当前笔记的托盘）
+            landed_id = (existing or {}).get("id") or ""
             if to in ("both", "notes"):
                 fid = folder_id(note.folder)
                 if folder_body.get(note.folder) is note:
-                    pass                                   # 已经是那个文件夹的正文
+                    landed_id = folders.get(note.folder) or landed_id   # 已经是那个文件夹的正文
                 elif existing is None:
                     n = store.create_note(user, note.title, note.content, fid or store.ROOT_ID)
                     store.set_note_source(user, n["id"], note.source, note.source_id, sha)
+                    landed_id = n["id"]
                     if note.icon:
                         store.set_icon(user, n["id"], note.icon)       # 我们自己导出的 front-matter 带的图标
                 elif existing.get("source_sha") == sha:
@@ -162,7 +165,8 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
             kb_note = (f"已导入过，跳过 {skipped} 块" if skipped and not facts
                        else (f"新增 {facts} 条，另有 {skipped} 块此前已导入" if skipped else ""))
             store.set_item(item_id, "done", facts=facts,
-                           detail="；".join(x for x in (state_note, kb_note) if x))
+                           detail="；".join(x for x in (state_note, kb_note) if x),
+                           note_id=landed_id)
         except Exception as exc:              # noqa: BLE001 — 单条失败不能拖垮整批
             store.set_item(item_id, "failed", detail=f"{type(exc).__name__}: {exc}")
         store.update_job_from_items(job_id)

@@ -18,12 +18,41 @@ export const TRAY_EXCERPT_MAX = 600
 /** 面板里一条折起来时显示几个字 */
 export const TRAY_PREVIEW_CHARS = 120
 
-/** `tray-add` 事件的 detail：谁想往当前这篇的托盘里放一条 */
-export type TrayAddDetail = TrayItemIn & { noteId?: string }
+/** `tray-add` 事件的 detail：谁想往当前这篇的托盘里放一条；`items` 是一次放几条（导入跑完那一批，P15 #3）——
+ *  分开发几次事件会互相覆盖（面板拿的是同一份旧列表各 PUT 一遍），所以一批要一次 PUT。 */
+export type TrayAddDetail = Partial<TrayItemIn> & { noteId?: string; items?: TrayItemIn[] }
 
 /** 从别处往托盘里放一条。面板（`TrayPanel`）在监听；没开笔记时它会说「先打开一篇」。 */
 export function requestTrayAdd(item: TrayAddDetail): void {
   window.dispatchEvent(new CustomEvent<TrayAddDetail>('tray-add', { detail: item }))
+}
+
+/** 把一批加到末尾（纯函数）：逐条走 `withItem`，已在的跳过、封顶 24 */
+export function withItems(items: TrayItem[], add: TrayItemIn[]): TrayItemIn[] {
+  let cur: TrayItemIn[] = items.map(({ id, kind, ref_id, title, excerpt }) => ({ id, kind, ref_id, title, excerpt }))
+  for (const it of add) {
+    if (cur.length >= TRAY_MAX_ITEMS) break
+    if (alreadyInTray(cur, it)) continue
+    cur = [...cur, { ...it, excerpt: (it.excerpt ?? '').slice(0, TRAY_EXCERPT_MAX) }]
+  }
+  return cur
+}
+/** 托盘封顶：跟后端 `store.TRAY_MAX_ITEMS` 同一个数 */
+export const TRAY_MAX_ITEMS = 24
+
+/** 导入落成的几篇 → 放进 `trayNoteId` 那篇的托盘（P15 #3「导入默认进托盘」）。导入页开着时编辑器不在、托盘面板没挂载，
+ *  所以这里自己 PUT（同一条 `withItems` 路）并更新缓存；返回真放进去几条。调用方先判开关（`trayByDefault`）。 */
+export async function landNotesInTray(trayNoteId: string, notes: { id: string; title: string; content: string }[]): Promise<number> {
+  const { listTray, putTray } = await import('../api')
+  const add: TrayItemIn[] = notes.filter((n) => n.id !== trayNoteId)
+    .map((n) => ({ kind: 'note', ref_id: n.id, title: n.title, excerpt: noteExcerpt(n.content) }))
+  if (!add.length) return 0
+  const cur = await listTray(trayNoteId)
+  const next = withItems(cur, add)
+  if (next.length === cur.length) return 0
+  const saved = await putTray(trayNoteId, next)
+  setTrayCache(trayNoteId, saved)
+  return next.length - cur.length
 }
 
 /** 一篇笔记的开头几百字 → 托盘摘要：去掉标题井号、内链折回标题、空行折成单换行 */

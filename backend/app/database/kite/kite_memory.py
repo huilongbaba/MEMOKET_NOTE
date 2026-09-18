@@ -301,6 +301,113 @@ def _word_pattern(sl: str) -> "re.Pattern[str]":
     return re.compile(r"(?<![a-z0-9])" + re.escape(sl) + r"(?![a-z0-9])")
 
 
+# ------------------------------------------------------------ 调用侧的词法预筛（P15 #4）
+#
+# 首次打开一篇 30k 字的笔记，页边圆点要把 143 段各自 recall 一遍；P11 把 12.8 s 压到 3.9 s 之后，
+# 剩下的 70% 在 `memoket_kite.core.algebra.execute` 的 grep：每段 2–3 条 `{"grep": 词}` 子查询，
+# 每条都拿正则把 2 万条事实扫一遍（80 段 174 次全表 grep = 1.2 s）。**量出来的形状**（143 段、
+# 322 条 grep 子查询、249 个不同的词）：**162 个词在库里一个 unit 都不命中**（全表扫一遍换回一个空集），
+# 54 个只落在 1–8 个 unit 里，真需要全表扫的只有 33 个。
+#
+# kite 不改（用户定死用 kite）。改的是**问法**：先在调用侧按字符 2-gram 倒排表算出「这个词落在哪几个
+# unit」，再把 `units` 作为过滤条件一起交给 kite——kite 自己的 plan 语法就有 `where.units`（多跳绑定
+# 用的），`_match_facts` 先按 unit 取候选、再在候选里 grep。语义一字不变：
+#   · 落在 ≤ 8 个 unit（kite 的 `units` 上限）→ `{"grep": 词, "units": [那几个]}`：命中的事实全在这几个
+#     unit 里，候选集跟全表 grep 一模一样；`_score` 不看 units；cand 非空不触发 relax；
+#   · 一个都不落 → `{"grep": 词, "units": ["<没有这个 unit>"]}`：候选集空，kite 走 relax 也放不出东西
+#     （units 永不 relax、别的 relax 步骤对它都是 no-op）——跟原来「全表 grep 之后空集 → relax 掉 grep →
+#     没内容约束 → 停」同一个结果，只是不再扫那 2 万条。**不能直接删掉这条子查询**：kite 的 `parse_plan`
+#     只取前 3 条，删一条会让第 4 条顶上来，那就是换了查询；
+#   · > 8 个 unit 或词是复杂正则 → 原样交给 kite 全表扫。
+# 行级回退（`_recall_via_lines`）同一套：每个词单独一次 `select lines`，零命中的词那一次本来就是空，跳过；
+# ≤ 8 个 unit 的加 `units` 过滤（lines 的 `units` 就是纯过滤）。
+# 倒排表按索引 mtime 缓存在 `_cache` 里（跟 `fact_attrs` 同一个位置、同一套闲置回收）。
+# 判定对拍：同一篇 143 段 112 个点的 marks digest 修前修后 `bc385fd1fd9e445d` 一字不差（台账 P15 #4）。
+
+# grep 词只认这种形状的：字母 / 数字 / 下划线 / 短横 / 撇号 / 汉字，没有正则元字符。别的（kite 自己拼的
+# 多分支 `a|b`、带括号的）不预筛，原样全表扫。
+_PLAIN_GREP = re.compile(r"^[\w'\-一-鿿]{2,}$")
+# kite 的 `parse_plan` 最多收 8 个 unit id；多于这个数没法表达成过滤条件，只能全表扫
+_UNITS_CAP = 8
+# 「一个 unit 都不命中」时给 kite 的占位 unit：库里永远没有这个 id，候选集就是空集
+_NO_UNIT = "__memoket_no_unit__"
+
+
+class _GrepIndex:
+    """按 unit 建的字符 2-gram 倒排表：`units_for(词)` 回「哪几个 unit 里有这个词」。
+
+    候选靠 casefold 后的 2-gram 交集拿，**最后一步拿原文再用 kite 同一个 `re.compile(词, re.I).search`
+    核一遍**——所以「这个 unit 里有没有」跟 kite 逐条事实 grep 的判定是同一个谓词（词里没有换行，
+    `\\n` 拼接不会跨事实撞出假命中）。2-gram 那一步只可能多给候选、不会少给：casefold 把 ſ / K 这类
+    折成 s / k，跟 re.I 的等价类一致。
+    """
+
+    __slots__ = ("_blob", "_grams", "_line_blob", "_line_grams", "_memo", "_line_memo")
+
+    def __init__(self, store) -> None:
+        self._blob, self._grams = self._build(
+            (f.unit, f.text) for f in getattr(store, "facts", {}).values())
+        self._line_blob, self._line_grams = self._build(
+            (ln.unit, ln.text) for ln in getattr(store, "lines", {}).values())
+        self._memo: dict[str, frozenset | None] = {}
+        self._line_memo: dict[str, frozenset | None] = {}
+
+    @staticmethod
+    def _build(pairs) -> tuple[dict[str, str], dict[str, set[str]]]:
+        per_unit: dict[str, list[str]] = {}
+        for unit, text in pairs:
+            if unit and text:
+                per_unit.setdefault(unit, []).append(text)
+        blob = {u: "\n".join(t) for u, t in per_unit.items()}
+        grams: dict[str, set[str]] = {}
+        for u, b in blob.items():
+            f = b.casefold()
+            for g in {f[i:i + 2] for i in range(len(f) - 1)}:
+                grams.setdefault(g, set()).add(u)
+        return blob, grams
+
+    def units_for(self, term: str, *, lines: bool = False) -> frozenset | None:
+        """含这个 grep 词的 unit 集合；None = 这个词预筛不了（交给 kite 全表扫）。"""
+        memo = self._line_memo if lines else self._memo
+        if term in memo:
+            return memo[term]
+        out = self._units_uncached(term, lines=lines)
+        if len(memo) >= 4096:
+            memo.clear()
+        memo[term] = out
+        return out
+
+    def _units_uncached(self, term: str, *, lines: bool) -> frozenset | None:
+        if not _PLAIN_GREP.match(term or ""):
+            return None
+        blob, grams = (self._line_blob, self._line_grams) if lines else (self._blob, self._grams)
+        folded = term.casefold()
+        if len(folded) < 2:
+            return None
+        cand: set[str] | None = None
+        for i in range(len(folded) - 1):
+            ids = grams.get(folded[i:i + 2])
+            if not ids:
+                return frozenset()
+            cand = set(ids) if cand is None else cand & ids
+            if not cand:
+                return frozenset()
+        try:
+            rx = re.compile(term, re.I)
+        except re.error:
+            return None
+        return frozenset(u for u in (cand or ()) if rx.search(blob[u]))
+
+
+def _narrow_grep_query(q: dict, units: frozenset | None) -> dict:
+    """一条 `{"grep": 词}` 子查询按预筛结果改写成带 `units` 的同义查询；预筛不了就原样。"""
+    if units is None or len(units) > _UNITS_CAP:
+        return q
+    where = dict(q.get("where") or {})
+    where["units"] = sorted(units) if units else [_NO_UNIT]
+    return {**q, "where": where}
+
+
 class UserMemory:
     """单个用户的 codebook。每人一个 XML 文件。"""
 
@@ -325,6 +432,40 @@ class UserMemory:
     # 词元倒排表），桌面版常驻时不该一直抱着——闲置一段时间就放掉，下次用再花 1s 重建。
     _last_used: dict[str, float] = {}
     IDLE_TTL_S = 300
+
+    def _grep_index(self, store) -> "_GrepIndex | None":
+        """这份索引对应的 2-gram 倒排表（P15 #4）。按 mtime 缓存在 `_cache["…#grepidx"]`，
+        跟 `fact_attrs` 同一个位置——索引换了它跟着重建，闲置回收也一起收。建不出来回 None（不预筛）。"""
+        try:
+            mtime = self.path.stat().st_mtime
+        except OSError:
+            return None
+        key = f"{self.path}#grepidx"
+        hit = self._cache.get(key)
+        if hit and hit[0] == mtime and hit[2] is store:
+            return hit[1]
+        try:
+            idx = _GrepIndex(store)
+        except Exception:      # noqa: BLE001 —— 预筛只是快路，建不出来就走原来的全表扫
+            return None
+        self._cache[key] = (mtime, idx, store)
+        return idx
+
+    def _prescreen(self, store, queries: list[dict]) -> list[dict]:
+        """`search.plan` 给的查询列表 → 同义但便宜的那份：每条 `{"grep": 词}` 按预筛结果带上 `units`。
+        条数、顺序、别的查询都不动（kite 只取前 3 条，动了条数就是换查询）。"""
+        idx = self._grep_index(store)
+        if idx is None:
+            return queries
+        out: list[dict] = []
+        for q in queries:
+            where = q.get("where") or {}
+            term = where.get("grep") if isinstance(where, dict) else None
+            if not term or len(where) != 1 or q.get("select", "facts") != "facts":
+                out.append(q)
+                continue
+            out.append(_narrow_grep_query(q, idx.units_for(str(term))))
+        return out
 
     def _index(self):
         """加载符号索引，按 mtime 缓存 —— 每次请求重新解析 XML 是浪费。"""
@@ -529,7 +670,7 @@ class UserMemory:
         queries = search.plan(self, query, vocab)
         facts: list[dict] = []
         if queries:
-            rows, _trace = execute_plan(store, vocab, {"queries": queries},
+            rows, _trace = execute_plan(store, vocab, {"queries": self._prescreen(store, queries)},
                                         budget=search.POOL * 2)
             facts = [r for r in rows if r.get("type") == "fact"]
         # 多留一些候选再筛：无论哪个范围，筛完都可能不够 `limit` 条
@@ -603,11 +744,18 @@ class UserMemory:
         # .md 进来）。两个词挤在一句话里才像是在说同一件事。
         probe = [t for t in terms[:12]]
         hits: dict[str, int] = {}
+        idx = self._grep_index(store)
         for term in probe:
+            # 预筛（P15 #4）：库里的原话一行都没有这个词 → 这一次 grep 本来就是空的，不发；
+            # 落在 ≤ 8 个 unit 里 → 带 `units` 过滤（lines 的 units 是纯过滤，结果一样）
+            units = idx.units_for(term, lines=True) if idx is not None else None
+            if units is not None and not units:
+                continue
             rows, _t = execute_plan(
                 store, vocab,
-                {"queries": [{"select": "lines", "where": {"grep": term},
-                              "pipe": [{"op": "head", "n": limit}]}]},
+                {"queries": [_narrow_grep_query(
+                    {"select": "lines", "where": {"grep": term},
+                     "pipe": [{"op": "head", "n": limit}]}, units)]},
                 budget=limit)
             for r in rows:
                 unit = r.get("unit")

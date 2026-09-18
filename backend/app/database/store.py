@@ -509,6 +509,9 @@ _ADDED_COLUMNS = (
     # job 级记每块耗时 / 字数，算预估时间和 token 用量；payload 落盘的 job 能断点续跑。
     ("ingest_items", "chunks_total", "INTEGER NOT NULL DEFAULT 0"),
     ("ingest_items", "chunks_done", "INTEGER NOT NULL DEFAULT 0"),
+    # `note_id`：这一条导入落成了哪篇笔记（P15 #3：导入默认进托盘——前端等 job 跑完拿它把那几篇放进当前
+    # 笔记的托盘）。只进知识库（`to=kb`）、同一份导第二次（`same`）都照记那篇的 id；本来就没建笔记的是空串。
+    ("ingest_items", "note_id", "TEXT NOT NULL DEFAULT ''"),
     ("ingest_jobs", "payload_path", "TEXT NOT NULL DEFAULT ''"),
     ("ingest_jobs", "chunk_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("ingest_jobs", "chunks_done", "INTEGER NOT NULL DEFAULT 0"),
@@ -1269,6 +1272,7 @@ TRAY_KINDS = ("note", "fact", "import", "selection")
 TRAY_MAX_ITEMS = 24          # 托盘是「摊在桌上的这几篇」，不是第二个知识库
 TRAY_EXCERPT_MAX = 600       # 每条进 prompt 的那段；笔记开头几百字 / 事实原话都够
 TRAY_TITLE_MAX = 120
+TRAY_REF_MAX = 512           # 网页剪藏的 ref_id 是网址（P15 #3）
 
 
 def _tray_row(row) -> dict:
@@ -1285,7 +1289,8 @@ def normalize_tray_item(item: dict) -> dict | None:
     kind = str((item or {}).get("kind") or "").strip()
     if kind not in TRAY_KINDS:
         return None
-    ref_id = str(item.get("ref_id") or "").strip()[:80]
+    # ref_id 放得下一条 URL（P15 #3 网页剪藏：import 项的 ref_id 是网址，「打开原文」要靠它）；笔记 / 事实 id 远短于此
+    ref_id = str(item.get("ref_id") or "").strip()[:TRAY_REF_MAX]
     title = str(item.get("title") or "").strip()[:TRAY_TITLE_MAX]
     excerpt = str(item.get("excerpt") or "").strip()[:TRAY_EXCERPT_MAX]
     if kind in ("note", "fact") and not ref_id:
@@ -2130,7 +2135,8 @@ def create_batch_job(user_id: str, files: list[dict]) -> tuple[str, list[dict]]:
 
 
 def set_item(item_id: str, status: str, facts: int = 0, detail: str = "",
-             chunks_total: int | None = None, chunks_done: int | None = None) -> None:
+             chunks_total: int | None = None, chunks_done: int | None = None,
+             note_id: str | None = None) -> None:
     with connect() as c:
         c.execute(
             "UPDATE ingest_items SET status=?, facts=?, detail=?, updated_at=? WHERE id=?",
@@ -2139,6 +2145,8 @@ def set_item(item_id: str, status: str, facts: int = 0, detail: str = "",
             c.execute("UPDATE ingest_items SET chunks_total=? WHERE id=?", (chunks_total, item_id))
         if chunks_done is not None:
             c.execute("UPDATE ingest_items SET chunks_done=? WHERE id=?", (chunks_done, item_id))
+        if note_id is not None:
+            c.execute("UPDATE ingest_items SET note_id=? WHERE id=?", (str(note_id)[:32], item_id))
 
 
 # 没有历史数据时每块按这个估（GPT 实测 ~13s / 块）；token 按「固定提示 + 正文 / 1.5 + 输出」估

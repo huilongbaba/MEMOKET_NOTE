@@ -27,6 +27,26 @@ from typing import Iterable
 
 KINDS = ("note", "fact", "import", "selection")
 
+# 「未命名」这种占位标题跟前端 `util/displayTitle.PLACEHOLDER` 同一份：托盘里笔记项的标题是它时退回正文首行
+# （P15 #3 ⑤——P14 真跑 prompt 里是 `[笔记「未命名」](note://92d07…)`，模型照抄，正文里也是「未命名」）。
+PLACEHOLDER_TITLES = frozenset({"", "未命名", "Untitled", "note"})
+TITLE_FALLBACK_MAX = 24
+
+
+def display_title(title: str, excerpt: str) -> str:
+    """标题是占位时用摘要首行（截到第一个句读 / 24 字），跟前端树上显示的一样；都空就还是「未命名」。"""
+    t = " ".join((title or "").split())
+    if t not in PLACEHOLDER_TITLES:
+        return t
+    first = next((ln.strip().lstrip("#").strip() for ln in (excerpt or "").splitlines() if ln.strip()), "")
+    if not first:
+        return "未命名"
+    for i, ch in enumerate(first):
+        if ch in "。！？；，,：:" and i >= (2 if ch in "。！？" else 8):
+            first = first[:i]
+            break
+    return first[:TITLE_FALLBACK_MAX]
+
 
 def lines_of(items: Iterable[dict] | None) -> list[str]:
     """托盘项 → 进 prompt 的材料行，保持托盘顺序；形状不对的跳过。"""
@@ -40,7 +60,7 @@ def lines_of(items: Iterable[dict] | None) -> list[str]:
             when = f"[{title}] " if title and _looks_like_date(title) else ""
             line = f"[{ref}] {when}{excerpt}".rstrip()
         elif kind == "note" and ref:
-            line = f"[笔记「{title or '未命名'}」](note://{ref}) {excerpt}".rstrip()
+            line = f"[笔记「{display_title(title, str(it.get('excerpt') or ''))}」](note://{ref}) {excerpt}".rstrip()
         elif kind == "import" and excerpt:
             line = f"[导入「{title}」] {excerpt}" if title else f"[导入] {excerpt}"
         elif kind == "selection" and excerpt:

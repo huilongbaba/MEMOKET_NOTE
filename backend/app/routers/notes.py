@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayIn, TrayOut
+from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -234,6 +234,74 @@ def put_tray(note_id: str, body: TrayIn, user: str = Depends(current_user)):
     if not store.get_note(user, note_id):
         raise HTTPException(404, "note not found")
     return TrayOut(items=store.replace_tray(user, note_id, [i.model_dump() for i in body.items]))
+
+
+@router.post("/{note_id}/tray/clip", response_model=TrayOut)
+def clip_to_tray(note_id: str, body: TrayClipIn, user: str = Depends(current_user)):
+    """网页剪藏进托盘（P15 #3，§3.4 后半「网页链接贴进托盘：抓正文」）：抓这个网址的正文，变成一条 `import`
+    材料（标题 = 网页标题，ref_id = 网址，摘要 = 正文开头）追加到托盘末尾。**只进托盘，不进正文、不进知识库**。
+    抓不到（连不上 / 非 HTML / 正文空）回 400 说清楚，托盘不动。"""
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    url = (body.url or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(400, "要一个 http(s) 开头的网址")
+    title, text = fetch_page(url)
+    if not text:
+        raise HTTPException(400, "这个网页抓不出正文（可能要登录、或者是纯脚本渲染的页面）——把要用的那段复制下来「摘录」进托盘")
+    # 同一网页再剪一次：`replace_tray` 按（kind, ref_id, excerpt）去重——正文没变就还是那一条，
+    # 变了就多一条新摘要（旧的留着，用户自己删）。这里不另写一道「同网址就跳过」的守卫：
+    # 突变验证明它挡不住任何东西（store 已经挡了），留一条谁也证明不了在挡什么的守卫比没有更糟（§21）。
+    items = [{k: it[k] for k in ("id", "kind", "ref_id", "title", "excerpt")} for it in store.list_tray(user, note_id)]
+    items.append({"kind": "import", "ref_id": url, "title": title or url, "excerpt": text})
+    return TrayOut(items=store.replace_tray(user, note_id, items))
+
+
+CLIP_MAX_BYTES = 2_000_000
+CLIP_TIMEOUT_S = 10.0
+
+
+def fetch_page(url: str) -> tuple[str, str]:
+    """(网页标题, 正文 markdown)。用 `importers.html_to_markdown`（Apple Notes / Evernote 那套只做结构的转换）。
+    失败抛 400，理由是人话（P3 那条纪律：别把 httpx 的英文原样端给用户）。"""
+    import httpx
+    from ..database.ingest.importers import html_to_markdown
+    try:
+        with httpx.Client(follow_redirects=True, timeout=CLIP_TIMEOUT_S,
+                          headers={"User-Agent": "Mozilla/5.0 memoket-note"}) as c:
+            r = c.get(url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(400, f"连不上这个网址：{type(exc).__name__}") from exc
+    if r.status_code >= 400:
+        raise HTTPException(400, f"网页回了 {r.status_code}，抓不到正文")
+    ctype = (r.headers.get("content-type") or "").lower()
+    if "html" not in ctype and "text" not in ctype:
+        raise HTTPException(400, f"这个网址不是网页（{ctype.split(';')[0] or '未知类型'}）")
+    html = r.content[:CLIP_MAX_BYTES].decode(r.encoding or "utf-8", errors="replace")
+    return page_title(html), page_text(html, html_to_markdown)
+
+
+def page_title(html: str) -> str:
+    import html as _html
+    import re
+    m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+    return " ".join(_html.unescape(m.group(1)).split())[:store.TRAY_TITLE_MAX] if m else ""
+
+
+def page_text(html: str, to_md) -> str:
+    """正文：先剥 <head> / 脚本 / 样式 / 导航页脚，再走结构转换；只留托盘那段的长度（`TRAY_EXCERPT_MAX`）。"""
+    import re
+    body = re.sub(r"<head\b.*?</head>", "", html, flags=re.I | re.S)
+    body = re.sub(r"<(script|style|nav|footer|header|noscript)\b.*?</\1>", "", body, flags=re.I | re.S)
+    m = re.search(r"<(article|main)\b.*?</\1>", body, flags=re.I | re.S)
+    if m:
+        body = m.group(0)
+    try:
+        text = to_md(body)
+    except Exception:      # noqa: BLE001 —— 转换器炸了就剥标签
+        text = re.sub(r"<[^>]+>", " ", body)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text[:store.TRAY_EXCERPT_MAX]
 
 
 @router.delete("/{note_id}/tray/{item_id}", response_model=TrayOut)

@@ -85,6 +85,17 @@ def citations_hold(st: State) -> Verdict | None:
     citing a fact that wasn't in the input is a different and more serious
     failure than paraphrasing loosely, and until now nothing looked for it.
     """
+    # 引笔记那一半（P15 #2）：这一轮写的 `[标题](note://id)`，那篇得在、引它的那句在那篇里得找得到依据（词法）。
+    # 只看这一轮写的（`st.fresh`），用户自己链的笔记不判。
+    from .citations import note_citations_unsupported, note_link_ids
+    fresh = st.fresh or ""
+    if note_link_ids(fresh):
+        bad = note_citations_unsupported(fresh, _note_body_reader(st))
+        if bad:
+            return Verdict(
+                pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
+                _note_citation_message(bad),
+            )
     claimed = st.bag.get("claimed_sources") or []
     if not claimed or not st.facts:
         return None
@@ -97,6 +108,38 @@ def citations_hold(st: State) -> Verdict | None:
         f"有 {len(missing)} 条引用对不上给你的材料（{'; '.join(m[:40] for m in missing[:2])}）。"
         "只引用你真的查到的。",
     )
+
+
+def _note_body_reader(st: State):
+    """`note://id` → 那篇的正文（None = 不存在 / 读不出）。生产读 `store.get_note`；测试往 `bag["note_bodies"]`
+    塞一个字典就不碰库。"""
+    bodies = st.bag.get("note_bodies")
+    if isinstance(bodies, dict):
+        return lambda nid: bodies.get(nid)
+    user = getattr(st.ctx, "user", "") or ""
+
+    def read(nid: str):
+        try:
+            from ...database import store
+            note = store.get_note(user, nid) if user else None
+        except Exception:      # noqa: BLE001 —— 读不出来当不存在（跟 exists 那条一样，宁可报也别放过）
+            return None
+        return (note or {}).get("content") if note else None
+    return read
+
+
+def _note_citation_message(bad: list[dict]) -> str:
+    missing = [b for b in bad if b["why"] == "missing"]
+    weak = [b for b in bad if b["why"] != "missing"]
+    parts = []
+    if missing:
+        parts.append("引了不存在的笔记：" + "、".join(f"[{b['title'] or b['id']}](note://{b['id']})" for b in missing[:2]))
+    if weak:
+        parts.append("这几句引了笔记，可那篇里找不到它说的事："
+                     + "；".join(f"「{b['sentence'][:40]}…」→ [{b['title'] or b['id']}](note://{b['id']})" for b in weak[:2]))
+    return ("有 " + str(len(bad)) + " 处引笔记对不上：" + "。".join(parts)
+            + "。引托盘里的笔记时，那句话要写那篇里真有的事（日期、决定、数字照那篇写），"
+              "编出来的结论不要挂它的链接；那篇里没有的就别引。")
 
 
 def citations_exist(st: State) -> Verdict | None:
@@ -141,13 +184,16 @@ def citations_present(st: State) -> Verdict | None:
     """
     if st.bag.get("outline_mode") or not st.facts:
         return None
-    from .citations import cited_ids
+    # 认两种出处（P15 #2）：`[事实编号]`，和托盘里的笔记被引时的 `[标题](note://id)`——P14 真跑第 1、2 轮
+    # 各引了两篇笔记，却被这条判成「一个编号都没有」短路。`has_citation` 跟 `material_thin` 的 (b) 档同一个谓词。
+    from .citations import has_citation
     fresh = (st.fresh or "").strip()
-    if len(fresh) < MIN_CITED_ROUND_CHARS or cited_ids(fresh):
+    if len(fresh) < MIN_CITED_ROUND_CHARS or has_citation(fresh):
         return None
     return Verdict(
         pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
-        f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有。"
+        f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有"
+        "（引托盘里的笔记时用它开头的 [标题](note://id) 也算）。"
         "把真正用到的那几条的编号写在对应句子末尾——这篇笔记的价值在于每句判断都能点回它的依据；"
         "没有编号的判断读者无从核对，跟随便哪个模型写的没区别。编号只能从材料里抄，不要自己编。",
     )
@@ -322,8 +368,8 @@ def material_thin(st: State) -> Verdict | None:
             + _abstain_hint(where[:20]),
         )
     if barren and not st.facts_new:
-        from .citations import cited_ids
-        if not cited_ids(fresh):
+        from .citations import has_citation
+        if not has_citation(fresh):
             where = "、".join(barren[:3])
             return Verdict(
                 pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),

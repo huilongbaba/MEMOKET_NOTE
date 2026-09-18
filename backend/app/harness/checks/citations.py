@@ -136,6 +136,90 @@ def fake_citations(text: str, facts: list[str], exists) -> list[str]:
     return dangling_citations(text, facts, exists) + malformed_citations(text)
 
 
+# ---------------------------------------------------------------- 引笔记（P15 #2）
+#
+# 托盘里的**笔记**被用上时，正文里的出处不是 `[事实编号]`，是 `[标题](note://id)`（`harness/tray.py`
+# 定的：笔记项照抄它开头的 `[标题](note://id)` 链回去）。P14 真跑：最终正文引了托盘那两篇 5 次、
+# 事实编号 1 次，第 1、2 轮却被 `citations_present` 短路——它只数 `[事实编号]`，把「引了两篇笔记」
+# 判成「一个编号都没有」。
+#
+# 跟 `store._NOTE_LINK` / 前端 `util/wordCount.NOTE_LINK_RE` 同一条正则（`check-regex-parity` 对拍的
+# 是行为）：12 位十六进制的笔记 id，标题里不许有换行 / 右方括号。
+NOTE_LINK = _re.compile(r"\[([^\]\n]*)\]\(note://([0-9a-f]{12})\)")
+
+
+def note_link_ids(text: str) -> list[str]:
+    """正文里链到（= 引用了）哪些笔记 id。去重，保持出现顺序。"""
+    seen: dict[str, None] = {}
+    for m in NOTE_LINK.finditer(text or ""):
+        seen.setdefault(m.group(2), None)
+    return list(seen)
+
+
+def has_citation(text: str) -> bool:
+    """这段字里有没有任何一种出处：`[事实编号]` 或 `[标题](note://id)`。
+
+    「这一轮一个引用都没有」这个谓词有两个读者（`citations_present` / `material_thin` 的 (b) 档），
+    两处都读这一个——判据认两种、材料薄那条只认一种，就是「同一件事挡住一半」。"""
+    return bool(cited_ids(text) or note_link_ids(text))
+
+
+# 被引的那句话：从上一个句读（。！？；换行）到链接为止。太短（链接顶在行首、列表项开头）就退回整行。
+_SENT_BREAK = _re.compile(r"[。！？；\n]")
+MIN_NOTE_SENTENCE = 6
+# 那句话跟那篇笔记至少共用几个特征词（英文词 / 数字 / 中文 2-gram，`grounding_rules._terms`）才算「在那篇里找得到依据」。
+# 跟 `fact_usage` 的 `min_overlap=3` 同一个数：三个以上才像是真的从那篇来的；P14 真跑里 5 处引笔记的句子
+# 跟被引那篇共用 30–51 个（台账 P15 #2），编的「那篇里说过 2027 年要上市，融资五千万」是 0 个、
+# 「团队决定把总部搬到杭州」是 2 个。
+MIN_NOTE_SHARED = 3
+
+
+def _sentence_before(text: str, at: int) -> str:
+    head = text[:at]
+    m = None
+    for m in _SENT_BREAK.finditer(head):
+        pass
+    sent = head[m.end():] if m else head
+    sent = CITE.sub("", NOTE_LINK.sub("", sent)).strip(" \t-*•>0123456789.、")
+    if len(sent) < MIN_NOTE_SENTENCE:
+        line_start = head.rfind("\n") + 1
+        line_end = text.find("\n", at)
+        line = text[line_start:line_end if line_end >= 0 else len(text)]
+        sent = CITE.sub("", NOTE_LINK.sub("", line)).strip(" \t-*•>0123456789.、")
+    return sent
+
+
+def note_citations_unsupported(text: str, get_note, *, min_shared: int = MIN_NOTE_SHARED) -> list[dict]:
+    """正文里每一处 `[标题](note://id)`：那篇得存在，而且引它的那句话在那篇里得找得到依据（词法）。
+
+    `get_note(id) -> 正文 | None` 由调用方注入（生产是 `store.get_note`，测试是一个字典）——跟
+    `dangling_citations` 的 `exists` 一个纪律：这个模块不碰 I/O。
+    返回没通过的那几处：`{"id", "title", "sentence", "why": "missing" | "unsupported", "shared": n}`。
+    同一篇同一句只报一次。
+    """
+    from .grounding_rules import _terms
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    body_terms: dict[str, set[str] | None] = {}
+    for m in NOTE_LINK.finditer(text or ""):
+        title, nid = m.group(1), m.group(2)
+        sent = _sentence_before(text, m.start())
+        if (nid, sent) in seen:
+            continue
+        seen.add((nid, sent))
+        if nid not in body_terms:
+            body = get_note(nid)
+            body_terms[nid] = _terms(body) if isinstance(body, str) else None
+        terms = body_terms[nid]
+        if terms is None:
+            out.append({"id": nid, "title": title, "sentence": sent, "why": "missing", "shared": 0})
+            continue
+        shared = len(_terms(sent) & terms)
+        if shared < min_shared:
+            out.append({"id": nid, "title": title, "sentence": sent, "why": "unsupported", "shared": shared})
+    return out
+
+
 def strip_citations(text: str, ids: list[str]) -> str:
     """把指定的 ``[id]`` 从正文里摘掉（连同它前面的空格）。给 Verdict.fix 用：
     去掉一个编造的引用不需要任何语义判断。"""

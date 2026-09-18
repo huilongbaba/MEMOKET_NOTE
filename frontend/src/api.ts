@@ -294,6 +294,11 @@ export const putTray = (noteId: string, items: TrayItemIn[]) =>
 export const deleteTrayItem = (noteId: string, itemId: string) =>
   fetch(`/api/notes/${noteId}/tray/${itemId}`, { method: 'DELETE', headers: headers() })
     .then(json<{ items: TrayItem[] }>).then((r) => r.items)
+/** 网页剪藏进托盘（P15 #3）：后端抓正文，变成一条 import 材料追加到托盘末尾；只进托盘 */
+export const clipToTray = (noteId: string, url: string) =>
+  fetch(`/api/notes/${noteId}/tray/clip`, {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ url }),
+  }).then(json<{ items: TrayItem[] }>).then((r) => r.items)
 
 // ---------------------------------------------------------------- 选中文本操作
 //
@@ -924,6 +929,8 @@ export type IngestItem = {
   idx: number
   filename: string
   kind: string
+  /** 这一条落成了哪篇笔记（空 = 没建笔记）。导入跑完默认进托盘（P15 #3）靠它 */
+  note_id?: string
   status: 'queued' | 'extracting' | 'transcribing' | 'chunking' | 'remembering'
     | 'done' | 'failed' | 'cancelled'
   facts: number

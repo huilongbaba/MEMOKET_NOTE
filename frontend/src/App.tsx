@@ -27,7 +27,8 @@ import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import { blockPrecondition, SLASH_ITEMS, type SlashItem } from './editor/slashMenu'
 import type { NoteLinkMenuDetail } from './editor/noteLink'
-import { noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
+import { landNotesInTray, noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
+import { trayByDefault } from './util/trayDefaults'
 import {
   appendPreview, endRun, logRun, patchRun, runsField, startRun,
 } from './editor/runningBlocks'
@@ -255,6 +256,10 @@ export default function App() {
   // trigger the mount effect's "open the first result" behavior.
   const [searchResults, setSearchResults] = useState<Note[] | null>(null)
   const [current, setCurrent] = useState<Note | null>(null)
+  // 导入 / 录音默认进哪篇的托盘（P15 #3）：最近开着的那篇真笔记——导入页开着时 `current` 是空的，托盘却是按篇的
+  const [trayTarget, setTrayTarget] = useState('')
+  const trayTargetRef = useRef('')                       // 给闭包里读（探针拿的 ctx 是开跑那一刻的快照）
+  useEffect(() => { if (current?.id) { setTrayTarget(current.id); trayTargetRef.current = current.id } }, [current?.id])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
@@ -1330,7 +1335,7 @@ export default function App() {
   useEffect(() => {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
-    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus, setSlash }), 800)
+    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus, setSlash, importMarkdown }), 800)
     return () => clearTimeout(timer)
     // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
     // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针
@@ -2574,11 +2579,21 @@ export default function App() {
       }
       toast(`${notes.length} 篇已排进知识库抽取，抽完会在「最近摄入」里`)
     }
+    // 导入默认进托盘（P15 #3）：落成的几篇先摊到最近那篇的桌上；开关在托盘格里，关了就只建笔记
+    const toTray = async (notes: { id: string; title: string; content: string }[]) => {
+      const target = trayTargetRef.current
+      if (!trayByDefault() || !target) return
+      try {
+        const k = await landNotesInTray(target, notes)
+        if (k) toast(`导入的 ${k} 篇已进托盘——写那篇时优先用；不想要就在托盘里移除`)
+      } catch (e) { toast('进托盘没成：' + friendlyError(e), 'error') }
+    }
     if (list.length === 1) {
       const text = await list[0].text()
       const n = await api.createNote(strip(list[0].name), text, under)
       await reload(); await reloadTree()
       await ingest([{ id: n.id, title: n.title, content: text }])
+      await toTray([{ id: n.id, title: n.title, content: text }])
       open(n); return
     }
     const parent = await api.createNote(`导入 ${fmtDate(new Date().toISOString())}`, `从 ${list.length} 个文件导入。`, under)
@@ -2594,6 +2609,7 @@ export default function App() {
     await reload(); await reloadTree()
     toast(`已导入 ${list.length} 篇，放在「${parent.title}」下面`)
     await ingest(made)
+    await toTray(made)
     open(first ?? parent)
   }
 
@@ -3506,7 +3522,7 @@ export default function App() {
                 </label>
                 <input aria-label="选择 Markdown 文件" type="file" accept=".md,.markdown,.txt" multiple onChange={(e) => { void importMarkdown(e.target.files, api.ROOT_ID, mdToKb); e.target.value = '' }} />
               </div>
-              <MemoryPanel pendingJob={job} />
+              <MemoryPanel pendingJob={job} trayNoteId={trayTarget} />
             </div>
           ) : virtualId === 'app:settings' ? (
             <div className="kb-note"><h2 className="kb-note-title"><Icon n="bx-cog" /> 设置</h2><SettingsPanel embedded /><h3 className="kb-section-title">个人偏好</h3><PreferencesPanel /><AboutLine /></div>
@@ -3571,7 +3587,7 @@ export default function App() {
                   <Icon n="bx-chevron-down" />
                 </button>
               </span>
-              <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} />
+              <AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} noteId={current?.id} />
               <button className="fb-btn" title="更多"
                       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setFbMenu({ kind: 'more', at: { x: r.right - 220, y: r.bottom + 4 } }) }}>
                 <Icon n="bx-dots-horizontal-rounded" />

@@ -69,6 +69,11 @@ class TrayOut(BaseModel):
     items: list[TrayItem] = Field(default_factory=list)
 
 
+class TrayClipIn(BaseModel):
+    """网页剪藏进托盘（P15 #3）：一个网址。抓正文变成一条 `import` 材料追加到托盘末尾。"""
+    url: str
+
+
 class Note(BaseModel):
     # 摄入过没有（空 = 没有）。前端拿它判「改过没同步」、决定要不要自动同步。
     ingested_at: str = ""
@@ -615,6 +620,8 @@ class IngestItemOut(BaseModel):
     detail: str = ""
     chunks_total: int = 0
     chunks_done: int = 0
+    # 这一条落成了哪篇笔记（空 = 没建笔记：只进知识库、或那条失败了）。P15 #3 导入默认进托盘靠它。
+    note_id: str = ""
 
 
 # job 的合法状态。"cancelling" = 收到取消但后台还没停干净（可能卡在一次 LLM

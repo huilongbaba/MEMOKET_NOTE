@@ -33,4 +33,22 @@ class DoneCriteria:
         if not done_checks.judgeable(done, checked, polish=bool(st.bag.get("polish"))):
             return
         if done_checks.done_criteria not in st.mode.checks:
-            st.mode = dataclasses.replace(st.mode, checks=st.mode.checks + (done_checks.done_criteria,))
+            st.mode = dataclasses.replace(st.mode, checks=insert_done(st.mode.checks))
+
+
+# 它排在哪（P15 #1）。P13 照 `instruction_constraints` 抄成排最后（第 17 条）——真跑 4 轮一次没轮到：
+# 第 1 轮 `citations_present`（第 10 条）先响，第 2–4 轮 `no_same_sources_twice`（第 14 条）连响三轮停机。
+# 先量后定（台账 P15 #1 那张拦截表）：p5–p14 共 22 次真跑、74 次判据命中里，材料族（`citations_present` 36 /
+# `material_thin` 3 / `material_used` 1 / `no_placeholder` 1）41 次、重复族（`no_same_sources_twice` 27 /
+# `no_repeated_lists` 5）+ 图 1 共 33 次；带完成标准的三次真跑 19 轮离线重放，它会响的 5 轮里 1 轮是材料族先响
+# **且说的是同一件事**（补编号），4 轮是重复族先响、说的是另一件事。所以插在**材料族之后、重复族之前**：
+# 材料族说的跟它是一回事，让材料族先说不亏；重复族说的是另一件事，用户明写的标准不该排在它后面。
+# 「第一条响的赢」不改：量出来两条同时成立的那一轮说的是同一句话，同时报只是重复。
+_AFTER = "material_used"
+
+
+def insert_done(checks: tuple) -> tuple:
+    """把 `done_criteria` 插在 `material_used` 后面；这个模式没有它就排最后。"""
+    names = [getattr(c, "__name__", "") for c in checks]
+    pos = names.index(_AFTER) + 1 if _AFTER in names else len(checks)
+    return checks[:pos] + (done_checks.done_criteria,) + checks[pos:]
