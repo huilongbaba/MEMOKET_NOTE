@@ -25,6 +25,7 @@ from ..database import retrieval
 from ..editor import profile
 from ..editor.preconditions import note_precondition
 from ..editor import intent as doc_intent
+from ..harness import tray as tray_mod
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
@@ -167,6 +168,12 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
     if why := note_precondition("tap", body.content, body.title):
         raise HTTPException(400, why)   # 空正文空标题照样开流、白花一次模型调用（第 265 轮实测）
     facts, ids, took = _retrieve(user, body.content, body.spine, body.beats, limit=6, scope=body.scope)
+    # 材料托盘（P14）：这篇摊在桌上的先摆——排最前、不占检索那 6 条的名额；meta 里也报给前端（TapProvenance）
+    tray_items = store.list_tray(user, body.note_id) if body.note_id else []
+    tray = tray_mod.lines_of(tray_items)
+    tray_ids = [it["ref_id"] for it in tray_items if it.get("kind") == "fact" and it.get("ref_id")]
+    facts = tray + [f for f in facts if f not in tray]
+    ids = tray_ids + [i for i in ids if i not in tray_ids]
 
     system = doc_intent.block(body.intent) + prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
     messages = [
@@ -175,7 +182,7 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
             # 长文只给最近一截 + 前面各节的一行梗概（跟智能续写的 Compact 同一个函数）：
             # 实拍 47k 字的笔记上点续写，整篇 3 万 token 进提示词，慢且没必要。
             body.spine, body.beats, compact_context(body.content, keep_last_chars=TAP_KEEP_LAST, max_summary_chars=TAP_SUMMARY_MAX),
-            facts, _profile(user), following=body.following, title=body.title)},
+            facts, _profile(user), following=body.following, title=body.title, tray=tray)},
     ]
 
     async def gen():
@@ -393,6 +400,9 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
     # 纳入关键路径评审"这类具体但没有任何依据的细节）。查询用选中片段本身
     # 当线索，跟校验（verify）用同一个思路。
     facts, _ids, _took = _retrieve(user, body.selection, "", [], limit=6, scope=body.scope)
+    # 托盘先摆（P14）：补上下文优先从用户摊在桌上的材料里补
+    tray = tray_mod.lines_of(store.list_tray(user, body.note_id)) if body.note_id else []
+    facts = tray + [f for f in facts if f not in tray]
     system = doc_intent.block(body.intent) + prompts.compose_system(prompts.EXPAND_SYSTEM, "expand", user)
     stats: dict = {}
     text = await llm.complete(
@@ -456,6 +466,9 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
     seen = {h["id"] for h in hits}
     hits += [r for r in rows if r.get("text") and r["id"] not in seen]
     facts = [r["text"] for r in hits]
+    # 托盘先摆（P14）：用户摊在桌上的材料是最直接的证据，排在引用过的和词法召回的前面
+    tray = tray_mod.lines_of(store.list_tray(user, body.note_id)) if body.note_id else []
+    facts = tray + [f for f in facts if f not in tray]
 
     system = doc_intent.block(body.intent) + prompts.compose_system(prompts.VERIFY_SYSTEM, "verify", user)
     text = await llm.complete(

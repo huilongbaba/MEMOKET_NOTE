@@ -1885,3 +1885,92 @@ P9 剩下四条候选。**改动的分层历史**（§1 第 4 行）看了一遍
 - 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**（所有探针跑在 `p12data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p12userdata`）。
 - 真模型调用 **0 次**（两条都是零模型；假服务只是陪跑）；桌面壳截图跑了 16 次。
 - 截图（浅 / 深各一张）：`p12-checks-before-{light,dark}` → `p12-checks-after-{light,dark}`；`p12-outline-before-{light,dark}` → `p12-outline-after-{light,dark}`；加 `p12-sourced-after-{light,dark}`、`p12-tick-after-light`、`p12-jump-after-light`。
+
+---
+
+## P14 · 第 776 轮：C2 材料托盘（§3.4）——把这几篇摊在桌上，取材料时它们排最前（2026-09-19）
+
+> HEAD 开工时 `3d92f66`（worktree `agent-a4480709e2c7425c5`）。**没碰** `app/harness/checks/**`、`hooks/note.py` 的判据部分、`doneChecks` / `sectionStatus` / `DocumentOutline`、
+> `MarkdownEditor` 的 undo、快捷键表、`loop.py` 的循环结构（另一个 agent 在改）。harness 侧**只加三条**（优先 · 不筛 · 不滚出窗口），别的一概不动。
+> 截图跑在 `KITE_DATA_DIR=$S/p14data`（p12data 的拷贝）+ 假模型 `fakellm11.py`，`p14run.sh` 一条前台命令；真跑在 `$S/p14/p14data`（真库 cp 一份 + `terrence/` + `default/`，`rails_off=("save",)`，`docs/_research/p14-d3-runs/`）。
+> 探针 `probesP14.ts`（`p14:tray:<id>:empty | three:<refs> | slash:<refs> | linkmenu:<id>`）；截图 `$S/p14-tray-*.png`（7 张）。六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### 0. 为什么这一批是它
+
+P9 / P12 两次都把托盘往后推（「要新表 + 托盘 UI + 三个按钮改范围，一批装不下」）。C2 剩下的四条里它是唯一一条**没做别的都做不了**的：§3.4「起草 / 核对 / 补图以托盘为范围」、
+§3.5「材料变了标需要更新」、导入「默认先进托盘」都建在它上面。方案 §1 第 5 行原话：「写周报时我要的是**把这八篇笔记摊在桌上**，而不是逐条搜事实」；痛点 10「笔记散在飞书和 Notion，
+想把两边交起来写，得先想起两边的文档叫什么」；痛点 12「想查一篇旧笔记，找了半天读完回来忘了为什么」——判据 2「不离开页面就用得上记忆」的另一半：记忆卡是 agent 猜的，托盘是用户说的。
+
+### 1. 用户怎么发现
+
+写「创业一年的回顾」，明明知道该用「创业反思」和三月那场用户访谈的记录，却没有任何地方能把它们**摆出来**：`[[` 只能链、记忆卡只能插引用、`/` 只能查。
+点智能续写，第 1 轮写的是「4月，团队启动数据与记忆 OS…」——它取回来的是检索猜的那批，跟用户心里那两篇没关系（P11 真跑第 1 轮原文，见 §5 表）。
+
+### 2. 复现
+
+`p14-tray-empty-{light,dark}.png`：右栏「记忆」顶上一格「托盘 0」，下面一句「托盘还是空的。记忆卡上的「放进托盘」、正文里 `[[` 链接右键「摊到这篇桌上」都能放进来」——
+这一格就是这一批长出来的；修前这个位置什么都没有（P12 的 `p12-outline-*` 截图右栏可对）。
+
+### 3. 依据
+
+§3.4「每篇笔记有一个材料区…材料不进正文…『按材料起草 / 核对 / 补图』都以托盘为范围」；§5 表「3.4 → `note_materials` 表 + 托盘 UI + 三个按钮改范围」；
+`harness-fact-ledger.md` §10：账本摘要要以「缺口」形式，「库存」形式会缩小搜索空间——所以**托盘 ≠ 账本**：托盘不进账本、不进检索规划的库存，只在写作那一发单独成块；
+`facts_irrelevant`「相关不相关量的是来处」（P8）——托盘的来处是用户，不过筛。P12 定的「右栏页签只能减不能加」：托盘不开新页签，是「记忆」的第一格。
+
+### 4. 改了什么
+
+- **表**：`note_tray`（id · user_id · note_id · kind ∈ note|fact|import|selection · ref_id · title · excerpt · position · added_at）+ `idx_tray_note`；`store.normalize_tray_item`（kind 不认识 / note·fact 没 ref_id / import·selection 没 excerpt → 丢）、
+  `list_tray` / `replace_tray`（整份换、顺序 = 数组顺序、同一条不重复、封顶 24、同 id 保留 added_at）/ `delete_tray_item`；`delete_note` 连托盘一起收。
+  **落库前问了「每个取值都写得进去吗」**：`test_1_四种_kind_各一条_真写真读` 四种 kind 各一行、`PRAGMA` 之外还 `SELECT kind FROM note_tray` 数了一遍。
+- **路由**：`GET / PUT / DELETE /api/notes/{id}/tray`（`TrayIn` / `TrayOut`）；`MagicTapIn` / `ExpandIn` / `VerifyIn` 加 `note_id`（老调用方不带 = 一个字不加）；`ComposeBlockIn.from_tray`（托盘空着 400，不花模型调用）。
+- **harness**（`harness/tray.py` 新文件，`lines_of` 把四种 kind 变成材料行：fact 跟 `retrieval.format_fact` 同形 `[id] [日期] 正文`——引用规则和 `check_citations` 对它同样成立；note 是 `[笔记「标题」](note://id) 摘要`）：
+  `ToolContext.tray` 跟 intent 同一条路（`routers/note_harness` / `compose_block` 从库里装、`snapshot` 跟着走、`_hooks_for` 恢复带 `from_tray`）；
+  ① **优先**：`hooks/note.prepare` 两条 return 都是 `tray + facts`，`prompts/fragments.tray_block` 单独一块摆在【知识库中的相关事实】前面（`note_harness_continue_user` / `magic_tap_user` / `block._user` 三处，托盘行不在事实块里再出现一遍）；
+  ② **不筛**：拼在 `relevance.gate` **之后**，不进 `facts_irrelevant`；
+  ③ **不滚出窗口**：`middleware/facts.py` 把 `bag["tray_lines"]` 钉在 `st.facts` 头上——不进 `facts_all`、不算 fresh（不影响 dry_rounds）、不受 `fact_budget` 滚动、不压进一行索引。
+  `hooks/block`：取材 + 写块两发都带托盘块，`from_tray` 多一句【范围】只用托盘；`routers/compose` 的续写 / 扩展 / 校验：`facts = tray + …`（续写的 meta.sources / fact_ids 也托盘在前）。
+- **前端**：`components/TrayPanel.tsx`（「记忆」第一格：托盘 · N · 从托盘写；每项种类标 / 标题 / 摘要（点开看全文）/ 上移 / 下移 / 打开原文 / 移除，`draggable` 拖序；`tray-add` 事件 → PUT 整份 → 广播 `tray-changed`；已在托盘里的说一声不重复放）；
+  `util/tray.ts`（纯函数：`trayKey` / `withItem` / `moveItem` / `noteExcerpt` + 进程内缓存 `trayPrecondition`）；入口三处：`RelatedMemory` 记忆卡 / 关系卡「放进托盘」、`editor/noteLink` 链接标记右键 → `note-link-menu` → App 画「摊到这篇桌上 / 打开这篇」、
+  `slashMenu`「从托盘写」（`runBlock` 映射成 `prompt` 模式 + `from_tray`，**不是**新的 block mode——`check-block-modes` 对拍的表不动；留空的指令后端按托盘材料写一段）；`magicTap` / `expandSelection` / `verifySelection` 带 `current.id`。
+  CSS `.tray-*` 一套（标题 / 摘要 `--fg`，种类标 / 说明 `--muted`）。
+  测试：后端 `test_p14_tray.py` 17 条（表 4 / 形状 1 / harness 三条 6 / 同一条路 6）；前端 `p14Tray.test.ts` 14 条；`p1Readiness` 那张「AI 组每一条在空白笔记上的行为」表加一行 `tray: allowed`。
+
+### 5. 前后对比
+
+- **界面**：`p14-tray-empty-{light,dark}` → `p14-tray-three-{light,dark}`（通过「放进托盘」同一条路放进「创业反思」「未命名（产品当前的挑战）」两篇 + 事实 `2026-03 · 因为3月10号上众筹…`，托盘 3，每项带打开 / 移除 / 上下移）；
+  `p14-tray-slash-{light,dark}`（文末打 `/托盘`，菜单只剩「从托盘写 · 只用托盘里摊开的那几篇 / 几条材料写一段」）；`p14-tray-linkmenu-light`（右键 `[[创业反思]]` 标记：「摊到这篇桌上 · 放进托盘，写这篇时优先用它 / 打开这篇」）。
+- **真跑**（同一篇 `da080ca847cf`、同一意图「读者：团队全员…每个节点带日期和依据」；前 = P11 带意图那一跑，后 = 托盘里放「创业反思」`0eecee3d7b94` + 「产品当前的挑战」`92d07b760f1e` + 事实 `terrence-1238-7F4`「3月10号上众筹」）：
+
+  | | 轮 / 秒 | 调用 / prompt / cached / completion | 第 1 轮写的第一段（逐字） | 托盘三条在最终正文里 |
+  |---|---|---|---|---|
+  | 没托盘（P11） | 7 / 174.5 | 34 / 241,234 / 128,865 / 14,034 | 「这一年的几个关键节点，构成了判断变化的前因。4月，团队启动数据与“记忆 OS”建设，原先更接近于先把基础能力搭起来；但用户出现后，我们发现这部分能力仍需要继续补齐，启动本身并不等于已经具备支撑运营的结果。随后，消费者对“cross-comparison intelligence”的反馈较为正面…」 | 0 / 3（那两篇和那条事实检索都没取回来） |
+  | 有托盘（P14） | 8 / 196.1 | 32 / 261,998 / 95,788 / 18,449 | 「- **3月10日：**团队原先把 Kickstarter 上线视为产品进入市场验证的节点，因此需要提前准备包含产品 UI 的众筹页面；但在上线前的访谈中，我们发现“随时录”并不等于用户愿意在真实场景中使用，录音稳定性、续航感知和权限弹窗都会影响用户是否拿出产品。这个节点对大家意味着，众筹页面不能只呈现功能，还必须回应用户对“能不能一定录到、会不会尴尬”的顾虑。[未命名](note://92d07b760f1e)」 | **3 / 3**：`[terrence-1238-7F4]` ×1（「历程」第一条句末，跟 `note://92d07…` 并排）、`note://92d07b760f1e` ×2、`note://0eecee3d7b94` ×3（动效 / 录音场景那几段） |
+
+  最终正文「历程」八条节点全部带日期、七条带出处，引用 0 条 NOT FOUND、`judge_hallucinated` 8 轮只 1 次（第 7 轮 coherence 引「材料尚未补齐」）；第 1、2 轮被 `citations_present` 短路一次——
+  它数的是 `[事实编号]`，**笔记链接 `[标题](note://id)` 它不认**（见下一步 ①）。**代价**：多 1 轮、prompt +8.6%、completion +31%（第 1 轮就有了具体材料，写得更长）。
+
+### 突变验（`$S/p14_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复，**24/24 红**）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `note.prepare` 不拼托盘 / 拼在最后 / 并进 facts 再过 gate / 零工具那条路不拼 | `test_3_prepare_托盘排最前_且不过相关性筛`、`test_3_零工具那条路` |
+| `facts.py` 不钉托盘 / 把托盘也算 fresh | `test_3_facts_中间件_托盘钉在头上_不滚出窗口_不进索引_不算fresh` |
+| 写正文 prompt 没托盘块 / `block.prepare` 不排最前 / `_user` 没【范围】/ `magic_tap` 托盘排后 | `test_3_写正文那一发` / `test_3_块_harness` / `test_4_magic_tap` |
+| 路由不从库里装 / `from_tray` 空托盘不拦 / 快照不带 | `test_4_note_harness` / `test_4_compose_block` / `test_4_快照` |
+| 删笔记不收托盘 / `replace_tray` 不去重 / 不封顶 / `normalize` 收没 ref_id 的 | `test_1_*` 四条 |
+| 前端：`withItem` 不去重 / 已在托盘照样 PUT / `from_tray` 不带 / `/` 菜单没那项 / 记忆页签没托盘 / 空托盘门槛恒放行 / 上下移没 title | `p14Tray.test.ts` 对应 7 条 |
+
+### 下一步
+
+① `citations_present` / `check_citations` 认 `[标题](note://id)`——托盘里的笔记被用上了却被判成「一个编号都没有」（第 1、2 轮各短路一次，另一条线的 checks）；② 导入（Obsidian / Notion / 飞书 / .md）默认先进托盘、录音 / 网页 / 截图进托盘（§3.4 后半「agent 把材料变成可用的形态」）；
+③ 「按材料核对」「按材料补图」以托盘为范围（右键校验已经托盘先摆，但没有「只按托盘核」的口径）；④ 「预填只看标题，方案说还看最近材料」（P9 下一步 ③）现在有托盘可看了；⑤ 托盘里笔记项的标题是「未命名」时进 prompt 也是「未命名」——该用 `displayTitle` 那套回退（正文首行）。
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2179 passed**（基线 2161；+17 `test_p14_tray.py` +1 `test_directory_map` 多数了一个文件）。
+- 前端 `npm test`：**61 文件 / 377 条**（基线 60 / 363；+`p14Tray.test.ts` 14 条），exit 0；`check-css-classes` / `check-ui-tokens` / `check-a11y` / `check-api-wired` / `check-slash` / `check-block-modes` / `check-icons` / `check-busy` 全绿
+  （第一版被 `check-css-classes` 抓到 `'tray-kind-' + it.kind` 拼类名——改成 `KIND_CLS` 字面量表；被后端 `test_api_contract` 抓到测试里写死的 `/api/notes/n1/tray` 字面路径——改成正则）。
+- 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读；真跑前后 `db_guard.Watch` 又核两次）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**
+  （截图在 `p14data`、真跑在 `p14/p14data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p14userdata`）。
+- 真模型：**1 次跑**，32 次调用，prompt 261,998 / completion 18,449 / cached 95,788 ≈ **0.28M**（预估 0.2M；端点 `gpt-5.6-luna`，scratch 库 `llm_usage`）；桌面壳截图跑了 14 次（zsh 里 `"$N:empty"` 又被当成 `:e` 修饰符，前 4 张探针拿到的是 `mpty`，重拍——P9 记过同一个坑，要写 `${N}`）。
+- 截图（浅 / 深各一张）：`p14-tray-empty-{light,dark}`、`p14-tray-three-{light,dark}`、`p14-tray-slash-{light,dark}` + `p14-tray-linkmenu-light`。

@@ -7,6 +7,7 @@ import { factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } fro
 import { MARGIN_RULE, MODEL_NOTE, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
+import { requestTrayAdd } from '../util/tray'
 
 const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string; icon: string }> = {
   conflict: { text: '冲突', cls: 'rel-conflict', icon: 'bx-error' },
@@ -163,6 +164,8 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
                   {r.relation === 'conflict' && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => void supersede(r)}>新的取代旧的</button>}
                   {r.relation === 'accumulation' && r.facts.length > 0 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => fillIn(r)}>补进来</button>}
                   {r.relation === 'merge' && r.facts.length === 2 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => void merge(r)}>合成一条</button>}
+                  {r.facts.length > 0 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} title="把这几条记录放进托盘：写这篇时优先用（不插进正文）"
+                          onClick={() => r.facts.forEach((f) => requestTrayAdd({ kind: 'fact', ref_id: f.id, title: f.when || '', excerpt: f.text }))}>放进托盘</button>}
                   <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => ignore(key)}>忽略</button>
                 </div>
               </div>
@@ -211,6 +214,11 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
               </button>
               <button className="icon-btn" title="插入引用到光标处" onClick={(e) => { e.stopPropagation(); onInsert(`${f.text} [${f.id}]`) }}>
                 <Icon n="bx-link" />
+              </button>
+              {/* 放进托盘（P14 §3.4）：不进正文，进材料层——之后续写 / `/` 块取材料时它排最前 */}
+              <button className="icon-btn" title="放进托盘：写这篇时优先用这条（不插进正文）"
+                      onClick={(e) => { e.stopPropagation(); requestTrayAdd({ kind: 'fact', ref_id: f.id, title: f.when || '', excerpt: f.text }) }}>
+                <Icon n="bx-layer-plus" />
               </button>
             </span>
           </div>

@@ -66,16 +66,20 @@ class Facts:
         # 索引块里写清楚怎么取全文；**最近那几条永远逐字给**，一次工具都不调
         # 也写得下去。
         all_facts = st.bag.setdefault("facts_all", [])
-        fresh = [f for f in st.facts_new if f not in all_facts]
+        # 托盘（P14，`harness/tray.py` 第三条）：用户摊在桌上的那几行**钉在 `st.facts` 头上**，
+        # 不进 `facts_all`（它们不是哪一轮「取到」的，每轮都在）、不算 fresh（不影响 dry_rounds）、
+        # 不受 `fact_budget` 窗口滚动、也不压进「更早几轮」的一行索引。
+        pinned = [f for f in (st.bag.get("tray_lines") or []) if f]
+        fresh = [f for f in st.facts_new if f not in all_facts and f not in pinned]
         all_facts.extend(fresh)
         if FACT_INDEX:
             budget = st.mode.fact_budget
-            st.facts = all_facts[-budget:] if budget else list(all_facts)
+            st.facts = pinned + (all_facts[-budget:] if budget else list(all_facts))
             st.bag["facts_index"] = _index_lines(
                 all_facts[:-budget] if budget else [], st.bag.get("ledger"))
         else:
-            # 回退：一字不差的老行为（`params.FACT_INDEX`）。
-            st.facts = all_facts[-st.mode.fact_budget:]
+            # 回退：一字不差的老行为（`params.FACT_INDEX`），托盘照样钉在头上。
+            st.facts = pinned + all_facts[-st.mode.fact_budget:]
             st.bag["facts_index"] = []
 
         if st.trace is not None:

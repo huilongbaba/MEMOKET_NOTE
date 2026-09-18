@@ -32,6 +32,7 @@ from ...database import store
 from ...database.retrieval import retrieve as _retrieve
 from ..middleware import ledger as ledger_mw
 from .. import params
+from .. import tray as tray_mod
 from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
                       LEDGER_IN_PROMPT)
 from ..checks import relevance
@@ -155,6 +156,11 @@ class NoteHooks:
         beats = st.bag.get("beats") or []
         title = st.ctx.note_title
         policy = st.bag.get("policy")
+        # 材料托盘（P14 §3.4）：用户摊在桌上的那几条。整次跑不变，每轮都在；三条规矩见 `harness/tray.py`：
+        # 排最前（下面两个 return 都是 `tray + facts`）、不过相关性筛（拼在 gate 之后）、不滚出窗口
+        # （`middleware/facts.py` 读 bag 里这份，钉在 `st.facts` 头上）。
+        tray = tray_mod.lines_of(st.ctx.tray)
+        st.bag["tray_lines"] = tray
 
         # **Decide which section this round writes before retrieving.** The
         # order used to be reversed, so retrieval never knew the target and
@@ -168,7 +174,7 @@ class NoteHooks:
             facts, _ids, _took = _retrieve(
                 st.ctx.user, st.content, spine, beats, limit=6,
                 title=title, anchor_first=True, scope=st.ctx.scope)
-            return facts, trace
+            return tray + [f for f in facts if f not in tray], trace
 
         # Two stages: ask the model whether and what to retrieve, then write.
         #
@@ -282,7 +288,8 @@ class NoteHooks:
         st.bag["facts_irrelevant"] = dropped
         st.bag["facts_irrelevant_dropped"] = bool(params.RELEVANCE_FILTER)
         st.bag["facts_irrelevant_total"] = int(st.bag.get("facts_irrelevant_total") or 0) + len(dropped)
-        return facts, trace
+        # 托盘拼在 gate **之后**：它不参与筛（不会被剔、也不算进 facts_irrelevant），并且排最前
+        return tray + [f for f in facts if f not in tray], trace
 
     def _plan_system(self, st: State) -> str:
         """The retrieval-planning prompt, carrying the skill menu.
@@ -340,7 +347,9 @@ class NoteHooks:
                 outline_note=note_block, sections=sections,
                 # 更早几轮的材料压成一行索引（计划 3.2）。逐字那一半在
                 # `st.facts` 里，两边由 `middleware/facts.py` 一起算出来。
-                facts_index=st.bag.get("facts_index"))},
+                facts_index=st.bag.get("facts_index"),
+                # 托盘单独一块、摆在所有材料前面（P14）
+                tray=st.bag.get("tray_lines"))},
         ]
 
         text = ""

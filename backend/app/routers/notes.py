@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn
+from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayIn, TrayOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -215,6 +215,34 @@ def save_intent(note_id: str, body: NoteIntentIn, user: str = Depends(current_us
     if not updated:
         raise HTTPException(404, "note not found")
     return updated
+
+
+# ---------------------------------------------------------------- 材料托盘（P14，agent-native-editor §3.4）
+
+@router.get("/{note_id}/tray", response_model=TrayOut)
+def get_tray(note_id: str, user: str = Depends(current_user)):
+    """这篇笔记摊在桌上的材料，按托盘里的顺序。笔记不存在回 404（空托盘是 `items: []`，不是 404）。"""
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    return TrayOut(items=store.list_tray(user, note_id))
+
+
+@router.put("/{note_id}/tray", response_model=TrayOut)
+def put_tray(note_id: str, body: TrayIn, user: str = Depends(current_user)):
+    """整份换掉（顺序 = 数组顺序）。加 / 删 / 拖序都走这里；不合法的条目（kind 不认识、note / fact 没 ref_id）
+    静默丢掉——前端造的形状不对不该让整份托盘 500。回的是落库之后的那份。"""
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    return TrayOut(items=store.replace_tray(user, note_id, [i.model_dump() for i in body.items]))
+
+
+@router.delete("/{note_id}/tray/{item_id}", response_model=TrayOut)
+def delete_tray_item(note_id: str, item_id: str, user: str = Depends(current_user)):
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    if not store.delete_tray_item(user, note_id, item_id):
+        raise HTTPException(404, "tray item not found")
+    return TrayOut(items=store.list_tray(user, note_id))
 
 
 @router.delete("/{note_id}")

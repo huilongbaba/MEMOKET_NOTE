@@ -44,7 +44,9 @@ def dumps(st: State) -> str:
         "ctx": {"user": st.ctx.user, "note_id": st.ctx.note_id,
                 "note_title": st.ctx.note_title,
                 "content": st.ctx.content, "cursor": st.ctx.cursor,
-                "intent": st.ctx.intent},
+                "intent": st.ctx.intent,
+                # 托盘跟着走（P14）：恢复的跑取材料时托盘照样排最前
+                "tray": list(st.ctx.tray or [])},
         "before": st.before, "after": st.after,
         "content": st.content,
         "facts": st.facts, "charts": st.charts,
@@ -72,7 +74,8 @@ def loads(text: str, mode) -> State:
                         note_title=ctx.get("note_title", ""),
                         content=ctx.get("content", ""),
                         cursor=int(ctx.get("cursor") or 0),
-                        intent=str(ctx.get("intent") or "")),
+                        intent=str(ctx.get("intent") or ""),
+                        tray=[dict(t) for t in (ctx.get("tray") or []) if isinstance(t, dict)]),
         before=raw.get("before", ""), after=raw.get("after", ""),
         content=raw.get("content", ""),
     )

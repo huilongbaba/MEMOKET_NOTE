@@ -1328,6 +1328,32 @@ input[type=file]:hover { border-color: var(--accent); }
 .memory-card + .memory-card { margin-top: var(--s-5); }
 .memory-card:hover { border-color: color-mix(in srgb, var(--brand), transparent 55%); box-shadow: var(--shadow-card); }
 
+/* 材料托盘（P14，agent-native-editor §3.4）：右栏「记忆」顶上的一格。
+   材料的标题 / 摘要是正文（`--fg`），种类标和说明是元信息（`--muted`）——P1 定的规矩。 */
+.tray-panel { padding-bottom: var(--s-3); border-bottom: 1px solid var(--line); }
+.tray-head { gap: var(--s-2); }
+.tray-write { font-size: var(--t-sm); padding: 2px var(--s-3); display: inline-flex; align-items: center; gap: var(--s-1); }
+.tray-hint, .tray-empty { font-size: var(--t-xs); margin: var(--s-1) 0 0; line-height: 1.6; }
+.tray-empty { font-size: var(--t-sm); margin-top: var(--s-2); }
+.tray-hint code, .tray-empty code { font-family: var(--mono); }
+.tray-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.tray-item { display: flex; align-items: flex-start; gap: var(--s-1);
+  border: 1px solid var(--line); border-radius: var(--r); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-1);
+  background: var(--mk-surface); cursor: grab; transition: border-color .14s, box-shadow .14s; }
+.tray-item:active { cursor: grabbing; }
+.tray-item.drag-over { border-color: var(--brand); box-shadow: var(--shadow-card); }
+.tray-handle { color: var(--ink-3); flex-shrink: 0; margin-top: var(--s-1); }
+.tray-body { flex: 1; min-width: 0; }
+.tray-kind { display: inline-flex; align-items: center; gap: var(--s-1); flex-shrink: 0; }
+.tray-kind-note { color: var(--accent); border-color: var(--accent); }
+.tray-kind-fact { color: var(--ins); border-color: var(--ins); }
+.tray-kind-import, .tray-kind-selection { color: var(--muted); }
+.tray-title { color: var(--fg); font-size: var(--t-sm); font-weight: var(--w-med); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tray-excerpt { color: var(--fg); font-size: var(--t-sm); line-height: 1.5; margin-top: var(--s-1); cursor: pointer; overflow-wrap: anywhere; }
+.tray-actions { display: flex; flex-direction: column; gap: 0; flex-shrink: 0; opacity: .55; transition: opacity 120ms; }
+.tray-item:hover .tray-actions, .tray-item:focus-within .tray-actions { opacity: 1; }
+.tray-actions .icon-btn { padding: 0 var(--s-1); }
+
 /* 浮动按钮的文字什么时候藏起来。
    **600 定得太狠了**：默认三栏（左 320 + 右 340）中间就是 600 上下，于是除非
    关掉一侧面板、否则那几个按钮永远只有图标——用户实拍反馈「这些 icon 是什么

@@ -94,7 +94,9 @@ async def run(body: NoteHarnessRunIn, request: Request,
             ctx=tools.ToolContext(user=user, note_id=body.note_id, scope=body.scope,
                                   note_title=note["title"],
                                   # 文档意图（P11）：请求带的优先（标题下那一行此刻的值），没带用库里那份
-                                  intent=body.intent or doc_intent.as_text(note.get("intent") or {})),
+                                  intent=body.intent or doc_intent.as_text(note.get("intent") or {}),
+                                  # 材料托盘（P14）：跟 intent 同一条路进 harness——库里那份（前端加 / 删 / 拖序都是当场落库）
+                                  tray=store.list_tray(user, body.note_id)),
             request=request,
             content=body.content,
         )

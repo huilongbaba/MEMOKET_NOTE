@@ -13,6 +13,9 @@ import { mountIcon } from '../components/iconDom'
 
 const NOTE_LINK = /\[([^\]\n]{1,80})\]\(note:\/\/([0-9a-f]{12})\)/g
 
+/** 右键一枚笔记链接标记时发出的 `note-link-menu` 事件的 detail */
+export type NoteLinkMenuDetail = { id: string; title: string; x: number; y: number }
+
 /** 取一篇笔记的摘要。调用方注入——编辑器这一层不认识 api 模块。 */
 export type NoteLookup = (id: string) => Promise<{ title: string; content: string; updated_at: string } | null>
 
@@ -69,9 +72,19 @@ class NoteLinkWidget extends WidgetType {
     this.dispose = mountIcon(i, 'bx-note')
     a.append(i, document.createTextNode(this.title))
     a.addEventListener('mousedown', (e) => {
+      if (e.button === 2) return                      // 右键留给下面的 contextmenu
       e.preventDefault()
       hidePeek()
       window.dispatchEvent(new CustomEvent('open-note', { detail: this.id }))
+    })
+    // 右键：「摊到这篇桌上」（材料托盘，P14 §3.4）/ 打开。事件交给 App 画菜单——编辑器这一层不认识托盘。
+    // stopPropagation：别让 MarkdownEditor 的选区右键菜单也弹出来。
+    a.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      hidePeek()
+      window.dispatchEvent(new CustomEvent<NoteLinkMenuDetail>('note-link-menu', {
+        detail: { id: this.id, title: this.title, x: e.clientX, y: e.clientY } }))
     })
     if (this.lookup) {
       let timer = 0

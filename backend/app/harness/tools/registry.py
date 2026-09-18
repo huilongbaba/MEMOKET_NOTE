@@ -53,6 +53,10 @@ class ToolContext:
     # 第一段都是它（`editor/intent.block`）。挂在 ctx 上是因为它跟 note_id / note_title 一样是
     # 「这次跑作用在哪篇上」的一部分，hooks 拿着 State 就能读到；空串 = 这篇没写意图，一个字不加。
     intent: str = ""
+    # 材料托盘（P14 §3.4）：这篇显式摊在桌上的材料，`store.list_tray` 那份原样（kind / ref_id / title / excerpt）。
+    # 跟 intent 同一条路带进来（router 装、快照跟着走）：hooks 取材料时它排最前、不筛、不滚出窗口
+    # （`harness/tray.py`）。空 = 没摊东西，一个字不加。
+    tray: list[dict] = field(default_factory=list)
 
     # Scratch space the caller owns; the tool pool never interprets it.
     #

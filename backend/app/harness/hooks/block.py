@@ -17,7 +17,8 @@ from ..params import LEDGER_IN_PROMPT
 from ...util import llm
 from ..agent_loop import ToolTrace
 from .. import prompts
-from ..prompts import BLOCK_SYSTEM
+from ..prompts import BLOCK_SYSTEM, tray_block
+from .. import tray as tray_mod
 from ..state import State
 from ..score_context import AFTER_CHARS, BEFORE_CHARS, SELECTION_CHARS
 from ..checks.grounding_rules import fix_bold_punct
@@ -34,11 +35,15 @@ class BlockHooks:
     """``prompt`` is the whole user-facing instruction for this round."""
 
     def __init__(self, *, prompt: str = "", selection: str = "",
-                 profile: list[str] | None = None, title: str = ""):
+                 profile: list[str] | None = None, title: str = "",
+                 from_tray: bool = False):
         self.prompt = prompt
         self.selection = selection
         self.profile = list(profile or [])
         self.title = title
+        # `/` 菜单「从托盘写」（P14）：这一块只用托盘里的材料——取材那一发照跑（补数据、画图还要工具），
+        # 但写块那一发明说「以托盘为范围」。router 已经拦掉了托盘空着的情况。
+        self.from_tray = from_tray
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:
@@ -53,6 +58,9 @@ class BlockHooks:
         gaps = ""
         if LEDGER_IN_PROMPT:
             gaps = ledger_mw.gap_summary(ledger_mw.ledger_of(st))
+        # 托盘（P14）：取材那一发也看得见它——托盘里已经有的不用再查；三条规矩见 `harness/tray.py`
+        tray = tray_mod.lines_of(st.ctx.tray)
+        st.bag["tray_lines"] = tray
         msgs = [{"role": "system", "content": self._system(st)},
                 {"role": "user", "content": self._user(st, facts="", gaps=gaps)}]
         extra, trace = await agent_loop.gather_context(
@@ -96,11 +104,13 @@ class BlockHooks:
         # to prevent.
         facts = list(trace.as_facts()) if trace.used else []
         raw = [r for _n, _a, r in trace.calls if r and not r.startswith("（")]
-        return facts + raw, trace
+        # 托盘排最前（`middleware/facts.py` 再把它钉在 `st.facts` 头上、不滚出窗口）
+        return tray + [f for f in facts + raw if f not in tray], trace
 
     # ----------------------------------------------------------- produce --
     async def produce(self, st: State) -> AsyncIterator[str]:
-        user = self._user(st, facts="\n\n".join(st.facts))
+        tray = set(st.bag.get("tray_lines") or ())
+        user = self._user(st, facts="\n\n".join(f for f in st.facts if f not in tray))
         if st.steer:
             user += f"\n\n【上一轮的问题，这一轮要解决】\n{st.steer}"
         if st.content:
@@ -162,6 +172,13 @@ class BlockHooks:
         if self.profile:
             parts.append("【用户的写作偏好】\n"
                          + "\n".join(f"- {p}" for p in self.profile))
+        # 托盘（P14）：单独一块、摆在工具查到的东西前面；「从托盘写」再加一句范围
+        tray = list(st.bag.get("tray_lines") or [])
+        if tray:
+            parts.append(tray_block(tray))
+            if self.from_tray:
+                parts.append("【范围】这一块**只用上面托盘里的材料**写：托盘里没有的事实不要写进去，"
+                             "工具查到的东西只用来核对托盘里的说法。")
         if facts:
             parts.append("【工具查到的东西】\n" + facts)
         # 这三个取量常量在 `harness/score_context.py`，**写作和打分共用同一组**：

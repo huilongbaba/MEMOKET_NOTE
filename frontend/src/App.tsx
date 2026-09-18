@@ -25,7 +25,9 @@ import { withCheckHit } from './editor/agentRound'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
-import { blockPrecondition, type SlashItem } from './editor/slashMenu'
+import { blockPrecondition, SLASH_ITEMS, type SlashItem } from './editor/slashMenu'
+import type { NoteLinkMenuDetail } from './editor/noteLink'
+import { noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
 import {
   appendPreview, endRun, logRun, patchRun, runsField, startRun,
 } from './editor/runningBlocks'
@@ -34,6 +36,7 @@ import MarkdownToolbar from './components/MarkdownToolbar'
 import WritingPlanPanel from './components/WritingPlanPanel'
 import MemoryPanel from './components/MemoryPanel'
 import RelatedMemory from './components/RelatedMemory'
+import TrayPanel from './components/TrayPanel'
 import RevisionPanel, { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
@@ -301,6 +304,13 @@ export default function App() {
   // 这里只留「选中了哪一项、要不要弹提示词输入框」。
   const [slash, setSlash] = useState<
     { item: SlashItem; from: number; to: number; x: number; y: number } | null>(null)
+  // 正文里 `[[` 链接标记右键（P14 §3.4）：「摊到这篇桌上」/ 打开。事件由 editor/noteLink 发，菜单在这里画
+  const [noteLinkMenu, setNoteLinkMenu] = useState<NoteLinkMenuDetail | null>(null)
+  useEffect(() => {
+    const on = (e: Event) => setNoteLinkMenu((e as CustomEvent<NoteLinkMenuDetail>).detail)
+    window.addEventListener('note-link-menu', on)
+    return () => window.removeEventListener('note-link-menu', on)
+  }, [])
   // **一次运行一个 AbortController**，用 id 索引。原来是单个 ref，
   // 所以同时只能跑一个 `/`——第二个一开始就把第一个的 controller 顶掉了。
   const runAborts = useRef(new Map<string, AbortController>())
@@ -1554,7 +1564,7 @@ export default function App() {
     const signal = ctrl.signal
     try {
       if (action === 'verify') {
-        const r = await api.verifySelection(content, selection, signal, intentText(intent))
+        const r = await api.verifySelection(content, selection, signal, intentText(intent), current?.id ?? '')
         setVerifyFindings(r.findings)
       } else if (action === 'trace') {
         // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
@@ -1565,7 +1575,7 @@ export default function App() {
         // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
         setPaneFocus({ id: 'trace', n: Date.now() })
       } else if (action === 'expand') {
-        const r = await api.expandSelection(content, selection, signal, intentText(intent))
+        const r = await api.expandSelection(content, selection, signal, intentText(intent), current?.id ?? '')
         if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
         else if (!applyAsDiff(r.revisions, '扩展上下文')) toast('建议对不上正文（锚点找不到），没有改动。')
       } else if (action === 'rewrite' || action === 'polish') {
@@ -1863,6 +1873,7 @@ export default function App() {
         following,
         title,
         intentText(intent),
+        current?.id ?? '',              // 托盘里的材料先摆（P14）
       )
       // 流完了再统一修一次「**标题：**」这类粗体（后端落盘路径有同样一步，续写是纯客户端拼的）
       let fixed = fixBoldPunct(inserted)
@@ -2725,6 +2736,17 @@ export default function App() {
   function stopRestructure() { restructureAbortRef.current?.abort() }
 
   /** `/` 选中一项之后的入口。需要提示词的先弹输入框，其余的当场做完。 */
+  /** 右栏托盘上的「从托盘写」：跟 `/` 菜单那一项同一件事——在光标处打开同一个输入框（可留空） */
+  function writeFromTray() {
+    const view = editorViewRef.current
+    const item = SLASH_ITEMS.find((i) => i.key === 'tray')
+    if (!view || !current || !item) return
+    const at = view.state.selection.main.head
+    const coords = view.coordsAtPos(at)
+    view.focus()
+    setSlash({ item, from: at, to: at, x: coords?.left ?? 200, y: (coords?.bottom ?? 200) + 6 })
+  }
+
   function onSlash(item: SlashItem, from: number, to: number) {
     const view = editorViewRef.current
     const coords = view?.coordsAtPos(from)
@@ -2921,7 +2943,8 @@ export default function App() {
     // 正文要**去掉 `/查询词` 那几个字**再判空：空白笔记上打了一个 `/`，正文就不是空串了（实拍第一版漏过）
     const docWithoutSlash = item.key === 'custom' ? view.state.doc.toString()
       : view.state.doc.sliceString(0, from) + view.state.doc.sliceString(to)
-    const why = blockPrecondition(item, prompt, selection, docWithoutSlash)
+    // 「从托盘写」（P14）：托盘空着开跑前就拦——跟别的临界条件同一条路，不发请求、不清空选区
+    const why = blockPrecondition(item, prompt, selection, docWithoutSlash) || (item.key === 'tray' ? trayPrecondition(current.id) : '')
     if (why) {
       // `/查询词` 那几个字照样收掉（插入类），选区（custom）留着
       if (item.key !== 'custom' && to > from) view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } })
@@ -2947,7 +2970,10 @@ export default function App() {
     try {
       const block = await api.composeBlock(
         { note_id: current.id, title, content: before, cursor: from,
-          mode: item.key as api.BlockMode, prompt, selection },
+          // 「从托盘写」走的是 prompt 模式 + from_tray（不是新的 block mode）；留空的指令后端按托盘材料写一段
+          mode: (item.key === 'tray' ? 'prompt' : item.key) as api.BlockMode,
+          prompt: item.key === 'tray' && !prompt.trim() ? '按托盘里摊开的材料写一段，每句话带材料的出处' : prompt,
+          selection, from_tray: item.key === 'tray' },
         {
           onPhase: (label) => {
             push(patchRun.of({ id, phase: label }))
@@ -3069,6 +3095,20 @@ export default function App() {
       )}
       {tabMenu && (
         <ContextMenu at={tabMenu.at} items={tabMenuItems(tabMenu.tab)} onClose={() => setTabMenu(null)} />
+      )}
+      {noteLinkMenu && (
+        <ContextMenu at={{ x: noteLinkMenu.x, y: noteLinkMenu.y }} onClose={() => setNoteLinkMenu(null)} items={[
+          { kind: 'header', label: noteLinkMenu.title || '未命名' },
+          { label: '摊到这篇桌上', icon: 'bx-layer-plus', hint: '放进托盘，写这篇时优先用它',
+            onSelect: () => {
+              const id = noteLinkMenu.id
+              // 摘要要那篇的开头几百字：拉一次（`[[` 链接标记只带标题）
+              void api.getNote(id)
+                .then((n) => requestTrayAdd({ kind: 'note', ref_id: id, title: n.title || noteLinkMenu.title, excerpt: noteExcerpt(n.content) }))
+                .catch(() => requestTrayAdd({ kind: 'note', ref_id: id, title: noteLinkMenu.title, excerpt: '' }))
+            } },
+          { label: '打开这篇', icon: 'bx-note', onSelect: () => window.dispatchEvent(new CustomEvent('open-note', { detail: noteLinkMenu.id })) },
+        ]} />
       )}
       {tabListAt && (
         <ContextMenu at={tabListAt} onClose={() => setTabListAt(null)} items={[
@@ -3750,8 +3790,12 @@ export default function App() {
             // 记忆是默认标签：边写边浮现的召回（判据 2）。不再是压在所有标签上面的常驻块。
             { id: 'memory', title: '记忆', icon: 'bx-bulb', alwaysShown: true,
               body: current
-                ? <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor}
-                                 kbEmpty={kbRows.length > 0 && (kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0) === 0} />
+                ? <div className="stack">
+                    {/* 材料托盘（P14 §3.4）：「记忆」的第一格，不开新页签（P12 定的：右栏页签只能减不能加） */}
+                    <TrayPanel key={'tray:' + current.id} noteId={current.id} onWrite={writeFromTray} />
+                    <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor}
+                                   kbEmpty={kbRows.length > 0 && (kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0) === 0} />
+                  </div>
                 : <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
             /* 「目录」不再是单独的页签：目录 = 计划（P12，agent-native-editor §3.5）——每一节带状态的目录就是这篇的计划，
                跟完成标准、骨架、执行记录放在同一个「计划」页签里。 */
