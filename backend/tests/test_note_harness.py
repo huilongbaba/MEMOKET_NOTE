@@ -461,7 +461,11 @@ def test_both_harnesses_get_the_same_deterministic_defect_feed():
     harness = Path(__file__).resolve().parent.parent / "app" / "harness"
     revise = (harness / "middleware" / "revise.py").read_text(encoding="utf-8")
     assert "grounding_check.placeholder_lines(st.content)" in revise, "缺占位符检测"
-    assert "grounding_check.audit_voice_lines(st.content)" in revise, "缺审计腔检测"
+    # 审计腔那一条**带量程**（批 21）：整篇口径会把用户自己写的「政务知识库」
+    # 递进修订提示词。接线形状由 `test_audit_voice_scope` 单独钉，这里只保证
+    # 「两条 harness 都接上了这条 feed」这件事没被顺手删掉。
+    assert "grounding_check.audit_voice_lines(" in revise, "缺审计腔检测"
+    assert "before=_started_with(st)" in revise, "审计腔检测又变回判整篇了"
 
     for name in ("note.py", "section.py"):
         src = (harness / "hooks" / name).read_text(encoding="utf-8")

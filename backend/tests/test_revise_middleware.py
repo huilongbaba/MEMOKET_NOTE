@@ -176,7 +176,11 @@ def test_修订调用挂了只赔上这一轮的修订(monkeypatch, _no_db):
     events = _drive(st)
     assert st.content == "一段正文"
     assert _no_db == [], "什么都没改就不该落盘"
-    assert any("修订调用失败" in d["reason"] for d in _named(events, "dropped"))
+    # 键名是 `detail`（批 21 / 计划 11.3）。原来这里跟着实现一起写的是
+    # `reason`，而前端读的是 `v.detail`——**测试跟着被测代码一起错**，
+    # 于是一条空白项在面板上待了很久，全套照绿。
+    # （同一个形状：批 20 计划外发现 3「跟着被测常量一起变的断言」。）
+    assert any("修订调用失败" in d["detail"] for d in _named(events, "dropped"))
 
 
 def test_模型返回的不是数组就整轮跳过(monkeypatch, _no_db):
@@ -275,3 +279,66 @@ def test_修订事件带全量的_anchor_和_text(monkeypatch, _no_db):
     (rev,) = _named(events, "revision")
     assert rev["anchor"] == long_anchor and rev["text"] == long_text
     assert long_text in st.content
+
+
+# ------------------------------------------- 提出 / 落地 两个数（计划 11.3） ---
+#
+# 「被丢掉的修订用户看不到、我们也没统计」。看不到那一半是 `dropped` 事件的事
+# （载荷键的闸在 `test_event_contract`）；**没统计**这一半在这里：
+# `revisions_proposed` / `revisions_dropped` 进 `st.bag`，`Ledger` 再落进
+# `harness_rounds`。两个数一起，因为只有分子说明不了任何事。
+
+def test_丢掉的修订要算进_bag_里的那两个数(monkeypatch, _no_db):
+    """四条提议：一条能落地，三条分别栽在 op / 锚点 / 空改上。
+    **后三条一个 `dropped` 事件都不发**——所以分子只能是「提出减落地」，
+    不能是「数一数发了几条事件」。"""
+    _stub_llm(monkeypatch, [
+        {"op": "replace", "anchor": "第二段。", "text": "改好的第二段。", "reason": "r"},
+        {"op": "rewrite", "anchor": "第一段。", "text": "x", "reason": "op 不认识"},
+        {"op": "replace", "anchor": "正文里没有这句话", "text": "x", "reason": "锚点找不到"},
+        {"op": "insert", "anchor": "第三段。", "text": "", "reason": "改完跟原文一样"},
+    ])
+    st = _st("第一段。\n\n第二段。\n\n第三段。")
+    events = _drive(st)
+    assert st.bag["revisions_proposed"] == 4
+    assert st.bag["revisions_applied"] == 1
+    assert st.bag["revisions_dropped"] == 3
+    # 这三条确实是**静默**掉的：一个事件都没发。要是哪天给它们补了事件，
+    # 这条断言会红——那时候该改的是这条断言，不是那两个数。
+    assert _named(events, "dropped") == []
+
+
+def test_超出额度的那几条不算进分母(monkeypatch, _no_db):
+    """`max_revisions` 砍掉的那些**根本没被裁决过**。算进分母会把
+    「守卫拦掉的比例」冲淡成「模型话多的比例」。"""
+    _stub_llm(monkeypatch, [{"op": "replace", "anchor": "正文里没有这句话",
+                             "text": "x", "reason": "锚点找不到"}] * 9)
+    st = _st("第一段。\n\n第二段。", policy=None)
+    _drive(st)
+    from app.harness.middleware.revise import DEFAULT_MAX_REVISIONS
+    assert st.bag["revisions_proposed"] == DEFAULT_MAX_REVISIONS
+    assert st.bag["revisions_dropped"] == DEFAULT_MAX_REVISIONS
+
+
+def test_这一轮没跑修订时两个数都清零(monkeypatch, _no_db):
+    """第 1 轮不跑修订。留着上一轮的数会让 `harness_rounds` 里那一行
+    记成「这一轮丢了三条」，而这一轮一条都没提过。"""
+    st = _st("一段正文", round_=1)
+    st.bag["revisions_proposed"], st.bag["revisions_dropped"] = 5, 3
+    _drive(st)
+    assert st.bag["revisions_proposed"] == 0 and st.bag["revisions_dropped"] == 0
+
+
+def test_两个数真的被记进_harness_rounds():
+    """**建了字段不等于用了字段。** bag 里有数、`record_harness_round` 收得下，
+    中间那一段（`Ledger.after_judge`）漏掉的话，两列会永远是 0 而不报任何错。"""
+    from pathlib import Path
+    ledger = (Path(__file__).resolve().parent.parent / "app" / "harness"
+              / "middleware" / "ledger.py").read_text(encoding="utf-8")
+    assert 'revisions_proposed=int(st.bag.get("revisions_proposed") or 0)' in ledger
+    assert 'revisions_dropped=int(st.bag.get("revisions_dropped") or 0)' in ledger
+    store = (Path(__file__).resolve().parent.parent / "app" / "database"
+             / "store.py").read_text(encoding="utf-8")
+    assert '("harness_rounds", "revisions_proposed"' in store
+    assert '("harness_rounds", "revisions_dropped"' in store
+    assert "revisions_proposed,revisions_dropped" in store, "INSERT 的列名没跟上"

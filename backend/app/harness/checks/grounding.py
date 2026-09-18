@@ -61,7 +61,12 @@ def no_audit_voice(st: State) -> Verdict | None:
     "It should be noted that the available records do not fully support..."
     is a sentence about the knowledge base, not about the user's project.
     """
-    lines = grounding_check.audit_voice_lines(st.content)
+    # **只报这次跑写出来的那些句子**（批 21）。整篇口径在 18 篇 `origin=user`
+    # 真实笔记上开火 5 篇（27.8%）——而这条判据会**短路打分**并要求模型改写，
+    # 于是用户自己写的「政务知识库」会被 harness 要求改掉。
+    # `content_at_start` 由 `loop.py` 在开跑时存下，理由见那一行的注释。
+    lines = grounding_check.audit_voice_lines(
+        st.content, before=str(st.bag.get("content_at_start") or ""))
     if not lines:
         return None
     return Verdict(

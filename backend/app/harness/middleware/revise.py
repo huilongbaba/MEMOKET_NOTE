@@ -35,6 +35,15 @@ DEFAULT_MAX_REVISIONS = 6
 VALID_OPS = ("insert", "delete", "replace")
 
 
+def _started_with(st: State) -> str:
+    """这次跑开跑时正文里已经有的字（`loop.py` 在 `before_run` 之后存的）。
+
+    只有一处实现，因为「判据该看哪一段」这件事不许两处各写一份——
+    `LEAK_PHRASES` 那次的教训是同一个知识放两处一定会漂。
+    """
+    return str(st.bag.get("content_at_start") or "")
+
+
 class Revise:
     name = "revise"
     hooks = ("before_produce",)
@@ -44,6 +53,15 @@ class Revise:
         # Reset first: the loop's no-progress check reads this, and a stale
         # count from an earlier round would keep a dead run alive.
         st.bag["revisions_applied"] = 0
+        # 这一轮模型提了几条、最后落地几条（批 21 / 计划 11.3）。两个数都要，
+        # **只有分子说明不了任何事**：一次跑丢掉 3 条，可能是提了 4 条只成 1 条
+        # （守卫在拼命拦），也可能是提了 30 条成了 27 条（守卫基本没说话）。
+        # 实测分母：`.local/samples` 的 360 次 soak 跑里，落地 2280 条、
+        # `dropped` 事件 1032 条（45 条是元话语删除通知），
+        # **被丢掉的修订约占模型提出的 30.2%**，71.4% 的跑至少丢过一条。
+        # 这一份是一次性抽样；落了库之后它才是个能持续读的数。
+        st.bag["revisions_proposed"] = 0
+        st.bag["revisions_dropped"] = 0
         if st.round < 2 or not st.content.strip():
             return          # nothing written yet; nothing to fix
 
@@ -67,8 +85,12 @@ class Revise:
             # Deterministic defects go in as concrete lines. Asking the model
             # to find placeholders and audit voice by reading is strictly
             # worse than telling it which lines they are.
+            # 审计腔那一半**只递这次跑写出来的**（批 21）：整篇口径会把用户
+            # 自己写的「政务知识库」当成机制泄漏递进修订提示词，等于拿他的
+            # 正文去换模型的措辞。理由见 `grounding_rules.audit_voice_lines`。
             defect_lines=(grounding_check.placeholder_lines(st.content)
-                          + grounding_check.audit_voice_lines(st.content)),
+                          + grounding_check.audit_voice_lines(
+                              st.content, before=_started_with(st))),
             focus_note=st.bag.get("focus_note", ""),
             tried=list(tried.items()))
 
@@ -94,8 +116,15 @@ class Revise:
             # Measured: under sustained load a single call passed the 300s
             # timeout, and with no guard here the exception escaped the SSE
             # generator -- the client saw the connection cut, not an error.
+            # 键名是 `detail`，不是 `reason`（批 21 / 计划 11.3）。前端读的是
+            # `v.detail`（`api.ts` 那条 else-if），这一处**是七个发射点里唯一
+            # 写成 `reason` 的**——于是它 push 进面板的是 `undefined`：
+            # 修订调用超时（实测 300s 那次就是这条路）在界面上是一条空白项。
+            # 事件名对得上、载荷键对不上，`test_event_contract` 原来只查名字，
+            # 一声不吭地绿着。现在那边多了一条查键的闸。
             yield Event.custom(CUSTOM_DROPPED,
-                               {"reason": f"修订调用失败，跳过这一轮修订: {exc}"[:200]})
+                               {"round": st.round,
+                                "detail": f"修订调用失败，跳过这一轮修订: {exc}"[:200]})
             return
 
         parsed = llm.extract_json(text)
@@ -108,6 +137,12 @@ class Revise:
                 "round": st.round,
                 "detail": f"修订输出被截断（{len(text)} 字），只应用了完整解析出的 {len(parsed)} 条"})
 
+        # **分母取的是真正进了循环的那些**（`parsed[:max_revisions]`），不是
+        # `len(parsed)`：超出额度的那几条根本没被裁决过，算进分母会把
+        # 「守卫拦掉的比例」冲淡成「模型话多的比例」。
+        proposals = parsed[:max_revisions]
+        st.bag["revisions_proposed"] = len(proposals)
+
         applied = 0
         # How much has already been inserted at each anchor. Two inserts at
         # the same anchor both mean "immediately after it", so the second one
@@ -118,7 +153,7 @@ class Revise:
         removed_total = 0
         outline_mode = bool(st.bag.get("outline_mode"))
 
-        for item in parsed[:max_revisions]:
+        for item in proposals:
             if not isinstance(item, dict):
                 continue
             op = str(item.get("op") or "").lower()
@@ -198,7 +233,11 @@ class Revise:
         # continuation was saved, and a single replace can put audit voice
         # straight back into the text -- measured on the folder path after
         # the continuation-side scrub was already in place.
-        st.content, meta_gone = grounding_check.scrub_meta_sentences_v(st.content)
+        # 上面这句实拍正是「只看 `st.fresh` 不够」的证据：replace 塞回去的
+        # 审计腔不在 `st.fresh` 里，但它确实是这次跑写的。所以量程用的是
+        # 「开跑时有没有」（批 21），两种都接得住。
+        st.content, meta_gone = grounding_check.scrub_meta_sentences_v(
+            st.content, _started_with(st))
         for sentence in meta_gone:
             # 全量整句给客户端：它要把同一句从本地正文里删掉，不然到轮末两边差一整句（第 381 轮真跑）
             yield Event.custom(CUSTOM_SCRUB, {"round": st.round, "sentence": sentence, "why": "元话语"})
@@ -215,6 +254,14 @@ class Revise:
             # 由它自己认 rails（理由写在 `save.persist` 的 docstring 里）。
             save.persist(st)
         st.bag["revisions_applied"] = applied
+        # **提出减落地**，不是「发了几条 `dropped` 事件」。上面那个循环里有
+        # 四条路是 `continue` 掉的、**一个事件都不发**：不是 dict、op 不认识、
+        # **锚点在正文里找不到**、改完跟原文一模一样。用户看不到、我们也没统计
+        # ——计划 11.3 那句「被丢掉的修订用户看不到、我们也没统计」说的正是
+        # 这一档，而它恰恰是事件那一侧看不见的那一半。
+        # 先落库、不加界面：那四条要不要也发事件，等这两列攒出数再定
+        # （没有分母就拍界面，是「拿一次抽样当基线」那条老账）。
+        st.bag["revisions_dropped"] = max(0, len(proposals) - applied)
         st.bag["no_change_rounds"] = 0 if applied else st.bag.get("no_change_rounds", 0) + 1
 
 

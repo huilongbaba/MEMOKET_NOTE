@@ -356,6 +356,17 @@ _ADDED_COLUMNS = (
     # 库里 `kb_conflicts` 一直记着，而写作 harness 从来不问——
     # 于是 6 月 3 日那条和 8 月 5 日那条都可能被写进正文。
     ("harness_rounds", "superseded", "INTEGER NOT NULL DEFAULT 0"),
+    # 这一轮模型提了几条修订、其中几条没落地（计划 11.3）。**两列一起加，
+    # 因为只有分子说明不了任何事**：丢掉 3 条既可能是「提 4 条守卫拦了 3」，
+    # 也可能是「提 30 条成了 27」。一次性抽样的分母在 `.local/samples` 的
+    # 360 次 soak 跑里：落地 2280 条、`dropped` 事件 1032 条（45 条是元话语
+    # 删除通知），**丢掉的约占提出的 30.2%**，71.4% 的跑至少丢过一条。
+    # `revisions_dropped` 算的是**提出减落地**，不是发出去的事件数——
+    # 应用循环里有四条路是 `continue` 掉的、一个事件都不发（不是 dict / op
+    # 不认识 / **锚点在正文里找不到** / 改完跟原文一样），而那一档正是
+    # 「用户看不到、我们也没统计」里最看不见的一半。
+    ("harness_rounds", "revisions_proposed", "INTEGER NOT NULL DEFAULT 0"),
+    ("harness_rounds", "revisions_dropped", "INTEGER NOT NULL DEFAULT 0"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
     # 笔记图标（boxicons 的类名，如 bx-rocket；空 = 按文件夹 / 笔记默认）。Trilium 的 NoteIcon，
     # 那边存成 #iconClass 属性，我们没有属性系统就直接一列。
@@ -1978,20 +1989,24 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
                          status: str, weakest: str, content_len: int,
                          facts_new: int = 0, facts_total: int = 0,
                          tool_calls: int = 0, repeat_calls: int = 0,
-                         cached_calls: int = 0, superseded: int = 0) -> None:
+                         cached_calls: int = 0, superseded: int = 0,
+                         revisions_proposed: int = 0,
+                         revisions_dropped: int = 0) -> None:
     """记一轮。**记账失败不能影响这一轮的产出**——这张表是给分析用的，
     不是承重的，所以调用方把它包在 try 里。"""
     with connect() as c:
         c.execute(
             "INSERT INTO harness_rounds (id,key,run_id,round,scores,status,weakest,"
             "content_len,facts_new,facts_total,tool_calls,repeat_calls,"
-            "cached_calls,superseded,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "cached_calls,superseded,revisions_proposed,revisions_dropped,"
+            "created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), key, run_id, int(round_),
              json.dumps(scores, ensure_ascii=False), status, weakest,
              int(content_len), int(facts_new), int(facts_total),
              int(tool_calls), int(repeat_calls),
-             int(cached_calls), int(superseded), _now()))
+             int(cached_calls), int(superseded),
+             int(revisions_proposed), int(revisions_dropped), _now()))
         # 跟 harness_runs 同一条修剪规矩：一个 key 只留最近 400 行
         # （50 次跑 × 8 轮），再往前的除了占地方没有用。
         c.execute("DELETE FROM harness_rounds WHERE key=? AND id NOT IN ("

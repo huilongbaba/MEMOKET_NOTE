@@ -407,6 +407,11 @@ class Ledger:
                 tool_calls=int(stat.get("tool_calls") or 0),
                 repeat_calls=int(stat.get("repeat_calls") or 0),
                 cached_calls=int(stat.get("cached_calls") or 0),
-                superseded=int(st.bag.get("superseded_round") or 0))
+                superseded=int(st.bag.get("superseded_round") or 0),
+                # 修订这一步的两个数（计划 11.3）。`Revise` 在 `before_produce`
+                # 里写进 bag，这里是 `after_judge`，先后是稳的；没挂 `Revise`
+                # 的模式（六个 block）拿不到这两个键，默认 0。
+                revisions_proposed=int(st.bag.get("revisions_proposed") or 0),
+                revisions_dropped=int(st.bag.get("revisions_dropped") or 0))
         except Exception:                                   # noqa: BLE001
             pass        # 记账不承重：写不进去也不能影响这一轮的产出

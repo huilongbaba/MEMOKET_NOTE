@@ -13,8 +13,14 @@ from ..checks import grounding_rules as grounding_check
 
 def _scrub_and_record(st, content: str) -> str:
     """续写收尾的整篇 scrub：删掉的元话语句子记到 st.bag["scrubbed"]，loop 在 text_end 之后发成 `scrub` 事件——
-    修订那一路早就发了，这一路一直没发，客户端本地多一整句、轮末才对齐（第 556 轮真跑差 52 / 102 字）。"""
-    out, removed = grounding_check.scrub_meta_sentences_v(content)
+    修订那一路早就发了，这一路一直没发，客户端本地多一整句、轮末才对齐（第 556 轮真跑差 52 / 102 字）。
+
+    **传的 `content` 是整篇笔记**（调用点都是 `st.content` 拼上这一轮的字），
+    所以必须把「开跑时就有的那部分」一起交出去，否则这一路会**静默删掉用户
+    自己写的句子**——实测 18 篇真实笔记里 5 篇被删 9 句（批 21）。
+    `content_at_start` 由 `loop.py` 在开跑时存下。"""
+    out, removed = grounding_check.scrub_meta_sentences_v(
+        content, str(st.bag.get("content_at_start") or ""))
     if removed:
         st.bag.setdefault("scrubbed", []).extend(removed)
     return grounding_check.fix_bold_punct(out)

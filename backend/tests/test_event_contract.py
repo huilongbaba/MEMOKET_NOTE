@@ -97,3 +97,79 @@ def test_没有人手写sse帧也没有人自己开流():
             own_stream.append(f.name)
     assert not handwritten, f"这些 router 在手写 SSE 帧，用 events.sse()：{handwritten}"
     assert not own_stream, f"这些 router 自己开流，用 deps.sse_response()：{own_stream}"
+
+
+# --------------------------------------------------------------- 载荷键 ---
+#
+# **事件名对得上，不等于载荷键对得上**（批 21 / 计划 11.3）。
+# 实拍：`revise.py` 七个 `dropped` 发射点里有一个写的是 `{"reason": …}`，
+# 而前端读的是 `v.detail`——于是「修订调用超时，跳过这一轮修订」这条
+# 在面板里 push 进去的是 `undefined`，用户看到一条空白项。
+# 上面那条 `test_后端每个custom事件前端都接得住` 只查名字，**一声不吭地绿着**。
+#
+# 「必须有」的定义就写在前端那一行里：
+#   · `handlers.onDropped?.(v.detail)` —— 裸读，必须有；
+#   · `v.notes ?? []` / `typeof v.round === 'number'` —— 前端自己兜了底，可选。
+# 这样这条闸不会去逼后端补一个前端本来就不指望的键。
+
+def _required_payload_keys() -> dict[str, set[str]]:
+    src = API_TS.read_text(encoding="utf-8")
+    out: dict[str, set[str]] = {}
+    for m in re.finditer(r"name === '([a-z_]+)'\)\s*\{?\s*(.*)", src):
+        name, line = m.group(1), m.group(2)
+        keys = set(re.findall(r"\bv\.([A-Za-z_]\w*)", line))
+        # 前端自己给了默认值 / 自己做了类型判断的，不算「必须有」
+        keys -= set(re.findall(r"\bv\.([A-Za-z_]\w*)\s*\?\?", line))
+        keys -= set(re.findall(r"typeof\s+v\.([A-Za-z_]\w*)", line))
+        if keys:
+            out[name] = keys
+    return out
+
+
+def _custom_emit_sites():
+    """后端每一处 `Event.custom(CUSTOM_X, {...})`：(事件名, 文件:行, 键集合)。
+
+    载荷不是字典字面量的那几处单独返回 `None`——**它们是这条闸的盲区，
+    必须显式承认**，不能假装查过了。
+    """
+    import ast
+    consts = {m.group(1): m.group(2) for m in re.finditer(
+        r'^(CUSTOM_\w+) = "([a-z_]+)"',
+        (ROOT / "backend" / "app" / "harness" / "events.py").read_text(encoding="utf-8"),
+        re.M)}
+    for f in sorted((ROOT / "backend" / "app").rglob("*.py")):
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "custom" and node.args):
+                continue
+            name = consts.get(getattr(node.args[0], "id", ""))
+            if name is None:
+                continue
+            payload = node.args[1] if len(node.args) > 1 else None
+            keys = ({k.value for k in payload.keys if isinstance(k, ast.Constant)}
+                    if isinstance(payload, ast.Dict) else None)
+            yield name, f"{f.relative_to(ROOT)}:{node.lineno}", keys
+
+
+def test_前端裸读的载荷键每个发射点都得有():
+    need = _required_payload_keys()
+    assert "detail" in need.get("dropped", set()), \
+        "前端不再裸读 dropped 的 detail 了——这条闸在查一个不存在的说法"
+    bad = []
+    for name, where, keys in _custom_emit_sites():
+        want = need.get(name)
+        if not want or keys is None:
+            continue
+        if not want <= keys:
+            bad.append(f"{where} 发 `{name}` 少了 {sorted(want - keys)}（有 {sorted(keys)}）")
+    assert not bad, "这几处的载荷键前端读不到：\n  " + "\n  ".join(bad)
+
+
+def test_不是字典字面量的发射点要逐处登记():
+    """这条闸只看得懂字典字面量。看不懂的那几处**写死在这里**，
+    免得下一个人把载荷换成一个变量、闸就安静地不查了。"""
+    blind = {where for name, where, keys in _custom_emit_sites()
+             if keys is None and name in _required_payload_keys()}
+    assert blind == set(), f"新出现了闸看不懂的发射点，去确认它的载荷键：{sorted(blind)}"

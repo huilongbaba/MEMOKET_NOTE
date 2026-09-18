@@ -189,19 +189,82 @@ def placeholder_lines(content: str, *, limit: int = 6) -> list[str]:
 # 泛泛的规则拦不住，得把具体句子指给修订——跟占位符是同一套路。
 #
 # 机制泄漏（把"知识库""KB"这类工作机制写进正文）归到同一类，判据一样确定。
+#
+# ================================ `before=` 这个参数是批 21 逼出来的 ===
+#
+# **这张词表分不开「机制词」和「业务词」，而且分不开是本质的。**
+# 批 20 量 magic tap 的时候顺手在 18 篇 `origin=user` 真实笔记上跑了一遍，
+# **开火 5 篇（27.8%）**，逐句读出来是两类：
+#
+#   ① 用户自己写的业务对象：「该智能体还将整合全区**政务知识库**…」（两篇）。
+#      「知识库」在这儿是他要谈的**产品**，不是我们的工作机制。
+#   ② 上一次跑写进他笔记里的真缺陷：「知识库同时记录 EVT 为 4 月 10 号启动…」、
+#      「**尚不能证明** APP、硬件、营销与 PR 已形成稳定闭环」（三篇；
+#      `dimension_sensitivity_bench.AUDIT_SENTENCE` 那句原话正出自其中一篇）。
+#
+# ①②只能靠**这句话是谁写的**分开，靠词表分不开：把「知识库」从 `LEAK_PHRASES`
+# 里摘掉，②那三篇的机制泄漏当场全漏（那正是这条判据当初被写出来的原因——
+# 文件夹级实测两次把「知识库」写进用户的笔记）。
+#
+# 所以改的是**判据的量程**，不是词表：
+# **开跑时正文里已经有的句子，这一轮不许报、更不许删。**
+# 理由就写在 `loop.py` 存 `content_at_start` 那一行上面：
+# 「判据看的是整篇正文，而整篇里有很多东西不是这次跑写的——用户自己写的、
+# 上一次跑留下的。**分不清这两者的判据会去打自己没做过的事**」
+# （第 601 轮的占位符、第 604 轮被删掉的两张图）。
+#
+# **为什么不是只看 `st.fresh`**：修订那一步会就地改写旧段落，而
+# `revise.py` 的注释记着实拍——「a single replace can put audit voice straight
+# back into the text」。那种句子不在 `st.fresh` 里，却**确实是这次跑写的**。
+# 「开跑时有没有」这个口径两种都接得住。
+#
+# **宁可漏报**：模型一字不差地重写出用户原来就有的那句话时，这里会放过它。
+# 误伤比漏报贵（铁律第 3 条）。
+#
+# **这条量程的已知代价，写在这里免得下一个人当 bug 修**：
+# 打磨模式（`polish`）什么都不写，整篇正文都是「开跑时就有的」，于是这条判据
+# 在那个模式下**永远不开火**——包括上一次跑留在笔记里的那三篇真缺陷
+# （`ecfac1f3c0aa` 那句「尚不能证明…」就是其中一篇）。
+# 之所以不给打磨模式开后门：**那三篇和「政务知识库」那两篇在这张词表眼里
+# 一模一样**，而打磨模式恰恰是整篇都算「用户已有的字」的那一档——开了后门
+# 等于把 27.8% 的误伤原样留在最该谨慎的那个模式里。
+# 真要分开，需要的是「这句话是不是上一次跑写的」这个**新信号**
+# （`note_revisions` / `harness_runs` 里有线索），不是把量程再放宽一次。
 
 
-def audit_voice_lines(content: str, *, limit: int = 5) -> list[str]:
+def _seen(before: str):
+    """「这句话开跑时就在正文里」的判定器。空 `before` = 谁都不算见过（老行为）。
+
+    **比的是原样字面，不做任何归一。** 第一版按「去掉全部空白」比，理由是
+    「正文在轮次之间会被重新排版」——**量完发现那是想出来的，不是观测到的**：
+    切句本来就在 `\n` 上切、每句还 `.strip()` 过，`tidy_blank_lines` /
+    `join_round_text` 动的都是句子之外的空行；18 篇真实笔记的 9 句命中里，
+    经 `fix_bold_punct` 之后字面变掉的是 **0 句**。分母是零的归一化校准不出来。
+
+    而且原样比在语义上正好是对的：**跟开跑时不一样，就说明这次跑动过它**
+    ——那这一轮去判它本来就不算「打自己没做过的事」。
+    """
+    if not (before or "").strip():
+        return lambda _s: False
+    return lambda s: s in before
+
+
+def audit_voice_lines(content: str, *, limit: int = 5,
+                      before: str = "") -> list[str]:
     """正文里带审计腔或机制泄漏的句子，原样返回给修订就地改掉。
 
     按句切而不是按行：这类话通常夹在一个正常段落中间，指出整段没用。
+
+    `before` = **这次跑开跑时正文里已经有的字**（`st.bag["content_at_start"]`）。
+    给了就只报这次跑写出来的那些句子，见上面那一大段。
     """
+    seen = _seen(before)
     out = []
     for sent in re.split(r"(?<=[。！？\n])", content):
         s = sent.strip()
         # 用 _META_SENT（审计腔 + 机制泄漏）而不是只用 _AUDIT_VOICE：这两类
         # 一起喂给修订，判据也该是同一个。拆开正则时漏了这里，单测当场抓到。
-        if s and _META_SENT.search(s):
+        if s and _META_SENT.search(s) and not seen(s):
             out.append(s[:160])
             if len(out) >= limit:
                 break
@@ -233,13 +296,13 @@ def fix_bold_punct(md: str) -> str:
     return "\n".join(out)
 
 
-def scrub_meta_sentences(content: str) -> str:
+def scrub_meta_sentences(content: str, before: str = "") -> str:
     """兼容旧调用：只要清理后的正文。落盘前顺手把「**标题：**」这类渲染不出来的
     粗体修成「**标题**：」——四条落盘路径都经过这里。"""
-    return fix_bold_punct(scrub_meta_sentences_v(content)[0])
+    return fix_bold_punct(scrub_meta_sentences_v(content, before)[0])
 
 
-def scrub_meta_sentences_v(content: str) -> tuple[str, list[str]]:
+def scrub_meta_sentences_v(content: str, before: str = "") -> tuple[str, list[str]]:
     """删掉正文里的元话语句子：提到工作机制的，和关于证据够不够的。
 
     为什么要在落盘处再来一道，而不是只靠修订：**最后一轮写出来的内容不会再
@@ -257,9 +320,18 @@ def scrub_meta_sentences_v(content: str) -> tuple[str, list[str]]:
     整句删掉，不需要再打一次模型。
 
     只按句删，不动段落结构；整段都是元话语时段落会空掉，一并清掉多余空行。
+
+    `before`（批 21）= **这次跑开跑时正文里已经有的字**。这一路拿到的 `content`
+    是**整篇笔记**（`hooks/mirror._scrub_and_record` 传的是 `st.content`），
+    所以它不给 `before` 的时候会**静默删掉用户自己写的句子**——实测 18 篇
+    `origin=user` 真实笔记里有 5 篇会被删掉 9 句，其中两篇被删的是
+    「该智能体还将整合全区政务知识库…」这句业务描述。上面那段「不该存在」
+    说的是**这次跑写出来的**句子；开跑时就在那儿的不是我们的。
+    理由和取舍全写在 `audit_voice_lines` 上面那一大段。
     """
     if not content or not _META_SENT.search(content):
         return content, []
+    seen = _seen(before)
     removed: list[str] = []
     out = []
     for para in re.split(r"(\n\s*\n)", content):
@@ -273,7 +345,8 @@ def scrub_meta_sentences_v(content: str) -> tuple[str, list[str]]:
         for x in re.split(r"(?<=[。！？])", para):
             if not x:
                 continue
-            (removed if _META_SENT.search(x) else kept).append(x.strip() or x)
+            bad = bool(_META_SENT.search(x)) and not seen(x)
+            (removed if bad else kept).append(x.strip() or x)
         out.append("".join(k if k in para else k for k in kept))
     return re.sub(r"\n{3,}", "\n\n", "".join(out)).strip(), removed
 
