@@ -108,6 +108,10 @@ DB_PATH = ROOT.parent / "data" / "notes.sqlite3"
 # 而且短文本上一次打分的方差最大。
 MIN_CHARS = 600
 
+# `condition="claims"`：判据先跑、命中就是 0 分那一档（批 18 / 阶段 7.1）。
+# 常量要在 `PROBES` 之前定义——`PROBES` 是模块级的元组，引用它的时候必须已经有。
+CLAIMS_CONDITION = "claims"
+
 
 
 # ---------------------------------------------------------------- 笔记库指纹闸
@@ -1500,6 +1504,16 @@ PROBES: tuple[Probe, ...] = (
           condition="checklist"),
     Probe("custom", "paragraph", "answer_swap", ("follows_prompt",),
           condition="checklist"),
+    # ---- 第四档条件：**判据先跑，命中就是 0 分**（批 18 / 阶段 7.1）
+    # 生产里 `middleware/checks` 在 `before_judge` 跑，命中就 `skip_judge` 并把
+    # 那一维记成 level 0。批 18 之前没有任何一条判据管「编造的日期 / 署名」，
+    # 所以这两行的 `as-deployed` 兄弟行量的是**纯打分器**的灵敏度；
+    # 这一档量的是**生产链路**的灵敏度（判据 → 打分器）。两行严格配对：
+    # 同一段正文、同一份上下文、同一份材料，只差"判据先不先跑"。
+    Probe("note", "whole", "shift_dates", ("factual_grounding",),
+          condition=CLAIMS_CONDITION),
+    Probe("note", "whole", "fabricate_specifics", ("factual_grounding",),
+          condition=CLAIMS_CONDITION),
 )
 
 
@@ -1520,6 +1534,42 @@ def mode_dims(mode_key: str) -> list:
 # 按指令缓存：一次 bench 里同一篇笔记的指令是同一句话，prompt 和 custom 两条
 # probe 共用一份。**生成本身是要花钱的**（每篇一次调用），缓存让这笔钱只花
 # 一次，同时保证前后对照的两臂用的是**同一张清单**。
+# ---------------------------------------- claims 那一档（批 18 / 阶段 7.1）
+#
+# `condition="claims"` 的格子**先跑生产那条确定性判据**
+# （`app.harness.checks.claims.unsupported_specifics`），命中就直接记
+# `factual_grounding=0` 并且**不发那次打分调用**——生产里 `middleware/checks`
+# 就是这么做的（`st.ev = Evaluation({dim: 0})` + `skip_judge`）。
+#
+# **判据必须是生产那个函数**，脚本不许照抄一份：跟 `score_context`、
+# `table_columns_match` 同一条纪律——抄的那份跟生产同步全靠人记得改，
+# 而这一列的全部意义就是"跟生产一样"。
+#
+# 源头那一侧给的是**这篇笔记的原文 + 这一格的材料块**。干净臂于是
+# "同时当产出和源头"（批 16 量误伤用的就是这一档），植入臂的那几个原子
+# 则在原文里怎么也找不到——两臂的差就是判据的灵敏度。
+
+
+def claims_verdict(task: "Task"):
+    """这一格在生产里会不会被那条判据当场打回。纯代码，零调用。"""
+    from app.harness import modes as prod_modes
+    from app.harness.agent_loop import ToolTrace
+    from app.harness.checks import claims as prod_claims
+    from app.harness.state import State as ProdState
+    from app.harness.tools import ToolContext
+
+    mode = {m.key: m for m in prod_modes.ALL}[task.mode]
+    st = ProdState(mode=prod_modes.for_run(mode, has_profile=True),
+                   ctx=ToolContext(user="bench", note_id=task.note_id))
+    st.fresh = st.content = task.text
+    st.bag["content_at_start"] = task.source
+    st.facts = [task.context.get(score_context.MATERIAL_KEY, "")]
+    st.trace = ToolTrace()
+    # 手上得有 oracle，否则判据按设计直接不判（`claims` 模块文档窄化第 3 条）。
+    st.trace.calls.append(("filter_facts", {}, ""))
+    return prod_claims.unsupported_specifics(st)
+
+
 _CHECKLIST_CACHE: dict[str, tuple] = {}
 _CHECKLIST_LOCK: asyncio.Lock | None = None
 CHECKLIST_CONDITION = "checklist"
@@ -1715,6 +1765,10 @@ class Task:
     # 这一格的前置条件成没成立。**不进 `key`**：它不改变递给打分器的任何
     # 东西，进了 key 只会让已经跑过的格子全部作废重跑一遍。
     pre: bool = True
+    # 这篇笔记的原文。**只有 `claims` 那一档用**：判据要有一个"封闭语料"当源头，
+    # 而那就是这篇笔记本身。同样不进 `key`——它是 `note_id` 的纯函数，而
+    # `note_id` 已经在 key 里了。
+    source: str = ""
 
 
 def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
@@ -1750,7 +1804,8 @@ def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
                     if key in done:
                         continue
                     tasks.append(Task(key, note["id"], probe.id, arm, rep,
-                                      probe.mode, text, ctx, pre))
+                                      probe.mode, text, ctx, pre,
+                                      note.get("content") or ""))
     return tasks, skips
 
 
@@ -1766,6 +1821,18 @@ async def run_one(task: Task) -> dict:
         dims = dims + list(extra)
         items = tuple(d.name for d in extra)
     t0 = time.monotonic()
+    if task.probe_id.endswith("/" + CLAIMS_CONDITION):
+        verdict = claims_verdict(task)
+        if verdict is not None:
+            # 生产里这一格根本走不到打分器：`Checks` 把那一维记成 0 并 `skip_judge`。
+            # **这里也不发那次调用**——发了就不是在量生产链路了，而且白花钱。
+            rec = {"key": task.key, "note": task.note_id, "probe": task.probe_id,
+                   "arm": task.arm, "rep": task.rep,
+                   "scores": {"factual_grounding": 0}, "pre": task.pre,
+                   "status": "continue", "check": "unsupported_specifics",
+                   "ms": int((time.monotonic() - t0) * 1000)}
+            log_line(rec)
+            return rec
     # 材料块排在 `[Content]` 之后（批 16）。**拆分必须走生产那个函数**：
     # `production_context()` 交出来的是"打分器该看见的全部"，怎么排布由
     # `score_context.split_for_prompt` 说了算——bench 自己写一份 `pop` 就又是

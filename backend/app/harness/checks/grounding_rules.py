@@ -276,3 +276,40 @@ def scrub_meta_sentences_v(content: str) -> tuple[str, list[str]]:
             (removed if _META_SENT.search(x) else kept).append(x.strip() or x)
         out.append("".join(k if k in para else k for k in kept))
     return re.sub(r"\n{3,}", "\n\n", "".join(out)).strip(), removed
+
+
+# ===================================================== 弃答的正确形态（计划 7.2）===
+#
+# `scrub_meta_sentences` 上面那段注释里已经写明了这件事：对冲句子整句删掉，
+# 而**正确形态是「这里需要补上 XX 的实际记录」**。也就是说——
+# **弃答的表达方式这个仓早就定好了，缺的一直是触发它的信号**（[LED] §10③）。
+#
+# 为什么要单独有一个「认得出弃答」的函数：7.2 那条判据在材料不够时会要求模型
+# 弃答，而**判据自己必须认得出模型照做了没有**，否则照做的那一轮会被再拦一次，
+# 三轮全烧在一个它已经满足了的要求上（第 601 轮 `no_placeholder` 那次死锁的形状）。
+#
+# 认得宽一点是安全的：认错了只意味着「这一轮不报」（漏报），而漏报比误伤便宜。
+_ABSTAIN = re.compile(
+    r"需要补[上齐全]?[^。！？\n]{0,24}(?:记录|材料|数据|纪要)"
+    r"|(?:补上|补齐)[^。！？\n]{0,24}(?:的实际记录|的记录)"
+    r"|这(?:里|一(?:节|块|段))[^。！？\n]{0,16}(?:还)?没有[^。！？\n]{0,12}记录")
+
+
+def abstention_lines(content: str, *, limit: int = 3) -> list[str]:
+    """正文里「这里需要补上 XX 的实际记录」这一类句子。
+
+    **它跟 `audit_voice_lines` 是一对反义词，别弄混**：审计腔（「不能据此判断」
+    「材料不足以说明」）是在谈证据够不够，整句没有实质信息，该删；
+    弃答句是在**指名道姓地说缺的是哪一份记录**，是留给用户去补的钩子，该留。
+    两者的判据分开写，所以 `AUDIT_PHRASES` 里一个字都不许出现在这条正则里
+    ——有单测钉着：推荐写法必须同时过得了 `audit_voice_lines` 和
+    `placeholder_lines` 两道，否则 7.2 让模型写的那句话会被另外两条判据当场打回。
+    """
+    out = []
+    for sent in re.split(r"(?<=[。！？\n])", content or ""):
+        s = sent.strip()
+        if s and _ABSTAIN.search(s):
+            out.append(s[:160])
+            if len(out) >= limit:
+                break
+    return out

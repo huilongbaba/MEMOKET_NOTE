@@ -102,3 +102,22 @@ CONTINUE_TAIL_TOKENS = 400
 # 那一档只能靠这个开关。
 PROMPT_CHECKLIST = os.getenv("MEMOKET_PROMPT_CHECKLIST", "1").lower() not in (
     "0", "false", "no")
+
+
+# 「这一节的材料够不够」那条判据要不要上（计划 7.2 / [LED] §10③）。
+#
+# **它会改产品行为**——材料不够时它要求模型弃答（「这里需要补上 XX 的实际
+# 记录」）而不是照写，所以按批 13 `LEDGER_IN_PROMPT` / 批 15 `SECTION_INDEX` /
+# 批 17 `PROMPT_CHECKLIST` 同一个形状配一个单独的开关。
+#
+# 反向风险是实打实的：判据要是在材料其实够的时候开火，就会往一篇好好的正文里
+# 塞一句多余的「这里需要补上…」，而那正是 [LED] §4 那条边界的镜像——
+# 覆盖率是诊断不是指标，判据也不能反过来**逼着弃答**。代码这一侧窄了三道
+# （手上有材料就不判 / 没问过就不判 / 已经弃答过就不判），挡不住的那一档
+# 只能靠这个开关。关掉之后 `note` / `section` 跟批 17 之前一字不差。
+#
+# 7.1 那条（`claims.unsupported_specifics`）**故意没有开关**：它跟批 16 的
+# 数字比对同一类，是纯粹的缺陷检测器——报出来的是"这几个字面查无出处"，
+# 不改写作方向。没有需要单独回退的行为变化。
+SUFFICIENT_CONTEXT = os.getenv("MEMOKET_SUFFICIENT_CONTEXT", "1").lower() not in (
+    "0", "false", "no")

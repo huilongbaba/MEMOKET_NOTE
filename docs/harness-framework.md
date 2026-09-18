@@ -58,7 +58,7 @@ flowchart TB
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
     MW["Middleware ×16<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
-    CHK["checks/ ×12 代码判据<br/>+ rubric 模型打分"]
+    CHK["checks/ ×13 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 19 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 21 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -198,8 +198,8 @@ backend/app/
       · checklist · provenance · revise · repeats · replan · repair · runtime · save · _order
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
-    checks/                  19 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
-      citations · grounding · grounding_rules · structure · charts · numbers · instructions
+    checks/                  21 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+      citations · grounding · grounding_rules · structure · charts · numbers · instructions · claims
       · blockcheck · rubric · pick
         （instructions 是批 17 / 阶段 6.2：用户那条指令里**能用代码判准**的那几类约束
          ——字数 / 段数 / 「必须提到 X」/ 「用表格」。它挂在 Mode 上的方式跟别的判据不同，
@@ -313,7 +313,7 @@ RUN_FINISHED(content, reason, run_id?)
 正文，必须在 `Sections` 拼「小节索引 + 当前小节逐字」之前——否则续写 prompt 拿到的
 是**修订前**的正文（这条依赖是从 `Compact` 原样继承的，它当年就是为这件事写的）。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（19 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（21 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 **打分器能看见什么**（批 8 改过一轮，改之前这里是一笔空账）：
@@ -507,7 +507,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 19 条 check（代码判据）
+## 8. 21 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -517,6 +517,7 @@ Mode 按需追加的：
 | `citations_exist` | factual_grounding … | ✔ 摘掉编造的 `[id]` | 正文里的 `[事实 id]` 既不在材料里也查不到知识库 |
 | `citations_present` | factual_grounding / material_use / no_fabrication | | 这一轮写了 ≥300 字、手上有材料，却一个 `[事实编号]` 都没有（第 593 轮真跑：1066 字零引用，写的还是另一个项目的内容，整条判据链都放行了）|
 | `material_used` | material_use / factual_grounding | | 查到了材料一条都没用（大纲模式下关闭） |
+| `material_thin` | factual_grounding / material_use / no_fabrication | | **这一节压根没有材料，正文却照样写满了**（批 18 / 阶段 7.2，[LED] §10③ 的 `Sufficient Context`：材料不够时强模型不会弃答而是直接答错，RAG 系统在材料不足时仍有 35–62% 给出答案）。两个触发条件都窄：①「这次跑查过，而手上一条材料都没有」；②「问过的方向库里一条都没有 + 这一轮零新材料 + 这一轮零引用」。**看的只有分母，从不看用掉的比例**——[LED] §4 那条边界写死了「覆盖率是诊断不是指标」，报出来的话里一个「你还有 N 条没用」都不许出现。触发时给的是**弃答的正确形态**（「这里需要补上 XX 的实际记录」，`grounding_rules.abstention_lines` 认得出来，照做了就不再拦）。开关 `params.SUFFICIENT_CONTEXT` |
 | `outline_intact` | fits_context / coherence | | 这篇是大纲，标题层级被压平了 |
 | `heading_fits` | fits_context / coherence | ✔ 标题整体下沉 | 插入块的标题跟周围平级而不是下级 |
 | `tail_clashes` | fits_context / coherence | ✔ 去掉收尾小节 | 插入块自己写了「总结」而下文已有 |
@@ -530,8 +531,9 @@ Mode 按需追加的：
 | `chart_numbers_grounded` | data_grounding / numbers_from_tools / coherence | | **图和表的数值位**上的数在工具返回和笔记原文里都找不到出处。只取数值位（mermaid 的 `bar [...]` / pie 的 `"标签" : 值`、整格就是一个数的表格子），标题 / 轴名 / x 轴标签 / 表头一个不取——位置即判据（批 16 / 阶段 5.1，[IND] §2–3） |
 | `numbers_from_tools` | numbers_from_tools / data_grounding / coherence | | 正文里的**统计量**追不到工具结果（eda / analysis，这两个模式的 task 明写「所有数字都来自工具返回，不要自己算」）。判据窄成三道：先挖掉 `tabular._NOT_A_QUANTITY`（引用 id / 链接 / 日期 / 第 N / 型号）再挖掉五条正文专属的（「2026 年」、`## 2.1`、有序列表编号、版本号、`3:2`），最后只留带 % / 带小数 / ≥100 的——小整数一律不算（批 16 / 阶段 5.2） |
 | `chart_readable` | has_charts / chart_validity / coherence | | VisEval 的 **readability 档**：y 轴没名字、多系列图的图例数不上、类目多到读不出、x 轴标签被 `safe_label` 截断（「三月Kickstarte…」）、流程图节点过多（批 16 / 阶段 5.3） |
+| `unsupported_specifics` | factual_grounding / no_fabrication / material_use | | **decompose-then-verify**（批 18 / 阶段 7.1，[IND] §8① 的 FActScore / SAFE / VeriScore）：把这一轮写的正文拆成**句级**单元，抽出能机械核对的原子，逐条去对那份封闭的本地材料。原子只有两类——**完整日期**（年月日三字段齐全）和**署名里的那个拉丁名字**（`X 说 / 提到 / 确认…`），两类在 24 篇 `origin=user` 真实笔记上两个档都 0 开火。另外四类量完之后明确不取（两字段日期 21.7% 误伤 / 中文人名 4 个候选 3 个是错的 / 所有拉丁专名 45.4% / 正文统计量 47.3%，详见 `checks/claims.py` 模块文档）。SAFE 第三步「这条值不值得查」在这里是**结构性**的：整条流水线只有正文→源头一个方向，「检索到的事实没用完」产生不了任何裁决 |
 
-- **第 20 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
+- **第 22 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
   `instruction_constraints`（批 17 / 阶段 6.2）判的是用户那条指令里可程序验证的约束，
   内容来自用户刚打的那句话，所以由 `middleware/checklist` 在 `before_run` 里
   `dataclasses.replace` 进这一次跑的 Mode。上面那个 19 是「写死在 Mode 上的判据」，

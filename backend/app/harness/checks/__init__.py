@@ -15,8 +15,9 @@ thing that breaks a run.
 """
 
 from .charts import chart_readable, charts_from_tools, no_fake_charts
-from .grounding import (citations_exist, citations_present, citations_hold, material_used,
-                        no_audit_voice, no_placeholder)
+from .claims import unsupported_specifics
+from .grounding import (citations_exist, citations_present, citations_hold, material_thin,
+                        material_used, no_audit_voice, no_placeholder)
 from .numbers import chart_numbers_grounded, numbers_from_tools
 from .pick import pick_dimension
 from .structure import (heading_fits, no_repeated_lists, no_restated_paragraph,
@@ -37,6 +38,7 @@ __all__ = [
     "heading_fits",
     "table_columns_match",
     "table_present",
+    "material_thin",
     "material_used",
     "no_audit_voice",
     "no_fake_charts",
@@ -44,4 +46,5 @@ __all__ = [
     "numbers_from_tools",
     "outline_intact",
     "tail_clashes",
+    "unsupported_specifics",
 ]

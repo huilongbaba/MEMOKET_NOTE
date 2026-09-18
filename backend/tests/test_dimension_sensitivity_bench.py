@@ -1494,3 +1494,74 @@ def test_没有指令就不生成(monkeypatch):
 
     monkeypatch.setattr(bench, "_CHECKLIST_CACHE", {})
     assert asyncio.run(bench.checklist_dims("  ")) == ()
+
+
+# ------------------------------------------------ claims 那一档（批 18 / 7.1）---
+#
+# 这一档改的既不是「给打分器看什么」（`with-evidence`）也不是「拿什么去判」
+# （`checklist`），而是**判据先不先跑**：生产里 `middleware/checks` 在
+# `before_judge` 跑，命中就把那一维记成 0 并 `skip_judge`。
+# 所以 `as-deployed` 那一行量的是**纯打分器**，这一行量的是**生产链路**。
+
+def test_claims那一档跟as_deployed严格配对():
+    pairs = {(p.mode, p.selector, p.injector, p.targets)
+             for p in bench.PROBES if p.condition == "as-deployed"}
+    for p in bench.PROBES:
+        if p.condition == bench.CLAIMS_CONDITION:
+            assert (p.mode, p.selector, p.injector, p.targets) in pairs, (
+                f"{p.id} 没有对照行——单独一条 claims 行没有任何可比的对象")
+
+
+def test_claims那一档只打factual_grounding():
+    """这条判据在生产里只会把 `factual_grounding` 记成 0（`pick_dimension` 的
+    第一候选）。拿它去量别的维度，量的是一个不存在的配置。"""
+    for p in bench.PROBES:
+        if p.condition == bench.CLAIMS_CONDITION:
+            assert p.targets == ("factual_grounding",)
+
+
+def test_claims那一档用的是生产那条判据_不是抄的一份():
+    """跟 `score_context` / `table_columns_match` 同一条纪律：抄一份就会漂，
+    而这一列的全部意义就是"跟生产一样"。"""
+    import inspect
+
+    src = inspect.getsource(bench.claims_verdict)
+    assert "prod_claims.unsupported_specifics(st)" in src
+    assert "app.harness.checks" in src
+
+
+def test_判据命中的格子一分钱模型的钱都不花(monkeypatch):
+    """生产里那一格根本走不到打分器。发了那次调用就不是在量生产链路，
+    而且白花钱——批 17 那次「多花一次调用值不值」的账就是这么算的。"""
+    import asyncio
+
+    called = {"n": 0}
+
+    async def boom(*a, **kw):                       # pragma: no cover
+        called["n"] += 1
+        raise AssertionError("判据命中了还去打分")
+
+    monkeypatch.setattr("app.harness.checks.rubric.evaluate", boom)
+    monkeypatch.setattr(bench, "log_line", lambda _obj: None)
+    task = bench.Task(
+        key="k", note_id="n", probe_id="note/whole/fabricate_specifics/claims",
+        arm="dirty", rep=0, mode="note",
+        text=("这一段是为了把字数写够，后面才是要核对的那几句话。" * 6
+              + "2027 年 4 月 9 日，Speaker K 提到首年采购额已经谈定。"),
+        context={}, pre=True, source="笔记原文里既没有那个日期也没有那个人。")
+    rec = asyncio.run(bench.run_one(task))
+    assert rec["scores"] == {"factual_grounding": 0}
+    assert rec["check"] == "unsupported_specifics"
+    assert called["n"] == 0
+
+
+def test_干净臂在同一条路上不开火(monkeypatch):
+    """**这一档最要紧的一半**：误伤比漏报贵。干净臂里正文同时当产出和源头，
+    判据一次都不该响，否则整条对照就是在量一个坏掉的判据。"""
+    body = ("2026 年 8 月 5 日，Speaker A 提到硬件方案。"
+            + "这一段是为了把字数写够。" * 8)
+    task = bench.Task(key="k", note_id="n",
+                      probe_id="note/whole/fabricate_specifics/claims",
+                      arm="clean", rep=0, mode="note", text=body,
+                      context={}, pre=True, source=body)
+    assert bench.claims_verdict(task) is None

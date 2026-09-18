@@ -218,7 +218,11 @@ def test_每条check打翻的维度这个mode真的有():
     FRESH_NO_CITE = ("这一轮写满了一整段内容，但一条编号也没给。" * 20
                      + "至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论。"
                      + "中间隔着别的话。"
-                     + "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。")
+                     + "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。"
+                     # 批 18 / 阶段 7.1 加的两个原子：一个完整日期 + 一个署名里的名字，
+                     # 两样在源头（before/after/content_at_start/facts）里都没有。
+                     # **加进来是被这条断言逼的**，跟批 16 那三样同一个理由。
+                     + "2027 年 4 月 9 日，Speaker K 提到首年采购额已经谈定。")
     FRESH_SAME_CITES = ("付款安排本身也要保留触发条件：供应商先完成货物，再由我们验货，"
                         "验货通过后开票，付清尾款，之后才发货 [u-111-1F1] [u-111-1F2]。"
                         "\n\n商业动作还要按付款、验货、发货、使用拆开，不能把收款直接记成履约完成；"
@@ -238,6 +242,15 @@ def test_每条check打翻的维度这个mode真的有():
     # 「一张表都没有」，`table_columns_match` 要的是「有一张列数对不上的表」
     # ——同一段正文不可能两样都满足，硬塞在一起就是按下葫芦浮起瓢。
     BROKEN_TABLE = "\n| 渠道 | 点击 | 下单 |\n|---|---|---|\n| 甲 | 12700 |\n"
+    FACTS = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
+    # 「问了，库里一条都没有」：账本里一条发过的查询 + 一个分母为 0 的轴。
+    # 形状照 `middleware/ledger.fold` 真的会写出来的那一份。
+    ASKED_AND_EMPTY = {
+        "queries": [{"key": "filter_facts\t{\"topic\": \"work_pricing\"}",
+                     "tool": "filter_facts", "hit": 0, "empty": True}],
+        "axes": {"topic:work_pricing": {"total": 0, "taken": 0}},
+        "facts": {},
+    }
 
     bad = []
     fired: collections.Counter = collections.Counter()
@@ -248,15 +261,23 @@ def test_每条check打翻的维度这个mode真的有():
                 shaped = modes.for_run(mode, has_profile=has_profile, polish=polish)
                 names = {d.name for d in shaped.dims}
                 st = State(mode=shaped, ctx=ToolContext(user="u", note_id="n"))
-                for fresh, table in ((FRESH_NO_CITE, ""),
-                                     (FRESH_SAME_CITES, ""),
-                                     (FRESH_NO_CITE, BROKEN_TABLE)):
+                # 批 18 / 阶段 7.2 加了第四份素材：**手上一条材料都没有，而查过了**。
+                # 它必须跟前三份分开，理由跟 FRESH 那一对、表格那一对完全一样——
+                # `material_thin` 要的是「facts 为空」，`citations_hold` /
+                # `material_used` / `unsupported_specifics` 要的是「facts 非空」，
+                # 同一份 State 不可能两样都满足。
+                for fresh, table, facts, ledger in (
+                        (FRESH_NO_CITE, "", FACTS, {}),
+                        (FRESH_SAME_CITES, "", FACTS, {}),
+                        (FRESH_NO_CITE, BROKEN_TABLE, FACTS, {}),
+                        (FRESH_NO_CITE, "", [], ASKED_AND_EMPTY)):
                     st.fresh = fresh
                     st.content = CONTENT + table + "\n\n" + fresh
                     st.before, st.after = BEFORE, AFTER
-                    st.facts = ["[2026-01] 一条没被用上的事实，里面有独特词 郑州航空港"]
+                    st.facts = list(facts)
                     st.charts = []
                     st.trace = ToolTrace()
+                    st.bag["ledger"] = ledger
                     st.bag["claimed_sources"] = ["[fact-nope] 不存在的来源"]
                     for check in shaped.checks:
                         seen[check.__name__] += 1

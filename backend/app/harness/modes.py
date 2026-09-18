@@ -18,10 +18,11 @@ from .types import Dimension
 from .checks import grounding_rules as grounding_check
 from .checks import (chart_numbers_grounded, chart_readable, charts_from_tools,
                      citations_exist, citations_present, citations_hold, heading_fits,
-                     material_used, no_audit_voice, no_fake_charts,
+                     material_thin, material_used, no_audit_voice, no_fake_charts,
                      no_placeholder, no_repeated_lists, no_restated_paragraph,
                      no_same_sources_twice, numbers_from_tools, outline_intact,
-                     table_columns_match, table_present, tail_clashes)
+                     table_columns_match, table_present, tail_clashes,
+                     unsupported_specifics)
 from .middleware import Checklist, Repair, Replan, Runtime, Save, Sections
 from .middleware.revise import Revise
 from .state import State
@@ -442,10 +443,15 @@ NOTE = Mode(
     groups=("memory", "skill", "chart", "longform"),
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
+    # 阶段 7 的两条（批 18）：`material_thin` **必须排在 `citations_present`
+    # 前面**——这一节压根没有材料时，那一条会说「把用到的那几条编号写上」，
+    # 而根本没有可引的东西，一个照办不了的诊断会把剩下的轮次烧光。
+    # `unsupported_specifics` 排在末尾：它报的是「这几个字面查无出处」，
+    # 比「一条引用都没有 / 有占位符」更细，粗的先说。两条都有闸钉着顺序。
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
-            citations_exist, citations_present, material_used, no_repeated_lists,
-            no_restated_paragraph, no_same_sources_twice,
-            no_fake_charts, charts_from_tools),
+            citations_exist, material_thin, citations_present, material_used,
+            no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
+            no_fake_charts, charts_from_tools, unsupported_specifics),
     stop_when=(material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
     extra_mw=(Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),
@@ -459,9 +465,10 @@ SECTION = Mode(
     groups=("memory", "skill", "chart", "longform"),
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
-    checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, citations_present,
-            material_used, no_repeated_lists, no_restated_paragraph,
-            no_same_sources_twice, no_fake_charts, charts_from_tools),
+    checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist,
+            material_thin, citations_present, material_used, no_repeated_lists,
+            no_restated_paragraph, no_same_sources_twice, no_fake_charts,
+            charts_from_tools, unsupported_specifics),
     stop_when=(material_used_up, pause_for_review),
     extra_mw=(Revise(), Repair(), Sections(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
