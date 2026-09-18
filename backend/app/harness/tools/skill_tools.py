@@ -38,8 +38,20 @@ def load_skill(ctx: ToolContext, name: str) -> str:
     # writes through to the run's state; a caller that doesn't provide one
     # simply gets no accumulation, and the tool still works.
     loaded = ctx.scratch.get("skill_bodies")
+    # **额度数的是「模型自己加载了几条」，不是「上下文里一共有几条」**（批 22）。
+    # 原来数的是 `len(skill_bodies)`，而那个 list 在 `middleware/skills` 的
+    # 第一轮就已经被 **scope 注入**的正文填过了——实测 13 条内置技能里
+    # `verify` / `edit` / `plan_generate` 三个 scope 各注入 2 条，于是模型
+    # 一条都没加载就只剩 1 次额度；哪天某个 scope 配到 3 条，`load_skill`
+    # 会**永久返回拒绝**。而拒绝的原话是「Already loaded 3 skills」——
+    # **告诉模型它做过一件它没做过的事**，那是最坏的一种反馈。
+    # （`tests/test_skill_loop.py` 原来那条上限用例的 fixture 一条 scope 都
+    # 没配，正好绕开了这个交互，所以一直是绿的。）
+    # 这一份不进快照（`ctx.scratch` 本来就不进），于是恢复之后额度重新给满
+    # ——那是「宽一点」的那一侧，比今天「一次都没用就用光」安全。
+    by_model = ctx.scratch.setdefault("loaded_by_model", [])
 
-    if loaded is not None and len(loaded) >= skills.MAX_LOADED_SKILLS:
+    if len(by_model) >= skills.MAX_LOADED_SKILLS:
         # A ceiling, because the model will otherwise load five and fill the
         # window. Same principle as the chart tools refusing uninformative
         # charts: a tool that says no beats an instruction to show restraint.
@@ -52,6 +64,8 @@ def load_skill(ctx: ToolContext, name: str) -> str:
         available = ", ".join(s.name for s in skills.load_all(ctx.user) if s.enabled)
         return f"(No skill named {name!r}. Available: {available or 'none'})"
 
+    if name.strip() not in by_model:
+        by_model.append(name.strip())
     if loaded is not None and body not in loaded:
         loaded.append(body)
     return body

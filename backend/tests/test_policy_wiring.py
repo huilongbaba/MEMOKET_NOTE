@@ -201,3 +201,38 @@ def test_模型没提出有效改动就什么都不做(monkeypatch):
                        status="continue", weakest="coherence")
     assert _drive(Replan().after_judge(st)) == []
     assert "replans_used" not in st.bag, "没改成就不该消耗次数"
+
+
+def test_节拍一个字没变就不算改过骨架(monkeypatch):
+    """批 22 / 计划 11.7。
+
+    模型只返回 `add` 是三种操作里最好想的一种，而 `apply_beat_ops` 的守卫
+    「数量不能净增」会把它们全部丢掉（`room = 0`）——`new_beats` 跟 `beats`
+    逐字相同，`changes` 里却有一句「还有 N 条新增被丢掉…」。原来判的是
+    `if not changes`，于是烧掉 1/2 的重规划预算，并且向前端播一条
+    「骨架变了」（`replan` + `skeleton` 两个事件），而骨架一个字都没变。
+
+    `changes` 是**给人看的变更记录**，里面本来就包含被守卫拦下的那几条；
+    「改没改」要问 `new_beats`。
+    """
+    _replanning(monkeypatch, [{"op": "add", "text": "凭空多一条"},
+                              {"op": "add", "text": "再多一条"}])
+    st = _st(beats=["起", "承", "转"])
+    st.ev = Evaluation(scores={"coherence": DimensionScore(level=0, note="")},
+                       status="continue", weakest="coherence")
+    assert _drive(Replan().after_judge(st)) == [], "骨架没变就别播「骨架变了」"
+    assert st.bag["beats"] == ["起", "承", "转"]
+    assert "replans_used" not in st.bag, "一个字没改不该烧掉 1/2 的预算"
+
+
+def test_真的改了还是照旧记账并发事件(monkeypatch):
+    """**反向闸**：把上面那条改成「永远 return」也能绿。"""
+    _replanning(monkeypatch, [{"op": "drop", "index": 1},
+                              {"op": "add", "text": "换来的新节拍"}])
+    st = _st(beats=["起", "承", "转"])
+    st.ev = Evaluation(scores={"coherence": DimensionScore(level=0, note="")},
+                       status="continue", weakest="coherence")
+    events = _drive(Replan().after_judge(st))
+    assert [e.data.get("name") for e in events] == ["replan", "skeleton"]
+    assert st.bag["beats"] != ["起", "承", "转"]
+    assert st.bag["replans_used"] == 1

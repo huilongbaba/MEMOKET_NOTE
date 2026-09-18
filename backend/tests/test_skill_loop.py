@@ -151,3 +151,45 @@ def test_运行时策略不能把mode给的工具组盖掉(env):
     # 「以 Mode 的组为准、策略只能往上加」这件事本身，由
     # test_note_hooks.test_策略只能往工具组里加不能替换 直接驱动 prepare()
     # 验证——那才是行为，这里只钉住「替换语义的字段必须消失」。
+
+
+def test_加载额度数的是模型自己加载了几条(env):
+    """批 22 / 计划 11.6。
+
+    `skill_bodies` 在第一轮就已经被 **scope 注入**的正文填过了
+    （实测 13 条内置里 `verify` / `edit` / `plan_generate` 三个 scope 各注入
+    2 条），而额度原来数的正是那个 list 的长度。于是模型一条都没加载就只剩
+    1 次额度；某个 scope 配到 3 条时 `load_skill` 会**永久拒绝**，
+    而拒绝的原话是「Already loaded 3 skills」——告诉模型它做过一件没做过的事。
+
+    上面那条 `test_加载有上限` 的 fixture 一条 scope 都没配，**正好绕开了这个
+    交互**，所以它一直是绿的（台账 §21：突变没被抓住，先怀疑用例不够）。
+    """
+    for i in range(4):
+        skills.install("u1", f"loadable-{i}", {
+            "SKILL.md": f"---\nname: loadable-{i}\ndescription: 第{i}条。用于测试。\n"
+                        f"---\n\n# 第{i}条\n\n正文{i}\n"})
+    # 注入两条：把 scope 配上，模拟 verify / edit / plan_generate 那一档
+    for i in range(2):
+        store.set_skill_config("u1", f"loadable-{i}", scopes=[modes.NOTE.skill_scope])
+
+    st = _state()
+    asyncio.run(Skills().before_round(st))
+    assert len(st.skill_bodies) == 2, "前提：scope 注入真的先占了两格"
+
+    out = [tools.dispatch("load_skill", {"name": f"loadable-{i}"}, st.ctx)
+           for i in (2, 3)]
+    assert not any(x.startswith("(Already loaded") for x in out), \
+        "注入的那两条不该吃掉模型自己的加载额度"
+
+    # 额度本身还在：模型自己加载满 MAX_LOADED_SKILLS 条之后才拒绝
+    skills.install("u1", "loadable-x", {
+        "SKILL.md": "---\nname: loadable-x\ndescription: 再一条。用于测试。\n"
+                    "---\n\n# 再一条\n\n正文\n"})
+    third = tools.dispatch("load_skill", {"name": "loadable-x"}, st.ctx)
+    assert not third.startswith("(Already loaded"), "第 3 条才刚好用满"
+    skills.install("u1", "loadable-y", {
+        "SKILL.md": "---\nname: loadable-y\ndescription: 第四条。用于测试。\n"
+                    "---\n\n# 第四条\n\n正文\n"})
+    assert tools.dispatch("load_skill", {"name": "loadable-y"},
+                          st.ctx).startswith("(Already loaded")

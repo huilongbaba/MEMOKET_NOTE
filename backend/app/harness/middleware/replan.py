@@ -9,7 +9,8 @@ information than the run now has.
 
 So this is deliberately small: rewrite, drop or add **single beats**, never
 the spine; the count may not grow net; at most twice per run. The convergence
-guards live in ``app/replan.py`` and are shared with nothing else.
+guards live in ``app/harness/replan_rules.py`` and are shared with nothing
+else.（原来这行指的是 `app/replan.py`，那个文件不存在——批 22 顺手改对。）
 
 **Off entirely in outline mode.** There the user's own headings are the goal;
 there is no "replanning" to do. Skipping this once cost a user their table of
@@ -67,7 +68,14 @@ class Replan:
             return
 
         new_beats, changes = replan_rules.apply_beat_ops(beats, ops)
-        if not changes:
+        # **判的是「节拍真的变了没有」，不是「有没有话可说」**（批 22）。
+        # `changes` 是给人看的变更记录，里面也包含**被守卫丢掉**的那几条
+        # （「还有 N 条新增被丢掉：节拍数量不能净增…」）。模型只返回 `add`
+        # 是三种操作里最好想的一种，这时 `room = 0`、一条都加不进去、
+        # `new_beats` 跟 `beats` 逐字相同，而 `changes` 非空——于是烧掉
+        # 1/2 的重规划预算，并且向前端播一条「骨架变了」（`CUSTOM_REPLAN`
+        # + `CUSTOM_SKELETON`），而骨架一个字都没变。
+        if new_beats == beats:
             return
         st.bag["beats"] = new_beats
         st.bag["replans_used"] = used + 1

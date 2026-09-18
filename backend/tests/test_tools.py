@@ -637,3 +637,113 @@ async def test_停机那一发不能把同一条消息里剩下的工具调用�
     assert answered == asked, (
         "assistant 消息里的每一个 tool_call 都必须有对应的 tool 结果消息，"
         "否则 hooks/block 把 msgs+extra 喂给下一次调用时接口直接 400")
+
+
+# --------------------------------------------------- 批 22：工具循环的两处半挡
+
+
+@pytest.mark.asyncio
+async def test_深度门把整轮丢光时不许留一条空的tool_calls(clean_registry, monkeypatch):
+    """跟批 13 那条是同一个形状的另一个入口。
+
+    第 2 轮起深度门（`_cap_calls` 的 `iteration >= 1`）丢掉纯广度的调用。
+    模型这一轮**只发广度工具**时 `kept == []`，而原来的代码照样把
+    `{"tool_calls": []}` 这条 assistant 消息 append 进 `convo` 和 `extra`
+    ——接口对空数组是硬校验（`empty array. Expected ... minimum length 1`），
+    下一次调用当场 400；要是它落在最后一轮，还会原样返回给
+    `hooks/block.prepare`，把补图那一轮一起打死。
+
+    「第 2 轮只发广度工具」不是边角料：`DEPTH_TOOLS` 上面那段注释记着的实测
+    是「4 次真实采样全部撞上限，模型每轮都在广度上把预算花光」。
+    """
+
+    @registry.register(name="search_memory", description="",
+                       params={"q": {"type": "string"}}, required=["q"])
+    def search_memory(ctx, q):
+        return "[f-1] 查到了"
+
+    fake = FakeLLM([
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("search_memory", {"q": "第一轮"}, cid="c1")]},
+        # 第 2 轮：全是广度工具，深度门会整批丢掉
+        {"role": "assistant", "content": "",
+         "tool_calls": [_call("search_memory", {"q": "第二轮"}, cid="c2")]},
+        {"role": "assistant", "content": "好了"},
+    ])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=3)
+
+    empty = [m for m in extra
+             if m.get("role") == "assistant" and m.get("tool_calls") == []]
+    assert not empty, f"交出去的消息列表里有一条空 tool_calls：{empty}"
+    # 每一条 assistant 宣称的 tool_call 都得有对应的 tool 回复（批 13 那条性质）
+    asked = {c["id"] for m in extra if m.get("role") == "assistant"
+             for c in (m.get("tool_calls") or [])}
+    answered = {m["tool_call_id"] for m in extra if m.get("role") == "tool"}
+    assert asked == answered
+    # 而且不该再问模型一次：convo 和 spec 都没变，只会拿回同一批广度调用
+    assert len(fake.seen) == 2, "全被深度门丢掉之后应该直接收工，别再烧一次调用"
+    assert trace.calls, "第 1 轮查到的东西要留着"
+
+
+@pytest.mark.asyncio
+async def test_中途调用挂了已经配平的那几条照样交出去(clean_registry, monkeypatch):
+    """原来写的是 `return [], trace`，而那一半跟 `trace` 对不上：
+    `trace.calls` 非空、`trace.used` 为真，消息列表却是空的。
+    `hooks/note` / `hooks/section` 用 `trace.as_facts()` 所以没露馅，
+    **`hooks/block` 用的正是 `extra`**——补图那一轮的「上面已经查到的数据里」
+    会指向一个空的「上面」。"""
+
+    @registry.register(name="fact_sources", description="",
+                       params={"q": {"type": "string"}}, required=["q"])
+    def fact_sources(ctx, q):
+        return "[f-1] 查到了"
+
+    class Boom(FakeLLM):
+        async def complete_raw(self, messages, **kw):
+            self.seen.append(list(messages))
+            if len(self.seen) >= 2:
+                raise RuntimeError("timeout")
+            return {"role": "assistant", "content": "",
+                    "tool_calls": [_call("fact_sources", {"q": "a"}, cid="c1")]}
+
+    fake = Boom([])
+    monkeypatch.setattr(agent_loop.llm, "complete_raw", fake.complete_raw)
+
+    extra, trace = await agent_loop.gather_context(
+        [{"role": "user", "content": "写"}], _ctx(), max_iters=3)
+
+    assert trace.error, "前提：第二次调用真的挂了"
+    assert [m["role"] for m in extra] == ["assistant", "tool"], \
+        "第 1 轮那一对配平的消息不该跟着一起扔"
+    asked = {c["id"] for m in extra if m.get("role") == "assistant"
+             for c in (m.get("tool_calls") or [])}
+    assert asked == {m["tool_call_id"] for m in extra if m.get("role") == "tool"}
+
+
+def test_ToolTrace_merge_每个字段都合并了():
+    """`hooks/block` 补图那一轮原来是手抄两个字段，漏了四个。
+
+    逐字段过一遍而不是读实现的源码：**一条跟着被测实现一起写的断言，没有在
+    断言任何东西**（台账 §21）。做法是每次只把 `other` 的一个字段设成非默认，
+    合并之后 `base` 必须跟着变。
+    """
+    import dataclasses
+
+    fields = [f.name for f in dataclasses.fields(al.ToolTrace)]
+    assert set(fields) == {"calls", "iters", "truncated", "error",
+                           "barren_calls", "stopped_barren"}, \
+        "ToolTrace 加了新字段：merge 和这条闸都要跟着改"
+
+    nondefault = {
+        "calls": [("t", {}, "r")], "iters": 1, "truncated": True,
+        "error": "boom", "barren_calls": 1, "stopped_barren": True,
+    }
+    for name in fields:
+        base = al.ToolTrace()
+        other = al.ToolTrace(**{name: nondefault[name]})
+        base.merge(other)
+        assert getattr(base, name) == nondefault[name], \
+            f"merge 漏掉了 {name}——第二次工具循环的这个信号会静默消失"

@@ -113,3 +113,44 @@ def test_the_users_selection_reaches_the_prompt(stub):
     text = hooks._user(st, facts="")
     assert "要被替换掉的这一段" in text and "改得短一点" in text
     assert modes.CUSTOM.task in text
+
+
+def test_补图那一轮的停机和报错要折回主trace(monkeypatch):
+    """批 22 / 计划 11.5。
+
+    `eda` / `analysis` 声明了 `focus_groups`，第一轮没画出图时会再跑一次工具
+    循环。那一次的 `ToolTrace` 原来只被手抄了两个字段（`calls` / `iters`），
+    **`stopped_barren` / `error` / `truncated` / `barren_calls` 四个全丢**。
+    各自都有读者：`middleware/runtime` 把 `stopped_barren` 喂给
+    `policy.adjust`，那是「工具预算 -1」唯一的判据；`error` 更直接——
+    `hooks/block` 本来就没有 `note` / `section` 那种 `trace.error and not facts`
+    的降级，第二次调用整个失败会一点痕迹都没有。
+
+    **闸钉在调用点**，不是 `ToolTrace.merge` 自己：把那一行换回手抄两行，
+    `merge` 的逐字段闸照样全绿（台账 §21「一个在别处顺手被满足的断言，
+    没有在断言任何东西」）。
+    """
+    seen = []
+
+    async def gather(messages, ctx, *, groups=None, max_iters=3, **kw):
+        seen.append(tuple(groups or ()))
+        if len(seen) == 1:
+            # 第一轮：查到了东西，但一张图都没画出来 → 触发 focus 那一轮
+            return [], ToolTrace(calls=[("search_memory", {}, "[f-1] 材料")], iters=1)
+        t = ToolTrace(calls=[("render_chart", {}, "（渲染失败）")], iters=1)
+        t.stopped_barren = True
+        t.truncated = True
+        t.barren_calls = 2
+        t.error = "RuntimeError: 补图那一轮挂了"
+        return [], t
+
+    monkeypatch.setattr(agent_loop, "gather_context", gather)
+    st = State(mode=modes.EDA, ctx=ToolContext(user="u", note_id="n", content="", cursor=0))
+    _facts, trace = asyncio.run(BlockHooks().prepare(st))
+
+    assert len(seen) == 2, "前提：focus 那一轮真的跑了"
+    assert trace.stopped_barren, "查到头了，策略器得看得见（否则预算永远收不回来）"
+    assert trace.error, "第二次调用挂了，不能一点痕迹都没有"
+    assert trace.truncated
+    assert trace.barren_calls == 2
+    assert trace.iters == 2 and len(trace.calls) == 2

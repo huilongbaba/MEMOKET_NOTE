@@ -26,7 +26,7 @@ from . import adapter as harness_adapter
 from . import score_context
 from .events import CUSTOM_DEDUP, CUSTOM_EVALUATE, CUSTOM_INSERT_AT, CUSTOM_SCRUB, CUSTOM_WARNING, Event
 from .middleware import BASE, verify
-from .state import State
+from .state import COVERAGE_DIMS, State      # noqa: F401  （COVERAGE_DIMS 在这儿 re-export）
 from .types import Hooks, Middleware
 
 
@@ -410,7 +410,23 @@ def _regressed(st: State) -> str | None:
     # 意味着这一轮只是没判：没有停机条件会触发」，这行让那句话真的成立。
     if st.ev is None:
         return None
-    if _coverage_unmet(st):
+    if st.coverage_unmet():
+        return None
+    # **「最好那轮」当时要是还没写够，它不配当这条规则的基准**（批 22）。
+    # 上面那行挡的是「这一轮还没写够」，而同一件事有另一半：**上一轮之所以
+    # 排名高，正因为它没写够**——短、干净、不重复的残篇在 `rank()` 眼里是
+    # 一份好产出（`harness-framework.md` §20① 的第 605 轮：三节各跑一轮就
+    # 全 2 分判完成，交出来 620 / 434 / 429 字）。于是刚把 `beat_coverage`
+    # 从 1 写到 2 的那一轮，会因为「写长了所以 non_repetition 掉一档」被拿
+    # 去跟那份残篇比，一比就输。
+    #
+    # 实拍（批 22，`harness_rounds` 447 轮 / 158 次跑）：全表只有 **2 次**
+    # 走到「武装了且这一轮排名更低」，其中 **1 次**正是这个形状——
+    # `note:309f19202309` 第 1 轮 `beat_coverage=1` 拿 (5, 1.83)、第 2 轮把
+    # 它写到 2 但 `non_repetition` / `coherence` 各掉一档拿 (4, 1.67)，
+    # `stopped=regressed`，**交出去的是第 1 轮的 537 字，第 2 轮的 1092 字
+    # 整个扔掉**。那也是全表唯一一次真的按 `regressed` 收工的跑。
+    if st.bag.get("best_coverage_unmet"):
         return None
     if best is None or not st.mode.dims or st.round >= st.mode.max_rounds:
         return None                      # 最后一轮本来就要交最好的，不用另起一个理由
@@ -420,22 +436,9 @@ def _regressed(st: State) -> str | None:
     return "regressed" if st.rank() < best_rank else None
 
 
-# 「还没写够」的那几个维度。跟 middleware/repair.py 的 INNER_QUALITY 正好相对：
-# 那边是「已经写的东西有毛病，别再加了」，这边是「东西还不够，得接着写」。
-COVERAGE_DIMS = ("beat_coverage", "section_coverage", "material_use")
-
-
-def _coverage_unmet(st: State) -> bool:
-    """这一轮还有「写得不够」的维度没达标。
-
-    第 607 轮真跑实拍：分段第 1 轮六维里五维达标、差的正是 `section_coverage`
-    ——而 `_regressed` 的武装条件恰好是「最好那轮只差一个维度」。于是第 2 轮
-    接着写，正文长了，`non_repetition` 暂时掉到 1，排名一低就被判成「退步」、
-    整节 570 字交卷。**要求它多写，又因为多写而判它退步**，两条规则打架。
-    覆盖没满足就说明活还没干完，这时候的波动是干活的代价，不是退步。
-    """
-    return any((s := st.ev.scores.get(d)) and s.level < 2
-               for d in COVERAGE_DIMS) if st.ev else False
+# 「还没写够」的那几个维度和它的判断都搬到了 `state.py`（批 22）——
+# `middleware/best_of` 也要问同一个问题，两份会飘。这一行是给在停机规则
+# 这儿找 `COVERAGE_DIMS` 的人留的路标，导入在文件顶上。
 
 
 BUILTIN_STOPS = (_complete, _blocked, _no_progress, _regressed)

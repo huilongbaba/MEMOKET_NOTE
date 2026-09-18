@@ -49,8 +49,10 @@ class BlockHooks:
                 msgs + extra + [{"role": "user", "content": _FOCUS_NUDGE}],
                 st.ctx, groups=list(st.mode.focus_groups), max_iters=3)
             extra += extra2
-            trace.calls += trace2.calls
-            trace.iters += trace2.iters
+            # 整份折进来，不是手抄两个字段——见 `ToolTrace.merge` 的注释：
+            # 原来漏掉的 `stopped_barren` / `error` / `truncated` /
+            # `barren_calls` 各自都有读者。
+            trace.merge(trace2)
 
         # Tool output goes back verbatim as well as summarised. Without the
         # raw text the model never sees the mermaid render_chart produced and

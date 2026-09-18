@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..database import store
 from ..harness import loop, modes, snapshot
-from ..harness.events import to_sse
+from ..harness.events import CUSTOM_WARNING, Event, to_sse
 from ..harness.hooks.block import BlockHooks
 from ..harness.hooks.note import NoteHooks
 from ..harness.hooks.section import SectionHooks
@@ -63,12 +63,28 @@ async def resume(run_id: str, body: HarnessResumeIn, request: Request,
         return {"stopped": run_id, "rounds": st.round}
 
     hooks = _hooks_for(row["mode"], st)
+    # 存快照时编不进 JSON 的 `bag` 键。`snapshot.dumps` 一直在记这份名单，
+    # 而 `dropped_keys()` **在这一批之前只有一个调用方，是它自己的单测**
+    # ——`snapshot.py` 的模块注释写着「dropped **loudly**：快照记下它丢了
+    # 什么，于是一次少了某个能力的恢复是看得见的，而不是神秘的」，可是没有
+    # 任何一条路径把它拿出来给人看。**建了判据不等于用了判据**（批 21 §21
+    # 里那条规矩，`check_citations` 是同一个形状）。
+    # 发一条 `warning`（前端 `onWarning` 已经在接）而不是拒绝恢复：丢掉的
+    # 是某个 middleware 的私有草稿，恢复本身仍然是对的，只是得有人知道。
+    dropped = snapshot.dropped_keys(row["state"])
     # Consumed on resume: a snapshot that could be resumed twice would fork
     # the run, and both forks would write to the same note.
     store.delete_snapshot(user, run_id)
 
     async def gen():
         st.request = request
+        if dropped:
+            yield to_sse(Event.custom(CUSTOM_WARNING, {
+                "middleware": "snapshot",
+                "hook": "resume",
+                "error": "这次暂停没能完整存下来，恢复之后下面这些中间状态是空的："
+                         + "、".join(sorted(set(dropped))),
+            }))
         async for event in loop.run(st, hooks):
             yield to_sse(event)
 

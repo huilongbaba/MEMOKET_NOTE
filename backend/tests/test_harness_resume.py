@@ -182,6 +182,7 @@ def test_暂停的run不进历史(db, monkeypatch):
     from app.harness.middleware.history import History
 
     st = _state(mode=dataclasses.replace(modes.NOTE, review_each_round=True))
+    st.round = 2                      # 真的跑过两轮；`round < 1` 那条是另一档（见下）
     st.ev = _passing(st)
     st.stopped = "awaiting_review"
     recorded = []
@@ -252,3 +253,35 @@ def test_超过七天没处置的暂停启动时清掉():
         c.commit()
     assert store.sweep_stale_snapshots() == 1
     assert [s["id"] for s in store.list_snapshots("u")] == [fresh]
+
+
+def test_快照丢了东西_恢复时要说出来(db, monkeypatch):
+    """批 22 / 计划 11.4：`snapshot.dumps` 一直在记「哪些 bag 键编不进 JSON」，
+    而 `dropped_keys()` **在这一批之前只有一个调用方，就是它自己的单测**——
+    模块注释写着「dropped loudly，于是一次少了某个能力的恢复是看得见的」，
+    可是没有任何一条路径把它拿出来给人看。
+    **建了判据不等于用了判据**（台账 §21，`check_citations` 同一个形状）。
+    """
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    st = _state()
+    st.content = "已经写了一段"
+    st.bag = {"fine": 1, "weird": object()}
+    text = snapshot.dumps(st)
+    assert snapshot.dropped_keys(text) == ["weird"], "前提：这份快照确实丢了东西"
+    run_id = store.save_snapshot("u", "n", "note", 1, text)
+
+    seen: list = []
+
+    async def _fake_run(state, hooks, mw=None):
+        seen.append(state)
+        if False:                                # pragma: no cover
+            yield None
+
+    monkeypatch.setattr(loop, "run", _fake_run)
+    body = TestClient(app).post(f"/api/harness/{run_id}/resume", json={},
+                                headers={"X-User-Id": "u"}).text
+    assert "weird" in body and "warning" in body, \
+        f"恢复时没把丢掉的东西说出来：{body[:400]}"

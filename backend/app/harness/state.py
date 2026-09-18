@@ -26,6 +26,13 @@ if TYPE_CHECKING:                       # pragma: no cover
     from .types import Mode
 
 
+# 「还没写够」的那几个维度。跟 `middleware/repair.py` 的 INNER_QUALITY 正好
+# 相对：那边是「已经写的东西有毛病，别再加了」，这边是「东西还不够，得接着
+# 写」。`loop.py` 仍然 re-export 它（`from .state import COVERAGE_DIMS`），
+# 因为读停机规则的人是在那儿找它的。
+COVERAGE_DIMS = ("beat_coverage", "section_coverage", "material_use")
+
+
 @dataclass
 class State:
     """Read by everything, written only by the loop and by middleware.
@@ -87,6 +94,24 @@ class State:
         if not levels:
             return (-1, -1.0)
         return (sum(1 for v in levels if v >= 2), sum(levels) / len(levels))
+
+    def coverage_unmet(self) -> bool:
+        """这一轮还有「写得不够」的维度没达标。
+
+        第 607 轮真跑实拍：分段第 1 轮六维里五维达标、差的正是
+        `section_coverage`——而 `_regressed` 的武装条件恰好是「最好那轮只差
+        一个维度」。于是第 2 轮接着写，正文长了，`non_repetition` 暂时掉到 1，
+        排名一低就被判成「退步」、整节 570 字交卷。**要求它多写，又因为多写
+        而判它退步**，两条规则打架。覆盖没满足就说明活还没干完，这时候的
+        波动是干活的代价，不是退步。
+
+        **为什么这个判断住在 State 上而不是 `loop.py` 里**（批 22）：有两处
+        要问同一个问题——停机规则 `_regressed`（「这一轮」写够了没有）和
+        `middleware/best_of`（记下最好那轮时，顺手记下「那一轮」写够了没有）。
+        写两份的代价是量出来的，见 `_regressed` 里那条 `best_coverage_unmet`。
+        """
+        return any((s := self.ev.scores.get(d)) and s.level < 2
+                   for d in COVERAGE_DIMS) if self.ev else False
 
     def content_for_continue(self) -> str:
         """What the continuation prompt should see.

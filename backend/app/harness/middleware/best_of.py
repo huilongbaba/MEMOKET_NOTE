@@ -8,6 +8,23 @@ to satisfy the scorer, round 3 was delivered.
 DSPy's ``Refine`` tracks ``best_reward`` for the same reason. Ours differs in
 that the score is multi-dimensional, so ranking needs a deterministic way to
 collapse it -- see ``State.rank``.
+
+**折叠成一个标量要不要改成保留 Pareto 前沿（[IND] §6⑤ / GEPA）：量完不做。**
+批 22 在 `harness_rounds` 的 447 轮 / 158 次跑上逐跑重放了一遍
+（`scripts/best_of_pareto_probe.py`，只读）：
+
+* 51 次跑有 ≥2 个**真打过分**且维度集合相同的轮次，可以做支配比较；
+* **`rank()` 挑出来的那一轮被别的轮次 Pareto 支配的次数：0。**
+  折叠从来没有挑中一个「每一维都不更好」的轮次；
+* 前沿有多个成员的 20 次里，**16 次 `rank()` 挑的正是最靠后的那个前沿成员**，
+  只有 4 次不是——而那 4 次里 3 次是同一个形状（后一轮把某个**覆盖**维度
+  写达标了，代价是别的维度掉一档），那件事由 `loop._regressed` 的
+  `best_coverage_unmet` 治，不需要换排序。
+
+还有一条**结构性**的理由：GEPA 的前沿回答的是「下一步该变异哪个候选」，
+可以同时留着好几个；我们要回答的是「这一次交哪一份正文给用户」，**只能交
+一份**——任何一条「交哪个」的规则都会把前沿重新折回一个标量。换成前沿只是
+把这个折叠挪个地方写，还多出一份状态要进快照。
 """
 
 from __future__ import annotations
@@ -31,3 +48,11 @@ class BestOf:
         rank = st.rank()
         if st.best is None or rank >= st.best[0]:
             st.best = (rank, st.content)
+            # 顺手记下**这一轮当时写够了没有**。唯一的读者是 `_regressed`：
+            # 它已经会放过「这一轮还没写够」的波动，但「最好那轮之所以排名高
+            # 正因为它没写够」是同一件事的另一半，而那一半原来没人挡
+            #（批 22，实拍见 `loop._regressed` 那段注释）。
+            # 记在 bag 里而不是塞进 `st.best` 的元组：`_regressed` 拿
+            # `best_rank[0]` 当「差几个维度」在用，元组一变形那行就得跟着改，
+            # 而它跟这件事没关系。
+            st.bag["best_coverage_unmet"] = st.coverage_unmet()

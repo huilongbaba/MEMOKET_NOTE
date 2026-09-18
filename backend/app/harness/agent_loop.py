@@ -119,6 +119,30 @@ class ToolTrace:
     def used(self) -> bool:
         return bool(self.calls)
 
+    def merge(self, other: "ToolTrace") -> None:
+        """把第二次工具循环的轨迹折进这一份。
+
+        **为什么是一个方法而不是在调用点手写几行**（批 22）：`hooks/block.py`
+        的补图那一轮原来写的是三行手抄——
+        `trace.calls += …` / `trace.iters += …` / 就没了。
+        `stopped_barren` / `error` / `truncated` / `barren_calls` **四个字段
+        一个都没合并回来**，而它们各自有明确的读者：
+        `middleware/runtime` 把 `stopped_barren` 喂给 `policy.adjust`，那是
+        「工具预算 -1」唯一的判据（计划 2.5）——补图那一轮查到头了，策略器
+        永远看不见；`error` 更直接，`hooks/block` 本来就没有
+        `note` / `section` 那种 `trace.error and not facts` 的降级，
+        第二次调用整个失败会**一点痕迹都没有**。
+        写成方法之后「漏一个字段」这件事至少有一个地方可以钉住，
+        `tests/test_tools.py` 里有一条逐字段的闸。
+        """
+        self.calls += other.calls
+        self.iters += other.iters
+        self.barren_calls += other.barren_calls
+        self.truncated = self.truncated or other.truncated
+        self.stopped_barren = self.stopped_barren or other.stopped_barren
+        # 先出的那个错更接近根因；两次都挂的话第二条只是它的后果。
+        self.error = self.error or other.error
+
     def summary(self) -> list[dict]:
         return [{"tool": n, "args": a, "result": r[:400]} for n, a, r in self.calls]
 
@@ -253,7 +277,15 @@ async def gather_context(
             # 工具阶段失败不该让续写跑不起来——退回「没查」，让续写照常进行。
             # 这跟修订调用失败的处理是同一个原则：不是关键路径就不许炸掉主流程。
             trace.error = f"{type(exc).__name__}: {exc}"
-            return [], trace
+            # **已经配平的那几条照样交出去**（批 22）。原来写的是 `return [], trace`，
+            # 而那一半跟 `trace` 对不上：`trace.calls` 里明明有第 1 轮查到的东西、
+            # `trace.used` 是 True，消息列表却是空的。`hooks/note` / `hooks/section`
+            # 用的是 `trace.as_facts()`，所以从来没露馅；**`hooks/block` 用的正是
+            # `extra`**，于是补图那一轮的「上面已经查到的数据里，挑最值得看的画成图」
+            # 指向一个空的「上面」，模型手上零数据被要求画图。
+            # 交出去是安全的：异常发生在把这一轮的 assistant 消息 append 进去**之前**，
+            # 此刻 `extra` 里每一条 `tool_call` 都已经有对应的 tool 回复。
+            return extra, trace
 
         calls = msg.get("tool_calls") or []
         if not calls:
@@ -264,6 +296,28 @@ async def gather_context(
 
         kept, truncated = _cap_calls(calls, iteration=trace.iters)
         trace.truncated = trace.truncated or truncated
+        # **一条都没留下就当这一轮没发生，不许把空的 `tool_calls` 摆进消息列表。**
+        # 批 22 查出来的，跟批 13 那条是同一个形状的另一个入口：那次是
+        # 「assistant 宣称了 3 个 tool_call，后面只跟了 2 条 tool 回复」，这次是
+        # 「assistant 宣称了 0 个」——接口对空数组同样是硬校验
+        # （`Invalid 'messages[N].tool_calls': empty array`），一样直接 400。
+        #
+        # 走得到吗：第 2 轮起深度门（`_cap_calls` 的 `iteration >= 1`）会把
+        # 纯广度的调用整批丢掉，而 `DEPTH_TOOLS` 上面那段注释记着的实测正是
+        # **「4 次真实采样的工具循环全部撞上限，模型每轮都在广度上把预算花光
+        # ——并行发 3-5 个 `search_memory`」**。也就是说「第 2 轮只发广度工具」
+        # 恰恰是观测到的常态，而不是边角料。
+        #
+        # 后果有两档：① 这条消息进 `convo`，下一次 `complete_raw` 当场 400，
+        # 被下面那个 `except` 吞成 `return [], trace`，第 1 轮查到的全丢；
+        # ② 要是它落在最后一轮，就原样返回给调用方，`hooks/block.prepare`
+        # 把 `msgs + extra` 喂给补图那一轮，同样 400、同样被吞——**画不出图
+        # 而且没有任何痕迹**。
+        #
+        # 为什么是 `break` 不是 `continue`：`convo` 没变、`spec` 也没变，再问
+        # 一次模型只会再发同一批广度调用，白烧一次 20-90 秒的调用。
+        if not kept:
+            break
         msg = dict(msg)
         msg["tool_calls"] = kept
         convo.append(msg)
