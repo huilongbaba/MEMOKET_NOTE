@@ -19,6 +19,7 @@ import type { SelectionAction } from './components/SelectionMenu'
 import type { Note, TreeRow } from './api'
 import { runP10 } from './probesP10'
 import { runP11 } from './probesP11'
+import { runP12 } from './probesP12'
 
 export type ProbeCtx = Record<string, any>
 
@@ -34,6 +35,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.startsWith('p10:')) { void runP10(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // P11：智能续写跑完 ⌘Z 几次撤干净（撤销分组），代码在 probesP11.ts
   if (probe?.startsWith('p11:')) { void runP11(probe, ctx as ProbeCtx & { notes: Note[] }); return }
+  // P12：完成标准可检查 + 目录 = 计划（右栏「计划」页签的前后对比），代码在 probesP12.ts
+  if (probe?.startsWith('p12:')) { void runP12(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
   const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
@@ -884,7 +887,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     const n = notes.find((x) => x.id === probe.slice(8))
     if (n) { harnessProbeDone.current = true; void (async () => {
       await switchTo(n)
-      setTimeout(() => setPaneFocus({ id: 'outline', n: 1 }), 800)
+      setTimeout(() => setPaneFocus({ id: 'plan', n: 1 }), 800)   // P12：目录并进了「计划」页签
       setTimeout(() => { const sc = document.querySelector('.note-scroll'); if (sc) sc.scrollTop = sc.scrollHeight * 0.45 }, 2500)
     })() }
   }

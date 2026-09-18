@@ -1815,3 +1815,73 @@ P8b 同一位置的原文——`3a3a` 指标段之后（P8 是一句弃答 + 两
 
   **先估后跑**：估 0.2M，实际 **0.38M，估低 1.9 倍**——带意图那一跑「每个节点带日期和依据」逼它多查了两轮（19 次工具调用）。跟 P8 同一条教训：轮数由第 1 轮拿到什么定。
 - 假服务 / 桌面壳探针跑了 4 次（after ×2、before ×2——第一版假模型四片没换行，`hooks/note.produce` 攒到一个 delta，修前量不出片段级撤销，改成带换行重跑）。
+---
+
+## P12 · 第 775 轮：C2 agent-native 再落地两条——完成标准可检查 + 目录 = 计划（2026-09-19）
+
+> HEAD 开工时 `e54f285`（worktree `agent-a42a4178ad9bbefbe`）。**没碰** `app/harness/**`、`hooks/*`、`MarkdownEditor` 的 undo 封装、`AgentActivity.tsx`、`relations` 后端（另一个 agent 在改）。
+> 后端只动了 `editor/intent.py` + `schemas.py`（意图多存一个 `checked` 列表）。截图全部跑在 `KITE_DATA_DIR=$S/p12data`（p10data 的拷贝；`0eecee3d7b94` / `574f4ff29956` 的 spine / beats 从真库**只读**取回——p10data 里那份被 P10 的假模型写成了一段 JSON）
+> + 假模型 `fakellm10.py`（这批零模型，假服务只是让后台不报错），`p12run.sh` 一条前台命令；探针 `probesP12.ts`（`p12:tab / tick / jump`）。截图 `$S/p12-*.png`（14 张）。
+> 六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### 0. 挑了哪两条、为什么
+
+P9 剩下四条候选。**改动的分层历史**（§1 第 4 行）看了一遍：`ChangeLayersPanel` + `roundDiff` 的 `turnLayerOn / turnLayerOff / acceptLayer / dropLayer` 9 月 12 日已经把「三层各自开关、留 ① 关 ②③」做完了，
+差的只剩「历史版本保留每次烧之前的快照」——在 `revision` 后端，这批不许碰，不算候选。**材料托盘**（§3.4）要新表 + 托盘 UI + 三个按钮改范围，一批装不下、而且用户第一天看不到（托盘空着）。
+剩两条都**不需要新表、用户打开一篇就看得见**，而且是同一件事的两半——判据 3 的两条推论「计划要看得见」「每一轮的判据要看得见」：
+
+| 挑的 | 兑现哪条判据 | 解哪个痛点 | 用户第一天怎么感受到 |
+|---|---|---|---|
+| **A. 完成标准可检查**（§3.1，§5 表「完成标准可检查」，P9 下一步 ②）：意图里那句「完成标准」拆成一条条，代码判得了的当场判并说为什么（字数、每条有日期 / 出处、各有一节、结论在前），判不了的给一个勾、勾了落库 | 判据 3「每一轮的判据要看得见」——写作的判据不再是 prompt 里一句 `DONE_HINT`，是右栏第一格里能打勾的清单 | 7（检查内容跟 AI 来回搞）、13（汇报「事实也不一定对」——「每条有出处」直接点名哪几条没有） | 打开「创业反思」，标题下「完成标准」后面挂着 `0/2`，右栏「计划」第一格：✗ 每个结论有事实支撑「5 段里 5 段没有出处」/ ☐ 下次怎么做写成可执行的条目「代码判不了，你来判」 |
+| **B. 目录 = 计划**（§3.5，§5 表「目录 = 计划 + 状态」）：右栏不再有单独的「目录」页签；「计划」= 完成标准 + 目录（每节带「空 / 草稿 / 有依据」+ 用了几条材料）+ 骨架（节拍的「已写 / 待补」变成同一套状态标，带行号的能点）+ 执行 | 判据 3「计划要看得见」——§1 表第 3 行「骨架是点一下生成的元数据」：现在目录本身就是计划，哪节空着一眼看见 | 3、13（零散笔记汇成汇报：哪节还没填） | 打开「创业一年回顾」：`9 节 · 空 8 · 草稿 1 · 有依据 0`，APP / 硬件 / 营销与PR… 八个「空」的虚线标；「4 月 10 日产品周会」：硬件「有依据 2」、APP「有依据 4」、市场「草稿」 |
+
+### 1. 完成标准可检查（§3.1）✔
+
+- **用户怎么发现**：P9 把「完成标准」写进了 system 第一段，但它只是一句话——写完了到底达没达标，还是得自己读一遍、或者点「校验」再跟 AI 来回；方案 §3.1 原话「完成标准是可检查的（每条进展有日期、有依据、≤ 800 字…），校验按它核」。
+- **复现**：`p12-checks-before-{light,dark}.png`：「创业反思」标题下写着「完成标准：每个结论有事实支撑；下次怎么做写成可执行的条目」，右栏「计划」只有写作骨架——那两条没有任何地方核。
+- **改了什么**：
+  `util/doneChecks.ts`（纯函数）：`splitDone`（分号 / 句号 / 换行拆，逗号不拆）、`units`（「每条」= 列表项；一条列表都没有就按 ≥20 字的段落，标题 / 围栏不算）、`checkDoneItem`（字数上限 / 下限、每条有日期、有依据 / 出处 / 引用（`[id]` / `note://` / http 都算；「数字有出处」只看含数字的条）、
+  「范围、里程碑、风险各有一节」（看 `#` 标题）、结论在前、写下来就算完；其余回 null = 要你判）、`checkDone` / `doneSummary`。
+  `components/PlanChecks.tsx`：右栏「计划」第一格——✓ / ✗ + 为什么（「3 条里 1 条没有日期」）；要你判的是 `<input type=checkbox>`（键盘能按），勾了走 `saveIntent` 落进 `notes.intent.checked`（后端 `intent.normalize` 收：只认字符串、去重、封顶 20 条；`schemas.NoteIntent.checked`）；
+  空的说「去填」（点了聚焦标题下的输入框）。`DocIntentRow`：「完成标准」后面挂 `n/m` 角标（没过的黄、全过绿），点一下右栏切到「计划」——放在 `<label>` 外面（里面会跟输入框抢点击）。
+  测试：前端 `p12Plan.test.ts` 拆条 / 单位 / 六类判法 / manual 与勾选 / resolveIntent 保留 checked / PlanChecks 与角标渲染；后端 `test_p12_plan.py` normalize 收 checked、不进 prompt、PUT / GET 带回、老数据无字段不 500；P9 的 roundtrip 断言补上 `checked: []`。
+- **依据**：§3.1「完成标准是可检查的」；§5 表 3.1 差距「完成标准可检查」；判据 3 推论二「每一轮的判据要看得见：哪一维不达标、是代码判的还是模型判的」——这里全是代码判的，判不了的明说「代码判不了，你来判」，不假装。P1 的「正文永远 `--fg`」：条目原文 `--fg`，「为什么」`--muted`。
+- **前后对比**：`p12-checks-before-{light,dark}.png` → `p12-checks-after-{light,dark}.png`（标题下 `0/2` 黄标；右栏「完成标准 0/2 · ✗ 每个结论有事实支撑 / 5 段里 5 段没有出处 · ☐ 下次怎么做写成可执行的条目 / 代码判不了，你来判」）；
+  `p12-tick-after-light.png` + 日志 `checked-before=false → checked-after=true chip="1/2"`（勾一下，角标从 0/2 变 1/2，落库）。
+- **下一步**：① 「每条」的单位是列表项优先——周会那种「要点列表 + 带出处的展开段」（`f5e34e385aac`）被判成「7 条里 7 条没有出处」，出处在下面的段落里；该把条目后面紧跟的段落里的出处算给那条；
+  ② 「有负责人」判不了（中文人名没法认），现在跟日期写在一条里时只核日期那半；③ 这份清单还没进 harness 的 checks（`app/harness/**` 另一条线）——进了之后「代码判的」和「模型判的」才能并排。
+
+### 2. 目录 = 计划（§3.5）✔
+
+- **用户怎么发现**：右栏「目录」和「计划」是两个页签：目录只是标题列表，看不出哪节还是空的；计划里的骨架节拍标着「已写 / 待补」，但跟目录对不上。方案 §3.5「目录 = 计划（每个标题带状态和「用了什么材料」）」；§1 表第 3 行「默认状态下文档不知道自己要干什么」。
+- **复现**：`p12-outline-before-{light,dark}.png`：「创业一年回顾」的「目录」页签九个标题一列灰字，APP / 硬件 / 研发…下面一个字没有也看不出来。
+- **改了什么**：
+  `util/sectionStatus.ts`（纯函数）：`sectionStatuses`（每节到下一个同级或更高级标题为止，子节算进父节：空 = 一个字没有 / 草稿 = 有字没出处 / 有依据 = 引了 `[id]` 或链了 `note://`，并数出处条数 + 链接篇数）、`sectionSummary`、`materialsText`；
+  `splitBeatLabel`（后端 `skeleton.py::split_beat_label` 的前端版——多一道「标签后面得跟标点 / 括号 / （正文第 / 行尾」：真库 `574f` 第 2 条「已写部分先建立…」是句子开头，第一版实拍被劈成「已写 部分先建立…」）。
+  `DocumentOutline` 加 `withStatus`：每行右端一个状态标 + 顶上「9 节 · 空 8 · 草稿 1 · 有依据 0」，悬停看字数 / 材料；退化目录（「xx：」短行 / 段落）不算状态。`SkeletonPanel`：节拍的「已写 / 待补」变成 `.plan-state` 标，带行号的是按钮、点了 `jumpToLine`。
+  `App.tsx`：删掉 `outline` 页签；`plan` 页签 = `[PlanChecks, 目录, 骨架, 执行]`（跑着的时候执行在前）；`probes.ts` 的 `outline:` 探针改切 `plan`。CSS：`.plan-state.{empty,draft,sourced,written,missing}` 一套——空 ≈ 待补（虚线灰）、草稿 ≈ 已写（描边正文色）、有依据（绿实心底）。
+  测试：`p12Plan.test.ts` 状态 / 父子节 / 材料数 / 节拍标签六种写法 / App 源码没有 outline 页签 / SkeletonPanel 渲染。
+- **依据**：§3.5「目录 = 计划（每个标题带状态和「用了什么材料」）」；§5 表 3.5 差距「目录 = 计划 + 状态」；「跟骨架的已写 / 待补对上」= 同一套 `.plan-state`。状态**全部从正文算出来、零存储**——「已核对 / 已定稿」两档需要存，等 harness 那条线（判据贴节旁）。
+- **前后对比**：`p12-outline-before-{light,dark}.png` → `p12-outline-after-{light,dark}.png`（「计划」页签：目录九节带状态标、8 个「空」、骨架第 3 条起「已写」标）；
+  `p12-sourced-after-{light,dark}.png`（`shot-demo` 的「4 月 10 日产品周会」：硬件「有依据 2」、APP「有依据 4」、市场「草稿」，骨架四条「已写」标）；`p12-jump-after-light.png`（点目录第 9 节，光标跳到「反思与展望」）。
+- **下一步**：① 「写作中」这一档——harness 正在写哪一节现在看不出来（`AgentRound` 没带节的信息，`AgentActivity` 这批不许碰）；② 「自动推进」开关（§3.5）没做；③ 目录的「当前节」高亮跟着滚动区顶部走，点最后一节跳过去之后高亮的是上一节（`p12-jump` 实拍 `active=团队建设`），P7 之前就这样，是 outline 的老规则，没动。
+
+### 突变验（`$S/p12_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复，7/7 红）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `units` 永远按段落（列表项不算「每条」） | p12Plan「每条进展有日期：3 条里 1 条没有」 |
+| 字数上限判不了（回 null） | p12Plan「字数上限 / 下限」 |
+| 目录状态全当草稿 | p12Plan「空 = 标题下面…」 |
+| 节拍标签不要求后面跟标点 | p12Plan「「已写部分先建立…」是句子开头不是标签」 |
+| PlanChecks 要你判的不是 checkbox | p12Plan「PlanChecks：…是 checkbox」 |
+| 右栏把「目录」页签加回来 | p12Plan「右栏不再有单独的「目录」页签」 |
+| 后端 `normalize` 丢掉 `checked` | `test_p12_plan.py` normalize / 落库带回 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2134 passed**（基线 2131；+3 `test_p12_plan.py`）。
+- 前端 `npm test`：**59 文件 / 359 条**（基线 58 / 343；+`p12Plan.test.ts` 16 条），exit 0；`check-css-classes` / `check-ui-tokens` / `check-a11y` / `check-api-wired` / `check-busy` / `check-margin-dots` 全绿（第一版 CSS 写了不存在的 `--line-2` / `--line-strong`，改成 `--mk-line-2` / `--mk-line-strong`）。
+- 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**（所有探针跑在 `p12data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p12userdata`）。
+- 真模型调用 **0 次**（两条都是零模型；假服务只是陪跑）；桌面壳截图跑了 16 次。
+- 截图（浅 / 深各一张）：`p12-checks-before-{light,dark}` → `p12-checks-after-{light,dark}`；`p12-outline-before-{light,dark}` → `p12-outline-after-{light,dark}`；加 `p12-sourced-after-{light,dark}`、`p12-tick-after-light`、`p12-jump-after-light`。

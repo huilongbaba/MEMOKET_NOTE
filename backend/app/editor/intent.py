@@ -17,6 +17,8 @@ FIELDS = ("goal", "reader", "done")
 FIELD_LABEL = {"goal": "目标", "reader": "读者", "done": "完成标准"}
 FIELD_MAX = 200
 SOURCES = ("", "prefill", "user")
+# 「完成标准」最多勾几条（一句话拆不出这么多条；防止接口塞垃圾）
+CHECKED_MAX = 20
 
 # 拼进 system 的开头那句。**说清「以它为前提」**：模型看到的是一条约束，不是一段背景。
 HEAD = "这篇要干什么（写作者定的，下面所有动作都以它为前提）："
@@ -25,12 +27,22 @@ DONE_HINT = "写完的东西要满足「完成标准」；不满足就在产出�
 
 
 def normalize(raw: object) -> dict:
-    """任意形状 → {goal, reader, done, source}。字段收成一行、封顶 FIELD_MAX；
-    source 只认 prefill / user，其它当空。不是 dict 就是空意图。"""
+    """任意形状 → {goal, reader, done, source, checked}。字段收成一行、封顶 FIELD_MAX；
+    source 只认 prefill / user，其它当空。不是 dict 就是空意图。
+    `checked`（P12 §3.1「完成标准可检查」）：用户勾过的那几条「完成标准」原文——代码判不了的才要人勾，
+    勾了要记住（换一篇再回来还在），跟三个字段一起存，不另开表。只收字符串、去重、封顶 CHECKED_MAX 条。"""
     d = raw if isinstance(raw, dict) else {}
     out = {k: " ".join(str(d.get(k) or "").split())[:FIELD_MAX] for k in FIELDS}
     src = str(d.get("source") or "")
     out["source"] = src if src in SOURCES else ""
+    raw_checked = d.get("checked")
+    checked: list[str] = []
+    if isinstance(raw_checked, list):
+        for x in raw_checked:
+            s = " ".join(str(x or "").split())[:FIELD_MAX] if isinstance(x, str) else ""
+            if s and s not in checked:
+                checked.append(s)
+    out["checked"] = checked[:CHECKED_MAX]
     return out
 
 

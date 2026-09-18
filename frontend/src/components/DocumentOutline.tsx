@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { EditorView } from '@codemirror/view'
+import { SECTION_LABEL, materialsText, sectionStatuses, sectionSummary } from '../util/sectionStatus'
 
 type Heading = { level: number; text: string; pos: number }
 
@@ -84,13 +85,19 @@ export function parseFallbackAnchors(content: string): FallbackOutline {
 /** Jump-to-heading outline -- cheap to add now that the editor is real
  * markdown with real heading syntax, and it's table-stakes for anything
  * pitching itself as a Notion-class editor for longer documents. */
-export default function DocumentOutline({ content, viewRef }: {
+export default function DocumentOutline({ content, viewRef, withStatus = false }: {
   content: string
   viewRef: RefObject<EditorView | null>
+  /** 目录 = 计划（P12 §3.5）：每一节带状态（空 / 草稿 / 有依据）和「用了什么材料」。只对真正的 `#` 标题算——
+   *  按「xx：」短行 / 段落退化出来的目录，每一项本身就是一段，状态没意义。 */
+  withStatus?: boolean
 }) {
   const real = useMemo(() => parseHeadings(content), [content])
   const fallback = useMemo<FallbackOutline | null>(() => (real.length ? null : parseFallbackAnchors(content)), [content, real.length])
   const headings = useMemo(() => (real.length ? real : (fallback?.items ?? [])), [real, fallback])
+  const statuses = useMemo(() => (withStatus && real.length ? sectionStatuses(content, real) : []), [withStatus, content, real])
+  const statusAt = useMemo(() => new Map(statuses.map((s) => [s.pos, s])), [statuses])
+  const summary = useMemo(() => sectionSummary(statuses), [statuses])
   // 正在看哪一节：跟着正文滚动区顶部那一行走（Obsidian 的 outline 也这么做）。
   // 滚动的是 .note-scroll 不是 CM 自己，所以听它。
   const [activePos, setActivePos] = useState(-1)
@@ -114,7 +121,11 @@ export default function DocumentOutline({ content, viewRef }: {
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>('.outline-item.active')?.scrollIntoView({ block: 'nearest' })
   }, [activePos])
-  if (headings.length === 0) return <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>正文里的 <code>#</code> 标题会列在这里，点一下跳过去。</p>
+  if (headings.length === 0) return (
+    <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
+      正文里的 <code>#</code> 标题会列在这里，点一下跳过去{withStatus ? '；每一节带状态（空 / 草稿 / 有依据），空的就是还没写的' : ''}。
+    </p>
+  )
 
   function jump(pos: number) {
     const view = viewRef.current
@@ -135,21 +146,36 @@ export default function DocumentOutline({ content, viewRef }: {
             : `这篇没有 # 标题，按段落列（${headings.length} 段，每段取首句）；加上 # 标题就按标题列。`}
         </p>
       )}
+      {statuses.length > 0 && (
+        <p className="muted plan-outline-summary" title="每一节的状态从正文算出来：空 = 标题下面一个字都没有；草稿 = 有字、没出处；有依据 = 引用了知识库事实或链到了别的笔记">
+          {statuses.length} 节 · 空 {summary.empty} · 草稿 {summary.draft} · 有依据 {summary.sourced}
+        </p>
+      )}
       <div className="stack" style={{ gap: 2 }} ref={listRef}>
-        {headings.map((h, i) => (
-          <a
-            key={i}
-            className={'link outline-item' + (h.pos === activePos ? ' active' : '')}
-            style={{
-              display: 'block', fontSize: 'var(--t-sm)',
-              paddingLeft: 6 + (h.level - 1) * 12,
-              textDecoration: 'none',
-            }}
-            onClick={() => jump(h.pos)}
-          >
-            {h.text}
-          </a>
-        ))}
+        {headings.map((h, i) => {
+          const s = statusAt.get(h.pos)
+          const mats = s ? materialsText(s) : ''
+          return (
+            <a
+              key={i}
+              className={'link outline-item' + (h.pos === activePos ? ' active' : '') + (s ? ' with-state' : '')}
+              style={{
+                display: s ? 'flex' : 'block', fontSize: 'var(--t-sm)',
+                paddingLeft: 6 + (h.level - 1) * 12,
+                textDecoration: 'none',
+              }}
+              title={s ? `${SECTION_LABEL[s.state]}${s.words ? ` · ${s.words} 字` : ''}${mats ? ` · ${mats}` : ''}` : undefined}
+              onClick={() => jump(h.pos)}
+            >
+              <span className="outline-text">{h.text}</span>
+              {s && (
+                <span className={'plan-state ' + s.state}>
+                  {SECTION_LABEL[s.state]}{s.cites + s.links > 0 ? ` ${s.cites + s.links}` : ''}
+                </span>
+              )}
+            </a>
+          )
+        })}
       </div>
     </div>
   )

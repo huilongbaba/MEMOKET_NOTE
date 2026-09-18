@@ -47,7 +47,7 @@ def test_intent_normalize_收成一行_封顶_来源只认两种():
     assert d["done"] == ""
     assert d["source"] == "prefill"
     assert intent.normalize({"source": "robot"})["source"] == ""
-    assert intent.normalize("not a dict") == {"goal": "", "reader": "", "done": "", "source": ""}
+    assert intent.normalize("not a dict") == {"goal": "", "reader": "", "done": "", "source": "", "checked": []}
 
 
 def test_intent_as_text_只列填了的_跟前端同一格式():
@@ -76,10 +76,11 @@ def test_intent_block_空意图一个字不加_有意图是第一段():
 def test_intent_put_get_roundtrip(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     n = c.post("/api/notes", headers=H, json={"title": "第 37 周周报", "content": "x"}).json()
-    assert n["intent"] == {"goal": "", "reader": "", "done": "", "source": ""}     # 库里没有 = 四个空串，不是缺字段
+    # 库里没有 = 四个空串 + 空的勾选列表（P12 加的 checked），不是缺字段
+    assert n["intent"] == {"goal": "", "reader": "", "done": "", "source": "", "checked": []}
     r = c.put(f"/api/notes/{n['id']}/intent", headers=H, json={"goal": "本周汇报", "reader": "老板", "done": "每条有日期", "source": "user"})
     assert r.status_code == 200
-    assert r.json()["intent"] == {"goal": "本周汇报", "reader": "老板", "done": "每条有日期", "source": "user"}
+    assert r.json()["intent"] == {"goal": "本周汇报", "reader": "老板", "done": "每条有日期", "source": "user", "checked": []}
     got = next(x for x in c.get("/api/notes", headers=H).json() if x["id"] == n["id"])
     assert got["intent"]["goal"] == "本周汇报"
     # 全空也照存 = 「这篇不要意图」

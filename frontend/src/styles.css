@@ -1522,6 +1522,47 @@ kbd {
 .outline-item { padding: 3px 6px 3px 0; border-radius: var(--r-sm); border-inline-start: 2px solid transparent; color: var(--muted); }
 .outline-item:hover { color: var(--fg); background: var(--hover); }
 .outline-item.active { color: var(--accent); border-inline-start-color: var(--accent); font-weight: var(--w-semi); }
+/* 目录 = 计划（P12 §3.5）：每一节右端一个状态标；标题文字占满、状态靠右、不换行 */
+.outline-item.with-state { align-items: baseline; gap: var(--s-3); }
+.outline-item .outline-text { flex: 1; min-width: 0; }
+.plan-outline-summary { font-size: var(--t-xs); margin: 0 0 6px; cursor: help; }
+/* 状态标：目录每一节的「空 / 草稿 / 有依据」和骨架节拍的「待补 / 已写」**同一套**——
+   空 ≈ 待补（描边、灰：还没写的），草稿 ≈ 已写（描边、正文色），有依据（实心绿：有出处的）。
+   button 版（带行号可跳）和 span 版长得一样。 */
+.plan-state {
+  display: inline-block; flex: none; font-size: var(--t-xs); line-height: 1.5; padding: 0 6px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); color: var(--muted); background: transparent; white-space: nowrap; font-weight: var(--w-med);
+  font-family: inherit; cursor: default;
+}
+button.plan-state { cursor: pointer; }
+button.plan-state:hover { border-color: var(--accent); color: var(--accent); }
+.plan-state.empty, .plan-state.missing { border-style: dashed; color: var(--muted); }
+.plan-state.draft, .plan-state.written { color: var(--fg); border-color: var(--mk-line-strong); }
+.plan-state.sourced { color: var(--ins); border-color: var(--ins); background: var(--ins-bg); }
+/* 完成标准清单（P12 §3.1）：条目原文是正文色，「为什么」是灰的元信息 */
+.plan-checks { list-style: none; margin: 0; padding: 0; }
+.plan-check { padding: 4px 0; border-bottom: 1px solid var(--mk-line-2); }
+.plan-check:last-child { border-bottom: 0; }
+.plan-check-row { display: flex; gap: var(--s-3); align-items: baseline; font-size: var(--t-md); color: var(--fg); cursor: default; }
+label.plan-check-row { cursor: pointer; }
+.plan-check-row input[type=checkbox] { margin: 0; flex: none; position: relative; top: 1px; }
+.plan-check-text { flex: 1; min-width: 0; line-height: 1.5; }
+.plan-check-mark { flex: none; width: 14px; text-align: center; font-weight: var(--w-bold); }
+.plan-check-mark.pass { color: var(--ins); }
+.plan-check-mark.fail { color: var(--warn); }
+.plan-check.manual input:checked + .plan-check-text { color: var(--muted); }
+.plan-check-why { font-size: var(--t-xs); margin: 2px 0 0 20px; line-height: 1.5; }
+.plan-check-sum { font-size: var(--t-xs); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0 6px; color: var(--muted); cursor: help; }
+.plan-check-sum.ok { color: var(--ins); border-color: var(--ins); }
+.plan-check-sum.fail { color: var(--warn); border-color: var(--warn); }
+/* 标题下「完成标准」后面的角标：跟右栏的 .plan-check-sum 同一套色 */
+.doc-intent-check {
+  font-size: var(--t-xs); line-height: 1.5; border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0 6px;
+  color: var(--muted); background: transparent; cursor: pointer; font-family: inherit; margin-inline-start: var(--s-2); white-space: nowrap;
+}
+.doc-intent-check:hover { border-color: var(--accent); color: var(--accent); }
+.doc-intent-check.ok { color: var(--ins); border-color: var(--ins); }
+.doc-intent-check.fail { color: var(--warn); border-color: var(--warn); }
 
 /* 历史版本：与当前对比 */
 .revision-diff { white-space: pre-wrap; font-size: var(--t-md); line-height: 1.7; max-height: 32vh; overflow-y: auto; }
