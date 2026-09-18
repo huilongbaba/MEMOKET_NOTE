@@ -1,0 +1,96 @@
+"""把第 13 批跑批时被写坏的两篇真实笔记恢复回跑批前的样子。
+
+**背景（2026-09-17）**：批 13 的实施 agent 报告写着「一篇笔记都没写」，
+而事后核对 `notes.max(updated_at)` 从 `2026-09-16T02:53` 变成了 `2026-09-17T15:54`。
+查下来两篇 terrence 的真实笔记被改了：
+
+    e78306202d78 「产品取舍」   1976 字 → 650 字    ← **丢了 1326 字用户自己写的内容**
+    06647b9c2031 「未命名」     2762 字 → 5279 字   ← 被 harness 产出污染
+
+这正是 `harness_quality_sample.py` 开头那段警告说的失效模式
+（「之前三篇真实笔记的原文因为『备份-还原』机制的结构性盲区永久丢失」）。
+这次没有永久丢失——`data/backups/notes-20260917.sqlite3` 是 09-17 启动时做的，
+两篇都还是跑批前的原样（`updated_at` 停在 2026-09-02 / 09-03）。
+
+**这个脚本不会被自动跑。** 写笔记库是用户的数据，要用户自己决定。
+
+用法：
+    cd backend && .venv/bin/python scripts/restore_damaged_notes.py --dry-run   # 先看会改什么
+    cd backend && .venv/bin/python scripts/restore_damaged_notes.py             # 真的改
+
+恢复本身也是可逆的：改之前会把「现在这份（被写坏的）」存成一条
+`reason='before_restore'` 的 `note_revisions`，跟产品里「恢复某版之前先存一份」
+同一条规矩。
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import sqlite3
+import sys
+import uuid
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+DB = HERE.parent / "data" / "notes.sqlite3"
+BACKUP = HERE.parent / "data" / "backups" / "notes-20260917.sqlite3"
+
+# 只动这两篇，写死。**不做「凡是 updated_at 晚于 X 的都恢复」这种事**——
+# 那会把用户自己在这期间真的编辑过的东西一起回滚掉。
+DAMAGED = ("e78306202d78", "06647b9c2031")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true", help="只打印会改什么，不写")
+    args = ap.parse_args()
+
+    if not BACKUP.is_file():
+        print(f"找不到跑批前的备份：{BACKUP}")
+        return 1
+
+    src = sqlite3.connect(f"file:{BACKUP}?mode=ro", uri=True)
+    dst = sqlite3.connect(DB)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    changed = 0
+
+    for nid in DAMAGED:
+        orig = src.execute("SELECT user_id,title,content,updated_at FROM notes WHERE id=?",
+                           (nid,)).fetchone()
+        cur = dst.execute("SELECT user_id,title,content FROM notes WHERE id=?", (nid,)).fetchone()
+        if orig is None or cur is None:
+            print(f"  {nid}: 备份或当前库里找不到，跳过")
+            continue
+        if cur[2] == orig[2]:
+            print(f"  {nid} 「{orig[1][:14]}」：已经是原样，不用动")
+            continue
+
+        print(f"  {nid} 「{orig[1][:14]}」：{len(cur[2])} 字 → {len(orig[2])} 字（跑批前那一份）")
+        if args.dry_run:
+            continue
+
+        # 恢复要可逆：先把现在这份存成一个版本
+        dst.execute(
+            "INSERT INTO note_revisions (id,user_id,note_id,title,content,reason,created_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (uuid.uuid4().hex, cur[0], nid, cur[1], cur[2], "before_restore", now))
+        dst.execute("UPDATE notes SET title=?, content=?, updated_at=? WHERE id=?",
+                    (orig[1], orig[2], orig[3], nid))
+        changed += 1
+
+    if not args.dry_run and changed:
+        dst.commit()
+        print(f"\n恢复了 {changed} 篇。现在：")
+        for nid in DAMAGED:
+            r = dst.execute("SELECT title,length(content),updated_at FROM notes WHERE id=?",
+                            (nid,)).fetchone()
+            if r:
+                print(f"  {r[0][:14]:<16} {r[1]:>6} 字  {r[2][:19]}")
+    elif args.dry_run:
+        print("\n（--dry-run，什么都没写）")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

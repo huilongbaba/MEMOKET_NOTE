@@ -292,11 +292,24 @@ def test_从库里取数的脚本必须走血缘判据():
     「bench 里不许再长出一份 `FIXTURE_USERS`」）：那一条管的是「别再写一份
     名单」，这一条管的是「取了数就得用名单」——两次出事正好是这两个形状。
     """
+    # **白名单：这两个脚本按定义就该看整张表，筛掉任何一篇都会让它们失效。**
+    # 每一条都要写清楚为什么——白名单不写理由，下一个人就只会往里加。
+    WHOLE_TABLE_ON_PURPOSE = {
+        # 给整张笔记表做指纹，用来核对「这次跑批有没有动用户的笔记」。
+        # 它要的正是「一篇都不许漏」，按血缘筛掉几篇 = 那几篇被改了也看不见。
+        # 逼出它的那次：2026-09-17 批 13，agent 报告「一篇笔记都没写」，
+        # 而两篇真实笔记被改了，其中一篇丢了 1326 字。
+        "db_guard.py",
+        # 按写死的 id 恢复那两篇。目标是具体的两个 id，不是「某一类笔记」。
+        "restore_damaged_notes.py",
+    }
     scripts = Path(__file__).resolve().parent.parent / "scripts"
     touched = []
     for f in sorted(scripts.glob("*.py")):
         if f.name == f"{_LINEAGE_MODULE}.py":
             continue                      # 它自己就是那份判据
+        if f.name in WHOLE_TABLE_ON_PURPOSE:
+            continue
         src = f.read_text(encoding="utf-8")
         if "notes.sqlite3" not in src and "FROM notes" not in src:
             continue
@@ -305,6 +318,9 @@ def test_从库里取数的脚本必须走血缘判据():
             f"{f.name} 直接从笔记库取数，却没走 `{_LINEAGE_MODULE}`——"
             "脚本产出和用户产出在库里长得一模一样，筛不掉就是拿脚本的分布当用户的")
     assert touched, "一个从库里取数的脚本都没找到，这条闸在空转"
+    # 白名单会腐烂：脚本删了、改名了，条目留着就变成一个永远不会响的豁免。
+    for name in WHOLE_TABLE_ON_PURPOSE:
+        assert (scripts / name).is_file(), f"白名单里的 {name} 已经不在了，删掉这一条"
 
 
 def test_产品代码不许依赖scripts里的血缘判据():
