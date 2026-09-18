@@ -20,6 +20,8 @@ import type { Note, TreeRow } from './api'
 
 export type ProbeCtx = Record<string, any>
 
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
 export function runProbe(probe: string, ctx: ProbeCtx): void {
   /* 用 `;;` 串起来就是「先跑这个再跑那个」：`open:kb;;rect:.kb-search`。
      （`|` 已经被 `openclick:` 占了，别复用。）
@@ -120,7 +122,6 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 痛点 12：查完一篇旧笔记回来，光标和滚动位置还在不在原处
   if ((probe === 'return-spot' || probe === 'return-spot:kb' || probe === 'return-spot:reload') && notes.length >= 2) {
     const [a, b] = notes
-    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
     void (async () => {
       // 每一步都走 window 事件，不用 ctx 里那份闭包：ctx 是 runProbe 那一刻的快照，
       // 多步切换时里面的 current 早就过时了（第一版这么写，切回来编辑器还停在第二篇）
@@ -274,16 +275,84 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       for (let i = 0; i < 3; i++) svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }))
     }, 12000)
   }
-  if (probe?.startsWith('tap:') && notes.length && !harnessProbeDone.current) {
-    const n = notes.find((x) => x.id === probe.slice(4))
+  // P1（第 768 轮点名那六条）的探针。三条都是**真实操作的重放**，不是摆出来的状态：
+  //   custom-empty:<id>     选一段 → 右键「自定义提示…」→ 什么都不写按 Enter
+  //   slashpick:<key>:<id>  打开笔记（可以是空白）→ 打 `/` → 点菜单里那一项
+  //   margin:<id>:memory    页边圆点算完 + 光标放到第一个含数字的段落 + 右栏切到「记忆」看图例和关系卡
+  //   tap:<id>:scope=<s>    先把记忆范围切到 s 再续写（看「自由续写」那行现在说不说原因）
+  if (probe?.startsWith('custom-empty:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(13))
     if (n) { harnessProbeDone.current = true; void (async () => {
+      await switchTo(n)
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      // 选第一段正文（不是标题、够长）
+      const text = v.state.doc.toString()
+      let from = 0
+      for (const line of text.split('\n')) { if (line.trim().length >= 12 && !line.startsWith('#') && !line.startsWith('```')) break; from += line.length + 1 }
+      const to = Math.min(text.length, (text.indexOf('\n', from) < 0 ? text.length : text.indexOf('\n', from)))
+      v.focus(); v.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) })
+      await wait(300)
+      const c = v.coordsAtPos(from)
+      setSelectionMenu({ x: (c?.left ?? 400) + 40, y: (c?.bottom ?? 300) + 4, text: text.slice(from, to) })
+      await wait(500)
+      await actionsRef.current.handleSelectionAction('custom')
+      await wait(800)
+      const input = document.querySelector('input[aria-label="给 AI 的指令"]') as HTMLInputElement | null
+      input?.focus()
+      input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    })() }
+    return
+  }
+  //   slashpick:<key>:<id>:<文字>  多一段：选中之后往输入框里打这段文字再按 Enter（看真跑的运行块日志，比如「技能」那一行）
+  if (probe?.startsWith('slashpick:') && notes.length && !harnessProbeDone.current) {
+    const [, key, id, typed] = probe.split(':')
+    const n = notes.find((x) => x.id === id)
+    const item = SLASH_ITEMS.find((x) => x.key === key)
+    if (n && item) { harnessProbeDone.current = true; void (async () => {
+      await switchTo(n)
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      let end = v.state.doc.length
+      v.focus()
+      // 空行和 `/` 分两次：`slashTypedAt` 只认「这一次改动插入的正好是一个 /」
+      if (end) { v.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 }, userEvent: 'input.type' }); end += 2 }
+      v.dispatch({ changes: { from: end, insert: '/' }, selection: { anchor: end + 1 }, userEvent: 'input.type' })
+      await wait(600)
+      const row = Array.from(document.querySelectorAll<HTMLElement>('.slash-item'))
+        .find((r) => r.querySelector('.slash-label')?.textContent === item.label)
+      row?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      if (!typed) return
+      await wait(600)
+      const input = document.querySelector('input[aria-label="给 AI 的指令"]') as HTMLInputElement | null
+      if (!input) return
+      // 受控输入框：走原生 setter + input 事件，React 才认
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, decodeURIComponent(typed))
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await wait(200)
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      // 运行块默认折叠；等它跑起来把日志展开，「技能 / 查 / 阶段」那几行才看得见
+      await wait(3500)
+      document.querySelector('.cm-run-head')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      // 运行块在文末（`/` 打在那儿），把它滚进视口
+      const v2 = editorViewRef.current
+      if (v2) v2.dispatch({ effects: EditorView.scrollIntoView(v2.state.doc.length, { y: 'end', yMargin: 40 }) })
+    })() }
+    return
+  }
+  if (probe?.startsWith('tap:') && notes.length && !harnessProbeDone.current) {
+    const [, id, opt] = probe.split(':')
+    const n = notes.find((x) => x.id === id)
+    if (n) { harnessProbeDone.current = true; void (async () => {
+      if (opt?.startsWith('scope=')) api.setMemoryScope(opt.slice(6) as api.MemoryScope)
       await switchTo(n)
       // 光标放到正文中段（第二个二级标题之前），看「从光标处续写」是不是插在那
       setTimeout(() => {
         const v = editorViewRef.current
         if (v) { const t = v.state.doc.toString(); const i = t.indexOf('\n## ', t.indexOf('\n## ') + 1); v.focus(); v.dispatch({ selection: { anchor: i > 0 ? i : Math.floor(t.length / 2) } }) }
       }, 1200)
-      setTimeout(() => void actionsRef.current.runMagicTap(), 1500)
+      // 跑完把正文滚回顶部：「引用知识库 / 自由续写」那一行在编辑器上方，续写会把视口滚到插入处
+      setTimeout(() => void actionsRef.current.runMagicTap().then(() => { const el = document.querySelector('.note-scroll'); if (el) el.scrollTop = 0 }), 1500)
     })() }
   }
   // 写作流三件：`/` 菜单、`@` 引用补全、右栏各标签
@@ -419,8 +488,20 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   }
   // 边缘记忆：打开笔记，等页边圆点算出来
   if (probe?.startsWith('margin:') && notes.length && !harnessProbeDone.current) {
-    const n = notes.find((x) => x.id === probe.slice(7))
-    if (n) { harnessProbeDone.current = true; void switchTo(n) }
+    const [, id, opt] = probe.split(':')
+    const n = notes.find((x) => x.id === id)
+    if (n) { harnessProbeDone.current = true; void (async () => {
+      await switchTo(n)
+      if (opt !== 'memory') return
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      // 光标放到第一个含数字的段落（页边圆点判的正是这种段），右栏「记忆」就会查这段的关系
+      const text = v.state.doc.toString()
+      let at = 0
+      for (const line of text.split('\n')) { if (/\d/.test(line) && !line.startsWith('#') && line.trim().length >= 8) break; at += line.length + 1 }
+      v.focus(); v.dispatch({ selection: { anchor: Math.min(at + 2, text.length) }, effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 120 }) })
+      setPaneFocus({ id: 'memory', n: Date.now() })
+    })() }
   }
   // 改动分层：格式化一层 + 探针塞一行当第二层，看右栏「改动」的分层账本
   if (probe?.startsWith('layers:') && notes.length && !harnessProbeDone.current) {

@@ -11,6 +11,37 @@ export type MarginMark = {
   line: number
   relation: MemoryRelationKind
   say: string
+  /** 这段一共判出几种关系；点只画最要紧的一种 */
+  kinds?: number
+}
+
+/** 六种关系的人话。右栏关系卡、页边圆点的悬停、图例三处同一份。 */
+export const RELATION_LABEL: Record<MemoryRelationKind, string> = {
+  conflict: '冲突', continuation: '延续', corroborated: '印证', unsupported: '缺依据', accumulation: '叠加', merge: '合并',
+}
+
+/** 圆点的规则，一句话（P1-1d，用户第 768 轮问「一个点代表一行还是一段？绿色黄色是什么？」）。
+ *  写在这里而不是散在各处：悬停提示、右栏图例读的是同一句。 */
+export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段），只看含数字 / 日期的段落——判的是量的比对，零模型'
+
+/** 悬停在点上看到的话：这一段 · 关系 · 那句人话 · 规则 · 还有别的没有。 */
+export function markTitle(m: MarginMark): string {
+  const more = (m.kinds ?? 1) > 1 ? `这段还判出另外 ${(m.kinds ?? 1) - 1} 种关系，` : ''
+  return `这一段（第 ${m.line} 行起）· ${RELATION_LABEL[m.relation]}\n${m.say}\n${MARGIN_RULE}\n${more}点一下在右栏「记忆」看全部`
+}
+
+/** 哪些段落会拿去判关系：**跟后端 `relations_batch` 同一条门槛**（≥8 字、含数字、不是标题）。
+ *  不封顶——原来 `.slice(0, 80)` 把 30k 字笔记第 80 个含数字的段落之后全丢了，
+ *  「有的段有点、有的段没有」正是从这儿来的；请求按 80 一批分几次发（后端每批上限 80）。 */
+export const MARGIN_BATCH = 80
+export function marginParagraphs(content: string, clean: (s: string) => string): { text: string; line: number }[] {
+  return paragraphsWithLines(content).map((p) => ({ ...p, text: clean(p.text).trim() }))
+    .filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8)
+}
+export function chunked<T>(xs: T[], n: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n))
+  return out
 }
 
 export const setMarginMarks = StateEffect.define<MarginMark[]>()
@@ -21,7 +52,8 @@ class Dot extends GutterMarker {
   toDOM() {
     const el = document.createElement('span')
     el.className = 'mm-dot mm-' + this.m.relation
-    el.title = this.m.say + '\n点一下看详情'
+    el.title = markTitle(this.m)
+    el.setAttribute('aria-label', RELATION_LABEL[this.m.relation])
     return el
   }
 }

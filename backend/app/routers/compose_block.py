@@ -39,6 +39,27 @@ def _context_block(content: str, cursor: int, span: int = 900) -> tuple[str, str
     return content[max(0, cur - span):cur], content[cur:cur + span // 2]
 
 
+# 指令的长度上限：一条指令不是一篇文档。2000 字够写清「把这段改成给投资人看的
+# 口吻，保留数字，去掉形容词」这种话十遍；超过的多半是把正文误贴进了输入框。
+MAX_PROMPT_CHARS = 2000
+# 哪些模式非要一条指令不可。`table` 故意不在：它的输入框写着「留空则自动判断」，
+# 界面上的承诺要在代码里兑现。
+PROMPT_REQUIRED = ("prompt", "custom", "analysis")
+
+
+def block_precondition(mode: str, prompt: str, selection: str) -> str:
+    """开跑前规则能判死的：返回给用户看的那句话，空串 = 放行。纯函数，前端有同款。"""
+    p = (prompt or "").strip()
+    if mode in PROMPT_REQUIRED and not p:
+        return ("先写一句要它做什么" if mode != "custom"
+                else "先写一句要对选中的这段做什么——什么都不写，它不知道该改成什么样。")
+    if mode == "custom" and not (selection or "").strip():
+        return "没有选中任何文字——先选一段，再右键「自定义提示」。"
+    if len(p) > MAX_PROMPT_CHARS:
+        return f"指令太长了（{len(p)} 字，上限 {MAX_PROMPT_CHARS}）——一句话说要做什么就行，正文不用贴进来。"
+    return ""
+
+
 @router.post("/block")
 async def compose_block(body: ComposeBlockIn, request: Request,
                         user: str = Depends(current_user)):
@@ -52,6 +73,11 @@ async def compose_block(body: ComposeBlockIn, request: Request,
     if not mode:
         raise HTTPException(
             400, f"不认识的模式 {body.mode!r}，可用：{'、'.join(modes.BLOCK)}")
+    # 临界条件（P1-2-B1，计划 §1.3）：空指令、空选区、超长指令。**后端也拦**，
+    # 不只靠前端——前端拦的是「不发请求」，这里拦的是「发了也不花模型调用」。
+    reason = block_precondition(body.mode, body.prompt, body.selection)
+    if reason:
+        raise HTTPException(400, reason)
 
     async def gen():
         before, after = _context_block(body.content, body.cursor)

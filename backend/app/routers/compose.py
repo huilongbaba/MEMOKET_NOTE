@@ -79,6 +79,29 @@ def _fact_exists(user: str):
     return exists
 
 
+def why_no_facts(user: str, content: str, scope: str) -> str:
+    """续写一条材料都没取到时，给用户一句**能照着做**的原因。纯代码、零 LLM。
+
+    三种情况，按"用户能改什么"排：库是空的（去导入）；范围筛掉了（换档）；
+    正文尾巴没命中（换个地方续写 / 先写一句具体的）。
+    """
+    from ..database.kb.scope import SCOPE_LABEL
+    try:
+        mem = UserMemory(user)
+        if mem.is_empty():
+            return "知识库是空的——先导入会议记录或笔记，续写才有材料可引。"
+        if scope not in ("", "all"):
+            texts, _ids, _took = _retrieve(user, content, "", [], limit=6, scope="all")
+            label = SCOPE_LABEL.get(scope, scope)
+            if texts:
+                return (f"记忆范围现在是「{label}」，这一档里没有能用的记录；"
+                        f"「全部」里能取到 {len(texts)} 条。右栏「记忆」顶部可以换档。")
+            return f"记忆范围现在是「{label}」，这一档和「全部」都没查到沾边的记录。"
+        return "拿光标前面这段正文去查，知识库里没有沾边的记录——先写一句具体的（人名、日期、数字）再续写。"
+    except Exception:      # noqa: BLE001 — 解释是附赠的，解释不出来不能影响续写本身
+        return ""
+
+
 def _retrieve(user: str, content: str, spine: str, beats: list[str], limit: int = 8,
               title: str = "", anchor_first: bool = False, scope: str = "all"):
     """Thin alias while the routers migrate; implementation moved to
@@ -147,7 +170,15 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
 
     async def gen():
         meta = {"facts": len(facts), "recall_ms": round(took, 3),
-                "grounded": bool(facts), "sources": facts[:6], "fact_ids": ids[:6]}
+                "grounded": bool(facts), "sources": facts[:6], "fact_ids": ids[:6],
+                "scope": body.scope,
+                # 一条没取到时说清楚**为什么**（P1-1a）。用户第 768 轮：「有时有引用，
+                # 有时无引用」——零调用量下来，terrence 的 19 篇笔记在「全部」档
+                # 篇篇取满 6 条、在「只看笔记」档篇篇 0 条（他的库里没有笔记来源的
+                # 事实）。那个下拉存在 localStorage 里，换过一次就一直是那一档，
+                # 而续写这边只显示「自由续写 · 知识库中没有相关记录」——
+                # **一个用户看不见的条件，在他眼里就是随机**。
+                "why_empty": "" if facts else why_no_facts(user, body.content, body.scope)}
         yield sse("meta", meta)
         written = ""
         stats: dict = {}

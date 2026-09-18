@@ -261,7 +261,16 @@ def test_只读文本类型(env):
 
 
 def test_没有技能时system_prompt一个字不加(env):
+    # 目录**存在但是空的**才叫「没有技能」。目录不存在的话 P1-1b 起会先播种内置的
+    # （没打开过面板的用户不该在每条生成路径上都是零技能）——那是另一条用例。
+    skills.skills_root("u-none").mkdir(parents=True)
     assert prompts.compose_system("基础", "magic_tap", "u-none") == "基础"
+
+
+def test_没有目录的用户第一次用就播种内置技能(env):
+    assert not skills.skills_root("u-fresh").exists()
+    out = prompts.compose_system("基础", "magic_tap", "u-fresh")
+    assert out != "基础" and skills.skills_root("u-fresh").is_dir()
 
 
 def test_匹配scope的body按顺序拼进去(env):

@@ -181,7 +181,15 @@ def load_all(user: str) -> list[Skill]:
 
     root = skills_root(user)
     if not root.is_dir():
-        return []
+        # **没有目录就先播种，而不是当成「一条技能都没有」**（P1-1b）。
+        # 播种原来只挂在 GET /api/skills 上——一个从没打开过技能面板的用户
+        # （或者 localStorage 丢了一次、桌面壳随手生成了一个新身份的用户，
+        # `desktop/src/main.ts` 记着那次实拍）在每一条生成路径上都是零技能，
+        # 而且没有任何报错。`data/` 下 25 个用户目录里 14 个没有 skills/，
+        # 就是这条路留下的。播种是增量、幂等的，这里只在目录不存在时做一次。
+        seed(user)
+        if not root.is_dir():
+            return []
     config = store.skill_configs(user)
     out: list[Skill] = []
     for directory in sorted(root.iterdir()):

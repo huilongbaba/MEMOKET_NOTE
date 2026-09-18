@@ -12,11 +12,20 @@ Two paths, and the default is the second one:
 
 The two sets are disjoint. A skill that was injected must not also appear in
 the menu, or the model will spend a tool call re-loading what it already has.
+
+**这次跑带了哪些技能要说出来**（P1-1b）。用户第 768 轮：「Skill 有时能加载，
+有时无法加载」——查下来生产路径的规则是确定的（`skills.for_scope`），但界面上
+**没有任何一处**说这次跑带没带、带了哪几条。一个用户看不见的机制，在他眼里
+就是随机的。所以第一轮开跑先发一条 `skills` 事件：按范围自动带上的几条、
+留给模型按需加载的几条、这次跑的范围叫什么。前端把它记在轮次卡片上。
 """
 
 from __future__ import annotations
 
+from typing import AsyncIterator
+
 from .. import skills as skills_store
+from ..events import CUSTOM_SKILLS, Event
 from ..state import State
 
 
@@ -30,7 +39,7 @@ class Skills:
     hooks = ("before_round",)
     after: tuple[str, ...] = ()
 
-    async def before_round(self, st: State) -> None:
+    async def before_round(self, st: State) -> AsyncIterator[Event]:
         # First round only. ``skill_bodies`` also holds whatever the model
         # loaded via ``load_skill``, and recomputing every round would wipe
         # those out -- forcing it to re-load the same skill up to 8 times.
@@ -43,3 +52,9 @@ class Skills:
         # appends straight into the run's state. The tool pool stays unaware
         # that a harness exists -- it only sees a dict someone left for it.
         st.ctx.scratch["skill_bodies"] = st.skill_bodies
+        yield Event.custom(CUSTOM_SKILLS, {
+            "round": st.round,
+            "scope": st.mode.skill_scope,
+            "injected": [s.title for s in injected],
+            "menu": [s.title for s in listed],
+        })

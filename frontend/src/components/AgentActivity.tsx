@@ -54,6 +54,15 @@ export type AgentRound = {
   /** 这一轮流式写出来的正文。两段式之后编辑器有几十秒完全不动（检索规划
    * 是非流式的），面板里实时显示写出来的字，比一行干等的状态文案有用。 */
   streamed?: string
+  /** 这次跑带了哪些技能（第一轮开跑就有）：按范围自动带上的、留给模型按需加载的（P1-1b） */
+  skills?: { scope: string; injected: string[]; menu: string[] }
+}
+
+/** 「技能」那一行的文案。抽成纯函数是让闸够得着：这是用户判断「Skill 到底加载了没有」的唯一依据。 */
+export function skillsLine(s: { injected: string[]; menu: string[] }): string {
+  const a = s.injected.length ? `按范围自动带上 ${s.injected.length} 条：${s.injected.join('、')}` : '这个范围没有配技能，一条都没带'
+  const b = s.menu.length ? `；另有 ${s.menu.length} 条没配范围，留给模型按需加载` : ''
+  return `技能：${a}${b}`
 }
 
 type Props = {
@@ -220,6 +229,10 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               有 {r.depthDropped} 发检索被「第 2 轮起只深挖」这条规则丢掉
               {r.depthDroppedAll && '（整批丢光，这一轮的工具循环就此收工）'}
             </div>
+          )}
+
+          {r.skills && (
+            <div className="muted agent-skills" style={{ marginBottom: 3 }} title={'生效范围：' + r.skills.scope}>{skillsLine(r.skills)}</div>
           )}
 
           {(r.toolCalls ?? []).length > 0 && (

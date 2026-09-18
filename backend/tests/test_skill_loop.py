@@ -28,6 +28,15 @@ from app.harness.middleware.skills import Skills  # noqa: E402
 from app.harness.state import State  # noqa: E402
 
 
+def _round1(st: State) -> None:
+    """跑一次 `Skills.before_round`。P1-1b 之后它是异步生成器（第一轮会发一条 `skills` 事件），
+    这里把事件抽干，只要它对 state 的副作用。"""
+    async def go():
+        async for _e in Skills().before_round(st):
+            pass
+    asyncio.run(go())
+
+
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "_db_path", lambda: tmp_path / "notes.sqlite3")
@@ -46,7 +55,7 @@ def _state(mode=modes.NOTE):
 
 def test_没配scope的技能只把名字和描述放进上下文(env):
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     assert st.skill_bodies == [], "没配 scope 的不该直接注入"
     assert [n for n, _d in st.skill_menu] == ["slide-deck"]
 
@@ -57,7 +66,7 @@ def test_没配scope的技能只把名字和描述放进上下文(env):
 
 def test_模型调load_skill之后body进上下文而且跨轮保留(env):
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     out = tools.dispatch("load_skill", {"name": "slide-deck"}, st.ctx)
     assert "一页一个论点" in out
     assert any("一页一个论点" in b for b in st.skill_bodies), \
@@ -65,13 +74,13 @@ def test_模型调load_skill之后body进上下文而且跨轮保留(env):
 
     # 第二轮不能把它冲掉——一次 run 最多八轮，重算等于让模型重复加载八次
     st.round = 2
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     assert any("一页一个论点" in b for b in st.skill_bodies)
 
 
 def test_第三层的参考文件也走工具(env):
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     assert tools.dispatch(
         "read_skill_ref", {"skill": "slide-deck", "path": "TEMPLATE.md"},
         st.ctx) == "封面 / 结论 / 论据 / 下一步"
@@ -83,7 +92,7 @@ def test_加载有上限(env):
             "SKILL.md": f"---\nname: extra-{i}\ndescription: 第{i}条。用于测试。\n"
                         f"---\n\n# 第{i}条\n\n正文{i}\n"})
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     loaded = [tools.dispatch("load_skill", {"name": f"extra-{i}"}, st.ctx)
               for i in range(5)]
     assert sum(1 for x in loaded if x.startswith("(Already loaded")) == 2
@@ -92,7 +101,7 @@ def test_加载有上限(env):
 
 def test_不存在的技能给出可用清单而不是空手而归(env):
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     out = tools.dispatch("load_skill", {"name": "不存在的"}, st.ctx)
     assert "slide-deck" in out
 
@@ -100,7 +109,7 @@ def test_不存在的技能给出可用清单而不是空手而归(env):
 def test_配了scope的直接注入不再出现在菜单里(env):
     store.set_skill_config("u1", "slide-deck", scopes=["magic_tap"])
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     assert st.skill_menu == []
     assert any("一页一个论点" in b for b in st.skill_bodies)
 
@@ -111,7 +120,7 @@ def test_配了scope的直接注入不再出现在菜单里(env):
 def test_关掉的技能连菜单都不进(env):
     store.set_skill_config("u1", "slide-deck", enabled=False)
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     assert st.skill_menu == [] and st.skill_bodies == []
 
 
@@ -132,7 +141,7 @@ def test_菜单要在能调工具的那一步之前就位(env):
     assert Skills.hooks == ("before_round",), "晚于 gather 就没意义了"
 
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     plan_system = NoteHooks()._plan_system(st)
     assert "slide-deck" in plan_system, "检索规划这一步看不到菜单"
     assert "load_skill" in plan_system, "得告诉它这一步可以加载技能"
@@ -174,7 +183,7 @@ def test_加载额度数的是模型自己加载了几条(env):
         store.set_skill_config("u1", f"loadable-{i}", scopes=[modes.NOTE.skill_scope])
 
     st = _state()
-    asyncio.run(Skills().before_round(st))
+    _round1(st)
     assert len(st.skill_bodies) == 2, "前提：scope 注入真的先占了两格"
 
     out = [tools.dispatch("load_skill", {"name": f"loadable-{i}"}, st.ctx)

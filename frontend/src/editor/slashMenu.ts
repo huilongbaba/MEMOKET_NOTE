@@ -25,6 +25,8 @@ export type SlashItem = {
   icon: string
   /** 需要用户再输入一段提示词的（智能分析、按提示词写…） */
   needsPrompt?: boolean
+  /** 有输入框、但允许留空（智能表格：「留空则自动判断」）。界面上的承诺要在代码里兑现。 */
+  promptOptional?: boolean
   placeholder?: string
   /** 分组标题。同一组连着排，组变了就插一行小标题。 */
   group: string
@@ -49,7 +51,7 @@ export const SLASH_ITEMS: SlashItem[] = [
     needsPrompt: true, placeholder: '例如：把上面几段总结成三条结论' },
   { group: 'AI', key: 'chart', icon: 'bx-image-add', label: '智能插图', hint: '数据用图表、概念用文生图，自动判断' },
   { group: 'AI', key: 'table', icon: 'bx-table', label: '智能表格', hint: '把上下文整理成表格',
-    needsPrompt: true, placeholder: '想整理成什么表？留空则自动判断' },
+    needsPrompt: true, promptOptional: true, placeholder: '想整理成什么表？留空则自动判断' },
   { group: 'AI', key: 'table-image', icon: 'bx-image-alt', label: '图片转表格', hint: '传一张图，识别里面的表格' },
   { group: 'AI', key: 'eda', icon: 'bx-bar-chart-alt-2', label: '数据可视化', hint: '把笔记里的表格画成图：分布、占比、对比' },
   { group: 'AI', key: 'analysis', icon: 'bx-calculator', label: '智能数据分析', hint: '问一个数据问题，用工具算出来再回答',
@@ -68,6 +70,28 @@ export const SLASH_ITEMS: SlashItem[] = [
   { group: '排版', key: 'grid', icon: 'bx-table', label: '空表格', hint: '插入一个 3 列的空表格', cmd: tableCmd },
   { group: '排版', key: 'flow', icon: 'bx-network-chart', label: '流程图', hint: '插入一个 mermaid 模板', cmd: mermaidCmd },
 ]
+
+/** 指令最长多少字。跟后端 `compose_block.MAX_PROMPT_CHARS` 同一个数。 */
+export const MAX_PROMPT_CHARS = 2000
+/** 空白笔记上没法做的：拿什么画图 / 拼表 / 分析？（`prompt` 一条指令就够，不在这里） */
+const NEEDS_CONTENT = new Set(['chart', 'table', 'eda', 'analysis'])
+
+/** 开跑前规则能判死的临界条件（P1-2-B1 / 2-B2，计划 §1.3）：返回给用户看的那句话，
+ *  空串 = 放行。**跟后端 `compose_block.block_precondition` 同一套规则**，前端先拦是为了
+ *  不发请求、不清空选区；后端再拦是为了发了也不花模型调用。 */
+export function blockPrecondition(item: Pick<SlashItem, 'key' | 'needsPrompt' | 'promptOptional'>,
+                                  prompt: string, selection: string, docText: string): string {
+  const p = prompt.trim()
+  if (item.needsPrompt && !item.promptOptional && !p) {
+    return item.key === 'custom'
+      ? '先写一句要对选中的这段做什么——什么都不写，它不知道该改成什么样。'
+      : '先写一句要它做什么。'
+  }
+  if (item.key === 'custom' && !selection.trim()) return '没有选中任何文字——先选一段，再右键「自定义提示」。'
+  if (p.length > MAX_PROMPT_CHARS) return `指令太长了（${p.length} 字，上限 ${MAX_PROMPT_CHARS}）——一句话说要做什么就行，正文不用贴进来。`
+  if (NEEDS_CONTENT.has(item.key) && !docText.trim()) return '笔记还是空的——先写点内容（哪怕一句话说这篇讲什么），再来插图 / 拼表 / 分析。'
+  return ''
+}
 
 export type SlashState = {
   /** `/` 本身的位置。菜单锚在这里，确认时从这里开始替换掉已输入的过滤词。 */

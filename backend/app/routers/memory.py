@@ -241,7 +241,12 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
             continue
         rows, _terms, _took = mem.recall(p, limit=8, scope=body.scope)
         cands = kb_relations.detect(p, _live(mem, rows))
-        out.append({"relation": cands[0]["relation"], "say": cands[0]["say"], "fact_ids": cands[0]["fact_ids"]} if cands else None)
+        # 一段只画一个点，画最要紧的——`detect()` 收尾已经按 冲突 > 延续 > 缺依据 >
+        # 叠加 > 合并 > 印证 排好，`cands[0]` 就是它（P1-1d 核过，有闸钉着这个顺序）。
+        # `kinds` 是这段一共判出几种关系，悬停时告诉用户「点开还有别的」。
+        top = cands[0] if cands else None
+        out.append({"relation": top["relation"], "say": top["say"], "fact_ids": top["fact_ids"],
+                    "kinds": len({c["relation"] for c in cands})} if top else None)
     return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 

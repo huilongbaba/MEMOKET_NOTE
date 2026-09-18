@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { factSources } from '../api'
+import { factSources, setMemoryScope } from '../api'
 import type { SourceLine, TapMeta } from '../api'
 import Icon from './Icon'
 
@@ -49,6 +49,17 @@ export default function TapProvenance(
           <span className="badge">自由续写</span> 知识库中没有相关记录
           {onDismiss && <button className="icon-btn sm" title="关闭" onClick={onDismiss}><Icon n="bx-x" /></button>}
         </p>
+        {/* 为什么没有（P1-1a）：范围筛掉了 / 库是空的 / 正文尾巴没命中。原来只有上面那半句，
+            用户第 768 轮：「有时有引用，有时无引用」——最常见的那个条件（记忆范围停在
+            「只看笔记」）他根本看不见。范围筛掉的给一个当场换档的动作。 */}
+        {meta.why_empty && (
+          <p className="tap-why" style={{ margin: '4px 0 0' }}>
+            {meta.why_empty}
+            {meta.scope && meta.scope !== 'all' && meta.why_empty.includes('「全部」里能取到') && (
+              <> <a className="link" onClick={() => setMemoryScope('all')}>切到「全部」</a>，再点一次续写</>
+            )}
+          </p>
+        )}
         <TapNotes notes={notes} />
       </div>
     )

@@ -584,6 +584,19 @@ def _eda_has_data(st) -> str | None:
     return "光标附近没有可画的数据：这段里没有数字，旁边也没有表格。把光标放到有数字的段落或表格旁边再试。"
 
 
+def _has_context(st) -> str | None:
+    """整篇一个字都没有（P1-2-B2）：智能插图 / 表格 / 数据分析拿什么画？
+
+    实拍（第 768 轮用户点名）：空白笔记上 `/` → 智能插图，照样开一趟三轮的
+    harness，工具循环转一圈、模型被要求「为当前位置配一张图」——
+    有可能落到 render_image 上烧几十秒。**规则能判的别让模型试三轮**，跟
+    `_eda_has_data` 同一条纪律。只判「整篇为空」，不判「光标附近为空」：
+    后者 EDA 已经在管，而插图 / 表格允许拿远处的上下文。"""
+    if (st.ctx.content or "").strip():
+        return None
+    return "笔记还是空的——先写点内容（哪怕一句话说这篇讲什么），再来插图 / 拼表 / 分析。"
+
+
 EDA = Mode(
     task=(
         '对笔记里的数据做一次探索性分析。\n'
@@ -642,6 +655,7 @@ CHART = Mode(
             chart_numbers_grounded, chart_readable),
     # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
     stop_when=(nothing_changed, tools_ran_dry),
+    precheck=_has_context,
     max_rounds=3,
 )
 
@@ -661,6 +675,7 @@ TABLE = Mode(
             heading_fits),
     # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
     stop_when=(nothing_changed, tools_ran_dry),
+    precheck=_has_context,
     max_rounds=3,
 )
 
@@ -678,6 +693,7 @@ ANALYSIS = Mode(
             chart_numbers_grounded, numbers_from_tools, chart_readable),
     # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
     stop_when=(nothing_changed, tools_ran_dry),
+    precheck=_has_context,
     max_rounds=3,
 )
 

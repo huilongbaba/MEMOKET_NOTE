@@ -53,8 +53,10 @@ def stub(monkeypatch):
 
 
 def _run(mode, hooks=None, **state_kw):
+    # 正文给一句：P1-2-B2 之后 chart / table / analysis 在**空白笔记**上会被门槛拦下
+    # （那是对的，有它自己的用例）；这里要跑的是循环本身。
     st = State(mode=mode,
-               ctx=ToolContext(user="u", note_id="n", content="", cursor=0),
+               ctx=ToolContext(user="u", note_id="n", content="曝光：a 1、b 2。", cursor=0),
                **state_kw)
     async def go():
         return [e async for e in loop.run(st, hooks or BlockHooks())], st

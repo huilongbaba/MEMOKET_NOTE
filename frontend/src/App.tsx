@@ -4,7 +4,7 @@ import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
-import { paragraphsWithLines, type MarginMark } from './editor/marginMemory'
+import { chunked, MARGIN_BATCH, marginParagraphs, type MarginMark } from './editor/marginMemory'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
@@ -23,7 +23,7 @@ import { withCheckHit } from './editor/agentRound'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
-import type { SlashItem } from './editor/slashMenu'
+import { blockPrecondition, type SlashItem } from './editor/slashMenu'
 import {
   appendPreview, endRun, logRun, patchRun, runsField, startRun,
 } from './editor/runningBlocks'
@@ -399,18 +399,24 @@ export default function App() {
   }, [])
   useEffect(() => {
     if (!current) { setMarginMarks([]); return }
-    // 图片 / 链接地址 / 引用 id 先剥掉：一行 `![x](/api/assets/52dd….png)` 里的数字会让它过门槛去召回
-    const paras = paragraphsWithLines(content).map((p) => ({ ...p, text: stripForRecall(p.text).trim() }))
-      .filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8).slice(0, 80)
+    // 图片 / 链接地址 / 引用 id 先剥掉：一行 `![x](/api/assets/52dd….png)` 里的数字会让它过门槛去召回。
+    // **不封顶**（P1-1d）：原来 `.slice(0, 80)`，30k 字的笔记第 80 个含数字的段落之后一个点都没有，
+    // 「有的段有点、有的段没有」；现在按 80 一批分几次发，每批几十毫秒。
+    const paras = marginParagraphs(content, stripForRecall)
     if (paras.length === 0) { setMarginMarks([]); return }
-    const t = setTimeout(() => {
-      api.memoryRelationsBatch(paras.map((p) => p.text)).then((r) => {
-        const marks: MarginMark[] = []
-        r.marks.forEach((m, i) => { if (m) marks.push({ line: paras[i].line, relation: m.relation, say: m.say }) })
-        setMarginMarks(marks)
-      }).catch(() => {})
+    let stale = false
+    const t = setTimeout(async () => {
+      const marks: MarginMark[] = []
+      for (const chunk of chunked(paras, MARGIN_BATCH)) {
+        try {
+          const r = await api.memoryRelationsBatch(chunk.map((p) => p.text))
+          r.marks.forEach((m, i) => { if (m) marks.push({ line: chunk[i].line, relation: m.relation, say: m.say, kinds: m.kinds }) })
+        } catch { return }
+        if (stale) return                            // 正文又改了，这一批作废，等下一轮
+      }
+      setMarginMarks(marks)
     }, 1500)
-    return () => clearTimeout(t)
+    return () => { stale = true; clearTimeout(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, current?.id, ingestTick, scopeTick])
   const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
@@ -1443,7 +1449,7 @@ export default function App() {
       const sel = view?.state.selection.main
       const at = { x: selectionMenu.x, y: selectionMenu.y }
       setSelectionMenu(null)
-      if (!view || !sel || sel.empty) return
+      if (!view || !sel || sel.empty) { toast('没有选中任何文字——先选一段，再右键「自定义提示」'); return }
       setSlash({
         item: { group: 'AI', key: 'custom', label: '自定义提示', icon: 'bx-message-dots',
                 hint: '对选中的这段做点什么', needsPrompt: true,
@@ -2106,6 +2112,12 @@ export default function App() {
           return next
     })
       },
+      onSkills: (d) => {
+        // 这次跑带了哪几条技能（P1-1b）。第一轮开跑就到，记在那一轮的卡片上；
+        // 用户第 768 轮「Skill 有时能加载有时不能」——此前界面上没有任何一处说过这件事。
+        if (currentRef.current?.id !== noteId) return
+        patchRound(d.round, { skills: { scope: d.scope, injected: d.injected, menu: d.menu } })
+      },
       onCheckHit: (d) => {
         // 代码判据当场判不合格，这一轮不会再花模型调用去打分。不标出来的话
         // 用户看到一个 0 分，不知道是谁判的、为什么这轮这么快。
@@ -2709,14 +2721,27 @@ export default function App() {
   async function runBlock(item: SlashItem, from: number, to: number, prompt: string) {
     const view = editorViewRef.current
     if (!view || !current) return
+    // custom 是「替换选中的这段」，其余是「在光标这里插一块」。两种都先把
+    // [from,to) 清掉，产出落在 from。
+    const selection = item.key === 'custom' ? view.state.doc.sliceString(from, to) : ''
+    // 临界条件（P1-2-B1 / 2-B2）：空指令、空选区、超长、空白笔记——**不发请求、不清空选区**，说一句。
+    // 输入框自己已经拦过空指令；这里是第二道（`/` 直接跑的那几项没有输入框）。
+    // 正文要**去掉 `/查询词` 那几个字**再判空：空白笔记上打了一个 `/`，正文就不是空串了（实拍第一版漏过）
+    const docWithoutSlash = item.key === 'custom' ? view.state.doc.toString()
+      : view.state.doc.sliceString(0, from) + view.state.doc.sliceString(to)
+    const why = blockPrecondition(item, prompt, selection, docWithoutSlash)
+    if (why) {
+      // `/查询词` 那几个字照样收掉（插入类），选区（custom）留着
+      if (item.key !== 'custom' && to > from) view.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } })
+      setSlash(null)
+      toast(why, 'error')
+      return
+    }
     const id = Math.random().toString(36).slice(2, 10)
     const ctrl = new AbortController()
     runAborts.current.set(id, ctrl)
     setSlash(null)                                   // 输入框收起，交给占位块
 
-    // custom 是「替换选中的这段」，其余是「在光标这里插一块」。两种都先把
-    // [from,to) 清掉，产出落在 from。
-    const selection = item.key === 'custom' ? view.state.doc.sliceString(from, to) : ''
     view.dispatch({
       changes: { from, to, insert: '' },
       selection: { anchor: from },
@@ -2734,6 +2759,9 @@ export default function App() {
           onPhase: (label) => {
             push(patchRun.of({ id, phase: label }))
             push(logRun.of({ id, at: '阶段', text: label }))
+          },
+          onSkills: (d) => {
+            push(logRun.of({ id, at: '技能', text: d.injected.length ? `带上 ${d.injected.join('、')}` : '这个范围没配技能' + (d.menu.length ? `，${d.menu.length} 条留给模型按需加载` : '') }))
           },
           onTools: (calls) => {
             for (const c of calls) {

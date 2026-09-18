@@ -4,6 +4,7 @@ import { memoryRelations, mergeFacts, memoryScope, recall, SCOPE_LABEL, setMemor
 import type { Fact, MemoryRelation } from '../api'
 import { toast } from '../toast'
 import { stripForRecall } from '../util/wordCount'
+import { MARGIN_RULE, RELATION_LABEL } from '../editor/marginMemory'
 import Icon from './Icon'
 
 const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string; icon: string }> = {
@@ -126,6 +127,15 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
                 style={{ marginInlineStart: 'auto', flexShrink: 0 }}>
           {(Object.keys(SCOPE_LABEL) as MemoryScope[]).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
         </select>
+      </p>
+      {/* 规则写在界面上（P1-1d）：一个点 = 一段、为什么只有含数字的段、六种颜色各是什么、
+          光标停下 0.9s 查哪段、下面的记忆按什么召回。用户第 768 轮问的就是这几句。 */}
+      <p className="muted mem-legend" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
+        {MARGIN_RULE}：
+        {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
+          <span key={k} style={{ whiteSpace: 'nowrap', marginInlineEnd: 6 }}><span className={'mm-dot mm-' + k} style={{ width: 7, height: 7, marginTop: 0, verticalAlign: 'middle', marginInlineEnd: 2 }} />{RELATION_LABEL[k]}</span>
+        ))}
+        <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按正文最后 {TAIL_CHARS} 字召回。
       </p>
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>

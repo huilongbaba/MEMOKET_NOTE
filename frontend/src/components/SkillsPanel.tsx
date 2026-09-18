@@ -210,6 +210,13 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
         <p className="muted" style={{ fontSize: 'var(--t-md)', margin: '6px 0 12px' }}>
           每条 skill 是叠加在某个生成动作（续写/校验/重写…）基础规则之后的额外指令，可以开关、排序、自建。
         </p>
+        {/* 什么时候生效，写在界面上（P1-1b）。用户第 768 轮：「Skill 有时能加载，有时无法加载」——
+            规则本身是确定的，但此前没有一处说过它。 */}
+        <p className="muted skills-rule" style={{ fontSize: 'var(--t-sm)', margin: '0 0 12px', lineHeight: 1.7 }}>
+          <strong>什么时候生效：</strong>已启用 + 勾了「生效范围」的，在那个功能跑的时候<strong>自动整段带上</strong>
+          （右栏「Agent 运行」的轮次卡片会列出这次带了哪几条）。没勾范围的（导入的第三方 Skill 默认这样）只进「可用技能」清单，
+          由模型在「智能续写」「分段写作」「<code>/</code> 块生成」里<strong>按需加载</strong>；续写、校验、重写、润色这些一次性功能没有工具，不会加载它。
+        </p>
 
         {loading ? (
           <span className="spinner" />
@@ -363,6 +370,7 @@ export default function SkillsPanel({ onClose, embedded = false }: { onClose?: (
                 {sk.description && <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0' }}>{sk.description}</p>}
                 <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
                   {sk.scopes.map((s) => <span key={s} className="badge">{scopeLabel(s)}</span>)}
+                  {sk.scopes.length === 0 && <span className="badge muted" title="没勾生效范围：不会自动带上，只在有工具的功能里由模型按需加载">没选范围 · 只会被模型按需加载</span>}
                 </div>
               </div>
             ))}

@@ -61,6 +61,10 @@ CUSTOM_REPLAN = "replan"             # the skeleton changed mid-run
 CUSTOM_INSERT_AT = "insert_at"       # this round's text goes into a section, not the end
 CUSTOM_COST = "cost"                 # 这次跑到了成本上限，停在这儿（计划 12.3）
 CUSTOM_CROSS_RUN = "cross_run"       # 这次跑完比**上一次跑**差（计划 9.3；只报，不回滚）
+# 这次跑带上了哪些技能（P1-1b）：用户第 768 轮说「Skill 有时能加载有时不能」，而界面上
+# **从来没有任何一处**说过这次跑到底带没带——带了几条、是按范围自动带的还是模型自己
+# 加载的。没有这条事件，「有没有加载」只能靠猜。
+CUSTOM_SKILLS = "skills"
 
 
 @dataclass(frozen=True)

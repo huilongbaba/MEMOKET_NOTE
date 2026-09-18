@@ -303,6 +303,10 @@ export const verifySelection = (content: string, selection: string) =>
 export type TapMeta = {
   facts: number; recall_ms: number; grounded: boolean
   sources: string[]; fact_ids: string[]
+  /** 这次续写用的记忆范围（后端原样回显） */
+  scope?: string
+  /** 一条材料都没取到时的原因（范围筛掉 / 库空 / 尾巴没命中），空串 = 取到了 */
+  why_empty?: string
 }
 
 /** 一条 SSE 流拆成一帧一帧的 `{event, payload}`。
@@ -514,7 +518,9 @@ export const MEMORY_SCOPE_KEY = 'memoket-note:memory-scope'
  *  一天几十段的屏幕记录混进「相关记忆」，这一栏就从会议结论变成「你上周二在看某个网页」。 */
 export const SCOPE_LABEL: Record<MemoryScope, string> = { all: '全部（不含屏幕）', notes: '只看笔记', meetings: '只看会议记录', imports: '只看导入的', screen: '只看屏幕活动' }
 export function memoryScope(): MemoryScope {
-  try { const v = localStorage.getItem(MEMORY_SCOPE_KEY); return v === 'notes' || v === 'meetings' || v === 'imports' ? v : 'all' } catch { return 'all' }
+  // 'screen' 原来不在这份白名单里：下拉能选「只看屏幕活动」，读回来却是 'all'——
+  // 界面上说一档、请求发的是另一档（P1-1a 顺手抓到）
+  try { const v = localStorage.getItem(MEMORY_SCOPE_KEY); return v === 'notes' || v === 'meetings' || v === 'imports' || v === 'screen' ? v : 'all' } catch { return 'all' }
 }
 export function setMemoryScope(s: MemoryScope) {
   try { localStorage.setItem(MEMORY_SCOPE_KEY, s) } catch { /* 无所谓 */ }
@@ -740,7 +746,7 @@ export const memoryRelationsBatch = (passages: string[]) =>
   fetch('/api/memory/relations/batch', {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ passages, scope: memoryScope() }),
-  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[] } | null)[]; took_ms: number }>)
+  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[]; kinds?: number } | null)[]; took_ms: number }>)
 export const supersedeFact = (oldId: string, newId: string) =>
   fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {
     method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ superseded_by: newId }),
@@ -1094,6 +1100,8 @@ export type NoteHarnessHandlers = {
   /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
    * 但**不能是静默的**——这一轮少了那个能力，用户得知道。 */
   onWarning?: (d: { middleware: string; hook: string; error: string }) => void
+  /** 这次跑带了哪些技能（第一轮开跑就发）：按范围自动带上的、留给模型按需加载的 */
+  onSkills?: (d: { round: number; scope: string; injected: string[]; menu: string[] }) => void
   /** 骨架被重规划了。目标被改了，用户必须看得见改成了什么——后端在这之后
    * 还会重发一次 skeleton 事件让骨架面板跟着更新。 */
   onReplan?: (d: { round: number; why: string; changes: string[]; beats: string[] }) => void
@@ -1209,6 +1217,7 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
       else if (payload.name === 'dedup') handlers.onDedup?.(v)
       else if (payload.name === 'check_hit') handlers.onCheckHit?.(v)
       else if (payload.name === 'warning') handlers.onWarning?.(v)
+      else if (payload.name === 'skills') handlers.onSkills?.(v)
       else if (payload.name === 'replan') handlers.onReplan?.(v)
       else if (payload.name === 'insert_at') handlers.onInsertAt?.(v)
       else if (payload.name === 'cost') handlers.onCost?.(v)
@@ -1364,6 +1373,7 @@ export async function composeBlock(
     onDelta?: (text: string) => void
     onEvaluate?: (status: string, scores: Record<string, NoteHarnessDimensionScore>) => void
     onError?: (detail: string) => void
+    onSkills?: (d: { injected: string[]; menu: string[]; scope: string }) => void
   },
   signal?: AbortSignal,
 ): Promise<string> {
@@ -1387,6 +1397,8 @@ export async function composeBlock(
       const v = (p.value ?? {}) as Record<string, unknown>
       on.onEvaluate?.(String(v.status ?? ''),
         v.scores as Record<string, NoteHarnessDimensionScore>)
+    } else if (event === 'CUSTOM' && p.name === 'skills') {
+      on.onSkills?.(p.value as { injected: string[]; menu: string[]; scope: string })
     } else if (event === 'RUN_ERROR') on.onError?.(String(p.message ?? ''))
     else if (event === 'RUN_FINISHED') {
       block = String(p.content ?? block)

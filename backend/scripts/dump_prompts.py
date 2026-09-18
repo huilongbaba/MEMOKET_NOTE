@@ -79,16 +79,14 @@ def main() -> None:
           "开跑前一次性生成核心张力与结构节拍。**这一步定错，后面每一轮都会忠实地服务错误目标**——"
           "已知的三个最深缺陷都出在这里。",
           [("system（含用户启用的 skeleton 技能）",
-            prompts.compose_system(prompts.SKELETON_SYSTEM,
-                                   store.enabled_skills_for_scope(USER, "skeleton"))),
+            prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", USER)),
            ("user", prompts.skeleton_user(TITLE, CONTENT, profile))])
 
     write("02", "修订", "② 修订 · EDIT_SYSTEM",
           "每轮第一步。检索到的事实 + 机械查重候选 + 上一轮最弱维度一起喂进去，"
           "模型返回一组 {op, anchor, text, reason, sources}，后端直接自动应用。",
           [("system（含用户启用的 edit 技能）",
-            prompts.compose_system(prompts.EDIT_SYSTEM,
-                                   store.enabled_skills_for_scope(USER, "edit"))),
+            prompts.compose_system(prompts.EDIT_SYSTEM, "edit", USER)),
            ("user", prompts.edit_user(SPINE, BEATS, CONTENT, facts, profile,
                                       focus="non_repetition", dup_hints=dup_hints))])
 
@@ -110,8 +108,7 @@ def main() -> None:
     write("04", "续写", "④ 续写 · MAGIC_TAP_SYSTEM",
           "唯一产出正文的一步，流式返回。知识库事实块里的内容来自上一步 agent 自己查到的结果。",
           [("system（含用户启用的 magic_tap 技能 + 工具说明）",
-            prompts.compose_system(prompts.MAGIC_TAP_SYSTEM,
-                                   store.enabled_skills_for_scope(USER, "magic_tap"))),
+            prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", USER)),
            ("user", prompts.note_harness_continue_user(SPINE, BEATS, CONTENT, facts, profile))])
 
     ev_ctx = {"核心张力": SPINE, "结构节拍": "\n".join(f"- {b}" for b in BEATS),
@@ -140,22 +137,19 @@ def main() -> None:
                  "《进度对齐》 ｜ 覆盖：完成标准、同步节奏 ｜ 定义要写进任务本身"]
     write("07", "分段计划", "⑦ 分段计划 · PLAN_SYSTEM（文件夹级）",
           "把一个写作目标拆成若干分段，每段各写一篇笔记。",
-          [("system", prompts.compose_system(
-              prompts.PLAN_SYSTEM, store.enabled_skills_for_scope(USER, "plan_generate"))),
+          [("system", prompts.compose_system(prompts.PLAN_SYSTEM, "plan_generate", USER)),
            ("user", prompts.plan_user(goal, facts, folder_ctx))])
 
     write("08", "分段写作", "⑧ 分段写作 · section_write_user（文件夹级）",
           "跟单篇续写共用 MAGIC_TAP_SYSTEM，上下文块换成分段自己的主题 + 其他分段小结。",
-          [("system（含 section_write 技能）", prompts.compose_system(
-              prompts.MAGIC_TAP_SYSTEM, store.enabled_skills_for_scope(USER, "section_write"))),
+          [("system（含 section_write 技能）", prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "section_write", USER)),
            ("user", prompts.section_write_user(
                "设计带来的问题", goal, summaries, CONTENT, facts, folder_ctx,
                profile, focus="coherence"))])
 
     write("09", "分段修订", "⑨ 分段修订 · section_edit_user（文件夹级）",
           "跟单篇修订共用 EDIT_SYSTEM，上下文块换成分段自己的。",
-          [("system（含 edit 技能）", prompts.compose_system(
-              prompts.EDIT_SYSTEM, store.enabled_skills_for_scope(USER, "edit"))),
+          [("system（含 edit 技能）", prompts.compose_system(prompts.EDIT_SYSTEM, "edit", USER)),
            ("user", prompts.section_edit_user(
                "设计带来的问题", goal, summaries, CONTENT, facts, profile,
                focus="non_repetition", dup_hints=dup_hints))])
@@ -163,8 +157,7 @@ def main() -> None:
     write("10", "判断还缺分段", "⑩ 判断还缺分段 · MORE_SECTIONS_SYSTEM（文件夹级）",
           "所有分段写完后判断还有没有遗漏。只看得到各分段的小结，"
           "所以小结里必须带上各级小标题，否则判重时看不见这段覆盖了什么。",
-          [("system", prompts.compose_system(
-              prompts.MORE_SECTIONS_SYSTEM, store.enabled_skills_for_scope(USER, "more_sections"))),
+          [("system", prompts.compose_system(prompts.MORE_SECTIONS_SYSTEM, "more_sections", USER)),
            ("user", prompts.more_sections_user(goal, summaries, facts, folder_ctx))])
 
     # ---------------------------------------------------------- KITE 检索编译
