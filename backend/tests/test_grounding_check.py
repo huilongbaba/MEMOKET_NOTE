@@ -214,6 +214,7 @@ def test_same_sources_twice():
     one = b.replace("[u-111-1F2]", "[u-333-9F9]")
     assert not same_sources_twice(a + "\n\n" + one)
 
-    # 这一轮没碰过的两段（用户原来正文里就有的）不报
-    assert not same_sources_twice(doc, fresh="这一轮写的是别的东西。")
-    assert same_sources_twice(doc, fresh=b)
+    # 量程（批 25 跟 `repeated_lists` 一起从 `fresh` 换到 `before`）：
+    # **两段都**是开跑前就有的才不报，只要有一段是这次跑写的就照报。
+    assert not same_sources_twice(doc, before=doc)
+    assert same_sources_twice(doc, before=a + "\n\n" + other)

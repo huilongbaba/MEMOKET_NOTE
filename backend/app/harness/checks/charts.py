@@ -21,6 +21,12 @@ from ..types import Verdict
 from .pick import pick_dimension
 
 
+# 找「开跑时就有的那些」时不设上限：默认的 limit 是给诊断用的（一条诊断里
+# 列三条假图就够人看了），拿它去当豁免名单会漏——开跑前正好有 3 张假图的话，
+# 这一轮新写的第 4 张会挤不进名单，然后被当成「开跑前就有的」放过去。
+_ALL = 99
+
+
 def no_fake_charts(st: State) -> Verdict | None:
     """Charts described in prose instead of drawn.
 
@@ -28,11 +34,40 @@ def no_fake_charts(st: State) -> Verdict | None:
     and ``[scatter: impressions vs orders, n=6, r=0.9902]``. The second is
     worse -- mermaid has no scatter plot, so that chart could never exist.
     The scorer gave this ``has_charts = 2``.
+
+    ## 量程：开跑时就有的那几处不报（批 25）
+
+    **它此前一处量程都没有**，而它的判词第一句是「**这一轮**没有真的画图」——
+    对着一段开跑前就躺在笔记里的箭头链说这句话，是在报一件没发生的事。
+    实测：18 篇 `origin=user` 上开火 1 篇（`3a3a96354546`），命中的是正文里
+    一句「用户在页面停留的路径已经测出来了：先看硬件参数 → 跳到软件功能列表 →
+    回到定价 → 退出。」——一句正常的叙述，而判词要求把它换成一张图，
+    **每一次跑都要求一遍**。
+
+    收它的硬依据是**它的孪生兄弟早就收了**：`charts_from_tools` 判的是同一件事
+    的另一面（图是不是工具画的），量程写的正是
+    `blockcheck.mermaid_blocks(st.bag["content_at_start"])`，理由是第 604 轮那次
+    真跑——用户自己画的两张合法流程图被修订整个删掉，删完这一条又报「这条流程是
+    用箭头串在正文里的」，**删图和要图来回打架**。两条判据打同一维、一条收了
+    一条没收，那正是「同一件事挡住一半」。
+
+    另一条依据是**这一维根本排不出修复轮**：长文两个模式的 `dims` 里既没有
+    `has_charts` 也没有 `chart_validity`，`pick_dimension` 于是落到
+    `checks.pick.MECHANICS` 兜底桶——那个桶按设计**不在 `repair.INNER_QUALITY`
+    里，排不了「只修不写」的修复轮**。开跑前就有的那一处，在长文模式里既修不掉
+    也停不下来，只会每一轮都短路一次打分。
     """
-    hits = blockcheck.fake_charts(st.content)
+    before = str(st.bag.get("content_at_start") or "")
+    was_there = set(blockcheck.fake_charts(before, limit=_ALL))
+    hits = [h for h in blockcheck.fake_charts(st.content, limit=_ALL)
+            if h not in was_there][:3]
     if not hits:
         # 另一种"用文字画图"：把一条流程写成箭头链（第 592 轮，用户实拍的那段里就有）
-        flows = blockcheck.text_flow(st.content)
+        # **两边都过一遍 `text_flow` 再比**，不是拿结果去 `before` 里搜：它返回的是
+        # 空白规范化 + 截断到 80 字之后的串，直接拿去原文里找必然找不着。
+        was_flow = set(blockcheck.text_flow(before, limit=_ALL))
+        flows = [f for f in blockcheck.text_flow(st.content, limit=_ALL)
+                 if f not in was_flow][:2]
         if flows:
             return Verdict(
                 pick_dimension(st, "has_charts", "chart_validity"),

@@ -68,17 +68,21 @@ def test_跑到一半的记忆完整存下来():
     st.round = 3
     st.facts = ["事实一", "事实二"]
     st.charts = ["mermaid-1"]
-    st.steer = "non_repetition: 有重复"
     st.best = ((2, 1.5), "上一轮最好的产出")
     st.ev = Evaluation(scores={"coherence": DimensionScore(level=1, note="乱")},
                        status="continue", weakest="coherence")
     st.bag = {"policy": runtime_policy.RuntimePolicy(tool_iters=4),
-              "edited_spans": {"甲", "乙"}, "dry_rounds": 2, "polish": False}
+              "edited_spans": {"甲", "乙"}, "dry_rounds": 2, "polish": False,
+              # 上一轮那句诊断。**`st.steer` 批 25 起是从这两个键算出来的派生值**，
+              # 快照里不再单存一份——存两份的话，恢复出来的两份可能说的不是同一句。
+              "focus": "non_repetition", "focus_note": "有重复"}
 
     back = snapshot.loads(snapshot.dumps(st), modes.NOTE)
     assert back.round == 3 and back.content == "已经写了的正文"
     assert back.facts == st.facts and back.charts == st.charts
-    assert back.steer == st.steer and back.best == st.best
+    assert back.steer == "non_repetition: 有重复" == st.steer, \
+        "上一轮的诊断没跟着快照活下来——恢复之后修订那一步会少一句话"
+    assert back.best == st.best
     assert back.ev.weakest == "coherence" and back.ev.scores["coherence"].level == 1
     assert back.bag["edited_spans"] == {"甲", "乙"}, "集合不能变成 list"
     assert back.bag["policy"].tool_iters == 4, "策略不能变成 dict"

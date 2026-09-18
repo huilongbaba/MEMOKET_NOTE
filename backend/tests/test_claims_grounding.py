@@ -128,12 +128,25 @@ def test_同一个原子反复出现只查一次():
 # ==================================================== 7.1 判据本体：开火 ===
 
 def test_编造的日期和署名会被抓住():
+    """**断言只认「被点名的那几个字面」那一种形状**（批 25）。
+
+    原来写的是 `"Speaker K" in v.message`，而诊断每点名一个原子就顺手把它
+    **所在的整句**也引进去（`f"「{a.surface}」（出现在：{unit}）"`）——
+    那一句里同时有日期和署名。于是把署名类原子整个不抓
+    （`atoms()` 里的 `out += attributed_atoms(unit)` 换成 `out += []`），
+    **全套 1887 条闸一条都没红**：日期那一条的「出现在：…」把 `Speaker K`
+    顺手引出来了。§21「一个在别处顺手被满足的断言」，第六次。
+
+    `「…」` 这个形状只有 `lines.append` 那一行造得出来，`unit` 里带不出来。
+    """
     st = _st(FILLER + "2027 年 4 月 9 日，Speaker K 提到首年采购额已经谈定。",
              facts=["[f-1] 2026-08-05 硬件方案定了"])
     v = claims.unsupported_specifics(st)
     assert v is not None
     assert v.dimension == "factual_grounding"
-    assert "2027 年 4 月 9 日" in v.message and "Speaker K" in v.message
+    assert "「2027 年 4 月 9 日」" in v.message, "日期那个原子没被点名"
+    assert "「Speaker K」" in v.message, "署名那个原子没被点名"
+    assert v.message.count("（出现在：") == 2,         "点名的原子正好两个——数量也要钉住，不然少抓一个照样绿"
 
 
 def test_报出来的话不许要求去动别的句子():

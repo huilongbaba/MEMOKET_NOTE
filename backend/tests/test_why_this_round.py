@@ -32,11 +32,74 @@ from app.harness.types import Mode, Dimension, Verdict
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
-def _st(mode: Mode, **kw) -> State:
+def _st(mode: Mode, *, focus: str = "", focus_note: str = "", **kw) -> State:
+    """`focus` / `focus_note` 走 `bag`，**因为那是这句诊断唯一的载体**
+    （批 25：`State.steer` 从一个字段变成了从这两个键算出来的只读属性）。
+
+    原来这里写的是 `_st(mode, steer="material_use: …")` 再单独补一句
+    `st.bag["focus"] = "material_use"`——那等于在用例里**手工维持**两份
+    载体之间的一致，而生产里能不能维持住，这条用例一个字都没在查。
+    """
     st = State(mode=mode, ctx=ToolContext(user="u", note_id="n"))
     for k, v in kw.items():
         setattr(st, k, v)
+    if focus:
+        st.bag["focus"] = focus
+    if focus_note:
+        st.bag["focus_note"] = focus_note
     return st
+
+
+def test_面板上那句诊断跟修订那一步读的是同一份():
+    """**一句诊断只许有一个载体**（批 25）。
+
+    `st.steer` 以前是 `State` 上的一个字段，`loop.py` 每轮末尾算一次；
+    紧挨着的两行把同一个 `st.ev` 的同一句话又存进了 `bag["focus"]` /
+    `bag["focus_note"]`，而**修订那一步读的是后者**。两份存着的代价不是
+    多占内存，是「面板上显示的诊断」和「真正喂回去的诊断」可以说两句话，
+    而没有任何地方会发现。
+
+    量过之后才这么定的：库里 380 个 note 轮次，这个值非空 351 轮（92.4%），
+    落点 `factual_grounding` 226 / `non_repetition` 99 / … ——**不是一个空
+    字段**，是一份**重复**的字段。分布和「为什么不接进 prompt」写在
+    `State.steer` 的 docstring 里。
+    """
+    st = State(mode=_mode(), ctx=ToolContext(user="u", note_id="n"))
+    assert st.steer == "", "什么都没诊断出来的时候不许编一句出来"
+    st.bag["focus"] = "non_repetition"
+    st.bag["focus_note"] = "同一件事说了两遍"
+    assert st.steer == "non_repetition: 同一件事说了两遍"
+
+    # 载体只有一个：把 `bag` 那份改掉，`st.steer` 必须跟着变
+    st.bag["focus_note"] = "换了一句别的诊断"
+    assert st.steer == "non_repetition: 换了一句别的诊断"
+
+    # 而且它是只读的——谁想再存一份独立的，在这儿就被拦下
+    try:
+        st.steer = "自己编一句"
+    except AttributeError:
+        pass
+    else:                                              # pragma: no cover
+        raise AssertionError("`st.steer` 又变回一个存得住的字段了，"
+                             "同一句诊断马上会有两份说法")
+
+
+def test_长文两个模式的_prompt_不许自己去读_st_steer():
+    """批 22 划的线：**只有 material 类诊断能进检索规划**，而那道过滤在
+    `policy.steer` 上（`MATERIAL_DIMS`）。`st.steer` 是没过滤的那一份——
+    `hooks/note` / `hooks/section` 谁把它接进 prompt，就等于从旁边绕过了
+    那道过滤，把「再查十条事实也修不好」的诊断（重复 / 不连贯 / 跑题，
+    实测占 29.1%）当成检索方向递出去。
+
+    唯一该读它的是 `hooks/block.produce`：块模式每轮整块重写，没有
+    `policy`、也没有修订那条线，这句诊断是它唯一的回路。
+    """
+    hooks = ROOT / "backend" / "app" / "harness" / "hooks"
+    readers = {f.name for f in hooks.glob("*.py")
+               if "st.steer" in f.read_text(encoding="utf-8")}
+    assert readers == {"block.py"}, (
+        f"`st.steer` 的读者变了：{sorted(readers)}。长文两个模式要接诊断的话，"
+        "走 `policy.steer`（过滤过的）或者 `bag['focus_note']`（修订那条线）")
 
 
 def _round_payload(st: State) -> dict:
@@ -55,8 +118,8 @@ def _mode(**kw) -> Mode:
 # ------------------------------------------------------------------ ① steer
 
 def test_诊断原话和它去了哪儿都在轮次载荷里():
-    st = _st(_mode(), steer="material_use: 查到的材料一条都没写进正文")
-    st.bag["focus"] = "material_use"
+    st = _st(_mode(), focus="material_use",
+             focus_note="查到的材料一条都没写进正文")
     st.bag["steer_in_plan"] = True
     v = _round_payload(st)
     assert v["steer"].startswith("material_use:")
@@ -68,8 +131,7 @@ def test_诊断原话和它去了哪儿都在轮次载荷里():
 def test_内在质量那几维报的是不进检索计划而不是没有诊断():
     """重复 / 不连贯 / 跑题：`policy.adjust` 按设计不给它们生成 steer
     （批 22 的 `MATERIAL_DIMS`）。界面要说得出这是设计不是丢失。"""
-    st = _st(_mode(), steer="non_repetition: 同一件事说了两遍")
-    st.bag["focus"] = "non_repetition"
+    st = _st(_mode(), focus="non_repetition", focus_note="同一件事说了两遍")
     st.bag["steer_in_plan"] = False
     v = _round_payload(st)
     assert v["steer_material"] is False
@@ -79,8 +141,7 @@ def test_内在质量那几维报的是不进检索计划而不是没有诊断()
 def test_没有检索规划那一步和有但没进去是两回事():
     """打磨 / 只清理轮根本走不到 `hooks/note` 那段，`steer_in_plan` 这个键
     **不存在**——报成 `False` 会让用户以为诊断被丢掉了。"""
-    st = _st(_mode(), steer="coherence: 标题层级乱了")
-    st.bag["focus"] = "coherence"
+    st = _st(_mode(), focus="coherence", focus_note="标题层级乱了")
     v = _round_payload(st)
     assert v["steer_in_plan"] is None
 
@@ -88,7 +149,7 @@ def test_没有检索规划那一步和有但没进去是两回事():
 def test_上一轮的判据结论不许漏给下一轮():
     """`bag` 是跨轮活着的。上一轮记的 `steer_in_plan` 留着不 pop 的话，
     打磨轮会顶着上一轮的答案报「进了检索计划」——而它压根没有那一步。"""
-    st = _st(_mode(), steer="material_use: x")
+    st = _st(_mode(), focus="material_use", focus_note="x")
     st.bag["steer_in_plan"] = True
     assert _round_payload(st)["steer_in_plan"] is True
     assert _round_payload(st)["steer_in_plan"] is None, "读完必须 pop"

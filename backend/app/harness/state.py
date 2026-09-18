@@ -70,7 +70,6 @@ class State:
     ev: Evaluation | None = None
     skip_judge: bool = False            # a Check already failed it; don't pay for scoring
     best: tuple[tuple[int, float], str] | None = None
-    steer: str = ""                     # last round's weakest-dimension note
 
     # Why the run ended, set by the loop just before commit. Middleware needs
     # it: recording a paused run in the history as "finished" would teach the
@@ -112,6 +111,47 @@ class State:
         """
         return any((s := self.ev.scores.get(d)) and s.level < 2
                    for d in COVERAGE_DIMS) if self.ev else False
+
+    @property
+    def steer(self) -> str:
+        """上一轮最弱那一维的诊断原话，带维度名：``"non_repetition: 同一件事说了两遍"``。
+
+        **这是一个派生值，不是一份独立的状态**（批 25）。它以前是 `State` 上的
+        一个字段，`loop.py` 每轮末尾 `st.steer = _steer(st)` 算一次——而紧挨着
+        的两行把**同一个 `st.ev` 的同一句话**又存了一遍：
+        `bag["focus"] = st.ev.weakest`、`bag["focus_note"] = score.note`。
+        一句诊断、两个载体，**其中一个在长文两个模式里没有任何功能读者**
+        （`hooks/note` 读的是 `policy.steer`，`hooks/section` 连 policy 都没有）。
+
+        台账（批 24 计划外发现 3）写的是「要么接上要么删掉」。**先量了再决定**：
+        库里 380 个 note 轮次，这个值非空 **351 轮 = 92.4%**，落点
+        `factual_grounding` 226 / `non_repetition` 99 / `spine_fidelity` 10 /
+        `beat_coverage` 7 / `mechanics` 5 / `coherence` 3 / `material_use` 1
+        ——**material 类 66.7%、内在质量类 29.1%**。
+
+        量完的结论是**两条路都不对**：
+
+        * **接不得。** 它非空的那 92.4% 里，诊断早就通过 `bag["focus"]` /
+          `bag["focus_note"]` 到了修订那一步（`middleware/revise.py` 逐个读它们），
+          再接一遍是把同一句话喂两遍；而要接进**检索规划**的话，批 22 划的线是
+          「只有 material 类诊断能进」，`policy.steer` 已经按 `MATERIAL_DIMS`
+          过滤过了——绕开它接一条没过滤的，正好是那条线要挡的东西。
+          （顺便：那 92.4% 里有 244/380 = 64.2% 的轮次是**判据短路轮**，
+          它们的 `st.ev` 是伪造的单维 0 分，「诊断原话」其实是 `Verdict.message`。）
+        * **删不掉。** `hooks/block.produce` 真读它（`【上一轮的问题，这一轮要
+          解决】`），面板也读它（`middleware/provenance._steer_payload`）。
+
+        所以删掉的是**那一份重复**：字段没了，`loop.py` 那次计算没了，
+        快照里那个键没了，读的人照旧写 `st.steer`，值当场从唯一那份载体算出来。
+        §21：*一个信号有两个来源，就得把它们逐个数过来。*
+
+        跟旧 `loop._steer` 唯一的行为差别：打分器给出了维度名、却给了一句**空的**
+        诊断时，旧的返回 `"non_repetition: "`（于是 `hooks/block` 会挂一个
+        没有内容的「上一轮的问题」小标题），这里返回空串。
+        """
+        dim = str(self.bag.get("focus") or "")
+        note = str(self.bag.get("focus_note") or "")
+        return f"{dim}: {note}" if dim and note else ""
 
     def content_for_continue(self) -> str:
         """What the continuation prompt should see.

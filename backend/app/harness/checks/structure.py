@@ -23,6 +23,15 @@ from .pick import pick_dimension
 
 _HEADING = re.compile(r"^(#{1,6})(\s)", re.M)
 
+
+def _started_with(st: State) -> str:
+    """这次跑开跑时正文里已经有的字（`loop.py` 在 `before_run` 之后存的）。
+
+    判据的量程一律绑在这上面，不绑 `st.fresh`——理由写在
+    `blockcheck.repeated_lists` 的 docstring 和 `harness-framework.md` §20④ 里。
+    """
+    return str(st.bag.get("content_at_start") or "")
+
 # Section titles that mean "wrapping up". A block that writes its own
 # conclusion right before the note's existing conclusion is fighting the
 # document's structure.
@@ -152,7 +161,7 @@ def no_same_sources_twice(st: State) -> Verdict | None:
     """
     from .citations import same_sources_twice
 
-    dups = same_sources_twice(st.content, st.fresh or "")
+    dups = same_sources_twice(st.content, _started_with(st))
     if not dups:
         return None
     a, b = dups[0]
@@ -181,6 +190,27 @@ def no_restated_paragraph(st: State) -> Verdict | None:
 
     判的是**字数占比**而不是「有几对」：一篇 3000 字里有两句重复，
     跟一篇 1822 字里 782 字是重复，不是一回事。
+
+    ## 这一条**故意没有量程**（批 25 量完之后的决定，不是漏）
+
+    同一批把 `no_repeated_lists` / `no_fake_charts` 的量程都收到了
+    `content_at_start` 上，**这一条不收**，三条依据：
+
+    1. **逐条读下来一处误伤都没有。** 18 篇 `origin=user` 上开火 1 篇
+       （`06647b9c2031`），读出来是「…上周发生变更需改良包装。下一轮 10 台到货为
+       6 月 15 日… KLR 包装，现需求上周发生变更需改良包装。下一轮 10 台到货为…装。
+       下一轮 10 台到货为…」——**从词中间接上的**，前面还顶着八个空行，
+       36% 的正文是段内重复。那不是人写出来的形状。`script` 那 2 篇同一个形状。
+    2. **它是唯一够得着这种损伤的判据**，而那条损伤**上一次跑留下来了**：
+       `middleware/revise.py` 的锚点在整篇正文里找，所以修订那条线**改得掉**
+       上一次跑写进去的重复（批 14 反向实拍过：它连用户自己的 1326 字都删得动）。
+       收了量程，这一篇就再也没有人报了。
+    3. **`RESTATED_RATIO` 是在「整篇」这个分母上量出来的**（18 篇真产出，15 篇
+       精确 0.0%）。换成「只数这次跑写的那部分」，分母变了，3% 这个数在新口径上
+       **一次都没量过**——§20④：收窄哪一侧都要有据。
+
+    所以留着，并且 `tests/test_criteria_drift.py` 里有一条闸把「它开跑前口径下
+    还会开火」这件事钉成断言：下一个人照着旁边两条顺手给它加量程，那条闸会先说话。
     """
     ratio = repeats.restated_ratio(st.content)
     if ratio < RESTATED_RATIO:
@@ -203,8 +233,21 @@ def no_repeated_lists(st: State) -> Verdict | None:
     段落级查重（`drop_already_written`）看不见它：两段各自还有别的内容，difflib 被稀释到 0.4。
     读产出才发现的（第 596 轮）——一篇复盘里「测试场景、时间、硬件版本、异常表现、负责人、最终结论」
     这组清单出现了两次，中间隔着几百字，读起来是同一件事说了两遍。
+
+    **量程收在「开跑时有没有」上（批 25）**。逐条读过 18 篇 `origin=user` 上的
+    3 处命中：2 处是用户自己写的（`92d07b760f1e` 这篇一次 harness 都没跑过，
+    `e78306202d78` 已经还原回 09-02 的用户原文），1 处是上一次跑留下的机器损伤
+    （`06647b9c2031`）。**误伤 2/3**，而这条判据要的修法是「留下更完整的那一处，
+    另一处改成一句话带过」——一次删除，落在用户自己的正文上。
+    那条线**够得着**：`middleware/revise.py` 对锚点的唯一限制是「在 `st.content`
+    里找得到」，而 `st.content` 开跑时就等于整篇笔记；批 14 实拍过一次后果，
+    一篇真实笔记被删掉 1326 字。所以这里收，不是因为改不动，**恰恰是因为改得动**。
+
+    被放掉的那一半由谁接住：同一篇 `06647b9c2031` 上 `no_restated_paragraph`
+    照样开火（那一条**故意不收量程**，理由写在它自己的 docstring 里）——
+    机器损伤那一篇没有掉出网，掉出去的只有两篇用户原文。
     """
-    dups = blockcheck.repeated_lists(st.content, st.fresh or "")
+    dups = blockcheck.repeated_lists(st.content, _started_with(st))
     if not dups:
         return None
     a, b = dups[0]

@@ -6,6 +6,28 @@
 **只读**（`db_guard.readonly()` + `Watch()`），一次模型调用都不发。
 **只报，不改任何判据**——理由见下面「为什么只报」。
 
+## 它量的是哪一份笔记库（**这个仓有两份，不是同一份**）
+
+默认量 **`backend/data/notes.sqlite3`**（`db_guard.DEFAULT_DB` /
+`corpus_lineage.DB_PATH`，两边指的是同一个文件）——**开发库**，
+2026-09-18 时 482 篇 / 321,250 字。跑批脚本、各个 bench、`Watch()` 的指纹基线，
+全都是这一份。
+
+**装起来用的那个桌面 app 用的不是它。** 打包之后 Electron 把 `KITE_DATA_DIR`
+指到系统用户数据目录（`desktop/src/main.ts` 的 `app.isPackaged` 那一支），
+macOS 上是 `~/Library/Application Support/memoket-note-desktop/data/notes.sqlite3`
+——2026-09-18 的一次盘点是 **62 篇 / 144,870 字**，跟这边差了将近八倍。
+
+**所以这个脚本报出来的每一个百分比，分母都是开发库那 18 篇 `origin=user`**，
+不是「用户在 app 里看到的笔记」。这件事在批 25 之前**仓里一个字都没写过**，
+而它正好是最容易被下一个人读错的那一种数。
+
+想量另一份：`--db <路径>`（`db_guard` 的每个入口本来就都收 `db` 参数）。
+**别去改 `DEFAULT_DB`**——那会把 `Watch()` 的指纹基线一起换掉，
+而那条闸是拿来挡「跑批写坏了用户笔记」的（批 14）。
+另外基线文件 `.local/criteria_drift/latest.json` 只有一份，
+换库跑一次会把上一次的数字盖掉，要么配 `--no-save`。
+
 ## 这个入口在回答什么
 
 `EvalGen` / *Who Validates the Validators?*（UIST 2024）给这件事起了名字，
@@ -382,12 +404,20 @@ def main() -> None:
     ap.add_argument("--show", metavar="判据名", default="",
                     help="列出这条判据在每一篇上的命中片段，供逐条读")
     ap.add_argument("--no-save", action="store_true", help="不更新基线文件")
+    ap.add_argument("--db", metavar="路径", default="",
+                    help="量另一份笔记库（默认是 backend/data/notes.sqlite3；"
+                         "桌面 app 那一份见模块开头）")
     args = ap.parse_args()
 
-    kept, dropped = cl.load_notes(keep=set(cl.ORIGINS))
+    db = pathlib.Path(args.db) if args.db else db_guard.DEFAULT_DB
+    if args.db:
+        # **换库了就说出来**：这个脚本报的每个百分比都带着分母，而分母来自哪一份
+        # 库，光看报告一个字都看不出来。
+        print(f"（这一次量的不是默认那份开发库，是 {db}）\n")
+    kept, dropped = cl.load_notes(db, keep=set(cl.ORIGINS))
     rows = [r for r in kept + dropped if (r.get("content") or "").strip()]
     lineage = {}
-    conn = db_guard.readonly()
+    conn = db_guard.readonly(db)
     try:
         lineage = cl.load_lineage(conn)
     finally:
@@ -413,5 +443,13 @@ def main() -> None:
 
 if __name__ == "__main__":
     # 这个脚本不该写任何用户笔记——写了就抛（批 14 的事故）。
-    with db_guard.Watch():
+    # **`Watch` 看的是这一次真的要量的那份库**，不是写死的默认库：
+    # 换了 `--db` 还去核对默认那份的指纹，等于一边量着 A 一边替 B 作保。
+    _db = db_guard.DEFAULT_DB
+    for _i, _a in enumerate(sys.argv):
+        if _a == "--db" and _i + 1 < len(sys.argv):
+            _db = pathlib.Path(sys.argv[_i + 1])
+        elif _a.startswith("--db="):
+            _db = pathlib.Path(_a.split("=", 1)[1])
+    with db_guard.Watch(_db):
         main()

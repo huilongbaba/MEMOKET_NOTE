@@ -45,12 +45,36 @@ def test_前端认的每个标准事件后端都发得出来():
     assert not unknown, f"前端在等一些后端不会发的事件：{sorted(unknown)}"
 
 
+# 前端**故意**不接的 CUSTOM 名单。今天是空的——一条都没有。
+#
+# **批 25 清掉的是两条死豁免**：原来写的是 `missing -= {"warning", "check_hit"}`，
+# 注释说「warning 是给开发看的诊断，前端不展示」。而 `api.ts` 里这两条分支
+# 一直都在（`payload.name === 'check_hit'` / `=== 'warning'`），正则也取得到，
+# **减不减一模一样**。一条永远不生效的豁免读起来像「这个事件前端没接」，
+# 下一个人会照着它去补一个已经存在的分支，或者反过来把真接上的那条删掉。
+#
+# 名单留着（而不是把这个变量也删掉），是为了让下面那条闸有东西可查：
+# **豁免了一条前端其实接得住的事件，当场红。**
+NOT_ON_SCREEN: set[str] = set()
+
+
 def test_后端每个custom事件前端都接得住():
     """一个后端在发、前端没有分支的 CUSTOM，就是一个静默丢失的信号。"""
-    missing = _backend_custom_names() - _frontend_custom_names()
-    # warning 是给开发看的诊断（某个 middleware 挂了但 run 继续），前端不展示
-    missing -= {"warning", "check_hit"}
+    missing = _backend_custom_names() - _frontend_custom_names() - NOT_ON_SCREEN
     assert not missing, f"这些 CUSTOM 事件前端没有分支：{sorted(missing)}"
+
+
+def test_豁免名单里不许有前端其实接得住的():
+    """**一条永远不生效的豁免，比没有豁免更糟**——它在说一件假话。
+
+    这条闸查的是豁免名单和前端分支的交集：只要名单里某一条前端其实有分支，
+    这条当场红，那时该做的是把它从名单里划掉，而不是把这条闸删掉。
+    """
+    dead = NOT_ON_SCREEN & _frontend_custom_names()
+    assert not dead, (
+        f"这几条被豁免了，可前端 api.ts 里明明有分支，豁免是死的：{sorted(dead)}")
+    unknown = NOT_ON_SCREEN - _backend_custom_names()
+    assert not unknown, f"豁免了几条后端根本不发的事件：{sorted(unknown)}"
 
 
 def test_每种事件都序列化得出一帧():

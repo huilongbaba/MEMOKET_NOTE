@@ -161,8 +161,17 @@ def strip_citations(text: str, ids: list[str]) -> str:
 MIN_SHARED_CITES = 2
 
 
-def same_sources_twice(text: str, fresh: str = "", limit: int = 2) -> list[tuple[str, str]]:
-    """两段正文站在同一批事实编号上，把同一件事说了两遍。"""
+def same_sources_twice(text: str, before: str = "", limit: int = 2) -> list[tuple[str, str]]:
+    """两段正文站在同一批事实编号上，把同一件事说了两遍。
+
+    `before` = 开跑时正文里已经有的字；两段**都**在里面就不报。
+
+    **量程口径跟 `blockcheck.repeated_lists` 一起换的（批 25）**，而且是**同一处
+    机制的第二个调用点**——原来两条都写着 `if fresh and a not in fresh and …`。
+    这条判据在批 24 那份语料上一次都没开过火（`alive=False`），所以**分母是 0，
+    这一改量不出任何东西**；跟着改的理由不是数据，是 §21 那条「同一件事挡住一半
+    等于没挡」：一个会消失的量程修了一处、留了一处，下一次踩的就是留下的那处。
+    """
     paras = [p.strip() for p in (text or "").split("\n\n") if len(p.strip()) >= 60]
     sets = [(p, set(cited_ids(p))) for p in paras]
     out: list[tuple[str, str]] = []
@@ -170,7 +179,7 @@ def same_sources_twice(text: str, fresh: str = "", limit: int = 2) -> list[tuple
         if len(sa) < MIN_SHARED_CITES:
             continue
         for pb, sb in sets[i + 1:]:
-            if fresh and pa not in fresh and pb not in fresh:
+            if pa in before and pb in before:
                 continue
             if len(sa & sb) >= MIN_SHARED_CITES:
                 out.append((pa, pb))

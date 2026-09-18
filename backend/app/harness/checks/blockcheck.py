@@ -201,18 +201,38 @@ _IMG_ALT = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 LIST_DUP_RATIO = 0.7
 
 
-def repeated_lists(text: str, fresh: str = "", limit: int = 2) -> list[tuple[str, str]]:
+def repeated_lists(text: str, before: str = "", limit: int = 2) -> list[tuple[str, str]]:
     """同一组清单被换个说法列了两遍。
 
-    `fresh` 给了的话，只报**这一轮碰过**的那些——用户原来正文里就有的重复不该每轮都报一次。
+    `before` = **这次跑开跑时正文里已经有的字**（`st.bag["content_at_start"]`）。
+    两处清单**都**在里面，就不报——用户原来正文里就有的重复不该每轮都报一次。
     图片的 alt 文字跳过：两张图的提示词长得像是正常的（167 篇真实笔记上唯一的假阳性）。
+
+    **这个参数原来是 `fresh`（这一轮写出来的字），批 25 换掉了**，两个理由，
+    两个都是实拍：
+
+    1. **它会是空的。** 打磨轮 / 只清理轮 `st.fresh` 一个字都没有，而条件写的是
+       `if fresh and …`——那一句直接短路，整条量程当场静默失效，整篇（包括用户
+       自己写的字）重新落回判据的射程里。批 24 在 18 篇 `origin=user` 真实笔记上
+       量到「整篇都是开跑前就有的」那一档还开火 3 篇，逐条读出来 **2 篇是纯误伤**
+       （`92d07b760f1e` 一次 harness 都没跑过、`e78306202d78` 已经还原回 09-02
+       的用户原文）。*一个可能为空的量程，就不是量程。*
+    2. **它还漏了一半该管的。** 修订那一步**就地改写**旧段落，改出来的清单不在
+       `st.fresh` 里，却确确实实是这次跑写的——`middleware/revise.py` 末尾那段
+       注释记着同一个形状（replace 塞回去的审计腔不在 `st.fresh` 里）。
+       换成 `before` 之后这一档跟着被接住。
+
+    所以换口径**两侧都是收紧的方向上更准**，不是放宽：打磨轮从「整篇都报」
+    收到「只报这次跑碰过的」，写作轮从「只认追加的字」扩到「认这次跑写的字」。
+    `before` 空着（新笔记、或者 `criteria_drift` 的 whole 口径）时不过滤——
+    那时候**确实没有开跑前就有的字**，空得其所，跟 `fresh` 的空不是一回事。
     """
     body = _IMG_ALT.sub("", text or "")
     lists = [m.group(0) for m in _ITEM_LIST.finditer(body)]
     out: list[tuple[str, str]] = []
     for i, a in enumerate(lists):
         for b in lists[i + 1:]:
-            if fresh and a not in fresh and b not in fresh:
+            if a in before and b in before:
                 continue
             if difflib.SequenceMatcher(None, a, b).ratio() >= LIST_DUP_RATIO:
                 out.append((a, b))

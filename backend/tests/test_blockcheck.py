@@ -273,9 +273,12 @@ def test_同一组清单换个说法列两遍():
     a = "至少要补齐测试场景、测试时间、使用的硬件版本、异常表现、负责人和最终结论。"
     b = "这里需要补上测试场景、时间、硬件版本、异常表现、负责人、最终结论和接收记录。"
     assert blockcheck.repeated_lists(a + "中间隔着别的话。" * 20 + b)
-    # 只报这一轮碰过的：用户原来正文里的老重复不该每轮都报
-    assert blockcheck.repeated_lists(a + "中间隔着别的话。" + b, fresh=b)
-    assert blockcheck.repeated_lists(a + "中间隔着别的话。" + b, fresh="别的内容") == []
+    # 量程：**两处都**是开跑前就有的才不报（批 25 从 `fresh` 换到 `before`；
+    # 旧口径写的是 `if fresh and …`，打磨轮 fresh 是空的，整条量程会静默失效）
+    doc = a + "中间隔着别的话。" + b
+    assert blockcheck.repeated_lists(doc, before=a) , "只有一处是旧的，还得报"
+    assert blockcheck.repeated_lists(doc, before=doc) == []
+    assert blockcheck.repeated_lists(doc, before="") , "空 before = 没有开跑前那份，不过滤"
     # 两张图的提示词长得像是正常的（167 篇真实笔记上唯一的假阳性）
     assert blockcheck.repeated_lists(
         "![为公司汇报制作一张专业、克制、现代的概念插图](/a.png)"

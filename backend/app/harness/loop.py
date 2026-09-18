@@ -146,7 +146,6 @@ async def run(st: State, hooks: Hooks,
                 if hit in SHIP_BEST_ON and st.best is not None:
                     st.content = st.best[1]
                 break
-            st.steer = _steer(st)
             # The next round needs last round's diagnosis, and ``st.ev`` is
             # about to be cleared so no stop condition can act on a stale
             # score. Keeping the weak dimension **and the scorer's own words**
@@ -344,16 +343,12 @@ def _weak_note(st: State) -> str:
     return score.note if score else ""
 
 
-def _steer(st: State) -> str:
-    """The weakest dimension's own words, carried into the next round.
-
-    Passing just the dimension *name* was tried and failed: the next round
-    knows which axis is weak but not what's actually wrong with it.
-    """
-    if not st.ev or not st.ev.weakest:
-        return ""
-    score = st.ev.scores.get(st.ev.weakest)
-    return f"{st.ev.weakest}: {score.note}" if score else ""
+# **这里以前还有一个 `_steer(st)`，每轮末尾算一次存进 `st.steer`。**
+# 批 25 删掉了：它拼的是紧接着下面两行存进 `bag` 的同一句话
+# （`focus` + ": " + `focus_note`），一句诊断两个载体，而其中一个在长文
+# 两个模式里没有任何功能读者。现在 `State.steer` 是个只读属性，当场从
+# `bag` 那份算出来——读的人一个字都没改。理由和量出来的分布写在
+# `state.State.steer` 的 docstring 里。
 
 
 # -- stop conditions --------------------------------------------------------

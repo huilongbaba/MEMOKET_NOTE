@@ -49,7 +49,9 @@ def dumps(st: State) -> str:
         "facts": st.facts, "charts": st.charts,
         "skill_bodies": st.skill_bodies,
         "skill_menu": [list(x) for x in st.skill_menu],
-        "steer": st.steer,
+        # **`steer` 这个键批 25 去掉了**：它是 `bag["focus"] / ["focus_note"]`
+        # 的拼接，而 `bag` 本来就整份存在下面。存两份的话，恢复出来的那一份
+        # 有可能跟 `bag` 那份说的不是同一句话——而谁都不知道该信哪个。
         "best": [list(st.best[0]), st.best[1]] if st.best else None,
         "ev": _ev_out(st.ev),
         "bag": {k: _encode(v, k, dropped) for k, v in st.bag.items()},
@@ -77,7 +79,6 @@ def loads(text: str, mode) -> State:
     st.charts = list(raw.get("charts") or [])
     st.skill_bodies = list(raw.get("skill_bodies") or [])
     st.skill_menu = [tuple(x) for x in (raw.get("skill_menu") or [])]
-    st.steer = raw.get("steer", "")
     best = raw.get("best")
     st.best = ((tuple(best[0]), best[1]) if best else None)
     st.ev = _ev_in(raw.get("ev"))
