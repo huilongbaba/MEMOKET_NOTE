@@ -74,15 +74,18 @@ class Provenance:
             # ④ 进 prompt 前被相关性筛剔掉的材料（P8 问题 5）：从上千条的主题里抽样回来、
             # 跟这篇零重合的那些。**pop 不是 get**：打磨 / 只清理轮不走取材料那一步，
             # 留着上一轮的值会把「这一轮没筛」报成「这一轮筛掉了 N 条」。
-            **_irrelevant_payload(st.bag.pop("facts_irrelevant", None)),
+            **_irrelevant_payload(st.bag.pop("facts_irrelevant", None),
+                                  bool(st.bag.pop("facts_irrelevant_dropped", False))),
         })
 
 
-def _irrelevant_payload(dropped) -> dict:
+def _irrelevant_payload(dropped, really_dropped: bool) -> dict:
+    """P8 退回后默认**只记不剔**：`irrelevant_dropped=False` 表示这 N 条还在 prompt 里，界面措辞不同。"""
     items = list(dropped or [])
     from ..checks.relevance import fact_body
     return {
         "facts_irrelevant": len(items),
+        "irrelevant_dropped": really_dropped,
         "irrelevant_sample": [fact_body(f)[:60] for f, _n in items[:3]],
     }
 

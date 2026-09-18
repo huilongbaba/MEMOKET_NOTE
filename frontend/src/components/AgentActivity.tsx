@@ -48,6 +48,8 @@ export type AgentRound = {
   depthDroppedAll?: boolean
   /** 进 prompt 前被相关性筛剔掉的材料（P8 问题 5）：从上千条的主题里抽样回来、跟这篇零重合的。 */
   factsIrrelevant?: number
+  /** true = 真的从材料里拿掉了（开关 RELEVANCE_FILTER 开着）；false = 只标出来，还在 prompt 里（P8 退回后的默认）。 */
+  irrelevantDropped?: boolean
   irrelevantSample?: string[]
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
@@ -234,12 +236,13 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             </div>
           )}
 
-          {/* P8 问题 5：从上千条的主题里抽样回来、跟这篇零重合的材料，进 prompt 前就筛掉了。
-              不报的话用户看到「查到 12 条」却只用了 5 条，会以为模型偷懒。 */}
+          {/* P8 问题 5：从上千条的主题里抽样回来、跟这篇零重合的材料。P8 退回后默认**只标不剔**
+              （它们还在 prompt 里），开关 RELEVANCE_FILTER 打开才真的筛掉——两种措辞要分开，
+              不然用户会以为材料已经没了。 */}
           {!!r.factsIrrelevant && (
             <div className="muted" style={{ marginBottom: 3 }}
                  title={(r.irrelevantSample ?? []).join('\n')}>
-              筛掉 {r.factsIrrelevant} 条跟这篇无关的材料（从上千条的主题里抽样来的、跟正文零重合）
+              {r.irrelevantDropped ? '筛掉' : '标出'} {r.factsIrrelevant} 条跟这篇无关的材料（从上千条的主题里抽样来的、跟正文零重合{r.irrelevantDropped ? '' : '；没剔，还在材料里'}）
               {(r.irrelevantSample ?? []).length > 0 && `：${(r.irrelevantSample ?? [])[0]}…`}
             </div>
           )}

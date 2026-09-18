@@ -1062,7 +1062,7 @@ export type NoteHarnessHandlers = {
    * - `checks_total` 这个模式一共几条代码判据——命中的那几条走 `check_hit`，
    *   分母只有这里给得出来；
    * - `depth_dropped` 这一轮有几发工具调用被深度门丢掉（不算进 `truncated`）。 */
-  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean; steer?: string; steer_dim?: string; steer_material?: boolean; steer_in_plan?: boolean | null; checks_total?: number; depth_dropped?: number; depth_dropped_all?: boolean; facts_irrelevant?: number; irrelevant_sample?: string[] }) => void
+  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean; steer?: string; steer_dim?: string; steer_material?: boolean; steer_in_plan?: boolean | null; checks_total?: number; depth_dropped?: number; depth_dropped_all?: boolean; facts_irrelevant?: number; irrelevant_dropped?: boolean; irrelevant_sample?: string[] }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
   /** 这一轮的续写流结束（TEXT_MESSAGE_END）：客户端在这里做服务端收尾时也做的归一化（fixBoldPunct） */

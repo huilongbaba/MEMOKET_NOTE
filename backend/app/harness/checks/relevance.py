@@ -34,6 +34,13 @@ P6 没逼，模型照样把 EVT 写进了网页文案笔记——材料在 promp
 特征词 = 英文词（≥3 字母，去停用词）+ 数字（≥2 位）+ 中文 2-gram（去掉本身是虚词的
 2-gram，以及首尾是「的了在是…」这类单字虚词的）。「[X 的原话]」展开行和
 「（日期 · 说话人 · 类型）」元信息行跟着它的母事实走。
+
+## P8 退回：默认只记不剔（`params.RELEVANCE_FILTER`）
+
+真跑五篇：剔的没剔错，但 da080 第 1 轮三批全是抽样、筛完剩 2 条 → 8 轮（P6 1 轮）、留下 95% → 50%；
+3a3a 12 条全剔 → `material_thin` 弃答（70% → 40%）；token 翻倍。计划铁律第 7 条：让产出变差的退回去。
+所以 `gate(apply=False)` 是默认——「本该剔的」照样算出来进 `round_summary.facts_irrelevant`，
+材料一条不动；开关打开时也剔不到 `MIN_KEPT` 条以下。
 """
 
 from __future__ import annotations
@@ -135,22 +142,49 @@ def queries_of(calls) -> str:
     return "\n".join(parts)
 
 
+# 开着筛也不许剔到这么多条以下（P8 退回）：3a3a 第 1 轮 12 条全剔 → `material_thin` → 弃答。
+# 剔到下限就停手，剩下的按重合度留最相关的。数的是**材料条**（带 id 的行 + 不带 id 的兜底行），
+# 「（日期 · 说话人 · 类型）」元信息行不算一条。
+MIN_KEPT = 3
+
+
 def gate(facts: list[str], calls, context: str, *,
-         min_shared: int = MIN_SHARED_TERMS) -> tuple[list[str], list[tuple[str, int]]]:
+         min_shared: int = MIN_SHARED_TERMS, min_kept: int | None = None,
+         apply: bool = True) -> tuple[list[str], list[tuple[str, int]]]:
     """材料分成 ``(留下的, [(剔掉的, 重合数)])``，顺序保持。
 
     只剔「从超大主题抽样回来 **且** 跟 `context`（标题 + 骨架 + 正文 + 查询）零重合」的；
     元信息行 / 「的原话」行跟着母事实（前一条有 id 的）走。`context` 为空一条都不剔。
+
+    `apply=False`（`params.RELEVANCE_FILTER` 关着，P8 退回后的默认）：**只记不剔**——第二项照样
+    列出「本该剔的」，第一项就是原样的 `facts`。`apply=True` 时也剔不到 `min_kept` 条以下：
+    候选按重合度从高到低补回来，直到留下的够数。
     """
     ctx = terms(context or "")
     sampled = sampled_ids(calls)
     if not ctx or not sampled:
         return list(facts), []
-    decided: dict[str, bool] = {}
+    scored: dict[str, int] = {}
     for f in facts:
         fid, is_src = fact_key(f)
         if fid and not is_src and fid in sampled:
-            decided[fid] = shared_terms(f, ctx) >= min_shared
+            scored[fid] = shared_terms(f, ctx)
+    drop_ids = {fid for fid, n in scored.items() if n < min_shared}
+    # 下限在调用时读模块常量（不是默认参数绑死的那份）——测试和突变验改的就是它
+    if min_kept is None:
+        min_kept = MIN_KEPT
+    if apply and drop_ids:
+        # 下限：留下的材料条（不数元信息行）不能少于 min_kept
+        def _is_item(f: str) -> bool:
+            return not _META_LINE.match((f or "").strip())
+        total = sum(1 for f in facts if _is_item(f))
+        # 剔掉的条数 = 那些 id 的母事实行 + 跟着走的「的原话」行
+        gone_items = sum(1 for f in facts if _is_item(f) and fact_key(f)[0] in drop_ids)
+        for fid in sorted(drop_ids, key=lambda i: -scored[i]):     # 最相关的先补回来
+            if total - gone_items >= min_kept:
+                break
+            drop_ids.discard(fid)
+            gone_items -= sum(1 for f in facts if _is_item(f) and fact_key(f)[0] == fid)
     kept: list[str] = []
     dropped: list[tuple[str, int]] = []
     last_fid = ""
@@ -158,13 +192,13 @@ def gate(facts: list[str], calls, context: str, *,
         fid, is_src = fact_key(f)
         if fid:
             last_fid = fid
-            ok = decided.get(fid, True)
+            ok = fid not in drop_ids
         elif _META_LINE.match((f or "").strip()):
-            ok = decided.get(last_fid, True)          # 元信息行跟母事实
+            ok = last_fid not in drop_ids                 # 元信息行跟母事实
         else:
-            ok = True                                 # 多跳 / 兜底检索回来的不带 id：不动
-        if ok:
-            kept.append(f)
-        else:
+            ok = True                                     # 多跳 / 兜底检索回来的不带 id：不动
+        if not ok:
             dropped.append((f, shared_terms(f, ctx)))
+        if ok or not apply:
+            kept.append(f)
     return kept, dropped

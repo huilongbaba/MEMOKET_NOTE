@@ -1937,6 +1937,7 @@ export default function App() {
           depthDroppedAll: !!d.depth_dropped_all,
           // P8 问题 5：进 prompt 前被相关性筛剔掉的材料（从上千条的主题里抽样、跟这篇零重合）
           factsIrrelevant: d.facts_irrelevant ?? 0,
+          irrelevantDropped: !!d.irrelevant_dropped,
           irrelevantSample: d.irrelevant_sample ?? [],
     })
         if (d.skipped_continue) {

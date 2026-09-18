@@ -30,6 +30,7 @@ from ..agent_loop import ToolTrace
 from ...database import store
 from ...database.retrieval import retrieve as _retrieve
 from ..middleware import ledger as ledger_mw
+from .. import params
 from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
                       LEDGER_IN_PROMPT)
 from ..checks import relevance
@@ -266,14 +267,18 @@ class NoteHooks:
             if hop_facts:
                 facts = hop_facts + facts
 
-        # 材料进 prompt 前的零模型相关性筛（P8 问题 5）：只剔「从上千条的主题里抽样回来
+        # 材料进 prompt 前的零模型相关性筛（P8 问题 5）：只认「从上千条的主题里抽样回来
         # **且** 跟标题 + 骨架 + 正文 + 这次跑自己发过的查询零重合」的。量程和阈值的来历
-        # 在 `checks/relevance.py`。剔掉的记进 bag 给 `Provenance` 报给界面；它们不进
-        # `st.facts`，所以 `material_used` / `dry_rounds` 自然只对留下的算。
+        # 在 `checks/relevance.py`。**默认只记不剔**（`params.RELEVANCE_FILTER`，P8 退回：
+        # 真剔的那一版让 da080 / 3a3a 变差）：算出来的记进 bag 给 `Provenance` 报给界面；
+        # 开关打开时才真的从材料里拿掉（那时它们不进 `st.facts`，`material_used` /
+        # `dry_rounds` 只对留下的算），而且剔不到 `relevance.MIN_KEPT` 条以下。
         context = "\n".join([title or "", spine or "", *beats, st.content,
                              relevance.queries_of(trace.calls)])
-        facts, dropped = relevance.gate(facts, trace.calls, context)
+        facts, dropped = relevance.gate(facts, trace.calls, context,
+                                        apply=params.RELEVANCE_FILTER)
         st.bag["facts_irrelevant"] = dropped
+        st.bag["facts_irrelevant_dropped"] = bool(params.RELEVANCE_FILTER)
         st.bag["facts_irrelevant_total"] = int(st.bag.get("facts_irrelevant_total") or 0) + len(dropped)
         return facts, trace
 

@@ -78,7 +78,8 @@ def test_5_从上千条主题抽样且零重合的才剔_具体主题的一条�
     """3a3a 实拍：`work_product_design`（3167 条）抽样回来的 EVT / T0 进了网页文案笔记。
     603dca 的 `personal_real_estate_sale`（103 条）零重合也留——具体主题的返回不是抽样。"""
     calls = [("filter_facts", {"topic": "work_product_design", "limit": 15}, BROAD)]
-    kept, dropped = R.gate(_lines(BROAD), calls, NOTE_3A3A)
+    # 这几条测的是「两个条件」本身，下限（`MIN_KEPT`）单独在 `test_5_退回…` 里测，这里关掉
+    kept, dropped = R.gate(_lines(BROAD), calls, NOTE_3A3A, min_kept=0)
     gone = {R.fact_key(f)[0] for f, _n in dropped if R.fact_key(f)[0]}
     assert gone == {"terrence-2046-12F8", "terrence-1833-8F6"}, dropped
     assert any("1439-0F4" in f for f in kept), "跟正文共用「产品 / 销售」的那条要留"
@@ -87,7 +88,7 @@ def test_5_从上千条主题抽样且零重合的才剔_具体主题的一条�
     assert not any(f.startswith("（") and "06" in f for f in kept if f.startswith("（2026-04") or f.startswith("（2026-05"))
 
     calls = [("filter_facts", {"topic": "personal_real_estate_sale", "limit": 15}, SMALL)]
-    kept, dropped = R.gate(_lines(SMALL), calls, NOTE_603)
+    kept, dropped = R.gate(_lines(SMALL), calls, NOTE_603, min_kept=0)
     assert dropped == [] and len(kept) == 2, "103 条的具体主题：310 / 265 / 235 那条零重合也不剔"
 
 
@@ -96,23 +97,23 @@ def test_5_模型自己发过的查询算进量程():
     但跟这次跑的检索规划查询「功能样机推进」共用「样机」——留；同一批里的 moms and dads 剔。"""
     calls = [("gather_subject", {"query": DA080_QUERY, "limit": 14}, "（没有）"),
              ("filter_facts", {"topic": "work_product", "limit": 15}, BROAD_DA080)]
-    kept, dropped = R.gate(_lines(BROAD_DA080), calls, NOTE_DA080 + "\n" + R.queries_of(calls))
+    kept, dropped = R.gate(_lines(BROAD_DA080), calls, NOTE_DA080 + "\n" + R.queries_of(calls), min_kept=0)
     assert any("2394-23F4" in f for f in kept)
     assert [R.fact_key(f)[0] for f, _n in dropped] == ["terrence-1522-13F18"]
     # 突变验：不把查询算进去，「样机」那条也会被剔
-    kept2, dropped2 = R.gate(_lines(BROAD_DA080), calls, NOTE_DA080)
+    kept2, dropped2 = R.gate(_lines(BROAD_DA080), calls, NOTE_DA080, min_kept=0)
     assert len(dropped2) == 2, "量程里少了查询这一半，相关的节点材料就被剔了"
 
 
 def test_5_突变验_两个条件撤掉任一条都不再剔(monkeypatch):
     calls = [("filter_facts", {"topic": "work_product_design", "limit": 15}, BROAD)]
-    assert R.gate(_lines(BROAD), calls, NOTE_3A3A)[1], "前提：默认参数下剔得掉"
+    assert R.gate(_lines(BROAD), calls, NOTE_3A3A, min_kept=0)[1], "前提：不设下限时剔得掉"
     monkeypatch.setattr(R, "BROAD_TOPIC_FACTS", 10 ** 9)
-    assert R.gate(_lines(BROAD), calls, NOTE_3A3A)[1] == [], "「抽样」这个条件撤掉就什么都不剔"
+    assert R.gate(_lines(BROAD), calls, NOTE_3A3A, min_kept=0)[1] == [], "「抽样」这个条件撤掉就什么都不剔"
     monkeypatch.setattr(R, "BROAD_TOPIC_FACTS", 1000)
-    assert R.gate(_lines(BROAD), calls, NOTE_3A3A, min_shared=0)[1] == [], "「零重合」这个条件撤掉就什么都不剔"
-    assert R.gate(_lines(BROAD), [], NOTE_3A3A)[1] == [], "没有工具轨迹（`_retrieve` 兜底那条路）一条不剔"
-    assert R.gate(_lines(BROAD), calls, "")[1] == [], "开跑时什么都没有 → 没有量程 → 一条不剔"
+    assert R.gate(_lines(BROAD), calls, NOTE_3A3A, min_shared=0, min_kept=0)[1] == [], "「零重合」这个条件撤掉就什么都不剔"
+    assert R.gate(_lines(BROAD), [], NOTE_3A3A, min_kept=0)[1] == [], "没有工具轨迹（`_retrieve` 兜底那条路）一条不剔"
+    assert R.gate(_lines(BROAD), calls, "", min_kept=0)[1] == [], "开跑时什么都没有 → 没有量程 → 一条不剔"
 
 
 def test_5_特征词_样机容量时间线不再被单字虚词吃掉():
@@ -122,10 +123,31 @@ def test_5_特征词_样机容量时间线不再被单字虚词吃掉():
     assert "这样" not in R.terms("这样就可以了") and "speaker" not in R.terms("Speaker B says")
 
 
-def test_5_prepare接上了筛_剔掉的记进bag(monkeypatch):
-    """`hooks/note.prepare` 真的调了它：返回给循环的材料里没有那两条，bag 里记着剔掉的。"""
+def test_5_退回_默认只记不剔_开着也剔不到三条以下():
+    """P8 退回：`apply=False` 第二项照样列出「本该剔的」，第一项是原样的材料；`apply=True` 时留下的
+    材料条不能少于 `MIN_KEPT`（3a3a 实拍 12 条全剔 → 弃答），候选按重合度从高到低补回来。"""
+    from app.harness import params
+    assert params.RELEVANCE_FILTER is False, "默认必须关（计划铁律第 7 条：让产出变差的退回去）"
+    calls = [("filter_facts", {"topic": "work_product_design", "limit": 15}, BROAD)]
+    kept, dropped = R.gate(_lines(BROAD), calls, NOTE_3A3A, apply=False)
+    assert kept == _lines(BROAD), "只记不剔：材料原样"
+    assert {R.fact_key(f)[0] for f, _n in dropped if R.fact_key(f)[0]} == {"terrence-2046-12F8", "terrence-1833-8F6"}
+    # 三条材料、两条零重合：开着筛只能剔 0 条（3 - 2 < 3），重合度高的先补回来
+    kept3, dropped3 = R.gate(_lines(BROAD), calls, NOTE_3A3A, apply=True)
+    assert dropped3 == [] and len([f for f in kept3 if R.fact_key(f)[0]]) == 3
+    # 下限降到 1 就能剔 2 条；降到 2 只剔 1 条，而且剔的是重合更低的那条（两条都 0 时按 id 序也稳定）
+    assert len({R.fact_key(f)[0] for f, _n in R.gate(_lines(BROAD), calls, NOTE_3A3A, min_kept=1)[1]} - {""}) == 2
+    two = R.gate(_lines(BROAD), calls, NOTE_3A3A, min_kept=2)[1]
+    assert len({R.fact_key(f)[0] for f, _n in two} - {""}) == 1
+    # 五条材料（三条抽样零重合 + 两条具体主题）：剔到剩 3 条就停手
+    many = _lines(BROAD) + _lines(SMALL)
+    calls2 = calls + [("filter_facts", {"topic": "personal_real_estate_sale", "limit": 15}, SMALL)]
+    kept5, dropped5 = R.gate(many, calls2, NOTE_3A3A, apply=True)
+    assert len([f for f in kept5 if R.fact_key(f)[0]]) == 3 and len({R.fact_key(f)[0] for f, _n in dropped5} - {""}) == 2
+
+
+def _prep_broad(monkeypatch):
     from app.harness.hooks import note as mod
-    from app.harness.hooks.note import NoteHooks
 
     class T:
         calls = [("filter_facts", {"topic": "work_product_design", "limit": 15}, BROAD)]
@@ -143,27 +165,46 @@ def test_5_prepare接上了筛_剔掉的记进bag(monkeypatch):
     monkeypatch.setattr(mod.agent_loop, "is_scoped_question", lambda p: False)
     monkeypatch.setattr(mod.query_cache.tools, "dispatch", lambda name, args, ctx: "（没有）")
     monkeypatch.setattr(mod, "AGENT_TOOLS", True)
+    return mod
+
+
+def test_5_prepare接上了筛_默认只记_开关打开才剔(monkeypatch):
+    """`hooks/note.prepare` 真的调了它：默认（开关关）材料原样、bag 里记着「本该剔的」；
+    开关打开（`params.RELEVANCE_FILTER`）才从返回给循环的材料里拿掉，而且剔不到 3 条以下。"""
+    from app.harness.hooks.note import NoteHooks
+    mod = _prep_broad(monkeypatch)
     st = _st(NOTE_3A3A)
     st.bag["spine"], st.bag["beats"] = "", []
     facts, _trace = asyncio.run(NoteHooks(polish=False).prepare(st))
-    assert not any("PCBA" in f or "T0的话" in f for f in facts)
-    assert any("1439-0F4" in f for f in facts)
+    assert facts == _lines(BROAD), "默认只记不剔"
     assert len(st.bag["facts_irrelevant"]) == 4 and st.bag["facts_irrelevant_total"] == 4
+    assert st.bag["facts_irrelevant_dropped"] is False
+
+    monkeypatch.setattr(mod.params, "RELEVANCE_FILTER", True)
+    monkeypatch.setattr(mod.relevance, "MIN_KEPT", 1)
+    st2 = _st(NOTE_3A3A)
+    st2.bag["spine"], st2.bag["beats"] = "", []
+    facts2, _trace = asyncio.run(NoteHooks(polish=False).prepare(st2))
+    assert not any("PCBA" in f or "T0的话" in f for f in facts2) and any("1439-0F4" in f for f in facts2)
+    assert st2.bag["facts_irrelevant_dropped"] is True
 
 
-def test_5_界面拿得到筛掉了几条_而且不会带到下一轮():
+def test_5_界面拿得到标出了几条_剔没剔分开说_而且不会带到下一轮():
     from app.harness.middleware.provenance import Provenance
-    st = _st(NOTE_3A3A, facts_irrelevant=[("[terrence-2046-12F8] EVT 准备 4 台主机，15 套 PCBA", 0)])
+    st = _st(NOTE_3A3A, facts_irrelevant=[("[terrence-2046-12F8] EVT 准备 4 台主机，15 套 PCBA", 0)],
+             facts_irrelevant_dropped=False)
     st.round = 1
     evs = asyncio.run(_collect(Provenance().after_prepare(st)))
     v = [e.data["value"] for e in evs if e.data.get("name") == "round_summary"][0]
     assert v["facts_irrelevant"] == 1 and v["irrelevant_sample"] == ["EVT 准备 4 台主机，15 套 PCBA"]
+    assert v["irrelevant_dropped"] is False, "默认只记不剔，界面得知道这 1 条还在材料里"
     assert "facts_irrelevant" not in st.bag, "报完要 pop：打磨轮不走取材料，留着会把上一轮的数报成这一轮的"
     v2 = [e.data["value"] for e in asyncio.run(_collect(Provenance().after_prepare(st)))
           if e.data.get("name") == "round_summary"][0]
     assert v2["facts_irrelevant"] == 0
     ts = (ROOT / "frontend" / "src" / "components" / "AgentActivity.tsx").read_text(encoding="utf-8")
-    assert "factsIrrelevant" in ts, "后端发了、前端没接 = 静默（§21）"
+    assert "factsIrrelevant" in ts and "irrelevantDropped" in ts, "后端发了、前端没接 = 静默（§21）"
+    assert "标出" in ts and "筛掉" in ts, "剔没剔两种措辞都要有"
 
 
 async def _collect(agen):
