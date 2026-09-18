@@ -22,6 +22,7 @@ from .replan import Replan
 from .runtime import Runtime
 from .repeats import Repeats
 from .save import Save
+from .sections import Sections
 from .skills import Skills
 from .supersede import Supersede
 from .provenance import Provenance
@@ -45,8 +46,10 @@ from .provenance import Provenance
 #   History      after_run         final scores only exist at the end
 #   ---- not in BASE, attached per Mode via extra_mw ----
 #   Revise       before_produce    fix what's written before writing more
-#   Compact      before_produce    after Revise: it compacts st.content, and
-#                                  Revise is what just rewrote it
+#   Sections     before_round /    小节索引发布给 read_section（before_round，
+#                before_produce    因为工具循环在 prepare 里、比 before_produce 早）
+#                                  + 拼续写 prompt 要看的正文（before_produce，
+#                                  after Revise：Revise 刚就地改写过 st.content）
 #   Save         after_produce     persist each round
 #   Repair       after_judge       weak inner quality -> next round repairs
 #                                  instead of writing more
@@ -59,11 +62,16 @@ BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Supersede(), Repeats()
 # Not in BASE, attached per-Mode via extra_mw:
 #   Revise  -- "fix what's already written before writing more"; only
 #              long-form needs it. Block generation rewrites the whole block.
-#   Compact -- shrink the continuation prompt; only long-form hits the limit.
+#   Sections -- 续写 prompt 的正文换成「小节索引 + 当前小节逐字」；只有长文
+#              分得出小节。**批 15 它替掉了 Compact**（计划 3.1 / [CE] §7：
+#              摘要是有损的替换，索引是无损的指针）。`compact_context` 那个
+#              函数本身还在，magic tap 那条一次性路径仍然用它——那条路**没有
+#              工具循环**，给指针它取不回来，所以摘要在那里仍然是较优的一档。
 #   Save    -- persist every round; blocks aren't persisted at all.
 #   Repair  -- repair-instead-of-continue; long-form only.
 #   Runtime / Replan -- note_harness only.
 
 __all__ = ["BASE", "BestOf", "Checks", "Compact", "Facts", "History", "Ledger",
+           "Sections",
            "OrderError", "Provenance", "Repair", "Replan", "Repeats",
            "Runtime", "Save", "Skills", "Supersede", "describe", "verify"]

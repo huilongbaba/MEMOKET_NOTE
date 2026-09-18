@@ -5,6 +5,10 @@
 
 分组约定（``Tool.group``）：
     memory   —— KITE 知识库的只读查询，零 LLM、亚毫秒，默认对写作 agent 开放
+    longform —— 只给两条长文 harness：把自己这篇笔记的某一节原文读回来
+                （`read_section`）。单独一组是因为 block 模式根本没有小节，
+                摆给它们只是在每次调用的工具表里多一条永远用不上的定义，
+                而工具定义与顺序在官方的断缓存清单里
     data     —— 对当前笔记里的表格做确定性统计（画像/分组聚合/相关），零 LLM
     chart    —— 把数据拼成 markdown 表格或 mermaid 图，**语法由代码生成**，
                 模型不写 mermaid，从根上消掉"图渲染不出来"这类错
@@ -19,6 +23,7 @@
 # 那一刻把工具填进注册表。名字本身没人用，所以标 noqa——静态检查会把
 # 「导入了没用」当成重构没做干净的残留报出来，而这里恰恰不是。
 from . import data_tools      # noqa: F401  注册 data 组
+from . import longform_tools  # noqa: F401  注册 longform 组（read_section）
 from . import memory_tools    # noqa: F401  注册 memory 组
 from . import sandbox_tools   # noqa: F401  注册 skill_script 组
 from . import skill_tools     # noqa: F401  注册 skill 组

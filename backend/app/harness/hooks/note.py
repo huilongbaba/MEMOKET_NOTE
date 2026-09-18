@@ -110,6 +110,11 @@ class NoteHooks:
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:
+        # 缓存路由（计划 3.3 / [CE] §4.6）：告诉后面每一次调用「这一整次跑属于
+        # 哪篇笔记的哪个模式」，`llm._cache_key()` 再缀上步骤名（`ctx_feature`
+        # 已经按步骤细分过了，不另造一套）。**设在这里而不是 `loop.py`**——
+        # 这一批的铁律写着不许改 `loop.py` 的循环结构。
+        llm.set_cache_key(st.ctx.note_id, st.mode.key)
         trace = ToolTrace()
         if self.polish or st.bag.get("cleanup_only"):
             # Repair rounds write nothing, so new material has nowhere to go.
@@ -268,7 +273,10 @@ class NoteHooks:
             {"role": "user", "content": prompts.note_harness_continue_user(
                 st.bag.get("spine", ""), st.bag.get("beats") or [],
                 st.content_for_continue(), st.facts, self.profile,
-                outline_note=note_block, sections=sections)},
+                outline_note=note_block, sections=sections,
+                # 更早几轮的材料压成一行索引（计划 3.2）。逐字那一半在
+                # `st.facts` 里，两边由 `middleware/facts.py` 一起算出来。
+                facts_index=st.bag.get("facts_index"))},
         ]
 
         text = ""

@@ -30,6 +30,21 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import store# noqa: E402
+# ---------------------------------------------------------------- 笔记库指纹闸
+# 批 14 的事故：实施 agent 报告「一篇笔记都没写」，实际两篇 terrence 的真实笔记
+# 被改了。**凡是只能靠自报来保证的性质，迟早会被报错一次。**
+#
+# **这个脚本跟另外八个不一样：它是真的要写真实笔记**（备份 → 跑 → 还原，
+# 上面模块文档第 3 段写着）。所以它不能用默认的 `Watch()`（会当场抛），
+# 也**不该**用 `Watch(allow=True)`——那一档等于「随便写，不核对」，
+# 而这个脚本历史上翻车的形状恰恰是**「以为还原了，其实没有」**
+# （下面 INFLIGHT_BACKUP_PATH 那段注释记着：进程被外层超时杀掉，finally
+# 没跑，笔记 27f255a67662 的原文永久丢失）。
+#
+# 用 `Watch(restores=True)`：跑的过程中随便写，**出来时每一篇笔记的正文必须
+# 逐字回到原样**，对不上就吵。`updated_at` / `note_revisions` 允许前进
+# ——还原本身就是一次写，卡它们等于天天误报。
+import db_guard  # noqa: E402
 
 BASE_URL = "http://localhost:8000"
 LOG_PATH = Path(__file__).resolve().parent / "harness_stress_log.jsonl"
@@ -306,4 +321,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # 备份-还原型跑批：过程中可写，**出来时正文必须逐字还原**，见上面那段。
+    with db_guard.Watch(restores=True):
+        main()

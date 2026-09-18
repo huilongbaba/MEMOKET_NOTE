@@ -41,6 +41,15 @@ PLACEHOLDER = re.compile(r"待指定|待倒排|待定|待补|待确认|待明确
 ADVICE = re.compile(r"[^。；\n]*?(?:应当|应该|应|需要|建议|必须)[^。；\n]{3,}")
 
 
+
+# ---------------------------------------------------------------- 笔记库指纹闸
+# 批 14 的事故：实施 agent 报告「一篇笔记都没写」，实际两篇 terrence 的真实
+# 笔记被改了，其中一篇丢了 1326 字用户自己写的内容。**凡是只能靠自报来保证的
+# 性质，迟早会被报错一次**——所以跑批一律夹在 `db_guard.Watch()` 里，出来时
+# 自动核对笔记表的指纹（行数 / max(updated_at) / 正文总字数 / 逐篇正文摘要），
+# 动了就抛，不接受任何人的口头保证。
+import db_guard  # noqa: E402
+
 def advice_ratio(text: str) -> int:
     ss = [x for x in re.split(r"[。；\n]", text) if len(x.strip()) > 8]
     return round(sum(1 for x in ss if ADVICE.search(x)) / max(1, len(ss)) * 100)
@@ -222,4 +231,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # 这个脚本不该写任何用户笔记——写了就抛，见上面 db_guard 那段。
+    with db_guard.Watch():
+        main()

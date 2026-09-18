@@ -71,6 +71,40 @@ def sanitize_messages(messages: list[dict]) -> list[dict]:
 ctx_user: contextvars.ContextVar[str] = contextvars.ContextVar("llm_user", default="")
 ctx_feature: contextvars.ContextVar[str] = contextvars.ContextVar("llm_feature", default="")
 
+# 这次调用该往哪个缓存前缀上路由（计划 3.3 / [CE] §4.6）。
+#
+# **为什么需要它**：前缀缓存是按前缀内容匹配的，`prompt_cache_key` 不改变
+# 命不命中，它改变的是**请求被路由到哪台机器**——同一个 key 的请求会尽量
+# 落到同一台，于是那台上本来就有这份前缀的 KV。官方原话是「可传
+# `prompt_cache_key` 做缓存路由 / 分账」。
+#
+# 拼法：`note_id:mode:步骤`。前两段由 harness 在每轮开头设一次
+# （`llm.set_cache_key`），第三段直接借 `ctx_feature`——批 1 已经把它按步骤
+# 细分过了（`loop._step` 缀 `:tools` / `:judge`），**不再造第二套步骤名**。
+#
+# 空串 = 不传这个字段，行为跟以前一字不差。
+ctx_cache_key: contextvars.ContextVar[str] = contextvars.ContextVar("llm_cache_key", default="")
+
+
+def set_cache_key(note_id: str, mode_key: str) -> None:
+    """告诉后面的调用「这一整次跑属于哪篇笔记的哪个模式」。
+
+    调用方是两条长文 harness 的 `prepare`（[CE] §0 实测：这两条占了全部模型
+    调用的 91%）。**不放在 `loop.py` 里**——那会动循环本身，而这一批的铁律
+    里写着不许改 `loop.py` 的循环结构。
+    """
+    ctx_cache_key.set(f"{(note_id or '-')[:40]}:{(mode_key or '-')[:24]}")
+
+
+def _cache_key() -> str:
+    """`note:mode` + 步骤。步骤取自 `ctx_feature`——它已经是 `路由:步骤` 的
+    形状，取最后一段就是步骤名；没有步骤就只用前两段。"""
+    base = ctx_cache_key.get()
+    if not base:
+        return ""
+    step = (ctx_feature.get() or "").rsplit(":", 1)[-1]
+    return f"{base}:{step}" if step else base
+
 
 def _cached_of(usage: dict) -> tuple[int, int]:
     """这次调用命中了多少缓存的输入 token。
@@ -116,6 +150,13 @@ def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
     }
     # 本地 llama.cpp 与 OpenAI 都认这个字段；商用端点不认时会被忽略。
     body["reasoning_effort"] = effort
+    key = _cache_key()
+    if key:
+        # 缓存路由（计划 3.3）。不认这个字段的端点会忽略它；**真的 400 的话**
+        # 下面 `_rejects_cache_key` 那条会把它剥掉重试一次——跟 `temperature`
+        # 和 `reasoning_effort` 两条兜底同一个套路：只有撞上那个特定错误才降级，
+        # 不为了兼容一个端点就整体去掉。
+        body["prompt_cache_key"] = key
     if stream:
         body["stream_options"] = {"include_usage": True}   # 流的最后一帧带 usage（OpenAI / llama.cpp 都认）
     if tools:
@@ -144,6 +185,22 @@ def _rejects_effort_with_tools(status_code: int, body: bytes) -> bool:
             and "tool" in str(err.get("message", "")).lower())
 
 
+def _rejects_cache_key(status_code: int, body: bytes) -> bool:
+    """这次 400 是不是「这个端点不认 `prompt_cache_key`」。
+
+    本地 llama.cpp 那条路没验过这个字段，而 `prompt_cache_key` 纯粹是路由
+    提示——**为它丢掉一次调用是完全不值的**。判据窄在 `param` 上，不拿
+    「400 里提到了这个词」当依据（那会把「参数值非法」也一起吞掉）。
+    """
+    if status_code != 400:
+        return False
+    try:
+        err = json.loads(body).get("error") or {}
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    return err.get("param") == "prompt_cache_key"
+
+
 def _rejects_temperature(status_code: int, body: bytes) -> bool:
     """判断这次 400 是不是"这个模型不支持自定义 temperature"这个特定错误——
     不是所有 400 都该吞掉重试，只有这一种确定是"参数不支持"而不是"请求
@@ -155,6 +212,22 @@ def _rejects_temperature(status_code: int, body: bytes) -> bool:
     except (json.JSONDecodeError, AttributeError):
         return False
     return err.get("param") == "temperature" and err.get("code") == "unsupported_value"
+
+
+def _drop_rejected_param(payload: dict, status_code: int, body: bytes) -> bool:
+    """端点不认某个参数时把它剥掉，返回要不要重试。
+
+    三个降级判据（`prompt_cache_key` / `temperature` / `reasoning_effort`）
+    原来各自散在四条调用路径里，加第三个的时候就得改四处——漏一处不会报错，
+    只会在那条路上安静地 400。收成一个函数，四条路都过它。
+    """
+    if _rejects_cache_key(status_code, body):
+        payload.pop("prompt_cache_key", None)
+        return True
+    if _rejects_temperature(status_code, body):
+        payload.pop("temperature", None)
+        return True
+    return False
 
 
 async def complete(messages: list[dict], *, max_tokens: int = 1500,
@@ -173,8 +246,7 @@ async def complete(messages: list[dict], *, max_tokens: int = 1500,
     async with httpx.AsyncClient(timeout=300.0) as client:
         r = await client.post(f"{cfg['base_url']}/chat/completions",
                               headers=_headers(), json=payload)
-        if _rejects_temperature(r.status_code, r.content):
-            payload.pop("temperature", None)
+        if _drop_rejected_param(payload, r.status_code, r.content):
             r = await client.post(f"{cfg['base_url']}/chat/completions",
                                   headers=_headers(), json=payload)
         r.raise_for_status()
@@ -240,8 +312,7 @@ async def complete_raw(messages: list[dict], *, max_tokens: int = 1500,
             payload["reasoning_effort"] = "none"
             r = await client.post(f"{cfg['base_url']}/chat/completions",
                                   headers=_headers(), json=payload)
-        if _rejects_temperature(r.status_code, r.content):
-            payload.pop("temperature", None)
+        if _drop_rejected_param(payload, r.status_code, r.content):
             r = await client.post(f"{cfg['base_url']}/chat/completions",
                                   headers=_headers(), json=payload)
         if r.status_code >= 500:
@@ -288,8 +359,9 @@ async def stream(messages: list[dict], *, max_tokens: int = 1200,
             # **只有 400 才把 body 读完**。之前无条件 ``await probe.aread()``——那会把整个
             # 流式响应先攒完再交给 _consume_sse，于是"流式"是假的：实测 88 个 delta 全在
             # 最后 0.7 秒里到，第一个字要等 3.5 秒。
-            if probe.status_code == 400 and _rejects_temperature(400, await probe.aread()):
-                payload.pop("temperature", None)
+            if probe.status_code == 400 and _drop_rejected_param(
+                    payload, 400, await probe.aread()):
+                pass                                  # 剥掉端点不认的那个参数，下面重来一次
             else:
                 probe.raise_for_status()
                 async for piece in _consume_sse(probe, stats, model=cfg["model"], t0=t0):
@@ -322,8 +394,9 @@ async def stream_events(messages: list[dict], *, max_tokens: int = 1200,
     async with httpx.AsyncClient(timeout=300.0) as client:
         url = f"{cfg['base_url']}/chat/completions"
         async with client.stream("POST", url, headers=_headers(), json=payload) as probe:
-            if probe.status_code == 400 and _rejects_temperature(400, await probe.aread()):
-                payload.pop("temperature", None)
+            if probe.status_code == 400 and _drop_rejected_param(
+                    payload, 400, await probe.aread()):
+                pass                                  # 剥掉端点不认的那个参数，下面重来一次
             else:
                 probe.raise_for_status()
                 async for ev in _consume_tagged(probe, model=cfg["model"], t0=t0):

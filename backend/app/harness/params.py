@@ -40,6 +40,32 @@ LEDGER_IN_PROMPT = os.getenv("MEMOKET_LEDGER_PROMPT", "1").lower() not in (
     "0", "false", "no")
 
 
+# 续写 prompt 里的正文用不用「小节索引 + 当前小节逐字」（计划 3.1 / [CE] §7）。
+#
+# 关掉 = 退回 `Compact`（更早的部分折成摘要）。**这条开关存在的理由跟
+# `LEDGER_IN_PROMPT` 一样**：[CE] §7 自己写明了这一改有一个真实风险
+# ——**模型不去调 `read_section` 那个工具**（`policy.py` 里就记着「上一轮没用
+# 工具」这种情况）。两条缓解（索引行里明写怎么调 + 当前小节永远逐字给）
+# 都上了，但**效应本身要真跑才知道**；真跑要是发现产出变差，得能只撤这一条，
+# 而不是连事实索引一起撤。
+SECTION_INDEX = os.getenv("MEMOKET_SECTION_INDEX", "1").lower() not in (
+    "0", "false", "no")
+
+
+# 事实块用不用「事实索引 + 本轮逐字」（计划 3.2 / [CE] §7 / [MR] §3.5）。
+#
+# 关掉 = 退回 `(st.facts + fresh)[-fact_budget:]` 那个写法，也就是**攒满
+# 40 条之后从头丢**。那是「截断」那一档：既丢信息，又让整块事实每加一条就
+# 整体平移（断缓存前缀），还造成「同一条事实被反复换进换出，每次花一次
+# 工具调用」（[MR] §1）。
+#
+# 跟 `SECTION_INDEX` **分成两个开关**，不合并：真跑要是退步了，得能分清
+# 是正文那一半还是事实那一半——批 13 的头条数就是靠隔离实验（只开 2.5 那一臂）
+# 才说得清「2.5 单独值多少」。
+FACT_INDEX = os.getenv("MEMOKET_FACT_INDEX", "1").lower() not in (
+    "0", "false", "no")
+
+
 # 单轮续写的正文 token 上限。**这是安全网，不是控制器。**
 #
 # "一轮写多少"由 prompt 的语义约束管（MAGIC_TAP_SYSTEM 里的"写 1-3 段即可，

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -127,3 +128,116 @@ def test_只盯笔记和它的历史_不盯跑批本来就该写的表(db):
     而**一个天天误报的闸等于没有闸**。"""
     g = _load()
     assert set(g.WATCHED) == {"notes", "note_revisions"}
+
+
+# ===================================================== 批 15：第四样 + 两条接线 ===
+
+
+def test_一篇变短另一篇变长正好抵消也抓得住(db):
+    """**第四样存在的全部理由。**
+
+    前三样（行数 / max(updated_at) / 正文总字数）里只有总字数在看正文，
+    而它是**总和**。批 14 那场事故正是一篇 1976→650、另一篇 2762→5279
+    ——一短一长，只是没恰好抵消才被总字数抓到。这里把时间戳写回去、
+    并让两篇的增减正好相等：前三样**一个都不响**。
+    """
+    g = _load()
+    with pytest.raises(g.NotesTouched, match="正文变了"):
+        with g.Watch(db):
+            c = sqlite3.connect(db)
+            # a: 3 字 → 2 字；b: 2 字 → 3 字。总字数 5 不变，时间戳原样写回。
+            c.execute("UPDATE notes SET content='甲甲', updated_at='2026-09-01T00:00:00'"
+                      " WHERE id='a'")
+            c.execute("UPDATE notes SET content='乙乙乙', updated_at='2026-09-02T00:00:00'"
+                      " WHERE id='b'")
+            c.commit(); c.close()
+
+
+def test_备份还原型跑批_正文原样还原就放行(db):
+    """`harness_stress_test.py` 那一档：过程中真的写，出来时正文逐字还原。
+
+    还原本身是一次写，所以 `updated_at` 必然前进——**卡它等于天天误报**，
+    而一个天天误报的闸等于没有闸。
+    """
+    g = _load()
+    with g.Watch(db, restores=True):
+        c = sqlite3.connect(db)
+        c.execute("UPDATE notes SET content='跑批写的', updated_at='2026-09-30T00:00:00'"
+                  " WHERE id='a'")
+        c.commit()
+        c.execute("UPDATE notes SET content='甲甲甲', updated_at='2026-09-30T00:00:01'"
+                  " WHERE id='a'")            # 还原：正文逐字放回，时间戳往前走
+        c.commit(); c.close()
+
+
+def test_备份还原型跑批_没还原干净就吵(db):
+    """**这一档不能用 `allow=True`。** `allow=True` 等于「随便写，不核对」，
+    而这个脚本历史上翻车的形状恰恰是「以为还原了，其实没有」——进程被外层
+    超时杀掉、finally 没跑，一篇真实笔记的原文永久丢失。"""
+    g = _load()
+    with pytest.raises(g.NotesTouched, match="还原没把正文放回原样"):
+        with g.Watch(db, restores=True):
+            c = sqlite3.connect(db)
+            c.execute("UPDATE notes SET content='跑批写的没还原' WHERE id='a'")
+            c.commit(); c.close()
+
+
+def _script_texts() -> dict[str, str]:
+    return {p.name: p.read_text(encoding="utf-8") for p in sorted(_SCRIPTS.glob("*.py"))}
+
+
+# 「会跑 harness」的确定性判据：要么打了那两个跑批路由，要么直接 import 生产的
+# harness 包。**不是一份名单**——名单会腐烂，而新加的脚本必须自动落进网里。
+_RUNS_HARNESS = re.compile(r"note-harness/run|writing-plan/run|app\.harness")
+# 唯一豁免：`dump_prompts.py` import 了 `app.harness`，但它只把提示词渲染出来
+# 打印，**一次模型调用都不发、一行都不写**。下面那条断言钉着这个理由，
+# 它哪天开始发调用了，豁免当场失效。
+_PROMPT_DUMP_ONLY = "dump_prompts.py"
+# 真正的接线长这样：一行 `with db_guard.Watch(...)`（行首只能有空白）。
+_WIRED = re.compile(r"^\s*with db_guard\.Watch\(", re.M)
+
+
+def test_会跑harness的脚本必须夹在Watch里():
+    """**建了闸不等于用了闸。**
+
+    批 14 的整改是写出 `Watch`，批 15 才是把它接上。没有这条断言的话，
+    下一个新脚本照样会在没有任何核对的情况下跑，而事故形状一模一样：
+    报告说「一篇笔记都没写」，没有任何东西在核对这句话。
+    """
+    missing = []
+    for name, text in _script_texts().items():
+        if name in ("db_guard.py", _PROMPT_DUMP_ONLY):
+            continue
+        # **必须匹配真正的那一行 `with db_guard.Watch(...)`，不能拿子串
+        # `"db_guard.Watch(" in text` 了事。** 突变验当场打脸：把 `soak.py` 的
+        # `with db_guard.Watch(): main()` 撤成裸 `main()`，这条闸**照样是绿的**
+        # ——因为上面那段接线注释里写着「跑批一律夹在 `db_guard.Watch()` 里」，
+        # 子串还在。**闸被自己的注释骗过去了。**
+        if _RUNS_HARNESS.search(text) and not _WIRED.search(text):
+            missing.append(name)
+    assert not missing, (
+        f"这些脚本会跑 harness 却没接指纹闸：{missing}。"
+        "在 `if __name__ == \"__main__\":` 里用 `with db_guard.Watch():` 包住 main()")
+
+
+def test_豁免的那个脚本确实一次调用都不发():
+    """防豁免腐烂：`dump_prompts.py` 只渲染提示词。它哪天开始发模型调用 /
+    起 HTTP，这条就红，豁免必须重新论证。"""
+    text = _script_texts()[_PROMPT_DUMP_ONLY]
+    for banned in ("llm.", "httpx", "asyncio"):
+        assert banned not in text, (
+            f"{_PROMPT_DUMP_ONLY} 里出现了 {banned}——它不再是「只渲染提示词」，"
+            "要么接上 db_guard.Watch()，要么把豁免理由重写")
+
+
+def test_跑批脚本不许自己拼只读连接():
+    """只读连接只有一处实现（`db_guard.readonly`）。
+
+    拼一次 `mode=ro` 就多一个地方可能漏掉它，而批 14 的根因正是
+    「以为自己没写」。**`db_guard.py` 自己是那一处实现，不在此列。**
+    """
+    offenders = [name for name, text in _script_texts().items()
+                 if name != "db_guard.py" and "sqlite3.connect(" in text]
+    assert not offenders, (
+        f"这些脚本自己拼了 sqlite3 连接：{offenders}。只读走 db_guard.readonly()，"
+        "真要写走 db_guard.writable(why=...)")

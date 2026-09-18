@@ -21,7 +21,7 @@ from .checks import (charts_from_tools, citations_exist, citations_present, cita
                      no_placeholder, no_repeated_lists, no_restated_paragraph,
                      no_same_sources_twice, outline_intact,
                      table_present, tail_clashes)
-from .middleware import Compact, Repair, Replan, Runtime, Save
+from .middleware import Repair, Replan, Runtime, Save, Sections
 from .middleware.revise import Revise
 from .state import State
 from .types import Mode
@@ -432,7 +432,7 @@ CUSTOM_DIMS = (_FOLLOWS_PROMPT, _REPLACES_CLEANLY, _NO_FABRICATION)
 NOTE = Mode(
     key="note",
     label="续写整篇",
-    groups=("memory", "skill", "chart"),
+    groups=("memory", "skill", "chart", "longform"),
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
@@ -441,7 +441,7 @@ NOTE = Mode(
             no_fake_charts, charts_from_tools),
     stop_when=(material_used_up, stalled, nothing_left_to_fix,
                pause_for_review),
-    extra_mw=(Revise(), Repair(), Runtime(), Replan(), Compact(), Save()),
+    extra_mw=(Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),
     max_rounds=8,
     context_keep_last=4000,
 )
@@ -449,14 +449,14 @@ NOTE = Mode(
 SECTION = Mode(
     key="section",
     label="分段写作",
-    groups=("memory", "skill", "chart"),
+    groups=("memory", "skill", "chart", "longform"),
     skill_scope="section_write",
     dims=(),                      # runtime-shaped; see for_run()
     checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist, citations_present,
             material_used, no_repeated_lists, no_restated_paragraph,
             no_same_sources_twice, no_fake_charts, charts_from_tools),
     stop_when=(material_used_up, pause_for_review),
-    extra_mw=(Revise(), Repair(), Compact(), Save()),
+    extra_mw=(Revise(), Repair(), Sections(), Save()),
     # Measured cap, not a completion criterion: a section that keeps
     # scoring 'continue' must not hold the whole plan hostage.
     max_rounds=4,

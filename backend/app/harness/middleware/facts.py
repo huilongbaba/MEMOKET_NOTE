@@ -14,7 +14,15 @@ Welding them means there is no way to write "accumulate but don't trim".
 
 from __future__ import annotations
 
+import re
+
+from ..params import FACT_INDEX
 from ..state import State
+
+# 材料行开头的事实 id：``[terrence-2046-2F3] 正文……``。跟 `ledger._FACT_LINE`
+# 是同一种形状——**故意不共用那一个**：那边的正则带 `re.M` 是拿来扫整段工具
+# 返回体的，这边匹配的是单独一行，共用会让「改一处修 A、顺手破 B」变成可能。
+_FACT_ID = re.compile(r"^\[([A-Za-z0-9_\-]+)\]")
 
 
 class Facts:
@@ -38,8 +46,37 @@ class Facts:
             # and the run stopped with "material_used_up" on a note whose
             # knowledge base had just returned 22 facts.
             return
-        fresh = [f for f in st.facts_new if f not in st.facts]
-        st.facts = (st.facts + fresh)[-st.mode.fact_budget:]
+        # ---- 事实索引取代 `[-40:]`（计划 3.2 / [CE] §7 / [MR] §3.5）----
+        #
+        # 原来这里是 `st.facts = (st.facts + fresh)[-st.mode.fact_budget:]`。
+        # `[-40:]` 是**从头部丢**，[CE] §7 把它排在信息损失的最差那一档
+        # （按位置丢，完全不看重要性），三条代价：
+        #
+        #   1. **丢信息**——攒满之后每来一条新的就挤掉一条旧的，永久没了；
+        #   2. **断缓存前缀**——整块事实每加一条就整体平移，前缀从这里起
+        #      逐字都不一样（[CE] §2①）；
+        #   3. **换进换出**——规划器不知道 A 曾经在过，过两轮又查一次把 A
+        #      取回来，再挤掉另一条。每一次都花一次工具调用（[MR] §1）。
+        #
+        # 改法：**全量只追加地攒在 `facts_all` 里，一条不丢**；进 prompt 的
+        # 是「更早那些压成一行索引（id + 一行）+ 最近 fact_budget 条逐字」。
+        # 索引行是**指针**——`fact_sources` 这个工具本来就在，全文随时取得回来。
+        #
+        # 两条缓解跟正文那一半是同一对（[CE] §7 明写「必须一起上」）：
+        # 索引块里写清楚怎么取全文；**最近那几条永远逐字给**，一次工具都不调
+        # 也写得下去。
+        all_facts = st.bag.setdefault("facts_all", [])
+        fresh = [f for f in st.facts_new if f not in all_facts]
+        all_facts.extend(fresh)
+        if FACT_INDEX:
+            budget = st.mode.fact_budget
+            st.facts = all_facts[-budget:] if budget else list(all_facts)
+            st.bag["facts_index"] = _index_lines(
+                all_facts[:-budget] if budget else [], st.bag.get("ledger"))
+        else:
+            # 回退：一字不差的老行为（`params.FACT_INDEX`）。
+            st.facts = all_facts[-st.mode.fact_budget:]
+            st.bag["facts_index"] = []
 
         if st.trace is not None:
             for chart in _mermaid_of(st.trace):
@@ -51,6 +88,27 @@ class Facts:
         # the existing threshold almost never fires, because every round
         # retrieves fact rows that differ in wording while saying the same thing.
         st.bag["dry_rounds"] = 0 if fresh else st.bag.get("dry_rounds", 0) + 1
+
+
+def _index_lines(older: list[str], ledger: dict | None) -> list[str]:
+    """更早那些事实 → 一行一条的索引。
+
+    **一行从哪来：账本**（`middleware/ledger.py` 的 `facts[fid]["line"]`）。
+    它已经在存 id + 一行 + 状态 + 日期了——**那就是这份索引，不另造一份**。
+    账本里没有的（`_retrieve` 兜底回来的、多跳结果这类不带 id 的），退回按
+    原文截一段：漏掉它比截短它更糟，那等于又丢了一条。
+    """
+    facts = ((ledger or {}).get("facts") or {})
+    out: list[str] = []
+    for f in older:
+        m = _FACT_ID.match(f)
+        fid = m.group(1) if m else ""
+        line = (facts.get(fid) or {}).get("line") if fid else ""
+        if not line:
+            line = f[len(fid) + 2:].strip() if fid else f
+            line = line[:60]
+        out.append(f"[{fid}] {line}" if fid else line)
+    return out
 
 
 def _mermaid_of(trace) -> list[str]:

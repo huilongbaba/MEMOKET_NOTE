@@ -71,7 +71,6 @@ import hashlib
 import json
 import random
 import re
-import sqlite3
 import statistics
 import sys
 import time
@@ -110,6 +109,15 @@ DB_PATH = ROOT.parent / "data" / "notes.sqlite3"
 MIN_CHARS = 600
 
 
+
+# ---------------------------------------------------------------- 笔记库指纹闸
+# 批 14 的事故：实施 agent 报告「一篇笔记都没写」，实际两篇 terrence 的真实
+# 笔记被改了，其中一篇丢了 1326 字用户自己写的内容。**凡是只能靠自报来保证的
+# 性质，迟早会被报错一次**——所以跑批一律夹在 `db_guard.Watch()` 里，出来时
+# 自动核对笔记表的指纹（行数 / max(updated_at) / 正文总字数 / 逐篇正文摘要），
+# 动了就抛，不接受任何人的口头保证。
+import db_guard  # noqa: E402
+
 def select_corpus(rows: list[dict], lineage: dict[str, corpus_lineage.Lineage] | None = None,
                   *, min_chars: int = MIN_CHARS) -> tuple[list[dict], list[dict]]:
     """纯函数：`(id, user_id, title, content, spine, beats)` 行 → 留下的 / 排掉的。
@@ -137,8 +145,7 @@ def select_corpus(rows: list[dict], lineage: dict[str, corpus_lineage.Lineage] |
 
 def load_corpus(db_path: Path = DB_PATH) -> tuple[list[dict], list[dict]]:
     """跑过 harness 的笔记（`harness_runs.key`），**只读**打开。"""
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
+    conn = db_guard.readonly(db_path)          # 批 15：只读连接只有一处实现
     try:
         lineage = corpus_lineage.load_lineage(conn)
         # key 是 note_id，block 模式带 `<mode>:` 前缀（见 store.py 的注释）
@@ -2283,4 +2290,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # 这个脚本不该写任何用户笔记——写了就抛，见上面 db_guard 那段。
+    with db_guard.Watch():
+        main()

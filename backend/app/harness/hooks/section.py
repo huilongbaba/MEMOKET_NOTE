@@ -76,6 +76,11 @@ class SectionHooks:
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:
+        # 缓存路由（计划 3.3 / [CE] §4.6）：告诉后面每一次调用「这一整次跑属于
+        # 哪篇笔记的哪个模式」，`llm._cache_key()` 再缀上步骤名（`ctx_feature`
+        # 已经按步骤细分过了，不另造一套）。**设在这里而不是 `loop.py`**——
+        # 这一批的铁律写着不许改 `loop.py` 的循环结构。
+        llm.set_cache_key(st.ctx.note_id, st.mode.key)
         title = st.ctx.note_title
         trace = ToolTrace()
         if not AGENT_TOOLS:
@@ -135,7 +140,8 @@ class SectionHooks:
             {"role": "user", "content": prompts.section_write_user(
                 st.ctx.note_title, self.goal, self.other_summaries,
                 st.content_for_continue(), st.facts, self.folder_ctx,
-                self.profile, focus=st.bag.get("focus", ""))},
+                self.profile, focus=st.bag.get("focus", ""),
+                facts_index=st.bag.get("facts_index"))},
         ]
 
         text = ""

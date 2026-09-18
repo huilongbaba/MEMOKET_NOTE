@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .fragments import (content_block, facts_block, heading_format_reminder,
+from .fragments import (content_block, facts_block, facts_index_block,
+                        heading_format_reminder,
                         profile_block, spine_beats_block)
 
 
@@ -184,7 +185,8 @@ def replan_user(title: str, spine: str, beats: list[str], content: str,
 def note_harness_continue_user(spine: str, beats: list[str], content: str,
                                facts: list[str], profile: list[str],
                                outline_note: str = "",
-                               sections: list[str] | None = None) -> str:
+                               sections: list[str] | None = None,
+                               facts_index: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -194,6 +196,10 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
     spine_block = spine_beats_block(spine, beats)
     if spine_block:
         parts.append(spine_block)
+    if facts_index:
+        # 更早几轮的材料，一行一条的索引（计划 3.2）。**摆在逐字事实前面**：
+        # 索引只追加、逐字那一窗每轮在移，稳定的放前面。
+        parts.append(facts_index_block(facts_index))
     if facts:
         parts.append(facts_block(facts))
     parts.append(content_block(content))

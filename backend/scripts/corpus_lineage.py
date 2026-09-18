@@ -63,6 +63,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+import db_guard      # 只读连接只有一处实现（批 15）
+
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "notes.sqlite3"
 
 ORIGIN_USER = "user"
@@ -229,8 +231,10 @@ def load_notes(db_path: Path = DB_PATH, *, keep: set[str] | None = None,
     `harness_only=True` 只取 `harness_runs` 跑过的那些笔记（灵敏度 bench 要的）。
     """
     keep = keep or {ORIGIN_USER}
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
+    # **只读连接由 `db_guard.readonly()` 统一给**，不在这里再拼一遍
+    # `mode=ro`（批 15）：拼 URI 这件事重复一次，就多一个地方可能漏掉
+    # `mode=ro`——而批 14 那场事故的根因正是「以为自己没写」。
+    conn = db_guard.readonly(db_path)
     try:
         lineage = load_lineage(conn)
         ids: set[str] | None = None

@@ -57,9 +57,9 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×15<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Compact Save"]
+    MW["Middleware ×15<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save"]
     CHK["checks/ ×10 代码判据<br/>+ rubric 模型打分"]
-    TOOLS["tools/ ×21 · registry 分组授权<br/>memory · data · chart · table · image · skill"]
+    TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
     SNAP["snapshot.py<br/>冻结 / 解冻 State"]
@@ -191,15 +191,20 @@ backend/app/
                              ＋这次跑累积的材料（with_material，loop 每轮现拼）
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
-    middleware/              15 个能力 + _order.py（顺序依赖，verify() 起跑时校验）
-      skills · facts · history · ledger · supersede · compact · best_of · checks
+    middleware/              15 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
+                             + _order.py（顺序依赖，verify() 起跑时校验）
+      skills · facts · history · ledger · supersede · compact · sections · best_of · checks
       · provenance · revise · repeats · replan · repair · runtime · save · _order
+      （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
+        「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
     checks/                  15 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · blockcheck · rubric · pick
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
         不进闭环——幻灯片是一次成型的重构，判据结果跟着产物一起显示）
-    tools/                   21 个工具 + registry（分组授权）
-      memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools · registry
+    tools/                   22 个工具 + registry（分组授权）
+      memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools
+      · longform_tools（read_section：把自己这篇笔记的某一节原文读回来，只给两条长文 harness）
+      · registry
     prompts/                 提示词
       writing · note · plan · block · selection · slides · skills · fragments
     skills.py                SKILL.md 目录 + DB 里的配置
@@ -276,7 +281,7 @@ RUN_STARTED
 before_run
 for round:
     STEP_STARTED(round, mode.label)
-    before_round                                      # Compact / Facts 修剪 / Revise（改已有正文）
+    before_round                                      # Sections（发布分节给 read_section）/ Revise（改已有正文）
     facts, trace = hooks.prepare(st)                  # agent 工具循环：模型自己决定查什么
     after_prepare                                     # Facts 累积 · Provenance（工具真的返回了什么）· Skills
     TEXT_MESSAGE_START
@@ -295,8 +300,9 @@ RUN_FINISHED(content, reason, run_id?)
 
 **顺序有讲究**，两条（`middleware/_order.py` 起跑时校验）：
 ① 同一个钩子上，先跑产出材料的，最后跑可能短路的——`Repeats` 产出 `dup_hints`
-给打分用，`Checks` 可能判定不合格直接跳过打分。② `Revise` 在 `before_round` 改已有
-正文，必须在 `Compact` 压缩之前。
+给打分用，`Checks` 可能判定不合格直接跳过打分。② `Revise` 在 `before_produce` 改已有
+正文，必须在 `Sections` 拼「小节索引 + 当前小节逐字」之前——否则续写 prompt 拿到的
+是**修订前**的正文（这条依赖是从 `Compact` 原样继承的，它当年就是为这件事写的）。
 
 **判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（15 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
@@ -437,8 +443,8 @@ State: mode · ctx(user/note/cursor) · request · round
 
 | key | label | 工具组 | extra_mw | stop_when | 轮数 | 维度 |
 |---|---|---|---|---|---|---|
-| `note` | 续写整篇 | memory · skill | Revise Repair Runtime Replan Compact Save | material_used_up · stalled · nothing_left_to_fix · pause_for_review | 8 | spine_fidelity · beat_coverage · non_repetition · factual_grounding · coherence · material_use · style_fit |
-| `section` | 分段写作 | memory · skill | Revise Repair Compact Save | material_used_up · pause_for_review | 4 | topic_fidelity · non_repetition · factual_grounding · material_use · coherence · style_fit |
+| `note` | 续写整篇 | memory · skill · chart · longform | Revise Repair Runtime Replan Sections Save | material_used_up · stalled · nothing_left_to_fix · pause_for_review | 8 | spine_fidelity · beat_coverage · non_repetition · factual_grounding · coherence · material_use · style_fit |
+| `section` | 分段写作 | memory · skill · chart · longform | Revise Repair Sections Save | material_used_up · pause_for_review | 4 | topic_fidelity · non_repetition · factual_grounding · material_use · coherence · style_fit |
 | `eda` | 数据可视化 | data · chart · memory · skill | — | — | 3 | numbers_from_tools · honest_caveats · has_charts · no_duplicate_charts · covers_the_data · fits_context · actionable |
 | `chart` | 智能插图 | data · chart · image · memory · skill | — | — | 3 | chart_validity · data_grounding · right_kind · fits_context |
 | `table` | 生成表格 | data · table · memory · skill | — | — | 3 | table_validity · data_grounding · fits_context |
@@ -484,7 +490,7 @@ Mode 按需追加的：
 | **Repair** | note · section | 把这一轮的打分读成下一轮的计划（弱在覆盖 → 多写；弱在质量 → 多改）。内在质量 = `non_repetition` · `coherence` · `topic_fidelity`（**跑题是已写文字的缺陷，后面补几段切题的不会让它不跑题**——所以跟重复同一族，排「只修不写」）；覆盖度 = `beat_coverage` · `section_coverage` · `material_use`。两族必须互不重叠、且长文维度不能一族都不落（孤儿的分数只能停机、驱动不了修复），`tests/test_check_stuck.py` 有两条断言钉着 |
 | **Runtime** | note | 策略控制器（`policy.py`）：上一轮反馈 → 下一轮的工具预算 / 温度 / 修订额度 / 是否要求溯源 |
 | **Replan** | note | 骨架中途重规划（`replan_rules.py` 约束：能更新，不能把目标改到不收敛） |
-| **Compact** | note · section | 正文长了压缩喂给续写的那份（修订和打分仍读全文） |
+| **Sections** | note · section | 续写 prompt 里的正文：**小节索引（每节一行）+ 按需读回的小节 + 当前小节逐字**，配 `read_section(n)` 工具（修订和打分仍读全文）。批 15 顶替了 `Compact`：摘要是**有损的替换**，索引是**无损的指针**（[CE] §7）。`compact_context` 那个函数还在，「智能续写」那条一次性路径仍然用它——**那条路没有工具循环，给指针取不回来**。开关 `params.SECTION_INDEX` 能整条退回 |
 | **Save** | note · section | 每轮落盘（块生成不落盘） |
 
 每个 middleware 一个文件、不认识循环、能拿假 State 单测。
@@ -528,7 +534,7 @@ Mode 按需追加的：
 
 ---
 
-## 9. 21 个工具
+## 9. 22 个工具
 
 注册表 `tools/registry.py`；授权粒度**组为主，工具为辅**（`Mode.groups` − `exclude`）。
 

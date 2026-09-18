@@ -107,13 +107,13 @@ spine_fidelity 1.88–1.96 封顶（对着没人验过的计划打分，太容�
 | 2.6 | `material_use` 改成可计算 | [LED] §6 | 25 次 24 次满分，说明不了任何事 |
 | 2.7 | `citations_hold` 升级成 id 级确定性比对 | **[LED] §10④（ALCE）** | 现在查的只是「id 在不在材料里」，既不是 precision 也不是 recall |
 
-### 阶段 3 · 取消截断 —— 0/3
+### 阶段 3 · 取消截断 —— 3/3（批 15）
 
 | # | 做什么 | reference | 证据 |
 |---|---|---|---|
-| 3.1 | 小节索引 + `read_section`，`Compact` 退休 | **[CE] §7** `P0` | 截断是最差的一档；`Verbatim Chunks Beat Extracted Artifacts` |
-| 3.2 | 事实索引取代 `[-40:]` | **[CE] §7 / [MR] §3.5** `P0` | `[-40:]` 从头丢 → 整块平移 → 换进换出 + 断缓存 |
-| 3.3 | `prompt_cache_key` | **[CE] §4.6** | 按 note + mode + 步骤分账 |
+| 3.1 | ✅ 小节索引 + `read_section`（`middleware/sections.py` + `tools/longform_tools.py`，开关 `params.SECTION_INDEX`）。`Compact` 从两条长文 harness 退休，`compact_context` 仍服务「智能续写」那条一次性路径（那条没有工具循环，给指针取不回来） | **[CE] §7** `P0` | 截断是最差的一档；`Verbatim Chunks Beat Extracted Artifacts`。批 15 真跑（`terrence` 真库、38 次跑、`rails_off=("save",)`）：**模型真的会去调 `read_section`**（索引真正生效的那个种子上，12 次跑里 11 次调过，共读回 25 节；对照臂 0 次），[CE] §7 那条「模型不去调那个工具」的风险实测没有兑现 |
+| 3.2 | ✅ 事实索引取代 `[-40:]`（`facts_all` 全量只追加；进 prompt 的是「账本那一行索引 + 最近 40 条逐字」，开关 `params.FACT_INDEX`） | **[CE] §7 / [MR] §3.5** `P0` | `[-40:]` 从头丢 → 整块平移 → 换进换出 + 断缓存。索引那一行**取自账本**（`ledger.facts[fid]["line"]`），不另造一份 |
+| 3.3 | ✅ `prompt_cache_key`（`llm.set_cache_key(note_id, mode)` + `ctx_feature` 的步骤名） | **[CE] §4.6** | 按 note + mode + 步骤分账。**它只改路由、不改命不命中**——真正卡住 judge 命中率的是 `score_context.with_material`（见批 15 计划外发现①） |
 
 ### 阶段 4 · 评判形态 —— 2/7（批 3 做了 4.7，批 8 做了 4.1）
 
@@ -244,7 +244,7 @@ spine_fidelity 1.88–1.96 封顶（对着没人验过的计划打分，太容�
 | 反复跑同一篇分数单调下滑 | **3/6** | 0/6 | [EFF] |
 | 收尾仍 `continue` | **54%** | 能拆成三种 | [EFF] |
 | 一次跑内重复查询占比 | 批 10 实测 **33.3%**（算上 prepare 直接调的 40%）；批 13 三臂 × 16 次跑**按轮归一化**：都关 **32.5%** → 只开 2.5 **17.2%** → 都开 **3.5%** | 0 | **[MR]** |
-| judge 调用缓存命中率（第 2 轮起） | 未测 | > 0.7 | **[CE]** |
+| judge 调用缓存命中率（第 2 轮起） | 批 15 实测 **0.0%**（38 次真跑 / 24 次 judge 调用）。根因已定位：`score_context.with_material` 把**逐轮增长**的材料块排在 `[Content]` **之前**，断点落在正文之前——**跟批 2 修掉的 `dup_hints` 一模一样的形状**。检索规划那一路是 60~62%、续写那一路 30% | > 0.7 | **[CE]** |
 | 没有位置级探测器的内在质量维度 | **2** | 0 | [MECH] |
 | `material_use` / `fits_context` 满分率 | 24/25、4/4 | 不再是「无从判断默认给过」 | [EVAL]/[LED] |
 | `material_use` 对「材料全剔光」的灵敏度 | **2.0 → 1.92**（批 5 实测，给了事实块也一样） | 掉 ≥ 1 档 | **[IND] §8④** |

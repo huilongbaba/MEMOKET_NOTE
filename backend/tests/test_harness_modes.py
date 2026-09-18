@@ -69,10 +69,14 @@ def test_excluded_tools_are_not_a_workaround_for_bad_grouping():
 
 
 def test_long_form_modes_carry_the_long_form_capabilities():
-    """Revise / Compact / Save only make sense for long-form, but they are
+    """Revise / Sections / Save only make sense for long-form, but they are
     also *required* there: the four historical omissions were all a long-form
-    harness missing something the other one had."""
-    required = {"revise", "compact", "save"}
+    harness missing something the other one had.
+
+    批 15：`compact` 换成 `sections`（计划 3.1 / [CE] §7）——要求的能力没变，
+    变的是拿什么去换（摘要是有损的替换，小节索引是无损的指针）。
+    """
+    required = {"revise", "sections", "save"}
     for key in ("note", "section"):
         mode = next(m for m in modes.ALL if m.key == key)
         attached = {name for name, _hooks in describe(mode.extra_mw)}

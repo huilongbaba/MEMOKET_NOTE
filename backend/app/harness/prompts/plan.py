@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from .fragments import (FOCUS_LABELS, content_block, facts_block,
+from .fragments import (FOCUS_LABELS, content_block, facts_block, facts_index_block,
                         heading_format_reminder, profile_block)
 
 
@@ -43,7 +43,8 @@ def plan_user(goal: str, facts: list[str], folder_context: str) -> str:
 
 def section_write_user(section_title: str, goal: str, prior_summaries: list[str],
                        content: str, facts: list[str], folder_context: str,
-                       profile: list[str], focus: str = "") -> str:
+                       profile: list[str], focus: str = "",
+                       facts_index: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -57,6 +58,10 @@ def section_write_user(section_title: str, goal: str, prior_summaries: list[str]
                      + "\n".join(f"- {s}" for s in prior_summaries))
     if folder_context:
         parts.append(folder_context)
+    if facts_index:
+        # 更早几轮的材料，一行一条的索引（计划 3.2）。**摆在逐字事实前面**：
+        # 索引只追加、逐字那一窗每轮在移，稳定的放前面。
+        parts.append(facts_index_block(facts_index))
     if facts:
         parts.append(facts_block(facts))
     parts.append(content_block(content, "（这个分段还没开始写）"))

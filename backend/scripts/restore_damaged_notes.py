@@ -27,10 +27,11 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import sqlite3
 import sys
 import uuid
 from pathlib import Path
+
+import db_guard      # 只读 / 可写两条路都从这里出（批 15）
 
 HERE = Path(__file__).resolve().parent
 DB = HERE.parent / "data" / "notes.sqlite3"
@@ -50,8 +51,11 @@ def main() -> int:
         print(f"找不到跑批前的备份：{BACKUP}")
         return 1
 
-    src = sqlite3.connect(f"file:{BACKUP}?mode=ro", uri=True)
-    dst = sqlite3.connect(DB)
+    src = db_guard.readonly(BACKUP)
+    # **这个脚本是少数真的该写真库的**（按写死的 id 恢复被跑批写坏的笔记），
+    # 所以走 `writable(why=...)` 那条显式路径——理由是必填参数，为的是让
+    # 「顺手写一下」变成「先想清楚」（批 15 接线）。
+    dst = db_guard.writable("按写死的 id 把被跑批写坏的笔记恢复成备份里那一份", db=DB)
     now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     changed = 0
 
