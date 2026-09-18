@@ -58,6 +58,26 @@ export function marginParagraphs(content: string, clean: (s: string) => string):
   return paragraphsWithLines(content).map((p) => ({ ...p, text: clean(p.text).trim() }))
     .filter((p) => /\d/.test(p.text) && !p.text.startsWith('#') && p.text.length >= 8)
 }
+/** 一段的判定结果（不带行号）；null = 这段没关系。 */
+export type MarginVerdict = Omit<MarginMark, 'line'> | null
+
+/** 按段落文本缓存判定（P10 C3-5）：30k 字的笔记 244 段要 3 批请求、停手后 **15.6 秒**才画出第一个点
+ *  （`p10-perf-before`），而且每敲一个字整批重来——真在写长文时圆点等于永远不出现。判定只看段落文本
+ *  （+ 知识库），文本没变的段不用再问；改了一段就只问那一段。返回：命中的直接带行号，没命中的去问后端。
+ *  知识库变了（摄入 / 换范围）由上层清缓存。 */
+export function splitCached(paras: { text: string; line: number }[], cache: Map<string, MarginVerdict>):
+    { hits: MarginMark[]; misses: { text: string; line: number }[] } {
+  const hits: MarginMark[] = []
+  const misses: { text: string; line: number }[] = []
+  for (const p of paras) {
+    if (cache.has(p.text)) { const v = cache.get(p.text); if (v) hits.push({ ...v, line: p.line }) }
+    else misses.push(p)
+  }
+  return { hits, misses }
+}
+/** 缓存别无限长：超过这个数就清空重来（一篇 30k 字的笔记也就 250 段）。 */
+export const MARGIN_CACHE_MAX = 3000
+
 export function chunked<T>(xs: T[], n: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n))

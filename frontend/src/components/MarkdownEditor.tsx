@@ -12,6 +12,9 @@ import { factPeek } from '../api'
 import type { Revision } from '../api'
 import { imageEmbed } from '../editor/imageEmbed'
 import { imagePaste } from '../editor/imagePaste'
+import { htmlPaste } from '../editor/htmlPaste'
+import { listExitKeymap } from '../editor/listExit'
+import { sealAsOneUndo } from '../editor/undoUnit'
 import { linkClick } from '../editor/linkClick'
 import { markdownKeymap } from '../editor/markdownCommands'
 import { factCite } from '../editor/factCite'
@@ -59,6 +62,9 @@ type Props = {
    * 自动应用完的改动，用户否则完全不知道正文被动了哪里。 */
   /** 往编辑器塞一层提案（seq 变了才 dispatch）。null = 不动。 */
   roundDiff?: DiffPush | null
+  /** 把 `from` 起的 `text` 那一段封成一个撤销单位（续写写完之后；P10 C3-2）。seq 变了才做；
+   *  正文对不上（用户已经在改）就不动。**排在 content 之后、roundDiff 之前**——见下面 effect 的顺序。 */
+  undoSeal?: { from: number; text: string; seq: number } | null
   /** 还剩几处 harness 改动没被接受/撤回。用来在编辑器上方显示「N 处改动 ·
    * 全部接受」——逐处点是主路径，但改动多的时候必须有个一次性收尾的出口。 */
   onPendingDiff?: (n: number) => void
@@ -98,7 +104,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
+  roundDiff = null, undoSeal = null, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -141,6 +147,8 @@ export default function MarkdownEditor({
           // ⌘/ 是快捷键表；defaultKeymap 把它绑成 toggleComment，markdown 有 HTML 注释符，会真的插 <!-- -->
           { key: 'Mod-/', run: () => { window.dispatchEvent(new CustomEvent('show-shortcuts')); return true } },
         ]),
+        // 空的列表项 / 引用行上 Enter = 退出（一次），排在 lang-markdown 的续项键前面（P10 C3-1）
+        listExitKeymap,
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, ...searchKeymap, indentWithTab]),
         // ⌘F 页内查找（Trilium 的 FindWidget）。长文档没有它是硬伤。
         search({ top: true }),
@@ -162,6 +170,7 @@ export default function MarkdownEditor({
         runningBlocks((id) => liveRef.current.onStopRun?.(id)),
         imageEmbed,
         imagePaste,
+        htmlPaste,                     // 排在 imagePaste 之后：剪贴板里有图片先走图片
         taskCheckbox,
         linkClick,
         revisionField,
@@ -262,6 +271,17 @@ export default function MarkdownEditor({
     // actualViewRef 是 ref，不进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly])
+
+  // 续写写完：把那一段封成一个撤销单位。排在 content 同步之后（那段字已经在 CM 里）、
+  // roundDiff 之前（封的那一笔是 docChanged，会把刚加的层映射掉）。
+  const lastSeal = useRef(0)
+  useEffect(() => {
+    const view = actualViewRef.current
+    if (!view || !undoSeal || undoSeal.seq === lastSeal.current) return
+    lastSeal.current = undoSeal.seq
+    sealAsOneUndo(view, undoSeal.from, undoSeal.from + undoSeal.text.length, undoSeal.text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoSeal])
 
   useEffect(() => {
     // 必须排在 content 那个 effect 之后：diff 的位置是针对新正文算的，

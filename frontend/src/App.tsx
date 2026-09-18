@@ -4,7 +4,7 @@ import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
-import { chunked, MARGIN_BATCH, marginParagraphs, markKey, type MarginMark } from './editor/marginMemory'
+import { chunked, MARGIN_BATCH, MARGIN_CACHE_MAX, marginParagraphs, markKey, splitCached, type MarginMark, type MarginVerdict } from './editor/marginMemory'
 import { ignoredSet } from './util/relationActions'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
@@ -287,6 +287,9 @@ export default function App() {
   // 还剩几处 harness 改动没被处置。由编辑器上报——逐处接受/撤回、用户自己
   // 编辑、下一轮写入都会让它变，React 这边只是拿来决定要不要显示那条工具栏。
   const [pendingDiff, setPendingDiff] = useState(0)
+  /** 续写写完之后把那一段封成一个撤销单位（P10 C3-2，`editor/undoUnit`）；seq 变了编辑器才动手。 */
+  const [undoSeal, setUndoSeal] = useState<{ from: number; text: string; seq: number } | null>(null)
+  const undoSealSeq = useRef(0)
   // `/` 菜单选中的那一项。needsPrompt 的会先弹输入框，其余的直接执行。
   // 运行状态**不在这里**：跑起来之后状态在光标处的占位块里
   // （editor/runningBlocks.ts）——离产出最近，而且支持同时跑好几个。
@@ -430,6 +433,9 @@ export default function App() {
     window.addEventListener('relation-ignored', gone)
     return () => { window.removeEventListener('memory-scope-changed', on); window.removeEventListener('relation-ignored', gone) }
   }, [])
+  // 段落文本 → 判定 的缓存（P10 C3-5）：知识库变了（摄入 / 换范围）才清
+  const marginCache = useRef(new Map<string, MarginVerdict>())
+  useEffect(() => { marginCache.current.clear() }, [ingestTick, scopeTick])
   useEffect(() => {
     if (!current) { setMarginMarks([]); return }
     // 图片 / 链接地址 / 引用 id 先剥掉：一行 `![x](/api/assets/52dd….png)` 里的数字会让它过门槛去召回。
@@ -439,17 +445,26 @@ export default function App() {
     if (paras.length === 0) { setMarginMarks([]); return }
     let stale = false
     const t = setTimeout(async () => {
-      const marks: MarginMark[] = []
-      for (const chunk of chunked(paras, MARGIN_BATCH)) {
+      // 文本没变的段直接用缓存；只把没见过的段送去问（P10：30k 字首次 ~15s → 改一段后 1.6s 含防抖）。
+      // 几批按序发、**每批回来就先画**（并行没更快：后端是串行的，实拍 2 批并行反而 21.6s）。
+      if (marginCache.current.size > MARGIN_CACHE_MAX) marginCache.current.clear()
+      const { hits, misses } = splitCached(paras, marginCache.current)
+      const marks: MarginMark[] = [...hits]
+      const ignored = ignoredSet()                 // 「忽略」过的那一对不再亮点（右栏的卡同一份名单）
+      const show = () => setMarginMarks([...marks].sort((a, b) => a.line - b.line).filter((m) => !ignored.has(markKey(m))))
+      if (misses.length === 0 || hits.length) show()
+      for (const chunk of chunked(misses, MARGIN_BATCH)) {
         try {
           const r = await api.memoryRelationsBatch(chunk.map((p) => p.text))
-          r.marks.forEach((m, i) => { if (m) marks.push({ line: chunk[i].line, relation: m.relation, say: m.say, kinds: m.kinds, fact_ids: m.fact_ids, facts: m.facts }) })
+          r.marks.forEach((m, i) => {
+            const v: MarginVerdict = m ? { relation: m.relation, say: m.say, kinds: m.kinds, fact_ids: m.fact_ids, facts: m.facts } : null
+            marginCache.current.set(chunk[i].text, v)   // 先进缓存：就算这一轮作废，下一轮也不用再问这些段
+            if (v) marks.push({ ...v, line: chunk[i].line })
+          })
+          if (stale) return                        // 正文又改了，这一批作废，等下一轮
         } catch { return }
-        if (stale) return                            // 正文又改了，这一批作废，等下一轮
+        show()
       }
-      // 「忽略」过的那一对不再亮点（右栏的卡同一份名单）
-      const ignored = ignoredSet()
-      setMarginMarks(marks.filter((m) => !ignored.has(markKey(m))))
     }, 1500)
     return () => { stale = true; clearTimeout(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1423,7 +1438,9 @@ export default function App() {
       else if (key === 'd' && e.shiftKey) { e.preventDefault(); void openToday() }   // ⌘⇧D 今天的日记（Trilium 也是这个键）
       else if (key === 'n') { e.preventDefault(); void newNote() }
       else if (key === '.') { e.preventDefault(); setFocusMode((v) => !v) }
-      else if (key === '/') { e.preventDefault(); setShowShortcuts((v) => !v) }
+      // 编辑器里按 ⌘/：CM 的 keymap 已经发了 show-shortcuts（置 true）并 preventDefault，事件接着冒泡到这里
+      // 再 toggle 一次就又关上了——实拍 `p10-keys-before`：正文里按 ⌘/ 什么都不出现（P10 C3-1）
+      else if (key === '/') { if (e.defaultPrevented) return; e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
       else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => (p.rightOn ? { ...p, rightOn: false } : makeRoomForRight(p, winW, split?.w ?? 0))) }
       else if (key === '\\') { e.preventDefault(); setPanes((p) => ({ ...p, leftOn: !p.leftOn })) }
@@ -1447,7 +1464,7 @@ export default function App() {
       else if (key === 'w') {
         e.preventDefault()
         if (activeTabId) closeTab(activeTabId)
-      } else if (/^[1-9]$/.test(key)) {
+      } else if (/^[1-9]$/.test(key) && !e.altKey) {                  // ⌥⌘1/2/3 是标题（编辑器里），不是切标签
         e.preventDefault()
         const i = key === '9' ? tabs.length - 1 : Number(key) - 1
         activateTab(tabs[i])
@@ -1832,6 +1849,9 @@ export default function App() {
         toast(`摘掉了 ${fakeCitations.length} 个知识库里查不到的引用`)
       }
       if (fixed !== inserted) { inserted = fixed; setContent(head + inserted + tail) }
+      // ⌘Z 一次撤掉整段（流式是一片片进来的，中途停顿 >500ms 就会被 CM 拆成好几步——实拍要按四次）。
+      // 范围取整篇前后真正变了的那一段：head 补的那个空行也算续写插的（第一版只封模型吐的字，⌘Z 之后剩一个空行）
+      { const ch = minimalChange(full, head + inserted + tail); if (ch && ch.insert.trim()) setUndoSeal({ from: ch.from, text: ch.insert, seq: ++undoSealSeq.current }) }
       /* **接受 / 撤回。** 续写原来是全应用**唯一**一条不进修订层的插入路径——
          格式化、智能排版、语音输入、图片转表格、插入音频、`/` 菜单的块、
          智能续写全都调了 `pushDiff`，**最常用的这一个反而没有**
@@ -3640,6 +3660,7 @@ export default function App() {
               revisions={revisions}
               onAcceptInline={acceptRevision}
               roundDiff={roundDiff}
+              undoSeal={undoSeal}
               onPendingDiff={setPendingDiff}
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
               onCursorParagraph={setCursorPara}
