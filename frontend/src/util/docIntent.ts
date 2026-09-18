@@ -10,9 +10,13 @@
  * 这里只有纯函数；后端 `editor/intent.py` 的 `as_text` 跟 `intentText` 同一格式。
  */
 
-export type DocIntent = { goal: string; reader: string; done: string; source: '' | 'prefill' | 'user' }
+export type DocIntent = {
+  goal: string; reader: string; done: string; source: '' | 'prefill' | 'user'
+  /** 「完成标准」里代码判不了、用户自己勾过的那几条（原文）。P12 §3.1「完成标准可检查」：跟三个字段一起存在 `notes.intent`，不另开表。 */
+  checked?: string[]
+}
 
-export const EMPTY_INTENT: DocIntent = { goal: '', reader: '', done: '', source: '' }
+export const EMPTY_INTENT: DocIntent = { goal: '', reader: '', done: '', source: '', checked: [] }
 export const INTENT_FIELD_MAX = 200
 export const INTENT_LABEL: Record<'goal' | 'reader' | 'done', string> = { goal: '目标', reader: '读者', done: '完成标准' }
 export const INTENT_PLACEHOLDER: Record<'goal' | 'reader' | 'done', string> = {

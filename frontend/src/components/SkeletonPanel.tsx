@@ -1,3 +1,5 @@
+import { splitBeatLabel } from '../util/sectionStatus'
+
 type Props = {
   spine: string
   beats: string[]
@@ -22,6 +24,8 @@ type Props = {
   onRun: () => void
   /** 跑着的时候「停止」（P3 遗留 ❌：模型卡住原来只能干等 300 秒） */
   onStop?: () => void
+  /** 节拍标了「已写（正文第 N 行起）」：点状态标跳到那一行 */
+  onJumpLine?: (line: number) => void
 }
 
 const LEVEL_LABEL: Record<number, string> = { 0: '还不够', 1: '部分覆盖', 2: '已覆盖' }
@@ -30,7 +34,7 @@ const LEVEL_COLOR: Record<number, string> = { 0: 'var(--del)', 1: 'var(--warn)',
 /** 线 1：核心张力（spine）+ 结构节拍（beats）。也是 magic tap 和智能编辑的输入。
  * beats 是这篇东西各部分承担的修辞/叙事功能，不是内容大纲——所以不用 <ol>
  * 编号呈现成待办事项，用带标签的列表强调"这是一个功能位"。 */
-export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], loading, onRun, onStop }: Props) {
+export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], loading, onRun, onStop, onJumpLine }: Props) {
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -62,12 +66,22 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], 
       )}
       {beats.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
-          {beats.map((b, i) => (
-            <li key={i} style={{ marginBottom: 6, fontSize: 'var(--t-md)', display: 'flex', gap: 6 }}>
-              <span className="muted">·</span>
-              <span>{b}</span>
-            </li>
-          ))}
+          {/* 节拍开头的「已写 / 待补」（后端 verify_beats 核过的）变成状态标，跟目录每一节的「空 / 草稿 / 有依据」
+              同一套色（P12 §3.5：目录和骨架看的是同一件事的两个切面）；带行号的点一下跳到正文那一行 */}
+          {beats.map((b, i) => {
+            const { status, text, line } = splitBeatLabel(b)
+            const chip = status === 'written' ? '已写' : status === 'missing' ? '待补' : ''
+            return (
+              <li key={i} style={{ marginBottom: 6, fontSize: 'var(--t-md)', display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                {chip
+                  ? (line && onJumpLine
+                      ? <button className={'plan-state ' + status} title={`正文第 ${line} 行起，点一下跳过去`} onClick={() => onJumpLine(line)}>{chip}</button>
+                      : <span className={'plan-state ' + status} title={status === 'missing' ? '正文里还没有这一部分' : '正文里已经有了'}>{chip}</span>)
+                  : <span className="muted">·</span>}
+                <span>{text}</span>
+              </li>
+            )
+          })}
         </ul>
       )}
       {notes.length > 0 && (

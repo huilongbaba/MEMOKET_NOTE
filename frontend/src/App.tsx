@@ -76,6 +76,8 @@ import Ribbon, { type RibbonTab } from './components/Ribbon'
 import RightPane, { type PaneTab } from './components/RightPane'
 import SkeletonPanel from './components/SkeletonPanel'
 import DocIntentRow from './components/DocIntentRow'
+import PlanChecks from './components/PlanChecks'
+import { checkDone, doneSummary } from './util/doneChecks'
 import MarginCard from './components/MarginCard'
 import { intentText, resolveIntent, type DocIntent } from './util/docIntent'
 import SettingsPanel, { AboutLine } from './components/SettingsPanel'
@@ -415,6 +417,17 @@ export default function App() {
   const [marginCard, setMarginCard] = useState<{ m: MarginMark; anchor: DOMRect; reason: 'hover' | 'click' | 'cursor' } | null>(null)
   /** 文档意图（P9，§3.1）：这篇要干什么。打开时从库里读，没有就按标题预填（零模型）。 */
   const [intent, setIntent] = useState<DocIntent>(() => resolveIntent(null, ''))
+  /** 意图改了（字段、或「完成标准」勾了一条）：本地先更新、落库、树上那份跟着变。用户改字段的路和勾选的路同一条。 */
+  const saveIntent = useCallback((next: DocIntent) => {
+    setIntent(next)
+    const id = current?.id
+    if (!id) return
+    api.saveIntent(id, next)
+      .then((n) => setNotes((prev) => prev.map((x) => (x.id === n.id ? { ...x, intent: n.intent } : x))))
+      .catch((e) => toast('意图没存上：' + friendlyError(e), 'error'))
+  }, [current?.id])
+  /** 「完成标准」逐条核（P12 §3.1，零模型）：标题下的角标和右栏「计划」清单共用这一份。 */
+  const doneChecksSum = useMemo(() => doneSummary(checkDone(intent.done, content, intent.checked ?? [])), [intent.done, intent.checked, content])
   // 生成骨架 / 智能排版的「停止」（P3 遗留 ❌×2：模型卡住只能干等 300 秒）
   const skeletonAbortRef = useRef<AbortController | null>(null)
   const restructureAbortRef = useRef<AbortController | null>(null)
@@ -479,6 +492,14 @@ export default function App() {
     { answer: string; facts: api.Fact[]; at: string } | null>(null)
 
   const editorViewRef = useRef<EditorView | null>(null)
+  /** 右栏「计划」里点目录 / 节拍的行号（P12）：光标跳到正文那一行、滚到中间 */
+  const jumpToLine = useCallback((line: number) => {
+    const v = editorViewRef.current
+    if (!v) return
+    const l = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)))
+    v.dispatch({ selection: { anchor: l.from }, effects: EditorView.scrollIntoView(l.from, { y: 'center' }) })
+    v.focus()
+  }, [])
   const abortRef = useRef<AbortController | null>(null)
 
   // setTimeout callbacks close over whatever `loading` was at schedule time,
@@ -3350,13 +3371,9 @@ export default function App() {
         {/* 这篇要干什么（P9，agent-native-editor §3.1）：标题下面常驻一行，所有 AI 动作的前提。
             专注模式收起——那会儿只剩正文。 */}
         {current && !focusMode && (
-          <DocIntentRow intent={intent} onChange={(next) => {
-            setIntent(next)
-            const id = current.id
-            api.saveIntent(id, next)
-              .then((n) => setNotes((prev) => prev.map((x) => (x.id === n.id ? { ...x, intent: n.intent } : x))))
-              .catch((e) => toast('意图没存上：' + friendlyError(e), 'error'))
-          }} />
+          <DocIntentRow intent={intent} onChange={saveIntent}
+            checks={doneChecksSum}
+            onOpenChecks={() => setPaneFocus({ id: 'plan', n: Date.now() })} />
         )}
         {/* ribbon —— 这篇笔记的元数据。第一件放进来的是**写作骨架**：
             判据 3 说「自主规划、自主执行、检查结果」，那**计划就得看得见**，
@@ -3726,8 +3743,8 @@ export default function App() {
                 ? <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor}
                                  kbEmpty={kbRows.length > 0 && (kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0) === 0} />
                 : <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },
-            { id: 'outline', title: '目录', icon: 'bx-list-ul', alwaysShown: true,
-              body: <DocumentOutline content={content} viewRef={editorViewRef} /> },
+            /* 「目录」不再是单独的页签：目录 = 计划（P12，agent-native-editor §3.5）——每一节带状态的目录就是这篇的计划，
+               跟完成标准、骨架、执行记录放在同一个「计划」页签里。 */
             /* 幻灯片预览：**只在这篇真是幻灯片时才出现**（front-matter 里有 slides: true）。
                普通笔记上多一个永远空着的标签，比没有这个标签更糟。 */
             ...(isSlides(content) ? [{
@@ -3738,16 +3755,32 @@ export default function App() {
             // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
             { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0,
               body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff} /> },
-            // 计划 = 写作骨架（计划）+ 每轮做了什么（执行）。判据 3：计划要看得见——
+            // 计划 = 完成标准（判据）+ 目录（每节状态）+ 写作骨架 + 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
+            // P12（§3.1 / §3.5）：「完成标准」逐条核、目录每一节带「空 / 草稿 / 有依据」——目录就是计划，不再单开一个页签。
             { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,
               // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats / agentRounds 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
               badge: agentRounds.length || (current ? beats.length : 0) || undefined,
-              // 跑起来之后轮次卡排在骨架前面：骨架是一屏高的静态文本，跑动中用户要看的是
+              // 跑起来之后轮次卡排在最前：骨架是一屏高的静态文本，跑动中用户要看的是
               // 「这一轮在干什么、判了什么」，原来得滚过整份骨架才看得到（第 579 轮实拍）。
-              // 不跑的时候骨架在前——那会儿规划才是主角。
+              // 不跑的时候判据 → 目录 → 骨架 → 执行——那会儿规划才是主角。
               body: (() => {
                 const busy = loading === 'note-harness' || !!harness?.running || !!pausedRun
+                const checks = current && (
+                  <PlanChecks key="checks" done={intent.done} content={content} checked={intent.checked ?? []}
+                    onToggle={(text, on) => {
+                      const was = intent.checked ?? []
+                      const next = on ? Array.from(new Set([...was, text])) : was.filter((t) => t !== text)
+                      saveIntent({ ...intent, source: intent.source || 'user', checked: next })
+                    }}
+                    onEdit={() => document.querySelector<HTMLInputElement>('.doc-intent-input[aria-label="完成标准"]')?.focus()} />
+                )
+                const outline = current && (
+                  <div key="outline">
+                    <h2>目录</h2>
+                    <DocumentOutline content={content} viewRef={editorViewRef} withStatus />
+                  </div>
+                )
                 const skeleton = current && (
                   <SkeletonPanel
                     key="skeleton"
@@ -3758,6 +3791,7 @@ export default function App() {
                     loading={loading === 'skeleton'}
                     onRun={runSkeleton}
                     onStop={stopSkeleton}
+                    onJumpLine={jumpToLine}
                   />
                 )
                 const activity = (current || loading === 'note-harness' || harness?.running) && <AgentActivity
@@ -3766,7 +3800,7 @@ export default function App() {
                   status={loading === 'note-harness' || pausedRun ? noteHarnessStatus : ''}
                   running={loading === 'note-harness'}
                 />
-                return <div className="stack">{busy ? [activity, skeleton] : [skeleton, activity]}</div>
+                return <div className="stack">{busy ? [activity, outline, checks, skeleton] : [checks, outline, skeleton, activity]}</div>
               })() },
             { id: 'revisions', title: '修订', icon: 'bx-edit', badge: revisions.length || undefined,
               hasContent: revisions.length > 0, emptyHint: '这篇还没有待处置的修订。',

@@ -36,6 +36,8 @@ class NoteIntent(BaseModel):
     reader: str = ""
     done: str = ""
     source: Literal["", "prefill", "user"] = ""
+    # P12（§3.1「完成标准可检查」）：「完成标准」里用户勾过的条目原文——代码判不了的才要人勾
+    checked: list[str] = []
 
 
 class NoteIntentIn(NoteIntent):
