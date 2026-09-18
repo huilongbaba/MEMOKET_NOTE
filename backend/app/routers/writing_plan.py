@@ -107,7 +107,9 @@ def _sync_tracking_note(user: str, plan: dict, sections: list[dict]) -> None:
     if plan.get("doc_note_id"):
         existing = store.get_note(user, plan["doc_note_id"])
         if existing:
-            store.update_note(user, plan["doc_note_id"], TRACKING_NOTE_TITLE, doc)
+            # 跟踪文档是程序重写出来的，不是用户在编辑器里改的（计划 9.1）
+            store.update_note(user, plan["doc_note_id"], TRACKING_NOTE_TITLE, doc,
+                              source="harness")
             return
     # 标成「写作计划生成的」：树上据此给个默认图标。用户库里混着手写和机器生成的
     # 笔记时，「这行是我写的还是机器来的」决定他信不信里面的话、该不该直接改它

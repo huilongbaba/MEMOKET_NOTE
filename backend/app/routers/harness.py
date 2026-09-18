@@ -59,7 +59,11 @@ async def resume(run_id: str, body: HarnessResumeIn, request: Request,
     if body.stop:
         store.delete_snapshot(user, run_id)
         if st.content and st.ctx.note_id:
-            store.update_note(user, st.ctx.note_id, st.ctx.note_title, st.content)
+            # **这是用户的决定**：他逐条处置完、按了「不再往下写」，送回来的
+            # 正文就是他要的那一版。计划 9.1 要采的正是这一下，所以走默认的
+            # `source="user"`。
+            store.update_note(user, st.ctx.note_id, st.ctx.note_title, st.content,
+                              source="user")
         return {"stopped": run_id, "rounds": st.round}
 
     hooks = _hooks_for(row["mode"], st)

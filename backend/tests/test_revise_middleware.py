@@ -33,7 +33,7 @@ def _no_db(monkeypatch):
 
     saved: list[str] = []
     monkeypatch.setattr(save_mod.store, "update_note",
-                        lambda user, nid, title, content: saved.append(content))
+                        lambda user, nid, title, content, **kw: saved.append(content))
     return saved
 
 
@@ -329,16 +329,27 @@ def test_这一轮没跑修订时两个数都清零(monkeypatch, _no_db):
     assert st.bag["revisions_proposed"] == 0 and st.bag["revisions_dropped"] == 0
 
 
-def test_两个数真的被记进_harness_rounds():
+def test_两个数真的落进库里():
     """**建了字段不等于用了字段。** bag 里有数、`record_harness_round` 收得下，
-    中间那一段（`Ledger.after_judge`）漏掉的话，两列会永远是 0 而不报任何错。"""
-    from pathlib import Path
-    ledger = (Path(__file__).resolve().parent.parent / "app" / "harness"
-              / "middleware" / "ledger.py").read_text(encoding="utf-8")
-    assert 'revisions_proposed=int(st.bag.get("revisions_proposed") or 0)' in ledger
-    assert 'revisions_dropped=int(st.bag.get("revisions_dropped") or 0)' in ledger
-    store = (Path(__file__).resolve().parent.parent / "app" / "database"
-             / "store.py").read_text(encoding="utf-8")
-    assert '("harness_rounds", "revisions_proposed"' in store
-    assert '("harness_rounds", "revisions_dropped"' in store
-    assert "revisions_proposed,revisions_dropped" in store, "INSERT 的列名没跟上"
+    中间那一段（`Ledger.after_judge`）漏掉的话，两列会永远是 0 而不报任何错。
+
+    **这一版不再是词法闸。** 原来它 grep 三个文件里有没有那几行字符串——
+    而「源码里出现过这个名字」和「那个数真的进了库」是两件事（§21 的
+    `check_citations` 就是这么躺了整个改造期的）。批 23 真跑之后知道这两列
+    确实写得进去（5 次跑 / 15 轮，提出 19 条、丢掉 12 条），所以这里改成
+    真的走一遍 `Ledger` 再把行读回来。
+    """
+    import asyncio
+
+    from app.database import store as db
+    from app.harness.middleware.ledger import Ledger
+
+    st = _st("一段正文", round_=2)
+    st.bag["run_id"] = "probe-run"
+    st.bag["revisions_proposed"], st.bag["revisions_dropped"] = 4, 3
+    asyncio.run(Ledger().after_judge(st))
+
+    rows = db.rounds_of_run("probe-run")
+    assert len(rows) == 1
+    assert rows[0]["revisions_proposed"] == 4
+    assert rows[0]["revisions_dropped"] == 3

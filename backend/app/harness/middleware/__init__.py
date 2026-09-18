@@ -15,6 +15,9 @@ from .best_of import BestOf
 from .checks import Checks
 from .checklist import Checklist
 from .compact import Compact
+from .cost import Cost
+from .cross_run import CrossRun
+from .edits import Edits
 from .facts import Facts
 from .history import History
 from .ledger import Ledger
@@ -43,8 +46,19 @@ from .provenance import Provenance
 #   Repeats      before_judge      dup_hints is evidence for the scoring call
 #   Checks       before_judge      after Repeats: it may skip scoring entirely,
 #                                  and dup_hints is still wanted next round
+#   Cost         before_run /      绑这次跑的用量账本；轮末结一次账，超了
+#                after_round       发 `cost`（停机规则 `_over_budget` 跟着收工）
 #   BestOf       after_judge       needs the score to rank the round
+#   CrossRun     after_run         比上一次跑差就报一句。**必须在 History
+#                                  前面**：History 这一步就把这次跑写进
+#                                  harness_runs 了，之后读「最近一次」读到的
+#                                  是自己（History 声明 after=("cross_run",)，
+#                                  _order.verify 每次组链都验）
 #   History      after_run         final scores only exist at the end
+#   Edits        after_run         after History：跑完落一版正文 + 开一行采集
+#                                  用户接下来对它做了什么（计划 9.1）。
+#                                  **认 rails_off=("save",)**——不许写正文的
+#                                  跑也不许往它的历史里塞版本
 #   ---- not in BASE, attached per Mode via extra_mw ----
 #   Checklist    before_run        用户那条指令 → 这一次专属的判据，整趟一次
 #                                  （prompt / custom；计划 6.1 + 6.2）
@@ -59,8 +73,8 @@ from .provenance import Provenance
 #   Runtime      after_judge       feed the round's signals back into the
 #                                  next round's run parameters
 #   Replan       after_judge       adjust the skeleton, under constraints
-BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Supersede(), Repeats(),
-               Checks(), BestOf(), History())
+BASE: tuple = (Cost(), Skills(), Facts(), Provenance(), Ledger(), Supersede(),
+               Repeats(), Checks(), BestOf(), CrossRun(), History(), Edits())
 
 # Not in BASE, attached per-Mode via extra_mw:
 #   Revise  -- "fix what's already written before writing more"; only
@@ -78,7 +92,8 @@ BASE: tuple = (Skills(), Facts(), Provenance(), Ledger(), Supersede(), Repeats()
 #   Repair  -- repair-instead-of-continue; long-form only.
 #   Runtime / Replan -- note_harness only.
 
-__all__ = ["BASE", "BestOf", "Checklist", "Checks", "Compact", "Facts", "History",
+__all__ = ["BASE", "BestOf", "Checklist", "Checks", "Compact", "Cost", "CrossRun",
+           "Edits", "Facts", "History",
            "Ledger",
            "Sections",
            "OrderError", "Provenance", "Repair", "Replan", "Repeats",

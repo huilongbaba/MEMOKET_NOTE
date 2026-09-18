@@ -303,6 +303,43 @@ CREATE TABLE IF NOT EXISTS harness_rounds (
 );
 CREATE INDEX IF NOT EXISTS idx_harness_rounds_run ON harness_rounds(run_id, round);
 CREATE INDEX IF NOT EXISTS idx_harness_rounds_key ON harness_rounds(key, created_at DESC);
+
+-- **用户拿到 AI 写的东西之后，对它做了什么**（计划 9.1 / [MECH] §5 / [IND] §8⑥）。
+--
+-- 这整个回路没有 ground truth：没有任何证据表明「五维全 2 分」等于「用户愿意
+-- 留下这篇笔记」，而 Goodhart 已经发生过一次（`middleware/best_of.py` 开头记
+-- 着：第 3 轮为了讨好打分器加了一张单值柱状图，然后第 3 轮被交付了）。唯一
+-- 真实的信号是用户拿到结果之后对它做了什么——PRELUDE（NeurIPS 2024）和
+-- coactive learning 给了现成的名字，后者的假设弱到只要求「编辑后的文本比提出
+-- 的文本更好」，我们这儿天然成立。
+--
+-- **这张表只存 id + 一行数**，跟账本那条边界（只存 id + 一行，全文永远回
+-- kite 取）是同一个道理：AI 那一份正文存在 `note_revisions` 里（跑完落的那
+-- 一版，`reason='harness'`、`run_id` 指回这一行），这里只记指针和几个数。
+-- **它不是第二份笔记副本。**
+--
+-- 一行的生命周期：跑完开一行（`status='open'`，AI 那一侧填好）→ 用户下一次
+-- 真的改了正文再保存时关掉（`status='edited'`，填 `kept_chars` / `user_chars`）
+-- → 同一篇又跑了一次而上一行还开着，上一行记 `status='superseded'`。
+--
+-- **只采集，不调参。** 样本不够时按它调参比不调更糟——这句话同时写在
+-- `middleware/edits.py` 里，那儿是真会被下一个人读到的地方。
+CREATE TABLE IF NOT EXISTS harness_edits (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL,
+    note_id      TEXT NOT NULL,
+    run_id       TEXT NOT NULL DEFAULT '',   -- harness_runs.id / harness_rounds.run_id
+    key          TEXT NOT NULL DEFAULT '',   -- `<模式>:<笔记 id>`，跟 harness_runs.key 同一个写法
+    revision_id  TEXT NOT NULL DEFAULT '',   -- note_revisions 里 AI 那一版
+    status       TEXT NOT NULL DEFAULT 'open',
+    base_chars   INTEGER NOT NULL DEFAULT 0, -- 这次跑开跑时正文有多长（用户自己写的那部分）
+    ai_chars     INTEGER NOT NULL DEFAULT 0, -- 跑完交出去多长
+    user_chars   INTEGER NOT NULL DEFAULT 0, -- 用户改完存下来多长
+    kept_chars   INTEGER NOT NULL DEFAULT 0, -- 两份逐字对齐后仍然一样的字数
+    created_at   TEXT NOT NULL,
+    edited_at    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_harness_edits_note ON harness_edits(user_id, note_id, status);
 """
 
 # 单个 job 里所有 item 都落到这些状态之一，才算 job 结束
@@ -367,6 +404,19 @@ _ADDED_COLUMNS = (
     # 「用户看不到、我们也没统计」里最看不见的一半。
     ("harness_rounds", "revisions_proposed", "INTEGER NOT NULL DEFAULT 0"),
     ("harness_rounds", "revisions_dropped", "INTEGER NOT NULL DEFAULT 0"),
+    # 这次跑一共花了多少（计划 12.3）。**没有这两列，「单次跑的成本」只能靠
+    # 把 `llm_usage` 按时间窗口贴回 `harness_rounds` 来重建**——批 23 就是这么
+    # 量的（158 次跑、1943 行用量，63 行贴不上），而那份重建在两次跑重叠时
+    # 会把账算到隔壁（实测 158 次跑里 11 对相邻跑是重叠的）。落了库之后
+    # 「一次跑花多少」就是一个能直接 SELECT 的数。
+    #
+    # **`tokens` 是入+出的原始 token，不折算价格**：库里没有价目表，而缓存
+    # 命中的输入 token 便宜一档（`llm_usage.cached_tokens` 另记），所以这个
+    # 数是**偏保守**的——真金白银只会比它少。
+    ("harness_runs", "tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("harness_runs", "calls", "INTEGER NOT NULL DEFAULT 0"),
+    # 这一版正文是哪一次跑交出来的（计划 9.1）。空串 = 用户自己保存时留的版本。
+    ("note_revisions", "run_id", "TEXT NOT NULL DEFAULT ''"),
     ("notes", "pinned", "INTEGER NOT NULL DEFAULT 0"),
     # 笔记图标（boxicons 的类名，如 bx-rocket；空 = 按文件夹 / 笔记默认）。Trilium 的 NoteIcon，
     # 那边存成 #iconClass 属性，我们没有属性系统就直接一列。
@@ -431,6 +481,7 @@ def _drop_orphans(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM note_revisions WHERE note_id NOT IN (SELECT id FROM notes)")
     conn.execute("DELETE FROM harness_snapshots WHERE note_id<>'' AND note_id NOT IN (SELECT id FROM notes)")
     conn.execute("DELETE FROM harness_runs WHERE key LIKE 'note:%' AND substr(key, 6) NOT IN (SELECT id FROM notes)")
+    conn.execute("DELETE FROM harness_edits WHERE note_id NOT IN (SELECT id FROM notes)")
 
 
 def _drop_orphan_runs(conn: sqlite3.Connection) -> None:
@@ -842,10 +893,16 @@ REVISION_KEEP = 100
 
 
 def _snapshot_locked(c: sqlite3.Connection, user_id: str, note_id: str, title: str,
-                     content: str, reason: str, *, force: bool) -> bool:
-    """在已开的连接里存一版。不强制时受间隔限制；空正文不存。"""
+                     content: str, reason: str, *, force: bool,
+                     run_id: str = "") -> str:
+    """在已开的连接里存一版。不强制时受间隔限制；空正文不存。
+
+    返回这一版的 id，没存返回空串。**原来返回的是 bool**——计划 9.1 要拿这个
+    id 当指针（`harness_edits.revision_id`），而「存没存下」和「存下来的是哪
+    一行」是同一个问题的两半，让调用方回头再查一次就是在制造第二个真相。
+    """
     if not (content or "").strip():
-        return False
+        return ""
     if not force:
         last = c.execute(
             "SELECT created_at FROM note_revisions WHERE user_id=? AND note_id=?"
@@ -853,18 +910,38 @@ def _snapshot_locked(c: sqlite3.Connection, user_id: str, note_id: str, title: s
         if last:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(last["created_at"])).total_seconds()
             if age < REVISION_INTERVAL_S:
-                return False
-    c.execute("INSERT INTO note_revisions (id,user_id,note_id,title,content,reason,created_at)"
-              " VALUES (?,?,?,?,?,?,?)",
-              (uuid.uuid4().hex[:12], user_id, note_id, title, content, reason, _now()))
+                return ""
+    rev_id = uuid.uuid4().hex[:12]
+    c.execute("INSERT INTO note_revisions (id,user_id,note_id,title,content,reason,run_id,created_at)"
+              " VALUES (?,?,?,?,?,?,?,?)",
+              (rev_id, user_id, note_id, title, content, reason, run_id, _now()))
     c.execute("DELETE FROM note_revisions WHERE user_id=? AND note_id=? AND id NOT IN ("
               "SELECT id FROM note_revisions WHERE user_id=? AND note_id=?"
               " ORDER BY created_at DESC, rowid DESC LIMIT ?)",
               (user_id, note_id, user_id, note_id, REVISION_KEEP))
-    return True
+    return rev_id
 
 
-def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | None:
+# 这次保存是谁按下的。计划 9.1 的整份信号（「用户拿到 AI 写的东西之后改了
+# 什么」）就靠这一个字段分辨「人按的」和「harness 自己写回去的」——**一份被
+# harness 自己的写回污染的 ground truth 比没有更糟**。
+#
+# 默认是 `user`，理由是「保存一篇笔记」这件事在这个产品里默认就是人按的；
+# 代价是**新加一处机器写入而忘了声明，会被当成一次用户编辑**。所以这不是
+# 靠自觉：`app/` 下每一处 `store.update_note(` 在
+# `tests/test_harness_edits.py` 里**逐处登记**（同批 21 那条「载荷不是字典
+# 字面量的发射点逐处登记」），新增一处不登记，闸就红。
+EDIT_SOURCES = ("user", "harness", "import")
+
+
+def update_note(user_id: str, note_id: str, title: str, content: str,
+                *, source: str = "user") -> dict | None:
+    """保存正文。`source` 见 `EDIT_SOURCES`。
+
+    **`source` 只影响采集，不影响写**：任何取值下正文都照写、版本照留。
+    """
+    if source not in EDIT_SOURCES:
+        raise ValueError(f"update_note 的 source 得是 {EDIT_SOURCES} 之一，收到 {source!r}")
     with connect() as c:
         old = c.execute("SELECT title, content FROM notes WHERE user_id=? AND id=?",
                         (user_id, note_id)).fetchone()
@@ -873,6 +950,11 @@ def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | 
         # 正文变了才留版本；只改标题不算
         if old["content"] != content:
             _snapshot_locked(c, user_id, note_id, old["title"], old["content"], "auto", force=False)
+            if source == "user":
+                # 用户真的改了正文并保存 —— 这正是计划 9.1 要采的那一下。
+                # 在同一个连接、同一个事务里关，`notes` 和 `harness_edits`
+                # 不会各存一半。
+                _close_harness_edit_locked(c, user_id, note_id, content)
         cur = c.execute(
             "UPDATE notes SET title=?, content=?, updated_at=? "
             "WHERE user_id=? AND id=?",
@@ -885,16 +967,120 @@ def update_note(user_id: str, note_id: str, title: str, content: str) -> dict | 
     return get_note(user_id, note_id)
 
 
-def snapshot_note(user_id: str, note_id: str, reason: str = "manual") -> dict | None:
+def snapshot_note(user_id: str, note_id: str, reason: str = "manual",
+                  *, run_id: str = "") -> dict | None:
     """手动存一版（不受间隔限制）。返回这一版的摘要，没这篇 / 正文为空返回 None。"""
     with connect() as c:
         row = c.execute("SELECT title, content FROM notes WHERE user_id=? AND id=?",
                         (user_id, note_id)).fetchone()
         if not row:
             return None
-        if not _snapshot_locked(c, user_id, note_id, row["title"], row["content"], reason, force=True):
+        if not _snapshot_locked(c, user_id, note_id, row["title"], row["content"],
+                                reason, force=True, run_id=run_id):
             return None
     return list_revisions(user_id, note_id)[0]
+
+
+# ------------------------------------------------- 用户的编辑（计划 9.1）
+#
+# **只采集，不调参。** 这几个函数往库里写的是「AI 交了什么 / 用户留下了
+# 多少」，一行也不进任何 prompt、不喂任何策略。样本不够时按它调参比不调更糟
+# ——判据依赖当初看到的那批产出（[IND] §8③ 的 criteria drift），而这份数据
+# 现在的规模是零。
+
+REVISION_REASON_HARNESS = "harness"
+"""跑完落的那一版正文的 `reason`。用户在历史面板里看得见它，这是有意的：
+「恢复到 AI 跑完那一版」本来就是这个产品该有的一步。"""
+
+
+def open_harness_edit(user_id: str, note_id: str, *, run_id: str, key: str,
+                      revision_id: str, base_chars: int, ai_chars: int) -> str:
+    """跑完开一行。同一篇上还开着的旧行记 `superseded`。
+
+    **同一篇只留一行开着**：用户下一次保存能回答的只有「相对最近那一次跑
+    改了什么」。两行同时开着的话，那一次保存会被两次跑同时认领，而其中
+    至少一个是错的。
+    """
+    row_id = uuid.uuid4().hex[:12]
+    with connect() as c:
+        c.execute("UPDATE harness_edits SET status='superseded', edited_at=?"
+                  " WHERE user_id=? AND note_id=? AND status='open'",
+                  (_now(), user_id, note_id))
+        c.execute(
+            "INSERT INTO harness_edits (id,user_id,note_id,run_id,key,revision_id,"
+            "status,base_chars,ai_chars,user_chars,kept_chars,created_at,edited_at) "
+            "VALUES (?,?,?,?,?,?,'open',?,?,0,0,?,'')",
+            (row_id, user_id, note_id, run_id, key, revision_id,
+             int(base_chars), int(ai_chars), _now()))
+        c.commit()
+    return row_id
+
+
+def _close_harness_edit_locked(c: sqlite3.Connection, user_id: str, note_id: str,
+                               content: str) -> None:
+    """用户改完存了一次：把还开着的那一行关掉，记下他留下了多少。
+
+    **只记数，不存第二份正文**（跟账本那条「只存 id + 一行」同一条边界）：
+    AI 那一侧原样躺在 `note_revisions` 里、`revision_id` 指得到，用户那一侧
+    就是 `notes.content` 本身。这里落的是两份对齐之后**逐字仍然一样的字数**，
+    因为那是唯一一个下一次读它的人不用重新跑一遍 diff 就能用的数。
+
+    **已知口径**：`kept_chars` 对的是整篇，而整篇里有一大半是这次跑开跑前就
+    有的（`base_chars` 一起记着就是为了这个）。「用户删掉的是这次跑写的哪几
+    段」要按段落对齐才答得出来——那是 9.2 的事，靠 `revision_id` 回头重算，
+    不是现在多存一份正文。
+    """
+    row = c.execute("SELECT id, revision_id FROM harness_edits"
+                    " WHERE user_id=? AND note_id=? AND status='open'"
+                    " ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    (user_id, note_id)).fetchone()
+    if not row:
+        return
+    rev = c.execute("SELECT content FROM note_revisions WHERE id=? AND user_id=?",
+                    (row["revision_id"], user_id)).fetchone()
+    if not rev:
+        # AI 那一版被历史修剪掉了（REVISION_KEEP）。**这一行就作废**——
+        # 没有它就没有「AI 提出了什么」，剩下的数只是一次保存。
+        c.execute("UPDATE harness_edits SET status='lost', edited_at=? WHERE id=?",
+                  (_now(), row["id"]))
+        return
+    ai = rev["content"] or ""
+    if ai == content:
+        return          # 一个字没改（自动保存也会走到这儿）：这一行继续开着
+    c.execute("UPDATE harness_edits SET status='edited', user_chars=?, kept_chars=?,"
+              " edited_at=? WHERE id=?",
+              (len(content), kept_chars(ai, content), _now(), row["id"]))
+
+
+def kept_chars(before: str, after: str) -> int:
+    """两份正文逐字对齐之后，仍然一样的字数。
+
+    `difflib.SequenceMatcher` 的匹配块之和。**autojunk 关掉**：默认那条启发式
+    会把出现频率高的字符当噪声跳过，而中文正文里高频字满篇都是——实拍 680 字
+    的正文改掉 1 个字，开着它只认出 100 字「留下了」，关掉是 595。
+
+    **这个数是下界，不是编辑距离。** `SequenceMatcher` 是贪心的，在高度重复
+    的文本上给不出最优对齐（上面那个例子最优是 679）。要精确的对齐得回头拿
+    `revision_id` 指的那一版重算——这也正是不在这儿多存一份正文的底气。
+    """
+    import difflib
+
+    sm = difflib.SequenceMatcher(None, before or "", after or "", autojunk=False)
+    return sum(b.size for b in sm.get_matching_blocks())
+
+
+def harness_edits(user_id: str = "", limit: int = 200) -> list[dict]:
+    """采到的样本。**没有写回路**——这张表现在只有读者，没有任何一处拿它调参。"""
+    with connect() as c:
+        if user_id:
+            rows = c.execute("SELECT * FROM harness_edits WHERE user_id=?"
+                             " ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                             (user_id, limit)).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM harness_edits"
+                             " ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                             (limit,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def list_revisions(user_id: str, note_id: str) -> list[dict]:
@@ -932,6 +1118,11 @@ def restore_revision(user_id: str, note_id: str, rev_id: str) -> dict | None:
     with connect() as c:
         c.execute("UPDATE notes SET title=?, content=?, updated_at=? WHERE user_id=? AND id=?",
                   (rev["title"], rev["content"], _now(), user_id, note_id))
+        # **恢复到旧版本也是一次用户编辑**（计划 9.1），而且是最重的一种：
+        # 他把现在这一版整个扔了。恢复到 AI 那一版本身不算——那时正文跟
+        # `revision_id` 指的那一份逐字相同，`_close_harness_edit_locked`
+        # 自己会认出来并让这一行继续开着。
+        _close_harness_edit_locked(c, user_id, note_id, rev["content"] or "")
     sync_citations(user_id, note_id, rev["content"])
     return get_note(user_id, note_id)
 
@@ -1038,6 +1229,9 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             c.execute("DELETE FROM harness_snapshots WHERE user_id=? AND note_id=?", (user_id, nid))
             # key 是 `<模式>:<id>`，不止 note: 一种（section: / prompt: / table:），老行还有裸 id
             c.execute("DELETE FROM harness_runs WHERE key=? OR key LIKE ?", (nid, f"%:{nid}"))
+            # 采集来的编辑样本也一起走：它的两个指针（`note_revisions` 里那一版
+            # 正文、`notes.content`）都刚被删掉，留着就是一行指向空气的数。
+            c.execute("DELETE FROM harness_edits WHERE user_id=? AND note_id=?", (user_id, nid))
             removed.append(nid)
 
         drop(note_id)
@@ -1220,7 +1414,8 @@ def upsert_child(user_id: str, parent_id: str, title: str, content: str,
     with connect() as c:
         nid = _child_titled(c, user_id, parent_id, title)
     if nid:
-        update_note(user_id, nid, title=title, content=content)
+        # 程序反复重写同一篇（屏幕活动回顾那种），不是用户编辑
+        update_note(user_id, nid, title=title, content=content, source="harness")
         return get_note(user_id, nid)
     note = create_note(user_id, title, content, parent_id, source=source)
     if icon:
@@ -1969,15 +2164,27 @@ def get_asr_base_url() -> str:
 
 def record_harness_run(key: str, status: str, rounds: int,
                        final_scores: dict[str, int], weak_dimensions: list[str],
-                       stopped: str = "") -> None:
+                       stopped: str = "", run_id: str = "",
+                       tokens: int = 0, calls: int = 0) -> None:
+    """记一次跑。
+
+    **`run_id` 传的是 `harness_rounds.run_id` 那个 id**（`Ledger` 生成的），
+    于是这三张表第一次有了同一个连接键：`harness_runs.id` = `harness_rounds.run_id`
+    = `harness_edits.run_id`。在这之前 `harness_runs` 和 `harness_rounds`
+    **没有任何 join 键**——批 23 量「单次跑花多少」只能拿时间窗口把
+    `llm_usage` 贴回去，而那份重建在两次跑重叠时会把账算到隔壁。
+    留空则照旧自己生成一个（没挂 `Ledger` 的模式走这条）。
+    """
     with connect() as c:
         c.execute(
             "INSERT INTO harness_runs "
-            "(id, key, status, rounds, final_scores, weak_dimensions, stopped, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), key, status, rounds,
+            "(id, key, status, rounds, final_scores, weak_dimensions, stopped, "
+            "tokens, calls, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (run_id or str(uuid.uuid4()), key, status, rounds,
              json.dumps(final_scores, ensure_ascii=False),
-             json.dumps(weak_dimensions, ensure_ascii=False), stopped[:40], _now()))
+             json.dumps(weak_dimensions, ensure_ascii=False), stopped[:40],
+             int(tokens), int(calls), _now()))
         # 一个 key（一篇笔记 / 一个分段）只留最近 50 次：策略只看最近几次，
         # 再往前的除了占地方没有用
         c.execute("DELETE FROM harness_runs WHERE key=? AND id NOT IN ("

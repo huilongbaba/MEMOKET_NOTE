@@ -141,8 +141,9 @@ async def run(st: State, hooks: Hooks,
             hit = _stop(st)
             if hit:
                 reason = hit
-                # 这一轮比最好的那轮差、提前停：交的得是最好的那轮，不是这一轮
-                if hit == "regressed" and st.best is not None:
+                # 停机的理由跟「这一轮写得好不好」无关时，交最好的那轮，
+                # 不是这一轮（名单和理由见 SHIP_BEST_ON）。
+                if hit in SHIP_BEST_ON and st.best is not None:
                     st.content = st.best[1]
                 break
             st.steer = _steer(st)
@@ -441,7 +442,36 @@ def _regressed(st: State) -> str | None:
 # 这儿找 `COVERAGE_DIMS` 的人留的路标，导入在文件顶上。
 
 
-BUILTIN_STOPS = (_complete, _blocked, _no_progress, _regressed)
+def _over_budget(st: State) -> str | None:
+    """这次跑花超了（计划 12.3 / [MECH] §7「成本从不进入停机决策」）。
+
+    判断和上限都在 `middleware/cost.py` / `params.RUN_TOKEN_CAP`，这里只有一
+    行转发——**两处要问同一个问题，写两份会飘**（同 `State.coverage_unmet`
+    搬进 `state.py` 的理由）。`Cost` 在 `after_round` 已经把数字发成一条
+    `cost` 事件了，所以"停下来告诉用户"这件事的两半都在：事件说花了多少，
+    停机原因说因此停了。
+
+    **排在 `complete` / `blocked` 后面**：那两个是这次跑真正的结局，钱花到
+    上限只是"没能在预算内做完"，不该盖掉一个好结局。**排在
+    `_no_progress` / `_regressed` 前面**：那两个说的是质量，这一条说的是
+    预算——两个都成立时，用户更需要知道的是后者（前者下一次跑还会再花一次
+    同样的钱）。
+    """
+    from .middleware.cost import over_cap
+
+    return "cost_cap" if over_cap(st) else None
+
+
+# 收工时交「最好那一轮」而不是「这一轮」的几个原因。
+#
+# `regressed` 是老的那个：这一轮比最好那轮差才停的，交这一轮等于明知故犯。
+# `cost_cap`（批 23）跟循环末尾那个 `else:` 是同一个形状——**停机的理由跟
+# 这一轮写得好不好无关**，那正是「最后一轮最不可能是最好那轮」的时候
+# （`else:` 分支的注释原话）。写成常量而不是 `hit in ("a","b")`：下一个加
+# 停机原因的人得先决定自己属于哪一档，而不是顺手在条件里再或一个字符串。
+SHIP_BEST_ON = ("regressed", "cost_cap")
+
+BUILTIN_STOPS = (_complete, _blocked, _over_budget, _no_progress, _regressed)
 
 
 def _stop(st: State) -> str | None:

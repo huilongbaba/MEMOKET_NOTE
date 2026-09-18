@@ -281,6 +281,14 @@ class RunRecord:
     # 跟 `status`（打分模型的裁决）是两个不同的问题。分开记之前，
     # 实测 39 次跑里 54% 的 `status` 都是 `continue`，而那是三种完全不同的失败混在一起。
     stopped: str = ""
+    # 这次跑的 id（留空 = 存储层自己生成）。存在的理由是**让三张表能 join**：
+    # `harness_runs` 和 `harness_rounds` 在这之前没有任何连接键。
+    run_id: str = ""
+    # 这次跑一共花了多少：入 + 出 token、几次调用（计划 12.3）。
+    # 记在这儿而不是让分析侧拿时间窗口重建 `llm_usage`——那份重建在两次跑
+    # 重叠时会把账算到隔壁（批 23 实测 158 次跑里 11 对相邻跑重叠）。
+    tokens: int = 0
+    calls: int = 0
 
 
 @runtime_checkable

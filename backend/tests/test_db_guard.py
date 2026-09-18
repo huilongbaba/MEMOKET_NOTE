@@ -265,7 +265,7 @@ def test_harness里只有一处在写用户的笔记():
         for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if "store.update_note(" in line and not line.lstrip().startswith("#"):
                 writers.append(f"{path.relative_to(root)}:{i}")
-    assert writers == ["middleware/save.py:64"] or len(writers) == 1, (
+    assert [w.split(":")[0] for w in writers] == ["middleware/save.py"], (
         "harness 里写用户笔记的地方不止一处了：" + "、".join(writers)
         + "\n写库只许走 middleware/save.persist——理由见它的 docstring")
 
@@ -284,7 +284,7 @@ def test_rails_off挡住save时一个字都不许落库():
 
     wrote: list[str] = []
     real = save_mod.store.update_note
-    save_mod.store.update_note = lambda u, n, t, c: wrote.append(c)
+    save_mod.store.update_note = lambda u, n, t, c, **kw: wrote.append(c)
     try:
         base = Mode(key="t", label="t", skill_scope="s", task="做点什么",
                     dims=(Dimension("d0", "..."),))

@@ -1079,6 +1079,12 @@ export type NoteHarnessHandlers = {
   /** 骨架被重规划了。目标被改了，用户必须看得见改成了什么——后端在这之后
    * 还会重发一次 skeleton 事件让骨架面板跟着更新。 */
   onReplan?: (d: { round: number; why: string; changes: string[]; beats: string[] }) => void
+  /** 这次跑到了单次跑的成本上限，停在这一轮（后端计划 12.3）。**不是静默截断**：
+   * 收到它之后还会收到一条 reason='cost_cap' 的 RUN_FINISHED，交出去的是最好的那一轮。 */
+  onCost?: (d: { round: number; tokens: number; cap: number; calls: number; detail: string }) => void
+  /** 这次跑完**比上一次跑**差（后端计划 9.3）。只报，不回滚——上一版正文在
+   * 「历史版本」里，回不回去由用户定。 */
+  onCrossRun?: (d: { met: number; last_met: number; mean: number; last_mean: number; dimensions: string[]; detail: string }) => void
 }
 
 export async function runNoteHarness(
@@ -1187,6 +1193,8 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
       else if (payload.name === 'warning') handlers.onWarning?.(v)
       else if (payload.name === 'replan') handlers.onReplan?.(v)
       else if (payload.name === 'insert_at') handlers.onInsertAt?.(v)
+      else if (payload.name === 'cost') handlers.onCost?.(v)
+      else if (payload.name === 'cross_run') handlers.onCrossRun?.(v)
     }
   }
 }

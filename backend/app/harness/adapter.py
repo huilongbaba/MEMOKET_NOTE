@@ -37,7 +37,8 @@ class SqliteRunHistoryStore:
     def record(self, run: RunRecord) -> None:
         store.record_harness_run(
             run.key, run.status, run.rounds, run.final_scores, run.weak_dimensions,
-            stopped=run.stopped)
+            stopped=run.stopped, run_id=run.run_id,
+            tokens=run.tokens, calls=run.calls)
 
     def recent(self, key: str, limit: int = 3) -> list[RunRecord]:
         return [

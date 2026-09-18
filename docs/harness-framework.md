@@ -57,7 +57,7 @@ flowchart TB
     LOOP["loop.py<br/>一份循环 · 9 个钩子 · 3 条内置停止条件"]
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
-    MW["Middleware ×16<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
+    MW["Middleware ×19<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
     CHK["checks/ ×17 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
@@ -181,21 +181,24 @@ flowchart TB
 ```
 backend/app/
   harness/                 agent 运行。不认识 FastAPI，不认识 sqlite
-    loop.py                  一份循环 + 3 条内置停止条件
+    loop.py                  一份循环 + 5 条内置停止条件（complete · blocked · cost_cap · no_progress · regressed）
     types.py                 Mode · Hooks · Middleware · Check · Verdict · StopCondition · Dimension
     state.py                 State：一次 run 的全部状态，middleware 的 bag 也在这
     tailing.py               撞 token 上限后：要不要续尾 / 续回来的像不像半句
     modes.py                 8 个 Mode + 各自的停止条件 + for_run()（按 profile / polish 塑形维度）
-    events.py                AG-UI 事件 + 12 个 CUSTOM 名字 + to_sse()
+    events.py                AG-UI 事件 + 14 个 CUSTOM 名字 + to_sse()
     score_context.py         打分器除了正文还能看到什么：block 的前后文 / 指令 / 选区（for_block）
                              ＋这次跑累积的材料（with_material，loop 每轮现拼。
                              批 16 起材料排在 `[Content]` **之后**，拆分由这个模块说了算）
     hooks/                   三组回调 + 客户端镜像用的两个记录函数
       note · section · block · mirror
-    middleware/              16 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
+    middleware/              19 个挂在模式上的能力 + compact.py（只剩「智能续写」那条路在用）
                              + _order.py（顺序依赖，verify() 起跑时校验）
       skills · facts · history · ledger · supersede · compact · sections · best_of · checks
       · checklist · provenance · revise · repeats · replan · repair · runtime · save · _order
+      · cost（这次跑花了多少 + 超了就停，计划 12.3）
+      · cross_run（这次跑完比**上一次跑**差就报一句，只报不回滚，计划 9.3）
+      · edits（跑完落一版正文 + 开一行采集用户接下来对它做了什么，计划 9.1）
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
     checks/                  22 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
@@ -245,7 +248,7 @@ backend/app/
     conflict_confirm.py      摄入时那批冲突候选进收件箱前让模型确认一遍；
                              由 routers 注入给 database/kb/inbox（层次只能从上往下递）
   database/
-    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· llm_usage（模型用量）· ingest_jobs / ingest_items · skills · snapshots · runs
+    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本，带 run_id：哪一次跑交出来的）· harness_edits（用户拿到 AI 写的东西之后改了什么，只存指针 + 四个数，计划 9.1）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· llm_usage（模型用量）· ingest_jobs / ingest_items · skills · snapshots · runs
                              启动清理：sweep_orphan_jobs / sweep_orphan_plans / sweep_stale_snapshots（7 天）/ sweep_old_rows（用量 90 天、跑完的任务 30 天、非活跃计划 30 天）/ prune_job_payloads
                              轻量列表 list_notes_brief（⌘K / `[[` 补全用：不带全文，正文命中带片段 + first_body）；搜索的 LIKE 通配符已转义
     retrieval.py             零 LLM 关键词检索（工具循环失败时的退路）；format_fact() 给材料带 id
@@ -490,7 +493,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 ---
 
-## 7. 16 个 middleware
+## 7. 19 个 middleware
 
 `BASE`（默认全开，顺序即执行顺序）：
 
@@ -504,7 +507,10 @@ State: mode · ctx(user/note/cursor) · request · round
 | **Ledger** | before_round / after_prepare / after_judge | **材料账本**：把这一轮的工具轨迹折进一份跨轮的状态（查过什么、查到过什么、每条事实的日期、各轴共 N 条取了 M 条），并把这一轮写进 `harness_rounds`（含短路省掉了几次查询）。`before_round` 给 `query_cache` 报轮次——跨轮的重复必须原样返回全文。**账本本身只记不改**——接进 prompt 是单独一步，因为「把已经有什么摆给模型看」有实测证据会缩小它的搜索空间 |
 | **Supersede** | after_prepare | 取材之后把「这条已经被取代了」补上：账本里的事实对一遍 `superseded_by`（人已裁决）和 `kb_conflicts`（未裁决的候选），被取代的**把取代它的那条一起带回来**，未裁决的只挂一句「两条都别当定论」。知识库一直知道 6/3 被 8/5 取代，而写作侧从来不问。写出来的每一行都带 `score_context.NOTICE_MARK`——**打分那一侧的 6000 字截断按记号优先保留它们**，否则被更正的那条留在材料里、说它过时的那行反倒被切掉（批 11 H2） |
 | **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的 |
-| **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料） |
+| **Cost** | before_run / after_round | **这次跑花了多少**（计划 12.3）。`before_run` 在调用链上绑一份账本（`llm.bind_usage_sink`，`util/llm._record` 是全仓唯一记用量的地方），轮末结一次账并写进 `harness_runs.tokens/.calls`；超过 `params.RUN_TOKEN_CAP` 就发一条 `cost` 事件，停机规则 `_over_budget` 跟着收工、交最好的那一轮。**在这之前一次跑能花多少没有任何约束**（[MECH] §7）。上限是量出来的：158 次跑的 token 中位 85,041 / p90 186,243 / 最大 248,160，上限取 500,000 ≈ 最大值的 2 倍——**它是安全网不是控制器**，在已量到的跑上一次都不开火 |
+| **CrossRun** | after_run | **这次跑完比上一次跑差就报一句**（计划 9.3）。`BestOf` / `_regressed` 只管一次跑内部，而实测三篇笔记反复跑同一篇是 9→6→4、9→7→4→3。维度集合相同才比（不同就是配置差异不是质量差异），差了发 `cross_run`。**只报，不替用户决定**——计划第 4 节写死了不做跨跑自动回滚。必须排在 `History` 前面（它一写库，「最近一次」就是自己），靠 `History.after=("cross_run",)` + `_order.verify` 保证 |
+| **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料）。批 23 起 `harness_runs.id` 用的就是 `harness_rounds.run_id` 那个 id——**这三张表在这之前没有任何 join 键** |
+| **Edits** | after_run | **采集用户的编辑**（计划 9.1 / [MECH] §5 / [IND] §8⑥）：跑完往 `note_revisions` 落一版正文（`reason='harness'` + `run_id`），同时在 `harness_edits` 里开一行；用户下一次真的改了正文再保存时那一行被关掉，记下他留下了多少字。这是这个回路里**唯一可能的 ground truth**——没有任何证据表明「五维全 2 分」等于「用户愿意留下这篇笔记」，而 Goodhart 已经发生过一次。**只采集，不调参**，且**认 `rails_off=("save",)`**：不许写正文的跑也不许往它的历史里塞版本 |
 
 Mode 按需追加的：
 
@@ -920,7 +926,7 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | **「真实产出」≠「用户写的」** | 批 6：灵敏度 bench 的「13 篇干净语料」里有 6 篇出自同一次 `soak.py` 压测，而 soak 是**拿真实 user_id 跑的**，按 user_id 和标题筛一个都挡不住。去掉 3 篇重算，**4 条结论直接翻转**。于是有了 `scripts/corpus_lineage.py`：`user` 才能算比例，`script` 只能看形状，`fixture` 是纯噪声 |
 | **建了判据不等于用了判据** | `check_citations` 带着测试在仓里躺了整个改造期，**从来没接到任何一条路径上**。同一个形状后来在 `table_columns_match`（`table_validity` 的达标线原话就是「列数要对得上」，而仓里没有一处在数列）上又出现一次 |
 | **凡是只能靠自报来保证的性质，迟早会被报错一次** | 批 14：实施 agent 的报告写着「一篇笔记都没写」，实际两篇 terrence 的真实笔记被改了，一篇丢了 1326 字用户自己写的内容。修法不是「下次小心点」——第一次之后写的就是一段警告注释，第二次照样发生。现在是 `scripts/db_guard.py` 的两道闸：只读连接 + 出来时自动核对笔记表指纹（行数 / `max(updated_at)` / 正文总字数 / **逐篇正文摘要**） |
-| **突变没被抓住时，先怀疑用例不够** | 连着十三批。三种典型：① 纯函数那一侧的用例**看不见端点怎么调它**（把 `check_tap(written, before)` 改成 `check_tap(before + written)`，函数行为一个字没变，全套照绿）；② 用例里的素材**是自己编的**，根本没到门槛（把「按节切」整个拆掉照样绿）；③ 断言**跟着被测常量一起变**（`"正" * MIN_SECTION_CHARS`，门槛改成 700 / 900 / 2000 它都绿）——**一个跟着被测常量一起变的断言，没有在断言任何东西** |
+| **突变没被抓住时，先怀疑用例不够** | 连着十三批。三种典型：① 纯函数那一侧的用例**看不见端点怎么调它**（把 `check_tap(written, before)` 改成 `check_tap(before + written)`，函数行为一个字没变，全套照绿）；② 用例里的素材**是自己编的**，根本没到门槛（把「按节切」整个拆掉照样绿）；③ 断言**跟着被测常量一起变**（`"正" * MIN_SECTION_CHARS`，门槛改成 700 / 900 / 2000 它都绿）——**一个跟着被测常量一起变的断言，没有在断言任何东西**。**批 23 加了第四种**：突变抓不住，也可能是**那条守卫本身多余**——`cross_run` 里那句「这次一分没打上就不比」删掉照样绿，因为「维度集合必须相同」已经答了同一个问题。这时候两条路，一条是删掉它，一条是**把它挡住的那件事变成可观测的**（这里选了后者：不该比的时候连历史都不该去读，断言改成「`recent()` 一次都没被问过」）。**留着一条谁也证明不了它在挡什么的守卫，比没有更糟** |
 | **上一批的纪律不能按字面抄到下一批** | 批 19 ㉜ 刚为「词袋」这个病把断言从整张图收到 `checks/` 那一块，批 20 ㉞ **同一个病在那一块里又长回来了**：整条列表项摘掉，断言照样绿，因为同一行后半截的「magic tap」顺手把 `tap` 满足了。**收窄一个词袋的时候，要连「这个词还能从哪儿被顺手满足」一起想**；照抄结构时连「它为什么在那儿」一起抄 |
 | **同一件事挡住一半等于没挡** | 批 3 查出 `_score()` 的 docstring 撒谎（「返回 None 不会触发任何停机条件」是假的），当时补了 `_regressed` 那一行守卫，并写着「同类的大概率不止一处」。批 16 兑现了一次（`rails_off=("save",)` 只摘掉 `Save`，而 `revise.py` 自己也在调 `store.update_note`），批 22 一次找出四处：`st.ev is None` 在 `History` 那儿同时是「打分失败」和「循环末尾清空了」，于是**跑满轮数的跑一行历史都不记**（实测 158 次跑里 17 次跑满，`stopped='max_rounds'` 0 行）；`_regressed` 的覆盖守卫只挡「这一轮还没写够」，不挡「最好那轮之所以排名高正因为它没写够」；批 13 保证了「宣称的 `tool_call` 都有回复」却没保证「宣称的非空」（`kept == []` 照样 400）；`hooks/block` 合并第二次工具循环时手抄了两个字段、漏掉四个。**修法不是逐处补**：一个信号有两个来源、或者一个守卫有两个调用点，就得把它们逐个数过来 |
 | **造语料时「看起来像正文」和「统计性质像正文」是两件事** | 批 19 ②／批 20：十条材料第一版是同一个模板换数字，于是一句话同时命中十条（`fact_usage` 数的是 2-gram 重合，模板本身就贡献了一大半）——`used=10/10`，判据当场闭嘴。换成十条各说各事的真实形状才对 |

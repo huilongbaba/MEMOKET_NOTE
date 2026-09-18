@@ -59,6 +59,8 @@ CUSTOM_PHASE_DELTA = "phase_delta"   # live output from a sub-step
 CUSTOM_ROUND = "round_summary"       # what this round gathered, before writing
 CUSTOM_REPLAN = "replan"             # the skeleton changed mid-run
 CUSTOM_INSERT_AT = "insert_at"       # this round's text goes into a section, not the end
+CUSTOM_COST = "cost"                 # 这次跑到了成本上限，停在这儿（计划 12.3）
+CUSTOM_CROSS_RUN = "cross_run"       # 这次跑完比**上一次跑**差（计划 9.3；只报，不回滚）
 
 
 @dataclass(frozen=True)

@@ -122,8 +122,50 @@ def _cached_of(usage: dict) -> tuple[int, int]:
     return 0, 0
 
 
+# 这一次跑花了多少，边花边记（计划 12.3）。
+#
+# **为什么是 contextvar 而不是参数**：`complete()` 的调用方是 rubric、
+# agent_loop、revise、hooks 五六处，全都隔着 `adapter.AppLLMClient` 那层协议
+# ——要把「这次跑的账本」传下去，得先在一个领域无关的协议里开一个领域相关的
+# 口子。`ctx_user` / `ctx_feature` / `ctx_cache_key` 已经是同一个形状了，
+# 这里不造第二套。
+#
+# **装的是 dict 本身，不是它的快照**：`Cost` 在 `before_run` 绑一次，之后
+# 每一笔都往同一个 dict 上加，所以即使这个 contextvar 在别处被覆盖，已经
+# 拿到这个 dict 的人记的还是同一份账。
+ctx_usage_sink: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "llm_usage_sink", default=None)
+
+
+def bind_usage_sink(sink: dict) -> None:
+    """接下来这条调用链上的每一笔用量，都往 `sink` 上加一份。"""
+    ctx_usage_sink.set(sink)
+
+
+def _tally(u: dict) -> None:
+    """往这次跑的账本上加一笔。**先于落库**——落库那一步会吞异常，
+    而这一份是停机规则要读的数，不能跟着一起被吞掉。"""
+    sink = ctx_usage_sink.get()
+    if sink is None:
+        return
+    cached, _write = _cached_of(u)
+    sink["calls"] = sink.get("calls", 0) + 1
+    sink["prompt_tokens"] = sink.get("prompt_tokens", 0) + int(u.get("prompt_tokens") or 0)
+    sink["completion_tokens"] = (sink.get("completion_tokens", 0)
+                                 + int(u.get("completion_tokens") or 0))
+    sink["cached_tokens"] = sink.get("cached_tokens", 0) + cached
+
+
 def _record(usage: dict | None, model: str, t0: float) -> None:
     """记一笔用量。记账失败不能影响调用本身。"""
+    try:
+        _tally(usage or {})
+    except Exception:                                      # noqa: BLE001
+        # **不静默**：数不对的时候得有人知道，否则成本上限会在一个偏低的数上
+        # 判「没超」。`Cost` 读到这个键就发一条 warning。
+        sink = ctx_usage_sink.get()
+        if sink is not None:
+            sink["tally_error"] = sink.get("tally_error", 0) + 1
     try:
         u = usage or {}
         cached, cache_write = _cached_of(u)

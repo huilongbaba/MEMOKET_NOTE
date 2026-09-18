@@ -2105,6 +2105,18 @@ export default function App() {
           return next
         })
       },
+      onCost: (d) => {
+        // 单次跑的成本上限（后端计划 12.3）。**停下来告诉用户，不是静默截断**——
+        // 不说一声的话，用户看到的只是「这次怎么只跑了两轮」。
+        if (currentRef.current?.id !== noteId) return
+        toast(d.detail, 'error')
+      },
+      onCrossRun: (d) => {
+        // 这次跑完比上一次跑差（后端计划 9.3）。**只报不回滚**：上一版正文在
+        // 「历史版本」里，回不回去是用户的决定，不是我们的。
+        if (currentRef.current?.id !== noteId) return
+        toast(d.detail, 'error')
+      },
       onWarning: (d) => {
         // 一条 middleware 抛异常了。循环继续跑（能力分包的隔离好处），但这一轮
         // 少了那个能力——后端注释写着「不能是静默的」，可在这之前前端根本没接
@@ -2154,6 +2166,7 @@ export default function App() {
           : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
           : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
           : reason === 'regressed' ? '再改反而更差，留下了最好的那轮'
+          : reason === 'cost_cap' ? '这次跑到了成本上限，留下了最好的那轮'
           : '到达轮数上限，自动停止'
         const delta = liveContentRef.current.length - runBaseRef.current.length
         const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`

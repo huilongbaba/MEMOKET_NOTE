@@ -47,8 +47,30 @@ def persist(st: State) -> bool:
         return False
     if not st.content.strip():
         return False
-    store.update_note(st.ctx.user, st.ctx.note_id, st.ctx.note_title, st.content)
+    # `source="harness"`：这是机器写回去的，**不是一次用户编辑**。计划 9.1
+    # 采的是「用户拿到 AI 写的东西之后改了什么」，把 harness 自己每轮的落盘
+    # 算进去，采到的就全是「用户一个字没改」。
+    store.update_note(st.ctx.user, st.ctx.note_id, st.ctx.note_title, st.content,
+                      source="harness")
     return True
+
+
+def writes_note(st: State) -> bool:
+    """这次跑会不会把正文写进用户的笔记。
+
+    **不是「有没有 Save 这个名字」，是「这次跑的产出会不会变成那篇笔记」。**
+    `middleware/edits`（计划 9.1）要问的正是这个：block 模式的 `st.content`
+    是一个块、不是整篇笔记，`hooks/block.commit` 也是空的——在那儿开一行
+    「AI 交了什么」，`ai_chars` 数的是块、`revision_id` 指的是没被动过的整篇，
+    **两边说的根本不是同一份东西**。
+
+    两个条件都要：这个 Mode 挂了 `Save`（note / section），而且这次跑没有把它
+    摘掉（`rails_off`）。后半条跟 `persist()` 问的是同一句——出口自己认 rails
+    那条规矩（批 16）在这儿照旧成立，这个函数只是让**别的 middleware** 也能
+    问到同一个答案，而不是各写一句 `if`。
+    """
+    return (any(getattr(m, "name", "") == "save" for m in st.mode.extra_mw)
+            and "save" not in st.mode.rails_off)
 
 
 class Save:

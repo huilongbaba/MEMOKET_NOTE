@@ -43,25 +43,45 @@ from .. import adapter as harness_adapter
 from ..state import State
 
 
+def records_this_run(st: State) -> bool:
+    """这次跑算不算「一次跑」。
+
+    **一份实现，三个读者**（`History` 自己、`CrossRun`、`Edits`）。抄一份的
+    代价是量出来的：§21 那条「同一件事挡住一半等于没挡」在这个文件里已经栽
+    过两次，而「记不记这一次」是最容易各写各的一句 `if`。
+
+    两档不算：
+    * **一轮都没跑过**——`precheck` 挡下来的那一档（`reason=blocked`，循环体
+      一次都没进）没有任何关于写作的信息，记下来只会在 `from_history` 的分母
+      里加噪声；
+    * **停下来等用户处置**——A paused run has not finished. Recording it would
+      tell the next run "this note reached round 2 and stopped", which is a
+      lesson about the user stepping away, not about the writing.
+    """
+    return st.round >= 1 and st.stopped != "awaiting_review"
+
+
 class History:
     name = "history"
     hooks = ("after_run",)
-    after: tuple[str, ...] = ()
+    # `CrossRun` 要读「上一次跑」，而这一步就把这次跑写进去了——读到的会是
+    # 自己。这条依赖由 `_order.verify` 每次组链时验，不靠注释。
+    after: tuple[str, ...] = ("cross_run",)
 
     async def after_run(self, st: State) -> None:
-        # **一轮都没跑过的不记。** `precheck` 挡下来的那一档（`reason=blocked`，
-        # 循环体一次都没进）没有任何关于写作的信息，记下来只会在
-        # `from_history` 的分母里加噪声。判据窄一档：跑过至少一轮才算一次跑。
-        if st.round < 1:
+        if not records_this_run(st):
             return
-        if st.stopped == "awaiting_review":
-            # A paused run has not finished. Recording it would tell the next
-            # run "this note reached round 2 and stopped", which is a lesson
-            # about the user stepping away, not about the writing.
-            return
-        scores = _final_scores(st)
+        scores = final_scores(st)
+        cost = st.bag.get("cost") or {}
         harness_adapter.SqliteRunHistoryStore().record(RunRecord(
             key=f"{st.mode.key}:{st.ctx.note_id}",
+            # 三张表共用同一个 id（计划 12.3）：`harness_runs.id` =
+            # `harness_rounds.run_id` = `harness_edits.run_id`。在这之前
+            # `harness_runs` 和 `harness_rounds` 没有任何 join 键，于是
+            # 「这次跑花了多少 / 哪几轮」只能靠时间窗口拼。
+            run_id=str(st.bag.get("run_id") or ""),
+            tokens=int(cost.get("prompt_tokens", 0)) + int(cost.get("completion_tokens", 0)),
+            calls=int(cost.get("calls", 0)),
             # 没打上分的收尾（跑满轮数 / 打分调用失败）照 `continue` 记：
             # 它确实没到 `complete`，而 `Status` 只有三档。**「怎么停的」在
             # `stopped` 那一栏**，两栏合起来才说得清，这也正是 0.3 加那一列
@@ -77,7 +97,7 @@ class History:
         ))
 
 
-def _final_scores(st: State) -> dict[str, int]:
+def final_scores(st: State) -> dict[str, int]:
     """这次跑最后一份**真打出来的**分数向量。
 
     三档，从最可信往下退：
