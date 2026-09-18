@@ -1103,6 +1103,21 @@ h2:first-child { margin-top: 0; }
 .fb-caret { font-size: var(--t-md) !important; margin-inline-start: -3px; }
 /* 忙碌条：转圈 + 一句话，跟在那排按钮后面。字小、不换行——它是交代，不是主角。 */
 .fb-busy { display: inline-flex; align-items: center; gap: var(--s-3); font-size: var(--t-sm); white-space: nowrap; }
+/* 智能续写跑的过程中的状态，跟「停止」并排（第 767 轮从 `.harness-sticky` 搬来）。
+   给底色是因为这一排浮在正文上面（`height: 0`）——不给底色，文字会跟正文叠在一起。
+   `max-width` 压着：状态文案是模型给的（「第 9 轮：修订 3 处，续写中…」），
+   长度不可控，不压住就会横着盖掉正文第一行，那等于换个地方接着挡。 */
+.fb-status {
+  display: inline-flex; align-items: center; gap: var(--s-3);
+  height: 28px; padding: 0 10px; border-radius: var(--r-pill);
+  font-size: var(--t-sm); line-height: 1;
+  /* 跟旁边的 `.fb-btn` 用同一套令牌和阴影——它们是一排里的东西，
+     `--main-bg` / `--border` 是我第一版顺手写的，后者根本不存在（闸抓住了）。 */
+  background: var(--mk-surface); color: var(--muted); border: 1px solid var(--mk-line);
+  box-shadow: var(--shadow-card);
+  max-width: min(360px, 38cqw); min-width: 0;
+}
+.fb-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fb-split { display: inline-flex; }
 .fb-split .fb-btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; padding-inline-end: 9px; }
 .fb-caret-btn { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 5px; margin-inline-start: 1px; }
@@ -1303,7 +1318,9 @@ input[type=file]:hover { border-color: var(--accent); }
 /* 这一条**故意留在 480 以下**：第 620 轮它原来是 600，结果默认三栏下那几个字
    从没露过面（用户实拍）。桌面版走不到 380 正是想要的效果——按钮标签一直有；
    只有在浏览器里把窗口拖到很窄时才收起来。**这是有意的，不是没对过阈值。** */
-@container (max-width: 380px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } }
+/* 窄到这一档时按钮只剩图标——状态胶囊整个收起来，不然它会把按钮挤出可视区。
+   底部状态栏和右栏「Agent 运行」还在显示同一句话，信息不会丢。 */
+@container (max-width: 380px) { .fb-label { display: none; } .fb-btn.primary { padding: 0 10px; } .fb-status { display: none; } }
 
 .harness-del-pill {
   text-decoration: none; font-size: var(--t-xs); padding: 0 6px; border-radius: var(--r);

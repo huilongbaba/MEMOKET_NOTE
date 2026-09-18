@@ -27,7 +27,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.includes(';;')) { for (const one of probe.split(';;')) runProbe(one, ctx); return }
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
-  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
+  const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }
   if (!harnessProbeDone.current && !/:(notes|meetings|imports)(:|$)/.test(probe) && api.memoryScope() !== 'all') api.setMemoryScope('all')
   /* `rect:<CSS 选择器>`：把匹配到的元素的几何和几条关键计算样式打进
      `[client:info]` 日志。**这条不是为了截图，是为了量。**
@@ -218,6 +218,22 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // openend:<id> → 打开虚拟页并把正文滚到底（看页面尾部的小节 / 分页器）
   if (probe?.startsWith('openend:')) { setTimeout(() => void openVirtual(probe.slice(8)), 900); setTimeout(() => { const el = document.querySelector('.note-scroll'); if (el) el.scrollTop = el.scrollHeight }, 5000) }
   // note:<id>[:ribbon:<tab>] → 按 id 打开某篇真笔记（ribbon 标签由 App 的 defaultOpen 从 probe 串里读）
+  /* `running:<noteId>` —— 把界面摆成「智能续写跑到一半」，**不真的跑**。
+     第 767 轮加的：用户说跑的过程中那条状态横条挡着正文，我把它挪进了浮动按钮那一排，
+     而当时**没有任何探针能摆出这个状态**（`tap:` 那个是真跑，要花钱还会写进笔记库），
+     于是只能靠「`.floating-buttons` 是 height:0，结构上挡不着」这种推理交差——
+     这个仓反复证明过推理不算数。状态就两个 useState，摆出来不需要任何网络。
+     状态文案照抄实拍那一条（用户截图里是「第 9 轮：修订 3 处，续写中…」），
+     长度要够长，才量得出「换个地方接着挡」有没有发生。 */
+  if (probe?.startsWith('running:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.split(':')[1]) ?? notes[0]
+    harnessProbeDone.current = true
+    void (async () => {
+      await switchTo(n)
+      setTimeout(() => { setLoading('note-harness'); setNoteHarnessStatus('第 9 轮：修订 3 处，续写中…') }, 1200)
+    })()
+    return
+  }
   if (probe?.startsWith('note:') && notes.length && !harnessProbeDone.current) {
     const n = notes.find((x) => x.id === probe.split(':')[1])
     if (n) {

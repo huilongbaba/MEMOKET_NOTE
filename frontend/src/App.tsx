@@ -1234,7 +1234,7 @@ export default function App() {
   useEffect(() => {
     const probe = new URLSearchParams(location.search).get('probe')
     if (!probe) return
-    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo }), 800)
+    const timer = setTimeout(() => runProbe(probe, { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus }), 800)
     return () => clearTimeout(timer)
     // notes 也要在依赖里：探针体里用到它，只依赖 tree 的话拿到的是笔记还没
     // 加载完时的空数组，判空之后静默跳过——实拍时「开三个标签」的探针
@@ -3278,6 +3278,15 @@ export default function App() {
                 判据 1「一个能力一个按钮」：续写、智能续写各一个；打磨和「逐轮我来定」是
                 智能续写的参数，收在它的 ▾ 里；录音一个麦克风两个去处；⋯ 是杂项。 */}
             <div className="floating-buttons">
+              {/* 跑的过程中的状态，放在「续写」左边（用户第 767 轮指定的位置）。
+                  这一排是 `height: 0` 的浮层，所以它不占正文的行——这正是它从
+                  `.harness-sticky` 搬过来的理由。原来那句「正文由 AI 接管，停下来再改」
+                  收进 `title`：它是解释，不是每秒都要读的东西。 */}
+              {loading === 'note-harness' && !pausedRun && noteHarnessStatus && (
+                <span className="fb-status muted" title={noteHarnessStatus + '\n运行中正文由 AI 接管，停下来再改'}>
+                  <span className="spinner" /><span className="fb-status-text">{noteHarnessStatus}</span>
+                </span>
+              )}
               <button className={'fb-btn primary' + (loading === 'tap' ? ' running' : '')} onClick={runMagicTap}
                       disabled={loading === 'note-harness'}
                       title="续写：先查知识库，据此往下写一段（流式）">
@@ -3383,10 +3392,16 @@ export default function App() {
                 </p>
               </div>
             )}
-            {(pausedRun || ((loading === 'note-harness' || harnessDone) && noteHarnessStatus)) && (
+            {/* **跑的过程中这条横条不再出现**（用户第 767 轮：「你这样搞挡着编辑板了」）。
+                它 `position: sticky` 粘在浮动按钮带下面，于是整轮几十秒里一直压着正文的
+                第一行——而同一句话另外两个地方也在显示（右栏「Agent 运行」、底部状态栏），
+                这里是第三份。跑的过程改到 `.fb-status` 那个胶囊里，跟「停止」并排、
+                `height: 0` 不占正文的行。
+                **留下来的两种都是「等你动手」**：轮末暂停（两个按钮）和跑完（一句话 + 关闭），
+                那两种本来就该停在你眼前。 */}
+            {(pausedRun || (harnessDone && noteHarnessStatus)) && (
               <div className="harness-sticky">
                 <p className="muted harness-line"><Icon n="bx-bot" /> <span style={{ flex: 1, minWidth: 0 }}>{pausedRun ? '这一轮写完了，逐条看过之后：' : noteHarnessStatus}</span>
-                  {loading === 'note-harness' && <span className="muted" style={{ marginInlineStart: 8, fontSize: 'var(--t-xs)' }}>· 运行中正文由 AI 接管，停下来再改</span>}
                   {pausedRun && (
                     /* 轮末暂停：这一轮写完了，等你在正文里逐条接受/撤回。
                        关掉这个开关的话是原来的行为——一口气跑完再处置，而那意味着
