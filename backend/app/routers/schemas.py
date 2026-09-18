@@ -602,6 +602,9 @@ class SkeletonOut(BaseModel):
     见 prompts.py 的 SKELETON_SYSTEM。"""
     spine: str = ""
     beats: list[str] = Field(default_factory=list)
+    # 确定性体检的结果（计划 4.3，`harness/checks/skeleton.py`）。**不拦着返回**，
+    # 跟骨架一起显示——骨架是一次成型的产物，重不重新生成由用户定。
+    notes: list[str] = Field(default_factory=list)
     took_ms: float
 
 

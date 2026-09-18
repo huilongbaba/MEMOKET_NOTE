@@ -65,7 +65,7 @@ def no_audit_voice(st: State) -> Verdict | None:
     if not lines:
         return None
     return Verdict(
-        pick_dimension(st, "style_fit", "coherence", "fits_context"),
+        pick_dimension(st, "style_fit", "fits_context"),
         "有几句话在谈证据够不够，而不是在谈事情本身："
         + "；".join(lines[:3])
         + "。没有依据的说法就不写；不要旁白「材料不足以说明」。",

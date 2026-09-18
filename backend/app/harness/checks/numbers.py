@@ -171,7 +171,7 @@ def chart_numbers_grounded(st: State) -> Verdict | None:
     if not bad:
         return None
     return Verdict(
-        pick_dimension(st, "data_grounding", "numbers_from_tools", "coherence"),
+        pick_dimension(st, "data_grounding", "numbers_from_tools"),
         f"图 / 表里这几个数在工具返回的结果和笔记原文里都找不到出处："
         f"{_fmt(bad)}。这几个位置上的数**必须是工具算出来的**——"
         "下一轮取材料那一步再调一次（describe_table / aggregate_table / "
@@ -228,7 +228,7 @@ def numbers_from_tools(st: State) -> Verdict | None:
     if not bad:
         return None
     return Verdict(
-        pick_dimension(st, "numbers_from_tools", "data_grounding", "coherence"),
+        pick_dimension(st, "numbers_from_tools", "data_grounding"),
         f"正文里这几个数既不在工具返回的结果里、也不在笔记原文里：{_fmt(bad)}。"
         "这个模式的规矩是**所有数字都来自工具返回，不要自己算**——"
         "合计、均值、占比这类都要用 aggregate_table / describe_table / "

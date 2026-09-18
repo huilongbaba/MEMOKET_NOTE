@@ -190,3 +190,55 @@ def test_harness的地图列全了它自己的文件():
              if p.name != "__init__.py"}
     missing = sorted(f for f in files if f not in doc)
     assert not missing, f"harness/__init__.py 的地图漏了：{missing}"
+
+
+def test_图上写的_checks_文件数跟目录里的对得上():
+    """一页纸那张图上的 `checks/ ×14`。
+
+    **`tests/test_doc_counts.py` 故意不查它**——那一条数的是「条目」
+    （21 条 check、16 个 middleware），而这个 `×N` 数的是 `checks/` 下的
+    **文件个数**（`__init__.py` 算在里面，批 16 / 批 18 两次都是这么加的）。
+    于是它一直没有任何闸：批 19 反向验过一次，把图上的 `×14` 改回 `×13`，
+    **全套 1693 条一条没红**。
+
+    只查 `checks/` 这一个：同一张图上的 `tools/ ×22` 数的是**工具条数**
+    （跟第 9 节那个 22 对齐），不是文件数——两种写法长得一样，混在一条
+    断言里只会让它天天误报。
+    """
+    doc = DOC.read_text(encoding="utf-8")
+    written = {int(n) for n in re.findall(r"checks/ ?[×x] ?(\d+)", doc)}
+    real = len(list((ROOT / "app" / "harness" / "checks").glob("*.py")))
+    assert written, "图上一次都没写 `checks/ ×N`——这条断言在查一个不存在的说法"
+    assert written == {real}, f"图上写着 checks/ ×{sorted(written)}，实际 {real} 个文件"
+
+
+def _block_under(section: str, head: str) -> str:
+    """图里 `head` 那一行，加上它下面所有缩进更深的行。"""
+    lines = section.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().startswith(head):
+            base = len(line) - len(line.lstrip())
+            out = [line]
+            for nxt in lines[i + 1:]:
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip())) <= base:
+                    break
+                out.append(nxt)
+            return "\n".join(out)
+    raise AssertionError(f"图上找不到 {head}")
+
+
+def test_checks_下的每个文件都列在图里_checks_那一块下面():
+    """**比 `test_harness_下的每个文件都在图上` 严一档，而且严得有理由。**
+
+    那一条是个词袋：只要那个词在整张图里**任何地方**出现过就算数。批 19 反向
+    验过一次——把 `checks/` 那一块里的 `skeleton` 整条摘掉，**全套一条没红**，
+    因为图上 `routers/compose.py` 那一行的「单点动作：skeleton · magic-tap …」
+    里也有这个词。*一个判据被别处的同名词顺手满足了，它就没在判它要判的事。*
+
+    这一条只管 `checks/`：把文件名限定在那一块的范围里找。别的目录暂时照旧
+    ——那条词袋断言的宽度是它自己的事，这一批只把踩到的这一格收紧。
+    """
+    block = _block_under(_map_section(), "checks/")
+    missing = sorted(p.stem for p in (ROOT / "app" / "harness" / "checks").glob("*.py")
+                     if p.name != "__init__.py" and p.stem not in block)
+    assert not missing, f"这些判据文件没列在图上 checks/ 那一块里：{missing}"

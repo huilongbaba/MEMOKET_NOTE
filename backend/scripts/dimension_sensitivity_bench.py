@@ -112,6 +112,18 @@ MIN_CHARS = 600
 # 常量要在 `PROBES` 之前定义——`PROBES` 是模块级的元组，引用它的时候必须已经有。
 CLAIMS_CONDITION = "claims"
 
+# `condition="whole-piece"`：**打分器整篇逐字读**那一档（批 19 / 阶段 4.2）。
+#
+# 方向跟别的几档**反过来**：它是"批 19 之前的生产"，而 `as-deployed`
+# 现在是"按小节判"（`score_context.body_for_scoring`，正文超过
+# `Mode.context_keep_last` 时更早的小节换成目录行）。
+#
+# 这一列的全部意义还是"跟生产一样"——生产变了，`as-deployed` 就得跟着变，
+# 而**旧行为要留一条可比的对照臂**，否则「按小节判到底把召回换掉了多少」
+# 这个问题只能靠猜。两臂严格配对：同一篇、同一个植入、同一份上下文，
+# 只差递给 `evaluate()` 的那段正文切没切。
+WHOLE_PIECE_CONDITION = "whole-piece"
+
 
 
 # ---------------------------------------------------------------- 笔记库指纹闸
@@ -1514,7 +1526,27 @@ PROBES: tuple[Probe, ...] = (
           condition=CLAIMS_CONDITION),
     Probe("note", "whole", "fabricate_specifics", ("factual_grounding",),
           condition=CLAIMS_CONDITION),
+    # ---- 第五档条件：**整篇逐字判**（批 19 / 阶段 4.2 的对照臂）
+    # 挑这四条是因为它们是**最可能被"按小节判"伤到**的四条：植入的缺陷
+    # 落在正文哪一段是随机的，落进被目录行代替的那几节就等于对打分器
+    # 隐形了。`duplicate_paragraph` 尤其——`non_repetition` 判的原话是
+    # 「小节之间有没有主题撞车」，正是跨小节的那一维。
+    Probe("note", "whole", "duplicate_paragraph", ("non_repetition",),
+          condition=WHOLE_PIECE_CONDITION),
+    Probe("note", "whole", "heading_levels", ("coherence",),
+          condition=WHOLE_PIECE_CONDITION),
+    Probe("note", "whole", "double_ending", ("coherence",),
+          condition=WHOLE_PIECE_CONDITION),
+    Probe("note", "whole", "shift_dates", ("factual_grounding",),
+          condition=WHOLE_PIECE_CONDITION),
 )
+
+
+def mode_keep_last(mode_key: str) -> int:
+    """这个模式在生产里给 `body_for_scoring` 的阈值。**从 Mode 上取**，
+    不在脚本里写一个 4000——写死的那份跟生产同步全靠人记得改。"""
+    from app.harness import modes
+    return {x.key: x for x in modes.ALL}[mode_key].context_keep_last
 
 
 def mode_dims(mode_key: str) -> list:
@@ -1769,6 +1801,15 @@ class Task:
     # 而那就是这篇笔记本身。同样不进 `key`——它是 `note_id` 的纯函数，而
     # `note_id` 已经在 key 里了。
     source: str = ""
+    # **真正递给 `evaluate()` 的那一段正文**（批 19 / 阶段 4.2）。
+    #
+    # 跟 `text` 分成两个字段，而且**指纹认的是这一个**：`as-deployed` 现在
+    # 会先过 `score_context.body_for_scoring`（长文超过阈值就把更早的小节换成
+    # 目录行），而 `whole-piece` 那一档不过。两档的 `text` 一模一样、
+    # **交给打分器的东西完全不同**——指纹要是还认 `text`，断点续跑会把
+    # 「整篇判出来的旧分数」当成「按小节判的新分数」接着用，
+    # *一声不吭*。`cell_key` 的 docstring 里记着批 7 一模一样的一次。
+    body: str = ""
 
 
 def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
@@ -1800,12 +1841,18 @@ def build_tasks(notes: list[dict], probes: tuple[Probe, ...], repeats: int,
             pre = probe.holds(subject, note, ctx)
             for rep in range(repeats):
                 for arm, text in (("clean", subject.text), ("dirty", dirty)):
-                    key = cell_key(note["id"], probe.id, arm, rep, text, ctx)
+                    # 正文切不切小节（批 19 / 阶段 4.2）。**在这儿算、进指纹**，
+                    # 理由见 `Task.body`。**必须走生产那个函数**，脚本不许照抄
+                    # 一份切分——`split_for_prompt` 当年是同一条纪律。
+                    body = (text if probe.condition == WHOLE_PIECE_CONDITION
+                            else score_context.body_for_scoring(
+                                text, keep_last_chars=mode_keep_last(probe.mode)))
+                    key = cell_key(note["id"], probe.id, arm, rep, body, ctx)
                     if key in done:
                         continue
                     tasks.append(Task(key, note["id"], probe.id, arm, rep,
                                       probe.mode, text, ctx, pre,
-                                      note.get("content") or ""))
+                                      note.get("content") or "", body))
     return tasks, skips
 
 
@@ -1838,8 +1885,10 @@ async def run_one(task: Task) -> dict:
     # `score_context.split_for_prompt` 说了算——bench 自己写一份 `pop` 就又是
     # 一处会漂的分支（`as-deployed` 这一列的全部意义就是别漂）。
     head, tail = score_context.split_for_prompt(task.context)
+    # `build_tasks` 已经把「真正要交出去的那一段」算好并写进指纹了（见 `Task.body`）。
+    body = task.body or task.text
     try:
-        ev = await evaluate(adapter.AppLLMClient(), content=task.text,
+        ev = await evaluate(adapter.AppLLMClient(), content=body,
                             dimensions=dims, context=head, tail_context=tail)
         scores = {k: v.level for k, v in ev.scores.items()}
         rec = {"key": task.key, "note": task.note_id, "probe": task.probe_id,

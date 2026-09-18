@@ -247,6 +247,10 @@ export default function App() {
 
   const [spine, setSpine] = useState('')
   const [beats, setBeats] = useState<string[]>([])
+  /** 骨架的确定性体检结果（后端 `harness/checks/skeleton.py`，计划 4.3）。
+   * 换一篇笔记就清空——它是「这一次生成」的结论，不是笔记的属性，没跟着
+   * spine/beats 一起落库。 */
+  const [skeletonNotes, setSkeletonNotes] = useState<string[]>([])
   // 智能续写每轮独立核对一次哪些结构节拍还没被正文实质覆盖（TRACELOG
   // [10]）——null 表示"还没跑过/不知道"，这时骨架面板只展示节拍是什么；
   // 有值之后骨架面板据此把已覆盖的节拍标出来，而不是一份看不出进度的
@@ -1180,6 +1184,7 @@ export default function App() {
     // 而 harness 下一轮还得重新花一次模型调用生成一份。
     setSpine(n.spine ?? '')
     setBeats(n.beats ?? [])
+    setSkeletonNotes([])
     // 已经有骨架的笔记，打开时不要 8 秒后又生成一遍——之前每开一篇就一次模型
     // 调用，模型连不上时每开一篇弹一个错（实拍）。以打开时的正文为基线，改够
     // 20 字才重算。
@@ -1666,6 +1671,7 @@ export default function App() {
       const r = await api.genSkeleton(title, content)
       setSpine(r.spine)
       setBeats(r.beats)
+      setSkeletonNotes(r.notes ?? [])
       await persistSkeleton(r.spine, r.beats)
     } catch (e) {
       // 后台自动跑的失败不打扰人（用户没点任何东西）；点「生成骨架」失败才提示
@@ -1849,9 +1855,9 @@ export default function App() {
    * 差异：界面看起来在跑，只是某个面板不再更新了。 */
   function noteHarnessHandlers(noteId: string, mode: 'write' | 'polish'): api.NoteHarnessHandlers {
     const h: api.NoteHarnessHandlers = {
-      onSkeleton: (s, b) => {
+      onSkeleton: (s, b, notes) => {
         if (currentRef.current?.id !== noteId) return
-        setSpine(s); setBeats(b)
+        setSpine(s); setBeats(b); setSkeletonNotes(notes ?? [])
         // 自动生成的一样要存——否则下一轮/下一次打开又得重新生成一份
         void persistSkeleton(s, b, noteId)
         setNoteHarnessStatus('已自动生成骨架，开始第一轮')
@@ -3483,6 +3489,7 @@ export default function App() {
                     spine={spine}
                     beats={beats}
                     beatCoverage={beatCoverage}
+                    notes={skeletonNotes}
                     loading={loading === 'skeleton'}
                     onRun={runSkeleton}
                   />

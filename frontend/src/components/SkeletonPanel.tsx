@@ -9,6 +9,15 @@ type Props = {
    * writer_harness/README.md），换来的代价是节拍列表本身不再单独标记
    * 每一条的勾选状态，用聚合分数 + 一句话说明代替。 */
   beatCoverage: { level: number; note: string } | null
+  /** 骨架的确定性体检结果（后端 `harness/checks/skeleton.py`，计划 4.3）。
+   *
+   * **判了不拦着落库**，跟幻灯片那一档一样：骨架是一次成型的产物，不进多轮
+   * 闭环，所以这几条只是摆在产物旁边，重不重新生成由用户定。
+   *
+   * 为什么骨架需要被判：它是整条写作闭环**最上游、也是唯一没有闭环的一步**，
+   * 而续写那一步的 `spine_fidelity` 实测 1.88–1.96 封顶——计划错了，
+   * 「扣题」和「节拍覆盖」可以双双满分，而笔记是坏的。 */
+  notes?: string[]
   loading: boolean
   onRun: () => void
 }
@@ -19,7 +28,7 @@ const LEVEL_COLOR: Record<number, string> = { 0: 'var(--del)', 1: 'var(--warn)',
 /** 线 1：核心张力（spine）+ 结构节拍（beats）。也是 magic tap 和智能编辑的输入。
  * beats 是这篇东西各部分承担的修辞/叙事功能，不是内容大纲——所以不用 <ol>
  * 编号呈现成待办事项，用带标签的列表强调"这是一个功能位"。 */
-export default function SkeletonPanel({ spine, beats, beatCoverage, loading, onRun }: Props) {
+export default function SkeletonPanel({ spine, beats, beatCoverage, notes = [], loading, onRun }: Props) {
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -52,6 +61,15 @@ export default function SkeletonPanel({ spine, beats, beatCoverage, loading, onR
               <span className="muted">·</span>
               <span>{b}</span>
             </li>
+          ))}
+        </ul>
+      )}
+      {notes.length > 0 && (
+        <ul style={{ margin: '10px 0 0', padding: '8px 10px 8px 24px', listStyle: 'disc',
+                     background: 'var(--card-alt)', borderLeft: '3px solid var(--warn)',
+                     fontSize: 'var(--t-sm)' }}>
+          {notes.map((n, i) => (
+            <li key={i} style={{ marginBottom: i === notes.length - 1 ? 0 : 6 }}>{n}</li>
           ))}
         </ul>
       )}

@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from .params import SECTION_SCORING
+
 # 写作那一步（`hooks/block._user`）取前后文用的就是这三个数，**这里是它们唯一
 # 的出处**：写作看 900 字、打分看 300 字的话，`fits_context` 会去罚一段它根本
 # 没见过的上下文。别把整篇塞进来——lost-in-the-middle，而且打分 prompt 会被撑爆。
@@ -193,3 +195,118 @@ def split_for_prompt(context: dict[str, str] | None,
     ctx = dict(context or {})
     tail = {k: ctx.pop(k) for k in TAIL_KEYS if k in ctx}
     return ctx, tail
+
+
+# ----------------------------------------------- 按小节判（计划 4.2）---
+#
+# **打分器不该每一轮都读整篇。** 三个跟「长」有关的偏差全都对我们不利
+# （[LONG] §3）：
+#
+# 1. **lost in the middle** —— 长上下文里模型对开头和结尾注意得好，中间明显
+#    更差，实测准确率掉 **30%+**。而我们的正文结构恰好是「第 1 轮写的开头 +
+#    第 N 轮写的结尾 + 中间夹着第 2–3 轮累积的重复」——**判据最该看的地方，
+#    正是打分器最看不清的地方**。
+# 2. **length bias** —— LLM 当评委偏好更长的回答，而我们每一轮都在变长。
+#    所以**测到的分数下降很可能低估了真实退化**。
+# 3. 长文生成本身就有已知的退化模式（`HelloBench`：能写长的那些「存在严重重复
+#    和质量退化」）。
+#
+# 实测这不是个假想的规模：`harness_rounds` 的 347 个 note 轮次里，正文中位数
+# **5241 字**、p90 **8396 字**、最长 9832；**59% 的轮次超过 4000 字**。
+#
+# 改法跟写作那一步（计划 3.1 / `middleware/sections.content_for_continue`）
+# **是同一件事、同一套切分、同一条兜底**：更早的小节换成目录行，这一轮动过的
+# 那几节逐字给。两处唯一的区别在措辞——写作那一步可以告诉模型「要看全文就调
+# `read_section(n)`」，**打分这一步没有工具循环，取不回来**。所以目录行在这里
+# 是一次**有损**的替换（[CE] §7 的第二档），这一点必须写明，不能假装是指针。
+#
+# 换来的是什么、凭什么认为划算：
+#
+# * 跨小节的那几维（`non_repetition` 判的原话就是「小节之间有没有主题撞车」、
+#   `coherence` 判的是标题层级 / 编号 / 体例、`beat_coverage` 和
+#   `section_coverage` 判的是「点到的面有没有落地」）**本来就只需要目录级的
+#   信息**，逐字正文对它们是稀释，不是证据。
+# * 逐段的那几维（`factual_grounding` / `style_fit`）看的是这一轮写的那几节，
+#   而那几节是**逐字**给的，而且排在最后——正是注意力最好的位置。
+# * **确定性判据一律照旧看整篇**（`find_repeats` 的 `dup_hints`、
+#   `no_restated_paragraph`、`claims`…）。所以中间那几节并没有变成盲区，
+#   变的只是「交给模型的那一份」——**能用代码判准的，不交给模型**。
+#
+# **省钱不是理由。** 批 16 实测这个端点的前缀缓存按 message 为单位，judge 只有
+# 一条 user message、整段每轮重拼，**排布和长度买不到任何缓存**（0.0%）。
+# 这一条的理由只有「判得准」。
+
+# 正文短于这个数就一字不动地整篇给。**跟写作那一步共用同一个数**
+# （`Mode.context_keep_last`，note 是 4000）——不是因为这个数对打分也最优，
+# 而是因为**没有第二个数据源**：4000 是当年按续写 prompt 的预算定的，
+# 打分这一侧要定一个自己的数，得先有「judge 在多长的正文上开始判不准」的实测，
+# 而那正是计划 9.2（judge-vs-人一致率）才做得出来的事。
+# 在那之前用同一个数，并且把这件事写在这里。
+SECTION_SCORING_MIN_CHARS = 4000
+
+
+def body_for_scoring(content: str, *, keep_last_chars: int = SECTION_SCORING_MIN_CHARS,
+                     ) -> str:
+    """打分器读的那份正文：**更早的小节换成目录行，后面几节逐字**。
+
+    短文一字不动（对一篇 2000 字的笔记来说，目录只是噪声）。
+    分不出小节、或者拼出来比原文还长，一律退回原文——
+    后一条是 `sections.content_for_continue` 撞出来的：真库上
+    `92d07b760f1e` 正文 4889 字 17 节，`keep_last=4000` 之下逐字尾巴几乎是
+    整篇，再加 17 行目录反而多花 600 字。**压缩不许把东西压大。**
+    """
+    from .middleware.sections import split_sections
+
+    if not SECTION_SCORING or len(content or "") <= keep_last_chars:
+        return content
+    # **分不出小节的那一档（几千字一整块，真库上 `715266c1fcb4` 26714 字 0 个
+    # `##`）不用单独写一条分支**：`split_sections` 至少给一节，于是下面那个
+    # 从后往前凑的循环必然把它整个留下，`first_verbatim == 0`，最后一行原样
+    # 退回原文。
+    # 第一版真写了那条分支（照抄 `sections.content_for_continue`），突变验把它
+    # 改成永不成立**全套 1693 条一条没红**——那边有它是因为它退回的是
+    # `compact_context`（另一种行为），这边退回的就是原文，同一条路。
+    # *行为上看不出差别的分支，就是没有差别的分支。*
+    sections = split_sections(content)
+    kept: list[int] = []
+    total = 0
+    for i in range(len(sections) - 1, -1, -1):
+        if kept and total + len(sections[i][1]) > keep_last_chars:
+            break
+        kept.append(i)
+        total += len(sections[i][1])
+    kept.reverse()
+    first_verbatim = kept[0]
+    if first_verbatim == 0:
+        return content                      # 全都逐字给了，目录是纯开销
+
+    lines = [f"【这篇一共 {len(sections)} 节。前 {first_verbatim} 节太长，"
+             f"这里用目录行代替：一行是那一节的标题 + 第一句正文 + 字数】"]
+    for i, (title, text) in enumerate(sections[:first_verbatim], start=1):
+        lines.append(f"- 第 {i} 节 · {title or '（开头没有标题的那一段）'} —— "
+                     f"{_first_line(text)}（{len(text)} 字）")
+    lines.append(
+        "**上面是目录，不是原文。** 判「小节之间有没有把同一件事说两遍」"
+        "「结构连不连贯」「标题点到的面有没有落地」这类跨小节的事情，就按这份"
+        "目录判；判措辞、依据、具体写法只看下面逐字给出的那几节，"
+        "**不要因为目录里那一行短就说那一节写得不够**。")
+    body = "\n".join(lines) + f"\n\n【第 {first_verbatim + 1} 节起，逐字】\n" \
+        + "\n".join(t for _title, t in sections[first_verbatim:]).lstrip("\n")
+    # 压缩不许把东西压大
+    return body if len(body) < len(content) else content
+
+
+def _first_line(section: str) -> str:
+    """目录行里那句话：这一节的**第一句正文**（不是标题）。
+
+    **没跟 `sections._hint` 共用**，虽然只差一个数：那一份给的是续写 prompt，
+    它旁边就摆着 `read_section(n)`——取不回来的信息随时取得回来，所以 44 字
+    够了。这一份给的是打分器，**它没有工具循环，目录行就是它能看到的全部**，
+    所以留到 60 字。共用一个常量会让「改短写作那边」顺手把打分这边也改瞎。
+    """
+    for line in section.splitlines():
+        s = line.strip().lstrip("-*> ").strip()
+        if not s or s.startswith("#") or s.startswith("```"):
+            continue
+        return s[:60] + ("…" if len(s) > 60 else "")
+    return "（这一节还没写正文）"

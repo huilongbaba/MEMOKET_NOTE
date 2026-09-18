@@ -39,7 +39,7 @@ def table_present(st: State) -> Verdict | None:
     if blockcheck.has_table(st.content):
         return None
     return Verdict(
-        pick_dimension(st, "table_validity", "coherence"),
+        pick_dimension(st, "table_validity"),
         "这一轮没有表格。必须**调用 render_table** 生成一张 markdown 表并把它原样贴进来——"
         "写「需要调用工具」不算，工具要真的调。",
     )
@@ -61,7 +61,7 @@ def table_columns_match(st: State) -> Verdict | None:
     if not blockcheck.table_column_mismatch(st.content):
         return None
     return Verdict(
-        pick_dimension(st, "table_validity", "coherence"),
+        pick_dimension(st, "table_validity"),
         "这张表的列数对不上：有的行比表头多一格或少一格，渲染出来会错位。"
         "**重新调用 render_table**（它按 columns / rows 拼，列数不会错），"
         "不要手动补竖线——空着的格子留空就行，别为了对齐去编一个值。",
@@ -73,7 +73,7 @@ def heading_fits(st: State) -> Verdict | None:
     gap = blockcheck.heading_gap(st.before, st.content)
     if not gap:
         return None
-    return Verdict(pick_dimension(st, "fits_context", "coherence"), gap, fix=lambda text: _sink_headings(st.before, text))
+    return Verdict(pick_dimension(st, "fits_context"), gap, fix=lambda text: _sink_headings(st.before, text))
 
 
 def _sink_headings(before: str, block: str) -> str:
@@ -107,7 +107,7 @@ def tail_clashes(st: State) -> Verdict | None:
     if not clashing:
         return None
     return Verdict(
-        pick_dimension(st, "fits_context", "coherence"),
+        pick_dimension(st, "fits_context"),
         f"这一段自己写了一个收尾小节（{clashing[0]!r}），而下面的正文已经有收尾了。"
         "去掉——插进笔记里的是一段话，不是一篇独立的报告。",
         fix=lambda text: _drop_tail_sections(text),
@@ -136,7 +136,7 @@ def outline_intact(st: State) -> Verdict | None:
     if outline.structure_intact(st.before, st.content):
         return None
     return Verdict(
-        pick_dimension(st, "fits_context", "coherence"),
+        pick_dimension(st, "fits_context"),
         "这篇是一份大纲，它的标题层级被压平了。保留原来的层级：在标题下面写，"
         "不要重写标题。",
     )
@@ -157,7 +157,7 @@ def no_same_sources_twice(st: State) -> Verdict | None:
         return None
     a, b = dups[0]
     return Verdict(
-        pick_dimension(st, "non_repetition", "coherence", "style_fit"),
+        pick_dimension(st, "non_repetition", "style_fit"),
         f"这两段引的是同一批事实，等于把同一件事说了两遍：「{a[:50]}…」和「{b[:50]}…」。"
         "留下更完整的那一段，另一段删掉或改成一句话接住上文——"
         "同一组依据支撑不出两段独立的结论。",
@@ -190,7 +190,7 @@ def no_restated_paragraph(st: State) -> Verdict | None:
         return None
     a, b = dups[0].a, dups[0].b
     return Verdict(
-        pick_dimension(st, "non_repetition", "coherence", "style_fit"),
+        pick_dimension(st, "non_repetition", "style_fit"),
         f"同一段里把一件事说了两遍（这一篇有 {ratio:.0%} 的正文是段内重复）："
         f"「{a[:40]}」和「{b[:40]}」。**删掉其中一句**，"
         "留信息更完整的那一句，不要两句都留着改写。",
@@ -209,7 +209,7 @@ def no_repeated_lists(st: State) -> Verdict | None:
         return None
     a, b = dups[0]
     return Verdict(
-        pick_dimension(st, "non_repetition", "coherence", "style_fit"),
+        pick_dimension(st, "non_repetition", "style_fit"),
         f"同一组清单列了两遍：「{a[:40]}」和「{b[:40]}」。留下更完整的那一处，"
         "另一处改成一句话带过（「按上面那几项回填」），不要把同一组要素换个说法再写一次。",
     )

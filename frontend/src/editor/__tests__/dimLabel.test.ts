@@ -14,6 +14,13 @@ describe('dimLabel', () => {
     expect(dimLabel('checklist_12')).toBe('你的要求 12')
   })
 
+  it('判据的兜底桶有自己的名字，不许借用 coherence', () => {
+    // 计划 4.4：`mechanics` 不是评分维度，是「代码判据抓到了一个机械缺陷」。
+    // 借 `coherence` 当兜底的后果是界面上说「连贯自洽 0 分」，而那一轮
+    // 打分器一次都没跑过。
+    expect(dimLabel('mechanics')).toBe('机械缺陷')
+  })
+
   it('不认识的维度原样显示，不是空白', () => {
     expect(dimLabel('future_dimension')).toBe('future_dimension')
   })

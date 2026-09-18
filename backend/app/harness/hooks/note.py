@@ -32,6 +32,7 @@ from ...database.retrieval import retrieve as _retrieve
 from ..middleware import ledger as ledger_mw
 from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
                       LEDGER_IN_PROMPT)
+from ..checks.skeleton import check_skeleton
 from ..events import CUSTOM_SKELETON, Event
 from ..state import State
 
@@ -106,7 +107,23 @@ class NoteHooks:
 
         st.bag["spine"], st.bag["beats"] = self.spine, self.beats
         st.bag["profile"] = self.profile
-        yield Event.custom(CUSTOM_SKELETON, {"spine": self.spine, "beats": self.beats})
+        # 骨架的确定性体检（计划 4.3）。**判了不拦着往下跑**——照 `slides` 那一档。
+        #
+        # 为什么长文这一条也要挂：`skeleton` 是整条闭环**最上游、也是唯一没有
+        # 闭环的一步**，而 `spine_fidelity` 实测 1.88–1.96 封顶。那不是「我们扣题
+        # 扣得好」，是「**对着一个从没被验过的计划打分，太容易满足**」——计划错了，
+        # `spine_fidelity` 和 `beat_coverage` 可以双双满分，而笔记是坏的
+        # （[LONG] 建议二 / STORM 的 organized +25% / coverage +10%）。
+        #
+        # **大纲模式下不体检**：那时候 beats 是用户自己写的标题逐字搬过来的
+        # （上面那段注释记着它的代价），拿「节拍太少 / 没有锚点」去说用户的目录
+        # 是在评价用户的写作意图，跟 `_score_context` 里那条「不要评价标题」
+        # 是同一件事。
+        notes = ([] if is_outline
+                 else check_skeleton(self.spine, self.beats).notes())
+        yield Event.custom(CUSTOM_SKELETON, {"spine": self.spine,
+                                             "beats": self.beats,
+                                             "notes": notes})
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:

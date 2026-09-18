@@ -26,6 +26,7 @@ from ..editor import profile
 from ..util import llm
 from ..harness.checks import grounding_rules as grounding_check
 from ..harness.checks import citations as citation_check
+from ..harness.checks.skeleton import check_skeleton
 from ..harness.checks.slides import check_slides
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
@@ -111,7 +112,12 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
         if lines:
             spine = lines[0]
             beats = lines[1:7]
-    return SkeletonOut(spine=spine, beats=beats[:6],
+    beats = beats[:6]
+    # 骨架的确定性体检（计划 4.3）。**判了不拦着返回**——照 `slides` 那一档：
+    # 骨架是一次成型的产物，不进多轮闭环，判据的结果跟产物一起显示，用户自己
+    # 决定要不要重新生成。零模型调用。
+    return SkeletonOut(spine=spine, beats=beats,
+                       notes=check_skeleton(spine, beats).notes(),
                        took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 

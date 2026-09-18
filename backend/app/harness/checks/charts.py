@@ -3,6 +3,14 @@
 The design line these enforce: **the model decides what to draw, code
 produces the numbers and the mermaid**. Left to itself the model invents
 averages and writes mermaid that doesn't render -- both observed.
+
+**这四条的兜底落点是这个仓最贵的一次错配**（计划 4.4 / [MECH] §3）：两条长文
+模式挂着它们，而长文的维度里没有 `has_charts` / `chart_validity`，于是
+`pick_dimension` 的兜底原来落在 `coherence` 上——`coherence` 在
+`repair.INNER_QUALITY` 里，下一轮排 `cleanup_only`，`produce()` 直接返回，
+**模型根本没机会去调这几条判据要求它调的画图工具**（第 606 轮真跑，两轮原地
+打转、`no_progress` 收场）。现在兜底落到 `checks.pick.MECHANICS`，那个桶
+**排不了修复轮**，理由写在 `pick.py` 里。
 """
 
 from __future__ import annotations
@@ -27,7 +35,7 @@ def no_fake_charts(st: State) -> Verdict | None:
         flows = blockcheck.text_flow(st.content)
         if flows:
             return Verdict(
-                pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+                pick_dimension(st, "has_charts", "chart_validity"),
                 f"这条流程是用箭头串在正文里的，不是一张图：{'; '.join(flows)}。"
                 # 点名的工具要真能画流程图。`chart_from_text` 只会饼 / 柱 / 折线，
                 # 画不了 flowchart——指着一个做不到的工具，模型只能手写 mermaid，
@@ -38,7 +46,7 @@ def no_fake_charts(st: State) -> Verdict | None:
             )
         return None
     return Verdict(
-        pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+        pick_dimension(st, "has_charts", "chart_validity"),
         f"这一轮没有真的画图，只是用文字描述了图：{'; '.join(hits)}。"
         "要画就调 chart_column / render_chart / chart_from_text，把它们返回的 ```mermaid 块"
         "原样贴进来——那段代码是验证过能渲染的。另外 mermaid 没有散点图：两列的关系"
@@ -69,7 +77,7 @@ def charts_from_tools(st: State) -> Verdict | None:
     if not bad:
         return None
     return Verdict(
-        pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+        pick_dimension(st, "has_charts", "chart_validity"),
         f"这里有 {len(bad)} 张 mermaid 图不是工具画的（{'; '.join(bad)}），是手写的、模仿工具"
         "输出。手写的 mermaid 没验证过，一处语法不对（比如 y 轴范围）整张图就变成一段"
         "报错。画什么由你定，**代码必须是工具原样返回的**；工具没画出你要的，"
@@ -150,7 +158,7 @@ def chart_readable(st: State) -> Verdict | None:
     if not problems:
         return None
     return Verdict(
-        pick_dimension(st, "has_charts", "chart_validity", "coherence"),
+        pick_dimension(st, "has_charts", "chart_validity"),
         "图画出来读不出来：" + "；".join(problems[:2]) + "。"
         "**重画的时候仍然要用工具**（chart_from_text / render_chart / chart_column），"
         "不要自己去改 mermaid 里的字。",

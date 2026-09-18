@@ -19,6 +19,12 @@ const FIXED: Record<string, string> = {
   fits_context: '跟上下文合得上',
   no_fabrication: '没有编造',
   replaces_cleanly: '能直接替换选区',
+  // **不是一个评分维度，是判据的兜底桶**（后端 `harness/checks/pick.MECHANICS`，
+  // 计划 4.4）。打分器永远不会打它；它出现只意味着一条代码判据在这一轮抓到了
+  // 一个机械缺陷（手写 mermaid、审计腔、大纲被压平…），具体是什么在 note 里。
+  // 在这之前这几条判据的兜底落在 `coherence` 上，于是界面上会显示「连贯自洽
+  // 0 分」——而正文连贯与否根本没人看过。
+  mechanics: '机械缺陷',
 }
 
 /** 现场生成的那几条：`checklist_1` → 「你的要求 1」。 */

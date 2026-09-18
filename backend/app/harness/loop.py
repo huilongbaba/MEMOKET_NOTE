@@ -297,12 +297,25 @@ async def _evaluate(st: State):
     它每一轮都在长，排在正文前面会让前缀缓存的断点落在正文之前——批 15 实测
     judge 那一路命中率恒 **0.0%**。拆成前后两份的是
     `score_context.split_for_prompt`，**生产和灵敏度 bench 共用它**。
+
+    **正文本身过 `body_for_scoring`**（批 19 / 计划 4.2 / [LONG] §3）：超过阈值
+    的长文，更早的小节换成目录行，后面几节逐字。理由是**判得准**不是省钱
+    ——lost-in-the-middle 实测掉 30%+，而我们正文的中段正是累积重复所在；
+    省钱那一头批 16 已经量死了（这个端点的缓存按 message 算，judge 只有一条
+    message，排布和长度买不到一个 token）。开关 `params.SECTION_SCORING`。
+
+    **为什么这一行落在 `loop.py` 里**（这一批的铁律是「不改 `loop.py` 的循环
+    结构」）：`content=` 是**按值**递给 `evaluate()` 的，produce 和 judge 之间
+    没有任何钩子能替换它——要在 middleware 里做，就得给循环加一个新钩子，
+    那才是改循环结构。改的是 `_evaluate` 这个装配函数的一个入参，循环体、
+    钩子序列、停机规则一行没动；批 16 为同一类理由改过同一个函数。
     """
     ctx, tail = score_context.split_for_prompt(
         score_context.with_material(st.bag.get("score_context"), st.facts))
     return await evaluate(
         harness_adapter.AppLLMClient(),
-        content=st.content,
+        content=score_context.body_for_scoring(
+            st.content, keep_last_chars=st.mode.context_keep_last),
         dimensions=list(st.mode.dims),
         dup_hints=st.bag.get("dup_hints") or [],
         context=ctx,

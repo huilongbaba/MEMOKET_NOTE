@@ -262,7 +262,7 @@ export const genSkeleton = (title: string, content: string) =>
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ title, content }),
-  }).then(json<{ spine: string; beats: string[]; took_ms: number }>)
+  }).then(json<{ spine: string; beats: string[]; notes?: string[]; took_ms: number }>)
 
 // ---------------------------------------------------------------- 选中文本操作
 //
@@ -1037,7 +1037,10 @@ export type NoteHarnessDimensionScore = { level: number; note: string }
 export type NoteHarnessToolCall = { tool: string; args: Record<string, unknown>; result: string }
 
 export type NoteHarnessHandlers = {
-  onSkeleton?: (spine: string, beats: string[]) => void
+  /** `notes` 是骨架的确定性体检结果（后端 `harness/checks/skeleton.py`，计划 4.3）。
+   * **判了不拦着往下跑**——跟 `slides` 同一档，结果跟产物一起显示，
+   * 重不重新生成由用户定。 */
+  onSkeleton?: (spine: string, beats: string[], notes?: string[]) => void
   onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
@@ -1171,7 +1174,7 @@ export async function consumeHarnessStream(res: Response, handlers: NoteHarnessH
     } else if (event === 'RUN_ERROR') handlers.onError?.(payload.message)
     else if (event === 'CUSTOM') {
       const v = payload.value ?? {}
-      if (payload.name === 'skeleton') handlers.onSkeleton?.(v.spine, v.beats)
+      if (payload.name === 'skeleton') handlers.onSkeleton?.(v.spine, v.beats, v.notes ?? [])
       else if (payload.name === 'round_summary') { if (typeof v.round === 'number') round = v.round; handlers.onRoundStart?.(v) }
       else if (payload.name === 'revision') handlers.onRevision?.(v)
       else if (payload.name === 'evaluate') handlers.onEvaluate?.(v)

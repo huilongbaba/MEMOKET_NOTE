@@ -90,6 +90,91 @@ def pause_for_review(st: State) -> str | None:
     return "awaiting_review" if st.mode.review_each_round else None
 
 
+# ------------------------------------------ 六个 block 模式的停机条件 ---
+#
+# **在这之前它们一条都没有**（计划 4.6 / [EVAL] 问题三）：note 有 4 条、
+# section 有 2 条、六个 block 模式 0 条，唯一的提前收场方式是 `complete` /
+# `blocked`，否则跑满 3 轮。[EVAL] 当时写的是「不建议现在就加，**加之前先看
+# 每轮数据**」。
+#
+# ## 先看的那批数据（`scripts/block_rounds_probe.py`，18 次真跑 / 38 轮）
+#
+# 六个模式 × 3 次，种子是同一篇带真数据表的真实笔记：
+#
+# | 模式 | 跑 | 轮 | 怎么停的 |
+# |---|---:|---:|---|
+# | eda | 3 | 9 | `max_rounds` ×3 |
+# | chart | 3 | 4 | `complete` ×3 |
+# | table | 3 | 6 | `complete` ×3 |
+# | analysis | 3 | 9 | `max_rounds` ×3 |
+# | prompt | 3 | 5 | `complete` ×2 · `max_rounds` ×1 |
+# | custom | 3 | 5 | `complete` ×2 · `max_rounds` ×1 |
+#
+# **8 / 18 次跑（44%）跑满轮数**，而第 2 轮起的 21 个轮次里：
+# 产出跟上一轮相似度 ≥0.95 的 **5 轮**、没成为新的最好那一轮的 **9 轮**、
+# 这一轮发的工具调用**全是之前发过的** **8 轮（38%）**。
+# 信号是真的在那儿，而**没有任何一条代码在看它们**。
+#
+# ## 但数据同时否掉了两条按字面加的规则
+#
+# * **「没成为新的最好那一轮就停」不行**：`eda` 有两次跑的第 2 轮没成为最好，
+#   而**第 3 轮成了**——按这条停会当场扔掉那两轮。
+# * **「工具调用全是重复的就停」不行**：`table` 有一次跑第 2 轮工具全重复、
+#   产出也只跟上一轮差 0.14，而**第 3 轮才达到 `complete`**——按这条停会交出
+#   一份没达标的产物。
+#
+# 所以下面两条都比字面窄一档，窄的那一档都是这两次实拍逼出来的。
+def nothing_changed(st: State) -> str | None:
+    """这一轮的**分数向量跟上一轮逐维逐值相同**。
+
+    **为什么看分数不看正文**：block 的 `produce` 每轮整块重写，措辞总会飘
+    ——实测 21 个非首轮里正文相似度 ≥0.95 的有 5 轮，而**分数一字不差的只有
+    2 轮**。判分一模一样才叫"什么都没变"：正文变了、判分没变，说明这一轮
+    的改动落在所有判据的视野之外，下一轮同样的写作 prompt 只会再来一次。
+
+    实拍（18 次跑里的那一次 `prompt`）：三轮的分数向量**逐字相同**
+    （现场生成的三条 checklist 全 2、`fits_context` 卡在 1、其余全 2），
+    三轮各花一次工具规划 + 一次续写 + 一次打分，最后交的是第 1 轮。
+    这条会在第 2 轮末停掉它。
+
+    判据短路的轮次不参与比对（`Ledger` 只把真打过分的轮次攒进
+    `score_vectors`，理由写在那儿）。
+    """
+    vectors = st.bag.get("score_vectors") or []
+    if len(vectors) < 2 or vectors[-1] != vectors[-2]:
+        return None
+    return "nothing_changed"
+
+
+def tools_ran_dry(st: State) -> str | None:
+    """这一轮**发的工具调用全是之前发过的**，而且这一轮没能成为最好的那一轮。
+
+    这是 block 这一侧的「材料用完了」。长文那条 `material_used_up` 看的是
+    「有没有带回新事实」，而 block 的工具返回的是图和表、根本不带事实编号
+    （实测 38 轮 `facts_new` 全是 0），所以那条判据在这边**结构上就量不到**。
+    能量到的是**查询级短路那一层**记下来的重复数（`ledger_round` 的
+    `tool_calls` / `repeat_calls`，计划 2.1 落的）。
+
+    **第二个条件是数据逼出来的，不是谨慎**：单看第一个，18 次跑里第 2 轮起
+    有 **8 / 21 轮**命中，而其中 `table` 那一次的第 2 轮工具全重复、正文也只
+    跟上一轮差 0.14，**第 3 轮才达到 `complete`**——单条停机会把那次跑停在一份
+    没达标的产出上。叠上「这一轮没成为最好的那一轮」之后，那 8 轮里只剩 2 轮
+    会停，**误停 0**。
+
+    收益也说清楚：那 2 轮本来就是最后一轮，**一轮都没省下来**。
+    它换到的是「怎么停的」那一栏——`max_rounds` 8 次拆成 6 次 `max_rounds`
+    + 2 次 `tools_ran_dry`。阶段 0 的 0.3 花了一整条列去分开三种失败，
+    这一条是同一件事：**「跑满了」和「查到头了」不是一回事**。
+    """
+    stat = st.bag.get("ledger_round") or {}
+    calls, repeats = int(stat.get("tool_calls") or 0), int(stat.get("repeat_calls") or 0)
+    if st.round < 2 or calls <= 0 or repeats < calls:
+        return None
+    if st.best is not None and st.best[1] == st.content:
+        return None                     # 这一轮是目前最好的：它不白跑
+    return "tools_ran_dry"
+
+
 def nothing_left_to_fix(st: State) -> str | None:
     """Polish only repairs. When a round applies no revision, the next one
     would propose the same nothing -- there is no second mechanism that could
@@ -531,6 +616,8 @@ EDA = Mode(
     # 那是一次精确比对，不是一次判断。
     checks=(no_fake_charts, charts_from_tools, heading_fits, tail_clashes,
             chart_numbers_grounded, numbers_from_tools, chart_readable),
+    # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
+    stop_when=(nothing_changed, tools_ran_dry),
     precheck=_eda_has_data,
     max_rounds=3,
 )
@@ -549,6 +636,8 @@ CHART = Mode(
     dims=CHART_DIMS,
     checks=(no_fake_charts, charts_from_tools, heading_fits,
             chart_numbers_grounded, chart_readable),
+    # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
+    stop_when=(nothing_changed, tools_ran_dry),
     max_rounds=3,
 )
 
@@ -566,6 +655,8 @@ TABLE = Mode(
     # 能判准的**，而在批 16 之前这个模式的三条维度全交给了打分模型。
     checks=(table_present, table_columns_match, chart_numbers_grounded,
             heading_fits),
+    # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
+    stop_when=(nothing_changed, tools_ran_dry),
     max_rounds=3,
 )
 
@@ -581,6 +672,8 @@ ANALYSIS = Mode(
     dims=ANALYSIS_DIMS,
     checks=(no_fake_charts, charts_from_tools, heading_fits,
             chart_numbers_grounded, numbers_from_tools, chart_readable),
+    # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
+    stop_when=(nothing_changed, tools_ran_dry),
     max_rounds=3,
 )
 
@@ -597,6 +690,8 @@ PROMPT = Mode(
     # `checks` / `dims`**：那两样是纯数据、开跑前就定死，而这一份的内容来自
     # 用户刚打的那句话。
     extra_mw=(Checklist(),),
+    # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
+    stop_when=(nothing_changed, tools_ran_dry),
     max_rounds=3,
 )
 
@@ -615,6 +710,8 @@ CUSTOM = Mode(
     # 跟 PROMPT 同一件事。`custom` 这边生成清单时还会看到被替换掉的那一段
     # （`bag["selection"]`）——「把这段改得更口语」这类指令不看原文拆不出条目。
     extra_mw=(Checklist(),),
+    # 批 19 / 阶段 4.6：这两条的窄化和实测见文件上方那段。
+    stop_when=(nothing_changed, tools_ran_dry),
     max_rounds=3,
 )
 

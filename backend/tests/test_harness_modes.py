@@ -199,6 +199,7 @@ def test_每条check打翻的维度这个mode真的有():
     import collections
 
     from app.harness.agent_loop import ToolTrace
+    from app.harness.checks.pick import MECHANICS
     from app.harness.state import State
     from app.harness.tools import ToolContext
 
@@ -253,6 +254,7 @@ def test_每条check打翻的维度这个mode真的有():
     }
 
     bad = []
+    bucketed: set[tuple[str, str]] = set()
     fired: collections.Counter = collections.Counter()
     seen: collections.Counter = collections.Counter()
     for mode in modes.ALL:
@@ -285,7 +287,9 @@ def test_每条check打翻的维度这个mode真的有():
                         if not verdict:
                             continue
                         fired[check.__name__] += 1
-                        if verdict.dimension not in names:
+                        if verdict.dimension == MECHANICS:
+                            bucketed.add((shaped.key, check.__name__))
+                        elif verdict.dimension not in names:
                             bad.append(f"{shaped.key}(profile={has_profile},polish={polish})"
                                        f" 的 {check.__name__} 打了 {verdict.dimension}，"
                                        f"而它的 dims 是 {sorted(names)}")
@@ -294,6 +298,21 @@ def test_每条check打翻的维度这个mode真的有():
     assert not silent, ("这些判据在一段踩满了所有毛病的正文上一次都没触发——"
                         "要么它坏了，要么这段素材该补：" + "、".join(silent))
     assert not bad, "check 打翻了这个 Mode 没有的维度：\n  " + "\n  ".join(bad)
+
+    # **落进兜底桶的那几对要钉死**（计划 4.4）。桶本身是对的——这四条判据在
+    # 长文模式下确实没有对应的评分轴（长文没有 `has_charts` / `chart_validity`
+    # / `fits_context`，没有个人偏好时也没有 `style_fit`）——但**桶容易变成
+    # 新的垃圾桶**：下一个人加一条判据、候选随手写错一个名字，它会安静地
+    # 掉进来，谁也不会发现。所以这个集合逐对写死，多一对少一对都要解释。
+    assert bucketed == {
+        ("note", "no_audit_voice"),        # 审计腔：note 无 profile 时没有 style_fit
+        ("note", "no_fake_charts"),        # 文字画的图：长文没有 has_charts
+        ("note", "charts_from_tools"),     # 手写 mermaid：同上
+        ("note", "outline_intact"),        # 大纲被压平：长文没有 fits_context
+        ("section", "no_audit_voice"),
+        ("section", "no_fake_charts"),
+        ("section", "charts_from_tools"),
+    }, f"落进 mechanics 兜底桶的判据变了：{sorted(bucketed)}"
 
 
 # ---------------------------------------------- 长循环那两组维度 ---

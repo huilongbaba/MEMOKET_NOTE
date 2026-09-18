@@ -131,6 +131,21 @@ async def test_判据打回的那一轮不该触发只修不写():
     而 `coherence` 在 INNER_QUALITY 里 → 下一轮 cleanup_only →
     `produce()` 直接返回 → 模型根本没机会去调画图工具，而那正是这条判据
     要求的修法。两轮原地打转、一次分都没打上，`no_progress` 收场。
+
+    **批 19 把这条死锁的两截都断了**，而且这条测试的后半截跟着改了：
+
+    * 4.4 断的是**兜底落点**：图表判据在长文模式下现在落到
+      `checks.pick.MECHANICS`，那个桶根本不在 `INNER_QUALITY` 里
+      （`tests/test_coherence_bucket.py` 有闸钉着这一对）。所以
+      「判据命中那一轮不算数」这个补丁**不再是唯一防线**。
+    * 4.5 断的是**另一截**：`coherence` 没有位置级探测器，为它排一轮
+      「只修不写」等于让修订那一步空手上场。所以下面第二段的断言
+      **反过来了**——原来写着「打分器真判 coherence 不合格时，只修不写
+      仍然对」，现在那句话不成立了，依据见 `middleware/repair.STOP_ONLY`
+      上面那三条实测。
+
+    第一段那个 `skip_judge` 分支**留着**，它挡的是另一个性质：判据伪造的
+    Evaluation 只有一个维度，`Repair` 的整个设计前提是读完整的分数向量。
     """
     from app.harness.middleware.repair import Repair
     from app.harness.types import DimensionScore, Evaluation
@@ -145,7 +160,16 @@ async def test_判据打回的那一轮不该触发只修不写():
 
     st.ev, st.skip_judge = fake, False
     [e async for e in Repair().after_judge(st)]
-    assert st.bag["cleanup_only"], "打分器真判 coherence 不合格时，只修不写仍然对"
+    assert not st.bag["cleanup_only"], (
+        "coherence 没有位置级探测器，为它排一轮只修不写 = 修订空手上场")
+
+    # 而**有**探测器的那一维照旧排得出修复轮——4.5 只摘掉 coherence 这一条路。
+    st.ev = Evaluation(
+        scores={"coherence": DimensionScore(0, ""),
+                "non_repetition": DimensionScore(0, "同一件事说了两遍")},
+        status="continue", weakest="non_repetition")
+    [e async for e in Repair().after_judge(st)]
+    assert st.bag["cleanup_only"]
 
 
 def test_挂了图表判据的模式必须带得动画图的工具():

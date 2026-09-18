@@ -372,6 +372,24 @@ class Ledger:
     async def after_judge(self, st: State) -> None:
         led = ledger_of(st)
         mark_used(led, st.content)
+        # 这一轮的分数向量，攒成一串给停机条件比对（计划 4.6）。
+        #
+        # **放在这儿的理由**：停机条件是纯函数、只读（`loop.py` 那段注释写死了
+        # ——「会改状态的停机条件会让『为什么停的』变成一个答不出来的问题」），
+        # 所以「上一轮判了多少」必须有人替它记；而这个 middleware 本来就在记
+        # 这一轮的数字（下面那行 `record_harness_round` 记的就是同一份 scores）。
+        #
+        # **只记真打过分的轮次。** 判据短路那一轮的 `st.ev` 是伪造的——只有一个
+        # 维度、分数 0，跟真分数向量根本不可比（`middleware/repair.py` 开头那条
+        # `skip_judge` 分支是同一条理由）。混进来的话，连着两轮被同一条判据打回
+        # 会被读成「什么都没变」，而 `Checks.STUCK_ROUNDS` 对那一档另有安排。
+        #
+        # **它不会流到打分器那边。** 第 765 轮删掉 `last_scores` 是因为
+        # 「把上一轮的分数喂给这一轮的打分器」会触发 anchoring bias；这一份的
+        # 唯一读者是 `modes.nothing_changed`，一条确定性的停机规则。
+        if st.ev is not None and not st.skip_judge:
+            st.bag.setdefault("score_vectors", []).append(
+                {n: s.level for n, s in st.ev.scores.items()})
         stat = st.bag.get("ledger_round") or {}
         try:
             from ...database import store

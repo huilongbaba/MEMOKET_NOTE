@@ -58,7 +58,7 @@ flowchart TB
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
     MW["Middleware ×16<br/>Skills Facts Provenance Repeats Checks BestOf History Ledger Supersede<br/>Revise Repair Runtime Replan Sections Save Checklist"]
-    CHK["checks/ ×13 代码判据<br/>+ rubric 模型打分"]
+    CHK["checks/ ×14 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -208,6 +208,12 @@ backend/app/
          三条判词原话都是「每个数字都能追到源」，那是一次比对不是一次判断）
       · slides（幻灯片那几条：每页有没有依据 / 数字有没有在总结的路上被改掉 / 有没有整节漏掉。
         不进闭环——幻灯片是一次成型的重构，判据结果跟着产物一起显示）
+      · skeleton（骨架那五条：节拍太少 / 两条节拍撞车 / spine 只剩一个话题名 /
+        一条节拍都不带锚点 / 把正文的毛病写成了写作意图。批 19 / 阶段 4.3，形态照
+        slides：**判了不拦着落库**——`skeleton` 是整条闭环最上游、也是唯一没有闭环
+        的一步，而 `spine_fidelity` 实测 1.88–1.96 封顶，那不是扣题扣得好，是
+        「对着一个从没被验过的计划打分，太容易满足」。五条的阈值都在 20 份真实骨架
+        上量过，那 20 份上开火 0）
     tools/                   22 个工具 + registry（分组授权）
       memory_tools · data_tools · tabular · blocks · imagegen · sandbox_tools · skill_tools
       · longform_tools（read_section：把自己这篇笔记的某一节原文读回来，只给两条长文 harness）
@@ -512,7 +518,7 @@ Mode 按需追加的：
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
 | `no_placeholder` | factual_grounding / no_fabrication / data_grounding | | 「待补充」这类占位句 |
-| `no_audit_voice` | style_fit / coherence / fits_context | | 「现有材料不足以说明…」这种谈证据不谈事情的句子 |
+| `no_audit_voice` | style_fit / fits_context / **mechanics** | | 「现有材料不足以说明…」这种谈证据不谈事情的句子 |
 | `citations_hold` | factual_grounding … | | 模型自报的引用跟材料模糊对不上 |
 | `citations_exist` | factual_grounding … | ✔ 摘掉编造的 `[id]` | 正文里的 `[事实 id]` 既不在材料里也查不到知识库 |
 | `citations_present` | factual_grounding / material_use / no_fabrication | | 这一轮写了 ≥300 字、手上有材料，却一个 `[事实编号]` 都没有（第 593 轮真跑：1066 字零引用，写的还是另一个项目的内容，整条判据链都放行了）|

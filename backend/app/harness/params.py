@@ -121,3 +121,20 @@ PROMPT_CHECKLIST = os.getenv("MEMOKET_PROMPT_CHECKLIST", "1").lower() not in (
 # 不改写作方向。没有需要单独回退的行为变化。
 SUFFICIENT_CONTEXT = os.getenv("MEMOKET_SUFFICIENT_CONTEXT", "1").lower() not in (
     "0", "false", "no")
+
+
+# 打分器读的正文用不用「小节目录 + 后面几节逐字」（计划 4.2 / [LONG] §3）。
+#
+# 关掉 = 每一轮整篇逐字给打分器，跟批 18 之前一字不差。
+#
+# **这条开关存在的理由跟 `SECTION_INDEX` 不完全一样。** 那一条的风险是「模型
+# 不去调 `read_section`」——还有工具循环兜着；这一条**没有兜底**：打分那一步
+# 没有工具循环，目录行取不回全文，它是一次**有损**的替换（[CE] §7 的第二档）。
+# 换句话说，这一改是拿「中间那几节的逐字正文」去换「打分器真的看得见开头和
+# 结尾」，而 lost-in-the-middle 那 30% 是文献里的数、不是我们自己量的。
+#
+# 所以它必须能单独关掉：真跑或 bench 上要是发现某一维的召回掉了
+# （最可能是 `factual_grounding`——它判的是具体字面），得能只撤这一条，
+# 而不是连 3.1 / 3.2 那两条索引一起撤。
+SECTION_SCORING = os.getenv("MEMOKET_SECTION_SCORING", "1").lower() not in (
+    "0", "false", "no")
