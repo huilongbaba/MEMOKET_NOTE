@@ -45,7 +45,7 @@ def dumps(st: State) -> str:
                 "note_title": st.ctx.note_title,
                 "content": st.ctx.content, "cursor": st.ctx.cursor,
                 "intent": st.ctx.intent,
-                "intent_checked": list(st.ctx.intent_checked)},
+                "intent_checked": list(st.ctx.intent_checked),
                 # 托盘跟着走（P14）：恢复的跑取材料时托盘照样排最前
                 "tray": list(st.ctx.tray or [])},
         "before": st.before, "after": st.after,
@@ -76,7 +76,7 @@ def loads(text: str, mode) -> State:
                         content=ctx.get("content", ""),
                         cursor=int(ctx.get("cursor") or 0),
                         intent=str(ctx.get("intent") or ""),
-                        intent_checked=tuple(str(x) for x in (ctx.get("intent_checked") or []))),
+                        intent_checked=tuple(str(x) for x in (ctx.get("intent_checked") or [])),
                         tray=[dict(t) for t in (ctx.get("tray") or []) if isinstance(t, dict)]),
         before=raw.get("before", ""), after=raw.get("after", ""),
         content=raw.get("content", ""),
