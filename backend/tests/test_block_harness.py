@@ -192,3 +192,82 @@ def test_补图那一轮的工具组里不许出现事实类或广度类工具()
             "这时候 hooks/block 必须把 known_ids 和迭代序号一起传进第二发 "
             "gather_context，否则 BARREN_STOP 和深度门在那一轮都是失效的")
     assert checked == 2, "声明了 focus_groups 的模式变了（原来是 EDA / ANALYSIS）"
+
+
+# ------------------------- 账本摘要进 prompt（计划 2.4，批 27 接的六个 block）
+
+def _block_led_state(mode) -> State:
+    import json
+
+    st = State(mode=mode, ctx=ToolContext(user="u", note_id="n", content="", cursor=0))
+    st.bag["ledger"] = {
+        "queries": [{"key": "filter_facts\t" + json.dumps(
+            {"topic": "众筹"}, sort_keys=True, ensure_ascii=False),
+            "tool": "filter_facts", "hit": 5, "empty": False}],
+        "axes": {"topic:定价": {"total": 18, "taken": 0},
+                 "topic:众筹": {"total": 41, "taken": 5}},
+        "facts": {},
+    }
+    return st
+
+
+def _block_plan_user(monkeypatch, mode) -> str:
+    """跑一次 `BlockHooks.prepare`，把真正发出去的那条 user 消息拿回来。"""
+    seen: list = []
+
+    async def gather(messages, ctx, *, groups=None, max_iters=3, **kw):
+        seen.append(messages)
+        return [], ToolTrace()
+
+    monkeypatch.setattr(agent_loop, "gather_context", gather)
+    asyncio.run(BlockHooks(title="笔记").prepare(_block_led_state(mode)))
+    assert seen, "prepare 没发出取材那一发"
+    return [m for m in seen[0] if m["role"] == "user"][0]["content"]
+
+
+@pytest.mark.parametrize("key", sorted(modes.BLOCK))
+def test_六个block模式的取材那一发都带账本摘要(monkeypatch, key):
+    """**批 26 量出来的缺口**：`gap_summary` 全仓唯一的读者是 `hooks/note.py`。
+    六个 block 模式一次跑内的重复查询率实测 **14–40%**，正落在批 13
+    「只开 2.5 = 17.2%」那一档；接了 2.4 的 `note` 是 8.6%。
+
+    **`custom` 的 `tool_calls` 合计是 0，它的重复查询率分母为 0、验收不算它**
+    （批 26 ④）——但接线本身六个一视同仁：少接一个，下次它有工具调用了
+    又得回头找一遍。*同一件事挡住一半等于没挡。*"""
+    user = _block_plan_user(monkeypatch, modes.BLOCK[key])
+    assert user.startswith("【这次跑到现在，哪些方向还没取过】"), \
+        f"{key}：缺口摘要要摆在最前面"
+    assert "定价：库里 18 条，一条都没取" in user
+    assert "filter_facts topic=众筹" in user
+
+
+def test_block的账本摘要能被同一个开关撤掉(monkeypatch):
+    from app.harness.hooks import block as mod
+
+    monkeypatch.setattr(mod, "LEDGER_IN_PROMPT", False)
+    user = _block_plan_user(monkeypatch, modes.EDA)
+    assert "哪些方向还没取过" not in user
+    assert user.startswith("【笔记标题】"), "别把整个 prompt 也撤了"
+
+
+def test_缺口摘要只进取材那一发不进写正文那一发(monkeypatch):
+    """它回答的是「还该查什么」。写正文那一步问的是「怎么写」——把一份
+    「你没有的材料」清单摆给写作看，换回来的是占位句（批 13 实测 `off` 篇
+    5 句占位）。**默认参数是空串，`produce` 那一路一个字都不受影响。**"""
+    hooks = BlockHooks(title="笔记")
+    st = _block_led_state(modes.EDA)
+    seen: list = []
+
+    async def stream(messages, **kw):
+        seen.append(messages)
+        yield "写出来的一段。"
+
+    monkeypatch.setattr(llm, "stream", stream)
+    asyncio.run(_drain(hooks.produce(st)))
+    user = [m for m in seen[0] if m["role"] == "user"][0]["content"]
+    assert "哪些方向还没取过" not in user
+    assert user.startswith("【笔记标题】")
+
+
+async def _drain(gen):
+    return [x async for x in gen]

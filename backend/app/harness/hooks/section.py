@@ -23,7 +23,9 @@ from .mirror import _record_dropped, _scrub_and_record
 from ..tailing import acceptable_tail, needs_tail
 from ...util import llm
 from ..agent_loop import ToolTrace
-from ..params import AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS
+from ..middleware import ledger as ledger_mw
+from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
+                      LEDGER_IN_PROMPT)
 from ...database.retrieval import retrieve as _retrieve
 from ..state import State
 
@@ -89,14 +91,27 @@ class SectionHooks:
                 title=title, anchor_first=True)
             return facts, trace
 
+        # 账本摘要进检索规划（计划 2.4）。**批 26 之前全仓只有 `hooks/note.py`
+        # 接了这一条**，8 个模式接了 1 个；而批 13 隔离量过「只开 2.5 = 17.2%、
+        # 2.4+2.5 才 3.5%」，批 26 实测这条线上的重复查询率正好落在 14–40%
+        # 那一档。**这不是推出来的，是先看见数再回代码里找到的。**
+        topics = query_cache.dispatch("list_topics", {"limit": 40}, st.ctx)
+        led = ledger_mw.ledger_of(st)
+        # 主题树是这里直接调的、不进 `trace.calls`，`fold` 看不到它——
+        # 缺口摘要要知道「有哪些方向一条都没取」就得先把分母折进去
+        # （`hooks/note.py` 那条注释记着第一版 2.4 就是这么漏掉的）。
+        ledger_mw.note_topics(led, topics)
         msgs = [
             {"role": "system", "content": prompts.compose_system(
                 prompts.RETRIEVAL_PLAN_SYSTEM, st.mode.skill_scope, st.ctx.user,
                 st.skill_menu, [])},
             {"role": "user", "content": prompts.retrieval_plan_user(
                 title, self.goal, self.other_summaries, st.content,
-                topics_overview=query_cache.dispatch(
-                    "list_topics", {"limit": 40}, st.ctx))},
+                topics_overview=topics,
+                # 这里读到的是第 1..n-1 轮的账本：`Ledger.after_prepare` 要等
+                # 这一轮的工具循环跑完才折叠。
+                ledger_gaps=(ledger_mw.gap_summary(led) if LEDGER_IN_PROMPT
+                             else ""))},
         ]
         _extra, trace = await agent_loop.gather_context(
             msgs, st.ctx, groups=list(st.mode.groups))

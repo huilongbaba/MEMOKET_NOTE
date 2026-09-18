@@ -416,6 +416,14 @@ class Ledger:
                 # 的模式（六个 block）拿不到这两个键，默认 0。
                 revisions_proposed=int(st.bag.get("revisions_proposed") or 0),
                 revisions_dropped=int(st.bag.get("revisions_dropped") or 0),
-                depth_dropped=int(stat.get("depth_dropped") or 0))
+                depth_dropped=int(stat.get("depth_dropped") or 0),
+                # 三列探针（批 27）。`Checks.before_judge` 写进 bag，这里是
+                # `after_judge`，先后是稳的。**读完就 pop**：bag 跨轮活着，
+                # 留着的话下一轮要是没走到判据那一步，就会静默继承这一轮的数
+                # （`Provenance` 的 `steer_in_plan` 是同一条处理）。
+                claim_atoms=int(st.bag.pop("claim_atoms", -1)),
+                fired_checks=json.dumps(st.bag.pop("fired_checks", []),
+                                        ensure_ascii=False),
+                abstained=str(st.bag.pop("claim_abstained", "") or ""))
         except Exception:                                   # noqa: BLE001
             pass        # 记账不承重：写不进去也不能影响这一轮的产出

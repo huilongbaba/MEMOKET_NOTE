@@ -309,17 +309,60 @@ def sources(st: State) -> str:
     return numbers.sources(st) + "\n" + prior
 
 
-def unsupported_specifics(st: State) -> Verdict | None:
-    """这一轮写的具体日期 / 署名，有没有在封闭材料里查无此事（计划 7.1）。"""
+# ------------------------------------ ④ 这一轮到底判没判（批 27 / §5 第 8 行）---
+#
+# `abstained` 的取值表。**加一列之前先把它的取值列全，再逐个问"真写得进去吗"**
+# ——批 22 的 `stopped` 那一列从加进来那天起就记不到 `max_rounds`，规矩就是
+# 那么来的。这五个取值各自由谁写进去：
+#
+# | 取值 | 谁写得进去 |
+# |---|---|
+# | `not_in_mode` | 六个 block 模式任何一轮（它们的 `checks` 里没有这一条） |
+# | `too_short` | 这一轮新写的不足 `MIN_FRESH_CHARS`（打磨轮 / 清理轮常态） |
+# | `no_oracle` | 工具一次都没返回东西的轮（`numbers.has_tool_output` 为假） |
+# | `no_atoms` | 写了一大段、但里头一个完整日期 / 一个署名都没有 |
+# | `judged` | 真的逐条比对过了（比完过没过是另一件事，看 `fired_checks`） |
+#
+# 库里还会有第六种：**空串**。那是批 27 之前落的行的 `DEFAULT ''`，
+# **活着的跑一次都写不出它**——这件事写在这儿，免得下一个人把它当成一档。
+NOT_IN_MODE = "not_in_mode"
+TOO_SHORT = "too_short"
+NO_ORACLE = "no_oracle"
+NO_ATOMS = "no_atoms"
+JUDGED = "judged"
+
+
+def probe(st: State) -> tuple[list[Atom], str]:
+    """`(候选原子, 判没判 / 为什么没判)`。**纯函数、零调用。**
+
+    它和 `unsupported_specifics` **共用同一段前置判断**，而且是后者调它——
+    另写一份"跟判据一样的前置条件"，判据一改这一列量的就不是同一件事了
+    （跟 bench 那条「判据必须是生产那个函数」同一条纪律）。
+
+    **候选原子数照算，不因为弃权就记 0**：「这一轮没有候选原子」和「这一轮
+    压根没去看」是两件事，而 §5 第 8 行问的正是前者（候选原子率）。
+    """
     text = fresh_text(st)
-    if len(text) < MIN_FRESH_CHARS:
-        return None
-    if not numbers.has_tool_output(st):
-        # 手上没有任何材料：「查无出处」和「无从判断」分不开。这一档由
-        # 7.2 的 `material_thin` 去说「你还没查 / 库里没有」，那才是能照办的诊断。
-        return None
     cands = relevant(atoms(text))
+    if len(text) < MIN_FRESH_CHARS:
+        return cands, TOO_SHORT
+    if not numbers.has_tool_output(st):
+        return cands, NO_ORACLE
     if not cands:
+        return cands, NO_ATOMS
+    return cands, JUDGED
+
+
+def unsupported_specifics(st: State) -> Verdict | None:
+    """这一轮写的具体日期 / 署名，有没有在封闭材料里查无此事（计划 7.1）。
+
+    三档不判的理由：正文太短没什么可判；**手上没有任何材料时「查无出处」和
+    「无从判断」分不开**（这一档由 7.2 的 `material_thin` 去说「你还没查 /
+    库里没有」，那才是能照办的诊断）；没有候选原子就没有可判的东西。
+    三档由 `probe` 统一给出——这一列量的必须是判据自己那套条件。
+    """
+    cands, why = probe(st)
+    if why != JUDGED:
         return None
     keys = source_keys(sources(st))
     bad = [a for a in cands if not supported(a, keys)]

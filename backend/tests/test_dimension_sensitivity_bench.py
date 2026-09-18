@@ -1296,6 +1296,217 @@ def test_别的probe的材料一个字都没动():
     assert users == [SUPERSEDE_PROBE.id]
 
 
+# ------------------------- 材料的切句口径（批 27 / §5 第 10 行）---------
+#
+# 批 26 在真库上读出来的：`derived_facts` 只按 `[。！？]` 切整篇，于是
+# markdown 重的笔记里**一块表 / 一整块列表 / 一行图片语法整块变成"一条事实"**
+# （`309f19202309` 和 `06647b9c2031` 各 3/12 条）。这四维（`material_use` /
+# `factual_grounding` / `numbers_from_tools` / `data_grounding`）在 bench 里
+# **全靠这一份材料**，而报告自己写着它们是「上界」——上界建在一份含图片 alt
+# 文本和表头行的材料上，那个上界是假的。下面钉住修完之后的口径。
+
+_MD_NOTE = (
+    "## 结论\n\n"
+    "![2026 年首单 1.5 万台的走势图，克制现代的概念插图](/api/assets/x.png)\n\n"
+    "首单 1.5 万台预计七月底完成生产并出货，这一句是正经的散文事实。\n\n"
+    "| Method | Token | SS-User | SS-Asst |\n|---|---|---|---|\n"
+    "| A | 一档 | 3 万台 | 8 月 5 日 |\n\n"
+    "- 里程碑一：2026 年 3 月 15 日的版本优先验证 ask memory\n"
+    "- 里程碑二：8 月 5 日出货，中性情景是 3 万台\n\n"
+    "> 引用里也写着 2026 年 3 月 15 日这一天的安排。\n\n"
+    "```mermaid\ngraph LR\nA[3月15日版本] --> B[8月5日出货 1.5 万台]\n```\n\n"
+    "第二句散文：8 月 5 日出货，中性情景是 3 万台。\n"
+)
+
+
+def _facts_of(text: str) -> list[str]:
+    sub = bench.Subject(text=text, context={}, at=0, end=len(text))
+    return [f.split("] ", 1)[1] for f in bench.derived_facts(sub)]
+
+
+def test_整行就是排版的那几种真的剔掉():
+    """批 26 逐条读出来的残骸：图片 alt 文本（一整段绘图提示词）、表头行、标题行。
+    表头行是**列名**，里头一个数都没有——逐行切之后它自己就过不了"带日期/数字"
+    那一关；老口径是把它和后面几行一起当成了一条。"""
+    got = _facts_of(_MD_NOTE)
+    assert got, "散文那两句必须还在"
+    blob = "\n".join(got)
+    assert "概念插图" not in blob and "走势图" not in blob, "图片 alt 文本进材料了"
+    assert "Method" not in blob and "SS-User" not in blob, "表头行进材料了"
+    assert "结论" not in blob, "标题行进材料了"
+    assert "|---|" not in blob, "表格的分隔行进材料了"
+
+
+def test_图片语法剔掉之后同一行的散文还在():
+    """剔的是 `![…](…)` 这一段，不是"出现过图片的那一行"。**误伤比漏报贵**
+    这条在这儿的方向是：把带图的那句话整条丢掉，等于少一条真材料。"""
+    got = _facts_of("![2026 年 1.5 万台走势图](/x.png)这句话本身写着 8 月 5 日出货 3 万台。\n")
+    assert got == ["这句话本身写着 8 月 5 日出货 3 万台。"], got
+
+
+def test_列表和引用留正文只去掉标记():
+    """**剔的是排版，不是内容。** 一条 `- 里程碑二：8 月 5 日出货…` 是正经事实，
+    批 26 那条「F10 是整块列表」的毛病出在**整块变成一条**，不在列表本身。"""
+    got = _facts_of(_MD_NOTE)
+    assert any(f.startswith("里程碑二：8 月 5 日出货") for f in got), got
+    assert any(f.startswith("引用里也写着") for f in got), got
+    assert all(not f.startswith(("-", ">", "*")) for f in got), got
+
+
+def test_散文排在只能当语法读的前面():
+    """两档的顺序就是这个修法的全部形状。表格数据行和图里的箭头**留着**
+    （`chart-block` / `table-block` 那几条 probe 的选区本身就是一整块图或表，
+    剔干净材料就空了，而 `data_grounding` 正是靠材料里那几个数判的），
+    但排在散文后面——散文摘得够，它们根本挤不进来。"""
+    prose, syntax = bench.fact_lines(_MD_NOTE)
+    assert "| A | 一档 | 3 万台 | 8 月 5 日 |" in syntax
+    assert any("-->" in x for x in syntax)
+    assert all("|" not in x and "-->" not in x for x in prose)
+    got = _facts_of(_MD_NOTE)
+    first_syntax = next((i for i, f in enumerate(got) if "|" in f or "-->" in f), len(got))
+    last_prose = max(i for i, f in enumerate(got) if "|" not in f and "-->" not in f)
+    assert last_prose < first_syntax, got
+
+
+_NUM_TABLE = ("各批次的到货数放在同一张表里比较：\n\n"
+              "| 批次 | 到货 | 日期 |\n|---|---|---|\n"
+              "| 首批 | 1.5 万台 | 3 月 15 日 |\n| 次批 | 3 万台 | 8 月 5 日 |\n")
+
+
+def test_图块表块的材料不许是空的():
+    """**一个可能为空的量程，就不是量程。** 第一版把围栏内容和表格行整条剔了，
+    `chart-block` 那几条 probe 的材料当场变成空（`test_真正发出去的那一格带的
+    就是生产那份上下文` 抓住的）——`data_grounding` / `numbers_from_tools`
+    那两维就再也量不出东西了。"""
+    for mode, selector, body in (
+            ("chart", "chart-block", NOTE + "\n\n" + CHART + "\n\n收尾这一段是后文。"),
+            ("table", "table-block", NOTE + "\n\n" + _NUM_TABLE + "\n收尾这一段是后文。")):
+        note = _note_with(body)
+        subject = bench.SELECTORS[selector](note)
+        assert subject is not None, f"{selector} 取不到块，这条测了个寂寞"
+        probe = bench.Probe(mode, selector, "shift_dates", ("data_grounding",))
+        ctx = bench.production_context(probe, subject, note)
+        block = ctx.get(bench.score_context.MATERIAL_KEY)
+        assert block, f"{selector} 的材料是空的"
+        assert "月" in block or "万台" in block, f"{selector} 的材料里一个数都没有：{block!r}"
+
+
+def test_一条事实不许横跨两个结构块():
+    """逐行切之后顺带钉住的一件事：老口径是把整篇当一个串切，于是
+    `06647b9c2031` 的 F1 一条吞了「范围边界：」底下四行。"""
+    for f in _facts_of(_MD_NOTE):
+        assert "\n" not in f, f"这条事实跨行了：{f!r}"
+
+
+def test_散文句里的行内标记一个字都不动():
+    """**判据宁可窄一点**：剔的是"整行就是结构"的那几种。正文句子里带个
+    加粗或者一个行内链接，它仍然是一条正经事实——把它也剔掉就是误伤。"""
+    text = "这一句里有 **加粗** 和一个 [链接](http://x)，还写着 8 月 5 日出货 3 万台。\n"
+    assert _facts_of(text) == [text.strip()]
+
+
+def test_同一句话只占一个格子():
+    """`06647b9c2031` 正文里「下一轮 10 台到货为 6 月 15 日…」逐字重复了八遍
+    （它正是 §5 第 1 行那篇段内重复 36.4% 的机器损伤笔记），于是 12 条材料里
+    8 条是同一句。材料块看着满，真正不同的事实只有两条。"""
+    one = "下一轮 10 台到货为 6 月 15 日，以 4 月 16 日作为对外对齐点。"
+    got = _facts_of(("%s\n" % one) * 8 + "另一件事：8 月 5 日出货 3 万台。\n")
+    assert len(got) == 2, got
+    assert got[0] == one
+
+
+def test_一条是另一条的片段时也只留一条():
+    """机器损伤那篇的重复是**从词中间接上**的（批 25 读出来的形状），
+    于是后一条是前一条的后半截。逐字相等判不掉它。"""
+    long = "知识库同时记录 EVT 为 4 月 10 号启动，10 台到货为 6 月 15 日。"
+    got = _facts_of(long + "\n" + "10 台到货为 6 月 15 日。\n")
+    assert got == [long]
+
+
+def test_围栏开合对不上也不影响这份材料():
+    """真库上逼出来的：`06647b9c2031` 正文里有 **3 条**围栏线（奇数，开头那条
+    围栏的"开"没了——这篇正是 §5 第 1 行那篇段内重复 36.4% 的机器损伤笔记）。
+    **这里根本不去猜"在不在围栏里"**：围栏线本身剔掉，围栏里的内容排第二档，
+    于是奇数偶数都一样。*不需要状态机的地方不要状态机。*"""
+    damaged = ("这一句是散文：8 月 5 日出货 3 万台。\n"
+               "]\n```\n\n"
+               "```mermaid\ngraph LR\nA[3月31日 可对外讲清] --> B[4月16日 EVT 10 台]\n```\n")
+    got = _facts_of(damaged)
+    assert got[0] == "这一句是散文：8 月 5 日出货 3 万台。"
+    assert all("```" not in f for f in got), got
+
+
+def _long_note() -> dict:
+    """真的会被 `body_for_scoring` 切开的一篇：每节都够长、每节写的事情都不一样，
+    总长超过 `Mode.context_keep_last`（note 是 4000）。**每节的数不能重复**，
+    不然会被材料那条去重当成同一条事实。"""
+    head = "".join(
+        "## 第 %d 节\n\n第 %d 节写着首单 %d.5 万台。%s\n\n" % (i, i, i, "这一节的填充正文。" * 30)
+        for i in range(1, 21))
+    return _note_with(head + "## 末节\n\n末节写着 8 月 5 日出货 987 万台，"
+                             "只有它是逐字给打分器的。\n")
+
+
+def test_材料只在打分器真的看得见的那段正文里摘():
+    """**批 27 修的第二条根因，跟切句无关。** `as-deployed` 递给 `evaluate()`
+    的正文先过 `score_context.body_for_scoring`（长文更早的小节换成目录行），
+    而材料是从整篇开头往下摘、摘满 12 条就停——真库上 `309f19202309` 正文
+    30588 字、打分器只拿到尾部 4547 字（14.9%），12 条材料里**只有 1 条**的
+    原句在打分器手上那段正文里找得到。打分器看着一段自己没材料的正文判
+    `factual_grounding` 0，是**它判对了**，坏的是这份材料。"""
+    note = _long_note()
+    probe = bench.Probe("note", "whole", "shift_dates", ("factual_grounding",))
+    subject = bench.SELECTORS["whole"](note)
+    body = bench.score_context.body_for_scoring(
+        subject.text, keep_last_chars=bench.mode_keep_last("note"))
+    assert len(body) < len(subject.text), "这篇得真的被切过，否则这条测了个寂寞"
+    block = bench.production_context(probe, subject, note)[bench.score_context.MATERIAL_KEY]
+    assert "第 1 节写着首单 1.5 万台" not in block, "开头那几节打分器看不见，不该进材料"
+    for line in block.splitlines():
+        s = line.split("] ", 1)[-1].strip()
+        if len(s) > 12:
+            assert s[:40] in body, f"材料里这条打分器根本看不见：{s!r}"
+
+
+def test_whole_piece那一档的量程是整篇():
+    """两档各自自洽：`whole-piece` 递给 `evaluate()` 的就是整篇逐字，
+    它的材料量程也得是整篇。拿 `as-deployed` 那个窗口去截它，
+    量的就不是"批 19 之前的生产"了。"""
+    note = _long_note()
+    subject = bench.SELECTORS["whole"](note)
+    whole = bench.Probe("note", "whole", "shift_dates", ("factual_grounding",),
+                        condition=bench.WHOLE_PIECE_CONDITION)
+    deployed = bench.Probe("note", "whole", "shift_dates", ("factual_grounding",))
+    a = bench.production_context(whole, subject, note)[bench.score_context.MATERIAL_KEY]
+    b = bench.production_context(deployed, subject, note)[bench.score_context.MATERIAL_KEY]
+    assert a != b, "两档的量程要是一样，`body_for_scoring` 那一步等于没接"
+    assert "第 1 节写着首单 1.5 万台" in a, "整篇那一档应该摘得到开头那几节"
+    assert "第 1 节写着首单 1.5 万台" not in b, "as-deployed 那一档不该摘打分器看不见的"
+
+
+def test_目录和逐字的分界由生产那个常量给():
+    """脚本另抄一份那句话，生产一改措辞，材料里就又混进目录行——
+    跟 `test_更正行的格式必须由生产那个函数写` 同一条纪律。
+    **这条是词法的，它不能单独算数**：真正判这件事的是上面那条
+    `test_材料里不许出现目录行本身`，这条只是把"为什么不许抄"钉在源码上。"""
+    import pathlib as _p
+
+    body = _p.Path(bench.__file__).read_text(encoding="utf-8")
+    assert "score_context.VERBATIM_MARK" in body
+    assert "节起，逐字】" not in body, "脚本自己抄了一份分界那句话"
+
+
+def test_材料里不许出现目录行本身():
+    """`body_for_scoring` 拼出来的目录行是 `- 第 N 节 · 标题 —— 第一句（N 字）`。
+    它是**排版**，不是这篇笔记写着的事实——摘进材料等于换了一种残骸。"""
+    note = _long_note()
+    probe = bench.Probe("note", "whole", "shift_dates", ("factual_grounding",))
+    subject = bench.SELECTORS["whole"](note)
+    block = bench.production_context(probe, subject, note)[bench.score_context.MATERIAL_KEY]
+    assert "上面是目录" not in block and "用目录行代替" not in block
+    assert "节 ·" not in block
+
+
 # ------------- 报告参数 + 日志分类：两张表能不能比，先看它们是不是同一个 n ---
 
 def _one_note() -> dict:

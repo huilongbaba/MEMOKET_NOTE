@@ -244,6 +244,13 @@ def split_for_prompt(context: dict[str, str] | None,
 # 在那之前用同一个数，并且把这件事写在这里。
 SECTION_SCORING_MIN_CHARS = 4000
 
+# 目录那一段和逐字那一段之间的分界。**抽成常量是给别人用的**：`body_for_scoring`
+# 的产出里前半截是目录行（`- 第 N 节 · 标题 —— 第一句（N 字）`），它是**排版**，
+# 不是这篇笔记写着的事实。灵敏度 bench 要"只在打分器看得见的那段正文里摘材料"
+# （台账批 27），就得认出这条界——而认法**不许是另抄一份那句话**，
+# 那是 `score_context` / `table_columns_match` 一路下来的同一条纪律。
+VERBATIM_MARK = "节起，逐字】"
+
 
 def body_for_scoring(content: str, *, keep_last_chars: int = SECTION_SCORING_MIN_CHARS,
                      ) -> str:
@@ -290,7 +297,7 @@ def body_for_scoring(content: str, *, keep_last_chars: int = SECTION_SCORING_MIN
         "「结构连不连贯」「标题点到的面有没有落地」这类跨小节的事情，就按这份"
         "目录判；判措辞、依据、具体写法只看下面逐字给出的那几节，"
         "**不要因为目录里那一行短就说那一节写得不够**。")
-    body = "\n".join(lines) + f"\n\n【第 {first_verbatim + 1} 节起，逐字】\n" \
+    body = "\n".join(lines) + f"\n\n【第 {first_verbatim + 1}{VERBATIM_MARK}\n" \
         + "\n".join(t for _title, t in sections[first_verbatim:]).lstrip("\n")
     # 压缩不许把东西压大
     return body if len(body) < len(content) else content

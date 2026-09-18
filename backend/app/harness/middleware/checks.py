@@ -16,6 +16,7 @@ import dataclasses
 
 from ..types import DimensionScore, Evaluation
 
+from ..checks import claims
 from ..events import CUSTOM_CHECK_HIT, Event
 from ..state import State
 
@@ -58,6 +59,30 @@ class Checks:
         cur: dict[str, int] = {}
         st.bag["check_streak"] = cur
 
+        # ---- 三列探针（批 27 / §5 第 8、9 行）。读者是 `Ledger.after_judge`，
+        # 它读完就 `pop`——bag 是跨轮活着的，留着会让下一轮继承上一轮的数。
+        #
+        # **算在判据循环之前，不算在 `unsupported_specifics` 里面。** 循环是
+        # 「第一条命中的赢，后面的不跑」——挂在那条判据里的话，只要有别的判据
+        # 先短路，这一轮就什么都记不到，而**那正是第 9 行要看的那些轮**
+        # （「上一轮判据报了材料不够，下一轮照做没有」）。
+        # *同一件事挡住一半等于没挡。*
+        if claims.unsupported_specifics in st.mode.checks:
+            cands, why = claims.probe(st)
+            st.bag["claim_atoms"] = len(cands)
+            st.bag["claim_abstained"] = why
+        else:
+            # 六个 block 模式的 `checks` 里没有这一条。**这一档必须有自己的
+            # 取值**：记成 0 的话，「这个模式压根不判」和「判了、一个候选原子
+            # 都没有」在库里长得一模一样——批 22 的 `stopped` 就是这么坏的。
+            st.bag["claim_atoms"] = -1
+            st.bag["claim_abstained"] = claims.NOT_IN_MODE
+
+        # 这一轮**哪几条判据命中了**（第 9 行要的）。是列表不是单值：卡死放行
+        # 的那条 `continue` 之后，后面还可能再命中一条，两条都得在。
+        fired_all: list[str] = []
+        st.bag["fired_checks"] = fired_all
+
         for ran, check in enumerate(st.mode.checks, start=1):
             verdict = check(st)
             if not verdict:
@@ -82,6 +107,10 @@ class Checks:
                     st.content = probe.content
                     continue
 
+            # **修好了的不算命中**：`verdict.fix` 那一档当场把正文改对了，
+            # 对下一轮一个要求都没提——第 9 行问的是「上一轮提的要求，下一轮
+            # 照做没有」，把它算进来会给分母灌一批没有要求的轮。
+            fired_all.append(fired)
             key = f"{verdict.dimension}\u0000{verdict.message}"
             streak = cur[key] = prev.get(key, 0) + 1
             if streak > STUCK_ROUNDS:

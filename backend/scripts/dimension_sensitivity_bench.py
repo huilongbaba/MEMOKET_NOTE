@@ -1299,7 +1299,78 @@ _BLOCK_MODES = ("eda", "chart", "table", "analysis", "prompt", "custom")
 _HAS_INSTRUCTION = ("prompt", "custom", "analysis")
 
 
-def derived_facts(subject: Subject) -> list[str]:
+MAX_DERIVED_FACTS = 12
+
+# ------------------------------------- 材料的切句口径（批 27 / §5 第 10 行）---
+#
+# 批 26 在真库上读出来的：`derived_facts` 只按 `[。！？]` 切**整篇**，而
+# markdown 重的笔记里一块表 / 一整块列表 / 一行图片语法**整块一个句号都没有**
+# ——于是一块顶一条。`309f19202309` 12 条里 3 条是结构残骸（F1 图片 alt 文本、
+# F3 表头行、F10 整块列表），`06647b9c2031` 同样 3/12。这四维
+# （`material_use` / `factual_grounding` / `numbers_from_tools` / `data_grounding`）
+# 在 bench 里全靠这一份材料，而报告自己写着它们是「上界」。
+#
+# **修法的形状是"先按行切，再排序"，不是"把结构删掉"**。第一版真的把表格行和
+# 围栏内容整条剔了，`test_真正发出去的那一格带的就是生产那份上下文` 当场变红：
+# `chart-block` 那几条 probe 的选区**本身就是一整块图**，剔干净之后材料是空的
+# ——而 `data_grounding` / `numbers_from_tools` 正是靠材料里那几个数来判的。
+# *一个可能为空的量程，就不是量程。* 所以：
+#
+#   · **整行就是排版**的（标题行、分隔线、表格的 `|---|` 那一行、围栏线本身、
+#     整行只有一个 `![…](…)`）—— 真的剔掉，它们里面没有事实；
+#   · **散文**（普通行，以及去掉 `-` / `>` 标记之后的列表行、引用行）—— 第一档；
+#   · **只有当语法读**的（表格数据行、围栏里的内容）—— 第二档，散文摘不满 12 条
+#     时才拿它凑。图块 / 表块那几条 probe 的材料就来自这一档。
+#
+# 逐行切还顺带钉住一件事：**一条"事实"再也不会横跨两个结构块**
+# （`06647b9c2031` 老的 F1 一条吞了「范围边界：」底下四行）。
+
+_FENCE_LINE = re.compile(r"^\s*(?:```|~~~)")
+_TABLE_LINE = re.compile(r"^\s*\|")
+_TABLE_RULE = re.compile(r"^\s*\|[\s:|-]*\|\s*$")
+_HEADING_LINE = re.compile(r"^\s*#{1,6}\s")
+_RULE_LINE = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
+_LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+")
+_QUOTE_MARK = re.compile(r"^\s*>+\s*")
+_IMAGE_INLINE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+
+
+def fact_lines(text: str) -> tuple[list[str], list[str]]:
+    """`(散文行, 只能当语法读的行)`。纯函数、零调用。
+
+    图片是**整段剔掉**而不是只去掉 `![]()` 外壳：alt 文本本身（批 26 读到的
+    那条是一整段绘图提示词）跟这篇笔记讲的事情没有任何关系。
+
+    **围栏线本身剔掉、围栏里的内容留到第二档**，而不是按 toggle 判"在不在围栏
+    里"：`06647b9c2031` 正文里有 **3 条**围栏线（奇数，开头那条 ` ``` ` 的开没了
+    ——这篇正是 §5 第 1 行那篇段内重复 36.4% 的机器损伤笔记）。开合对不上的时候
+    toggle 的两种读法都是猜，而**这里根本不需要猜**：第二档本来就排在散文后面。
+    """
+    prose: list[str] = []
+    syntax: list[str] = []
+    for raw in (text or "").splitlines():
+        if _FENCE_LINE.match(raw) or _HEADING_LINE.match(raw) or _RULE_LINE.match(raw):
+            continue
+        if _TABLE_RULE.match(raw):
+            continue
+        line = _IMAGE_INLINE.sub("", raw)
+        if not line.strip():
+            continue
+        if _TABLE_LINE.match(line) or "-->" in line or line.startswith("    "):
+            syntax.append(line.strip())
+            continue
+        stripped = _QUOTE_MARK.sub("", _LIST_MARK.sub("", line)).strip()
+        if stripped:
+            prose.append(stripped)
+    return prose, syntax
+
+
+def _fact_norm(s: str) -> str:
+    """比"是不是同一条"时用的形态：去掉全部空白。"""
+    return re.sub(r"\s+", "", s)
+
+
+def derived_facts(subject: Subject, scope: str | None = None) -> list[str]:
     """把干净正文里真的写着的日期 / 数字摘成这次跑的"材料"。
 
     **这是 `st.facts` 的替身**：bench 不跑 harness，手里没有真实检索结果，
@@ -1307,15 +1378,52 @@ def derived_facts(subject: Subject) -> list[str]:
     对 `shift_dates` / `strip_specifics` / `invent_table_cells` 这类植入来说
     它是对的替身——植入改的正是这些句子，材料是照**干净版**摘的，
     于是"正文跟材料对不对得上"这件事真的可判。
+
+    切句口径见上面 `fact_lines` 那一段（批 27）。另外两条也在这一批修：
+
+    **同一句话只占一个格子。** `06647b9c2031` 正文里「下一轮 10 台到货为
+    6 月 15 日…」逐字重复了八遍，于是 12 条材料里 8 条是它——材料块看着满，
+    真正不同的事实只有两条。重复是**从词中间接上**的（批 25 读出的机器损伤形状），
+    所以判的不是逐字相等，是"一条是不是另一条的片段"。
+
+    **只在打分器真的看得见的那段正文里摘**（`scope`，第二条独立根因）：
+    `as-deployed` 递给 `evaluate()` 的正文先过 `score_context.body_for_scoring`
+    （长文更早的小节换成目录行），而摘材料是从**整篇**开头往下摘、摘满 12 条就停
+    ——`309f19202309` 正文 30588 字、打分器只拿到尾部 4547 字（**14.9%**），
+    12 条材料全部落在前 21%，**12 条里只有 1 条**的原句在打分器手上那段正文里
+    找得到。打分器看着一段自己没材料的正文判 `factual_grounding` 0，
+    是**它判对了**，坏的是这份材料。这跟切句是两条独立的根因：切句那条两篇都中，
+    这条只有 `309f19202309` 一篇中（另外四篇正文都短于 `keep_last`，整篇逐字给）。
     """
+    prose, syntax = fact_lines(subject.text if scope is None else scope)
     facts: list[str] = []
-    for sent in re.split(r"(?<=[。！？])", subject.text):
-        s = sent.strip()
-        if len(s) > 12 and (_DATE.search(s) or _QTY.search(s)):
-            facts.append(f"[F{len(facts) + 1}] {s[:120]}")
-        if len(facts) >= 12:
-            break
+    seen: list[str] = []
+    for line in prose + syntax:
+        for sent in re.split(r"(?<=[。！？])", line):
+            s = sent.strip()
+            if len(s) <= 12 or not (_DATE.search(s) or _QTY.search(s)):
+                continue
+            s = s[:120]
+            norm = _fact_norm(s)
+            if any(norm in k or k in norm for k in seen):
+                continue
+            seen.append(norm)
+            facts.append(f"[F{len(facts) + 1}] {s}")
+            if len(facts) >= MAX_DERIVED_FACTS:
+                return facts
     return facts
+
+
+def verbatim_part(body: str) -> str:
+    """`body_for_scoring` 的产出里**逐字给出的那一段**（目录行不算）。
+
+    目录行 `- 第 N 节 · 标题 —— 第一句（N 字）` 是**排版**，摘进材料等于把
+    批 26 那三条结构残骸换了一种形态再放回去（`test_材料里不许出现目录行本身`
+    就是这么抓住的）。分界那句话由 `score_context.VERBATIM_MARK` 给，
+    **脚本不许另抄一份**。
+    """
+    at = body.find(score_context.VERBATIM_MARK)
+    return body if at < 0 else body[at + len(score_context.VERBATIM_MARK):]
 
 
 def surrounding(subject: Subject, note: dict) -> tuple[str, str]:
@@ -1367,7 +1475,12 @@ def production_context(probe: "Probe", subject: Subject, note: dict) -> dict[str
         ctx.update(score_context.for_block(
             before=before, after=after,
             prompt=instruction_for(note) if probe.mode in _HAS_INSTRUCTION else ""))
-    facts = derived_facts(subject)
+    # **材料只在打分器看得见的那段正文里摘**（批 27）。`whole-piece` 那一档
+    # 递的是整篇逐字，所以它的量程也是整篇——两档各自自洽，别混。
+    scope = (subject.text if probe.condition == WHOLE_PIECE_CONDITION
+             else verbatim_part(score_context.body_for_scoring(
+                 subject.text, keep_last_chars=mode_keep_last(probe.mode))))
+    facts = derived_facts(subject, scope)
     if probe.material:
         facts = probe.material(subject, note, facts)
     block = score_context.material(facts)

@@ -219,3 +219,83 @@ def test_检索挂了不拖垮这一轮(monkeypatch):
     monkeypatch.setattr(mod, "_retrieve", boom)
     facts = ["[f-1-A] 原样"]
     assert mod._merge_anchored(_st(""), "标题", facts) == facts
+
+
+# ----------------------------- 账本摘要进 prompt（计划 2.4，批 27 接的 section）
+
+def _led_state() -> State:
+    """一个「第 1 轮已经查过、第 2 轮正要规划」的局面。跟 `test_note_hooks`
+    那份同形，故意不共用——两条路的 prompt 是两个函数，接线要各自钉住。"""
+    import json
+
+    st = _st("正文")
+    st.bag["ledger"] = {
+        "queries": [{"key": "filter_facts\t" + json.dumps(
+            {"topic": "众筹"}, sort_keys=True, ensure_ascii=False),
+            "tool": "filter_facts", "hit": 5, "empty": False}],
+        "axes": {"topic:定价": {"total": 18, "taken": 0},
+                 "topic:众筹": {"total": 41, "taken": 5}},
+        "facts": {"f1": {"line": "甲", "state": "taken", "tool": "filter_facts",
+                         "when": "2026-03-11"}},
+    }
+    return st
+
+
+def _plan_msgs(monkeypatch, st, *, topics="（没有）") -> str:
+    """跑一次 `prepare`，把真正发出去的那条 user 消息拿回来。"""
+    from app.harness.hooks import section as mod
+
+    seen: list = []
+
+    async def fake_gather(msgs, ctx, *, groups, **kw):
+        seen.append(msgs)
+
+        class T:
+            calls: list = []
+            error = False
+            truncated = False
+            used = False
+
+            def as_facts(self):
+                return []
+        return [], T()
+
+    monkeypatch.setattr(mod.agent_loop, "gather_context", fake_gather)
+    monkeypatch.setattr(mod.agent_loop, "is_scoped_question", lambda p: False)
+    monkeypatch.setattr(mod.query_cache, "dispatch", lambda name, args, ctx: topics)
+    monkeypatch.setattr(mod, "_retrieve", lambda *a, **kw: ([], [], 0.0))
+    asyncio.run(_hooks().prepare(st))
+    assert seen, "prepare 没发出取材那一发"
+    return [m for m in seen[0] if m["role"] == "user"][0]["content"]
+
+
+def test_账本摘要真的进了分段那条路的检索规划(monkeypatch):
+    """**批 26 量出来的缺口**：`gap_summary` 全仓唯一的读者是 `hooks/note.py`,
+    8 个模式接了 1 个。而批 13 隔离实验量过「只开 2.5 = 17.2%、2.4+2.5 才
+    3.5%」，批 26 实测没接 2.4 的这几条线正好停在 14–40% 那一档。
+    *建了判据不等于用了判据。*"""
+    user = _plan_msgs(monkeypatch, _led_state())
+    assert "哪些方向还没取过" in user
+    assert "定价：库里 18 条，一条都没取" in user
+    assert "filter_facts topic=众筹" in user
+    # 位置也是判据的一部分（`test_note_hooks` 那条的同一理由）。
+    assert user.startswith("【这次跑到现在，哪些方向还没取过】"), \
+        "缺口摘要要摆在检索规划 prompt 的最前面，不是附在末尾"
+
+
+def test_分段那条路的账本摘要也能被同一个开关撤掉(monkeypatch):
+    from app.harness.hooks import section as mod
+
+    monkeypatch.setattr(mod, "LEDGER_IN_PROMPT", False)
+    user = _plan_msgs(monkeypatch, _led_state())
+    assert "哪些方向还没取过" not in user
+    assert "这一节" in user or "写清楚这件事" in user, "别把整个 prompt 也撤了"
+
+
+def test_分段那条路的主题树分母也在渲染摘要之前折进账本(monkeypatch):
+    """接了但接在错的一侧：`note_topics` 没被调用的话，缺口摘要里一条
+    「一条都没取」都不会有——批 13 第一版真跑渲染出来的就是那样。"""
+    user = _plan_msgs(monkeypatch, _st("正文"),
+                      topics="- 定价（18 条）\n- 众筹（41 条）")
+    assert "众筹：库里 41 条，一条都没取" in user
+    assert "定价：库里 18 条，一条都没取" in user

@@ -412,6 +412,29 @@ _ADDED_COLUMNS = (
     # 撞上限）。**一个被当成常态的行为，得有个数在数它**，否则「深度门是不是
     # 太狠」永远答不出来。
     ("harness_rounds", "depth_dropped", "INTEGER NOT NULL DEFAULT 0"),
+    # ---- 三列探针（批 27 / §5 第 8、9 行）。加之前先把取值列全、逐个问
+    # 「它真写得进去吗」——批 22 的 `stopped` 从加进来那天起就记不到
+    # `max_rounds`，这条规矩就是那么来的。取值表在
+    # `harness/checks/claims.py` 那段 `abstained` 注释里。
+    #
+    # `claim_atoms`：这一轮新写的正文里有几个**候选原子**（完整日期 / 署名里
+    # 的那个名字）。§5 第 8 行「候选原子率」在探针语料上量过（`user` 0.89
+    # 个/篇），**真跑那一档一直量不了**——批 18 报的「真跑 5 轮 0 候选」是
+    # 一次性算出来的，没有落库，换一批跑就得重算一次。
+    # **-1 = 这个模式压根没有那条判据**（六个 block 模式），跟「判了、0 个
+    # 候选」严格分开：记成同一个 0 就又是一次 `stopped` 那种坏法。
+    ("harness_rounds", "claim_atoms", "INTEGER NOT NULL DEFAULT -1"),
+    # `fired_checks`：这一轮**哪几条确定性判据命中了**（JSON 数组）。
+    # §5 第 9 行「这一节材料够不够写的照做率」批 26 报的是**量不了、分母 0**
+    # ——299 个相邻轮对里能判定的 0 对，因为库里根本不知道上一轮是哪条判据
+    # 在说话（`CUSTOM_CHECK_HIT` 只进 SSE，不落库），而五条判据全都落在
+    # `factual_grounding` 这一维上，`weakest` 答不了这个问题。
+    # 是**数组**不是单值：卡死放行（`STUCK_ROUNDS`）之后后面还能再命中一条。
+    ("harness_rounds", "fired_checks", "TEXT NOT NULL DEFAULT ''"),
+    # `abstained`：`unsupported_specifics` 这一轮判没判、没判是因为什么。
+    # 「判据没开火」和「判据坏了」是两件事，**只量前者等于没量**（批 26 ④）
+    # ——而这一列是把"没开火"再拆成四档的那一列。
+    ("harness_rounds", "abstained", "TEXT NOT NULL DEFAULT ''"),
     # 这次跑一共花了多少（计划 12.3）。**没有这两列，「单次跑的成本」只能靠
     # 把 `llm_usage` 按时间窗口贴回 `harness_rounds` 来重建**——批 23 就是这么
     # 量的（158 次跑、1943 行用量，63 行贴不上），而那份重建在两次跑重叠时
@@ -2207,7 +2230,10 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
                          cached_calls: int = 0, superseded: int = 0,
                          revisions_proposed: int = 0,
                          revisions_dropped: int = 0,
-                         depth_dropped: int = 0) -> None:
+                         depth_dropped: int = 0,
+                         claim_atoms: int = -1,
+                         fired_checks: str = "",
+                         abstained: str = "") -> None:
     """记一轮。**记账失败不能影响这一轮的产出**——这张表是给分析用的，
     不是承重的，所以调用方把它包在 try 里。"""
     with connect() as c:
@@ -2215,15 +2241,16 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
             "INSERT INTO harness_rounds (id,key,run_id,round,scores,status,weakest,"
             "content_len,facts_new,facts_total,tool_calls,repeat_calls,"
             "cached_calls,superseded,revisions_proposed,revisions_dropped,"
-            "depth_dropped,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "depth_dropped,claim_atoms,fired_checks,abstained,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), key, run_id, int(round_),
              json.dumps(scores, ensure_ascii=False), status, weakest,
              int(content_len), int(facts_new), int(facts_total),
              int(tool_calls), int(repeat_calls),
              int(cached_calls), int(superseded),
              int(revisions_proposed), int(revisions_dropped),
-             int(depth_dropped), _now()))
+             int(depth_dropped), int(claim_atoms), str(fired_checks or ""),
+             str(abstained or ""), _now()))
         # 跟 harness_runs 同一条修剪规矩：一个 key 只留最近 400 行
         # （50 次跑 × 8 轮），再往前的除了占地方没有用。
         c.execute("DELETE FROM harness_rounds WHERE key=? AND id NOT IN ("

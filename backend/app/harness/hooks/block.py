@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import AsyncIterator
 
 from .. import agent_loop
+from ..middleware import ledger as ledger_mw
+from ..params import LEDGER_IN_PROMPT
 from ...util import llm
 from ..agent_loop import ToolTrace
 from .. import prompts
@@ -39,8 +41,19 @@ class BlockHooks:
 
     # ------------------------------------------------------------ gather --
     async def prepare(self, st: State) -> tuple[list[str], ToolTrace]:
+        # 账本摘要进取材那一发（计划 2.4）。**批 26 之前 `gap_summary` 全仓
+        # 只有一个读者（`hooks/note.py`），8 个模式接了 1 个**；而批 26 实测
+        # 六个 block 模式一次跑内的重复查询率是 **14–40%**，正落在批 13
+        # 「只开 2.5 = 17.2%」那一档，`note` 那条接了 2.4 的是 8.6%。
+        #
+        # **只进 `prepare` 这一发，不进 `produce`。** 它回答的是「还该查什么」，
+        # 而写正文那一步问的是「怎么写」——把缺口摆给写作看，是给它一份
+        # 「你没有的材料」清单，只会引出占位句。
+        gaps = ""
+        if LEDGER_IN_PROMPT:
+            gaps = ledger_mw.gap_summary(ledger_mw.ledger_of(st))
         msgs = [{"role": "system", "content": self._system(st)},
-                {"role": "user", "content": self._user(st, facts="")}]
+                {"role": "user", "content": self._user(st, facts="", gaps=gaps)}]
         extra, trace = await agent_loop.gather_context(
             msgs, st.ctx, groups=list(st.mode.groups), max_iters=3)
 
@@ -122,7 +135,7 @@ class BlockHooks:
                                       st.skill_bodies)
 
 
-    def _user(self, st: State, *, facts: str) -> str:
+    def _user(self, st: State, *, facts: str, gaps: str = "") -> str:
         """The round's user message.
 
         Only the cursor's neighbourhood goes in, never the whole note. With
@@ -130,8 +143,14 @@ class BlockHooks:
         of filling the position it was asked about, and an eight-round run
         blows the context window besides.
         """
-        parts = [f"【笔记标题】{self.title or '未命名'}",
-                 f"【这一次要做的事】{st.mode.task}"]
+        parts: list[str] = []
+        if gaps:
+            # 摆在最前面，跟 `prompts.retrieval_plan_user` 同一条理由：
+            # 先知道缺口，后面那些要求才有参照。**默认空串**——`produce`
+            # 那一路一个字都不受影响。
+            parts.append(gaps)
+        parts += [f"【笔记标题】{self.title or '未命名'}",
+                  f"【这一次要做的事】{st.mode.task}"]
         if self.prompt.strip():
             parts.append(f"【用户的具体要求】{self.prompt.strip()}")
         if self.selection.strip():
