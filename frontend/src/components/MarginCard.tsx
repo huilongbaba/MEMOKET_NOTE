@@ -14,6 +14,7 @@ import { clickable } from '../util/clickable'
 import { RELATION_LABEL, markKey, type MarginMark } from '../editor/marginMemory'
 import { alreadyCited, citeText, fillInText, ignoreRelation, mergeRelation, supersedeRelation, type RelationLike } from '../util/relationActions'
 import Icon from './Icon'
+import { CARD_WIDTH, placeCard } from '../util/cardPlacement'
 
 const REL_CLS: Record<MarginMark['relation'], string> = {
   conflict: 'rel-conflict', continuation: 'rel-continuation', corroborated: 'rel-corroborated',
@@ -33,8 +34,8 @@ const REL_HINT: Record<MarginMark['relation'], string> = {
   merge: '知识库里两条记录说的是同一件事',
 }
 
-export const CARD_WIDTH = 340
 const GAP = 10
+export { CARD_WIDTH }
 
 export type MarginCardState = { m: MarginMark; anchor: DOMRect; reason: 'hover' | 'click' | 'cursor' }
 
@@ -50,16 +51,17 @@ export default function MarginCard({ card, content, onClose, onInsert, onSeeAll 
   const ref = useRef<HTMLDivElement>(null)
   const [anchor, setAnchor] = useState<DOMRect>(card.anchor)
   useEffect(() => { setAnchor(card.anchor) }, [card])
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: anchor.right + GAP, top: anchor.top - 8 })
+  const [pos, setPos] = useState<{ left: number; top: number; width: number }>({ left: anchor.right + GAP, top: anchor.top - 8, width: CARD_WIDTH })
 
-  // 贴在圆点右边；右边放不下就贴左边（分屏 / 窄窗）；下面放不下就往上顶
+  // 边界是**正文栏**，不是窗口（P10：P9 那版按窗口判，卡伸出去压在右栏的记忆卡上）：
+  // 圆点右边栏内放得下就贴右边，放不下就挂在这一行下面、右缘对齐栏的右缘（`util/cardPlacement`）
   useLayoutEffect(() => {
     const h = ref.current?.offsetHeight ?? 160
-    let left = anchor.right + GAP
-    if (left + CARD_WIDTH > window.innerWidth - 8) left = Math.max(8, anchor.left - GAP - CARD_WIDTH)
-    let top = anchor.top - 8
-    if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - h)
-    setPos({ left, top })
+    const pane = (ref.current?.closest('.note-pane') ?? document.querySelector('.note-pane')) as HTMLElement | null
+    const b = pane?.getBoundingClientRect()
+    const bounds = b && b.width > 0 ? b : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight }
+    const p = placeCard(anchor, bounds, h, window.innerHeight)
+    setPos({ left: p.left, top: p.top, width: p.width })
   }, [anchor, m])
 
   // 正文滚了：圆点挪了就跟着挪，滚出视口就收
@@ -101,7 +103,7 @@ export default function MarginCard({ card, content, onClose, onInsert, onSeeAll 
 
   return (
     <div ref={ref} className={'margin-card rel-card ' + REL_CLS[m.relation]} role="dialog" aria-label={`这一段跟知识库的关系：${RELATION_LABEL[m.relation]}`}
-         style={{ left: pos.left, top: pos.top, width: CARD_WIDTH }}>
+         style={{ left: pos.left, top: pos.top, width: pos.width }}>
       <div className="row margin-card-head">
         <span className={'badge ' + REL_CLS[m.relation]} title={REL_HINT[m.relation]}><Icon n={REL_ICON[m.relation]} /> {RELATION_LABEL[m.relation]}</span>
         <span className="muted margin-card-where">这一段（第 {m.line} 行起）{(m.kinds ?? 1) > 1 ? ` · 还判出 ${(m.kinds ?? 1) - 1} 种` : ''}</span>

@@ -1562,3 +1562,150 @@ P8b 同一位置的原文——`3a3a` 指标段之后（P8 是一句弃答 + 两
 > 这一年的关键节点，首先集中在硬件样机和交付准备上。4月16日的EVT只覆盖纯主机，计划准备4台主机和15套PCBA；手环、表带、机甲和项链仍是手板，且没有包装，因此这个节点代表的是部分硬件进入验证，而不是整套产品已经可以交付。到5月15日前后，T0才基本完成。…[terrence-2046-12F1] [terrence-2046-12F2] [terrence-2046-12F3] [terrence-2046-12F8] [terrence-2046-12F9] [terrence-1833-8F6]
 
 闸：后端 `pytest -q` 2117（+1：`test_p8` 29 → 30 条）、前端 `npm test` 56 / 307 全绿；成本 P8b 两跑 36 调用 / prompt 193,596（cached 91,635）/ completion 13,754，端点同上。
+## P10 · 第 774 轮：C3 编辑器基本功五条 + 三个小毛病（2026-09-19）
+
+> HEAD 开工时 `266165e`（worktree `agent-a875923d2a130a52b`）。**没碰** `app/harness/**`、`hooks/note.py` / `hooks/block.py`、`AgentActivity.tsx`（另一个 agent 在改）；
+> 后端一个字没改（`pytest` 2101 = 基线）。每条都是**先在真实 app 里量、再修、再量**：新探针 `frontend/src/probesP10.ts`
+> （`p10:keys / undo / paste / ime / perf:<id>`，合成 keydown / ClipboardEvent / CompositionEvent 打进 CM，把正文、选区、DOM 状态打进 `[client:warn]` 日志），
+> 跑在 `KITE_DATA_DIR=$S/p10data`（p9data 的拷贝）+ 假模型 `fakellm10.py`（P9 那份加 `slowstream`：四片各隔 900ms，模拟真模型流式中途停顿）；
+> 两篇：`309f19202309`（公司汇报，30,588 字 / 533 行）和 `0eecee3d7b94`（创业反思，556 字）。证据在 `$S/p10-*-before.log` / `-after.log` 和 `$S/p10-*.png`。
+> 六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### C3-1 快捷键：逐条试，两条不合格，都修了
+
+- **用户怎么发现**：按了键没反应、或反应不是想要的（⌘/ 没有快捷键表；列表最后一个空项要按两次 Enter 才出得来，第一次还多出一个空行）。
+- **复现**（`p10:keys:0eecee3d7b94`，`p10-keys-before.log`；每步记 `line / sel / len / focus / title`）：
+
+  | 键 | 现在怎样 | 判 | 主流（Notion / Obsidian / Typora） |
+  |---|---|---|---|
+  | ⌘B / ⌘I | `**加粗测试**` / `*…*`，再按一次去掉 | ✅ | 同 |
+  | ⇧⌘K | `[加粗测试](url)`，选区落在 `url` 上 | ✅ | Obsidian 是 ⌘K；我们 ⌘K 是搜索 / 命令（Notion / VS Code 约定），表里写明 |
+  | ⌘K | 命令面板打开 | ✅ | |
+  | ⌘Z / ⇧⌘Z | 撤 / 重做 | ✅ | |
+  | ⌘S | App 级保存（自动保存已开，安心键） | ✅ | |
+  | ⌘F | CM 查找面板（中文文案） | ✅ | |
+  | Tab / ⇧Tab 在 `- 项目二` 上 | `  - 项目二` / 退回 | ✅ | 同（缩 2 格） |
+  | Enter 在 `- 项目一` 末 | 下一行 `- ` | ✅ | 同 |
+  | Enter 在 `1. 第一` 末 | `2. ` | ✅ | 同 |
+  | Enter 在 `- [ ] 待办` 末 | `- [ ] ` | ✅ | 同 |
+  | **Enter 在空的 `- [ ] ` / 第二个空项上** | 第一次 Enter **不退出**：lang-markdown 先在上面插一个空行（loose list），再按一次才删记号；`> ` ⏎ 变成 `>` + `> ` | ❌ | 三家都是**一次 Enter 退出** |
+  | ⌘↑ / ⌘↓ | 文首 / 文末（CM standardKeymap 的 mac 绑定） | ✅ | 同 |
+  | ⌥⌘1 / ⇧⌘8 | `# 标题行` / `- …` 切换 | ✅ | Typora 是 ⌘1…6，我们 ⌘数字给了标签，所以带 ⌥（表里写明） |
+  | **⌘/** | markdown 没有注释符，这里定义为「快捷键表」——**但正文里按了什么都不出现**：CM 的 keymap 发 `show-shortcuts`（置 true）并 preventDefault，事件接着冒泡到 App 的 window 监听再 toggle 一次 → 又关上了 | ❌ | Notion ⌘/ 是块菜单，Obsidian 是命令面板；我们的选择合理，只是坏了 |
+  | 行内代码 / 删除线 | **没有键**（`inlineCodeCmd` 存在但没绑；Notion ⌘E / ⇧⌘X） | 缺 | 下一步 |
+
+  计划外抓到一条：合成的 `⌥⌘1`（`key='1', altKey`）会同时被 App 的「⌘1…9 跳标签」吃掉、切到第一个标签（第一版探针里 ⌘F 之后 `len=0 title=''` 就是它）。
+  真键盘上 ⌥1 的 `key` 是 `¡`，用户大概率撞不上，但那个分支本来就该排除 ⌥——顺手加了 `!e.altKey`。
+- **改了什么**：`editor/listExit.ts`（`Prec.high` 的 Enter：光标在行尾、整行只剩记号（`- ` / `1. ` / `1) ` / `- [ ] ` / `- [x] ` / `> `，允许缩进）就删记号；嵌套的先退一级——跟 Notion 一样逐级出来；
+  不空的项照旧交给 lang-markdown 续项）；`App.tsx` ⌘/ 分支先看 `e.defaultPrevented`、⌘数字分支加 `!e.altKey`。测试：`p10Editor.test.ts` C3-1 两组（9 种空项参数化 + 4 种不该管的）+ App 源码两条。
+- **依据**：lang-markdown 6.5.2 `insertNewlineContinueMarkup`「Not second item or blank line before: delete a level of markup」——第二个空项走的是「插空行」分支，这是 CommonMark 的严谨，不是编辑器的习惯；
+  三家编辑器都按「空项 Enter = 退出」。⌘/ 的双触发是 CM keymap（返回 true 只 preventDefault、不 stopPropagation）+ App 的 window 监听各自正确、合起来错。
+- **前后对比**：`p10-keys-before.log` → `p10-keys-after.log`：`Enter on empty task → line="- [ ] " len 609→610`（多了一个空行、记号还在）→ `line="" len 603`（记号没了）；
+  `⌘/ → shortcuts=false` → `shortcuts=true`；`⌥⌘1` 之后正文还是那篇（`len=609 title=创业反思`，原来 `len=0 title=''`）。
+- **下一步**：行内代码 / 删除线的键（加键要同步 `shortcuts.ts` 的表，`check-shortcuts` 盯着）；⌘E 在 Notion 是行内代码、在 Obsidian 是切换编辑 / 预览，选哪个要定。
+
+### C3-2 撤销粒度：打字合格，续写不合格（修了），接受后能撤
+
+- **用户怎么发现**：点了「续写」不满意按 ⌘Z，只退掉最后几个字，再按几次才干净，多按一次把自己写的也吃掉。
+- **复现**（`p10:undo:0eecee3d7b94`，假模型 `slowstream`）：
+  ① 逐字打 19 个字（每字 60ms）→ ⌘Z 撤掉 21（整句 + 探针前面补的换行；CM 的 `newGroupDelay` 500ms 分组，跟 Obsidian 一样；Notion 也按停顿分组、Typora 按词）；中间停 700ms 再打 → ⌘Z 只撤后半句 5 个字。**合格**。
+  ② 续写（四片各隔 900ms）48 字 → **⌘Z 一次只撤 22 / 48，第二次 30，第三次 38，第四次才干净，第五次吃掉用户自己的字**（`p10-undo-before.log`）。
+  假模型 `ok` 模式两片连着来时看不出来（48/48）——真模型流式中途停顿 >500ms 很常见（工具调用、网络抖动），所以专门加了 `slowstream`。**不合格**。
+  ③ 「全部接受」之后 ⌘Z：接受只是撤掉高亮、不动 history，⌘Z 照样撤掉那段（before 22/48 同 ②；after 48/48）。「修订接受」老的 `revisions` 路已经没有生产者（`setRevisions` 只剩清空 / 过滤），
+  现在的「接受」就是「改动」层的全部接受 / 逐处接受。**合格**。
+- **改了什么**：`editor/undoUnit.ts` `sealAsOneUndo(view, from, to, text)`：把那段**不记历史地**删掉、再**记历史地**原样插回，两个事务一次 `view.dispatch([del, ins])` 应用（DOM 不闪）；
+  history 里只剩「插入这一整段」一条，前面那些片段事件被删除映射成空、自动丢掉。**第一版写成 `dispatch(specA, specB)`——CM 把几个 spec 合成一个事务，`addToHistory=false` 盖住了整笔、净变化为空，
+  实拍 ⌘Z 只撤掉 2 个字**（`p10-undo-after` 第一轮），改成两个事务才对。范围取 `minimalChange(full, 写完的全文)`——head 补的那个空行也算续写插的（第二版只封模型吐的字，⌘Z 之后剩一个空行）。
+  `MarkdownEditor` 多一个 `undoSeal` prop，effect **排在 content 同步之后、roundDiff 之前**（封的那一笔是 docChanged，会把刚加的层映射掉）；`App.runMagicTap` 写完（含 `fixBoldPunct` / 摘假引用）之后 `setUndoSeal`。
+  测试：C3-2 两条（四片隔 900ms → 封住后一次 undo 全撤、redo 全回、用户的字不动；对不上 / 空区间不动）。
+- **依据**：`@codemirror/commands` history `addChanges`：只有 `time - prevTime < newGroupDelay` 且相邻才并组（`input.type.compose` 例外）——config 绕不过时间门；Notion 里 AI 写的一段是一个撤销步。
+- **前后对比**：`p10-undo-before.log` `(b) ⌘Z after 续写 removed 22 of 48` → `p10-undo-after.log` `removed 48 of 48`；`(c) ⌘Z after accept removed 22` → `48`；⇧⌘Z 回到 628 两边都对。
+- **下一步**：智能续写（harness）一轮写好几节（`onInsertAt` + `onDelta` 多处），⌘Z 还是片段级——它有「改动」层的整层撤回；要封的话在 `AgentActivity` / harness 轮末对齐那一步做，这批不许碰。
+
+### C3-3 粘贴：HTML 丢格式（修了），其余五种合格
+
+- **用户怎么发现**：从网页 / 飞书 / Notion 复制一段带标题、粗体、链接、列表的内容粘进来，全变成光秃秃的字。
+- **复现**（`p10:paste:0eecee3d7b94`，合成 `ClipboardEvent` 带 `text/html` + `text/plain`）：
+
+  | 粘什么 | 之前变成 | 判 | 之后 |
+  |---|---|---|---|
+  | HTML（`<h2>季度目标</h2><p>…<strong>粗体</strong>…<a href>链接</a></p><ul><li>…`） | `季度目标\n这是 粗体 和 斜体，还有 一个链接。\n第一条\n第二条\n结尾一段`（CM 只取 `text/plain`） | ❌ | `## 季度目标\n\n这是 **粗体** 和 *斜体*，还有 [一个链接](https://example.com/x)。\n\n- 第一条\n- 第二条\n\n结尾一段` |
+  | 纯文本多段 | 原样（空行保留） | ✅ | 同 |
+  | markdown 文本 | 原样 | ✅ | 同 |
+  | URL（无选区） | 裸地址（GFM autolink 渲染成链接） | ✅ | 同 |
+  | URL 盖在选区「官网」上 | `[官网](https://example.com/)`（lang-markdown 自带 `pasteURLAsLink`） | ✅ | 同 |
+  | VS Code 那种只有 `<span style>` 的 HTML | 取 plain `const x = 1` | ✅ | 同（不转） |
+  | 图片 | 传到 `/api/assets/<hash>.png`，正文一行 `![shot](/api/assets/…)`（`imagePaste`，P1 前就有） | ✅ | 同 |
+
+- **改了什么**：`editor/htmlPaste.ts`：`htmlToMarkdown`（DOMParser 走一遍：h1–6 / p / br / strong·b / em·i / s·del / code / pre（带 language-）/ a / img / ul·ol（`start`、嵌套缩 2 格、`<input type=checkbox>` → `- [ ]`）/ blockquote / hr / table → GFM（格里 `|` 转义）；
+  Google Docs 的 `<b style="font-weight:normal">` 不算粗；链接文字就是地址的给裸地址）+ `shouldConvertHtml`（没有语义标签不转；转出来跟 plain 只差空白不转——保住用户原始空白）+ `htmlPaste` 扩展（排在 `imagePaste` 之后：剪贴板里有图片先走图片；
+  粘在一行中间且是块级内容时前后各留一个空行）。测试：C3-3 五组 13 条断言。
+- **依据**：Notion / Obsidian / Typora 都把 HTML 转成自己的格式；Obsidian 的做法是「有块级结构才转」，这里同款。正文仍是一个字符串（anchor 兼容）——只是决定插进去的是哪段字。
+- **前后对比**：`p10-paste-before.log` `html → "季度目标\n这是 粗体 和 斜体…"` → `p10-paste-after.log` `html → "## 季度目标\n\n这是 **粗体** 和 *斜体*…"`；其余六行两边逐字一样。
+- **下一步**：Word 的 `<p class=MsoListParagraph>` 列表（不是 `<ul>`）没认；粘贴 HTML 里的 `<img src="data:…">` 会原样带进正文（该走 `uploadAsset`）。
+
+### C3-4 中文输入法：合格（模拟 IME；真输入法要人再按一遍）
+
+- **用户怎么发现**：拼音打到一半菜单跳了、Enter 上屏变成选菜单、正文被自动保存 / 圆点重算打断。
+- **复现**（`p10:ime:0eecee3d7b94:2500`）：探针没法驱动系统输入法，做的是**输入法会做的 DOM 事**：`compositionstart` → 直接往 CM 的文本节点里写 `b / bi / bia / biao`、光标挪到组字串末尾、每步 `compositionupdate` → 挂 2.5s（这期间 1.5s 的圆点重算、0.9s 的右栏关系查询都会跑）→ 把 `biao` 换成 `表格` + `compositionend`：
+  · `/` 之后组字：`v.composing=true`，slash 菜单还在、query=`biao`、列表空（「没有匹配的功能」，Notion 拼音打到一半也是空）
+  · 组字中按 Enter：`prevented=false`、正文没变、菜单没被当成确认——CM `ignoreDuringComposition`（`composing > 0` 时所有 keydown 处理器不跑）挡住了，`slashMenu` 的 keydown 不用自己判 `isComposing`
+  · 挂 2.5s：圆点重算跑完（视口 8 个点）、`composing` 仍 true、正文 `/biao` 一字不差
+  · 上屏：query=`表格`，菜单筛出「智能表格 | 图片转表格 | 数据可视化 | 空表格」
+  · `[[` 补全：8 条（CM autocomplete 在 `compositionStarted` 时不起、上屏后起）
+  自动保存在探针模式下是关的，只能审代码：`save()` 只 `setCurrent(n)`，从不往 CM dispatch；0.9s 右栏查询只 fetch + 右栏 state。**没有一条会往组字中的编辑器 dispatch 正文改动**（唯一会的是 `minimalChange` 那条外部同步，而续写 / harness 跑的时候编辑器是只读的）。
+  **第一版探针没挪光标（组字串插在光标后面）时菜单当场关了**——那是模拟不像，不是 bug：真输入法总把光标放在组字串末尾。
+- **改了什么**：没有（合格）。
+- **依据**：CM6 6.43 `InputState.ignoreDuringComposition` / `composing` 计数；`@codemirror/autocomplete` `compositionStarted` 门；lang-markdown 无 composition 特判。
+- **前后对比**：无改动；证据 `p10-ime-before.log` = `p10-ime-after.log`（六行一样）。
+- **下一步**：**用户真机用系统拼音在 `/`、`[[`、`@` 三处各打一次**——探针只能证明 DOM 路径没问题，证明不了输入法候选框跟 tooltip 抢位置这种事。
+
+### C3-5 长文性能：打字 / 滚动合格，圆点重算不合格（修了）
+
+- **用户怎么发现**：30k 字的笔记里写着写着，页边圆点永远不出现（每敲一个字整批重来，要 14 秒不动才算得完）。
+- **复现**（`p10:perf:309f19202309`，30,588 字 / 533 行，窗口 1414×900；光标放正文中段逐字打 40 个字、每字隔 40ms；`PerformanceObserver` 数 longtask；包住 `fetch` 记圆点那几批请求）：
+  · **打字**：dispatch 同步 p50 0.8–1.5ms / max 4.8ms；到下一帧再下一帧 p50 25.5ms（= 60Hz 的 1.5 帧，就是基线）；longtask **0**。**合格**——244 段的 `marginParagraphs` + `stripCommonIndent` + 字数统计每键都跑，但都在毫秒级。
+  · **滚动**：20 步到底 p50 15–17ms。**合格**。
+  · **圆点**：不阻塞输入（请求是异步的），但**改一个字 → 整篇 136 个含数字段分 2 批重问，7.3s + 5.3s = 13.9s 才回来**（P7 说的「12s 还没算完」就是它）；打字期间每键都作废上一轮，真在写的时候圆点等于没有。**不合格**。
+- **改了什么**：`marginMemory.splitCached` + `App` 里一个 `Map<段落文本, 判定>`（判「没关系」的也缓存），改了哪段只问哪段；几批**按序**发、**每批回来就先画**（试过并行：2 批 21.6s 反而比串行慢——后端是串行的，撤了）；
+  知识库变了（摄入 / 换范围）清缓存，超过 3000 条清空重来。测试：C3-5 一条。
+- **前后对比**（同一探针，before 是 HEAD 的 `App.tsx`）：打 40 个字之后 `batch calls=2 last-done=+13.9s sizes=7141/5317ms` → `batch calls=1 last-done=+1.6s sizes=110ms`（含 1.5s 防抖）；
+  再打 1 个字 `+13.9s` → `+1.6s`。**首次打开**两边都是 `+15.0s`（2 批 7.4s + 5.3s）——那是后端 `relations/batch` 每段约 90ms 的成本，缓存帮不了第一次。
+- **下一步**：后端 `relations/batch` 每段 ~90ms（`search` 一次 + `detect`）是首次打开 15s 的全部；缓存落到 localStorage 可以让第二次打开也免掉。
+
+### 三个小毛病
+
+1. **P9 边缘记忆卡压住右栏的卡片 ✔**
+   - 复现：`p9-margin-after-{light,dark}.png`——卡贴着圆点向右伸出去，盖在右栏那张冲突卡的头上；P9 只按**窗口**宽度判「右边放不放得下」，正文栏右边紧挨着右栏。
+   - 改了什么：`util/cardPlacement.placeCard(anchor, 正文栏的矩形, 卡高, 窗高)`：栏内放得下贴右边；放不下挂在这一行**下面**、右缘对齐栏的右缘（盖的是下面几行正文，不是另一栏的卡）；下面也放不下挂上面；栏比 340 窄就缩。
+     `MarginCard` 用 `.note-pane` 的矩形当边界；`.margin-card-where` 去掉 `nowrap / ellipsis`（「还判出 1 种」被截掉过）。测试 3 条。
+   - 前后：`p9-margin-after-light.png` / `-dark.png` → `p10-card-after-light.png` / `-dark.png`（卡在正文那一行下面、右栏两张卡完整可见）。
+2. **灰点在白底上太淡 ✔**（P1 / P7 遗留）
+   - 复现：`p10-dots-before-{light,dark}.png`——缺依据是 `--muted` 实心再打 85% 透明，浅色下 #666 × .85 ≈ #7d7d7d 的 9px 小点。
+   - 改了什么：`.mm-unsupported` 改**空心圈**：`background: transparent; border: 2px solid var(--fg); opacity: .7`——浅色 #111 / 深色 #F2EFF7 两边都够看；空心跟实心的「印证绿」一眼分得开（有具体的量却没出处，本来就是「空」的意思）；
+     `.mm-merge` 同款空心、`--muted` 描边（也是「库里的事」不是「你写错了」）。右栏图例复用同一组类，跟着变。闸：`scripts/check-margin-dots.mts`（vitest 把 .css 当空模块、`?raw` 也读不到，所以放 scripts）。
+   - 前后：`p10-dots-before-light.png` → `p10-dots-after-light.png`、`-dark` 同。
+3. **智能续写 / `/` 块走 harness，文档意图没进它们的 system — 没做，留给下一批**：跟 P8 撞文件。要改的地方各一处：`hooks/note.py::_plan_system`（第 264 行起，`prompts.compose_system(...)` 之前）和
+   `hooks/block.py::_system`（第 128 行），把 `intent.block(ctx.intent)` 放进 system 第一段；`ctx.intent` 要从 `NoteHarnessIn` / `ComposeBlockIn.intent` 带到 `State.ctx`。
+
+### 突变验（`$S/p10_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `listExit` 空任务项不算空 | C3-1 空项参数化 `- [ ] ` / `- [x] ` |
+| `undoUnit` 回到一次 `dispatch(specA, specB)` | C3-2「四片隔 >500ms…一次 undo 全撤」 |
+| `htmlPaste` 转出来跟 plain 只差空白也转 | C3-3「什么时候不转」（「没有语义标签就不转」那条抓不到：没有语义标签的 HTML 转出来必然跟 plain 只差空白，它只是个省事的早退） |
+| `htmlPaste` 嵌套列表不缩进 | C3-3「有序列表 start / 嵌套…」 |
+| `splitCached` 全当没见过 | C3-5 |
+| `cardPlacement` 放不下也贴右边 | 「放不下…绝不伸出正文栏」 |
+| `.mm-unsupported` 回到 `--muted` 实心 | `check-margin-dots` |
+| App ⌘/ 不看 `defaultPrevented` | 「App 的 ⌘/ 分支先看 defaultPrevented」 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2101 passed**（= 基线，后端没改）。
+- 前端 `npm test`：**58 文件 / 343 条**（基线 57 / 321；+`p10Editor.test.ts` 22 条）+ 新闸 `check-margin-dots` 全绿；`check-ui-tokens` 第一版被抓到探针里模拟 VS Code 剪贴板的 `#d4d4d4`——换成命名色。
+- 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**；`backend/data/backups/` 没有新文件；`~/Library/Application Support` 没碰（`MEMOKET_USER_DATA=$S/p10userdata`）。
+- 真模型调用 **0 次**（全部假服务 `ok` / `slowstream`）；桌面壳截图 / 探针跑了约 25 次。
+- 截图：`p10-card-after-{light,dark}.png`（before 是 P9 的 `p9-margin-after-{light,dark}.png`）；`p10-dots-before-{light,dark}.png` → `p10-dots-after-{light,dark}.png`；
+  五条基本功的证据是日志 `p10-{keys,undo,paste,ime,perf}-before.log` → `-after.log`（截图 `p10-*-before/after.png` 只是当时的画面）。
