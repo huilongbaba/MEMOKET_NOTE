@@ -62,6 +62,10 @@ const CHECKS: Record<string, string> = {
   no_fake_charts: '用文字冒充图',
   charts_from_tools: '图不是工具画的',
   unsupported_specifics: '具体数字查无出处',
+  // P8 的三条（问题 7 / 8 / 10）
+  chart_restates_list: '图只是把清单再画一遍',
+  language_consistent: '换了语言',
+  no_foreign_script: '混进了乱码字符',
   section_budget: '这一节还没写够',
   chart_numbers_grounded: '图里的数字没依据',
   chart_readable: '图读不出来',

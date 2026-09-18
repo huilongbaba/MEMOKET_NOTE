@@ -384,6 +384,18 @@ MAGIC_TAP_SYSTEM = f"""你是写作助手，负责接着用户的文字往下写
 """
 
 
+# 不画图的那一份（P8 问题 7）：`note` 模式从 P8 起不带 chart 组——P5 / P6 十跑最终正文
+# 5 张 mermaid 里只有 1 张用户会留，其余是把紧挨着的清单再画一遍，而 `_MERMAID_HINT`
+# 那句「遇到就画」正是它们的来处。要图走「/ 智能插图」。**除了这一条，两份一字不差**
+# （`.replace` 换掉的就是那一段），别的规矩不因为不画图而少。
+_NO_CHART_NOTE = """**这条续写不画图。** 不要写 ```mermaid 代码块——续写整篇没有画图工具，
+手写的图没验证过、也常常只是把上面的清单再画一遍。用户要图会用「/ 智能插图」。
+顺序步骤用有序列表写，依赖 / 分支用一两句话说清楚就够。"""
+
+MAGIC_TAP_SYSTEM_NOCHART = MAGIC_TAP_SYSTEM.replace(_MERMAID_HINT, _NO_CHART_NOTE)
+assert MAGIC_TAP_SYSTEM_NOCHART != MAGIC_TAP_SYSTEM, "画图提示那一段没换掉——`_MERMAID_HINT` 的拼法变了？"
+
+
 def skeleton_user(title: str, content: str, profile: list[str]) -> str:
     parts = []
     block = profile_block(profile)

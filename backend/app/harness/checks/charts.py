@@ -15,6 +15,8 @@ averages and writes mermaid that doesn't render -- both observed.
 
 from __future__ import annotations
 
+import re
+
 from . import blockcheck
 from ..state import State
 from ..types import Verdict
@@ -111,6 +113,16 @@ def charts_from_tools(st: State) -> Verdict | None:
     bad = blockcheck.unauthorized_charts(st.content, allowed)
     if not bad:
         return None
+    if "chart" not in st.mode.groups:
+        # 这个模式手上没有画图工具（P8 问题 7：`note` 摘掉了 chart 组）。让它「下一轮再调
+        # render_chart」是在要求一件做不到的事（第 606 轮那种死锁）；这里直接把手写的
+        # 摘掉——最简流程图（`is_plain_flowchart`）不在 `bad` 里，照旧放行。
+        return Verdict(
+            pick_dimension(st, "has_charts", "chart_validity"),
+            f"这里有 {len(bad)} 张手写的 mermaid 图（{'; '.join(bad)}）。续写整篇不画图——"
+            "要图请用「/ 智能插图」，那条路的图是工具画的、验证过能渲染。已摘掉。",
+            fix=lambda text: _drop_unauthorized(text, allowed),
+        )
     return Verdict(
         pick_dimension(st, "has_charts", "chart_validity"),
         f"这里有 {len(bad)} 张 mermaid 图不是工具画的（{'; '.join(bad)}），是手写的、模仿工具"
@@ -119,6 +131,105 @@ def charts_from_tools(st: State) -> Verdict | None:
         "就在下一轮取材料那一步再调一次 render_chart（写正文这一步没有工具可用）。"
         "——只有最简流程图例外：`graph TD` / `flowchart LR` 加几行 `A[甲] --> B[乙]`，"
         "那一种自己写没问题，上面这几张不是那一种。",
+    )
+
+
+def _drop_blocks(text: str, should_drop) -> str:
+    """把 ``should_drop(规范化后的块内容)`` 为真的 ```mermaid 块整块摘掉（连同它后面的空行）。"""
+    def _sub(m):
+        body = "\n".join(ln.rstrip() for ln in m.group(1).strip().split("\n"))
+        return "" if should_drop(body) else m.group(0)
+    out = re.sub(r"```mermaid\n(.*?)```[ \t]*\n?", _sub, text or "", flags=re.S)
+    return re.sub(r"\n{3,}", "\n\n", out)
+
+
+def _drop_unauthorized(text: str, allowed: list[str]) -> str:
+    ok = set(allowed)
+    return _drop_blocks(text, lambda b: b not in ok and not blockcheck.is_plain_flowchart(b))
+
+
+# ------------------------------------------------- 图只是把清单 / 段落再画一遍（P8 问题 7）---
+#
+# P5 / P6 十跑最终正文里 5 张 mermaid，人读只有 1 张用户会留（P6 `603dca` 那张核实
+# 流程：节点「纳入横向比较」「标记为待核实判断」「继续补问」正文里都没有，图在说新东西）。
+# 另外 4 张全是**把紧挨着的清单 / 段落逐节点重画一遍**：P6 `e783` 那张 `graph LR`
+# 七个节点「教师现场录制 → 自动提交素材 → 转码与摘要 → …」，上面就是同样的四步有序
+# 清单 + 一段「教师开始录制，素材自动进入处理流程…」；P5 `da080` 两张的节点
+# 「7月29日老MP最终确认 → 预留5天buffer → 8月5日完成生产」逐字来自前一段。
+# `_MERMAID_HINT` 明写「图跟正文讲同一件事是正常的」——对依赖 / 分支成立，对一条
+# 顺序清单不成立：读者刚读完四步，再看一张四个框的图，没有一点新信息。
+#
+# 判法零模型：图里每个节点标签的特征词（`relevance.terms`），在图前后各 4 段正文里
+# 找得到 ≥ `RESTATE_NODE_COVER` 的，算「正文已经说过」；≥ 3 个节点、其中
+# ≥ `RESTATE_CHART_COVER` 的节点都说过 → 这张图是复述。`603dca` 那张 7 个节点里
+# 只有 1 个盖住（14%），`e783` 那张 7/7，`da080` 两张 4/4、6/6——分界很宽。
+# 开跑前就有的图不判（用户自己画的）。可自动修：整块摘掉，正文一个字不动。
+
+RESTATE_NODE_COVER = 0.5
+RESTATE_CHART_COVER = 0.8
+RESTATE_WINDOW = 4          # 图前后各看几段
+RESTATE_MIN_NODES = 3
+
+_NODE_LABEL = re.compile(
+    r"\[\[([^\]]+)\]\]|\(\(([^)]+)\)\)|\[([^\]]+)\]|\(([^)]+)\)|\{([^}]+)\}|\|([^|]+)\|")
+
+
+def chart_node_labels(block: str) -> list[str]:
+    """一块 mermaid 里的节点 / 边标签（去重保序）。"""
+    out: list[str] = []
+    for m in _NODE_LABEL.finditer(block or ""):
+        label = next((g for g in m.groups() if g), "").strip().strip('"')
+        if label and label not in out:
+            out.append(label)
+    return out
+
+
+def chart_restates(block: str, around: str) -> tuple[int, int]:
+    """``(说过的节点数, 节点总数)``——每个节点标签的特征词在 `around` 里盖住了多少。"""
+    from .relevance import terms
+    ctx = terms(around)
+    # 没有特征词的标签（边上的「是」「否」、单个字母）判不了，不进分母
+    labels = [(label, terms(label)) for label in chart_node_labels(block)]
+    labels = [(label, lt) for label, lt in labels if lt]
+    said = sum(1 for _label, lt in labels if len(lt & ctx) / len(lt) >= RESTATE_NODE_COVER)
+    return said, len(labels)
+
+
+def restating_charts(content: str, before: str = "") -> list[tuple[str, int, int]]:
+    """正文里那些只是把周围文字再画一遍的图：``[(块内容, 说过的节点, 节点总数)]``。
+    `before` 里就有的块不算。"""
+    was = set(blockcheck.mermaid_blocks(before))
+    paras = re.split(r"\n\s*\n", content or "")
+    out: list[tuple[str, int, int]] = []
+    for i, para in enumerate(paras):
+        if not para.strip().startswith("```mermaid"):
+            continue
+        blocks = blockcheck.mermaid_blocks(para)
+        if not blocks or blocks[0] in was:
+            continue
+        window = [p for p in paras[max(0, i - RESTATE_WINDOW):i] + paras[i + 1:i + 1 + RESTATE_WINDOW]
+                  if not p.strip().startswith("```")]
+        said, total = chart_restates(blocks[0], "\n\n".join(window))
+        if total >= RESTATE_MIN_NODES and said / total >= RESTATE_CHART_COVER:
+            out.append((blocks[0], said, total))
+    return out
+
+
+def chart_restates_list(st: State) -> Verdict | None:
+    """这次跑画的图只是把紧挨着的清单 / 段落逐节点重画了一遍。可自动修：整块摘掉。"""
+    before = str(st.bag.get("content_at_start") or "")
+    hits = restating_charts(st.content, before)
+    if not hits:
+        return None
+    block, said, total = hits[0]
+    gone = {b for b, _s, _t in hits}
+    head = chart_node_labels(block)[:3]
+    return Verdict(
+        pick_dimension(st, "has_charts", "non_repetition"),
+        f"这张图的 {total} 个节点里 {said} 个（{'、'.join(head)}…）正文紧挨着的清单 / 段落已经逐条说过了，"
+        "图没有带来新信息，已摘掉。图只在正文没法一眼看清的关系上画（分支 / 依赖 / 多方牵扯），"
+        "顺序清单本身就是图。",
+        fix=lambda text: _drop_blocks(text, lambda b: b in gone),
     )
 
 

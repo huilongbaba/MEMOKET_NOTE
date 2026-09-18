@@ -58,7 +58,7 @@ flowchart TB
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
     MW["Middleware ×20<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Cited Revise Repair Runtime Replan Sections Save Checklist"]
-    CHK["checks/ ×17 代码判据<br/>+ rubric 模型打分"]
+    CHK["checks/ ×19 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 22 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 25 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -201,9 +201,15 @@ backend/app/
       · edits（跑完落一版正文 + 开一行采集用户接下来对它做了什么，计划 9.1）
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
-    checks/                  22 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+    checks/                  25 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · numbers · instructions · claims
       · budget · blockcheck · rubric · pick
+      · relevance（P8 问题 5：材料进 prompt 前的零模型相关性筛——只认「从 >1000 条的主题里抽样回来
+        **且** 跟标题 + 骨架 + 正文 + 这次跑的查询零重合」的；纯函数，`hooks/note.prepare` 调。
+        **P8 退回：默认只记不剔**（`params.RELEVANCE_FILTER`，真剔那版让 da080 / 3a3a 变差），
+        开着时也剔不到 `MIN_KEPT = 3` 条以下）
+      · language（P8 问题 8 / 10：正文主语言（CJK 字 vs 拉丁字母占比）+ `language_consistent`
+        这次写的换了语言；`no_foreign_script` 混进正文没有的书写系统的字符（实拍「મંત્રી」「अ」），可自动修）
         （instructions 是批 17 / 阶段 6.2：用户那条指令里**能用代码判准**的那几类约束
          ——字数 / 段数 / 「必须提到 X」/ 「用表格」。它挂在 Mode 上的方式跟别的判据不同，
          由 `middleware/checklist` 在开跑时按这一次的指令装，所以不算进上面那个 19）
@@ -331,7 +337,7 @@ RUN_FINISHED(content, reason, run_id?)
 正文，必须在 `Sections` 拼「小节索引 + 当前小节逐字」之前——否则续写 prompt 拿到的
 是**修订前**的正文（这条依赖是从 `Compact` 原样继承的，它当年就是为这件事写的）。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（22 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（25 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 **打分器能看见什么**（批 8 改过一轮，改之前这里是一笔空账）：
@@ -470,7 +476,7 @@ State: mode · ctx(user/note/cursor) · request · round
 
 | key | label | 工具组 | extra_mw | stop_when | 轮数 | 维度 |
 |---|---|---|---|---|---|---|
-| `note` | 续写整篇 | memory · skill · chart · longform | Cited Revise Repair Runtime Replan Sections Save | check_stuck · material_used_up · stalled · nothing_left_to_fix · pause_for_review | 8 | spine_fidelity · beat_coverage · non_repetition · factual_grounding · coherence · material_use · style_fit |
+| `note` | 续写整篇 | memory · skill · longform（P8 起不带 chart：要图走「/ 智能插图」） | Cited Revise Repair Runtime Replan Sections Save | check_stuck · material_used_up · stalled · nothing_left_to_fix · pause_for_review | 8 | spine_fidelity · beat_coverage · non_repetition · factual_grounding · coherence · material_use · style_fit |
 | `section` | 分段写作 | memory · skill · chart · longform | Cited Revise Repair Sections Save | check_stuck · material_used_up · pause_for_review | 4 | topic_fidelity · non_repetition · factual_grounding · material_use · coherence · style_fit |
 | `eda` | 数据可视化 | data · chart · memory · skill | — | — | 3 | numbers_from_tools · honest_caveats · has_charts · no_duplicate_charts · covers_the_data · fits_context · actionable |
 | `chart` | 智能插图 | data · chart · image · memory · skill | — | — | 3 | chart_validity · data_grounding · right_kind · fits_context |
@@ -521,7 +527,7 @@ Mode 按需追加的：
 | 名字 | 谁用 | 做什么 |
 |---|---|---|
 | **Cited** | note · section | **正文里已经引着的事实展开成材料**（P6 问题 2）：正文里的 `[id]` 不在 `st.facts` 里的，先从这次跑攒下的全量 `facts_all` 按 id 找（滚出 `fact_budget` 窗口的就在这儿，零 I/O），找不到的（用户自己贴的、上一次跑留下的）才 `fact_by_id`，一次跑每个 id 只查一次。结果放 `bag["cited_facts"]`，打分（`loop._evaluate`）和修订（`Revise`）都读；**不进 `st.facts`**——那份是「这次检索回来的」，`dry_rounds` / `material_used` 按它算。P5 实拍：a941 用户贴的 9 条正确引用被删 8 条、理由全是「不在本轮材料里」；603dca 第 6 轮打分说滚出窗口的 `1604-18F4`「没有对应事实」→ `regressed` 扔掉 5 轮 |
-| **Revise** | note · section | 写新的之前先改已有正文（修订 pass，`max_tokens=4000`，截断时报 `dropped`）。**P6 起 replace / delete 不许落在开跑前就有的段落上**（`revision.user_text_touched`，量程 `content_at_start`；打磨模式不拦；编号 / 层级 / 标点这类不换字的机械修正放行），拦下的逐条发 `dropped`、跑完发一条合计；`text` 里带元话语的整条丢（`revision.meta_in_text`），不再落地后切句 |
+| **Revise** | note · section | 写新的之前先改已有正文（修订 pass，`max_tokens=4000`，截断时报 `dropped`）。**P6 起 replace / delete 不许落在开跑前就有的段落上**（`revision.user_text_touched`，量程 `content_at_start`；打磨模式不拦；编号 / 层级 / 标点这类不换字的机械修正放行），拦下的逐条发 `dropped`、跑完发一条合计；`text` 里带元话语的整条丢（`revision.meta_in_text`），不再落地后切句。**P8 又三条**：delete / replace 的范围后面紧跟着 `[编号]` 串时，这条修订自己的 `anchor_end` 延长到吞掉编号（`revision.absorb_trailing_citations`，事件带出去的就是延长后的，客户端按同一条重放——`apply_revision` 和前端那份判据表一字没动）；一段里只剩编号没有正文 → 整段删、走 `scrub` 镜像（`drop_citation_only_paragraphs`）；replace 换掉的引用必须来自同一场会议（事实 id 的中段 = unit，`source_switch`），换语言的 text 整条丢（`checks/language.switched`） |
 | **Repair** | note · section | 把这一轮的打分读成下一轮的计划（弱在覆盖 → 多写；弱在质量 → 多改）。内在质量 = `non_repetition` · `coherence` · `topic_fidelity`（**跑题是已写文字的缺陷，后面补几段切题的不会让它不跑题**——所以跟重复同一族，排「只修不写」）；覆盖度 = `beat_coverage` · `section_coverage` · `material_use`。两族必须互不重叠、且长文维度不能一族都不落（孤儿的分数只能停机、驱动不了修复），`tests/test_check_stuck.py` 有两条断言钉着 |
 | **Runtime** | note | 策略控制器（`policy.py`）：上一轮反馈 → 下一轮的工具预算 / 温度 / 修订额度 / 是否要求溯源 |
 | **Replan** | note | 骨架中途重规划（`replan_rules.py` 约束：能更新，不能把目标改到不收敛） |
@@ -533,7 +539,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 22 条 check（代码判据）
+## 8. 25 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -560,7 +566,11 @@ Mode 按需追加的：
 | `chart_readable` | has_charts / chart_validity / coherence | | VisEval 的 **readability 档**：y 轴没名字、多系列图的图例数不上、类目多到读不出、x 轴标签被 `safe_label` 截断（「三月Kickstarte…」）、流程图节点过多（批 16 / 阶段 5.3） |
 | `unsupported_specifics` | factual_grounding / no_fabrication / material_use | | **decompose-then-verify**（批 18 / 阶段 7.1，[IND] §8① 的 FActScore / SAFE / VeriScore）：把这一轮写的正文拆成**句级**单元，抽出能机械核对的原子，逐条去对那份封闭的本地材料。原子只有两类——**完整日期**（年月日三字段齐全）和**署名里的那个拉丁名字**（`X 说 / 提到 / 确认…`），两类在 24 篇 `origin=user` 真实笔记上两个档都 0 开火。另外四类量完之后明确不取（两字段日期 21.7% 误伤 / 中文人名 4 个候选 3 个是错的 / 所有拉丁专名 45.4% / 正文统计量 47.3%，详见 `checks/claims.py` 模块文档）。SAFE 第三步「这条值不值得查」在这里是**结构性**的：整条流水线只有正文→源头一个方向，「检索到的事实没用完」产生不了任何裁决 |
 
-- **第 22 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
+| `chart_restates_list` | has_charts / non_repetition | ✔ 整块摘掉 | **这次跑画的图只是把紧挨着的清单 / 段落逐节点重画一遍**（P8 问题 7）：P5 / P6 十跑最终正文 5 张 mermaid，人读只有 1 张用户会留（P6 `603dca` 那张核实流程，7 个节点里正文只说过 1 个），其余 4 张节点逐字来自上面的四步清单 / 前一段（e783 7/7、da080 4/4 与 6/6）。判法零模型：每个节点标签的特征词在图前后各 4 段里盖住 ≥ 50% 算「说过」，≥ 3 个节点且 ≥ 80% 说过 → 复述。开跑前就有的图不判 |
+| `language_consistent` | style_fit / fits_context / **mechanics** | | **这次跑新写的内容跟开跑前正文的主语言不一致**（P8 问题 8，a941 实拍：英文笔记被修订「翻译并压缩」成中文）。主语言由代码定（CJK 字数 vs 拉丁字母数 / 4，≥ 40 个字才判），不靠模型、不靠 profile——没有偏好档的用户没有 `style_fit`，此前没有任何一维在看语言。同一份量程也拦修订：`reject_revision(body_lang=)` 把换语言的 text 整条丢 |
+| `no_foreign_script` | **mechanics** | ✔ 摘掉那几个字符 | **混进了这篇笔记没有的书写系统的字符**（P8 问题 10，两次实拍：P6 e783 段末「મંત્રી」、P5 da080 打分器点名「अ」）。「正文脚本」= 开跑前正文 + 这轮材料里出现过的 Unicode 块，CJK / 拉丁 / 希腊 / 西里尔 / 数字标点符号 emoji 一律常见块；其余块的字符出现在这次写的字里就摘掉。用户自己写阿拉伯文 / 泰文不受影响 |
+
+- **第 26 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
   `instruction_constraints`（批 17 / 阶段 6.2）判的是用户那条指令里可程序验证的约束，
   内容来自用户刚打的那句话，所以由 `middleware/checklist` 在 `before_run` 里
   `dataclasses.replace` 进这一次跑的 Mode。上面那个 19 是「写死在 Mode 上的判据」，
@@ -653,7 +663,7 @@ Mode 按需追加的：
 | CUSTOM 名 | 什么时候 |
 |---|---|
 | `skeleton` | 自动生成 / 读回的骨架 |
-| `round_summary` | 这一轮取到了什么（Provenance）。批 24 起还带**「这一轮为什么这么跑」**（计划 12.1）：`steer` / `steer_dim` 上一轮最弱那一维的诊断原话、`steer_material` 它是不是**检索**改善得了的那一类（`policy.MATERIAL_DIMS`）、`steer_in_plan` 它有没有真的进这一轮的检索规划 prompt（**`null` = 这一轮压根没有检索规划这一步**，跟 `false` 不是一回事）、`checks_total` 这个模式一共几条代码判据（命中的那几条走 `check_hit`，分母只有这里给得出来）、`depth_dropped` 有几发检索被深度门丢掉（`truncated` 特意不算它们，于是它此前在任何一个数上都不存在） |
+| `round_summary` | 这一轮取到了什么（Provenance）。批 24 起还带**「这一轮为什么这么跑」**（计划 12.1）：`steer` / `steer_dim` 上一轮最弱那一维的诊断原话、`steer_material` 它是不是**检索**改善得了的那一类（`policy.MATERIAL_DIMS`）、`steer_in_plan` 它有没有真的进这一轮的检索规划 prompt（**`null` = 这一轮压根没有检索规划这一步**，跟 `false` 不是一回事）、`checks_total` 这个模式一共几条代码判据（命中的那几条走 `check_hit`，分母只有这里给得出来）、`depth_dropped` 有几发检索被深度门丢掉（`truncated` 特意不算它们，于是它此前在任何一个数上都不存在）；P8 起再带 `facts_irrelevant` / `irrelevant_sample` / `irrelevant_dropped`：相关性筛认出来的「抽样来的、零重合」材料条数和前三条（`checks/relevance`）；`irrelevant_dropped=false`（默认，`params.RELEVANCE_FILTER` 关）= 只标出来、还在 prompt 里，界面写「标出 N 条」，开了才写「筛掉 N 条」 |
 | `revision` | 应用了一条修订（op / anchor / reason / sources） |
 | `dropped` | 一条修订被防线丢了（不是错误：同义重写、锚点歧义、切出破字、动到用户标题、输出被截断、整句插到一句话中间——第 570 轮用户实拍「…漏斗后半段：如果要把…；KOL 是否愿意…」） |
 | `scrub` | 服务端在轮内整句删掉的元话语（`sentence` 全量 + `why`）：客户端在本地正文里删同一句。`revision` 的 `anchor` / `text` 也是全量——客户端拿它本地重放，截过就会插半句 / 定位失败（第 375–382 轮真跑抓到的） |
@@ -1027,6 +1037,7 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | **落库加一列之后要问「它的每个取值都真写得进去吗」** | 批 22：`harness_runs.stopped` 从加进来那天起就记不到 `max_rounds`——实测 158 次跑里 17 次跑满，而库里那一档 **0 行**，因为 `History` 那一侧把「跑满」和「打分失败」混成了同一个 `st.ev is None`。**批 27 把它当成加列的前置动作做了一次**：三列探针（`claim_atoms` / `fired_checks` / `abstained`）落库之前先把取值列全，再**逐个构造真能出现的那个局面**验一遍（`tests/test_round_probes.py`，一个取值一条，不是往 bag 里塞值）。这条规矩逼出了三处设计：① `claim_atoms` 用 **-1** 表示「这个模式压根没有那条判据」，跟「判了、0 个候选」分开；② 探针**算在判据循环之前**而不是挂在 `unsupported_specifics` 里面——循环是「第一条命中的赢」，挂在里面的话别的判据先短路这一轮就什么都记不到，而那正是最该看的那些轮；③ `fired_checks` 是**数组**，因为 `STUCK_ROUNDS` 卡死放行之后后面还能再命中一条。库里还会有一个 `DEFAULT ''`——**活着的跑一次都写不出它**，这件事明写在取值表里，免得下一个人把它当成一档 |
 | **一个可能为空的量程，就不是量程** | 批 27：修 bench 的 `derived_facts` 切句口径时，第一版把 markdown 结构（表格行、围栏内容）整条剔了——干净利落，而且两篇 markdown 重的笔记上效果立竿见影。**但 `chart-block` / `table-block` 那几条 probe 的选区本身就是一整块图或表**，剔干净之后材料是空的，而 `data_grounding` / `numbers_from_tools` 正是靠材料里那几个数判的。抓住它的是一条**批 8 留下的老闸**（`test_真正发出去的那一格带的就是生产那份上下文`），不是新写的。改法不是「删掉」是「**排序**」：散文一档、只能当语法读的一档，散文摘得够就轮不到后者。*剔排版的时候，先问被剔掉的那一块是不是某个量程的唯一来源* |
 | **「报不报」和「动不动」是同一条量程；判据不看它，修订也不看它，两边都会去打用户的字** | P6（第 772 轮）：批 21 把 `no_audit_voice` 的量程收到 `content_at_start`，收的是「报不报」；同一个量程在**三处**没接上——修订的 replace / delete 锚点、打分器 `factual_grounding` 判的范围、修订提示词里「哪些段落能改」——于是 P5 五篇真实笔记 85 条修订 40 条落在用户段落上、四篇被打分器拿用户原文判「查无此事」。修法不是三处各写一份判断，是一条 `user_text_touched(before=)` + 一块「这次跑新写的句子」，量程都从 `content_at_start` 来。**顺手第七次**：`fix_bold_punct` 在同一条落盘路上对整篇跑，把用户的 `**保留**…；**停止**` 配错对——一条对「整篇」跑的变换，默认就在动用户的字 |
+| **「相关不相关」量的不是正文重合，是来处** | P8（第 773 轮）：给 P5 那五篇的 80 条材料逐条数「跟标题 + 骨架 + 正文共用几个词元」，人读相关的（da080 六条填空节的时间线、603dca 那条 310 / 265 / 235 的房价）重合 **0–2**，人读无关的（a941 / 3a3a 的 EVT / PCBA、Angela 那场访谈）也是 **0–2**——来填空节的材料跟已有正文不重合是必然，任何一个整体阈值都会剔掉相关的、留下无关的。分得开的是**来处**：无关的全部出自 `filter_facts` 返回头「共 N 条，返回 15 条」N > 1000 的桶（一个上千条的桶只返回最近 15 条，那是抽样不是检索），具体主题（≤ 440 条）的返回人读全相关。于是筛法是两个条件同时成立才剔（`checks/relevance.gate`）。**筛对了也可能让产出变差**：真剔那版五篇重跑，da080 第 1 轮三批全是抽样、筛完剩 2 条 → 8 轮（P6 1 轮）、留下 95% → 50%；3a3a 12 条全剔 → `material_thin` 弃答（70% → 40%）——第 1 轮空手的代价比材料脏的代价大。计划铁律第 7 条退回：默认只记不剔（`params.RELEVANCE_FILTER`），开着也剔不到 3 条以下；只记的两篇重跑留下率回到 75 / 70，但 3a3a 的 EVT 又回来一句——**两边都量过了，等 `harness_edits` 攒出「用户留没留」再拍板**。**同一批的另一半**：打分器三次点名「末尾出现异常字符」，回正文核对三处都不在（P5 的「अ」同款）——打分器的话也要回正文核，`no_foreign_script` 只认正文里真有的。**顺手第八次**：`_splits_a_sentence` 对换行开头的 insert 一律放行，603dca 一次跑把用户两句劈成两截——用户原文的第三种动法（P6 拦的是 replace / delete） |
 | **一个「判 0 率」下面可能是三种病，读比例之前先看同格的其他维** | 批 28：批 27 修完 bench 的材料切句和量程，确定性对照五篇全绿，真跑 336 格回来 `factual_grounding` 干净臂判 0 率 **48.1% → 48.7%，双峰原地不动**。逐格读才看出三个峰是三种东西：`06647b9c2031` 的 42 格**全部 ≥3 维同时为 0**（`non_repetition` / `coherence` 均值 0.00）——打分器给整篇机器损伤笔记判死刑，`factual_grounding` 只是陪葬，修材料修不动；`309f19202309` 的 `whole-piece` 档是「材料上限 12 条」对三万字正文的结构性结果；只有 `e78306202d78` 是真的「材料撑不住正文」。而代码可数的「材料盖不住的原子」跟模型的判 0 不相关（`ecfac` 3 个原子判 0 率 0%，`06647` 1 个原子 97.6%）。**修法先是分母口径**（损伤笔记从干净臂里拿出来单独成表），不是判据。同一批还有个同形状的：`eda` 的重复查询率 34.1% → 32.5% 没动，因为 `repeat_calls` 数的是全部工具、而 2.4 的缺口摘要只列 `CACHEABLE` 那八个——**一个分母里混着两种东西，量出来的比例谁也不代表** |
 
 ---

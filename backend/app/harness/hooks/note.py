@@ -30,9 +30,12 @@ from ..agent_loop import ToolTrace
 from ...database import store
 from ...database.retrieval import retrieve as _retrieve
 from ..middleware import ledger as ledger_mw
+from .. import params
 from ..params import (AGENT_TOOLS, CONTINUE_MAX_TOKENS, CONTINUE_TAIL_TOKENS,
                       LEDGER_IN_PROMPT)
-from ..checks.skeleton import check_skeleton
+from ..checks import relevance
+from ..checks.skeleton import (beats_budget, check_skeleton, skeleton_length_rule,
+                               verify_beats)
 from ..events import CUSTOM_WARNING, CUSTOM_SKELETON, Event
 from ..state import State
 
@@ -85,20 +88,25 @@ class NoteHooks:
             self.beats = [txt for _lv, txt in outline.headings(content)][:MAX_OUTLINE_BEATS]
             self.spine = self.spine or f"按用户已有的目录逐节填充：{'、'.join(self.beats[:4])}…"
         elif not self.spine and not self.beats:
-            system = prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton",
-                                            st.ctx.user)
+            # 条数 / 每条字数 / 「已写：待补：」标签的要求跟 `routers/compose.skeleton` 同一份
+            # （P7 改了那边的 `[:6]` → `beats_budget`，这里 P8 同步；P4 #1/#3 的理由在 `checks/skeleton.py`）。
+            budget = beats_budget(len(content))
+            system = (prompts.compose_system(prompts.SKELETON_SYSTEM, "skeleton", st.ctx.user)
+                      + skeleton_length_rule(len(content)))
             try:
                 parsed = await llm.complete_json(
                     [{"role": "system", "content": system},
                      {"role": "user", "content": prompts.skeleton_user(
                          st.ctx.note_title, content, self.profile)}],
-                    max_tokens=800, temperature=0.4)
+                    max_tokens=1600, temperature=0.4)
                 if isinstance(parsed, dict):
                     raw = parsed.get("beats")
                     # 封顶跟落库同一条规则（store.clamp_skeleton）：骨架每轮都整份进 prompt
                     self.spine, self.beats = store.clamp_skeleton(
                         str(parsed.get("spine") or ""),
-                        [str(b) for b in raw][:6] if isinstance(raw, list) else [])
+                        [str(b) for b in raw][:budget] if isinstance(raw, list) else [])
+                    # 「待补」的正文里有没有——代码核对（P4 #2），跟 router 那条路一样
+                    self.beats = verify_beats(self.beats, content)
             except Exception as exc:                   # noqa: BLE001
                 # Scoring still works without a skeleton -- spine_fidelity and
                 # beat_coverage judge on weaker evidence, not on none. Losing
@@ -259,6 +267,19 @@ class NoteHooks:
             if hop_facts:
                 facts = hop_facts + facts
 
+        # 材料进 prompt 前的零模型相关性筛（P8 问题 5）：只认「从上千条的主题里抽样回来
+        # **且** 跟标题 + 骨架 + 正文 + 这次跑自己发过的查询零重合」的。量程和阈值的来历
+        # 在 `checks/relevance.py`。**默认只记不剔**（`params.RELEVANCE_FILTER`，P8 退回：
+        # 真剔的那一版让 da080 / 3a3a 变差）：算出来的记进 bag 给 `Provenance` 报给界面；
+        # 开关打开时才真的从材料里拿掉（那时它们不进 `st.facts`，`material_used` /
+        # `dry_rounds` 只对留下的算），而且剔不到 `relevance.MIN_KEPT` 条以下。
+        context = "\n".join([title or "", spine or "", *beats, st.content,
+                             relevance.queries_of(trace.calls)])
+        facts, dropped = relevance.gate(facts, trace.calls, context,
+                                        apply=params.RELEVANCE_FILTER)
+        st.bag["facts_irrelevant"] = dropped
+        st.bag["facts_irrelevant_dropped"] = bool(params.RELEVANCE_FILTER)
+        st.bag["facts_irrelevant_total"] = int(st.bag.get("facts_irrelevant_total") or 0) + len(dropped)
         return facts, trace
 
     def _plan_system(self, st: State) -> str:
@@ -284,9 +305,12 @@ class NoteHooks:
             return
 
         policy = st.bag.get("policy")
+        # 模式没有 chart 组就用不画图的那一份（P8 问题 7）：`_MERMAID_HINT`「遇到就画」
+        # 是 P5 / P6 那几张复述清单的图的来处；`charts_from_tools` 兜底摘掉手写的。
         base = (prompts.MAGIC_TAP_SYSTEM_LEAN
                 if os.getenv("MEMOKET_LEAN_PROMPT") == "1"
-                else prompts.MAGIC_TAP_SYSTEM)
+                else prompts.MAGIC_TAP_SYSTEM if "chart" in st.mode.groups
+                else prompts.MAGIC_TAP_SYSTEM_NOCHART)
         system = prompts.compose_system(base, st.mode.skill_scope, st.ctx.user,
                                     st.skill_menu, st.skill_bodies)
 

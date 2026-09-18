@@ -157,6 +157,73 @@ class Origin:
         return self.kind == ORIGIN_USER
 
 
+# ------------------------------------------------------- 「损伤」一档（P8 问题 9）---
+#
+# 血缘之外的第二个轴：**这篇用户笔记带不带上一轮 harness 写坏的机器损伤**。P5 选样时
+# 读出来两篇（`c3464ab74c7d` 正文里成片 20+ 行空行、结尾两节把前文重述一遍；
+# `574f4ff29956`「再用反馈、节点和结果检验它是，而是在用户反馈…」这种从句中拼接的残句），
+# 加上批 28 早就点名的 `06647b9c2031`（同一句「下一轮 10 台到货…」逐字重复 6 遍）——
+# 三篇都判 `user`，`load_notes()` 照样把它们当干净语料交出去。批 28 §21 那条
+# 「一个判 0 率下面可能是三种病」：损伤笔记从干净臂里拿出来单独成表，是分母口径的事。
+#
+# **只标不改**：`annotate()` 多两个字段 `damaged` / `damage_reason`，`load_notes()` 的
+# `keep` 语义不变；要排掉的调用方自己按 `damaged` 筛。判据全是形状，每一条都对着
+# 上面三篇的实拍写，并且在 24 篇 `user` 笔记上量过误伤（P8 台账问题 9 那张表）：
+#   ① 连续 ≥ DAMAGE_BLANK_RUN 行空行（围栏代码块里的不算，文末的不算）——
+#      修订 delete 留下的 `\n\n` + `\n\n` 攒起来的样子（c3464：23 / 11 / 5 / 5 行）；
+#      **不是 3**：da080 / 574f 都有一处 3 行，那是用户自己多敲的回车；
+#   ② 拼接残句：`是，而是`（前面不是「不 / 非 / 并」）、`、和 / 、及 / 、与`、`数字.月`、
+#      标点连缀 `：、` `。，`、以顿号 / 逗号起头的行——`revision._BROKEN` 抓的就是这几种，
+#      这里抄一份而不是 import：这个模块按约定不依赖 app 代码；
+#   ③ 同一句（≥ 20 字）逐字出现 ≥ DAMAGE_REPEAT_TIMES 次（06647 那句 6 遍）。
+#
+# **量完不取的一条**：「一段散文停在半句上」（c3464 的「该决定需在24」「的影响：是」）。
+# 在 24 篇 `user` 笔记上跑，它多标出 3 篇——`309f19202309` / `715266c1fcb4` 两篇三万字的
+# 「公司汇报」（转写导入，本来就一行一句没有句读）和 `ecfac1f3c0aa`；c3464 自己已经被
+# ① 标住。三个误伤换零个新命中，不取。
+
+DAMAGE_BLANK_RUN = 5
+DAMAGE_REPEAT_TIMES = 3
+_SPLICE = re.compile(r"(?<![不非并])是，而是"
+                     r"|、[和及与]"
+                     r"|\d\.月"
+                     r"|[：:，,。.；;！!？?]\s*[、，,；;]"
+                     r"|(?:^|\n)\s*[、，,；;]")
+_SENT_SPLIT = re.compile(r"(?<=[。！？!?])")
+
+
+def damage(content: str) -> str:
+    """一篇正文带不带机器损伤：返回第一条命中的理由，没有返回空串。纯函数。"""
+    text = content or ""
+    # ① 空行成片（围栏外、非文末）
+    run, start, in_fence = 0, 0, False
+    lines = text.split("\n")
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith("```"):
+            in_fence = not in_fence
+        if not in_fence and not ln.strip():
+            run += 1
+            continue
+        if run >= DAMAGE_BLANK_RUN:
+            return f"第 {i - run + 1} 行起连续 {run} 行空行"
+        run = 0
+    # ② 拼接残句
+    m = _SPLICE.search(text)
+    if m:
+        where = text[max(0, m.start() - 12):m.end() + 6].replace("\n", "⏎")
+        return f"拼接残句「…{where}…」"
+    # ③ 同一句反复
+    counts: dict[str, int] = {}
+    for sent in _SENT_SPLIT.split(text):
+        s = sent.strip()
+        if len(s) >= 20:
+            counts[s] = counts.get(s, 0) + 1
+    for s, n in counts.items():
+        if n >= DAMAGE_REPEAT_TIMES:
+            return f"同一句逐字出现 {n} 次「{s[:24]}…」"
+    return ""
+
+
 def classify(user_id: str, title: str, lineage: Lineage | None = None) -> Origin:
     """纯函数：`(user_id, title, 血缘)` → 三类之一 + 理由。
 
@@ -209,7 +276,9 @@ def annotate(rows: list[dict], lineage: dict[str, Lineage]) -> list[dict]:
     for row in rows:
         o = classify(row.get("user_id", ""), row.get("title", ""),
                      lineage.get(row.get("id", "")))
-        out.append({**row, "origin": o.kind, "origin_reason": o.reason})
+        why = damage(row.get("content") or "")
+        out.append({**row, "origin": o.kind, "origin_reason": o.reason,
+                    "damaged": bool(why), "damage_reason": why})
     return out
 
 

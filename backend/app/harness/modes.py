@@ -16,13 +16,14 @@ import dataclasses
 from .types import Dimension
 
 from .checks import grounding_rules as grounding_check
-from .checks import (chart_numbers_grounded, chart_readable, charts_from_tools,
-                     citations_exist, citations_present, citations_hold, heading_fits,
-                     material_thin, material_used, no_audit_voice, no_fake_charts,
-                     no_placeholder, no_repeated_lists, no_restated_paragraph,
-                     no_same_sources_twice, numbers_from_tools, outline_intact,
-                     section_budget, table_columns_match, table_present,
-                     tail_clashes, unsupported_specifics)
+from .checks import (chart_numbers_grounded, chart_readable, chart_restates_list,
+                     charts_from_tools, citations_exist, citations_present, citations_hold,
+                     heading_fits, language_consistent, material_thin, material_used,
+                     no_audit_voice, no_fake_charts, no_foreign_script, no_placeholder,
+                     no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
+                     numbers_from_tools, outline_intact, section_budget,
+                     table_columns_match, table_present, tail_clashes,
+                     unsupported_specifics)
 from .middleware import Checklist, Repair, Replan, Runtime, Save, Sections
 from .middleware.cited import Cited
 from .middleware.revise import Revise
@@ -560,16 +561,20 @@ CUSTOM_DIMS = (_FOLLOWS_PROMPT, _REPLACES_CLEANLY, _NO_FABRICATION)
 # over from compose_block.MODES during migration. What matters here is the
 # shape: which tools, which dimensions, which checks, how many rounds.
 
-# **两个长文模式都要带 chart 组。** 它们本来只有 ("memory", "skill")，却双双挂着
-# `no_fake_charts` / `charts_from_tools` 两条判据——而那两条的原话是「调
-# chart_column / render_chart / chart_from_text」。**判据要求的修法，模型手上
-# 根本没有那个工具**：它只能手写 mermaid，被拦，再手写。第 606 轮真跑实拍，
-# 文件夹三节里有两节的第 1、2、4 轮全烧在这上面，每轮都是同一条判据。
-# 模型每一轮都想画图这件事本身就是证据：长文该能有图。
+# **挂着「要图」判据的模式必须带 chart 组**（第 606 轮）：`no_fake_charts` 的原话是
+# 「调 render_chart」，模型手上没有那个工具就只能手写 mermaid，被拦，再手写——
+# 文件夹三节里有两节的第 1、2、4 轮全烧在这上面。`section` 照旧带。
+#
+# **`note` 从 P8 起不带 chart 组、也不挂 `no_fake_charts`**（P8 问题 7）：P5 / P6
+# 十跑最终正文 5 张 mermaid，人读只有 1 张用户会留，其余 4 张是把紧挨着的清单 /
+# 段落逐节点重画一遍（da080 两张、e783 两次各一张）。要图的路是「/ 智能插图」
+# （`CHART` 模式，工具画、验证过能渲染）。`charts_from_tools` 留着：没有 chart 组时
+# 它把手写的非最简 mermaid 直接摘掉（`fix`），不再要求「下一轮再调工具」；
+# `chart_restates_list` 管剩下的那一种——手写最简流程图把清单再画一遍。
 NOTE = Mode(
     key="note",
     label="续写整篇",
-    groups=("memory", "skill", "chart", "longform"),
+    groups=("memory", "skill", "longform"),
     skill_scope="magic_tap",
     dims=(),                      # runtime-shaped; see for_run()
     # 阶段 7 的两条（批 18）：`material_thin` **必须排在 `citations_present`
@@ -577,10 +582,14 @@ NOTE = Mode(
     # 而根本没有可引的东西，一个照办不了的诊断会把剩下的轮次烧光。
     # `unsupported_specifics` 排在末尾：它报的是「这几个字面查无出处」，
     # 比「一条引用都没有 / 有占位符」更细，粗的先说。两条都有闸钉着顺序。
-    checks=(no_placeholder, no_audit_voice, outline_intact, citations_hold,
+    # P8 的三条排在前面：`no_foreign_script` / `chart_restates_list` 是能自动修的机械
+    # 缺陷（修好了不算命中、不短路）；`language_consistent` 是「这一轮写错了语言」，
+    # 比「没引用」更该先说。
+    checks=(no_foreign_script, chart_restates_list, language_consistent,
+            no_placeholder, no_audit_voice, outline_intact, citations_hold,
             citations_exist, material_thin, citations_present, material_used,
             no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
-            no_fake_charts, charts_from_tools, unsupported_specifics),
+            charts_from_tools, unsupported_specifics),
     # `check_stuck` 排在最前（P6 问题 4）：判据连响三轮说的是「这次跑动不了
     # 它」，比材料用完 / 卡住更早该看见；两条同时成立时用户更需要知道前者。
     stop_when=(check_stuck, material_used_up, stalled, nothing_left_to_fix,
@@ -601,7 +610,8 @@ SECTION = Mode(
     # 那一面」，而前面每一条说的都是「已经写的这些有毛病」。一条「接着写」的
     # 诊断压在一条「这里有占位符 / 引用是编的」前面，等于让模型在一堆烂摊子
     # 上再加一段——第 606 轮那次死锁的教训是判据之间的**先后本身就是设计**。
-    checks=(no_placeholder, no_audit_voice, citations_hold, citations_exist,
+    checks=(no_foreign_script, chart_restates_list, language_consistent,
+            no_placeholder, no_audit_voice, citations_hold, citations_exist,
             material_thin, citations_present, material_used, no_repeated_lists,
             no_restated_paragraph, no_same_sources_twice, no_fake_charts,
             charts_from_tools, unsupported_specifics, section_budget),

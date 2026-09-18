@@ -183,12 +183,17 @@ def test_挂了图表判据的模式必须带得动画图的工具():
     from app.harness import modes
     from app.harness.checks import charts as chart_checks
 
-    chart_checks_set = {chart_checks.no_fake_charts, chart_checks.charts_from_tools}
+    # P8 起只有 `no_fake_charts` 是「要图」的判据；`charts_from_tools` 在没有 chart 组的
+    # 模式里不再要求「下一轮再调工具」，而是把手写的直接摘掉（`fix`）——`note` 就是这样
+    # （P8 问题 7：续写整篇不画图，要图走「/ 智能插图」）。
     for mode in (modes.NOTE, modes.SECTION, modes.EDA, modes.CHART):
-        if chart_checks_set & set(mode.checks):
+        if chart_checks.no_fake_charts in mode.checks:
             assert "chart" in mode.groups, (
                 f"{mode.key} 挂了图表判据却没有 chart 工具组——"
                 "判据会要求它做一件它做不到的事，每一轮都要求一次")
+    assert "chart" not in modes.NOTE.groups and chart_checks.no_fake_charts not in modes.NOTE.checks, \
+        "P8：续写整篇不画图（P5 / P6 十跑 5 张图只有 1 张用户会留）"
+    assert chart_checks.charts_from_tools in modes.NOTE.checks, "手写 mermaid 的兜底得留着（没有工具就直接摘掉）"
 
 
 def test_流程图判据点名的工具真的会画流程图():

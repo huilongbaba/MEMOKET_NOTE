@@ -23,7 +23,8 @@ from ...util import llm
 from ...editor import outline
 from ..checks import grounding_rules as grounding_check
 from ..events import CUSTOM_DROPPED, CUSTOM_PHASE_DELTA, CUSTOM_REVISION, CUSTOM_SCRUB, Event
-from ..revision import (apply_revision, breakage, expand_sources, tidy_blank_lines,
+from ..revision import (absorb_trailing_citations, apply_revision, breakage,
+                        drop_citation_only_paragraphs, expand_sources, tidy_blank_lines,
                         reject_revision, user_text_touched)
 from . import save
 from ..state import State
@@ -52,6 +53,14 @@ def _protected(st: State) -> str:
     用户点的就是「改我写的」，这时开跑前的正文不受保护。空串 = 什么都不拦。
     """
     return "" if st.bag.get("polish") else _started_with(st)
+
+
+def _body_lang(st: State) -> str:
+    """开跑前正文的主语言（P8 问题 8），一次跑算一次、放 bag 里给判据和修订守卫共用。"""
+    if "body_lang" not in st.bag:
+        from ..checks.language import main_language
+        st.bag["body_lang"] = main_language(_started_with(st))
+    return str(st.bag.get("body_lang") or "")
 
 
 def fresh_paragraphs(content: str, before: str) -> list[str]:
@@ -216,7 +225,8 @@ class Revise:
                                    {"round": st.round, "detail": why_not})
                 continue
             why_not = reject_revision(st.content, op, anchor, body, anchor_end,
-                                      edited, before=_started_with(st))
+                                      edited, before=_started_with(st),
+                                      body_lang=_body_lang(st))
             if why_not:
                 # Dropping a revision is **the guards working**, not an error.
                 # Reported as an error it renders as a wall of red, and
@@ -225,6 +235,9 @@ class Revise:
                 yield Event.custom(CUSTOM_DROPPED,
                                    {"round": st.round, "detail": why_not})
                 continue
+            # 句子尾巴上的 `[编号]` 跟着句子一起删 / 换（P8 问题 6）：延长的是这条修订
+            # 自己的 anchor_end，事件里带出去的也是它，客户端按同一条重放。
+            anchor_end = absorb_trailing_citations(st.content, op, anchor, anchor_end)
 
             updated = apply_revision(
                 st.content, op, anchor, body,
@@ -293,8 +306,16 @@ class Revise:
             yield Event.custom(CUSTOM_DROPPED, {
                 "round": st.round,
                 "detail": f"删掉一句元话语（不该出现在你的笔记里）：{sentence[:60]}"})
+        # 一段里只剩编号、没有正文（P8 问题 6，da080 实拍「## 下一步」段首那一行）：整段删，
+        # 走 `scrub` 让客户端镜像——整段就是一个「句子」，`applyScrub` 按段对得上。
+        st.content, orphan_paras = drop_citation_only_paragraphs(st.content)
+        for para in orphan_paras:
+            yield Event.custom(CUSTOM_SCRUB, {"round": st.round, "sentence": para, "why": "悬空编号"})
+            yield Event.custom(CUSTOM_DROPPED, {
+                "round": st.round,
+                "detail": f"删掉一段只剩引用编号、没有正文的残留：{para[:60]}"})
 
-        if applied or meta_gone:
+        if applied or meta_gone or orphan_paras:
             # **走 `save.persist`，不自己调 `store.update_note`**（批 16）：
             # 这里自己写库是这个仓第三次写坏用户真实笔记的直接原因——
             # 跑批脚本用 `rails_off=("save",)` 挡写，而那条只摘掉了 `Save`

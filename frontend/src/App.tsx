@@ -1971,6 +1971,10 @@ export default function App() {
           checksTotal: d.checks_total,
           depthDropped: d.depth_dropped ?? 0,
           depthDroppedAll: !!d.depth_dropped_all,
+          // P8 问题 5：进 prompt 前被相关性筛剔掉的材料（从上千条的主题里抽样、跟这篇零重合）
+          factsIrrelevant: d.facts_irrelevant ?? 0,
+          irrelevantDropped: !!d.irrelevant_dropped,
+          irrelevantSample: d.irrelevant_sample ?? [],
     })
         if (d.skipped_continue) {
           setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
@@ -2274,7 +2278,9 @@ export default function App() {
         const label = reason === 'no_more_changes' ? '已经改不动了，打磨结束'
           : reason === 'complete' ? (mode === 'polish' ? '已写内容都达标了，打磨完成' : '内容已完整，自动停止')
           : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
-          : reason === 'stalled' ? '连续几轮没有新内容，自动停止'
+          // P8 问题 10：这条规则数的是**修订**没落地（`no_change_rounds`），不是「没有新内容」
+          // ——P6 e783 停在 stalled 时那两轮续写各写了 393 / 333 字，文案跟机制要对得上。
+          : reason === 'stalled' ? '连续两轮修订都没落地，自动停止（这几轮写的内容留着）'
           : reason === 'regressed' ? '再改反而更差，留下了最好的那轮'
           : reason === 'cost_cap' ? '这次跑到了成本上限，留下了最好的那轮'
           : reason === 'material_used_up' ? '知识库里能用的材料用完了，自动停止'

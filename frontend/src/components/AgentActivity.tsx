@@ -46,6 +46,11 @@ export type AgentRound = {
   /** 这一轮有几发工具调用被深度门丢掉（第 2 轮起只放行深挖类工具）。 */
   depthDropped?: number
   depthDroppedAll?: boolean
+  /** 进 prompt 前被相关性筛剔掉的材料（P8 问题 5）：从上千条的主题里抽样回来、跟这篇零重合的。 */
+  factsIrrelevant?: number
+  /** true = 真的从材料里拿掉了（开关 RELEVANCE_FILTER 开着）；false = 只标出来，还在 prompt 里（P8 退回后的默认）。 */
+  irrelevantDropped?: boolean
+  irrelevantSample?: string[]
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
   phase?: string
   phaseLabel?: string
@@ -228,6 +233,17 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             <div className="muted" style={{ marginBottom: 3 }}>
               有 {r.depthDropped} 发检索被「第 2 轮起只深挖」这条规则丢掉
               {r.depthDroppedAll && '（整批丢光，这一轮的工具循环就此收工）'}
+            </div>
+          )}
+
+          {/* P8 问题 5：从上千条的主题里抽样回来、跟这篇零重合的材料。P8 退回后默认**只标不剔**
+              （它们还在 prompt 里），开关 RELEVANCE_FILTER 打开才真的筛掉——两种措辞要分开，
+              不然用户会以为材料已经没了。 */}
+          {!!r.factsIrrelevant && (
+            <div className="muted" style={{ marginBottom: 3 }}
+                 title={(r.irrelevantSample ?? []).join('\n')}>
+              {r.irrelevantDropped ? '筛掉' : '标出'} {r.factsIrrelevant} 条跟这篇无关的材料（从上千条的主题里抽样来的、跟正文零重合{r.irrelevantDropped ? '' : '；没剔，还在材料里'}）
+              {(r.irrelevantSample ?? []).length > 0 && `：${(r.irrelevantSample ?? [])[0]}…`}
             </div>
           )}
 

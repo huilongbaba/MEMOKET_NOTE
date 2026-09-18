@@ -34,9 +34,12 @@ CHECKS_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "harness" / "
 
 # 一段会被 `no_fake_charts` 当场抓住的正文：用文字描述了一张图。
 FAKE_CHART = "## 渠道\n[柱状图：各渠道点击量 Kickstarter：12700]\n"
+# P8 起 `note` 不挂 `no_fake_charts`（不带 chart 组，续写整篇不画图），拿审计腔那条当
+# 「落兜底桶的判据」的样本：note 没有 profile 时没有 `style_fit`，`no_audit_voice` 落桶。
+AUDIT_VOICE = "## 渠道\n现有材料不足以说明这一点。\n"
 
 
-def _note_state(content: str = FAKE_CHART) -> State:
+def _note_state(content: str = AUDIT_VOICE) -> State:
     st = State(mode=modes.for_run(modes.NOTE), ctx=ToolContext(user="u", note_id="n"))
     st.content = st.fresh = content
     st.trace = ToolTrace()

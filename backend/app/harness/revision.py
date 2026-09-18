@@ -295,9 +295,96 @@ def meta_in_text(text: str, before: str = "") -> str:
     return hits[0] if hits else ""
 
 
+# ============================================ 引用编号跟着句子走（P8 问题 6）===
+#
+# P5 D4 表里 7 处「不支持」的引用有 4 处是同一个形状：`da080ca847cf`「## 下一步」段首
+# 只剩一行 `[terrence-1848-9F11] [terrence-2394-23F4] [terrence-1833-10F1] [terrence-2046-19F10]`
+# ——用户的段落先被 replace、再被一条 delete 删到句号前，**句号后面的编号串留在原地**。
+# `apply_revision` 的范围是「anchor 开头 → anchor_end 结尾」，模型给的 anchor_end
+# 永远是句子的尾巴，编号在尾巴后面。
+#
+# 修法不改 `apply_revision`（它跟前端 `RevisionPanel.applyRevision` 共一张判据表
+# `shared/revision-cases.json`，改语义两边都得改）：**改的是这条修订本身**——
+# delete / replace 的范围紧跟着编号串时，把 anchor_end 延长到吞掉它们；事件里带出去的
+# 就是延长后的 anchor_end，客户端按同一条修订重放，两边一致。
+# 另一半：一段里只剩编号没有正文 → 整段删（`citation_only_paragraphs`），
+# 走 `scrub` 事件让客户端镜像。
+#
+# 第三种病（P5 `a941efecd390`）：replace 把用户引的 `[terrence-1962-50F2]` 换成另一场
+# 访谈的 `[terrence-2051-0F3]`——事实 id 的中段就是来源会议（unit），换掉的引用要求
+# 新旧同一场，否则拦（`source_switch`）。
+
+from .checks.citations import CITE as _CITE_RE
+
+_TRAILING_CITES = re.compile(r"(?:[ \t]*\[[A-Za-z][A-Za-z0-9_-]*-(?:\d+|[0-9a-f]{12})-[0-9A-Fa-f]+\])+")
+
+
+def absorb_trailing_citations(content: str, op: str, anchor: str, anchor_end: str = "") -> str:
+    """delete / replace 的范围后面紧跟着 `[编号]` 串时，返回**延长到吞掉编号串**的 anchor_end；
+    否则原样返回。insert 不动。"""
+    if op not in ("replace", "delete"):
+        return anchor_end
+    i, end = _locate(content, anchor, anchor_end)
+    if i < 0:
+        return anchor_end
+    m = _TRAILING_CITES.match(content, end)
+    if not m:
+        return anchor_end
+    # 延长后的结尾标记 = 原来的结尾 + 编号串；没给结尾标记的，编号串本身就是结尾标记
+    # （`_locate` 从 anchor **之后**找 anchor_end，所以不能把 anchor 再抄一遍）。
+    # 这一串紧贴着范围，一定找得到，而且按「最小跨度」消歧落在同一处。
+    return (anchor_end + m.group(0)) if anchor_end else m.group(0)
+
+
+def citation_only_paragraphs(content: str) -> list[str]:
+    """正文里**只剩编号、没有一个字正文**的段落（按空行切），原样返回。"""
+    out: list[str] = []
+    for para in re.split(r"\n\s*\n", content or ""):
+        p = para.strip()
+        if p and _CITE_RE.search(p) and not _CITE_RE.sub("", p).strip():
+            out.append(p)
+    return out
+
+
+def drop_citation_only_paragraphs(content: str) -> tuple[str, list[str]]:
+    """删掉只剩编号的段落，返回 ``(新正文, 删掉的那几段)``。"""
+    gone = citation_only_paragraphs(content)
+    if not gone:
+        return content, []
+    paras = re.split(r"(\n\s*\n)", content or "")
+    kept = [p for p in paras if p.strip() not in gone]
+    return tidy_blank_lines("".join(kept)), gone
+
+
+def _unit_of(fact_id: str) -> str:
+    """`terrence-2051-0F3` → `2051`（来源会议 / unit）。"""
+    parts = (fact_id or "").split("-")
+    return parts[-2] if len(parts) >= 3 else ""
+
+
+def source_switch(content: str, anchor: str, text: str, anchor_end: str = "") -> str:
+    """replace 把范围里原有的引用换成了**另一场会议**的引用 → 一句理由；否则空串。
+    新引用跟原有引用同一场（unit 相同）、或只是加引用不换、或范围里本来没有引用，都放行。"""
+    from .checks.citations import cited_ids
+    old = cited_ids(_replaced_span(content, anchor, anchor_end))
+    new = cited_ids(text)
+    if not old or not new:
+        return ""
+    gone = [c for c in old if c not in new]
+    added = [c for c in new if c not in old]
+    if not gone or not added:
+        return ""
+    units = {_unit_of(c) for c in old}
+    foreign = [c for c in added if _unit_of(c) not in units]
+    if not foreign:
+        return ""
+    return (f"这条把原来引的 [{gone[0]}] 换成了另一场会议的 [{foreign[0]}]"
+            "——替换引用只能换同一场会议里的事实，否则是张冠李戴")
+
+
 def reject_revision(content: str, op: str, anchor: str, text: str,
                     anchor_end: str = "", edited: set[str] | None = None,
-                    before: str = "") -> str:
+                    before: str = "", body_lang: str = "") -> str:
     """这条修订该不该丢。要丢就返回一句给用户看的理由，否则返回空串。
 
     三类都是在真实产出上抓到的，且都是**确定性可判**的——整晚反复验证过，
@@ -313,6 +400,17 @@ def reject_revision(content: str, op: str, anchor: str, text: str,
     meta = meta_in_text(text, before) if op != "delete" else ""
     if meta:
         return (f"这条修订写的是元话语（「{meta[:30]}…」），不是正文，整条已丢弃：{key[:24]}…")
+    if op != "delete" and body_lang:
+        # 语言（P8 问题 8）：正文是英文的，修订不许把一段换成中文（a941 第 4 轮实拍）。
+        from .checks.language import switched
+        why = switched(text, body_lang)
+        if why:
+            return f"这条修订换了语言（{why}），已丢弃：{key[:24]}…"
+    if op == "replace":
+        # 引用来源（P8 问题 6）：换掉的引用必须来自同一场会议（a941 实拍：另一场访谈）。
+        why = source_switch(content, anchor, text, anchor_end)
+        if why:
+            return f"{why}，已丢弃：{key[:24]}…"
     if op in ("replace", "delete") and _span_missing(content, anchor, anchor_end):
         return f"这条的结尾标记在正文里找不到，范围划不出来，已丢弃：{key[:24]}…"
     if op == "replace" and edited is not None and key in edited:
@@ -346,9 +444,6 @@ _SENTENCE_END = set("。！？!?…；;」』）】》”’\n")
 
 def _splits_a_sentence(content: str, op: str, anchor: str, anchor_end: str, text: str) -> bool:
     """这条 insert 会不会插在一句话中间。"""
-    # 自己另起一行/一段的不算劈开（模型给的 text 以换行开头时，插在标题或半句后也是新的一段）
-    if (text or "").startswith(("\n", "\r")):
-        return False
     body = (text or "").strip()
     # 只拦整句级的插入：补引用标记（`[terrence-1-A]`）或几个字的短语不该被拦
     if len(body) < 20 or not any(ch in "。！？!?" for ch in body):
@@ -356,9 +451,17 @@ def _splits_a_sentence(content: str, op: str, anchor: str, anchor_end: str, text
     i, end = _locate(content, anchor, anchor_end)
     if i < 0:
         return False
-    head = content[: (i if op == "insert_before" else end)]
+    cut = i if op == "insert_before" else end
+    head = content[:cut]
     if not head.strip():
         return False
+    if (text or "").startswith(("\n", "\r")):
+        # 自己另起一段的，插在标题或段尾半句后是新的一段，不算劈开——**但插入点后面同一行还有字
+        # 就是劈开**（P8 计划外实拍 603dca：锚点「我这个月干了不少和卖房有关的沟通」停在用户第一句
+        # 的冒号前，一段带 `\n\n` 的正文插进去，用户那句被劈成「…沟通\n\n新段落[编号]：不同中介给了…」，
+        # 一次跑里两处）。第一版对换行开头的 text 一律放行，没看插入点后面。
+        rest_same_line = content[cut:].split("\n", 1)[0]
+        return bool(rest_same_line.strip()) and head.rstrip(" \t")[-1:] not in _SENTENCE_END
     return head.rstrip(" \t")[-1:] not in _SENTENCE_END
 
 

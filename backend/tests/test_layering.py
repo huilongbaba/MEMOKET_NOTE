@@ -31,6 +31,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # editor/ 三处。名单只能显式写，但每一条都有具体理由：它们承载了全部
 # 确定性判据，那是这个产品对抗「模型自己判自己」的唯一手段。
 PURE = ["harness/checks/blockcheck", "harness/checks/grounding_rules",
+        "harness/checks/relevance",
         "harness/tools/tabular", "harness/tools/blocks",
         "harness/policy", "harness/replan_rules",
         "editor/outline", "editor/restructure", "editor/textshape"]

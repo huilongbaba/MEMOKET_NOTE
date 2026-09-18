@@ -171,3 +171,16 @@ SUFFICIENT_CONTEXT = os.getenv("MEMOKET_SUFFICIENT_CONTEXT", "1").lower() not in
 # 而不是连 3.1 / 3.2 那两条索引一起撤。
 SECTION_SCORING = os.getenv("MEMOKET_SECTION_SCORING", "1").lower() not in (
     "0", "false", "no")
+
+
+# 材料进 prompt 前的相关性筛（P8 问题 5）要不要**真的剔**。**默认关**（P8 退回）。
+#
+# P8 真跑：筛法本身没筛错（剔的是 T0 / 纯主机 / 手表手环 / cousin coming），但两篇
+# 变差——da080 第 1 轮三批全是上千条主题的抽样，筛完只剩 2 条，「历程」只填了一段 EVT，
+# 接着跑了 8 轮（P6 那次 1 轮 `complete`，留下 95% → 50%）；3a3a 12 条全剔 → `material_thin`
+# → 一句弃答 + 两段沾边纪要（70% → 40%）；总 token 0.32M → 0.63M。计划铁律第 7 条：
+# 让产出变差的退回去。**关着时只记不剔**：`checks/relevance.gate(apply=False)` 照样算出哪几条
+# 是「抽样来的、零重合的」，进 `round_summary.facts_irrelevant` 给界面和 `harness_rounds`
+# ——先能看见，等 `harness_edits` 攒到样本再决定开不开。开着时也剔不到 `relevance.MIN_KEPT`
+# 条以下（剩下的按重合度留最相关的）。
+RELEVANCE_FILTER = os.getenv("MEMOKET_RELEVANCE_FILTER", "0").lower() in ("1", "true", "yes")
