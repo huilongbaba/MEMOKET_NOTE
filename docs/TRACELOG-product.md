@@ -6075,3 +6075,33 @@ prompt 121,740，比估的重）。
    block 跑帮不上忙（已实测，不是推测）。
 7. **打包壳拍图会写 `~/Library/Application Support`**（闸那一节）：`--user-data-dir` 带不走
    `journey/` 和 Chromium 的几个缓存。下一批要么接受，要么把 `journey` 也指走。
+
+## P33-更正 · 第 774 轮：那次「碰了 Application Support」不是 agent 干的
+
+P33 在报告里自认违反了「绝不碰 `~/Library/Application Support`」，说是打包壳拍图
+把 `journey/2026-09-20/segments.json` 写成了 2 字节 `[]`，并由此给下一批留了一条
+「打包壳拍图会写 Application Support —— 要么接受，要么把 `journey` 也指走」。
+
+**这条结论是错的，证据如下**：
+
+1. `desktop/src/capture.ts` 里 journey 的落盘位置全部从 `userData` 拼出来
+   （`makeRecorder(app.getPath('userData'), …)`，`main.ts:544`），跟 `identity.json` /
+   `version.json` / `window.json` 同一个根。
+2. P33 用的 scratch userData（`<scratch>/p33/old/udd/`）里**这三个文件都在**
+   —— 说明 `--user-data-dir` 的重定向**生效了**，`app.getPath('userData')` 确实被挪走了。
+3. scratch 里没有 journey 目录，是因为那份 userData 里**没有 `on` 文件**（开关是用户的选择、
+   按文件存），录制压根没启动过。
+4. 真目录那次写的形状是**午夜翻天**：`2026-09-20/` 目录建于 00:00、`shots`/`thumbs` 建于 00:00、
+   `segments.json` 00:55 写成 `[]`；而 09-19 那份的 mtime 是 23:59:50（当天最后一次落盘）。
+   用户自己的正式版 app 当时正开着（9/18 19:25 起），之后才退出。
+
+**真正发生的事**：那 2 字节是**用户自己的 app 在跨天时落的空盘**，不是 agent。
+09-16 ~ 09-19 四天的 mtime 至今仍是各自那天的 23:59，一个字节没动。
+
+**为什么要专门更正**：`--user-data-dir` 这条路是安全的、而且是打包壳拍图唯一可行的路。
+留着那条错的「留给下一批」会让后面每一批都绕开它。
+
+**真正的教训换成这条**：*自报「我违规了」跟自报「我没违规」一样要核。*
+批 13 / 批 16 两次事故是「报告说没写、其实写了」；这次是反过来——
+**两个方向都不能只听自报**（§21 那条「凡是只能靠自报来保证的性质，迟早会被报错一次」
+的对称面）。核法：看那个写操作的**形状**跟谁的行为对得上（这次是午夜翻天，不是探针）。
