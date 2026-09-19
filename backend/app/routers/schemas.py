@@ -384,12 +384,37 @@ class ProfileEntry(BaseModel):
 # ---------------------------------------------------------------- LLM 供应商配置
 
 class ProviderConfigIn(BaseModel):
-    provider: str  # "local" | "gpt"
+    provider: str  # "local" | "gpt"（gpt = 任何 OpenAI 兼容端点，界面叫「OpenAI 兼容」）
     gpt_api_key: str | None = None  # 不传就保留原值，见 store.set_provider_config
     gpt_model: str | None = None
     gpt_base_url: str | None = None
     asr_base_url: str | None = None  # 空串 = 清掉、退回 .env 默认
     auto_sync_notes: bool | None = None
+    # 「本地模型」那一档（P19 #1）：不传 = 保留；空串 = 清掉、退回 .env / 出厂默认
+    local_base_url: str | None = None
+    local_model: str | None = None
+    local_api_key: str | None = None
+    # 看图：不传 = 保留；空串 = 清掉 → 跟着写作模型走
+    vision_base_url: str | None = None
+    vision_model: str | None = None
+    vision_api_key: str | None = None
+
+
+class ProviderTestIn(BaseModel):
+    """「测一下」（P19 #1）：真发一次请求，结果当场显示。`api_key` 不传 = 用 `saved_key_of` 那一档已存的 key。"""
+    kind: str                      # "llm" | "vision" | "asr"
+    base_url: str
+    model: str = ""
+    api_key: str | None = None
+    saved_key_of: str = ""         # "local" | "gpt" | "vision"
+
+
+class ProviderTestOut(BaseModel):
+    ok: bool
+    message: str
+    models: list[str] = Field(default_factory=list)
+    model_found: bool | None = None   # /models 列表里有没有填的那个模型；列表拿不到 = None
+    elapsed_ms: int = 0
 
 
 class ProviderConfigOut(BaseModel):
@@ -404,6 +429,24 @@ class ProviderConfigOut(BaseModel):
     # 「截图发到哪」——**说得出口的承诺必须看得见**，否则就是一句安慰。
     vision_base_url: str = ""
     vision_model: str = ""
+    vision_api_key_set: bool = False
+    # 看图这一栏是不是「跟着写作模型走」（设置页没填、.env 也没覆盖）
+    vision_follows_llm: bool = True
+    # 看图实际生效的那台（跟着走时 = 写作模型那台），界面只读展示
+    vision_active_url: str = ""
+    vision_active_model: str = ""
+    # 「本地模型」那一档（P19 #1）
+    local_base_url: str = ""        # 用户填的（空 = 在用默认）
+    local_model: str = ""
+    local_api_key_set: bool = False
+    local_default_url: str = ""     # .env / 出厂默认，界面当 placeholder
+    local_default_model: str = ""
+    # 有没有配过模型（llm_configured）：没配过时状态栏说「还没配模型」而不是报地址
+    configured: bool = False
+    configured_source: str = "default"
+    # 当前实际生效的写作模型（不带 key）
+    active_url: str = ""
+    active_model: str = ""
     # 不把真实 key 传回前端——只告诉它"存了没"和"末尾几位"，用来在界面上
     # 显示"已设置 sk-...ab12"这种确认状态，不需要也不该把完整 key 露出来
     gpt_api_key_set: bool

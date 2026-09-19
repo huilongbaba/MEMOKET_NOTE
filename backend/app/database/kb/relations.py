@@ -341,16 +341,32 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
         # （「2月1号上线」↔「2月1号发工资」），同一天的两件不相干的事会被判成「日期一致」（突变验抓出来的）。
         strong = [(s, f, fv) for s, f, fv in related
                   if fv["dates"] and shared_terms(passage, f.get("text") or "") >= MIN_SHARED_TERMS]
-        for s, f, fv in sorted(strong, key=lambda r: -r[0])[:3]:
+        # **一段里有两个日期、一个对上一个对不上时，冲突要报出来**（P19 #4 / P17 #12）。
+        # 原来这个循环在**第一条**事实上就 `break`：重合度最高的那条碰巧是对上的（或者已经按数字
+        # 印证过、走 `already` 那条 break），后面那条对不上的就永远轮不到判。实拍（P17 第 3 步）：
+        # 「众筹页面定在 3月12号 上线，EVT 样品 4月10 号出」对着库里「3月10号上众筹」+「EVT 是 4月10号」
+        # ——圆点画的是绿色「印证 4-10」，而 3-12 跟 3-10 的冲突一个字都没说。
+        # 改成把 top-3 都看一遍，印证 / 冲突各留最有把握的一条；两个都在时收尾的 `order`
+        # 把冲突排前面（P1-1d 定的顺序，有闸钉着），圆点自然画冲突。
+        got_ok = got_bad = False
+        # 这一段里已经被**某条记录**对上的那几天：报冲突时不该再把它们算进「你写的是」
+        agreed_days: set[str] = set()
+        ordered_strong = sorted(strong, key=lambda r: -r[0])[:3]
+        for _s, _f, _fv in ordered_strong:
+            agreed_days |= p_keys["days"] & _date_keys(_fv["dates"])["days"]
+        for s, f, fv in ordered_strong:
+            if got_ok and got_bad:
+                break
             f_keys = _date_keys(fv["dates"])
             agreed = _date_agreement(p_keys, f_keys)
             if agreed:
-                if f["id"] in already:
-                    break
+                if got_ok or f["id"] in already:
+                    continue
+                got_ok = True
                 out.append({"relation": "corroborated", "unit": "date",
                             "say": f"日期跟知识库 {f.get('date') or '某天'} 的记录一致（{'、'.join(agreed)}）。",
                             "fact_ids": [f["id"]], "values": agreed})
-                break
+                continue
             # **只有冲突要过那两道更严的关，印证不用。** 第一版把门槛加在
             # `strong` 上，连「日期一致」这种无害的印证一起挡了——单测当场抓到
             # （`test_corroborated_and_date_conflict`）。判据越严，越要只严在
@@ -359,11 +375,15 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
             # 实测的日期误报跟数字那边同一类：「2月1号之前上线」对上
             # 「2月10号之前把 UI 2.0 刷出来」，两件不同的事各有各的日期，重合度 0.27。
             # 月级 / 年级的日期不判冲突——「7月」对「7月21日」不是不一致，是粒度不同。
-            if s >= conflict_min_overlap and p_keys["days"] and f_keys["days"]:
-                out.append({"relation": "conflict", "unit": "date",
-                            "say": f"日期跟知识库 {f.get('date') or '某天'} 的记录不一致：那里是 {'、'.join(sorted(f_keys['days']))}，你写的是 {'、'.join(sorted(p_keys['days']))}。",
-                            "fact_ids": [f["id"]], "values": sorted(f_keys["days"]) + sorted(p_keys["days"])})
-            break
+            if got_bad or not (s >= conflict_min_overlap and p_keys["days"] and f_keys["days"]):
+                continue
+            # 报冲突时**只列真对不上的那几个日期**：这一段里已经跟别的记录对上的那个（4-10）
+            # 摆进「你写的是」里，读起来像是它也错了（原来一股脑列 `p_keys["days"]` 全部）。
+            mine = sorted(p_keys["days"] - f_keys["days"] - agreed_days) or sorted(p_keys["days"] - f_keys["days"]) or sorted(p_keys["days"])
+            got_bad = True
+            out.append({"relation": "conflict", "unit": "date",
+                        "say": f"日期跟知识库 {f.get('date') or '某天'} 的记录不一致：那里是 {'、'.join(sorted(f_keys['days']))}，你写的是 {'、'.join(mine)}。",
+                        "fact_ids": [f["id"]], "values": sorted(f_keys["days"]) + mine})
 
     # 叠加：同一件事，知识库里还有你没写的条件——别的单位的量、或你这段没写日期而它有。
     # 跟正文同单位的量走上面的冲突 / 印证 / 延续，这里只看正文**没提**的维度。

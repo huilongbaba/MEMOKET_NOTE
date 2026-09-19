@@ -261,7 +261,10 @@ def test_每条check打翻的维度这个mode真的有():
                 "The pilot should verify one real path end to end: the teacher starts recording, "
                 "the material enters processing automatically, the summary is tagged and pushed to "
                 "the Discord group, and the revised version returns to the case library for the next "
-                "session to reuse without digging through chat history. મંત્રી")
+                "session to reuse without digging through chat history. મંત્રી\n\n"
+                # P19 #5：中文垃圾尾巴（da080 实拍原文）。跟上面那句古吉拉特文残留是一对：
+                # 一条判据认外文、一条认中文，素材里两样都得有，不然新那条永远不开火。
+                "这一步的验收标准是下一位教师能直接从这份素材继续备课。 日本一本道")
     ASKED_AND_EMPTY = {
         "queries": [{"key": "filter_facts\t{\"topic\": \"work_pricing\"}",
                      "tool": "filter_facts", "hit": 0, "empty": True}],
@@ -343,9 +346,11 @@ def test_每条check打翻的维度这个mode真的有():
         ("note", "outline_intact"),        # 大纲被压平：长文没有 fits_context
         ("note", "language_consistent"),   # 换语言（P8）：无 profile 时没有 style_fit
         ("note", "no_foreign_script"),     # 乱码字符（P8）：打 fits_context，长文没有
+        ("note", "no_junk_tail"),          # 中文垃圾尾巴（P19 #5）：跟乱码字符同一维、同样落桶
         ("section", "no_audit_voice"),
         ("section", "language_consistent"),
         ("section", "no_foreign_script"),
+        ("section", "no_junk_tail"),
         ("section", "no_fake_charts"),
         ("section", "charts_from_tools"),
     }, f"落进 mechanics 兜底桶的判据变了：{sorted(bucketed)}"

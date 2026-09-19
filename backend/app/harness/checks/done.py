@@ -270,15 +270,46 @@ def _dimension(st: State, kind: str) -> str:
     return pick_dimension(st, "beat_coverage", "section_coverage", "material_use")
 
 
-def _hint(r: dict) -> str:
+def _locate(bad: list[str], content: str, unit: str) -> list[str]:
+    """把「没日期 / 没出处」的那几条定位成**第几段 + 原话头一句**（P19 #6）。
+
+    P18 实拍（da080 p18b）：`done_criteria` 连响三轮，三轮的提示**一字不差**——
+    「5 段里 2 段没有日期；…没日期的比如：「访谈把四项挑战进一步落到了使用过程，而不是功能清…」」。
+    模型三轮都没照做，而它看到的确实是同一句话：提示没变，模型凭什么换个做法。
+    两处没说清：① 「比如」那两条只有开头 24 个字，模型得自己回正文里找是哪一段；
+    ② 「补上日期」说的是要什么，没说**怎么落到字面上**。
+
+    这里给的是**位置**：按正文里段落的序号数出「第 N 段」，再贴那一段的头一句。
+    """
+    out: list[str] = []
+    paras = [p for p in re.split(r"\n\s*\n", content or "") if p.strip()]
+    for b in bad[:3]:
+        head = b.strip().splitlines()[0]
+        n = 0
+        for i, para in enumerate(paras, start=1):
+            if head[:20] and head[:20] in para:
+                n = i
+                break
+        where = f"第 {n} 段" if n else "这一条"
+        out.append(f"{where}「{head[:30]}{'…' if len(head) > 30 else ''}」")
+    return out
+
+
+def _hint(r: dict, content: str = "") -> str:
     kind = r["kind"]
+    unit = r.get("unit", "段")
     if kind == "cite":
-        heads = "、".join(f"「{s.strip().splitlines()[0][:24]}…」" for s in r.get("bad", [])[:2])
-        return ("给没出处的那几条补上材料编号（只用查到的材料里真有的 [事实编号]），编不出来的结论"
-                f"就改成「这里需要补上 XX 的记录」。没出处的比如：{heads}")
+        where = "；".join(_locate(r.get("bad", []), content, unit))
+        # **说清楚要往哪儿写、写成什么样**（P19 #6）：一条「补上出处」的指令模型连三轮没照做，
+        # 而它需要的是「在这一句句末加 [编号]」这种手上的动作，不是「让它有出处」这种目标。
+        return (f"没出处的是：{where}。逐条这么改：句末加一个材料里真有的 [事实编号]"
+                "（照抄材料里那一串，别自己拼）；材料里查不到支撑的，把那句改写成"
+                "「这里需要补上 XX 的记录」——**这两种改法只能选一种，别把没出处的句子原样留着**。")
     if kind == "date":
-        heads = "、".join(f"「{s.strip().splitlines()[0][:24]}…」" for s in r.get("bad", [])[:2])
-        return f"给没日期的那几条补上日期（只用材料里有的日期，没有就写清「日期待补」）。没日期的比如：{heads}"
+        where = "；".join(_locate(r.get("bad", []), content, unit))
+        return (f"没日期的是：{where}。逐条这么改：在这一句里点明日期（「4月16日，EVT…」这样写在句首，"
+                "只用材料里真有的日期）；材料里没有日期的，就在句末写「（日期待补）」"
+                "——**别把没日期的句子原样留着**。")
     if kind == "max":
         return f"删到 {r.get('n')} 字以内：先删复述和铺垫，别删有依据的句子。"
     if kind == "min":
@@ -311,8 +342,15 @@ def done_criteria(st: State) -> Verdict | None:
         if not r or r["status"] != "fail":
             continue
         scope = "这次写的 " if (fresh_only and r["kind"] in ("cite", "date")) else ""
+        # **连响时把话换掉**（P19 #6）：同一条判据第二次、第三次响，说明上一轮那句话没起作用——
+        # 一字不差地再说一遍，模型没有任何理由换个做法（P18 da080 p18b 实拍三轮原话全等）。
+        # 第 2 轮起明说「上一轮提过、没改到」，并把「先改这一条再写别的」摆在前面。
+        # 读**上一轮**那份（`check_name_streak` 在 `Checks.before_judge` 里已经被换成当轮的空表了）
+        streak = int((st.bag.get("check_name_streak_prev") or {}).get("done_criteria", 0)) + 1
+        again = ("上一轮就提过这条、这一轮还是没改到。**这一轮先只做这件事，别再往下写新段落**："
+                 if streak >= 2 else "")
         return Verdict(
             dimension=_dimension(st, r["kind"]),
-            message=f"你定的完成标准「{text}」还没满足：{scope}{r['why']}。{_hint(r)}",
+            message=f"你定的完成标准「{text}」还没满足：{scope}{r['why']}。{again}{_hint(r, st.content)}",
         )
     return None

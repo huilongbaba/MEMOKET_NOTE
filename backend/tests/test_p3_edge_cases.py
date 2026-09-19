@@ -118,7 +118,9 @@ def _resp(code: int) -> httpx.HTTPStatusError:
     (_resp(404), "没有这个接口或模型", "Client error"),
     (RuntimeError("模型没按格式答"), "模型没按格式答", "RuntimeError"),
 ])
-def test_describe_error_is_human(exc, must, must_not):
+def test_describe_error_is_human(exc, must, must_not, monkeypatch):
+    # P19 #1：没配过模型时 describe_error 只说「还没配置模型」——这几条测的是配好之后的翻译
+    monkeypatch.setattr(store, "llm_configured", lambda: {"configured": True, "source": "env"})
     got = llm.describe_error(exc)
     assert must in got, got
     assert must_not not in got, got
@@ -127,6 +129,7 @@ def test_describe_error_is_human(exc, must, must_not):
 
 
 def test_describe_error_names_the_address(monkeypatch):
+    monkeypatch.setattr(store, "llm_configured", lambda: {"configured": True, "source": "env"})
     monkeypatch.setattr(store, "get_active_llm_config",
                         lambda: {"base_url": "http://192.168.77.8:8080/v1", "api_key": "", "model": "m"})
     assert "192.168.77.8:8080" in llm.describe_error(httpx.ConnectTimeout("t"))
@@ -144,6 +147,7 @@ def test_httpx_error_becomes_502_with_sentence(tmp_path, monkeypatch):
         raise httpx.ConnectError("All connection attempts failed")
 
     monkeypatch.setattr(llm, "complete", refused)
+    monkeypatch.setattr(store, "llm_configured", lambda: {"configured": True, "source": "env"})
     c = _client(tmp_path, monkeypatch)
     r = c.post("/api/rewrite", json={"content": "一段正文在这里", "selection": "一段正文", "intent": "rewrite",
                                      "spine": "", "beats": []}, headers={"X-User-Id": "p3"})
@@ -163,10 +167,11 @@ def test_asr_error_names_the_voice_service(monkeypatch):
 # ================================================================ harness：RUN_ERROR 只在跑挂时发
 
 
-def test_loop_run_error_is_human():
+def test_loop_run_error_is_human(monkeypatch):
     """`loop.run` 顶层兜住的异常翻成人话再发 RUN_ERROR——原来 `f"{type(exc).__name__}: {exc}"`
     把 httpx 的整段（含模型地址、MDN 链接）写进了轮次卡片 / 运行块。"""
     import asyncio
+    monkeypatch.setattr(store, "llm_configured", lambda: {"configured": True, "source": "env"})
     from app.harness import State
     from app.harness.tools import ToolContext
     from app.harness.types import Dimension, Mode

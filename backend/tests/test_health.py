@@ -41,6 +41,9 @@ def test_health_probes_run_concurrently(tmp_path, monkeypatch):
     import app.main as main
     monkeypatch.setattr(asr, "healthy", slow_asr)
     monkeypatch.setattr(main.httpx, "AsyncClient", _Client)
+    # P19 #1：没配过模型（出厂默认）时 `/api/health` 压根不去敲那个地址——这条测的是
+    # 「配好了之后两个探测并行」，所以先把它当成配过的。
+    monkeypatch.setattr(store, "llm_configured", lambda: {"configured": True, "source": "env"})
 
     with TestClient(main.app) as c:
         t0 = time.perf_counter()

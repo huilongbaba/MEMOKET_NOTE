@@ -2416,3 +2416,112 @@ P12 §0 核过：分层账本（`ChangeLayersPanel` + `roundDiff` 的层开关 /
 - 前端 `npm test` 65 文件 461 条 + 30 脚本全绿；桌面 `tsc` 过。后端未动。
 - 真库指纹开工 = 收工：482 / 2026-09-16T02:53:27 / 321250 / 47dcc54be60aa4f2 / note_revisions 44；`~/Library/Application Support/memoket-note-desktop` 未碰。
 - 模型调用：0 次真调用（全部 `127.0.0.1:18099` 假模型）。
+
+## P19 · 第 779 轮：新装 app 第一天就能用——默认模型配置 + 设置页「测一下」+ P17 / P18 的七条遗留（2026-09-19）
+
+> 开工 HEAD `714628f`（worktree `agent-a5fdd08b1e5872b99`，开工时落后两批，先 `--ff-only` 追平）。
+> **另一条线同时在走查「屏幕活动」**（`desktop/src/capture.ts` / `routers/journey.py` / `journey/` / `JourneyPage.tsx` / `journeyRuns.ts`）——这批一个字没碰那几个文件。
+> `loop.py` 的循环结构没动（一行没改）。真模型只在 #6 的那一跑里用（scratch 库 `$S/p19/p19real` = P18 那份的拷贝，`rails_off=("save",)`）；
+> 桌面壳的截图和 #7 的探针跑在 `KITE_DATA_DIR=$S/p19/{newdata,undodata}` + `MEMOKET_USER_DATA`（开发模式下生效，P17 核过），**零模型调用**（假模型 `fakellm19.py` / 假端点 `stubmodel.py`）。
+> 真库指纹开工 / 收工各核一次：**482 / 2026-09-16T02:53:27 / 321250 / 47dcc54be60aa4f2 / note_revisions 44，一个字没动**；`~/Library/Application Support` 一次没碰。
+> 六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### 1. 新装 app 所有 AI 按钮都报一个内网 IP ✔（P17 #1）
+
+- **用户怎么发现**：P17 走查第 1 步，空库新用户第一次打开，状态栏就是「⚠ LLM 不可达 (http://192.168.77.8:8080/v1) · 去设置」（`p17-1-new-light`）；点开设置，「本地模型」被选中却**没有地址栏**，「看图」一行写死 `muse-glimmer-30b @ http://192.168.77.8:8080/v1`（`p17-7-new-light-settings`）；语音同款 `192.168.77.8:8081`。第一天用户没有这台内网机器，而界面没告诉他该往哪儿走。
+- **复现**：`util/config.py:16-35` 的默认值就是开发机内网；`provider_config` 表只有 `gpt_*` 三列，本地模型那一档在库里没有任何字段；`SettingsPanel` 里那一档确实一个 `<input>` 都没有。
+- **依据**：这是**两件事被当成一件**——「配了但连不上」（报地址有用，用户改得动）和「压根没配过」（报地址没用，那不是他的地址）。所以先加一个判据把两者分开（`store.llm_configured()`：选了 GPT 且有 key / 本地模型填了地址 + 模型名 / `.env` 给了 `LLM_BASE_URL` 三者之一才算配过），再让每一处话术跟着它走。**开发机那套走 `.env`**（新增 `backend/.env.example` 贴了内网那三行），不进默认值。
+- **改了什么**：
+  - `util/config.py`：`llm_base_url` 默认 `http://127.0.0.1:11434/v1`（Ollama）、`llm_model` 默认**留空**（= 还没配）、`whisper_base_url` 默认本机 8081、`vision_*` 默认留空（= 跟着写作模型走）；加 `env_set()` 分辨「这个字段是 env 给的还是出厂默认」。
+  - `provider_config` 加六列：`local_base_url / local_model / local_api_key`、`vision_base_url / vision_model / vision_api_key`（老库走 `_ADDED_COLUMNS` 自动补）。`get_active_llm_config()` 本地那一档改成「设置页填的优先，没填退回 .env」；新增 `llm_configured()` / `get_active_vision_config()`（没单独配就**跟着写作模型走**）。
+  - `routers/settings.py`：`ProviderConfigOut` 多带 `configured / active_url / active_model / local_* / vision_*`；新增 **`POST /api/settings/provider/test`**（`probe_endpoint`）——真发一次 `GET {base}/models`，列表拿不到（有些网关不实现）再发一次 `max_tokens=1` 的 completion，语音走 `GET {base}/health`；回的是一句人话（连不上 / key 不对 / 没这个模型 + 把有的列出来）。
+  - `main.py` `/api/health` 的 `llm` 多带 `configured/source`，且**没配过就不去敲那个地址**；`util/llm.describe_error` 没配过时只回 `NOT_CONFIGURED` 那句；`editor/vision.py` 从只读 `.env` 改成读 `get_active_vision_config()`。
+  - 前端：`editor/preconditions` 加 `healthMessage()` / `NOT_CONFIGURED(_HINT)`，`App.tsx` 状态栏改读它；`SettingsPanel` 重写那一屏——本地模型三栏（placeholder 是本机默认 + 一行「Ollama / LM Studio / llama.cpp 各是什么」）、OpenAI 兼容三栏、语音一栏、看图一个「跟着上面的写作模型走」勾选 + 勾掉后三栏，**每一栏后面一个「测一下」**（`TestButton`，结果行 `.probe-result` 绿 / 红，浅深都重定义过）；没配过时页面顶上一条红提示。
+- **前后对比**（打包版行为在真 app 上实拍，浅深各一套）：
+
+  | | 前（P17 实拍） | 后（P19 实拍） |
+  |---|---|---|
+  | 首开状态栏 | `⚠ LLM 不可达 (http://192.168.77.8:8080/v1) · 去设置` `p17-1-new-light` | `⚠ 还没配模型 · 去设置`（`/api/health` 回 `configured:false, source:default`）`p19-1-firstopen-light/dark` |
+  | 点 AI 按钮 | 同一个 IP | 「还没配模型——打开设置：选「本地模型」填地址和模型名（本机 Ollama 是 http://127.0.0.1:11434/v1），或选「OpenAI 兼容」填 key」`p19-1-aibutton-light` |
+  | 设置页 | 「本地模型」选中、**零个输入框**；看图一行只读内网地址 `p17-7-new-light-settings` | 本地模型 3 栏 + 测一下；语音 1 栏 + 测一下；看图默认「跟着写作模型走」`p19-1-settings-light/dark` |
+  | 「测一下」 | 没有这个东西 | 成功：`连上了，「qwen3:8b」在 http://127.0.0.1:18391/v1 上可用（6 ms）` `p19-1-test-ok-light/dark`；失败：`连不上 http://127.0.0.1:18399/v1：ConnectError——确认服务开着、地址端口对（本机 Ollama 是 …11434/v1）` `p19-1-test-bad-light/dark` |
+  | 配完 | — | 保存 → toast「已切换到本地模型：qwen3:8b @ …」→ 状态栏红字**自己消失**（`.health-bad` 0 个）、看图那行跟着变成同一台 `p19-1-configured-light` |
+
+- **下一步**：设置页还没做「测一下之后一键把这个模型名填进去」（现在失败提示里把可用模型列出来，用户自己抄）；`vision` 那一栏没做「测一下顺便验它带不带视觉」（要真发一张图，留着）。
+
+### 2. 打包里带着一份空 `data/` ✔（P17 #14）
+
+- **用户怎么发现**：P17 拆开打包版看到 `Resources/backend/_internal/data/notes.sqlite3`（0 篇，270KB）+ `backups/`。用户数据其实在 `~/Library/Application Support`，包里那份多余且**会误导**——P2 时我们自己就在包里那份上误跑过。
+- **依据**：那份不是 `backend.spec` 打进去的（spec 从没列过 `data/`），是**打包好的后端被不带 `KITE_DATA_DIR` 起过一次**，`config.py` 的相对路径 `./data` 在冻结态下解析到 `_internal/` 里建出来的。所以两头都堵：源头不许建，清单也过滤。
+- **改了什么**：`config.py` 的 `_anchor_data_dir` 在 `sys.frozen` 下**直接拒绝相对路径**（桌面壳一定传 `KITE_DATA_DIR`，见 `desktop/src/backend.ts`）；`backend.spec` 加一行把 `data/` 开头的条目从 `a.datas` 里剔掉 + 一条 `assert` 兜底。
+- **前后对比**（**真打了一次包**，`pyinstaller backend.spec --clean`，105MB）：
+  - 包内 `_internal/` 下 `data/` 和 `backups/`：**都没有**；全包 `find -name notes.sqlite3` = **0**。
+  - 壳那样起它（`KITE_DATA_DIR=<scratch>`）：`/api/health` 200，库和 `backups/` 都建在 scratch（`notes.sqlite3` + `backups/notes-20260919.sqlite3`）——**首开建库照旧**。顺带在打包版上验到了 #1：health 回 `"model":"","configured":false,"source":"default"`，`base_url` 是本机默认。
+  - 不传 `KITE_DATA_DIR` 起它：当场停下，`打包版的后端必须由桌面壳传 KITE_DATA_DIR（绝对路径）——不能把用户数据建在 .app 包内部`。
+- **下一步**：`electron-builder` 那一步没重跑（只验到后端这一层，壳的打包没动过）。
+
+### 3. 圆点悬停卡盖住下一段；⌥ 卡 900px 左伸 16px ✔（P17 #7）
+
+- **用户怎么发现**：`p17-3b-old-light-hover` 悬停卡「挂在这一行下面」正好盖住下一段前半行；`p17-11c-new-light-900-althover` 900px 下 ⌥ 卡从正文栏**左边**探出 16px。
+- **依据**：`util/cardPlacement.placeCard` 只保证不伸出**右**边——`Math.max(bounds.left + EDGE, Math.min(anchor.left - width + 4, …))` 看着像夹了两头，但窄栏下 `Math.min` 先取到一个比栏左缘还小的数，`Math.max` 又被右缘那一项压回去。夹的顺序反了。
+- **改了什么**：`placeCard` 抽出 `clampLeft`（先按右缘夹上限、再按左缘夹下限）；新增 `seamPush(side, cardH)` + `pushLineBelow(at, px)`——卡挂在下面时给锚点那一行临时加 `padding-bottom` 把下文推开，卡收起就还原（**文档一个字不动**：不进 undo、不动光标、不触发 `docChanged`）；`MarginCard` / `TraceCard` 两个 `useLayoutEffect` 各接一行。
+- **前后对比**：`p19.test.ts`「900px 那格圆点靠左」：修前 `left` 比栏左缘小 16，修后 `left ≥ bounds.left + 8` 且 `left + width ≤ bounds.right - 8`；P10 立的三条（贴右边 / 挂下面 / 挂上面 + 窄栏缩宽）逐条还在。
+- **下一步**：推开下一段是**视觉**的（行内边距），长文里连着悬停多张卡时会有轻微跳动，没量过；`pushLineBelow` 靠 `elementFromPoint` 找行，编辑器重排时可能找不到（找不到就什么都不做，不会错推）。
+
+### 4. 导出链接 / 目录首句 / 一段多日期 ✔（P17 #10 / #11 / #12）
+
+- **#10 单篇导出的链接指向没导的文件**：`p17-8` 实拍 `[试菜单](note://…)` 被写成 `[试菜单](<试菜单.md>)`，而那个文件这次根本没导，vault 里点开是死链。根因：`render_tree(only=…)` 只收窄了「写哪几个文件」，`note_body` 拿到的 `paths` 仍是整棵树。改：`note_body` 多一个 `exported` 集合，不在里面的整条 `[标题](note://id)` **退回纯文字**并缀「（这篇没一起导出）」（跟飞书 / Notion 那边 `note://` 的处置一致）；**两步的顺序不能反**（先换纯文字再改写相对链接，反了第二步就认不出它原来指向哪篇）。整棵树导（`only=None`）行为一个字不变。
+- **#11 目录首句带链接语法**：`p17-12-new-dark-plan` 里「计划」目录把只有一个链接的段列成 `[试菜单](note://9aab…)`，一串 id 占满整行。改：`DocumentOutline` 新增 `stripInline()`（链接 / wiki 链接 / 图片留 alt / 行内代码 / 粗斜体 / 删除线），`firstSentence` 和「冒号伪标题」那一档都过一遍。正文一个字不动，只动目录那一行的显示。
+- **#12 一段里多个日期时冲突不优先**：`p17-3` 实拍「众筹页面定在 3月12号 上线，EVT 样品 4月10 号出」对着库里「3月10号上众筹」+「EVT 是 4月10号」，圆点画的是绿色**印证**，3-12 跟 3-10 的冲突一个字没说。根因：`kb/relations.detect` 日期那个循环**在第一条事实上就 `break`**——重合度最高的那条碰巧对上了（或者已经按数字印证过、走 `already` 那条 break），后面那条对不上的永远轮不到判。改：top-3 都看一遍，印证 / 冲突各留最有把握的一条（`got_ok` / `got_bad`），两条都在时收尾的 `order` 把冲突排前面（P1-1d 定的顺序，闸钉着）；顺带**报冲突时只列真对不上的那几天**（已被别的记录对上的 4-10 不再摆进「你写的是」里）。
+  - 前后对比（复现脚本 = 测试里那两条）：修前 `-> corroborated 台 …`（冲突根本没出现）；修后 `-> conflict date 日期跟知识库 2026-03-10 的记录不一致：那里是 3-10，你写的是 3-12。` + `-> corroborated 台 …`，`kinds[0] == conflict`。单日期的老行为（印证 / 冲突）逐条不变。
+
+### 5. 中文垃圾尾巴的代码判据 ✔（P18 下一步）
+
+- **用户怎么发现**：P18 读 p18b 产出时顺手看到 r2 末尾多了「 日本一本道」四个字——模型吐的垃圾，**中文的**，`no_foreign_script` 只认外文书写系统，一个字都看不见。
+- **量**（`docs/_research/p19-runs/measure_tails.py`，p5–p18 全部 **25 份**真跑日志的每轮 streamed + content_after）：
+
+  | | 数 |
+  |---|---:|
+  | 有 streamed 的轮次 | 127 |
+  | **模型当场吐出「日本一本道」的轮次** | **7**（p5 r8 / p6 r1 / p8 r8 / p8b r5 / p11-intent r7 / p11-noint r5 / p14-tray r8——全是 da080 这一篇） |
+  | 落进正文之后一路带下去的轮次 / 终稿 | 13（p15、p18、p18b 那几篇开跑前正文就有它） |
+  | 「句末标点 + 空白 + 2–8 汉字 + 段末 + 跟前文 2-gram 零重合」这个形状在 25 份日志里命中的**别的**词 | **0** |
+
+  也就是说这个形状**只命中过它**；词表因此只有实拍那一个词根。
+- **依据 / 改了什么**：`checks/language.py` 新增 `junk_tails` / `strip_junk_tails` / `no_junk_tail`（`checks/__init__` 导出，`modes` 的 `note` / `section` 两个 checks 元组里挨着 `no_foreign_script` 放）。**判据宁可窄，三条同时成立才开火**：① 段末、前面是句末标点 + **空白**（中文句子之间不空格）；② 2–12 个汉字且跟这一段其余部分 2-gram 零重合；③ 命中 `JUNK_WORDS = ("一本道",)`。量程同 `no_foreign_script`：只看这次跑新写的（开跑前正文里的不动，那归用户处置，P6 守卫也碰不了），能自动修（摘掉那几个字 + 前面那个空白）。
+- **前后对比**：实拍原文 `…不再自动被视为进展。 日本一本道` → 命中 `['日本一本道']` → 修完 `…不再自动被视为进展。`，再判不命中。四条反向：词表没命中的正常短句、跟前文重合的（这段真在说它）、前面没空白的、不在句末标点之后的，**一条都不开火**。
+- **下一步**：词表加词的门槛写进了模块文档（真跑日志里逐字抓到过 + 台账贴原文）；`JUNK_WORDS` 现在只有一个词根，有闸（`test_词表只从实拍来`）钉着它不许被想象着扩。
+
+### 6. `done_criteria` 连响三轮模型不照做：`_hint` 换写法 ✔（P18 下一步）
+
+- **用户怎么发现**：P18 真跑 p18b，r2 / r3 / r4 三轮 `done_criteria` **原话一字不差**——「5 段里 2 段没有日期…没日期的比如：「访谈把四项挑战进一步落到了使用过程，而不是功能清…」」。模型三轮没照做，而它看到的确实是同一句话：提示没变，模型凭什么换个做法。
+- **依据**：两处没说清。① 「比如」那两条只有开头 24 个字，模型得自己回正文里找是**哪一段**；② 「补上日期」说的是**要什么**，没说**怎么落到字面上**。
+- **改了什么**：`checks/done.py` 新增 `_locate()`（按正文段落数出「第 N 段」+ 贴头一句），`_hint(r, content)` 改成「没日期的是：第 14 段「…」。逐条这么改：在这一句里点明日期（「4月16日，EVT…」这样写在句首，只用材料里真有的日期）；材料里没有日期的，就在句末写「（日期待补）」——**别把没日期的句子原样留着**。」；出处那一档同理（句末加 `[事实编号]` / 改写成「这里需要补上 XX 的记录」，**二选一，别原样留着**）。**连响第 2 轮起换话**：前面加「上一轮就提过这条、这一轮还是没改到。**这一轮先只做这件事，别再往下写新段落**：」。
+- **真跑一篇**（da080ca847cf，同 p18b 的意图 + 托盘，4 轮封顶，`docs/_research/p19-runs/da080ca847cf-p19hint.json`）：
+
+  | | 轮 / 秒 | 调用 / prompt（cached）/ completion | done_criteria | 三轮原话一字不差？ |
+  |---|---|---|---|---|
+  | P18 `p18b`（修前） | 4 / 82 | 15 / 97,984 (36,734) / 8,318 | r2 / r3 / r4 | **是**（全等） |
+  | P19 `p19hint`（修后） | 4 / 104 | **18 / 125,048 (53,324) / 10,086** | r2 / r3 / r4 | **否**（3 次命中 3 句不同，每轮点名具体段落：r2 第 14 段；r3 第 13、15 段；r4 第 14、16 段） |
+
+  **第二轮补没补**：出处那一侧在补——新单位 / 带出处数 逐轮 `3/3 → 6/4 → 7/5 → 8/6`；**日期那一侧没有**，r2 点名的「回看这一年…」那一段 r3 / r4 仍然点名（段号随正文变长而右移）。所以**「带位置 + 带做法」让提示不再重复，但还没让模型照做**，`check_stuck` 照旧三轮停下交最好的一轮。
+  **这一跑还抓到我自己的一个 bug**：`Checks.before_judge` 在跑判据**之前**就把 `bag["check_name_streak"]` 换成当轮空表，判据读它永远是 0——所以那一跑三轮**都没有**升级措辞。修法：`Checks` 另留一个 `check_name_streak_prev` 给判据读。修完用假模型把 `loop.run` 原样跑一遍复核（零调用，`docs/_research/p19-runs/fakerun.py`）：命中 3 轮、3 句各不相同、**r2 / r3 带「上一轮就提过」，r1 不带**。
+- **下一步**：日期那一侧模型仍然不照做——下一批可以试「把那一段原文整段贴进提示里」或者干脆让判据自己在句末补「（日期待补）」（它已经有 `fix` 的形状）；真模型那一跑是在修 streak 之前跑的，升级措辞的**真模型**效果还没量过。
+
+### 7. 「只撤第 N 轮」在真 app 里拍一次 ✔（P18 下一步）
+
+- **用户怎么发现**：P18 把「后一轮改过它的句子」那种情况做了逐轮映射（`undoRound.paragraphDiff` / `mapPos`），但**只在单测里验过，真 app 里没拍**（P18「下一步」原话）；P16 的探针只撤第 3 轮（最后一轮，没人动过它）。
+- **复现 / 怎么拍**：新增探针 `p19:undoround:<id>:<n>`（`frontend/src/probesP19.ts`，`probes.ts` 注册）——智能续写跑三轮 → 右栏「改动」→ 第 n 轮的「只撤这一轮」，日志记撤前 / 撤后每一轮的句子各在不在。假模型 `fakellm19.py`（P13 那份改一处：**修订锚点对上续写真写出来的字面**；P13 那份的锚点是老文案，对不上，一条修订都提不出来，这个场景根本复现不了）。**第一版还栽了一次**：替换只改几个字，被 `_is_same_meaning_rewrite`（「只是换了措辞」的空改守卫）整条丢掉——换的字要够多才留得下。
+- **前后对比**（真 app，`p19-undo1.png`，scratch 库 = P16 那份真库拷贝）：
+  - 撤之前：`r1=改过的在+推论 r2=原句在 r3=原句在+推论`，`第 2 轮改过第 1 轮那句吗: true`（前提成立，映射有活可干）
+  - 点第 1 轮的「只撤这一轮」→ 撤之后：`r1=OUT r2=原句在 r3=原句在+推论`，`len 817 → 686`
+  - 也就是：**第 1 轮那两段连同第 2 轮对它的修改一起没了，第 2、3 轮自己写的都留着**，`开跑前那段还在吗: true`（用户原文一个字没动）
+  - toast「撤掉了第 1 轮的 1 处，别的轮留着；不对就在「改动」里撤回这一层」；右栏「改动」两层（智能续写 / 撤掉第 1 轮）+ 三张轮次卡都在
+- **下一步**：只拍了「第 2 轮改过第 1 轮」这一种；「后一轮把它整个删了」那种仍按设计报冲突（单测里有，真 app 没拍）。
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q` **2294 passed**（基线 2264 + `tests/test_p19.py` 30 条）；前端 `npm test` **67 文件 497 条**（基线 66 / 479 + `p19.test.ts` 18 条）+ 30 条 check / smoke 脚本全绿；桌面 `tsc` 过。
+- **突变验 27/27 全红**（`docs/_research/p19-runs/p19_mutants.py`，逐条撤掉修法 → 对应闸红 → 原样恢复 + 清 `__pycache__`）。第一轮只有 22/27：漏的四条各暴露一个真问题——① 闸卡在 `note_body` 上而没卡在真正的调用点 `render_tree`（补了一条走 `render_tree` 的）；② 日期那条突变对我的用例不可达（补了「印证在前、冲突在后」和「已按数字印证过」两个形状各一条测试）；③④ 两条突变的字面因转义没匹配上（改成从源码里拼）。*闸跑绿不等于闸有用，突变没做成也不等于修法对*。
+- 真库指纹开工 = 收工：**482 / 2026-09-16T02:53:27 / 321250 / 47dcc54be60aa4f2 / note_revisions 44**；`~/Library/Application Support/memoket-note-desktop` 未碰。
+- 模型调用：**真调用只有 #6 那一跑**——18 次 / prompt 125,048（cached 53,324）/ completion 10,086 ≈ **0.135M**（估的 0.1M，略超）。其余全部零调用（截图走假端点 `stubmodel.py`、#7 走假模型 `fakellm19.py`、#6 的复核走假模型）。

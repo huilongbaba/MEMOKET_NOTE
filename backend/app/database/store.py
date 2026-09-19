@@ -279,6 +279,15 @@ CREATE TABLE IF NOT EXISTS provider_config (
     gpt_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
     asr_base_url TEXT NOT NULL DEFAULT '',
     auto_sync_notes INTEGER NOT NULL DEFAULT 0,
+    -- 「本地模型」那一档自己的地址 / 模型名 / key（P19 #1）：之前这一档只能靠 .env，设置页没有地址栏，
+    -- 装好的包里只能对着一个内网 IP 干瞪眼。空 = 退回 .env / 出厂默认。
+    local_base_url TEXT NOT NULL DEFAULT '',
+    local_model    TEXT NOT NULL DEFAULT '',
+    local_api_key  TEXT NOT NULL DEFAULT '',
+    -- 看图那台。空 = 跟着当前写作模型走（get_active_vision_config）。
+    vision_base_url TEXT NOT NULL DEFAULT '',
+    vision_model    TEXT NOT NULL DEFAULT '',
+    vision_api_key  TEXT NOT NULL DEFAULT '',
     updated_at   TEXT NOT NULL
 );
 
@@ -509,6 +518,13 @@ _ADDED_COLUMNS = (
     ("provider_config", "asr_base_url", "TEXT NOT NULL DEFAULT ''"),
     # 笔记改动后自动同步进知识库的开关（默认关：每次同步是一次抽取调用）
     ("provider_config", "auto_sync_notes", "INTEGER NOT NULL DEFAULT 0"),
+    # 本地模型 / 看图各自的地址进设置页（P19 #1）
+    ("provider_config", "local_base_url", "TEXT NOT NULL DEFAULT ''"),
+    ("provider_config", "local_model", "TEXT NOT NULL DEFAULT ''"),
+    ("provider_config", "local_api_key", "TEXT NOT NULL DEFAULT ''"),
+    ("provider_config", "vision_base_url", "TEXT NOT NULL DEFAULT ''"),
+    ("provider_config", "vision_model", "TEXT NOT NULL DEFAULT ''"),
+    ("provider_config", "vision_api_key", "TEXT NOT NULL DEFAULT ''"),
     # 导入进度按块走（一篇 40 块的会议记录和一篇 2 块的随手记权重不一样）；
     # job 级记每块耗时 / 字数，算预估时间和 token 用量；payload 落盘的 job 能断点续跑。
     ("ingest_items", "chunks_total", "INTEGER NOT NULL DEFAULT 0"),
@@ -2330,7 +2346,12 @@ _PROVIDER_CONFIG_ID = "default"
 _PROVIDER_CONFIG_DEFAULTS = {
     "provider": "local", "gpt_api_key": "", "gpt_model": "gpt-4.1-mini",
     "gpt_base_url": "https://api.openai.com/v1", "asr_base_url": "", "auto_sync_notes": 0,
+    "local_base_url": "", "local_model": "", "local_api_key": "",
+    "vision_base_url": "", "vision_model": "", "vision_api_key": "",
 }
+# 这几个字段的语义都是「不传 = 保留原值；传空串 = 清掉、退回默认」
+_PROVIDER_OPTIONAL = ("local_base_url", "local_model", "local_api_key",
+                      "vision_base_url", "vision_model", "vision_api_key")
 
 
 def get_provider_config() -> dict:
@@ -2347,7 +2368,8 @@ def get_provider_config() -> dict:
 
 def set_provider_config(provider: str, gpt_api_key: str | None = None,
                         gpt_model: str | None = None, gpt_base_url: str | None = None,
-                        asr_base_url: str | None = None, auto_sync_notes: bool | None = None) -> dict:
+                        asr_base_url: str | None = None, auto_sync_notes: bool | None = None,
+                        **more: str | None) -> dict:
     """更新全局供应商配置。gpt_api_key/gpt_model/gpt_base_url 传 None（不传）
     时保留原值——比如只是把 provider 从 'gpt' 切回 'local' 再切回来，不用
     重新填一遍已经存过的 key。"""
@@ -2363,11 +2385,16 @@ def set_provider_config(provider: str, gpt_api_key: str | None = None,
         "asr_base_url": current["asr_base_url"] if asr_base_url is None else asr_base_url.strip().rstrip("/"),
         "auto_sync_notes": int(current["auto_sync_notes"]) if auto_sync_notes is None else int(bool(auto_sync_notes)),
     }
+    unknown = set(more) - set(_PROVIDER_OPTIONAL)
+    if unknown:
+        raise TypeError(f"set_provider_config: unknown fields {sorted(unknown)}")
+    for k in _PROVIDER_OPTIONAL:
+        v = more.get(k)
+        merged[k] = current[k] if v is None else (v.strip().rstrip("/") if k.endswith("_url") else v.strip())
+    cols = ["id", "updated_at", *merged]
     with connect() as c:
         c.execute(
-            "INSERT OR REPLACE INTO provider_config "
-            "(id, provider, gpt_api_key, gpt_model, gpt_base_url, asr_base_url, auto_sync_notes, updated_at) "
-            "VALUES (:id,:provider,:gpt_api_key,:gpt_model,:gpt_base_url,:asr_base_url,:auto_sync_notes,:updated_at)",
+            f"INSERT OR REPLACE INTO provider_config ({', '.join(cols)}) VALUES ({', '.join(':' + k for k in cols)})",
             {"id": _PROVIDER_CONFIG_ID, "updated_at": _now(), **merged})
     return merged
 
@@ -2385,7 +2412,43 @@ def get_active_llm_config() -> dict:
     if cfg["provider"] == "gpt" and cfg["gpt_api_key"]:
         return {"base_url": cfg["gpt_base_url"], "api_key": cfg["gpt_api_key"], "model": cfg["gpt_model"]}
     s = get_settings()
-    return {"base_url": s.llm_base_url, "api_key": s.llm_api_key, "model": s.llm_model}
+    # 「本地模型」：设置页填的优先，没填退回 .env / 出厂默认（P19 #1）
+    return {"base_url": cfg["local_base_url"] or s.llm_base_url,
+            "api_key": cfg["local_api_key"] or s.llm_api_key,
+            "model": cfg["local_model"] or s.llm_model}
+
+
+def llm_configured() -> dict:
+    """「有没有配过模型」——跟「配了但连不上」是两回事，状态栏要分开说（P19 #1 / P17 #1）。
+
+    算配过：选了 GPT 且填了 key；或「本地模型」在设置页填了地址 + 模型名；或 .env / 环境变量给了
+    `LLM_BASE_URL`（开发机那套）。都没有 = 出厂默认（本机 11434、模型名空）——第一天用户就是这样，
+    这时状态栏 / 每个 AI 按钮该说「还没配模型 → 去设置」，而不是报一个地址「不可达」。
+    """
+    from ..util.config import env_set
+    cfg = get_provider_config()
+    if cfg["provider"] == "gpt" and cfg["gpt_api_key"]:
+        return {"configured": True, "source": "gpt"}
+    if cfg["local_base_url"] and cfg["local_model"]:
+        return {"configured": True, "source": "local"}
+    if env_set("llm_base_url"):
+        return {"configured": True, "source": "env"}
+    return {"configured": False, "source": "default"}
+
+
+def get_active_vision_config() -> dict:
+    """看图实际走哪台：设置页「看图」填了地址就用它；没填、但 .env 给了 `VISION_BASE_URL`（部署覆盖）就用那个；
+    都没有就**跟着当前写作模型走**（`follows_llm=True`）——第一天用户配好一个模型，看图就能用，不用再配一次。"""
+    from ..util.config import env_set
+    cfg = get_provider_config()
+    if cfg["vision_base_url"]:
+        return {"base_url": cfg["vision_base_url"], "api_key": cfg["vision_api_key"] or "no-key",
+                "model": cfg["vision_model"], "follows_llm": False}
+    s = get_settings()
+    if env_set("vision_base_url") and s.vision_base_url:
+        return {"base_url": s.vision_base_url, "api_key": s.vision_api_key or "no-key",
+                "model": s.vision_model, "follows_llm": False}
+    return {**get_active_llm_config(), "follows_llm": True}
 
 
 def get_asr_base_url() -> str:

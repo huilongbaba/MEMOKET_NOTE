@@ -1298,9 +1298,26 @@ export type ProviderConfig = {
   /** 用户填的语音服务地址（空 = 用默认） */
   asr_base_url: string
   asr_default_url: string
-  /** 看图那台（屏幕活动的描述走它，跟写作用的 LLM 是两回事）。只读：部署配置。 */
+  /** 看图那台（屏幕活动的描述走它）。空 = 跟着写作模型走（P19 #1）。 */
   vision_base_url: string
   vision_model: string
+  vision_api_key_set: boolean
+  vision_follows_llm: boolean
+  vision_active_url: string
+  vision_active_model: string
+  /** 「本地模型」那一档自己的地址 / 模型名 / key（P19 #1：之前这一档没有地址栏） */
+  local_base_url: string
+  local_model: string
+  local_api_key_set: boolean
+  /** .env / 出厂默认，界面当 placeholder */
+  local_default_url: string
+  local_default_model: string
+  /** 有没有配过模型。false = 第一天用户，状态栏说「还没配模型」而不是报一个地址 */
+  configured: boolean
+  configured_source: 'gpt' | 'local' | 'env' | 'default'
+  /** 当前实际生效的写作模型（不带 key） */
+  active_url: string
+  active_model: string
   /** 笔记改动后自动同步进知识库 */
   auto_sync_notes: boolean
 }
@@ -1315,12 +1332,41 @@ export const setProviderConfig = (body: {
   gpt_base_url?: string
   asr_base_url?: string
   auto_sync_notes?: boolean
+  local_base_url?: string
+  local_model?: string
+  local_api_key?: string
+  vision_base_url?: string
+  vision_model?: string
+  vision_api_key?: string
 }) =>
   fetch('/api/settings/provider', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   }).then(json<ProviderConfig>)
+
+/** 「测一下」的结果（P19 #1）：后端真发一次 `/models`（拿不到再发一次最小 completion），一句人话回来。 */
+export type ProviderTest = {
+  ok: boolean
+  message: string
+  models: string[]
+  model_found: boolean | null
+  elapsed_ms: number
+}
+
+export const testProvider = (body: {
+  kind: 'llm' | 'vision' | 'asr'
+  base_url: string
+  model?: string
+  api_key?: string
+  /** 输入框里没填 key 时，用已存的那一档（'local' | 'gpt' | 'vision'） */
+  saved_key_of?: string
+}) =>
+  fetch('/api/settings/provider/test', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  }).then(json<ProviderTest>)
 
 
 // ---------------------------------------------------------------- 从别家笔记应用导入

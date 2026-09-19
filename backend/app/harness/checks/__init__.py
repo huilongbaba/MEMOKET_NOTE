@@ -19,7 +19,7 @@ from .charts import chart_readable, chart_restates_list, charts_from_tools, no_f
 from .claims import unsupported_specifics
 from .grounding import (citations_exist, citations_present, citations_hold, material_thin,
                         material_used, no_audit_voice, no_placeholder)
-from .language import language_consistent, no_foreign_script
+from .language import language_consistent, no_foreign_script, no_junk_tail
 from .numbers import chart_numbers_grounded, numbers_from_tools
 from .pick import pick_dimension
 from .structure import (heading_fits, no_repeated_lists, no_restated_paragraph,
@@ -35,6 +35,7 @@ __all__ = [
     "charts_from_tools",
     "language_consistent",
     "no_foreign_script",
+    "no_junk_tail",
     "citations_exist",
     "citations_present",
     "no_repeated_lists",

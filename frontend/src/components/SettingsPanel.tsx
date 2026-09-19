@@ -88,13 +88,55 @@ function AppearanceSection() {
 }
 
 /**
- * LLM 供应商设置：本地模型 or GPT。全局设置，不分用户——切了之后写作
+ * LLM 供应商设置：本地模型 or OpenAI 兼容端点。全局设置，不分用户——切了之后写作
  * 三件套/续写/知识库抽取/实体去重全部跟着换，不用重启后端。
  *
- * 本地模型免费但慢（实测批量任务单次调用常见 10-45s）；GPT 需要自己的
+ * 本地模型免费但慢（实测批量任务单次调用常见 10-45s）；OpenAI 兼容那档需要自己的
  * API key、按量计费，但通常快很多——两者的取舍留给用户自己判断，这里
  * 只负责让切换这件事简单、随时能切回去。
+ *
+ * **P19 #1**：第一天用户打开装好的包，原来「本地模型」这一档被选中却**没有地址栏**，
+ * 状态栏和每个 AI 按钮都报 `LLM 不可达 (http://192.168.77.8:8080/v1)`——一个他没有的
+ * 内网 IP（P17 #1 实拍 `p17-1-new-light` / `p17-7-new-light-settings`）。现在：
+ *   · 本地模型有地址 / 模型名 / key 三栏，placeholder 是本机默认（`http://127.0.0.1:11434/v1`）；
+ *   · OpenAI 兼容有 base_url / key / 模型名三栏；
+ *   · 每一栏后面一个「测一下」——后端真发一次 `/models`（拿不到再发一次最小 completion），
+ *     结果当场显示，不用先保存、也不用回去点一个 AI 按钮才知道配对没有；
+ *   · 看图 / 语音各自一栏，看图默认「跟着写作模型走」，勾掉才单独配；
+ *   · 没配过模型时顶上一条「还没配模型」的提示（跟状态栏那行红字同一件事）。
  */
+
+/** 一栏的「测一下」按钮 + 结果行（P19 #1）。**结果是这一次真连出来的**：ok 绿、失败红，
+ *  带地址、带耗时，失败时把原因说清（连不上 / key 不对 / 没这个模型）。 */
+function TestButton({ label = '测一下', disabled, run }: {
+  label?: string
+  disabled?: boolean
+  run: () => Promise<api.ProviderTest>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<api.ProviderTest | null>(null)
+  return (
+    <>
+      <div className="row" style={{ gap: 8, marginTop: 6 }}>
+        <button className="chip chip-action" disabled={busy || disabled}
+                title={disabled ? '先把地址填上' : '真连一次这个地址，结果显示在下面'}
+                onClick={async () => {
+                  setBusy(true); setRes(null)
+                  try { setRes(await run()) } catch (e) { setRes({ ok: false, message: '测不了：' + friendlyError(e), models: [], model_found: null, elapsed_ms: 0 }) } finally { setBusy(false) }
+                }}>
+          {busy ? <span className="spinner" /> : <Icon n="bx-link" />} {label}
+        </button>
+        {busy && <span className="muted" style={{ fontSize: 'var(--t-sm)' }}>正在连…</span>}
+      </div>
+      {res && (
+        <p className={'probe-result' + (res.ok ? ' ok' : ' bad')}>
+          <Icon n={res.ok ? 'bx-check-circle' : 'bx-error'} /> {res.message}
+        </p>
+      )}
+    </>
+  )
+}
+
 /** 设置页最底下的出处行：AGPL §13 要求向使用者提供源码，仓库地址就放在这。 */
 export function AboutLine() {
   return (
@@ -114,6 +156,15 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
   const [gptBaseUrl, setGptBaseUrl] = useState('https://api.openai.com/v1')
   const [asrBaseUrl, setAsrBaseUrl] = useState('')
   const [autoSync, setAutoSync] = useState(false)
+  // 本地模型那一档自己的三栏（P19 #1）
+  const [localBaseUrl, setLocalBaseUrl] = useState('')
+  const [localModel, setLocalModel] = useState('')
+  const [localApiKey, setLocalApiKey] = useState('')
+  // 看图：默认跟着写作模型走；勾掉才单独配
+  const [visionOwn, setVisionOwn] = useState(false)
+  const [visionBaseUrl, setVisionBaseUrl] = useState('')
+  const [visionModel, setVisionModel] = useState('')
+  const [visionApiKey, setVisionApiKey] = useState('')
 
   useEffect(() => {
     api.getProviderConfig().then((c) => {
@@ -123,9 +174,20 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
       setGptBaseUrl(c.gpt_base_url)
       setAsrBaseUrl(c.asr_base_url)
       setAutoSync(!!c.auto_sync_notes)
+      setLocalBaseUrl(c.local_base_url)
+      setLocalModel(c.local_model)
+      setVisionOwn(!c.vision_follows_llm)
+      setVisionBaseUrl(c.vision_base_url)
+      setVisionModel(c.vision_model)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
+
+  // 「测一下」当场用输入框里的值，不是已保存的那份——用户填完就想知道对不对，不该逼他先保存
+  const localUrlNow = localBaseUrl.trim() || cfg?.local_default_url || ''
+  const localModelNow = localModel.trim() || cfg?.local_default_model || ''
+  const visionUrlNow = visionOwn ? visionBaseUrl.trim() : (provider === 'gpt' ? gptBaseUrl.trim() : localUrlNow)
+  const visionModelNow = visionOwn ? visionModel.trim() : (provider === 'gpt' ? gptModel.trim() : localModelNow)
 
   async function save() {
     setSaving(true)
@@ -135,15 +197,25 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
         // 语音地址传空串就是「清掉、退回默认」——跟 key 不同，这里空是合法值
         asr_base_url: asrBaseUrl.trim(),
         auto_sync_notes: autoSync,
+        // 本地模型三栏同理：地址 / 模型名传空串 = 清掉退回默认（P19 #1）
+        local_base_url: localBaseUrl.trim(),
+        local_model: localModel.trim(),
+        // 「跟着写作模型走」= 把看图那两栏清空，后端据此回退（`get_active_vision_config`）
+        vision_base_url: visionOwn ? visionBaseUrl.trim() : '',
+        vision_model: visionOwn ? visionModel.trim() : '',
       }
       // 空字符串不传——传了会被当成"清空 key"（后端语义：不传=保留原值，
       // 传空字符串=真的清空），用户只是切换 provider 没重新填 key 时
       // 不该把已经存的 key 误删掉
       if (gptApiKey.trim()) body.gpt_api_key = gptApiKey.trim()
+      if (localApiKey.trim()) body.local_api_key = localApiKey.trim()
+      if (visionOwn && visionApiKey.trim()) body.vision_api_key = visionApiKey.trim()
       const updated = await api.setProviderConfig(body)
       setCfg(updated)
-      setGptApiKey('')
-      toast(`已切换到${updated.provider === 'gpt' ? 'GPT' : '本地模型'}`)
+      setGptApiKey(''); setLocalApiKey(''); setVisionApiKey('')
+      toast(updated.configured
+        ? `已切换到${updated.provider === 'gpt' ? 'OpenAI 兼容' : '本地模型'}：${updated.active_model || '（模型名还没填）'} @ ${updated.active_url}`
+        : '保存了，但模型还没配全——填上地址和模型名，AI 功能才用得了')
       // 让外壳重查一次健康状态，状态栏的「LLM 不可达」立刻跟着变
       window.dispatchEvent(new CustomEvent('provider-changed'))
     } catch (e) {
@@ -171,10 +243,17 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
         ) : (
           <div className="stack" style={{ marginTop: 12 }}>
             {embedded && <AppearanceSection />}
-            <h3 className="kb-section-title">LLM 供应商</h3>
+            {/* 还没配过模型（出厂默认）：**这一条排在最上面**——第一天用户打开设置页就是为了这件事，
+                而原来这一页从头到尾没有一句话告诉他「你还没配」（P19 #1 / P17 #1）。 */}
+            {cfg && !cfg.configured && (
+              <p className="probe-result bad" style={{ marginBottom: 4 }}>
+                <Icon n="bx-error" /> 还没配模型，AI 功能全都用不了。下面选一档填上，填完点「测一下」看通不通，再保存。
+              </p>
+            )}
+            <h3 className="kb-section-title">写作模型</h3>
             <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '2px 0 8px' }}>
               续写、修订、知识库抽取这些功能背后调用的模型——本地模型免费但慢，
-              GPT 需要自己的 API key，通常快很多。
+              OpenAI 兼容那档（OpenAI / 各家网关 / 自建代理）需要自己的 API key，通常快很多。
             </p>
 
             <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
@@ -182,10 +261,43 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                     onChange={() => setProvider('local')} />
               <span>本地模型</span>
             </label>
+
+            {provider === 'local' && (
+              <div className="stack" style={{ marginTop: 4, paddingLeft: 24 }}>
+                {/* **这三栏是 P19 #1 的正题**：原来这一档被默认选中却一个输入框都没有，
+                    地址只能改 `.env` 重启，装好的包里根本改不了。 */}
+                <label className="muted" style={{ fontSize: 'var(--t-sm)' }}>模型地址（OpenAI 兼容）</label>
+                <input aria-label="本地模型地址"
+                  placeholder={`默认 ${cfg?.local_default_url ?? 'http://127.0.0.1:11434/v1'}`}
+                  value={localBaseUrl}
+                  onChange={(e) => setLocalBaseUrl(e.target.value)}
+                />
+                <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: 0 }}>
+                  Ollama 是 <code>http://127.0.0.1:11434/v1</code>，LM Studio 是 <code>http://127.0.0.1:1234/v1</code>，
+                  llama.cpp / vLLM 填它们自己的 <code>/v1</code>。留空用默认。
+                </p>
+                <label className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>模型名</label>
+                <input aria-label="本地模型名"
+                  placeholder={cfg?.local_default_model ? `默认 ${cfg.local_default_model}` : '比如 qwen3:8b'}
+                  value={localModel}
+                  onChange={(e) => setLocalModel(e.target.value)}
+                />
+                <label className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>API key（本地一般不用填）</label>
+                <input aria-label="本地模型 API key"
+                  type="password"
+                  placeholder={cfg?.local_api_key_set ? '已设置，留空则不改' : '大多数本地服务不校验，留空即可'}
+                  value={localApiKey}
+                  onChange={(e) => setLocalApiKey(e.target.value)}
+                />
+                <TestButton disabled={!localUrlNow}
+                  run={() => api.testProvider({ kind: 'llm', base_url: localUrlNow, model: localModelNow, api_key: localApiKey.trim() || undefined, saved_key_of: 'local' })} />
+              </div>
+            )}
+
             <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
               <input type="radio" checked={provider === 'gpt'}
                     onChange={() => setProvider('gpt')} />
-              <span>GPT</span>
+              <span>OpenAI 兼容（OpenAI / 各家网关）</span>
             </label>
 
             {provider === 'gpt' && (
@@ -212,9 +324,11 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                   value={gptBaseUrl}
                   onChange={(e) => setGptBaseUrl(e.target.value)}
                 />
+                <TestButton disabled={!gptBaseUrl.trim()}
+                  run={() => api.testProvider({ kind: 'llm', base_url: gptBaseUrl.trim(), model: gptModel.trim(), api_key: gptApiKey.trim() || undefined, saved_key_of: 'gpt' })} />
                 {!cfg?.gpt_api_key_set && !gptApiKey.trim() && (
                   <p className="muted" style={{ fontSize: 'var(--t-sm)', color: 'var(--del)' }}>
-                    还没设置 API key，保存后选中 GPT 也用不了，会自动退回本地模型。
+                    还没设置 API key，保存后选中这一档也用不了，会自动退回本地模型。
                   </p>
                 )}
               </div>
@@ -231,15 +345,53 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
               value={asrBaseUrl}
               onChange={(e) => setAsrBaseUrl(e.target.value)}
             />
+            <TestButton disabled={!(asrBaseUrl.trim() || cfg?.asr_default_url)}
+              run={() => api.testProvider({ kind: 'asr', base_url: asrBaseUrl.trim() || (cfg?.asr_default_url ?? '') })} />
 
             {/* 看图那台。**摆出来是因为知情选择那一屏上写着「截图发到哪」**——
-                说得出口的承诺必须看得见，否则就是一句安慰。它是部署配置，
-                跟语音的默认地址一样只读。 */}
-            <p className="kb-section-title" style={{ marginTop: 18 }}>看图（屏幕活动）</p>
-            <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
-              屏幕活动的截图只发到这一处，<b>跟上面选的写作供应商无关</b>——写作切到 GPT，截图也不会跟着出去。
-            </p>
-            <p className="mono-line">{cfg?.vision_model || '（未配置）'} @ {cfg?.vision_base_url || '（未配置）'}</p>
+                说得出口的承诺必须看得见，否则就是一句安慰。
+                P19 #1：原来这里写死 .env 里那个内网地址、只读，第一天用户改不了也用不上；
+                现在默认**跟着写作模型走**（配好一个就能用），要分开走再勾掉单独填。 */}
+            <p className="kb-section-title" style={{ marginTop: 18 }}>看图（屏幕活动 / 图片转表格）</p>
+            <label className="row" style={{ gap: 8, fontSize: 'var(--t-md)', alignItems: 'center' }}>
+              <input type="checkbox" checked={!visionOwn} onChange={(e) => setVisionOwn(!e.target.checked)} />
+              跟着上面的写作模型走
+            </label>
+            {!visionOwn ? (
+              <>
+                <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
+                  截图和图片会发到<b>写作模型那一台</b>。要让截图只留在本机 / 内网，就勾掉这一项，单独填一个本地的带视觉的模型。
+                </p>
+                <p className="mono-line">{cfg?.vision_active_model || '（模型名还没填）'} @ {cfg?.vision_active_url || '（未配置）'}</p>
+              </>
+            ) : (
+              <div className="stack" style={{ marginTop: 4 }}>
+                <p className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 0 }}>
+                  截图只发到这一处，<b>跟上面选的写作供应商无关</b>——写作切到 OpenAI，截图也不会跟着出去。
+                </p>
+                <label className="muted" style={{ fontSize: 'var(--t-sm)' }}>看图模型地址</label>
+                <input aria-label="看图模型地址"
+                  placeholder="http://127.0.0.1:11434/v1"
+                  value={visionBaseUrl}
+                  onChange={(e) => setVisionBaseUrl(e.target.value)}
+                />
+                <label className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>看图模型名（要带视觉）</label>
+                <input aria-label="看图模型名"
+                  placeholder="比如 qwen2.5vl:7b"
+                  value={visionModel}
+                  onChange={(e) => setVisionModel(e.target.value)}
+                />
+                <label className="muted" style={{ fontSize: 'var(--t-sm)', marginTop: 4 }}>API key（本地一般不用填）</label>
+                <input aria-label="看图 API key"
+                  type="password"
+                  placeholder={cfg?.vision_api_key_set ? '已设置，留空则不改' : '留空即可'}
+                  value={visionApiKey}
+                  onChange={(e) => setVisionApiKey(e.target.value)}
+                />
+              </div>
+            )}
+            <TestButton disabled={!visionUrlNow}
+              run={() => api.testProvider({ kind: 'vision', base_url: visionUrlNow, model: visionModelNow, api_key: visionApiKey.trim() || undefined, saved_key_of: visionOwn ? 'vision' : (provider === 'gpt' ? 'gpt' : 'local') })} />
 
             <p className="kb-section-title" style={{ marginTop: 18 }}>笔记 ↔ 知识库</p>
             <label className="row" style={{ gap: 8, fontSize: 'var(--t-md)', alignItems: 'center' }}>

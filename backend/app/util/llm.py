@@ -47,6 +47,10 @@ TIMEOUT = httpx.Timeout(300.0, connect=CONNECT_TIMEOUT)
 STREAM_TIMEOUT = httpx.Timeout(600.0, connect=CONNECT_TIMEOUT)
 
 
+# 还没配模型时每条路给用户的同一句话（前端 `editor/preconditions.NOT_CONFIGURED` 同款）
+NOT_CONFIGURED = "还没配置模型——打开设置：选「本地模型」填地址和模型名，或选「OpenAI 兼容」填 key"
+
+
 def describe_error(exc: BaseException) -> str:
     """把 httpx / 模型侧的异常翻成用户看得懂的一句话。
 
@@ -58,6 +62,9 @@ def describe_error(exc: BaseException) -> str:
     """
     base = ""
     try:
+        if not store.llm_configured()["configured"]:
+            # 出厂默认、谁都没配（P19 #1）：报地址没用，用户没有那台机器
+            return NOT_CONFIGURED
         base = store.get_active_llm_config()["base_url"]
     except Exception:      # noqa: BLE001 — 解释是附赠的
         pass

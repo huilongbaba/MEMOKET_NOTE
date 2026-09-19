@@ -14,7 +14,7 @@ import { clickable } from '../util/clickable'
 import { RELATION_LABEL, markKey, type MarginMark } from '../editor/marginMemory'
 import { alreadyCited, citeText, fillInText, ignoreRelation, mergeRelation, supersedeRelation, type RelationLike } from '../util/relationActions'
 import Icon from './Icon'
-import { CARD_WIDTH, placeCard } from '../util/cardPlacement'
+import { CARD_WIDTH, placeCard, pushLineBelow, seamPush } from '../util/cardPlacement'
 
 const REL_CLS: Record<MarginMark['relation'], string> = {
   conflict: 'rel-conflict', continuation: 'rel-continuation', corroborated: 'rel-corroborated',
@@ -54,7 +54,9 @@ export default function MarginCard({ card, content, onClose, onInsert, onSeeAll 
   const [pos, setPos] = useState<{ left: number; top: number; width: number }>({ left: anchor.right + GAP, top: anchor.top - 8, width: CARD_WIDTH })
 
   // 边界是**正文栏**，不是窗口（P10：P9 那版按窗口判，卡伸出去压在右栏的记忆卡上）：
-  // 圆点右边栏内放得下就贴右边，放不下就挂在这一行下面、右缘对齐栏的右缘（`util/cardPlacement`）
+  // 圆点右边栏内放得下就贴右边，放不下就挂在这一行下面、右缘对齐栏的右缘（`util/cardPlacement`）。
+  // P19 #3：挂在下面时把下一段推开（`seamPush` / `pushLineBelow`），别盖住它的前半行
+  // （P17 #7 实拍 `p17-3b-old-light-hover`）。
   useLayoutEffect(() => {
     const h = ref.current?.offsetHeight ?? 160
     const pane = (ref.current?.closest('.note-pane') ?? document.querySelector('.note-pane')) as HTMLElement | null
@@ -62,6 +64,7 @@ export default function MarginCard({ card, content, onClose, onInsert, onSeeAll 
     const bounds = b && b.width > 0 ? b : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight }
     const p = placeCard(anchor, bounds, h, window.innerHeight)
     setPos({ left: p.left, top: p.top, width: p.width })
+    return pushLineBelow(anchor, seamPush(p.side, h))
   }, [anchor, m])
 
   // 正文滚了：圆点挪了就跟着挪，滚出视口就收

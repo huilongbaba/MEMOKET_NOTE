@@ -82,6 +82,10 @@ class Checks:
         prev_name: dict[str, int] = st.bag.get("check_name_streak") or {}
         cur_name: dict[str, int] = {}
         st.bag["check_name_streak"] = cur_name
+        # **判据自己要知道「这是第几次报同一件事」**（P19 #6）：上面这一行刚把当轮那份换成空的，
+        # 判据在它之后才跑，读 `check_name_streak` 只会读到 0——第一版就栽在这，真跑三轮
+        # 一次都没升级措辞。上一轮那份单独留一个键给它们读。
+        st.bag["check_name_streak_prev"] = prev_name
 
         # ---- 三列探针（批 27 / §5 第 8、9 行）。读者是 `Ledger.after_judge`，
         # 它读完就 `pop`——bag 是跨轮活着的，留着会让下一轮继承上一轮的数。

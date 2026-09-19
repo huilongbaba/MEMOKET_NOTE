@@ -1766,6 +1766,18 @@ label.plan-check-row { cursor: pointer; }
                  box-shadow: var(--shadow-float); background: var(--panel); }
 /* 键盘也要够得着：焦点走到那一行的删除键上时，凭据一样浮出来 */
 .journey-row:hover .journey-thumb, .journey-row:focus-within .journey-thumb { display: block; }
+/* 设置页「测一下」的结果行（P19 #1）：**一眼看出通没通**。ok 用 --ins（跟接受改动同一色），
+   失败用 --del（跟状态栏那行红字同一色），两边都在深色下重定义过。 */
+.probe-result {
+  display: flex; align-items: flex-start; gap: var(--s-2);
+  margin: 6px 0 0; padding: var(--s-2) var(--s-3);
+  font-size: var(--t-sm); line-height: 1.5; border-radius: var(--r-sm);
+  border: 1px solid var(--line); word-break: break-all; user-select: text;
+}
+.probe-result .bx { flex: none; margin-top: 2px; }
+.probe-result.ok { color: var(--ins); border-color: var(--ins); background: var(--ins-bg); }
+.probe-result.bad { color: var(--del); border-color: var(--del); background: var(--del-bg); }
+
 /* 一行只读的地址 / 模型名：给人核对用的，所以等宽、可选中 */
 .mono-line { margin: 2px 0 0; font-size: var(--t-sm); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
              color: var(--fg); user-select: text; word-break: break-all; }

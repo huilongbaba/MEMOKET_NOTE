@@ -19,7 +19,7 @@ from .checks import grounding_rules as grounding_check
 from .checks import (chart_numbers_grounded, chart_readable, chart_restates_list,
                      charts_from_tools, citations_exist, citations_present, citations_hold,
                      heading_fits, language_consistent, material_thin, material_used,
-                     no_audit_voice, no_fake_charts, no_foreign_script, no_placeholder,
+                     no_audit_voice, no_fake_charts, no_foreign_script, no_junk_tail, no_placeholder,
                      no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
                      numbers_from_tools, outline_intact, section_budget,
                      table_columns_match, table_present, tail_clashes,
@@ -584,8 +584,9 @@ NOTE = Mode(
     # 比「一条引用都没有 / 有占位符」更细，粗的先说。两条都有闸钉着顺序。
     # P8 的三条排在前面：`no_foreign_script` / `chart_restates_list` 是能自动修的机械
     # 缺陷（修好了不算命中、不短路）；`language_consistent` 是「这一轮写错了语言」，
-    # 比「没引用」更该先说。
-    checks=(no_foreign_script, chart_restates_list, language_consistent,
+    # 比「没引用」更该先说。`no_junk_tail`（P19 #5）跟 `no_foreign_script` 是一对：
+    # 一个认外文乱码、一个认中文垃圾尾巴，都是摘掉就完事的机械缺陷，挨着放。
+    checks=(no_foreign_script, no_junk_tail, chart_restates_list, language_consistent,
             no_placeholder, no_audit_voice, outline_intact, citations_hold,
             citations_exist, material_thin, citations_present, material_used,
             no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
@@ -611,7 +612,7 @@ SECTION = Mode(
     # 那一面」，而前面每一条说的都是「已经写的这些有毛病」。一条「接着写」的
     # 诊断压在一条「这里有占位符 / 引用是编的」前面，等于让模型在一堆烂摊子
     # 上再加一段——第 606 轮那次死锁的教训是判据之间的**先后本身就是设计**。
-    checks=(no_foreign_script, chart_restates_list, language_consistent,
+    checks=(no_foreign_script, no_junk_tail, chart_restates_list, language_consistent,
             no_placeholder, no_audit_voice, citations_hold, citations_exist,
             material_thin, citations_present, material_used, no_repeated_lists,
             no_restated_paragraph, no_same_sources_twice, no_fake_charts,

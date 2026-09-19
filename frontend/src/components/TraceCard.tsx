@@ -16,7 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import type { Fact } from '../api'
 import { clickable } from '../util/clickable'
-import { CARD_WIDTH, placeCard } from '../util/cardPlacement'
+import { CARD_WIDTH, placeCard, pushLineBelow, seamPush } from '../util/cardPlacement'
 import { candidates, emptyReason, summarizeTrace, type TraceSummary } from '../util/traceCard'
 import type { AltHoverRange } from '../editor/altHover'
 import Icon from './Icon'
@@ -82,6 +82,8 @@ export default function TraceCard({ card, content, onClose, onInsert, onTrace }:
     const bounds = b && b.width > 0 ? b : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight }
     const p = placeCard(anchor, bounds, h, window.innerHeight)
     setPos({ left: p.left, top: p.top, width: p.width })
+    // 挂在词下面时把下一行推开，别盖住正文（P19 #3）
+    return pushLineBelow(anchor, seamPush(p.side, h))
   }, [anchor, data, failed])
 
   // 键盘来的：卡拿焦点（Tab 走得到按钮）；收起时焦点回编辑器

@@ -32,6 +32,14 @@ a = Analysis(
     excludes=["pytest", "pyflakes", "coverage", "PyInstaller"],
     noarchive=False,
 )
+# **包里不许带任何 `data/`**（P19 #2 / P17 #14）：P17 拆开打包版看到 `_internal/data/notes.sqlite3`（0 篇）
+# + `backups/`——一份空库躺在包里，用户数据其实在 ~/Library/Application Support，P2 时我们就是在包里那份
+# 上误跑过。那份不是 spec 打进去的（这里从没列过 data/），是打包好的后端被人不带 KITE_DATA_DIR 起过一次、
+# 在 `_internal/` 下建的（`util/config.py` 现在冻结态下直接拒绝相对路径）。这里再加一道闸：不管谁
+# 往 datas 里塞了 data/ 下的东西，一律剔掉，打完包 `_internal/` 下就不会有 data/。
+a.datas = [d for d in a.datas if not str(d[0]).replace("\\", "/").startswith(("data/", "backend/data/"))]
+assert not any(str(d[0]).replace("\\", "/").startswith("data/") for d in a.datas), "data/ 混进了打包清单"
+
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [],
