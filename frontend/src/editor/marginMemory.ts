@@ -23,6 +23,32 @@ export type MarginMark = {
   /** 卡上要列的那几条记录（日期 + 原话），`relations/batch` 一起回（P9） */
   fact_ids?: string[]
   facts?: Fact[]
+  /** 只有「缺依据」有：`no_record` = 知识库里连沾边的记录都没有；`no_value` = 沾边的有、但都没带这段的量。
+   *  后端 `kb/relations.detect()` 判的（零模型，就是 `related` 空不空）。 */
+  why?: string
+}
+
+/** **哪些点真的画到页边上**（P25 #4，P22 #8）。
+ *
+ *  P7 修好了「该有点没点」（40 → 137 个点），代价是真库最长那篇 26.7k 字的展厅讲解词
+ *  右边缘挂了 **106 个灰圈**（136 个含数字段的 78%）。逐条读过那 106 段：**89 段**是
+ *  `no_record`——召回回来的 8 条没有一条沾边，昇腾份额、NVL72 单柜卡数、深圳 25 万路
+ *  摄像头，知识库里根本没这个话题。
+ *
+ *  **一个点该告诉用户什么**：「**这一段**跟知识库之间有一件你该知道的事」。
+ *  `no_value` 是这样的一件事——「有沾边的记录，但那条记录里没有你写的这个数，这个数还没有出处」，
+ *  用户看得懂、也能去核。`no_record` 不是：它说的是「这篇笔记跟你的知识库不搭界」，
+ *  **这是整篇的属性，不是这一段的**；逐段画就是把同一句话说 89 遍，一整列灰圈等于噪声。
+ *  所以 `no_record` 不画点，改成面板上**一句话说清楚有多少段**（`noRecordNote`）；
+ *  光标停在那一段时右栏的关系卡照旧逐字说（`POST /memory/relations` 那条路一个字没改）。
+ */
+export function dotWorthy(m: { relation: MemoryRelationKind; why?: string }): boolean {
+  return !(m.relation === 'unsupported' && m.why === 'no_record')
+}
+
+/** 被折起来的那一档在面板上的一句话（`n` = 这篇里 `no_record` 的段数）。 */
+export function noRecordNote(n: number): string {
+  return `这篇还有 ${n} 段带了数字，知识库里连沾边的记录都没有——没有逐段画点（一整列灰圈说的是同一件事）；光标停在那一段上，右栏会说。`
 }
 
 /** 六种关系的人话。右栏关系卡、页边圆点的悬停、图例三处同一份。 */

@@ -108,8 +108,10 @@ class NoteHooks:
                     self.spine, self.beats = store.clamp_skeleton(
                         str(parsed.get("spine") or ""),
                         [str(b) for b in raw][:budget] if isinstance(raw, list) else [])
-                    # 「待补」的正文里有没有——代码核对（P4 #2），跟 router 那条路一样
-                    self.beats = verify_beats(self.beats, content)
+                    # 「待补」的正文里有没有——代码核对（P4 #2），跟 router 那条路一样；
+                    # 贴完标签再收一次上限（P25 #1，理由见 `routers/compose.skeleton`）
+                    self.spine, self.beats = store.clamp_skeleton(
+                        self.spine, verify_beats(self.beats, content))
             except Exception as exc:                   # noqa: BLE001
                 # Scoring still works without a skeleton -- spine_fidelity and
                 # beat_coverage judge on weaker evidence, not on none. Losing
@@ -120,6 +122,19 @@ class NoteHooks:
                 yield Event.custom(CUSTOM_WARNING, {"middleware": "骨架", "hook": "skeleton",
                                                     "error": f"骨架生成失败，退回空骨架继续：{_llm.describe_error(exc)}"})
 
+        # **喂给续写的骨架是不是半句**（P25 #1 / P22 #2）。这一步的骨架有两个来源：刚生成的
+        # （上面那一支，`clamp_skeleton` 收过，不会是半句），和**笔记里存着的**（router 把
+        # `note.spine/beats` 传进 `NoteHooks(...)`）。后者可能是 P7 之前按 `BEAT_MAX = 60`
+        # 硬切下来的半句——真库里还有 5 篇是这样，模型每一轮读到的就是「…并将问」。
+        # 零模型判据在 `store.truncated_beats`（长度正好 60 且不以句读收尾）。
+        # **只提醒、不改**：重生成要打模型、还要写用户的笔记，那是用户的决定
+        # （`scripts/p7_skeleton_dryrun.py`）；这里让它在面板上出声，别再无声地跑。
+        if half := store.truncated_beats(self.beats):
+            yield Event.custom(CUSTOM_WARNING, {
+                "middleware": "骨架", "hook": "skeleton",
+                "error": (f"这篇存着的骨架第 {'、'.join(str(i) for i in half)} 条是半句"
+                          f"（被旧版 {store.LEGACY_BEAT_MAX} 字上限切过，句子没写完），"
+                          f"模型这一轮读到的就是这份半句；重新生成一次骨架可以修好。")})
         st.bag["spine"], st.bag["beats"] = self.spine, self.beats
         st.bag["profile"] = self.profile
         # 骨架的确定性体检（计划 4.3）。**判了不拦着往下跑**——照 `slides` 那一档。

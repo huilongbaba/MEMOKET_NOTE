@@ -1277,6 +1277,22 @@ def trim_to_boundary(text: str, limit: int) -> str:
     return head[:limit - 1].rstrip() + "…"
 
 
+# **P7 之前存下来的半句骨架**（P22 #2 / P25 #1）。`BEAT_MAX` 从 60 提到 200 之后新存的都是整句，
+# 但**真库里已经存成半句的那 5 篇没人迁移**——用户重开那几篇看到的是「…之间的断点，并将问」，
+# 更要紧的是 `hooks/note.py` 喂给智能续写的骨架也是这份半句的（P22 D3 有两篇就是这么跑的）。
+# 判它是零模型的两个条件，跟 `scripts/p7_skeleton_dryrun.py` 同一份（那边 import 这里，别再抄一遍）：
+#   · 长度**正好等于**老上限 60（不是 ≥：61 字的整句不是被它切的）；
+#   · **不以句末标点收尾**（老的 `clamp` 按字数硬切，切在哪算哪）。
+LEGACY_BEAT_MAX = 60
+_SENTENCE_END = "。！？；.!?;」”\"'）)"
+
+
+def truncated_beats(beats: list[str]) -> list[int]:
+    """哪几条节拍是被老 `BEAT_MAX = 60` 切成半句的（1 起的序号）。零模型。"""
+    return [i for i, b in enumerate(beats or [], 1)
+            if isinstance(b, str) and len(b) == LEGACY_BEAT_MAX and b[-1:] not in ("",) and b[-1] not in _SENTENCE_END]
+
+
 def clamp_skeleton(spine: str, beats: list[str]) -> tuple[str, list[str]]:
     """骨架封顶——**生成侧**过一遍（`routers/compose.skeleton`、`hooks/note.skeleton`）。"""
     s = trim_to_boundary(spine, SPINE_MAX)

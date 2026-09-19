@@ -788,6 +788,8 @@ export type MemoryRelation = {
   values: string[]
   fact_ids: string[]
   facts: Fact[]
+  /** 只有「缺依据」有：`no_record` = 知识库里连沾边的记录都没有；`no_value` = 沾边的有、但都没带这段的量（P25 #4） */
+  why?: string
 }
 export const memoryRelations = (passage: string, confirm = true) =>
   fetch('/api/memory/relations', {
@@ -799,7 +801,7 @@ export const memoryRelationsBatch = (passages: string[]) =>
   fetch('/api/memory/relations/batch', {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ passages, scope: memoryScope() }),
-  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[]; kinds?: number; facts?: Fact[] } | null)[]; took_ms: number }>)
+  }).then(json<{ marks: ({ relation: MemoryRelation['relation']; say: string; fact_ids: string[]; kinds?: number; facts?: Fact[]; why?: string } | null)[]; took_ms: number }>)
 export const supersedeFact = (oldId: string, newId: string) =>
   fetch(`/api/kb/fact/${encodeURIComponent(oldId)}`, {
     method: 'PATCH', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ superseded_by: newId }),

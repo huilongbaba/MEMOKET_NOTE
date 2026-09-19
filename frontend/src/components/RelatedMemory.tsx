@@ -4,7 +4,7 @@ import { memoryRelations, memoryScope, recall, SCOPE_LABEL, setMemoryScope, type
 import type { Fact, MemoryRelation } from '../api'
 import { stripForRecall } from '../util/wordCount'
 import { factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
-import { KB_EMPTY_DOTS_NOTE, MARGIN_RULE, MODEL_NOTE, RELATION_LABEL } from '../editor/marginMemory'
+import { KB_EMPTY_DOTS_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
 import { requestTrayAdd } from '../util/tray'
@@ -34,13 +34,15 @@ const RECALL_LIMIT = 8
  * is a zero-LLM keyword lookup (observed ~30ms), unlike skeleton/edit/magic-tap
  * which hit the LLM and need long debounce windows.
  */
-export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmpty = false }: {
+export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmpty = false, noRecordDots = 0 }: {
   /** 光标所在段落：按它查关系（不是尾部 500 字） */
   paragraph?: string
   content: string
   onInsert: (text: string) => void
   /** 知识库一条事实都没有：「没找到相关内容」会让第一次用的人以为坏了，换成指引 */
   kbEmpty?: boolean
+  /** 这篇里「缺依据 · 知识库连沾边的记录都没有」那一档的段数（P25 #4）：不画点，在图例下折成一句话 */
+  noRecordDots?: number
 }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const [loading, setLoading] = useState(false)
@@ -135,6 +137,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
         <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按光标所在段（带前一段、约 {RECALL_CONTEXT_BEFORE} 字）召回，光标不在正文里时按末尾 {TAIL_CHARS} 字。
         <br />{MODEL_NOTE}
         {kbEmpty && <><br />{KB_EMPTY_DOTS_NOTE}</>}
+        {!kbEmpty && noRecordDots > 0 && <><br /><span className="mem-no-record-note">{noRecordNote(noRecordDots)}</span></>}
       </p>
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>

@@ -263,8 +263,12 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
         # 一起带回去，前端不用再为每个点发一次 /relations。rows 已经在手里，零额外查询。
         by_id = {r["id"]: r for r in rows}
         facts = [f.model_dump() for f in rows_to_facts(mem, [by_id[i] for i in top["fact_ids"] if i in by_id])]
+        # `why`（P25 #4）：「缺依据」分 `no_record`（库里连沾边的都没有）/ `no_value`
+        # （沾边但那条记录没带这段的量）两档，前端据此决定页边画不画点——理由在
+        # `kb/relations.detect()` 收尾那段注释里。别的关系没有这一栏。
         out.append({"relation": top["relation"], "say": top["say"], "fact_ids": top["fact_ids"],
-                    "kinds": len({c["relation"] for c in cands}), "facts": facts})
+                    "kinds": len({c["relation"] for c in cands}), "facts": facts,
+                    **({"why": top["why"]} if top.get("why") else {})})
     return {"marks": out, "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 
