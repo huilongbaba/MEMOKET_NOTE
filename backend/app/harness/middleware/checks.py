@@ -106,6 +106,10 @@ class Checks:
         # 的那条 `continue` 之后，后面还可能再命中一条，两条都得在。
         fired_all: list[str] = []
         st.bag["fired_checks"] = fired_all
+        # 这一轮是**哪一条**把打分短路掉的（P18 #1）。`fired_checks` 答不了：它连卡死放行的那条也记，
+        # 而且 `Ledger.after_judge` 读完就 pop——`BestOf` 在它后面，想知道「这一轮是不是只差用户
+        # 自己的完成标准」就得有自己的一份。每轮先清空，短路时再写。
+        st.bag["short_circuit"] = ""
 
         for ran, check in enumerate(st.mode.checks, start=1):
             verdict = check(st)
@@ -157,6 +161,7 @@ class Checks:
                 weakest=verdict.dimension,
             )
             st.skip_judge = True        # explicit, not "ev happens to be set"
+            st.bag["short_circuit"] = fired
             yield Event.custom(CUSTOM_CHECK_HIT, {
                 "round": st.round,
                 "check": fired,

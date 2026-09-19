@@ -27,6 +27,15 @@ export function requestTrayAdd(item: TrayAddDetail): void {
   window.dispatchEvent(new CustomEvent<TrayAddDetail>('tray-add', { detail: item }))
 }
 
+/** 放进托盘那一声后面跟的话：导入 / 摘录的内容超过 `TRAY_EXCERPT_MAX` 时明说只放了前 600 字（P18 #6）——
+ *  录音转写往往几千字，之前是悄悄截掉，用户以为整段都摊上了。长的该走「存入知识库」再把事实放托盘。 */
+export function trayAddNotice(items: Pick<TrayItemIn, 'kind' | 'excerpt'>[]): string {
+  const long = items.filter((it) => (it.kind === 'import' || it.kind === 'selection') && (it.excerpt ?? '').length > TRAY_EXCERPT_MAX)
+  if (!long.length) return ''
+  const n = Math.max(...long.map((it) => (it.excerpt ?? '').length))
+  return `；只放了前 ${TRAY_EXCERPT_MAX} 字（全文 ${n} 字）——长录音 / 长段落走「存入知识库」，再把要用的事实放进托盘`
+}
+
 /** 把一批加到末尾（纯函数）：逐条走 `withItem`，已在的跳过、封顶 24 */
 export function withItems(items: TrayItem[], add: TrayItemIn[]): TrayItemIn[] {
   let cur: TrayItemIn[] = items.map(({ id, kind, ref_id, title, excerpt }) => ({ id, kind, ref_id, title, excerpt }))

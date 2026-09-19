@@ -15,7 +15,7 @@ import { clipToTray, deleteTrayItem, listTray, putTray, type TrayItem, type Tray
 import { clickable } from '../util/clickable'
 import { displayTitle } from '../util/displayTitle'
 import { friendlyError } from '../util/friendlyError'
-import { moveItem, setTrayCache, TRAY_KIND_ICON, TRAY_KIND_LABEL, TRAY_PREVIEW_CHARS, withItems, alreadyInTray, type TrayAddDetail } from '../util/tray'
+import { moveItem, setTrayCache, TRAY_KIND_ICON, TRAY_KIND_LABEL, TRAY_PREVIEW_CHARS, trayAddNotice, withItems, alreadyInTray, type TrayAddDetail } from '../util/tray'
 import { setTrayByDefault, trayByDefault } from '../util/trayDefaults'
 import { toast } from '../toast'
 import Icon from './Icon'
@@ -64,7 +64,7 @@ export default function TrayPanel({ noteId, onWrite }: {
       const fresh = batch.filter((it) => !alreadyInTray(itemsRef.current, it))
       if (!fresh.length) { toast(batch.length > 1 ? '这几条都已经在托盘里了' : '已经在托盘里了'); return }
       putTray(noteId, withItems(itemsRef.current, fresh))
-        .then((r) => { commit(r); toast(fresh.length > 1 ? `${fresh.length} 条已放进托盘（共 ${r.length} 条）` : `已放进托盘（${r.length} 条）`) })
+        .then((r) => { commit(r); toast((fresh.length > 1 ? `${fresh.length} 条已放进托盘（共 ${r.length} 条）` : `已放进托盘（${r.length} 条）`) + trayAddNotice(fresh)) })
         .catch((err) => toast('放不进托盘：' + friendlyError(err), 'error'))
     }
     window.addEventListener('tray-add', on)

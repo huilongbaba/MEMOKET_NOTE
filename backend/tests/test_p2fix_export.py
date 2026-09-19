@@ -129,7 +129,7 @@ def test_1_行内样式_和_引用剥掉():
 def test_1_Notion_块():
     nb = md_to_notion_blocks(PROBE)
     types = [b["type"] for b in nb]
-    assert types == ["heading_1", "paragraph", "paragraph", "paragraph", "paragraph",
+    assert types == ["heading_1", "paragraph", "paragraph", "paragraph", "image",
                      "bulleted_list_item", "to_do", "to_do", "numbered_list_item", "quote",
                      "divider", "divider", "table", "code", "code"]
     # h4 → 粗体段落（Notion 没有 h4；压成 heading_3 会抹平层级）
@@ -139,8 +139,9 @@ def test_1_Notion_块():
     assert rt[0]["text"]["content"] == "粗体" and rt[0]["annotations"]["bold"]
     assert any(x["text"].get("link") == {"url": "https://example.com"} for x in rt)
     assert all("**" not in x["text"]["content"] and "[terrence" not in x["text"]["content"] for x in rt)
-    # 本地图片：老实说明，不假装能传
-    assert "[图：示意图]" in nb[4]["paragraph"]["rich_text"][0]["text"]["content"]
+    # 本地图片：P18 #5 起是一个带 `_asset` 标记的图片块，`NotionWriter.prepare` 写之前走 File Upload API；
+    # 文件不在本机才退回一行说明（那条在 test_p18）
+    assert nb[4]["_asset"] == "1b92815398ecb037dc2561f3.png" and nb[4]["_alt"] == "示意图"
     # 嵌套列表 children
     kid = nb[5]["bulleted_list_item"]["children"][0]
     assert kid["type"] == "bulleted_list_item" and kid["bulleted_list_item"]["children"][0]["bulleted_list_item"]["rich_text"][0]["text"]["content"] == "三级列表"
@@ -167,7 +168,8 @@ def test_1_Notion_列表最多嵌两层_更深的拍平不丢():
 
 def test_1_飞书_块():
     fb = md_to_feishu_children(PROBE)
-    assert [b["block_type"] for b in fb] == [3, 6, 2, 2, 27, 12, 17, 17, 13, 15, 22, 22, 31, 14, 14]
+    # P18 #4：没交渲染的 mermaid 代码块后面多一行说明（block_type 2）
+    assert [b["block_type"] for b in fb] == [3, 6, 2, 2, 27, 12, 17, 17, 13, 15, 22, 22, 31, 14, 2, 14]
     # h4 是真的 heading4
     assert "heading4" in fb[1]
     # 行内样式 → text_element_style；链接要 url 编码
@@ -187,8 +189,8 @@ def test_1_飞书_块():
     assert t["table"]["property"] == {"row_size": 2, "column_size": 2, "header_row": True}
     assert len(t["children"]) == 4 and all(c["block_type"] == 32 for c in t["children"])
     assert t["children"][3]["children"][0]["text"]["elements"][0]["text_run"] == {"content": "2", "text_element_style": {"bold": True}}
-    # mermaid 飞书没有：纯文本代码块（不设 language）；python 有
-    assert "style" not in fb[13]["code"] and fb[14]["code"]["style"] == {"language": 43}
+    # mermaid 飞书没有：纯文本代码块（不设 language）+ 一行说明（有渲染时是图，见 test_p18）；python 有
+    assert "style" not in fb[13]["code"] and "mermaid" in _ftext(fb[14]) and fb[15]["code"]["style"] == {"language": 43}
 
 
 def test_1_飞书_拍平成_descendant_形状():
@@ -209,7 +211,7 @@ def test_1_真实笔记形状_表格和图片是块_不再有字面量(tmp_path)
     assert not any(t.startswith("|") for t in texts) and not any("![" in t for t in texts) and not any("**" in t for t in texts)
     assert [b["block_type"] for b in fb] == [3, 31, 27, 2]
     nb = md_to_notion_blocks(md)
-    assert [b["type"] for b in nb] == ["heading_1", "table", "paragraph", "paragraph"]
+    assert [b["type"] for b in nb] == ["heading_1", "table", "image", "paragraph"]      # P18 #5：本地图是图片块（写时上传）
 
 
 # ================================================================ 2 失败提示

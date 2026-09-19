@@ -80,8 +80,10 @@ class Edits:
         if not run_id:
             return              # 没挂 `Ledger` 的模式：没有 run_id 就没有关联
         try:
+            # `round_no` = 最后一轮：这一行同时是最后一轮的「之后」（P18 #2），
+            # `round_snapshot` 收尾时看到它就不再另存一行 `run_end`。
             rev = store.snapshot_note(st.ctx.user, st.ctx.note_id,
-                                      store.REVISION_REASON_HARNESS, run_id=run_id)
+                                      store.REVISION_REASON_HARNESS, run_id=run_id, round_no=st.round)
             if not rev:
                 return
             store.open_harness_edit(

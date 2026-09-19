@@ -31,6 +31,31 @@ _BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 ASSET_REF = re.compile(r"/api/assets/([a-f0-9]{24}\.[a-z0-9]+)")
 NOTE_LINK = re.compile(r"\]\(note://([a-f0-9]{12})\)")
 
+# ---------------------------------------------------------------- mermaid → 图（P18 #4）
+#
+# 飞书 docx 没有 mermaid 这个语言枚举（P2-fix 只能落成纯文本代码块）。图不是后端画的：**没有外部服务**
+# （不许 kroki 之类），后端是 PyInstaller 打的包、塞不进一个 Chromium；而前端本来就在用 mermaid 渲染
+# 编辑器里的图——导回之前前端把每张图渲成 PNG（`util/mermaidPng.ts`），按**源码的哈希**交上来
+# （`POST /api/export/renders`），这里按同一个哈希对上号、走 P2-fix 已做的图片三步上传。
+# 哈希两边各算一份、同一个口径（strip 之后的源码 sha256 前 24 位）：`test_p18` 里钉着一对 fixture。
+MERMAID_KEY_LEN = 24
+MERMAID_RENDER_MAX = 4 * 1024 * 1024        # 一张图的 PNG 上限；2× 缩放的流程图几十 KB，4 MB 够十倍余量
+MERMAID_RENDERS_MAX = 64                    # 一次导回最多带几张
+
+
+def mermaid_key(code: str) -> str:
+    import hashlib
+    return hashlib.sha256(code.strip().encode("utf-8")).hexdigest()[:MERMAID_KEY_LEN]
+
+
+def mermaid_blocks(md: str) -> dict[str, str]:
+    """正文里每一段 ```mermaid 的源码，按哈希：前端拿去渲、渲完按同一个哈希交回来。"""
+    out: dict[str, str] = {}
+    for b in md_to_blocks(md):
+        if b.kind == "code" and b.lang == "mermaid" and b.text.strip():
+            out[mermaid_key(b.text)] = b.text
+    return out
+
 
 _SENTENCE_END = "。！？"
 _PAUSE = "；，,：:"
@@ -459,6 +484,12 @@ def _notion_items(b: Block, depth: int = 0) -> list[dict]:
     return [blk] + overflow
 
 
+def _notion_note(text: str) -> dict:
+    """一行斜体说明（图传不上去 / 文件不在本机时替图的那一行）。"""
+    return {"object": "block", "type": "paragraph",
+            "paragraph": {"rich_text": _notion_rich(inline_runs(text, italic=True))}}
+
+
 def md_to_notion_blocks(md: str) -> list[dict]:
     blocks: list[dict] = []
     for b in md_to_blocks(md):
@@ -488,12 +519,16 @@ def md_to_notion_blocks(md: str) -> list[dict]:
                                                    "table_row": {"cells": [_notion_rich(inline_runs(c)) for c in row]}}
                                                   for row in b.rows]}})
         elif b.kind == "image":
+            m = ASSET_REF.search(b.src) or re.search(r"_assets/([a-f0-9]{24}\.[a-z0-9]+)", b.src)
             if re.match(r"^https?://", b.src):
                 blocks.append({"object": "block", "type": "image", "image": {"type": "external", "external": {"url": b.src}}})
+            elif m:
+                # 本地图片走 Notion 的 File Upload API（P18 #5；P2-fix 时写成一行说明）：这里只留一个
+                # `_asset` 标记，`NotionWriter.prepare` 写之前上传、换成 `file_upload` 块；文件不在本机
+                # 才退回一行说明
+                blocks.append({"object": "block", "type": "image", "image": {}, "_asset": m.group(1), "_alt": b.alt})
             else:
-                # Notion API 只收外链图片，本地 png 传不上去——老实说明，别假装能传
-                blocks.append({"object": "block", "type": "paragraph",
-                               "paragraph": {"rich_text": _notion_rich(inline_runs(f"[图：{b.alt or '图片'}]（图片留在 MEMOKET NOTE 里，Notion API 不接受本地文件）", italic=True))}})
+                blocks.append(_notion_note(f"[图：{b.alt or '图片'}]（{b.src}）"))
         else:
             blocks.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": _notion_rich(inline_runs(b.text))}})
     return blocks
@@ -534,9 +569,10 @@ def _feishu_item(b: Block) -> dict:
     return blk
 
 
-def md_to_feishu_children(md: str) -> list[dict]:
+def md_to_feishu_children(md: str, renders: dict[str, bytes] | None = None) -> list[dict]:
     """飞书 docx 的块树。嵌套的 `children` 是**块本身**（不是 id）——`FeishuWriter` 送出去之前
-    会拍平成 descendant 接口要的形状。图片块带一个 `_asset`（本地文件名），写的时候上传再回填。"""
+    会拍平成 descendant 接口要的形状。图片块带一个 `_asset`（本地文件名）或 `_asset_bytes`（前端渲好的
+    mermaid PNG，按 `mermaid_key` 从 `renders` 里对上号），写的时候上传再回填。"""
     out: list[dict] = []
     for b in md_to_blocks(md):
         if b.kind == "heading":
@@ -546,11 +582,19 @@ def md_to_feishu_children(md: str) -> list[dict]:
             out.append(_feishu_item(b))
         elif b.kind == "code":
             # 语言标注带过去：往返实测（第 649 轮真账号）这是唯一会丢的东西。
-            # mermaid：飞书 docx 没有这个语言枚举，只能落成纯文本代码块（源码还在）。
+            # mermaid：飞书 docx 没有这个语言枚举。前端渲好的 PNG 交上来了就先放一张图（P18 #4），
+            # 源码照旧跟在后面（导回来还能改）；没渲（老客户端 / 语法错渲不出）就代码块 + 一行说明。
+            png = (renders or {}).get(mermaid_key(b.text)) if b.lang == "mermaid" else None
+            if png:
+                key = mermaid_key(b.text)
+                out.append({"block_type": 27, "image": {}, "_asset_bytes": png,
+                            "_asset_name": f"mermaid-{key}.png", "_alt": "mermaid 图"})
             code: dict = {"elements": [{"text_run": {"content": c}} for c in _chunks(b.text)]}
             if b.lang and (n := _FEISHU_LANG.get(b.lang)):
                 code["style"] = {"language": n}
             out.append({"block_type": 14, "code": code})
+            if b.lang == "mermaid" and not png:
+                out.append({"block_type": 2, "text": _feishu_text("（上面是一张 mermaid 图的源码：飞书不渲染它；从 MEMOKET NOTE 里再导一次会带上渲好的图）", italic=True)})
         elif b.kind == "quote":
             out.append({"block_type": 15, "quote": _feishu_text(b.text)})
         elif b.kind == "divider":
@@ -619,16 +663,42 @@ def explain_feishu(code: int | str, msg: str, helps: str = "") -> str:
     return f"飞书返回 {c}：{msg}{hint}"
 
 
+def _local_asset(name: str, asset_dir: Path | None, max_size: int) -> Path | None:
+    """本机上的那张图：在、是文件、不超上限才给路径。`asset_dir` 是测试注入的目录，生产读 assets 目录。"""
+    if asset_dir is not None:
+        p = asset_dir / name
+    else:
+        from . import assets as _assets_store
+        p = _assets_store.assets_dir() / name
+    return p if p.is_file() and p.stat().st_size <= max_size else None
+
+
+_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+
+
 class NotionWriter:
-    def __init__(self, token: str, *, call: Call | None = None, version: str = "2026-03-11"):
+    # File Upload API 单次直传上限 20 MB（developers.notion.com/docs/uploading-small-files；更大要 multi_part）
+    MAX_IMAGE = 20 * 1024 * 1024
+
+    def __init__(self, token: str, *, call: Call | None = None, version: str = "2026-03-11", asset_dir: Path | None = None):
         self.h = {"Authorization": f"Bearer {token.strip()}", "Notion-Version": version, "Content-Type": "application/json"}
         self._call = call
+        self._asset_dir = asset_dir
 
     def _req(self, method: str, path: str, json: dict | None = None) -> dict:
         if self._call:
             return self._call(method, path, json)
         try:
-            r = httpx.request(method, "https://api.notion.com/v1" + path, headers=self.h, json=json, timeout=30)
+            if method == "UPLOAD":
+                # File Upload 第二步是 multipart（字段名 `file`），不是 JSON；走同一个口子是为了测试能把它
+                # 跟别的请求一起拦下来（跟 `FeishuWriter._req` 的 UPLOAD 同一个做法）
+                j = dict(json or {})
+                data, mime, name = j.pop("_data"), j.pop("_mime"), j.pop("_name")
+                h = {k: v for k, v in self.h.items() if k != "Content-Type"}
+                r = httpx.post("https://api.notion.com/v1" + path, headers=h, timeout=120,
+                               files={"file": (name, data, mime)})
+            else:
+                r = httpx.request(method, "https://api.notion.com/v1" + path, headers=self.h, json=json, timeout=30)
         except httpx.RequestError as exc:
             raise RemoteError(f"连不上 Notion（{exc.__class__.__name__}: {exc}）——检查网络或代理", status=0, code="network")
         if r.status_code >= 400:
@@ -649,7 +719,42 @@ class NotionWriter:
     def check_parent(self, page_id: str) -> None:
         self._req("GET", f"/pages/{page_id}")
 
+    def upload_file(self, name: str, data: bytes, mime: str) -> str:
+        """Notion File Upload API 两步（P18 #5，按 developers.notion.com/reference/create-a-file-upload 与
+        send-a-file-upload 核过）：`POST /file_uploads` {filename, content_type} → id；
+        `POST /file_uploads/{id}/send` multipart `file`。回 `file_upload` 的 id，之后一小时内要挂到块上。
+        无凭据只能验到文档级：真账号第一次跑要核一下响应形状。"""
+        d = self._req("POST", "/file_uploads", {"filename": name[:200], "content_type": mime})
+        fid = str(d.get("id") or "")
+        if not fid:
+            raise RemoteError("Notion 没给这次上传分配 id", status=0, code="file_upload")
+        self._req("UPLOAD", f"/file_uploads/{fid}/send", {"_data": data, "_mime": mime, "_name": name})
+        return fid
+
+    def prepare(self, blocks: list[dict]) -> list[dict]:
+        """写之前把 `_asset` 标记的图片块换成真块：本机有文件 → 先传再挂 `file_upload`；
+        没文件 / 传不上 → 一行说明（别留一个空图片块让整篇 400）。"""
+        out: list[dict] = []
+        for b in blocks:
+            if not b.get("_asset"):
+                out.append(b)
+                continue
+            alt = b.get("_alt") or "图片"
+            p = _local_asset(b["_asset"], self._asset_dir, self.MAX_IMAGE)
+            if not p:
+                out.append(_notion_note(f"[图：{alt}]（文件不在本机）"))
+                continue
+            try:
+                fid = self.upload_file(p.name, p.read_bytes(), _MIME.get(p.suffix.lower(), "application/octet-stream"))
+            except (RemoteError, httpx.HTTPError, KeyError) as exc:
+                out.append(_notion_note(f"[图：{alt}]（传不上 Notion：{exc}）"))
+                continue
+            out.append({"object": "block", "type": "image",
+                        "image": {"type": "file_upload", "file_upload": {"id": fid}}})
+        return out
+
     def create_page(self, parent_page_id: str, title: str, blocks: list[dict]) -> dict:
+        blocks = self.prepare(blocks)
         d = self._req("POST", "/pages", {"parent": {"page_id": parent_page_id},
                                           "properties": {"title": {"title": [{"text": {"content": title[:200]}}]}},
                                           "children": blocks[:100]})
@@ -665,6 +770,7 @@ class NotionWriter:
         return {"id": pid, "url": url or f"https://www.notion.so/{pid.replace('-', '')}", "rev": rev}
 
     def replace_children(self, page_id: str, title: str, blocks: list[dict]) -> dict:
+        blocks = self.prepare(blocks)
         self._req("PATCH", f"/pages/{page_id}", {"properties": {"title": {"title": [{"text": {"content": title[:200]}}]}}})
         cursor = None
         while True:
@@ -775,13 +881,13 @@ class FeishuWriter:
             nonlocal seq
             seq += 1
             bid = f"b{seq}"
-            node = {k: v for k, v in b.items() if k not in ("children", "_asset", "_alt")}
+            node = {k: v for k, v in b.items() if not k.startswith("_") and k != "children"}
             node["block_id"] = bid
             kids = b.get("children") or []
             if kids:
                 node["children"] = [walk(k) for k in kids]
             flat.append(node)
-            if b.get("_asset"):
+            if b.get("_asset") or b.get("_asset_bytes"):
                 images.append((bid, b))
             return bid
 
@@ -790,19 +896,18 @@ class FeishuWriter:
         return ids, flat, images
 
     def _asset_path(self, name: str) -> Path | None:
-        if self._asset_dir is not None:
-            p = self._asset_dir / name
-        else:
-            from . import assets as _assets_store
-            p = _assets_store.assets_dir() / name
-        return p if p.is_file() and p.stat().st_size <= self.MAX_IMAGE else None
+        return _local_asset(name, self._asset_dir, self.MAX_IMAGE)
 
-    def upload_image(self, doc_id: str, block_id: str, path: Path) -> None:
-        """飞书图片三步：空图片块（已建）→ `upload_all`（parent_type=docx_image, parent_node=块 id）→ `replace_image`。"""
-        data = path.read_bytes()
-        mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}.get(path.suffix.lower(), "application/octet-stream")
+    def upload_image(self, doc_id: str, block_id: str, path: Path | None, *,
+                     data: bytes | None = None, name: str = "", mime: str = "") -> None:
+        """飞书图片三步：空图片块（已建）→ `upload_all`（parent_type=docx_image, parent_node=块 id）→ `replace_image`。
+        给 `path` 是本机文件；给 `data`+`name` 是内存里的字节（前端渲好的 mermaid PNG，P18 #4）——同一条路。"""
+        if path is not None:
+            data, name = path.read_bytes(), path.name
+            mime = _MIME.get(path.suffix.lower(), "application/octet-stream")
+        assert data is not None and name
         d = self._req("UPLOAD", "/drive/v1/medias/upload_all",
-                      {"file_name": path.name, "parent_type": "docx_image", "parent_node": block_id, "size": len(data), "_data": data, "_mime": mime})
+                      {"file_name": name, "parent_type": "docx_image", "parent_node": block_id, "size": len(data), "_data": data, "_mime": mime or "image/png"})
         token = (d.get("data") or {}).get("file_token") or ""
         if token:
             self._req("PATCH", f"/docx/v1/documents/{doc_id}/blocks/{block_id}", {"replace_image": {"token": token}})
@@ -836,8 +941,14 @@ class FeishuWriter:
             real = {tmp: (created[k] or {}).get("block_id", "") for k, tmp in enumerate(ids) if k < len(created)}
             for tmp, blk in images:
                 rid = real.get(tmp)
+                if not rid:
+                    continue
+                if blk.get("_asset_bytes"):
+                    self.upload_image(doc_id, rid, None, data=blk["_asset_bytes"],
+                                      name=blk.get("_asset_name") or "mermaid.png", mime="image/png")
+                    continue
                 p = self._asset_path(blk["_asset"])
-                if rid and p:
+                if p:
                     self.upload_image(doc_id, rid, p)
             index += len(ids)
 

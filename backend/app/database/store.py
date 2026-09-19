@@ -1037,7 +1037,7 @@ def update_note(user_id: str, note_id: str, title: str, content: str,
 
 
 def snapshot_note(user_id: str, note_id: str, reason: str = "manual",
-                  *, run_id: str = "") -> dict | None:
+                  *, run_id: str = "", round_no: int = 0) -> dict | None:
     """手动存一版（不受间隔限制）。返回这一版的摘要，没这篇 / 正文为空返回 None。"""
     with connect() as c:
         row = c.execute("SELECT title, content FROM notes WHERE user_id=? AND id=?",
@@ -1045,9 +1045,22 @@ def snapshot_note(user_id: str, note_id: str, reason: str = "manual",
         if not row:
             return None
         if not _snapshot_locked(c, user_id, note_id, row["title"], row["content"],
-                                reason, force=True, run_id=run_id):
+                                reason, force=True, run_id=run_id, round_no=round_no):
             return None
     return list_revisions(user_id, note_id)[0]
+
+
+def find_run_revision(user_id: str, note_id: str, run_id: str, reason: str) -> str:
+    """这次跑已经存过这个 `reason` 的一版没有：有回版本 id，没有回空串（P18 #2）。
+
+    `Edits.after_run`（跑完的 `harness` 行）和 `round_snapshot` 的收尾行说的是同一份正文；
+    收尾那边先问一句，有了就不再存第二行。"""
+    if not run_id:
+        return ""
+    with connect() as c:
+        row = c.execute("SELECT id FROM note_revisions WHERE user_id=? AND note_id=? AND run_id=? AND reason=?"
+                        " ORDER BY created_at DESC, rowid DESC LIMIT 1", (user_id, note_id, run_id, reason)).fetchone()
+    return str(row["id"]) if row else ""
 
 
 # ------------------------------------------------- 用户的编辑（计划 9.1）
@@ -1059,7 +1072,9 @@ def snapshot_note(user_id: str, note_id: str, reason: str = "manual",
 
 REVISION_REASON_HARNESS = "harness"
 """跑完落的那一版正文的 `reason`。用户在历史面板里看得见它，这是有意的：
-「恢复到 AI 跑完那一版」本来就是这个产品该有的一步。"""
+「恢复到 AI 跑完那一版」本来就是这个产品该有的一步。
+P18 #2 起它也带 `round_no`（= 最后一轮）：它就是最后一轮的「之后」，`round_snapshot` 不再另存一行
+`run_end`（P16 那阵子同一份正文存了两行）。"""
 
 REVISION_REASON_ROUND = "round"
 """智能续写 / 打磨**每一轮开始前**的正文（P16，agent-native-editor §3.2「历史版本保留每次烧之前的快照」）。
@@ -1067,8 +1082,10 @@ REVISION_REASON_ROUND = "round"
 「只撤第 N 轮」= 拿这一版和它后面那一版做 diff 反向应用（前端 `editor/undoRound`）。"""
 
 REVISION_REASON_RUN_END = "run_end"
-"""这次跑收尾时（跑完 / 暂停等处置）的正文，`round_no` = 最后一轮。它是最后一轮的「之后」——
-没有它，最后一轮只有「之前」，「只撤最后一轮」就没有另一端可比。"""
+"""这次跑收尾时的正文，`round_no` = 最后一轮。它是最后一轮的「之后」——
+没有它，最后一轮只有「之前」，「只撤最后一轮」就没有另一端可比。
+**P18 #2 起只在 `Edits` 没落 `harness` 行的跑上写**（暂停等用户处置、没进 `harness_runs` 的跑）；
+正常跑完的跑收尾行就是 `harness`。老数据里两行都有的（P16–P17 那几天）前端两种都认。"""
 
 
 def snapshot_content(user_id: str, note_id: str, title: str, content: str, reason: str,

@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { exportFeishu, exportNotion, exportObsidian, type ExportBackOut, type NoteRemote } from '../api'
 import { toast, toastAction } from '../toast'
+import { exportMermaidRenders } from './mermaidPng'
 
 /**
  * 导回的**逻辑**：三个平台各怎么调、跑起来什么状态、写完怎么报。
@@ -88,8 +89,9 @@ export function useExportBack(noteIds: string[] = []) {
       run('obsidian', () => exportObsidian(vaultDir.trim(), noteIds, force)),
     toNotion: (token: string, parentPageId: string, force = false) =>
       run('notion', () => exportNotion(token.trim(), parentPageId.trim().replace(/-/g, ''), noteIds, force)),
+    // 飞书没有 mermaid：先把这批笔记里的图在这边渲成 PNG 交给后端（P18 #4；渲不出不拦导回）
     toFeishu: (appId: string, secret: string, folder: string, force = false) =>
-      run('feishu', () => exportFeishu(appId.trim(), secret.trim(), folder.trim(), noteIds, force)),
+      run('feishu', async () => { await exportMermaidRenders(noteIds); return exportFeishu(appId.trim(), secret.trim(), folder.trim(), noteIds, force) }),
   }
 }
 

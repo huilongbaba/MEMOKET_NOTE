@@ -2235,3 +2235,97 @@ P12 §0 核过：分层账本（`ChangeLayersPanel` + `roundDiff` 的层开关 /
 - 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：482 / `2026-09-16T02:53:27` / 321,250 / `47dcc54be60aa4f2` / `note_revisions` 44 —— **一个字没动**（所有探针跑在 `p16data`；`~/Library/Application Support` 没碰，`MEMOKET_USER_DATA=$S/p16userdata`）。
 - 真模型调用 **0 次**（三轮都是假模型；⌥ 卡零模型；「查完整来龙去脉」按钮没按）；桌面壳截图跑了 19 次（前 3 张 hover 用的是 `terms` 那版，重拍）。
 - 截图（浅 / 深各一张）：`p16-rounds-before-{light,dark}` → `p16-rounds-burned-{light,dark}` → `p16-rounds-undo3-{light,dark}`、`p16-rounds-history-light`；`p16-hover-before-{light,dark}` → `p16-hover-after-{light,dark}`、`p16-hover-evt-{light,dark}`、`p16-hover-none-light`、`p16-hover-key-light`。
+
+---
+
+## P18 · 第 778 轮：后端 harness 与导出的遗留——done_criteria 命中不作废、收尾只落一行、撤某一轮沿后几轮映射、飞书 mermaid 渲成图、Notion 本地图片、网页版凭证 + 托盘 600 字（2026-09-19）
+
+> HEAD 开工时 `59a9f57`（worktree `agent-aa8e51b7bb76f8dd6`）。**另一条线在打包版 app 上走查、小修前端**——这批没碰前端布局；碰到的组件只有三处**一行文案**
+> （`ExportBack` / `ExportNotePanel` 凭证那句改读 `credsNote()`、`TrayPanel` 放进托盘那一声后面接 `trayAddNotice()`）+ `App.tsx` 里 `undoRoundOnly` 两行（多取后几轮的快照）；`api.ts` 只加了两个类型。
+> `loop.py` 的循环结构没动（一行没改）。真模型只在 #1 的两跑里用（scratch 库 `$S/p18/p18real` = P15 那份真库拷贝，`rails_off=("save",)`，`docs/_research/p18-runs/`）；
+> 飞书真发一篇到测试文件夹 `Q6AkfiHtylL2LrdMJc5cKi4anyf`（凭据 `importlib` 加载 `config.py`，没 cat、没打印）；Notion 无凭据，只到文档级 + 假 call。
+> 桌面壳探针跑在 `KITE_DATA_DIR=$S/p18/p18shot`（p16data 的拷贝）+ `p18run.sh`，探针 `probesP18.ts`（`p18:mermaidpng:<id>`），零模型调用。六栏：用户怎么发现 · 复现 · 依据 · 改了什么 · 前后对比 · 下一步。
+
+### 1. `done_criteria` 命中后 BestOf 退回第 1 轮：先量，再选「沿用上一轮排名」✔（P15 下一步）
+
+- **用户怎么发现**：P15 真跑 `da080ca847cf`：第 1 轮判过分（2 段），第 2、3 轮各被 `done_criteria` 短路（写了 4 段 + 一句弃答）、第 4 轮 `no_placeholder`——`BestOf` 交出去的是**第 1 轮的 1,433 字**，后三轮写的 6 段用户看不到。
+- **复现 / 量**（`docs/_research/p18-runs/measure_bestof.py`，p5–p15 全部真跑日志逐轮重放 `rank()`）：
+
+  | | 数 |
+  |---|---:|
+  | 多轮真跑（p5 / p6 / p8 / p8b / p11 / p13 / p14 / p15） | 21 |
+  | 其中 BestOf 交的是更早那轮、后面全是判据命中轮 | **7** |
+  | 后面那些命中轮按判据：`no_same_sources_twice` / `citations_present` / `no_repeated_lists` / `no_placeholder` / **`done_criteria`** | 14 / 3 / 2 / 1 / **2**（同一跑） |
+
+  读产出：前四种确实不该交（同一批依据说两遍、一个出处都没有、占位句）；只有 `done_criteria` 那跑（P15 da080）r2 写的 4 段（EVT 检查点 / 四个节点各承担什么 / 产品自我纠偏 / 下一步规矩）人读会留，r3 的弃答句也是照提示写的——它说的是「用户自己的标准还差一点」，不是这一轮坏了。
+- **依据**：候选①「命中轮打上限 1 分而不是 0 分」**量过不成立**：伪造评分只有一维，`rank()` 是 (0, 1.0)，照样输给第 1 轮的 (5, 1.83)，用户拿到的还是第 1 轮（`test_1_打上限1分那个候选量过不成立`）。候选②「BestOf 在 `done_criteria` 命中时不回退」——做成**沿用上一轮的排名**（不升不降；平手归后来者 → 交更长的那份），只对这一条判据；`rank()` / 判据分数 / `loop.py` 都不动。`Checks` 把「这一轮是哪条短路的」写进 `bag["short_circuit"]`（`fired_checks` 被 `Ledger.after_judge` pop 掉，BestOf 排在它后面读不到；而且它连卡死放行的那条也记）。
+- **改了什么**：`middleware/best_of.py`（`NOT_A_VETO = ("done_criteria",)`；沿用 `prev_rank` / `prev_coverage_unmet`，每轮记一份；快照往返把元组变成列表，收回来）；`middleware/checks.py`（`short_circuit` 每轮先清空、短路时写）。测试 `test_p18.py` #1 七条（含反向闸：别的四条判据照旧打到底；`_regressed` 不因沿用的排名误开火、退步时交的是沿用了排名的更长那轮）。
+- **前后对比**：离线重放（`replay_bestof.py`，喂真的 `BestOf`）：P15 da080 **修前交 r1（1,433 字）→ 修后交 r3（2,207 字）**；P13 / P15 0eecee 四轮全命中，修前修后都交 r4（沿用不到判过分的轮）。真跑两篇（同一意图 + 托盘三条，4 轮封顶）：
+
+  | | 轮 / 秒 | 调用 / prompt（cached）/ completion | 逐轮 | 交的 |
+  |---|---|---|---|---|
+  | `p18`（第一跑） | 1 / 21 | 4 / 20,987 (3,996) / 1,481 | r1 判 (5, 2.0) → `complete` | r1（没轮到判据，修法没机会开火） |
+  | `p18b`（第二跑） | 4 / 82 | 15 / 97,984 (36,734) / 8,318 | r1 判 (4, 1.8) 1,330 字 · r2 / r3 / r4 `done_criteria`「5 段里 2 段没日期；1 段没出处」→ `check_stuck` | **r4（2,444 字）**——修前会是 r1 |
+
+  p18b 读产出：r2 写了 4 段（四个节点各承担什么、访谈把挑战落到使用过程、这一年重新确认的工作方式、三条自校验标准）、r3 改写 EVT 那段、r4 补了 7 月 29 日 MP → 8 月 5 日出货那一段带三个编号——人会留 r4。**顺手看到**：r2 末尾多了「 日本一本道」四个字（模型吐的垃圾，中文的，`no_foreign_script` 认不出）；r2–r4 三轮 `done_criteria` 原话一字不差（模型没照做，P15 ② 仍在）。
+- **下一步**：中文垃圾尾巴要一条代码判据（P8 的乱码只认外文字母）；`done_criteria` 连响三轮 = 「补日期 / 补出处」这个指令模型三次没做，`_hint` 的写法要再看。
+
+### 2. `run_end` 与 Edits 的 `harness` 行重复：合成一行 ✔（P16 下一步②）
+
+- **用户怎么发现 / 复现**：P16 收尾核过「五行」：`round` ×3 + `run_end` 1,122 字 + Edits 的 `harness` 行 1,122 字——同一份正文两行，历史面板里一次跑折组也多一行。
+- **依据**：两个写者说的是同一件事（这次跑收尾时的正文）。不加开关，改成**后写的那个先问一句「另一个写过没有」**：`Edits.after_run` 在 `RUN_FINISHED` 之前跑（loop：commit → after_run → yield run_finished），它落的 `harness` 行带上 `round_no`（= 最后一轮），`round_snapshot` 收尾时 `store.find_run_revision(run_id, 'harness')` 有就不存；没有（暂停等处置 `awaiting_review` / 没进 `harness_runs`）才存 `run_end`。
+- **改了什么**：`store.snapshot_note(round_no=)` + `find_run_revision`；`middleware/edits.py` 传 `round_no=st.round`；`harness/round_snapshot.py` 收尾先问；`schemas.RevisionOut` 注释；前端 `runRounds` 本来就两种都认（老数据两行都在、内容一样，照列）。**落库每个取值都真写真读**（`test_p18` #2）：正常跑完 → `round` ×3 + `harness`(round_no=3) 恰好四行、无 `run_end`；`awaiting_review` → 四行里收尾是 `run_end`；`find_run_revision` 只认同一次跑同一个 reason、空 run_id 不认。
+- **前后对比**：P16 那五行 → 四行；`GET /revisions` 第一行 `("harness", 3, run_id)`。
+
+### 3. 「只撤第 N 轮」当后一轮改过它的句子：沿后几轮映射再撤 ✔（P16 下一步①）
+
+- **用户怎么发现**：P16 「第 1 轮写的被第 2 轮改过了」只能报冲突、正文不动。
+- **依据**：第 N 轮之后每一轮的快照都在（`round` 行 + 收尾行）——把第 N 轮那一处的位置沿链逐轮映射（`mapPos`：落在被删段上塌缩到左边；起点停在插入点算在插入之后、终点算在插入之前），映射到的就是后一轮改过之后的那段；撤第 N 轮 = 把那段换回第 N 轮之前的原文（后一轮对它的修改是对第 N 轮文字的修改，一起走）。后一轮把它**整个**删了、而第 N 轮之前那儿还有原文 → 原文要不要回来说不准，仍报冲突。
+  **第一版栽了一次**：映射用逐字 `diffParts`——它先掐公共前后缀，两版尾巴都是「。」时把第 N 轮那句的句号跟后一轮新写的最后一句的句号对上，终点被映射到全文末尾，撤第 1 轮把第 2 轮那段也撤了（测试当场红）。改成 `paragraphDiff`：先按段落（`\n\n` 分隔）做 LCS，没动的段照抄、改过的段按 2-gram 相似度配对（≥ 0.4）再逐字比、配不上的整段删 / 增——产出跟 `diffParts` 同一个形状，`mapPos` 照用。画层仍用 `diffParts`（那是它对的用途）。
+- **改了什么**：`editor/undoRound.ts`（`undoRound(before, after, current, later=[])` / `mapPos` / `paragraphDiff` / `similarity`）；`util/runRounds.ts` 每轮带 `later`（「之后」再往后、同一次跑里的行，时间正序）；`App.undoRoundOnly` 把 `later` 的正文一起取来。测试 `p18.test.ts` 六条 + P16 那条「不给后几轮快照仍报冲突」不变。
+- **前后对比**：v0 → 第 1 轮写 S1 → 第 2 轮改了 S1 的几个字再写 S2 → 第 3 轮写 S3：修前 `undoRound(v0, v1, v3)` 冲突「找不到了」；修后给 `[v2, v3]` → 正文 = v0 + S2 + S3，`undone 1 / conflicts []`；用户之后又改了别处也撤得掉；后一轮整个删了 → 冲突「整个删掉了，原文要不要回来说不准」。
+- **下一步**：真实 app 里没拍（另一条线在拍前端）；`paragraphDiff` 的 LCS 是 O(段数²)，几百段没问题、上千段要换 Myers。
+
+### 4. 飞书 mermaid → 图 ✔（P2-fix 没做）
+
+- **用户怎么发现**：飞书 docx 没有 mermaid 语言枚举，P2-fix 落成纯文本代码块。
+- **依据 / 方案**：**没有外部服务**（不许 kroki）；后端是 PyInstaller 打的包塞不进 Chromium；前端本来就在渲 mermaid——所以导回前**前端**把图渲成 PNG 交给后端，后端走 P2-fix 已做的图片三步上传。按**源码哈希**（`mermaid_key` = strip 后 sha256 前 24 位）对号：前端不算哈希，只用后端给的键（`POST /api/export/mermaid` → `{哈希: 源码}`；渲完 `POST /api/export/renders` `{哈希: data:image/png}`；`/export/feishu` 用掉即扔）。任何一步失败**不拦导回**：没渲的那张退化成代码块 + 一行说明。
+  **真 Chromium 里栽了两次**（桌面壳探针 `p18:mermaidpng:47b046adafcb`，`$S/p18/p18-mermaidpng{,2,3,4}.log`）：① 第一次 `ok=false`——拆步看：SVG 渲得出（16.6 KB，viewBox 1449×94），`svgToPng` 给 null；② 再拆：SVG 里标签是 `<foreignObject>`（init 指令 `flowchart.htmlLabels=false` 没关掉），blob: URL 装进 `<img>` 画上 canvas 之后 `toDataURL` 抛「Tainted canvases may not be exported」；**同一份 SVG 走 data: URL** 画出来 1449×94、导得出 PNG——改成 data:（`svgDataUrl`），第四次 `ok=true bytes=61017`、后端 `renders stored=1`。PNG 人看：六个节点中文标签全在（`$S/p18/mermaid-1ea3904c583d352ea692b1a9.png`，2899×188，2×）。
+- **改了什么**：后端 `exporters.mermaid_key / mermaid_blocks / MERMAID_RENDER_MAX(4 MB) / MERMAID_RENDERS_MAX(64)`、`md_to_feishu_children(md, renders)`（有渲染：图块 `_asset_bytes` + 源码；没渲染：源码 + 一行说明）、`FeishuWriter.flatten` 挑 `_asset_bytes`、`upload_image(data=…)`；`routers/export.py` 两条路由 + `png_from_data_url`（前缀 / 魔数 / 上限 / 键格式）+ 按用户内存暂存、导回时 pop。前端 `util/mermaidPng.ts`（`withExportInit` 浅色主题、`svgSize` 读 viewBox、`sizedSvg`、`svgDataUrl`、`svgToPng` 白底 2×、`collectMermaidRenders`、`exportMermaidRenders` 任何失败回 0 不抛）；`useExportBack.toFeishu` 先渲图再发。`api.ts` 只加 `MermaidBlocks` / `RendersOut` 两个类型。测试后端 #4 五条（含端到端：坏键 / 非 PNG 退回、导回只传交上来的那张、第二次导回不再传）、前端 5 条。
+- **前后对比（真发）**：`47b046adafcb`「众筹前的业务背景与产品动因」→ **`FQcHdWj2FoCHnUxlUnlcClrlnCg`**（https://acn0p1esxk6c.feishu.cn/docx/FQcHdWj2FoCHnUxlUnlcClrlnCg）：API 回读 26 块，**image 1（有 token，2899×188）** + code 1（源码 `graph LR…` 紧跟其后）+ text 17 + h 3 + bullet 3。P2-fix 那两篇 mermaid 是 `code 1`、0 图。
+- **下一步**：init 指令关不掉 htmlLabels 的根因没查（data: 绕过了）；深色模式下导出用的是浅色主题（对面是白纸，刻意）；Notion 那边 mermaid 仍原生渲染（不带图）。
+
+### 5. Notion 本地图片：File Upload API ✔（P2-fix 退化成一行说明）
+
+- **依据**：按真文档核（developers.notion.com/reference/create-a-file-upload、send-a-file-upload、docs/uploading-small-files）：`POST /v1/file_uploads` `{filename, content_type}`（mode 默认 single_part，≤ 20 MB）→ `POST /v1/file_uploads/{id}/send` multipart 字段 `file` → 一小时内挂到块上：`{"type":"image","image":{"type":"file_upload","file_upload":{"id":…}}}`；Notion-Version 2026-03-11（`NotionWriter` 本来就是这个）。**无凭据只能验到文档级**：真账号第一次跑要核响应形状（`id` 在顶层）。
+- **改了什么**：`md_to_notion_blocks` 本地图 → 带 `_asset` 标记的图片块；`NotionWriter(asset_dir=)`、`upload_file`（两步）、`prepare`（写之前上传换成 `file_upload` 块；文件不在本机 → 一行说明；传不上 → 一行说明带原因，**不拦整篇**）；`create_page` / `replace_children` 都走 `prepare`；`_req("UPLOAD")` multipart 跟飞书同一个口子（测试能拦）。`_local_asset` 抽出来两家共用。测试 #5 三条；`test_p2fix_export` 两处期望随之改（image 块）。
+- **前后对比**：假 call 上 `IMG` → calls `[POST /file_uploads, UPLOAD /file_uploads/fu-1/send, POST /pages]`，children[0] = file_upload 块；目录里没图 → 「[图：示意图]（文件不在本机）」。弹层文案「本地图片 Notion API 收不了」改成「走 Notion 的文件上传」。
+
+### 6. 录音进托盘只放前 600 字要明说 + 网页版凭证 ✔（P15 下一步 / P2-fix 没做）
+
+- **依据**：600 字的截断后端（`store.TRAY_EXCERPT_MAX`）和前端（`withItems`）本来就有——问题是**悄悄截**：录音转写几千字，用户以为整段摊上了。放进去那一声后面接一句：`trayAddNotice()`「只放了前 600 字（全文 N 字）——长录音 / 长段落走「存入知识库」，再把要用的事实放进托盘」（`import` / `selection` 才说，笔记 / 事实项不说）。
+  网页版凭证跟 Obsidian 路径一个待遇：`localStorage` `memoket-note:export-creds`（白名单键、≤ 512 字），弹层明说「存在这个浏览器里（localStorage）：换浏览器要重填，清浏览器数据就没了；共用的电脑别存」；桌面版照旧主进程 0600。
+- **改了什么**：`util/exportCreds.ts`（`credsPlace` / `credsNote` / `pickCreds` / web load & save）；`util/tray.ts::trayAddNotice`；三处一行文案。测试 `p18.test.ts` 两条。
+- **下一步**：录音菜单那行 hint 没改（组件，另一条线在动）；「长录音自动存知识库再抽事实进托盘」是产品决定，没做。
+
+### 突变验（`docs/_research/p18-runs/p18_mutants.py`：逐条撤掉修法 → 对应闸红 → 原样恢复；**24 条全红**）
+
+| 撤什么 | 哪条红 |
+|---|---|
+| `NOT_A_VETO` 空 / 沿用排名不沿用 coverage_unmet / 对所有判据都沿用 | `test_1_done_criteria…` ×2 / `test_1_别的判据照旧打到底` |
+| `Checks` 不写 `short_circuit` / 每轮不清空 | `test_1_Checks…` |
+| 收尾不问 Edits 写过没有 / `harness` 行不带 round_no / `find_run_revision` 不认 reason | `test_2_*` 三条各一 |
+| 飞书不看 renders / `flatten` 不挑 `_asset_bytes` / 路由不核魔数 / 导回后不扔 | `test_4_*` 四条各一 |
+
+**突变脚本自己栽了一次**（记进 §21）：跑完突变验之后全量 `pytest` 里 `test_4_路由…` 红——「第二次导回又传了一张」，而源码明明是 `_RENDERS.pop`。追了半小时怀疑「别的测试重载了路由模块、两份 dict 不是同一个」（把断言改成了按接口观测，那一版改动留着，更硬），最后是 **`.pyc`**：`.pop` → `.get` 这个突变**同字节数**、又在同一秒内恢复，Python 按「源码 mtime（秒）+ 大小」判 `.pyc` 有效，于是整套测试跑的是突变版的字节码。`p18_mutants.py` 恢复原文后现在顺手删 `app/**/__pycache__`；清掉缓存重跑全绿。
+| Notion `prepare` 不上传 / 少 send 那步 / 传不上就抛 | `test_5_*` 三条 |
+| 前端：`undoRound` 无视 later / 用逐字 diffParts / 整个删了也硬撤 / `runRounds` 不给 later / `mermaidPng` 渲不出也带 / 一张没渲出也发 / 失败会抛 / 网页版不存 / `trayAddNotice` 不说 | `p18.test.ts` 对应 9 条 |
+
+### 闸 / 指纹 / 成本
+
+- 后端 `pytest -q`：**2264 passed**（基线 2246；+18 `tests/test_p18.py`；清掉 `__pycache__` 之后跑的，见上）；老测试改动：`test_p2fix_export` 三处期望（Notion 本地图是 image 块、飞书 mermaid 后多一行说明）。
+- 前端 `npm test`：**65 文件 / 465 条**（基线 64 / 448；+`p18.test.ts` 17 条），exit 0，全部 check-* 绿。
+- `harness-framework.md`：§3 `round_snapshot.py` / `exporters.py` 两行、§7 `BestOf` 行、§21 加一行。`product-readiness-plan.md` P18 / P19+ 两行。
+- 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：**482 / 2026-09-16T02:53:27 / 321,250 / `47dcc54be60aa4f2` / note_revisions 44**，一字不差；`~/Library/Application Support` 没碰（桌面壳 `MEMOKET_USER_DATA=$S/p18/p18userdata`，数据 `KITE_DATA_DIR=$S/p18/p18shot`）。
+- 真模型：**2 次跑**（端点同 P15，scratch 库 `p18real/llm_usage`）：19 次调用 / prompt 118,971（cached 40,730，34%）/ completion 9,799 ≈ **0.13M**——估 0.2M，实际 0.13M（第一跑第 1 轮就 `complete`，没轮到判据；第二跑 4 轮 `check_stuck`）。
+- 飞书真发 1 篇（`FQcHdWj2FoCHnUxlUnlcClrlnCg`）；Notion 0 次（无凭据）；桌面壳探针跑了 5 次（第一次用户名错、第二次 `ok=false` 拆步、第三次拆到 tainted、第四次过；每次零模型调用）。

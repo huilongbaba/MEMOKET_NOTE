@@ -1376,6 +1376,10 @@ export const importFeishu = (appId: string, appSecret: string, scope: 'wiki' | '
 export type ExportBackOut = { created?: number; updated?: number; written?: number; skipped?: number; conflicts?: string[]; failed?: string[]; files?: string[]; missing?: string[]; untried?: number; url?: string; urls?: { note_id: string; title: string; url: string }[] }
 /** `remote_path`：Obsidian 是 vault 里的相对路径；Notion / 飞书是对面文档的 URL（P2-fix 起） */
 export type NoteRemote = { platform: string; remote_id: string; remote_path: string; exported_at: string; remote_rev?: string }
+/** `POST /api/export/mermaid`：这批笔记里每段 mermaid 的源码，按源码哈希（P18 #4；渲成 PNG 交回 `/api/export/renders` 用同一个键） */
+export type MermaidBlocks = Record<string, string>
+/** `POST /api/export/renders` 的回包：收下几张、哪些键不是 PNG 被退回 */
+export type RendersOut = { stored: number; rejected: string[] }
 export const exportObsidian = (vaultDir: string, noteIds: string[] = [], force = false) =>
   fetch('/api/export/obsidian', { method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ vault_dir: vaultDir, note_ids: noteIds, force }) })
     .then(json<ExportBackOut>)

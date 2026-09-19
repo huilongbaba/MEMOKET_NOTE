@@ -260,7 +260,8 @@ backend/app/
                              （二元条目 → 维度；批 17 / 阶段 6.1，[IND] §4 的 TICK / RaR）
     snapshot.py              轮末暂停：冻结 / 解冻 State
     round_snapshot.py        每轮烧进正文之前存一版 note_revisions（P16 分层历史，agent-native-editor §3.2）：套在 loop.run 的事件流外面，
-                             STEP_STARTED → reason='round'、RUN_FINISHED → 'run_end'；只在会写这篇笔记的跑上存（writes_note）
+                             STEP_STARTED → reason='round'；RUN_FINISHED 时 Edits 已落的 'harness' 行（带 round_no，P18 #2）就是收尾，
+                             没有（暂停 / 没进 harness_runs）才存 'run_end'；只在会写这篇笔记的跑上存（writes_note）
     params.py                长文 harness 共用的参数
     adapter.py               LLMClient / RunHistoryStore 两个协议接到 util/llm 和 store
     conflict_confirm.py      摄入时那批冲突候选进收件箱前让模型确认一遍；
@@ -277,6 +278,9 @@ backend/app/
                              · relations（六种关系，纯代码）· inbox（摄入时检冲突进收件箱）· units（长材料切成的段：part_labels 带 k/n · materials() 按材料归组 · parts_of() 分段导航）· scope（记忆范围：按 session 前缀分 笔记 / 会议记录 / 导入）· who（说话人写法归一：speaker a / speaker_a / Speaker A 算一个人）· entities（实体去重规则版：大小写 / 分隔符 / 别名归组，只在展示与查询层，代表 = 事实最多的码）
     ingest/                  摄入：asr · chunking · extract · importers · feishu（块 → markdown + 最小客户端）
     exporters.py             导回：render_tree（zip 导出 / Obsidian 目录共用）· markdown → Notion / 飞书块 · 最小写客户端
+                             P18：飞书 mermaid → 图（前端 util/mermaidPng 在 Chromium 里渲 PNG，按源码哈希 mermaid_key 交到
+                             /api/export/renders，导回时走图片三步上传；没渲的退化成代码块 + 一行说明；不用外部服务）；
+                             Notion 本地图片走 File Upload API 两步（POST /file_uploads → /send multipart）挂成 file_upload 块
     assets.py                资产目录（粘贴的图 / 录音落在哪；assets 路由和整库导出共用）
     backup.py                启动时一天一份笔记库备份（sqlite 在线备份；留 7 日 + 3 月）
   editor/                    既不是 agent 也不是知识库：outline · restructure · textshape · vision · profile
@@ -528,7 +532,7 @@ State: mode · ctx(user/note/cursor/intent/tray) · request · round        # ct
 | **Checks** | after_produce | 跑 Mode 的代码判据；命中就 `skip_judge`，能自动修的当场修，发 `check_hit`；同一条原样卡满 `STUCK_ROUNDS` 轮就只发事件不再短路（改不动的老正文不该把剩余轮数烧掉） |
 | **Ledger** | before_round / after_prepare / after_judge | **材料账本**：把这一轮的工具轨迹折进一份跨轮的状态（查过什么、查到过什么、每条事实的日期、各轴共 N 条取了 M 条），并把这一轮写进 `harness_rounds`（含短路省掉了几次查询）。`before_round` 给 `query_cache` 报轮次——跨轮的重复必须原样返回全文。**账本本身只记不改**——接进 prompt 是单独一步，因为「把已经有什么摆给模型看」有实测证据会缩小它的搜索空间 |
 | **Supersede** | after_prepare | 取材之后把「这条已经被取代了」补上：账本里的事实对一遍 `superseded_by`（人已裁决）和 `kb_conflicts`（未裁决的候选），被取代的**把取代它的那条一起带回来**，未裁决的只挂一句「两条都别当定论」。知识库一直知道 6/3 被 8/5 取代，而写作侧从来不问。写出来的每一行都带 `score_context.NOTICE_MARK`——**打分那一侧的 6000 字截断按记号优先保留它们**，否则被更正的那条留在材料里、说它过时的那行反倒被切掉（批 11 H2） |
-| **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的 |
+| **BestOf** | after_judge | 记住最好的一轮；跑满轮数时交付最好的，不是最后的。**被 `done_criteria` 短路的轮不作废**（P18 #1）：沿用上一轮的排名（不升不降）、平手归后来者——它说的是「用户自己的完成标准还没全满足」，不是这一轮坏了；别的判据（重复段 / 没出处 / 占位句）照旧 (0, 0.0) 打到底。量：p5–p15 21 次多轮真跑里 7 次交的是更早那轮，后面的命中轮只有 1 次是 `done_criteria`（P15 da080：交 r1 的 2 段，人读该留 r3 的 4 段 + 弃答句）；「打 1 分不打 0 分」那个候选量过不成立（单维 (0, 1.0) 仍输给 (5, 1.83)）。`Checks` 把「这一轮是哪条短路的」写进 `bag["short_circuit"]` 给它读 |
 | **Cost** | before_run / after_round | **这次跑花了多少**（计划 12.3）。`before_run` 在调用链上绑一份账本（`llm.bind_usage_sink`，`util/llm._record` 是全仓唯一记用量的地方），轮末结一次账并写进 `harness_runs.tokens/.calls`；超过 `params.RUN_TOKEN_CAP` 就发一条 `cost` 事件，停机规则 `_over_budget` 跟着收工、交最好的那一轮。**在这之前一次跑能花多少没有任何约束**（[MECH] §7）。上限是量出来的：158 次跑的 token 中位 85,041 / p90 186,243 / 最大 248,160，上限取 500,000 ≈ 最大值的 2 倍——**它是安全网不是控制器**，在已量到的跑上一次都不开火 |
 | **CrossRun** | after_run | **这次跑完比上一次跑差就报一句**（计划 9.3）。`BestOf` / `_regressed` 只管一次跑内部，而实测三篇笔记反复跑同一篇是 9→6→4、9→7→4→3。维度集合相同才比（不同就是配置差异不是质量差异），差了发 `cross_run`。**只报，不替用户决定**——计划第 4 节写死了不做跨跑自动回滚。必须排在 `History` 前面（它一写库，「最近一次」就是自己），靠 `History.after=("cross_run",)` + `_order.verify` 保证 |
 | **History** | after_run | 记录这次 run 怎么跑的（跨 run 学习的原料）。批 23 起 `harness_runs.id` 用的就是 `harness_rounds.run_id` 那个 id——**这三张表在这之前没有任何 join 键** |
@@ -1069,6 +1073,7 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | **「打分器说正文里有」也要回正文核；一个没做完的「挡住一半」要在下一批数过来** | P11（第 775 轮）：P8 记着两条「记着」——`search_memory` 取回的 `apple-*` 不走筛、打分器三次点名正文里没有的「末尾异常字符」。这一批把两条都做成代码判：① 按查询取回却**跟取回它的那句查询零重合**的事实，来处跟 `filter_facts` 抽样是同一个形状（词法命中必然跟查询共用词元；零重合 = 从查询解析到的主题 / 实体桶按时间取的），进同一道 `relevance.gate`（默认照旧只记）；② 判词里引号引着的字在正文 + 材料 + 打分上下文里都找不到 → 那一维不计分（p5 / p6 / p8 / p8b 四组 255 条判词里 10 条，5 条是 अ / من / م / մե / אלעד，5 条是复述加了引号）。**同一批的另一半是前端**：P10 给「续写」封的撤销单位（删掉再插回）搬不到智能续写——一轮多处落地，回退是一笔不记历史的改动，它把**更早**的撤销事件沿途映射坏（实拍第 2 轮删掉第 1 轮的半句再封，⌘Z 两次之后那半句留在正文里）；修法不是事后封，是落地时就并进同一条（`input.type.compose`），没有任何不记历史的改动。**顺手**：首次打开圆点 15 s 的 2/3 是 `re` 缓存只有 512 条、几千个表层词轮着重新编译——子串预检 + 按表层词缓存，判定一字不变（143 段 digest 修前修后一样）；剩下的 70% 在 memoket_kite 的全表 grep，< 3 s 没到 |
 | **判据的提示教模型怎么写，判据自己就得认那种写法；一个「先量再定位置」的判据，量的是「谁在它前面响、说的是不是同一件事」** | P15（第 777 轮）：① P13 把 `done_criteria` 排最后是照抄 `instruction_constraints`，真跑 4 轮一次没轮到。这一批先数 p5–p14 22 次真跑的 74 次命中（材料族 41 / 重复族 33），再把三次带完成标准的真跑 19 轮离线重放——它会响的 5 轮里，材料族先响的 1 轮说的是同一句话（补编号），重复族先响的 4 轮说的是另一件事——于是插在材料族之后、重复族之前，「第一条响的赢」不动（同时报只是重复）。改后两篇真跑 8 轮里 4 轮轮到它。② 同一次真跑第 3 轮抓到判据跟自己打架：`_hint` 教模型「编不出来的结论改成『这里需要补上 XX 的记录』」，模型照做，判据把那两句又数成「没出处」——修法是量程认 `abstention_lines`，跟 `material_thin` 的「它已经照做了，别再拦一次」同一形状。③ 托盘里的笔记被引用是 `[标题](note://id)`，`citations_present` 只数 `[编号]` → P14 真跑第 1、2 轮把「引了两篇笔记」判成「一个编号都没有」；「这一轮一个引用都没有」这个谓词有两个读者（它和 `material_thin` (b)），收成一个 `has_citation`。**顺手**：首开圆点剩下的 70% 是 kite 对 2 万条事实的全表 grep——量出来 143 段 249 个 grep 词里 162 个在库里一个 unit 都不命中、54 个只落在 ≤ 8 个 unit；不改 kite，改问法：调用侧建 2-gram 倒排表，把 `units` 当过滤条件交给 kite（零命中给一个不存在的 unit，**不能删那条子查询**——kite 只取前 3 条，删一条第 4 条会顶上来），3.9 s → 1.8 s，143 段 digest 一字不差 |
 | **一个「判 0 率」下面可能是三种病，读比例之前先看同格的其他维** | 批 28：批 27 修完 bench 的材料切句和量程，确定性对照五篇全绿，真跑 336 格回来 `factual_grounding` 干净臂判 0 率 **48.1% → 48.7%，双峰原地不动**。逐格读才看出三个峰是三种东西：`06647b9c2031` 的 42 格**全部 ≥3 维同时为 0**（`non_repetition` / `coherence` 均值 0.00）——打分器给整篇机器损伤笔记判死刑，`factual_grounding` 只是陪葬，修材料修不动；`309f19202309` 的 `whole-piece` 档是「材料上限 12 条」对三万字正文的结构性结果；只有 `e78306202d78` 是真的「材料撑不住正文」。而代码可数的「材料盖不住的原子」跟模型的判 0 不相关（`ecfac` 3 个原子判 0 率 0%，`06647` 1 个原子 97.6%）。**修法先是分母口径**（损伤笔记从干净臂里拿出来单独成表），不是判据。同一批还有个同形状的：`eda` 的重复查询率 34.1% → 32.5% 没动，因为 `repeat_calls` 数的是全部工具、而 2.4 的缺口摘要只列 `CACHEABLE` 那八个——**一个分母里混着两种东西，量出来的比例谁也不代表** |
+| **「判据命中」不是一种病，是几种；把它们一律打成 (0, 0.0) 之前先按判据分开数** | P18（第 778 轮）：P15 记着「`done_criteria` 命中的轮 `factual_grounding=0`，BestOf 交的是第 1 轮的 1,433 字，后三轮写的 6 段用户看不到」。先量：p5–p15 21 次多轮真跑，7 次 BestOf 交的是更早那轮、后面全是命中轮；那些命中轮按判据分开数——`no_same_sources_twice` 14、`citations_present` 3、`no_repeated_lists` 2、`no_placeholder` 1、`done_criteria` 2（同一跑）。前四种读产出确实不该交（同一批依据说两遍 / 一个出处没有 / 占位句）；只有 `done_criteria` 是「用户自己写的标准还差一点」，读 da080 那跑 r2 的 4 段、r3 的弃答句人会留。修法不是改 `rank()`、不是改判据分数（「打 1 分」量过：单维 (0, 1.0) 照样输给 (5, 1.83)），是 `BestOf` 对**这一种**判据沿用上一轮的排名。**顺手第二处**：P16 收尾时 `run_end` 和 Edits 的 `harness` 行是同一份正文两行——两个写者说的是同一件事，改成一个先问一句「另一个写过没有」（`find_run_revision`），而不是再加一个开关。**第三处**：「只撤第 N 轮」映射时逐字 diff 会把第 N 轮那句的句号跟后一轮新写的最后一句的句号对上（公共后缀掐得太贪），一撤把后一轮那段也撤了——映射要按**段落**先对齐再逐字（`paragraphDiff`）；同一个 `diffParts` 画层是对的，拿来做位置映射就不对，**一个函数在两个用途上不一定都成立**。**第四处是突变脚本自己**：`.pop` → `.get` 这种同字节数的突变、同一秒内恢复，Python 按「源码 mtime（秒）+ 大小」判 `.pyc` 有效，整套测试接着跑的是突变版字节码——全量红了一条、源码却是对的，追了半小时才想到缓存。**突变验恢复原文之后要把 `__pycache__` 一起清掉** |
 
 ---
 

@@ -484,7 +484,8 @@ class RevisionOut(BaseModel):
     reason: str            # auto / manual / before_restore / harness / round / run_end
     created_at: str
     chars: int
-    # 哪一次跑、哪一轮（P16 改动的分层历史）：`round` 行 = 那一轮烧进正文之前；`run_end` = 这次跑收尾时。
+    # 哪一次跑、哪一轮（P16 改动的分层历史）：`round` 行 = 那一轮烧进正文之前；收尾一行 = 最后一轮之后
+    # （正常跑完是 `harness`，P18 #2 起带 round_no；暂停 / 没进 harness_runs 的跑是 `run_end`）。
     # 空 / 0 = 跟跑无关的版本。
     run_id: str = ""
     round_no: int = 0

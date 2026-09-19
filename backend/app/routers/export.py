@@ -8,7 +8,10 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
+import re
 import zipfile
 from datetime import datetime, timezone
 import os
@@ -78,6 +81,58 @@ class FeishuOut(BaseModel):
     folder_token: str = ""
     note_ids: list[str] = []
     force: bool = False
+
+
+class MermaidIn(BaseModel):
+    note_ids: list[str] = []
+
+
+class RendersIn(BaseModel):
+    """`mermaid_key` → `data:image/png;base64,…`（前端渲好的图，P18 #4）。"""
+    renders: dict[str, str] = {}
+
+
+# 前端交上来的 mermaid PNG 按用户暂存在内存里，导回飞书时取走（pop）。不落盘：这是一次导回用完就扔的
+# 中间产物，写进 assets 目录会变成用户的资产。进程重启就没了——那时前端会在下一次导回前重新交一份。
+_RENDERS: dict[str, dict[str, bytes]] = {}
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_KEY_RE = re.compile(r"^[a-f0-9]{24}$")
+
+
+def png_from_data_url(url: str) -> bytes | None:
+    """`data:image/png;base64,…` → 字节；不是 PNG（前缀 / 魔数）、解不开、超上限都回 None。"""
+    if not isinstance(url, str) or not url.startswith("data:image/png;base64,"):
+        return None
+    try:
+        data = base64.b64decode(url[len("data:image/png;base64,"):], validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    if not data.startswith(_PNG_MAGIC) or len(data) > exporters.MERMAID_RENDER_MAX:
+        return None
+    return data
+
+
+@router.post("/mermaid")
+def export_mermaid(body: MermaidIn, user: str = Depends(current_user)) -> dict[str, str]:
+    """这批笔记里每一段 mermaid 的源码（按哈希）：前端渲成 PNG 后按同一个哈希交回 `/renders`。"""
+    out: dict[str, str] = {}
+    for f in _pick(user, body.note_ids):
+        out.update(exporters.mermaid_blocks(f.content))
+    return out
+
+
+@router.post("/renders")
+def export_renders(body: RendersIn, user: str = Depends(current_user)) -> dict:
+    stored: dict[str, bytes] = {}
+    rejected: list[str] = []
+    for key, url in list(body.renders.items())[:exporters.MERMAID_RENDERS_MAX]:
+        data = png_from_data_url(url) if _KEY_RE.match(str(key)) else None
+        if data is None:
+            rejected.append(str(key)[:40])
+            continue
+        stored[key] = data
+    _RENDERS[user] = stored
+    return {"stored": len(stored), "rejected": rejected}
 
 
 def obsidian_url(vault: Path, rel_path: str) -> str:
@@ -258,6 +313,7 @@ def export_feishu(body: FeishuOut, user: str = Depends(current_user)) -> dict:
         _need(body.folder_token, "文件夹 token 没填——新文档会建在它下面")
     w = exporters.FeishuWriter(body.app_id, body.app_secret)
     _probe(w.probe, "飞书")
+    renders = _RENDERS.pop(user, {})          # 前端这次导回前交上来的 mermaid PNG（P18 #4），用完就扔
     created, updated, failed, conflicts, urls = [], [], [], [], []
     br = _Breaker()
     untried = 0
@@ -265,7 +321,7 @@ def export_feishu(body: FeishuOut, user: str = Depends(current_user)) -> dict:
         if br.tripped:
             untried = len(files) - k
             break
-        children = exporters.md_to_feishu_children(f.content)
+        children = exporters.md_to_feishu_children(f.content, renders)
         try:
             prev = store.get_remote(user, f.note_id, "feishu")
             if prev and prev.get("remote_id"):

@@ -2,13 +2,21 @@
  * 改动的分层历史（P16，agent-native-editor §3.2 / 痛点 8「改了三轮，想留第一轮、丢第三轮」）。
  *
  * 烧进正文之后层就没了——但后端每轮开始前存了一版（`note_revisions.reason='round'`，带 `run_id` / `round_no`），
- * 收尾时再存一版（`run_end`）。这里把历史列表（新的在前，跟 `/revisions` 一样）按跑组回轮次：
- * 第 N 轮的「之前」= 它自己那一行，「之后」= 同一次跑里紧跟着它的下一行（第 N+1 轮的 round 行，或 run_end）。
+ * 收尾时再存一版（正常跑完是 Edits 的 `harness` 行、P18 #2 起带 round_no；暂停 / 没进 harness_runs 的是 `run_end`；
+ * P16–P17 的老数据两行都有、内容一样）。这里把历史列表（新的在前，跟 `/revisions` 一样）按跑组回轮次：
+ * 第 N 轮的「之前」= 它自己那一行，「之后」= 同一次跑里紧跟着它的下一行（第 N+1 轮的 round 行，或收尾行）。
  * 纯函数，UI 在 `ChangeLayersPanel` / `RevisionHistoryPanel`。
  */
 import type { NoteRevision } from '../api'
 
-export type RunRound = { round_no: number; before: NoteRevision; after: NoteRevision | null }
+export type RunRound = {
+  round_no: number
+  before: NoteRevision
+  after: NoteRevision | null
+  /** 「之后」再往后、同一次跑里的每一行（第 N+2 轮之前、…、收尾），时间正序：「只撤第 N 轮」拿它们把这一轮的改动
+   *  沿后几轮映射过去（P18 #3，`editor/undoRound` 的 `later`）。老数据里收尾有 run_end + harness 两行、内容一样，照列。 */
+  later: NoteRevision[]
+}
 export type RunHistory = {
   run_id: string
   /** 第一轮开始的时间 */
@@ -34,7 +42,7 @@ export function groupRuns(revs: NoteRevision[]): RunHistory[] {
     const rounds: RunRound[] = []
     list.forEach((r, i) => {
       if (r.reason !== 'round') return
-      rounds.push({ round_no: r.round_no, before: r, after: list[i + 1] ?? null })
+      rounds.push({ round_no: r.round_no, before: r, after: list[i + 1] ?? null, later: list.slice(i + 2) })
     })
     if (!rounds.length) continue
     out.push({ run_id, at: rounds[0].before.created_at, rounds,

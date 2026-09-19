@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from '../toast'
-import { CRED_HOWTO, canRememberCreds, loadCreds, saveCreds } from '../util/exportCreds'
+import { CRED_HOWTO, canRememberCreds, credsNote, loadCreds, saveCreds } from '../util/exportCreds'
 import { openRemote, useExportBack } from '../util/useExportBack'
 import Icon from './Icon'
 
@@ -57,7 +57,7 @@ export default function ExportBack() {
           <br />
           {/* 桌面版记在主进程的 export-credentials.json（P2-fix）；网页版不存——说清楚，
               不然用户会以为是 bug：「我上次不是填过吗」。 */}
-          {remember ? 'Notion / 飞书的凭证写成功后记在本机（应用数据目录），下次自动带出来。' : 'Notion / 飞书的凭证在网页版里不会存下来，每次要重填；Obsidian 只是个本机路径，记得住。'}
+          {remember ? `Notion / 飞书的${credsNote()}` : 'Notion / 飞书的凭证不会存下来，每次要重填；Obsidian 只是个本机路径，记得住。'}
         </p>
 
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>

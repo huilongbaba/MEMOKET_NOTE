@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { noteRemotes, type NoteRemote } from '../api'
 import { toast } from '../toast'
 import { fmtDate } from '../util/time'
-import { CRED_HOWTO, canRememberCreds, loadCreds, saveCreds } from '../util/exportCreds'
+import { CRED_HOWTO, canRememberCreds, credsNote, loadCreds, saveCreds } from '../util/exportCreds'
 import { WHERE_LABEL, loadVault, openRemote, remoteUrl, saveVault, useExportBack, type ExportWhere } from '../util/useExportBack'
 import Icon from './Icon'
 
@@ -69,8 +69,8 @@ export default function ExportNotePanel({ noteId, title, onClose }:
   const remember = canRememberCreds()
   const HINT: Record<ExportWhere, string> = {
     obsidian: '按树的层级写成文件夹，图片和录音复制进 _assets/。',
-    notion: `建成父页面下的一个子页面；页面要先 Connect 给这个 integration。表格 / 列表 / 代码 / 粗体都会变成 Notion 块，本地图片 Notion API 收不了、会写成一行说明。${remember ? '凭证记在本机。' : '凭证不会存下来，每次要填。'}`,
-    feishu: `应用要有 docx / drive 写权限，目标文件夹要加它为协作者。表格 / 图片 / 列表 / 代码都会变成飞书块。${remember ? '凭证记在本机。' : '凭证不会存下来，每次要填。'}`,
+    notion: `建成父页面下的一个子页面；页面要先 Connect 给这个 integration。表格 / 列表 / 代码 / 粗体都会变成 Notion 块，本地图片走 Notion 的文件上传。${remember ? credsNote() : '凭证不会存下来，每次要填。'}`,
+    feishu: `应用要有 docx / drive 写权限，目标文件夹要加它为协作者。表格 / 图片 / 列表 / 代码都会变成飞书块，mermaid 图在这边渲成图片带过去。${remember ? credsNote() : '凭证不会存下来，每次要填。'}`,
   }
   // 文件夹 token / 父页面 id 只有**新建**时才用得上：已经有副本的那一篇更新不该被它拦住（§4.8）
   const ready = where === 'obsidian' ? !!vault.trim()

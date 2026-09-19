@@ -2662,10 +2662,11 @@ export default function App() {
     if (!current || !r.after) return
     setLoading('rounds')
     try {
-      const [before, after] = await Promise.all([api.getRevision(current.id, r.before.id), api.getRevision(current.id, r.after.id)])
+      // 后几轮的快照也一起取：这一轮的改动要沿它们映射过去（P18 #3——后一轮改过这轮的句子不再只报冲突）
+      const [before, after, ...later] = await Promise.all([r.before, r.after, ...r.later].map((x) => api.getRevision(current.id, x.id)))
       // 从编辑器的实时文档读（同 applyAsDiff）：await 之后闭包里的 content 可能已经过时
       const cur = editorViewRef.current?.state.doc.toString() ?? content
-      const res = undoRound(before.content, after.content, cur)
+      const res = undoRound(before.content, after.content, cur, later.map((x) => x.content))
       if (res.undone === 0) {
         toast(`第 ${r.round_no} 轮改的 ${res.total} 处在现在的正文里都对不上，没有改动。${res.conflicts[0] ?? ''}`, 'error')
         return

@@ -13,8 +13,10 @@
 * `STEP_STARTED`（第 N 轮开始、`before_round` 还没跑）→ 把 loop 手里此刻的 `st.content` 存成
   `note_revisions` 一行：`reason='round'`、`round_no=N`、`run_id` 指回这次跑。这就是第 N 轮
   **烧之前**的正文——修订 pass 跑在这之后，所以「之前」是真的之前。
-* `RUN_FINISHED`（跑完 / 暂停等处置）→ `reason='run_end'`、`round_no` = 最后一轮：它是最后一轮的
-  「之后」。第 N 轮的「之后」= 同一次跑里紧跟着它的下一行（第 N+1 轮的 round 行，或 run_end）。
+* `RUN_FINISHED`（跑完 / 暂停等处置）→ 最后一轮的「之后」。正常跑完的跑 `Edits.after_run` 已经落了
+  `reason='harness'` 一行（带 `round_no`，P18 #2），这里看到它就不再存；没有（暂停、没进 `harness_runs`）
+  才存 `reason='run_end'`。第 N 轮的「之后」= 同一次跑里紧跟着它的下一行（第 N+1 轮的 round 行 /
+  harness / run_end）。P16 那阵子同一份正文存了 `run_end` + `harness` 两行，老数据前端两种都认。
 
 ## 边界
 
@@ -62,6 +64,9 @@ async def with_round_snapshots(events: AsyncIterator[Event], st: State) -> Async
             last_round = int(event.data.get("step") or st.round or 0)
             _save(st, store.REVISION_REASON_ROUND, last_round)
         elif event.type is EventType.RUN_FINISHED and last_round:
-            # 一轮都没跑（precheck 挡下）就没有「之后」可存
-            _save(st, store.REVISION_REASON_RUN_END, last_round)
+            # 一轮都没跑（precheck 挡下）就没有「之后」可存。
+            # `Edits` 已经落了这次跑的 `harness` 行（同一份正文、带 round_no）就不再存第二行（P18 #2）。
+            if not (st.ctx.note_id and store.find_run_revision(
+                    st.ctx.user, st.ctx.note_id, str(st.bag.get("run_id") or ""), store.REVISION_REASON_HARNESS)):
+                _save(st, store.REVISION_REASON_RUN_END, last_round)
         yield event
