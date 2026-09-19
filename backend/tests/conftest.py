@@ -30,3 +30,22 @@ def _isolated_db(tmp_path, monkeypatch):
     real = get_settings()
     monkeypatch.setattr(kite_memory, "get_settings", lambda: real.model_copy(update={"kite_data_dir": tmp_path / "kite"}))
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_journey_sweep(monkeypatch):
+    """屏幕活动的保留期清理**默认在测试里关掉**（第 779 轮 / P21）。
+
+    它挂在 `GET /journey/days` 上，按**真实的今天**算日期。而这个仓的 journey
+    测试全都拿写死的日期当夹具（`2026-09-14` 这种）——真实时钟一往前走，
+    那些夹具就会在测试跑到一半时被真的删掉，于是一批本来无关的测试在某个
+    日子之后集体变红。**这是个定时炸弹，不是偶发**。
+
+    要测清理本身的：把这个 fixture 当参数拿进去，`yield` 出来的就是**真的那个**
+    （`test_journey_retention.py` 就是这么用的）。
+    """
+    from app.routers import journey as J
+
+    real = J._sweep_if_due
+    monkeypatch.setattr(J, "_sweep_if_due", lambda user: None)
+    yield real

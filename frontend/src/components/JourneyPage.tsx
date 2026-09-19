@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { journeyCatchUp, journeyDay, journeyDays, journeyDeleteDay, journeyDeleteSegment,
-         journeyReport, journeySaveReport, journeySpan, journeyThumb,
-         type JourneyDay, type JourneySegment } from '../api'
+         journeyReport, journeyRetention, journeySaveReport, journeySpan, journeyThumb,
+         type JourneyDay, type JourneyRetention, type JourneySegment } from '../api'
+import { friendlyError } from '../util/friendlyError'
+import { JOURNEY_DAY_EVENT, takePendingJourneyDay } from '../util/journeyOpen'
 import { groupRuns } from '../util/journeyRuns'
 import { parseMini, type Inline } from '../util/miniMarkdown'
 import { usePoll } from '../util/poll'
 import JourneyDenyPanel from './JourneyDenyPanel'
+import JourneyRetentionPanel, { sayKeep } from './JourneyRetentionPanel'
 import { toast } from '../toast'
 import Icon from './Icon'
 
@@ -127,8 +130,10 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   // 应用画成「要不要开启」，用户再点一次「开始记录」——看着像没生效。
   const [state, setState] = useState<JourneyState | 'unknown' | null>(null)
   const [day, setDay] = useState<JourneyDay | null>(null)
-  // 只用来翻前几天；空串 = 今天（后端自己取当天，跨零点不用刷新页面）
-  const [date, setDate] = useState('')
+  // 只用来翻前几天；空串 = 今天（后端自己取当天，跨零点不用刷新页面）。
+  // 初值从「待打开的那一天」取——日记那篇笔记的 ribbon 点进来时要落在那一天
+  // （`util/journeyOpen`，计划 §8.4）
+  const [date, setDate] = useState(takePendingJourneyDay)
   // 有记录的日子（新的在前）。翻天按它走——**按日期加一减一会走进一串空日子**。
   const [days, setDays] = useState<string[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -143,6 +148,13 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   /** 后端没应答时**要说出来**：原来 `journeyDay` 失败就 `setDay(null)`，页面照样写着
    *  「记录中。今天刚开始记…」——后端死了看起来跟一天没记一模一样（第 778 轮 / P20）。 */
   const [offline, setOffline] = useState(false)
+  /** 留多久。**知情选择那一屏也要用它**——「留多久」那一条得写用户**现在**
+   *  设的数，不是文档里的数（第 779 轮 / P21）。 */
+  const [keepFor, setKeepFor] = useState<JourneyRetention | null>(null)
+  /** 「写这一天的回顾」/「最近 N 天」转起来时的停止（P3 / P9 给别的忙态钮加过，
+   *  这两个一直没跟上——转起来只能干等满 300 秒，页面上一个出口都没有）。 */
+  const writeAbort = useRef<AbortController | null>(null)
+  const spanAbort = useRef<AbortController | null>(null)
   const bridge = window.memoketDesktop?.journey
 
   const refresh = useCallback(async () => {
@@ -152,11 +164,20 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
       .catch(() => setState((v) => v ?? 'unknown'))
     journeyDay(date).then((d) => { setDay(d); setOffline(false) }).catch(() => { setDay(null); setOffline(true) })
     journeyDays().then(setDays).catch(() => setDays((v) => v ?? []))
+    // 后端读不到就保住上一份：那一屏知情选择上「留多久」宁可不写，也不能写错
+    journeyRetention().then(setKeepFor).catch(() => setKeepFor((v) => v ?? null))
   }, [bridge, date])
 
   // 每 30 秒对一次状态和段数；**窗口看不见就不轮询**，回到前台立刻对一次（util/poll）
   useEffect(() => { void refresh() }, [refresh])
   usePoll(() => void refresh(), 30_000)
+
+  // 这一页已经开着时从日记 ribbon 再点一次：页面不会重挂，得当场翻过去
+  useEffect(() => {
+    const on = (e: Event) => setDate((e as CustomEvent<string>).detail ?? '')
+    window.addEventListener(JOURNEY_DAY_EVENT, on)
+    return () => window.removeEventListener(JOURNEY_DAY_EVENT, on)
+  }, [])
 
   async function catchUp() {
     setBusy(true)
@@ -166,18 +187,30 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
         ? `描述了 ${r.described} 段，入库 ${r.ingested} 段${r.left ? `，还剩 ${r.left} 段` : ''}`
         : '没有要描述的了')
       await refresh()
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setBusy(false) }
+    } catch (e) { toast(friendlyError(e), 'error') } finally { setBusy(false) }
   }
 
+  /** 写这一天的回顾。**转起来要能停**（P21，跟 P3 / P9 给骨架 / 智能排版 /
+   *  做幻灯片加的「停止」是同一条）：一次模型调用可以跑满 300 秒，而在这之前
+   *  页面上一个出口都没有——按钮禁用、Esc 没用，只能干等。 */
   async function writeReport() {
+    if (writing) { stopWrite(); return }
     setWriting(true)
+    const ctrl = new AbortController()
+    writeAbort.current = ctrl
     try {
-      const r = await journeyReport(date)
+      const r = await journeyReport(date, ctrl.signal)
       setDay((d) => (d ? { ...d, report: r.report, report_segments: r.segments,
                            report_at: r.report_at, report_notes: r.notes ?? [] } : d))
       toast(`日报写好了（${r.segments} 段，${(r.took_ms / 1000).toFixed(0)} 秒）`)
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setWriting(false) }
+    } catch (e) {
+      // **停下来要说一句**：不说的话用户分不清是停了还是卡了（P3 第 13 条）
+      if ((e as Error).name === 'AbortError') toast('已停止，这一天的回顾没写成——上一份（如果有）还在')
+      else toast(friendlyError(e), 'error')
+    } finally { writeAbort.current = null; setWriting(false) }
   }
+
+  function stopWrite() { writeAbort.current?.abort() }
 
   /** 日报是跟着这一天走的，删这一天就没了。**想留就存成一篇笔记**——
    *  它会挂在当天那页日记下面（回顾是跟着日期走的东西，日记树就是按日期组织的），
@@ -189,19 +222,25 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
       window.dispatchEvent(new CustomEvent('notes-changed'))
       toast('存进了当天那页日记下面')
       onOpenNote(r.note_id)
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
+    } catch (e) { toast(friendlyError(e), 'error') }
   }
 
   /** 一段时间的回顾。**产出是一篇笔记**——写完直接把人送过去，
    *  不在这一页里再开一个只读小窗：那种东西关掉就没了。 */
   async function runSpan(days: number) {
+    if (spanning === days) { spanAbort.current?.abort(); return }   // 第二下 = 停止
     setSpanning(days)
+    const ctrl = new AbortController()
+    spanAbort.current = ctrl
     try {
-      const r = await journeySpan(days)
+      const r = await journeySpan(days, ctrl.signal)
       window.dispatchEvent(new CustomEvent('notes-changed'))
       toast(`按 ${r.days} 天的日报写好了${r.missing.length ? `（${r.missing.length} 天没有日报）` : ''}`)
       onOpenNote(r.note_id)
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') } finally { setSpanning(0) }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') toast('已停止，这份回顾没写成，树上也没多出笔记')
+      else toast(friendlyError(e), 'error')
+    } finally { spanAbort.current = null; setSpanning(0) }
   }
 
   /** 删一段。**黑名单挡不住所有东西**——同事发来的一张截图、一封还没公开的
@@ -210,17 +249,24 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   async function dropSeg(s: JourneySegment) {
     if (!day) return
     if (!window.confirm(`删掉 ${hhmm(s.start)}–${hhmm(s.end)} 这一段？\n\n${s.desc || '（还没描述）'}\n\n连它抽进知识库的记忆一起删。`)) return
-    const r = await journeyDeleteSegment(day.date, s.i)
-    toast(`删掉了这一段${r.removed_facts ? `，连带 ${r.removed_facts} 条记忆` : ''}`)
-    await refresh()
+    // **删不成必须说一句。** 第 779 轮（P21）实拍：后端没起来时这两个动作
+    // 一个字都不说（`promise Failed to fetch` 进日志、`toasts=[]`），而用户
+    // 刚点过「确定」——他会以为删掉了。「我以为删干净了」是这个功能最不能出的错。
+    try {
+      const r = await journeyDeleteSegment(day.date, s.i)
+      toast(`删掉了这一段${r.removed_facts ? `，连带 ${r.removed_facts} 条记忆` : ''}`)
+      await refresh()
+    } catch (e) { toast('没删成这一段，它还在：' + friendlyError(e), 'error') }
   }
 
   async function wipe() {
     if (!day) return
     if (!window.confirm(`删掉 ${day.date} 的屏幕活动？\n\n连同它抽进知识库的记忆一起删——删完就真的没有了。`)) return
-    const r = await journeyDeleteDay(day.date)
-    toast(`删掉了这一天${r.removed_facts ? `，连带 ${r.removed_facts} 条记忆` : ''}`)
-    await refresh()
+    try {
+      const r = await journeyDeleteDay(day.date)
+      toast(`删掉了这一天${r.removed_facts ? `，连带 ${r.removed_facts} 条记忆` : ''}`)
+      await refresh()
+    } catch (e) { toast(`没删成 ${day.date}，这一天还在：` + friendlyError(e), 'error') }
   }
 
   const known = days ?? []
@@ -256,6 +302,17 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
               但看图那台是配置里指定的（默认是内网那台），不是「本机」——写成
               「不出这台电脑」就是假的（第 641 轮自查）。设置页里能看到它指向哪。 */}
           <dt>存在哪</dt><dd>段落和描述只在这台机器上。截图发给设置里那台看图的模型（默认是内网那台），跟写作用哪家模型无关</dd>
+          {/* **第五条（P21 补上）。** 计划 §8.3 那一屏本来就是五条，一直少这一条
+              ——因为在 P21 之前**真的没有保留期**：段落描述和缩略图永远不删。
+              先做出清理，才敢把这句话写上去。数字**从后端读用户现在设的那份**，
+              不写死在这儿：设置里改完这一屏还写着 30 天就又是一句假话。 */}
+          <dt>留多久</dt>
+          <dd>{keepFor
+            ? <>描述留 <b>{sayKeep(keepFor.segment_days)}</b>，缩略图留 <b>{sayKeep(keepFor.thumb_days)}</b>，
+                原始截图最多 {keepFor.frame_days} 天（描述做完当场就删）。到期的自己删掉，
+                <b>连它抽进知识库的记忆一起删</b>。这几个数在这一页下面「留多久」那块随时改，也能一键全部删掉</>
+            : <>到期的自己删掉，连它抽进知识库的记忆一起删。开了之后在这一页下面「留多久」那块能看到和改</>}
+          </dd>
           <dt>不记什么</dt><dd>密码管理器、银行、隐私窗口——默认就不记，命中时连截图都不拍</dd>
           <dt>怎么关</dt><dd>菜单栏一直有个开关。删一段或删一整天，都会<b>连它抽进知识库的记忆一起删</b></dd>
         </dl>
@@ -353,10 +410,12 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
             </span>
             <span style={{ flex: 1 }} />
             <button className="chip chip-action" onClick={() => void saveReport()}><Icon n="bx-save" /> 存为笔记</button>
-            <button className={'chip chip-action' + (grown > 0 ? ' hot' : '')} disabled={writing}
+            {/* 转起来时这个钮就是「停止」——**不是禁用**。禁用掉的忙态钮等于
+                把人锁在一次可以跑满 300 秒的调用里（P3 第 13 / 17 / 18 条）。 */}
+            <button className={'chip chip-action' + (grown > 0 ? ' hot' : '')}
                     onClick={() => void writeReport()}
-                    title={writing ? '正在重写' : '按现在的记录重写一份'}>
-              {writing ? <span className="spinner" /> : <Icon n="bx-refresh" />} 重写
+                    title={writing ? '停止这次重写' : '按现在的记录重写一份'}>
+              {writing ? <><span className="spinner" /> 停止</> : <><Icon n="bx-refresh" /> 重写</>}
             </button>
           </div>
           <ReportBody md={day.report} />
@@ -371,8 +430,9 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
         </div>
       ) : described > 0 && (
         <div className="row">
-          <button className="primary" disabled={writing} onClick={() => void writeReport()}>
-            {writing ? <><span className="spinner" /> 正在写…</> : `写这一天的回顾（${described} 段）`}
+          <button className="primary" onClick={() => void writeReport()}
+                  title={writing ? '停止，这一天的回顾就不写了' : undefined}>
+            {writing ? <><span className="spinner" /> 正在写…　停止</> : `写这一天的回顾（${described} 段）`}
           </button>
           <span className="muted" style={{ fontSize: 'var(--t-sm)', alignSelf: 'center', marginInlineStart: 8 }}>
             一次模型调用。时长是数出来的，模型只写推进了什么、卡在哪。
@@ -472,6 +532,11 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
 
       <JourneyDenyPanel />
 
+      {/* 「留多久」+「全部删掉」。跟「不记这些」挨着——它们回答的是同一个问题：
+          **我能不能把它抹掉**（§8.1 的三问之一）。清完要刷这一页：
+          删掉的那几天还留在翻天列表里的话，用户会以为没删成。 */}
+      <JourneyRetentionPanel onChanged={() => void refresh()} />
+
       {/* 一段时间的回顾：**日报 → 长报告 → 一篇笔记**。放在最下面——
           它不是「今天」这一页的主角，是从这一页出去的一条路（§4.2）。 */}
       <div className="journey-span">
@@ -481,10 +546,12 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
           没写过日报的那几天会被跳过，并写在笔记里。
         </p>
         <div className="row" style={{ gap: 6 }}>
+          {/* 跑着的那个变成「停止」，另一个才禁用（跑完才能换范围）。
+              两个都禁用的话，这次跑起来就没有出口了。 */}
           {[7, 30].map((d) => (
-            <button key={d} disabled={spanning !== 0} onClick={() => void runSpan(d)}
-                    title={spanning !== 0 ? '正在写，跑完才能换范围' : undefined}>
-              {spanning === d ? <><span className="spinner" /> 最近 {d} 天</> : `最近 ${d} 天`}
+            <button key={d} disabled={spanning !== 0 && spanning !== d} onClick={() => void runSpan(d)}
+                    title={spanning === d ? '停止这次回顾' : spanning !== 0 ? '正在写，跑完才能换范围' : undefined}>
+              {spanning === d ? <><span className="spinner" /> 最近 {d} 天　停止</> : `最近 ${d} 天`}
             </button>
           ))}
         </div>

@@ -1646,10 +1646,13 @@ export const journeyCatchUp = (date = '', limit = 10) =>
         { method: 'POST', headers: headers() }).then(json<JourneyRun>)
 
 /** 写这一天的日报。时长由后端算好写好，模型只写「推进了什么 / 卡在哪 / 计划外的」。
- *  **不自动生成**——一次模型调用，得用户说要。 */
-export const journeyReport = (date = '') =>
+ *  **不自动生成**——一次模型调用，得用户说要。
+ *
+ *  `signal`：转起来要能「停止」（P21 补的——P3 / P9 给别的忙态钮加过，这个一直没跟上；
+ *  没有它就只能干等满 300 秒，页面上一个出口都没有）。 */
+export const journeyReport = (date = '', signal?: AbortSignal) =>
   fetch(`/api/journey/report${date ? `?date=${date}` : ''}`,
-        { method: 'POST', headers: headers() }).then(json<JourneyReport>)
+        { method: 'POST', headers: headers(), signal }).then(json<JourneyReport>)
 
 export type JourneySpan = {
   date_from: string; date_to: string; days: number
@@ -1657,8 +1660,8 @@ export type JourneySpan = {
 }
 
 /** 一段时间的回顾：**喂给模型的是日报不是原始记录**，产出落成一篇笔记。 */
-export const journeySpan = (days: number) =>
-  fetch(`/api/journey/span?days=${days}`, { method: 'POST', headers: headers() }).then(json<JourneySpan>)
+export const journeySpan = (days: number, signal?: AbortSignal) =>
+  fetch(`/api/journey/span?days=${days}`, { method: 'POST', headers: headers(), signal }).then(json<JourneySpan>)
 
 /** 把这一天的回顾存成一篇笔记——**挂在当天那页日记下面**，同名覆盖。 */
 export const journeySaveReport = (date = '') =>
@@ -1676,3 +1679,39 @@ export const journeyDeleteSegment = (date: string, i: number) =>
 /** 删这一天：段、截图、**以及它抽进知识库的事实**。 */
 export const journeyDeleteDay = (date: string) =>
   fetch(`/api/journey/day?date=${date}`, { method: 'DELETE', headers: headers() }).then(json<JourneyRun>)
+
+// ---- 留多久（P21）----
+//
+// 在 P21 之前这个功能**没有保留期**：`FRAME_KEEP_DAYS=3` 只管大图，段落描述和
+// 缩略图一天都不删。那一屏知情选择上因此少了「留多久」这一条（计划 §8.3 写的是
+// 五条）——**功能没有，那句话就写不上去**。
+
+export type JourneyRetention = {
+  /** 天数；`0` = 一直留着（是一个选项，不是默认） */
+  segment_days: number; thumb_days: number
+  /** 大图留几天（只读，`FRAME_KEEP_DAYS`） */
+  frame_days: number
+  segment_choices: number[]; thumb_choices: number[]
+  /** 现在盘上有多少东西——**「删掉」之前得能说清楚删的是什么** */
+  days: number; segments: number; described: number
+  thumbs: number; reports: number; bytes: number; oldest: string
+  /** 上一次清理**删不掉**的东西，原样端出来（不静默） */
+  failures?: string[]
+  /** 刚刚这一次清理干掉了什么 */
+  swept?: { days_removed?: string[]; thumbs_removed?: number; frames_removed?: number
+            facts_removed?: number; failures?: string[] }
+}
+
+export const journeyRetention = () =>
+  fetch('/api/journey/retention', { headers: headers() }).then(json<JourneyRetention>)
+
+/** 改保留期。**后端改完当场清一遍**——改小了不立刻生效的话，用户没法知道
+ *  这个开关有没有用。 */
+export const journeySetRetention = (segment_days: number, thumb_days: number) =>
+  fetch('/api/journey/retention', { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ segment_days, thumb_days }) }).then(json<JourneyRetention>)
+
+/** **全部删掉**：所有天的段落、描述、缩略图、大图、日报 + 它们抽进知识库的记忆。
+ *  开关 / 黑名单 / 保留期留着——那是设置，不是记录。 */
+export const journeyWipeAll = () =>
+  fetch('/api/journey/all', { method: 'DELETE', headers: headers() }).then(json<JourneyRetention>)

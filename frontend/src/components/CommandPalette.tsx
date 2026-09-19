@@ -1,30 +1,38 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import type { Fact, NoteBrief } from '../api'
+import { DESTINATIONS, paletteLabel } from '../util/destinations'
 import { displayTitle } from '../util/displayTitle'
 import { fmtDate } from '../util/time'
 import Highlight from './Highlight'
 import Icon from './Icon'
 
 /** 没输入时的快捷命令：Trilium 的 jumpToNote 空态列最近笔记，我们再加几个
- * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。 */
-const COMMANDS: { label: string; icon: string; run: () => void }[] = [
+ * 常去的页——每一项走 window 事件，跟左栏按钮同一条路。
+ *
+ * **启动栏上的去处从 `util/destinations` 生成，不在这儿手抄一遍**
+ * （第 779 轮 / P21）：原来这份清单是手写的，于是屏幕活动和写作 Skill
+ * 在左栏有、在 ⌘K 里没有——而计划 §8.4 明写「⌘K 加『今天的屏幕活动』」。
+ * 靠 ⌘K 导航的人因此找不到这两个功能。现在加一个去处只改那一个文件。 */
+export const COMMANDS: { label: string; icon: string; run: () => void }[] = [
   { label: '新建笔记', icon: 'bx-plus', run: () => window.dispatchEvent(new CustomEvent('new-note')) },
   { label: '今天的日记', icon: 'bx-calendar-event', run: () => window.dispatchEvent(new CustomEvent('open-today')) },
   { label: '知识库总览', icon: 'bx-data', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' })) },
   { label: '主题地图', icon: 'bx-network-chart', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:graph' })) },
   { label: '时间线', icon: 'bx-calendar', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:timeline' })) },
-  { label: '导入', icon: 'bx-import', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' })) },
-  { label: '设置', icon: 'bx-cog', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:settings' })) },
+  ...DESTINATIONS.map((d) => ({
+    label: paletteLabel(d), icon: d.icon,
+    run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: d.id })),
+  })),
   { label: '换个图标（当前笔记）', icon: 'bx-smile', run: () => window.dispatchEvent(new CustomEvent('open-icon-picker')) },
   { label: '定位到当前笔记（树上）', icon: 'bx-crosshair', run: () => window.dispatchEvent(new CustomEvent('tree-locate')) },
   { label: '折叠整棵树', icon: 'bx-collapse-vertical', run: () => window.dispatchEvent(new CustomEvent('tree-collapse')) },
   { label: '快捷键', icon: 'bx-command', run: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
   { label: '导出全部笔记（Markdown zip）', icon: 'bx-export', run: () => window.dispatchEvent(new CustomEvent('export-all')) },
-  { label: '最近删除（30 天内可找回）', icon: 'bx-trash', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:trash' })) },
-  // 导回住在导入页最底下（第 128 轮实拍：⌘K 搜「导」只有导入 / 导出，找不到导回）
+  // 导回住在导入页最底下（第 128 轮实拍：⌘K 搜「导」只有导入 / 导出，找不到导回）。
+  // 这一条是**深链**不是去处：它开的是导入页里的某一块，所以不走 DESTINATIONS。
   { label: '导回到 Obsidian / Notion / 飞书…', icon: 'bx-share',
-    run: () => { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' })); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 700) } },
+    run: () => { window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' /* 深链 */ })); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 700) } },
 ]
 
 /**
