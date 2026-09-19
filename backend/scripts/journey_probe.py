@@ -241,10 +241,17 @@ def merge_blips(segs: list[dict]) -> list[dict]:
     才谈得上「切走又切回来」。单独看一段短不短不足以判断（真的换了件事，
     只做了 30 秒，那也是一段）。
     """
+    # **只并挨着的**（跟 `desktop/src/capture.ts` 的 `mergeBlips` 同一条，第 778 轮 / P20）：
+    # 人离开三小时回来，回来那一 tick 切出的新段只有一次采样、跟前一段同一个应用，
+    # 原来会被当成插曲并回去——`end` 一下跳过整段空白，日报里就是「连续三小时」。
+    def touching(a: dict, b: dict) -> bool:
+        return (b["start"] - a["end"]).total_seconds() < BLIP_SEC
+
     out: list[dict] = []
     for seg in segs:
         secs = (seg["end"] - seg["start"]).total_seconds()
-        if (len(out) >= 1 and secs < BLIP_SEC and out[-1]["app"] == seg["app"]):
+        if (len(out) >= 1 and secs < BLIP_SEC and out[-1]["app"] == seg["app"]
+                and touching(out[-1], seg)):
             out[-1]["end"] = seg["end"]          # 同一个应用的短段：直接续上
             out[-1]["n"] += seg["n"]
             continue
@@ -260,7 +267,8 @@ def merge_blips(segs: list[dict]) -> list[dict]:
         if (merged and i + 1 < len(out)
                 and (cur["end"] - cur["start"]).total_seconds() < BLIP_SEC
                 and merged[-1]["app"] == out[i + 1]["app"]
-                and merged[-1]["app"] != cur["app"]):
+                and merged[-1]["app"] != cur["app"]
+                and touching(merged[-1], cur) and touching(cur, out[i + 1])):
             merged[-1]["end"] = out[i + 1]["end"]
             merged[-1]["n"] += cur["n"] + out[i + 1]["n"]
             i += 2

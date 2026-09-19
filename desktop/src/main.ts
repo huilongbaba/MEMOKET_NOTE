@@ -457,6 +457,13 @@ if (!app.requestSingleInstanceLock()) {
 // 常驻状态做扎实，那一屏知情选择留给 P2 的界面。
 let journey: Recorder | null = null
 let tray: Tray | null = null
+/** 这次暂停是锁屏 / 睡眠自动按的，还是用户自己按的。**只有自动按的才自动恢复**：
+ *  用户按了「暂停到我再打开」再锁一次屏，解锁不能替他把记录打开
+ *  （计划 §8.2「明确的动作要赢过被动规则」；第 778 轮 / P20 走查）。 */
+let autoPaused = false
+/** 自动描述最近一次为什么没成（空串 = 上次成了）。**页面要能说出来**：看图模型
+ *  连不上时日志里每 3 分钟一条 HTTP 502，而用户那边只看见一整页「还没描述」。 */
+let describeStalled = ''
 
 const TRAY_GLYPH: Record<CaptureState, string> = {
   off: '○', running: '●', paused: '⏸', 'no-permission': '⚠',
@@ -488,16 +495,25 @@ function refreshTray() {
     { label: `今天已记 ${n} 段 — 打开看看`, click: () => openJourneyPage() },
     { type: 'separator' },
     ...(st === 'off'
-      ? [{ label: '开始记录', click: () => { journey?.start(); refreshTray() } }]
+      ? [{ label: '开始记录', click: () => { userStart() } }]
       : st === 'paused'
-        ? [{ label: '继续记录', click: () => { journey?.resume(); refreshTray() } }]
+        ? [{ label: '继续记录', click: () => { userResume() } }]
         : [
-            { label: '暂停 1 小时', click: () => { journey?.pause(Date.now() + 3600_000); refreshTray() } },
-            { label: '暂停到我再打开', click: () => { journey?.pause(); refreshTray() } },
+            { label: '暂停 1 小时', click: () => { userPause(60) } },
+            { label: '暂停到我再打开', click: () => { userPause() } },
           ]),
     { type: 'separator' },
-    { label: '停止并关掉', enabled: st !== 'off', click: () => { journey?.stop(); refreshTray() } },
+    { label: '停止并关掉', enabled: st !== 'off', click: () => { journey?.stop(); autoPaused = false; refreshTray() } },
   ]))
+}
+
+// 界面和菜单栏是同一个状态的两个视图，不是两套开关（§8.2）——两边都走这四个。
+function userStart() { journey?.start(); autoPaused = false; refreshTray() }
+function userResume() { journey?.resume(); autoPaused = false; refreshTray() }
+function userPause(minutes?: number) {
+  journey?.pause(minutes ? Date.now() + minutes * 60_000 : undefined)
+  autoPaused = false
+  refreshTray()
 }
 
 /** 把窗口拿到前面并翻到「今天」页。菜单栏和「文件」菜单共用。 */
@@ -513,15 +529,15 @@ function setupJourneyIpc() {
   // 界面和菜单栏是同一个状态的两个视图，不是两套开关（§8.2）——两边都走这里。
   ipcMain.handle('journey:state', () => ({
     state: journey?.state() ?? 'off', today: journey?.today().length ?? 0,
+    // 限时暂停到几点、自动描述卡在哪：页面要能回答「为什么没在记 / 为什么没描述」
+    until: journey?.pausedUntil() ?? 0, stalled: describeStalled,
   }))
-  ipcMain.handle('journey:start', () => { journey?.start(); refreshTray() })
+  ipcMain.handle('journey:start', () => { userStart() })
   ipcMain.handle('journey:pause', (_e, minutes: unknown) => {
-    const m = typeof minutes === 'number' && minutes > 0 ? minutes : 0
-    journey?.pause(m ? Date.now() + m * 60_000 : undefined)
-    refreshTray()
+    userPause(typeof minutes === 'number' && minutes > 0 ? minutes : undefined)
   })
-  ipcMain.handle('journey:resume', () => { journey?.resume(); refreshTray() })
-  ipcMain.handle('journey:stop', () => { journey?.stop(); refreshTray() })
+  ipcMain.handle('journey:resume', () => { userResume() })
+  ipcMain.handle('journey:stop', () => { journey?.stop(); autoPaused = false; refreshTray() })
 }
 
 function setupJourney() {
@@ -532,10 +548,14 @@ function setupJourney() {
   refreshTray()
   setInterval(refreshTray, 60_000)     // 段数和状态跟着走，不用等用户点开
   // 锁屏 / 睡眠自动暂停：屏保上没什么可记的，而且「离开座位时还在录」最让人不安
-  powerMonitor.on('lock-screen', () => { if (journey?.state() === 'running') { journey.pause(); refreshTray() } })
-  powerMonitor.on('suspend', () => { if (journey?.state() === 'running') { journey.pause(); refreshTray() } })
-  powerMonitor.on('unlock-screen', () => { if (journey?.state() === 'paused') { journey.resume(); refreshTray() } })
-  powerMonitor.on('resume', () => { if (journey?.state() === 'paused') { journey.resume(); refreshTray() } })
+  // **只恢复自己按下去的暂停。** 用户按的「暂停到我再打开」/「暂停 1 小时」
+  // 不因为一次锁屏解锁就被打开——那是他明确的动作（第 778 轮 / P20）。
+  const autoPause = () => { if (journey?.state() === 'running') { journey.pause(); autoPaused = true; refreshTray() } }
+  const autoResume = () => { if (autoPaused && journey?.state() === 'paused') { journey.resume(); autoPaused = false; refreshTray() } }
+  powerMonitor.on('lock-screen', autoPause)
+  powerMonitor.on('suspend', autoPause)
+  powerMonitor.on('unlock-screen', autoResume)
+  powerMonitor.on('resume', autoResume)
   // 开着 app 的时候先补一批，别让用户干等一个周期才看见第一句描述。
   setTimeout(() => void describeBacklog(), 30_000)
   setInterval(() => void describeBacklog(), DESCRIBE_EVERY_MS)
@@ -561,17 +581,38 @@ const DESCRIBE_BATCH = 4
 async function describeBacklog() {
   if (journey?.state() !== 'running') return          // 暂停 / 没开就不跑
   if (!backend) return
-  try {
-    const r = await fetch(`http://127.0.0.1:${backend.port}/api/journey/catch-up?limit=${DESCRIBE_BATCH}`, {
-      method: 'POST',
-      headers: { 'X-User-Id': loadIdentity() ?? '' },
-    })
-    if (!r.ok) { remember(`[journey] 自动描述失败：HTTP ${r.status}\n`); return }
-    const j = await r.json() as { described?: number; skipped?: number }
-    if (j.described) remember(`[journey] 自动描述了 ${j.described} 段\n`)
-  } catch (e) {
-    // 看图服务不通是常态（不在内网时），不该刷屏——只记一行
-    remember(`[journey] 自动描述跳过：${e instanceof Error ? e.message : String(e)}\n`)
+  // **今天没有要描的了，就补昨天的。** 第 778 轮（P20）在真实数据里读出来的：
+  // 09-17 还有 27 段截图好好躺着、一直没描述——它们是那天最后一小时采的，
+  // 过了零点这里只问「今天」，于是永远轮不到，三天后大图过期，
+  // 那一小时就永远是「还没描述」。
+  const days = ['', new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)]
+  for (const date of days) {
+    try {
+      const q = `limit=${DESCRIBE_BATCH}${date ? `&date=${date}` : ''}`
+      const r = await fetch(`http://127.0.0.1:${backend.port}/api/journey/catch-up?${q}`, {
+        method: 'POST',
+        headers: { 'X-User-Id': loadIdentity() ?? '' },
+      })
+      if (!r.ok) {
+        // 后端把原因写在 detail 里（「看图失败：…」）——留着给页面说
+        let why = `HTTP ${r.status}`
+        try { const d = (await r.json() as { detail?: unknown }).detail; if (typeof d === 'string' && d) why = d } catch { /* 没有正文 */ }
+        if (describeStalled !== why) remember(`[journey] 自动描述失败：${why}\n`)
+        describeStalled = why
+        return
+      }
+      const j = await r.json() as { described?: number; skipped?: number; left?: number }
+      if (j.described) remember(`[journey] 自动描述了 ${j.described} 段${date ? `（${date}）` : ''}\n`)
+      describeStalled = ''                     // 这一轮通了，页面上那条提示该撤掉
+      // 这一天还有活（描了一批、或还剩着）就不去碰前一天；只有真的空了才往前补
+      if (j.described || j.left) break
+    } catch (e) {
+      // 看图服务不通是常态（不在内网时），不该刷屏——只记一行
+      const why = `连不上：${e instanceof Error ? e.message : String(e)}`
+      if (describeStalled !== why) remember(`[journey] 自动描述跳过：${why}\n`)
+      describeStalled = why
+      return
+    }
   }
 }
 

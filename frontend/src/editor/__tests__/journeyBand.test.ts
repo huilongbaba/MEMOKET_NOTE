@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appColors, bandCells, hhmm, saySpan, stepDay } from '../../components/JourneyPage'
+import { appColors, bandCells, describable, hhmm, saySpan, stepDay } from '../../components/JourneyPage'
 
 const seg = (start: string, end: string, app = 'Code') =>
   ({ i: 0, start, end, app, title: '', desc: '', n: 1, has_frame: true, has_thumb: false })
@@ -78,5 +78,15 @@ describe('翻天', () => {
 
   it('一天记录都没有时哪边都翻不动', () => {
     expect(stepDay([], '', -1)).toBeNull()
+  })
+})
+
+describe('还能补描述的段', () => {
+  it('没截图的不算——再点多少次「描述」都还是没描述（09-17 那天 71 段没截图，按钮一直亮着）', () => {
+    expect(describable([
+      { desc: '', has_frame: true },        // 真正等着描述的
+      { desc: '', has_frame: false },       // 黑名单挡过 / 存图失败 / 三天过期：补不了
+      { desc: '改 capture.ts', has_frame: false },
+    ])).toBe(1)
   })
 })

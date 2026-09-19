@@ -127,13 +127,22 @@ export function hamming(a: bigint, b: bigint): number {
   return n
 }
 
-/** 切走一下下又切回来的，并回原来那段。判据见文件头。 */
+/** 切走一下下又切回来的，并回原来那段。判据见文件头。
+ *
+ *  **只并挨着的。** 第 778 轮（P20）在真实数据里读出来的：09-18 有一段 Code
+ *  `07:03–10:07`，184 分钟，而 `n` 只有 59 次采样（≈15 分钟）。人 07:18 离开、
+ *  10:07 回来，回来那一 tick 因为超过 20 分钟被切成新段，**新段只有一次采样、
+ *  跟前一段是同一个应用**，就被当成「插曲」并了回去——`end` 一下跳到 10:07，
+ *  日报里于是写着「15:03–18:07 Code 连续没被打断 3 小时 4 分钟」。
+ *  跟第 753 轮那条「睡觉时连续专注 10 小时」是同一种假话，只是换了一条路进来。
+ *  两段之间隔了超过 `BLIP_SEC` 就不是「切走又切回来」，是两次。 */
 export function mergeBlips(segs: Segment[]): Segment[] {
   const secs = (s: Segment) => (Date.parse(s.end) - Date.parse(s.start)) / 1000
+  const touching = (a: Segment, b: Segment) => (Date.parse(b.start) - Date.parse(a.end)) / 1000 < BLIP_SEC
   const out: Segment[] = []
   for (const seg of segs) {
     const last = out[out.length - 1]
-    if (last && secs(seg) < BLIP_SEC && last.app === seg.app) {
+    if (last && secs(seg) < BLIP_SEC && last.app === seg.app && touching(last, seg)) {
       last.end = seg.end
       last.n += seg.n
       continue
@@ -145,7 +154,8 @@ export function mergeBlips(segs: Segment[]): Segment[] {
     const cur = out[i]
     const prev = merged[merged.length - 1]
     const next = out[i + 1]
-    if (prev && next && secs(cur) < BLIP_SEC && prev.app === next.app && prev.app !== cur.app) {
+    if (prev && next && secs(cur) < BLIP_SEC && prev.app === next.app && prev.app !== cur.app
+        && touching(prev, cur) && touching(cur, next)) {
       prev.end = next.end
       prev.n += cur.n + next.n
       i++
@@ -245,6 +255,24 @@ export function trimIdleTail(segs: Segment[], now: number, idleSec: number): boo
   return true
 }
 
+/** 上一次采样离现在多久算「中间断过」。**断过就另起一段，不许把上一段的 `end`
+ *  往后拖**。
+ *
+ *  第 778 轮（P20）量出来的：真实数据 4 天里有 **9 段**「时长」远大于它自己的采样数
+ *  （`n` × 15 秒），最狠的一段 09-18 `07:03–10:07` 号称 **184.3 分钟**、而 `n` 只有
+ *  59（真跟了 14.8 分钟）；今天 09-19 也有一段 Feishu 号称 184.8 分钟、`n=21`。
+ *  第 753 轮修的是「屏幕亮着但人没动」那一路（`trimIdleTail`），**这是另一路**：
+ *  tick 本身没跑——睡眠 / 锁屏自动暂停、用户手动暂停、黑名单窗口、截图失败，
+ *  都会让循环停一段时间；醒来那一下前台应用和标题多半没变，于是
+ *  `changed=false` → `cur.end = now`，那一段**一口吞掉整段空白**。
+ *  醒来时 `getSystemIdleTime` 已经被唤醒的那一下清零，`trimIdleTail` 接不住。
+ *
+ *  用 `BLIP_SEC`（60 秒 = 四个采样周期）而不是 `INTERVAL_MS`：一次 `screencapture`
+ *  慢一点、机器忙一下都不该切段。 */
+export function staleTick(lastAt: number, now: number): boolean {
+  return lastAt > 0 && now - lastAt > BLIP_SEC * 1000
+}
+
 export function readSegments(dir: string): Segment[] {
   try {
     return JSON.parse(readFileSync(path.join(dir, 'segments.json'), 'utf8')) as Segment[]
@@ -319,6 +347,8 @@ export type Recorder = {
   pause: (until?: number) => void
   resume: () => void
   stop: () => void
+  /** 「暂停 1 小时」暂停到几点（毫秒时间戳）；不限时的暂停 / 没暂停是 0。 */
+  pausedUntil: () => number
 }
 
 /**
@@ -337,6 +367,7 @@ export function makeRecorder(userData: string, log: (s: string) => void,
   let dir = ''
   let prevHash: bigint | null = null
   let sweptAt = 0                            // 0 = 还没扫过，开机第一次落盘就扫
+  let tickAt = 0                             // 上一次真正采到的时刻（见 staleTick）
   let wasAway = false                        // 只在状态翻转时记一行，别每 15 秒刷一条
   const tmp = path.join(userData, 'journey', '_tmp')
   // 开没开是**用户的选择，不是进程的状态**：退出重开还得是开着的，
@@ -376,9 +407,16 @@ export function makeRecorder(userData: string, log: (s: string) => void,
   }
 
   async function tick() {
+    // **限时暂停到点要能自己醒。** 第 778 轮（P20）走查抓到的：原来第一行就是
+    // `state !== 'running' → return`，而 `pause(until)` 把 state 置成 paused，
+    // 于是「暂停 1 小时」跟「暂停到我再打开」一模一样——吃个午饭回来，
+    // 一下午一段都没记，托盘也一直是 ⏸。
+    if (state === 'paused' && pauseUntil && Date.now() >= pauseUntil) {
+      pauseUntil = 0
+      state = 'running'
+      log('[journey] 暂停到点，继续记录\n')
+    }
     if (state !== 'running') return
-    if (pauseUntil && Date.now() < pauseUntil) return
-    if (pauseUntil && Date.now() >= pauseUntil) { pauseUntil = 0; log('[journey] 暂停到点，继续记录\n') }
 
     const today = dayDir(userData)
     if (today !== dir) {                       // 跨天：换一天的目录，重新开始
@@ -387,6 +425,17 @@ export function makeRecorder(userData: string, log: (s: string) => void,
       mkdirSync(path.join(dir, 'thumbs'), { recursive: true })
       segs = readSegments(dir)
       prevHash = null
+    } else if (!existsSync(dir)) {
+      // **今天的目录没了 = 用户刚点了「删掉这一天」。** 第 778 轮（P20）走查：
+      // 后端 `DELETE /day` 把整个目录 rmtree，而这里内存里那份段表还在——
+      // 之后每次落盘都 ENOENT（一下午一段都记不下来，日志刷「落盘失败」），
+      // 更糟的是后端下一次 `_save` 把目录建回来之后，**这里会把删掉的几十段
+      // 原样写回去**——用户以为抹掉的那一天自己长回来了。当成新的一天从头记。
+      mkdirSync(path.join(dir, 'shots'), { recursive: true })
+      mkdirSync(path.join(dir, 'thumbs'), { recursive: true })
+      segs = []
+      prevHash = null
+      log('[journey] 今天的目录没了（多半是删掉了这一天），从头记\n')
     }
 
     // **人不在就不记。** 屏幕亮着 ≠ 有人在做事（见 `trimIdleTail` 的注释）。
@@ -400,10 +449,10 @@ export function makeRecorder(userData: string, log: (s: string) => void,
     if (wasAway) { wasAway = false; log('[journey] 人回来了，继续记\n') }
 
     const { app, title } = await frontApp()
-    if (denied(app, title, deny())) {                  // 黑名单：连截图都不拍
-      if (segs.length) segs[segs.length - 1].end = new Date().toISOString()
-      return
-    }
+    // 黑名单：连截图都不拍。**也不把上一段的 `end` 往后拖**——原来这里会把
+    // 上一段延到现在，于是在银行页面待两小时，时间轴上是上一个应用「连续两小时」
+    // （第 778 轮 / P20）。黑名单的时间就该是一段空白：那才是「不记」。
+    if (denied(app, title, deny())) return
 
     const raw = path.join(tmp, 'now.png')
     if (!await shot(raw)) {
@@ -421,8 +470,12 @@ export function makeRecorder(userData: string, log: (s: string) => void,
     const now = new Date().toISOString()
     const cur = segs[segs.length - 1]
     const tooLong = cur && Date.now() - Date.parse(cur.start) > MAX_SEG_MIN * 60_000
+    // **中间断过就另起一段**（见 `staleTick`）：睡了三小时醒来，前台窗口还是那个，
+    // 不切段的话这一段的 `end` 直接跳到现在——日报里就是「连续没被打断 3 小时」。
+    const gap = staleTick(tickAt, Date.now())
     const changed = !cur || cur.app !== app || cur.title !== title
-      || (prevHash !== null && hamming(prevHash, h) > NEW_SEG_BITS) || tooLong
+      || (prevHash !== null && hamming(prevHash, h) > NEW_SEG_BITS) || tooLong || gap
+    tickAt = Date.now()
 
     if (changed) {
       const stem = String(segs.length + 1).padStart(3, '0')
@@ -466,6 +519,7 @@ export function makeRecorder(userData: string, log: (s: string) => void,
       state = 'running'
       log('[journey] 继续记录\n')
     },
+    pausedUntil: () => (state === 'paused' ? pauseUntil : 0),
     stop() {
       if (timer) { clearInterval(timer); timer = null }
       remember(false)

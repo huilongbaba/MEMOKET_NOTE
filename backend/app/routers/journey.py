@@ -40,7 +40,7 @@ from ..database import store
 from ..database.kite.kite_memory import UserMemory
 from ..editor.vision import VisionError, ask_image
 from ..journey import day_stats, group_runs, render_time_block
-from ..journey.stats import render_churn
+from ..journey.stats import _at, render_churn
 from ..journey.prompt import REPORT_SYSTEM, SPAN_SYSTEM, report_user, span_user
 from ..harness.checks.journey import check_report
 from .deps import current_user
@@ -132,6 +132,18 @@ def _ok_day(day: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _hhmm_local(iso: str) -> str:
+    """段落时间戳是壳写的 UTC（`toISOString()`），**给模型、进知识库的都得是本地时刻**。
+
+    第 778 轮（P20）读真实日报读出来的：09-18 那份写着「凌晨浏览了 Amazon 的
+    Gem Wearable…」——那一段是 18:12 本地时间（10:12Z）。喂给模型的行是
+    `start[11:16]` 切出来的 UTC，页面上的时间轴和「时间去哪了」那一节却是本地的，
+    于是模型嘴里的「凌晨 / 上午」跟用户看到的时间轴对不上，整份日报读起来是错的。
+    """
+    t = _at(iso)
+    return t.astimezone().strftime("%H:%M") if t else iso[11:16]
 
 
 def _load(day: str) -> list[dict]:
@@ -228,8 +240,12 @@ def _merge_back(disk: list[dict], ours: list[dict]) -> list[dict]:
 
 def _save(day: str, segs: list[dict]) -> None:
     d = _day_dir(day)
-    d.mkdir(parents=True, exist_ok=True)
     merged = _merge_back(_load(day), segs)
+    # 一段都没有、盘上也没有这一天：别为它建一个空文件——`days()` 会把它数成
+    # 「有记录的日子」（实拍 09-19 零点过后 catch-up 写出一个 `[]`，翻天时多出一格空日）
+    if not merged and not (d / "segments.json").exists():
+        return
+    d.mkdir(parents=True, exist_ok=True)
     (d / "segments.json").write_text(json.dumps(merged, ensure_ascii=False, indent=1),
                                      encoding="utf-8")
 
@@ -365,6 +381,7 @@ async def catch_up(date: str = "", limit: int = 20,
     segs = _load(day_s)
     mem = UserMemory(user)
     described = ingested = skipped = 0
+    failed: VisionError | None = None
 
     for i, seg in enumerate(segs):
         if described >= limit:
@@ -383,7 +400,12 @@ async def catch_up(date: str = "", limit: int = 20,
             raw = await ask_image("这个人在做什么？", Path(frame).read_bytes(),
                                   max_tokens=600, system=DESCRIBE_SYSTEM)
         except VisionError as exc:
-            raise HTTPException(502, f"看图失败：{exc}") from exc
+            # **先把这一批里已经做完的存下来，再报错。** 原来这里直接 raise，
+            # `_save` 就没跑——而前面那几段的大图在描述完的当下就删了（`_drop_frame`），
+            # 描述没落盘、图也没了，下一轮只能标成「没有截图」。看图服务一抖，
+            # 一批里做完的那几段就这么丢了（第 778 轮 / P20）。
+            failed = exc
+            break
         desc = pick_answer(raw)
         seg["desc"] = desc
         described += 1
@@ -393,7 +415,8 @@ async def catch_up(date: str = "", limit: int = 20,
             skipped += 1
             continue
         session = f"screen-{day_s.replace('-', '')}-{i:03d}"
-        title = f"{seg.get('start','')[11:16]}–{seg.get('end','')[11:16]} · {seg.get('app','')}"
+        # 本地时刻：这个标题会出现在知识库「最近摄入」里，UTC 的 16:00 其实是半夜
+        title = f"{_hhmm_local(seg.get('start', ''))}–{_hhmm_local(seg.get('end', ''))} · {seg.get('app', '')}"
         try:
             mem.remember([{"role": "user", "content": desc}],
                          session_id=session, date=day_s, title=title)
@@ -405,7 +428,10 @@ async def catch_up(date: str = "", limit: int = 20,
             if "already exists" not in str(exc):
                 raise
             seg["session"] = session
-    _save(day_s, segs)
+    if described or skipped:
+        _save(day_s, segs)
+    if failed is not None and not described:
+        raise HTTPException(502, f"看图失败：{failed}") from failed
     left = sum(1 for s in segs if not s.get("desc") and not s.get("skip") and not s.get("deleted"))
     return JourneyRunOut(date=day_s, described=described, ingested=ingested,
                          skipped=skipped, left=left)
@@ -458,7 +484,8 @@ async def report(date: str = "", user: str = Depends(current_user)) -> JourneyRe
     # 这一天真正推进了什么反而被那八遍压下去。并完带上「N 段」，
     # 让它仍然知道这件事占了多少时间。第 752 轮在时间轴上做的是同一件事。
     runs = group_runs(sorted(told, key=lambda x: x.get("start") or ""))
-    lines = [f"{r['start'][11:16]}–{r['end'][11:16]} {r['app']} {r['desc']}"
+    # **本地时刻**，跟「时间去哪了」那一节和页面上的时间轴同一个钟（`_hhmm_local`）
+    lines = [f"{_hhmm_local(r['start'])}–{_hhmm_local(r['end'])} {r['app']} {r['desc']}"
              + (f"（{len(r['segs'])} 段）" if len(r["segs"]) > 1 else "")
              for r in runs]
     text = await llm.complete(

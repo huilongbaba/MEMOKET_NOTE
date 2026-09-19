@@ -58,3 +58,14 @@ def test_切走很久不算插曲():
 def test_空的和只有一段的都不炸():
     assert merge_blips([]) == []
     assert shape(merge_blips([seg("Code", 0, 3)])) == [("Code", 0, 3)]
+
+
+def test_隔了很久的短段不并_人离开又回来那一下不是插曲():
+    """第 778 轮（P20）真实数据：09-18 一段 Code `07:03–10:07` 184 分钟、`n` 只有 59。
+    人离开三小时回来，回来那一 tick 切出的新段（一次采样、同一个应用）被当成
+    插曲并回去，`end` 一下跳过整段空白——日报里就成了「连续没被打断 3 小时」。"""
+    got = merge_blips([seg("Code", 0, 15), seg("Code", 184, 184.25, n=1)])
+    assert shape(got) == [("Code", 0, 15), ("Code", 184, 184)]
+    # A B(短) A 那一路也一样：B 跟前后不挨着就不是「切走又切回来」
+    got = merge_blips([seg("Code", 0, 15), seg("Safari", 100, 100.5, n=2), seg("Code", 101, 110)])
+    assert [s["app"] for s in got] == ["Code", "Safari", "Code"]

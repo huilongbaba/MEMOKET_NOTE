@@ -73,6 +73,17 @@ export function stepDay(days: string[], date: string, delta: number): string | n
 
 type Cell = { seg?: JourneySegment; sec: number; gap?: [string, string] }
 
+/** 还能补描述的段：没描述**而且大图还在**。没大图的（黑名单挡过、存图失败、
+ *  三天过期）再点多少次「描述」都还是没描述——原来它们也被数进「描述这 N 段」，
+ *  09-17 那天 71 段没截图，按钮一直亮着、点了只回一句「没有要描述的了」
+ *  （第 778 轮 / P20 走查）。 */
+export function describable(segs: { desc: string; has_frame: boolean }[]): number {
+  return segs.filter((s) => !s.desc && s.has_frame).length
+}
+
+/** 壳那边的状态（`journey:state`）。`until` / `stalled` 是 P20 加的，老壳没有——都可选。 */
+type BridgeState = { state: JourneyState; today: number; until?: number; stalled?: string }
+
 /** 段 + 空档，按时间排成一条带能画的东西。 */
 export function bandCells(segs: JourneySegment[]): Cell[] {
   const out: Cell[] = []
@@ -126,14 +137,21 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   /** 哪几块展开着（按块首时间记）。翻天 / 刷新之后自然回到收起——
    *  展开是「我要核对这一段」的一次性动作，不是一种偏好。 */
   const [opened, setOpened] = useState<Set<string>>(new Set())
+  /** 限时暂停到几点（毫秒）；自动描述卡在哪（空串 = 没卡） */
+  const [until, setUntil] = useState(0)
+  const [stalled, setStalled] = useState('')
+  /** 后端没应答时**要说出来**：原来 `journeyDay` 失败就 `setDay(null)`，页面照样写着
+   *  「记录中。今天刚开始记…」——后端死了看起来跟一天没记一模一样（第 778 轮 / P20）。 */
+  const [offline, setOffline] = useState(false)
   const bridge = window.memoketDesktop?.journey
 
   const refresh = useCallback(async () => {
     // 网页版压根没有壳：那不是出错，就是「没开过」（这一页会告诉你要用桌面版）。
     if (!bridge) setState('off')
-    else await bridge.state().then((s) => setState(s.state)).catch(() => setState((v) => v ?? 'unknown'))
-    journeyDay(date).then(setDay).catch(() => setDay(null))
-    journeyDays().then(setDays).catch(() => setDays([]))
+    else await bridge.state().then((s: BridgeState) => { setState(s.state); setUntil(s.until ?? 0); setStalled(s.stalled ?? '') })
+      .catch(() => setState((v) => v ?? 'unknown'))
+    journeyDay(date).then((d) => { setDay(d); setOffline(false) }).catch(() => { setDay(null); setOffline(true) })
+    journeyDays().then(setDays).catch(() => setDays((v) => v ?? []))
   }, [bridge, date])
 
   // 每 30 秒对一次状态和段数；**窗口看不见就不轮询**，回到前台立刻对一次（util/poll）
@@ -274,8 +292,8 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
   const total = segs.reduce((n, s) => n + secs(s), 0)
   const byApp = new Map<string, number>()
   for (const s of segs) byApp.set(s.app, (byApp.get(s.app) ?? 0) + secs(s))
-  const left = segs.filter((s) => !s.desc).length
-  const described = segs.length - left
+  const left = describable(segs)
+  const described = segs.filter((s) => s.desc).length
   // 日报写完之后又多出来的段数（>0 就该提醒重写）
   const grown = day?.report ? Math.max(0, described - (day.report_segments || 0)) : 0
 
@@ -306,9 +324,19 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
         {/* 翻到往日时「记录中」是句废话，还容易被读成「在补记那天」。
             「没在记」反过来要说——那是用户最需要知道的一种状态。 */}
         {state === 'off' ? '没在记录 —— 以前记的还在，可以回看、可以删。'
-          : date ? '' : state === 'paused' ? '已暂停 —— 这段时间不会记录。' : '记录中。'}
+          : date ? '' : state === 'paused'
+            ? (until ? `已暂停 —— 到 ${hhmm(new Date(until).toISOString())} 自己继续。` : '已暂停 —— 这段时间不会记录。')
+            : '记录中。'}
         {segs.length > 0 && ` ${date ? '这天' : '今天'} ${segs.length} 段，合计 ${saySpan(total)}。`}
       </p>
+      {offline && (
+        <p className="muted journey-state"><Icon n="bx-error" /> 后端没应答，这一天的记录读不出来——采集照常在壳里跑，稍后再刷新。</p>
+      )}
+      {/* 描述卡住了要说出来：看图模型连不上时壳每 3 分钟失败一次，
+          用户那边只看见一整页「还没描述」，以为功能坏了 */}
+      {!date && stalled && left > 0 && state === 'running' && (
+        <p className="muted journey-state"><Icon n="bx-error" /> 自动描述停了：{stalled}。每 3 分钟会再试一次；也可以下面手动点「描述」。</p>
+      )}
 
       {/* **报告在上、证据在下**（§8.3 ②）：先看今天是怎么回事，要核对再往下看 */}
       {day?.report ? (
@@ -353,7 +381,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
       )}
 
       {segs.length === 0 ? (
-        <p className="muted">{date ? '这一天没有记录。' : '今天刚开始记，攒够一段就会出现在这儿。'}</p>
+        !offline && <p className="muted">{date ? '这一天没有记录。' : '今天刚开始记，攒够一段就会出现在这儿。'}</p>
       ) : (
         <>
           {/* 一天一条带：**一眼回答「时间去哪了」**。不画饼图——占比不是这里的问题 */}
@@ -397,7 +425,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                     <div className="journey-row journey-run-head">
                       <span className="journey-time">{hhmm(run.start)}–{hhmm(run.end)}</span>
                       <span className={'journey-desc' + (run.desc ? '' : ' muted')}>
-                        {run.desc || '还没描述'}
+                        {run.desc || (run.segs.some((s) => s.has_frame) ? '还没描述' : '没截图，补不了描述')}
                       </span>
                       <span className="journey-app" title={run.app}>
                         <i className="journey-dot" style={{ background: colors.get(run.app) ?? OTHER }} />
@@ -419,7 +447,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                     <div key={s.i} className="journey-row">
                       <span className="journey-time">{hhmm(s.start)}–{hhmm(s.end)}</span>
                       <span className={'journey-desc' + (s.desc ? '' : ' muted')}>
-                        {s.desc || '还没描述'}
+                        {s.desc || (s.has_frame ? '还没描述' : '没截图，补不了描述')}
                         {/* 缩略图是**凭据**：一句没有任何依据的描述，用户没法判断它是不是编的。
                             默认不占地方，鼠标停在那一行才出现。 */}
                         {s.has_thumb && (

@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { DENY_APPS, DENY_TITLE_WORDS, IDLE_SEC, keepBackendFields, mergeBlips, sweepOrphans, trimIdleTail, type Segment } from '../../desktop/src/capture.ts'
+import { BLIP_SEC, DENY_APPS, DENY_TITLE_WORDS, IDLE_SEC, keepBackendFields, mergeBlips, staleTick, sweepOrphans, trimIdleTail, type Segment } from '../../desktop/src/capture.ts'
 import { groupRuns, RUN_GAP_MIN, RUN_SIM, similar } from '../src/util/journeyRuns'
 import { GAP_MIN as JOURNEY_GAP_MIN, saySpan } from '../src/components/JourneyPage'
 
@@ -29,6 +29,10 @@ const CASES: { why: string; input: Segment[] }[] = [
   { why: '真的换了件事就算短也留着', input: [seg('Code', 0, 5), seg('Safari', 5, 5.5), seg('Feishu', 5.5, 12)] },
   { why: '切走很久不算插曲', input: [seg('Code', 0, 5), seg('Safari', 5, 7), seg('Code', 7, 20)] },
   { why: '实拍那一串', input: [seg('Code', 6, 11), seg('Code', 12, 12), seg('Feishu', 12, 15), seg('Code', 15, 16), seg('Electron', 16, 17)] },
+  // 第 778 轮（P20）真实数据：人离开三小时回来，回来那一 tick 的一次采样是同一个应用，
+  // 原来被当成插曲并回去——`end` 一下跳过整段空白，日报里就是「连续三小时」
+  { why: '人离开又回来：隔了很久的短段不并回去', input: [seg('Code', 0, 15), seg('Code', 184, 184.25, 1)] },
+  { why: 'A B(短) A 中间隔着空白也不并', input: [seg('Code', 0, 15), seg('Safari', 100, 100.5, 2), seg('Code', 101, 110)] },
   { why: '空的', input: [] },
 ]
 
@@ -59,6 +63,15 @@ CASES.forEach((c, i) => {
   if (!ok) { bad++; console.log(`    TS  ${ts}\n    PY  ${pyOut}`) }
 })
 console.log(bad ? `${bad} 处两边对不上` : `${CASES.length} 个用例，壳和 P0 脚本给出同一个分段`)
+
+// 对拍只保证两边一样，**一样地错也算一样**：这一条钉住结果本身——隔了三小时的
+// 那一下必须还是两段（把 `touching` 去掉，两边会一起并成一段、对拍照样绿）。
+{
+  const gapKept = mergeBlips([seg('Code', 0, 15), seg('Code', 184, 184.25, 1)])
+  const ok = gapKept.length === 2 && gapKept[0].end === seg('Code', 0, 15).end
+  console.log(`${ok ? '✓' : '✗'} 人离开又回来：前一段的 end 不跳过空白`)
+  if (!ok) { bad++; console.log(`    ${JSON.stringify(shape(gapKept))}`) }
+}
 
 // ——— 内置黑名单两处必须一模一样 ————————————————————————————————
 //
@@ -279,6 +292,28 @@ if (!thrOk) bad++
   const emptyOk = !trimIdleTail([], now, 3600) && IDLE_SEC === 300
   console.log(`${emptyOk ? '✓' : '✗'} 人不在：空表不炸，门槛 5 分钟`)
   if (!emptyOk) bad++
+}
+
+// ——— 中间断过就另起一段，不许一段吞掉整段空白 ————————————————————
+//
+// 第 778 轮（P20）在真实数据上量到 9 段「时长」远大于自己的采样数：09-18 那段
+// `07:03–10:07` 号称 184.3 分钟而 `n=59`（真跟了 14.8 分钟）。tick 没跑的原因很多
+// （睡眠 / 锁屏 / 手动暂停 / 黑名单窗口 / 截图失败），醒来那一下窗口多半没变，
+// `changed=false` 就把 `end` 推到现在。醒来时 idle 已清零，`trimIdleTail` 接不住。
+{
+  const t0 = Date.parse('2026-09-18T07:17:45Z')
+  const cases: [string, number, number, boolean][] = [
+    ['第一次采样（还没有上一次）不算断', 0, t0, false],
+    ['正常 15 秒一跳不算断', t0, t0 + 15_000, false],
+    ['慢了一拍（45 秒）也不算断', t0, t0 + 45_000, false],
+    ['睡了三小时算断', t0, t0 + 3 * 3600_000, true],
+    ['刚过一分钟就算断', t0, t0 + BLIP_SEC * 1000 + 1, true],
+  ]
+  for (const [why, a, b, want] of cases) {
+    const got = staleTick(a, b)
+    console.log(`${got === want ? '✓' : '✗'} 断过就另起一段：${why}`)
+    if (got !== want) bad++
+  }
 }
 
 process.exit(bad ? 1 : 0)

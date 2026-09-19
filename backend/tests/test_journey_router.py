@@ -474,3 +474,116 @@ def test_时间戳读不出来就不并():
     runs = group_runs([{"start": "坏的", "end": "坏的", "app": "Code", "desc": a},
                        {"start": "也坏", "end": "也坏", "app": "Code", "desc": a}])
     assert len(runs) == 2
+
+
+# ---------------------------------------------------------------- P20（第 778 轮）走查修的几条
+
+def _local(iso: str) -> str:
+    from app.journey.stats import _at
+    return _at(iso).astimezone().strftime("%H:%M")
+
+
+def test_日报喂给模型的时刻是本地时间_不是UTC(tmp_path, monkeypatch):
+    """读真实日报读出来的：09-18 写着「凌晨浏览了 Amazon…」，那一段其实是 18:12。
+    喂进去的行是 `start[11:16]` 切的 UTC，而「时间去哪了」和页面时间轴都是本地钟。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-18"
+    day.mkdir()
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-18T10:12:18Z", "end": "2026-09-18T10:25:48Z", "app": "Feishu",
+         "desc": "浏览 Amazon 搜索 memoket 的 Gem Wearable AI Voice Recorder"},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    seen: dict = {}
+
+    async def fake_complete(messages, **kw):
+        seen["user"] = messages[-1]["content"]
+        return "## 计划外的\n- 浏览 Amazon 的 Gem Wearable\n"
+
+    monkeypatch.setattr(J.llm, "complete", fake_complete)
+    monkeypatch.setattr(J.prompts, "compose_system", lambda base, *a, **k: base)
+    asyncio.run(J.report(date="2026-09-18", user="tester"))
+    want = f"{_local('2026-09-18T10:12:18Z')}–{_local('2026-09-18T10:25:48Z')} Feishu"
+    assert want in seen["user"], seen["user"]
+    # 东八区下这一行是 18:12–18:25；不管跑测试的机器在哪个时区，都不该再出现 UTC 的 10:12
+    if _local("2026-09-18T10:12:18Z") != "10:12":
+        assert "10:12–10:25" not in seen["user"]
+
+
+def test_看图失败先把这一批做完的存下来再报错(tmp_path, monkeypatch):
+    """原来 `raise` 在 `_save` 之前：前面几段的大图已经删了、描述却没落盘，
+    下一轮只能标成「没有截图」——看图服务一抖，做完的那几段就丢了。"""
+    from app.editor.vision import VisionError
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    (day / "shots").mkdir(parents=True)
+    a, b = day / "shots" / "001.png", day / "shots" / "002.png"
+    a.write_bytes(b"PNG"), b.write_bytes(b"PNG")
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T01:10:00Z", "app": "Code", "frames": [str(a)]},
+        {"start": "2026-09-14T01:10:00Z", "end": "2026-09-14T01:20:00Z", "app": "Code", "frames": [str(b)]},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    calls = {"n": 0}
+
+    async def flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "答案：在 VS Code 里改 journey.py 的 catch_up"
+        raise VisionError("看图服务 502")
+
+    monkeypatch.setattr(J, "ask_image", flaky)
+    monkeypatch.setattr(J, "UserMemory", lambda user: type(
+        "M", (), {"remember": lambda *a, **k: None, "remove_sessions": lambda *a: 0})())
+
+    out = asyncio.run(J.catch_up(date="2026-09-14", limit=5, user="tester"))
+    assert out.described == 1 and out.left == 1
+    saved = json.loads((day / "segments.json").read_text())
+    assert saved[0]["desc"].startswith("在 VS Code"), "第一段的描述必须落盘"
+    assert not a.exists() and b.exists(), "只删描述做完那一段的大图"
+
+    # 一段都没做成才是 502——而且这一次就该报出来，不是吞掉
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(J.catch_up(date="2026-09-14", limit=5, user="tester"))
+    assert e.value.status_code == 502 and "看图失败" in e.value.detail
+    assert json.loads((day / "segments.json").read_text())[0]["desc"].startswith("在 VS Code")
+
+
+def test_入库标题用本地时刻(tmp_path, monkeypatch):
+    """这个标题会出现在知识库「最近摄入」里——UTC 的 16:00 其实是半夜。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-17"
+    (day / "shots").mkdir(parents=True)
+    big = day / "shots" / "001.png"
+    big.write_bytes(b"PNG")
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-16T16:00:14Z", "end": "2026-09-16T16:05:00Z", "app": "Code", "frames": [str(big)]},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    got: dict = {}
+
+    async def fake_img(*a, **kw):
+        return "答案：在 VS Code 里改 journey.py 的 catch_up"
+
+    class M:
+        def remember(self, msgs, **kw):
+            got.update(kw)
+
+    monkeypatch.setattr(J, "ask_image", fake_img)
+    monkeypatch.setattr(J, "UserMemory", lambda user: M())
+    asyncio.run(J.catch_up(date="2026-09-17", limit=5, user="tester"))
+    assert got["title"] == f"{_local('2026-09-16T16:00:14Z')}–{_local('2026-09-16T16:05:00Z')} · Code"
+
+
+def test_一段都没有的一天不落一个空文件(tmp_path, monkeypatch):
+    """实拍 09-19 零点过后 catch-up 写出一个 `[]`，`days()` 就把它数成有记录的一天。"""
+    from app.routers import journey as J
+
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    out = asyncio.run(J.catch_up(date="2026-09-19", limit=5, user="tester"))
+    assert out.described == 0 and out.left == 0
+    assert not (tmp_path / "2026-09-19").exists()
+    assert J.days(user="tester") == []
