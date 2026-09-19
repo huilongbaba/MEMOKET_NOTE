@@ -38,6 +38,9 @@ def scan_session(mem, user_id: str, session_id: str, *, source: str = "",
         return 0
     stem = session_id.rsplit("-", 1)[0] + "-"          # 同一篇 / 同一份材料的别的块不算「旧记录」
     superseded = mem.fact_attrs("superseded_by")
+    # 「满库都有的词不算证据」跟页边圆点走同一条判据（P29 #1）——同一段话在两处判出
+    # 不同的关系，那是两条判据不是一条
+    common = mem.common_term()
     added = 0
     for nf in new_facts:
         text = nf.get("text") or ""
@@ -46,7 +49,7 @@ def scan_session(mem, user_id: str, session_id: str, *, source: str = "",
         rows, _terms, _took = mem.recall(text, limit=8)
         others = [r for r in rows
                   if r["id"] != nf["id"] and not (r.get("unit") or "").startswith(stem) and r["id"] not in superseded]
-        cands = [c for c in relations.detect(text, others) if c["relation"] == "conflict"]
+        cands = [c for c in relations.detect(text, others, common=common) if c["relation"] == "conflict"]
         if not cands:
             continue
         if confirm is not None:

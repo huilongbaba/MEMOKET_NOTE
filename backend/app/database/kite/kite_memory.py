@@ -327,6 +327,9 @@ def _word_pattern(sl: str) -> "re.Pattern[str]":
 # grep 词只认这种形状的：字母 / 数字 / 下划线 / 短横 / 撇号 / 汉字，没有正则元字符。别的（kite 自己拼的
 # 多分支 `a|b`、带括号的）不预筛，原样全表扫。
 _PLAIN_GREP = re.compile(r"^[\w'\-一-鿿]{2,}$")
+# 纯 ASCII 的词（`ai` / `app` / `pr`）——`unit_df` 只给这一类补词边界，中文没有词边界
+_ASCII_TERM = re.compile(r"^[0-9A-Za-z'\-]+$")
+_MISSING = object()
 # kite 的 `parse_plan` 最多收 8 个 unit id；多于这个数没法表达成过滤条件，只能全表扫
 _UNITS_CAP = 8
 # 「一个 unit 都不命中」时给 kite 的占位 unit：库里永远没有这个 id，候选集就是空集
@@ -342,7 +345,7 @@ class _GrepIndex:
     折成 s / k，跟 re.I 的等价类一致。
     """
 
-    __slots__ = ("_blob", "_grams", "_line_blob", "_line_grams", "_memo", "_line_memo")
+    __slots__ = ("_blob", "_grams", "_line_blob", "_line_grams", "_memo", "_line_memo", "_df_memo")
 
     def __init__(self, store) -> None:
         self._blob, self._grams = self._build(
@@ -351,6 +354,39 @@ class _GrepIndex:
             (ln.unit, ln.text) for ln in getattr(store, "lines", {}).values())
         self._memo: dict[str, frozenset | None] = {}
         self._line_memo: dict[str, frozenset | None] = {}
+        self._df_memo: dict[str, int | None] = {}
+
+    @property
+    def unit_count(self) -> int:
+        """有事实的 unit 数——`unit_df` 的分母。"""
+        return len(self._blob)
+
+    def unit_df(self, term: str, *, floor: int = 0) -> int | None:
+        """这个词出现在几个 unit 里（`kb/relations` 拿它判「一条共用的串算不算证据」）。
+
+        **不能直接用 `units_for`**：那条是给预筛用的，判定是 `re.compile(词, re.I).search`，
+        也就是**子串**——`pr` 会在 product / approve 里命中（真库上 692 个 unit，而它真正
+        作为一个词只在 33 个里）、`mp` 在 example 里命中（402 vs 4）。拿子串数当「这个词
+        有多常见」会把短英文词冤枉成「满库都是」，于是把真沾边的 `kol + pr` 砍掉。
+        所以 ASCII 词要在候选 unit 上按**词边界**再核一遍；中文没有词边界，子串就是要的那个数。
+
+        `floor`：调用方只关心「有没有到某个门槛」。子串数是词边界数的**上界**，
+        上界都没到门槛就不必再扫一遍——这时回的是那个上界（也 < floor，判定一样）。
+        `None` = 这个词预筛不了（形状里有正则元字符），调用方按「不知道」处理。
+        """
+        hit = self._df_memo.get(term, _MISSING)
+        if hit is not _MISSING:
+            return hit
+        units = self.units_for(term)
+        if units is None or len(units) < floor or not _ASCII_TERM.match(term):
+            out = None if units is None else len(units)
+        else:
+            rx = re.compile(rf"(?<![0-9A-Za-z]){re.escape(term)}(?![0-9A-Za-z])", re.I)
+            out = sum(1 for u in units if rx.search(self._blob[u]))
+        if len(self._df_memo) >= 4096:
+            self._df_memo.clear()
+        self._df_memo[term] = out
+        return out
 
     @staticmethod
     def _build(pairs) -> tuple[dict[str, str], dict[str, set[str]]]:
@@ -450,6 +486,30 @@ class UserMemory:
             return None
         self._cache[key] = (mtime, idx, store)
         return idx
+
+    def common_term(self):
+        """回一个「这个词在**这个人的**库里到处都是」的判据，给 `kb/relations.detect(common=…)`。
+
+        判据本身（为什么是文档频率、门槛怎么量的）写在 `kb/relations.COMMON_DF_RATIO`
+        那段注释里；这里只负责把这个人的库接上去——`relations` 那个文件不依赖 app 的
+        其它模块，拿不到 store，所以由调用方注入。
+
+        零模型、零额外 IO：走的是 `search.plan` 已经在用的那份 2-gram 倒排表。
+        建不出索引（或库是空的）就回 `None` = 不启用这条判据，**不启用就是原样**。
+        """
+        from ..kb import relations as R
+
+        store, _vocab = self._index()
+        idx = self._grep_index(store)
+        if idx is None or not idx.unit_count:
+            return None
+        total = idx.unit_count
+
+        def is_common(term: str) -> bool:
+            n = idx.unit_df(term, floor=R.COMMON_DF_MIN)
+            return n is not None and n >= R.COMMON_DF_MIN and n / total >= R.COMMON_DF_RATIO
+
+        return is_common
 
     def _prescreen(self, store, queries: list[dict]) -> list[dict]:
         """`search.plan` 给的查询列表 → 同义但便宜的那份：每条 `{"grep": 词}` 按预筛结果带上 `units`。

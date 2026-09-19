@@ -204,7 +204,7 @@ async def relations(body: _RelationsIn, user: str = Depends(current_user)) -> di
         return {"relations": [], "took_ms": round((time.perf_counter() - t0) * 1000, 1)}
     rows, _terms, _took = mem.recall(passage, limit=8, scope=body.scope)
     rows = _live(mem, rows)
-    cands = kb_relations.detect(passage, rows)
+    cands = kb_relations.detect(passage, rows, common=mem.common_term())
     by_id = {r["id"]: r for r in rows}
     if body.confirm and any(c["relation"] == "conflict" for c in cands):
         try:
@@ -244,6 +244,8 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
     t0 = time.perf_counter()
     if not _has_facts(mem):
         return {"marks": [None] * len(body.passages[:80]), "took_ms": 0.0}
+    # 一批段落共用同一个判据对象（里头那份 df 是按词 memo 的，80 段之间大量重复）
+    common = mem.common_term()
     out = []
     for p in body.passages[:80]:
         p = (p or "").strip()
@@ -251,7 +253,7 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
             out.append(None)
             continue
         rows, _terms, _took = mem.recall(p, limit=8, scope=body.scope)
-        cands = kb_relations.detect(p, _live(mem, rows))
+        cands = kb_relations.detect(p, _live(mem, rows), common=common)
         # 一段只画一个点，画最要紧的——`detect()` 收尾已经按 冲突 > 延续 > 缺依据 >
         # 叠加 > 合并 > 印证 排好，`cands[0]` 就是它（P1-1d 核过，有闸钉着这个顺序）。
         # `kinds` 是这段一共判出几种关系，悬停时告诉用户「点开还有别的」。

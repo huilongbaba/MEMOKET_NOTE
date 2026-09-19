@@ -145,6 +145,35 @@ def _terms(memory, query: str) -> list[str]:
     return out if len(query.strip()) <= _SHORT_QUERY else []
 
 
+# 这张表跟 `kb/relations._terms` **共用**（改它同时动召回排序和关系判据的 `overlap`，
+# 所以 P27 没敢顺手补，留给了 P29 单独量）。
+#
+# **底表 = NLTK 的 english 停用词表**（179 条），不是谁手上顺口的那份（P29 #2 逐条对过：
+# `<scratch>/p29/enstop29.py`）。第三块是这个库特有的：英文内容全是**访谈转写**，
+# 「Speaker B says / talks / thinks / knows / wants …」几乎每条事实都有，
+# 它们在标准表里不是虚词，在这个库里是脚手架（第 527 轮量的）。
+#
+# **P29 #2 补的三类，每类的理由**：
+# · **`don` `doesn` `didn` `isn` `wasn` `haven` `wouldn` `shouldn` `couldn` `aren` `re` `ve` `ll`
+#   （加上库里还没出现的 `hadn` `hasn` `weren` `mightn` `mustn` `needn` `shan` `ain`）——
+#   **这些压根不是词**：`_EN` 的 `[A-Za-z][A-Za-z0-9_-]{1,}` 不收撇号，于是 `don't` 切成
+#   `don` + `t`、`you're` 切成 `you` + `re`、`I've` 切成 `ve`。真库上 `re` 出现在 83 个 unit
+#   （3.5%）、`don` 84 个——**一个转写库里最常见的「词」之一是个标点事故**。
+#   （`re-email` / `re-registered` 这种带连字符的整词不受影响：`_EN` 把它们切成一个词。）
+# · **反身 / 物主代词** `him` `himself` `herself` `hers` `itself` `myself` `ourselves`
+#   `yourself` `yourselves` `themselves` `ours` `yours` `theirs`，和 **be / do 的剩余形式**
+#   `am` `doing`——表里本来就有 he/she/his/her/they/them/we/us/our/is/are/do/does/did/done，
+#   漏的这些是同一类，纯粹是当初手写漏了。
+# · **介词 / 连词 / 限定词** `through` `between` `while` `until` `during` `once` `above`
+#   `below` `further` `nor` `same` `own`，外加 **`yet`**（P27 #2 点名的那条）。
+#   `yet` 不在 NLTK 表里，但它跟表里**已经有的** `still` / `already` / `ever` / `never`
+#   是同一类语篇副词——漏的是它，不是它那一类。
+#
+# **逐条读过之后没补的两个**（这一步是必须的，不能照着标准表抄）：
+# · `won`——标准表里它是 `won't` 的左半截，可真库 15 条里 **8 条是实义动词**
+#   （「I won a silver medal」「Speaker B won the third prize」，用户孩子的获奖记录）。
+#   补它等于把这 8 条的关键词剔掉。代价是 `won't` 仍然会留下一个 `won`，认了。
+# · `ma`——标准表里是 `ma'am`，这个库里 4 条全是中文合同的「MA 条款」。
 _EN_STOP = frozenset("""
 a an the it its is are was were be been being can could will would shall should may might must
 they them their he she his her we us our you your i me my this that these those there here
@@ -153,6 +182,10 @@ also about after before again against all any because both each few for from int
 under to up down out with without at by as in what which who whom when where why how
 say says said saying talk talks talking know knows knew think thinks like likes want wants
 now later still already only ever never always some more most much many other another such
+am doing him himself herself hers itself myself ourselves yourself yourselves themselves
+ours yours theirs through between while until during once above below further nor same own yet
+don doesn didn isn wasn haven wouldn shouldn couldn aren hadn hasn weren mightn mustn needn
+shan ain re ve ll
 """.split())
 
 
