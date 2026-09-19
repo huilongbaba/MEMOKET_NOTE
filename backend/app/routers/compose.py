@@ -148,6 +148,11 @@ async def skeleton(body: SkeletonIn, user: str = Depends(current_user)):
     spine, beats = store.clamp_skeleton(spine, beats)
     # 「待补」的正文里有没有——代码核对（P4 #2），标签统一成「已写：」「待补：」，翻过来的带正文行号
     beats = verify_beats(beats, body.content)
+    # **贴完标签再收一次**（P25 #1）：`verify_beats` 会在句首加上「已写（正文第 123 行起）：」这样
+    # 十几个字，正好卡在 200 的那条贴完就超上限——而 P7 之后 `set_skeleton` 不再静默截断、
+    # 改成抛 ValueError（`PUT /notes/{id}/skeleton` 回 400）。前端拿到的是这一份、存的也该是这一份，
+    # 「所见即所存」要在**最后一步**上成立，不是在中间那一步。
+    spine, beats = store.clamp_skeleton(spine, beats)
     # 骨架的确定性体检（计划 4.3）。**判了不拦着返回**——照 `slides` 那一档：
     # 骨架是一次成型的产物，不进多轮闭环，判据的结果跟产物一起显示，用户自己
     # 决定要不要重新生成。零模型调用。

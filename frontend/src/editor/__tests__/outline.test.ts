@@ -48,6 +48,18 @@ describe('parseHeadings', () => {
     expect(parseHeadings('# 甲\n## 乙\n### 丙').map((h) => h.text))
       .toEqual(['甲', '乙', '丙'])
   })
+
+  // —— P25（P22 #9）：真库 `92d07b760f1e` L23 一行里夹了第二个标题标记
+  it('一行里夹着第二个标题标记 → 截断，只留外层那一句', () => {
+    const hs = parseHeadings('## 我们该如何克服挑战：### 如何克服挑战：\n')
+    expect(hs.map((h) => h.text)).toEqual(['我们该如何克服挑战：'])
+    expect(hs[0].level).toBe(2)
+    expect(hs[0].pos).toBe(0)
+  })
+  it('真标题里的 # 不算夹标记（C# / 问题 #3）', () => {
+    expect(parseHeadings('## 关于 C# 的笔记\n### 问题 #3 复盘\n').map((h) => h.text))
+      .toEqual(['关于 C# 的笔记', '问题 #3 复盘'])
+  })
 })
 
 // —— P7（P4 #3）：没有 `#` 标题时的退路 ————————————————————————
@@ -65,9 +77,24 @@ const 展厅讲解词 = [
 describe('parseFallbackAnchors', () => {
   it('短行 + 冒号结尾 ≥ 3 个 → 当伪标题，去掉冒号，位置对', () => {
     const r = parseFallbackAnchors(展厅讲解词)
-    expect(r.how).toBe('colon')
+    expect(r.how).toBe('short')
     expect(r.items.map((h) => h.text)).toEqual(['公司汇报', '算力底座', '案例', '英伟达对比'])
     expect(r.items[1].pos).toBe(展厅讲解词.indexOf('算力底座：'))
+  })
+  // —— P25（P22 #9）：N1 里「智慧教育」「智慧医疗」「鲲鹏」这种**不带冒号**的短行也是一节
+  it('不带冒号的短行也算伪标题；带句号的、列表项、编号条不算', () => {
+    const 笔记 = [
+      '公司汇报：', '', '一段正文，够长了，随便写点什么凑数。', '',
+      '智慧教育', '', '宁夏大学的教室里装了智能助教，能自动生成课后练习。', '',
+      '鲲鹏', '', '服务器主板由 OEM 伙伴组装，华为只做主板。', '',
+      '山东东营 HG14 海上光伏', '', '全球最大开放式海上光伏项目。', '',
+      '双方共建 AI 场景。', '',
+      '- 72-1024 卡区间', '',
+      '（2） 翻译准确率显著', '',
+    ].join('\n')
+    const r = parseFallbackAnchors(笔记)
+    expect(r.how).toBe('short')
+    expect(r.items.map((h) => h.text)).toEqual(['公司汇报', '智慧教育', '鲲鹏', '山东东营 HG14 海上光伏'])
   })
   it('没有冒号短行 → 按段落列、每段取首句', () => {
     const r = parseFallbackAnchors('第一段讲的是卖房中介的对比。后面还有很多。\n\n第二段讲三类信息：事实、推测、冲突的判断，要分开。\n')

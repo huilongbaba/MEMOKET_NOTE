@@ -7,7 +7,7 @@ import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
 import TrashPanel from './components/TrashPanel'
-import { chunked, MARGIN_BATCH, MARGIN_CACHE_MAX, marginParagraphs, markKey, splitCached, type MarginMark, type MarginVerdict } from './editor/marginMemory'
+import { chunked, dotWorthy, MARGIN_BATCH, MARGIN_CACHE_MAX, marginParagraphs, markKey, splitCached, type MarginMark, type MarginVerdict } from './editor/marginMemory'
 import { ignoredSet } from './util/relationActions'
 import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
@@ -440,6 +440,9 @@ export default function App() {
   const [cursorPara, setCursorPara] = useState('')
   // 边缘记忆：停止编辑 1.5s 后把含数字的段落批量拿去判关系，段首行右边亮点（零 LLM）
   const [marginMarks, setMarginMarks] = useState<MarginMark[]>([])
+  /** 这篇里「缺依据 · 知识库连沾边的记录都没有」那一档有多少段（P25 #4）。**不画点**，
+   *  在「记忆」面板上折成一句话——理由在 `editor/marginMemory.dotWorthy`。 */
+  const [noRecordDots, setNoRecordDots] = useState(0)
   /** 页边圆点旁边的关系卡（P9，agent-native-editor §3.3）：悬停 / 点圆点、或光标进了亮黄点的段就贴在那一行旁边。 */
   const [marginCard, setMarginCard] = useState<{ m: MarginMark; anchor: DOMRect; reason: 'hover' | 'click' | 'cursor' } | null>(null)
   // ⌥ 悬停 / ⌥↩ 的来龙去脉卡（P16，§3.3 场景 B）：贴在词边、零模型；「查完整来龙去脉」才打模型
@@ -490,12 +493,12 @@ export default function App() {
   const marginCache = useRef(new Map<string, MarginVerdict>())
   useEffect(() => { marginCache.current.clear() }, [ingestTick, scopeTick])
   useEffect(() => {
-    if (!current) { setMarginMarks([]); return }
+    if (!current) { setMarginMarks([]); setNoRecordDots(0); return }
     // 图片 / 链接地址 / 引用 id 先剥掉：一行 `![x](/api/assets/52dd….png)` 里的数字会让它过门槛去召回。
     // **不封顶**（P1-1d）：原来 `.slice(0, 80)`，30k 字的笔记第 80 个含数字的段落之后一个点都没有，
     // 「有的段有点、有的段没有」；现在按 80 一批分几次发，每批几十毫秒。
     const paras = marginParagraphs(content, stripForRecall)
-    if (paras.length === 0) { setMarginMarks([]); return }
+    if (paras.length === 0) { setMarginMarks([]); setNoRecordDots(0); return }
     let stale = false
     const t = setTimeout(async () => {
       // 文本没变的段直接用缓存；只把没见过的段送去问（P10：30k 字首次 ~15s → 改一段后 1.6s 含防抖）。
@@ -504,13 +507,20 @@ export default function App() {
       const { hits, misses } = splitCached(paras, marginCache.current)
       const marks: MarginMark[] = [...hits]
       const ignored = ignoredSet()                 // 「忽略」过的那一对不再亮点（右栏的卡同一份名单）
-      const show = () => setMarginMarks([...marks].sort((a, b) => a.line - b.line).filter((m) => !ignored.has(markKey(m))))
+      // P25 #4：`no_record` 那一档（知识库里连沾边的记录都没有）不逐段画点——
+      // 理由写在 `editor/marginMemory.dotWorthy` 上；这里只负责「不画」和「数出来有多少段」，
+      // 面板上那一句由 `noRecordNote` 说。
+      const show = () => {
+        const keep = [...marks].sort((a, b) => a.line - b.line).filter((m) => !ignored.has(markKey(m)))
+        setNoRecordDots(keep.filter((m) => !dotWorthy(m)).length)
+        setMarginMarks(keep.filter(dotWorthy))
+      }
       if (misses.length === 0 || hits.length) show()
       for (const chunk of chunked(misses, MARGIN_BATCH)) {
         try {
           const r = await api.memoryRelationsBatch(chunk.map((p) => p.text))
           r.marks.forEach((m, i) => {
-            const v: MarginVerdict = m ? { relation: m.relation, say: m.say, kinds: m.kinds, fact_ids: m.fact_ids, facts: m.facts } : null
+            const v: MarginVerdict = m ? { relation: m.relation, say: m.say, kinds: m.kinds, fact_ids: m.fact_ids, facts: m.facts, why: m.why } : null
             marginCache.current.set(chunk[i].text, v)   // 先进缓存：就算这一轮作废，下一轮也不用再问这些段
             if (v) marks.push({ ...v, line: chunk[i].line })
           })
@@ -3921,6 +3931,7 @@ export default function App() {
                     {/* 材料托盘（P14 §3.4）：「记忆」的第一格，不开新页签（P12 定的：右栏页签只能减不能加） */}
                     <TrayPanel key={'tray:' + current.id} noteId={current.id} onWrite={writeFromTray} />
                     <RelatedMemory key={ingestTick} content={content} paragraph={cursorPara} onInsert={insertAtCursor}
+                                   noRecordDots={noRecordDots}
                                    kbEmpty={kbRows.length > 0 && (kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0) === 0} />
                   </div>
                 : <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。</p> },

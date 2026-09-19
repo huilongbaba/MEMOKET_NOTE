@@ -5,6 +5,20 @@ import { SECTION_LABEL, materialsText, sectionStatuses, sectionSummary } from '.
 
 type Heading = { level: number; text: string; pos: number }
 
+/** 一行里**夹着第二个标题标记**（P22 #9）。实拍：真库 `92d07b760f1e` 的 L23 是
+ *  `## 我们该如何克服挑战：### 如何克服挑战：`——harness 早期留下的重复标题，两半说的是同一件事。
+ *  `/^(#{1,6})\s+(.+)$/` 把行尾整段当标题文字，目录里就原样显示 `我们该如何克服挑战：### 如何克服挑战：`，
+ *  一行 markdown 源码冒在导航面板上。目录那一行要的是**读得懂的字**（跟 `stripInline` 同一条理由），
+ *  所以在这个标记处**截断**，只留外层那一句。
+ *
+ *  为什么是截断而不是拆成两条：在真库 482 篇上扫过（`<scratch>/p25/scan_inline_headings.py`），
+ *  这种行**总共只有这 1 处**，而且内层（`如何克服挑战：`）是外层的近似重复——拆成两条等于给同一节
+ *  两行导航。真要是内容不同的一天，截断至少不会把源码摆到面板上。
+ *
+ *  **不能误伤真标题里的 `#`**：`## 关于 C# 的笔记`（`#` 前面是字母）、`## 问题 #3 复盘`（`#` 后面
+ *  不是空格）都不算——所以要求「前面不是字母 / 数字 / `#`」且「后面至少一个空格再接非空白」。 */
+const INLINE_HEADING = /(?<![A-Za-z0-9#])#{1,6}\s+\S/
+
 /** 正文里的标题。**围栏代码块里的不算**——Python 和 Shell 的注释正好是
  * `# ` 开头，跟一级标题一个样子，不排除的话大纲面板里会冒出「读取退货
  * 工单」这种条目，点一下光标跳进代码块中间。
@@ -31,18 +45,32 @@ export function parseHeadings(content: string): Heading[] {
   let m: RegExpExecArray | null
   while ((m = re.exec(content))) {
     if (inFence.has(m.index)) continue
-    out.push({ level: m[1].length, text: m[2].trim(), pos: m.index })
+    const inner = INLINE_HEADING.exec(m[2])
+    const text = (inner ? m[2].slice(0, inner.index) : m[2]).trim()
+    if (!text) continue                            // 整行就是一个夹进来的标记，没有外层文字
+    out.push({ level: m[1].length, text, pos: m.index })
   }
   return out
 }
 
 /** 没有 `#` 标题时的目录（P7，P4 #3）：26.7k 字的展厅讲解词零个 `#`，目录面板一片空白，用户在最长的一篇里
  * 没有任何导航。退两步：
- *   1. 「算力底座：」「案例：」「英伟达对比：」这种**短行 + 冒号结尾**的段落当伪标题（≥ 3 个才用这档）；
+ *   1. 单独占一段的**短行**当伪标题（≥ 3 个才用这档）：「算力底座：」这种冒号收尾的，和
+ *      「智慧教育」「鲲鹏」这种**不带标点**的（P25 #2 / P22 #9 补的第二种）；
  *   2. 都没有就**按段落列**，每段取首句（≤ 28 字）。
- * 两档都在面板顶上说一句「这篇没有 # 标题，按 xx 列」，别让人以为它认出了标题。 */
-export type FallbackOutline = { items: Heading[]; how: 'colon' | 'paragraph' | 'none' }
+ * 两档都在面板顶上说一句「这篇没有 # 标题，按 xx 列」，别让人以为它认出了标题。
+ *
+ * **为什么不收「油气：主要是跟随一滴油的生命周期…」这种「冒号后面接正文」的**（P22 #9 的另一半）：
+ * 在 N1 上量过（`<scratch>/p25/` 那次 fallback 重放）——这种段落全篇 **80 段**，去掉重复前缀（案例 ×8、
+ * 方案 ×5、华为 ×2）还有 **65 段**，收进来目录从 24 条涨到 89 条，多出来的是「同时」「问题」「（细节数据」
+ * 「- 全光通信*光模块」这类，而真正想要的行业段只有「油气」「化工」两条。**代码分不开「行业名：」和
+ * 「案例：」——它们是同一个形状**，按重复次数过滤也只砍掉 3 个前缀。拿 65 条噪声换 2 条，不换。 */
+export type FallbackOutline = { items: Heading[]; how: 'short' | 'paragraph' | 'none' }
 const COLON_HEAD = /^(.{1,16}?)\s*[：:]\s*$/
+/** 不带冒号的短行伪标题（「智慧教育」「鲲鹏」「山东东营 HG14 海上光伏」）：整段就这么一行、
+ *  **不以标点收尾**（「双方共建 AI 场景。」是句子不是标题）、**不是列表项 / 编号条**
+ *  （`- 72-1024 卡区间`、`（2） 翻译准确率显著` 是正文的一条，不是一节）。 */
+const BARE_HEAD = /^(?![-*+>])(?!\(?（?\d+[）)、.]\s*)[^\s].{0,15}[^\s。！？；，、：:.!?;,…—-]$/
 const PARA_MIN_CHARS = 20
 const FALLBACK_MAX = 200
 
@@ -86,9 +114,9 @@ export function parseFallbackAnchors(content: string): FallbackOutline {
     at += line.length + 1
   }
   if (cur) paras.push(cur)
-  const colon = paras.filter((p) => p.len <= 17 && COLON_HEAD.test(p.first))
-  if (colon.length >= 3) {
-    return { how: 'colon', items: colon.slice(0, FALLBACK_MAX).map((p) => ({ level: 1, text: stripInline(p.first.replace(/\s*[：:]\s*$/, '')), pos: p.pos })) }
+  const heads = paras.filter((p) => p.len <= 17 && p.len >= 2 && (COLON_HEAD.test(p.first) || BARE_HEAD.test(p.first)))
+  if (heads.length >= 3) {
+    return { how: 'short', items: heads.slice(0, FALLBACK_MAX).map((p) => ({ level: 1, text: stripInline(p.first.replace(/\s*[：:]\s*$/, '')), pos: p.pos })) }
   }
   const long = paras.filter((p) => p.len >= PARA_MIN_CHARS)
   if (long.length >= 2) {
@@ -181,8 +209,8 @@ export default function DocumentOutline({ content, viewRef, withStatus = false }
     <div>
       {fallback && fallback.how !== 'none' && (
         <p className="muted outline-fallback-note" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px', lineHeight: 1.6 }}>
-          {fallback.how === 'colon'
-            ? '这篇没有 # 标题，按「xx：」这样的短行列；加上 # 标题就按标题列。'
+          {fallback.how === 'short'
+            ? '这篇没有 # 标题，按「算力底座：」「智慧教育」这样单独一行的短行列；加上 # 标题就按标题列。'
             : `这篇没有 # 标题，按段落列（${headings.length} 段，每段取首句）；加上 # 标题就按标题列。`}
         </p>
       )}

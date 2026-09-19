@@ -27,7 +27,18 @@ _UNITS = (r"mAh|mm|cm|km|kg|TB|PB|GB|MB|MHz|GHz|Hz|kWh|kW|kV|MW|GW|W|V|tps|fps|m
           r"元|万|亿|台|人|天|周|小时|分钟|秒|次|条|页|版|批|套|%|％|"
           r"年|卡|辆|度|吨|米|个|项|家|场|位|名|篇|张|份|倍|轮|件|层|级|期|座|颗|顆|款|种|步|根")
 # 「50000+tps」「8+%」「200多家」「2000余套」：数和单位之间的 + / 多 / 余 不挡单位
-_NUM = re.compile(rf"(?<![\d.])(-?\d+(?:\.\d+)?)[+多余]?\s*({_UNITS})(?![A-Za-z])")
+#
+# **`re.I`（P22 #10）**：表里写的是 `kWh` / `kV`，而人手打出来的是 `567kwh`、`10KV`——
+# 大小写差一个字母就一个量都抽不出来，那一段连「缺依据」都不判。在真库 482 篇上量过前后
+# （`<scratch>/p25/scan_num_ic.py`）：`_NUM` 命中 **2053 → 2059**，新增 6 处、全部逐条读过：
+# `10KV 光伏站点` ×3（千伏，对）、`单个电池容量是 567kwh` ×3（千瓦时，对），**误伤 0 处**。
+# 特别核过会不会把别的东西当量：`1w`（中文里常写成「1w = 1万」）、`KB`/`Kb`、人名里的字母——
+# 全库一处都没有（新增命中只有 `KV` / `kwh` 两个单位）。
+_NUM = re.compile(rf"(?<![\d.])(-?\d+(?:\.\d+)?)[+多余]?\s*({_UNITS})(?![A-Za-z])", re.IGNORECASE)
+# 开了 `re.I` 就必须把大小写收回来：`by_unit` 是按单位**字符串**分桶的，
+# 不归一的话「9kWh」和「567kwh」会落进两个桶，同一个单位互相印证不了——
+# 那等于用一个修好的抽取换来一个新的漏判。按单位表里的写法为准。
+_UNIT_CANON = {u.lower(): u for u in _UNITS.split("|")}
 _UNIT_ALIAS = {"％": "%", "顆": "颗"}
 _DATE_FULL = re.compile(r"(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})日?")
 _DATE_MD = re.compile(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?")
@@ -93,6 +104,7 @@ def extract_values(text: str) -> dict:
     text = _cn_numerals_to_digits(_GARBAGE.sub(" ", text or ""))
     nums: list[tuple[float, str]] = []
     for v, u in _NUM.findall(text):
+        u = _UNIT_CANON.get(u.lower(), u)
         nums.append((float(v), _UNIT_ALIAS.get(u, u)))
     dates: list[str] = []
     for y, m, d in _DATE_FULL.findall(text):
@@ -424,9 +436,22 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
     # 的 top 事实是「他的通信就是要通过WiFi」（只因为 wifi），于是既不缺依据、也判不出别的 → 空。
     # 「有出处」= 已经有一条记录**对上了**这段里的某个量或日期（印证 / 冲突 / 延续三种之一）。
     # 只是同单位、或只是也带个日期，不算——那是「沾边」，不是「带同样的量」。
+    #
+    # **「缺依据」分两档，是两件不同的事**（P22 #8 / P25 #4）。P7 修好了「该有点没点」之后，
+    # 真库最长那篇（`715266c1fcb4`，26.7k 字的展厅讲解词）136 个含数字段挂出 **106 个灰点**，
+    # 逐条读过（`<scratch>/p25/read_unsupported.py`）：
+    #   · **89 段 `no_record`**：召回回来的 8 条**没有一条**过沾边门槛——昇腾份额 38%、NVL72 单柜
+    #     72 卡、深圳 25 万路摄像头，知识库里根本没有这个话题。这一段一个点，说的不是「这一段」
+    #     的事，是「这篇笔记跟知识库不搭界」这一件事**说了 89 遍**——页边一整列灰圈 = 噪声。
+    #   · **17 段 `no_value`**：有沾边的记录，但**那条记录里没有这段的量**（「每年投入营收的 10%…
+    #     21 万员工」沾着库里「把更多资金投入研发」）。这一条才是「这个数还没有出处，值得去核」。
+    # 判法零模型、就是 `related` 空不空，本来就算好了；这里把它记进候选，前端据此决定画不画点
+    # （`frontend/src/editor/marginMemory.ts` `DOT_WORTHY`）。**右栏的关系卡两档都照说**——
+    # 光标停在那一段上仍然告诉你「知识库里没有记录支持这句」，只是不在页边逐段画。
     supported = any(r["relation"] in ("conflict", "continuation", "corroborated") for r in out)
     if not supported:
         out.append({"relation": "unsupported", "unit": "",
+                    "why": "no_record" if not related else "no_value",
                     "say": ("知识库里没有记录支持这句——不是说它错，是它没根。" if not related
                             else "知识库里沾边的记录都没带这段里的量——这几个数还没有出处。"),
                     "fact_ids": [], "values": [_fmt(v) + u for v, u in pv["nums"]] + [fmt_date(d) for d in pv["dates"]]})

@@ -844,10 +844,17 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       if (opt !== 'memory') return
       await wait(1500)
       const v = editorViewRef.current; if (!v) return
-      // 光标放到第一个含数字的段落（页边圆点判的正是这种段），右栏「记忆」就会查这段的关系
+      // 光标放到第一个含数字的段落（页边圆点判的正是这种段），右栏「记忆」就会查这段的关系。
+      // `margin:<id>:memory:<词>`（P25 #3）：改成放到**第一个含这个词**的数字段上——
+      // 26.7k 字的笔记里要看的常常不是第一段（比如 `567kwh` 那段在 L211）。
+      const want = probe.split(':').slice(3).join(':')
       const text = v.state.doc.toString()
       let at = 0
-      for (const line of text.split('\n')) { if (/\d/.test(line) && !line.startsWith('#') && line.trim().length >= 8) break; at += line.length + 1 }
+      for (const line of text.split('\n')) {
+        if (/\d/.test(line) && !line.startsWith('#') && line.trim().length >= 8 && (!want || line.includes(want))) break
+        at += line.length + 1
+      }
+      if (at >= text.length) at = 0
       v.focus(); v.dispatch({ selection: { anchor: Math.min(at + 2, text.length) }, effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 120 }) })
       setPaneFocus({ id: 'memory', n: Date.now() })
     })() }
