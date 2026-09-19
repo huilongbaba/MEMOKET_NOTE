@@ -19,7 +19,8 @@ from .checks import grounding_rules as grounding_check
 from .checks import (chart_numbers_grounded, chart_readable, chart_restates_list,
                      charts_from_tools, citations_exist, citations_present, citations_hold,
                      heading_fits, language_consistent, material_thin, material_used,
-                     no_audit_voice, no_fake_charts, no_foreign_script, no_junk_tail, no_placeholder,
+                     no_audit_voice, no_echoed_text, no_fake_charts, no_foreign_script,
+                     no_junk_tail, no_placeholder,
                      no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
                      numbers_from_tools, outline_intact, section_budget,
                      table_columns_match, table_present, tail_clashes,
@@ -85,28 +86,54 @@ def stalled(st: State) -> str | None:
 # 说一遍，模型每轮照样不做，剩下的轮数就这么烧掉。
 #
 # 规则：同一条判据（按判据名，不按原话——`citations_present` 的原话里带「这一轮
-# 写了 N 字」，每轮都不一样）连响 ≥ CHECK_STUCK_ROUNDS 轮 → 停，交最好的一轮
+# 写了 N 字」，每轮都不一样）响够 CHECK_STUCK_ROUNDS 轮 → 停，交最好的一轮
 # （`loop.SHIP_BEST_ON`）。三轮是给修订两次机会之后的第一轮：卡满两轮放行、第
 # 三轮真打了分还是这条，就是这次跑动不了它。
+#
+# ## **「连续」改成「最近 CHECK_STUCK_WINDOW 轮里」**（P24 #3）
+#
+# P22 实拍：`e78306202d78` 的 `citations_present` 在 r2/r3/r5 响、
+# `no_repeated_lists` 在 r4/r6 响——**两条轮流响，互相把对方的连响清零**
+# （`Checks.before_judge` 每轮把 `check_name_streak` 整只换掉，这一轮没报的键自然断掉，
+# 那正是「连续」该有的语义）。于是谁也凑不满 3 连，跑满 8 轮上限按 `stalled` 交卷，
+# 而被点名两次的那处重复原样留在最终正文里。
+#
+# 换成窗口之后**严格是原规则的超集**（连续 3 轮当然也是「最近 4 轮里 3 次」），
+# 所以只会更早停、不会更晚停。在库里 22 次有 `fired_checks` 的真跑上量过
+# （`p24/m3_stuck.py`）：原规则命中 1 次（`a941efecd390` r3），新规则命中 2 次
+# ——多出来的那一次正是 `e78306202d78`，从 r6 提前到 r5；其余 20 次跑一次都不碰，
+# 三次 `complete` 的跑（`da080ca847cf` / `603dca25403a` / `3a3a96354546`）全部原样。
 CHECK_STUCK_ROUNDS = 3
+CHECK_STUCK_WINDOW = 4
 
 
 def check_stuck_detail(st: State) -> tuple[str, int]:
-    """连响最久的那条判据和它连了几轮。`(名字, 轮数)`，没有就 `("", 0)`。
+    """最近 `CHECK_STUCK_WINDOW` 轮里响得最多的那条判据和它响了几轮。没有就 `("", 0)`。
 
-    `middleware/checks.Checks.before_judge` 每轮把 `bag["check_name_streak"]`
-    整只换掉，所以这里读到的永远是「连续」，不是「累计」。停机规则和停机事件
+    读 `middleware/checks.Checks.before_judge` 攒的 `bag["check_name_rounds"]`
+    ——每轮一个 dict，只留最近 `CHECK_WINDOW` 个。停机规则和停机事件
     （`Checks.after_run`）都读这一处——两处各算一份会飘。
     """
-    streaks: dict[str, int] = st.bag.get("check_name_streak") or {}
-    if not streaks:
-        return "", 0
-    name = max(streaks, key=lambda k: (streaks[k], k))
-    return name, int(streaks[name])
+    window: list[dict[str, int]] = st.bag.get("check_name_rounds") or []
+    counts: dict[str, int] = {}
+    for rnd in window[-CHECK_STUCK_WINDOW:]:
+        for name in rnd:
+            counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        # 旧口径兜底：`check_name_rounds` 还没有（比如直接构造 State 的单测）时，
+        # 仍按「连续」那一份回答，行为跟 P6 那版一致。
+        streaks: dict[str, int] = st.bag.get("check_name_streak") or {}
+        if not streaks:
+            return "", 0
+        name = max(streaks, key=lambda k: (streaks[k], k))
+        return name, int(streaks[name])
+    name = max(counts, key=lambda k: (counts[k], k))
+    return name, counts[name]
 
 
 def check_stuck(st: State) -> str | None:
-    """同一条代码判据连响 ≥ CHECK_STUCK_ROUNDS 轮：这次跑的写作动不了它，停。"""
+    """同一条代码判据在最近 CHECK_STUCK_WINDOW 轮里响够 CHECK_STUCK_ROUNDS 次：
+    这次跑的写作动不了它，停。"""
     _name, n = check_stuck_detail(st)
     return "check_stuck" if n >= CHECK_STUCK_ROUNDS else None
 
@@ -586,7 +613,10 @@ NOTE = Mode(
     # 缺陷（修好了不算命中、不短路）；`language_consistent` 是「这一轮写错了语言」，
     # 比「没引用」更该先说。`no_junk_tail`（P19 #5）跟 `no_foreign_script` 是一对：
     # 一个认外文乱码、一个认中文垃圾尾巴，都是摘掉就完事的机械缺陷，挨着放。
-    checks=(no_foreign_script, no_junk_tail, chart_restates_list, language_consistent,
+    # `no_echoed_text`（P24 #4）跟它们同一档、挨着放：它的前两种形状也是「摘掉就完事」，
+    # 修好了不算命中、不短路，**不占轮**——而 P22 实拍里重复正是最占篇幅的那个问题。
+    checks=(no_foreign_script, no_junk_tail, no_echoed_text, chart_restates_list,
+            language_consistent,
             no_placeholder, no_audit_voice, outline_intact, citations_hold,
             citations_exist, material_thin, citations_present, material_used,
             no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
@@ -612,7 +642,8 @@ SECTION = Mode(
     # 那一面」，而前面每一条说的都是「已经写的这些有毛病」。一条「接着写」的
     # 诊断压在一条「这里有占位符 / 引用是编的」前面，等于让模型在一堆烂摊子
     # 上再加一段——第 606 轮那次死锁的教训是判据之间的**先后本身就是设计**。
-    checks=(no_foreign_script, no_junk_tail, chart_restates_list, language_consistent,
+    checks=(no_foreign_script, no_junk_tail, no_echoed_text, chart_restates_list,
+            language_consistent,
             no_placeholder, no_audit_voice, citations_hold, citations_exist,
             material_thin, citations_present, material_used, no_repeated_lists,
             no_restated_paragraph, no_same_sources_twice, no_fake_charts,

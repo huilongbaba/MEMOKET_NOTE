@@ -28,8 +28,18 @@ def _st(checks) -> State:
     return State(mode=mode, ctx=ToolContext(user="u", note_id="n"))
 
 
-async def _round(st: State) -> list:
+async def _round(st: State, *, floor: bool = True) -> list:
+    """跑一轮 `before_judge`。
+
+    `floor=False` 把 `JUDGE_FLOOR`（P24 #5：连着几轮没真打分就放行）按住。
+    这两条机制是**正交**的：`STUCK_ROUNDS` 数的是「同一条判据原样卡了几轮」，
+    `JUDGE_FLOOR` 数的是「连着几轮一次分都没打上」。下面几条测的是前者，
+    不按住的话第三轮会被后者放行，测出来的就不是它自己那条性质了。
+    后者自己的性质在 `test_p24_harness.py` 里单独钉。
+    """
     st.ev, st.skip_judge = None, False
+    if not floor:
+        st.bag["short_circuit_streak"] = 0
     return [e async for e in Checks().before_judge(st)]
 
 
@@ -72,7 +82,7 @@ async def test_原话变了就重新数():
     st = _st([lambda st: Verdict("factual_grounding", next(msgs))])
 
     for _ in range(4):
-        await _round(st)
+        await _round(st, floor=False)
         assert st.skip_judge, "每次都是新报的，不该被当成卡死"
 
 
@@ -84,8 +94,8 @@ async def test_卡死的那条放行之后后面的判据还能拦():
               _always("style_fit", "这一轮新写出来的问题")])
 
     for _ in range(STUCK_ROUNDS):
-        await _round(st)
-    evs = await _round(st)
+        await _round(st, floor=False)
+    evs = await _round(st, floor=False)
 
     assert st.skip_judge and st.ev is not None
     assert st.ev.weakest == "style_fit", "该轮到后面那条说话了"

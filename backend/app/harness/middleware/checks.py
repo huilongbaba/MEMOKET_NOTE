@@ -34,6 +34,25 @@ from ..state import State
 # 但不再短路——让打分器跑起来，其余维度有机会被看见，这一轮也能结束。
 STUCK_ROUNDS = 2
 
+# 连着这么多轮一次真打分都没有，下一轮无论哪条判据命中都不再短路（P24 #5）。
+#
+# P22 实拍：18 轮里只有 6 轮真打过分，`e78306202d78` 和 `a941efecd390` 两篇
+# **一轮都没有**。后果不是「少花了几次打分调用」，是三件事一起失效：
+#   ① `complete` 结构上到不了（短路那一份 `Evaluation` 的 status 恒为 continue）；
+#   ② `st.best` 从头到尾是空的，`SHIP_BEST_ON` 没有「最好的一轮」可交，
+#      于是 `stalled` 只能把最后一轮原样交出去——那正是 P22 留下率最低的那一篇（35%）；
+#   ③ 打分器的诊断一次都没进过下一轮的 prompt，模型只被同一条判据的同一句话推着走。
+# 上面 `STUCK_ROUNDS` 那段讲的是「同一条判据卡死」；这一条讲的是**不同判据轮流短路**，
+# 每一条各自都没卡满两轮，合起来照样把整趟打分饿死。
+#
+# 放行那一轮**照样报**（事件照发，用户看得见），只是不短路；而且
+# `after_judge` 会把这一轮的 `complete` 压回 `continue`——
+# 一条代码判据还在响的时候，不许判「写完了」。
+JUDGE_FLOOR = 2
+
+# 「最近几轮」的窗口。`modes.check_stuck` 读这一份（P24 #3）。
+CHECK_WINDOW = 4
+
 
 class Checks:
     """First failing check wins; the rest don't run.
@@ -44,7 +63,7 @@ class Checks:
     """
 
     name = "checks"
-    hooks = ("before_judge", "after_run")
+    hooks = ("before_judge", "after_judge", "after_run")
     # Repeats fills dup_hints for the scoring call. Checks may
     # short-circuit scoring entirely, so it has to run second --
     # otherwise a fired check means dup_hints never gets computed,
@@ -64,10 +83,25 @@ class Checks:
             "check": name,
             "ran": 0,
             "dimension": "",
-            "note": f"「{name}」这条判据连响 {n} 轮，模型一次都没照做——停下，交最好的一轮",
+            "note": f"「{name}」这条判据最近 {CHECK_WINDOW} 轮里响了 {n} 轮，"
+                    "模型一次都没照做——停下，交最好的一轮",
             "stuck_rounds": n,
             "stopped": True,
         })
+
+    async def after_judge(self, st: State) -> None:
+        """判据被 `JUDGE_FLOOR` 放行的那一轮，不许判「写完了」（P24 #5）。
+
+        放行的本意是「让打分器跑起来」，不是「把这条毛病一笔勾销」。
+        这一轮的分数照样进 `st.best` 的排名（那正是要它的原因），
+        只有 `complete` 这一档被压回 `continue`——判据还在响，就不算写完。
+        不发事件，所以是普通协程不是 async generator（`loop._fire` 两种都认，
+        `Repeats.before_judge` 是同一个形状）。
+        """
+        if not st.bag.pop("judge_floor_released", False):
+            return
+        if st.ev is not None and st.ev.status == "complete":
+            st.ev = dataclasses.replace(st.ev, status="continue")
 
     async def before_judge(self, st: State) -> AsyncIterator[Event]:
         # 上一轮报过什么 → 这一轮报了什么。**先攒后落**：一轮里可能有两条
@@ -86,6 +120,18 @@ class Checks:
         # 判据在它之后才跑，读 `check_name_streak` 只会读到 0——第一版就栽在这，真跑三轮
         # 一次都没升级措辞。上一轮那份单独留一个键给它们读。
         st.bag["check_name_streak_prev"] = prev_name
+        # 最近 `CHECK_WINDOW` 轮各自报了哪几条（P24 #3）。**存的是 `cur_name` 这个对象本身**，
+        # 不是它的快照：判据循环还没跑，现在它还是空的，等 `modes.check_stuck` 读它的时候
+        # 这一轮已经填完了。上面那份「连续」的语义一个字不改（`citations_present` 的
+        # 「连响 N 轮」还要它），这份只回答「最近 N 轮里同一条响过几次」。
+        window: list[dict[str, int]] = st.bag.get("check_name_rounds") or []
+        window.append(cur_name)
+        st.bag["check_name_rounds"] = window[-CHECK_WINDOW:]
+        # 连着几轮一次真打分都没有（P24 #5）。这一轮先读，轮末再写。
+        sc_streak = int(st.bag.get("short_circuit_streak", 0) or 0)
+        # 上一轮的放行标记不许跨轮活着：`after_judge` 正常会 `pop` 它，但那一轮要是
+        # 在 `after_judge` 之前就出错了，标记会留下来，下一轮的 `complete` 被无辜压掉。
+        st.bag.pop("judge_floor_released", None)
 
         # ---- 三列探针（批 27 / §5 第 8、9 行）。读者是 `Ledger.after_judge`，
         # 它读完就 `pop`——bag 是跨轮活着的，留着会让下一轮继承上一轮的数。
@@ -166,6 +212,23 @@ class Checks:
                 })
                 continue
 
+            if sc_streak >= JUDGE_FLOOR:
+                # 连着 JUDGE_FLOOR 轮一次真打分都没有了（P24 #5）：报，但不短路。
+                # 跟上面那条放行的差别是「谁卡住了」：那条是**同一条判据**原样卡满两轮，
+                # 这条是**不同判据轮流**把打分饿死——P22 的 `e78306202d78` 正是后者，
+                # `citations_present`(r2/r3/r5) 和 `no_repeated_lists`(r4/r6) 交替，
+                # 每一条的 streak 都不超过 2，六轮一次分都没打上。
+                st.bag["judge_floor_released"] = True
+                yield Event.custom(CUSTOM_CHECK_HIT, {
+                    "round": st.round,
+                    "check": fired,
+                    "ran": ran,
+                    "dimension": verdict.dimension,
+                    "note": verdict.message,
+                    "judge_floor": sc_streak,
+                })
+                continue
+
             st.ev = Evaluation(
                 scores={verdict.dimension: DimensionScore(level=0, note=verdict.message)},
                 status="continue",
@@ -173,6 +236,7 @@ class Checks:
             )
             st.skip_judge = True        # explicit, not "ev happens to be set"
             st.bag["short_circuit"] = fired
+            st.bag["short_circuit_streak"] = sc_streak + 1
             yield Event.custom(CUSTOM_CHECK_HIT, {
                 "round": st.round,
                 "check": fired,
@@ -181,3 +245,6 @@ class Checks:
                 "note": verdict.message,
             })
             return
+
+        # 没有任何一条短路：这一轮打分器会真的跑，计数归零。
+        st.bag["short_circuit_streak"] = 0

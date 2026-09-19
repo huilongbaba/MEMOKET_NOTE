@@ -181,15 +181,44 @@ def citations_present(st: State) -> Verdict | None:
 
     只判**这一轮写的**（``st.fresh``），不判整篇：用户自己原来那些段落没有引用是正常的。
     大纲模式关掉，理由同 `material_used`——用户自己列的小节可能本来就没有材料。
+
+    ## 连响第二轮起换一句话说（P24 #2）
+
+    P22 实拍：这条在 `e78306202d78` 响了 3 轮、`a941efecd390` 响了 3 轮，
+    **模型一轮都没照做**，而两篇最终正文里的编号全部是修订那一步带进来的。
+    每轮把同一句话再说一遍，说第三遍也不会有第二种结果。
+
+    第二轮起改成**指着句子说**：`citations.locate_sources` 把「这一句逐字对得上哪条材料」
+    算出来（零模型），有就逐句点名连编号一起给；
+    **一句都定不到时就直说这件事**，并把要求换成做得到的那件——
+    量过了，78 句里 72 句（92%）在材料里根本没有逐字来源，
+    这种时候再喊「把编号写上」是一条办不到的指令，只会把剩下的轮数烧掉。
     """
     if st.bag.get("outline_mode") or not st.facts:
         return None
     # 认两种出处（P15 #2）：`[事实编号]`，和托盘里的笔记被引时的 `[标题](note://id)`——P14 真跑第 1、2 轮
     # 各引了两篇笔记，却被这条判成「一个编号都没有」短路。`has_citation` 跟 `material_thin` 的 (b) 档同一个谓词。
-    from .citations import has_citation
+    from .citations import has_citation, locate_sources
     fresh = (st.fresh or "").strip()
     if len(fresh) < MIN_CITED_ROUND_CHARS or has_citation(fresh):
         return None
+    said_before = int((st.bag.get("check_name_streak_prev") or {}).get("citations_present", 0))
+    if said_before:
+        located = locate_sources(fresh, list(st.facts or []))
+        if located:
+            lines = "；".join(f"「…{s[-24:]}」→ [{fid}]" for s, fid in located[:3])
+            return Verdict(
+                pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
+                f"第 {said_before + 1} 轮了，还是一个编号都没有。这几句逐字对得上材料，"
+                f"编号就照抄在句末：{lines}。其余句子对不上材料就别硬贴。",
+            )
+        return Verdict(
+            pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
+            f"第 {said_before + 1} 轮了，还是一个编号都没有——而且这一轮写的 {len(fresh)} 字里，"
+            "没有一句能在材料里找到逐字的出处（日期、数量、原话都对不上）。"
+            "所以不要再去补编号了：**把这一段改写成材料里真有的那几条**（把编号和它说的事一起搬进来），"
+            "对不上材料的判断就收住别再往下铺。",
+        )
     return Verdict(
         pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
         f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有"

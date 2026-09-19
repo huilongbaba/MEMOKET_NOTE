@@ -56,6 +56,7 @@ const CHECKS: Record<string, string> = {
   material_thin: '材料太薄',
   citations_present: '整段没有一条引用',
   material_used: '查到的材料没写进去',
+  no_echoed_text: '同一串字写了两遍',
   no_repeated_lists: '列表重复',
   no_restated_paragraph: '整段换个说法又说一遍',
   no_same_sources_twice: '同一条材料用了两次',

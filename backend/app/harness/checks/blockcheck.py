@@ -397,3 +397,103 @@ def chart_shape(block: str) -> dict:
         shape["nodes"] = sum(1 for ln in lines if "-->" in ln or "---" in ln) + 1
         return shape
     return shape
+
+
+# ------------------------------------------------ 逐字回声（P24 #4）---
+#
+# P22 复测唯一变差的一格：重复从 10 处涨到 12 处。逐条读完那 12 处，分成四种形状：
+#
+#   (a) **一句话里同一串字抄了两遍**（1 处）。`e78306202d78` 实拍：
+#       「…项目本身包含硬件、嵌入式和 APP，并按 KO、EVT、T0、DVT、PVT、MP 推进；其中 T0 预计到
+#        5 月 15 日左右，**项目本身包含硬件、嵌入式和 APP，并按 KO、EVT、T0、DVT、PVT、MP 推进；**…」
+#   (b) **同一段里同一个编号贴了两次**（1 处，同一篇的 `[terrence-1833-8F6]`）。
+#   (c) **同一段话换个开头写了两遍**（1 处）：`e78306` P6 / P9 两段的词元 Jaccard **0.843**。
+#   (d) **同一件事换说法写 4–5 段**（9 处）：`a941` 的「拿 card / one-pager 跟成稿对照」写了 5 遍、
+#       `e78306` 的试点 / 验收 / 责任链 / 销售演示 4 段同型。
+#
+# (a)(b) 在这里，(c) 在 `citations.paragraph_echo`（要词元，住在有词元的那一层）。
+# **(d) 判不准，不做**——量过了：那 9 处的段间 Jaccard 落在 **0.177–0.238**，
+# 而同一篇里不重复的相邻承接段也在 0.17–0.20（`p24/m4_dupD.py` 的全表分布）。
+# 中间没有缺口，任何阈值都会把正常的承接段一起打掉。写在这儿，不是漏了。
+
+_CITE_ANY = re.compile(r"\[[0-9A-Za-z_-]+-\d+-\d+F\d+\]|\[[^\]]{0,40}\]\(note://[^)]+\)")
+_CJK_CHAR = re.compile(r"[一-鿿]")
+_SENTENCE = re.compile(r"[^。！？!?\n]+")
+# 回声里至少要有这么多个**汉字**才算数。在真库 482 篇用户自己写的正文上量的
+# （`p24/m4_dup3.py`）：≥8 字开火 5 篇，逐条读都是人话里正常的重提
+# （「通过正交交换的架构」9 字、「故障图像智能识别项目」10 字、「性的反馈，必须触发」8 字）；
+# ≥12 字**一篇都不开火**，而 P22 那处实拍的回声有 14 个汉字。取 12，宁可窄。
+ECHO_MIN_CJK = 12
+ECHO_MAX_LEN = 200          # 太长的「回声」多半是整段被复制，交给段级那条，别在这儿删
+
+
+def echoed_sentence(text: str, before: str = "") -> tuple[str, str] | None:
+    """一句话里同一串字逐字出现了两次。回 (回声, 那句话)，没有就 None。
+
+    `before` 跟 `repeated_lists` 同一个口径：这次跑开跑时就有的句子不报
+    ——用户自己写的重提不该每轮报一次，而删除落在用户原文上是有代价的（批 14）。
+    引用编号先抹掉（`[terrence-…]` 连着排本来就长得像回声）；带竖线的行跳过（`|---|---|` 是格式）。
+    """
+    for raw in _SENTENCE.findall(text or ""):
+        sent = raw.strip()
+        if len(sent) < 30 or "|" in sent or (before and sent in before):
+            continue
+        flat = re.sub(r"\s+", "", _CITE_ANY.sub("　", sent))
+        best = ""
+        n = len(flat)
+        for i in range(n):
+            j = i + len(best) + 1
+            while j <= n and j - i <= ECHO_MAX_LEN:
+                seg = flat[i:j]
+                if flat.count(seg) < 2:
+                    break
+                if len(_CJK_CHAR.findall(seg)) >= ECHO_MIN_CJK and len(seg) > len(best):
+                    best = seg
+                j += 1
+        if best:
+            return best, sent
+    return None
+
+
+def drop_echo(text: str, echo: str) -> str:
+    """把回声的**第二次**出现删掉，第一次留着。只删一次，其余的字一个不动。
+
+    `echo` 是在去掉空白的串上找到的，正文里同一串字中间可能夹着空格，
+    所以按「字与字之间允许空白」回定位——删的仍然是原文里的那一段。
+    """
+    if not echo:
+        return text
+    pat = re.compile(r"\s*".join(re.escape(ch) for ch in echo))
+    hits = list(pat.finditer(text or ""))
+    if len(hits) < 2:
+        return text
+    m = hits[1]
+    return text[:m.start()] + text[m.end():]
+
+
+_FACT_ID = re.compile(r"\[([0-9A-Za-z_-]+-\d+-\d+F\d+)\]")
+
+
+def repeated_citation(text: str, before: str = "") -> tuple[str, str] | None:
+    """同一段里同一个事实编号贴了两次以上。回 (编号, 那一段)。"""
+    for para in re.split(r"\n\s*\n", text or ""):
+        p = para.strip()
+        if not p or (before and p in before):
+            continue
+        ids = _FACT_ID.findall(p)
+        dup = [x for x in dict.fromkeys(ids) if ids.count(x) >= 2]
+        if dup:
+            return dup[0], p
+    return None
+
+
+def drop_repeated_citation(text: str, fid: str) -> str:
+    """同一段里重复的那个编号，只留第一次；别的段不碰。"""
+    token = f"[{fid}]"
+    out = []
+    for i, part in enumerate(re.split(r"(\n\s*\n)", text or "")):
+        if i % 2 == 0 and part.count(token) >= 2:
+            head, _sep, tail = part.partition(token)
+            part = head + token + tail.replace(token, "")
+        out.append(part)
+    return "".join(out)

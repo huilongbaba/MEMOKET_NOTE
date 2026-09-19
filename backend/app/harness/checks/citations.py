@@ -270,3 +270,73 @@ def same_sources_twice(text: str, before: str = "", limit: int = 2) -> list[tupl
                 if len(out) >= limit:
                     return out
     return out
+
+
+# ------------------------------------- 这一句用的是哪条材料（P24 #2）---
+#
+# P22 #4：`citations_present` 在 `e78306` 响了 3 轮、`a941` 响了 3 轮，模型一轮都没照做；
+# 最终正文里的编号**全部**是修订那一步带进来的。建议是「把这一句该配哪个编号直接算出来」。
+#
+# **先量了再说**（`p24/m2_locate.py`，P22 五跑每一轮流出的正文，共 89 句 ≥15 字的句子）：
+#   已经带编号的 11 句；剩下 78 句里——
+#   **唯一能逐字定位到一条材料的 1 句（1%）**、能定位但落在 ≥2 条材料上的 5 句（6%）、
+#   **一条都定不到的 72 句（92%）**。
+# 92% 定不到，不是因为定位写得松，是因为续写这一步写的**本来就是模型自己的组织语言**
+# （「午餐会上需要把这条数据流拆成可确认的责任链」这种），材料里没有对应的逐字来源。
+#
+# 所以**不自动贴**：唯一能贴的只有 1/78，而贴错的代价是这个仓库自己写过的那句
+# ——「一个像真的一样的引用比不引用更糟」（`citations_exist` 的原话）。
+# 定位结果改成**写进判据的措辞里**：能定位的逐句点名 + 该贴的编号；
+# 一句都定不到时就把这件事直说，并且换一条做得到的要求（见 `grounding.citations_present`）。
+
+_ANCHOR = _re.compile(
+    r"\d+\s*[年月日号点分]"
+    r"|\d+(?:\.\d+)?\s*(?:%|％|台|套|个|人|天|周|小时|分钟|秒|元|万|亿|kw|kwh|gb|tb|pb)",
+    _re.I)
+_SENT = _re.compile(r"[^。！？!?\n]+")
+_CJK_RUN = _re.compile(r"[一-鿿]+")
+# 逐字定位要多硬：共享一个数字锚（日期 / 带单位的量），或者一段 ≥6 字的连续汉字一模一样。
+MIN_VERBATIM_CJK = 6
+
+
+def _flat(text: str) -> str:
+    return _re.sub(r"\s+", "", text or "")
+
+
+def _anchors(text: str) -> set[str]:
+    return {_flat(x).lower() for x in _ANCHOR.findall(text or "")}
+
+
+def _shares_verbatim(sentence: str, fact: str, n: int = MIN_VERBATIM_CJK) -> bool:
+    flat_fact = _flat(fact)
+    for run in _CJK_RUN.findall(_flat(sentence)):
+        for i in range(len(run) - n + 1):
+            if run[i:i + n] in flat_fact:
+                return True
+    return False
+
+
+def locate_sources(text: str, facts: list[str]) -> list[tuple[str, str]]:
+    """这段文字里，哪几句能**逐字**定位到唯一一条材料。回 [(句子, 事实 id), …]。
+
+    只回「唯一」的那些：命中两条以上说明贴哪个都可能错，宁可不说。
+    已经带了编号的句子跳过。纯函数，零模型。
+    """
+    indexed: list[tuple[str, str]] = []
+    for f in facts or []:
+        m = _HEAD_ID.match((f or "").strip())
+        if m:
+            indexed.append((m.group(1), (f or "").strip()[m.end():]))
+    if not indexed:
+        return []
+    out: list[tuple[str, str]] = []
+    for raw in _SENT.findall(text or ""):
+        sent = raw.strip()
+        if len(_flat(sent)) < 15 or has_citation(sent):
+            continue
+        sa = _anchors(sent)
+        hits = {fid for fid, body in indexed
+                if (sa & _anchors(body)) or _shares_verbatim(sent, body)}
+        if len(hits) == 1:
+            out.append((sent, hits.pop()))
+    return out

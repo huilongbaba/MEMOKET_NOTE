@@ -256,3 +256,80 @@ def no_repeated_lists(st: State) -> Verdict | None:
         f"同一组清单列了两遍：「{a[:40]}」和「{b[:40]}」。留下更完整的那一处，"
         "另一处改成一句话带过（「按上面那几项回填」），不要把同一组要素换个说法再写一次。",
     )
+
+
+# 两段几乎是同一段。**用现成的 `find_repeats`**（difflib，`Repeats` 中间件本来就每轮在算，
+# 拿去喂打分——但没有任何一条判据读它）。门槛在真库 482 篇上量过（`p24/m4_para.py`）：
+# 0.6 那档命中 7 篇，逐条读下来 0.688 是两个不同的小标题、0.810 是两行光秃秃的编号，
+# 都不是重复写；0.85 以上 5 篇，5 篇全是真损伤（两段一字不差 / 第 10 周 vs 第 100 周 /
+# P22 那对 0.931）。取 **0.85**，下面最近的一档是 0.810，留 0.04。
+PARA_ECHO_RATIO = 0.85
+# 光秃秃的编号段不算（`df3b4f7e` 那 0.810 就是两行编号）：去掉编号之后还得有这么多字。
+PARA_ECHO_MIN_BODY = 40
+
+
+def no_echoed_text(st: State) -> Verdict | None:
+    """这次跑把同一串字**逐字**写了两遍。三种形状，先命中的先说。
+
+    P22 复测里重复从 10 处涨到 12 处，是那一轮唯一变差的一格。逐条读完那 12 处，
+    其中 3 处是逐字的（形状见 `blockcheck` 里那段注释），另外 9 处是「同一件事换说法
+    写 4–5 段」——后者**量过之后决定不做**，段间 Jaccard 跟正常承接段没有缺口。
+
+    (a) 句内回声 和 (b) 同段重编号 **自己动手修**（P23 立的 `fix_done` 形状）：
+    删的是一段一字不差的复制，留下第一次，是确定性的，不需要语义判断；
+    而 P22 实拍里 `no_repeated_lists` 连着两轮点名同一处重复，模型一次都没照做——
+    能代码修的就别指望下一轮。
+    (c) 两段几乎相同**只报不修**：留哪一段是判断题（两段的尾巴不一样）。
+
+    三种形状的量程都绑在 `content_at_start` 上，理由跟 `no_repeated_lists` 一样：
+    删除动作够得着用户自己的正文，批 14 实拍删过 1326 字。
+    """
+    before = _started_with(st)
+
+    hit = blockcheck.echoed_sentence(st.content, before)
+    if hit:
+        echo, sent = hit
+        return Verdict(
+            pick_dimension(st, "non_repetition", "style_fit"),
+            f"同一句话里把「{echo[:40]}」抄了两遍：「{sent[:60]}…」。删掉第二遍。",
+            fix=lambda text, e=echo: blockcheck.drop_echo(text, e),
+            fix_done=lambda text, e=echo: not _echo_still_there(text, e),
+        )
+
+    cite = blockcheck.repeated_citation(st.content, before)
+    if cite:
+        fid, para = cite
+        return Verdict(
+            pick_dimension(st, "non_repetition", "factual_grounding"),
+            f"同一段里把 [{fid}] 贴了两次：「{para[:50]}…」。一条依据在一段里标一次就够。",
+            fix=lambda text, f=fid: blockcheck.drop_repeated_citation(text, f),
+            fix_done=lambda text, f=fid: (blockcheck.repeated_citation(text, before) or ("",))[0] != f,
+        )
+
+    for hint in repeats.find_repeats(st.content):
+        if hint.similarity < PARA_ECHO_RATIO:
+            continue
+        if hint.a in before and hint.b in before:
+            continue
+        if min(len(_bare(hint.a)), len(_bare(hint.b))) < PARA_ECHO_MIN_BODY:
+            continue
+        return Verdict(
+            pick_dimension(st, "non_repetition", "style_fit"),
+            f"这两段几乎是同一段（逐字重合 {hint.similarity:.0%}）：「{hint.a[:45]}…」和"
+            f"「{hint.b[:45]}…」。删掉其中一段，留信息更完整的那一段——"
+            "换个开头把同一段话再写一遍，读者读到的是同一件事说了两遍。",
+        )
+    return None
+
+
+_BARE = re.compile(r"\[[0-9A-Za-z_-]+-\d+-\d+F\d+\]|\[[^\]]{0,40}\]\(note://[^)]+\)|\s+")
+
+
+def _bare(para: str) -> str:
+    """去掉引用编号和空白之后还剩多少字——判「这一段是不是只有编号」。"""
+    return _BARE.sub("", para or "")
+
+
+def _echo_still_there(text: str, echo: str) -> bool:
+    pat = re.compile(r"\s*".join(re.escape(ch) for ch in echo))
+    return len(pat.findall(text or "")) >= 2

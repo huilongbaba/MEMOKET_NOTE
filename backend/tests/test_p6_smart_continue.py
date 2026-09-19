@@ -394,14 +394,56 @@ def test_同一条判据按名字连响三轮就停_原话每轮不同也算():
     assert loop._stop(st) == "check_stuck"
 
 
-def test_中间一轮没报就重新数():
+def test_中间一轮没报_窗口里还没够三次就不停():
+    """**P24 #3 把「连续 3 轮」换成「最近 4 轮里 3 次」之后，这条的断言跟着换了。**
+
+    换的理由是 P22 实拍：`e78306202d78` 的 `citations_present`（r2/r3/r5）和
+    `no_repeated_lists`（r4/r6）轮流响，两条互相把对方的连响清零，谁也凑不满 3 连，
+    于是跑满 8 轮上限按 `stalled` 交卷——而被点名两次的那处重复原样留在最终正文里。
+
+    原来这条测的是「中间没报就从头数」。窗口口径下「从头数」只在**窗口滑出去之后**
+    才成立：响、响、没报、没报（窗口 = 后四轮里只有 2 次）不停；
+    而响、响、没报、响（4 轮里 3 次）该停——那不是「改好了又坏」，
+    是同一条判据四轮里点了三次名，模型一次都没照做。
+    """
     from app.harness import modes
     from app.harness.types import Verdict
-    fires = iter([True, True, False, True, True])
+    fires = iter([True, True, False, False, True])
     st = _checks_state(lambda st: Verdict("factual_grounding", "同一句") if next(fires) else None)
     for _ in range(5):
         _judge_round(st)
-        assert modes.check_stuck(st) is None
+        assert modes.check_stuck(st) is None, "最近 4 轮里从没够过 3 次"
+
+
+def test_交替响的两条判据不再互相把对方清零():
+    """P22 #5 实拍形状（`e78306202d78`）：A 在 r1/r2/r4 响、B 在 r3/r5 响。
+
+    「连续」口径下 A 的连响永远 ≤2、B 永远 ≤1，八轮跑满也不会停；
+    窗口口径下第 4 轮（窗口 r1–r4 里 A 响了 3 次）就停。
+    """
+    from app.harness import modes
+    from app.harness.types import Verdict
+
+    plan = iter(["A", "A", "B", "A", "B"])
+    cur = {"who": ""}
+
+    def a(st):
+        return Verdict("factual_grounding", "甲说的那件事") if cur["who"] == "A" else None
+
+    def b(st):
+        return Verdict("factual_grounding", "乙说的那件事") if cur["who"] == "B" else None
+
+    st = _checks_state(a)
+    st.mode = __import__("dataclasses").replace(st.mode, checks=(a, b))
+    for k in range(1, 6):
+        cur["who"] = next(plan)
+        _judge_round(st)
+        if k < 4:
+            assert modes.check_stuck(st) is None, f"第 {k} 轮就停是不给修订机会"
+        else:
+            assert modes.check_stuck(st) == "check_stuck"
+            assert modes.check_stuck_detail(st) == ("a", 3)
+            break
 
 
 def test_突变验_停机事件说清楚哪条判据连了几轮():
