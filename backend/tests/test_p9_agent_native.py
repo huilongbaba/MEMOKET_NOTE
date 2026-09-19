@@ -168,6 +168,9 @@ def test_relations_batch_每个点带事实(tmp_path, monkeypatch):
         def source_lines(self, r):
             return []
 
+        def common_term(self):      # P29 #1
+            return None
+
     monkeypatch.setattr(memory_router, "UserMemory", _Mem)
     r = c.post("/api/memory/relations/batch", headers=H, json={"passages": ["DVT 定在 6月3号，之后再排 PVT。", "没有数字的一段话。"]}).json()
     top, none = r["marks"]

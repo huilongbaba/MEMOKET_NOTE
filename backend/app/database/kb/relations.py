@@ -40,11 +40,25 @@ from collections import defaultdict
 #      风险最高，全库就这几处、且 `h` 只出现在夹具笔记里，不值得为它开这个口子；
 #   `e` 3（`8E Flops` 是指数前缀）· `p` 3（`720P` 是算力缩写）· `b` 3（`NVL72+1B` 是型号）——不是量；
 #   `okv` / `nw` / `imw` 各 3 处——全是 OCR 噪声（`o`←`0`、`N`←`M`、`I`←`1`），补了等于把错字当量。
-_UNITS = (r"mAh|km/h|kmh|mm|cm|km|kg|TB|PB|GB|MB|MHz|GHz|Hz|GWh|MWh|kWh|kW|kV|MW|GW|W|V|"
+#
+# **P29 #3：复合单位被拆成前半截，是「换桶」不是「缺单位」**（P27 #3 的下一步）。
+# 全库 482 篇扫「数字 + 单位 + `/` `／` `·` `每` + 后半截」（`<scratch>/p29/scan_compound.py`），
+# **12 处 / 3 种，一种不多**：`km/h` ×6（P27 已经收进表里，对的）、
+# `1.8TB/S` ×3、`600 张/人天` ×3。后两个逐条读过、都真的是**速率**，于是补进表里：
+#   · `1.8TB/S` 是 NVLink 单 GPU 双向**带宽**，今天落在 `TB`（存储）桶里——而同一批笔记的
+#     `TB` 桶里装着 20 / 134 / 256（全是存储容量），知识库那边也有 20 / 256。
+#     桶是按单位**字符串**分的，冲突卡只比值：「你写 1.8TB、知识库记的是 20TB」——
+#     **一张拿带宽去质疑存储的冲突卡**，比漏掉这个量贵得多。
+#   · `600 张/人天` 是铁路列检的**人均日看图量**，今天落在 `张` 桶里，而同一段里
+#     「每列车 160 张」才是真的「张」，知识库的 `张` 桶里是 1/2/3/4/5/10/20/100/1300。
+# **两个都必须排在半截单位前面**（`TB/s` 在 `TB` 前、`张/人天` 在 `张` 前）：`_NUM` 结尾的
+# `(?![A-Za-z])` 挡不住 `/`——`600张` 后面跟的是 `/` 不是字母，先匹到 `张` 就收工了，
+# 不会回溯。这跟顶上「中文单位才必须长的在前」是同一条，只是这里 ASCII 那侧也中招了。
+_UNITS = (r"mAh|km/h|kmh|mm|cm|km|kg|TB/s|TB|PB|GB|MB|MHz|GHz|Hz|GWh|MWh|kWh|kW|kV|MW|GW|W|V|"
           r"tps|fps|ms|μs|us|min|dB|"
           r"平方公里|平方米|公里|万吨|万元|亿元|美元|美金|块钱|个月|"
           r"元|万|亿|台|人|天|周|小时|分钟|秒|次|条|页|版|批|套|%|％|"
-          r"年|卡|辆|度|吨|米|个|项|家|场|位|名|篇|张|份|倍|轮|件|层|级|期|座|颗|顆|款|种|步|根")
+          r"年|卡|辆|度|吨|米|个|项|家|场|位|名|篇|张/人天|张|份|倍|轮|件|层|级|期|座|颗|顆|款|种|步|根")
 # 「50000+tps」「8+%」「200多家」「2000余套」：数和单位之间的 + / 多 / 余 不挡单位
 #
 # **`re.I`（P22 #10）**：表里写的是 `kWh` / `kV`，而人手打出来的是 `567kwh`、`10KV`——
@@ -202,7 +216,47 @@ def shared_terms(a: str, b: str) -> int:
     return len(_terms(a) & _terms(b))
 
 
-def evidence_runs(a: str, b: str) -> list[str]:
+# 「两边说的是同一个**型号 / 编号**」——P29 #4 是从 `超节点` 那两对读出来的：
+#   正文「950 的 ocs **超节点**架构在 scaleup 规模上限上架构占优…」
+#   事实「**950 超节点**的一个计算柜包含 8 个 NPU 刀片和 8 个 CPU 刀片。」
+# 这两句真正对上的不是「超节点」这个 3 字专名，**是 `950` 这个型号**——而它今天
+# 两条通道都接不住：`_terms` 的 `_EN` 要求以字母开头，`same_quantity` 要求带单位。
+# 于是全部证据只剩 `超节点` 一串，被 `LONG_RUN_CHARS`（只给 ≥5 字的汉字串开口）挡在外面。
+#
+# **为什么不是「专名 / 实体名不吃 LONG_RUN_CHARS」那条**（量完否掉的，写下来免得再试）：
+# ① 它修不好这个例子——`超节点` **压根不在实体表里**（`<scratch>/p29/single29.py`）；
+# ② 真放开它，全库会放回 35 对，逐条读下来大约一半是错的：对的是 `dvt`×11 `kol`×4
+#    `evd`×2 `memocat` `ui`，错的是 `中国`×6（「中国国家电网」对上「他首次访问中国」）、
+#    `深圳`×4（「深圳特安」对上「在深圳的一家公司」）、`美国`×2、`device`×2、`手表`、`ces`。
+#    **地名和泛化的英文名词在实体表里占大头**（`docs/kb-entities-plan.md` §1：一半实体只被
+#    一条事实提到、§5：`app`/`device`/`pro` 这种普通名词被抽成了实体），拿「是不是实体」
+#    当证据资格，等于把这些全放进来。
+#
+# 判据窄到三条，每条都是量出来的：
+# · **≥3 位**。全库被挡在外面的 139 对单串里只有 9 对共用数字串，其中 2 位的那 1 对是
+#   `march + 10`（3月10号，真沾边）——但 2 位数字（10/12/24/30）撞上纯属常事，
+#   **宁可漏这一对**。
+# · **不算 19xx/20xx 的年份**。那 9 对里 `基础设施 + 2026` ×2 是仅有的两对错的
+#   （「华为 AI Banking 算力基础设施平台」对上「付鹏认为 2026 年…基础设施已经花了很多钱」）——
+#   年份是最容易撞的数，P7 #5 也早就定了年级日期不判冲突。
+# · **千分位逗号先去掉**：`1,000 名 Beta 用户` 对 `first 1,000 beta test users`，
+#   不去掉就变成共用 `000`。
+# 结果：全库放回 **6 对**（`超节点+950` ×2、`beta+1000` ×2、`kol+500/1000` ×2），**逐条读过，全是真的**；
+# 一对错的都没放回来。
+# 两头都不许紧挨着字母（跟 `_NUM` 同一条规矩）：`NVL72` 的 `72` 不是独立的编号，
+# `100M` 的 `100` 是带单位的量、该走 `same_quantity` 那条路，不是型号。
+_ID_NUM = re.compile(r"(?<![0-9A-Za-z.])(\d{3,})(?![0-9A-Za-z])")
+_YEAR_NUM = re.compile(r"^(?:19|20)\d{2}$")
+_THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
+def _id_numbers(text: str) -> set[str]:
+    """一段里的「型号 / 编号」候选：≥3 位、不是年份的光秃秃数字串。"""
+    t = _THOUSANDS.sub("", _GARBAGE.sub(" ", text or ""))
+    return {n for n in _ID_NUM.findall(t) if not _YEAR_NUM.match(n)}
+
+
+def evidence_runs(a: str, b: str, *, common=None) -> list[str]:
     """两段共用的**独立**证据，一条一串。
 
     **为什么不能直接数 `shared_terms`**（P27 #1，P25 #4 留下来那条）：中文那边的词元是
@@ -227,6 +281,12 @@ def evidence_runs(a: str, b: str) -> list[str]:
     几乎每条都以「Speaker B says …」开头，于是它成了一条**免费的共用证据**，
     随便哪两段都能凑到 2。真库上量到 2 对全靠它撑到 2 串（`speaker + kol`、`speaker + beta`）。
     只在这里剔，不动 `_terms`——`overlap` 的分母跟着变就是换了另一个判据，那要单独量。
+
+    `common(串) -> bool`（P29 #1，可不传）：**这个串在这个人的知识库里到处都是**，
+    于是两段都出现它并不说明它们有关系。判据和门槛见 `COMMON_DF_RATIO` 那段注释；
+    判据本身要拿得到这个人的库，所以由调用方注入（`UserMemory.common_term()`），
+    这个文件照旧不依赖 app 的其它模块。**在最后一步筛**：先合并、再去重、最后才问
+    「这一串算不算证据」——先筛会把一个词的两半拆开，又回到 P27 #1 修的那个毛病。
     """
     from .search import _is_speaker_word
 
@@ -253,7 +313,11 @@ def evidence_runs(a: str, b: str) -> list[str]:
     for h in sorted(set(runs), key=lambda h: (-len(h), h)):
         if not any(h in o for o in out):
             out.append(h)
-    return out
+    # 型号 / 编号（P29 #4）。跟上面那批**分开算**、也**不进 `_terms`**：`_terms` 跟召回共用，
+    # 动它就是动 `overlap` 的分母。`950` 这种数字串今天两条通道都接不住——
+    # `_EN` 要求以字母开头（`950` 不是词元），`same_quantity` 要求带单位（`950` 不是量）。
+    out += sorted(_id_numbers(a) & _id_numbers(b))
+    return [h for h in out if not common(h)] if common else out
 
 
 # 一整串汉字逐字相同，**它本身就不止一个词**（P27 #1）。
@@ -276,11 +340,56 @@ LONG_RUN_CHARS = 5
 _CJK_RUN = re.compile(r"^[一-鿿]+$")
 
 
-def shared_evidence(a: str, b: str) -> int:
+# **一个在这个人的知识库里到处都是的词，不算证据**（P29 #1，P27 #1 留下来的那 8 条）。
+# P27 把误判从 13 条压到 8 条之后，剩下的全是**全泛词**：`ai + coding`、`ai + 大模型`、
+# `app + yet`、`ios + 页面 + 上线`。P27 的结论是「词面比对给不出，要上主题 / 实体层」。
+#
+# **实体层今天给不出**（P29 量的，别再照着这条去接）：把这 9 对的段落和事实都过一遍
+# `UserMemory._match_vocab`，「两边共用的词里有没有一个是实体」只砍得掉 3 条
+# （`开源+需要人`、`需要提前+数据`、`才能判断+之后`）——另外 6 条共用的 `ai` / `app` / `ios`
+# **本身就是词表里的实体**（`docs/kb-entities-plan.md` §5 早就量到「英文常用词混进了实体」：
+# `app 190` / `device 105` / `pro 104`）。反过来「必须共用一个实体」会砍掉 6 条真沾边
+# （`cpu+npu`、`算力底座+行业`、`march+late`、`第二款产品`、`广告投放+上线`、`灵衢…`）——
+# 它们共用的是实打实的专业词，只是没被抽成实体。**1239 个实体里混着泛词、又盖不住专业词，
+# 这一层今天两头都不顶用。** 主题更不顶：129 个主题的表层词是 `work` / `project` 这种英文码，
+# 中文正文上几乎不命中。
+#
+# 换的这条判据不是实体也不是主题，是**文档频率**：`ai` 出现在 terrence 库 2362 个 unit 里的
+# 359 个（15%）、`app` 250 个（11%）、`时间` 398（17%）、`之后` 297（13%）、`数据` 163（7%）；
+# 而真沾边那边共用的是 `cpu` 8、`npu` 2、`第二款产品` 3、`广告投放` 7、`kol` 30、`样机` 51。
+# **跟 P27 否掉的 IDF 那条不是同一条**：P27 试的是「用低 df 去**挑**实义词」，量完是死的
+# （`需要人` df=4、`才能判断` df=1，全是稀有词）；这一条方向相反——**用高 df 去否掉一个词
+# 当证据的资格**。两句话听着像，判的是两件事：稀有不等于有意义，但满库都有一定没意义。
+#
+# 门槛是量出来的（`<scratch>/p29/grid29.py`，P27 那 45 条标注 + 全库 266 对）：
+#   4% → 硬 28 / 勉强 1 / 不硬 3     5% → 硬 28 / 勉强 2 / 不硬 3     **6% → 28 / 2 / 3**
+#   8% → 硬 28 / 勉强 2 / 不硬 4    10% → 28 / 2 / 4     2%–3% → 硬掉到 25–26（开始误伤）
+# 4%–6% 那一段结果完全一样，**不是踩在刀尖上**。误判率 9/40 = 22% → **3/33 = 9%**，
+# 而 28 条「硬」的一条没少。
+#
+# **在结果一样的那一段里取最松的 6%**，理由不是保守而是量出来的：把全库 266 对里所有
+# df ≥ 20 的共用串按占比排一遍（`<scratch>/p29/band29.py`），5.6%（`能够`）到 6.8%（`测试`）
+# 之间**本来就是一段空档**，6% 正落在空档里；而切 5% 会多否掉 `录音`(5.3%) `软件`(5.1%)
+# `美国`(5.5%) `能够`(5.6%) 四个，代价是界面上多砍一段真沾边——
+# `92d07b760f1e` L81「MemoCat 锚点卡…第一段录音后感知到价值」对上库里
+# 「他可以调用在 Memocat 记录的这些录音」，共用 `memocat` + `录音`，**那是真的**。
+# 6% 那一档否掉的 20 个串（`如果` `可能` `时间` `自己` `ai` `已经` `用户` `之后` `开始` `app`
+# `比如` `公司` `设计` `部分` `硬件` `理解` `页面` `工作` `数据` `测试`）逐条读过，
+# 没有一个是「这两段说的是同一件事」的证据。
+#
+# `COMMON_DF_MIN` 是给**小库**兜底的，不是第二道门槛：shot-demo 只有 11 个 unit，
+# `样机` 在里面出现 6 次就是 55%——库小到这份上，df 说明不了任何事。20 条以下一律不否
+# （库不到 333 个 unit 时这条判据等于不启用，terrence 的 6% = 142 条，够不着它）。
+COMMON_DF_MIN = 20
+COMMON_DF_RATIO = 0.06
+
+
+def shared_evidence(a: str, b: str, *, common=None) -> int:
     """两段共用几**条**独立证据。判「沾边」用这个，不用 `shared_terms`。
 
-    一串 ≥ `LONG_RUN_CHARS` 个汉字的算两条（理由见上面那段注释）。"""
-    runs = evidence_runs(a, b)
+    一串 ≥ `LONG_RUN_CHARS` 个汉字的算两条（理由见上面那段注释）。
+    `common` 见 `evidence_runs`。"""
+    runs = evidence_runs(a, b, common=common)
     n = len(runs)
     if n == 1 and _CJK_RUN.match(runs[0]) and len(runs[0]) >= LONG_RUN_CHARS:
         n = 2
@@ -359,11 +468,15 @@ MERGE_MIN_PASSAGE_OVERLAP = 0.3
 
 
 def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
-           conflict_min_overlap: float = CONFLICT_MIN_OVERLAP) -> list[dict]:
+           conflict_min_overlap: float = CONFLICT_MIN_OVERLAP, common=None) -> list[dict]:
     """给一段正文和召回的事实（至少要有 id / text / date），产出关系候选。
 
     每条：{relation, say, fact_ids, unit?, values?}。同一种关系只报最有把握的那条，
     延续报整条线。没有具体的量（数字 / 日期）就不报缺依据——空话没法核。
+
+    `common`（P29 #1，可不传）：「这个词在这个人的库里到处都是」的判据，见 `evidence_runs`。
+    **三处数证据的地方都传**（沾边 / 日期印证 / 叠加）——`ai` 在一处不算证据、
+    在另一处算，那就不是一条判据，是三条。
     """
     pv = extract_values(passage)
     p_days = _date_keys(pv["dates"])["days"]
@@ -379,7 +492,7 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
     for f in facts:
         text = f.get("text") or ""
         s = overlap(passage, text)
-        scored.append((s, f, extract_values(text), shared_evidence(passage, text)))
+        scored.append((s, f, extract_values(text), shared_evidence(passage, text, common=common)))
     related = [(s, f, fv) for s, f, fv, n in scored
                if s >= min_overlap and (n >= MIN_SHARED_TERMS or _same_quantity(fv))]
     if not pv["nums"] and not pv["dates"]:
@@ -467,7 +580,7 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
         # 改成看**绝对数**：共用 ≥ 2 个词元（`MIN_SHARED_TERMS`）。不再拿 0.2 兜底——短事实只共用一个词也能到 0.33
         # （「2月1号上线」↔「2月1号发工资」），同一天的两件不相干的事会被判成「日期一致」（突变验抓出来的）。
         strong = [(s, f, fv) for s, f, fv in related
-                  if fv["dates"] and shared_evidence(passage, f.get("text") or "") >= MIN_SHARED_TERMS]
+                  if fv["dates"] and shared_evidence(passage, f.get("text") or "", common=common) >= MIN_SHARED_TERMS]
         # **一段里有两个日期、一个对上一个对不上时，冲突要报出来**（P19 #4 / P17 #12）。
         # 原来这个循环在**第一条**事实上就 `break`：重合度最高的那条碰巧是对上的（或者已经按数字
         # 印证过、走 `already` 那条 break），后面那条对不上的就永远轮不到判。实拍（P17 第 3 步）：
@@ -522,7 +635,7 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
         if s < max(min_overlap, 0.2):
             continue
         same_unit = any(u in p_units for _v, u in fv["nums"])
-        if not same_unit and shared_evidence(passage, f.get("text") or "") < ACCUMULATION_MIN_SHARED:
+        if not same_unit and shared_evidence(passage, f.get("text") or "", common=common) < ACCUMULATION_MIN_SHARED:
             continue
         missing = [_fmt(v) + u for v, u in fv["nums"] if u not in p_units]
         if not pv["dates"]:

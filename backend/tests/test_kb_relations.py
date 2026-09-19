@@ -280,6 +280,9 @@ def test_收件箱的冲突要先过确认器():
             return ([{"id": "o1", "unit": "other-0", "text": "这一版的定价定在 199 美元。",
                       "date": "2026-03-04"}], [], 0.0)
 
+        def common_term(self):      # P29 #1：库太小就不启用「满库都有的词不算证据」
+            return None
+
     def confirm(passage, cands, by_id):
         seen["n"] = len(cands)
         return []          # 模型说：不是同一件事
@@ -304,6 +307,9 @@ def test_确认器不在时保持原来的纯代码行为():
         def recall(self, text, limit=8):
             return ([{"id": "o2", "unit": "other-0", "text": "这一版的定价定在 199 美元。",
                       "date": "2026-03-04"}], [], 0.0)
+
+        def common_term(self):      # P29 #1
+            return None
 
     assert inbox.scan_session(Mem(), "u_noconf", "s-1") == 1
     S.drop_conflicts_for_facts("u_noconf", {"n2"})
