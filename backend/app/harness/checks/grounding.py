@@ -193,12 +193,32 @@ def citations_present(st: State) -> Verdict | None:
     **一句都定不到时就直说这件事**，并把要求换成做得到的那件——
     量过了，78 句里 72 句（92%）在材料里根本没有逐字来源，
     这种时候再喊「把编号写上」是一条办不到的指令，只会把剩下的轮数烧掉。
+
+    ## 第 1 轮那句也照可引率说（P33 #2 / P30 留给下一批 #2）
+
+    P24 换掉的只有第 2 轮起那句，**第 1 轮那句原样留着**——而它喊的正是
+    「把真正用到的那几条的编号写在对应句子末尾」。P30 #1 把这句话的射程量死了：
+    四批 20 跑的终稿里**可引率只有 7.7–9.1%**（623 句里 52 句有逐字出处），
+    也就是说这句话九成以上是冲着「材料里根本没有出处」的句子喊的。
+    ——**而第 1 轮就算得出这个数**：`citation_coverage` 是纯函数、零模型，
+    `st.fresh` 在 `before_judge` 这一步已经是满的。
+
+    于是第 1 轮按 `citation_coverage` 的**分母**分三档（口径逐字跟面板那一格同一个函数，
+    不是第二套算法——两套口径混着读正是被换掉的那一格的死因）：
+
+    * `located > 0` 且定得到唯一一条 —— 逐句点名，编号照抄，跟第 2 轮同一个做法；
+    * `located > 0` 但每句都沾着好几条 —— 说清「贴哪个都可能错」，要求改成「先把句子写窄」；
+    * `located == 0` —— **不喊补编号**（喊了也补不出来），换成做得到的那件：
+      把这一段改写成材料里真有的那几条。
+
+    **分子分母都报、不报百分比**（P30 定的）：分母常常只有个位数，
+    一个百分号会让它看起来比实际精确。
     """
     if st.bag.get("outline_mode") or not st.facts:
         return None
     # 认两种出处（P15 #2）：`[事实编号]`，和托盘里的笔记被引时的 `[标题](note://id)`——P14 真跑第 1、2 轮
     # 各引了两篇笔记，却被这条判成「一个编号都没有」短路。`has_citation` 跟 `material_thin` 的 (b) 档同一个谓词。
-    from .citations import has_citation, locate_sources
+    from .citations import citation_coverage, has_citation, locate_sources
     fresh = (st.fresh or "").strip()
     if len(fresh) < MIN_CITED_ROUND_CHARS or has_citation(fresh):
         return None
@@ -219,12 +239,43 @@ def citations_present(st: State) -> Verdict | None:
             "所以不要再去补编号了：**把这一段改写成材料里真有的那几条**（把编号和它说的事一起搬进来），"
             "对不上材料的判断就收住别再往下铺。",
         )
+    # 第 1 轮（P33 #2）。`marked` 在这儿**恒等于 0**（上面那道 `has_citation` 的早退
+    # 已经把「这一轮写的字里有编号」整条挡掉了），照样把它报出来：
+    # 「N 句有出处可引、0 句贴了」跟「没有一句有出处可引」是两句完全不同的话，
+    # 而用户看到的必须是这两句里对的那一句。
+    # **`pick_dimension(...)` 逐处写全、不许提成一个 `dim` 变量**：
+    # `test_dimension_method_gates` 那条闸是静态读 `Verdict(` 第一个实参的，
+    # 提成变量它就看不见了——而「安静地看不见」正是 `pick_dimension` 要治的病。
+    head = (f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有"
+            "（引托盘里的笔记时用它开头的 [标题](note://id) 也算）。")
+    cov = citation_coverage(fresh, list(st.facts or []))
+    if cov.located <= 0:
+        # 九成以上的句子落在这一档（P30 量的可引率 7.7–9.1%）。**这里不许再喊补编号**：
+        # 一条办不到的指令只会把剩下的轮数烧掉，这正是 P24 在第 2 轮那侧已经学过的一课。
+        return Verdict(
+            pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
+            head + f"而这 {len(fresh)} 字里**没有一句**能在材料里找到逐字的出处"
+            "（日期、数量、原话都对不上），所以编号补不出来，别去凑。"
+            "要做的是另一件：**把这一段改写成材料里真有的那几条**（把编号和它说的事一起搬进来），"
+            "对不上材料的判断就收住别再往下铺。编号只能从材料里抄，不要自己编。",
+        )
+    pairs = locate_sources(fresh, list(st.facts or []))
+    cover = f"这一轮有 {cov.located} 句在材料里找得到逐字出处、{cov.marked} 句贴了编号。"
+    if not pairs:
+        # 定得到、但每句都沾着两条以上——`locate_sources` 按唯一性规则不说，
+        # 判据也不许说，不然就是在教模型贴一个像真的一样的引用（`citations_exist` 那句原话）。
+        return Verdict(
+            pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
+            head + cover + "但这几句每句都同时对得上好几条材料，贴哪个都可能错。"
+            "先把句子写窄到只对得上一条（把那条材料里的日期 / 数量 / 原话搬进来），再把编号贴在句末。"
+            "其余句子在材料里没有逐字出处，别硬贴，也不要自己编。",
+        )
+    lines = "；".join(f"「…{s[-24:]}」→ [{fid}]" for s, fid in pairs[:3])
     return Verdict(
         pick_dimension(st, "factual_grounding", "material_use", "no_fabrication"),
-        f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有"
-        "（引托盘里的笔记时用它开头的 [标题](note://id) 也算）。"
-        "把真正用到的那几条的编号写在对应句子末尾——这篇笔记的价值在于每句判断都能点回它的依据；"
-        "没有编号的判断读者无从核对，跟随便哪个模型写的没区别。编号只能从材料里抄，不要自己编。",
+        head + cover + f"编号照抄在句末就行：{lines}。"
+        "其余句子在材料里没有逐字出处，别硬贴，也不要自己编——"
+        "这篇笔记的价值在于每句判断都能点回它的依据。",
     )
 
 

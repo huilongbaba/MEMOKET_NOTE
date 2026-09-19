@@ -129,9 +129,66 @@ const TOOL_LABEL: Record<string, string> = {
 
 /** 诊断原话是 `dim: note` 的形状（后端 `loop._steer`），维度名已经单独显示
  * 过一次，这里去掉前缀免得同一个词在一行里出现两遍。 */
-function stripDim(steer: string): string {
+export function stripDim(steer: string): string {
   const at = steer.indexOf(': ')
   return at > 0 ? steer.slice(at + 2) : steer
+}
+
+// ---------------------------------------------- 同一句诊断只说一遍（P33 #1）---
+//
+// **P31 走查 #5 看见的是一堵墙**：同一轮的卡片上「最弱是「事实依据」：…」整段、
+// 「⚑ 代码判据 … 判了事实依据不合格。…」再整段，下一张卡开头「上一轮诊断：…」
+// 又整段——那段本身就有一两百字，三遍下来右栏被它占满，真正要看的
+// 「这一轮写了什么」被推到最底下。
+//
+// **三处各自的来源（读后端钉死的，不是猜的）**：
+//   A 「最弱是 X：…」    = `st.ev.scores[weakest].note`，走 `evaluate` 事件。
+//   B 「⚑ 代码判据 …」   = `check_hit.note` = `Verdict.message`，走 `check_hit` 事件。
+//   C 「上一轮诊断：…」  = `State.steer` = `bag[focus] + ": " + bag[focus_note]`，
+//      走**下一轮**的 `round_start` 事件；而 `loop.py:157-158` 那两行写的正是
+//      **这一轮** `st.ev` 的 `weakest` 和 `_weak_note(st)` —— 逐字就是 A。
+//
+// 于是两条等式是**结构性的**，不是统计出来的：
+//   · `C(第 N+1 轮) ≡ A(第 N 轮)` —— `loop.py` 那两行无条件写；
+//   · `A ≡ B`（判据短路轮）—— `middleware/checks.py` 短路那一支伪造
+//     `Evaluation(scores={verdict.dimension: DimensionScore(level=0, note=verdict.message)})`，
+//     打分器根本没跑，「最弱那一维的诊断」就是判据那句话。
+//
+// **先量（真库 `harness_rounds` 489 行，`p33/m1_wall.py`）**：
+//   · 有 A 的轮 **429**，其中判据短路轮（A ≡ B）**261 = 60.8%**；
+//   · 会显示 C 的卡片 **311**，C ≡ 上一张卡的 A **311 = 100.0%**；
+//   · 三处同一句（上一轮是短路轮）**191 = 61.4%**。
+//
+// **合并规则**：逐字一样就只显示一次、并标明另一处在哪儿（「这一轮就是照它改的」/
+// 「判词就是下面那条判据」）；**不一样才分开列**，一个字都不折。
+// 被折起来的那一份原话进 `title`，不是删掉。
+// 比法**只归一化空白**，不做任何近似匹配——§21：判据宁可窄一点，
+// 折错的代价是「用户以为两处说的是同一句、其实不是」，那比多读一遍严重得多。
+
+function normDiag(s: string | undefined): string {
+  return (s ?? '').replace(/\s+/g, ' ').trim()
+}
+
+/** 两处诊断是不是逐字同一句（空白归一化之后）。空串永远算「不一样」。 */
+export function sameDiag(a: string | undefined, b: string | undefined): boolean {
+  const x = normDiag(a)
+  return x !== '' && x === normDiag(b)
+}
+
+/** 这一轮的「最弱是 X：…」就是同一张卡上那条 ⚑ 判据的判词（= 判据短路轮）。 */
+export function weakestEchoedByCheck(r: AgentRound): boolean {
+  const note = r.weakest ? r.scores?.[r.weakest]?.note : ''
+  return (r.checkHits ?? []).some((h) => h.dimension === r.weakest && sameDiag(h.note, note))
+}
+
+/** 这一张卡的「上一轮诊断」就是上一张卡的「最弱是」那一段。
+ *
+ * **`steerDim` 也要对上**：`State.steer` 的维度名和 `weakest` 是同一个字段抄来的，
+ * 对不上就说明中间还有一轮（或者诊断换了载体），这时候「就是上面那句」是句假话。 */
+export function steerEchoedByPrev(r: AgentRound, prev?: AgentRound): boolean {
+  if (!r.steer || !prev) return false
+  const prevNote = prev.weakest ? prev.scores?.[prev.weakest]?.note : ''
+  return !!r.steerDim && r.steerDim === prev.weakest && sameDiag(stripDim(r.steer), prevNote)
 }
 
 /** 0/1/2 三档画成三格信号条——比纯数字更容易一眼扫过一排维度看出哪个塌了。 */
@@ -204,6 +261,7 @@ function ToolCallRow({ call }: { call: NoteHarnessToolCall }) {
  * 它凭什么说自己有依据，也看不到 runtime 为什么突然变慢/变快。 */
 export default function AgentActivity({ rounds, status, running }: Props) {
   if (!rounds.length && !status) return null
+  const sorted = [...rounds].sort((a, b) => a.round - b.round)
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -215,8 +273,10 @@ export default function AgentActivity({ rounds, status, running }: Props) {
         <p className="muted" style={{ margin: '6px 0 10px', fontSize: 'var(--t-sm)' }}>{status}</p>
       )}
 
-      {/* 事件是分散到达的，卡片按到达顺序建会乱（第 1 轮的初始策略先到、第 0 轮的快照后到）——按轮次排 */}
-      {[...rounds].sort((a, b) => a.round - b.round).map((r) => (
+      {/* 事件是分散到达的，卡片按到达顺序建会乱（第 1 轮的初始策略先到、第 0 轮的快照后到）——按轮次排。
+          **排完的这份要留住**（P33 #1）：「上一轮诊断」要跟上一张卡比，
+          比的对象必须是排序之后的前一张，不是 `rounds` 里的前一项。 */}
+      {sorted.map((r, i) => (
         <div
           key={r.round}
           style={{
@@ -243,8 +303,12 @@ export default function AgentActivity({ rounds, status, running }: Props) {
               诊断**这一轮去了哪儿**。面板此前只显示 `adjust()` 的结果
               （检索预算 / 温度），而真正决定这一轮去查什么的是这句话。 */}
           {r.steer && (
-            <p className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}>
-              上一轮诊断：{r.steerDim ? `「${dimLabel(r.steerDim)}」` : ''}{stripDim(r.steer)}
+            <p className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}
+               title={steerEchoedByPrev(r, sorted[i - 1]) ? stripDim(r.steer) : undefined}>
+              上一轮诊断：{r.steerDim ? `「${dimLabel(r.steerDim)}」` : ''}
+              {steerEchoedByPrev(r, sorted[i - 1])
+                ? `——就是上面第 ${sorted[i - 1].round} 轮那张卡上那句，这一轮就是照它改的。`
+                : stripDim(r.steer)}
               <br />
               {r.steerInPlan === true && '→ 这句话进了这一轮的检索计划。'}
               {r.steerInPlan === false && (r.steerMaterial
@@ -317,10 +381,15 @@ export default function AgentActivity({ rounds, status, running }: Props) {
           )}
 
           {/* 最弱维度的诊断原文——这句话现在也是喂回下一轮的东西，
-              让用户看到它，才能理解下一轮为什么那么跑 */}
+              让用户看到它，才能理解下一轮为什么那么跑。
+              **判据短路轮上它逐字就是下面那条 ⚑ 的判词**（P33 #1，真库 429 轮里 261 轮
+              = 60.8%）：那一档只留一句指路，原话在下面那条判据里给全。 */}
           {r.weakest && r.scores[r.weakest]?.note && (
-            <p className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}>
-              最弱是「{dimLabel(r.weakest)}」：{r.scores[r.weakest].note}
+            <p className="muted" style={{ margin: '0 0 6px', lineHeight: 1.55 }}
+               title={weakestEchoedByCheck(r) ? r.scores[r.weakest].note : undefined}>
+              {weakestEchoedByCheck(r)
+                ? `最弱是「${dimLabel(r.weakest)}」——这一轮没打分，判词就是下面那条 ⚑ 代码判据。`
+                : `最弱是「${dimLabel(r.weakest)}」：${r.scores[r.weakest].note}`}
             </p>
           )}
 
