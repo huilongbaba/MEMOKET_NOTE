@@ -38,7 +38,12 @@ def rows_to_facts(mem: UserMemory, rows: list[dict]) -> list[FactOut]:
 @router.post("/recall", response_model=RecallOut)
 def recall(body: RecallIn, user: str = Depends(current_user)):
     mem = UserMemory(user)
-    rows, terms, took = mem.recall(body.query, limit=body.limit, scope=body.scope)
+    # `evidence=True`：这条路是**拿给用户看的那一列**（右栏「记忆」/ ⌘K / 知识库搜索框），
+    # 每一条都得说得出「为什么给我看这条」——说不出就别送上去（P32 #1）。
+    # 喂给 `kb/relations.detect` 的那两条路（下面 `/relations`、`/relations/batch`）**故意不开**，
+    # 理由写在 `UserMemory.recall` 的文档串里（开了会掉一个从 P22 就在的绿点）。
+    rows, terms, took = mem.recall(body.query, limit=body.limit, scope=body.scope,
+                                   evidence=True)
     # 空着的时候说清楚为什么（P4 #6）：是这段没有可查的词，还是有词但没有一条记录同时命中两个——
     # 右栏据此写「这段没有可查的关键词」，而不是「暂时没有找到相关内容」一句话糊过去。
     why = ""
@@ -47,10 +52,14 @@ def recall(body: RecallIn, user: str = Depends(current_user)):
             why = "no_terms" if not search._terms(mem, search.clean_query(body.query)) else "weak"
         except Exception:      # noqa: BLE001 — 解释是附赠的
             why = ""
+    try:
+        ev = mem.recall_evidence(body.query, rows) if rows else []
+    except Exception:          # noqa: BLE001 — 解释是附赠的，别让它挡住召回本身
+        ev = []
     return RecallOut(facts=rows_to_facts(mem, rows), took_ms=round(took, 3),
                      # 给人看的是整词，不是「小时预」「号上众」这种切碎的 n-gram（P4 #6）
                      terms=search.display_terms(terms, body.query), kb_empty=mem.is_empty(),
-                     why_empty=why)
+                     evidence=ev, why_empty=why)
 
 
 @router.get("/stats", response_model=StatsOut)

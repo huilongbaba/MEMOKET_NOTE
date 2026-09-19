@@ -580,7 +580,12 @@ export const recall = (query: string, limit = 8) =>
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ query, limit, scope: memoryScope() }),
-  }).then(json<{ facts: Fact[]; took_ms: number; terms: string[]; kb_empty?: boolean; why_empty?: '' | 'no_terms' | 'weak' }>)
+  }).then(json<{ facts: Fact[]; took_ms: number; terms: string[]; evidence?: RecallEvidence[]; kb_empty?: boolean; why_empty?: '' | 'no_terms' | 'weak' }>)
+
+/** 一条召回证据 + 它凭什么算证据（计划 §2 A5）。后端 `kb/search.evidence`：
+ *  `vocab` = 知识库里的一个词条；`span` = 这么长的一整段原话逐字对上；`pair` = 单独不够硬、跟别的词一起才算。
+ *  `units` = 这个词在库里出现在几条记录里（P29 的 df）。 */
+export type RecallEvidence = { term: string; why: 'vocab' | 'span' | 'pair'; units: number }
 
 /** 「来龙去脉」：给一段正文，回它涉及的事情按时间怎么演进的。
  *

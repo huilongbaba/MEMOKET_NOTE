@@ -511,6 +511,56 @@ class UserMemory:
 
         return is_common
 
+    def vocab_term(self):
+        """回一个「这串**是这个人词表里的一个词**（实体 / 主题的表层词）」的判据，
+        给 `kb/search.qualifies(attested=…)`（P32 #1）。
+
+        判据为什么长这样、为什么只用在「只剩一条证据串」那一档，写在
+        `kb/search.EVIDENCE_CJK_MIN` 上面那段注释里。这里只负责把这个人的词表接上去。
+
+        **只当放行条件，从不用来否掉任何东西**——P29 #1 量过，拿「是不是实体」当唯一的闸
+        会连 `cpu+npu` / `第二款产品` 这种真沾边一起砍（1239 个实体里混着 `app` / `device`，
+        又漏着 `超节点`）。零模型、零额外 IO：词表本来就在索引里。
+        """
+        try:
+            _store, vocab = self._index()
+        except Exception:      # noqa: BLE001 —— 建不出索引就是不启用这一档
+            return None
+        # 一篇 30k 字的笔记首开要 recall 143 次，每次重扫 1404 个实体是白扫的——
+        # 跟 `_grep_index` 一样按索引 mtime 缓存，索引换了它跟着重建、闲置一起回收
+        key = f"{self.path}#vocabterm"
+        try:
+            mtime = self.path.stat().st_mtime
+        except OSError:
+            mtime = None
+        hit = self._cache.get(key)
+        if mtime is not None and hit and hit[0] == mtime and hit[2] is vocab:
+            return hit[1]
+        surfaces: set[str] = set()
+        for code, topic in getattr(vocab, "topics", {}).items():
+            if getattr(topic, "status", "") == "deprecated":
+                continue
+            for s in {code, *(getattr(topic, "aliases", set()) or set())}:
+                sl = str(s).replace("_", " ").lower()
+                if len(sl) >= 2:
+                    surfaces.add(sl)
+        for code, ent in getattr(vocab, "entities", {}).items():
+            if is_speaker_tag(code) or is_speaker_tag(getattr(ent, "name", "")):
+                continue
+            for s in {code, getattr(ent, "name", ""), *(getattr(ent, "aliases", set()) or set())}:
+                sl = str(s).replace("_", " ").lower()
+                if len(sl) >= 2:
+                    surfaces.add(sl)
+        if not surfaces:
+            return None
+
+        def attested(term: str) -> bool:
+            return term in surfaces
+
+        if mtime is not None:
+            self._cache[key] = (mtime, attested, vocab)
+        return attested
+
     def _prescreen(self, store, queries: list[dict]) -> list[dict]:
         """`search.plan` 给的查询列表 → 同义但便宜的那份：每条 `{"grep": 词}` 按预筛结果带上 `units`。
         条数、顺序、别的查询都不动（kite 只取前 3 条，动了条数就是换查询）。"""
@@ -708,8 +758,20 @@ class UserMemory:
 
         return topics[:4], entities[:4], hit_surfaces
 
-    def recall(self, query: str, limit: int = 8, scope: str = "all") -> tuple[list[dict], list[str], float]:
+    def recall(self, query: str, limit: int = 8, scope: str = "all", *,
+               evidence: bool = False) -> tuple[list[dict], list[str], float]:
         """符号检索。返回 (fact 行, 命中的表层词, 耗时毫秒)。
+
+        `evidence=True` 才过 P32 #1 那道**证据闸**（`kb/search.qualifies`）。
+        **默认关着，是量出来的，不是偷懒**：这个函数有两种用途，收紧只对其中一种成立。
+        · **拿给用户看的那一列**（`/memory/recall` → 右栏「记忆」/ ⌘K / 知识库搜索框）——
+          每一条都得说得出「为什么给我看这条」，说不出就别送上去。这一档 `evidence=True`。
+        · **给判据当候选池的那一次**（`/memory/relations`、`relations/batch`、摄入冲突扫描、
+          写作取材料）——下游 `kb/relations.detect` 自己有一套**更全**的判据：同值同单位、
+          同一天、共用编号，**词面证据不够不等于关系判不出来**。
+          实测：把闸开在这条路上，N4 `e78306202d78` L27 那个从 P22 就在的**绿点**
+          （印证 `1439-0F4`）当场掉了——`detect` 是靠「同值同单位」判出来的，
+          而那条候选的词面证据只有一条站不住的串。**「留下率不许跌」说的就是这种。**
 
         **先撒网再排序**，不是「命中主题后按时间取前 8」。原来那个写法等于
         「这个主题下最近的 8 条」，跟查询内容无关——实测拿一条事实自己的原文
@@ -733,15 +795,21 @@ class UserMemory:
             rows, _trace = execute_plan(store, vocab, {"queries": self._prescreen(store, queries)},
                                         budget=search.POOL * 2)
             facts = [r for r in rows if r.get("type") == "fact"]
+        # 证据资格那两档由调用方注入（P32 #1，同 P29 给 `relations.detect` 注 `common` 的做法）：
+        # `kb/search` 不依赖 app 的其它模块，拿不到这个人的 df 索引和词表。
+        common, attested = ((self.common_term(), self.vocab_term()) if evidence
+                            else (None, None))
         # 多留一些候选再筛：无论哪个范围，筛完都可能不够 `limit` 条
         # （「全部」也会筛掉屏幕活动，见 kb/scope.filter_rows）
-        facts = search.rank(facts, query, self, store, limit=limit * 4)
+        facts = search.rank(facts, query, self, store, limit=limit * 4,
+                            evidence=evidence, common=common, attested=attested)
 
         if not facts:
             # 行级回退拉出来的是整场会的事实，同样要过一遍「至少命中一个查询词」——
             # 不然「这篇是从系统拖进来的」这种没信息量的句子照样召回一屏不相干的（第 225 轮）
             facts = search.rank(self._recall_via_lines(store, vocab, query, limit * 2),
-                                query, self, store, limit=limit)
+                                query, self, store, limit=limit,
+                                evidence=evidence, common=common, attested=attested)
             surfaces = surfaces + self._cjk_terms(query)[:3]
         else:
             surfaces = surfaces + [t for t in search.matched_terms(
@@ -750,6 +818,37 @@ class UserMemory:
         from ..kb.scope import filter_rows
         facts = filter_rows(facts, scope)     # 「全部」也要筛：它不含屏幕活动
         return facts[:limit], surfaces, (time.perf_counter() - t0) * 1000
+
+    def recall_evidence(self, query: str, rows: list[dict]) -> list[dict]:
+        """这几条召回各自**凭什么**进来——右栏那句「为什么给我看这条」的原料（计划 §2 A5）。
+
+        面板原来只写「命中：再决定」。P31 实拍证明**光说命中了哪个词不够**：它说对了自己在
+        干什么，干的这件事本身是错的。所以这里把**那个词凭什么算证据**也一起给出去：
+        · `vocab` —— 它是你知识库里的一个词条（实体 / 主题）；
+        · `span`  —— 这么长的一整段原话逐字对上（≥4 个汉字 / ≥4 个字母，不可能是一个滑窗撞的）；
+        · `pair`  —— 它自己不够硬，是跟别的词**一起**命中才算数的。
+        `units` 是这个词在你库里出现在几条记录的 unit 里（P29 的 df），让「为什么」有个量。
+        """
+        store, _vocab = self._index()
+        q = search.clean_query(query)
+        terms = search._terms(self, q)
+        common, attested = self.common_term(), self.vocab_term()
+        idx = self._grep_index(store)
+        seen: set[str] = set()
+        out: list[dict] = []
+        for r in rows:
+            f = store.facts.get(r.get("id"))
+            text = (f.text if f else "") or ""
+            for e in search.evidence(search._hits(terms, text), q,
+                                     common=common, attested=attested):
+                term = e["term"]
+                if term in seen:
+                    continue
+                seen.add(term)
+                label = term if term.isascii() else (term.strip(search._EDGE_STOP) or term)
+                out.append({"term": label, "why": e["why"],
+                            "units": (idx.unit_df(term) if idx else None) or 0})
+        return out[:6]
 
     def recall_multihop(self, question: str, limit: int = 8) -> tuple[list[dict], bool, float]:
         """多跳检索：先按内容定位到某次会话，再在那个范围里展开。

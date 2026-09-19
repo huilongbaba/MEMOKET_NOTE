@@ -220,6 +220,9 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe === 'import') setTimeout(() => void openVirtual('app:import', '导入'), 600)
   if (probe === 'conflicts') setTimeout(() => void openVirtual('kb', '知识库'), 600)
   if (probe === 'trash') setTimeout(() => void openVirtual('app:trash', '最近删除'), 600)
+  // 屏幕活动（P21 / P23）。**P31 走查没看到那一屏知情选择**——那份 userData 里已经有 5 天数据，
+  // 直接进了控制台；知情屏只给真·头一回。用一个空 userData 的身份开这条探针就能补拍到（P32 #4）。
+  if (probe === 'journey') setTimeout(() => void openVirtual('app:journey', '屏幕活动'), 600)
   if (probe === 'today' && !harnessProbeDone.current) { harnessProbeDone.current = true; setTimeout(() => window.dispatchEvent(new CustomEvent('open-today')), 800) }   // 这个 hook 每次 notes 变都跑，不挡会连点四次
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)

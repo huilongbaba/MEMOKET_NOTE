@@ -142,8 +142,14 @@ def test_英文短词整词匹配_不靠子串得分():
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["md"]
     mem._cjk_terms = lambda text: []
+    # 这条测的是**整词匹配**：`md` 不能靠 SMDowner / B2ECMD 得分。
     out = search.rank(rows, "拖进树的 .md", mem, store, limit=1)
     assert out[0]["id"] == "real"
+    # **P32 #1 加的那道证据闸**（只开在「拿给用户看的那一列」上，`evidence=True`）：
+    # 2 个字母的英文词**单独不算证据**（`ai` / `ib` / `pr` / `mp` / `kv` 全在这一档，
+    # 撞词的重灾区就是它）；用户主动搜（≤4 字）那一档照旧，那个词就是查询本身。
+    assert search.rank(rows, "拖进树的 .md", mem, store, limit=1, evidence=True) == []
+    assert search.rank(rows, ".md", mem, store, limit=1, evidence=True)[0]["id"] == "real"
     assert search.matched_terms([rows[0]], "md", mem, store) == []
     mem._candidate_terms = lambda text: ["ai"]
     assert search._hits(["ai"], "he said the ai model") == ["ai"] and search._hits(["ai"], "he said") == []

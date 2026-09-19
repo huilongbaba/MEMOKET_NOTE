@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { diffBaseForBlock, textToLand } from '../blockLanding'
-import { KB_EMPTY_DOTS_NOTE } from '../marginMemory'
+import { KB_EMPTY_NOTE } from '../marginMemory'
 import appSrc from '../../App.tsx?raw'
 import promptSrc from '../../components/SlashPrompt.tsx?raw'
 import paneSrc from '../../components/RightPane.tsx?raw'
@@ -79,10 +79,13 @@ describe('P17 #5 校验结果 / 改动层消息不跟篇', () => {
 })
 
 describe('P17 #8 空库图例', () => {
-  it('图例在 kbEmpty 时多一句「不画圆点」，且那句话说了什么时候开始判', () => {
-    expect(KB_EMPTY_DOTS_NOTE).toMatch(/不画圆点/)
-    expect(KB_EMPTY_DOTS_NOTE).toMatch(/第一条记录/)
-    expect(memSrc).toMatch(/\{kbEmpty && <><br \/>\{KB_EMPTY_DOTS_NOTE\}<\/>\}/)
+  // P32 #3 把这一格改了：空库时**整份图例**折成这一句（原来是四段，信息量为零却占掉大半屏），
+  // 但 P17 要的两件事一个字没少——说了「不画圆点」，也说了什么时候开始判。
+  it('空库那句话说了「不画圆点」和什么时候开始判，而且真的挂在 kbEmpty 这一支上', () => {
+    expect(KB_EMPTY_NOTE).toMatch(/不画圆点/)
+    expect(KB_EMPTY_NOTE).toMatch(/第一条记录/)
+    expect(memSrc).toMatch(/\{kbEmpty \? \(/)
+    expect(memSrc).toMatch(/\{KB_EMPTY_NOTE\}/)
   })
 })
 

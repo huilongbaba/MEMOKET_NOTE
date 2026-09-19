@@ -658,7 +658,9 @@ h2:first-child { margin-top: 0; }
   color: var(--muted);
 }
 .cm-run-bad { color: var(--del); font-weight: var(--w-bold); }
-.cm-run-stop {
+.cm-run-stop,
+/* 形状不对被拦下的那次，占位块上多一个「重试」（P31 #7） */
+.cm-run-retry {
   padding: 1px 8px;
   font-size: var(--t-xs);
   cursor: pointer;
@@ -667,6 +669,7 @@ h2:first-child { margin-top: 0; }
   background: transparent;
   color: var(--fg);
 }
+.cm-run-retry { border-color: var(--accent); color: var(--accent); }
 .cm-run-body {
   padding: 0 9px 8px;
   border-top: 1px solid var(--line);
@@ -1898,6 +1901,8 @@ label.plan-check-row { cursor: pointer; }
    四处「把规则写到界面上」的说明文字。都是元信息，走 muted；正文一律 --fg（P1-3）。 */
 .tap-why { line-height: 1.6; }                                 /* 续写一条材料都没取到时的原因 */
 .mem-legend .mm-dot { display: inline-block; }                 /* 右栏「记忆」顶部的圆点图例 */
+/* 空库那一档：一句话 + 「导入」+ 折起来的规则（P32 #3）。规则那段展开时不要再撑一行行高 */
+.mem-legend-empty > details > summary { color: var(--muted); }
 .mem-terms { word-break: break-all; line-height: 1.6; }        /* 右栏「记忆」：按哪几个词找的（P7，A5 第一步） */
 .mem-no-record-note { line-height: 1.6; }                      /* 右栏「记忆」：折起来的「连沾边的记录都没有」那一档（P25 #4） */
 .mem-inbody summary { user-select: none; }                     /* 右栏「记忆」：已在正文里的原话折叠（P7 #8） */

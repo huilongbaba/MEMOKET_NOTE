@@ -29,6 +29,7 @@ import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import { blockPrecondition, SLASH_ITEMS, type SlashItem } from './editor/slashMenu'
+import { blockShapeProblem } from './editor/blockShape'
 import type { NoteLinkMenuDetail } from './editor/noteLink'
 import { landNotesInTray, noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
 import { diffBaseForBlock, textToLand } from './editor/blockLanding'
@@ -327,6 +328,8 @@ export default function App() {
   // **一次运行一个 AbortController**，用 id 索引。原来是单个 ref，
   // 所以同时只能跑一个 `/`——第二个一开始就把第一个的 controller 顶掉了。
   const runAborts = useRef(new Map<string, AbortController>())
+  // 形状不对被拦下的那次要能原样再跑一遍：记住这一次是哪一项、什么指令（P31 #7）
+  const retryArgs = useRef(new Map<string, { item: SlashItem; prompt: string }>())
   const filePick = useRef<HTMLInputElement>(null)
   const pickKind = useRef<'image' | 'audio'>('image')
   // 录音的停止函数按 id 存：停止走 MediaRecorder.stop()（停下来才有音频
@@ -3082,6 +3085,7 @@ export default function App() {
     const id = Math.random().toString(36).slice(2, 10)
     const ctrl = new AbortController()
     runAborts.current.set(id, ctrl)
+    retryArgs.current.set(id, { item, prompt })
     setSlash(null)                                   // 输入框收起，交给占位块
 
     view.dispatch({
@@ -3137,6 +3141,15 @@ export default function App() {
         push(patchRun.of({ id, error: lastError || '没有产出内容', expanded: true }))
         return                                       // 占位块留着，让用户看到为什么
       }
+      // **形状不对就不落正文**（P31 #7）：实拍过 `/` 智能插图把整串
+      // `{"text":…,"reason":…}` 写进正文、还进了目录和骨架。这一路上原来没有任何一层校形状，
+      // 而「模型答得不对」跟「模型报错」是两回事——后者早就有人接，前者一直没有。
+      // 判据宁可窄（见 `editor/blockShape`），拦下来的给一句人话 + 一个「重试」，产出留在预览里。
+      const badShape = blockShapeProblem(item.key, text)
+      if (badShape) {
+        push(patchRun.of({ id, error: badShape, expanded: true, retry: true }))
+        return
+      }
       const run = v.state.field(runsField, false)?.find((r) => r.id === id)
       const at = Math.max(0, Math.min(run?.from ?? from, v.state.doc.length))
       // P17：替换类（custom）开跑时选区已经清掉了——diff 的基准要把它补回原位，不然「全部撤回」
@@ -3166,6 +3179,18 @@ export default function App() {
     if (rec) { rec(); return }        // 录音：停下来还要转写，不能直接撤掉占位块
     runAborts.current.get(id)?.abort()
     editorViewRef.current?.dispatch({ effects: endRun.of(id) })
+  }
+
+  /** 占位块上的「重试」：形状不对被拦下的那一次，原样再跑一遍（P31 #7）。
+   *  落点用**现在**那个占位块的位置（文档可能已经被编辑过，`runsField` 一直在映射它）。 */
+  function retryRun(id: string) {
+    const again = retryArgs.current.get(id)
+    const v = editorViewRef.current
+    if (!again || !v) return
+    const at = v.state.field(runsField, false)?.find((r) => r.id === id)?.from ?? 0
+    retryArgs.current.delete(id)
+    v.dispatch({ effects: endRun.of(id) })
+    void runBlock(again.item, at, at, again.prompt)
   }
 
   /** 分屏的第二栏。真笔记可编辑（SplitEditor，自己自动保存）；主栏正开着的那篇只读；虚拟节点走 KbNoteView。
@@ -3890,6 +3915,7 @@ export default function App() {
               onAltHover={(phrase, anchor, reason, range) => { if (!anchor) return; setTraceCard((c) => (c && c.phrase === phrase && c.reason === reason ? c : { phrase, anchor, reason, range })) }}
               onSlash={onSlash}
               onStopRun={stopRun}
+              onRetryRun={retryRun}
               /* 空文档那一刻是**唯一一个用户愿意读提示的时刻**，别拿去讲 Markdown。
                  原文是「开始写… 支持 Markdown 和 ```mermaid 图表。写到一半点右上角
                  「续写」…」——三个毛病：讲的是实现细节不是邀请；```mermaid 这种写法

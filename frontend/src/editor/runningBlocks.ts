@@ -25,6 +25,8 @@ export type RunState = {
   log: RunLog[]
   expanded: boolean
   error: string
+  /** 这次失败**可以原样再跑一遍**（形状不对被拦下的那种，P31 #7）：占位块上多一个「重试」。 */
+  retry?: boolean
 }
 
 export const startRun = StateEffect.define<{ id: string; from: number; label: string }>()
@@ -66,16 +68,18 @@ export const runsField = StateField.define<RunState[]>({
 
 /** 停止某一次运行。由 App 侧注入——扩展里不该知道 AbortController 的事。 */
 export type StopRun = (id: string) => void
+/** 原样再跑一次。同样由 App 侧注入（它才知道这次是哪一项、什么指令、落在哪）。 */
+export type RetryRun = (id: string) => void
 
 class RunWidget extends WidgetType {
-  constructor(readonly run: RunState, readonly stop: StopRun) { super() }
+  constructor(readonly run: RunState, readonly stop: StopRun, readonly retry: RetryRun) { super() }
 
   eq(o: RunWidget) {
     const a = this.run
     const b = o.run
     return a.id === b.id && a.phase === b.phase && a.expanded === b.expanded
       && a.preview.length === b.preview.length && a.log.length === b.log.length
-      && a.error === b.error
+      && a.error === b.error && a.retry === b.retry
   }
 
   toDOM(view: EditorView) {
@@ -106,7 +110,22 @@ class RunWidget extends WidgetType {
       e.stopPropagation()
       this.stop(r.id)
     })
-    head.append(chev, spin, title, phase, stop)
+    head.append(chev, spin, title, phase)
+    // 形状不对被拦下的那种失败，给一个「重试」——用户看见的是一句人话 + 一个能点的按钮，
+    // 而不是一块落进正文的 JSON（P31 #7）
+    if (r.retry && r.error) {
+      const again = document.createElement('button')
+      again.type = 'button'
+      again.className = 'cm-run-retry'
+      again.textContent = '重试'
+      again.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        this.retry(r.id)
+      })
+      head.append(again)
+    }
+    head.append(stop)
     head.addEventListener('mousedown', (e) => {
       e.preventDefault()
       view.dispatch({ effects: toggleRun.of(r.id) })
@@ -152,14 +171,14 @@ class RunWidget extends WidgetType {
   ignoreEvent() { return false }
 }
 
-export function runningBlocks(stop: StopRun) {
+export function runningBlocks(stop: StopRun, retry: RetryRun = () => {}) {
   const decos = EditorView.decorations.compute([runsField, 'doc'], (state) => {
     const runs = state.field(runsField)
     if (!runs.length) return Decoration.none
     const len = state.doc.length
     const out: Range<Decoration>[] = runs
       .map((r) => Decoration.widget({
-        widget: new RunWidget(r, stop), side: -1, block: true,
+        widget: new RunWidget(r, stop, retry), side: -1, block: true,
       }).range(Math.max(0, Math.min(r.from, len))))
     // 同一个位置上有多个时要按位置排序，否则 CM6 会抛 "Ranges must be sorted"
     out.sort((a, b) => a.from - b.from)

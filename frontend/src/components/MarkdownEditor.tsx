@@ -92,6 +92,8 @@ type Props = {
   onSlash?: (item: SlashItem, from: number, to: number) => void
   /** 用户在某个「正在跑」的占位块上点了停止。 */
   onStopRun?: (id: string) => void
+  /** 形状不对被拦下的那次，原样再跑一遍（P31 #7） */
+  onRetryRun?: (id: string) => void
 }
 
 /** 光标所在段落：往上往下各找到空行为止。标题行单独算一段。 */
@@ -110,7 +112,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover,
+  roundDiff = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -120,10 +122,10 @@ export default function MarkdownEditor({
   // being torn down/recreated on every prop change -- only `content` and
   // `revisions` need an actual dispatch into CM6 state, callbacks don't.
   const liveRef = useRef({ onChange, onAcceptInline, revisions, onPendingDiff,
-                          onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick, onAltHover })
+                          onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, onMarginClick, onAltHover })
   useEffect(() => {
     liveRef.current = { onChange, onAcceptInline, revisions, onPendingDiff,
-                        onSelectionContextMenu, onSlash, onStopRun, onCursorParagraph, onMarginClick, onAltHover }
+                        onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, onMarginClick, onAltHover }
   })
   const lastPara = useRef('')
 
@@ -175,7 +177,7 @@ export default function MarkdownEditor({
         noteLinkChips(async (id) => { try { return await getNote(id) } catch { return null } }),
         mermaidPreview,
         tablePreview,
-        runningBlocks((id) => liveRef.current.onStopRun?.(id)),
+        runningBlocks((id) => liveRef.current.onStopRun?.(id), (id) => liveRef.current.onRetryRun?.(id)),
         imageEmbed,
         imagePaste,
         htmlPaste,                     // 排在 imagePaste 之后：剪贴板里有图片先走图片

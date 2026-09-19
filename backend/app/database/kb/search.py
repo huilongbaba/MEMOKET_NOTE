@@ -287,6 +287,126 @@ def _strong_enough(hits: list[str]) -> bool:
     return len(cl) >= LONG_QUERY_MIN_WORDS and any(len(h) >= 3 for h in cl)
 
 
+# ------------------------------------------------------------ 证据资格（P32 #1）
+#
+# **这一条修的是什么。** P31 实拍：正文「先把叙事和体感分开看，**再决定**这个动效要不要保留」，
+# 右栏给出「Speaker B 问是否可以搜一下…然后根据情况**再决定**」，面板老老实实写着「命中：再决定」。
+# **它说对了自己在干什么，干的这件事本身是错的**——那条召回的全部依据是一个 3 字滑窗
+# （`_cjk_terms` 的窗口最长就是 3），而 `再决定` 跨在「再」和「决定」之间，根本不是一个词。
+# P27 / P29 把**圆点**那侧（`kb/relations.detect`）收紧过两轮，召回这侧一直没跟着收。
+#
+# **跟那两轮的关系：同一套思路，不是同一条判据。**
+# · P27 的 `evidence_runs` 是**按位置合并**证据串（重叠才合、相邻不合）——这里原样借过来，
+#   因为召回这侧有一模一样的毛病：`_clusters` 的「互不包含」去重挡不住 `池容量` + `电池容`，
+#   那是**同一个词「电池容量」被切成的两半**，却被 `_strong_enough` 数成两条证据。
+# · P29 的 `common_term` 是**按 df 否掉资格**——这里也原样借过来当第一道闸（`ai` / `app` /
+#   `第一` / `时间` 这种满库都是的词不算证据）。
+# · **但 df 单独救不了 P31 那条**：`再决定` 在真库里 df=1，是个「稀有词」。
+#   P27 早就写过「**『泛』是语义上的泛，不是字面上的常见**」。所以这一批加的是第三样东西——
+#   **只剩一条证据串时，那条串得站得住**：
+#     ① 它是**这个人词表里的表层词**（实体 / 主题），或
+#     ② 它是 **≥4 个汉字**的串——`_cjk_terms` 最长的窗口是 3，合并出 ≥4 个字意味着
+#        **两个窗口都对上了**，不可能是一个窗口撞出来的（P27 的 `LONG_RUN_CHARS` 同款理由，
+#        只是那边的窗口是词元、门槛 5，这边的窗口是 3 字滑窗、门槛 4），或
+#     ③ 它是 **≥3 个字母**的英文整词（英文本来就是整词切的，滑窗那个毛病它没有；
+#        撞词的重灾区是**两个字母**那一档：`ai` / `ib` / `pr` / `mp` / `md` / `kv` / `sg`）。
+#   **纯数字串（`90%` / `200` / `380`）永远不单独算证据**——P7 #5 早定过「一个词 + 同一天」
+#   分不开「2月1号上线」和「2月1号发工资」；实测三条误判（病理诊断 90% / 交通 90% / ICT 90%
+#   全都沾上「AI 写的代码现在 90% 以上」）的全部依据就是那个 `90%`。数字要配一个词才算数。
+#   **再严一档（「只要含数字就不单独算」，那样 `3月15` / `10台到` 也进不来）量过、没要**：
+#   全库只多砍 5 对，逐条读下来 3 条是撞的（`10台到货` 撞 `10台到20台`）、**2 条是真的**
+#   （「3 月 15 日媒体及投资人版本」对上「2.0 版本…2026年3月15日」）。**误伤比漏报贵，不换。**
+#   「是不是实体」在 P29 被否掉过，那是因为**它当时是唯一的闸、盖在所有对上**，
+#   连 `cpu+npu` / `第二款产品` 这种真沾边一起砍（6/28）。这里它只当**单串那一档的放行条件**，
+#   从不用来否掉任何东西——泛词那一关已经先过了。**判据宁可窄。**
+#
+# **量出来的**（全库 767 条自动召回查询 / 1888 对，抽样 47 对逐条读，见台账 P32 #1）：
+# 「硬」16 → 14、「不硬」27 → 6（误判率 57% → 27%）。
+# 汉字门槛 **4 比 5 好**：5 会多砍一条「硬」，一条「不硬」都不多砍。
+# 英文门槛 **3 比 4 好**：4 只多砍 1 条标注过的「不硬」（`get`），代价是全库多砍 44 对，
+# 里头 `ict` ×27 / `cpu` ×6 / `erp` ×5 都是这个库里实打实的专业词——**误伤比漏报贵**。
+EVIDENCE_CJK_MIN = 4
+EVIDENCE_EN_MIN = 3
+
+
+def evidence_runs(hits: list[str], query: str) -> list[str]:
+    """命中的词在**查询里**合并出来的证据串。**重叠才合、相邻不合**（同 P27）。
+
+    相邻不合是有理由的：「成本高」紧跟着「效率低」是两个词，合成一串会把两条证据压成一条；
+    反过来 `池容量` 和 `电池容` 重叠，它们是同一个词，不合就会被数成两条。
+    """
+    squeezed = _WS.sub("", (query or "").lower())
+    spans: list[list[int]] = []
+    loose: list[str] = []
+    for h in _clusters(hits):
+        found = False
+        start = 0
+        while True:
+            i = squeezed.find(h, start)
+            if i < 0:
+                break
+            spans.append([i, i + len(h)])
+            found = True
+            start = i + 1
+        # 在查询里定位不到的（`_hits` 的「去空格再比一次」那条路、或者调用方自己塞进来的词）
+        # **各自算一串**，不要静默丢掉——丢掉等于把这条召回判死，那是最贵的那种错。
+        if not found:
+            loose.append(h)
+    spans.sort()
+    merged: list[list[int]] = []
+    for a, b in spans:
+        if merged and a < merged[-1][1]:          # 严格重叠才合
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return [squeezed[a:b] for a, b in merged] + loose
+
+
+def _why(run: str, attested) -> str:
+    """这条证据串**凭什么**算证据：`vocab` / `span` / `pair`（`pair` = 单独不够硬）。"""
+    if attested is not None and attested(run):
+        return "vocab"
+    if run.isascii():
+        # 纯数字 / 日期串（`90%` `200` `5月1` 去掉汉字之后）单独永远不够——见上面 P7 #5 那条
+        return "span" if run[:1].isalpha() and len(run) >= EVIDENCE_EN_MIN else "pair"
+    return "span" if len(run) >= EVIDENCE_CJK_MIN else "pair"
+
+
+def evidence(hits: list[str], query: str, *, common=None, attested=None) -> list[dict]:
+    """每条**合格**证据串 + 它凭什么算证据。
+
+    `common(串) -> bool`：这个词在这个人的库里到处都是（`UserMemory.common_term`，P29）。
+    `attested(串) -> bool`：这个词是这个人词表里的表层词（`UserMemory.vocab_term`）。
+    两个都可以是 `None` = 那一档不启用（假的 memory / 建不出索引），**不启用就是原样**。
+
+    `why` 是给用户看的那句「为什么这个词算证据」的原料：
+    `vocab` = 它是你知识库里的一个词条；`span` = 这么长的一段原话逐字对上；`pair` = 跟别的词一起命中。
+    """
+    runs = evidence_runs(hits, query)
+    out: list[dict] = []
+    for r in runs:
+        if common is not None and common(r):
+            continue
+        out.append({"term": r, "why": _why(r, attested)})
+    return out
+
+
+def qualifies(hits: list[str], query: str, *, common=None, attested=None) -> bool:
+    """这条召回拿不拿得出证据。
+
+    用户**主动搜一个词**时不走这条（`len(query) <= _SHORT_QUERY`，跟 `_terms` 兜底同一个边界）：
+    那时候那个词就是查询本身，要求它「再拿出第二条证据」等于搜不出东西。
+    """
+    if len((query or "").strip()) <= _SHORT_QUERY:
+        return bool(hits)
+    ev = evidence(hits, query, common=common, attested=attested)
+    if not ev:
+        return False
+    if len(ev) >= 2:
+        return True
+    return ev[0]["why"] != "pair"
+
+
 def display_terms(terms: list[str], query: str) -> list[str]:
     """给右栏看的查询词：英文词 / 数字原样；中文 n-gram 片段（「小时预」「号上众」「并以」）合成它们在
     查询里连成的整段、再剥掉两端的虚词——用户看到的是「众筹」「学位」这种词，不是切碎的三个字（P4 #6）。
@@ -350,7 +470,8 @@ def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
     return [t for t in terms if t in hit][:8]
 
 
-def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dict]:
+def rank(rows: list[dict], query: str, memory, store, *, limit: int,
+         evidence: bool = False, common=None, attested=None) -> list[dict]:
     """Order the pool by how much of the query each fact contains.
 
     Score is the total length of the query terms found in the fact's text.
@@ -391,6 +512,11 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int) -> list[dic
         hits = _hits(terms, text)
         # 长查询（自动召回）：只靠一个泛词命中的候选不要——那不是相关，是凑数（P4 #6）
         if long_query and not _strong_enough(hits):
+            return (0, row.get("date") or "")
+        # 拿不出**合格证据**的不要（P32 #1）。跟上面那条不是一回事：那条只在 ≥100 字时看
+        # 「有没有两个不同的 cluster」，这条在任何长度上问「这两条到底凭什么算相关」——
+        # 实体加分也不能让一条**一个查询词都没命中**的事实凭空进来（那样面板连「命中：」都写不出）。
+        if evidence and not qualifies(hits, query, common=common, attested=attested):
             return (0, row.get("date") or "")
         s = sum(len(t) + (2 if t[0].isdigit() else 0) for t in hits)
         # 同一个词出现不止一次再加一点（每多一次 +1，最多 +2）：查询只剩一个内容词时（「…no ideas now but

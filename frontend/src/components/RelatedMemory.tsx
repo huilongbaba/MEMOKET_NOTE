@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { clickable } from '../util/clickable'
 import { memoryRelations, memoryScope, recall, SCOPE_LABEL, setMemoryScope, type MemoryScope } from '../api'
-import type { Fact, MemoryRelation } from '../api'
+import type { Fact, MemoryRelation, RecallEvidence } from '../api'
 import { stripForRecall } from '../util/wordCount'
-import { factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
-import { KB_EMPTY_DOTS_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RELATION_LABEL } from '../editor/marginMemory'
+import { evidenceLine, factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
+import { KB_EMPTY_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
 import { requestTrayAdd } from '../util/tray'
@@ -48,6 +48,9 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   const [loading, setLoading] = useState(false)
   // 按什么查的（整词）、空着的原因、这次是按光标段还是末尾（P4 #6 / #7）
   const [terms, setTerms] = useState<string[]>([])
+  // 每个命中**凭什么算证据**（计划 §2 A5）：光说「命中：再决定」不够——P31 实拍那一条
+  // 说对了自己在干什么，干的这件事本身是错的。
+  const [evidence, setEvidence] = useState<RecallEvidence[]>([])
   const [whyEmpty, setWhyEmpty] = useState<'' | 'no_terms' | 'weak'>('')
   const [mode, setMode] = useState<'cursor' | 'tail'>('tail')
   const lastQueried = useRef('')
@@ -92,13 +95,13 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   // 用户在顶部写华为芯片、右栏是尾段恒瑞翻译的记忆）。零模型，每次 ~100ms。
   useEffect(() => {
     const q = recallQuery(content, paragraph)
-    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setWhyEmpty(''); return }
+    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setEvidence([]); setWhyEmpty(''); return }
     if (q.query === lastQueried.current) return
     const t = setTimeout(() => {
       lastQueried.current = q.query
       setLoading(true)
       recall(q.query, RECALL_LIMIT)
-        .then((r) => { setFacts(r.facts); setTerms(r.terms ?? []); setWhyEmpty(r.why_empty ?? ''); setMode(q.mode) })
+        .then((r) => { setFacts(r.facts); setTerms(r.terms ?? []); setEvidence(r.evidence ?? []); setWhyEmpty(r.why_empty ?? ''); setMode(q.mode) })
         .catch(() => {})
         .finally(() => setLoading(false))
     }, IDLE_MS)
@@ -129,6 +132,21 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
       </p>
       {/* 规则写在界面上（P1-1d）：一个点 = 一段、为什么只有含数字的段、六种颜色各是什么、
           光标停下 0.9s 查哪段、下面的记忆按什么召回。用户第 768 轮问的就是这几句。 */}
+      {/* 空库（第一天的用户）：这四段图例的信息量是零，却占掉大半屏（P31 #8）——
+          换成一句话 + 导入入口，规则收进 `<details>`，想看再展开。 */}
+      {kbEmpty ? (
+        <div className="muted mem-legend mem-legend-empty" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
+          {KB_EMPTY_NOTE}
+          <button className="primary" style={{ fontSize: 'var(--t-sm)', padding: '2px 8px', marginInlineStart: 6 }}
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}>
+            <Icon n="bx-import" /> 导入
+          </button>
+          <details style={{ marginTop: 4 }}>
+            <summary style={{ cursor: 'pointer' }}>页边圆点和这份记忆是怎么来的</summary>
+            {MARGIN_RULE}。{MODEL_NOTE}
+          </details>
+        </div>
+      ) : (
       <p className="muted mem-legend" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
         {MARGIN_RULE}：
         {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
@@ -136,9 +154,9 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
         ))}
         <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按光标所在段（带前一段、约 {RECALL_CONTEXT_BEFORE} 字）召回，光标不在正文里时按末尾 {TAIL_CHARS} 字。
         <br />{MODEL_NOTE}
-        {kbEmpty && <><br />{KB_EMPTY_DOTS_NOTE}</>}
-        {!kbEmpty && noRecordDots > 0 && <><br /><span className="mem-no-record-note">{noRecordNote(noRecordDots)}</span></>}
+        {noRecordDots > 0 && <><br /><span className="mem-no-record-note">{noRecordNote(noRecordDots)}</span></>}
       </p>
+      )}
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>
           <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>光标这段跟知识库的关系{relBusy && <> <span className="spinner" /></>}</div>
@@ -180,7 +198,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
       {/* 为什么给我看这几条（A5 的第一步）：按哪几个词找的、按光标段还是末尾 */}
       {facts.length > 0 && !loading && (
         <p className="muted mem-terms" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px' }}>
-          按{mode === 'cursor' ? '光标这段' : '正文末尾'}找的{terms.length ? '，命中：' + terms.slice(0, 6).join('、') : ''}
+          {evidenceLine(mode, evidence, terms)}
         </p>
       )}
       {facts.length === 0 && !loading && (

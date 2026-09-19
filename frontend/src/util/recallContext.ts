@@ -53,3 +53,32 @@ export function factInBody(fact: string, content: string): boolean {
   }
   return false
 }
+
+/** 「为什么给我看这条」里的那半句：**这个词凭什么算证据**（计划 §2 A5）。
+ *
+ *  P31 实拍：面板写着「命中：再决定」——**它说对了自己在干什么，干的这件事本身是错的**。
+ *  光报命中了哪个词不够，得说清那个词为什么算数。三种理由来自后端 `kb/search.evidence`：
+ *    · `vocab` —— 它是你知识库里的一个词条（实体 / 主题）；
+ *    · `span`  —— 这么长的一整段原话逐字对上（≥4 个汉字 / ≥3 个字母，不可能是滑窗撞的）；
+ *    · `pair`  —— 它自己不够硬，是跟别的词**一起**命中才算数的。
+ *  `units` 是这个词在库里出现在几条记录里，给「为什么」一个量。 */
+export function evidenceWhy(e: { why: string; units: number }): string {
+  const why = e.why === 'vocab' ? '知识库里的词条'
+    : e.why === 'span' ? '整段原话对上'
+      : '跟别的词一起才算'
+  return e.units > 0 ? `${why} · 库里 ${e.units} 条提到` : why
+}
+
+/** 右栏那一行：按什么找的、命中了什么、每个命中凭什么算证据。
+ *  后端没给 `evidence`（老版本 / 出错兜底）就退回原来那句「命中：X、Y」。 */
+export function evidenceLine(
+  mode: 'cursor' | 'tail',
+  evidence: { term: string; why: string; units: number }[],
+  terms: string[],
+): string {
+  const head = '按' + (mode === 'cursor' ? '光标这段' : '正文末尾') + '找的'
+  if (evidence.length) {
+    return head + '，命中：' + evidence.slice(0, 3).map((e) => `${e.term}（${evidenceWhy(e)}）`).join('、')
+  }
+  return head + (terms.length ? '，命中：' + terms.slice(0, 6).join('、') : '')
+}

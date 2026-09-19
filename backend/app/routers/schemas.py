@@ -614,10 +614,24 @@ class RecallIn(BaseModel):
     scope: str = "all"      # 记忆范围：all / notes / meetings / imports（database/kb/scope.py）
 
 
+class EvidenceOut(BaseModel):
+    """一条召回证据 + 它凭什么算证据（P32 / 计划 §2 A5）。
+
+    `why`：`vocab` = 知识库里的一个词条；`span` = 这么长的一整段原话逐字对上；
+    `pair` = 它自己不够硬，跟别的词一起命中才算数。`units` = 库里有几条记录提到它（df）。
+    """
+    term: str
+    why: str = "pair"
+    units: int = 0
+
+
 class RecallOut(BaseModel):
     facts: list[FactOut]
     took_ms: float
     terms: list[str] = Field(default_factory=list)
+    # 「命中：X」之外还得说清**为什么这个 X 算证据**（A5）——P31 实拍：面板写着「命中：再决定」，
+    # 它说对了自己在干什么，干的这件事本身是错的。
+    evidence: list[EvidenceOut] = Field(default_factory=list)
     # 知识库一条事实都没有。**「没查到」和「库是空的」得分得开**：前者该劝人
     # 换个说法再试，后者该劝人去导入。第 676 轮在写作闭环里修过一次，第 677 轮
     # 实拍发现 `@` 引用这条路上同样在说「知识库里没找到跟"样机"相关的记录」
