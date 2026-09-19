@@ -10,7 +10,7 @@ import { matchSnippet } from './util/snippet'
 import { readingMinutes, stripForRecall, wordCount, citationRanges, noteLinkRanges, citedFactIds, linkedNoteIds } from './util/wordCount'
 import { isSpeakerTag } from './util/kbNoise'
 import { friendlyError, isBackendDown, isLlmUnreachable } from './util/friendlyError'
-import { llmGateMessage, notePrecondition } from './editor/preconditions'
+import { NOT_CONFIGURED, healthMessage, llmGateMessage, notePrecondition } from './editor/preconditions'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
 import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
@@ -392,7 +392,8 @@ export default function App() {
       const h = await api.health()
       // LLM 不通是硬伤，红字常驻；语音是可选服务（没配 ASR 的用户是多数），
       // 只给一个灰色的「语音离线」，悬停看地址——之前一行 ⚠ 长期挂着像出了事故。
-      setHealthMsg(!h.llm?.ok ? 'LLM 不可达 (' + h.llm?.base_url + ')' : '')
+      // 没配过模型就说「还没配模型」，不报一个用户没有的地址（P19 #1 / P17 #1；`editor/preconditions.healthMessage`）
+      setHealthMsg(healthMessage(h.llm ?? {}))
       setAsrOffline(!h.asr?.ok ? (h.asr?.base_url ?? '') : '')
     } catch { setHealthMsg('后端不可达') }
   }
@@ -4022,7 +4023,11 @@ export default function App() {
           </span>}
           {/* 红字可点：装好的包第一次开、或换了台机器没填模型，红字只说「不可达」用户不知道去哪修 */}
           {healthMsg && (
-            <button className="health-bad linklike" title="点开设置页填模型地址 / 密钥" onClick={() => void openVirtual('app:settings', '设置')}>
+            <button className="health-bad linklike"
+                    title={healthMsg === NOT_CONFIGURED
+                      ? '还没配过模型：打开设置，选「本地模型」填地址和模型名，或选「OpenAI 兼容」填 key'
+                      : '点开设置页填模型地址 / 密钥'}
+                    onClick={() => void openVirtual('app:settings', '设置')}>
               <Icon n="bx-error" /> {healthMsg} · 去设置
             </button>
           )}

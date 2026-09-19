@@ -30,6 +30,8 @@ from . import store
 _BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 ASSET_REF = re.compile(r"/api/assets/([a-f0-9]{24}\.[a-z0-9]+)")
 NOTE_LINK = re.compile(r"\]\(note://([a-f0-9]{12})\)")
+# 整条 `[标题](note://id)`——单篇导出时把没一起导的那几条整条换成纯文字（P19 #4 / P17 #10）
+NOTE_LINK_FULL = re.compile(r"\[([^\]\n]*)\]\(note://([a-f0-9]{12})\)")
 
 # ---------------------------------------------------------------- mermaid → 图（P18 #4）
 #
@@ -113,10 +115,18 @@ def yaml_scalar(value: str) -> str:
     return json.dumps(v, ensure_ascii=False)
 
 
-def note_body(n: dict, paths: dict[str, str] | None = None, depth: int = 0) -> tuple[str, set[str]]:
+def note_body(n: dict, paths: dict[str, str] | None = None, depth: int = 0,
+              exported: set[str] | None = None) -> tuple[str, set[str]]:
     """一篇笔记的导出正文：front-matter（memoket_id 是导回时按 id 覆盖的依据）+ 正文，
     资产链接改成相对路径（按这篇所在的目录深度补 `../`，P2 报告 §4.17），
-    `[标题](note://id)` 改成指向对方 .md 的相对链接（§4.13；`paths` 是整棵树的 id → 路径）。"""
+    `[标题](note://id)` 改成指向对方 .md 的相对链接（§4.13；`paths` 是整棵树的 id → 路径）。
+
+    ``exported``：**这一次真正写出去的是哪几篇**（P19 #4 / P17 #10）。单篇导出时 `paths` 仍是
+    整棵树（路径要按树算），于是 `[试菜单](note://…)` 被改写成 `[试菜单](<试菜单.md>)`——
+    而那个文件这次根本没导，vault 里点开是一个死链（实拍 P17 第 8 步）。给了这个集合就只改写
+    集合里的；不在的**退回纯文字**（跟飞书 / Notion 那边 `note://` 的处置一致：对面点不开就只留字），
+    并在后面缀一句「（未导出）」，让人知道这里原来有个链接、指向本地还有一篇。
+    ``None`` = 整棵树都导（老行为，全部改写）。"""
     front = (f"---\nid: {n['id']}\nmemoket_id: {n['id']}\ntitle: {yaml_scalar(n['title'] or '')}\n"
              + (f"icon: {yaml_scalar(n['icon'])}\n" if n.get("icon") else "")          # 笔记图标随身带，导回 / 再导入认得
              + f"created: {n['created_at']}\nupdated: {n['updated_at']}\n---\n\n")
@@ -125,6 +135,16 @@ def note_body(n: dict, paths: dict[str, str] | None = None, depth: int = 0) -> t
     up = "../" * depth
     body = ASSET_REF.sub(lambda m: f"{up}_assets/{m.group(1)}", body)
     if paths:
+        # 先把「这次没一起导出」的那几条整条换成纯文字（链接语法一起去掉），剩下的才改写成相对链接。
+        # 顺序不能反：反过来的话第二步看到的已经是 `](<路径>)`，认不出它原来指向哪篇（P19 #4）。
+        if exported is not None:
+            def _plain(m: re.Match) -> str:
+                nid = m.group(2)
+                if nid not in paths or nid in exported:
+                    return m.group(0)             # 库里没有这篇 / 这次导了：交给下一步
+                return f"{m.group(1)}（这篇没一起导出）"
+            body = NOTE_LINK_FULL.sub(_plain, body)
+
         def _link(m: re.Match) -> str:
             target = paths.get(m.group(1))
             if not target:
@@ -193,7 +213,9 @@ def render_tree(user: str, only: set[str] | None = None) -> list[ExportFile]:
             continue
         if only is not None and n["id"] not in only:
             continue
-        body, assets = note_body(n, written, depth=path.count("/"))
+        # `only` 给了就是「只导这几篇」：笔记间链接只改写指向这几篇的，其余退回纯文字（P19 #4）
+        body, assets = note_body(n, written, depth=path.count("/"),
+                                 exported=None if only is None else set(only) & set(written))
         out.append(ExportFile(path=path, content=body, note_id=n["id"],
                               title=display_title(n["title"], n["content"]), assets=assets))
     return out

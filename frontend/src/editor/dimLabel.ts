@@ -68,6 +68,7 @@ const CHECKS: Record<string, string> = {
   chart_restates_list: '图只是把清单再画一遍',
   language_consistent: '换了语言',
   no_foreign_script: '混进了乱码字符',
+  no_junk_tail: '段末贴了句垃圾',
   section_budget: '这一节还没写够',
   chart_numbers_grounded: '图里的数字没依据',
   chart_readable: '图读不出来',

@@ -46,8 +46,23 @@ const COLON_HEAD = /^(.{1,16}?)\s*[：:]\s*$/
 const PARA_MIN_CHARS = 20
 const FALLBACK_MAX = 200
 
+/** 目录里那一行要的是**读得懂的字**，不是 markdown 源码（P19 #4 / P17 #11）。
+ *  实拍：只有一个链接的段落在「计划」页签里列成 `[试菜单](note://9aab…)`（`p17-12-new-dark-plan`）——
+ *  一串 id 占满整行，人看不出那是哪篇。这里把链接 / 强调 / 行内代码 / 图片的语法壳剥掉，只留标签文字。 */
+export function stripInline(s: string): string {
+  return s
+    .replace(/!\[([^\]\n]*)\]\([^)\s]*\)/g, (_m, alt) => (alt ? `图：${alt}` : '图'))   // 图片：留 alt
+    .replace(/\[([^\]\n]*)\]\([^)\s]*\)/g, '$1')                                      // 链接：留标签
+    .replace(/\[\[([^\]|\n]*\|)?([^\]\n]*)\]\]/g, '$2')                                 // wiki 链接：留标签
+    .replace(/`([^`\n]*)`/g, '$1')                                                      // 行内代码
+    .replace(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/g, (_m, a, b) => a ?? b)                   // 粗体
+    .replace(/(?<![*\w])\*([^*\n]+)\*(?!\*)/g, '$1')                                    // 斜体
+    .replace(/~~([^~\n]+)~~/g, '$1')                                                    // 删除线
+    .trim()
+}
+
 function firstSentence(s: string): string {
-  const t = s.replace(/^[-*>\s]+|^\d+[.、]\s*/g, '').trim()
+  const t = stripInline(s.replace(/^[-*>\s]+|^\d+[.、]\s*/g, '').trim())
   const m = t.match(/^(.{4,28}?)(?:[。！？；!?;]|$)/)
   const head = m ? m[1] : t.slice(0, 28)
   return head.length < t.length ? head + '…' : head
@@ -73,7 +88,7 @@ export function parseFallbackAnchors(content: string): FallbackOutline {
   if (cur) paras.push(cur)
   const colon = paras.filter((p) => p.len <= 17 && COLON_HEAD.test(p.first))
   if (colon.length >= 3) {
-    return { how: 'colon', items: colon.slice(0, FALLBACK_MAX).map((p) => ({ level: 1, text: p.first.replace(/\s*[：:]\s*$/, ''), pos: p.pos })) }
+    return { how: 'colon', items: colon.slice(0, FALLBACK_MAX).map((p) => ({ level: 1, text: stripInline(p.first.replace(/\s*[：:]\s*$/, '')), pos: p.pos })) }
   }
   const long = paras.filter((p) => p.len >= PARA_MIN_CHARS)
   if (long.length >= 2) {

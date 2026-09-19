@@ -93,6 +93,14 @@ FALLS_IN_BUCKET = {
     ("note", (True, True), "no_foreign_script"),
     ("section", (False, False), "no_foreign_script"),
     ("section", (True, False), "no_foreign_script"),
+    # P19 #5：中文垃圾尾巴跟乱码字符是一对——同一维（`fits_context`，长文没有）、同样带 `fix`，
+    # 所以落桶的格子一模一样。
+    ("note", (False, False), "no_junk_tail"),
+    ("note", (False, True), "no_junk_tail"),
+    ("note", (True, False), "no_junk_tail"),
+    ("note", (True, True), "no_junk_tail"),
+    ("section", (False, False), "no_junk_tail"),
+    ("section", (True, False), "no_junk_tail"),
     # 长文没有 `fits_context`（那是六个 block 模式的维度）。
     ("note", (False, False), "outline_intact"),
     ("note", (False, True), "outline_intact"),

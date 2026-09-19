@@ -169,6 +169,8 @@ async def health():
     active = store.get_active_llm_config()
 
     async def llm_healthy() -> bool:
+        if not store.llm_configured()["configured"]:
+            return False        # 出厂默认：不去敲一个谁都没配的地址
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 r = await client.get(f"{active['base_url']}/models",
@@ -190,7 +192,8 @@ async def health():
         rss_now_mb = 0
     return {
         "status": "ok",
-        "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"]},
+        # `configured`（P19 #1）：没配过模型（出厂默认）时前端说「还没配模型 → 去设置」，不报地址
+        "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"], **store.llm_configured()},
         "asr": {"ok": asr_ok, "base_url": store.get_asr_base_url()},
         # 观测用：后端进程峰值 RSS（MB）和现在抱着几个知识库索引
         "memory": {"rss_peak_mb": rss_mb, "rss_mb": rss_now_mb, **UserMemory.cache_info()},
