@@ -298,8 +298,27 @@ class NoteHooks:
         # `dry_rounds` 只对留下的算），而且剔不到 `relevance.MIN_KEPT` 条以下。
         context = "\n".join([title or "", spine or "", *beats, st.content,
                              relevance.queries_of(trace.calls)])
+
+        def _refill() -> list[str]:
+            """剔到下限了 —— **再检索一次**，不是把刚判过的抽样行塞回来（P28 #2③）。
+
+            走的是这个文件里已经用过两次的那条零模型关键词检索（`trace.error` 兜底
+            用的同一条）：它按标题 / 骨架 / 正文的词去命中，**不是「从一个上千条的桶里
+            按时间取 15 条」**——而「抽样」正是 `relevance` 判无关的唯一来处，
+            所以这批新材料按 gate 自己的判据本来就一条都不该被剔。
+            不花模型调用、几毫秒，失败了就返回空、由 `gate` 退回旧的兜底。
+            """
+            try:
+                more, _ids, _took = _retrieve(
+                    st.ctx.user, st.content, spine, beats, limit=6,
+                    title=title, anchor_first=True, scope=st.ctx.scope)
+                return list(more)
+            except Exception:                                # noqa: BLE001
+                return []                                    # 取材料不承重
+
         facts, dropped = relevance.gate(facts, trace.calls, context,
-                                        apply=params.RELEVANCE_FILTER)
+                                        apply=params.RELEVANCE_FILTER,
+                                        refill=_refill)
         st.bag["facts_irrelevant"] = dropped
         st.bag["facts_irrelevant_dropped"] = bool(params.RELEVANCE_FILTER)
         st.bag["facts_irrelevant_total"] = int(st.bag.get("facts_irrelevant_total") or 0) + len(dropped)

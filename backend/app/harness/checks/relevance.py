@@ -51,6 +51,22 @@ P8 记着一条没筛住的：da080 / e783 的 prompt 里各进了 9 / 6 条 `ap
 3a3a 12 条全剔 → `material_thin` 弃答（70% → 40%）；token 翻倍。计划铁律第 7 条：让产出变差的退回去。
 所以 `gate(apply=False)` 是默认——「本该剔的」照样算出来进 `round_summary.facts_irrelevant`，
 材料一条不动；开关打开时也剔不到 `MIN_KEPT` 条以下。
+
+## P28：开开关之前的三条前置（**开关照旧默认关**）
+
+P26 在 P24 那 5 跑上量出「开着会怎样」，并留下三条「开之前必须先做对」的。P28 做的就是这三条，
+`RELEVANCE_FILTER` 一个字没动 —— 开不开还是要等编辑信号那张表（`middleware/edits.py` 采的）
+攒出「用户留没留」（P8b 的教训）。**这一段只提采集口、不写那张表的名字**：
+「只采集不调参」那条闸是按表名 grep 整个 `app/` 的（docstring 也算），写上就把它变红了。
+
+1. **回填顺序确定下来。** 夹逼回填的候选 `scored` 全是 0（它们正是因为零重合才被剔的），
+   只按 `-scored[i]` 排就是按 `set` 的迭代序，**跟 `PYTHONHASHSEED` 走**。
+   P28 在 P26 那 5 跑 r1 上实测复现（`<scratch>/p28/m2_gate.py`，`facts_irrelevant` 跟记录 5/5 全同）：
+   `3a3a96354546` seed 0 塞回 `{12F2, 12F8}`、seed 1 `{8F6, 12F8}`、seed 2 `{8F6, 12F9}`；
+   `da080ca847cf` seed 0 `{12F2}`、seed 1/2 `{8F6}`。**开关一开，prompt 就是跨进程不可复现的**，
+   任何 A/B 都做不了。第二个排序键是材料在 `facts` 里的位置（检索给的次序）。
+2. **context 那一侧也剥编号**（`strip_ids`，量在它的 docstring 里）。
+3. **剔到下限先再检索一次**（`gate(refill=…)`），而不是把刚判过的抽样行塞回去。
 """
 
 from __future__ import annotations
@@ -69,6 +85,11 @@ _SUFFIX = re.compile(r"（[^）]{0,60}）\s*$")
 # `as_facts` 按行拆工具结果，「（2026-05-15 · speaker c · plan）」这种元信息行会单独成一条
 _META_LINE = re.compile(r"^（[^）]{0,80}）$")
 _BATCH_HEAD = re.compile(r"^共 (\d+) 条，返回 (\d+) 条")
+# 正文里**行内**的事实编号：`[terrence-1844-16F2]`。跟 `_HEAD` 不是一回事——那个只认行首、
+# 剥的是材料行自己的前缀；这个要在一整篇正文里找（P28 #2②）。
+# **窄在「至少三段、段间连字符」这个形状上**：`[备注]` / `[Note](note://x)` 的方括号里
+# 没有两个连字符，不会被误剥。
+_CITE_IN_TEXT = re.compile(r"\[[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+){2,}\]")
 _FACT_ID_IN_RESULT = re.compile(r"^\[([A-Za-z0-9_\-]+)\]", re.M)
 _QUERY_KEYS = ("query", "question", "keyword", "keywords", "text")
 
@@ -114,6 +135,21 @@ def terms(text: str) -> set[str]:
 def fact_body(fact: str) -> str:
     """去掉材料行的编号前缀和「（日期 · 说话人 · 类型）」后缀。"""
     return _SUFFIX.sub("", _HEAD.sub("", (fact or "").strip())).strip()
+
+
+def strip_ids(text: str) -> str:
+    """把正文里行内的 `[terrence-1844-16F2]` 这种编号拿掉再抽词元（P28 #2②）。
+
+    **材料那一侧 `fact_body()` 早就剥了，context 这一侧一直没剥**——于是
+    `_NUM`（`\\d{2,}`）从编号里抽出 `1844` / `16` 当成正文的特征词，材料里那句
+    「4 月 16 号的 EVT 是纯主机的」跟它「重合」，判成相关留下来。
+    实测（P24 那 5 跑 r1，`<scratch>/p28/m2_terms.py`）：`a941efecd390` 的
+    context 里 9 个编号贡献了 **11 个纯数字词元**（`16` / `1844` / `50` / `380`…）
+    和 9 个 id 词元，**这 11 个数字没有一个在剥完编号的正文里还出现过**——
+    也就是说剥掉不会丢任何真词元。剥完 would-drop 6 → 10 行，
+    两条「4 月 16 号…」的硬件材料不再靠编号活着。
+    """
+    return _CITE_IN_TEXT.sub(" ", text or "")
 
 
 def fact_key(fact: str) -> tuple[str, bool]:
@@ -184,28 +220,44 @@ def queries_of(calls) -> str:
 
 
 # 开着筛也不许剔到这么多条以下（P8 退回）：3a3a 第 1 轮 12 条全剔 → `material_thin` → 弃答。
-# 剔到下限就停手，剩下的按重合度留最相关的。数的是**材料条**（带 id 的行 + 不带 id 的兜底行），
-# 「（日期 · 说话人 · 类型）」元信息行不算一条。
+# 数的是**材料条**（带 id 的行 + 不带 id 的兜底行），「（日期 · 说话人 · 类型）」元信息行不算一条。
+#
+# **P26 量完的判断：这个下限太松，而且它买的安全根本没买到。**（P26 #5）
+# ① 它在 4/9 个会剔的轮开火，每一次塞回来的**正是 P22 抱怨的那批材料**
+#    （`3a3a96354546` 塞回「4 月 16 号的 EVT 是纯主机的」+「EVT 准备 4 台主机，15 套 PCBA」）；
+# ② 它保的是**条数不是可用材料**——`e78306` r2 第三个名额给了「Speaker D: 对，好理解，」；
+# ③ 提到 4/5 只让更多被判过的材料回来，降到 0/1 又当场复现 P8b 的弃答。
+# **所以要调的不是它的高度**，是**补的时候补什么**：P28 #2③ 把第一顺位换成
+# `gate(refill=…)` —— 剔到下限先**再检索一次**（`hooks/note` 传的是零模型的关键词检索，
+# 来处不是 >1000 的抽样桶），补够了就一条旧的都不塞回去；`refill` 没给或它也空手，
+# 才退回这套按重合度塞回来的兜底（那是 P8b 用弃答换来的那条命，不能撤）。
 MIN_KEPT = 3
 
 
 def gate(facts: list[str], calls, context: str, *,
          min_shared: int = MIN_SHARED_TERMS, min_kept: int | None = None,
-         apply: bool = True) -> tuple[list[str], list[tuple[str, int]]]:
+         apply: bool = True,
+         refill=None) -> tuple[list[str], list[tuple[str, int]]]:
     """材料分成 ``(留下的, [(剔掉的, 重合数)])``，顺序保持。
 
     只剔「从超大主题抽样回来（或按查询取回却跟查询零重合，P11）**且** 跟 `context`（标题 + 骨架 + 正文 + 查询）零重合」的；
     元信息行 / 「的原话」行跟着母事实（前一条有 id 的）走。`context` 为空一条都不剔。
+    `context` 里行内的事实编号先被 `strip_ids()` 剥掉（P28 #2②）。
 
     `apply=False`（`params.RELEVANCE_FILTER` 关着，P8 退回后的默认）：**只记不剔**——第二项照样
-    列出「本该剔的」，第一项就是原样的 `facts`。`apply=True` 时也剔不到 `min_kept` 条以下：
-    候选按重合度从高到低补回来，直到留下的够数。
+    列出「本该剔的」，第一项就是原样的 `facts`。
+
+    `apply=True` 时剔到 `min_kept` 条以下的处理（P28 #2③，依据在 `MIN_KEPT` 上面）：
+    **先要 `refill()` 再检索一次**，它返回的新材料补进来；补够了就一条都不塞回去。
+    只有 `refill` 没给、或者它也空手时，才退回 P8 那套「把刚剔掉的按重合度塞回来」——
+    那是最后一道防线（P8b 实测第 1 轮空手 → `material_thin` 弃答，代价比材料脏大）。
     """
-    ctx = terms(context or "")
+    ctx = terms(strip_ids(context or ""))
     # 两档来处（`sampled_ids` 抽样 + `queried_ids` 按查询取回却跟查询零重合），同一道筛
     sampled = sampled_ids(calls) | queried_ids(calls)
     if not ctx or not sampled:
         return list(facts), []
+    facts = list(facts)
     scored: dict[str, int] = {}
     for f in facts:
         fid, is_src = fact_key(f)
@@ -215,14 +267,36 @@ def gate(facts: list[str], calls, context: str, *,
     # 下限在调用时读模块常量（不是默认参数绑死的那份）——测试和突变验改的就是它
     if min_kept is None:
         min_kept = MIN_KEPT
+
+    def _is_item(f: str) -> bool:
+        return not _META_LINE.match((f or "").strip())
+
     if apply and drop_ids:
         # 下限：留下的材料条（不数元信息行）不能少于 min_kept
-        def _is_item(f: str) -> bool:
-            return not _META_LINE.match((f or "").strip())
         total = sum(1 for f in facts if _is_item(f))
         # 剔掉的条数 = 那些 id 的母事实行 + 跟着走的「的原话」行
         gone_items = sum(1 for f in facts if _is_item(f) and fact_key(f)[0] in drop_ids)
-        for fid in sorted(drop_ids, key=lambda i: -scored[i]):     # 最相关的先补回来
+        if total - gone_items < min_kept and refill is not None:
+            # **剔到下限 = 重新检索的信号**，不是「把刚判过的抽样行补回三条」。
+            # 新来的这批不过这道筛：它的来处不是 >1000 的抽样桶（`sampled_ids` 只认
+            # `filter_facts` 返回头那个分母），本来就一条都轮不到被剔。
+            have = set(facts)
+            fresh = [f for f in (refill() or []) if f and f not in have]
+            facts += fresh
+            total += sum(1 for f in fresh if _is_item(f))
+        # 兜底：`refill` 没给 / 也空手 —— 才把刚剔掉的按重合度塞回来（P8b 那条命）。
+        # **顺序必须确定**（P28 #2①）：候选的 `scored` 全是 0（它们正是因为
+        # `n < min_shared` 才进这个集合的），只按 `-scored[i]` 排等于按 `set` 的迭代序，
+        # 而那个序**跟 `PYTHONHASHSEED` 走**——实测同一篇 `3a3a96354546` r1：
+        # seed 0 塞回 {12F2, 12F8}、seed 1 {8F6, 12F8}、seed 2 {8F6, 12F9}，
+        # 三个 seed 三套不同的 prompt。第二个键是**材料自己在 `facts` 里的位置**
+        # （检索给的次序），不是 id 字典序：并列时先来的先回来，读得出理由。
+        order = {}
+        for i, f in enumerate(facts):
+            fid = fact_key(f)[0]
+            if fid and fid not in order:
+                order[fid] = i
+        for fid in sorted(drop_ids, key=lambda i: (-scored[i], order.get(i, 1 << 30), i)):
             if total - gone_items >= min_kept:
                 break
             drop_ids.discard(fid)

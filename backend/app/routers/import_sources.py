@@ -69,7 +69,43 @@ NOTION_VERSION = "2026-03-11"
 # 收敛到 `error` 而不是永远 `running`），又在 `resume_job` 的续跑集里，是现有
 # 三个取值里唯一两条都满足的。真正的原因写在 item 的 `detail` 里，
 # `update_job_from_items` 会把它聚合进 job 的 detail，界面照原话显示。
-JOB_BUDGET_SECONDS = float(os.getenv("KITE_IMPORT_BUDGET_SECONDS", "3600"))
+# **3600 曾经是拍的**（P26 #4 自己写着「等一次真实的千篇导入，按 `avg_chunk_ms` × 块数
+# 换成算出来的」）。P28 换掉了：默认**按这一批自己的块数算**，`KITE_IMPORT_BUDGET_SECONDS`
+# 仍是一票否决的覆盖（`0` / 负数 = 不设上限）。
+#
+# 一个拍死的常数在两头都是错的：412 篇的正常导入（≈ 1.7 小时）会被 3600 拦腰砍断，
+# 而 3 篇的导入卡住了要等整整一小时才停。**预算该跟着工作量走。**
+#
+#   budget = 块数 × avg_chunk_ms(user) × BUDGET_SLACK，再跟 BUDGET_FLOOR_SECONDS 取大
+#
+# `store.avg_chunk_ms` 本来就存在（这个用户最近 5 个任务的每块均值，没跑过用
+# `DEFAULT_CHUNK_MS = 13000`），`/api/import` 开始前报给用户的 ETA 用的就是它——
+# **闸和 ETA 从此是同一个数算出来的**，用户看到「大概 68 分钟」就不会在 60 分钟被拦下。
+JOB_BUDGET_SECONDS: float | None = (
+    float(os.environ["KITE_IMPORT_BUDGET_SECONDS"])
+    if os.getenv("KITE_IMPORT_BUDGET_SECONDS") else None)
+
+# 每块实测有多散，决定这个倍数。库里 9 个任务 11 块（`<scratch>/p28/m5.py`）：
+# 每块 7.2 / 7.5 / 12.6 / 13.9 / 15.5 / 17.9 / 24.3 / 25.2 / 27.2 秒，均值 16.8 s、
+# **最慢一块是均值的 1.62 倍**。整批的均值收敛得比单块快，所以 2.0 是有余量的上限，
+# 而不是「刚好够」。样本小（11 块、全是 1–2 块的小任务），这件事明写在这儿：
+# 有一次真实的千篇导入之后该回来重算。
+BUDGET_SLACK = 2.0
+# 小批不该被自己的预算拦下：3 篇 × 2 块 × 13 s × 2 = 156 秒，一次网络抖动就到点了。
+# 10 分钟是「一次导入慢到这个份上，用户已经该看见『先停在这儿』那句话了」的下限。
+BUDGET_FLOOR_SECONDS = 600.0
+
+
+def job_budget_seconds(user: str, n_chunks: int) -> float:
+    """这一批的整体时间上限，秒。`0` = 不设上限（沿用 `JOB_BUDGET_SECONDS` 的约定）。
+
+    **`resume_job` 续跑时算的是剩下那几篇的块数**——`_land` 自己数 `notes`，
+    所以续跑不会拿整批的预算去跑一个尾巴，也不会拿尾巴的预算去跑整批。
+    """
+    if JOB_BUDGET_SECONDS is not None:
+        return JOB_BUDGET_SECONDS
+    return max(BUDGET_FLOOR_SECONDS,
+               n_chunks * store.avg_chunk_ms(user) / 1000.0 * BUDGET_SLACK)
 
 
 _ICON_RE = re.compile(r"bxs?-[a-z0-9-]{1,40}")
@@ -111,7 +147,9 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
     # 块与块之间——那两处本来就是这条路唯一能干净停下的地方，挂在别处只会变成
     # 「杀在一次 LLM 调用中间」，而那一块的钱已经花了、结果却丢了。
     t_job = time.perf_counter()
-    budget = JOB_BUDGET_SECONDS
+    # 算出来的，不是拍的（P28 #5）。**在这儿算而不是由调用方传**：`_queue` 和
+    # `resume_job` 两个入口给的 `notes` 不一样，续跑该按剩下那几篇算。
+    budget = job_budget_seconds(user, sum(len(_chunks(n.content)) for n in notes))
 
     def over_budget() -> bool:
         return budget > 0 and (time.perf_counter() - t_job) >= budget

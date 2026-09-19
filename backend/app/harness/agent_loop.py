@@ -125,6 +125,16 @@ class ToolTrace:
     # 跟 `dropped_depth > 0` 不是一回事：丢掉两发留下一发是正常取舍，
     # 一发不剩才是「花了一次 20-90 秒的调用、整轮什么都没拿到」。
     stopped_all_dropped: bool = False
+    # `calls` 里前几发已经变成 `tool_result` 事件发出去了（`middleware/provenance`）。
+    # **这个游标必须长在 trace 上，不能放 `st.bag`**（P28 #1）：bag 跨轮活着，而
+    # `hooks/*.prepare` 每轮 `trace = ToolTrace()` 新建一份，于是放在 bag 里的那个数
+    # 是**上一轮**的长度，第 2 轮起 `calls[already:]` 切的是这一轮的**尾巴**——
+    # 上一轮发得多这一轮就一条都报不出来，上一轮发得少就跳过这一轮开头那几发。
+    # 实测（P28，整库 489 行重放，逐轮跟 P26 那 5 跑的真事件数 21/21 全同）：
+    # 1751 发真调用只报出去 816 发，**漏 53.4%**；有调用的 409 轮里 249 轮报错数。
+    # 长在 trace 上之后它跟 `calls` 同生共死：新 trace 从 0 起，`merge()` 只往
+    # `calls` 尾部追加、游标不动，所以补图那一轮合进来的那几发照样会被报出去。
+    reported: int = 0
 
     @property
     def used(self) -> bool:

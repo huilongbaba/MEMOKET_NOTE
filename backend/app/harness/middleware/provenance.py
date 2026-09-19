@@ -34,16 +34,37 @@ class Provenance:
     after: tuple[str, ...] = ("facts",)   # Facts is what decides a call counted
 
     async def after_prepare(self, st: State) -> AsyncIterator[Event]:
+        # 游标读的是 `st.trace.reported`，**不是 `st.bag`**（P28 #1）。
+        # 原来这里是 `st.bag.setdefault("traced", 0)`：bag 跨轮活着，而
+        # `hooks/*.prepare` 每轮新建一份 `ToolTrace`，于是第 2 轮起这个数
+        # 是上一轮的长度，`calls[already:]` 切的是这一轮的尾巴——上一轮发得
+        # 多，这一轮一条都报不出来。它砍掉的是**用户那块「这一轮查了什么」
+        # 面板**（`api.ts` 的 `onToolCalls` 就吃这个事件），也砍掉了每一份
+        # 跑记录里的 `tool_calls`。整库重放：1751 发只报出 816 发（漏 53.4%）。
+        # 游标长在 trace 上之后，「新的一轮 = 新的 trace = 从 0 报起」是结构
+        # 保证的，不靠谁记得去清一个键。
         if st.trace is not None and st.trace.used:
-            already = st.bag.setdefault("traced", 0)
-            for name, args, result in st.trace.calls[already:]:
+            for name, args, result in st.trace.calls[st.trace.reported:]:
                 yield Event.tool_result(name, args, result or "")
-            st.bag["traced"] = len(st.trace.calls)
+            st.trace.reported = len(st.trace.calls)
 
         yield Event.custom(CUSTOM_ROUND, {
             "round": st.round,
             "max_rounds": st.mode.max_rounds,
             "facts": len(st.facts_new),
+            # ⑤ 这一轮真发了几发工具调用（P28 #1）。**它是上面那几条
+            # `tool_result` 事件的分母**：两个数对不上就是事件漏了，而 P28 之前
+            # 漏了 13 批没人看见——跑记录里只有事件、没有任何一个数说「本该有
+            # 几条」，P26 想数材料只能绕过去量。取值表（§21「每个取值都写得进去吗」）：
+            #   0   —— 打磨轮 / 只清理轮（`hooks/note.prepare` 那两个 early return）、
+            #          `AGENT_TOOLS` 关着那一档、以及模型这一轮一个工具都没发。**写得出**
+            #          （P26 那 5 跑 21 轮里有 3 轮是 0）。
+            #   N>0 —— 正常的检索轮；补图那一轮 `trace.merge()` 合进来的也算在内。
+            #   键不在 —— **一次都写不出来**，这一行无条件发。`State.trace` 的默认值
+            #          是 `None`（单测里直接摆一个 State 就是这种），那一档也照发 0
+            #          而不是省略这个键——「没有 trace」和「有 trace、零调用」在**面板**上
+            #          是同一句话（这一轮没查东西），分开只会多一档没人读得懂的空。
+            "tool_calls": (len(st.trace.calls) if st.trace is not None else 0),
             "sources": st.facts_new[:6],
             "revisions_applied": st.bag.get("revisions_applied", 0),
             "skipped_continue": bool(st.bag.get("cleanup_only")),

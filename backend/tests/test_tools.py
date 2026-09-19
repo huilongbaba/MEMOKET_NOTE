@@ -735,13 +735,19 @@ def test_ToolTrace_merge_每个字段都合并了():
     逐字段过一遍而不是读实现的源码：**一条跟着被测实现一起写的断言，没有在
     断言任何东西**（台账 §21）。做法是每次只把 `other` 的一个字段设成非默认，
     合并之后 `base` 必须跟着变。
+
+    **`reported` 是唯一一个明确不合并的字段**（P28 #1）：它不是这次工具循环采到的
+    信号，是「`calls` 里前几发已经变成事件发出去了」这个游标。`merge` 把
+    `other.calls` 追加在尾部，`base` 自己报到哪儿一个字都没变——跟着合过来反而会
+    把补图那一轮合进来的调用当成已经报过的跳掉。所以它单独一条反向断言，
+    不是从上面那张表里漏掉的。
     """
     import dataclasses
 
     fields = [f.name for f in dataclasses.fields(al.ToolTrace)]
-    assert set(fields) == {"calls", "iters", "truncated", "error",
-                           "barren_calls", "stopped_barren",
-                           "dropped_depth", "stopped_all_dropped"}, \
+    merged = {"calls", "iters", "truncated", "error", "barren_calls",
+              "stopped_barren", "dropped_depth", "stopped_all_dropped"}
+    assert set(fields) == merged | {"reported"}, \
         "ToolTrace 加了新字段：merge 和这条闸都要跟着改"
 
     nondefault = {
@@ -749,12 +755,21 @@ def test_ToolTrace_merge_每个字段都合并了():
         "error": "boom", "barren_calls": 1, "stopped_barren": True,
         "dropped_depth": 1, "stopped_all_dropped": True,
     }
-    for name in fields:
+    for name in sorted(merged):
         base = al.ToolTrace()
         other = al.ToolTrace(**{name: nondefault[name]})
         base.merge(other)
         assert getattr(base, name) == nondefault[name], \
             f"merge 漏掉了 {name}——第二次工具循环的这个信号会静默消失"
+
+    # 反向：游标不许跟着动。**两个值取不同**，否则 `self.reported = other.reported`
+    # 这一刀在「两边都是 1」的素材上照样绿（§21：素材过得了门槛不等于它走到了那个分支）。
+    # 真正把这件事钉死的是 `tests/test_p28.py::test_补图那一轮合进来的那几发也要报出去`
+    # ——它查的是**后果**（合进来的那几发还报不报得出去），这里查的是字段本身。
+    base = al.ToolTrace(calls=[("t", {}, "r")], reported=1)
+    base.merge(al.ToolTrace(calls=[("u", {}, "r2")], reported=7))
+    assert base.reported == 1, \
+        "merge 动了 reported——补图那一轮的调用会被当成已经报过的跳掉"
 
 
 # --------------------------------------------- 批 24 R1：写回去的那一侧也要归一
