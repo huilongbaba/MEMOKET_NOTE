@@ -191,6 +191,47 @@ export function steerEchoedByPrev(r: AgentRound, prev?: AgentRound): boolean {
   return !!r.steerDim && r.steerDim === prev.weakest && sameDiag(stripDim(r.steer), prevNote)
 }
 
+// ------------------------------- ⚑ 那一摞：同一句判据抬头只说一遍（P35 走查 #6）---
+//
+// P33 把 A / B / C 三处诊断合了，**⚑ 与 ⚑ 之间没合**。P35 实拍（`p35-6a-old-rounds-light`）：
+// 一次三轮的智能续写，右栏 3396 字里
+// 「代码判据 你定的完成标准 判了事实依据不合格（19 条里的第 14 条），这一轮没再花模型调用去打分。」
+// 这一句 **45 字的抬头印了 5 遍**（第 2 轮两遍、第 3 轮两遍相邻 + 第 1 轮一遍），
+// 占掉 225 字 ≈ 6.6%，而真正不一样的只有后面那半句。
+//
+// **只合相邻的、抬头逐字相同的**（同一条判据 + 同一维 + 同一个「第几条」，
+// 且两条都不是「卡住放行」/「收工」那种特例）——
+// 不跨位置抓取、不做近似匹配：§21 判据宁可窄，合错了等于告诉用户
+// 「这两条是同一条判据判的」，而那可能是句假话。
+
+export type CheckHitGroup = { head: CheckHit; notes: string[] }
+
+function hitKey(h: CheckHit): string | null {
+  if (h.stuck_rounds || h.stopped) return null     // 这两种各自只会出现一条，不参与合并
+  return `${h.check ?? ''} ${h.dimension ?? ''} ${h.ran ?? ''}`
+}
+
+/** 相邻且抬头一样的 ⚑ 并成一条：抬头说一次，判词逐条列。 */
+export function groupCheckHits(hits: CheckHit[]): CheckHitGroup[] {
+  const out: CheckHitGroup[] = []
+  for (const h of hits) {
+    const k = hitKey(h)
+    const last = out[out.length - 1]
+    if (k !== null && last && hitKey(last.head) === k) { last.notes.push(h.note); continue }
+    out.push({ head: h, notes: [h.note] })
+  }
+  return out
+}
+
+/** 判据抬头里那个括号。**维度为空就连括号一起不要**——后端的收工通知
+ * （`middleware/checks.after_run`）发的是 `dimension: ""`，原来照直拼出
+ * 「你定的完成标准**（）**已经连着 3 轮…」，看着像程序出错（P35 走查 #7，
+ * 跟 P31 #4 那对空引号是同一个形状）。 */
+export function dimParen(dim: string | undefined): string {
+  const s = dimLabel(dim || '')
+  return s ? `（${s}）` : ''
+}
+
 /** 0/1/2 三档画成三格信号条——比纯数字更容易一眼扫过一排维度看出哪个塌了。 */
 function LevelBars({ level }: { level: number }) {
   return (
@@ -474,22 +515,32 @@ export default function AgentActivity({ rounds, status, running }: Props) {
           {/* 代码判据这一轮的全貌：命中了哪几条（不是只留最后一条），
               以及分母——全过的时候也要说一句，否则「判据跑了而且都过了」
               跟「判据根本没接上」在界面上完全一样。 */}
-          {(r.checkHits ?? []).map((h, i) => (
+          {groupCheckHits(r.checkHits ?? []).map(({ head: h, notes }, i) => (
             <p key={i} className="muted" style={{ margin: '4px 0 0', lineHeight: 1.55,
                                                   display: 'flex', gap: 5 }}>
               <span style={{ flexShrink: 0 }}>⚑</span>
               <span>
                 {h.stuck_rounds ? (
                   <>
-                    判据 <b>{checkLabel(h.check)}</b>（{dimLabel(h.dimension)}）已经连着
-                    {' '}{h.stuck_rounds} 轮原样卡在这里，改不动——这一轮不再拦，
-                    照常打分。{h.note}
+                    判据 <b>{checkLabel(h.check)}</b>{dimParen(h.dimension)}已经连着
+                    {' '}{h.stuck_rounds} 轮原样卡在这里，改不动——
+                    {/* 两条长得像、说的是相反的事：`stopped` 是**收工通知**
+                        （`middleware/checks.after_run`，整个跑到此为止），
+                        没有它的那条是「这一轮放行、照常打分」。原来共用后一句，
+                        于是停机那条写着「照常打分」，跟它自己后半句
+                        「停下，交最好的一轮」当场打架（P35 走查 #7）。 */}
+                    {h.stopped ? '这一次不再往下写了。' : '这一轮不再拦，照常打分。'}{h.note}
                   </>
                 ) : (
                   <>
                     代码判据 <b>{checkLabel(h.check)}</b> 判了{dimLabel(h.dimension)}不合格
                     {h.ran && r.checksTotal ? `（${r.checksTotal} 条里的第 ${h.ran} 条）` : ''}
-                    ，这一轮没再花模型调用去打分。{h.note}
+                    ，这一轮没再花模型调用去打分。
+                    {/* 相邻的同一条判据只说一次抬头，判词逐条列（P35 走查 #6）。
+                        一条的时候形状跟原来一模一样，不多一个符号。 */}
+                    {notes.length === 1 ? notes[0] : notes.map((n, j) => (
+                      <span key={j} style={{ display: 'block', marginTop: 2 }}>· {n}</span>
+                    ))}
                   </>
                 )}
               </span>

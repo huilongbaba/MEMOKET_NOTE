@@ -29,7 +29,7 @@ import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import { blockPrecondition, SLASH_ITEMS, type SlashItem } from './editor/slashMenu'
-import { blockShapeProblem } from './editor/blockShape'
+import { blockShapeProblem, splitBadRevisions, badRevisionNote } from './editor/blockShape'
 import type { NoteLinkMenuDetail } from './editor/noteLink'
 import { landNotesInTray, noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
 import { diffBaseForBlock, textToLand } from './editor/blockLanding'
@@ -1590,6 +1590,28 @@ export default function App() {
     return list.length
   }
 
+  /** 右键动作产出的那批建议**落地前过一道形状闸**（P35 · B）。
+   *
+   * 这一层原来没有：后端 `compose.rewrite` / `compose.expand` 只管「能不能抽出
+   * `text` / `before` / `after` 这几个键」，抽得出就当正品——模型把整个响应又塞进
+   * `text` 里答回来时，那串 JSON 原样换进正文，**一句话都不说**
+   * （P35 实拍 117 → 163 字，`p35-B-rewrite-jsontext-light`）。
+   *
+   * 判据在 `editor/blockShape.revisionIsJson`，**只认整串 JSON 这一档**——
+   * 块生成那三条（表格行 / 围栏 / 图片）套不到这儿来：右键换的是正文里的一句话，
+   * 拿「该是表格」去卡它会把「帮我改成一张表」判死。
+   *
+   * 三种落法，各说各的话：全被拦下 → 只说被拦；拦了一部分 → 好的照落、坏的说清；
+   * 一条都没有 → 还是原来那句（`emptyNote`）。 */
+  function landRevisions(list: Revision[], note: string | undefined,
+                         label: string, emptyNote: string): void {
+    if (list.length === 0) { toast(note || emptyNote, note ? 'error' : undefined); return }
+    const { keep, bad } = splitBadRevisions(list)
+    if (bad.length) toast(badRevisionNote(label, bad.length), 'error')
+    if (keep.length === 0) return
+    if (!applyAsDiff(keep, label)) toast('建议对不上正文（锚点找不到），没有改动。')
+  }
+
   async function handleSelectionAction(action: SelectionAction) {
     if (!selectionMenu) return
     const selection = selectionMenu.text
@@ -1630,12 +1652,10 @@ export default function App() {
         await traceFull(selection, signal)
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection, signal, intentText(intent), current?.id ?? '')
-        if (r.revisions.length === 0) toast(r.note || '模型认为不需要补充上下文。', r.note ? 'error' : undefined)
-        else if (!applyAsDiff(r.revisions, '扩展上下文')) toast('建议对不上正文（锚点找不到），没有改动。')
+        landRevisions(r.revisions, r.note, '扩展上下文', '模型认为不需要补充上下文。')
       } else if (action === 'rewrite' || action === 'polish') {
         const r = await api.rewriteSelection(content, selection, action, spine, beats, signal, intentText(intent))
-        if (r.revisions.length === 0) toast(r.note || '模型没有给出修改建议。', r.note ? 'error' : undefined)
-        else if (!applyAsDiff(r.revisions, action === 'polish' ? '润色' : '重写')) toast('建议对不上正文（锚点找不到），没有改动。')
+        landRevisions(r.revisions, r.note, action === 'polish' ? '润色' : '重写', '模型没有给出修改建议。')
       } else {
         /* **走不到这里，但要让编译器来保证走不到。**
            原来这一支写的是 `action as 'rewrite' | 'polish'`——一个不查的强转，
