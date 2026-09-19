@@ -1751,6 +1751,42 @@ label.plan-check-row { cursor: pointer; }
 .journey-deny .chip.mine { border-color: var(--accent); color: var(--accent); padding-inline-end: 2px; }
 .journey-deny .chip.mine .icon-btn.sm { width: 18px; height: 18px; padding: 0; color: inherit; }
 
+/* 「留多久」：跟「不记这些」并排的一块。三行都是「名字 — 选多久 — 这是什么」，
+   第三行（原始截图）没得选，所以那一格是静态文字，但**列对齐要一样**——
+   不一样的话读起来像另一块东西。 */
+.journey-keep { border-top: 1px solid var(--line); padding-top: 12px; }
+.journey-keep-why { font-size: var(--t-sm); margin: 2px 0 8px; }
+.journey-keep-rows { display: grid; gap: var(--s-3); }
+.journey-keep-row { display: grid; grid-template-columns: 5.5em 12em 1fr; gap: var(--s-4);
+                    align-items: center; font-size: var(--t-md); }
+.journey-keep-row .muted { font-size: var(--t-sm); }
+.journey-keep-fixed { color: var(--muted); }
+@container (max-width: 480px) {
+  .journey-keep-row { grid-template-columns: 5.5em 1fr; }
+  .journey-keep-row .muted { grid-column: 1 / -1; }
+}
+/* 「全部删掉」跟上面那三行之间要留一口气：贴着的话它读起来像第四行设置，
+   而它是这一块里唯一不可逆的动作。 */
+.journey-keep > .linklike.danger { margin-top: 10px; }
+/* 删不掉的文件**原样摆出来**（不静默）：用户按的是「删掉」，
+   留下半个目录还回一句「删好了」是这个功能最不该做的事。 */
+.journey-keep-fail { margin: 8px 0 0; padding: 8px 10px; font-size: var(--t-sm);
+                     background: var(--card-alt); border-left: 3px solid var(--warn); }
+.journey-keep-fail .mono-line { display: block; }
+/* 「全部删掉」的确认：**不是系统弹窗**——那里只塞得下一句话，而这里要列六行
+   「会删掉什么」。展开在原地，红色描边说明它是破坏性的那一档。 */
+.journey-keep-confirm { margin-top: 8px; padding: 10px 12px; border-radius: var(--r-sm);
+                        border: 1px solid var(--live); background: var(--card-alt); }
+.journey-keep-confirm ul { margin: 4px 0 6px; padding-inline-start: 18px; font-size: var(--t-md); }
+.journey-keep-confirm p { font-size: var(--t-sm); margin: 0 0 8px; }
+
+/* 日记那一篇 ribbon 上的「屏幕活动」：**摘要 + 一条进去的链接**。
+   排得紧——ribbon 是元数据区，整份日报摊在这儿会把正文顶下去。 */
+.journey-ribbon { display: grid; gap: var(--s-3); justify-items: start; font-size: var(--t-md); }
+.journey-ribbon p { margin: 0; }
+.journey-ribbon-sum { font-variant-numeric: tabular-nums; }
+.journey-ribbon-lead { color: var(--muted); }
+
 /* 「回顾一段时间」：从「今天」这一页出去的一条路，不是这一页的主角 */
 .journey-span { border-top: 1px solid var(--line); padding-top: 12px; }
 /* 时间轴那一行的删除键：**悬停才出现**（跟笔记列表同一条规矩——

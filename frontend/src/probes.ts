@@ -391,9 +391,18 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   //   audiopick:<id>[:bad]     打开笔记 → `/` 插入音频 → 选一个合成的小 wav（bad = 选一个 .txt 冒充音频）
   // 这几种步骤没有 harnessProbeDone 挡着，而 App 的探针 effect 在 notes / tree 变时会重跑——
   // 每一步只跑一次（实拍：click 步骤被重跑，toast 出现两遍）。
-  if (/^(netdown|click:|toasts:|type:)/.test(probe ?? '')) {
+  //   confirmyes              把 window.confirm 换成「点了确定」。**删一段 / 删掉这一天 / 删全部
+  //                            只有走过那一问才发请求**，而 Electron 的原生确认框会把渲染进程
+  //                            整个挡住——没有这一步，那几格（× 后端没起来）一个都复现不了，
+  //                            于是它们一直是「读代码读出来的 ✅」（第 779 轮 / P21 补）
+  if (/^(netdown|click:|toasts:|type:|confirmyes)/.test(probe ?? '')) {
     if (ranOnce.has(probe)) return
     ranOnce.add(probe)
+  }
+  if (probe === 'confirmyes') {
+    window.confirm = () => true
+    void api.clientLog('warn', 'confirmyes: window.confirm 一律当成点了「确定」', '', 'probe')
+    return
   }
   if (probe?.startsWith('netdown')) {
     const ms = Number(probe.split(':')[1] ?? 0)

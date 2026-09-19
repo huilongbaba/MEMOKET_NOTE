@@ -32,6 +32,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 
 from ..util import llm
@@ -40,6 +41,7 @@ from ..database import store
 from ..database.kite.kite_memory import UserMemory
 from ..editor.vision import VisionError, ask_image
 from ..journey import day_stats, group_runs, render_time_block
+from ..journey import retention as keep
 from ..journey.stats import _at, render_churn
 from ..journey.prompt import REPORT_SYSTEM, SPAN_SYSTEM, report_user, span_user
 from ..harness.checks.journey import check_report
@@ -213,7 +215,11 @@ def _load_report(day: str) -> dict:
 #
 # 规矩：**各写各的字段。** 后端只认这几个，别的一律以盘上那份为准
 # （段落表本身归壳——它在往后长，我们手里这份是 20 秒前的旧快照）。
-_MINE = ("desc", "skip", "session", "deleted", "frames")
+# `thumb` 在这一份里，是因为**过期清理要能把它抹掉**（第 779 轮 / P21）：
+# 缩略图到期删了文件却没改段落的话，`has_thumb` 还是 true，页面上每行都挂一个
+# 404 的 `<img>`——看起来像坏了，而不是「过期了」。壳那边 `SHELL_OWNED` 里
+# 本来就没有 `thumb`（只在建段那一刻写一次），两边对得上。
+_MINE = ("desc", "skip", "session", "deleted", "frames", "thumb")
 
 
 def _merge_back(disk: list[dict], ours: list[dict]) -> list[dict]:
@@ -266,6 +272,59 @@ def worth_keeping(desc: str) -> bool:
     return len(d) >= MIN_DESC and not any(v in d for v in VAGUE)
 
 
+# ——— 保留期（`app/journey/retention.py`，第 779 轮 / P21）———————————————
+#
+# **清理挂在读的路径上，不另起定时器**（`_expire_frames` 当初挂在 `/day` 上是
+# 同一个理由）。但挂在 `/day` 上不够：那个接口只看用户正打开的那一天，而没人
+# 会去翻三天前——实测 09-16 的 78MB 大图就这么留着。所以整根目录的清理挂在
+# `/days` 上（每次打开这一页、每 30 秒轮询一次都会调到），自己限流。
+
+#: 两次全量清理之间至少隔这么久。一天该删的东西不差这十分钟，而每次轮询都
+#: 走一遍 `rglob` 是拿用户的磁盘换一个没人要的即时性。
+SWEEP_EVERY_S = 10 * 60
+_swept_at = 0.0
+#: 上一次清理**删不掉的东西**。界面要原样说出来——安静地删不掉，用户会以为
+#: 已经删干净了，而那正是这个功能最不能骗人的地方。
+_sweep_failures: list[str] = []
+
+
+def _forget(user: str):
+    mem = UserMemory(user)
+
+    def go(session: str) -> int:
+        try:
+            return mem.remove_sessions(session)
+        except Exception:                            # noqa: BLE001
+            # 知识库那边出错不该让「过期清理」整个停下——文件照删，
+            # 但**必须记一行**：否则「留 30 天」对知识库就是假的。
+            _sweep_failures.append(f"知识库里 {session} 这条记忆没删掉")
+            return 0
+
+    return go
+
+
+def _sweep(user: str, policy: keep.Policy | None = None) -> keep.SweepReport:
+    """真的扫一遍。`PUT /retention` 改完立刻调一次——**改小了要当场生效**，
+    不然用户把 30 天改成 7 天、页面上那几天还在，他没法知道这个开关有没有用。"""
+    global _swept_at
+    root = journey_root()
+    rep = keep.sweep(root, policy or keep.read_policy(root), _date.today(),
+                     load=_load, save=_save, forget=_forget(user),
+                     expire_frames=_expire_frames)
+    _swept_at = time.monotonic()
+    _sweep_failures[:] = rep.failures[-20:]
+    return rep
+
+
+def _sweep_if_due(user: str) -> None:
+    if _swept_at and time.monotonic() - _swept_at < SWEEP_EVERY_S:
+        return
+    try:
+        _sweep(user)
+    except OSError as exc:                            # noqa: BLE001
+        _sweep_failures[:] = [f"清理没跑成：{exc}"]
+
+
 @router.get("/days")
 def days(limit: int = 400, user: str = Depends(current_user)) -> list[str]:
     """有记录的日期，新的在前。
@@ -275,6 +334,8 @@ def days(limit: int = 400, user: str = Depends(current_user)) -> list[str]:
       · **判断「有没有用过」**。停掉记录之后如果只看当天，页面会退回那一屏
         知情选择，于是**以前记的东西既看不到也删不掉**（第 645 轮自查）。
     """
+    # 过期的先清掉再列：不然刚删完的那一天还会在翻天的列表里出现一下
+    _sweep_if_due(user)
     root = journey_root()
     try:
         out = sorted((d.name for d in root.iterdir()
@@ -302,6 +363,82 @@ def _clean_list(v) -> list[str]:
         if t and t not in out:
             out.append(t)
     return out[:DENY_MAX]
+
+
+# 保留期的出入口。**响应模型定在这个文件里**（不在 `schemas.py`）：它只服务
+# 这一条路由，而 `schemas.py` 同时被另外十几条路由改着。
+class JourneyRetentionIn(BaseModel):
+    segment_days: int = keep.DEFAULT_SEGMENT_DAYS
+    thumb_days: int = keep.DEFAULT_THUMB_DAYS
+
+
+class JourneyRetentionOut(BaseModel):
+    segment_days: int
+    thumb_days: int
+    frame_days: int
+    segment_choices: list[int]
+    thumb_choices: list[int]
+    #: 现在盘上有多少东西——**「删掉」之前得能说清楚删的是什么**
+    days: int
+    segments: int
+    described: int
+    thumbs: int
+    reports: int
+    bytes: int
+    oldest: str
+    #: 上一次清理**删不掉**的东西，原样端出来
+    failures: list[str] = []
+    #: 刚刚这一次清理干掉了什么（只有 PUT / DELETE 才有）
+    swept: dict = {}
+
+
+def _retention_out(policy: keep.Policy, swept: dict | None = None) -> JourneyRetentionOut:
+    root = journey_root()
+    u = keep.usage(root, _load)
+    return JourneyRetentionOut(**policy.as_dict(), frame_days=FRAME_KEEP_DAYS,
+                               segment_choices=list(keep.SEGMENT_CHOICES),
+                               thumb_choices=list(keep.THUMB_CHOICES),
+                               **u.as_dict(), failures=list(_sweep_failures),
+                               swept=swept or {})
+
+
+@router.get("/retention", response_model=JourneyRetentionOut)
+def get_retention(user: str = Depends(current_user)) -> JourneyRetentionOut:
+    """留多久，加上**现在盘上有多少东西**。
+
+    两样一起给是有意的：「段落留 30 天」单独一句是个抽象设置，
+    「30 天 · 现在有 4 天 295 段 · 136MB」才是用户能据此做决定的东西。
+    """
+    return _retention_out(keep.read_policy(journey_root()))
+
+
+@router.put("/retention", response_model=JourneyRetentionOut)
+def put_retention(body: JourneyRetentionIn,
+                  user: str = Depends(current_user)) -> JourneyRetentionOut:
+    """改保留期，并**当场按新的清一遍**。
+
+    改小了不立刻生效的话，用户把 30 天改成 7 天、页面上那几天还在，
+    他没有任何办法知道这个开关到底有没有用——一个「看不出有没有生效」的
+    隐私开关跟没有一样。
+    """
+    policy = keep.write_policy(journey_root(),
+                              keep.Policy(segment_days=body.segment_days,
+                                          thumb_days=body.thumb_days))
+    rep = _sweep(user, policy)
+    return _retention_out(policy, rep.as_dict())
+
+
+@router.delete("/all", response_model=JourneyRetentionOut)
+def delete_all(user: str = Depends(current_user)) -> JourneyRetentionOut:
+    """**全部删掉**：所有天的段落、描述、缩略图、大图、日报，连同它们抽进
+    知识库的记忆。开关 / 黑名单 / 保留期留着——那是设置，不是记录。
+
+    删不掉的文件**原样报出来**（`failures`），不静默：用户按的是「删掉」，
+    留下半个目录还回一句「删好了」是这个功能最不该做的事。
+    """
+    rep = keep.wipe_all(journey_root(), load=_load, forget=_forget(user))
+    _sweep_failures[:] = rep.failures[-20:]
+    return _retention_out(keep.read_policy(journey_root()), rep.as_dict())
 
 
 @router.get("/deny", response_model=JourneyDenyOut)
@@ -622,8 +759,6 @@ def delete_day(date: str, user: str = Depends(current_user)) -> JourneyRunOut:
     最后那一项是重点。只删文件不删事实的话，「我删了那天的记录」就是假的——
     那些句子还会被召回、被引用、写进用户的文稿（§1 ⑤）。
     """
-    import shutil
-
     day_s = date
     segs = _load(day_s)
     mem = UserMemory(user)
@@ -632,7 +767,13 @@ def delete_day(date: str, user: str = Depends(current_user)) -> JourneyRunOut:
         if s.get("session"):
             gone += mem.remove_sessions(s["session"])
     d = _day_dir(day_s)
-    if d.exists():
-        shutil.rmtree(d, ignore_errors=True)
+    # **删不掉要吵。** 原来这里是 `shutil.rmtree(ignore_errors=True)`——
+    # 一个被别的进程占着的文件会让半个目录留在盘上，而用户拿到的是
+    # 「删掉了这一天」。这个功能里「我以为删干净了」是最不能出的错
+    # （第 779 轮 / P21，跟保留期清理同一条规矩）。
+    fails: list[str] = []
+    keep.rm_tree(d, fails)
+    if fails:
+        raise HTTPException(500, "这一天没删干净，下面这些删不掉：\n" + "\n".join(fails[:10]))
     return JourneyRunOut(date=day_s, described=0, ingested=0, skipped=0,
                          left=0, removed_facts=gone)

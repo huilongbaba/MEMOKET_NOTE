@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { clickable } from './util/clickable'
+import { DESTINATIONS } from './util/destinations'
+import { journalDateOf } from './util/journalDate'
+import JourneyRibbonPanel from './components/JourneyRibbonPanel'
 import { openSearchPanel } from '@codemirror/search'
 import { micError } from './util/micError'
 import ChangeLayersPanel from './components/ChangeLayersPanel'
@@ -912,6 +915,10 @@ export default function App() {
   const crumbs = useMemo(
     () => buildCrumbs(current?.id ?? virtualId, allRows, (id) => tabs.find((t) => t.noteId === id)?.title, api.isVirtualId),
     [current, virtualId, allRows, tabs])
+  /** 这一篇是不是日记里的某一天（是的话 ribbon 上多一块「屏幕活动」，计划 §8.4）。
+   *  memo 住：它要把整棵树摊成一张表，每次渲染重算是白花钱。 */
+  const journalDay = useMemo(
+    () => (current ? journalDateOf(allRows, current.id) : null), [current, allRows])
 
   /** 虚拟节点的右键菜单——没有「删除」「移动」这些：它们不是笔记，是知识库
    *  的一个视角。有的是把它带进笔记的动作。 */
@@ -3336,18 +3343,21 @@ export default function App() {
         <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）：日记 / 年 / 月 / 日，没有就建`} onClick={() => void openToday()}><Icon n="bx-calendar-event" /></button>
         <button className="launcher-btn" title={`全局搜索：笔记 + 知识库（${fmtShortcut('⌘K')}）`}
                 onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><Icon n="bx-search" /></button>
-        <button className={'launcher-btn' + (virtualId === 'app:import' ? ' active' : '')}
-                title="导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件"
-                onClick={() => void openVirtual('app:import', '导入')}><Icon n="bx-import" /></button>
-        <button className={'launcher-btn' + (virtualId === 'app:journey' ? ' active' : '')}
-                title="屏幕活动：今天都在做什么" onClick={() => void openVirtual('app:journey', '屏幕活动')}><Icon n="bx-desktop" /></button>
+        {/* 去处（导入 / 屏幕活动 / Skill / 设置）**从 `util/destinations` 生成**：
+            这一份同时喂给 ⌘K（第 779 轮 / P21）。原来两处各写各的，于是屏幕活动
+            和写作 Skill 在左栏有、在 ⌘K 里没有——而计划 §8.4 明写要有。
+            加一个新去处只改那一个文件，两处同时出现。 */}
+        {DESTINATIONS.filter((d) => d.where === 'top').map((d) => (
+          <button key={d.id} className={'launcher-btn' + (virtualId === d.id ? ' active' : '')}
+                  title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /></button>
+        ))}
         <div className="launcher-spacer" />
         {/* 设置和 Skill 是「特殊笔记」：开标签、进中栏，跟别的笔记一样对待
             （照 Trilium：选项是隐藏子树里的笔记，不是弹层）。 */}
-        <button className={'launcher-btn' + (virtualId === 'app:skills' ? ' active' : '')} title="写作 Skill"
-                onClick={() => void openVirtual('app:skills', '写作 Skill')}><Icon n="bx-extension" /></button>
-        <button className={'launcher-btn' + (virtualId === 'app:settings' ? ' active' : '')} title="设置：LLM 供应商"
-                onClick={() => void openVirtual('app:settings', '设置')}><Icon n="bx-cog" /></button>
+        {DESTINATIONS.filter((d) => d.where === 'foot').map((d) => (
+          <button key={d.id} className={'launcher-btn' + (virtualId === d.id ? ' active' : '')}
+                  title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /></button>
+        ))}
         <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
                 title={panes.leftOn ? '收起左栏（⌘\\）' : '展开左栏（⌘\\）'}
                 onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}><Icon n="bx-chevrons-left" /></button>
@@ -3573,7 +3583,17 @@ export default function App() {
             }, {
               id: 'info', title: '信息', icon: 'bx-info-circle',
               body: <NoteInfoPanel note={current} content={content} row={tree.find((r) => r.note_id === current.id)} />,
-            }] as RibbonTab[]}
+            },
+            /* **日记那一篇多一块「屏幕活动」**（计划 §8.4，第 779 轮 / P21 补上）：
+               摘要 + 一条进去的链接，**不把机器写的内容塞进用户的正文**。
+               只在日记树上「某一天」那一层出现——别的笔记没有「这一天」可言。
+               `journalDateOf` 的年份从树上读，不拿今天的年份凑：翻到去年那篇
+               日记时查一个不存在的日子，页面会写「这一天没有记录」，
+               那比不显示更糟（它看起来像个事实）。 */
+            ...(journalDay
+              ? [{ id: 'journey', title: '屏幕活动', icon: 'bx-desktop',
+                   body: <JourneyRibbonPanel date={journalDay} /> }]
+              : [])] as RibbonTab[]}
           />
         )}
         <div className={'note-scroll' + (current ? ' has-composer' : '')}>

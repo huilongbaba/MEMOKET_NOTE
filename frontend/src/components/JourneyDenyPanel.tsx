@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { journeyDeny, journeySetDeny, type JourneyDeny } from '../api'
+import { friendlyError } from '../util/friendlyError'
 import { toast } from '../toast'
 import Icon from './Icon'
 
@@ -22,7 +23,7 @@ export default function JourneyDenyPanel() {
 
   async function put(apps: string[], words: string[]) {
     try { setD(await journeySetDeny(apps, words)) }
-    catch (e) { toast(e instanceof Error ? e.message : String(e), 'error') }
+    catch (e) { toast(friendlyError(e), 'error') }
   }
 
   function add() {
