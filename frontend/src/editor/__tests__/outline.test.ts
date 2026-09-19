@@ -60,6 +60,28 @@ describe('parseHeadings', () => {
     expect(parseHeadings('## 关于 C# 的笔记\n### 问题 #3 复盘\n').map((h) => h.text))
       .toEqual(['关于 C# 的笔记', '问题 #3 复盘'])
   })
+
+  // —— P27 #2（P25 #2 的下一步）：真 `#` 标题的目录文字也要走 `stripInline`。
+  // 真库 `92d07b760f1e` 有 8 条 `### **1. 录制信任：…**`，目录面板上星号原样露在外面。
+  it('真标题的目录文字剥掉行内标记（粗体 / 链接 / 行内码 / 图片）', () => {
+    expect(parseHeadings('### **1. 录制信任：从“随时录”到“一定录到且不尴尬”**\n').map((h) => h.text))
+      .toEqual(['1. 录制信任：从“随时录”到“一定录到且不尴尬”'])
+    expect(parseHeadings('## 看 [试菜单](note://9aab1c2d) 那一节\n').map((h) => h.text))
+      .toEqual(['看 试菜单 那一节'])
+    expect(parseHeadings('## `useMemo` 的坑\n').map((h) => h.text)).toEqual(['useMemo 的坑'])
+    expect(parseHeadings('## ![封面](/api/assets/x.png)\n').map((h) => h.text)).toEqual(['图：封面'])
+  })
+  it('先剥再截：整条标题被一对 ** 包着时也截得干净', () => {
+    // 先截会把配对的后半个 ** 截掉，剩下 `**我们该` 这种剥不掉的半截标记
+    expect(parseHeadings('## **我们该如何克服挑战：### 如何克服挑战：**\n').map((h) => h.text))
+      .toEqual(['我们该如何克服挑战：'])
+  })
+  it('位置和层级不受影响（pos 指的还是源码里那一行）', () => {
+    const hs = parseHeadings('# 一级\n\n正文\n\n### **粗体三级**\n')
+    expect(hs.map((h) => h.level)).toEqual([1, 3])
+    expect(hs[1].pos).toBe('# 一级\n\n正文\n\n'.length)
+    expect(hs[1].text).toBe('粗体三级')
+  })
 })
 
 // —— P7（P4 #3）：没有 `#` 标题时的退路 ————————————————————————
