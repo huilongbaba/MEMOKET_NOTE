@@ -332,6 +332,34 @@ _ASCII_TERM = re.compile(r"^[0-9A-Za-z'\-]+$")
 _MISSING = object()
 # kite 的 `parse_plan` 最多收 8 个 unit id；多于这个数没法表达成过滤条件，只能全表扫
 _UNITS_CAP = 8
+# 「库里长出来的词」至少要出现在几条记录（unit）里才算数（P34 #1，`UserMemory.segment`）。
+# 5 是量出来的：真库上 `众筹` 47 / `算力` 9 / `灵衢` 6 都过得去，而门槛调到 3
+# 会放进 `品方` `户提` 这种跨词的两字串（全库多认 300 多个「词」，逐条读下来几乎全是撞的）。
+WORD_DF_MIN = 5
+
+
+def _corpus_word(idx):
+    """「这个串在这个人的库里算不算一个词」——`kb/tokenize.Tokenizer(attest=…)` 那一档（P34 #1）。
+
+    底表是通用汉语词，`众筹`（真库 df=107）/ `算力` / `灵衢` 它一个都没有；实体表也不一定收
+    （`众筹` 在真库里就不是实体）。所以再开一条**按需**问库的路：切词时碰到底表不认识的
+    2–3 字串，就问一句「它出现在几条记录的 unit 里」（走 `search.plan` 已经在用的那份
+    2-gram 倒排表，memo 过，零额外 IO）。
+
+    两道窄闸，**宁可不认识**：
+    · **串里不许有口水字**——`的一` 在真库里 df=359，次数远远够，可它是跨词切出来的；
+      按次数收词就一定会收到这种。这一条不看次数，先把它们整类挡掉。
+    · **至少 `WORD_DF_MIN` 条记录里出现过**——`品方` 1 条、`户提` 2 条，那是撞出来的。
+    """
+    from ..kb.search import _FILLER_CHARS
+
+    def is_word(w: str) -> bool:
+        if any(c in _FILLER_CHARS for c in w):
+            return False
+        n = idx.unit_df(w, floor=WORD_DF_MIN)
+        return n is not None and n >= WORD_DF_MIN
+
+    return is_word
 # 「一个 unit 都不命中」时给 kite 的占位 unit：库里永远没有这个 id，候选集就是空集
 _NO_UNIT = "__memoket_no_unit__"
 
@@ -560,6 +588,64 @@ class UserMemory:
         if mtime is not None:
             self._cache[key] = (mtime, attested, vocab)
         return attested
+
+    def segment(self):
+        """回一个**中文切词函数**（`str -> list[str]`），给 `kb/search.qualifies(segment=…)`（P34 #1）。
+
+        判据为什么要分词、底表为什么是自带的 1.5 MB 而不是 jieba 的 37 MB，
+        写在 `kb/tokenize.py` 顶上那段里。这里只负责**把这个人的专名接上去**：
+        底表是通用汉语词，`算力` / `灵衢` / `众筹后` 这种它没有，不补就会切成单字，
+        「算力底座」的实词字数从 4 掉到 2——**把 P29 点名的一条真沾边砍掉**。
+        补充词就是 `vocab_term` 用的那批表层词（实体 / 主题），零额外 IO。
+
+        建不出索引 / 词典读不出来就回 `None` = **不启用这一层，不启用就是原样**
+        （`_why` 退回 P32 的原始字数规则）。
+        """
+        from ..kb import tokenize as tok
+
+        try:
+            store, vocab = self._index()
+        except Exception:      # noqa: BLE001 —— 建不出索引就是不启用这一档
+            return None
+        path = getattr(self, "path", None)
+        key = f"{path}#segment"
+        try:
+            mtime = path.stat().st_mtime
+        except (OSError, AttributeError):
+            mtime = None
+        hit = self._cache.get(key)
+        if mtime is not None and hit and hit[0] == mtime and hit[2] is vocab:
+            return hit[1]
+        extra: set[str] = set()
+        for code, topic in getattr(vocab, "topics", {}).items():
+            for s in {code, *(getattr(topic, "aliases", set()) or set())}:
+                extra.add(str(s).replace("_", " ").lower())
+        for code, ent in getattr(vocab, "entities", {}).items():
+            for s in {code, getattr(ent, "name", ""), *(getattr(ent, "aliases", set()) or set())}:
+                extra.add(str(s).replace("_", " ").lower())
+        # **第三份词典：这个库自己长出来的**。底表是通用汉语词，`众筹` / `算力` / `灵衢`
+        # 它一个都没有；实体表也不一定收（`众筹` 在真库里就不是实体）。
+        # 所以再加一条**按需**问库的路：切词时碰到底表不认识的 2–3 字串，就问一句
+        # 「这个串在这个人的库里出现在几条记录里」（`unit_df`，走的是 `search.plan` 已经
+        # 在用的那份 2-gram 倒排表，memo 过，零额外 IO）。
+        # 两道窄闸，**宁可不认识**：
+        # · 串里不许有口水字——不然 `的一` / `了这` 这种跨词的两字串也会攒够次数变成「词」；
+        # · 至少 `WORD_DF_MIN` 条记录里出现过——只出现一两次的多半是撞出来的。
+        try:
+            idx = self._grep_index(store)
+        except Exception:      # noqa: BLE001 —— 问不出 df 就只是少一档兜底，不是不启用
+            idx = None
+        attest = _corpus_word(idx) if (idx is not None and idx.unit_count) else None
+
+        try:
+            t = tok.Tokenizer(extra, attest=attest)
+        except Exception:      # noqa: BLE001 —— 词典读不出来就是不启用
+            return None
+        if not t.enabled():
+            return None
+        if mtime is not None:
+            self._cache[key] = (mtime, t.cut, vocab)
+        return t.cut
 
     def _prescreen(self, store, queries: list[dict]) -> list[dict]:
         """`search.plan` 给的查询列表 → 同义但便宜的那份：每条 `{"grep": 词}` 按预筛结果带上 `units`。
@@ -799,17 +885,22 @@ class UserMemory:
         # `kb/search` 不依赖 app 的其它模块，拿不到这个人的 df 索引和词表。
         common, attested = ((self.common_term(), self.vocab_term()) if evidence
                             else (None, None))
+        # 中文切词只在**开着证据闸**的那条路上要（P34 #1）：它只被 `qualifies` 用，
+        # 闸不开就没人问它，白建一份词典。
+        segment = self.segment() if evidence else None
         # 多留一些候选再筛：无论哪个范围，筛完都可能不够 `limit` 条
         # （「全部」也会筛掉屏幕活动，见 kb/scope.filter_rows）
         facts = search.rank(facts, query, self, store, limit=limit * 4,
-                            evidence=evidence, common=common, attested=attested)
+                            evidence=evidence, common=common, attested=attested,
+                            segment=segment)
 
         if not facts:
             # 行级回退拉出来的是整场会的事实，同样要过一遍「至少命中一个查询词」——
             # 不然「这篇是从系统拖进来的」这种没信息量的句子照样召回一屏不相干的（第 225 轮）
             facts = search.rank(self._recall_via_lines(store, vocab, query, limit * 2),
                                 query, self, store, limit=limit,
-                                evidence=evidence, common=common, attested=attested)
+                                evidence=evidence, common=common, attested=attested,
+                                segment=segment)
             surfaces = surfaces + self._cjk_terms(query)[:3]
         else:
             surfaces = surfaces + [t for t in search.matched_terms(
@@ -832,7 +923,7 @@ class UserMemory:
         store, _vocab = self._index()
         q = search.clean_query(query)
         terms = search._terms(self, q)
-        common, attested = self.common_term(), self.vocab_term()
+        common, attested, segment = self.common_term(), self.vocab_term(), self.segment()
         idx = self._grep_index(store)
         seen: set[str] = set()
         out: list[dict] = []
@@ -840,7 +931,7 @@ class UserMemory:
             f = store.facts.get(r.get("id"))
             text = (f.text if f else "") or ""
             for e in search.evidence(search._hits(terms, text), q,
-                                     common=common, attested=attested):
+                                     common=common, attested=attested, segment=segment):
                 term = e["term"]
                 if term in seen:
                     continue

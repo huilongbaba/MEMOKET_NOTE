@@ -334,6 +334,16 @@ def evidence_runs(hits: list[str], query: str) -> list[str]:
 
     相邻不合是有理由的：「成本高」紧跟着「效率低」是两个词，合成一串会把两条证据压成一条；
     反过来 `池容量` 和 `电池容` 重叠，它们是同一个词，不合就会被数成两条。
+
+    **同一串在查询里出现两次只算一条**（P34 #2 读产出当场抓到的）。这里原来是按
+    **位置**收的，于是「前提是」在查询里出现两次就回两串，`qualifies` 的
+    `len(ev) >= 2` 当场放行——实拍：正文「先回答读者会追问的『为什么现在写』和
+    『**前提是**什么』。**前提是**我承认在产品叙事上过度理想化」对上库里
+    「你的第一步踩踏实的**前提是**你底层的逻辑…」，**全部依据是一个语篇词，被数成了两条**。
+    `pro` 那条更夸张，一个词数出 6 条。
+    **这是 P27「那个 2 数的是同一个词被切成的两半」的第三个变种**：
+    P27 是一个词被切成两半，P32 是两个滑窗重叠，这次是同一个词出现两次。
+    位置在这里的用处只有一个——把重叠的滑窗并起来；并完之后**证据是词，不是位置**。
     """
     squeezed = _WS.sub("", (query or "").lower())
     spans: list[list[int]] = []
@@ -359,20 +369,66 @@ def evidence_runs(hits: list[str], query: str) -> list[str]:
             merged[-1][1] = max(merged[-1][1], b)
         else:
             merged.append([a, b])
-    return [squeezed[a:b] for a, b in merged] + loose
+    out: list[str] = []
+    for r in [squeezed[a:b] for a, b in merged] + loose:
+        if r not in out:
+            out.append(r)
+    return out
 
 
-def _why(run: str, attested) -> str:
-    """这条证据串**凭什么**算证据：`vocab` / `span` / `pair`（`pair` = 单独不够硬）。"""
+def _why(run: str, attested, weigh=None) -> str:
+    """这条证据串**凭什么**算证据：`vocab` / `span` / `pair`（`pair` = 单独不够硬）。
+
+    `weigh(串) -> int | None`：这一串在查询的**分词**里整词覆盖了几个字的实词（P34 #1）。
+    `None` = 这一层没启用、或者这一串在查询里定位不到——两种都退回 P32 的原始字数，
+    **不启用就是原样**。
+    """
     if attested is not None and attested(run):
         return "vocab"
     if run.isascii():
         # 纯数字 / 日期串（`90%` `200` `5月1` 去掉汉字之后）单独永远不够——见上面 P7 #5 那条
         return "span" if run[:1].isalpha() and len(run) >= EVIDENCE_EN_MIN else "pair"
-    return "span" if len(run) >= EVIDENCE_CJK_MIN else "pair"
+    n = weigh(run) if weigh is not None else None
+    if n is None:
+        n = len(run)
+    return "span" if n >= EVIDENCE_CJK_MIN else "pair"
 
 
-def evidence(hits: list[str], query: str, *, common=None, attested=None) -> list[dict]:
+def _weigher(query: str, segment, common=None):
+    """把 `segment`（一个 `str -> list[str]` 的切词函数）变成 `_why` 要的那个 `weigh`。
+
+    **只管纯汉字的串**（`_ALL_CJK`）。带数字的串（`3月15` / `10台到`）退回 P32 的原始字数——
+    那一档 P32 专门量过、专门留下的：「再严一档（只要含数字就不单独算）全库只多砍 5 对，
+    逐条读下来 2 条是真的（「3 月 15 日媒体及投资人版本」↔「2.0 版本…2026年3月15日」）。不换。」
+    **别人量完留下的东西，不顺手带走。**
+
+    `common` 在这里是第二次出场，而且这一次才是它该待的地方：P29 的 df 判据本来落在
+    **整串**上（`如果用户` 作为一个 4 字串 df 很低，过得去），分词之后它能落在**词**上——
+    `如果` 和 `用户` 都在 P29 那 20 个「满库都是」的串里。**P32 说「df 单独救不了」是对的，
+    因为那时候 df 落在滑窗上；分词把词边界给出来之后，df 才有地方落。**
+    """
+    if segment is None:
+        return None
+    from . import tokenize as _tok
+    squeezed = _WS.sub("", (query or "").lower())
+
+    def useless(t: str) -> bool:
+        return _is_cn_filler(t) or (common is not None and common(t))
+
+    def weigh(run: str):
+        if not _ALL_CJK(run):
+            return None
+        return _tok.content_chars(run, squeezed, segment, useless)
+
+    return weigh
+
+
+def _ALL_CJK(s: str) -> bool:
+    return bool(s) and all("一" <= c <= "鿿" for c in s)
+
+
+def evidence(hits: list[str], query: str, *, common=None, attested=None,
+             segment=None) -> list[dict]:
     """每条**合格**证据串 + 它凭什么算证据。
 
     `common(串) -> bool`：这个词在这个人的库里到处都是（`UserMemory.common_term`，P29）。
@@ -383,15 +439,17 @@ def evidence(hits: list[str], query: str, *, common=None, attested=None) -> list
     `vocab` = 它是你知识库里的一个词条；`span` = 这么长的一段原话逐字对上；`pair` = 跟别的词一起命中。
     """
     runs = evidence_runs(hits, query)
+    weigh = _weigher(query, segment, common)
     out: list[dict] = []
     for r in runs:
         if common is not None and common(r):
             continue
-        out.append({"term": r, "why": _why(r, attested)})
+        out.append({"term": r, "why": _why(r, attested, weigh)})
     return out
 
 
-def qualifies(hits: list[str], query: str, *, common=None, attested=None) -> bool:
+def qualifies(hits: list[str], query: str, *, common=None, attested=None,
+              segment=None) -> bool:
     """这条召回拿不拿得出证据。
 
     用户**主动搜一个词**时不走这条（`len(query) <= _SHORT_QUERY`，跟 `_terms` 兜底同一个边界）：
@@ -399,7 +457,7 @@ def qualifies(hits: list[str], query: str, *, common=None, attested=None) -> boo
     """
     if len((query or "").strip()) <= _SHORT_QUERY:
         return bool(hits)
-    ev = evidence(hits, query, common=common, attested=attested)
+    ev = evidence(hits, query, common=common, attested=attested, segment=segment)
     if not ev:
         return False
     if len(ev) >= 2:
@@ -471,7 +529,7 @@ def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
 
 
 def rank(rows: list[dict], query: str, memory, store, *, limit: int,
-         evidence: bool = False, common=None, attested=None) -> list[dict]:
+         evidence: bool = False, common=None, attested=None, segment=None) -> list[dict]:
     """Order the pool by how much of the query each fact contains.
 
     Score is the total length of the query terms found in the fact's text.
@@ -516,7 +574,8 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int,
         # 拿不出**合格证据**的不要（P32 #1）。跟上面那条不是一回事：那条只在 ≥100 字时看
         # 「有没有两个不同的 cluster」，这条在任何长度上问「这两条到底凭什么算相关」——
         # 实体加分也不能让一条**一个查询词都没命中**的事实凭空进来（那样面板连「命中：」都写不出）。
-        if evidence and not qualifies(hits, query, common=common, attested=attested):
+        if evidence and not qualifies(hits, query, common=common, attested=attested,
+                                      segment=segment):
             return (0, row.get("date") or "")
         s = sum(len(t) + (2 if t[0].isdigit() else 0) for t in hits)
         # 同一个词出现不止一次再加一点（每多一次 +1，最多 +2）：查询只剩一个内容词时（「…no ideas now but

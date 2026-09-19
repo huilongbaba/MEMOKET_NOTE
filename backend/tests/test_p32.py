@@ -166,16 +166,23 @@ def test_只有拿给用户看的那条路开闸_喂判据的那两条不开(tmp
 
 def test_路由把common和attested真的传下去了():
     """`/memory/recall` 那条路到底有没有把这个人的 df 索引和词表接上——
-    规则层的单测抓不住这个（撤掉 `evidence=True` 规则层照样绿）。"""
+    规则层的单测抓不住这个（撤掉 `evidence=True` 规则层照样绿）。
+
+    **P34 #1 多钉了一格 `segment`**（中文切词）：它跟 `common` / `attested` 是同一种东西
+    ——`kb/search` 拿不到这个人的库，只能由 `UserMemory` 注入；漏传就是静默退回 P32
+    的原始字数规则，**规则层的单测一条都不会红**。
+    """
     from app.database.kite import kite_memory as KM
 
     seen = {}
     real_rank = KM.search.rank
 
-    def spy(rows, query, memory, store, *, limit, evidence=False, common=None, attested=None):
-        seen.update(evidence=evidence, common=common is not None, attested=attested is not None)
-        return real_rank(rows, query, memory, store, limit=limit,
-                         evidence=evidence, common=common, attested=attested)
+    def spy(rows, query, memory, store, *, limit, evidence=False, common=None,
+            attested=None, segment=None):
+        seen.update(evidence=evidence, common=common is not None,
+                    attested=attested is not None, segment=segment is not None)
+        return real_rank(rows, query, memory, store, limit=limit, evidence=evidence,
+                         common=common, attested=attested, segment=segment)
 
     mem = KM.UserMemory.__new__(KM.UserMemory)
     mem._index = lambda: (_Store([]), types.SimpleNamespace(topics={}, entities={}))
@@ -192,4 +199,4 @@ def test_路由把common和attested真的传下去了():
         mem.recall("电池容量定在 420mAh 这一版", limit=3, evidence=True)
     finally:
         KM.search.rank = old
-    assert seen == {"evidence": True, "common": True, "attested": True}
+    assert seen == {"evidence": True, "common": True, "attested": True, "segment": True}

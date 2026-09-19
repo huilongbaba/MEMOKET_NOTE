@@ -19,6 +19,12 @@ hidden = (
 )
 
 datas = collect_data_files("memoket_kite")
+# 中文分词的底表（`app/database/kb/cn_words.txt.gz`，1.5 MB）。**它是数据不是模块**，
+# `collect_submodules("app")` 扫不到它——漏了的症状是打包版**静默**退回 P32 的字数规则：
+# 界面照常、测试照常绿，只有召回悄悄变松。（`kb/tokenize.base_words()` 读不出词典就
+# 回空表、`UserMemory.segment()` 跟着回 None = 不启用，所以不会炸，只会变差——
+# 这正是最难发现的那种。P34 #1）
+datas += [("app/database/kb/cn_words.txt.gz", "app/database/kb")]
 
 a = Analysis(
     ["entry.py"],
