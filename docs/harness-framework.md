@@ -471,7 +471,9 @@ class Middleware(Protocol):        # 9 个钩子，都是可选的
     after_produce / before_judge / after_judge / after_round
 
 Check = Callable[[State], Verdict | None]        # 纯函数，只读
-Verdict(dimension, message, fix: Callable[[str], str] | None)   # fix = linter 的 --fix
+Verdict(dimension, message,
+        fix: Callable[[str], str] | None,        # fix = linter 的 --fix
+        fix_done: Callable[[str], bool] | None)  # 「我管的那件事修好了没有」（P23 #1）
 StopCondition = Callable[[State], str | None]   # 返回停止原因；可组合，OR
 Dimension(name, guidance)                         # guidance 直接渲染进打分 prompt
 ```
@@ -605,6 +607,15 @@ Mode 按需追加的：
   末尾明说「别把没日期的句子原样留着」。**连响第 2 轮起换话**（「上一轮就提过这条…这一轮先只做这件事，别再往下写新段落」）——
   连响次数要读 `bag["check_name_streak_prev"]`：`Checks.before_judge` 在跑判据**之前**就把 `check_name_streak` 换成当轮空表，
   判据读它永远是 0（P19 真跑实拍，三轮一次都没升级）。修后真跑 3 次命中 3 句不同、每轮点名具体段落；但**日期那一侧模型仍然不照做**，`check_stuck` 照旧三轮停下。
+  **所以日期那一侧从连响第 2 轮起判据自己动手**（P23 #1）：`mark_date_pending` 在那几条的行尾贴一个「（日期待补）」，走的是 `Verdict.fix`。
+  先量后定——p15 / p18b / p19hint 三批真跑重放：日期那一侧 9 次命中、8 个不同的段，连着点名 ≥2 轮的 6 个里 **0 个**被补上过真日期，
+  照做率 **0 / 11 = 0%**；那 6 段全是「回看这一年…」「下一步还需要…」这种回顾 / 展望句，**材料里本来就没有日期可给**。
+  误伤靠四条量程掐死：只动这次跑新写的单位（用户原文不碰）、只在连响第 2 轮起、那一行已有日期 / 已标过就跳过、一条只贴一行。
+  标了记号的**在 harness 那一侧不再数成没日期**（`date_pending_ok`，跟弃答句同一个形状：判据不能跟自己的提示打架），
+  **右栏给用户看的那份照旧数**——「待补」就是「还欠着」，用户该看到那个 ✗；所以记号**不进 `RULES`**（那张表两边一字不差）。
+  这条 `fix` 还逼出 `Verdict.fix_done`：`Checks` 原来那句 `if not check(probe)` 是「整条判据都过了才留下改好的正文」，
+  而「每个节点有日期、有出处」**一条判两件事**——贴完记号出处还欠着，整条照样命中，**贴好的正文被原样丢掉**（三批真跑每一轮都会这样）。
+  给了 `fix_done` 就用它判「我管的那件事好了没有」：正文留下，剩下的按新的那条说；「fix 没真修好就不许改正文」那条纪律一个字没松。
   **它排在 `material_used` 之后、`no_repeated_lists` 之前**（P15 #1，`middleware/done.insert_done`）：P13 照 `instruction_constraints` 抄成排最后，
   真跑 4 轮一次没轮到；p5–p14 22 次真跑 74 次命中里材料族 41 / 重复族 33，带完成标准的 19 轮离线重放它会响的 5 轮里 1 轮材料族先响且说的是同一件事、
   4 轮重复族先响说的是另一件事——材料族先说不亏，用户明写的标准不该排在重复判据后面；「第一条响的赢」不改。打翻哪一维按类挑：没出处 / 没日期 → `factual_grounding`（进检索规划的

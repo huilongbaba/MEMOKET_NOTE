@@ -24,14 +24,18 @@ class VisionError(RuntimeError):
 
 async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
                     *, max_tokens: int = 1200, timeout: float = 300.0,
-                    system: str = "") -> str:
+                    system: str = "", cfg: dict | None = None) -> str:
     """给模型看一张图并提问，返回它的回答。
 
     图走 data URI 内联，不落盘也不对外暴露 URL——这条路径上的图可能是用户
     随手截的一张含敏感信息的屏，不该为了让模型能取到它而先публи出去。
+
+    `cfg`（设置页「测一下」用，P23 #4）：用**输入框里还没保存的那一份**地址 / 模型名 / key。
+    探针必须走这个函数、不许自己拼一份请求——**闸要守来源**（P21）：探针拼的那一份跟真正
+    看图的那一份是两处代码，改了一处忘了另一处，探针就会在真路径已经坏掉时照样绿。
     """
     # 设置页「看图」填了就用它，没填跟着写作模型走（P19 #1；之前只读 .env）
-    cfg = store.get_active_vision_config()
+    cfg = cfg or store.get_active_vision_config()
     b64 = base64.b64encode(image).decode()
     # **要求要放 system，别拼在图旁边那段文字里。** 实测（Daily Journey 的 P0，
     # 本地 muse-glimmer-30b）：拼在一起时模型会把要求原样复述一遍、然后用英文
@@ -54,6 +58,19 @@ async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
         async with httpx.AsyncClient(timeout=timeout) as c:
             r = await c.post(f"{cfg['base_url']}/chat/completions",
                              json=body, headers=headers)
+            # **新一代 OpenAI 模型不收 `max_tokens`**（P23 #4 实拍抓到的）：设置页新加的
+            # 「测一下（会发一张图）」第一次真发图，用户库里存着的那档（`gpt-5.6-luna` @
+            # api.openai.com）当场回 400「Unsupported parameter: 'max_tokens' is not
+            # supported with this model. Use 'max_completion_tokens' instead.」——
+            # 也就是说**这一档的看图从来就没成过**（图片转表格 / 屏幕活动描述都走这儿），
+            # 只是以前没有任何一处会去发一张图，所以没人知道。
+            # 不能直接换成 `max_completion_tokens`：本地那几家（Ollama / LM Studio /
+            # llama.cpp）认的是 `max_tokens`。**按对方的回话改一次再来**，一次就够。
+            if r.status_code == 400 and "max_completion_tokens" in r.text:
+                body.pop("max_tokens", None)
+                body["max_completion_tokens"] = max_tokens
+                r = await c.post(f"{cfg['base_url']}/chat/completions",
+                                 json=body, headers=headers)
             r.raise_for_status()
             data = r.json()
     except httpx.HTTPStatusError as exc:

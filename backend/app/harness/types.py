@@ -129,6 +129,13 @@ class Verdict:
     dimension: str                                  # which dimension to fail
     message: str                                    # what the model is told
     fix: Callable[[str], str] | None = None         # pure function, or None
+    # **一条判据管着不止一件事时，「这个 fix 管用了没有」不能拿整条判据来问**（P23 #1）。
+    # `done_criteria` 一条「每个节点有日期、有出处」同时判两件事：`fix` 把没日期的句子标上
+    # 「（日期待补）」之后，日期那件事好了、出处那件事还欠着——整条判据照样命中，
+    # 原来那句 `if not check(probe)` 就把标好的正文整个丢掉了（P18/P19 三批真跑里每一轮都会这样）。
+    # 给了这个的，就用它判「我管的那件事修好了没有」，**别的没好照旧按新的那条说**。
+    # 仍然是纯函数（吃修完的正文），所以「fix 没真修好就不许改正文」这条纪律一个字没松。
+    fix_done: Callable[[str], bool] | None = None
 
 
 # Code decides. Pure function, read-only, no I/O -- so it can be unit-tested

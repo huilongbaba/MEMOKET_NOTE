@@ -133,7 +133,12 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
               <textarea aria-label="新增一条事实" rows={2} value={adding} autoFocus placeholder="一句话说清一件事（谁、什么时候、什么）"
                         onChange={(e) => setAdding(e.target.value)} />
               <div className="row" style={{ gap: 6 }}>
-                <button className="primary" onClick={() => void saveAdd()} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>加上</button>
+                {/* 什么都没写就点「加上」，原来是**静默关掉那个框**（P23 #8，临界条件表
+                    E 组那个 ？）——看起来跟「加好了」一模一样。跟「不记这些」那一栏
+                    同一条规矩：填了才点得动，没填时把要填什么写在 title 上。 */}
+                <button className="primary" onClick={() => void saveAdd()} disabled={!(adding ?? '').trim()}
+                        title={(adding ?? '').trim() ? undefined : '先写一句：谁、什么时候、什么'}
+                        style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>加上</button>
                 <button onClick={() => setAdding(null)} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>算了</button>
               </div>
             </div>
@@ -146,7 +151,12 @@ export default function NoteKbPanel({ citedIds, row, noteId, onIngest, onSync, i
                 <div className="stack" style={{ gap: 4 }}>
                   <textarea aria-label="改这条事实" rows={2} value={editing.text} autoFocus onChange={(e) => setEditing({ id: f.id, text: e.target.value })} />
                   <div className="row" style={{ gap: 6 }}>
-                    <button className="primary" onClick={() => void saveEdit()} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>保存</button>
+                    {/* 空文本不是「保存」（P23 #8，临界条件表 E 组那个 ？）：原来清空之后
+                        点「保存」这一格**一声不吭地关掉，正文原样留着**——用户以为改成空了。
+                        「改成空」真正的意思是删掉，而删就在右边那个 ✕ 上，跟它说清楚。 */}
+                    <button className="primary" onClick={() => void saveEdit()} disabled={!editing.text.trim()}
+                            title={editing.text.trim() ? undefined : '空的存不了——要去掉这条就用右边那个「从知识库删掉这条」'}
+                            style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>保存</button>
                     <button onClick={() => setEditing(null)} style={{ fontSize: 'var(--t-sm)', padding: '2px 10px' }}>取消</button>
                   </div>
                 </div>

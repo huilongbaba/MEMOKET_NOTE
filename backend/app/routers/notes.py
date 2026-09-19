@@ -37,10 +37,18 @@ def list_notes_brief(q: str = "", user: str = Depends(current_user)):
 
 
 @router.post("/today", response_model=Note)
-def today(user: str = Depends(current_user)):
-    """今天的日记：`日记 / 年 / 月 / 日` 一路找过去，没有就建，有就打开。"""
+def today(day: str = "", user: str = Depends(current_user)):
+    """今天的日记：`日记 / 年 / 月 / 日` 一路找过去，没有就建，有就打开。
+
+    `day=YYYY-MM-DD` 就是**那一天**的（P23 #6）：屏幕活动那一页反过来要给一条
+    「去这天的日记」，而那一页翻得到任何一天。**找或建的规矩一个字不改**——
+    另写一份「按日期找日记」的代码就会跟这一份漂（闸要守来源，P21）。"""
     from datetime import date as _date
-    return store.today_note(user, _date.today())
+    try:
+        d = _date.fromisoformat(day) if day else _date.today()
+    except ValueError:
+        raise HTTPException(400, f"日期要写成 YYYY-MM-DD：{day[:20]}")
+    return store.today_note(user, d)
 
 
 @router.get("/trash")

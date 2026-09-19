@@ -459,16 +459,19 @@ def test_连响的次数要从上一轮那份读():
         checks = (done_criteria,)
         dims = ()
 
-    class _St:
-        def __init__(self):
-            self.content = CONTENT_NO_DATE
-            self.bag = {"content_at_start": ""}
-            self.mode = _Mode()
-            self.ctx = type("C", (), {"intent": "目标：周报；完成标准：每条有日期、有出处",
-                                      "intent_checked": ()})()
-            self.ev = None
-            self.skip_judge = False
-            self.round = 1
+    # **拿真的 `State`**（P23 #1 撞出来的）：原来这里是一个手搓的壳子，而 `Checks` 在
+    # `verdict.fix` 那一档要 `dataclasses.replace(st, ...)`——P23 给日期那一侧接上 `fix` 之后，
+    # 手搓壳子当场 `TypeError`。壳子跟真对象不是一回事，闸就该用真的那个。
+    from app.harness.state import State as _State
+
+    def _St():
+        st = _State(mode=_Mode(),                                  # type: ignore[arg-type]
+                    ctx=type("C", (), {"intent": "目标：周报；完成标准：每条有日期、有出处",
+                                       "intent_checked": ()})(),   # type: ignore[arg-type]
+                    content=CONTENT_NO_DATE)
+        st.bag["content_at_start"] = ""
+        st.round = 1
+        return st
 
     async def one(st):
         async for _ in Checks().before_judge(st):

@@ -43,7 +43,12 @@ export async function landImportInTray(jobId: string, trayNoteId: string): Promi
 const STATUS_LABEL: Record<string, string> = {
   queued: '排队中', extracting: '提取文本', transcribing: '转写中',
   chunking: '切块', remembering: '抽取入库', done: '完成',
-  failed: '失败', cancelled: '已取消', cancelling: '正在停止…', interrupted: '被打断（可继续）',
+  failed: '失败', cancelled: '已取消',
+  // **「正在停止…」说的不是实话**（P23 #8，临界条件表 F 组那两个 ？）：取消是在两块之间
+  // 生效的，模型卡住时这一块最坏要等 300 秒 ×3 次重试 ≈ 15 分钟才轮得到那一下
+  // （实测 `providers/llm.py`：timeout=300 / retries=2，指到一个收下不回的端点上
+  // 3 秒 ×2 那一档 8.0 秒后抛 ProviderError）。状态栏那条早就这么写了，这里跟上。
+  cancelling: '正在停止…（等这一块的模型调用结束）', interrupted: '被打断（可继续）',
 }
 
 const fmtDur = (s: number) => (s < 60 ? `${s} 秒` : s < 3600 ? `${Math.round(s / 60)} 分钟` : `${(s / 3600).toFixed(1)} 小时`)

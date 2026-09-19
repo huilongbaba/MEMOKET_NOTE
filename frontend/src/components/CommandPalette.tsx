@@ -3,6 +3,7 @@ import * as api from '../api'
 import type { Fact, NoteBrief } from '../api'
 import { DESTINATIONS, paletteLabel } from '../util/destinations'
 import { displayTitle } from '../util/displayTitle'
+import { JOURNEY_SPAN_DAYS, openJourneySpan } from '../util/journeyOpen'
 import { fmtDate } from '../util/time'
 import Highlight from './Highlight'
 import Icon from './Icon'
@@ -24,6 +25,12 @@ export const COMMANDS: { label: string; icon: string; run: () => void }[] = [
     label: paletteLabel(d), icon: d.icon,
     run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: d.id })),
   })),
+  // 「这一周的屏幕活动」（计划 §8.4 剩下的那半条，P23 #7）。**这一条是导航，不是开跑**：
+  // 那份回顾是一次模型调用，⌘K 里挑中一条命令只是「敲两个字 + Enter」，没有第二次确认，
+  // 而它的「停止」在那一页上。所以这一下把人送到「回顾一段时间」那一块、把「最近 7 天」
+  // 标出来，按不按由用户决定——理由写全在 `util/journeyOpen.openJourneySpan` 上。
+  { label: `这一周的屏幕活动（最近 ${JOURNEY_SPAN_DAYS} 天的回顾）`, icon: 'bx-calendar',
+    run: () => openJourneySpan() },
   { label: '换个图标（当前笔记）', icon: 'bx-smile', run: () => window.dispatchEvent(new CustomEvent('open-icon-picker')) },
   { label: '定位到当前笔记（树上）', icon: 'bx-crosshair', run: () => window.dispatchEvent(new CustomEvent('tree-locate')) },
   { label: '折叠整棵树', icon: 'bx-collapse-vertical', run: () => window.dispatchEvent(new CustomEvent('tree-collapse')) },
