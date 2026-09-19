@@ -45,8 +45,18 @@ export function parseHeadings(content: string): Heading[] {
   let m: RegExpExecArray | null
   while ((m = re.exec(content))) {
     if (inFence.has(m.index)) continue
-    const inner = INLINE_HEADING.exec(m[2])
-    const text = (inner ? m[2].slice(0, inner.index) : m[2]).trim()
+    // **真 `#` 标题的目录文字也要走 `stripInline`**（P27 #2，P25 #2 留下来那条）：伪标题那一档
+    // P25 已经剥了，真标题这一档没剥——于是 N2 的目录里 `**1. 录制信任：…**` 星号原样露在外面，
+    // 跟当初「只有一个链接的段落列成 `[试菜单](note://9aab…)`」是同一个毛病：**目录那一行要的是
+    // 读得懂的字，不是 markdown 源码**。全库 482 篇量过（`<scratch>/p27/scan_heading_markup.py`）：
+    // 923 条真标题里只有 **8 条**会变，全在 `92d07b760f1e` 这一篇、全是粗体，**没有一条剥完变空**
+    // （变空就等于从目录里消失，那是另一种伤）。
+    //
+    // **顺序是先剥再截，不是先截再剥**：整条标题被一对 `**` 包着时（`### **A ### B**`），
+    // 先截会把配对的后半个 `**` 截掉，剩下 `**A` 这种剥不掉的半截标记。
+    const plain = stripInline(m[2])
+    const inner = INLINE_HEADING.exec(plain)
+    const text = (inner ? plain.slice(0, inner.index) : plain).trim()
     if (!text) continue                            // 整行就是一个夹进来的标记，没有外层文字
     out.push({ level: m[1].length, text, pos: m.index })
   }

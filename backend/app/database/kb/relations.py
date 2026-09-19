@@ -22,7 +22,26 @@ from collections import defaultdict
 # 因为表里没有 年 / 卡 / 辆 / 秒 / TB / 度 / kW / MW / 平方公里——「100辆矿卡…42.35平方公里…-50度」
 # 一个量都抽不出来，连「缺依据」都不判。P7 按那 71 段逐条补。**长的写在前面**（正则按顺序取第一个
 # 能匹配的：`个月` 要排在 `个` 前、`平方公里` 排在 `公里` 前、`kWh` 排在 `kW` 前）。
-_UNITS = (r"mAh|mm|cm|km|kg|TB|PB|GB|MB|MHz|GHz|Hz|kWh|kW|kV|MW|GW|W|V|tps|fps|ms|"
+# **这条规矩只对中文单位是必需的**（P27 #3，突变验证伪的）：`3个月` 里 `个` 排前面就会只吃到 `3个`
+# ——后面跟的是「月」不是字母，结尾那个 `(?![A-Za-z])` 挡不住。ASCII 那一侧挡得住，正则会**回溯**
+# 去试后面的分支（`100MWh` 先匹 `MW`、被 `h` 挡掉，回头还是匹得到 `MWh`），所以顺序只是写着顺眼。
+#
+# **P27 #3 补的六个**：把全库 482 篇正文里「数字 + 紧跟的字母串」全量扫了一遍
+# （`<scratch>/p27/scan_units.py`：850 处 / 31 种字母串），**不在表里的 17 种逐条读过**，
+# 只补了含义唯一、读出来确实是量的六个——
+#   `dB`(9 处 抗噪声 10db / 高频衰减 8dB、3dB) · `GWh`(6 处 1.3GWh 储能) · `MWh`(3 处 100MWh) ·
+#   `us`(3 处 时延 3us，P22 / P25 都记过的那一条) · `min`(3 处 3min 故障定位) ·
+#   `km/h` + `kmh`(6+3 处 矿卡车速)。
+# **没补的十一种，每种为什么不补**（补多了会把型号 / 编号当量，这一条比漏一个单位贵）：
+#   `g` 639 处——`5G` / `24G` 是制式、`400G` / `800G` 是带宽，**同一个字母两种意思**，混进一个桶就会
+#      拿制式去印证带宽；`m` 18 处——`25m` 是米、`20M` 是「两千万月活」、`100M（Wh` 是被括号切断的 MWh；
+#   `k` 10 处——`2K 小批量`（两千台）跟表格里的 `1.1k`（参数量）不是一个单位；
+#   `a` 3 处（`800A` 大电流）/ `h` 2 处（`SLA：P1 1h`）——**读出来确实是量**，但单字母撞型号 / 编号的
+#      风险最高，全库就这几处、且 `h` 只出现在夹具笔记里，不值得为它开这个口子；
+#   `e` 3（`8E Flops` 是指数前缀）· `p` 3（`720P` 是算力缩写）· `b` 3（`NVL72+1B` 是型号）——不是量；
+#   `okv` / `nw` / `imw` 各 3 处——全是 OCR 噪声（`o`←`0`、`N`←`M`、`I`←`1`），补了等于把错字当量。
+_UNITS = (r"mAh|km/h|kmh|mm|cm|km|kg|TB|PB|GB|MB|MHz|GHz|Hz|GWh|MWh|kWh|kW|kV|MW|GW|W|V|"
+          r"tps|fps|ms|μs|us|min|dB|"
           r"平方公里|平方米|公里|万吨|万元|亿元|美元|美金|块钱|个月|"
           r"元|万|亿|台|人|天|周|小时|分钟|秒|次|条|页|版|批|套|%|％|"
           r"年|卡|辆|度|吨|米|个|项|家|场|位|名|篇|张|份|倍|轮|件|层|级|期|座|颗|顆|款|种|步|根")
@@ -34,12 +53,20 @@ _UNITS = (r"mAh|mm|cm|km|kg|TB|PB|GB|MB|MHz|GHz|Hz|kWh|kW|kV|MW|GW|W|V|tps|fps|m
 # `10KV 光伏站点` ×3（千伏，对）、`单个电池容量是 567kwh` ×3（千瓦时，对），**误伤 0 处**。
 # 特别核过会不会把别的东西当量：`1w`（中文里常写成「1w = 1万」）、`KB`/`Kb`、人名里的字母——
 # 全库一处都没有（新增命中只有 `KV` / `kwh` 两个单位）。
-_NUM = re.compile(rf"(?<![\d.])(-?\d+(?:\.\d+)?)[+多余]?\s*({_UNITS})(?![A-Za-z])", re.IGNORECASE)
+# **数字前面也不许紧挨着字母**（P27 #3）。原来只挡数字和小数点，于是 OCR 把一个字符认错，
+# 剩下的半截数就成了「量」——真库上量到 28 处，逐条读过，**22 处是错的值、一处不漏**：
+#   `s0kmh`（50 km/h）→ 0 km/h · `S0ms`（50ms）→ 0ms · `S0%`（50%）→ 0% ·
+#   `g9.3%`（99.3%）→ 9.3% · `I5 分钟预测`（15 分钟）→ 5 分钟 · `1IS2TB`（1152TB）→ 2TB ·
+#   `P3 次日10:00前响应` → 3 次。
+# 剩下 6 处是 `7x24 小时` 和 `L4 级`——那两个数确实在说点什么，但它们是**词里的数**
+# （「7×24」是一个成语、「L4」是个等级名），不是这一段自己报出来的量。
+# **一个错的值比一个漏掉的量贵得多**：冲突卡会拿着 `0 km/h` 去说「跟知识库不一致」。
+_NUM = re.compile(rf"(?<![\dA-Za-z.])(-?\d+(?:\.\d+)?)[+多余]?\s*({_UNITS})(?![A-Za-z])", re.IGNORECASE)
 # 开了 `re.I` 就必须把大小写收回来：`by_unit` 是按单位**字符串**分桶的，
 # 不归一的话「9kWh」和「567kwh」会落进两个桶，同一个单位互相印证不了——
 # 那等于用一个修好的抽取换来一个新的漏判。按单位表里的写法为准。
 _UNIT_CANON = {u.lower(): u for u in _UNITS.split("|")}
-_UNIT_ALIAS = {"％": "%", "顆": "颗"}
+_UNIT_ALIAS = {"％": "%", "顆": "颗", "kmh": "km/h", "μs": "us", "min": "分钟"}
 _DATE_FULL = re.compile(r"(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})日?")
 _DATE_MD = re.compile(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?")
 # 月级 / 年级的日期（P4 #5：「6月末/7月」「六月末或七月」「2020年」都不算日期，库里一模一样的话没出来）。
@@ -169,11 +196,99 @@ def overlap(a: str, b: str) -> float:
 
 def shared_terms(a: str, b: str) -> int:
     """两段共用几个词元。`overlap` 按 min 归一，事实只有 3 个词时撞上 1 个就 0.33——P4 复盘 51 段
-    被「wifi」「ai」一个词压掉了「缺依据」。相关与否还要看**绝对数**：至少共用 2 个。"""
+    被「wifi」「ai」一个词压掉了「缺依据」。相关与否还要看**绝对数**。
+
+    **这个数不能直接当「几条证据」用**，理由见 `evidence_runs`。"""
     return len(_terms(a) & _terms(b))
 
 
-# 「沾边」的下限：重合度之外还要共用 ≥ 2 个词元（P4 #4b）。
+def evidence_runs(a: str, b: str) -> list[str]:
+    """两段共用的**独立**证据，一条一串。
+
+    **为什么不能直接数 `shared_terms`**（P27 #1，P25 #4 留下来那条）：中文那边的词元是
+    **双字滑窗**，一个三字词会切成两片——「成本高」→ `成本` / `本高`。于是
+
+        正文：「…23 万台区、超过 35 万充电桩…成本高效率低；停电事故被动响应；」
+        事实：「我们项目因为你们成本高全部停了,没有重新启动」
+
+    `shared_terms` 数出 **2**，正好压着「共用 ≥2 个词元」那条线过关，右栏就敢说
+    「知识库里**沾边的记录**都没带这段里的量」——而两段唯一的交集是**一个词**。
+    那个 2 从来不是在数两条证据，**是在数同一个词被切成的两半**。
+    真库 482 篇上量过：302 对「沾边」里逐条读的 45 对有 13 对不该沾边，
+    其中 4 对的全部交集就是这样一串（`需要人` / `需要提前` / `准确率` / `至少要`）。
+
+    所以先把共用的片段按它们**在正文里的位置**合并——**重叠才合、相邻不合**
+    （「成本高」和紧跟着的「效率低」是两个词，合成一串就又把两条证据压成一条了）；
+    再按互不包含去一次重（`第二款产品` 和 `款产品` 是同一条，`search._clusters` 同款规矩）。
+    英文词本来就是整词切的，一个词一串。
+
+    **`speaker` / `说话人 2` 这种转写脚手架词不算证据**：召回那侧早就剔了
+    （`search._is_speaker_word`，第 527 轮），关系这侧一直没剔——而库里的英文事实
+    几乎每条都以「Speaker B says …」开头，于是它成了一条**免费的共用证据**，
+    随便哪两段都能凑到 2。真库上量到 2 对全靠它撑到 2 串（`speaker + kol`、`speaker + beta`）。
+    只在这里剔，不动 `_terms`——`overlap` 的分母跟着变就是换了另一个判据，那要单独量。
+    """
+    from .search import _is_speaker_word
+
+    sh = {t for t in _terms(a) & _terms(b) if not _is_speaker_word(t)}
+    runs = [t for t in sh if not _CJK.search(t)]
+    cjk = "".join(_CJK.findall(_GARBAGE.sub(" ", a or "")))
+    spans: list[tuple[int, int]] = []
+    for t in sh:
+        if not _CJK.search(t):
+            continue
+        i = cjk.find(t)
+        while i >= 0:
+            spans.append((i, i + len(t)))
+            i = cjk.find(t, i + 1)
+    spans.sort()
+    merged: list[tuple[int, int]] = []
+    for s0, e0 in spans:
+        if merged and s0 < merged[-1][1]:          # 真重叠（共用至少一个字）才是同一个词
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e0))
+        else:
+            merged.append((s0, e0))
+    runs += [cjk[s0:e0] for s0, e0 in merged]
+    out: list[str] = []
+    for h in sorted(set(runs), key=lambda h: (-len(h), h)):
+        if not any(h in o for o in out):
+            out.append(h)
+    return out
+
+
+# 一整串汉字逐字相同，**它本身就不止一个词**（P27 #1）。
+# 收紧成「≥2 串」之后单测当场抓到一条（`test_p19.py::test_日期先对上一条再对不上一条_两条都要报`）：
+#   正文「…众筹页面 3月12号 上线」 ↔ 事实「众筹页面 3月10号 上线」
+# 共用的是 `众筹页面月号上线` **8 个字逐字相同**，合并完只剩一串，于是「≥2 串」把它判成不沾边——
+# **最强的那种证据反而过不了闸**。这条注释之所以写在这儿：收紧一个判据时最容易踩的就是
+# 「把最强的样本也一起砍了」，而突变验不会替你想到这一类。
+#
+# 门槛定在 5 是量出来的，不是拍的：全库 302 对里「只共用一串」的有 42 对——
+# **3 字的 30 对**（`成本高` `准确率` `需要人` `至少要` `超节点` `实硬件` `能判断` `kol`）、
+# **4 字的 6 对**（`需要提前` `广告投放` `beta`）、**5 字的 6 对**（`第二款产品` `启动第二款`）。
+# 逐条读下来，5 字那一档**全是真沾边**，3–4 字那一档几乎全是撞词。
+# 理由也站得住：这个库里没有 5 个字的词，**一串 5 个字逐字相同意味着至少两个词连着对上了**——
+# 那正是「两条独立证据」想说的事，只是它们碰巧挨着。
+#
+# **只给汉字开这个口子**：英文那边本来就是整词切的，`makedecision` 再长也还是**一个**词，
+# 长度在那边不代表「不止一个词」。
+LONG_RUN_CHARS = 5
+_CJK_RUN = re.compile(r"^[一-鿿]+$")
+
+
+def shared_evidence(a: str, b: str) -> int:
+    """两段共用几**条**独立证据。判「沾边」用这个，不用 `shared_terms`。
+
+    一串 ≥ `LONG_RUN_CHARS` 个汉字的算两条（理由见上面那段注释）。"""
+    runs = evidence_runs(a, b)
+    n = len(runs)
+    if n == 1 and _CJK_RUN.match(runs[0]) and len(runs[0]) >= LONG_RUN_CHARS:
+        n = 2
+    return n
+
+
+# 「沾边」的下限：重合度之外还要共用 ≥ 2 **条独立证据**（P4 #4b 定的 2，
+# P27 #1 把「条」的定义从「词元」改成 `evidence_runs`——阈值没动，量程改对了）。
 MIN_SHARED_TERMS = 2
 
 
@@ -264,7 +379,7 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
     for f in facts:
         text = f.get("text") or ""
         s = overlap(passage, text)
-        scored.append((s, f, extract_values(text), shared_terms(passage, text)))
+        scored.append((s, f, extract_values(text), shared_evidence(passage, text)))
     related = [(s, f, fv) for s, f, fv, n in scored
                if s >= min_overlap and (n >= MIN_SHARED_TERMS or _same_quantity(fv))]
     if not pv["nums"] and not pv["dates"]:
@@ -352,7 +467,7 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
         # 改成看**绝对数**：共用 ≥ 2 个词元（`MIN_SHARED_TERMS`）。不再拿 0.2 兜底——短事实只共用一个词也能到 0.33
         # （「2月1号上线」↔「2月1号发工资」），同一天的两件不相干的事会被判成「日期一致」（突变验抓出来的）。
         strong = [(s, f, fv) for s, f, fv in related
-                  if fv["dates"] and shared_terms(passage, f.get("text") or "") >= MIN_SHARED_TERMS]
+                  if fv["dates"] and shared_evidence(passage, f.get("text") or "") >= MIN_SHARED_TERMS]
         # **一段里有两个日期、一个对上一个对不上时，冲突要报出来**（P19 #4 / P17 #12）。
         # 原来这个循环在**第一条**事实上就 `break`：重合度最高的那条碰巧是对上的（或者已经按数字
         # 印证过、走 `already` 那条 break），后面那条对不上的就永远轮不到判。实拍（P17 第 3 步）：
@@ -407,7 +522,7 @@ def detect(passage: str, facts: list[dict], *, min_overlap: float = 0.12,
         if s < max(min_overlap, 0.2):
             continue
         same_unit = any(u in p_units for _v, u in fv["nums"])
-        if not same_unit and shared_terms(passage, f.get("text") or "") < ACCUMULATION_MIN_SHARED:
+        if not same_unit and shared_evidence(passage, f.get("text") or "") < ACCUMULATION_MIN_SHARED:
             continue
         missing = [_fmt(v) + u for v, u in fv["nums"] if u not in p_units]
         if not pv["dates"]:
