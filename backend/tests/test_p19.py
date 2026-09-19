@@ -142,6 +142,15 @@ class _FakeResp:
             raise ValueError("not json")
         return self._payload
 
+    @property
+    def content(self) -> bytes:
+        """真的 `httpx.Response` 有这个字段，降级判据读的就是它（P26 #1）。
+        假件缺一个真件有的字段，等于让被测代码只能用假件认得的那几个。"""
+        import json as _json
+        if self._payload is not None:
+            return _json.dumps(self._payload).encode()
+        return self.text.encode()
+
 
 class _FakeClient:
     """只记「发到哪、发了什么」，按脚本回。**测的是那句话说得对不对**，不连网。"""

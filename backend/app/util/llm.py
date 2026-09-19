@@ -297,6 +297,51 @@ def _rejects_cache_key(status_code: int, body: bytes) -> bool:
     return err.get("param") == "prompt_cache_key"
 
 
+def rejects_max_tokens(status_code: int, body: bytes) -> bool:
+    """这次 400 是不是「这个模型不收 ``max_tokens``，要 ``max_completion_tokens``」。
+
+    **公开的，因为它有三个读者**（P26 #1）：``_payload`` 那条线从来不发
+    ``max_tokens``（统一在上面那个字段上，所以它自己用不到这条），而仓里
+    另外两处是自己拼 body 的——``editor/vision.py::ask_image`` 和
+    ``routers/settings.py::probe_endpoint`` 的纯文字探针。P23 只修了前者，
+    后者原样发着 ``max_tokens=1``：真库里配着的 ``gpt-5.6-luna``
+    （api.openai.com）实测当场回 400
+    ``Unsupported parameter: 'max_tokens' is not supported with this model.
+    Use 'max_completion_tokens' instead.``——**于是「测一下」会对着一份完全
+    正常的配置说「返回 400」**，而写作那条路（走 ``_payload``）明明是通的。
+    探针把好的说成坏的，比不测更糟。
+
+    判据窄在 ``param`` 上（跟 ``_rejects_cache_key`` 同一套），不拿「400 里
+    提到了这个词」当依据。只有连结构化 error 都拿不到时（有些网关只回一句
+    白话）才退回原话里找字段名——那正是 P23 给 vision 写的那一版的口径，
+    退回去是为了不动它对这类网关已经验过的行为。
+    """
+    if status_code != 400:
+        return False
+    try:
+        err = json.loads(body).get("error") or {}
+    except (json.JSONDecodeError, AttributeError):
+        err = {}
+    if err:
+        return err.get("param") == "max_tokens"
+    return b"max_completion_tokens" in body
+
+
+def swap_to_max_completion_tokens(payload: dict) -> bool:
+    """把 body 里的 ``max_tokens`` 原地换成 ``max_completion_tokens``，返回换没换。
+
+    **按对方的回话改一次再来，一次就够**：不能一上来就发
+    ``max_completion_tokens``——本地那几家（Ollama / LM Studio）认的是
+    ``max_tokens``，而这两个调用点（看图 / 探针）面对的正是用户随手填进
+    设置页的任意端点。没有 ``max_tokens`` 可换时返回 False，调用方据此
+    决定别做那次没意义的重试。
+    """
+    if "max_tokens" not in payload:
+        return False
+    payload["max_completion_tokens"] = payload.pop("max_tokens")
+    return True
+
+
 def _rejects_temperature(status_code: int, body: bytes) -> bool:
     """判断这次 400 是不是"这个模型不支持自定义 temperature"这个特定错误——
     不是所有 400 都该吞掉重试，只有这一种确定是"参数不支持"而不是"请求

@@ -364,7 +364,11 @@ class NoteHooks:
                 # `st.facts` 里，两边由 `middleware/facts.py` 一起算出来。
                 facts_index=st.bag.get("facts_index"),
                 # 托盘单独一块、摆在所有材料前面（P14）
-                tray=st.bag.get("tray_lines"))},
+                tray=st.bag.get("tray_lines"),
+                # 上一轮判据自己动手改的那几处（P26 #3）。`middleware/checks` 攒、
+                # 在**下一轮**的 `before_judge` 里换掉——这一步跑在它之前，读到的
+                # 正是上一轮那份。
+                auto_fixes=st.bag.get("auto_fixes"))},
         ]
 
         text = ""

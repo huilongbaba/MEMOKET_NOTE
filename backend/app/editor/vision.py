@@ -16,6 +16,7 @@ import base64
 import httpx
 
 from ..database import store
+from ..util import llm
 
 
 class VisionError(RuntimeError):
@@ -66,9 +67,10 @@ async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
             # 只是以前没有任何一处会去发一张图，所以没人知道。
             # 不能直接换成 `max_completion_tokens`：本地那几家（Ollama / LM Studio /
             # llama.cpp）认的是 `max_tokens`。**按对方的回话改一次再来**，一次就够。
-            if r.status_code == 400 and "max_completion_tokens" in r.text:
-                body.pop("max_tokens", None)
-                body["max_completion_tokens"] = max_tokens
+            # 判据和换字段这两步都搬去了 `util/llm`（P26 #1）：同一件事仓里有三处
+            # 在做，P23 只修了这一处，设置页那条纯文字探针还原样发着 `max_tokens`。
+            if llm.rejects_max_tokens(r.status_code, r.content) and \
+                    llm.swap_to_max_completion_tokens(body):
                 r = await c.post(f"{cfg['base_url']}/chat/completions",
                                  json=body, headers=headers)
             r.raise_for_status()

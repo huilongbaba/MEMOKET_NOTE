@@ -187,13 +187,20 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
                                outline_note: str = "",
                                sections: list[str] | None = None,
                                facts_index: list[str] | None = None,
-                               tray: list[str] | None = None) -> str:
+                               tray: list[str] | None = None,
+                               auto_fixes: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
         parts.append(block)
     if outline_note:
         parts.append(outline_note)
+    # **上一轮判据替它改过正文的话，摆在最前面说一句**（P26 #3）。位置跟 `outline_note`
+    # 同一档：它讲的是「你眼前这份正文跟你上一轮交出去的那份不一样」，
+    # 得在模型开始读正文之前就知道。
+    fix_block = auto_fix_block(auto_fixes)
+    if fix_block:
+        parts.append(fix_block)
     spine_block = spine_beats_block(spine, beats)
     if spine_block:
         parts.append(spine_block)
@@ -219,6 +226,30 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
     if sections:
         parts.append(place_directive_block(sections))
     return "\n\n".join(parts)
+
+
+def auto_fix_block(fixes: list[str] | None) -> str:
+    """「上一轮我替你把 X 改了」——判据自己动手那一轮，对模型说的那一句（P26 #3）。
+
+    P23 立了 `Verdict.fix` / `fix_done` 这条「判据直接改正文」的路，**可那一轮对模型
+    一句话都没说**：下一轮它看到的正文里多了/少了自己没写过的东西。两种坏法都是真的——
+    要么把记号（「（日期待补）」）当成自己写的、接着往下编；要么把被删掉的那句原样再写一遍，
+    下一轮再被删一次，两轮白跑。
+
+    措辞上只说**做了什么**、不重复**哪里错了**（后者是 `Verdict.message` 的事，它走
+    `focus_note` 那条线）。最后那句「不用再改回去」是必须的：不说的话模型的默认动作
+    是「把正文恢复成我记得的样子」。
+
+    空列表返回空串，调用方按空串跳过——**`None` 和 `[]` 在这儿是一回事**（都表示
+    上一轮没动手），跟 `fresh_paras` 那个「None 和 [] 不一样」的形状**不同**，
+    因为这里没有「动了手但一处都说不出来」这种局面（`fix_note` 空的判据不进这个表）。
+    """
+    lines = [f"- {f}" for f in (fixes or []) if f and f.strip()]
+    if not lines:
+        return ""
+    return ("【上一轮我替你改了正文——下面这几处已经好了，别再改回去，也别再写一遍】\n"
+            + "\n".join(lines[:8])
+            + "\n这几处不用你再管，接着往下写就行。")
 
 
 def place_directive_block(sections: list[str]) -> str:

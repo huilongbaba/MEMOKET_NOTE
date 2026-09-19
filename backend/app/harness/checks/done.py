@@ -404,8 +404,11 @@ def done_criteria(st: State) -> Verdict | None:
         # 说清之后，出处那一侧逐轮在补、日期那一侧三批真跑里一个字没改（0/6）——而「句末写
         # （日期待补）」纯机械，`Verdict.fix` 正是干这个的。第 1 轮照旧只说、留给模型写真日期。
         fix = fix_done = None
+        fix_note = ""
         if r["kind"] == "date" and streak >= 2 and r.get("bad"):
             bad = list(r["bad"])
+            fix_note = (f"在还没有日期的那 {len(bad)} 处行尾贴了「（日期待补）」"
+                        "——那是我加的记号，不是你写的；有真日期就把记号换成日期")
 
             def fix(c: str, _bad: list[str] = bad) -> str:
                 return mark_date_pending(c, _bad)
@@ -419,5 +422,6 @@ def done_criteria(st: State) -> Verdict | None:
             message=f"你定的完成标准「{text}」还没满足：{scope}{r['why']}。{again}{_hint(r, st.content)}",
             fix=fix,
             fix_done=fix_done,
+            fix_note=fix_note,
         )
     return None

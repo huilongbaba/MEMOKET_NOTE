@@ -294,6 +294,7 @@ def no_echoed_text(st: State) -> Verdict | None:
             f"同一句话里把「{echo[:40]}」抄了两遍：「{sent[:60]}…」。删掉第二遍。",
             fix=lambda text, e=echo: blockcheck.drop_echo(text, e),
             fix_done=lambda text, e=echo: not _echo_still_there(text, e),
+            fix_note=f"把重复抄了一遍的「{echo[:40]}」删掉了一份（原句留着）",
         )
 
     cite = blockcheck.repeated_citation(st.content, before)
@@ -304,6 +305,7 @@ def no_echoed_text(st: State) -> Verdict | None:
             f"同一段里把 [{fid}] 贴了两次：「{para[:50]}…」。一条依据在一段里标一次就够。",
             fix=lambda text, f=fid: blockcheck.drop_repeated_citation(text, f),
             fix_done=lambda text, f=fid: (blockcheck.repeated_citation(text, before) or ("",))[0] != f,
+            fix_note=f"把同一段里贴了两次的 [{fid}] 去掉了一个（留下第一个）",
         )
 
     for hint in repeats.find_repeats(st.content):

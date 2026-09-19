@@ -15,6 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..database import store
+from ..util import llm
 from ..util.config import get_settings
 from .schemas import ProviderConfigIn, ProviderConfigOut, ProviderTestIn, ProviderTestOut
 from .deps import current_user
@@ -199,9 +200,20 @@ async def probe_endpoint(kind: str, base_url: str, model: str = "", api_key: str
             return ProviderTestOut(ok=False, message=f"连上了 {base}，但拿不到模型列表（{list_err or '空列表'}），模型名又没填——填上模型名再测", elapsed_ms=ms())
         if kind == "vision":
             return await vision_ok(None)
+        probe_body = {"model": model, "messages": [{"role": "user", "content": "hi"}],
+                      "max_tokens": 1}
         try:
-            r = await c.post(f"{base}/chat/completions", headers=headers,
-                             json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
+            r = await c.post(f"{base}/chat/completions", headers=headers, json=probe_body)
+            # **新一代 OpenAI 模型不收 `max_tokens`**（P26 #1）：这份 body 是 P19 照着
+            # 本地模型写的，而真库里配着的 `gpt-5.6-luna` 实测当场回 400
+            # 「Unsupported parameter: 'max_tokens' …Use 'max_completion_tokens' instead.」。
+            # 这一支只在 `/models` 列不出来时才走到（网关不实现列表），可一旦走到，
+            # 「测一下」就会对着一份**完全正常**的配置说「返回 400」——而写作那条路
+            # （走 `util/llm._payload`，发的本来就是 `max_completion_tokens`）是通的。
+            # 跟 `vision.ask_image` 同一条路：按对方的回话改一次再来，一次就够。
+            if llm.rejects_max_tokens(r.status_code, r.content) and \
+                    llm.swap_to_max_completion_tokens(probe_body):
+                r = await c.post(f"{base}/chat/completions", headers=headers, json=probe_body)
         except httpx.HTTPError as exc:
             return ProviderTestOut(ok=False, message=f"连不上 {base}：{type(exc).__name__}", elapsed_ms=ms())
         if r.status_code == 200:

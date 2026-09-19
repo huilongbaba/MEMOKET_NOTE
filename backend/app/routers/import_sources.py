@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import json
 import shutil
@@ -48,6 +49,27 @@ _TERMINAL = {"done", "failed", "cancelled"}
 
 MAX_FILES = 2000          # 一个 vault 几千篇很常见，比 batch 的 50 放宽很多
 NOTION_VERSION = "2026-03-11"
+
+# **一个 job 整体最坏跑多久**（P26 #4；P23 临界条件表 #5/#6 留下来的那一格）。
+#
+# P23 量的是 **provider 那一层**的超时：`timeout=300 / retries=2`，实测 3 秒 ×2 那一档
+# 8.0 秒抛 `ProviderError`。每个子任务各有自己的闸——**可整体一个上限都没有**。
+# 一次导入是 N 篇 × 每篇 M 块，每块一次 LLM 调用（`store.DEFAULT_CHUNK_MS` 实测
+# GPT ≈ 13 s/块）：一千篇的 vault 乘上去是几十个小时，而界面上只有一个「取消」，
+# 用户唯一能知道「还要多久」的办法是自己盯着进度条外推。
+#
+# 闸的形状是**预算 + 断点**，不是**杀**：到点就在下一个子任务边界停下来，把
+# 「已完成多少 / 为什么停 / 怎么接着跑」说清楚，剩下的留成可续跑的 item。
+# 这条路本来就有断点续跑（`resume_job`，块级也是断点——已导入的 session KITE 直接
+# 跳过、不花调用），所以停下来的代价只是用户多点一次「继续」。
+#
+# **剩下的 item 标成 `failed` 而不是 `cancelled`**：`resume_job` 跳过的是
+# `("done", "cancelled")`，标 `cancelled` 就再也续不了了——正好把这条闸变成
+# 「到点把活丢掉」。`failed` 是终态（`store._TERMINAL_ITEM_STATUSES`，job 因此
+# 收敛到 `error` 而不是永远 `running`），又在 `resume_job` 的续跑集里，是现有
+# 三个取值里唯一两条都满足的。真正的原因写在 item 的 `detail` 里，
+# `update_job_from_items` 会把它聚合进 job 的 detail，界面照原话显示。
+JOB_BUDGET_SECONDS = float(os.getenv("KITE_IMPORT_BUDGET_SECONDS", "3600"))
 
 
 _ICON_RE = re.compile(r"bxs?-[a-z0-9-]{1,40}")
@@ -85,8 +107,23 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                 store.set_icon(user, folders[path], body.icon)
         return folders[path]
 
-    for note, item in zip(notes, items):
+    # 整体预算（P26 #4）。**跟 `is_cancel_requested` 挂在同一批边界上**：子任务之间、
+    # 块与块之间——那两处本来就是这条路唯一能干净停下的地方，挂在别处只会变成
+    # 「杀在一次 LLM 调用中间」，而那一块的钱已经花了、结果却丢了。
+    t_job = time.perf_counter()
+    budget = JOB_BUDGET_SECONDS
+
+    def over_budget() -> bool:
+        return budget > 0 and (time.perf_counter() - t_job) >= budget
+
+    done_count = 0
+    stopped_at = -1
+
+    for pos, (note, item) in enumerate(zip(notes, items)):
         item_id = item["id"]
+        if over_budget():
+            stopped_at = pos
+            break
         try:
             if store.is_cancel_requested(job_id):
                 store.set_item(item_id, "cancelled")
@@ -132,7 +169,7 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
                 chunks = _chunks(note.content)
                 store.set_item(item_id, "remembering", chunks_total=len(chunks), chunks_done=0)
                 for i, chunk in enumerate(chunks):
-                    if store.is_cancel_requested(job_id):
+                    if store.is_cancel_requested(job_id) or over_budget():
                         break
                     try:
                         t_chunk = time.perf_counter()
@@ -167,9 +204,21 @@ def _land(user: str, notes: list[importers.ImportedNote], to: str,
             store.set_item(item_id, "done", facts=facts,
                            detail="；".join(x for x in (state_note, kb_note) if x),
                            note_id=landed_id)
+            done_count += 1
         except Exception as exc:              # noqa: BLE001 — 单条失败不能拖垮整批
             store.set_item(item_id, "failed", detail=f"{type(exc).__name__}: {exc}")
         store.update_job_from_items(job_id)
+
+    if stopped_at >= 0:
+        # 到点了：把剩下的说清楚。**一条 item 一句话**，因为界面是按 item 列的，
+        # 只写在 job 上的话用户看到的是「error」加一串别的条目的 detail。
+        mins = int(budget // 60) or 1
+        left = len(items) - stopped_at
+        why = (f"整批已经跑满这次导入的时间上限（{mins} 分钟），先停在这儿："
+               f"{len(items)} 篇里已完成 {done_count} 篇，剩下 {left} 篇还没开始。"
+               "点「继续」接着跑——已经导进去的不会重跑、也不会再花钱。")
+        for item in items[stopped_at:]:
+            store.set_item(item["id"], "failed", detail=why)
     store.update_job_from_items(job_id)
 
 
