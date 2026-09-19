@@ -1114,8 +1114,14 @@ export type NoteHarnessHandlers = {
    *   跟 `false`（有这一步但没进去）不是一回事；
    * - `checks_total` 这个模式一共几条代码判据——命中的那几条走 `check_hit`，
    *   分母只有这里给得出来；
-   * - `depth_dropped` 这一轮有几发工具调用被深度门丢掉（不算进 `truncated`）。 */
-  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean; steer?: string; steer_dim?: string; steer_material?: boolean; steer_in_plan?: boolean | null; checks_total?: number; depth_dropped?: number; depth_dropped_all?: boolean; facts_irrelevant?: number; irrelevant_dropped?: boolean; irrelevant_sample?: string[] }) => void
+   * - `depth_dropped` 这一轮有几发工具调用被深度门丢掉（不算进 `truncated`）。
+   * - `cite_located` / `cite_marked` / `cite_matched` 引用覆盖（P30 #1，**累计到这一轮为止**）：
+   *   这次跑写的字里有几句**能**逐字定位到材料（= 本来就该贴编号）、其中贴了几句、
+   *   贴的编号又有几句正好是定位到的那条。**后端不给比值**：`cite_located === 0`
+   *   是「这段没有可直接引的材料」（答不了），不是 0%——折成一个百分比就把这件事
+   *   抹平了，而实测四批 20 跑终稿 623 句里只有 52 句可引（7.7–9.1%），
+   *   `a941efecd390` 那种整篇英文、材料零逐字重合的笔记四批里有三批是 0。 */
+  onRoundStart?: (d: { round: number; max_rounds: number; revisions_applied: number; skipped_continue?: boolean; facts?: number; sources?: string[]; kb_empty?: boolean; steer?: string; steer_dim?: string; steer_material?: boolean; steer_in_plan?: boolean | null; checks_total?: number; depth_dropped?: number; depth_dropped_all?: boolean; facts_irrelevant?: number; irrelevant_dropped?: boolean; irrelevant_sample?: string[]; cite_located?: number; cite_marked?: number; cite_matched?: number }) => void
   onRevision?: (r: NoteHarnessRevision) => void
   onDelta?: (text: string) => void
   /** 这一轮的续写流结束（TEXT_MESSAGE_END）：客户端在这里做服务端收尾时也做的归一化（fixBoldPunct） */

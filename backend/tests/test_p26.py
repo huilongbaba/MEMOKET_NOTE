@@ -190,9 +190,16 @@ def test_写作那条线一个字都不发max_tokens():
     """**P26 #1 量出来的结论**：`_payload` 那条线（写作 / 打分 / 工具循环全走它）
     本来就统一在 `max_completion_tokens` 上，所以「写作那档看起来是好的」不是因为
     它没传这个参数，而是因为它传的本来就是对的那个。这条把那个结论钉住。
-    量程：把 `_payload` 里的字段名改回 `max_tokens`，这条红。"""
+    量程：把 `_payload` 里的字段名改回 `max_tokens`，这条红。
+
+    **P30 #5 之后这条只说 `provider="gpt"` 那一档**（真库里配的正是它）：
+    本地那一档现在两个都发——Ollama / LM Studio 只认 `max_tokens`，
+    而且不认的字段是安静忽略的，只发 `max_completion_tokens` 等于没有上限
+    （假端点实测：要 700 回 4096）。这条守的性质一个字没变：
+    **生产那条路一个字节都不多发、一次多余往返都不多**。"""
     with mock.patch.object(llm.store, "get_active_llm_config",
-                           lambda: {"base_url": "http://x", "api_key": "k", "model": "gpt-5.6-luna"}):
+                           lambda: {"base_url": "http://x", "api_key": "k",
+                                    "model": "gpt-5.6-luna", "provider": "gpt"}):
         body = llm._payload([{"role": "user", "content": "hi"}], stream=False,
                             max_tokens=100, temperature=0.3, effort="low")
     assert "max_tokens" not in body

@@ -59,7 +59,8 @@ def test_get_active_llm_config_falls_back_to_local_settings_by_default(isolated_
     monkeypatch.setattr(store, "get_settings", lambda: fake_settings)
 
     active = isolated_store.get_active_llm_config()
-    assert active == {"base_url": "http://local-model:8080/v1", "api_key": "no-key", "model": "muse-glimmer-30b"}
+    assert active == {"base_url": "http://local-model:8080/v1", "api_key": "no-key",
+                      "model": "muse-glimmer-30b", "provider": "local"}
 
 
 def test_get_active_llm_config_uses_gpt_once_selected_with_a_key(isolated_store, monkeypatch):
@@ -69,8 +70,12 @@ def test_get_active_llm_config_uses_gpt_once_selected_with_a_key(isolated_store,
 
     isolated_store.set_provider_config("gpt", gpt_api_key="sk-real-key", gpt_model="gpt-4.1-mini")
     active = isolated_store.get_active_llm_config()
+    # `provider` 这一栏是 P30 #5 加的：`llm._payload` 按它决定发不发 `max_tokens`
+    # （Ollama / LM Studio 只认 `max_tokens`，而且不认的字段安静忽略 = 没有上限）。
+    # **这两条继续用全等比**，不改成子集比——少一栏就该红，那正是它要挡的。
     assert active == {
-        "base_url": "https://api.openai.com/v1", "api_key": "sk-real-key", "model": "gpt-4.1-mini"}
+        "base_url": "https://api.openai.com/v1", "api_key": "sk-real-key",
+        "model": "gpt-4.1-mini", "provider": "gpt"}
 
 
 def test_get_active_llm_config_falls_back_when_gpt_selected_but_no_key_yet(isolated_store, monkeypatch):

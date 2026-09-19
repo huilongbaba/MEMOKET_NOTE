@@ -100,7 +100,9 @@ def test_本地模型的地址模型名key存得住也退得回(tmp_path, monkey
     store.set_provider_config("local", local_base_url="http://127.0.0.1:1234/v1/",
                               local_model="lm", local_api_key="k1")
     active = store.get_active_llm_config()
-    assert active == {"base_url": "http://127.0.0.1:1234/v1", "api_key": "k1", "model": "lm"}   # 尾斜杠去掉
+    # `provider` 是 P30 #5 加的第四栏（`llm._payload` 按它决定发不发 `max_tokens`）
+    assert active == {"base_url": "http://127.0.0.1:1234/v1", "api_key": "k1",
+                      "model": "lm", "provider": "local"}   # 尾斜杠去掉
 
     store.set_provider_config("local", asr_base_url="http://x:2")     # 不传 = 保留
     assert store.get_active_llm_config()["model"] == "lm"

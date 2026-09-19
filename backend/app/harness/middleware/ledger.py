@@ -424,6 +424,25 @@ class Ledger:
                 claim_atoms=int(st.bag.pop("claim_atoms", -1)),
                 fired_checks=json.dumps(st.bag.pop("fired_checks", []),
                                         ensure_ascii=False),
-                abstained=str(st.bag.pop("claim_abstained", "") or ""))
+                abstained=str(st.bag.pop("claim_abstained", "") or ""),
+                # 引用覆盖三列（P30 #1）。`Checks.before_judge` 写进 bag，这里
+                # `after_judge` 读，先后是稳的。**读完就 pop**，理由同上面三列。
+                # 拿不到 = 这一轮压根没走到 `before_judge`（中途出错 / 链里没有
+                # `Checks`）→ `(-1, -1, -1)`，跟「算了、0 句」严格分开。
+                **_cite_cols(st.bag.pop("cite_cover", None)))
         except Exception:                                   # noqa: BLE001
             pass        # 记账不承重：写不进去也不能影响这一轮的产出
+
+
+def _cite_cols(cov) -> dict:
+    """引用覆盖三列（P30 #1）。`None` = 这一轮没算过 → 三列都是 -1。
+
+    **三个一起走一个函数**，是为了「没算过」这一档不可能只写对其中一列——
+    分开写三行 `int(x or -1)` 的话，`0` 会被 `or` 吞成 `-1`，而 0 恰恰是这三列
+    最常见的取值（四批 20 跑终稿 623 句里 571 句一条材料都对不上）。
+    """
+    if not cov:
+        return {"cite_located": -1, "cite_marked": -1, "cite_matched": -1}
+    located, marked, matched = cov
+    return {"cite_located": int(located), "cite_marked": int(marked),
+            "cite_matched": int(matched)}

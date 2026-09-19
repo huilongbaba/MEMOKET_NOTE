@@ -19,8 +19,13 @@ from app.util import llm# noqa: E402
 
 
 def test_payload_uses_max_completion_tokens_not_max_tokens(monkeypatch):
+    """**只对 `provider="gpt"` 那一档成立**（P30 #5）：推理档带上 `max_tokens`
+    当场 400。本地那一档反过来——Ollama / LM Studio 只认 `max_tokens`，
+    不认的字段安静忽略，只发 `max_completion_tokens` 等于一点上限都没有
+    （断言在 `test_p30.py`）。所以这里的 `provider` 不能省。"""
     monkeypatch.setattr(store, "get_active_llm_config",
-                        lambda: {"base_url": "http://x", "api_key": "k", "model": "m"})
+                        lambda: {"base_url": "http://x", "api_key": "k", "model": "m",
+                                 "provider": "gpt"})
     body = llm._payload([{"role": "user", "content": "hi"}], stream=False,
                         max_tokens=100, temperature=0.3, effort="low")
     assert "max_completion_tokens" in body

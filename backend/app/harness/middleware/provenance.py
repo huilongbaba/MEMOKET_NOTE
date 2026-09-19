@@ -88,6 +88,19 @@ class Provenance:
             # 跟「判据根本没跑」在界面上长得一模一样（§21：建了判据不等于
             # 用了判据）。
             "checks_total": len(st.mode.checks),
+            # ⑥ 引用覆盖（P30 #1）：**这次跑写到现在，有几句本来就该贴编号、
+            # 其中贴了几句**。界面上原来那一格是「这一轮引了几处」，而那个数
+            # 没有分母——`a941efecd390` 那种篇（材料跟正文零逐字重合）报 0
+            # 和 `da080ca847cf` 那种篇（该贴 8 句贴了 1 句）报 1，用户读不出
+            # 前者是「没东西可引」、后者是「有东西没引」。
+            # **两个数都给、不给比值**：分母 0 时比值是「答不了」不是 0%，
+            # 折算成一个百分比就把这件事又抹平了（前端按 `located===0` 显示
+            # 「这一段没有可直接引的材料」）。
+            # 累计口径 = 逐轮那份（`harness_rounds.cite_*`）的加总，同一个算法。
+            # 键不在——**一次都写不出来**，无条件发：`Checks` 还没跑过那一轮
+            # （第 1 轮的 `after_prepare`）发的是 0/0，而「还没写」和「写了、
+            # 没有一句该贴」在面板上是同一句话（这段没有可直接引的材料）。
+            **_cite_payload(st.bag.get("cite_cover_run")),
             # ③ 深度门这一轮丢了几发（批 24）。`truncated` 特意不算它们，
             # 于是「模型发了 4 个调用全被丢掉」此前在界面上什么都看不见。
             "depth_dropped": int(getattr(st.trace, "dropped_depth", 0) or 0),
@@ -98,6 +111,14 @@ class Provenance:
             **_irrelevant_payload(st.bag.pop("facts_irrelevant", None),
                                   bool(st.bag.pop("facts_irrelevant_dropped", False))),
         })
+
+
+def _cite_payload(run) -> dict:
+    """这次跑到现在的引用覆盖（P30 #1）。**`get` 不是 `pop`**：它是累计的，
+    下一轮还要接着加；逐轮那份（`cite_cover`）才是 `Ledger` 读完就 pop 的那个。"""
+    located, marked, matched = (run or (0, 0, 0))
+    return {"cite_located": int(located), "cite_marked": int(marked),
+            "cite_matched": int(matched)}
 
 
 def _irrelevant_payload(dropped, really_dropped: bool) -> dict:

@@ -466,6 +466,27 @@ _ADDED_COLUMNS = (
     # 「判据没开火」和「判据坏了」是两件事，**只量前者等于没量**（批 26 ④）
     # ——而这一列是把"没开火"再拆成四档的那一列。
     ("harness_rounds", "abstained", "TEXT NOT NULL DEFAULT ''"),
+    # ---- 引用覆盖三列（P30 #1）：换掉「这次跑写进终稿的引用处数」那一格 ----
+    #
+    # P28 #4 把旧那格量死了：四批 17 / 16 / 10 / 8，**方差主要由「抽到哪几篇」
+    # 决定**（51 处新引用里 `da080ca847cf` 一篇 27 处 = 53%，`a941efecd390`
+    # 四批合计 1 处），而且它把三条不同的路（模型自己敲的 / 修订带进去的 /
+    # 判据 fix 带进去的）混成一个数——P24 那批流式里只有 9 个新 id，终稿却有
+    # 16 处。拿它读「判据松没松」正好读反：`citations_present` 响得最凶的
+    # 恰恰是引用最少的两篇。
+    #
+    # 换成**有分母**的：
+    #   `cite_located`  这一轮写的字里，有几句**能**逐字定位到材料（= 本来就该贴）
+    #   `cite_marked`   其中真贴了出处的
+    #   `cite_matched`  `marked` 里贴的编号**正好是**定位到的那条（贴了 ≠ 贴对）
+    # 三列一起落，因为**只落比值等于没落**：分母为 0 时比值是「答不了」，
+    # 记成 0.0 就又是一次「一个可能为空的量程不是量程」（批 27 那条）。
+    #
+    # **-1 = 这一轮压根没算过**（中途出错 / 链里没有 `Checks`），跟「算了、0 句」
+    # 严格分开——`claim_atoms` 是同一条处理，批 22 的 `stopped` 是反面教材。
+    ("harness_rounds", "cite_located", "INTEGER NOT NULL DEFAULT -1"),
+    ("harness_rounds", "cite_marked", "INTEGER NOT NULL DEFAULT -1"),
+    ("harness_rounds", "cite_matched", "INTEGER NOT NULL DEFAULT -1"),
     # 这次跑一共花了多少（计划 12.3）。**没有这两列，「单次跑的成本」只能靠
     # 把 `llm_usage` 按时间窗口贴回 `harness_rounds` 来重建**——批 23 就是这么
     # 量的（158 次跑、1943 行用量，63 行贴不上），而那份重建在两次跑重叠时
@@ -2426,12 +2447,21 @@ def get_active_llm_config() -> dict:
     改 .env 重启，后者查这张表。"""
     cfg = get_provider_config()
     if cfg["provider"] == "gpt" and cfg["gpt_api_key"]:
-        return {"base_url": cfg["gpt_base_url"], "api_key": cfg["gpt_api_key"], "model": cfg["gpt_model"]}
+        return {"base_url": cfg["gpt_base_url"], "api_key": cfg["gpt_api_key"],
+                "model": cfg["gpt_model"], "provider": "gpt"}
     s = get_settings()
     # 「本地模型」：设置页填的优先，没填退回 .env / 出厂默认（P19 #1）
+    #
+    # **`provider` 一起给出去**（P30 #5）：`llm._payload` 要按它决定发不发
+    # `max_tokens`——Ollama / LM Studio 的兼容端点**只认 `max_tokens`**，
+    # 而且认不出来的字段是**安静忽略**的（出处见 `llm.py` 模块文档第 3 条），
+    # 于是只发 `max_completion_tokens` 等于**一点上限都没有**。
+    # 这不是「配得出来的一种端点」，**出厂默认 `llm_base_url` 就是
+    # `127.0.0.1:11434/v1`——Ollama 的端口**。
+    # 靠这个字段而不是去猜 base_url：它是用户在设置页自己选的，不是嗅出来的。
     return {"base_url": cfg["local_base_url"] or s.llm_base_url,
             "api_key": cfg["local_api_key"] or s.llm_api_key,
-            "model": cfg["local_model"] or s.llm_model}
+            "model": cfg["local_model"] or s.llm_model, "provider": "local"}
 
 
 def llm_configured() -> dict:
@@ -2514,7 +2544,10 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
                          depth_dropped: int = 0,
                          claim_atoms: int = -1,
                          fired_checks: str = "",
-                         abstained: str = "") -> None:
+                         abstained: str = "",
+                         cite_located: int = -1,
+                         cite_marked: int = -1,
+                         cite_matched: int = -1) -> None:
     """记一轮。**记账失败不能影响这一轮的产出**——这张表是给分析用的，
     不是承重的，所以调用方把它包在 try 里。"""
     with connect() as c:
@@ -2522,8 +2555,9 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
             "INSERT INTO harness_rounds (id,key,run_id,round,scores,status,weakest,"
             "content_len,facts_new,facts_total,tool_calls,repeat_calls,"
             "cached_calls,superseded,revisions_proposed,revisions_dropped,"
-            "depth_dropped,claim_atoms,fired_checks,abstained,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "depth_dropped,claim_atoms,fired_checks,abstained,"
+            "cite_located,cite_marked,cite_matched,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), key, run_id, int(round_),
              json.dumps(scores, ensure_ascii=False), status, weakest,
              int(content_len), int(facts_new), int(facts_total),
@@ -2531,7 +2565,8 @@ def record_harness_round(key: str, run_id: str, round_: int, scores: dict[str, i
              int(cached_calls), int(superseded),
              int(revisions_proposed), int(revisions_dropped),
              int(depth_dropped), int(claim_atoms), str(fired_checks or ""),
-             str(abstained or ""), _now()))
+             str(abstained or ""),
+             int(cite_located), int(cite_marked), int(cite_matched), _now()))
         # 跟 harness_runs 同一条修剪规矩：一个 key 只留最近 400 行
         # （50 次跑 × 8 轮），再往前的除了占地方没有用。
         c.execute("DELETE FROM harness_rounds WHERE key=? AND id NOT IN ("

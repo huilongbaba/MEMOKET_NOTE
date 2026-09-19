@@ -51,6 +51,12 @@ export type AgentRound = {
   /** true = 真的从材料里拿掉了（开关 RELEVANCE_FILTER 开着）；false = 只标出来，还在 prompt 里（P8 退回后的默认）。 */
   irrelevantDropped?: boolean
   irrelevantSample?: string[]
+  /** 引用覆盖（P30 #1，**这次跑累计**）：`citeLocated` = 写出来的字里有几句能逐字
+   * 定位到材料（本来就该贴编号），`citeMarked` = 其中贴了的，`citeMatched` = 贴对的。
+   * **`citeLocated === 0` 是「答不了」不是 0%**，两种措辞分开（见 `citeCoverLine`）。 */
+  citeLocated?: number
+  citeMarked?: number
+  citeMatched?: number
   /** 打分器判词引了正文里没有的「原文」、被摘掉不计分的那几维（P11 #5；P5「अ」、P8「من」「մե」那种）。 */
   judgeHallucinated?: { dimension: string; quotes: string[]; note: string }[]
   /** 当前阶段（retrieval/edit/write/evaluate）和它的人话标签 */
@@ -70,6 +76,26 @@ export function skillsLine(s: { injected: string[]; menu: string[] }): string {
   const a = s.injected.length ? `按范围自动带上 ${s.injected.length} 条：${s.injected.join('、')}` : '这个范围没有配技能，一条都没带'
   const b = s.menu.length ? `；另有 ${s.menu.length} 条没配范围，留给模型按需加载` : ''
   return `技能：${a}${b}`
+}
+
+/** 「引用覆盖」那一行的文案（P30 #1）。抽成纯函数是让闸够得着，
+ * 而**要守的就是那两句话不许混成一句**：
+ *
+ * · `located === 0` —— 这次跑写的东西里**没有一句**在材料里找得到逐字出处。
+ *   这不是「贴得很差」，是**这一格答不了**。实测（四批 20 跑）这是常态：
+ *   终稿 623 句里只有 52 句可引，而整篇英文、材料跟正文零逐字重合的
+ *   `a941efecd390` 四批里三批都是 0。把它显示成「0%」就是在告诉用户
+ *   「AI 一个出处都没给」，而真相是「没有出处可给」——被换掉的那个旧指标
+ *   （「这次跑写进终稿的引用处数」）坏就坏在这两件事在它那儿是同一个 0。
+ * · `located > 0` —— 分子分母都报出来，**不报百分比**：分母常常只有个位数，
+ *   一句话就能把比值从 0% 拉到 20%，一个百分号会让它看起来比实际精确。 */
+export function citeCoverLine(located: number, marked: number, matched: number): string {
+  if (located <= 0) return '这次写的内容在材料里找不到逐字出处，所以没有可直接引的编号'
+  const wrong = marked - matched
+  const tail = marked === 0 ? '，一句都没贴'
+    : wrong > 0 ? `，其中 ${matched} 句贴的编号对得上、${wrong} 句对不上`
+      : ''
+  return `有出处可引的 ${located} 句里贴了 ${marked} 句${tail}`
 }
 
 type Props = {
@@ -246,6 +272,14 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                  title={(r.irrelevantSample ?? []).join('\n')}>
               {r.irrelevantDropped ? '筛掉' : '标出'} {r.factsIrrelevant} 条跟这篇无关的材料（从上千条的主题里抽样来的、跟正文零重合{r.irrelevantDropped ? '' : '；没剔，还在材料里'}）
               {(r.irrelevantSample ?? []).length > 0 && `：${(r.irrelevantSample ?? [])[0]}…`}
+            </div>
+          )}
+
+          {/* 引用覆盖（P30 #1）。`!== undefined` 不是 `!!`：**0 是要显示的那一档**
+              （「没有可直接引的编号」正是用户最需要知道的那句话），用真值判断会把它藏掉。 */}
+          {r.citeLocated !== undefined && (
+            <div className="muted" style={{ marginBottom: 3 }}>
+              {citeCoverLine(r.citeLocated, r.citeMarked ?? 0, r.citeMatched ?? 0)}
             </div>
           )}
 

@@ -13,8 +13,8 @@ store.get_active_llm_config()）。几个必须处理的模型特性：
 3. **GPT 的推理档模型（比如 gpt-5.x 系列）参数要求不一样**——实测过
    （真实调用 + 读 OpenAI 报错原文，不是猜的）：
    - 不认 ``max_tokens``，只认 ``max_completion_tokens``；本地 llama.cpp
-     两个都认（实测 max_completion_tokens 一样能正确截断），所以统一用
-     ``max_completion_tokens`` 一个字段，不用按供应商分叉。
+     两个都认（实测 max_completion_tokens 一样能正确截断）。
+     **但「本地」不等于 llama.cpp——见下面第 4 条。**
    - ``temperature`` 只认默认值 1，传别的值直接 400（错误信息："Only the
      default (1) value is supported"）。本地模型的 temperature 调参
      （比如 EDIT_SYSTEM 用 0.1 追求确定性、续写用 0.7 要有变化）是真实
@@ -22,6 +22,30 @@ store.get_active_llm_config()）。几个必须处理的模型特性：
      一开始就不发 temperature，是发送后如果撞到这个特定的 400 错误，
      剥掉 temperature 重试一次。这样本地模型/GPT 非推理档模型的
      temperature 调参完全不受影响，只有真的不支持的模型会走这条兜底。
+4. **Ollama / LM Studio 只认 ``max_tokens``，而且不认的字段是安静忽略的**
+   （P30 #5，**查的是两家的官方兼容文档，不是猜的**）：
+
+   - Ollama `/v1/chat/completions` 的 supported 名单是
+     ``model / messages / frequency_penalty / presence_penalty / response_format /
+     seed / stop / stream / stream_options / temperature / top_p / max_tokens /
+     tools / reasoning_effort / reasoning``——**没有 ``max_completion_tokens``**。
+     要它的 issue（ollama#7125，2024-10 开的）和 PR（#14464）到今天都还开着。
+   - LM Studio 的名单是 ``model / top_p / top_k / messages / temperature /
+     max_tokens / stream / stop / presence_penalty / frequency_penalty /
+     logit_bias / repeat_penalty / seed``——同样没有。
+   - 两家都不会为一个认不出来的字段报错（Go / JS 的 json 解码默认忽略未知字段）。
+
+   合起来的后果不是「报个错」，是 **一点上限都没有**：假端点实测（`p30/m5.py`）
+   调用方要 700 token，两家都一路吐到假端点自己的 4096 上限——真端点上就是
+   跑满上下文。**而出厂默认的 ``llm_base_url`` 正是 ``127.0.0.1:11434/v1``
+   ——Ollama 的端口**，所以这是第一天用户就会撞上的那一档，不是假设。
+
+   所以 ``_payload`` 按 ``get_active_llm_config()["provider"]`` 分一次叉：
+   ``gpt`` 那一档照旧只发 ``max_completion_tokens``（生产那条路一个字节不变、
+   一次多余往返都不多），其余一律**两个都发**。两个都发会 400 的端点
+   （推理档嫌 ``max_tokens``、严格网关嫌 ``max_completion_tokens``）由
+   ``_drop_rejected_param`` 按对方的回话剥掉一个再来一次——**只有在另一个
+   还在的时候才剥**，否则重试拿回来的是一次完全没有上限的生成，比 400 更糟。
 """
 
 from __future__ import annotations
@@ -244,6 +268,14 @@ def _payload(messages: list[dict], *, stream: bool, max_tokens: int,
         "temperature": temperature,
         "stream": stream,
     }
+    # **本地端点那一档要把 `max_tokens` 一起发**（P30 #5，出处见模块文档第 4 条）。
+    # 只发 `max_completion_tokens` 时 Ollama / LM Studio **一点上限都没有**
+    # ——假端点实测：要 700，回 4096（真端点上是一路吐到上下文满）。
+    # 不发给 `gpt` 那一档：推理档带上 `max_tokens` 当场 400，生产那条路
+    # （真库里配的就是它）**一个字节都不变、一次多余的往返都不多**。
+    # 两个都发不认哪个的端点，由 `_drop_rejected_param` 按对方的回话剥掉一个再来。
+    if cfg.get("provider") != "gpt":
+        body["max_tokens"] = max_tokens + REASONING_RESERVE
     # 本地 llama.cpp 与 OpenAI 都认这个字段；商用端点不认时会被忽略。
     body["reasoning_effort"] = effort
     key = _cache_key()
@@ -368,7 +400,36 @@ def _drop_rejected_param(payload: dict, status_code: int, body: bytes) -> bool:
     if _rejects_temperature(status_code, body):
         payload.pop("temperature", None)
         return True
+    # 上限字段那一对（P30 #5）。**两条都带「另一个还在」这个前提**：
+    # 剥掉之后 body 里一个上限都不剩的话，重试拿回来的是一次**完全没有上限**的
+    # 生成——比 400 更糟（400 会报错，没上限是安静地跑满上下文）。
+    # 宁可让那次 400 原样抛出去，也不做一次把闸拆掉的重试。
+    if rejects_max_tokens(status_code, body) and "max_completion_tokens" in payload:
+        payload.pop("max_tokens", None)
+        return True
+    if _rejects_max_completion_tokens(status_code, body) and "max_tokens" in payload:
+        payload.pop("max_completion_tokens", None)
+        return True
     return False
+
+
+def _rejects_max_completion_tokens(status_code: int, body: bytes) -> bool:
+    """这次 400 是不是「这个端点不认 ``max_completion_tokens``」（P30 #5）。
+
+    `rejects_max_tokens` 的反面。**它守的不是 Ollama / LM Studio 那两家**
+    ——那两家认不出来的字段是安静忽略的（Go / JS 的 json 解码默认行为，
+    两家的兼容文档里 supported 名单都只有 `max_tokens`），根本不会到这儿。
+    守的是**认不出来就 400 的那一类自建网关**：那一档上原来整条写作路
+    一个字都写不出来（假端点实测：`complete` / `stream` 双双 400）。
+    判据窄在 ``param`` 上，跟 `_rejects_cache_key` 同一套。
+    """
+    if status_code != 400:
+        return False
+    try:
+        err = json.loads(body).get("error") or {}
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    return err.get("param") == "max_completion_tokens"
 
 
 async def complete(messages: list[dict], *, max_tokens: int = 1500,

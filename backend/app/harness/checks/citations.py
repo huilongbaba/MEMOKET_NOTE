@@ -295,8 +295,23 @@ _ANCHOR = _re.compile(
     _re.I)
 _SENT = _re.compile(r"[^。！？!?\n]+")
 _CJK_RUN = _re.compile(r"[一-鿿]+")
+_EN_WORD = _re.compile(r"[A-Za-z][A-Za-z'-]*")
 # 逐字定位要多硬：共享一个数字锚（日期 / 带单位的量），或者一段 ≥6 字的连续汉字一模一样。
 MIN_VERBATIM_CJK = 6
+# **英文那一侧**（P30 #1）。加它之前这里只认汉字（`_CJK_RUN` + `_ANCHOR` 里的中文量词），
+# 于是**整篇英文的笔记上这个定位器结构性地永远返回空**——`citations_present` 连响到卡死，
+# 每一轮都在说「这一轮写的 N 字里没有一句能在材料里找到逐字的出处」，而那句话在英文篇上
+# 是**无条件成立**的、不是量出来的（§21：一个可能为空的量程，就不是量程）。
+# P28 留的问题「`a941efecd390` 那篇催不动到底是什么形状」，答案的一半就在这儿。
+#
+# **门槛是量出来的，不是拍的**（`p30/m1b.py` / `m1c.py`，四批 20 跑终稿 623 句）：
+#   · 4 个连续相同的词：全库只多出 **1 句**，而那一句是真的
+#     （`Speaker B uses OneNote for personal notes…` ↔ `[terrence-380-40F1] Speaker B uses
+#     OneNote for a lot of like notes…`），**而且模型已经把那个编号贴上去了**；
+#     另外 4 篇中文笔记上一句都没多出来（0/547，加它不动任何既有结论）。
+#   · 3 个：多出 7 句，**7 句全是 `speaker a says` / `speaker b says`** 这种转写模板的虚词串，
+#     而且一句同时命中 3 条材料（`0F3` / `0F4` / `0F5`）——按唯一性规则本来就不该说。
+MIN_VERBATIM_EN = 4
 
 
 def _flat(text: str) -> str:
@@ -313,7 +328,49 @@ def _shares_verbatim(sentence: str, fact: str, n: int = MIN_VERBATIM_CJK) -> boo
         for i in range(len(run) - n + 1):
             if run[i:i + n] in flat_fact:
                 return True
-    return False
+    return _shares_verbatim_en(sentence, fact)
+
+
+def _word_runs(text: str, n: int) -> set[str]:
+    w = [x.lower() for x in _EN_WORD.findall(text or "")]
+    return {" ".join(w[i:i + n]) for i in range(len(w) - n + 1)}
+
+
+def _shares_verbatim_en(sentence: str, fact: str, n: int = MIN_VERBATIM_EN) -> bool:
+    """英文那一侧：≥`n` 个**连续相同**的词。门槛的依据见 `MIN_VERBATIM_EN`。"""
+    runs = _word_runs(sentence, n)
+    return bool(runs and (runs & _word_runs(fact, n)))
+
+
+MIN_SENTENCE_CHARS = 15
+
+
+def _indexed(facts: list[str]) -> list[tuple[str, str]]:
+    """材料里 `[id] 正文…` 那些 → [(id, 正文)]。没带 id 的材料定位不到任何东西，丢掉。"""
+    out: list[tuple[str, str]] = []
+    for f in facts or []:
+        m = _HEAD_ID.match((f or "").strip())
+        if m:
+            out.append((m.group(1), (f or "").strip()[m.end():]))
+    return out
+
+
+def _sentences(text: str) -> list[str]:
+    """按句切，只留够长的那些。
+
+    `locate_sources` 和 `citation_coverage` **共用这一个**——两者的分子和分母
+    必须落在同一批句子上，各切各的就没法说「定位到的这些里贴了几个」
+    （§21：一句诊断只许有一个载体）。
+    """
+    return [s.strip() for s in _SENT.findall(text or "")
+            if len(_flat(s.strip())) >= MIN_SENTENCE_CHARS]
+
+
+def _hits(sent: str, indexed: list[tuple[str, str]]) -> set[str]:
+    """这一句能逐字定位到哪几条材料。"""
+    sa = _anchors(sent)
+    return {fid for fid, body in indexed
+            if (sa & _anchors(body)) or _shares_verbatim(sent, body)}
 
 
 def locate_sources(text: str, facts: list[str]) -> list[tuple[str, str]]:
@@ -322,21 +379,77 @@ def locate_sources(text: str, facts: list[str]) -> list[tuple[str, str]]:
     只回「唯一」的那些：命中两条以上说明贴哪个都可能错，宁可不说。
     已经带了编号的句子跳过。纯函数，零模型。
     """
-    indexed: list[tuple[str, str]] = []
-    for f in facts or []:
-        m = _HEAD_ID.match((f or "").strip())
-        if m:
-            indexed.append((m.group(1), (f or "").strip()[m.end():]))
+    indexed = _indexed(facts)
     if not indexed:
         return []
     out: list[tuple[str, str]] = []
-    for raw in _SENT.findall(text or ""):
-        sent = raw.strip()
-        if len(_flat(sent)) < 15 or has_citation(sent):
+    for sent in _sentences(text):
+        if has_citation(sent):
             continue
-        sa = _anchors(sent)
-        hits = {fid for fid, body in indexed
-                if (sa & _anchors(body)) or _shares_verbatim(sent, body)}
+        hits = _hits(sent, indexed)
         if len(hits) == 1:
             out.append((sent, hits.pop()))
     return out
+
+
+# ------------------------------- 引用覆盖率：换掉「引用处数」那一格（P30 #1）---
+#
+# **旧指标坏在哪**（P28 #4 量的）：「这次跑写进终稿的引用处数」四批是 17 / 16 / 10 / 8，
+# 摆动很大，而它的方差**主要由「这一跑抽到哪几篇」决定**——四批 51 处新引用里
+# `da080ca847cf` 一篇占 27 处（53%），`a941efecd390` 四批合计 **1 处**。
+# 更糟的是它把三条不同的路混成一个数：模型自己敲的、修订带进去的、判据 fix 带进去的
+# （P24 那批流式里只有 9 个新 id，终稿却有 16 处，7 处是后两者）。
+# 拿它读「判据松没松」正好读反：`citations_present` 响得最凶的恰恰是引用最少的那两篇
+# （`a941` + `e78306` 占 42 轮命中里的 31 轮），**判据在催，模型答的是「催不动」**。
+#
+# **换成一个有分母的**：`marked / located` ——「**能**逐字定位到材料的句子里，
+# 真贴了编号的占多少」。分母是「这段字里有多少句本来就该贴」，它随抽到哪几篇变，
+# 分子跟着同一个分母走，比值才可比。**分母为 0 时 `ratio` 是 `None` 不是 `0.0`**：
+# 「没有一句该贴」和「该贴的一句都没贴」是两件事，混成同一个 0 就又是一次
+# 「一个可能为空的量程不是量程」（§21 批 27 那条）。
+#
+# 定位的判法逐字沿用 `locate_sources`（共享数字锚 / ≥6 字连续汉字），只差一处：
+# **这里不跳过已经带编号的句子**——那些正是分子。
+
+
+@dataclass(frozen=True)
+class CiteCoverage:
+    """一段正文的引用覆盖。四个数一起给，因为单给比例读不出它站在多大的分母上。"""
+
+    sentences: int          # 够长、算得上一句的总数
+    located: int            # 其中能逐字定位到 ≥1 条材料的（**分母**）
+    marked: int             # `located` 里带了出处的（`[编号]` 或 `[标题](note://id)`）
+    matched: int            # `marked` 里贴的编号**正好是**定位到的那条之一
+
+    @property
+    def ratio(self) -> float | None:
+        """`marked / located`。**分母 0 时是 `None`**，不是 0.0（见上面那段）。"""
+        if not self.located:
+            return None
+        return round(self.marked / self.located, 3)
+
+
+def citation_coverage(text: str, facts: list[str]) -> CiteCoverage:
+    """有逐字出处的句子里，贴了编号的比例。纯函数、零模型。
+
+    `matched` 单独数一份是因为「贴了编号」和「贴对了编号」不是一件事：
+    修订那一步搬进来的编号常常落在**隔壁那句**上，只数 `marked` 会把它算成好。
+    它是诊断用的第二个数，不参与 `ratio`——`ratio` 答的是 P28 留的那个问题
+    （判据催得动催不动），把「贴对没贴对」混进去答的就是另一个问题了。
+    """
+    indexed = _indexed(facts)
+    sents = _sentences(text)
+    if not indexed:
+        return CiteCoverage(len(sents), 0, 0, 0)
+    located = marked = matched = 0
+    for sent in sents:
+        hits = _hits(sent, indexed)
+        if not hits:
+            continue
+        located += 1
+        cited = set(cited_ids(sent))
+        if cited or note_link_ids(sent):
+            marked += 1
+            if cited & hits:
+                matched += 1
+    return CiteCoverage(len(sents), located, marked, matched)

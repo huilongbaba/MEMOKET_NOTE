@@ -221,6 +221,38 @@ class Checks:
             st.bag["claim_atoms"] = -1
             st.bag["claim_abstained"] = claims.NOT_IN_MODE
 
+        # ---- 引用覆盖：换掉「引用处数」那一格（P30 #1）----
+        #
+        # 旧的那格是「这次跑写进终稿的引用**处数**」，P28 #4 量完判它坏：它的方差
+        # 主要由「这一跑抽到哪几篇」决定（四批 51 处新引用里一篇占 53%），
+        # 而且它把模型自己敲的、修订带进去的、判据 fix 带进去的混成一个数。
+        # 换成有分母的那个：`located` = 这一轮写的字里**有多少句本来就该贴编号**
+        # （能逐字定位到材料），`marked` = 其中真贴了的。
+        #
+        # **算在这儿而不是 `Provenance`**：`round_summary` 发在 `after_prepare`，
+        # 那时这一轮一个字都还没写。`st.fresh` 只有到 `before_judge` 才是满的。
+        #
+        # 取值表（§21「每个取值都真写得进去吗」，落库的是 `Ledger.after_judge`）：
+        #   located>0 —— 正常的续写轮。**写得出**（四批 20 跑终稿上 52 句）。
+        #   0         —— 这一轮没写字（打磨 / 只清理轮，`st.fresh` 空）、手上没材料、
+        #                 或者写的那几句一条材料都对不上（**这是常态**：四批终稿
+        #                 623 句里 571 句是这一档，可引率只有 7.7–9.1%）。**写得出**。
+        #   键不在    —— 这一行无条件写，所以只有「这一轮压根没走到 `before_judge`」
+        #                 那一档（中途出错 / 模式的中间件链里没有 `Checks`）才没有；
+        #                 `Ledger` 那边拿不到就记 **-1**，跟「算了、0 句」严格分开
+        #                 （`claim_atoms` 是同一条处理）。
+        from ..checks.citations import citation_coverage
+        cov = citation_coverage(st.fresh or "", list(st.facts or []))
+        st.bag["cite_cover"] = (cov.located, cov.marked, cov.matched)
+        # 这次跑到目前为止的累计，给 `round_summary` 用（面板那一格要的是「这次跑
+        # 写的东西整体上有几句该贴、贴了几句」，不是最后一轮那几句）。**跟上面
+        # 逐轮那份是同一个口径的加总**，不是第二套算法——两套口径混着读正是被
+        # 换掉的那一格的死因。
+        run = st.bag.setdefault("cite_cover_run", [0, 0, 0])
+        run[0] += cov.located
+        run[1] += cov.marked
+        run[2] += cov.matched
+
         # 这一轮**哪几条判据命中了**（第 9 行要的）。是列表不是单值：卡死放行
         # 的那条 `continue` 之后，后面还可能再命中一条，两条都得在。
         fired_all: list[str] = []

@@ -2078,6 +2078,12 @@ export default function App() {
           factsIrrelevant: d.facts_irrelevant ?? 0,
           irrelevantDropped: !!d.irrelevant_dropped,
           irrelevantSample: d.irrelevant_sample ?? [],
+          // 引用覆盖（P30 #1，累计到这一轮）。**不许 `?? 0`**：`undefined`
+          // 是「后端这一版还没有这三个键」，`0` 是「算过了、一句可引的都没有」，
+          // 面板上是两句完全不同的话（见 `citeCoverLine`）。
+          citeLocated: d.cite_located,
+          citeMarked: d.cite_marked,
+          citeMatched: d.cite_matched,
     })
         if (d.skipped_continue) {
           setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
