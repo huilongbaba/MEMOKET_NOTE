@@ -1041,6 +1041,11 @@ h2:first-child { margin-top: 0; }
    别的第一个兄弟让到 34px，刚好从按钮底下露出来。 */
 .note-body > .floating-buttons + :not(.md-editor) { margin-top: var(--s-8); }
 .note-body > *:first-child:not(.floating-buttons) { margin-top: var(--s-7); }
+/* 改动条（「改了 N 处 … 按层处置…全部接受 / 全部撤回」）。上边距**留给上面那两条规则**——
+   原来写在 JSX 的内联 style 里（`margin: 2px 2px 6px`），内联赢过样式表，让位规则等于没写，
+   按钮照样盖住它第一行的右半截（P31 #2 实拍：按钮 y202–230 / 条 y204 起，x 779–1043 重叠）。 */
+.pending-diff-bar { margin: var(--s-2) 2px 6px; }
+.note-body > .floating-buttons + .pending-diff-bar { margin-top: var(--s-8); }
 /* 专注模式：整栏只剩正文，宽度一下变成一千多像素。**正文有上限（880），
    但它是左对齐的**——于是右边空出三百多像素，标题和工具栏又是通栏的，
    整屏看起来像没排完（第 688 轮实拍）。专注模式下把标题 / 标签带 / 工具栏 /

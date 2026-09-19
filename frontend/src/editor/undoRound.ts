@@ -36,6 +36,14 @@ function findUnique(hay: string, needle: string): number {
 
 const snippet = (s: string) => { const t = s.replace(/\s+/g, ' ').trim(); return t.length > 24 ? t.slice(0, 24) + '…' : t }
 
+/** 冲突那句话的开头：有原文就引原文，没有就说清是第几处。
+ *
+ * **不能直接 `「${snippet(x)}」`**（P31 #4）：`snippet` 会把空白折掉再 `trim`，所以
+ * 纯空行 / 纯换行的那一处引出来是空字符串，用户读到的是「**「」**在现在的正文里出现了
+ * 不止一处，不知道撤哪一处」——一对空引号，看着像程序出错。实拍：第 2 轮已经撤过一次，
+ * 再点一次「只撤这一轮」，剩下的三处全是段落间的空行。 */
+export const conflictLead = (s: string, k: number) => { const t = snippet(s); return t ? `「${t}」` : `第 ${k} 处（只有空行、没有可引的原文）` }
+
 /** 两段文字像不像：字符 2-gram 的 Dice 系数（0–1）。配对「改过的段落」用。 */
 export function similarity(a: string, b: string): number {
   if (a === b) return 1
@@ -155,7 +163,7 @@ export function undoRound(before: string, after: string, current: string, later:
     }
     const ins = latest.slice(from, to)
     if (ins0 && !ins && h.del) {
-      conflicts.push(`「${snippet(ins0)}」后一轮把它整个删掉了，原文要不要回来说不准`)
+      conflicts.push(`${conflictLead(ins0, k + 1)}后一轮把它整个删掉了，原文要不要回来说不准`)
       continue
     }
     let why = ''
@@ -173,7 +181,7 @@ export function undoRound(before: string, after: string, current: string, later:
       break
     }
     if (done) undone++
-    else conflicts.push(`「${snippet(ins0 || h.del)}」${why}`)
+    else conflicts.push(`${conflictLead(ins0 || h.del, k + 1)}${why}`)
   }
   return { text, undone, total: hunks.length, conflicts: conflicts.reverse() }
 }

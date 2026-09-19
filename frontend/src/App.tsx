@@ -475,9 +475,14 @@ export default function App() {
   const skeletonAbortRef = useRef<AbortController | null>(null)
   const restructureAbortRef = useRef<AbortController | null>(null)
   // 标题变了、意图还是预填的 → 跟着标题重推；用户改过一个字的（source=user）永远不覆盖
+  // **把现在这份传进去，不要传 `null`**（P31 #1）：这个 effect 也挂在 `current?.id` 上，
+  // 每打开一篇都会在上面那句「从库里读」之后再跑一次；传 `null` = 拿一份干净的预填把刚读出来的
+  // 盖掉，于是 `checked` 每次开篇都被抹掉——勾过的完成标准关掉重开就退回 `0/n`
+  // （库里 `notes.intent.checked` 一直是对的，纯粹丢在这一行）。传 `i` 照样跟着标题重推，
+  // 只是把勾带过去；标题改了、判据对不上的那几个勾在 `resolveIntent` 里作废。
   useEffect(() => {
     if (!current) return
-    setIntent((i) => (i.source === 'user' ? i : resolveIntent(null, title)))
+    setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, title)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, current?.id])
   const [scopeTick, setScopeTick] = useState(0)
@@ -3837,11 +3842,17 @@ export default function App() {
               </p>
             )}
 
+            {/* **上边距别写在 style 里**（P31 #2）：内联样式压得过 styles.css 里
+                `.note-body > .floating-buttons + :not(.md-editor)` 那条让位规则，于是这一条
+                只让了 2px，而浮动按钮 28px 高、sticky 不占高度——实拍按钮盖住这条的第一行
+                右半截（「按层处置（保留第一次改的、放弃第三次的）」整句看不见）。
+                P17 #4 量的是出处条（`tap-prov`，没有内联 margin），这条一直没修到；
+                而 `/` 块、右键动作跑完出的正是这一条，是最常见的那个。 */}
             {pendingDiff > 0 && (
               <div
-                className="row"
+                className="row pending-diff-bar"
                 style={{
-                  gap: 8, alignItems: 'center', margin: '2px 2px 6px',
+                  gap: 8, alignItems: 'center',
                   fontSize: 'var(--t-sm)', padding: '5px 8px', borderRadius: 'var(--r-sm)',
                   border: '1px solid var(--line)', background: 'var(--panel)',
                 }}

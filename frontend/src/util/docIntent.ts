@@ -63,5 +63,13 @@ function clip(s: string): string { return s.slice(0, INTENT_FIELD_MAX) }
 export function resolveIntent(stored: DocIntent | null | undefined, title: string): DocIntent {
   // 用户改过的（source=user）、或不知道来源但填了字的（接口直接写进来的）都算他的；只有预填的才跟标题重推
   if (stored && !isEmptyIntent(stored) && stored.source !== 'prefill') return { ...stored, source: stored.source || 'user' }
-  return prefillIntent(title)
+  // **勾过的完成标准是用户的，跟「完成标准」那句话是不是预填的没关系**（P31 #1）。
+  // 原来这一支直接 `prefillIntent(title)`、把 `stored.checked` 整个丢掉：意图还是预填
+  // 的那份（绝大多数人根本不会去改那一行）时，勾一条 → 关掉重开 → 角标退回 `0/n`、
+  // 勾全没了。**库里一直是对的**（`notes.intent.checked` 实拍存着
+  // `["卡住的说清要什么"]`），只是重推预填时没带过来——所以看起来像「勾了不算数」。
+  // 只留在新那句「完成标准」里还找得到的几条：标题改了、判据换了的跟着作废，不留幽灵勾。
+  const fresh = prefillIntent(title)
+  const kept = (stored?.checked ?? []).filter((t) => t && fresh.done.includes(t))
+  return kept.length ? { ...fresh, checked: kept } : fresh
 }
