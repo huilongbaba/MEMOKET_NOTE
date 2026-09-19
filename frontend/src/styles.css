@@ -1358,9 +1358,12 @@ details[open] > .run-title::before { content: '▾'; }
 .tray-panel { padding-bottom: var(--s-3); border-bottom: 1px solid var(--line); }
 .tray-head { gap: var(--s-2); }
 .tray-write { font-size: var(--t-sm); padding: 2px var(--s-3); display: inline-flex; align-items: center; gap: var(--s-1); }
-.tray-hint, .tray-empty { font-size: var(--t-xs); margin: var(--s-1) 0 0; line-height: 1.6; }
-.tray-empty { font-size: var(--t-sm); margin-top: var(--s-2); }
-.tray-hint code, .tray-empty code { font-family: var(--mono); }
+.tray-hint { font-size: var(--t-xs); margin: var(--s-1) 0 0; line-height: 1.6; }
+.tray-hint code { font-family: var(--mono); }
+/* 空托盘那一档：一句话 + 折起来的「有什么用、怎么摊」（P35 走查 #8，
+   跟 P32 #3 的 `.mem-legend-empty` 同一个形状——规则收起来，想看还能展开） */
+.tray-hint-empty > .tray-why > summary { color: var(--muted); cursor: pointer; }
+.tray-hint-empty > .tray-why { margin-top: var(--s-1); }
 /* 托盘格里的两件工具（P15 #3）：「默认进托盘」开关 + 网页剪藏；说明文字是元信息（灰），输入框走全局样式 */
 .tray-tools { display: flex; flex-direction: column; gap: var(--s-1); margin-top: var(--s-2); }
 .tray-default { gap: var(--s-2); align-items: center; font-size: var(--t-xs); color: var(--muted); cursor: pointer; }

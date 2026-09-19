@@ -20,6 +20,11 @@ export type CheckHit = {
   dimension: string
   note: string
   stuck_rounds?: number
+  /** `true` = 这条不是「这一轮命中」，是**收工通知**：同一条判据连响够了轮数，
+   * 整个跑**停下来交最好的一轮**（后端 `middleware/checks.after_run`）。
+   * 跟 `stuck_rounds` 那条「放行、照常打分」的正好相反，面板上要说两句不同的话
+   * ——原来两条共用「这一轮不再拦，照常打分」，而这一条明明已经停了（P35 走查 #7）。 */
+  stopped?: boolean
 }
 
 /** 把一条命中记到这一轮上，**不丢掉先到的那些**。 */

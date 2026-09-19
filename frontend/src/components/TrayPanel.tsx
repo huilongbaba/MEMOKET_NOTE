@@ -25,6 +25,11 @@ export function trayItemTitle(it: Pick<TrayItem, 'kind' | 'title' | 'excerpt'>):
   return it.kind === 'note' ? displayTitle({ title: it.title, content: it.excerpt }) : it.title
 }
 
+/** 托盘空着时那一句（P35 走查 #8）。**一句话要把两件事都说掉**：托盘是空的、
+ *  以及东西从哪儿来——原来这两件事各占一整段散文，在空库新用户的右栏上
+ *  合起来 173px = 21.1%（`p35-3c-new-memory-light` 实测）。 */
+export const TRAY_EMPTY_LINE = '托盘还是空的——记忆卡上的「放进托盘」、正文里 [[ 链接右键「摊到这篇桌上」，都能把材料摊上来。'
+
 /** 种类标的类名写成字面量：`check-css-classes` 不认拼出来的类名（P9 被抓过一次） */
 const KIND_CLS: Record<TrayKind, string> = { note: 'tray-kind-note', fact: 'tray-kind-fact', import: 'tray-kind-import', selection: 'tray-kind-selection' }
 
@@ -123,9 +128,28 @@ export default function TrayPanel({ noteId, onWrite }: {
           </button>
         )}
       </div>
-      <p className="muted tray-hint">
-        摊在桌上的材料：续写、智能续写、<code>/</code> 块、右键动作取材料时，这几条排最前、不被筛掉、不会滚出窗口。
-      </p>
+      {/* **空托盘上这两段散文的信息量是零**（P35 走查 #8）：P32 把隔壁的记忆图例
+          从右栏高度的 23.8% 收到 8.6%，而这一块在同一屏上**占 21.1%（173/822 px，
+          `p35-3c-new-memory-light` 实测）**——比修之前的图例还大，同一个毛病没收干净。
+          空的时候收成一句话 + 一个 `<details>`（跟 P32 图例那一刀同一个形状：
+          规则收起来、**想看还能展开**，不是删掉）；一有材料就还是原来那一段，
+          那时候它说的是「这几条为什么排最前」，是有用的。 */}
+      {items.length > 0 ? (
+        <p className="muted tray-hint">
+          摊在桌上的材料：续写、智能续写、<code>/</code> 块、右键动作取材料时，这几条排最前、不被筛掉、不会滚出窗口。
+        </p>
+      ) : !busy && (
+        <p className="muted tray-hint tray-hint-empty">
+          {TRAY_EMPTY_LINE}
+          <details className="tray-why">
+            <summary>摊上来的材料有什么用、怎么摊</summary>
+            <span>
+              续写、智能续写、<code>/</code> 块、右键动作取材料时，托盘里这几条排最前、不被筛掉、不会滚出窗口。
+              记忆卡上的「放进托盘」、正文里 <code>[[</code> 链接右键「摊到这篇桌上」，都能放进来。
+            </span>
+          </details>
+        </p>
+      )}
       <div className="tray-tools">
         <label className="row tray-default" title="开着：导入进来的笔记、录音转写、贴进来的网页先进托盘（不进正文、不直接进知识库），要用再说；关掉回到原来的去处">
           <input type="checkbox" checked={byDefault} onChange={(e) => { setByDefault(e.target.checked); setTrayByDefault(e.target.checked) }} />
@@ -139,11 +163,6 @@ export default function TrayPanel({ noteId, onWrite }: {
           </button>
         </form>
       </div>
-      {items.length === 0 && !busy && (
-        <p className="muted tray-empty">
-          托盘还是空的。下面记忆卡上的「放进托盘」、正文里 <code>[[</code> 链接右键「摊到这篇桌上」都能放进来。
-        </p>
-      )}
       {items.length > 0 && (
         <ol className="tray-list" aria-label="托盘里的材料">
           {items.map((it, i) => {

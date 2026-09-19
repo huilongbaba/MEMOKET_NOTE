@@ -80,3 +80,39 @@ export function blockShapeProblem(key: string, text: string): string {
   }
   return ''
 }
+
+/**
+ * 右键那几个动作（重写 / 润色 / 扩展上下文）**换进正文的那段字**形状对不对（P35 · B）。
+ *
+ * **为什么不复用上面那三条。** 块生成是「在光标这里插一整块」，所以可以要求
+ * 「该是表格的得有表格行、该是图的得有围栏或图片」；右键这几条换的是**正文里的
+ * 一句话**，它的形状只有「一段人话」这一种，拿 `shapeOf` 那张表去卡它，`table`
+ * 那一档会把「帮我把这段改成一张表」这种正当产出判死。**所以这里只留 JSON 那一档，
+ * 一条都不多**——判据宁可窄（§21）。
+ *
+ * **这条修的是什么。** P35 实拍（`p35-B-rewrite-jsontext-light`）：模型把整个响应
+ * 又塞进 `text` 里答回来。后端 `routers/compose.rewrite` 只管「能不能抽出 `text` 这个键」，
+ * 抽得出就当正品，前端 `applyAsDiff` 直接换进正文：
+ * 「这周把众筹页面的文案定稿`{"text": "（假模型改写）…", "reason": "假模型"}`了，3月12号上线」
+ * ——117 → 163 字，**一句话都不说**。`expand` 那条更贵，before/after 各塞一串（117 → 210）。
+ *
+ * 判据跟 `looksLikeJson` **逐字同一条**：`{…}` / `[…]` 且真能 `JSON.parse`。
+ * 别的一律放行——误伤一次正常改写（用户看着跑完然后被拦下）比漏掉一次贵得多。
+ */
+export function revisionIsJson(text: string): boolean {
+  return looksLikeJson((text || '').trim())
+}
+
+/** 一批建议里哪几条是整串 JSON。分开回，好让调用方说清「拦了几处」。 */
+export function splitBadRevisions<T extends { text: string }>(list: T[]): { keep: T[]; bad: T[] } {
+  const keep: T[] = []
+  const bad: T[] = []
+  for (const r of list) (revisionIsJson(r.text) ? bad : keep).push(r)
+  return { keep, bad }
+}
+
+/** 拦下来时说的那句人话（走 toast，**纯文本**，不许带 markdown 粗体——
+ *  P32 第一版在占位块上栽过一次，`**` 会原样露在界面上）。 */
+export function badRevisionNote(label: string, n: number): string {
+  return `${label}：模型这次答的是一串 JSON，不是能写进正文的内容——这 ${n} 处没有落进正文，正文一个字没动。再点一次试试。`
+}
