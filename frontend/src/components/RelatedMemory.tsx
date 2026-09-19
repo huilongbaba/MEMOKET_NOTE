@@ -4,7 +4,7 @@ import { memoryRelations, memoryScope, recall, SCOPE_LABEL, setMemoryScope, type
 import type { Fact, MemoryRelation } from '../api'
 import { stripForRecall } from '../util/wordCount'
 import { factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
-import { MARGIN_RULE, MODEL_NOTE, RELATION_LABEL } from '../editor/marginMemory'
+import { KB_EMPTY_DOTS_NOTE, MARGIN_RULE, MODEL_NOTE, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
 import { requestTrayAdd } from '../util/tray'
@@ -134,6 +134,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
         ))}
         <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按光标所在段（带前一段、约 {RECALL_CONTEXT_BEFORE} 字）召回，光标不在正文里时按末尾 {TAIL_CHARS} 字。
         <br />{MODEL_NOTE}
+        {kbEmpty && <><br />{KB_EMPTY_DOTS_NOTE}</>}
       </p>
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>

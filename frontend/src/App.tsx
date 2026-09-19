@@ -28,6 +28,7 @@ import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format
 import { blockPrecondition, SLASH_ITEMS, type SlashItem } from './editor/slashMenu'
 import type { NoteLinkMenuDetail } from './editor/noteLink'
 import { landNotesInTray, noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
+import { diffBaseForBlock, textToLand } from './editor/blockLanding'
 import { trayByDefault } from './util/trayDefaults'
 import {
   appendPreview, endRun, logRun, patchRun, runsField, startRun,
@@ -521,6 +522,12 @@ export default function App() {
   // 右键菜单那五个动作的「停止」（P3：模型卡住时原来只能干等 300 秒，连 Esc 都关不掉那个转圈）
   const selectionAbortRef = useRef<AbortController | null>(null)
   const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
+  // P17 实拍：在 A 篇右键「校验」，切到 B 篇，右栏顶上还挂着 A 的「校验结果」——它是按 A 的选区算的，换篇就清
+  useEffect(() => { setVerifyFindings(null) }, [current?.id])
+  // P17 实拍：右键「自定义提示」→「全部撤回」→ 关掉这篇再打开，正文里冒出一个幻影「硬件」删除标 + 「改动 1」——
+  // `roundDiff` 是给编辑器的一条「加一层」消息，层本身活在编辑器的 field 里；消息发过就该作废，
+  // 不清的话编辑器一重挂（关掉重开 / 换篇）就按旧坐标再加一遍层，标到别的字上
+  useEffect(() => { setRoundDiff(null) }, [current?.id])
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
    *  不该离开这一页，弹层要么盖住正文、要么关掉就没了。 */
   const [trace, setTrace] = useState<
@@ -3093,8 +3100,10 @@ export default function App() {
       }
       const run = v.state.field(runsField, false)?.find((r) => r.id === id)
       const at = Math.max(0, Math.min(run?.from ?? from, v.state.doc.length))
-      const b2 = v.state.doc.toString()
-      v.dispatch({ changes: { from: at, insert: text + '\n\n' }, effects: endRun.of(id) })
+      // P17：替换类（custom）开跑时选区已经清掉了——diff 的基准要把它补回原位，不然「全部撤回」
+      // 只撤掉新写的、原来选中的字就没了；行内替换也不补空行（`editor/blockLanding`，纯函数有测试）
+      const b2 = diffBaseForBlock(v.state.doc.toString(), at, item.key, selection)
+      v.dispatch({ changes: { from: at, insert: textToLand(item.key, text) }, effects: endRun.of(id) })
       const after = v.state.doc.toString()
       setContent(after)
       pushDiff(item.label, b2, after)
@@ -3273,6 +3282,7 @@ export default function App() {
       />
       {slash?.item.needsPrompt && (
         <SlashPrompt
+          key={`${slash.item.key}:${slash.from}:${slash.to}`}
           item={slash.item}
           x={slash.x}
           y={slash.y}

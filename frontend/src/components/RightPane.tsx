@@ -19,6 +19,9 @@
  * 我们的「运行」放的是 harness 每一轮做了什么、判了什么——执行记录，不是对话。
  */
 import { useEffect, useState, type ReactNode } from 'react'
+
+/** 上次停在哪个页签（P17）。 */
+export const RIGHT_TAB_KEY = 'memoket.rightTab'
 import { fmtShortcut } from '../util/keys'
 import Icon from './Icon'
 
@@ -41,7 +44,10 @@ export default function RightPane({
      /** 外部要求切到某个标签（harness 跑起来切「计划」）。变一次切一次。 */
      focusTab?: { id: string; n: number } }) {
   const shown = tabs.filter((t) => t.alwaysShown || t.hasContent !== false)
-  const [active, setActive] = useState(defaultTab)
+  // P17：重开 app 之后标签 / 主题 / 托盘 / 意图都还在，只有右栏页签退回默认——一起记在 localStorage
+  // （跟外观同一处存法，`memoket.` 前缀）。记的那个页签这次没内容就退回第一个，下面 `current` 兜着。
+  const [active, setActiveState] = useState(() => { try { return localStorage.getItem(RIGHT_TAB_KEY) || defaultTab } catch { return defaultTab } })
+  const setActive = (id: string) => { setActiveState(id); try { localStorage.setItem(RIGHT_TAB_KEY, id) } catch { /* 私密窗口等：不存也能用 */ } }
   useEffect(() => { if (focusTab) setActive(focusTab.id) }, [focusTab])
   const current = shown.find((t) => t.id === active) ?? shown[0]
 

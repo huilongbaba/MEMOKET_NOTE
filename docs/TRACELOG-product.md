@@ -2329,3 +2329,90 @@ P12 §0 核过：分层账本（`ChangeLayersPanel` + `roundDiff` 的层开关 /
 - 真库指纹开工 / 收尾（`db_guard.fingerprint`，只读）：**482 / 2026-09-16T02:53:27 / 321,250 / `47dcc54be60aa4f2` / note_revisions 44**，一字不差；`~/Library/Application Support` 没碰（桌面壳 `MEMOKET_USER_DATA=$S/p18/p18userdata`，数据 `KITE_DATA_DIR=$S/p18/p18shot`）。
 - 真模型：**2 次跑**（端点同 P15，scratch 库 `p18real/llm_usage`）：19 次调用 / prompt 118,971（cached 40,730，34%）/ completion 9,799 ≈ **0.13M**——估 0.2M，实际 0.13M（第一跑第 1 轮就 `complete`，没轮到判据；第二跑 4 轮 `check_stuck`）。
 - 飞书真发 1 篇（`FQcHdWj2FoCHnUxlUnlcClrlnCg`）；Notion 0 次（无凭据）；桌面壳探针跑了 5 次（第一次用户名错、第二次 `ok=false` 拆步、第三次拆到 tainted、第四次过；每次零模型调用）。
+
+---
+
+## P17 · 第 778 轮：把自己当第一天用的用户，在打包版 app 上从头走一遍（2026-09-19）
+
+> 前 16 批是两两并行改出来的，没人从头到尾用过一遍。这批不做新功能：起**打包版**（`desktop/out/mac-arm64/MEMOKET NOTE.app`，
+> 09-19 07:08 从 `59a9f57` 打的，拷贝到 scratch 起），两个身份各走一遍走查脚本 1–11 步，每步截图 + 一句话判「对 / 不对 / 不对但能忍」。
+> **驱动方式**：`--remote-debugging-port` + 零依赖 CDP 客户端（`$S/p17/cdp.mjs`，Node 22 自带 WebSocket）——发的是**真鼠标 / 真键盘事件**
+> （`Input.dispatchMouseEvent / dispatchKeyEvent / insertText`），不是往 React 里灌状态，所以能踩到探针踩不到的坑（焦点、遮挡、状态跨篇）。
+> 截图 `$S/p17-<步骤>-<身份>-<light|dark>.png`（177 张）；步骤脚本 `$S/p17/steps/s*.mjs`。
+>
+> **安全**：打包版 `main.ts:433-435` 只在 `!app.isPackaged` 时认 `MEMOKET_USER_DATA`，`backend.ts:146` 又用 `<userData>/data` 盖掉 `KITE_DATA_DIR`——
+> 两个环境变量在打包版下**都不生效**；`HOME=` 也不生效（实测 Electron 44 的 `app.getPath('userData')` 走 `getpwuid`）。
+> 生效的是 Chromium 的 **`--user-data-dir=<scratch>`**（实测 `USERDATA=<scratch>/udd`）。两份 userData 都在 `$S/p17/{new,old}/udd`，
+> `~/Library/Application Support/memoket-note-desktop` 一次没碰（mtime 09-18 19:25 不变）。老用户 = 真库只读 rsync 一份（去 backups）+ `provider_config` 改指假模型
+> （`fakellm13.py` harness 模式 / `ok` 模式；**真库里存着一枚真 OpenAI key，拷贝里先换掉再起**）。
+> 正式版正开着占 47231，scratch 那份的 asar 里把固定端口改成 47241（不然每次起都是随机端口、localStorage 每次清零，第 9 步没法验）——这本身就是走查发现的第 13 条。
+> 真库指纹开工 / 收工各核一次：**482 / 2026-09-16T02:53:27 / 321250 / 47dcc54be60aa4f2 / note_revisions 44，一个字没动**（`$S/p17/p17_fp.py`）。
+
+### 走查表（步骤 × 身份 × 判定 × 截图）
+
+| # | 步骤 | 空库新用户（`user-cus2cp`，0 篇 / 0 事实） | 482 篇老用户（terrence，27 篇 / 大知识库） |
+|---|---|---|---|
+| 1 | 第一次打开 | **不对但能忍**：欢迎页三张卡 + 常用键，右栏「记忆 / 计划」说「打开一篇笔记后…」；但状态栏一上来就是「⚠ LLM 不可达 (http://192.168.77.8:8080/v1) · 去设置」——第一天用户看到的是一个内网 IP（→ 问题 #1）`p17-1-new-light` | **对**：直接开到上次那篇（幻灯片），右栏「记忆 / 幻灯片 24 / 计划 5」，记忆卡已按正文末尾召回 `p17-1-old-light` |
+| 2 | 新建 →「周报 9-19」→ 意图预填 → 改一字 → 关掉重开 | **对**：标题回车后意图行预填「周报 9-19：这段时间做了什么、进展到哪、卡在哪 / 老板 · 团队 / 每条进展有日期、有依据…」+ `0/2` 黄标 + 「预填」灰标；改一字关掉重开还在 `p17-2b/2c/2d-new-light` | **对**：同上 `p17-2b/2c/2d-old-light` |
+| 3 | 三段正文（含日期 / 数字）→ 圆点 → 悬停卡 | **不对但能忍**：一个点都没有（后端 `relations_batch` 空库直接回一排 null），而右栏图例说「每段一个…只看含数字 / 日期的段落」——照着写了等半天（→ #8，**当批修**：图例加一句）`p17-3a-new-light` | **对 / 能忍**：第 1 段灰点「缺依据」、第 2 段绿点「印证：日期跟知识库 2026-04-10 一致」、第 3 段无数字无点；悬停卡贴在正文栏内（x 695–1035 < 右栏 1074）但**盖住下一段的前半行**（P10 定的「挂在这一行下面」，悬停即走，能忍）`p17-3a/3b/3c-old-light`。顺带：第 2 段「众筹页面定在 3月12号」对着库里「3月10号上众筹」没判成冲突（P9 同一句判过），D 线记一笔 |
+| 4 | `/` 每一项（空正文 / 有正文） | 空正文 19 项全走：AI 八项各自拦对（用 AI 写 / 智能表格 / 智能数据分析空提交 →「先写一句要它做什么」；从托盘写 →「托盘是空的…」；插图 / 可视化 →「笔记还是空的——先写点内容」；语音 →「语音服务不可达（192.168.77.8:8081）」）；排版 10 项各插对（`# ` / `- ` / `1. ` / `> ` / 三反引号 / 3 列空表 / mermaid 模板）。有正文：AI 项统一「LLM 不可达…点这个打开设置」。**不对（→ #2，当批修）**：`/` 选中项的输入框**点外面 / 在正文里按 Esc 都不关**，一直挂着；这时再选一项，同一个实例复用、`mount` 那次 `focus()` 不再跑，**打的字全进了正文**（`p17-4-palette-stays`、`p17-4-focus`）。图片转表格 / 插入音频开原生文件框，没走 | 空正文同左（语音输入真录了一段、假语音服务转出「这是假语音服务转出来的一句话。」插进正文 ✓）；有正文 + 假模型：用 AI 写 / 智能插图 / 智能表格 / 数据可视化 / 智能数据分析各 7.6–8.1 s 跑完、产出落进正文、右栏「改动 1」`p17-4b-*-old-light`。**不对（→ #4，当批修）**：跑完那条「改了 1 处 · 鼠标移到改动上可以逐处接受、撤回；按层处置（保…」**右半截被浮动按钮盖住**（`p17-4b-智能插图-old-light`） |
+| 5 | 选一段 → 右键每项；⌥ 悬停；⌘E / ⇧⌘X / ⌘/ | **对**：六项全「LLM 不可达」toast、选区不丢；自定义提示空提交 →「先写一句要对选中的这段做什么…」；⌥ 悬停「评审会」→ 卡「来龙去脉「评审」· 知识库里 0 条 · 知识库还是空的」；⌘E 加 / 去反引号、⇧⌘X 加 / 去 `~~`、⌘/ 快捷键表 Esc 收 `p17-5a/5b/5c/5d/5e-new-light` | 自定义提示（假模型）替换选区 ✓、「改动 1」✓；⌥ 悬停「众筹」→ 8 条（第一次 01-21 / 最近 05 / 相关 03、02-24）`p17-5c-old-light`。**不对（→ #3，当批修，会丢字）**：右键「自定义提示」替换「硬件」之后点「全部撤回」，正文成了「其中 700 万」——**原来选中的「硬件」没了**（⌘Z 反而是对的）`p17-5f-old-light-自定义提示-after/undone`。校验 / 重写 / 润色 / 扩展 / 来龙去脉五项假模型 harness 模式不认那几种请求形状，回「操作失败：后端处理出错（多半是模型没应答）——…打开设置」——失败提示本身合格，功能没法在这批验；切到 `/ok` 端点后「校验」出了面板 |
+| 6 | 记忆卡 → 托盘 → 从托盘写 → 撤销 | 空库没有记忆卡，走 `[[试菜单]]` 链接右键「摊到这篇桌上」：托盘 1、再放一次「已经在托盘里了」、从托盘写 → LLM 不可达、移除 → 托盘 0 **对** `p17-6a/6b/6c/6d-new-light` | **对**：记忆卡「放进托盘」→ 托盘 1（事实 2026-04-10 EVT…）→ 从托盘写（假模型 7.9 s）落在光标处 → 全部撤回回到原样 `p17-6b/6c/6d/6e-old-light` |
+| 7 | 智能续写 2 轮+ → 轮次卡 → 全部接受 →「改动」只撤第 2 轮 → ribbon 历史折组 | 续写 / 智能续写都是「LLM 不可达…打开设置」；点开设置：**不对（→ #1）**「本地模型」被选中却**没有地址栏**，「看图」一行写死 `muse-glimmer-30b @ http://192.168.77.8:8080/v1` `p17-7-new-light-settings` | **对**：3 轮（假模型第 3 次打分停）、右栏「改动」三张卡各「回到这轮之前 / 只撤这一轮」→ 全部接受 → 卡还在 → 第 2 轮「只撤这一轮」→ `r1=in r2=OUT r3=in` + toast「撤掉了第 2 轮的 1 处…」→ ribbon 历史「智能续写 · 3 轮 · 每轮开始前各留一版，展开看」折成一组 `p17-7a/7b/7c/7d/7e-old-light`。**不对（→ #5，当批修）**：右栏顶上挂着上一篇（试菜单）的「校验结果 · 没有找到能支持或反驳…」（`p17-7b-old-light-rounds`） |
+| 8 | 导出 Obsidian 到 scratch vault → 再导一次 → 信息面板副本行 | **对**：「…」→「导回到 Obsidian / Notion / 飞书…」→ 路径框直接打路径 → 「导回 1 篇 · 打开」→ 再导「没有需要写的：上次导回之后没改过」→ 信息面板「副本 Obsidian · 2026-09-19 导回 ↗」`p17-8a–8d-new-light`。**能忍（→ #10，导出侧）**：单篇导出把 `[试菜单](note://…)` 写成 `[试菜单](<试菜单.md>)`，vault 里没有那个文件 | **对** `p17-8a–8d-old-light` |
+| 9 | 关掉重开 | 页签 ×3 / 活动页签 / 标题 / 意图 / `1/2` 角标 / 勾过的完成标准 / 托盘 1 / 深色 全在；**不对但能忍（→ #9，当批修）**：右栏页签「计划」退回「记忆」`p17-9a/9b-new-dark` | 同左，只有右栏页签退回 `p17-9a/9b-old-dark` |
+| 10 | 深色 | 笔记页 / `/` 菜单 + 输入框 / 右键菜单 / ⌥ 卡 / 快捷键表 / 计划页签 / 设置页 各一张，没有白块 `p17-2/4/5a/5c/5e/12/7-new-dark` | 同左 + 圆点悬停卡 `p17-*-old-dark` |
+| 11 | 拉窄到 900 / 700 | 900：右栏自动收起、浮动按钮不压首行（几何量过 `overlap=false`）、⌥ 卡 340 宽从正文栏左边伸出 16px（能忍）、`/` 输入框 400 宽放得下；700：浮动按钮收成图标、ribbon 折两行 `p17-11a/11c/11d/11f-new-light` | 同左 + 圆点悬停卡 `p17-11a/11b/11c/11e/11f-old-dark` |
+
+### 问题清单（按「第一天用户会不会因此关掉 app」排序）
+
+| # | 现象 → 截图 → 根因 | 处置 |
+|---|---|---|
+| 1 | **所有 AI 按钮都说「LLM 不可达 (http://192.168.77.8:8080/v1)」**，设置页「本地模型」默认选中却没有地址栏，「看图」写死同一个内网 IP；语音同款 `192.168.77.8:8081`。第一天用户没有这台内网机器，唯一出路是切 GPT 填 key，而界面没告诉他。`p17-1-new-light`、`p17-7-new-light-settings`、`p17-4-empty-语音输入-new-light` → `backend/app/util/config.py:16-35`（默认值是开发机内网）+ `provider_config` 表只有 `gpt_*` 没有本地地址 + `SettingsPanel.tsx` 本地模型那一档无输入框 | **留 P18（后端 + 设置页一起改）**：默认值改成「未配置」并在状态栏 / toast 说「还没配置模型——设置里选 GPT 填 key，或填本地模型地址」；`provider_config` 加 `local_base_url` / `asr_base_url` 已有 |
+| 2 | `/` 选中项的输入框点外面 / 正文里 Esc 不关，一直挂着；再选一项，输入框不重挂、焦点留在正文，**打的字全进了正文** `p17-4-palette-stays`、`p17-4-focus` → `SlashPrompt.tsx` 只在输入框自己的 Esc 上 `onCancel`；`App.tsx:3274` `<SlashPrompt>` 没 key，`useEffect(() => ref.current?.focus(), [])` 只在 mount 跑一次 | **✔ 修**：SlashPrompt 加 capture 阶段 document mousedown（右键除外）+ Escape → `onCancel`（跑起来时不关）；`<SlashPrompt key={item.key:from:to}>` |
+| 3 | 右键「自定义提示」替换选区 →「全部撤回」**丢掉原来选中的字**（「其中硬件 700 万」→「其中 700 万」）`p17-5f-old-light-自定义提示-undone` → `App.tsx:3040-3095 runBlock`：开跑先 `dispatch` 清掉选区，收尾 `b2 = doc` 已经没了选区，`pushDiff(b2, after)` 的 diff 里只有「插入」没有「删除」，撤回自然只撤插入。顺带：行内替换后面还跟着 `\n\n`，把句子截成两行 | **✔ 修**：`editor/blockLanding.ts`（纯函数）`diffBaseForBlock`（custom 把选区补回 `at`）+ `textToLand`（custom 不补空行）；`runBlock` 只调它 |
+| 4 | 跑完 `/` 块的「改了 N 处 …按层处置（保留第一次改的…」和续写的「引用知识库 检索到 N 条事实」条，**右半截被浮动按钮盖住** `p17-4b-智能插图-old-light`、`p17-13-old-light-banner-before` → `styles.css:1038` 紧跟浮动按钮的兄弟只让 24px，按钮 28px 高且 sticky 不占高度；编辑器自己有内边距所以正文首行没事，条没有 | **✔ 修**：`.note-body > .floating-buttons + :not(.md-editor) { margin-top: var(--s-8) }`（34px）。量过：`tap-prov` y 225 → 235，按钮底 229 `p17-13-old-light-banner-after` |
+| 5 | 右键「校验」的「校验结果」面板**跟着到下一篇**，挂在右栏页签上面 `p17-7b-old-light-rounds`、`p17-14-old-light-verify-after-a` → `App.tsx:523 verifyFindings` 只在关闭按钮时清 | **✔ 修**：`current?.id` 变就清 `p17-14-old-light-verify-after-b` |
+| 6 | 右键「自定义提示」→「全部撤回」→ 关掉这篇再打开，正文里冒出**幻影「硬件」删除标 + 「改动 1」**（库里正文是对的）`p17-16-old-light-stale-layer` → `roundDiff` 是给编辑器的一条「加一层」消息（`MarkdownEditor.tsx:306` 在 `[roundDiff]` 变化 **和 mount** 时都 dispatch `addLayer`），App 只在开跑 harness 时清（`App.tsx:2425/2736`）；编辑器一重挂就按旧坐标再加一遍层。**修 #3 之前也在**（那时层里只有插入，幻影是绿标） | **✔ 修**：`current?.id` 变就 `setRoundDiff(null)` `p17-16-old-light-stale-layer-after` |
+| 7 | 圆点悬停卡「挂在这一行下面」= **盖住下一段前半行** `p17-3b-old-light-hover`；⌥ 卡在 900px 从正文栏左边伸出 16px `p17-11c-*` → `util/cardPlacement.ts` 只保证不伸出右边 | 能忍（悬停即走）。留 P18：卡挂在段落**之间**的空行上、或半透明 |
+| 8 | 空库照图例写了带数字的段，一个点都没有，图例没说 `p17-3a-new-light` → `routers/memory.py:245 _has_facts` 空库回 null 是对的，`RelatedMemory.tsx` 图例没提 | **✔ 修**：`marginMemory.KB_EMPTY_DOTS_NOTE`，`kbEmpty` 时图例多一句 `p17-3d-new-light-legend-after` |
+| 9 | 重开 app 右栏页签退回「记忆」（其它全在）`p17-9b-*-post` → `RightPane.tsx:43` `useState(defaultTab)` 不落盘 | **✔ 修**：`memoket.rightTab` localStorage（同外观那套）`p17-9c-old-light-righttab-after`：切「计划」→ 重开还是「计划」 |
+| 10 | 单篇导出 Obsidian：`[试菜单](note://…)` → `[试菜单](<试菜单.md>)`，vault 里没那个文件（另一篇没导） | 导出侧，**留 P18**（`backend/app/exporters.py` obsidian 链接改写处：目标不在这次导出集合里时保留 `note://` 或写成纯文字） |
+| 11 | 「计划」页签目录把只有链接的段列成原始 `[试菜单](note://9aab…)` `p17-12-new-dark-plan` | 能忍。留 P18：目录取首句时走 `displayTitle` / 去链接语法 |
+| 12 | 第 2 段「众筹页面定在 3月12号 上线」对着库里「3月10号上众筹」判成「印证」（4-10）而不是「冲突」——一段两个日期时只看对上的那个 | D 线，留 P18（`kb_relations.detect` 一段多量时冲突应优先，P1-1d 定过的顺序） |
+| 13 | 正式版占着 47231 时再起一份，每次退回随机端口 → localStorage 每次清零（标签 / 主题 / 托盘全没）`new.app.log`「退回随机端口」 → `backend.ts:53 freePort` 固定端口失败直接随机 | **✔ 修**：先试 `preferred+1…+8` 再随机；实测正式版占 47231 时 scratch 那份稳定落 47232（`old.app.log`「固定端口 47231 被占，改用 47232」），重开两次同一 origin |
+| 14 | 打包里带着 `Resources/backend/_internal/data/notes.sqlite3`（0 篇，270KB）+ `backups/` | 打包 nit，留 P18（`backend.spec` 别把 `data/` 打进去） |
+
+### 修了哪几条（前端 / 桌面壳，7 个文件 +54 −4；后端一行没碰）
+
+- #2 `components/SlashPrompt.tsx` 点外面 / Esc 关 + `App.tsx` `<SlashPrompt key>`；实测：正文里 Esc / 点正文都关、再选一项焦点在新输入框
+- #3 `editor/blockLanding.ts`（新，纯函数）+ `App.tsx runBlock`；实测「全部撤回」回到原样 `true`，diff 里现在有「硬件」删除标
+- #4 `styles.css` 一条规则；量过 y 225 → 235
+- #5 / #6 `App.tsx` 两个 `useEffect` 按 `current?.id` 清
+- #8 `editor/marginMemory.ts` + `components/RelatedMemory.tsx`
+- #9 `components/RightPane.tsx`
+- #13 `desktop/src/backend.ts`
+- 测试：`editor/__tests__/p17.test.ts` 14 条（纯函数 6 + 源码钉 8）；`npm test` 全链绿：**65 文件 461 条**（原 64 / 448）+ 30 条 check / smoke 脚本（worktree 补了 `backend/.venv` 软链才跑得过 `check-journey-merge`）
+
+### 前后对比（同一份打包壳，只换 `Resources/web` 和 asar 里的 `backend.js`）
+
+- `p17-4-palette-stays.png`（点了正文输入框还挂着）→ 修后探针 `[编辑器里 Esc] palette? false / [点正文] palette? false / [palette 开着再选] active: INPUT`
+- `p17-5f-old-light-自定义提示-undone.png`（「其中 700 万」）→ 修后 `after undo … 回到原样? true`
+- `p17-13-old-light-banner-before.png`（「按层处置（保…」被盖）→ `p17-13-old-light-banner-after.png`（整条露出来）
+- `p17-14-old-light-verify-after-a.png`（试菜单上校验）→ `-b.png`（切到周报，右栏顶上空）
+- `p17-16-old-light-stale-layer.png`（幻影「硬件」+ 改动 1）→ `-after.png`（干净）
+- `p17-3d-new-light-legend-after.png`（图例末尾「知识库还是空的时候页边不画圆点——存进第一条记录之后才开始判。」）
+- `p17-9c-old-light-righttab-after.png`（重开后右栏还在「计划」）
+- `old.app.log`：`固定端口 47231 被占，改用 47232（下次也先试它）`
+
+### 没做 / 说清楚的
+
+- 图片转表格 / 插入音频（原生文件框）、Notion / 飞书导出（无凭据）、真模型（这批全假模型：harness 模式跑智能续写，`ok` 模式跑校验）没走。
+- 校验 / 重写 / 润色 / 扩展 / 来龙去脉五项在 harness 模式假模型下回「操作失败」，是假模型不认请求形状，不是 app 的错；`ok` 模式下校验出面板、自定义提示回的是 JSON 原文（假模型 canned 是 JSON）。
+- `docs/edge-cases.md` 的 ？×6 这批只碰到「引用 · 补一条 / 改 空文本」的门（没复现——`/` 输入框那条修完顺手看了 `check-busy`，没动表）。
+
+### 闸 / 指纹 / 成本
+
+- 前端 `npm test` 65 文件 461 条 + 30 脚本全绿；桌面 `tsc` 过。后端未动。
+- 真库指纹开工 = 收工：482 / 2026-09-16T02:53:27 / 321250 / 47dcc54be60aa4f2 / note_revisions 44；`~/Library/Application Support/memoket-note-desktop` 未碰。
+- 模型调用：0 次真调用（全部 `127.0.0.1:18099` 假模型）。

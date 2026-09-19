@@ -57,6 +57,15 @@ async function freePort(isPackaged: boolean, log: (line: string) => void = () =>
   for (let i = 0; i < 20; i++) {
     try { return await listenFree(preferred) } catch { await new Promise((r) => setTimeout(r, 250)) }
   }
+  // P17 实拍：正式版开着（占 47231）再起一份，每次都退回随机端口——origin 每次不同，localStorage
+  // 每次清零（标签 / 主题 / 托盘全没）。先按顺序试后面几个固定端口，同一台机上第二份也能稳定在同一个 origin 上。
+  for (let k = 1; k <= 8; k++) {
+    try {
+      const p = await listenFree(preferred + k)
+      log(`[desktop] 固定端口 ${preferred} 被占，改用 ${p}（下次也先试它）\n`)
+      return p
+    } catch { /* 下一个 */ }
+  }
   const p = await listenFree(0)
   // 走 onLog 而不是 console.warn：这句要进落盘日志（用户报「设置全没了」时，唯一的线索就是它）
   log(`[desktop] 固定端口 ${preferred} 一直被占，退回随机端口 ${p}（本次 localStorage 状态会丢）\n`)

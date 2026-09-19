@@ -25,6 +25,23 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
   const ref = useRef<HTMLInputElement>(null)
 
   useEffect(() => { ref.current?.focus() }, [])
+  // 点到框外面（左键）/ 任何地方按 Esc 都算取消——跟 SelectionMenu 同一套（capture 阶段，抢在别的点击处理之前）。
+  // 跑起来之后不关：那时框上是「停止」，点别处不该把它弄丢。
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (busy) return
+    function onDocMouseDown(e: MouseEvent) {
+      if (e.button === 2) return
+      if (box.current && !box.current.contains(e.target as Node)) onCancel()
+    }
+    function onDocKeyDown(e: KeyboardEvent) { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('mousedown', onDocMouseDown, true)
+    document.addEventListener('keydown', onDocKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown, true)
+      document.removeEventListener('keydown', onDocKeyDown)
+    }
+  }, [busy, onCancel])
 
   function run() {
     // 选区 / 正文这两个条件由上层 `runBlock` 再判一次（它手上有编辑器）；这里只判输入框自己的
@@ -38,6 +55,7 @@ export default function SlashPrompt({ item, x, y, busy, phase, onRun, onCancel }
 
   return (
     <div
+      ref={box}
       className="palette"
       role="dialog" aria-label="AI 块生成"
       style={{ position: 'fixed', left, top, width: 400, padding: 10, zIndex: 260 }}
