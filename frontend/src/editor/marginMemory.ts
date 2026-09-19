@@ -33,6 +33,8 @@ export const RELATION_LABEL: Record<MemoryRelationKind, string> = {
 /** 圆点的规则，一句话（P1-1d，用户第 768 轮问「一个点代表一行还是一段？绿色黄色是什么？」）。
  *  写在这里而不是散在各处：悬停提示、右栏图例读的是同一句。 */
 export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段），只看含数字 / 日期的段落——判的是量的比对，圆点零模型'
+/** 知识库空着时一个点都不会有（后端 `relations_batch` 直接回一排 null）——图例得说出来，不然新用户照着写了带数字的段等半天（P17） */
+export const KB_EMPTY_DOTS_NOTE = '知识库还是空的时候页边不画圆点——存进第一条记录之后才开始判。'
 
 /** 图例里「零模型」差的那一个条件（P4 #10）：右栏关系卡判到「冲突」时，后端会让模型把那句人话复核 / 改写一次
  *  （`routers/memory.py` `relations`，只对 conflict 候选）；圆点（`relations/batch`）不会。 */

@@ -1036,6 +1036,10 @@ h2:first-child { margin-top: 0; }
    给容器加 padding 会把按钮也推下去，又回到「要滚才吸顶」。 */
 .note-body { max-width: 880px; }
 .note-body > .floating-buttons + * { margin-top: var(--s-7); }
+/* P17 实拍：浮动按钮 28px 高（sticky、不占高度），紧跟它的**改动条 / 出处条**只让了 24px，
+   条上右半截字（「按层处置（保留第一次改的…」）被按钮盖住。编辑器自己有内边距不用让；
+   别的第一个兄弟让到 34px，刚好从按钮底下露出来。 */
+.note-body > .floating-buttons + :not(.md-editor) { margin-top: var(--s-8); }
 .note-body > *:first-child:not(.floating-buttons) { margin-top: var(--s-7); }
 /* 专注模式：整栏只剩正文，宽度一下变成一千多像素。**正文有上限（880），
    但它是左对齐的**——于是右边空出三百多像素，标题和工具栏又是通栏的，
