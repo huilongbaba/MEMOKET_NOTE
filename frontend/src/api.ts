@@ -492,11 +492,14 @@ export const getWritingPlan = (folderId: string) =>
   fetch(`/api/writing-plan?parent_note_id=${encodeURIComponent(folderId)}`, { headers: headers() })
     .then(json<WritingPlanOut>)
 
-export const startWritingPlan = (folderId: string, goal: string) =>
+/** `signal`：「生成写作计划」要能停（P23 #8 / 临界条件表 D 组那个 ？）——它是一次
+ *  非流式模型调用，可以跑满 300 秒，而按钮转起来之后原来一个出口都没有。 */
+export const startWritingPlan = (folderId: string, goal: string, signal?: AbortSignal) =>
   fetch('/api/writing-plan/start', {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ parent_note_id: folderId, goal, scope: memoryScope() }),
+    signal,
   }).then(json<WritingPlanOut>)
 
 /** 放弃当前计划，好在同一个文件夹里换个目标重开。
@@ -679,8 +682,10 @@ export type UsageBucket = { calls: number; prompt_tokens: number; completion_tok
 export type UsageSummary = { today: UsageBucket; week: UsageBucket; month: UsageBucket; all: UsageBucket; by_feature: { feature: string; calls: number; tokens: number }[]; models: string[] }
 export const usageSummary = () => fetch('/api/settings/usage', { headers: headers() }).then(json<UsageSummary>)
 
-/** 今天的日记：`日记 / 年 / 月 / 日` 没有就建、有就打开（Trilium 的 day note） */
-export const todayNote = () => fetch('/api/notes/today', { method: 'POST', headers: headers() }).then(json<Note>)
+/** 今天的日记：`日记 / 年 / 月 / 日` 没有就建、有就打开（Trilium 的 day note）。
+ *  给了 `day`（YYYY-MM-DD）就是那一天的——屏幕活动那一页的「去这天的日记」走这条（P23 #6）。 */
+export const todayNote = (day = '') =>
+  fetch('/api/notes/today' + (day ? `?day=${encodeURIComponent(day)}` : ''), { method: 'POST', headers: headers() }).then(json<Note>)
 
 /** 最近删除（30 天内可找回） */
 export type TrashItem = { note_id: string; title: string; chars: number; deleted_at: string }

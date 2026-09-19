@@ -91,6 +91,17 @@ _HEAD_I = re.compile(RULES["conclusion_head"], re.I)
 _FULLWIDTH = {ord(c): str(i) for i, c in enumerate("０１２３４５６７８９")}
 PARA_MIN = 20          # 没有列表时按段落，短于这个字数的段不算「一条」
 
+# 「材料里没有日期」时判据自己补的那个记号（P23 #1）。**不进 `RULES`**：`RULES` / `WHY` 两边
+# 一字不差、`tests/test_p13.py` 两头集合相等地盯着，而这个记号只有 harness 那一侧用得上——
+# 右栏给用户看的那份**照旧数它没日期**（「待补」就是「还欠着」，用户该看到那个 ✗）。
+DATE_PENDING = "（日期待补）"
+_DATE_PENDING = re.compile(r"[（(]\s*日期待补\s*[）)]")
+
+
+def has_date_pending(s: str) -> bool:
+    """这一条已经按提示标过「（日期待补）」了。半角括号也认（模型爱写半角）。"""
+    return bool(_DATE_PENDING.search(s or ""))
+
 
 def split_done(done: str) -> list[str]:
     """「完成标准」一句拆成几条：分号 / 句号 / 换行分开；逗号不拆（「有日期、有依据」是一条里的两件事）。"""
@@ -156,11 +167,17 @@ def _opening(content: str) -> str:
 
 
 def check_done_item(item: str, content: str, *,
-                    unit_filter: Callable[[str], bool] | None = None) -> dict | None:
+                    unit_filter: Callable[[str], bool] | None = None,
+                    date_pending_ok: bool = False) -> dict | None:
     """判一条。回 None = 代码判不了（要用户判）。
 
     `unit_filter`（只有 harness 用）：「每条有日期 / 出处」只看过滤后的单位。前端那份没有这个参数，
     共享用例表都在不带它的情况下跑。
+
+    `date_pending_ok`（只有 harness 用，P23 #1）：标了「（日期待补）」的算**按提示处理过了**，
+    不再数成「没有日期」——跟出处那一侧的弃答句（`abstention_lines`，P15 #1）同一个形状：
+    *判据不能跟自己的提示打架*。**它只关掉「没日期」这一半**，那一条照样要有出处
+    （所以不能塞进 `unit_filter`：那会把整条从两边的分母里一起摘掉）。
     """
     t = re.sub(r"\s+", "", item or "").translate(_FULLWIDTH)
     words = word_count(content or "")
@@ -210,7 +227,8 @@ def check_done_item(item: str, content: str, *,
         bad_date: list[str] = []
         bad_cite: list[str] = []
         if want_date:
-            bad_date = [s for s in scope if not _R["date"].search(s)]
+            bad_date = [s for s in scope
+                        if not _R["date"].search(s) and not (date_pending_ok and has_date_pending(s))]
             parts.append(WHY["date_miss"].format(n=len(scope), unit=unit, miss=len(bad_date)) if bad_date
                          else WHY["date_ok"].format(n=len(scope), unit=unit))
         if want_cite:
@@ -295,6 +313,39 @@ def _locate(bad: list[str], content: str, unit: str) -> list[str]:
     return out
 
 
+def mark_date_pending(content: str, bad: list[str]) -> str:
+    """把「没日期」的那几条，在**它自己那一行的行尾**补上「（日期待补）」（P23 #1）。
+
+    P19 给「怎么落到字面上」写清楚了（「在句首点明日期」/「句末写（日期待补）」），出处那一侧
+    从此逐轮在补（3/3 → 8/6），**日期那一侧点名三轮一个字没改**（p15 / p18b / p19hint 三批真跑
+    重放：9 次命中、8 个不同的段，连着点名 ≥2 轮的 6 个里 **0 个**被补上过真日期）。
+    求不动模型就别求了——**判据自己有 `fix` 的形状**：这件事纯机械（找到那一行、行尾贴一个记号），
+    不需要任何语义判断，正是 `Verdict.fix` 说的那一档。
+
+    量程（怕误伤，逐条掐死）：
+      · 只动 `bad` 里的那几条——它们是**这次跑新写的**（`unit_filter=fresh_only`），用户原文一个字不碰；
+      · 只在**连响第 2 轮起**才给（`done_criteria` 里），模型先有一整轮按提示写真日期的机会；
+      · 那一行已经有日期、或已经标过记号的，跳过；
+      · 一条只贴一行（`break`），同一句出现两遍会各贴各的——**贴完那一行就不再以原话结尾**，
+        下一条自然落到下一行。（第一版还多一个 `used` 集合记「这一行贴过了」，
+        突变验杀不掉它：*贴在行尾* 这件事本身已经把重复挡住了，多余的守卫已经删掉。）
+    """
+    lines = (content or "").split("\n")
+    for b in bad:
+        body = [l for l in (b or "").splitlines() if l.strip()]
+        if not body:
+            continue
+        target = body[-1].strip()          # 列表项的字面去掉了 `- ` 前缀，所以按「行尾是它」认
+        for i, line in enumerate(lines):
+            if not line.strip().endswith(target):
+                continue
+            if has_date_pending(line) or _R["date"].search(line):
+                continue
+            lines[i] = line.rstrip() + DATE_PENDING
+            break
+    return "\n".join(lines)
+
+
 def _hint(r: dict, content: str = "") -> str:
     kind = r["kind"]
     unit = r.get("unit", "段")
@@ -338,7 +389,7 @@ def done_criteria(st: State) -> Verdict | None:
     from .grounding_rules import abstention_lines
     fresh_only = (lambda s: s.strip() not in start and not abstention_lines(s)) if start else None
     for text in judgeable(done, checked, polish=polish):
-        r = check_done_item(text, st.content, unit_filter=fresh_only)
+        r = check_done_item(text, st.content, unit_filter=fresh_only, date_pending_ok=True)
         if not r or r["status"] != "fail":
             continue
         scope = "这次写的 " if (fresh_only and r["kind"] in ("cite", "date")) else ""
@@ -349,8 +400,24 @@ def done_criteria(st: State) -> Verdict | None:
         streak = int((st.bag.get("check_name_streak_prev") or {}).get("done_criteria", 0)) + 1
         again = ("上一轮就提过这条、这一轮还是没改到。**这一轮先只做这件事，别再往下写新段落**："
                  if streak >= 2 else "")
+        # **日期那一侧：说第二遍就别再说了，判据自己动手**（P23 #1）。P19 把「怎么落到字面上」
+        # 说清之后，出处那一侧逐轮在补、日期那一侧三批真跑里一个字没改（0/6）——而「句末写
+        # （日期待补）」纯机械，`Verdict.fix` 正是干这个的。第 1 轮照旧只说、留给模型写真日期。
+        fix = fix_done = None
+        if r["kind"] == "date" and streak >= 2 and r.get("bad"):
+            bad = list(r["bad"])
+
+            def fix(c: str, _bad: list[str] = bad) -> str:
+                return mark_date_pending(c, _bad)
+
+            def fix_done(c: str, _text: str = text) -> bool:
+                rr = check_done_item(_text, c, unit_filter=fresh_only, date_pending_ok=True)
+                return not rr or rr["status"] != "fail" or rr["kind"] != "date"
+
         return Verdict(
             dimension=_dimension(st, r["kind"]),
             message=f"你定的完成标准「{text}」还没满足：{scope}{r['why']}。{again}{_hint(r, st.content)}",
+            fix=fix,
+            fix_done=fix_done,
         )
     return None

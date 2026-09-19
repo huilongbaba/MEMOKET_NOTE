@@ -1787,8 +1787,22 @@ label.plan-check-row { cursor: pointer; }
 .journey-ribbon-sum { font-variant-numeric: tabular-nums; }
 .journey-ribbon-lead { color: var(--muted); }
 
+/* 删一段的确认：**长在那一行下面**，不是系统弹窗（P23 #5）。用户要核对的正是
+   「这一段到底是哪一段」，而那一行的时间 / 原话 / 应用就在上面摆着——摊在原地才对得上。
+   跨满整行（`grid-column: 1 / -1`）：时间轴那几列是给一行记录用的，确认要说三句话。 */
+.journey-row-confirm { grid-column: 1 / -1; margin: 6px 0 2px; padding: 8px 10px;
+                       border-radius: var(--r-sm); border: 1px solid var(--live);
+                       background: var(--card-alt); }
+.journey-row-confirm b { display: block; margin-bottom: 4px; }
+.journey-row-confirm p { font-size: var(--t-sm); margin: 0 0 6px; }
+
 /* 「回顾一段时间」：从「今天」这一页出去的一条路，不是这一页的主角 */
 .journey-span { border-top: 1px solid var(--line); padding-top: 12px; }
+/* ⌘K 把人送过来时那一条提示（P23 #7）：**它解释的是「为什么这一下留给你按」**，
+   所以是提示色不是危险色——没出错，只是要花钱的那一下不替用户做。 */
+.journey-span-hint { margin: 0 0 8px; padding: 8px 10px; font-size: var(--t-sm);
+                     border-radius: var(--r-sm); background: var(--card-alt);
+                     border-left: 3px solid var(--brand); }
 /* 时间轴那一行的删除键：**悬停才出现**（跟笔记列表同一条规矩——
    常驻的破坏性按钮会让人不敢用鼠标）。但它得一直占着位置，不然出现的时候整行会跳。 */
 .journey-row { position: relative; }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { memoryScope, SCOPE_LABEL } from '../api'
 import { displayTitle } from '../util/displayTitle'
 import { friendlyError } from '../util/friendlyError'
@@ -45,6 +45,8 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
   const [localPlan, setLocalPlan] = useState<WritingPlan | null>(null)
   const [localSections, setLocalSections] = useState<WritingSection[]>([])
   const [goal, setGoal] = useState('')
+  /** 「生成写作计划」转起来时的停止（P23 #8）。 */
+  const startAbort = useRef<AbortController | null>(null)
   const scope = memoryScope()   // 对话框打开时读一次就够：范围在右栏切，切完再开
   const scopeLabel = scope === 'all' ? '' : SCOPE_LABEL[scope].replace(/^只看/, '')
   const [starting, setStarting] = useState(false)
@@ -100,17 +102,27 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
     }
   }
 
+  /** 生成写作计划。**转起来要能停**（P23 #8，临界条件表 D 组那个 ？）：它是一次
+   *  非流式模型调用，后端读超时 300 秒——而在这之前按钮一转，页面上就没有出口了
+   *  （钮禁用、Esc 只关面板、请求照跑）。跟 P3 / P9 给右键五项 / 骨架 / 智能排版 /
+   *  做幻灯片接的是同一条：**第二下 = 停止**，停了要说一句。 */
   async function start() {
+    if (starting) { startAbort.current?.abort(); return }
     if (!goal.trim()) return
     setStarting(true)
+    const ctrl = new AbortController()
+    startAbort.current = ctrl
     try {
-      const r = await api.startWritingPlan(parent.note_id, goal.trim())
+      const r = await api.startWritingPlan(parent.note_id, goal.trim(), ctrl.signal)
       setLocalPlan(r.plan)
       setLocalSections(r.sections)
       onNoteChanged()
     } catch (e) {
-      toast('生成写作计划失败：' + friendlyError(e), 'error')
+      // **停下来要说一句**：不说的话用户分不清是停了还是卡了（P3 第 13 条）
+      if ((e as Error).name === 'AbortError') toast('已停止，没有生成计划——目标还留在框里，随时再来一次')
+      else toast('生成写作计划失败：' + friendlyError(e), 'error')
     } finally {
+      startAbort.current = null
       setStarting(false)
     }
   }
@@ -139,8 +151,10 @@ export default function WritingPlanPanel({ parent, onClose, onNoteChanged, harne
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
             />
-            <button className="primary" onClick={start} disabled={starting || !goal.trim()} title={!goal.trim() ? '先写这个文件夹要写成什么' : undefined}>
-              {starting ? <span className="spinner" /> : '生成写作计划'}
+            {/* 转起来的时候**不禁用**：那一下是「停止」，禁了这次跑就没有出口了 */}
+            <button className="primary" onClick={start} disabled={!starting && !goal.trim()}
+                    title={starting ? '停止这次生成' : !goal.trim() ? '先写这个文件夹要写成什么' : undefined}>
+              {starting ? <><span className="spinner" /> 正在生成…停止</> : '生成写作计划'}
             </button>
           </div>
         ) : (

@@ -135,9 +135,16 @@ class Checks:
                 # still wrong. (Found by running the prototype; three passes
                 # of reading the design on paper had missed it.)
                 probe = dataclasses.replace(st, content=verdict.fix(st.content))
-                if not check(probe):
+                again = check(probe)
+                if again is None:
                     st.content = probe.content
                     continue
+                # **一条判据管着不止一件事**（P23 #1）：`fix_done` 说「我管的那件事修好了」，
+                # 那正文就留下，剩下没好的按**新的那条**说——不然修好的正文被整个丢掉，
+                # 而模型下一轮看到的还是同一句话（P18/P19 日期那一侧连响三轮的一半原因）。
+                if verdict.fix_done is not None and verdict.fix_done(probe.content):
+                    st.content = probe.content
+                    verdict = again
 
             # **修好了的不算命中**：`verdict.fix` 那一档当场把正文改对了，
             # 对下一轮一个要求都没提——第 9 行问的是「上一轮提的要求，下一轮

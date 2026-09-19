@@ -4,7 +4,7 @@ import { journeyCatchUp, journeyDay, journeyDays, journeyDeleteDay, journeyDelet
          journeyReport, journeyRetention, journeySaveReport, journeySpan, journeyThumb,
          type JourneyDay, type JourneyRetention, type JourneySegment } from '../api'
 import { friendlyError } from '../util/friendlyError'
-import { JOURNEY_DAY_EVENT, takePendingJourneyDay } from '../util/journeyOpen'
+import { JOURNEY_DAY_EVENT, JOURNEY_SPAN_EVENT, takePendingJourneyDay, takePendingJourneySpan } from '../util/journeyOpen'
 import { groupRuns } from '../util/journeyRuns'
 import { parseMini, type Inline } from '../util/miniMarkdown'
 import { usePoll } from '../util/poll'
@@ -123,9 +123,16 @@ function ReportBody({ md }: { md: string }) {
   )
 }
 
-type Props = { onLater: () => void; onOpenNote: (id: string) => void }
+type Props = {
+  onLater: () => void
+  onOpenNote: (id: string) => void
+  /** 「去这天的日记」（P23 #6）：日记 → 屏幕活动那条路 P21 做了（ribbon 上那一块），
+   *  反过来一直没有——从这一页看完一天，想写点什么得自己回树上一层层翻到那个日子。
+   *  找或建都在后端那一份 `journal_node`（`POST /notes/today?day=`），这里只递日期。 */
+  onOpenJournal: (date: string) => void
+}
 
-export default function JourneyPage({ onLater, onOpenNote }: Props) {
+export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Props) {
   // `null` = 还没问到。**问不到不能当成「没开过」**：那会把一个正在记录的
   // 应用画成「要不要开启」，用户再点一次「开始记录」——看着像没生效。
   const [state, setState] = useState<JourneyState | 'unknown' | null>(null)
@@ -155,6 +162,20 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
    *  这两个一直没跟上——转起来只能干等满 300 秒，页面上一个出口都没有）。 */
   const writeAbort = useRef<AbortController | null>(null)
   const spanAbort = useRef<AbortController | null>(null)
+  /** 删一段 / 删掉这一天的确认，**摊在页面里，不是 `window.confirm`**（P23 #5）。
+   *  两个理由，第二个是硬的：
+   *    · 系统弹窗只塞得下一句话，而这两下要说清「连知识库里那条记忆一起删」；
+   *      「全部删掉」P21 已经是页面内的红框了，这两处不该是另一种东西。
+   *    · **`window.confirm` 会把整个渲染进程挡住**——P21 实拍：探针点下去之后
+   *      页面一帧都不再画，只能靠 `confirmyes` 把它换掉才走得下去。挡得住探针，
+   *      也就挡得住自动保存、轮询和正在跑的续写。
+   *  `null` = 没在确认；删一段记的是段的序号 `i`。 */
+  const [confirmSeg, setConfirmSeg] = useState<number | null>(null)
+  const [confirmDay, setConfirmDay] = useState(false)
+  /** ⌘K 的「这一周的屏幕活动」把人送到这一页时，把「最近 7 天」标出来**但不开跑**
+   *  （P23 #7）。理由写在 `util/journeyOpen.takePendingJourneySpan` 上。 */
+  const [spanHint, setSpanHint] = useState(takePendingJourneySpan)
+  const spanBox = useRef<HTMLDivElement>(null)
   const bridge = window.memoketDesktop?.journey
 
   const refresh = useCallback(async () => {
@@ -178,6 +199,28 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
     window.addEventListener(JOURNEY_DAY_EVENT, on)
     return () => window.removeEventListener(JOURNEY_DAY_EVENT, on)
   }, [])
+
+  // 翻到别的一天，没确认完的那两个确认就作废——**段的序号是「这一天的第几段」**，
+  // 留着的话翻过去正好撞上另一天同序号的那一段（P23 #5）。
+  useEffect(() => { setConfirmSeg(null); setConfirmDay(false) }, [date])
+
+  // ⌘K 已经开着这一页时再按一次：页面不重挂，同样得当场把提示摆出来 + 滚过去（P23 #7）
+  useEffect(() => {
+    const on = (e: Event) => setSpanHint(Number((e as CustomEvent<number>).detail) || 0)
+    window.addEventListener(JOURNEY_SPAN_EVENT, on)
+    return () => window.removeEventListener(JOURNEY_SPAN_EVENT, on)
+  }, [])
+  // **也要等这一页真的画出来**（第一版实拍就栽在这）：`state`/`days` 还没回来时整页只有一个
+  // 「…」，`spanBox` 是 null，scroll 白跑一次、之后 `spanHint` 再没变过也就不会重来——
+  // 用户从 ⌘K 过来只看见页顶，那条提示在两屏以下。把加载完这件事也算进依赖，
+  // 再补一次延时：「不记这些」「留多久」是各自异步拉的，落下来会把这一块又顶下去。
+  useEffect(() => {
+    if (spanHint <= 0) return
+    const go = () => spanBox.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    go()
+    const t = setTimeout(go, 700)
+    return () => clearTimeout(t)
+  }, [spanHint, state, days, keepFor])
 
   async function catchUp() {
     setBusy(true)
@@ -248,7 +291,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
    *  或者干脆把这个功能关掉。 */
   async function dropSeg(s: JourneySegment) {
     if (!day) return
-    if (!window.confirm(`删掉 ${hhmm(s.start)}–${hhmm(s.end)} 这一段？\n\n${s.desc || '（还没描述）'}\n\n连它抽进知识库的记忆一起删。`)) return
+    setConfirmSeg(null)
     // **删不成必须说一句。** 第 779 轮（P21）实拍：后端没起来时这两个动作
     // 一个字都不说（`promise Failed to fetch` 进日志、`toasts=[]`），而用户
     // 刚点过「确定」——他会以为删掉了。「我以为删干净了」是这个功能最不能出的错。
@@ -261,7 +304,7 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
 
   async function wipe() {
     if (!day) return
-    if (!window.confirm(`删掉 ${day.date} 的屏幕活动？\n\n连同它抽进知识库的记忆一起删——删完就真的没有了。`)) return
+    setConfirmDay(false)
     try {
       const r = await journeyDeleteDay(day.date)
       toast(`删掉了这一天${r.removed_facts ? `，连带 ${r.removed_facts} 条记忆` : ''}`)
@@ -373,9 +416,37 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
             : state === 'paused'
               ? <button onClick={() => { void bridge?.resume().then(refresh) }}>继续记录</button>
               : <button onClick={() => { void bridge?.pause(60).then(refresh) }}>暂停 1 小时</button>}
-          <button className="linklike danger" onClick={() => void wipe()} disabled={!segs.length} title={segs.length ? '' : '这一天还没有记录'}>删掉这一天</button>
+          {/* **反过来那条路**（P23 #6）：日记 → 屏幕活动 P21 做了（那篇日记 ribbon 上
+              一块摘要 + 一条链接），屏幕活动 → 日记一直没有。看完这一天想写点什么，
+              原来得自己回树上「日记 / 年 / 月 / 日」翻四层。没有那篇就建一篇——
+              跟启动栏「今天的日记」同一个规矩（后端 `journal_node` 那一份）。 */}
+          <button className="linklike" onClick={() => onOpenJournal(day?.date ?? '')}
+                  title="打开这一天的日记（没有就建一篇）">去这天的日记</button>
+          <button className="linklike danger" onClick={() => setConfirmDay(true)} disabled={!segs.length || confirmDay}
+                  title={segs.length ? '' : '这一天还没有记录'}>删掉这一天</button>
         </span>
       </div>
+
+      {/* 删掉这一天：**页面里的确认，不是系统弹窗**（P23 #5，跟「全部删掉」一致）。
+          把这一下会删掉什么一条条摆出来——一句「确定吗」说不清「连记忆一起删」。 */}
+      {confirmDay && day && (
+        <div className="journey-keep-confirm" role="alertdialog" aria-label={`删掉 ${day.date} 的屏幕活动`}>
+          <b>删掉 {day.date} 的屏幕活动？这一下会删掉：</b>
+          <ul>
+            <li>{segs.length} 段，其中 {segs.filter((s) => s.desc).length} 段有描述</li>
+            {segs.some((s) => s.has_thumb) && <li>{segs.filter((s) => s.has_thumb).length} 张缩略图，连同还没删的原始截图</li>}
+            {day.report && <li>这一天写好的那份日报</li>}
+            <li>这些描述抽进知识库的那些记忆</li>
+          </ul>
+          <p className="muted">删完就真的没有了，没有回收站。存成笔记的那几份日报留着——那是笔记，不是记录。</p>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="danger" onClick={() => void wipe()}>
+              <Icon n="bx-trash" /> 确认删掉这一天
+            </button>
+            <button onClick={() => setConfirmDay(false)}>先不删</button>
+          </div>
+        </div>
+      )}
 
       <p className="muted journey-state">
         {/* 翻到往日时「记录中」是句废话，还容易被读成「在补记那天」。
@@ -520,7 +591,25 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
                         <span className="journey-app-name">{s.app}</span>
                       </span>
                       <button className="icon-btn sm journey-del" title="删掉这一段（连它抽出来的记忆一起）"
-                              onClick={() => void dropSeg(s)}><Icon n="bx-trash" /></button>
+                              aria-expanded={confirmSeg === s.i}
+                              onClick={() => setConfirmSeg((v) => (v === s.i ? null : s.i))}><Icon n="bx-trash" /></button>
+                      {/* 删一段的确认**长在这一行下面**（P23 #5）：系统弹窗里只看得到
+                          一句话，而用户要核对的正是「这一段到底是哪一段」——
+                          原话、时间、应用都在上面那一行摆着，摊在原地才对得上。 */}
+                      {confirmSeg === s.i && (
+                        <div className="journey-row-confirm" role="alertdialog"
+                             aria-label={`删掉 ${hhmm(s.start)}–${hhmm(s.end)} 这一段`}>
+                          <b>删掉这一段？</b>
+                          <p className="muted">{s.desc || '（还没描述）'}</p>
+                          <p className="muted">连它抽进知识库的记忆一起删，删完就没有了。</p>
+                          <div className="row" style={{ gap: 6 }}>
+                            <button className="danger" onClick={() => void dropSeg(s)}>
+                              <Icon n="bx-trash" /> 确认删掉
+                            </button>
+                            <button onClick={() => setConfirmSeg(null)}>先不删</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -539,18 +628,27 @@ export default function JourneyPage({ onLater, onOpenNote }: Props) {
 
       {/* 一段时间的回顾：**日报 → 长报告 → 一篇笔记**。放在最下面——
           它不是「今天」这一页的主角，是从这一页出去的一条路（§4.2）。 */}
-      <div className="journey-span">
+      <div className="journey-span" ref={spanBox}>
         <h3 className="kb-section-title">回顾一段时间</h3>
         <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '2px 0 6px' }}>
           把这些天的日报汇成一篇长回顾，落成一篇笔记——之后还能接着编辑、接着续写。
-          没写过日报的那几天会被跳过，并写在笔记里。
+          没写过日报的那几天会被跳过，并写在笔记里。<b>按一下是一次模型调用。</b>
         </p>
+        {/* ⌘K 进来的那一下**只把人送到这儿、把要按的那个钮指出来**，不替他按下去
+            （P23 #7，理由在 `util/journeyOpen`）。 */}
+        {spanHint > 0 && spanning === 0 && (
+          <p className="journey-span-hint">
+            <Icon n="bx-info-circle" /> 从 ⌘K 过来的：要写「最近 {spanHint} 天」的回顾，按下面那个钮。
+            <b>它是一次模型调用，所以这一下留给你按。</b>
+          </p>
+        )}
         <div className="row" style={{ gap: 6 }}>
           {/* 跑着的那个变成「停止」，另一个才禁用（跑完才能换范围）。
               两个都禁用的话，这次跑起来就没有出口了。 */}
           {[7, 30].map((d) => (
-            <button key={d} disabled={spanning !== 0 && spanning !== d} onClick={() => void runSpan(d)}
-                    title={spanning === d ? '停止这次回顾' : spanning !== 0 ? '正在写，跑完才能换范围' : undefined}>
+            <button key={d} className={spanHint === d && spanning === 0 ? 'primary' : undefined}
+                    disabled={spanning !== 0 && spanning !== d} onClick={() => { setSpanHint(0); void runSpan(d) }}
+                    title={spanning === d ? '停止这次回顾' : spanning !== 0 ? '正在写，跑完才能换范围' : '一次模型调用'}>
               {spanning === d ? <><span className="spinner" /> 最近 {d} 天　停止</> : `最近 ${d} 天`}
             </button>
           ))}

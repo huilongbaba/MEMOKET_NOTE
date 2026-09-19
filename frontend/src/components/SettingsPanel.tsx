@@ -107,11 +107,18 @@ function AppearanceSection() {
  */
 
 /** 一栏的「测一下」按钮 + 结果行（P19 #1）。**结果是这一次真连出来的**：ok 绿、失败红，
- *  带地址、带耗时，失败时把原因说清（连不上 / key 不对 / 没这个模型）。 */
-function TestButton({ label = '测一下', disabled, run }: {
+ *  带地址、带耗时，失败时把原因说清（连不上 / key 不对 / 没这个模型）。
+ *
+ *  **测完点一下就填上**（P23 #3）：后端本来就把 `/models` 列出来的那一串回来了，P19 只把它
+ *  当成错误信息里的一句「有的是：…」——用户读完还得自己一个字一个字敲回去，敲错一个字符
+ *  又是一轮「没有这个模型」。给了 `onPick` 就把那一串摆成可点的芯片，点一下直接填进输入框；
+ *  当前填着的那个标出来（`current`），省得在二十个模型名里找自己填的是哪个。 */
+function TestButton({ label = '测一下', disabled, run, onPick, current }: {
   label?: string
   disabled?: boolean
   run: () => Promise<api.ProviderTest>
+  onPick?: (model: string) => void
+  current?: string
 }) {
   const [busy, setBusy] = useState(false)
   const [res, setRes] = useState<api.ProviderTest | null>(null)
@@ -132,6 +139,23 @@ function TestButton({ label = '测一下', disabled, run }: {
         <p className={'probe-result' + (res.ok ? ' ok' : ' bad')}>
           <Icon n={res.ok ? 'bx-check-circle' : 'bx-error'} /> {res.message}
         </p>
+      )}
+      {res && onPick && res.models.length > 0 && (
+        <div className="stack" style={{ gap: 4, marginTop: 4 }}>
+          <p className="muted" style={{ fontSize: 'var(--t-xs)', margin: 0 }}>
+            这台上有这些模型，点一个直接填进「模型名」：
+          </p>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }} role="list" aria-label="可用模型">
+            {res.models.map((m) => (
+              <button key={m} role="listitem" className={'chip' + (m === current ? ' active' : '')}
+                      title={m === current ? '就是现在填着的这个' : `填进模型名：${m}`}
+                      aria-pressed={m === current}
+                      onClick={() => onPick(m)}>
+                {m === current && <Icon n="bx-check" />} {m}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </>
   )
@@ -289,7 +313,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                   value={localApiKey}
                   onChange={(e) => setLocalApiKey(e.target.value)}
                 />
-                <TestButton disabled={!localUrlNow}
+                <TestButton disabled={!localUrlNow} onPick={setLocalModel} current={localModelNow}
                   run={() => api.testProvider({ kind: 'llm', base_url: localUrlNow, model: localModelNow, api_key: localApiKey.trim() || undefined, saved_key_of: 'local' })} />
               </div>
             )}
@@ -324,7 +348,7 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                   value={gptBaseUrl}
                   onChange={(e) => setGptBaseUrl(e.target.value)}
                 />
-                <TestButton disabled={!gptBaseUrl.trim()}
+                <TestButton disabled={!gptBaseUrl.trim()} onPick={setGptModel} current={gptModel.trim()}
                   run={() => api.testProvider({ kind: 'llm', base_url: gptBaseUrl.trim(), model: gptModel.trim(), api_key: gptApiKey.trim() || undefined, saved_key_of: 'gpt' })} />
                 {!cfg?.gpt_api_key_set && !gptApiKey.trim() && (
                   <p className="muted" style={{ fontSize: 'var(--t-sm)', color: 'var(--del)' }}>
@@ -390,7 +414,11 @@ export default function SettingsPanel({ onClose, embedded = false }: { onClose?:
                 />
               </div>
             )}
-            <TestButton disabled={!visionUrlNow}
+            {/* 看图这一栏的「测一下」**会真发一张图**（P23 #4）：一台纯文字模型连得上、也回
+                200，「连上了」那句话证明不了它读得了图。挑模型名只在单独配的时候给——跟着写作
+                模型走的时候，模型名的主人是上面那一栏。 */}
+            <TestButton disabled={!visionUrlNow} label="测一下（会发一张图）"
+              onPick={visionOwn ? setVisionModel : undefined} current={visionModelNow}
               run={() => api.testProvider({ kind: 'vision', base_url: visionUrlNow, model: visionModelNow, api_key: visionApiKey.trim() || undefined, saved_key_of: visionOwn ? 'vision' : (provider === 'gpt' ? 'gpt' : 'local') })} />
 
             <p className="kb-section-title" style={{ marginTop: 18 }}>笔记 ↔ 知识库</p>

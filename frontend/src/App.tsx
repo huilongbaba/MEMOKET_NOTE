@@ -347,7 +347,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve(), runVoice: (_f: number, _t: number) => Promise.resolve() })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1452,14 +1452,15 @@ export default function App() {
     () => dupSuffixes(visibleNotes.map((n) => ({ key: n.id, title: displayTitle(n), at: n.updated_at }))),
     [visibleNotes])
 
-  /** 今天的日记：后端按 日记/年/月/日 找或建，这里刷树再打开。 */
-  async function openToday() {
+  /** 今天的日记：后端按 日记/年/月/日 找或建，这里刷树再打开。
+   *  给了 `day` 就是**那一天**的——屏幕活动那一页的「去这天的日记」走这条（P23 #6）。 */
+  async function openToday(day = '') {
     await save()
     try {
-      const n = await api.todayNote()
+      const n = await api.todayNote(day)
       await Promise.all([reload(), reloadTree()])
       await switchTo(n)
-    } catch (e) { toast('打不开今天的日记：' + friendlyError(e), 'error') }
+    } catch (e) { toast(`打不开${day ? ` ${day} ` : '今天'}的日记：` + friendlyError(e), 'error') }
   }
 
   async function newNote() {
@@ -2872,6 +2873,15 @@ export default function App() {
   async function runVoice(from: number, to: number) {
     const view = editorViewRef.current
     if (!view) return
+    // **一次只录一段**（P23 #8，临界条件表 A 组「语音输入 × 重复点击」那个 ？）：
+    // 原来录着的时候再 `/` → 语音输入，会起**第二个 MediaRecorder**——两个占位块、
+    // 两条麦克风轨、两段各自转写各自往正文里插，而「停止」只停得了它自己那一个。
+    // 判据守的是**有没有正在录的**（`voiceStopById`），不是某个按钮的禁用态：
+    // 这一条路右键、`/`、探针都走得到，守在入口才守得住（P21「闸要守来源」）。
+    if (voiceStopById.current.size > 0) {
+      toast('已经在录一段了——先把正文里那个「录音中」停掉，再录下一段', 'error')
+      return
+    }
     const id = Math.random().toString(36).slice(2, 10)
     const push = (fx: StateEffect<unknown>) => editorViewRef.current?.dispatch({ effects: fx })
     let stream: MediaStream
@@ -3179,7 +3189,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown, runVoice }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
@@ -3628,7 +3638,8 @@ export default function App() {
           ) : virtualId === 'app:journey' ? (
             <Suspense fallback={<p className="muted" style={{ padding: 16 }}>…</p>}>
               <JourneyPage onLater={() => { if (activeTabId) closeTab(activeTabId) }}
-                           onOpenNote={(id) => { void reload().then(() => api.getNote(id).then((n) => switchTo(n)).catch(() => {})) }} />
+                           onOpenNote={(id) => { void reload().then(() => api.getNote(id).then((n) => switchTo(n)).catch(() => {})) }}
+                           onOpenJournal={(d) => void openToday(d)} />
             </Suspense>
           ) : virtualId === 'app:trash' ? (
             <div className="kb-note" style={{ maxWidth: 760 }}><h2 className="kb-note-title"><Icon n="bx-trash" /> 最近删除</h2>

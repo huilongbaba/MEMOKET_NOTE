@@ -224,6 +224,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   // 导回区块在导入页最底下：打开后滚到它
   if (probe === 'exportback') setTimeout(() => { void openVirtual('app:import', '导入'); setTimeout(() => document.querySelector('.export-back')?.scrollIntoView({ block: 'end' }), 1500) }, 600)
   if (probe?.startsWith('open:')) {
+    // **只开一次**（P23）：探针 effect 在 notes / tree 变时会重跑，而链条里的动作会改动
+    // notes——「去这天的日记」建出那一篇之后 `notes` 变了，这一步当场又把人拽回屏幕活动
+    // 那一页，看起来像「这个链接没反应」。*那是量具在动，不是产品在动。*
+    if (ranOnce.has(probe)) return
+    ranOnce.add(probe)
     setTimeout(() => void openVirtual(probe.slice(5)), 900)
     // 页里有 mermaid 块的话报一下渲染状态：按需加载 mermaid 之后（第 518 轮）得确认真的画出来了
     setTimeout(() => { const ws = document.querySelectorAll('.cm-mermaid-widget'); if (ws.length) void api.clientLog('warn', `mermaid widgets=${ws.length} svg=${Array.from(ws).filter((w) => w.querySelector('svg')).length} error=${document.querySelectorAll('.cm-mermaid-error').length}`, '', 'probe') }, 6000)
@@ -398,7 +403,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   //                            只有走过那一问才发请求**，而 Electron 的原生确认框会把渲染进程
   //                            整个挡住——没有这一步，那几格（× 后端没起来）一个都复现不了，
   //                            于是它们一直是「读代码读出来的 ✅」（第 779 轮 / P21 补）
-  if (/^(netdown|click:|toasts:|type:|confirmyes)/.test(probe ?? '')) {
+  if (/^(netdown|click:|toasts:|type:|dom:|confirmyes)/.test(probe ?? '')) {
     if (ranOnce.has(probe)) return
     ranOnce.add(probe)
   }
@@ -428,6 +433,21 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
       const el = probeFind(sel)
       void api.clientLog('warn', `click ${sel} found=${!!el} disabled=${String((el as HTMLButtonElement | null)?.disabled ?? '-')}`, '', 'probe')
       el?.click()
+    }, Number(ms))
+    return
+  }
+  //   dom:<ms>:<选择器>        等 ms 毫秒把命中的元素**有几个、写着什么、禁没禁用**写进日志（P23）。
+  //     `toasts` 只看 toast / 红字 / 运行块那几处，而这一批要证的是「页面里那一块出现了没有」
+  //     （删一段的确认框、⌘K 过来的那条提示、可点的模型名芯片）——截图看得见，日志也得能重放。
+  if (probe?.startsWith('dom:')) {
+    const [, ms, ...rest] = probe.split(':')
+    const sel = decodeURIComponent(rest.join(':'))
+    setTimeout(() => {
+      const els = Array.from(document.querySelectorAll(sel))
+      void api.clientLog('warn', `dom ${sel} n=${els.length} ` + JSON.stringify(els.slice(0, 8).map((e) => ({
+        t: (e.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        d: (e as HTMLButtonElement).disabled ?? null,
+      }))), '', 'probe')
     }, Number(ms))
     return
   }
@@ -709,7 +729,11 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
         el.files = dt.files
         el.dispatchEvent(new Event('change', { bubbles: true }))
       } else {
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, decodeURIComponent(rest.join(':')))
+        // **textarea 要用它自己那个 setter**（P23）：拿 `HTMLInputElement.prototype` 的去 call
+        // 一个 textarea，Chrome 直接 TypeError（illegal invocation）——而「引用 · 改成空」
+        // 那一格填的正是一个 textarea。
+        const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+        Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, decodeURIComponent(rest.join(':')))
         el.dispatchEvent(new Event('input', { bubbles: true }))
       }
     }, Number(ms))
@@ -720,6 +744,29 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     const ac = new AudioContext(); const dest = ac.createMediaStreamDestination()
     const osc = ac.createOscillator(); osc.connect(dest); osc.start()
     navigator.mediaDevices.getUserMedia = () => Promise.resolve(dest.stream)
+    return
+  }
+  // P23：`voicetwice:<id>` 录着的时候**再来一次**语音输入（临界条件表 A 组「语音输入 ×
+  //   重复点击」那个 ？）。`slashpick` 有 `harnessProbeDone` 挡着只跑得了一次，而这一格
+  //   要的正是第二次——修前会起第二个 MediaRecorder（两个占位块、两条麦克风轨），
+  //   修后第二下被拦住并说一句。配 `mic` 用（`mic;;voicetwice:<id>`）。
+  if (probe?.startsWith('voicetwice:') && notes.length && !harnessProbeDone.current) {
+    const n = notes.find((x) => x.id === probe.slice(11))
+    if (n) { harnessProbeDone.current = true; void (async () => {
+      await switchTo(n)
+      await wait(1500)
+      const v = editorViewRef.current; if (!v) return
+      const end = v.state.doc.length
+      v.focus(); v.dispatch({ changes: { from: end, insert: '\n\n' }, selection: { anchor: end + 2 } })
+      await actionsRef.current.runVoice(end + 2, end + 2)
+      await wait(2500)
+      void api.clientLog('warn', `voicetwice 第一次之后 runs=${document.querySelectorAll('.cm-run-head').length}`, '', 'probe')
+      const v2 = editorViewRef.current
+      const end2 = v2 ? v2.state.doc.length : end + 2
+      await actionsRef.current.runVoice(end2, end2)
+      await wait(1500)
+      void api.clientLog('warn', `voicetwice 第二次之后 runs=${document.querySelectorAll('.cm-run-head').length}`, '', 'probe')
+    })() }
     return
   }
   // P9：`imagepick:<id>` 打开笔记 → `/` 图片转表格 → 选一张合成的 png（看图模型慢 / 卡时占位块「停止」的行为）
