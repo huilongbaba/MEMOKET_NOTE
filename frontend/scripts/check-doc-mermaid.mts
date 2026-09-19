@@ -17,7 +17,16 @@ const dir = new URL('../../docs/', import.meta.url).pathname
 let total = 0, bad = 0
 for (const f of readdirSync(dir).filter(n => n.endsWith('.md'))) {
   const text = readFileSync(join(dir, f), 'utf8')
-  const blocks = [...text.matchAll(/```mermaid\n([\s\S]*?)```/g)].map(m => m[1])
+  // 围栏可以待在引用块里（台账里常引「模型这一轮写出来的图」）——那样每一行前面
+  // 都带着 `> `，直接喂给 mermaid 会报「认不出图的类型」。第 771 轮实拍：P5 节那个
+  // 引用块里的图让整条闸红，而图本身是好的。所以按围栏自己的前缀把每行的引用符剥掉。
+  const blocks = [...text.matchAll(/^([ \t]*(?:> ?)*)```mermaid\n([\s\S]*?)^\1```/gm)]
+    .map(m => {
+      const quote = m[1].replace(/[ \t]/g, '')          // 只保留 `>`，缩进不算
+      if (!quote) return m[2]
+      const strip = new RegExp('^[ \\t]*' + quote.split('').map(() => '> ?').join(''))
+      return m[2].split('\n').map(l => l.replace(strip, '')).join('\n')
+    })
   for (const [i, code] of blocks.entries()) {
     total++
     try { await mermaid.parse(code) }
