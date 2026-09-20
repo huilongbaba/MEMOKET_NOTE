@@ -22,7 +22,28 @@ export function lineTagger(emit: (line: string) => void) {
   return { push, flush }
 }
 
-export type Backend = { port: number; stop: () => void }
+export type Backend = {
+  port: number
+  /** 这个端口上的后端**是哪个进程**（P45 #2）。窗口刷新 / 自检都拿它核身份。 */
+  pid: number
+  stop: () => void
+}
+
+/** 「这个端口上应答的不是我起的那个后端」——**别人的实例抢在了前面**。
+ *
+ * `freePort` 是「先 listen 一个探测 server、再 close、再让 uvicorn 去 bind」，
+ * close 到 bind 之间那一小段足够同机上另一份 app 抢走同一个端口（P44 问题 #2
+ * 的下半截）。**这条 TOCTOU 堵不住**（要堵得把探测 socket 的 fd 直接交给
+ * uvicorn，跨 Electron / PyInstaller 两种起法都得改）——所以不假装堵住它，
+ * 改成**认得出来**：健康检查里带着后端自己的 pid，对不上就换个端口重来。
+ *
+ * 判据是**代码判得准**的那一种（两个整数相等），不是「看着像不像」。 */
+export class PortTakenError extends Error {
+  constructor(readonly port: number, readonly theirPid: number, readonly myPid: number) {
+    super(`端口 ${port} 上应答的是另一份实例的后端（pid ${theirPid}，我的是 ${myPid}）`)
+    this.name = 'PortTakenError'
+  }
+}
 
 /** 要一个端口：优先固定的那个，被占了才随机。
  *
@@ -50,16 +71,22 @@ function listenFree(port: number): Promise<number> {
   })
 }
 
-async function freePort(isPackaged: boolean, log: (line: string) => void = () => {}): Promise<number> {
+/** @param taken 这次启动里**已经证实被别人占着**的端口（`PortTakenError` 攒出来的）：
+ *               探测说「空着」也不信，直接跳过。不跳的话重试会原地打转（P45 #2）。 */
+export async function freePort(isPackaged: boolean, log: (line: string) => void = () => {},
+                               taken: ReadonlySet<number> = new Set()): Promise<number> {
   const preferred = isPackaged ? PREFERRED_PORT.packaged : PREFERRED_PORT.dev
   // 上一份进程 ⌘Q 之后 uvicorn 还要一两秒才真正退出、放开端口；紧接着重开
   // 会撞上它。等一小会儿再放弃，不然「重启一下」就把状态清零了。
-  for (let i = 0; i < 20; i++) {
-    try { return await listenFree(preferred) } catch { await new Promise((r) => setTimeout(r, 250)) }
+  if (!taken.has(preferred)) {
+    for (let i = 0; i < 20; i++) {
+      try { return await listenFree(preferred) } catch { await new Promise((r) => setTimeout(r, 250)) }
+    }
   }
   // P17 实拍：正式版开着（占 47231）再起一份，每次都退回随机端口——origin 每次不同，localStorage
   // 每次清零（标签 / 主题 / 托盘全没）。先按顺序试后面几个固定端口，同一台机上第二份也能稳定在同一个 origin 上。
   for (let k = 1; k <= 8; k++) {
+    if (taken.has(preferred + k)) continue
     try {
       const p = await listenFree(preferred + k)
       log(`[desktop] 固定端口 ${preferred} 被占，改用 ${p}（下次也先试它）\n`)
@@ -96,15 +123,26 @@ function locate(isPackaged: boolean, resourcesPath: string) {
  * **不能只看进程起没起。** uvicorn 进程存在 ≠ 能收请求：import 整个 app
  * （KITE、模型配置、sqlite 迁移）在慢机器上要好几秒，这期间开窗口就是一个
  * 连接被拒的白屏。所以轮询 /api/health 直到它回 200。 */
-async function waitHealthy(port: number, timeoutMs: number): Promise<void> {
+export async function waitHealthy(port: number, timeoutMs: number, ownPid?: number): Promise<number> {
   const deadline = Date.now() + timeoutMs
   let lastErr = ''
   while (Date.now() < deadline) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/api/health`)
-      if (r.ok) return
+      if (r.ok) {
+        // **200 不等于「是我的那个后端」**（P45 #2）。同机第二份实例起来时，
+        // `freePort` 的探测和 uvicorn 真 bind 之间那一小段被别人抢走，这里照样
+        // 会拿到一个漂漂亮亮的 200 ——**那是别人的库**。健康检查里带着后端自己的
+        // pid，两个整数一比就知道；对不上是 `PortTakenError`，由 `startBackend`
+        // 换个端口重来，而不是把窗口接到别人身上（P44 靠 `lsof` 才发现的那一条）。
+        const who = (await r.json().catch(() => null)) as { backend?: { pid?: number } } | null
+        const theirPid = Number(who?.backend?.pid ?? 0)
+        if (ownPid && theirPid && theirPid !== ownPid) throw new PortTakenError(port, theirPid, ownPid)
+        return theirPid
+      }
       lastErr = `HTTP ${r.status}`
     } catch (e) {
+      if (e instanceof PortTakenError) throw e
       lastErr = String((e as Error).message ?? e)
     }
     await new Promise((r) => setTimeout(r, 200))
@@ -133,7 +171,25 @@ export async function startBackend(opts: {
   onCrash?: (info: string) => void
 }): Promise<Backend> {
   const log = opts.onLog ?? (() => {})
-  const port = await freePort(opts.isPackaged, log)
+  // **端口被别人抢走是要重来的，不是要报错的**（P45 #2）。`freePort` 的探测
+  // 只能说「刚才那一刻空着」；真相由 `waitHealthy` 的 pid 核对给出。抢输了就
+  // 把那个端口记进 `taken`、换一个重来。三次是因为「同机同时起三份」已经不是
+  // 用户场景，而无上限的重试会把「后端起不来」变成一个永远不结束的转圈。
+  const taken = new Set<number>()
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await spawnOn(opts, log, taken)
+    } catch (e) {
+      if (!(e instanceof PortTakenError) || attempt >= 3) throw e
+      taken.add(e.port)
+      log(`[desktop] ${e.message}——换一个端口重来（第 ${attempt} 次）\n`)
+    }
+  }
+}
+
+async function spawnOn(opts: Parameters<typeof startBackend>[0], log: (line: string) => void,
+                       taken: ReadonlySet<number>): Promise<Backend> {
+  const port = await freePort(opts.isPackaged, log, taken)
   const { kind, exe, cwd } = locate(opts.isPackaged, opts.resourcesPath)
 
   const args = kind === 'dev'
@@ -179,15 +235,20 @@ export async function startBackend(opts: {
   })
 
   try {
-    await waitHealthy(port, opts.timeoutMs ?? 60_000)
+    await waitHealthy(port, opts.timeoutMs ?? 60_000, child.pid)
     healthy = true
   } catch (e) {
+    // 抢输了那一档：**我们自己的子进程照样得收掉**（它多半正在 EADDRINUSE 里
+    // 打转，或者还没来得及失败）。杀完把 `PortTakenError` 原样抛出去，
+    // `startBackend` 据此换端口重来；别的错照旧包一层往上报。
     child.kill('SIGKILL')
+    if (e instanceof PortTakenError) throw e
     throw new Error(`${(e as Error).message}${exited ? `；子进程已${exited}` : ''}`)
   }
 
   return {
     port,
+    pid: child.pid ?? 0,
     stop: () => {
       stopping = true
       // 先好好说，不听再强制。SIGTERM 让 uvicorn 有机会关掉 sqlite 连接。

@@ -4,6 +4,7 @@ import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { clientLog } from './api'
 import { restoreTheme } from './theme'
+import { checkBackendIdentity } from './util/backendIdentity'
 import './design-tokens.css'  // 最先：源令牌（唯一允许写字面颜色的文件，见 docs/UI_SPEC.md）
 import './shell.css'   // 再：外壳令牌指向源令牌
 import './styles.css'  // 最后：老变量名指向那些令牌
@@ -24,6 +25,10 @@ window.memoketDesktop?.onMenu?.((name) => {
   if (name === 'journey') window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:journey' }))
   if (name.startsWith('tab:')) window.dispatchEvent(new CustomEvent('tab-action', { detail: name.slice(4) }))
 })
+
+// 「我连的是谁」开局核一次（P45 #2）：壳说该连哪个后端 / 这一屏实际连上了谁，
+// 对不上就在窗口顶上钉一条横幅。网页版没有壳，这一下直接安静返回。
+void checkBackendIdentity()
 
 // 没被任何 try 接住的错误也报上去
 window.addEventListener('error', (e) => void clientLog('error', String(e.message), e.error?.stack ?? '', 'window'))

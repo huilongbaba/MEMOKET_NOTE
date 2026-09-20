@@ -207,7 +207,15 @@ function createWindow(url: string) {
 let quitting = false
 let restarts = 0
 
-/** 拉起后端；崩了自动再拉一次并刷新窗口（端口固定，地址不变）。
+/** 拉起后端；崩了自动再拉一次，**并把窗口指到新后端的地址上**。
+ *
+ *  **「端口固定，地址不变」是假的**（P45 #2，P44 走查实拍）：`backend.ts` 的
+ *  `freePort` 会退到 `preferred + k`——日志里明明写着「固定端口 47231 被占，
+ *  改用 47232」，而这里只 `webContents.reload()`，窗口的 `location.origin`
+ *  还钉在 47231 上。47231 上那个后端是**同机另一份实例**的，于是这一屏摆的是
+ *  别人的库：两个窗口写同一个库，屏幕上一个字都看不出来。
+ *  改成按新端口 `loadURL`——**窗口永远连自己那个后端**。
+ *
  *  连崩两次就不再硬撑——那多半是数据或环境的问题，弹框把日志给用户。 */
 async function launchBackend(webDir: string): Promise<Backend> {
   return startBackend({
@@ -231,11 +239,18 @@ async function launchBackend(webDir: string): Promise<Backend> {
         return
       }
       restarts += 1
+      const oldPort = backend?.port
       backend = null
       setTimeout(() => {
         void launchBackend(webDir).then((b) => {
           backend = b
-          win?.webContents.reload()
+          if (b.port !== oldPort) {
+            remember(`[desktop] 后端换到了 ${b.port}（原来是 ${oldPort}），窗口跟着改地址\n`)
+          }
+          // `loadURL` 而不是 `reload()`：端口变了 `reload()` 会原地刷新旧 origin，
+          // 那上面可能正坐着**另一份实例**的后端（P45 #2）。
+          win?.loadURL(appUrl(b.port)).catch((e) =>
+            remember(`[desktop] 重拉后端之后页面加载失败 ${appUrl(b.port)}：${e}\n`))
         }).catch((e) => {
           dialog.showErrorBox('后端没能重新启动',
             `${(e as Error).message}\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
@@ -308,6 +323,20 @@ ipcMain.handle('export-creds:save', (_e, patch: unknown) => {
   }
   try { writeFileSync(credsFile(), JSON.stringify(merged, null, 2), { mode: 0o600 }) } catch { /* 写不了就下次再填 */ }
 })
+/** 「我连的是谁」——壳这一侧的答案（P45 #2）。
+ *
+ *  P44 走查是靠 `lsof` 核那个端口上的 uvicorn 是不是本 worktree 的 venv，才发现
+ *  窗口连到了另一份实例的后端上（教训 #2：**核到「这一屏上的字是不是这个库里的」
+ *  为止**）。那个能力**该在产品里，不是只在走查脚本里**：壳把「我起的后端是哪个
+ *  进程、数据在哪」告诉界面，界面开局跟 `/api/health` 里后端自报的那一份对一次，
+ *  对不上就吵（`frontend/src/util/backendIdentity.ts`）。
+ *
+ *  `backend` 还没起来（启动那一瞬）回 `null`：界面据此跳过这次自检，不瞎报。 */
+ipcMain.handle('backend:info', () => (backend ? {
+  port: backend.port,
+  pid: backend.pid,
+  dataDir: app.isPackaged ? path.join(app.getPath('userData'), 'data') : '',
+} : null))
 // 导回 Obsidian 要选 vault 目录：网页拿不到本机路径，只能主进程弹系统对话框
 ipcMain.handle('pick-directory', async (_e, title: unknown) => {
   const r = await dialog.showOpenDialog({ title: typeof title === 'string' ? title : '选择文件夹', properties: ['openDirectory', 'createDirectory'] })

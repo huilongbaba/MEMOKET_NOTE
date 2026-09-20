@@ -98,6 +98,10 @@ except Exception as _exc:                                  # noqa: BLE001
 parent_watch.install_from_env()
 
 _settings = get_settings()
+# 这个后端进程是什么时候起来的（P45 #2）。`pid` 会被系统回收复用，
+# 「同一个 pid 但换了一条命」在崩溃重启那一下是真会发生的——加一个起点时间，
+# 前端 / 壳核身份时就不是只靠一个会撞的数。
+_STARTED_AT = __import__("datetime").datetime.now().astimezone().isoformat(timespec="seconds")
 # 本地接口只信本机页面。CORS 只管「读得到读不到」：跨站页面用 <form> 或 multipart 发的 POST 是
 # 「简单请求」，不预检、照样执行——一个恶意网页能往 127.0.0.1:47231 的导入 / 上传接口塞东西
 # （第 158 轮巡检）。浏览器给跨站 POST 一定带 Origin（和 Sec-Fetch-Site），拿它们挡：写请求的
@@ -192,6 +196,20 @@ async def health():
         rss_now_mb = 0
     return {
         "status": "ok",
+        # **「我是谁」**（P45 #2）。同一台机上开第二份 app 时，第二个窗口曾经连到
+        # 第一份的后端上——两个窗口写同一个库，而屏幕上一个字都看不出来。P44 走查
+        # 是靠 `lsof` 核端口上那个 uvicorn 的 venv 路径才发现的，**那个能力得在产品里**：
+        #   · `pid`      —— 桌面壳拿它核「这个端口上的后端是不是我刚起的那个子进程」
+        #                   （`desktop/src/backend.ts` 的 `waitHealthy`）。`freePort`
+        #                   是「先 listen 再 close」，探测到 uvicorn 真 bind 之间那一小段
+        #                   足够别人抢走——**这条堵不住，但堵不住就得认得出来**。
+        #   · `data_dir` —— 前端核一次「这一屏上的字是不是这个库里的」（P44 教训 #2）。
+        # 都是本机路径 / 进程号，不含用户内容：这个接口本来就只在 127.0.0.1 上。
+        "backend": {
+            "pid": os.getpid(),
+            "data_dir": str(get_settings().kite_data_dir),
+            "started_at": _STARTED_AT,
+        },
         # `configured`（P19 #1）：没配过模型（出厂默认）时前端说「还没配模型 → 去设置」，不报地址
         "llm": {"ok": llm_ok, "base_url": active["base_url"], "model": active["model"], **store.llm_configured()},
         "asr": {"ok": asr_ok, "base_url": store.get_asr_base_url()},

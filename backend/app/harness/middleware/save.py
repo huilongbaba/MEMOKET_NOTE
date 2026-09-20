@@ -52,7 +52,37 @@ def persist(st: State) -> bool:
     # 算进去，采到的就全是「用户一个字没改」。
     store.update_note(st.ctx.user, st.ctx.note_id, st.ctx.note_title, st.content,
                       source="harness")
+    # **库里现在装的是哪一份**（P45 #1）。`persist_if_changed` 读它；
+    # 存的是字符串本身而不是长度 / 哈希——「长度没变但字变了」也得算变
+    # （`no_foreign_script` 把 `मंत्री` 换成同样长的东西就是这一档）。
+    st.bag["saved_content"] = st.content
     return True
+
+
+def persist_if_changed(st: State) -> bool:
+    """`st.content` 跟**上一次写进库的那一份**不再逐字相同时，再落一次。
+
+    **为什么需要第二次落库**（P45 #1，P44 走查最重的那条）：`Save` 写库在
+    `after_produce`，而 `Verdict.fix` 改正文在 `before_judge`——**改在写之后**。
+    于是「这一轮吐了一整串 JSON」那条判据把 JSON 从 `st.content` 里摘掉了、
+    `STEP_FINISHED` 交给前端的是干净的那份、面板上写着「已经从正文里撤掉了」，
+    可 `notes.content` 里躺的还是 `after_produce` 那一刻的脏正文——**重开 app
+    它就摆在正文里**。P44 实拍：编辑器 119 → 119，库里 119 → 166。
+
+    这不是 `output_not_json` 一条的事，是**一个类**：`note` / `section` 两个
+    会写库的模式上，带 `fix` 的判据一共 7 条（`chart_restates_list` /
+    `charts_from_tools` / `citations_exist` / `no_echoed_text` /
+    `no_foreign_script` / `no_junk_tail` / `output_not_json`），条条同样落在
+    `before_judge` 里。**同一件事挡住一半等于没挡**，所以修的是落库那一下的
+    时机，不是七条判据各打一个补丁。
+
+    **只在真的不一样时才写**：`after_produce` 刚写过的那一份绝大多数轮次
+    一个字都不会再变，无条件再 `UPDATE` 一次会让 `notes.updated_at` 每轮
+    白动两次、`middleware/edits` 那边采的「用户改了没有」也跟着糊掉。
+    """
+    if str(st.bag.get("saved_content") or "") == st.content:
+        return False
+    return persist(st)
 
 
 def writes_note(st: State) -> bool:
@@ -75,8 +105,19 @@ def writes_note(st: State) -> bool:
 
 class Save:
     name = "save"
-    hooks = ("after_produce",)
+    # **两下，不是一下**（P45 #1）：
+    #   · `after_produce` —— 这一轮写出来的字先落一次。判分那一步要几十秒，
+    #     用户在这中间关掉标签页，这一轮的字得还在（这个文件开头那段）。
+    #   · `after_round`  —— 这一轮**定稿**之后再落一次。判据的 `fix` 在
+    #     `before_judge` 里改 `st.content`，改在上面那一下之后；不补这一下，
+    #     库里留下的永远是没修过的那份（P44 问题 #1 实拍）。
+    #     它紧挨着 `loop.py` 那句 `Event.step_finished(st.round, st.content)`
+    #     ——**前端按它对齐正文，库里就该是同一份**。
+    hooks = ("after_produce", "after_round")
     after: tuple[str, ...] = ()
 
     async def after_produce(self, st: State) -> None:
         persist(st)
+
+    async def after_round(self, st: State) -> None:
+        persist_if_changed(st)

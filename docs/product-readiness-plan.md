@@ -972,6 +972,50 @@ P43 留给下一批：① 淘汰闸把**处置完的层也算进 20**，第 21 �
 （482 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44），`llm_usage` 最大 id 5738 不变
 = **真模型 0 次调用 / 0 token**，`~/Library/Application Support` 一次都没碰。
 
+### P45（第 791 轮，2026-09-20）：P44 走查挖出的两个真 bug
+
+台账 `TRACELOG-product.md` P45 节；`harness-framework.md` 同步（时序图 / `Save` 那一行 / `commit` 的契约 / 教训表多一条）。
+
+**#1 智能续写落库的正文带着模型吐的整串 JSON** ✔（P44 最重的一条，动的是用户的笔记）。
+- **真复现**（后端真跑，`rails_off=()`，**读库不读编辑器**）：编辑器 / `STEP_FINISHED` 53 字、
+  `notes.content` **101 字**，尾巴是那一整串 JSON，`note_revisions` 的 `harness` 行也是 101。
+- **根因是落库那一下的时机，不是判据**：`Save` 写库在 `after_produce`，
+  `Verdict.fix` 改正文在 `before_judge`——**改在写之后**，而 `hooks/note.commit` 是个 no-op。
+  逐 hook 的实拍读出来这一趟**只写过一次库**，写的就是没修过的那份。
+- **这是个类**：`note` / `section` 两个会写库的模式上带 `fix` 的判据**一共 7 条**
+  （`chart_restates_list` / `charts_from_tools` / `citations_exist` / `no_echoed_text` /
+  `no_foreign_script` / `no_junk_tail` / `output_not_json`），条条同一个洞；
+  换 `no_foreign_script` 也实拍过（库里留着 `मंत्री`）。
+- **还有第二半**：循环末尾 `st.content = st.best[1]`（`SHIP_BEST_ON` + 轮数用尽那个 `else:`）
+  发生在最后一个 `after_round` **之后**——实拍交出去 139 字、库里躺着被明确丢掉的 228 字。
+- **修法**：`Save` 一轮两下（`after_produce` 原样保留 + `after_round` **变了才写**）；
+  `NoteHooks` / `SectionHooks` 的 `commit` 从 no-op 改成 `save.persist_if_changed`。
+  写库照旧只有一个出口、照旧认 `rails_off`（批 16）；**`loop.py` 一个字没碰**。
+
+**#2 同机第二份 app 连到第一份的后端** ✔（两个窗口写同一个库，数据级后果）。
+- **真造了两份 app**（`electron desktop/` ×2，各自 `--user-data-dir` / `KITE_DATA_DIR`，
+  两份库各放一条只有它才有的笔记）。修之前：A 的窗口 origin 是 47232、
+  A 自己的后端在 47233，**A 这一屏读出来的是 `P45-B-的库`**。
+- **三处，一处一层**：① `onCrash` 重拉之后按新端口 `loadURL`（那句「端口固定，地址不变」是假的）；
+  ② `waitHealthy` 按 **pid** 认人，对不上抛 `PortTakenError` → 换端口重来
+  （`freePort` 先 listen 再 close 那条 TOCTOU **堵不住，但堵不住就得认得出来**）；
+  ③ `/api/health` 带上后端自己的 `pid` / `data_dir` / `started_at`，**界面开局核一次**，
+  对不上在窗口顶上钉一条点不掉的横幅——**P44 靠 `lsof` 才发现的那个能力，进产品了**。
+- 修之后：A 47233 ↔ 47233 读 `P45-A-的库`，B 47232 ↔ 47232 读 `P45-B-的库`，两边都没有横幅。
+
+**闸**：后端 `pytest -q` **2788 passed / 0 skipped**（基线 2775，+13 全在 `tests/test_p45.py`；
+那 4 条读真库的这一批**跑过了、不是跳过**）；前端 `npm test` **84 文件 737 条**
+（基线 82 / 719，+2 文件 +18 条）；`desktop/` `tsc --noEmit` 干净。
+**突变验 8 刀全红、红的都是该红的那几条**——其中 #1a / #1b 分两刀打，
+因为 `loop._fire` 按 `getattr` 派发、`hooks` 元组只管声明：**只改元组行为不变，
+behavioural 那几条全绿，只有接线闸红**。真库指纹开工 = 收工
+（482 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44），`llm_usage` 最大 id 5738 不变
+= **真模型 0 次调用 / 0 token**，`~/Library/Application Support` 一次都没碰。
+
+P45 留给下一批：① ② 的重试那一圈没在真 app 上摆出来（要真赢一次 TOCTOU）；
+② 开发模式下 `backendInfo().dataDir` 是空串，自检只核端口和 pid；
+③ P44 剩下的 #3 / #4 / #5 / #6 一条没动（前三条在另一条线上）。
+
 ## 4. 不做
 
 - 不再写新的调研文档（§1.4）。

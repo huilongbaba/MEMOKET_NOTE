@@ -483,6 +483,24 @@ class NoteHooks:
 
     # ------------------------------------------------------------ commit --
     async def commit(self, st: State) -> None:
-        """Save handles per-round persistence; History records the run. What
-        is left is nothing -- kept as an explicit no-op so the contract is
-        visibly satisfied rather than accidentally absent."""
+        """交出去的那一份落库。
+
+        **这里原来是个 no-op**，理由写着「Save 每轮都落，剩下的什么都没有」
+        ——P45 #1 实拍出来那句话不成立：`loop.py` 在最后一轮的 `after_round`
+        **之后**还会动一次 `st.content`——`SHIP_BEST_ON`（`regressed` /
+        `cost_cap` / `check_stuck`）和轮数用尽那个 `else:` 都会把正文换成
+        `st.best[1]`，也就是**别的一轮**那份。实拍（假模型 `/regress` 档，
+        两轮）：`RUN_FINISHED` 和编辑器拿到的是第 1 轮的 139 字，
+        `notes.content` 里躺的是被明确丢掉的第 2 轮那 228 字。
+
+        `commit` 是这件事唯一站得住的落点：`loop.py` 在 `st.content` 定下来
+        之后、`after_run` 之前调它，所以 `Edits.after_run` 那一版
+        `note_revisions` 快照（读的是 `notes.content`）也跟着对了。挂在
+        `after_run` 上不行——`Save` 在 `extra_mw` 里，排在 BASE 的 `Edits`
+        后面，快照会比落库先跑。
+
+        走 `save.persist_if_changed`，**不自己调 `store.update_note`**（批 16：
+        写库只许有一个出口，由它自己认 `rails_off`）。没变就一个字都不写。
+        """
+        from ..middleware.save import persist_if_changed
+        persist_if_changed(st)

@@ -194,7 +194,15 @@ class SectionHooks:
 
     # ------------------------------------------------------------ commit --
     async def commit(self, st: State) -> None:
-        """The Save middleware persists every round. Marking the section done
-        and re-syncing the tracking note are plan-level decisions and stay
-        with the plan loop, which is the only place that can see the other
-        sections."""
+        """交出去的那一份落库。Marking the section done and re-syncing the
+        tracking note are plan-level decisions and stay with the plan loop,
+        which is the only place that can see the other sections.
+
+        落库这一下跟 `hooks/note.commit` 逐字同一条（P45 #1）：`Save` 每轮落
+        的是 `after_produce` / `after_round` 那两下，而 `loop.py` 在最后一轮
+        之后还会把 `st.content` 换成 `st.best[1]`（`SHIP_BEST_ON` + 轮数用尽
+        那个 `else:`）。`section` 跟 `note` 一样挂着 `Save`、一样写用户的笔记，
+        同一个洞在这条路上原样存在。`persist_if_changed` 没变就不写。
+        """
+        from ..middleware.save import persist_if_changed
+        persist_if_changed(st)

@@ -8982,3 +8982,276 @@ P40 实拍的「命中：众筹页面、**号上**、页面」**在真壳上没�
 10. 两条**量完否掉、别再试**的路照旧记着：**「两个弱证据凑够 2」按位置修**（P42 A1，1.20:1），
     `common_term` 接进 `plan`（P42 A2）**治的不是 `希望通过` / `成功经验` 那一类**。
     这一批**没有新的否掉项**——A 的两条过滤都做了，代价逐条读过。
+
+---
+
+## P45 · 第 791 轮：P44 走查挖出的两个真 bug（2026-09-20）
+
+> HEAD 开工 `b2a944a`（worktree `agent-ab37c1ebbc4d7d6a0`）。做的是 P44「留给下一批」的 **① ②**
+> ——**智能续写落库的正文带着整串 JSON**（P44 问题 #1，动的是用户的笔记）和
+> **同机第二份 app 连到第一份的后端**（P44 问题 #2，两个窗口写同一个库）。
+> 另一个 agent 同时在做记忆 / 前端遗留（`kb/**`、`kite/**`、`App.tsx`、`util/recallContext.ts`），
+> **这一批那四处一个字没碰**（前端只新增了 `util/backendIdentity.ts`，加上 `main.tsx` 一行、
+> `theme.ts` 一处类型声明）。
+>
+> **两条都真复现了**。#1 走后端真跑（`loop.run` + `NoteHooks` + **`rails_off=()`**——
+> 跟 P37 那份 `run_note.py` **只差这一个变量**：save 真的开着，于是这一趟能回答
+> 「库里有没有」），`KITE_DATA_DIR=<scratch>/p45data`（真目录整拷，核过 `codebook.xml`
+> **11,429,185 字节**）。#2 **真造了两份 app**（`electron desktop/` ×2，各自 `--user-data-dir`、
+> 各自 `KITE_DATA_DIR`），照 P44 那一屏的来历把剧本摆出来。
+>
+> **安全**：真库只开 `db_guard.fingerprint`（`mode=ro`）。指纹开工 = 收工
+> **482 / 2026-09-16T02:53:27 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44**；
+> `llm_usage` 最大 id 开工 = 收工 **5738**——**真模型 0 次调用 / 0 token**，全程只有本机假端点 18145。
+> 起假端点前扫两份 scratch 库**全库 24 张表的每一个文本列**：各扫出 **1 处**
+> （`provider_config.gpt_api_key`），换成 `fake-key-p45`，换完再扫 `sk-` 前缀 **1 → 0**。
+> 两份 app 都走 Chromium 的 `--user-data-dir`（`$S/p45/two-*/udd{A,B}`），
+> **`~/Library/Application Support` 一次都没碰**（收工核过：`memoket-note-desktop` 根目录 mtime
+> 还是 09-20 00:57，跟 P44 记的那个数逐字相同）；`backend/data/backups/` 没有新文件
+> （最新还是 P36 那份 09:02:18）。`unset ELECTRON_RUN_AS_NODE`。
+>
+> 脚本和产出在 `$S/p45/`（`fp45.py` / `fp45b.py` / `scrub45.py` / `repro45.py` / `probe45.py` /
+> `scan45.py` / `mutate45.py` / `fakellm45.py` / `mark.py` / `flip_main.py` / `two_apps.sh` /
+> `whoami45.mjs`）；截图 `$S/p45-{p44,p44b,p44final,fixed}-{A,B}.png`（**8 张**）。
+> 六栏：用户怎么发现 · 复现 / 先量 · 改了什么 · 依据 · 前后对比 · 下一步。
+
+---
+
+### 1. 智能续写落库的正文带着模型吐的整串 JSON（P44 问题 #1）✔
+
+- **用户怎么发现**：点「智能续写」，跑完那一屏干干净净——正文 119 → 119 一个字没多，
+  面板上写着「这一轮整段答的是一串 JSON…**已经从正文里撤掉了**」，⚑ `output_not_json` ×3。
+  **关掉 app 再打开，那一整串 `{"text": …, "reason": "假模型"}` 就摆在正文末尾。**
+  P44 走查的下一步开局读到的正文就是它（`p44-4b-old-shapegate-light` 左边看得见）。
+
+- **复现 / 先量**（后端真跑，零真模型调用；**读库不读编辑器**）。
+  `$S/p45/repro45.py` = P37 那份 `run_note.py` 改一个变量：`rails_off=()`。
+  假模型 `$S/p45/fakellm45.py` 的 `/streamjson/v1` 档（P44 那份原样拷来），三轮：
+
+  ```
+  memory_len  = 53    ← st.content / STEP_FINISHED（前端按它对齐）
+  db_len      = 101   ← notes.content
+  db_tail     = …还没定。\n\n{"text": "（假模型改写）这一段由假模型返回。", "reason": "假模型"}
+  revisions   = [round 1:53, round 2:53, round 3:53, harness 3:101]
+  ⚑          = output_not_json ×3 + auto_fixed ×3
+  ```
+
+  **跟 P44 那一屏同一个形状**（那边是 119 → 166，这边 53 → 101，都是 +48 = 同一串）。
+
+  **根因不是判据，是落库那一下的时机。** 把每个 middleware 的每个钩子包一层、
+  把 `store.update_note` 打一个点（`$S/p45/probe45.py`），这一趟**唯一**一次写库读出来是：
+
+  ```
+  >save.after_produce  len=101
+      UPDATE notes len=101 source=harness     ← 库里落的是这一份
+  <save.after_produce  len=101
+  >checks.before_judge len=101
+  <checks.before_judge len=53                 ← `Verdict.fix` 在这儿把 JSON 摘掉
+  ...
+  STEP_FINISHED        len=53                 ← 前端按这一份对齐
+  >edits.after_run     len=53                 ← `store.snapshot_note` 读的是 notes.content（101）
+  == memory=53  db=101
+  ```
+
+  `Save` 写库在 `after_produce`，`Verdict.fix` 改正文在 `before_judge`——**改在写之后**，
+  而 `hooks/note.commit` 是个明写着「What is left is nothing」的 no-op，谁都没再写一次库。
+  `note_revisions` 那行 `harness` 也是 101，因为 `Edits.after_run` 的 `snapshot_note`
+  读的正是 `notes.content`。
+
+  **这是个类，不是一条**（`$S/p45/scan45.py` 全量枚举）：`note` / `section` 是仅有的两个
+  挂了 `Save` 的模式，它们的 `checks` 里带 `fix` 的判据**一共 7 条**——
+  `chart_restates_list` / `charts_from_tools` / `citations_exist` / `no_echoed_text` /
+  `no_foreign_script` / `no_junk_tail` / `output_not_json`，**条条都在 `before_judge` 里改正文**，
+  也就条条吃同一个洞（模式 × 判据 **14 条**）。**换一条判据实拍过**（`/foreign/v1` 档）：
+  编辑器 153 字、库里 159 字，**库里那一份还留着 `मंत्री`**。
+
+  **还有第二半**（顺着「这一轮之后还有谁动 `st.content`」数出来的，也真跑摆出来了）：
+  `loop.py` 在最后一轮的 `after_round` **之后**还会动一次——`SHIP_BEST_ON`
+  （`regressed` / `cost_cap` / `check_stuck`）和轮数用尽那个 `else:` 都把正文换成 `st.best[1]`。
+  假模型加一个 `/regress` 档（第 1 轮排名高、第 2 轮更低），两轮：
+  **`RUN_FINISHED` 交出去的是第 1 轮的 139 字，`notes.content` 里躺的是被明确丢掉的第 2 轮那 228 字**，
+  `note_revisions` 的 `harness` 行也是 228。
+
+- **改了什么**（三个文件，**`loop.py` 一个字没碰**）：
+  - `middleware/save.py`：`persist()` 写完记一笔 `bag["saved_content"]`（**存字符串本身不是长度**
+    ——「长度没变但字变了」也得算变）；新增 `persist_if_changed()`；
+    **`Save` 一轮两下**——`hooks = ("after_produce", "after_round")`。
+    `after_produce` 那一下**原样保留**（判分要几十秒，用户在这中间关掉标签页不能丢，
+    这个文件开头那段写着的理由）；`after_round` 那一下**变了才写**，它紧挨着
+    `loop.py` 那句 `Event.step_finished(st.round, st.content)`——**前端按它对齐正文，库里就该是同一份**。
+  - `hooks/note.py` / `hooks/section.py` 的 `commit`：从 no-op 改成 `save.persist_if_changed(st)`。
+    **落点只能是 `commit`**：`loop.py` 在 `st.content` 定下来之后、`after_run` 之前调它，
+    于是 `Edits.after_run` 那版快照也跟着对。挂 `after_run` 不行——`Save` 在 `extra_mw` 里，
+    排在 BASE 的 `Edits` **后面**，快照会比落库先跑。
+  - 写库照旧**只有 `save.persist` 一个出口**，由它自己认 `rails_off`（批 16 那条规矩一个字没松）。
+
+- **依据**：
+  - **修的是时机，不是七条判据各打一个补丁**——「同一件事挡住一半等于没挡」，
+    七个补丁里漏一个就是下一次 P44。
+  - **`after_produce` 那一下不许拿掉**：它守的是「判分那几十秒里关页面不丢这一轮的字」，
+    跟这条 bug 守的不是同一件事。代价是每轮最多多一次 `UPDATE`，
+    而「没变就不写」把它压到了**只有判据真改过的轮次**才发生。
+  - **`persist_if_changed` 只在真的不一样时写**：无条件再写一次会让 `notes.updated_at`
+    每轮白动两次，`middleware/edits` 采的「用户拿到之后改了什么」也跟着糊掉。
+  - **不改 `loop.py` 的循环结构**：钩子顺序是那个文件写死的契约，
+    `tests/test_p45.py` 里单独一条断言把 `after_produce < before_judge < after_round < step_finished`
+    钉住——顺序变了这条当场红。
+
+- **前后对比**（同一份假模型、同一段种子正文、同一条命令）：
+
+  | 档 | 交出去 / 编辑器 | 库里 `notes.content` | `note_revisions` 的 `harness` 行 |
+  |---|---|---|---|
+  | `streamjson` 3 轮 · 修之前 | 53 | **101**（尾巴是整串 JSON） | 101 |
+  | `streamjson` 3 轮 · 修之后 | 53 | **53** | **53** |
+  | `foreign` 2 轮 · 修之前 | 153 | **159**（留着 `मंत्री`） | 159 |
+  | `foreign` 2 轮 · 修之后 | 153 | **153** | 153 |
+  | `regress` 2 轮 · 修之前 | 139（第 1 轮） | **228**（第 2 轮，被丢掉的那一轮） | 228 |
+  | `regress` 2 轮 · 修之后 | 139 | **139** | **139** |
+
+  **误伤那一侧也跑了**：`ok` 档（判据一条都不响）一轮仍然只写一次库。
+
+- **下一步**：`round_snapshot.py` 的 `STEP_STARTED` 那一版存的是 `st.content`（内存那份，
+  本来就是对的），这一批没动。`middleware/revise` 那条路自己就调 `save.persist`，也没动。
+
+---
+
+### 2. 同一台机上第二份 app 连到第一份的后端（P44 问题 #2）✔
+
+- **用户怎么发现**：同机开着两份 memoket-NOTE，其中一份的后端崩过一次（日志里
+  「后端崩了（退出码 3），重新拉起」「固定端口 47231 被占，改用 47232」）。
+  **可窗口的 `location.origin` 还是 47231**——那是另一份实例的后端，
+  于是这一屏摆的是**别人的笔记**，而屏幕上一个字都看不出来。P44 是靠 `lsof` 核那个端口上的
+  uvicorn 是不是本 worktree 的 venv 才发现的。
+
+- **复现（真造两份 app）**：`$S/p45/two_apps.sh`。剧本就是那一屏的来历：
+
+  1. 起 A（`KITE_DATA_DIR=$S/p45data`）→ A 的后端拿到 **47232**，窗口 `loadURL` 到 47232；
+  2. `pkill` 掉 A 的后端（= 那句「退出码 3」）；
+  3. **立刻**起 B（`KITE_DATA_DIR=$S/p45dataB`）→ B 的 `freePort` 看见 47232 空着，占走；
+  4. A 的 `onCrash` 800ms 后重拉 → 47232 被 B 占了 → A 的后端退到 **47233**。
+
+  两份库各放一条**只有它才有**的笔记（`P45-A-的库` / `P45-B-的库`，`$S/p45/mark.py`），
+  这样「这一屏上的字是哪个库里的」能直接读出来。量具 `$S/p45/whoami45.mjs`
+  （走 P44 那份 `cdp.mjs`）一次读五样：窗口 origin · 壳说该连谁 · 那个端口上的后端自报是谁 ·
+  这一屏的库 · 自检横幅。**修之前**（`p45-p44final-A.png`）：
+
+  ```
+  [A] 窗口 origin = http://127.0.0.1:47232
+  [A] 壳说该连谁 = {"port":47233,"pid":48627}
+  [A] 端口上是谁 = {"pid":48619,"data_dir":".../p45dataB"}     ← B 的库
+  [A] 这一屏的库 = P45-B-的库,P45-B-的库                        ← **A 在读 B 的笔记**
+  ```
+
+- **改了什么**（三处，一处一层）：
+
+  | # | 落点 | 改法 |
+  |---|---|---|
+  | ① **窗口永远连自己那个后端** | `desktop/src/main.ts` `onCrash` | 重拉之后 `win.loadURL(appUrl(b.port))`，不是 `webContents.reload()`。那句注释「端口固定，地址不变」是**假的**——`freePort` 明明会退到 `preferred + k`。端口真的换了另记一行落盘日志 |
+  | ② **抢端口那个竞态：不假装堵住，改成认得出来** | `desktop/src/backend.ts` | `waitHealthy` 多一个 `ownPid` 参数：`/api/health` 回的 `backend.pid` 跟自己刚 spawn 的子进程对不上 → 抛 `PortTakenError`；`startBackend` 收掉自己那个子进程、把这个端口记进 `taken`、**换一个重来**（最多 3 次，`freePort` 跳过 `taken`）。**`freePort` 先 listen 再 close 那条 TOCTOU 堵不住**（要堵得把探测 socket 的 fd 直接交给 uvicorn，Electron / PyInstaller 两种起法都得改），但**堵不住就得认得出来**，而判据是两个整数相等——代码判得准 |
+  | ③ **「我连的是谁」的自检进产品** | `backend/app/main.py` + `preload.ts` + `frontend/src/util/backendIdentity.ts`（新）+ `main.tsx` 一行 | `/api/health` 带上 `backend: {pid, data_dir, started_at}`；主进程 `ipcMain.handle('backend:info')` 报「我起的后端是哪个」；界面开局核一次，对不上在窗口顶上钉一条**点不掉**的横幅（不走 toast：「你正在编辑别人的库」这件事不该自己消失） |
+
+- **依据**：
+  - **P44 教训 #2 升一级**：「壳里有几个可执行件就得核几个」不够，还得核窗口连的是哪个后端
+    ——**那个能力该在产品里，不是只在走查脚本里**。①② 守的是壳的行为，③ 守的是**结果**：
+    不管中间哪一步出岔子（手工改地址、旧窗口被系统恢复、将来某次重构又把 `loadURL` 写回 `reload`），
+    只要这一屏连错了，界面自己就说出来。
+  - **③ 的判据宁可窄**：不在桌面壳里（网页版）不吵；壳还没起好后端不吵；
+    **后端没报 `pid`（旧版后端）时 `pid` 那一格跳过、端口那一格照样核**——
+    `undefined !== 47231` 是在拿「不知道」当「不一样」，那会让每个升级到一半的用户看见一条假警报。
+    端口和 pid **各自**判、各自说一句话：前者是「窗口指错了地方」，后者是「这个端口上坐的是另一个进程」，
+    两句话指向的修法不一样。
+  - **`started_at` 也报**：`pid` 会被系统回收复用，崩溃重启那一下「同一个 pid 换了一条命」是真会发生的。
+  - **横幅的颜色 / 层级 / 字号走令牌**（`--live` / `--z-toast` / `--t-sm`）——第一版写死了
+    `#b00020` 和 `z-index:2147483647`，`check-ui-tokens` 当场红。
+
+- **前后对比**（同一份剧本、同一台机、同一条命令；**只翻 `main.ts` 那一处**，
+  翻完 `shasum` 逐字节核回原样 `2b08b136c37c3f59`）：
+
+  | | A 的窗口 origin | A 自己的后端 | A 这一屏的库 | 自检横幅 |
+  |---|---|---|---|---|
+  | **修之前** | `127.0.0.1:47232` | 47233（pid 48627） | **`P45-B-的库`** | ⚠︎ 两条都吵了 |
+  | **修之后** | `127.0.0.1:47233` | 47233（pid 43097） | `P45-A-的库` | 没有 |
+  | 修之后 · B | `127.0.0.1:47232` | 47232（pid 43093） | `P45-B-的库` | 没有 |
+
+  **「修之前」那一栏同时是 ③ 的正面证据**：①还坏着，横幅照样把两条都说出来了
+  （`p45-p44final-A.png`：「这个窗口连的是 127.0.0.1:47232，可这份 app 自己的后端在 47233」
+  ＋「这个端口上应答的后端是进程 48619，而这份 app 起的是 48627」）。
+
+- **下一步**：② 的**重试那一圈**没在真 app 上摆出来——要摆得真赢一次 `freePort` 的 TOCTOU
+  （`close` 到 `bind` 之间那几毫秒）。`waitHealthy` 的 pid 判据本身是真跑测的
+  （起一个假后端、回一个自报 pid 的 200），重试那一圈现在只有源码断言。
+  `dataDir` 这一格壳在开发模式下报空串（开发不传 `KITE_DATA_DIR`），
+  所以自检现在只核端口和 pid；打包版三样都有。
+
+---
+
+### 3. 闸 / 突变验 / 成本
+
+**新加的闸**：
+- 后端 `tests/test_p45.py` **13 条**，分三层（P38 / P42 / P44 一条不变）：
+  **行为闸**跑一趟真循环、读「库里那一份」（用的是真判据 `shape.output_not_json`，不是合成的）；
+  **接线闸**单独两条断言——一条钉 `Save.hooks` 有 `after_round` + `loop.py` 的钩子顺序，
+  另一条**证明 `after_round` 一个人接不住**（交最好那一轮发生在最后一个 `after_round` 之后，
+  所以 `commit` 是承重的）；**类闸**钉住那 7 条判据的名单不许静默多出来。
+  外加一条**量具自检**（`_body_without_docstring` 得把 docstring 摘掉才算数——
+  那两处 `commit` 的注释里正好写着「不自己调 `store.update_note`」，
+  拿整段源码去搜只会读出「它自己调了」，**先证明量具在量它该量的东西**，P42 教训 #2）。
+- 前端 `p45BackendIdentity.test.ts` **7 条**（`compareIdentity` 的六档，含两档「不知道不算不一样」）；
+  `p45Desktop.test.ts` **11 条**——`waitHealthy` 那 4 条是**真跑**（起一个本机 HTTP 服务当假后端），
+  其余是 `main.ts` / `preload.ts` / `backend.ts` 的接线断言。
+  **量具自己踩过一脚**：直接 `import` `desktop/src/backend.ts` 会把它拉进**前端的 tsconfig 工程**，
+  `tsc -b` 当场十条红（`node:child_process` / `process` / `__dirname` 都不在前端的类型里）；
+  改走 `import.meta.glob`——类型上只是一张表，运行时照样是真模块。
+  **量具不许把被测的东西拖进不属于它的工程。**
+
+**突变验 8 刀，8 刀全红，而且红的都是该红的那几条**
+（唯一锚点 + 整文件写回 + 逐字节 cmp + 清 `__pycache__`；基线 13 passed，收工核回 13 passed）：
+
+| 刀 | 退回去的是什么 | 红了几条 / 是哪几条 |
+|---|---|---|
+| #1a | **把 `Save.after_round` 这个方法删掉**（真的退回 P44 那一版） | 3 条：库里那一份 / 先落一次 / 每一条 fix 判据 |
+| #1b | 只把 `"after_round"` 从 `hooks` 元组里摘掉（方法还在） | 1 条：接线闸 |
+| #2 | `after_round` 改成无条件 `persist` | 1 条：一轮只写一次库 |
+| #3 | 「没变就不写」的判断反过来 | 6 条 |
+| #4 | `persist` 不再记「库里现在是哪一份」 | 1 条 |
+| #5 | `NoteHooks.commit` 退回 no-op | 2 条 |
+| #6 | `SectionHooks.commit` 退回 no-op | 1 条 |
+| #7 | `commit` 绕开出口自己调 `store.update_note` | 2 条：rails_off 那条 + 类闸 |
+
+**#1a / #1b 是分开的两刀，这件事本身是这一批的一个发现**：`loop._fire` 按
+`getattr(m, hook)` 派发，**`hooks` 那个元组只管排序和声明**——第一版只改元组，
+behavioural 那几条**全绿**，只有接线闸红了。要是当时收手，就会把「元组改了行为没变」
+读成「闸不管用」。**「红了」和「红的是那条」要分开核**（P44 教训 #4 的第二次兑现）。
+
+**收工的闸**：
+- 后端 `pytest -q` **2788 passed / 0 skipped / 0 failed**（73–79 秒）。
+  基线 2775 里那 **4 条读真库的**（`test_corpus_lineage` / `test_number_grounding`）
+  这一批**跑过了、不是跳过**——worktree 里有一份真库拷贝（`backend/data/notes.sqlite3`，
+  gitignored，**不进 commit**）。2775 + 13 = 2788 对得上。
+  中途红过 2 条，**两条都不是改动的错**：一条是 `test_p45.py` 里一个没用的 `import dataclasses`；
+  另一条是 `test_harness_edits` 那条「采来的数据没有任何一处写回路」——
+  **它扫的是源码里出现没出现 `harness_edits` 这个词，而我在 `save.py` 的注释里提了一句**。
+  措辞换掉就好了（P44 教训 #4 同一句话：「红了」和「红的是不是我改的那件事」要分开核）。
+- 前端 `npm test` **84 文件 / 737 条**全绿（基线 82 / 719，+2 文件 / +18 条正好是新加的那两份）。
+  `tsc -b` / `eslint` / 33 个 `check-*.mts` / 3 个 smoke 全过。
+- `desktop/` `tsc -p tsconfig.json --noEmit` EXIT=0。
+
+**成本**：**真模型 0 次调用 / 0 token**（`llm_usage` 最大 id 开工 = 收工 5738）。
+全程只有本机假端点 18145。
+
+---
+
+### 留给下一批
+
+1. **② 的重试那一圈**在真 app 上没摆出来（要真赢一次 `freePort` 的 TOCTOU）——
+   现在只有源码断言 + `waitHealthy` 那一侧的真跑。
+2. **开发模式下 `backendInfo().dataDir` 是空串**（开发不传 `KITE_DATA_DIR`），
+   所以自检只核端口和 pid；`health.backend.data_dir` 那一格现在只在日志 / 量具里用得上。
+   要在开发模式也核，得让壳把后端真正生效的那份数据目录问回来。
+3. **P44 剩下的四条一条没动**：#3 证据全被砍光时的兜底那一行（`util/recallContext`）、
+   #4 意图预填只认标题框、#5 toast 说有「改动」页签、#6 `/` 那一下留在正文里（量具）。
+   前三条是另一个 agent 的地盘。
+4. **P44 留的 4 / 5 / 7 / 8 / 9 照旧**：`华为` 被 `_EDGE_STOP` 剥成单字、`链接` 那条误杀、
+   P41 #5 / #6 还没在壳上摆过、`stuckTail` 和 `/trace` 的 `ProviderError('no JSON')` 那一支、
+   改动层的三条淘汰闸。
+5. **这一批没有新的否掉项**。两条都真复现、真修、真验完了。

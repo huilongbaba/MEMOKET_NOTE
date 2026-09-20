@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('memoketDesktop', {
   flushed() { ipcRenderer.send('flushed') },
   /** 界面定下了当前身份：主进程记进 identity.json，localStorage 丢了也认得回来 */
   rememberUser(user: string) { ipcRenderer.send('remember-user', user) },
+  /** **我这个窗口该连的是哪个后端**（P45 #2）：壳起的那个子进程的 pid / 端口 / 数据目录。
+   *  界面拿它跟 `/api/health` 里后端自报的那一份对一次——对不上说明这一屏摆的是
+   *  另一份实例的库（P44 问题 #2 实拍）。还没起来回 null。 */
+  backendInfo(): Promise<{ port: number; pid: number; dataDir: string } | null> {
+    return ipcRenderer.invoke('backend:info')
+  },
   /** 弹系统的选文件夹对话框（导回 Obsidian 选 vault）；取消返回空串 */
   pickDirectory(title: string): Promise<string> { return ipcRenderer.invoke('pick-directory', title) },
   /** 导回 Notion / 飞书的凭证：记在主进程的 export-credentials.json（identity.json 旁边），网页版没有这个口子 */
