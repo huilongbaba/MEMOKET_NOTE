@@ -533,6 +533,67 @@ def is_whole_token(run: str, squeezed: str, segment) -> bool:
         start = i + 1
 
 
+def is_merged_word(run: str, squeezed: str, segment) -> bool:
+    """分词把这一串和它的邻词**并成了一个 token**，而这一串自己是**通用汉语词**。
+
+    `链接` 那条误杀就是这个形状（P44 A0b 逐条读那 64 串次时读出来的，`p44-frag64` 里
+    标着「误杀」的唯一一条）：这个人库里 `链接面板` 是一个实体词，被 `segment()` 的
+    `extra=` 补了进去，于是「这篇用来看**链接面板**」整个并成一个 token，
+    `链接` 落在 token 中间、两端都够不着词边界，`_aligned` 判 `False`，当碎片砍掉。
+
+    **它跟 `is_whole_token` 方向相反**（P46 ② 那句「方向相反，先量代价」）：
+    那一条问「它在查询的切词里是不是**正好一个 token**」，这一条问的是
+    「它**被一个更长的 token 吞进去了**，但它自己确实是个词」。
+
+    **判据窄在两处，两处都是量出来的**（全库 9 串次 / 5 种，逐条读过）：
+
+    1. **必须整个落在某一个 token 里面**（而且不等于那个 token）。跨在两个 token
+       之间的（`可以实` = 可以 | 实现、`数据隐` = 数据 | 隐私）**根本不是这个形状**，
+       这一条碰都不碰它们——P44 读出来那 64 串次里 23 种是那个形状，全归 `_aligned` 管。
+
+       「不等于那个 token」那半句是**让这个谓词自己说的话是真的**：自己就是一个 token
+       的那一档归 `is_whole_token`（P46），不归这一条。**从 `evidence()` 那边看它不改行为**
+       （突变验量出来的，照记）：一串要是正好等于某个 token，它两端就都在词边界上，
+       `_aligned` 先回 `True`，根本走不到这儿。所以它守的是**这个函数单独被调用时**的诚实，
+       不是调用链上的一个分支。
+    2. **必须是底表（`tokenize.base_words()`，330,349 条通用汉语词）里的词。**
+       这一条是分开这 5 种的那把刀，全库逐条核过：
+
+       | 串 | 被哪个 token 吞了 | 在底表里 | 判定 |
+       |---|---|---|---|
+       | `链接` | `链接面板` | **是**（词频 40） | **误杀，救回来** |
+       | `电池容` | `电池容量` | 否 | 半个词，照砍 |
+       | `基础设` | `基础设施` | 否 | 半个词，照砍 |
+       | `成功经` | `成功经验` | 否 | 半个词，照砍 |
+       | `操作步` | `操作步骤` | 否 | 半个词，照砍 |
+
+       **为什么是底表而不是这个人的词表**（`attested`）：那 5 种里 `attested` 全是
+       `False`，**包括 `链接` 自己**——`链接面板` 才是词表里的那个实体，`链接` 不是。
+       拿 `attested` 当判据一条都救不回来，量过（P48 第 2 条）。
+       **也不是「这一串单独拿去切是不是一个词」**：`电池容` 单独切出来正好是
+       `['电池容']` 一个 token（底表里没有，切不动就整段退回来），拿它当判据会
+       1 对 3 错。**底表问的是「它是不是汉语里的一个词」，那才是要问的那个量。**
+
+    英文 / 带数字的串一律 `False`：底表是纯汉字 2–4 字的表，拿它去问 `kol` 没有意义。
+    """
+    if segment is None or not _ALL_CJK(run):
+        return False
+    from . import tokenize as _tok
+    if run not in _tok.base_words():
+        return False
+    spans = _token_spans(squeezed, segment)
+    start = 0
+    while True:
+        i = squeezed.find(run, start)
+        if i < 0:
+            return False
+        j = i + len(run)
+        for (a, b) in spans:
+            if a <= i and j <= b and (a, b) != (i, j):
+                return True
+        start = i + 1
+
+
 def evidence_label(run: str, squeezed: str | None = None, segment=None) -> str:
     """这一串**摆到用户眼前**时长什么样：剥掉两端的虚词 / 方位 / 日期后缀。
 
@@ -624,6 +685,11 @@ def evidence(hits: list[str], query: str, *, common=None, attested=None,
     **判的是摆出来的那一串，不是原始的 run**——拿 run 去判会把 `众筹后` → 「众筹」
     这种剥完是真词的也判成碎片（P44 先量那一趟当场读出来的，64 条里有 6 条是这个形状）。
 
+    **`None` 的第四档是 P48 ② 加的**（`is_merged_word`）：分词把这一串和邻词并成了
+    一个 token，而它自己是通用词表里的词（`链接` ⊂ `链接面板`）——`_aligned` 判它
+    `False` 是因为**那条词边界被分词吃掉了**，不是因为它碎。全库 9 串次 / 5 种逐条读过，
+    底表这把刀 1 对 0 错；账在 `docs/TRACELOG-product.md` P48 ②。
+
     **这一格只给显示层看。`qualifies` 一个字不动**：证据够不够硬是另一个问题，
     「这个词摆出来难看」不是「这条召回不该进来」——把它接进 `qualifies` 就是拿显示规则
     去判死召回，那是最贵的那种错（P32 `evidence_runs` 的 `loose` 同理）。
@@ -638,8 +704,15 @@ def evidence(hits: list[str], query: str, *, common=None, attested=None,
         # **判的是摆出来的那一串**，而「摆出来长什么样」这件事只有一个定义
         # （`evidence_label`，P46 起它自己会认「它就是一个词」那一档）。
         # 这里再抄一遍剥法 = 两把尺子，`recall_evidence` 摆的和这里判的会对不上。
-        out.append({"term": r, "why": _why(r, attested, weigh),
-                    "aligned": _aligned(evidence_label(r, squeezed, segment), squeezed, segment)})
+        label = evidence_label(r, squeezed, segment)
+        al = _aligned(label, squeezed, segment)
+        # **第四个 `None` 档**（P48 ②）：分词把它和邻词并成了一个 token，而它自己
+        # 是通用词表里的词（`链接` ⊂ `链接面板`）。那不是「它是碎片」，是
+        # **这把尺子对它判不了**——它两端够不着词边界，恰恰因为那条边界被分词吃掉了。
+        # 归 `None` 不归 `True`：`None` 是 P44 立的「不知道」，说它「对齐」是把话说死。
+        if al is False and is_merged_word(label, squeezed, segment):
+            al = None
+        out.append({"term": r, "why": _why(r, attested, weigh), "aligned": al})
     return out
 
 

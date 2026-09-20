@@ -117,10 +117,10 @@ def position_stats(terms: list[str], query: str, fact: str) -> dict:
 
 #: `display_stats` 认的两把尺子。**冻下来的标注属于它当时那一把**——
 #: 拿今天的尺子去核 P44 冻的那 64 条，红的不是代码而是「尺子换过了」这件事本身。
-RULERS = ("p44", "p46")
+RULERS = ("p44", "p46", "p48")
 
 
-def display_stats(run: str, query: str, cut: list[str], ruler: str = "p46") -> dict:
+def display_stats(run: str, query: str, cut: list[str], ruler: str = "p48") -> dict:
     """这一串**摆不摆得到用户眼前**，摆出来长什么样（P44 / P46）。**纯函数，不碰库。**
 
     `cut` 是**冻下来的**「查询挤掉空白之后的分词结果」——所以这一层跟
@@ -131,8 +131,11 @@ def display_stats(run: str, query: str, cut: list[str], ruler: str = "p46") -> d
 
     `ruler`：
       · `p44` —— 一律剥 `_EDGE_STOP`。`p44-frag64` 那一组冻的标注是按这一把出的。
-      · `p46` —— 多认一条「它自己就是一个词的不剥」（`search.is_whole_token`）。默认这一把，
-        因为默认该是**今天的代码在做什么**；要核对冻下来的资产就显式传 `p44`。
+      · `p46` —— 多认一条「它自己就是一个词的不剥」（`search.is_whole_token`）。
+      · `p48` —— 在 `p46` 之上再多认一条「分词把它和邻词并成了一个 token，而它自己是
+        通用词表里的词」（`search.is_merged_word`）：那时候 `_aligned` 判 `False` 不是
+        因为它碎，是**这把尺子判不了**，所以不按 R1 砍。默认这一把，
+        因为默认该是**今天的代码在做什么**；要核对冻下来的资产就显式传它当时那一把。
 
     回 `{"label", "aligned", "rule", "shown", "ruler"}`：
     `rule` 空串 = 摆得出来；`R1-跨词边界` / `R2-合不出两个字` = 被那一条砍了。
@@ -149,6 +152,10 @@ def display_stats(run: str, query: str, cut: list[str], ruler: str = "p46") -> d
     label = (search.evidence_label(run) if ruler == "p44"
              else search.evidence_label(run, squeezed, segment))
     aligned = search._aligned(label, squeezed, segment)
+    # P48 的那一格：分词把它并进了一个更长的 token，而它自己是通用词——归「判不了」。
+    # 这里跟 `search.evidence()` 走的是**同一个谓词**，再抄一遍就是两把尺子。
+    if ruler == "p48" and aligned is False and search.is_merged_word(label, squeezed, segment):
+        aligned = None
     if aligned is False:
         rule = "R1-跨词边界"
     elif not run.isascii() and len(label) < 2:
