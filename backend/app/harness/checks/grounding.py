@@ -184,6 +184,10 @@ def citations_exist(st: State) -> Verdict | None:
         f"引用了 {len(bad)} 条不存在的事实（{', '.join(bad[:3])}）。只引用材料里列出的编号，"
         "不要自己编——一个像真的一样的引用比不引用更糟。",
         fix=lambda text: strip_citations(text, bad),
+        # P59 ②：**同一个函数的另一条出口（`_truncated_verdict`）早就有这一行了**，
+        # 这一条却没有——而两条摘的是同一种东西（正文里一个查不到的 `[id]`），
+        # 只是诊断不同。措辞跟那一条对齐，编号照抄前三个：用户得能回正文里核。
+        fix_note=f"把正文里引用的、库里查不到的编号摘掉了：{', '.join(bad[:3])}",
     )
 
 

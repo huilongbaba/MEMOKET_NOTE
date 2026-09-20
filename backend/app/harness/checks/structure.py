@@ -82,18 +82,37 @@ def heading_fits(st: State) -> Verdict | None:
     gap = blockcheck.heading_gap(st.before, st.content)
     if not gap:
         return None
-    return Verdict(pick_dimension(st, "fits_context"), gap, fix=lambda text: _sink_headings(st.before, text))
+    # P59 ②：这一支原来动了正文一个字不说。措辞要说清「下沉了几级」，
+    # 而那个级数只有 `_sink_headings` 算得出来——**所以把它抽成 `_sink_delta`，
+    # 两边读同一个数**，不在这儿照着重写一份（重写一份就有了两套口径，
+    # 说的话和做的事会各走各的）。
+    delta = _sink_delta(st.before, st.content)
+    return Verdict(
+        pick_dimension(st, "fits_context"), gap,
+        fix=lambda text: _sink_headings(st.before, text),
+        fix_note=(f"把这一段的标题整体下沉了 {delta} 级，好让它排在上面那个小节下面"
+                  "——只动了 `#` 的个数，正文一个字没改"),
+    )
+
+
+def _sink_delta(before: str, block: str) -> int:
+    """要把 ``block`` 里的标题整体下沉几级（0 = 不用动）。
+
+    抽出来的理由（P59 ②）：`heading_fits` 的 `fix_note` 要说「下沉了几级」，
+    而这个数原来只活在 `_sink_headings` 的函数体里。**说的话和做的事得读同一个数**。
+    """
+    prev = re.findall(r"^(#{1,6})\s", before or "", re.M)
+    needed = (len(prev[-1]) if prev else 1) + 1
+    mine = re.findall(r"^(#{1,6})\s", block or "", re.M)
+    if not mine:
+        return 0
+    return max(0, needed - min(len(h) for h in mine))
 
 
 def _sink_headings(before: str, block: str) -> str:
     """Push every heading down until the shallowest is one level below the
     nearest heading above the cursor. Only ``#`` counts change."""
-    prev = re.findall(r"^(#{1,6})\s", before or "", re.M)
-    needed = (len(prev[-1]) if prev else 1) + 1
-    mine = re.findall(r"^(#{1,6})\s", block or "", re.M)
-    if not mine:
-        return block
-    delta = needed - min(len(h) for h in mine)
+    delta = _sink_delta(before, block)
     if delta <= 0:
         return block
     return _HEADING.sub(
@@ -120,6 +139,10 @@ def tail_clashes(st: State) -> Verdict | None:
         f"这一段自己写了一个收尾小节（{clashing[0]!r}），而下面的正文已经有收尾了。"
         "去掉——插进笔记里的是一段话，不是一篇独立的报告。",
         fix=lambda text: _drop_tail_sections(text),
+        # P59 ②：删的是**整节**（标题连同底下的正文），不是一行标题——
+        # 那是这一处最该说清楚的一件事，不说的话用户只会看见一段话凭空少了。
+        fix_note=(f"把这一段自己写的收尾小节「{clashing[0][:24]}」连标题带正文整节删掉了"
+                  "（下面的正文已经有收尾了）"),
     )
 
 

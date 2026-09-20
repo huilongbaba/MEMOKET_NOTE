@@ -244,6 +244,15 @@ def no_junk_tail(st: State) -> Verdict | None:
         f"段落末尾硬贴了一句跟正文无关的垃圾：{'、'.join(tails[:3])}。"
         "这是模型流出来的，不是正文，已摘掉。",
         fix=lambda text: strip_junk_tails(text, junk_tails(_fresh_text(text, before) if before.strip() else text)),
+        # P59 ②：**这一条的 `fix_note` 故意不把那句垃圾抄进来**（别的六条都抄了）。
+        # 理由：`fix_note` 有两个读者，其中一个是**下一轮写作的 prompt**
+        # （`bag["auto_fixes"]` → `prompts/note` 的「上一轮我替你改了正文」那一块）。
+        # `JUNK_WORDS` 收的是语料里混进来的色情 / 垃圾站字样（实拍「日本一本道」「做爰片」），
+        # 把它原样贴回写作 prompt 里，是在拿刚摘掉的东西去喂下一轮——
+        # **这条判据修的就是这个字出现在正文里**。用户那一侧不吃亏：
+        # 改动层的 hunk 里逐字看得见摘掉的是哪一段。
+        # `message` 里照旧抄（那一份只在「修了还没修干净」时才出场，读者是打分器不是写作）。
+        fix_note=f"把 {len(tails)} 段段末硬贴的那句无关字样删掉了（模型流出来的，不是正文）",
     )
 
 
@@ -263,4 +272,9 @@ def no_foreign_script(st: State) -> Verdict | None:
         f"正文里混进了不属于这篇笔记书写系统的字符：{'、'.join(r[:12] for r in runs[:3])}。"
         "这是模型流出的乱码，不是正文，已摘掉。",
         fix=lambda text: strip_foreign(text, allowed),
+        # P59 ②：这一条**抄**（跟上面 `no_junk_tail` 不一样）。摘掉的是别的书写系统的
+        # 字符（实拍「મંત્રી」「अ」），抄回写作 prompt 不会把什么脏东西带回来，
+        # 而用户得看得出被删的是哪几个字。
+        fix_note=(f"把 {len(runs)} 处不属于这篇笔记书写系统的字符删掉了"
+                  f"（{'、'.join(r[:8] for r in runs[:3])}），别的一个字没动"),
     )

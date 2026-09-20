@@ -372,20 +372,23 @@ def test_3_三处fix全都说得出自己改了什么():
         assert ("删掉" in note or "去掉" in note or "贴了" in note), (name, note)
 
 
-# 今天**动了正文却一个字不说**的那几处（`Verdict(... fix=...)` 但没有 `fix_note`）。
+# **动了正文却一个字不说**的那几处（`Verdict(... fix=...)` 但没有 `fix_note`）。
 # 白名单不是「这样是对的」，是「这是今天的实情，别再悄悄多一处」（P58 走查 #2）。
-# 每一条后面写清它摘掉的是什么——摘的是模型流出来的东西，不是用户写的字，
-# 所以危害比 P26 修的那三处低一档；但**用户看到正文里少了一句而没有任何一句话说过**
-# 这件事是同一个形状，该说的话下一批补。
-SILENT_FIXES = {
-    ("charts.py", "没授权的图整块摘掉"),
-    ("charts.py", "把清单再画一遍的图摘掉"),
-    ("grounding.py", "citations_exist：摘掉编出来的 [id]"),
-    ("language.py", "no_junk_tail：摘掉段末的语料垃圾词（P55 #1 刚放宽过射程）"),
-    ("language.py", "no_foreign_script：摘掉乱码字符"),
-    ("structure.py", "标题整体下沉一级"),
-    ("structure.py", "尾巴上多出来的小节整段删"),
-}
+#
+# **P59 ② 把它清空了**：P58 留下的那 7 处逐处判过「该不该说」，7 处**全都说得清**，
+# 所以 7 条各配了一句 `fix_note`，一条都没留在白名单里。逐处的落点和措辞理由
+# 写在各自的源码注释里（`charts.py:120/227`、`grounding.py:182`、
+# `language.py:241/258`、`structure.py:85/118`）。
+#
+# 改之前先量过射程（`<scratch>/p59/silent9.py`，15 批 / 61 份跑 / 284 轮）：
+# **这 7 条判据在真跑语料里一次都没响过（0/284）**——唯一真开过火的 `fix` 是
+# `no_echoed_text`（响 4 次、其中 3 次走全修那一支），而它本来就有 `fix_note`。
+# 所以这一改在已量到的语料上**动不了任何一轮的产出**；它补的是「哪天响了，
+# 用户和模型能知道正文被改了什么」这个洞。
+#
+# 留一个空集合而不是删掉它：下一个加静默 `fix` 的人得在这儿写明理由，
+# 下面那条闸会按它的长度对数。
+SILENT_FIXES: set[tuple[str, str]] = set()
 
 
 def test_3_仓里每一处fix_note都得是数出来的():
@@ -396,11 +399,17 @@ def test_3_仓里每一处fix_note都得是数出来的():
     **12 处**，填了 `fix_note` 的只有 **5 处**——剩下 7 处动了正文、对模型和用户都不说话，
     正是 P26 #3 要修的那个形状，只是当时没看见它们。
 
-    这一批**不改行为**（那 7 处摘的都是模型流出来的东西，不是用户写的字；
-    真要给它们配措辞是一件单独的事，照铁律「先复现再修」留给下一批）。
-    这条闸钉的是**分母**：数对不上就红，新加一处静默的 `fix` 当场被抓。
+    **P59 ② 把那 7 处配上了措辞**：逐处判过「说不说得清我替你改了什么」，
+    7 处全都说得清（各自的理由写在源码注释里），于是 12 处现在**处处都说话**。
+    改之前量过射程：`<scratch>/p59/silent9.py` 扫 15 批 / 61 份跑 / 284 轮，
+    **这 7 条一次都没响过**，唯一真开过火的 `fix` 是 `no_echoed_text`（4 次 / 3 次全修），
+    而它本来就有 `fix_note`——所以这一改在已量到的语料上动不了任何一轮的产出。
 
-    量程：往任意一条判据上加一个不带 `fix_note` 的 `fix=`，这条红。
+    这条闸钉的是**分母**：三个数（12 / 12 / 0）都断言，数对不上就红，
+    新加一处静默的 `fix` 当场被抓。
+
+    量程：往任意一条判据上加一个不带 `fix_note` 的 `fix=`，这条红；
+    把任意一处的 `fix_note=` 删掉，这条也红。
     """
     import ast
     import pathlib
@@ -415,8 +424,10 @@ def test_3_仓里每一处fix_note都得是数出来的():
     spoken = [x for x in with_fix if x[2]]
     silent = [x for x in with_fix if not x[2]]
     assert len(with_fix) == 12, f"带 fix 的 Verdict 变成 {len(with_fix)} 处了：{with_fix}"
-    assert len(spoken) == 5, f"填了 fix_note 的变成 {len(spoken)} 处了：{spoken}"
-    assert len(silent) == len(SILENT_FIXES), (
+    assert len(spoken) == 12, (
+        f"填了 fix_note 的从 12 处变成 {len(spoken)} 处了：{spoken}\n"
+        f"静默的那几处：{silent}")
+    assert len(silent) == len(SILENT_FIXES) == 0, (
         f"静默的 fix 从 {len(SILENT_FIXES)} 处变成 {len(silent)} 处："
         f"{silent}\n新加一处静默的 fix 就得在 SILENT_FIXES 里写明它摘的是什么，"
         f"或者给它配一句 fix_note。")

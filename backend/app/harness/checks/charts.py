@@ -122,6 +122,14 @@ def charts_from_tools(st: State) -> Verdict | None:
             f"这里有 {len(bad)} 张手写的 mermaid 图（{'; '.join(bad)}）。续写整篇不画图——"
             "要图请用「/ 智能插图」，那条路的图是工具画的、验证过能渲染。已摘掉。",
             fix=lambda text: _drop_unauthorized(text, allowed),
+            # P59 ②（P58 走查 #2 留下的）：这一支原来动了正文一个字不说。
+            # **全修那一支 `message` 到不了任何人**（`middleware/checks.py` 修好就
+            # `continue`，事件都不发），所以上面那句「已摘掉」在真正摘掉的时候
+            # 恰恰是没人看得见的——这一行才是那句话。
+            # **说做了什么，不说哪里错了**：「续写这条路不画图」留在这儿，是因为
+            # 不说的话下一轮很可能原样再画一张（这条判据管的正是「图从哪来」）。
+            fix_note=(f"把 {len(bad)} 张手写的 mermaid 图整块删掉了"
+                      "（续写这条路不画图，要图得走「/ 智能插图」）"),
         )
     return Verdict(
         pick_dimension(st, "has_charts", "chart_validity"),
@@ -230,6 +238,10 @@ def chart_restates_list(st: State) -> Verdict | None:
         "图没有带来新信息，已摘掉。图只在正文没法一眼看清的关系上画（分支 / 依赖 / 多方牵扯），"
         "顺序清单本身就是图。",
         fix=lambda text: _drop_blocks(text, lambda b: b in gone),
+        # P59 ②：同上，全修那一支原来一个字不说。节点名照 `message` 那三个截，
+        # 用户在活动栏上得认得出被删的是哪一张。
+        fix_note=(f"把 {len(hits)} 张只把紧挨着的清单 / 段落逐条重画了一遍的图"
+                  f"（{'、'.join(head)}…）整块删掉了"),
     )
 
 

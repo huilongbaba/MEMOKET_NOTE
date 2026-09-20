@@ -542,11 +542,25 @@ def test_10_突变验_把外来块当常见块就摘不掉(monkeypatch):
 
 
 def test_10_Checks中间件把可修的当场修好_修好的不算命中():
-    """`no_foreign_script` 走的是 `verdict.fix`：修好就不短路打分、不进 fired_checks。"""
+    """`no_foreign_script` 走的是 `verdict.fix`：修好就不短路打分、不进 fired_checks。
+
+    **`evs == []` 那半句 P59 ② 换掉了，换的理由写在这儿**：这条判据当初没有
+    `fix_note`，全修那一支于是**连事件都不发**——这条闸当时把那个静默一起钉住了。
+    P59 ② 给它配上了措辞（`language.py:258`），所以现在该发一条带 `auto_fixed`
+    的事件。**这条闸原来要钉的三件事一个字没动**（正文修好了 / 不短路打分 /
+    不进 `fired_checks`），只是「一句话都不说」换成了「说一句、说的是做了什么」。
+    """
     from app.harness.middleware.checks import Checks
     st = _st("开头。\n\n接上。મંત્રી", content_at_start="开头。")
     st.mode = Mode(key="t", label="t", skill_scope="test_scope",
                    dims=(Dimension("coherence", "..."),), checks=(lang.no_foreign_script,))
     evs = asyncio.run(_collect(Checks().before_judge(st)))
-    assert st.content == "开头。\n\n接上。" and not st.skip_judge and evs == []
+    assert st.content == "开头。\n\n接上。" and not st.skip_judge
     assert st.bag["fired_checks"] == []
+    assert len(evs) == 1, evs
+    val = evs[0].data["value"]
+    assert val["auto_fixed"] is True and val["check"] == "no_foreign_script"
+    # 说的是**做了什么**，而且摘掉的那几个字抄在里面（用户得能回正文里核）
+    assert "删掉了" in val["note"] and "મંત્રી" in val["note"], val["note"]
+    # 下一轮写作的提示里也有同一句（两个读者，一份措辞）
+    assert st.bag["auto_fixes"] == [val["note"]]
