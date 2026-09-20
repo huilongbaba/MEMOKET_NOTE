@@ -935,6 +935,20 @@ class UserMemory:
         · `span`  —— 这么长的一整段原话逐字对上（≥4 个汉字 / ≥4 个字母，不可能是一个滑窗撞的）；
         · `pair`  —— 它自己不够硬，是跟别的词**一起**命中才算数的。
         `units` 是这个词在你库里出现在几条记录的 unit 里（P29 的 df），让「为什么」有个量。
+
+        **两条显示过滤（P44，账在 P41 #2 里量完了）**：P40 实拍「3月12号上线」被摆成
+        「命中：众筹页面、**号上**、页面」——「号上」横跨 `号` 和 `上线` 的词边界，
+        而且每一个字都在 `_EDGE_STOP` 里，原来那行 `label = … or term` 把剥空的原串退了回来。
+        · `aligned is False` —— 跨词边界的碎片，不摆（`kb/search._aligned`）；
+        · 剥完合不出 ≥2 个字的，不摆（跟 `search.display_terms` 同一条规矩）。
+
+        **过滤必须留底**：这两条砍的只是「这一串摆不摆出来」，**召回那几条一条都不少**
+        （`rows` 是调用方传进来的，`qualifies` 这一批一个字没动）。全被砍光时这里回空列表，
+        前端 `util/recallContext.evidenceLine` 自己退回 `display_terms` 那一行——
+        **一条证据都摆不出来 ≠ 这条召回不成立**。全库量过：765 条查询里有 9 条落到这一档。
+
+        **去重按摆出来的那一串**（不是按原始的 run）：`众筹后` 和 `众筹的` 剥完都是「众筹」，
+        按 run 去重会把同一个词摆两遍（全库量过真的有，见 P44 台账）。
         """
         store, _vocab = self._index()
         q = search.clean_query(query)
@@ -949,10 +963,14 @@ class UserMemory:
             for e in search.evidence(search._hits(terms, text), q,
                                      common=common, attested=attested, segment=segment):
                 term = e["term"]
-                if term in seen:
+                if e.get("aligned") is False:
                     continue
-                seen.add(term)
-                label = term if term.isascii() else (term.strip(search._EDGE_STOP) or term)
+                label = search.evidence_label(term)
+                if not term.isascii() and len(label) < 2:
+                    continue
+                if label in seen:
+                    continue
+                seen.add(label)
                 out.append({"term": label, "why": e["why"],
                             "units": (idx.unit_df(term) if idx else None) or 0})
         return out[:6]
