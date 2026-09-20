@@ -189,7 +189,7 @@ class _Store:
 class _Mem:
     def __init__(self, en, cjk):
         self._candidate_terms = lambda text: list(en)
-        self._cjk_terms = lambda text: list(cjk)
+        self._cjk_terms = lambda text, weigh=None: list(cjk)
 
 
 def test_rank_把segment传给qualifies_而且只在开闸时():

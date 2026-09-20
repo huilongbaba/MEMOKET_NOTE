@@ -21,7 +21,7 @@ from scripts import memory_sample_replay as R
 class _Mem:
     def __init__(self, cjk):
         self._candidate_terms = lambda text: []
-        self._cjk_terms = lambda text: list(cjk)
+        self._cjk_terms = lambda text, weigh=None: list(cjk)
         self._match_vocab = lambda q, v: ([], [], [])
 
 

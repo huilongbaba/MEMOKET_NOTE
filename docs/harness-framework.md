@@ -555,7 +555,16 @@ State: mode · ctx(user/note/cursor/intent/tray) · request · round        # ct
   `JUDGE_FLOOR` 已经在 r2 放行、r2 就有真分，而 `modes.check_stuck` 本来就读按名字数的那一份，
   r3 就成立——NOTE / SECTION 上停机轮和交付轮**一轮不变**；在那 6 个模式上则是从 r3 起
   每轮多一次真打分调用、没人接得住。**「误伤」那一栏是空的**：放行不停跑，它只是「不短路」。
-  局面在 `<scratch>/p61/stage61.py`（真 `Checks.before_judge` 八轮，五列对照），闸 `tests/test_p61.py::test_3_*`），
+  局面在 `<scratch>/p61/stage61.py`（真 `Checks.before_judge` 八轮，五列对照），闸 `tests/test_p61.py::test_3_*`。
+  **P65 ③ 去核了一遍这条结论今天还成不成立（P59 的 `advisory` 之后），成立，而且理由变硬了一格：**
+  `STUCK_ROUNDS` 够不着的第一大户 `citations_present`，它那两档 `located == 0` 现在是
+  `advisory=True`（P58 量过，这条判据报得出档的 **29 轮全是这一档**），而 `advisory` 那一支
+  **每一轮**都放行、不用攒 streak——**那个大户今天根本不经过 `STUCK_ROUNDS`，改它一分钱买不到**。
+  真改了还会**倒亏**：`streak > STUCK_ROUNDS` 那一支排在 `advisory` **前面**，又不写
+  `check_released`、不写 `advisories`；按判据名数的话 r3 起它会抢先，于是 P24 #5 那条
+  「判据还在响就不算写完」失效、P58 A 那条「判词得自己找条路进下一轮 prompt」也断掉。
+  **就此结案**，闸 `tests/test_p65.py::test_3_stuck_rounds那条结论今天更硬了_advisory让它买得更少`
+  （钉两支的先后 + 那一支不写这两个键 + `key` 还是带判词原文的那一份 + `grounding` 里正好两处 `advisory=True`）），
   在这之前没有任何规则看「连响」；P5 实拍 `citations_present` 连响 10 轮跑到 15 轮 385 秒。
   **P24 #3 把「连续 3 轮」换成「最近 `CHECK_STUCK_WINDOW` = 4 轮里 3 次」**：`Checks.before_judge`
   每轮把 `check_name_streak` 整只换掉（「连续」该有的语义），于是**两条判据交替响就互相清零**
@@ -581,6 +590,32 @@ State: mode · ctx(user/note/cursor/intent/tray) · request · round        # ct
   它对**没判过的一轮**一律返回 None——判据短路（`skip_judge`）和打分调用失败
   （`st.ev is None`）都算，两种都不是「变差了」。武装条件正是「最好那轮只差一个维度」，
   而那也正是最不该因为一次接口抖动收工的时刻。
+- **交出去的是哪一轮，和界面上那个「+N 字」**（P64 #1 → P65 ②）。
+  把正文换成 `st.best[1]` 的地方 **`loop.py` 里有两处**：`SHIP_BEST_ON`
+  （`regressed` / `cost_cap` / `check_stuck` / `best_stalled`）那一支，**和轮数用尽那个 `else:`**。
+  数「有多少跑会回退」时漏掉第二处，答案就是 0——**而真值是 8**。
+  跑批台账（`tests/fixtures/harness_runs.jsonl`，175 跑 / 489 轮）上量出来的：
+  停机理由**记下来了**的只有 17 跑，其中 **8 跑是 `max_rounds`** = 会回退
+  （`SHIP_BEST_ON` 那四个理由在这 175 跑里**一次都没出现过**）；8 跑全是 3 轮、
+  **逐轮字数都不一样**，没有一跑落在「最后一轮正好就是 best」那种无害情况上，
+  最坏口径差 **16 ~ 1333 字**。
+  **但界面那一侧的口径本身是对的**，所以 P64 #1 那 320 字判不出是产品的：
+  会打「+N 字」的产品代码有两处，两处都拿**交出去的那一份**重算——`App.tsx` 的收工那行
+  在算 `delta` **之前**先 `liveContentRef.current = serverContent`，`util/runRounds.runTitle`
+  从 `note_revisions` 的收尾行 `chars` 减起点；而后端交出去的确实是回退之后那一份
+  （`tests/test_p45.py` 两条闸）。**更像读它的那个走查脚本**（P64 同一批抓到四个量具问题，
+  而走查脚本不在 git）——**写「没核」，不写「没做」**。
+  闸 `tests/test_p65.py::test_回退名单不止SHIP_BEST_ON_轮数用尽那个else也换` /
+  `test_台账里会ship_best回退的跑是8_而且不是全都无害` / `test_产品那几处打字数的地方_口径本身是对的`。
+- **那 6 个 block 模式要不要也停 `check_stuck`：分母一格没长，所以还是答不了**（P61 #4 → P65 ③）。
+  P63 把跑批台账蒸馏进 git 时写的是「每批 `--append` 分母会自己长」。P65 去数了：
+  **还是 175 跑 / 489 轮、出身全是 `p63-realdb`、时间跨度还是 09-17 ~ 09-18、判据真响过的轮还是 3**，
+  跟 P61 #4 量的那份逐格相同（这一批照样 `--append` 了一次，**新增 0**）。
+  原因查清楚了：**走查那种跑落在 `$S/pNN/<udd>/data` 里，`--append` 只导真库**，
+  而真库自 P63 之后没有新的跑。**要让分母长，得让走查那一趟的 udd 也导一次**——
+  记成下一批的动作，别再指望它自己长。买到的那件事是**复现得出来了**：
+  闸 `tests/test_p65.py::test_那6个模式的分母一格没长_所以还是答不了` /
+  `test_那6个模式跑满的历史里还是没有一次判据连响到底`。
 - 加一个功能 = `modes.py` 加一个实例；路由不动。
 
 ---

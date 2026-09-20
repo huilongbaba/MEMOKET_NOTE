@@ -228,13 +228,17 @@ def clean_query(text: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", s)
 
 
-def _terms(memory, query: str) -> list[str]:
+def _terms(memory, query: str, weigh=None) -> list[str]:
     """查询词，去重、小写。英文候选词本来就是小写的，而模型抽出来的事实里 EVT / PCBA /
     APP 是大写——之前排序用大小写敏感的 `in` 比，英文词对这些事实永远不得分（第 191 轮
     真库实测：「4月16日的EVT准备4台主机…」召回不到「EVT 的大节点是 4 月 16 号」）。
-    'evt' 出现两次也会算两次分，一并去重。"""
+    'evt' 出现两次也会算两次分，一并去重。
+
+    **`weigh` 是取词那一层的排序依据（P65 ①）**，`_weigher(query, segment, common)` 的返回值
+    原样往下递——`_cjk_terms` 那 16 个名额先给实词、再给滑窗碎片。**不给就是原样**
+    （`matched_terms` 那条路今天不给，行为逐字不变）。"""
     out: list[str] = []
-    for t in memory._candidate_terms(query) + memory._cjk_terms(query) + _number_terms(query):
+    for t in memory._candidate_terms(query) + memory._cjk_terms(query, weigh) + _number_terms(query):
         t = (t or "").lower()
         if t and t not in out:
             out.append(t)
@@ -579,10 +583,24 @@ def _weigher(query: str, segment, common=None):
     def useless(t: str) -> bool:
         return _is_cn_filler(t) or (common is not None and common(t))
 
+    # **这一段查询只切一次**（P65 ①）。`content_chars` 每次都 `cut(text)`，而这把尺
+    # 原来一次查询只问几下（`_strong_enough` 按 cluster 问），P65 把它挪到取词那一层之后
+    # 一条查询要问上千下——真切上千遍就是 0.3 s。切出来的东西是确定的，
+    # **口径一个字没动，只是不重复切**；传进来的不是这一段就照样现切（判据宁可窄）。
+    toks: list[str] | None = None
+
+    def cut(s: str) -> list[str]:
+        nonlocal toks
+        if s != squeezed:
+            return segment(s)
+        if toks is None:
+            toks = list(segment(s))
+        return toks
+
     def weigh(run: str):
         if not _ALL_CJK(run):
             return None
-        return _tok.content_chars(run, squeezed, segment, useless)
+        return _tok.content_chars(run, squeezed, cut, useless)
 
     return weigh
 
@@ -906,7 +924,10 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int,
     worse, since a long fact covering more of the subject is usually the one
     wanted.
     """
-    terms = _terms(memory, query)
+    # **这个实参不能省**（P65 ①，跟 P61 #1 那三个实参同一个形状的接线洞）：省了
+    # `weigh` 就是 `None`，`_cjk_terms` 那 16 个名额整条退回「每个句段头三个字」的轮转，
+    # `记忆` / `华为` / `超节点` 这些真词又排在碎片后头进不来。`test_p65` 单独钉了一条。
+    terms = _terms(memory, query, _weigher(query, segment, common))
     if not terms:
         # **一个内容词都没有 = 这段话跟知识库没关系，就该什么都不返回。**
         # 原来这里是 `return rows[:limit]`——把整池原样交回去。

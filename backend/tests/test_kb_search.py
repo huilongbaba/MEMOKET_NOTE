@@ -25,7 +25,10 @@ class _FakeMemory:
         return [w for w in re.findall(r"[A-Za-z]{2,}", text.lower())][:12]
 
     @staticmethod
-    def _cjk_terms(text):
+    def _cjk_terms(text, weigh=None):
+        # `weigh` 收下不用：这个假的只负责给 `plan` / `rank` 一串候选词，
+        # **但签名得跟真的一样**——差一个参数，`rank` 的接线一改这里就是 TypeError，
+        # 而那正是「假的跟真的对不上」最容易藏住接线洞的地方（P65 ①）。
         import re
         out = []
         for run in re.findall(r"[一-鿿]{2,}", text):
@@ -113,7 +116,7 @@ def test_英文词不分大小写也不重复计分():
     rows = [{"id": "none", "date": "2026-09-01"}, {"id": "low", "date": "2026-08-01"}, {"id": "up", "date": "2026-01-01"}]
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["evt", "pcba", "evt"]
-    mem._cjk_terms = lambda text: []
+    mem._cjk_terms = lambda text, weigh=None: []
     out = search.rank(rows, "EVT 准备 PCBA evt", mem, store, limit=3)
     assert [r["id"] for r in out][0] == "up"
     assert search.matched_terms(out, "EVT PCBA", mem, store) == ["evt", "pcba"]
@@ -125,7 +128,7 @@ def test_数字也是查询词_但光秃秃的一两位数不算():
     rows = [{"id": "pcba", "date": "2026-09-01"}, {"id": "date", "date": "2026-01-01"}]
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["evt", "pcba"]
-    mem._cjk_terms = lambda text: []
+    mem._cjk_terms = lambda text, weigh=None: []
     out = search.rank(rows, "4月16日的EVT准备4台主机和15套PCBA", mem, store, limit=2)
     assert [r["id"] for r in out] == ["date", "pcba"]
 
@@ -141,7 +144,7 @@ def test_英文短词整词匹配_不靠子串得分():
     rows = [{"id": k, "date": "2026-01-01"} for k in ("smd", "real", "said", "none")]
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["md"]
-    mem._cjk_terms = lambda text: []
+    mem._cjk_terms = lambda text, weigh=None: []
     # 这条测的是**整词匹配**：`md` 不能靠 SMDowner / B2ECMD 得分。
     out = search.rank(rows, "拖进树的 .md", mem, store, limit=1)
     assert out[0]["id"] == "real"
@@ -159,7 +162,7 @@ def test_英文虚词和说话人标签不当查询词():
     """「Speaker B says they have no ideas now」：speaker b / says / they / have 一人一分把内容词稀释掉（第 527 轮）。"""
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["speaker b", "speaker", "says", "they", "have", "ideas", "later"]
-    mem._cjk_terms = lambda text: []
+    mem._cjk_terms = lambda text, weigh=None: []
     terms = search._terms(mem, "Speaker B says they have no ideas now but will have ideas later")
     assert terms == ["ideas"]
     # 全是虚词时怎么办，**分两种情况**（第 747 轮改的，上一版是一律退回原样）：
@@ -181,7 +184,7 @@ def test_同一个词出现两次的排在只出现一次的前面():
     rows = [{"id": "none", "date": "2026-09-03"}, {"id": "once", "date": "2026-09-02"}, {"id": "twice", "date": "2026-09-01"}]
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["ideas"]
-    mem._cjk_terms = lambda text: []
+    mem._cjk_terms = lambda text, weigh=None: []
     out = search.rank(rows, "ideas", mem, store, limit=3)
     assert [r["id"] for r in out] == ["twice", "once"]
 
@@ -199,7 +202,7 @@ def test_伪相关反馈_跟词面前两名同主题的候选往前挪():
     rows = [{"id": "other", "date": "2026-09-09"}, {"id": "same", "date": "2026-09-01"}, {"id": "a", "date": "2026-05-01"}, {"id": "b", "date": "2026-04-01"}]
     mem = _FakeMemory()
     mem._candidate_terms = lambda text: ["evt", "pcba", "样机"]
-    mem._cjk_terms = lambda text: []
+    mem._cjk_terms = lambda text, weigh=None: []
     out = [r["id"] for r in search.rank(rows, "EVT PCBA 样机", mem, store, limit=4)]
     # 词面：a(evt+pcba+样机) > b(evt) ≈ same(pcba+样机) / other(样机)；反馈之后 same（同主题）压过 other（日期更新但主题不同）
     assert out.index("same") < out.index("other")

@@ -472,6 +472,24 @@ def _narrow_grep_query(q: dict, units: frozenset | None) -> dict:
     return {**q, "where": where}
 
 
+def _rotate(per_run: list[list[str]], out: list[str], cap: int) -> list[str]:
+    """按片段轮转取样，取满 `cap` 个为止。**P4 立的那个循环，一个字没动**，
+    只是搬出来好让 `_cjk_terms` 能对「实词」和「碎片」各转一遍（P65 ①）。
+
+    `out` 是**接着往下填**的那一份（第二遍轮转要认得第一遍已经拿了哪些），
+    原地改并返回同一个列表。
+    """
+    depth = 0
+    while len(out) < cap and any(depth < len(g) for g in per_run):
+        for grams in per_run:
+            if depth < len(grams) and grams[depth] not in out:
+                out.append(grams[depth])
+                if len(out) >= cap:
+                    break
+        depth += 1
+    return out
+
+
 class UserMemory:
     """单个用户的 codebook。每人一个 XML 文件。"""
 
@@ -734,7 +752,7 @@ class UserMemory:
         return [w for w in words if w not in STOPWORDS][:12]
 
     @staticmethod
-    def _cjk_terms(text: str) -> list[str]:
+    def _cjk_terms(text: str, weigh=None) -> list[str]:
         """中文候选词：没有空格可切，用 2-3 字滑窗生成 n-gram。
 
         KITE 的抽取提示词是英文的，中文输入抽出的 fact 可能是英文，符号通道
@@ -745,6 +763,27 @@ class UserMemory:
         1. **从最靠近光标的片段开始** —— 续写时正文尾部才是相关的。
         2. **按片段轮转取样** —— 逐段生成会让第一个长片段吃光配额，
            后面真正有信息量的词（"后端准备用"）永远进不了候选。
+
+        **`weigh`：先给实词，再给碎片（P65 ①）。** 名额还是 16，一个没动——
+        动的是**谁先拿到这 16 个**。P60 / P61 / P63 三批在名额上来回量过
+        （24 / 32 / 48 / 400 各一档全库对拍，P63 还把 cap 24 那 190 对一条不落读完了），
+        结论都是「不改」，而 P63 收尾写下的是：**问题不在名额在排序**——
+        `记忆` 这种真词排在第 17 位，而 `了智` / `的业务` / `另一方` 这些碎片占着前 16，
+        抬名额只是把碎片和真词一起放进来。
+
+        判据就是 `_strong_enough` 那一把尺（`kb/search._weigher` → `tokenize.content_chars`，
+        **同一个函数、同一份口径，不另起一把**）：这一串在查询的分词里整词覆盖了
+        几个字的实词，`>= STRONG_CJK_MIN` 就算实词。调用方把 `_weigher(...)` 的返回值
+        原样递进来，**不给就是原样**——`weigh is None` 这一支跟 P63 的 HEAD 逐字相同，
+        `_cjk_greps` 的退路、行级回退、面板那几条路今天都还走它。
+
+        **轮转在每一档里原样保留**：实词那一档自己轮转一遍（片段公平性是 P4 立的，
+        这一批一个字没动），没填满再让碎片那一档接着轮转填。所以这一刀是
+        **纯换序**，不放进任何今天进不来的词、也不少给任何一条查询词。
+
+        `weigh` 回 `None`（定位不到）按「不知道」处理 = **不给它插队**，仍排在碎片那一档里。
+        这跟 `content_chars` 顶上那句「不许当成 0」不冲突：那句说的是「当成 0 就把一条召回
+        判死」，而这里最坏也只是**顺序没变**，一个词都不会因此被踢出去。
         """
         runs = [r for r in re.findall(r"[一-鿿]{2,}", text)
                 if r not in STOPWORDS]
@@ -761,16 +800,22 @@ class UserMemory:
             if grams:
                 per_run.append(grams)
 
-        out: list[str] = []
-        depth = 0
-        while len(out) < 16 and any(depth < len(g) for g in per_run):
+        # 两档：**实词先转一遍，转不满再让碎片接着填**。
+        # `weigh is None` 时第二档是空的，于是整个函数**逐字退回**只有一遍轮转的那一版
+        # ——这一支跟 P63 的 HEAD 逐条相同，`test_p65` 拿抄过来的原算法钉着。
+        first, second = per_run, []
+        if weigh is not None:
+            from ..kb.search import STRONG_CJK_MIN
+            solid: dict[str, bool] = {}
             for grams in per_run:
-                if depth < len(grams) and grams[depth] not in out:
-                    out.append(grams[depth])
-                    if len(out) >= 16:
-                        break
-            depth += 1
-        return out
+                for g in grams:
+                    if g not in solid:
+                        n = weigh(g)
+                        solid[g] = n is not None and n >= STRONG_CJK_MIN
+            first = [[g for g in grams if solid[g]] for grams in per_run]
+            second = [[g for g in grams if not solid[g]] for grams in per_run]
+
+        return _rotate(second, _rotate(first, [], 16), 16)
 
     @staticmethod
     def _surface_in(sl: str, lowered: str) -> bool:

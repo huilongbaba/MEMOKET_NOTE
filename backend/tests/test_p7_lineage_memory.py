@@ -247,7 +247,7 @@ class _Store:
 class _Mem:
     def __init__(self, en, cjk):
         self._candidate_terms = lambda text: list(en)
-        self._cjk_terms = lambda text: list(cjk)
+        self._cjk_terms = lambda text, weigh=None: list(cjk)
 
 
 LONG = ("这样整理后，下一步才会明确：要求报价偏高或偏低的中介补充可比案例，向对买家判断最具体的人核实近期带看和反馈，"

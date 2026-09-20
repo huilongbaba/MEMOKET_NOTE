@@ -337,7 +337,7 @@ def _mem(texts, cjk, *, seg, df=None, en=()):
     mem._index = lambda: (_Store(texts), vocab)
     mem._grep_index = lambda store: idx
     mem._candidate_terms = lambda text: list(en)
-    mem._cjk_terms = lambda text: list(cjk)
+    mem._cjk_terms = lambda text, weigh=None: list(cjk)
     mem._match_vocab = lambda q, v: ([], [], [])
     mem.common_term = lambda: None
     mem.vocab_term = lambda: None

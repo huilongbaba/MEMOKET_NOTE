@@ -117,7 +117,7 @@ class _Store:
 class _Mem:
     def __init__(self, en, cjk):
         self._candidate_terms = lambda text: list(en)
-        self._cjk_terms = lambda text: list(cjk)
+        self._cjk_terms = lambda text, weigh=None: list(cjk)
 
 
 LONGISH = "这一版把动效做满了，但读起来反而更慢。先把叙事和体感分开看，再决定这个动效要不要保留。"
