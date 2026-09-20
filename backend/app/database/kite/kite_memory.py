@@ -894,7 +894,11 @@ class UserMemory:
         # 中文切词只在**开着证据闸**的那条路上要（P34 #1 / P38 #5）：`qualifies` 和
         # `search.plan` 的中文 grep 通道都只在那条路上问它，闸不开就没人问，白建一份词典。
         segment = self.segment() if evidence else None
-        queries = search.plan(self, query, vocab, segment=segment)
+        # `common` 跟着 `segment` 一起进 `plan`（P42 A2）：取 grep 词那一处原来只剔
+        # 口水词那张固定表，不剔「这个人库里满库都是」的那一档。全库量过：4 条查询的
+        # top-8 变了、掉 2 进 2、四条逐条读过全是好的方向，47 条抽样一条没动。
+        # **闸是同一个**（`evidence=True`）——候选池那条路不给，理由同 P38 #5。
+        queries = search.plan(self, query, vocab, segment=segment, common=common)
         facts: list[dict] = []
         if queries:
             rows, _trace = execute_plan(store, vocab, {"queries": self._prescreen(store, queries)},
