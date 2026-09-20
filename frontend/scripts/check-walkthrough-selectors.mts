@@ -14,11 +14,14 @@
  * 两个下拉的选项读了回来，打出来「1 周（7 天）/ 3 个月（90 天）…」**看起来像天列表**。
  * **「选到东西 ≠ 选到那个东西」。**
  *
- * **扫什么**：默认只扫仓库里的 `scripts/walkthrough/`（公共驱动）。
- * 步骤脚本（`steps/*.mjs`）还在 scratch 里（要真打出来的 `.app`，见
- * `walkthrough/README.md`），跑走查之前**显式点名**那些目录：
+ * **扫什么**（P72 改）：默认扫 `scripts/walkthrough/`（公共驱动）**和
+ * `scripts/walkthrough/steps/`（步骤脚本，P72 进的仓库）**。
+ * 从 P66 到 P70，这一行只有前者，于是 `npm test` 里它只看得见 14 个类名、
+ * **0 个第 ③ 遍的调用点**——P70 是手动点名 scratch 目录才第一次对着真调用点跑的。
+ * **手动才跑的闸等于没接进链。**
+ * 还没进仓库的那一批（某一次走查现写的探针）仍然可以显式点名：
  *
- *     npx tsx scripts/check-walkthrough-selectors.mts <scratch>/p66/steps
+ *     npx tsx scripts/check-walkthrough-selectors.mts <scratch>/p72/steps
  *
  * **三遍抽取，因为前两遍的并集还是会漏**：
  *  ① 前缀表（P62 原版）：`.mm-* / .cm-* / .palette-* …` 这些已知前缀，整份源码里抓。
@@ -142,7 +145,11 @@ function mjsIn(dir: string): string[] {
   catch { return [] }
 }
 
-const files = [...mjsIn(path.join(here, 'walkthrough'))]
+// **P72：步骤脚本进了仓库，所以默认就扫它们。** P66 / P67 / P68 / P70 四批里这一行只有
+// `walkthrough/`，于是 `npm test` 里这条闸只看得见公共驱动那一份（14 个类名 / 0 个调用点）
+// ——P70 是**手动**点名 `<scratch>/p70/steps` 才第一次对着真调用点跑的，
+// 第一发就误报（`menuItems`，见上面那段）。**手动才跑的闸等于没接进链。**
+const files = [...mjsIn(path.join(here, 'walkthrough')), ...mjsIn(path.join(here, 'walkthrough', 'steps'))]
 for (const d of EXTRA) {
   const got = mjsIn(d)
   if (!got.length) { console.error(`✗ 点名的目录 ${d} 里一个 .mjs 都没有 —— 扫不到东西的闸门会一直是绿的`); process.exit(1) }
@@ -150,6 +157,14 @@ for (const d of EXTRA) {
 }
 // **扫不到东西的闸门会一直是绿的**：公共驱动至少得在。
 corpus(files, 1, '量具文件')
+// **接线洞单独一条断言**（P72）：上面那行要是哪天被改回只扫 `walkthrough/`，
+// 类名照样抠得出十几个、`corpus` 照样过、这条闸照样绿——绿的却是**没看步骤脚本的那个绿**。
+// 步骤脚本才是 48 个调用点的所在地，也是第 ③ 遍唯一有东西可看的地方。
+if (!files.some((f) => path.dirname(f) === path.join(here, 'walkthrough', 'steps'))) {
+  console.error('✗ 扫描集里一个 `walkthrough/steps/*.mjs` 都没有 —— 第 ③ 遍在仓库里就没有调用点可看了，'
+    + '这条闸会退回 P66～P70 那个「只扫公共驱动」的形状')
+  process.exit(1)
+}
 
 // ③ 的名单跟驱动的签名对齐（P70：第一次对着真调用点跑，第一发就在 `menuItems` 上误报）
 const DRIVER = readFileSync(path.join(here, 'walkthrough', 'cdp.mjs'), 'utf8')
@@ -234,8 +249,10 @@ for (const [cls, info] of [...seen].sort()) {
 }
 
 // **量具里一个类名都没抠出来 = 这条闸什么都没核**（正则写坏 / 文件挪位都是这个症状）。
-// 8 是当前值（只扫公共驱动那一份 = 14 个）的六成左右：留够增删余量，挡得住「几乎什么都没抠到」。
-const MIN_CLASSES = 8
+// P72 之前是 8（只扫公共驱动那一份 = 14 个的六成）。步骤脚本进仓库之后当前值是 **48**，
+// 取六成 → 28。**这个数只准往上调**：它跟上面那条「扫描集里得有 steps/」是两把不同的尺
+// ——那条管「目录还在不在扫」，这条管「抠出来的东西还够不够多」。
+const MIN_CLASSES = 28
 if (seen.size < MIN_CLASSES) {
   console.error(`✗ 只抠出 ${seen.size} 个类名（至少该有 ${MIN_CLASSES} 个）——`
     + '抽取正则或扫描目录坏了，这条闸会一直绿。别把这个数字改小')
