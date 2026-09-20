@@ -10,7 +10,7 @@ import { openJourney, pageText, toTop, wait } from './lib52.mjs'
 
 const day = (t) => ((t.match(/\d{4}-\d{2}-\d{2} · 屏幕活动/) || [])[0] || null)
 
-async function navBtns(d) {
+export async function navBtns(d) {
   return d.eval(`Array.from(document.querySelectorAll('button')).map((e) => ({
     t: (e.title || e.getAttribute('aria-label') || (e.textContent||'')).replace(/\\s+/g,' ').trim().slice(0, 12),
     dis: e.disabled
@@ -24,8 +24,13 @@ async function openConfirm(d) {
   return d.count('.journey-keep-confirm')
 }
 
-/** 只点**亮着的**那个箭头；回 { clicked, from, to } */
-async function flip(d) {
+/** 只点**亮着的**那个箭头；回 { clicked, from, to }。
+ *
+ * **P76 C② 起 `b3old.mjs` 也用这一份**（导出它，`ctxmenu52.mjs` 把
+ * `selectLineAndRightClick` 借给 `b1b` / `b2old` 是同一条路子）：
+ * 「翻页成功」这件事只该有**一个**判法——**日期真的变了**，不是「点过了」。
+ * 两份各写一遍，就会像 P58 → P74 那样，同一个坑在另一份里原样重演。 */
+export async function flip(d) {
   const from = day(await pageText(d))
   const btns = await navBtns(d)
   console.log('    两个箭头:', JSON.stringify(btns))

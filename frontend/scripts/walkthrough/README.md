@@ -92,6 +92,10 @@ cd desktop && npm run dist
 # ④ 起壳 + 跑步骤。截图目录**必须显式给**，cdp.mjs 不猜
 unset ELECTRON_RUN_AS_NODE
 export WALKTHROUGH_SHOT_DIR=<scratch>
+# 这一批的截图批次前缀（P76 C①）。**设了就不用事后改名**：步骤脚本里写死的
+# `p70-xxx.png` 落盘时会变成 `p76-xxx.png`，名字里没有 `p<数字>-` 的原样不动。
+# **不设 → 原样不动**（老批次的跑法逐字复现得出来）。
+export WALKTHROUGH_SHOT_PREFIX=p76
 node frontend/scripts/walkthrough/cdp.mjs <cdp-port> frontend/scripts/walkthrough/steps/b1old.mjs [args...]
 ```
 

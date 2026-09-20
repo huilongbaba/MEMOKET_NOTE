@@ -200,6 +200,100 @@ for (const [raw, want] of STATUS_WORDS_CASES) {
   }
 }
 
+// ── 第三件事：截图名的**批次前缀从参数来**（P74 问题 #6 / P76 C①）──────────
+//
+// 那笔旧账：30 份步骤脚本里的截图名写死成 `p70-*`，**每批跑完手工改名**（P74 那批 36 张）。
+// 改名本身不危险，**漏改**才危险——台账写着 `p74-b1-old-dark.png`，盘上那张其实是
+// P70 拍的，而截图是走查唯一的物证。
+//
+// P76 的修法**不是把 30 份里的 `p70-` 改成 `p76-`**（那只是把同一个洞挪了一批，
+// 还得把「步骤脚本一个字节不改」那条规矩作废）。所有截图只有一条出口——
+// `cdp.mjs` 的 `d.shot()`——前缀在那儿从 `WALKTHROUGH_SHOT_PREFIX` 来。
+//
+// 这一段核三样，**例 / 反例跑在断言之前**：
+//  ⑥ 那个改名函数本身对不对（6 条例 / 反例，含三条「不许动」的）；
+//  ⑦ `cdp.mjs` 的 `shot()` **真的调了它**（摘掉整行注释再判——注释里提一嘴不算）；
+//  ⑧ 步骤脚本里**还有多少张写死的批次前缀**：这个数**只准往下走**。
+//     它不是 0 也没关系（这一批就不是 0），要紧的是**它们现在都会被前缀改掉**。
+const { withBatchPrefix } = await import(path.join(KIT, 'shotname.mjs')) as {
+  withBatchPrefix: (n: string, p: string | undefined) => string
+}
+const SHOT_CASES: [string, string | undefined, string][] = [
+  // 例：写死的批次前缀被换掉
+  ['p70-bnew-1-open-light.png', 'p76', 'p76-bnew-1-open-light.png'],
+  ['p70-b8-flipday-1-light.png', 'p76', 'p76-b8-flipday-1-light.png'],   // 后面的数字一个不许碰
+  ['p47-5-old-ctx-light.png', 'p76-', 'p76-5-old-ctx-light.png'],        // 末尾多给一个 `-` 也认
+  // 反例：**不许动**的三种
+  ['p70-bnew-1-open-light.png', undefined, 'p70-bnew-1-open-light.png'], // 没设环境变量 → 原样
+  ['debug.png', 'p76', 'debug.png'],                                     // 名字里没有批次前缀 → 不许硬加
+  ['/tmp/p70-x/p60-a.png', 'p76', '/tmp/p70-x/p76-a.png'],               // 只动最后一段，目录名不许动
+]
+console.log(`⑥ 截图批次前缀：${SHOT_CASES.length} 条样本`)
+if (SHOT_CASES.length < 6) fail('截图前缀样本少于 6 条 —— 例 / 反例两侧至少各要有几条')
+for (const [name, prefix, want] of SHOT_CASES) {
+  const got = withBatchPrefix(name, prefix)
+  if (got !== want) {
+    fail(`截图前缀样本 ${JSON.stringify([name, prefix])}：读回 ${JSON.stringify(got)}，该是 ${JSON.stringify(want)}`)
+  }
+}
+{
+  // **接线洞单独一条断言**：`shot()` 真的调了它。**摘掉整行注释再判**——
+  // 「文件里有这个串」≠「这段代码还在跑」（P68 第 ⑤ 刀 / P76 第 ⑪ 刀都栽在这上面）。
+  const cdpCode = readFileSync(path.join(KIT, 'cdp.mjs'), 'utf8')
+    .split('\n').map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l)).join('\n')
+  if (!/name = withBatchPrefix\(name, process\.env\.WALKTHROUGH_SHOT_PREFIX\)/.test(cdpCode)) {
+    fail('`cdp.mjs` 的 `shot()` 没在用 `withBatchPrefix(…, WALKTHROUGH_SHOT_PREFIX)` —— '
+      + '截图名的批次前缀又回到「每批手工改 36 张」了（P74 问题 #6）')
+  }
+}
+{
+  // 步骤脚本里写死的批次前缀还剩几张。**只准往下走**：这个数涨了，说明又有人
+  // 往步骤脚本里写死了新的一批号；而它现在不用是 0 —— 它们都会被前缀改掉。
+  // **量出来的是 37，不是 P74 台账上那个 36**：那个 36 是**那一趟真拍下来**、
+  // 事后手工改名的张数，源码里写死的是 37 张（有一张那一趟没跑到）。
+  // **「台账上的数」和「源码里的数」是两把尺**，这儿钉的是后者。
+  const MAX_HARDCODED = 37
+  let hard = 0
+  for (const f of stepFiles) {
+    const src = readFileSync(f, 'utf8')
+    hard += [...src.matchAll(/'(p\d+-[\w.-]*\.png)'/g)].length
+      + [...src.matchAll(/`(p\d+-[^`$]*\.png)`/g)].length
+  }
+  console.log(`⑦ 步骤脚本里写死的批次前缀截图名：${hard} 张（上限 ${MAX_HARDCODED}，只准往下走）`)
+  if (hard > MAX_HARDCODED) {
+    fail(`步骤脚本里写死的批次前缀截图名涨到 ${hard} 张（上限 ${MAX_HARDCODED}）—— `
+      + '别再往步骤脚本里写批次号了，前缀从 `WALKTHROUGH_SHOT_PREFIX` 来')
+  }
+  if (hard === 0) fail('一张写死的批次前缀都没扒到 —— 抽取正则坏了，第 ⑦ 条会一直绿')
+}
+
+// ── 第四件事：**「翻页成功」只许有一个判法**（P74 问题 #1 / P76 C②）─────────
+//
+// P58 问题 #8 → P74 问题 #1，**同一个坑在同一格里重演了两批**：
+// `b3old.mjs` 的「翻到别的一天 → 确认框该作废」连点**同一个方向**的箭头，
+// 站在最老那天上第二下什么都没发生（`next: false`），于是「确认框还在」
+// 被读成产品缺陷。**「点过了 ≠ 翻过了」。**
+//
+// `flipday60.mjs` 是为这件事写的那一份，判法只有一个：**日期真的变了**。
+// P76 把 `b3old.mjs` 那一格换成了它（`flip()` 导出出来共用）。这一条钉住那件事——
+// **不然下一批换个人重写那一格，坑会第三次重演**。
+{
+  const flipSrc = readFileSync(path.join(STEPS, 'flipday60.mjs'), 'utf8')
+  if (!/export async function flip\(/.test(flipSrc)) {
+    fail('`flipday60.mjs` 不再导出 `flip()` —— 那是「日期真的变了」这个判法的唯一一份')
+  }
+  const b3 = readFileSync(path.join(STEPS, 'b3old.mjs'), 'utf8')
+  const b3code = b3.split('\n').map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l)).join('\n')
+  if (!/import \{ flip \} from '\.\/flipday60\.mjs'/.test(b3code)) {
+    fail('`b3old.mjs` 不再用 `flipday60.mjs` 的 `flip()` 翻天 —— '
+      + '「点过了 ≠ 翻过了」那个坑会第三次重演（P58 #8 / P74 #1）')
+  }
+  if (!/真翻了吗/.test(b3code)) {
+    fail('`b3old.mjs` 的翻天那一格不再打印「真翻了吗」—— '
+      + '没有这一行，「确认框还在」跟「压根没翻页」在日志上分不开')
+  }
+}
+
 console.log(`\n扫了 README 1 份 / 点名文件 ${named.length} 条 / 步骤脚本 ${stepFiles.length} 份`
   + `（入口 ${entries}）/ 环境变量 ${exported.length} 个 / 状态栏样本 ${STATUS_WORDS_CASES.length} 条；`
   + `对不上 ${bad} 个`)
