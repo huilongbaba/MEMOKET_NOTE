@@ -20,16 +20,44 @@
  *
  *     npx tsx scripts/check-walkthrough-selectors.mts <scratch>/p66/steps
  *
- * **两遍抽取，因为一遍会漏**：
+ * **三遍抽取，因为前两遍的并集还是会漏**：
  *  ① 前缀表（P62 原版）：`.mm-* / .cm-* / .palette-* …` 这些已知前缀，整份源码里抓。
  *  ② 选择器字面量（P66 加）：只看**真的被当选择器传进去**的那些字符串
  *     （`querySelectorAll('…')` / `d.must('…')` / `d.texts('…')` …），
  *     从里头抠类名 —— **前缀表外的类名第 ① 遍一个都看不见**，而
  *     「新写的选择器用了个没见过的前缀」正是最容易漏的那一类。
+ *  ③ **拼出来的选择器**（P67 加，P66 留的第 ④ 条）：`d.count('.' + kind)` 这种
+ *     **前两遍都抓不到**。第 ① 遍看见的是注释和方法名那一类字面 `.xxx`；
+ *     第 ② 遍抓的是「紧跟在 `(` 后面的那个字符串」，而 `'.' + kind` 里
+ *     **那个字符串就是一个孤零零的 `.`**，`CLASS_IN_SEL_RE` 从里头抠不出任何类名，
+ *     于是它**静悄悄地过**。
+ *
+ * ### 第 ③ 遍的判据，为什么是这一条（而不是「把 `'.' + kind` 也静态算出来」）
+ *
+ * 算不出来 —— `kind` 是运行时的值，静态核**本来就不该假装知道**它是什么。
+ * 所以这一遍换了个问法：**拼出来的选择器选空了，谁会吵？**
+ *  · 走 `must()` / `mustTexts()` / `click()` / `clickText()` / `rclick()` / `readCard()`
+ *    —— 这几个**选不到当场抛**（`must` 的那句「选不到 ≠ 没有」）。静态核不了没关系，
+ *    运行期有人管。**只计数，不报错。**
+ *  · 走 `count()` / `texts()` / `text()` / `exists()` / `menuItems()` / `rect()` /
+ *    `findText()` / `querySelectorAll()` —— 这几个选不到回 `0` / `[]` / `null`，
+ *    **跟「产品里真的没有」读起来一模一样**。静态核不了 + 运行期不吭声 =
+ *    **两头都没人管**，正是 P60 问题 #6 那两格躺两批的形状。**点名报错。**
+ *
+ * **`this.xxx(…)` 不算**（判据宁可窄）：量具库自己内部把 `sel` 参数传来传去
+ * （`must` 里的 `this.count(sel)`、`click` 里的 `this.rect(sel)`）不是「拼选择器」。
+ * 先量后加的这一条：不排除 `this` 时，光仓库里那一份公共驱动就误报 **6 处**。
+ *
+ * **这一遍今天在仓库里扫不到调用点**（公共驱动只有定义、没有调用方；步骤脚本还在
+ * scratch，P66 留给下一批第 3 条）。所以它的证据不是「跑绿了」，是突变验：
+ * 现造一个量具目录，`d.count('.' + kind)` 一刀下去它**红且点名**，
+ * `d.must('.' + kind)` 一刀下去它**绿、但第 ③ 遍的计数从 0 变 1**
+ * —— **红不了不等于闸没了**（P66 第 ⑪ 刀那一课）。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 import { corpus } from './_corpus.mts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -63,6 +91,17 @@ const WILD_RE = /\[class\s*\*=\s*["'][^"']+["']\]/g
  * 出了 CSS 选择器字符集的串，一律不抠。 */
 const LOOKS_LIKE_SELECTOR = /^[\w\s.#>+~*[\]="'^$|:(),-]*$/
 
+/** ③ 选不到会**当场抛**的读法：静态核不了没关系，运行期有人管。 */
+const THROWS = new Set(['must', 'mustTexts', 'click', 'clickText', 'rclick', 'readCard'])
+/** ③ 选不到**一声不响**回 `0` / `[]` / `null` 的读法：静态核不了就没人管了。 */
+const SILENT = new Set(['querySelectorAll', 'querySelector', 'count', 'texts', 'text',
+  'exists', 'menuItems', 'rect', 'findText', 'expandDetails'])
+
+/** 这个实参是不是一个**写死的**选择器串（那第 ② 遍已经管着了）。 */
+function isPlainSelector(a: ts.Node): boolean {
+  return ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)
+}
+
 /** 注释里写的类名不算「在选」—— 这一份自己的说明里就写着 `.cm-margin-dot` 这种反例。
  *  方法调用也不算（`d.cmText()` 的 `.cmText` 不是选择器）。 */
 function strip(src: string): string {
@@ -87,6 +126,10 @@ for (const d of EXTRA) {
 corpus(files, 1, '量具文件')
 
 let wilds = 0
+/** 第 ③ 遍的分母 / 战果。`builtSafe` 是「拼出来的，但走会抛的读法」——**它不是错**，
+ *  打出来是为了让「绿」有个数：0 → 1 说明这一遍真的看见了那一刀（P66 第 ⑪ 刀那一课）。 */
+let seenCalls = 0, builtSafe = 0
+const builtBlind: string[] = []
 const seen = new Map<string, { files: Set<string>, how: Set<string> }>()
 const note = (cls: string, f: string, how: string) => {
   if (!seen.has(cls)) seen.set(cls, { files: new Set(), how: new Set() })
@@ -108,9 +151,39 @@ for (const f of files) {
     if (sel.includes('${') || !LOOKS_LIKE_SELECTOR.test(sel)) continue
     for (const c of sel.matchAll(CLASS_IN_SEL_RE)) note(c[1], show, '选择器字面量')
   }
+  // ③ 拼出来的选择器。**拿 AST 不拿正则**：这一遍问的是「第一个实参是不是一个写死的串」，
+  // 而 `'.' + kind` / `` `.${kind}` `` / `SEL[kind]` 各长一个样，正则挨个描一遍
+  // 就是又一把会漏的尺子 —— 而这一条闸存在的全部理由就是「前两遍会漏」。
+  const sf = ts.createSourceFile(f, raw, ts.ScriptTarget.Latest, true)
+  const walk = (n: ts.Node) => {
+    if (ts.isCallExpression(n) && n.arguments.length && ts.isPropertyAccessExpression(n.expression)) {
+      const name = n.expression.name.text
+      // **`this.xxx(…)` 不算**：量具库自己把 `sel` 参数传来传去不是「拼选择器」。
+      const onThis = n.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+      if (!onThis && (THROWS.has(name) || SILENT.has(name))) {
+        seenCalls++
+        const a = n.arguments[0]
+        if (!isPlainSelector(a)) {
+          const { line } = sf.getLineAndCharacterOfPosition(a.getStart(sf))
+          const where = `${show}:${line + 1}  ${name}(${a.getText(sf).slice(0, 60)})`
+          if (THROWS.has(name)) { builtSafe++; console.log(`  拼出来（运行期会抛，不算洞）  ${where}`) }
+          else builtBlind.push(where)
+        }
+      }
+    }
+    ts.forEachChild(n, walk)
+  }
+  walk(sf)
 }
 
 let bad = 0
+for (const where of builtBlind) {
+  bad++
+  console.log('✗ 拼出来的选择器走了**静默读法**，静态核不了、运行期也不吭声 —— '
+    + '选不到会回 0 / [] / null，跟「产品里真的没有」读起来一模一样。'
+    + '改走 `must()` / `mustTexts()`（选不到当场抛），或者把选择器写死：')
+  console.log(`    ${where}`)
+}
 for (const [cls, info] of [...seen].sort()) {
   // 前端源码里出现过这个类名就算数（className / styles.css 规则 / 探针里都算）
   if (HAY.includes(cls)) continue
@@ -128,6 +201,8 @@ if (seen.size < MIN_CLASSES) {
   process.exit(1)
 }
 
-console.log(`\n扫了 ${files.length} 个量具文件 / ${seen.size} 个类名 / ${wilds} 处通配；对不上 ${bad} 个`)
+console.log(`\n扫了 ${files.length} 个量具文件 / ${seen.size} 个类名 / ${wilds} 处通配；`
+  + `第 ③ 遍 ${seenCalls} 个调用点（拼出来的：会抛 ${builtSafe} / 静默 ${builtBlind.length}）；`
+  + `对不上 ${bad} 个`)
 if (bad) process.exit(1)
 console.log('OK: 量具里选的每一个类名在 frontend/src 里都真的有')

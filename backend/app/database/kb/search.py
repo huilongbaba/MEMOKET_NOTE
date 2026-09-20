@@ -896,7 +896,8 @@ def _IS_CJK(ch: str) -> bool:
 _EDGE_STOP = "的了在是和与及或把被对到从这那我们你他她它就也都还又很不没有个一着过为以上里并且而但号日上下前后中"
 
 
-def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
+def matched_terms(rows: list[dict], query: str, memory, store,
+                  *, common=None, segment=None) -> list[str]:
     """The query terms that actually appear in the results.
 
     The old return value was "terms the vocabulary resolved", which after
@@ -904,8 +905,20 @@ def matched_terms(rows: list[dict], query: str, memory, store) -> list[str]:
     perfectly. The memory panel shows this to the user as "what it searched
     for", so it has to be the terms that did the work, not the ones a lookup
     table happened to recognise.
+
+    **`common` / `segment` 是 P67 ② 接上的那两个实参**，理由就是上面那句话的后半句：
+    「**得是真干了活的那几个词**」。P65 ① 把取词那一层的排序换成了「实词优先」，
+    **但只接在 `rank` 上**——这一处还走 `weigh is None`，于是面板上那行「命中：」
+    是按**碎片优先**取的前 16 个里挑出来的，跟真正排上来的那一份**不是同一份**
+    （P65「留给下一批」②，原话：「排序用实词优先，显示还用碎片优先」）。
+    同一个 `_weigher(query, segment, common)`、同一份口径，**不另起一把尺**。
+
+    **这一刀一条召回都不动**：`rows` 是调用方排好递进来的，这里只决定
+    「把哪几个词写给用户看」。全库 765 条对拍时 `top8` **逐条相同**是这一批的
+    自检条件（对不上就是接错层了）。**不给这两个实参就是原样**——
+    假的 memory / 建不出索引的那一档逐字退回 `weigh is None`。
     """
-    terms = _terms(memory, query)
+    terms = _terms(memory, query, _weigher(query, segment, common))
     texts = [(store.facts.get(r.get("id")).text if store.facts.get(r.get("id")) else "") or "" for r in rows]
     hit: set[str] = set()
     for x in texts:

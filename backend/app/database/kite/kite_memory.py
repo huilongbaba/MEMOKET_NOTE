@@ -962,10 +962,17 @@ class UserMemory:
                                 query, self, store, limit=limit,
                                 evidence=evidence, common=common, attested=attested,
                                 segment=segment)
+            # **这一处是 fallback，逐字保持原样**（P61 立的那条，P67 ② 复核过）：
+            # 行级回退是「上面那条路一条都没排出来」才走的，它自己没有 `segment`
+            # 那一档（`evidence=False` 时 `segment` 本来就是 `None`）。
             surfaces = surfaces + self._cjk_terms(query)[:3]
         else:
+            # **这两个实参是 P67 ② 接上的**：面板那行「命中：」得跟 `rank` 真用的
+            # 那一份是同一份（P65「留给下一批」②）。`evidence=False` 时 `segment`
+            # 就是 `None`，`_weigher` 回 `None`，这一支**逐字退回**改之前那一版。
             surfaces = surfaces + [t for t in search.matched_terms(
-                facts, query, self, store) if t not in surfaces]
+                facts, query, self, store, common=common, segment=segment)
+                if t not in surfaces]
 
         from ..kb.scope import filter_rows
         facts = filter_rows(facts, scope)     # 「全部」也要筛：它不含屏幕活动
@@ -1004,8 +1011,13 @@ class UserMemory:
         """
         store, _vocab = self._index()
         q = search.clean_query(query)
-        terms = search._terms(self, q)
         common, attested, segment = self.common_term(), self.vocab_term(), self.segment()
+        # **`_weigher(...)` 是 P67 ② 接上的**，跟 `matched_terms` 同一个理由：
+        # 右栏摆出来的证据 chip 得是**真干了活的那几个词**。这条路原来走 `weigh is None`，
+        # 于是它按碎片优先取前 16 个，而 `rank` 按实词优先——两份词。
+        # **一条召回都不动**：`rows` 是 `/recall` 排好递进来的（上面文档串第一段就是这句），
+        # 这里只决定摆哪几个 chip。
+        terms = search._terms(self, q, search._weigher(q, segment, common))
         squeezed = search.squeeze(q)
         idx = self._grep_index(store)
         seen: set[str] = set()
