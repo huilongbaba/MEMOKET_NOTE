@@ -750,6 +750,63 @@ def _word_bounds(text: str, segment) -> set[int]:
     return out
 
 
+def _token_runs(text: str, segment) -> list[tuple[int, int, str]]:
+    """`text` 切完词之后的 `[(起, 止, 词)]`，**按顺序**。
+
+    跟 `_token_spans`（集合，问「某一段是不是正好一个 token」）、`_word_bounds`（偏移集合，
+    问「某个位置是不是边界」）**同一份切词的三种读法**——`display_terms` 那一层要的是
+    「这一段左右各压在哪个 token 上、中间有哪几个 token」，集合答不了，所以摆一个有序的。
+    """
+    out: list[tuple[int, int, str]] = []
+    pos = 0
+    for t in segment(text):
+        out.append((pos, pos + len(t), t))
+        pos += len(t)
+    return out
+
+
+def _word_window(a: int, b: int, squeezed: str, segment) -> str:
+    """把 `[a, b)` 这一段**两端吸附到词边界**，再**按整词**剥掉两端的虚词（P71 ①）。
+
+    **这一条替掉的是 P48 ③ 量过的那条规则**（`display_terms` 里「往右接到这一串汉字的
+    尽头」，2193 串次 / 1075 种）。那条规则接的是**汉字**不是**词**，于是接出来的
+    `华为现` / `国燃气交付` / `据隐私安全` 都是「一个真词 + 粘上邻词半截」。吸附到词边界
+    接的是词，`灵衢交换架构` / `刀片服务器` / `英伟达` 这种整词才摆得出来（P4 #6）。
+
+    **两端一起吸附，不是只吸附右端**：P69 量过「把往右接镜像成也往左接」（VB），
+    碎片 488 → **551**、串还更长（4.54 → 4.88）——**「一开始就别切错」不等于「两头都多接
+    几个字」**，那一刀当场否掉了。吸附是**贴着分词器的边界停**，跟「多接几个字」方向相反。
+
+    ## 剥法为什么跟着换掉（P69 ③ 判「VC 更对但不是这一刀」的第 2 条理由，这一批还掉了）
+
+    P69 量的那版 VC 是「吸附完照旧 `strip(_EDGE_STOP)`」，剩 **108 串次**碎片。
+    这一批把那 108 条逐条挖开（`<scratch>/p71/acct108.py`），成因**只有一个**：
+
+      · 吸附出来的 **3515** 个窗口，`_aligned` 判「在词边界上」的 **3515 / 3515，一个不漏**
+        ——吸附本身**按构造**就是对的；
+      · 而 `strip(_EDGE_STOP)` 是**按字**剥的，它**把刚吸附上的那条边界又剥回词中间**：
+        剥完判「碎」的 **122 串次 / 73 种，100% 是剥之前本来在边界上的**
+        （`中国农行` → `国农行`、`那天津港` → `天津港`、`万公里` → `万公`、
+        `有人会` → `人会`、`这类结论` → `类结论`）。输出那一层看到的 108 是这 122
+        过完 `len >= 2` 和包含关系去重之后剩下的。
+
+    所以这一条**剥整词**：一个 token 的字**全部**落在 `_EDGE_STOP` 里才整个剥掉。
+    剥完仍然落在词边界上，全库量出来碎片 **0 串次**（`_EDGE_STOP` 这张表一个字没动——
+    它还是那张「显示时两端该去掉什么」的表，换的只是**按字剥**还是**按词剥**）。
+
+    **这一层判不了的时候（`segment is None`）根本走不到这儿**，调用方退回原样。
+    """
+    toks = _token_runs(squeezed, segment)
+    lo = next((s for s, e, _t in toks if s <= a < e), a)
+    hi = next((e for s, e, _t in toks if s < b <= e), b)
+    inner = [(s, e, t) for s, e, t in toks if s >= lo and e <= hi]
+    while inner and all(c in _EDGE_STOP for c in inner[0][2]):
+        inner.pop(0)
+    while inner and all(c in _EDGE_STOP for c in inner[-1][2]):
+        inner.pop()
+    return squeezed[inner[0][0]:inner[-1][1]] if inner else ""
+
+
 def _aligned(label: str, squeezed: str, segment) -> bool | None:
     """这一串**两端在不在查询的词边界上**（P41 尺子 C）。`None` = 这一层判不了。
 
@@ -852,8 +909,29 @@ def qualifies(hits: list[str], query: str, *, common=None, attested=None,
 
 def display_terms(terms: list[str], query: str, *, segment=None) -> list[str]:
     """给右栏看的查询词：英文词 / 数字原样；中文 n-gram 片段（「小时预」「号上众」「并以」）合成它们在
-    查询里连成的整段、再剥掉两端的虚词——用户看到的是「众筹」「学位」这种词，不是切碎的三个字（P4 #6）。
-    没有分词器，这是最接近「整词」的做法；合不出 ≥2 字的就不显示。
+    查询里连成的整段、**两端吸附到词边界**再按整词剥掉虚词——用户看到的是「众筹」「学位」这种词，
+    不是切碎的三个字（P4 #6）。合不出 ≥2 字的就不显示。
+
+    **P71 ①：吸附到词边界这一刀落了**（`_word_window`，替掉 P48 ③ 量过的「往右接到汉字串尽头」
+    那条规则）。全库 765 条对拍（HEAD = `4afa984`）：
+
+    | | 汉串次 | `_aligned` 对齐 | **碎** | 种 | **均字** |
+    |---|---:|---:|---:|---:|---:|
+    | P48 ③ 量的那版规则（没有 ② 那道过滤） | 2614 | 2046 | **488** | 1498 | 4.54 |
+    | P69 ② 之后（今天的 HEAD） | 2198 | 2110 | 8 | 1270 | 4.34 |
+    | P69 量的 VC（吸附完照旧按字剥） | 2229 | 2039 | 108 | 1179 | 2.99 |
+    | **这一刀**（吸附 + 按整词剥） | 2543 | **2463** | **0** | 1210 | **2.89** |
+
+    命中行变了 **637** 条（user 472 / script 136 / fixture 29），**一条召回都没动**
+    （top-8 变 0 / 证据 chip 变 0 / `why_empty` 变 0 / 有召回 341 / 召回对 1347，全部逐格相同）；
+    637 条逐条读完，标注 `p71-line637`。四栏一栏没跌（D2 表 B 8 条 · 圆点 166/137/33 ·
+    `recall_selfcheck` 197/195/96 与 192/190/92 · 47 条 46/36/4/6）。
+
+    **`is_merged_word` 那个第四档在这一处从此够不着**（量出来的，不是推的）：
+    吸附完两端按构造就在词边界上，全库 `_aligned` 判 `False` 的 **0** 串次，
+    所以下面那两行在这条路上救回来的是 **0 串次 / 765 条**（P69 ② 那时候是 8 串次）。
+    **不删它**：它是这一处跟 `evidence()` 那一处「同进同退」的那句话本身，
+    删了下次分词器一变就又是两把尺。`evidence()` 那一处**逐字没碰**（chip 变 0 条）。
 
     **`segment` 是 P69 ② 接上的那道显示过滤**：合出来的那一段**在不在查询的词边界上**
     （`_aligned`），跨边界的碎片不摆。判据逐字照 `evidence()` 那三行算——含 P48 ② 那个
@@ -878,6 +956,22 @@ def display_terms(terms: list[str], query: str, *, segment=None) -> list[str]:
     `电脑屏幕`(电脑|屏幕**上**) / `瓷器纹路`(瓷器|纹|路**上**)，右端被分词器
     连着方位词吃进一个 token，而这里剥两端虚词时把那个字剥掉了。**那是 ③ 那一刀的活**
     （两端吸附到词边界，替掉「接到汉字串尽头」），账记在 `docs/TRACELOG-product.md` P69 ③。
+
+    **P71 ① 落了之后那 6 条怎么样了，逐条核过——「还掉」是半还，照实记**
+    （`<scratch>/p71/six.py`，一条不落）：**6 条里 0 条把原串一字不差地还回来**，
+    但 6 条**全部**从「整行不摆这个串」变成「摆一个落在词边界上的串」：
+
+    | 查询 | P69 砍掉的 | P71 摆回来的 | 判 |
+    |---|---|---|---|
+    | i=691 | `众筹页面` | `众筹` | 半还（真整词，少一个词——`页面上` 被分词吃成一个 token） |
+    | i=139 / 460 | `电脑屏幕` | `电脑` | 半还（同上，`屏幕上` 一个 token） |
+    | i=225 | `天津港` | `那天津港` | 还了，**但带着分词器那个错**（`那天`\\|`津港`）→ 第 2 条 |
+    | i=120 / 442 | `瓷器纹路` | `瓷器纹` | 半还，**而且读着不是词**（切词是 `瓷器`\\|`纹`\\|`路上`）|
+
+    **「摆出来的在词边界上」不等于「摆出来的是一个词」**——`_aligned` 量的是「碎」不是「泛」
+    （P41 #2 立的那句话，这一批第二次撞上）。`瓷器纹` / `分钟补` / `深圳特` 这一档
+    是**分词器自己切错**留下的，不归这一层管；全库量在 `docs/TRACELOG-product.md` P71 ②
+    （真横跨两个 token 的 11 处 / 3 种，去掉 `周报` 那 6 个假阳性之后 **5 处 / 2 种**）。
     """
     squeezed = squeeze(query)
     plain: list[str] = []
@@ -903,10 +997,15 @@ def display_terms(terms: list[str], query: str, *, segment=None) -> list[str]:
             merged.append([a, b])
     out = list(plain)
     for a, b in merged:
-        # 片段常常在词中间断掉（「号上众」← 号上众筹）：往后接到这一串汉字的尽头（最多 3 个字、遇虚词停）
-        while b < len(squeezed) and b - a < 8 and _IS_CJK(squeezed[b]) and squeezed[b] not in _EDGE_STOP:
-            b += 1
-        w = squeezed[a:b].strip(_EDGE_STOP)
+        if segment is None:
+            # **没有分词器这一档逐字退回改之前那一版**（假的 memory / 建不出索引）：
+            # 片段常常在词中间断掉（「号上众」← 号上众筹）：往后接到这一串汉字的尽头（最多 3 个字、遇虚词停）
+            while b < len(squeezed) and b - a < 8 and _IS_CJK(squeezed[b]) and squeezed[b] not in _EDGE_STOP:
+                b += 1
+            w = squeezed[a:b].strip(_EDGE_STOP)
+        else:
+            # **两端吸附到词边界 + 按整词剥**（P71 ①）——接的是词不是汉字，理由整段在 `_word_window` 上
+            w = _word_window(a, b, squeezed, segment)
         # **跨词边界的碎片不摆**（P69 ②）：跟 `recall_evidence` 砍证据 chip 的是同一格
         # （`evidence()` 里那三行逐字，含 `is_merged_word` 那个第四档 `None`）。
         # `segment is None` 时 `_aligned` 回 `None`，这一条整个不启用 = 原样。
