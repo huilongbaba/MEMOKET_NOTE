@@ -34,6 +34,14 @@
  *     第 ② 遍抓的是「紧跟在 `(` 后面的那个字符串」，而 `'.' + kind` 里
  *     **那个字符串就是一个孤零零的 `.`**，`CLASS_IN_SEL_RE` 从里头抠不出任何类名，
  *     于是它**静悄悄地过**。
+ *  ②′ **id 选择器**（P74 加）：`#memoket-wrong-backend` 这种，前三遍一个都看不见。
+ *     跟类名同一条理由——**选择器指着一个不存在的东西，也得吵出来**。
+ *
+ * **P74 还修了第 ② 遍那条引号正则**（详见 `SEL_CALL_RE` 上面那段）：
+ * 「单引号包着、里头带双引号」的选择器**整串静默跳过**，于是
+ * `steps/whoami52.mjs` 那条指着三个不存在的类名的选择器，**从 P62 到 P72 一路没被点名**。
+ * 修完当场从 48 个类名涨到 52、点名 2 个。第 ② 遍现在自带**例 / 反例 6 条**，
+ * 跑在真扫描之前——**任何「核对」先喂它一个该红 / 该绿的反例**。
  *
  * ### 第 ③ 遍的判据，为什么是这一条（而不是「把 `'.' + kind` 也静态算出来」）
  *
@@ -93,9 +101,63 @@ const HAY = srcFiles.map((f) => readFileSync(f, 'utf8')).join('\n')
 
 /** ① 已知前缀。 */
 const CLASS_RE = /\.((?:cm|mm|kb|mem|note|pane|palette|toast|toaster|margin|context|journey|round|agent|chip|ribbon|slide|tab)[a-zA-Z0-9_-]*)/g
-/** ② 真的被当选择器用的那些字符串。函数名列窄一点，宁可漏也别把散文当选择器。 */
-const SEL_CALL_RE = /(?:querySelectorAll|querySelector|closest|matches|count|texts|text|exists|must|mustTexts|rect|click|rclick|clickText|findText|readCard|menuItems|expandDetails)\(\s*(['"`])((?:[^'"`\\]|\\.)*)\1/g
+/** ② 真的被当选择器用的那些字符串。函数名列窄一点，宁可漏也别把散文当选择器。
+ *
+ * **P74 修的那一条（判据比产品窄的第七张脸）**：老版本写的是
+ * `(['"`])((?:[^'"`\\]|\\.)*)\1` —— 一个反向引用配一个「三种引号都不许出现」的字符类。
+ * 于是**凡是用单引号包着、里头又带双引号的选择器，整串静默跳过**，
+ * 比如走查量具里到处都是的这一种：
+ *
+ *     document.querySelector('.selfcheck, [class*="selfcheck"], .banner-error')
+ *
+ * 串里那个 `"` 把匹配当场掐断，`\1`（`'`）再也对不上 —— 整条选择器一个类名都抠不出来。
+ * 实拍后果：`steps/whoami52.mjs` 那三个类名（`.selfcheck` / `[class*="selfcheck"]` /
+ * `.banner-error`）**前端里一个字都没有**，而这条闸从 P62 到 P72 一路报「对不上 0 个」。
+ * 那一步于是每批都往台账上抄一句 `自检横幅: (没有)` —— **那个「没有」是量具的，不是产品的**。
+ * （真的那条横幅是 `backendIdentity.ts:shout()` 建的 `id="memoket-wrong-backend"`，
+ *  **没有 class**。）
+ *
+ * 跟 P72 那条 `\w` 吃不下中文文件名是同一个形状：**判据的字符类比产品窄**。
+ * 改法：引号种类先定下来，串里允许出现**另外那两种**引号。
+ */
+const SEL_CALL_RE = /(?:querySelectorAll|querySelector|closest|matches|count|texts|text|exists|must|mustTexts|rect|click|rclick|clickText|findText|readCard|menuItems|expandDetails)\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`)/g
 const CLASS_IN_SEL_RE = /\.([A-Za-z_][\w-]*)/g
+/** ②′ **id 选择器也算**（P74）：`#memoket-wrong-backend` 这种，前两遍一个都看不见。
+ *  它跟类名是同一件事——**选择器指着一个不存在的东西，也得吵出来**（P47 的 `[data-note-id]`）。 */
+const ID_IN_SEL_RE = /#([A-Za-z_][\w-]*)/g
+
+/** 第 ② 遍的**例 / 反例**（P72 那条 README 路径正则栽过之后立的规矩：
+ *  **任何「核对」先喂它一个该红 / 该绿的反例**）。跑在真扫描之前，过不了当场退。 */
+const SEL_SAMPLES: [string, string[]][] = [
+  // ★ 这一条正是 P74 修的那个洞：单引号包着、里头带双引号
+  [`document.querySelector('.selfcheck, [class*="selfcheck"], .banner-error')`,
+    ['selfcheck', 'banner-error']],
+  // 双引号包着、里头带单引号（镜像）
+  [`document.querySelectorAll("[data-x='1'].pane-tab")`, ['pane-tab']],
+  // 老版本本来就过得了的两条，**别修坏了**
+  [`d.texts('.pane-tab', 12)`, ['pane-tab']],
+  [`d.must('.cm-content .cm-line')`, ['cm-content', 'cm-line']],
+  // 反例：拼出来的选择器（带 `${}`）一律不抠——静态核不了就别假装核了
+  ['d.count(`.${kind}`)', []],
+  // 反例：不是选择器的散文串，不许从里头抠「类名」（P66 的 `.stringify`）
+  [`document.querySelector('button[title=' + JSON.stringify(t) + ']')`, []],
+]
+{
+  let bad = 0
+  for (const [line, want] of SEL_SAMPLES) {
+    const got: string[] = []
+    for (const m of line.matchAll(SEL_CALL_RE)) {
+      const sel = m[1] ?? m[2] ?? m[3]
+      if (sel.includes('${') || !/^[\w\s.#>+~*[\]="'^$|:(),-]*$/.test(sel)) continue
+      for (const c of sel.matchAll(CLASS_IN_SEL_RE)) got.push(c[1])
+    }
+    if (got.sort().join(',') !== [...want].sort().join(',')) {
+      bad++
+      console.error(`✗ 第 ② 遍的样例对不上：${line}\n    抠出 ${JSON.stringify(got)}，该是 ${JSON.stringify(want)}`)
+    }
+  }
+  if (bad) { console.error('✗ 抽取正则自己的例 / 反例没过 —— 后面扫出来的数一个都不算'); process.exit(1) }
+}
 const WILD_RE = /\[class\s*\*=\s*["'][^"']+["']\]/g
 /** 这个串**看起来像个选择器**吗？不像就整串扔掉，别从里头抠「类名」。
  *
@@ -190,6 +252,12 @@ const note = (cls: string, f: string, how: string) => {
   seen.get(cls)!.files.add(f)
   seen.get(cls)!.how.add(how)
 }
+/** id 选择器（P74 ②′）。跟类名分开记：报出来的那句话不一样，数也要分开数。 */
+const seenIds = new Map<string, Set<string>>()
+const noteId = (id: string, f: string) => {
+  if (!seenIds.has(id)) seenIds.set(id, new Set())
+  seenIds.get(id)!.add(f)
+}
 for (const f of files) {
   const raw = readFileSync(f, 'utf8')
   const src = strip(raw)
@@ -201,9 +269,10 @@ for (const f of files) {
     note(m[1], show, '前缀')
   }
   for (const m of src.matchAll(SEL_CALL_RE)) {
-    const sel = m[2]
+    const sel = m[1] ?? m[2] ?? m[3]
     if (sel.includes('${') || !LOOKS_LIKE_SELECTOR.test(sel)) continue
     for (const c of sel.matchAll(CLASS_IN_SEL_RE)) note(c[1], show, '选择器字面量')
+    for (const i of sel.matchAll(ID_IN_SEL_RE)) noteId(i[1], show)
   }
   // ③ 拼出来的选择器。**拿 AST 不拿正则**：这一遍问的是「第一个实参是不是一个写死的串」，
   // 而 `'.' + kind` / `` `.${kind}` `` / `SEL[kind]` 各长一个样，正则挨个描一遍
@@ -247,19 +316,27 @@ for (const [cls, info] of [...seen].sort()) {
   console.log(`✗ 「.${cls}」在 frontend/src 里一个字都搜不到 —— 选不到 ≠ 没有（${[...info.how].join(' / ')}）：`)
   for (const f of info.files) console.log(`    ${f}`)
 }
+for (const [id, fs2] of [...seenIds].sort()) {
+  if (HAY.includes(id)) continue
+  bad++
+  console.log(`✗ 「#${id}」在 frontend/src 里一个字都搜不到 —— 选择器指着一个不存在的东西（P47 的 \`[data-note-id]\`）：`)
+  for (const f of fs2) console.log(`    ${f}`)
+}
 
 // **量具里一个类名都没抠出来 = 这条闸什么都没核**（正则写坏 / 文件挪位都是这个症状）。
-// P72 之前是 8（只扫公共驱动那一份 = 14 个的六成）。步骤脚本进仓库之后当前值是 **48**，
-// 取六成 → 28。**这个数只准往上调**：它跟上面那条「扫描集里得有 steps/」是两把不同的尺
+// P72 之前是 8（只扫公共驱动那一份 = 14 个的六成）。步骤脚本进仓库之后是 48 / 取六成 28。
+// **P74 把第 ② 遍那条引号正则修好之后是 50**（`whoami52` 那两个抠出来又被改掉之后的净值；
+// 修好的那一刻是 52，两个正是它一直漏掉的 `.selfcheck` / `.banner-error`），取六成 → **30**。
+// **这个数只准往上调**：它跟上面那条「扫描集里得有 steps/」是两把不同的尺
 // ——那条管「目录还在不在扫」，这条管「抠出来的东西还够不够多」。
-const MIN_CLASSES = 28
+const MIN_CLASSES = 30
 if (seen.size < MIN_CLASSES) {
   console.error(`✗ 只抠出 ${seen.size} 个类名（至少该有 ${MIN_CLASSES} 个）——`
     + '抽取正则或扫描目录坏了，这条闸会一直绿。别把这个数字改小')
   process.exit(1)
 }
 
-console.log(`\n扫了 ${files.length} 个量具文件 / ${seen.size} 个类名 / ${wilds} 处通配；`
+console.log(`\n扫了 ${files.length} 个量具文件 / ${seen.size} 个类名 / ${seenIds.size} 个 id / ${wilds} 处通配；`
   + `第 ③ 遍 ${seenCalls} 个调用点（拼出来的：会抛 ${builtSafe} / 静默 ${builtBlind.length}）；`
   + `对不上 ${bad} 个`)
 if (bad) process.exit(1)

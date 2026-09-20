@@ -189,10 +189,16 @@ def _script_texts() -> dict[str, str]:
 # 「会跑 harness」的确定性判据：要么打了那两个跑批路由，要么直接 import 生产的
 # harness 包。**不是一份名单**——名单会腐烂，而新加的脚本必须自动落进网里。
 _RUNS_HARNESS = re.compile(r"note-harness/run|writing-plan/run|app\.harness")
-# 唯一豁免：`dump_prompts.py` import 了 `app.harness`，但它只把提示词渲染出来
-# 打印，**一次模型调用都不发、一行都不写**。下面那条断言钉着这个理由，
-# 它哪天开始发调用了，豁免当场失效。
+# 豁免**两个**，而且**每一个都有一条断言钉着它的理由**——豁免也要证明自己还在豁免。
+#   · `dump_prompts.py` import 了 `app.harness`，但它只把提示词渲染出来打印，
+#     **一次模型调用都不发、一行都不写**。
+#   · `walkthrough_fakellm.py`（P74 从 scratch 搬进来的走查假模型）import 了
+#     `app.harness.checks.grounding` —— 读的是**两个门槛常量和一个纯函数**，
+#     拿来在 import 的时候核自己造的那三段够不够长（P62 的教训：
+#     「写在正文里的一句话不是一个数」）。它是一个只听 127.0.0.1 的 HTTP 服务，
+#     **一行库都不碰**：既不 import `store`，也不开任何 sqlite 连接。
 _PROMPT_DUMP_ONLY = "dump_prompts.py"
+_FAKE_LLM_ONLY = "walkthrough_fakellm.py"
 # 真正的接线长这样：一行 `with db_guard.Watch(...)`（行首只能有空白）。
 _WIRED = re.compile(r"^\s*with db_guard\.Watch\(", re.M)
 
@@ -206,7 +212,7 @@ def test_会跑harness的脚本必须夹在Watch里():
     """
     missing = []
     for name, text in _script_texts().items():
-        if name in ("db_guard.py", _PROMPT_DUMP_ONLY):
+        if name in ("db_guard.py", _PROMPT_DUMP_ONLY, _FAKE_LLM_ONLY):
             continue
         # **必须匹配真正的那一行 `with db_guard.Watch(...)`，不能拿子串
         # `"db_guard.Watch(" in text` 了事。** 突变验当场打脸：把 `soak.py` 的
@@ -228,6 +234,30 @@ def test_豁免的那个脚本确实一次调用都不发():
         assert banned not in text, (
             f"{_PROMPT_DUMP_ONLY} 里出现了 {banned}——它不再是「只渲染提示词」，"
             "要么接上 db_guard.Watch()，要么把豁免理由重写")
+
+
+def test_豁免的假模型确实一行库都不碰():
+    """防豁免腐烂（P74）：`walkthrough_fakellm.py` 只是个假模型端点。
+
+    它哪天开始碰库 / 打跑批路由，这条就红，豁免必须重新论证。
+    判据盯的是**性质**（不 import store、不开连接、只从 harness 那边读常量），
+    不是「今天这几行长什么样」。
+    """
+    text = _script_texts()[_FAKE_LLM_ONLY]
+    for banned in ("sqlite3", "from app.database", "import store", "store.",
+                   "note-harness/run", "writing-plan/run"):
+        assert banned not in text, (
+            f"{_FAKE_LLM_ONLY} 里出现了 {banned}——它不再是「只当假模型端点」，"
+            "要么接上 db_guard.Watch()，要么把豁免理由重写")
+    # 它从 `app.harness` 那边只拿这几样（全是只读的常量 / 纯函数）
+    got = re.findall(r"from app\.harness[\w.]* import \(?([^)]+?)\)?\n(?!\s{8})", text)
+    flat = set()
+    for g in got:
+        for x in g.replace("\n", " ").split(","):
+            x = re.sub(r"#.*$", "", x).strip()
+            if x:
+                flat.add(x)
+    assert flat <= {"MIN_CITED_ROUND_CHARS", "MIN_THIN_CHARS", "placeholder_lines"}, flat
 
 
 def test_跑批脚本不许自己拼只读连接():
