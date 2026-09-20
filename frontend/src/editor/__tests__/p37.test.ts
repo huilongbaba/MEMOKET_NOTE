@@ -64,7 +64,9 @@ describe('P37 #2 「校验」空手而归的三种来历，各说各的', () => 
 
   it('接线：App 把整个回包传下去，checked / unparsed 一格都没丢在半路', () => {
     // 量程：把 `<VerifyPanel ... checked=...>` 那一行删掉，这条红。
-    expect(appSrc).toContain('setVerifyResult(r)')
+    // P41 #3 起这一格还多带一个 `passage`（卡上要写清「说的是哪一段」）——
+    // **守的性质一个字没变**：整个回包原样传下去，`checked` / `unparsed` 不许丢在半路。
+    expect(appSrc).toMatch(/setVerifyResult\(\{ \.\.\.r, passage: selection \}\)/)
     expect(appSrc).toContain('checked={verifyResult.checked ?? 0}')
     expect(appSrc).toContain('unparsed={verifyResult.unparsed ?? false}')
     // 老的那条路（只留 findings）不许再有

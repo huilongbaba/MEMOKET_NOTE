@@ -102,6 +102,7 @@ import UserSwitcher from './components/UserSwitcher'
 import VerifyPanel from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
 import { dupSuffixes } from './util/dupTitles'
+import { traceRecallHint } from './util/recallContext'
 import { mermaidSvg } from './editor/mermaid'
 import { parseMini } from './util/miniMarkdown'
 import { slidesToHtml } from './util/slideHtml'
@@ -333,6 +334,14 @@ export default function App() {
   const lastSettled = useRef<unknown>(undefined)
   /** 处置过的那本账变了要重渲染面板（「已处置 2 接受 · 1 撤回」那一行） */
   const [layersTick, setLayersTick] = useState(0)
+  /** **放不回来的那几层**（P41 #5 ② / P39「留给下一批」②）。原来只弹一句 toast：
+   *  用户读完那句话没有任何可按的东西，而那一层的数据其实还在手上。
+   *  留在这里，面板给两个出路：「按现在的正文重新算」/「丢掉这一层」。
+   *  **落库也带着它**（`flushChangeLayers`）——不带的话下一次冲库就把它悄悄抹了，
+   *  那又是一次「静默按接受」。 */
+  const [layerStuck, setLayerStuck] = useState<{ id: string; label: string; why: string[]; saved: SavedLayer }[]>([])
+  const layerStuckRef = useRef<typeof layerStuck>([])
+  useEffect(() => { layerStuckRef.current = layerStuck }, [layerStuck])
   /** 续写写完之后把那一段封成一个撤销单位（P10 C3-2，`editor/undoUnit`）；seq 变了编辑器才动手。 */
   // 撤销分组（P11 #2）：智能续写每一轮开跑加一，编辑器把这一轮落地的所有片段（修订 + 续写）并成一条撤销事件，
   // ⌘Z 一次撤一轮（机制在 `editor/undoUnit.aiSyncSpec` / `MarkdownEditor` 的 content 同步）
@@ -569,7 +578,8 @@ export default function App() {
   // 右键菜单那五个动作的「停止」（P3：模型卡住时原来只能干等 300 秒，连 Esc 都关不掉那个转圈）
   const selectionAbortRef = useRef<AbortController | null>(null)
   // 整个回包而不是只留 findings（P37 #2）：空 findings 那句话要按 `checked` / `unparsed` 分三说。
-  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+  // 外加 `passage`（P41 #3）：这块卡是**按当时选中的那一段**算的，卡上得写出来是哪一段。
+  const [verifyResult, setVerifyResult] = useState<(VerifyResult & { passage: string }) | null>(null)
   // P17 实拍：在 A 篇右键「校验」，切到 B 篇，右栏顶上还挂着 A 的「校验结果」——它是按 A 的选区算的，换篇就清
   useEffect(() => { setVerifyResult(null) }, [current?.id])
   // P17 实拍：右键「自定义提示」→「全部撤回」→ 关掉这篇再打开，正文里冒出一个幻影「硬件」删除标 + 「改动 1」——
@@ -579,7 +589,7 @@ export default function App() {
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
    *  不该离开这一页，弹层要么盖住正文、要么关掉就没了。 */
   const [trace, setTrace] = useState<
-    { answer: string; facts: api.Fact[]; at: string } | null>(null)
+    { answer: string; facts: api.Fact[]; recalled?: number | null; at: string } | null>(null)
 
   const editorViewRef = useRef<EditorView | null>(null)
   /** 右栏「计划」里点目录 / 节拍的行号（P12）：光标跳到正文那一行、滚到中间 */
@@ -1553,7 +1563,12 @@ export default function App() {
     const view = editorViewRef.current
     const id = currentRef.current?.id
     if (!view || !id || layersReady.current !== id) return
-    const payload = serializeLayers(view.state)
+    // **放不回来的那几层原样带着走**（P41 #5 ②）：它们一处都没进编辑器，
+    // `serializeLayers` 看不见它们——不补上的话这一次冲库就等于替用户按了「丢掉这一层」，
+    // 而这一批的整个主题就是「不许静悄悄替他做决定」。`seq` 重新按数组下标排
+    // （后端只拿它排序，P39「留给下一批」③ 已经记过这一格的脆）。
+    const payload = [...serializeLayers(view.state), ...layerStuckRef.current.map((s) => s.saved)]
+      .map((l, i) => (l.seq === i ? l : { ...l, seq: i }))
     if (layersSaved.current.noteId === id && sameLayers(layersSaved.current.payload, payload)) return
     layersSaved.current = { noteId: id, payload }
     void api.saveChangeLayers(id, payload, keepalive)
@@ -1595,6 +1610,7 @@ export default function App() {
     const id = current?.id
     layersReady.current = ''                       // 还没放回来之前，任何一次防抖落库都不许动手
     layersSaved.current = { noteId: '', payload: [] }
+    setLayerStuck([]); layerStuckRef.current = []  // 上一篇放不回来的那几层不许跟到这一篇
     lastSettled.current = undefined
     if (layersTimer.current) { clearTimeout(layersTimer.current); layersTimer.current = null }
     if (!id) return
@@ -1615,19 +1631,77 @@ export default function App() {
           // 它一层都没进编辑器，说「重新打开了 3 层」就是又一次说假话（P37 #2 / #3 同形）。
           const n = new Set([...r.hunks.map((h) => h.key), ...r.settled.map((x) => x.key)]).size
           if (r.conflicts.length) {
-            toast(`重新打开了 ${n} 层还没处置的改动；${r.conflicts.length} 处因为正文改过对不上没能放回：${r.conflicts.slice(0, 2).join('；')}`, 'error')
+            // **不止一句 toast**（P41 #5 ②）：对不上的那几层留在右栏「改动」里，
+            // 每一层给「按现在的正文重新算 / 丢掉这一层」两个出路。
+            const byId = new Map(saved.map((l) => [l.id, l]))
+            const stuck = r.stuck.filter((s) => byId.has(s.id)).map((s) => ({ ...s, saved: byId.get(s.id)! }))
+            // ref 当场也写一份：下面那行基线要把它们算进去，而 setState 是异步的
+            layerStuckRef.current = stuck
+            setLayerStuck(stuck)
+            toast(`重新打开了 ${n} 层还没处置的改动；${r.conflicts.length} 处因为正文改过对不上没能放回——右栏「改动」里可以重新算或者丢掉：${r.conflicts.slice(0, 2).join('；')}`, 'error')
           } else if (n) {
             toast(`上次没处置完的 ${n} 层改动还在右栏「改动」里`)
           }
         }
         layersReady.current = id
         const view2 = editorViewRef.current
-        if (view2) layersSaved.current = { noteId: id, payload: serializeLayers(view2.state) }
+        if (view2) {
+          layersSaved.current = {
+            noteId: id,
+            payload: [...serializeLayers(view2.state), ...layerStuckRef.current.map((s) => s.saved)]
+              .map((l, i) => (l.seq === i ? l : { ...l, seq: i })),
+          }
+        }
         lastSettled.current = view2?.state.field(roundDiffField, false)?.settled
       })
       .catch(() => { layersReady.current = id })
     return () => { alive = false }
   }, [current?.id])
+
+  /** 放不回来的那一层：**按现在的正文再算一次**（P41 #5 ②）。
+   *
+   *  正文在这之后可能又变了（用户照着 toast 把那段话改回去了、或者撤销了一步），
+   *  所以这不是「再试一次同样的算式」——算的是**现在这一份正文**。
+   *  连编辑器里已经挂着的那几层一起重放：`restoreLayers` 那条 effect 是**整份替换**的，
+   *  只塞这一层会把别的层全抹掉。已经挂着的那几层 `content_tag` 就是当前正文，
+   *  走的是「按坐标精确放回」，一个字都不会漂。 */
+  const recomputeStuckLayer = useCallback((key: string) => {
+    const view = editorViewRef.current
+    const entry = layerStuckRef.current.find((s) => s.id === key)
+    if (!view || !entry) return
+    const doc = view.state.doc.toString()
+    const all = [...serializeLayers(view.state), entry.saved]
+    const r = restoreLayers(all, doc)
+    view.dispatch({ effects: restoreLayersEffect.of({ layers: r.layers, hunks: r.hunks, settled: r.settled }) })
+    setPendingDiff(pendingHunks(view))
+    setLayersTick((n) => n + 1)
+    const left = r.stuck.find((s) => s.id === key)
+    if (left) {
+      // **还是对不上就说还是对不上**，不要装作成了——那正是这一批在别处修的那种假话。
+      const next = layerStuckRef.current.map((s) => (s.id === key ? { ...s, why: left.why } : s))
+      layerStuckRef.current = next
+      setLayerStuck(next)
+      toast(`「${entry.label}」按现在的正文还是有 ${left.why.length} 处对不上：${left.why.slice(0, 2).join('；')}`, 'error')
+    } else {
+      const next = layerStuckRef.current.filter((s) => s.id !== key)
+      layerStuckRef.current = next
+      setLayerStuck(next)
+      toast(`「${entry.label}」按现在的正文重新算好了，回到「改动」里了`)
+    }
+    flushChangeLayers()
+  }, [flushChangeLayers])
+
+  /** 放不回来的那一层：**丢掉**（P41 #5 ②）。用户按下去才丢——
+   *  库里那一行跟着这一次冲库一起消失，不是悄悄没的。 */
+  const dropStuckLayer = useCallback((key: string) => {
+    const entry = layerStuckRef.current.find((s) => s.id === key)
+    const next = layerStuckRef.current.filter((s) => s.id !== key)
+    layerStuckRef.current = next
+    setLayerStuck(next)
+    setLayersTick((n) => n + 1)
+    flushChangeLayers()
+    if (entry) toast(`丢掉了「${entry.label}」这一层——正文一个字没动`)
+  }, [flushChangeLayers])
 
   // Cmd/Ctrl+S saves explicitly instead of falling through to the browser's
   // save-page dialog; Cmd/Ctrl+N starts a new note instead of opening a new
@@ -1764,7 +1838,9 @@ export default function App() {
     try {
       if (action === 'verify') {
         const r = await api.verifySelection(content, selection, signal, intentText(intent), current?.id ?? '')
-        setVerifyResult(r)
+        // **把「说的是哪一段」一起存下来**（P41 #3 / P40 问题 #5）：这块卡挂在右栏顶上，
+        // 不在页签体系里——换页签、光标移到别的段它都还在，读起来像在说当前这一段。
+        setVerifyResult({ ...r, passage: selection })
       } else if (action === 'trace') {
         // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
         // 问题由后端拼（判据 1）。结果落在右栏的「来龙去脉」标签里，
@@ -2816,7 +2892,7 @@ export default function App() {
    *  **用户不写问题**——问题由后端拼（判据 1）；结果不是弹层（判据 2）。 */
   async function traceFull(text: string, signal?: AbortSignal) {
     const r = await api.traceMemory(text, 10, signal)
-    setTrace({ answer: r.answer, facts: r.facts, at: new Date().toISOString() })
+    setTrace({ answer: r.answer, facts: r.facts, recalled: r.recalled ?? null, at: new Date().toISOString() })
     // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
     setPaneFocus({ id: 'trace', n: Date.now() })
   }
@@ -2862,9 +2938,20 @@ export default function App() {
     finally { setLoading('') }
   }
 
-  /** 全部接受：只是把标记清掉，正文保持现状。 */
+  /** 全部接受：只是把标记清掉，正文保持现状。
+   *
+   *  **顺手把库里那几层当场烧掉**（P41 #6）：光靠编辑器清空 + 下一次防抖冲库不够——
+   *  烧完立刻关掉 app，那一次冲库没发出去，下次打开会按旧坐标把高亮标到
+   *  已经烧进正文的字上。`keepalive` 是同一条理由（`saveChangeLayers` 那边写过）。
+   *  放不回来的那几层（`layerStuck`）一起了结：「全部接受」说的是全部。 */
   function acceptAllDiff() {
     editorViewRef.current?.dispatch({ effects: acceptAllHunks.of(null) })
+    layerStuckRef.current = []
+    setLayerStuck([])
+    const id = currentRef.current?.id
+    if (!id) return
+    layersSaved.current = { noteId: id, payload: [] }     // 库里已经空了，别再发一次空表
+    void api.burnChangeLayers(id, true).catch(() => { layersSaved.current = { noteId: '', payload: [] } })
   }
 
   /** 全部撤回：把这一轮改的全部还原。
@@ -4112,6 +4199,8 @@ export default function App() {
           <VerifyPanel findings={verifyResult.findings}
                        checked={verifyResult.checked ?? 0}
                        unparsed={verifyResult.unparsed ?? false}
+                       passage={verifyResult.passage}
+                       gone={!!verifyResult.passage && !content.includes(verifyResult.passage)}
                        onClose={() => setVerifyResult(null)} />
         )}
         <RightPane
@@ -4141,8 +4230,11 @@ export default function App() {
             }] : []),
             // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
             // P16：烧进正文之后这次跑的每一轮还在（后端每轮开始前存一版）——有烧过的跑时这个标签也留着，逐轮「回到之前 / 只撤这一轮」
-            { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0 || runs.length > 0,
+            // 放不回来的那几层也算「有内容」：出路摆在这个页签里，页签自己不出现就等于没出路（P41 #5 ②）
+            { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined,
+              hasContent: pendingDiff > 0 || runs.length > 0 || layerStuck.length > 0,
               body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff + layersTick} runs={runs} busy={loading === 'rounds'}
+                                       stuck={layerStuck} onRecomputeStuck={recomputeStuckLayer} onDropStuck={dropStuckLayer}
                                        onRestoreBefore={(r) => void restoreBeforeRound(r)} onUndoRound={(r) => void undoRoundOnly(r)} /> },
             // 计划 = 完成标准（判据）+ 目录（每节状态）+ 写作骨架 + 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
@@ -4208,6 +4300,13 @@ export default function App() {
               body: trace ? (
                 <div className="stack">
                   <p style={{ margin: 0, lineHeight: 1.6 }}>{trace.answer}</p>
+                  {/* P41 #1：KITE 一条都没串出来、而词法召回真的有数时，说清那几条在哪儿看得到。
+                      后端那句话已经不说假的了（`AskOut.recalled` 三档），这里补的是出路那半句。 */}
+                  {!!traceRecallHint(trace.facts.length, trace.recalled) && (
+                    <p className="muted" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>
+                      {traceRecallHint(trace.facts.length, trace.recalled)}
+                    </p>
+                  )}
                   {trace.facts.map((f) => (
                     <div key={f.id} className="card" style={{ fontSize: 'var(--t-sm)' }}>
                       <span className="muted">{f.when}</span>

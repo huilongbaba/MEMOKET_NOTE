@@ -277,7 +277,7 @@ backend/app/
     conflict_confirm.py      摄入时那批冲突候选进收件箱前让模型确认一遍；
                              由 routers 注入给 database/kb/inbox（层次只能从上往下递）
   database/
-    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本，带 run_id：哪一次跑交出来的）· note_change_layers（**这一篇上还没处置完的改动层**，P39：一层一行、每一处的处置状态在 hunks 那列 JSON 里；**故意不进 `db_guard.WATCHED`**，理由跟 harness_runs 同一条）· harness_edits（用户拿到 AI 写的东西之后改了什么，只存指针 + 四个数，计划 9.1）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· llm_usage（模型用量）· ingest_jobs / ingest_items · skills · snapshots · runs
+    store.py                 sqlite：notes · branches（树）· note_citations · note_revisions（历史版本，带 run_id：哪一次跑交出来的）· note_change_layers（**这一篇上还没处置完的改动层**，P39：一层一行、每一处的处置状态在 hunks 那列 JSON 里；**故意不进 `db_guard.WATCHED`**，理由跟 harness_runs 同一条；烧进正文走 `burn_change_layers`——清完当场再数一遍，没清干净就抛，P41 #6）· harness_edits（用户拿到 AI 写的东西之后改了什么，只存指针 + 四个数，计划 9.1）· note_remotes（导回副本）· kb_conflicts（冲突收件箱）· note_trash（最近删除）· llm_usage（模型用量）· ingest_jobs / ingest_items · skills · snapshots · runs
                              启动清理：sweep_orphan_jobs / sweep_orphan_plans / sweep_stale_snapshots（7 天）/ sweep_old_rows（用量 90 天、跑完的任务 30 天、非活跃计划 30 天）/ prune_job_payloads
                              轻量列表 list_notes_brief（⌘K / `[[` 补全用：不带全文，正文命中带片段 + first_body）；搜索的 LIKE 通配符已转义
     retrieval.py             零 LLM 关键词检索（工具循环失败时的退路）；format_fact() 给材料带 id
@@ -989,7 +989,8 @@ localStorage 的话，它一丢用户就会拿到一个随机新身份、看到�
 | 沙箱 | `test_sandbox.py` | 资源上限、路径白名单、平台差异如实报告 |
 | 文档 | `test_doc_counts.py` · `test_api_contract.py` | 这份文档里的数字；README 里的端点；前端没有死导出 |
 | 笔记 | `test_note_links.py` · `test_note_revisions.py` · `test_delete_cleanup.py` | 内链 / 反链；历史版本间隔、可逆恢复；删笔记不留孤儿行 |
-| 改动层 | `test_p39_change_layers.py` | 四个处置状态每个都真写真读；淘汰三条路各自吵闹；写多少层 `note_revisions` 一行不动；两条路由真挂上了、删笔记带走层 |
+| 改动层 | `test_p39_change_layers.py` · `test_p41.py` | 四个处置状态每个都真写真读；淘汰三条路各自吵闹；写多少层 `note_revisions` 一行不动；**三条**路由真挂上了、删笔记带走层；**烧进正文（「全部接受」）之后一层都不许剩**，清不干净当场抛（P41 #6） |
+| 「说的是不是真的」 | `test_p41.py`（`_no_info_to_chinese`） | 「来龙去脉」空手而归时分三档说三句：KITE 串出来了 / 词法召回有数 / 真的一条都没有。**`recalled` 那一格要真的被填上**，而且用的是跟「校验」同一个 limit——两块面板报的数出自同一把尺子（P41 #1） |
 | 导入导出 | `test_export.py` · `test_export_roundtrip.py` · `test_export_back.py` | 层级 / 克隆 / 孤儿 / 资产；导出再导入树长回原样；导回按 id 覆盖、对方改过报冲突 |
 | 出口 | `test_llm_sanitize.py` · `test_bold_punct.py` · `test_kite_ask.py` | 提示词不带 base64；粗体标点；KITE Answer 字段漂移 |
 | 前端 | `vitest` + 11 条检查脚本 | roundDiff · factCite · 树扁平化 · SSE 解析 · mermaid 回退 · minimalChange · sectionEnd · friendlyError · runWritingPlan 事件映射 |

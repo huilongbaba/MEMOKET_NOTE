@@ -1381,6 +1381,36 @@ def drop_change_layers(user_id: str, note_id: str) -> int:
         return int(cur.rowcount or 0)
 
 
+class LayersStillPending(RuntimeError):
+    """烧完了、层还在。**吵闹地失败**（`scripts/db_guard` 那条规矩）。"""
+
+
+def burn_change_layers(user_id: str, note_id: str) -> int:
+    """「全部接受」= **烧进正文**：这一篇的待处置层一层都不许留（P41 #6 / P39「留给下一批」④）。
+
+    **为什么要后端有这么一条**，而不是靠前端下一次冲库把空表发上来：
+    P39 把「关掉 app 层还在」修好了，于是「烧完立刻关掉 app」就变成了**反过来那个毛病**——
+    那一次防抖冲库（`CHANGE_LAYER_SAVE_MS`）还没发出去，库里那几层原样留着，
+    下次打开按旧坐标把高亮重新标到**已经烧进正文**的字上。
+    那正是 P17 实拍过的「幻影删除标」，只是这次的来源是库不是消息。
+    **烧是一个当场就该落库的动作，不是一次防抖保存。**
+
+    烧完当场再数一遍，没清干净就抛 `LayersStillPending`：
+    「烧过的跑」（`note_revisions`）和「待处置的层」（这张表）是两条并行的路，
+    交接的那一刻**只能有一条路上有东西**——这是这两张表之间唯一的不变式，
+    今天它全靠前端记得清空，没有任何东西钉着它。
+    """
+    n = drop_change_layers(user_id, note_id)
+    with connect() as c:
+        left = int(c.execute(
+            "SELECT count(*) FROM note_change_layers WHERE user_id=? AND note_id=?",
+            (user_id, note_id)).fetchone()[0])
+    if left:
+        raise LayersStillPending(
+            f"烧进正文之后这一篇还留着 {left} 层待处置的改动——层和正文对不上了")
+    return n
+
+
 def open_harness_edit(user_id: str, note_id: str, *, run_id: str, key: str,
                       revision_id: str, base_chars: int, ai_chars: int) -> str:
     """跑完开一行。同一篇上还开着的旧行记 `superseded`。

@@ -61,6 +61,25 @@ export function contentTag(s: string): string {
   return `${s.length}:${h.toString(36)}`
 }
 
+/** 存这一版之后**只在末尾添过东西**吗（P41 #5 ①，P39「留给下一批」①）。
+ *
+ * `content_tag` 原来只答得了「变没变」：变了就整层逐处按文字重新定位一遍。
+ * 可**智能续写那条路最常见的改法恰恰是「往末尾追加」**——追加不动任何已有坐标，
+ * 每一处的 `from` / `to` 一个字都没漂，重新定位是白算一遍，而且**算错了有代价**：
+ * 同一段文字在正文里出现两次就成了「多处命中」= 冲突，那一处直接不放回去
+ * （用户看到的是「我留着的那层少了一处」）。
+ *
+ * 判据**窄**：tag 里已经带着长度（`长度:FNV`），拿现在正文的**前那么多字**重算一次 tag，
+ * 逐字对得上才算——等于「存下来那一版是现在这一版的前缀」。对不上就照旧走重新定位。
+ * 只认「末尾追加」这一种：中间插一段、开头插一段都会让后面的坐标漂，那时候重新定位是对的。 */
+export function appendedTo(savedTag: string, doc: string): boolean {
+  const i = (savedTag || '').indexOf(':')
+  if (i <= 0) return false
+  const n = Number(savedTag.slice(0, i))
+  if (!Number.isInteger(n) || n < 0 || n > doc.length) return false
+  return contentTag(doc.slice(0, n)) === savedTag
+}
+
 /** 层的来源机器码。取值表在后端 `store.CHANGE_LAYER_SOURCES`，两边逐字一致
  *  （`scripts/check-change-layers.mts` 盯着）。
  *
@@ -182,6 +201,9 @@ export type Restored = {
   settled: { key: string; state: 'accepted' | 'reverted'; del: string; ins: string; soft?: boolean }[]
   /** 对不上、没放回去的那几处。**要说出来**，不是悄悄少几处。 */
   conflicts: string[]
+  /** 同样一批话，**按层分好**——面板要给每一层一个出路（「按现在的正文重新算」/
+   *  「丢掉这一层」），光一句 toast 说不清该对哪一层动手（P41 #5 ②，P39「留给下一批」②）。 */
+  stuck: { id: string; label: string; why: string[] }[]
 }
 
 /** 库里的行 → 能塞进编辑器的东西。
@@ -191,22 +213,27 @@ export type Restored = {
  * 两条路都走不通的那一处**不放**，并且在 `conflicts` 里说清是哪一处。 */
 export function restoreLayers(saved: SavedLayer[], doc: string): Restored {
   const tag = contentTag(doc)
-  const out: Restored = { layers: [], hunks: [], settled: [], conflicts: [] }
+  const out: Restored = { layers: [], hunks: [], settled: [], conflicts: [], stuck: [] }
   for (const l of saved ?? []) {
     const at = Date.parse(l.at)
     out.layers.push({ key: l.id, label: l.label, at: Number.isFinite(at) ? at : Date.now() })
+    // 正文一个字没动、或者**只在末尾添过东西**（`appendedTo`），已有坐标都还是准的。
+    // 后一种原来整层作废、逐处重新定位——白算，而且算错了就少一处（P41 #5 ①）。
+    const coordsValid = l.content_tag === tag || appendedTo(l.content_tag, doc)
+    const why: string[] = []
     for (const h of l.hunks ?? []) {
       if (h.state === 'accepted' || h.state === 'reverted') {
         out.settled.push({ key: l.id, state: h.state, del: h.del, ins: h.ins, soft: h.soft })
         continue
       }
       const want = h.state === 'off' ? h.del : h.ins
-      const exact = l.content_tag === tag && doc.slice(h.from, h.from + want.length) === want
+      const exact = coordsValid && doc.slice(h.from, h.from + want.length) === want
       const at2: Relocation = exact
         ? { ok: true, from: h.from, to: h.from + want.length }
         : relocate(doc, h)
       if (!at2.ok) {
         out.conflicts.push(`${l.label}：${at2.why}`)
+        why.push(at2.why)
         continue
       }
       out.hunks.push({
@@ -216,6 +243,7 @@ export function restoreLayers(saved: SavedLayer[], doc: string): Restored {
         soft: h.soft,
       })
     }
+    if (why.length) out.stuck.push({ id: l.id, label: l.label, why })
   }
   return out
 }

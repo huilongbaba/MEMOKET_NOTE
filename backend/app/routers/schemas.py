@@ -592,6 +592,12 @@ class ChangeLayersSaveOut(BaseModel):
     rejected: list[ChangeLayerDropped] = Field(default_factory=list)
 
 
+class ChangeLayersBurnOut(BaseModel):
+    """「全部接受」= 烧进正文之后清掉几层（P41 #6）。烧完库里还留着层的话
+    `store.burn_change_layers` 当场抛，走不到这里。"""
+    dropped: int = 0
+
+
 class NoteLinksOut(BaseModel):
     """笔记之间的链接：`[标题](note://<id>)`。outgoing 是这篇链出去的，backlinks 是链进来的。"""
     outgoing: list[CitingNoteOut]
@@ -956,8 +962,19 @@ class AskIn(BaseModel):
 
 
 class AskOut(BaseModel):
+    """「来龙去脉」的回包。**空的 `facts` 有两种完全不同的来历，得分得开**（P41 #1 / P40 问题 #1）。
+
+    P40 实拍：同一屏上「校验」对**同一段话**说「知识库里有 6 条相关记录」，
+    而「来龙去脉」说「知识库里没有跟这段沾边的记录。」——**两块面板互相打架，前一句是假的**。
+    `facts` 数的是 KITE 自己那条 planning 检索串出了几条，而那句话说的是「知识库里有没有」。
+    跟 `VerifyOut` 的 `checked` 逐字同一条思路。
+    """
+
     answer: str
     facts: list[FactOut] = Field(default_factory=list)
+    # 同一段话的**词法召回**（跟「校验」同一条路、同一个 limit）回了几条。
+    # `None` = 这一趟没量（KITE 串出东西了，或者是别的调用方）；`0` 才是「知识库里真的没有」。
+    recalled: int | None = None
     took_ms: float
 
 

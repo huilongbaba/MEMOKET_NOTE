@@ -752,6 +752,14 @@ export const saveChangeLayers = (noteId: string, layers: SavedLayer[], keepalive
     // 「关掉 app 前存一次」这条路等于没有。
     keepalive,
   }).then(json<ChangeLayersSave>)
+/** **烧进正文**（「全部接受」）：这一篇的待处置层当场清空（P41 #6 / P39「留给下一批」④）。
+ *
+ *  不走那条防抖的 PUT：烧完立刻关掉 app 的话那一次冲库根本没发出去，库里那几层原样留着，
+ *  下次打开按旧坐标把高亮标到**已经烧进正文**的字上（P17「幻影删除标」的形状）。
+ *  闸在后端 `store.burn_change_layers`：清完当场再数一遍，没清干净就抛。 */
+export const burnChangeLayers = (noteId: string, keepalive = false) =>
+  fetch(`/api/notes/${noteId}/change-layers`, { method: 'DELETE', headers: headers(), keepalive })
+    .then(json<{ dropped: number }>)
 
 /** 笔记之间的链接：这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。 */
 export type NoteGraph = { facts: number; topics: TopicNode[]; entities: EntityNode[]; links: TopicEntityLink[] }
@@ -769,7 +777,10 @@ export const notesCiting = (factId: string) =>
   fetch(`/api/memory/facts/${encodeURIComponent(factId)}/citing`,
         { headers: headers() }).then(json<CitingNote[]>)
 
-export type TraceOut = { answer: string; facts: Fact[]; took_ms: number }
+/** `recalled`：KITE 那条时序检索一条都没串出来时，**同一段话的词法召回**（「校验」用的那一条）
+ *  回了几条。`null` / 缺省 = 这一趟没量。**0 才是「知识库里真的没有」**——P40 实拍过
+ *  「脉络」说没有、「校验」同屏说有 6 条（P41 #1）。 */
+export type TraceOut = { answer: string; facts: Fact[]; recalled?: number | null; took_ms: number }
 
 export const traceMemory = (passage: string, limit = 10, signal?: AbortSignal) =>
   fetch('/api/memory/trace', {

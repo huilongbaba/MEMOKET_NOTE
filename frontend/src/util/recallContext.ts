@@ -69,6 +69,23 @@ export function evidenceWhy(e: { why: string; units: number }): string {
   return e.units > 0 ? `${why} · 库里 ${e.units} 条提到` : why
 }
 
+/** 「脉络」空手而归时，右栏在那句话下面多说的**出路**那一行（P41 #1 / P40 问题 #1）。
+ *
+ *  P40 实拍：同一屏上「校验」说「知识库里有 6 条相关记录」，「来龙去脉」说
+ *  「知识库里没有跟这段沾边的记录。」——**两块面板互相打架**。后端那句话这一批已经
+ *  照 `VerifyOut` 的思路分成三档（`AskOut.recalled`），这里补的是它答不了的那半句：
+ *  **那几条在哪儿能看到**。
+ *
+ *  判据**窄**：只有「KITE 一条都没串出来（`facts` 空）**而且**词法召回真的有数」
+ *  这一档才说。串出东西了不说（下面就列着）；`recalled` 是 0 / `null`（老后端没这一格）
+ *  也不说——那时候多说一句就是又一次替空气背书。 */
+export function traceRecallHint(factCount: number, recalled?: number | null): string {
+  if (factCount > 0) return ''
+  const n = recalled ?? 0
+  if (n <= 0) return ''
+  return `那 ${n} 条在右栏「记忆」里按同一段话就能直接看到——「脉络」要的是先后顺序，这一步没串起来。`
+}
+
 /** 右栏那一行：按什么找的、命中了什么、每个命中凭什么算证据。
  *  后端没给 `evidence`（老版本 / 出错兜底）就退回原来那句「命中：X、Y」。 */
 export function evidenceLine(

@@ -33,13 +33,36 @@ export function emptyVerifyLine(checked: number, unparsed: boolean): string {
   return `翻过知识库里 ${checked} 条相关记录，没有一条能支持或反驳这段内容——不代表内容没问题。`
 }
 
+/** 卡上那行「说的是哪一段」（P41 #3 / P40 问题 #5）。
+ *
+ *  **这块卡不在页签体系里**——它挂在右栏最顶上、`RightPane` 外面，所以换页签、
+ *  把光标移到别的段，它都还在（P17 #5 那条闸只管「换篇」，从来没管这两种）。
+ *  P40 实拍：读起来像在说当前这一段。
+ *
+ *  **为什么不是「换段就清」**：用户点「校验」看完，下一步多半就是点进正文去改那一段——
+ *  一动光标结果就没了，等于逼他先背下来。所以这里改的是**这张卡说清自己在说什么**：
+ *  摘一小段原话贴在标题下面。判据窄：正文里还找得到这一段就只是「说的是这一段」，
+ *  找不到了（后来改过 / 删了）才多一句——**那一句是代码判得准的，不是猜的**。 */
+export const VERIFY_PASSAGE_CHARS = 40
+
+export function verifyScopeLine(passage: string, gone = false): string {
+  const p = (passage || '').replace(/\s+/g, ' ').trim()
+  if (!p) return ''
+  const head = p.length > VERIFY_PASSAGE_CHARS ? p.slice(0, VERIFY_PASSAGE_CHARS) + '…' : p
+  return `说的是你选中的这一段：「${head}」` + (gone ? '——正文后来改过，这一段现在不在正文里了。' : '')
+}
+
 /** 校验结果：跟 TapProvenance 一样的"点击展开原文"模式，判断没有可回溯的
  * 证据就只是模型的又一句自称——尤其是"矛盾"这种会让用户重新怀疑自己写的
  * 内容的判断，必须能让用户自己核实，不能只信一句话结论。 */
-export default function VerifyPanel({ findings, checked = 0, unparsed = false, onClose }: {
+export default function VerifyPanel({ findings, checked = 0, unparsed = false, passage = '', gone = false, onClose }: {
   findings: VerifyFinding[]
   checked?: number
   unparsed?: boolean
+  /** 当时选中的那一段原话。卡上要写出来——见 `verifyScopeLine`。 */
+  passage?: string
+  /** 这一段现在还在不在正文里（调用方按当前正文判，不是猜的）。 */
+  gone?: boolean
   onClose: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
@@ -59,6 +82,11 @@ export default function VerifyPanel({ findings, checked = 0, unparsed = false, o
         <h2 style={{ margin: 0 }}>校验结果</h2>
         <button className="icon-btn" title="关闭（Esc）" aria-label="关闭" onClick={onClose}><Icon n="bx-x" /></button>
       </div>
+      {!!verifyScopeLine(passage, gone) && (
+        <p className="muted verify-scope" style={{ margin: '2px 0 6px', fontSize: 'var(--t-sm)' }}>
+          {verifyScopeLine(passage, gone)}
+        </p>
+      )}
       {findings.length === 0 && (
         <p className="muted">{emptyVerifyLine(checked, unparsed)}</p>
       )}

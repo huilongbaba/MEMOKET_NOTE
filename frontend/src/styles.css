@@ -1076,6 +1076,13 @@ h2:first-child { margin-top: 0; }
      被胶囊挡住，胶囊之外的地方正文照常可见；
    - `pointer-events: none`，只有按钮本身可点——不然这一条会吃掉正文右上角的
      点选（跟第 714 轮 composer dock 那条同一个道理）。 */
+/* **量重叠要量 `.fb-btn`，不是这个容器**（P41 #4）。这一条是 `height: 0` 的，
+   它的 `getBoundingClientRect().bottom` **等于它自己的 top**——拿它当「按钮底」去判
+   「压没压住正文首行」，判据恒为「没压住」，是个永远绿的闸。
+   P35 / P31 那把尺子量的就是它（`fbBottom 226 < edTop 250`，看着有 24px 余量）；
+   P40 换成量真正的「续写」按钮 + 第一条 `.cm-line`，同一个状态量出来是 −4——
+   **两把尺子差的正好是 `.fb-btn` 那 28px**（P40 步骤 11 同屏两个数：容器底 177 / 按钮底 205）。
+   布局没退，是尺子换了。视觉上没有遮挡：H1 的行框上面有行距，字形起点在按钮下面。 */
 .floating-buttons {
   /* **贴住 ribbon 的下边**（用户第 741 轮：「再往上移，直接贴住编辑区和信息栏的边」）。
      `.note-scroll` 自己有 24px 上内边距，钉在 `top: 0` 会停在那 24px 下面；
@@ -1644,6 +1651,20 @@ label.plan-check-row { cursor: pointer; }
 /* 处置完的层（P39）：一处活的都不剩，但「2 接受 / 1 撤回」这几下是用户真做过的决定，
    关掉重开还得在。缩进一格、跟活着的卡片明显不是一个层级。 */
 .layer-settled { padding-inline-start: 10px; opacity: .75; }
+/* 放不回来的那几层（P41 #5 ②）：它是一个「等你做决定」的东西，摆在最上面，
+   左边一道警示色的竖线跟好好挂着的那些层分开。**不是红底**——正文一个字没动，
+   这不是事故，是一个待办。 */
+.layer-stuck { margin-bottom: 4px; }
+.layer-card.stuck { border-inline-start: 3px solid var(--warn); }
+
+/* 「校验结果」卡上那行「说的是你选中的这一段：「…」」（P41 #3）。这块卡挂在右栏最顶上、
+   不在页签里，换页签 / 移光标都不走——所以它得自己说清在说哪一段。原话单独一行、
+   左边一道竖线，跟下面模型给的判断明显不是一句话。 */
+.verify-scope {
+  border-inline-start: 2px solid var(--line);
+  padding-inline-start: 8px;
+  line-height: 1.5;
+}
 
 .plain-case { text-transform: none; letter-spacing: 0; }
 

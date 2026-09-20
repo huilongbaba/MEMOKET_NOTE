@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import ChangeLayersIn, ChangeLayersOut, ChangeLayersSaveOut, CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
+from .schemas import ChangeLayersBurnOut, ChangeLayersIn, ChangeLayersOut, ChangeLayersSaveOut, CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -204,6 +204,20 @@ def save_change_layers(note_id: str, body: ChangeLayersIn, user: str = Depends(c
         raise HTTPException(404, "note not found")
     layers = [l.model_dump(by_alias=True) for l in body.layers]
     return ChangeLayersSaveOut(**store.save_change_layers(user, note_id, layers))
+
+
+@router.delete("/{note_id}/change-layers", response_model=ChangeLayersBurnOut)
+def burn_change_layers(note_id: str, user: str = Depends(current_user)):
+    """**烧进正文**（「全部接受」）：这一篇的待处置层当场清空（P41 #6 / P39「留给下一批」④）。
+
+    为什么不等下一次防抖冲库：烧完立刻关掉 app，那一次冲库就没发出去，
+    库里那几层原样留着——下次打开按旧坐标把高亮标到已经烧进正文的字上
+    （P17 那个「幻影删除标」的形状，只是这次来源是库）。
+    闸在 `store.burn_change_layers` 里：清完当场再数一遍，没清干净就抛。
+    """
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    return ChangeLayersBurnOut(dropped=store.burn_change_layers(user, note_id))
 
 
 @router.put("/{note_id}", response_model=Note)

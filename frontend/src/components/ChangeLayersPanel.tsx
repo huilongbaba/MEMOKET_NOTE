@@ -25,11 +25,17 @@ import { toast } from '../toast'
 
 const when = (t: number | string) => new Date(t).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
-export default function ChangeLayersPanel({ viewRef, tick, runs = [], onRestoreBefore, onUndoRound, busy = false }: {
+export default function ChangeLayersPanel({ viewRef, tick, runs = [], stuck = [], onRecomputeStuck, onDropStuck,
+                                            onRestoreBefore, onUndoRound, busy = false }: {
   viewRef: RefObject<EditorView | null>
   tick: number
   /** 烧过的跑（`util/runRounds.groupRuns`），新的在前 */
   runs?: RunHistory[]
+  /** 重开时**放不回来**的那几层（正文在别处改过，按文字也定位不到）。
+   *  原来只有一句 toast——话说完用户没有任何可按的东西（P41 #5 ② / P39「留给下一批」②）。 */
+  stuck?: { id: string; label: string; why: string[] }[]
+  onRecomputeStuck?: (id: string) => void
+  onDropStuck?: (id: string) => void
   onRestoreBefore?: (r: RunRound) => void
   onUndoRound?: (r: RunRound) => void
   busy?: boolean
@@ -59,11 +65,40 @@ export default function ChangeLayersPanel({ viewRef, tick, runs = [], onRestoreB
     }
     bump((n) => n + 1)                                 // 关 / 开是 dispatch 出去的，React 不知道
   }
+  /** 放不回来的那几层：**每一层一张卡，两个出路**（P41 #5 ②）。
+   *  摆在最上面——它是一个「等你做决定」的东西，而下面那些层已经好好地在那儿了。 */
+  const stuckCards = stuck.length === 0 ? null : (
+    <div className="stack layer-stuck" style={{ gap: 6 }}>
+      <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>
+        下面 {stuck.length} 层是上次留下、<strong>这次放不回来</strong>的：正文在别处改过，按文字也定位不到原来那几处。
+        <strong>正文一个字没动</strong>——要么按现在的正文重新算一次，要么丢掉它。
+      </p>
+      {stuck.map((s) => (
+        <div key={s.id} className="card layer-card stuck" style={{ padding: '6px 10px' }}>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <strong style={{ fontSize: 'var(--t-md)' }}>{s.label}</strong>
+            <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{s.why.length} 处对不上：{s.why.slice(0, 2).join('；')}</span>
+            <span style={{ marginInlineStart: 'auto', display: 'flex', gap: 4 }}>
+              <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }}
+                      title="拿这一层改的每一处，在现在这份正文里再找一次；找得到就放回「改动」里"
+                      onClick={() => onRecomputeStuck?.(s.id)}>重新算这一层</button>
+              <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }}
+                      title="不要这一层了（正文一个字没动，只是不再留着这个待办）"
+                      onClick={() => onDropStuck?.(s.id)}>丢掉这一层</button>
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
   return (
     <div className="stack" style={{ gap: 6 }}>
+      {stuckCards}
       {!view || layers.length === 0
         ? <>
-          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>AI 改过的地方会按动作分层列在这里：整层接受、整层撤回。现在没有待处置的改动。</p>
+          {/* **上面还摆着放不回来的层时不许说「现在没有待处置的改动」**（P41）——
+              同一块面板上一句说有、一句说没有，就是这一批在别处修的那种「两块面板打架」。 */}
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>AI 改过的地方会按动作分层列在这里：整层接受、整层撤回。{stuck.length ? '除了上面那几层，没有别的待处置改动。' : '现在没有待处置的改动。'}</p>
           {settledLines}
         </>
         : <>

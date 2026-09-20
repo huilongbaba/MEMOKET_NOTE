@@ -288,13 +288,36 @@ def relations_batch(body: _RelationsBatchIn, user: str = Depends(current_user)) 
 _NO_INFO = re.compile(r"^\s*(no|not enough|insufficient)\s+information\b.*$", re.I | re.S)
 
 
-def _no_info_to_chinese(text: str, has_facts: bool = True) -> str:
+# 「一条都没召回」那句话要说之前，先用**词法召回**核一遍——用跟「校验」一样的 limit
+# （`compose.verify` 那条 `mem.recall(..., limit=6)`）。两块面板报的数出自同一把尺子，
+# 才不会再出现 P40 那一屏：一边说「知识库里有 6 条」，一边说「没有跟这段沾边的记录」。
+TRACE_RECALL_LIMIT = 6
+
+
+def _no_info_to_chinese(text: str, has_facts: bool = True, recalled: int | None = None) -> str:
     """KITE 的拒答是英文一句「No information」（第 156 轮实拍：右栏「脉络」顶着一行英文，下面却列着
-    10 条召回的记录）。换成中文、并说清楚下面那几条是什么；一条都没召回就别说「下面几条」。"""
+    10 条召回的记录）。换成中文、并说清楚下面那几条是什么；一条都没召回就别说「下面几条」。
+
+    **「KITE 那条检索没回东西」≠「知识库里没有」**（P41 #1 / P40 问题 #1）。
+    P40 实拍：同一屏上「校验」对同一段话说「知识库里有 6 条相关记录」，而这里说
+    「知识库里没有跟这段沾边的记录。」——**两块面板互相打架，前一句是假的**。
+    根因：`has_facts` 数的是 **KITE 自己那条 planning 检索**回了几条，
+    而这句话说的是「知识库里有没有」。跟 P9 #26 / P37 #2 是同一个形状，只是换了一块面板。
+
+    所以照 `VerifyOut` 那条思路**多带一格**：`recalled` = 同一段话的**词法召回**回了几条
+    （`None` = 这一趟没量，退回原来那句，老调用方对得上）。三档：
+
+    * `has_facts` —— KITE 串出了东西，原样那句。
+    * `recalled` 有数 —— **说自己的话**：这一步没串出时间线，但库里有 N 条沾边的。
+    * `recalled == 0` —— 真的一条都没有。原来那句话**在这一档才是对的**。
+    """
     if _NO_INFO.match(text or ""):
-        if not has_facts:
-            return "知识库里没有跟这段沾边的记录。"
-        return "知识库里的记录串不出这件事的来龙去脉——下面是最相关的几条，可能只是沾边。"
+        if has_facts:
+            return "知识库里的记录串不出这件事的来龙去脉——下面是最相关的几条，可能只是沾边。"
+        if recalled:
+            return (f"按这段话没能串出一条时间线——知识库里有 {recalled} 条沾边的记录，"
+                    f"只是这一步没能把它们排成先后。")
+        return "知识库里没有跟这段沾边的记录。"
     return text
 
 
@@ -327,7 +350,8 @@ def trace(body: TraceIn, user: str = Depends(current_user)):
     if not _has_facts(mem):
         # 空库：KITE 的 ask() 照样会花一次规划调用（实拍 12 秒）然后答「No information」
         return AskOut(answer="知识库还是空的——先导入一些记录，或者把写好的笔记「存入知识库」。",
-                      facts=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
+                      facts=[], recalled=0,
+                      took_ms=round((time.perf_counter() - t0) * 1000, 1))
     try:
         text, facts = mem.ask(question, limit=body.limit)
     except ProviderError as exc:
@@ -354,11 +378,16 @@ def trace(body: TraceIn, user: str = Depends(current_user)):
     except ProviderFailed as exc:
         # P9：模型出错要说出错，不能翻成「知识库里没有沾边的记录」（那是 KITE 回退出来的假答案）
         raise HTTPException(502, f"来龙去脉没查成：{exc}（{store.get_active_llm_config()['base_url']}）——去设置里看一眼 LLM 供应商") from exc
-    text = _no_info_to_chinese(text, bool(facts))
+    # **KITE 一条都没串出来的时候，先去问一遍词法召回**（P41 #1）：零模型、几毫秒，
+    # 而它正是「校验」和右栏「记忆」用的那条路。串出东西的那一档不量——那时候
+    # 没有第二块面板可以打架，多花的每一次查询都是白花的。
+    recalled = None if facts else len(mem.recall(passage, limit=TRACE_RECALL_LIMIT)[0])
+    text = _no_info_to_chinese(text, bool(facts), recalled)
     return AskOut(
         answer=text,
         facts=[FactOut(id=f["id"], text=f["text"], when=f["date"],
                        kind=f["kind"], sources=f["sources"]) for f in facts],
+        recalled=recalled,
         took_ms=round((time.perf_counter() - t0) * 1000, 1),
     )
 
