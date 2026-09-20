@@ -1,5 +1,6 @@
 /** 后端 API 封装。用户身份走 X-User-Id 头，原型阶段不做认证。 */
 import type { DocIntent } from './util/docIntent'
+import type { SavedLayer } from './util/changeLayers'
 
 export type Note = {
   id: string
@@ -733,6 +734,24 @@ export const getRevision = (noteId: string, revId: string) =>
   fetch(`/api/notes/${noteId}/revisions/${revId}`, { headers: headers() }).then(json<NoteRevision & { content: string }>)
 export const restoreRevision = (noteId: string, revId: string) =>
   fetch(`/api/notes/${noteId}/revisions/${revId}/restore`, { method: 'POST', headers: headers() }).then(json<Note>)
+
+/** 待处置的改动层（P39）。形状见 `util/changeLayers.SavedLayer` / 后端 `note_change_layers`。 */
+export type ChangeLayersSave = {
+  saved: number
+  evicted: { label: string; at: string; why: string }[]
+  rejected: { label: string; at: string; why: string }[]
+}
+export const listChangeLayers = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/change-layers`, { headers: headers() })
+    .then(json<{ layers: SavedLayer[] }>).then((r) => r.layers ?? [])
+export const saveChangeLayers = (noteId: string, layers: SavedLayer[], keepalive = false) =>
+  fetch(`/api/notes/${noteId}/change-layers`, {
+    method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ layers }),
+    // 关窗口那一下发出去的请求：不带 keepalive 的话页面一卸载就被浏览器掐掉，
+    // 「关掉 app 前存一次」这条路等于没有。
+    keepalive,
+  }).then(json<ChangeLayersSave>)
 
 /** 笔记之间的链接：这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。 */
 export type NoteGraph = { facts: number; topics: TopicNode[]; entities: EntityNode[]; links: TopicEntityLink[] }

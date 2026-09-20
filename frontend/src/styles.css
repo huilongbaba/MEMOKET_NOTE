@@ -1641,6 +1641,9 @@ label.plan-check-row { cursor: pointer; }
 .switch.on { background: var(--ins-bg); border-color: var(--ins); }
 .switch.on span { left: 16px; background: var(--ins); }
 .layer-card.off { opacity: .6; }
+/* 处置完的层（P39）：一处活的都不剩，但「2 接受 / 1 撤回」这几下是用户真做过的决定，
+   关掉重开还得在。缩进一格、跟活着的卡片明显不是一个层级。 */
+.layer-settled { padding-inline-start: 10px; opacity: .75; }
 
 .plain-case { text-transform: none; letter-spacing: 0; }
 

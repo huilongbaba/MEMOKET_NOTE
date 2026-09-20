@@ -538,6 +538,60 @@ class RevisionFullOut(RevisionOut):
     content: str
 
 
+class ChangeHunkIn(BaseModel):
+    """一处改动（P39）。`state` 见 `store.HUNK_STATES`。
+
+    坐标是**存这一版时**的坐标，配合层上的 `content_tag` 用：正文没变就按坐标放回去，
+    变了就靠 `del`/`ins` + `before`/`after` 这两截前后文重新定位（对不上就说清楚，不猜）。
+    """
+    k: int = 0
+    from_: int = Field(0, alias="from")
+    to: int = 0
+    delete: str = Field("", alias="del")
+    ins: str = ""
+    state: str = "pending"
+    soft: bool = False
+    before: str = ""
+    after: str = ""
+
+    model_config = {"populate_by_name": True}
+
+
+class ChangeLayerIn(BaseModel):
+    """一层待处置的改动（P39）。见 `store.note_change_layers` 那段建表注释。"""
+    id: str = ""
+    label: str = ""
+    source: str = "other"
+    run_id: str = ""
+    round_no: int = 0
+    seq: int = 0
+    state: str = "on"
+    at: str = ""
+    content_tag: str = ""
+    hunks: list[ChangeHunkIn] = Field(default_factory=list)
+
+
+class ChangeLayersIn(BaseModel):
+    layers: list[ChangeLayerIn] = Field(default_factory=list)
+
+
+class ChangeLayersOut(BaseModel):
+    layers: list[ChangeLayerIn] = Field(default_factory=list)
+
+
+class ChangeLayerDropped(BaseModel):
+    label: str = ""
+    at: str = ""
+    why: str = ""
+
+
+class ChangeLayersSaveOut(BaseModel):
+    """**淘汰要吵闹**：少存了什么、为什么，原样回给前端去说一句。"""
+    saved: int = 0
+    evicted: list[ChangeLayerDropped] = Field(default_factory=list)
+    rejected: list[ChangeLayerDropped] = Field(default_factory=list)
+
+
 class NoteLinksOut(BaseModel):
     """笔记之间的链接：`[标题](note://<id>)`。outgoing 是这篇链出去的，backlinks 是链进来的。"""
     outgoing: list[CitingNoteOut]

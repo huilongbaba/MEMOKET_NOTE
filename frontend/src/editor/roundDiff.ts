@@ -209,8 +209,24 @@ export type Hunk = {
 }
 
 /** 提案层：一次 AI 动作产生的一批改动（润色 ①、格式化、第 3 轮…）。层可以整层接受 /
- *  撤回——痛点 8「保留第一次改的、放弃第三次改的」就是按层操作（agent-native-editor §3.2）。 */
-export type Layer = { id: number; label: string; at: number }
+ *  撤回——痛点 8「保留第一次改的、放弃第三次改的」就是按层操作（agent-native-editor §3.2）。
+ *
+ *  `key` 是**跨重启的身份**（P39）：`id` 是模块级计数器给的，重开 app 就换了一个数，
+ *  拿它当库里那行的主键，每存一次就多一行。`key` 从层生出来那一刻起就不变。 */
+export type Layer = { id: number; label: string; at: number; key?: string }
+
+/** 已经处置掉的一处（P39）。
+ *
+ * `acceptHunk` / `dropHunk` 把 hunk 直接从列表里 filter 掉——这是对的，正文里
+ * 不该再有高亮和按钮。可代价是「用户已经接受过 / 撤回过」这件事**在编辑器里不留痕**，
+ * 于是它也落不了库：关掉重开，逐处按下去的那几下全白按。
+ * 所以另记一条账。它不参与装饰、不参与 `pendingHunks` / `layersOf`，
+ * 只为「这一层上用户已经做过哪几个决定」这个问题存在。 */
+export type Settled = {
+  layer: number; label: string; at: number
+  state: 'accepted' | 'reverted'
+  del: string; ins: string; soft?: boolean
+}
 
 /** 上层往编辑器塞一层新提案用的值：seq 变了才 dispatch（React 的 prop 比较）。
  *  replace = 先清掉已有的层再加（智能续写每轮都拿整次 run 的起点重算，是累积的，不能叠层）。 */
@@ -236,6 +252,18 @@ export const acceptHunk = StateEffect.define<number>()
 /** 撤回：连同一次文档改动一起 dispatch（把 from..to 换回 del），这里只负责摘掉标记。 */
 export const dropHunk = StateEffect.define<number>()
 export const acceptAllHunks = StateEffect.define<null>()
+
+/** 从库里把这一篇的改动层原样放回去（P39）。
+ *
+ * 跟 `addLayer` 不是一回事：那个是「刚刚发生了一次 AI 动作」，层号、`at`、
+ * 稳定 key 都当场生成；这个是「上次关掉 app 时挂着这些」，三样全都得**沿用存下来的**，
+ * 否则层序和时间一重开就全变成「刚刚」。位置由调用方（`util/changeLayers.restoreLayers`）
+ * 先对着现在的正文核过 / 重新定位过，这里只负责装进去。 */
+export const restoreLayers = StateEffect.define<{
+  layers: { key: string; label: string; at: number }[]
+  hunks: { key: string; from: number; to: number; del: string; ins?: string; off?: boolean; soft?: boolean }[]
+  settled: { key: string; state: 'accepted' | 'reverted'; del: string; ins: string; soft?: boolean }[]
+}>()
 
 /** diff 结果 → hunk 列表。
  *
@@ -331,6 +359,16 @@ function build(hunks: Hunk[], layers: Layer[] = []): DecorationSet {
 let nextHunkId = 1
 let nextLayerId = 1
 
+/** 层的跨重启身份（P39）。`crypto.randomUUID` 在 jsdom / 老 WebView 里不一定有，
+ *  退回时间戳 + 随机数——这个串只要在一篇之内唯一就够了。 */
+function layerKey(): string {
+  try {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+    if (c?.randomUUID) return c.randomUUID().replace(/-/g, '').slice(0, 12)
+  } catch { /* 没有就算了 */ }
+  return (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).slice(-12)
+}
+
 /** 把一批 diff 建成带层号的 hunk：位置夹到文档长度内（diff 是拿 liveContentRef 算的，
  *  编辑器可能还没跟上——越界的位置下一次 mapPos 直接抛 RangeError，整棵 React 树被卸掉，
  *  用户看到一片白），id 用全局计数（几层的 hunk 混在一起，不能各自从 0 起）。 */
@@ -342,22 +380,66 @@ function hunksForLayer(parts: DiffPart[] | null, layer: number, docLen: number):
 
 // ---------------------------------------------------------------- state
 
-export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]; decos: DecorationSet }>({
-  create() { return { hunks: [], layers: [], decos: Decoration.none } },
+export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]; decos: DecorationSet; settled: Settled[] }>({
+  create() { return { hunks: [], layers: [], decos: Decoration.none, settled: [] } },
   update(value, tr) {
     for (const e of tr.effects) {
       if (e.is(setRoundDiff)) {
-        const layer: Layer = { id: nextLayerId++, label: '改动', at: Date.now() }
+        const layer: Layer = { id: nextLayerId++, label: '改动', at: Date.now(), key: layerKey() }
         const hunks = hunksForLayer(e.value, layer.id, tr.newDoc.length)
-        return { hunks, layers: hunks.length ? [layer] : [], decos: build(hunks, [layer]) }
+        return { hunks, layers: hunks.length ? [layer] : [], decos: build(hunks, [layer]), settled: [] }
       }
-      if (e.is(acceptAllHunks)) return { hunks: [], layers: [], decos: Decoration.none }
+      // 「全部接受」= 烧进正文，这一篇的层到此为止：连已处置的那本账也一起清掉。
+      // 烧之后还想撤某一轮走的是 `note_revisions`（P16 的「烧过的跑」那一段），不是这儿。
+      if (e.is(acceptAllHunks)) return { hunks: [], layers: [], decos: Decoration.none, settled: [] }
+      if (e.is(restoreLayers)) {
+        const byKey = new Map<string, Layer>()
+        const nextLayers: Layer[] = e.value.layers.map((l) => {
+          const made: Layer = { id: nextLayerId++, label: l.label, at: l.at, key: l.key }
+          byKey.set(l.key, made)
+          return made
+        })
+        const len = tr.newDoc.length
+        const nextHunks: Hunk[] = e.value.hunks
+          .filter((h) => byKey.has(h.key))
+          .map((h) => ({
+            id: nextHunkId++, layer: byKey.get(h.key)!.id,
+            from: Math.min(h.from, len), to: Math.min(h.to, len),
+            del: h.del, ins: h.ins, off: h.off, soft: h.soft,
+          }))
+          .filter((h) => h.to > h.from || h.del || h.off)
+        const nextSettled: Settled[] = e.value.settled
+          .filter((s) => byKey.has(s.key))
+          .map((s) => {
+            const l = byKey.get(s.key)!
+            return { layer: l.id, label: l.label, at: l.at, state: s.state, del: s.del, ins: s.ins, soft: s.soft }
+          })
+        // 一处活的都没有、连已处置的账也没有的层不放进来（空卡片没有意义）
+        const useful = new Set([...nextHunks.map((h) => h.layer), ...nextSettled.map((s) => s.layer)])
+        const keptLayers = nextLayers.filter((l) => useful.has(l.id))
+        return { hunks: nextHunks, layers: keptLayers, decos: build(nextHunks, keptLayers), settled: nextSettled }
+      }
     }
     let hunks = value.hunks
     let layers = value.layers
+    let settled = value.settled
     const shelve = new Map<number, { from: number; ins: string }>()
     const unshelve = new Map<number, number>()
+    /** 处置掉一处之前把它记进 `settled`——记完它才会从 `hunks` 里消失。
+     *  **顺序是承重的**：先 filter 再记，就什么都记不到了（P39 那条「每个取值都写得进去吗」）。 */
+    const settle = (h: Hunk, state: 'accepted' | 'reverted') => {
+      const l = layers.find((x) => x.id === h.layer)
+      settled = [...settled, {
+        layer: h.layer ?? 0, label: l?.label ?? '改动', at: l?.at ?? Date.now(), state,
+        del: h.del, ins: h.off ? (h.ins ?? '') : tr.startState.doc.sliceString(
+          Math.min(h.from, tr.startState.doc.length), Math.min(h.to, tr.startState.doc.length)),
+        soft: h.soft,
+      }]
+    }
     for (const e of tr.effects) {
+      if (e.is(acceptHunk)) { const h = hunks.find((x) => x.id === e.value); if (h) settle(h, 'accepted') }
+      if (e.is(dropHunk)) { const h = hunks.find((x) => x.id === e.value); if (h) settle(h, 'reverted') }
+      if (e.is(acceptLayer)) for (const h of hunks.filter((x) => x.layer === e.value)) settle(h, 'accepted')
       if (e.is(acceptHunk) || e.is(dropHunk)) hunks = hunks.filter((h) => h.id !== e.value)
       if (e.is(acceptLayer)) hunks = hunks.filter((h) => h.layer !== e.value)
       if (e.is(shelveHunk)) shelve.set(e.value.id, e.value)
@@ -395,17 +477,21 @@ export const roundDiffField = StateField.define<{ hunks: Hunk[]; layers: Layer[]
     // 两边坐标一致。replace = 智能续写那种累积 diff，先清掉再加。
     for (const e of tr.effects) {
       if (e.is(addLayer)) {
-        if (e.value.replace) { hunks = []; layers = [] }
-        const layer: Layer = { id: nextLayerId++, label: e.value.label, at: Date.now() }
+        if (e.value.replace) { hunks = []; layers = []; settled = [] }
+        const layer: Layer = { id: nextLayerId++, label: e.value.label, at: Date.now(), key: layerKey() }
         const fresh = hunksForLayer(e.value.parts, layer.id, tr.newDoc.length)
         if (fresh.length) { hunks = [...hunks, ...fresh]; layers = [...layers, layer] }
       }
     }
-    // 一处都不剩的层收掉
-    const live = new Set(hunks.map((h) => h.layer))
+    // 一处都不剩的层收掉。**已处置的那本账也算数**（P39）：三处全按完的层在面板上
+    // 不该凭空消失，它上面还挂着「2 接受 · 1 撤回」这三个用户真做过的决定。
+    const live = new Set<number | undefined>([
+      ...hunks.map((h) => h.layer),
+      ...settled.map((s) => s.layer),
+    ])
     if (layers.some((l) => !live.has(l.id))) layers = layers.filter((l) => live.has(l.id))
-    if (hunks === value.hunks && layers === value.layers) return value
-    return { hunks, layers, decos: build(hunks, layers) }
+    if (hunks === value.hunks && layers === value.layers && settled === value.settled) return value
+    return { hunks, layers, decos: build(hunks, layers), settled }
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
 })
@@ -416,14 +502,37 @@ export function pendingHunks(view: EditorView): number {
   return view.state.field(roundDiffField, false)?.hunks.filter((h) => !h.soft).length ?? 0
 }
 
-/** 各层及每层还剩几处（不算只差空白的）；off = 整层关着（每一处都还原了、随时能再打开）。 */
+/** 各层及每层还剩几处（不算只差空白的）；off = 整层关着（每一处都还原了、随时能再打开）。
+ *
+ * **只列还有活改动的层**——处置完的层留在 `layers` 里是给 `settledOf` 用的（P39），
+ * 把它也当成一张带「接受 / 撤回」按钮的卡片列出来，等于给用户一个按了什么都不会发生的钮。 */
 export function layersOf(host: Host): (Layer & { count: number; off: boolean })[] {
   const st = host.state.field(roundDiffField, false)
   if (!st) return []
-  return st.layers.map((l) => {
-    const mine = st.hunks.filter((h) => h.layer === l.id)
-    return { ...l, count: mine.filter((h) => !h.soft).length, off: mine.length > 0 && mine.every((h) => h.off) }
-  })
+  return st.layers
+    .filter((l) => st.hunks.some((h) => h.layer === l.id))
+    .map((l) => {
+      const mine = st.hunks.filter((h) => h.layer === l.id)
+      return { ...l, count: mine.filter((h) => !h.soft).length, off: mine.length > 0 && mine.every((h) => h.off) }
+    })
+}
+
+/** 每一层上**用户已经做过的决定**（P39）：逐处接受了几处、撤回了几处。
+ *  返回的层序跟 `layers` 一致；一处都没处置过的层不出现。 */
+export function settledOf(host: Host): { id: number; key?: string; label: string; at: number; accepted: number; reverted: number; live: number }[] {
+  const st = host.state.field(roundDiffField, false)
+  if (!st) return []
+  return st.layers
+    .map((l) => {
+      const mine = st.settled.filter((s) => s.layer === l.id)
+      return {
+        id: l.id, key: l.key, label: l.label, at: l.at,
+        accepted: mine.filter((s) => s.state === 'accepted').length,
+        reverted: mine.filter((s) => s.state === 'reverted').length,
+        live: st.hunks.filter((h) => h.layer === l.id && !h.soft).length,
+      }
+    })
+    .filter((x) => x.accepted || x.reverted)
 }
 
 /** 能 dispatch 的东西：EditorView，或测试里一个只有 state 的壳。 */

@@ -37,6 +37,13 @@ DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "notes.sqlite3"
 # 笔记表的指纹里包含哪些表。`notes` 是用户写的东西，`note_revisions` 是它的历史
 # ——两张都不许被跑批悄悄改。`harness_runs` / `harness_rounds` / `llm_usage`
 # **故意不在这里**：跑批本来就该往那几张写，把它们算进来会让闸天天误报。
+#
+# `note_change_layers`（P39 的待处置改动层）**也故意不在这里**，跟 `harness_runs`
+# 逐字同一条理由：跑批只要走一趟 harness / 格式化 / `/` 块，前端那条落库路就会往它写，
+# 那是**预期行为不是事故**。进了 `WATCHED` 就是每批都红一次，而一个天天误报的闸等于没有闸。
+# 它跟 `note_revisions` 的区别也正在这里：那张表里躺的是**用户正文的某一版**，
+# 丢一行就是丢内容；这张表里躺的是「几处改动要不要」这个还没做完的决定，
+# 丢了要紧（所以才有这张表），但它不是用户亲手写下的字，不该用「一个字都不许动」去卡。
 WATCHED = ("notes", "note_revisions")
 
 

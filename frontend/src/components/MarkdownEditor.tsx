@@ -28,7 +28,7 @@ import { minimalChange } from '../editor/minimalChange'
 import { getNote } from '../api'
 import { taskCheckbox } from '../editor/taskCheckbox'
 import { revisionField, setRevisions, revisionClickHandler } from '../editor/revisions'
-import { addLayer, pendingHunks, roundDiff as roundDiffExt, type DiffPush }
+import { addLayer, pendingHunks, roundDiffField, roundDiff as roundDiffExt, type DiffPush }
   from '../editor/roundDiff'
 import { marginMemory, setMarginMarks, type MarginMark, type MarginOpen } from '../editor/marginMemory'
 import { altHover, type AltHoverOpen } from '../editor/altHover'
@@ -72,6 +72,13 @@ type Props = {
   /** 还剩几处 harness 改动没被接受/撤回。用来在编辑器上方显示「N 处改动 ·
    * 全部接受」——逐处点是主路径，但改动多的时候必须有个一次性收尾的出口。 */
   onPendingDiff?: (n: number) => void
+  /** 改动层的状态**动了一下**（P39）：加了一层、逐处接受 / 撤回、整层开关、位置跟着正文漂。
+   *
+   * **单独一条线，不复用 `onPendingDiff`**：那个报的是「还剩几处」，而整层关掉
+   * 一处都不少（关着的也算待处置），逐处接受再撤回一处数字也可能不变——
+   * 用它当落库的触发就会漏掉一整类处置。这条报的是 `roundDiffField` 的值换没换，
+   * 编辑器里**所有**改层的路（包括悬停工具条上那两个按钮，它们不经过 React）都走得到。 */
+  onLayersChanged?: () => void
   /** 右键选中一段文本。**监听装在这里而不是 App 里**：App 那版是
    * `useEffect(..., [current])` 里读 `editorViewRef.current` 再 addEventListener，
    * ref 还没填好就直接 return 且不再重试，编辑器一旦重挂（EditorView 被销毁重建）
@@ -112,19 +119,20 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, undoGroup = 0, onPendingDiff, onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover,
+  roundDiff = null, undoGroup = 0, onPendingDiff, onLayersChanged, onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
+  const lastLayers = useRef<unknown>(undefined)
   const fallbackViewRef = useRef<EditorView | null>(null)
   const actualViewRef = viewRef ?? fallbackViewRef
   // The EditorView is long-lived and reads through this ref instead of
   // being torn down/recreated on every prop change -- only `content` and
   // `revisions` need an actual dispatch into CM6 state, callbacks don't.
-  const liveRef = useRef({ onChange, onAcceptInline, revisions, onPendingDiff,
+  const liveRef = useRef({ onChange, onAcceptInline, revisions, onPendingDiff, onLayersChanged,
                           onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, onMarginClick, onAltHover })
   useEffect(() => {
-    liveRef.current = { onChange, onAcceptInline, revisions, onPendingDiff,
+    liveRef.current = { onChange, onAcceptInline, revisions, onPendingDiff, onLayersChanged,
                         onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, onMarginClick, onAltHover }
   })
   const lastPara = useRef('')
@@ -208,6 +216,13 @@ export default function MarkdownEditor({
           if (n !== lastPending.current) {
             lastPending.current = n
             liveRef.current.onPendingDiff?.(n)
+          }
+          // 层动了就报一声（P39 落库靠它）。比的是 field 的**值本身**：
+          // CM6 的 StateField 没变就返回同一个对象，所以这一句在没动层的事务上是零成本。
+          const st = update.state.field(roundDiffField, false)
+          if (st !== lastLayers.current) {
+            lastLayers.current = st
+            liveRef.current.onLayersChanged?.()
           }
           if ((update.selectionSet || update.docChanged) && liveRef.current.onCursorParagraph) {
             const para = paragraphAt(update.state.doc, update.state.selection.main.head)

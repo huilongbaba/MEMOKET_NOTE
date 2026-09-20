@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
-import { acceptLayer, addLayer, diffParts, dropHunk, roundDiffField } from '../roundDiff'
+import { acceptLayer, addLayer, diffParts, dropHunk, layersOf, roundDiffField } from '../roundDiff'
 
 function mk(doc: string) { return EditorState.create({ doc, extensions: [roundDiffField] }) }
 import { minimalChange } from '../minimalChange'
@@ -26,17 +26,20 @@ describe('提案分层', () => {
     s = push(s, '重写', '甲乙X丙丁', '甲乙X丙丁Y')
     const [l1, l2] = s.field(roundDiffField).layers
     s = s.update({ effects: acceptLayer.of(l1.id) }).state
-    expect(s.field(roundDiffField).layers.map((l) => l.id)).toEqual([l2.id])
+    // **面板上**只剩 l2。P39 起 field 里的 `layers` 会把处置完的那层留着
+    // （它上面还挂着「已处置几处」这本账，要落库），列不列出来由 `layersOf` 说了算。
+    expect(layersOf({ state: s, dispatch: () => {} }).map((l) => l.id)).toEqual([l2.id])
     // 撤回 l2：把它的 hunk 还原
     const h = s.field(roundDiffField).hunks.find((x) => x.layer === l2.id)!
     s = s.update({ changes: { from: h.from, to: h.to, insert: h.del }, effects: dropHunk.of(h.id) }).state
     expect(s.doc.toString()).toBe('甲乙X丙丁')
-    expect(s.field(roundDiffField).layers).toEqual([])
+    expect(layersOf({ state: s, dispatch: () => {} })).toEqual([])
   })
   it('replace 会清掉已有的层（智能续写的累积 diff）', () => {
     let s = mk('甲乙丙丁')
     s = push(s, '润色', '甲乙丙丁', '甲乙X丙丁')
     s = s.update({ effects: addLayer.of({ label: '智能续写', parts: diffParts('甲乙X丙丁', '甲乙X丙丁'), replace: true }) }).state
     expect(s.field(roundDiffField).layers).toEqual([])
+    expect(s.field(roundDiffField).settled).toEqual([])          // replace 连已处置那本账一起清
   })
 })

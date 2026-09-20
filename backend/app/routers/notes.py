@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
+from .schemas import ChangeLayersIn, ChangeLayersOut, ChangeLayersSaveOut, CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -183,6 +183,27 @@ def restore_revision(note_id: str, rev_id: str, user: str = Depends(current_user
     if not n:
         raise HTTPException(404, "revision not found")
     return n
+
+
+@router.get("/{note_id}/change-layers", response_model=ChangeLayersOut)
+def list_change_layers(note_id: str, user: str = Depends(current_user)):
+    """这一篇上**还没处置完的改动层**（P39）。关掉 app 再打开，右栏「改动」靠它重建。"""
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    return ChangeLayersOut(layers=store.list_change_layers(user, note_id))
+
+
+@router.put("/{note_id}/change-layers", response_model=ChangeLayersSaveOut)
+def save_change_layers(note_id: str, body: ChangeLayersIn, user: str = Depends(current_user)):
+    """整批换掉这一篇的改动层。编辑器是这件事的唯一真相，所以是全量替换不是增量。
+
+    **淘汰 / 没收下的都回给前端**（`evicted` / `rejected`）——静默少存一层，
+    下次打开就是「我留着的那层不见了」，跟这一批要解决的毛病是同一个。
+    """
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    layers = [l.model_dump(by_alias=True) for l in body.layers]
+    return ChangeLayersSaveOut(**store.save_change_layers(user, note_id, layers))
 
 
 @router.put("/{note_id}", response_model=Note)

@@ -259,6 +259,54 @@ CREATE TABLE IF NOT EXISTS note_revisions (
 );
 CREATE INDEX IF NOT EXISTS idx_revisions_note ON note_revisions(user_id, note_id, created_at DESC);
 
+-- **这一篇上还没处置完的改动层**（P39，痛点 8 的最后一块）。
+--
+-- P37 #5 在真库上量过缺口：九种改动层里**八种在库里什么都不留**
+-- （`snapshot_content` 全仓只有 `harness/round_snapshot.py` 一个调用方），
+-- 能顶上的 `auto` 那一档被 `REVISION_INTERVAL_S = 600` 掐掉、而且存的是「改之前」那一版，
+-- `harness_runs` 连 `note_id` 列都没有。**最缺的那一样是「处置状态」根本没有载体**：
+-- 哪几处已经逐处接受 / 撤回、哪几层关掉了、层序和 `at`，全活在 CodeMirror 的状态里，
+-- 关掉 app 就等于替用户按了「全部接受」。
+--
+-- **为什么不塞进 `note_revisions`**（P37 #5 下一步那句）：那张表管的是「正文的某一版」，
+-- 有 `REVISION_KEEP = 100` 的淘汰闸，而且是 `db_guard.WATCHED` 盯着的两张表之一——
+-- 每处置一下就往它写一行，既会把用户真正的历史版本挤掉，又会让跑批的闸天天误报。
+-- 层是**另一种东西**：它不是正文的一版，是「一批还没做完的决定」。
+--
+-- 一行 = 一层。层里每一处存在 `hunks`（JSON 数组）里，而不是第二张表：
+-- 读写永远是整层一起（编辑器一次拿全量、存全量），拆成两张表只会多一次 join 和一次
+-- 「两张表不一致」的可能。
+--
+-- 列的意思：
+--   `label`   界面上那几个字（「智能续写」「撤掉第 3 轮」「润色」…）
+--   `source`  机器码，见 `CHANGE_LAYER_SOURCES`；不认识的一律 `other`（**不丢**）
+--   `run_id` / `round_no`  跟哪次跑 / 哪一轮有关（`harness_runs` 没有 `note_id`，
+--             归属只能从这边指过去）；0 / '' = 跟跑无关
+--   `seq`     层序（早的在上）——`at` 同一毫秒的两层也要排得稳
+--   `state`   整层开 / 关，取值见 `LAYER_STATES`
+--   `content_tag`  存这一版时正文的**指纹**，前端算的一个不透明串（长度 + FNV-1a）。
+--             后端不解释它，只原样存回：它唯一的用途是让前端在重开时判断
+--             「正文还是不是当时那份」——一样就按坐标直接放回去，不一样才按文字重新定位。
+--   `hunks`   JSON 数组，每一处 `{k,from,to,del,ins,state,soft,before,after}`，
+--             `state` 取值见 `HUNK_STATES`，`before`/`after` 是当时的前后文（重新定位用）
+CREATE TABLE IF NOT EXISTS note_change_layers (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    note_id     TEXT NOT NULL,
+    label       TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT 'other',
+    run_id      TEXT NOT NULL DEFAULT '',
+    round_no    INTEGER NOT NULL DEFAULT 0,
+    seq         INTEGER NOT NULL DEFAULT 0,
+    state       TEXT NOT NULL DEFAULT 'on',
+    at          TEXT NOT NULL DEFAULT '',
+    content_tag TEXT NOT NULL DEFAULT '',
+    hunks       TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_change_layers_note ON note_change_layers(user_id, note_id, seq);
+
 CREATE TABLE IF NOT EXISTS user_profile (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
@@ -582,6 +630,7 @@ def _drop_orphans(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM harness_snapshots WHERE note_id<>'' AND note_id NOT IN (SELECT id FROM notes)")
     conn.execute("DELETE FROM harness_runs WHERE key LIKE 'note:%' AND substr(key, 6) NOT IN (SELECT id FROM notes)")
     conn.execute("DELETE FROM harness_edits WHERE note_id NOT IN (SELECT id FROM notes)")
+    conn.execute("DELETE FROM note_change_layers WHERE note_id NOT IN (SELECT id FROM notes)")
 
 
 def _drop_orphan_runs(conn: sqlite3.Connection) -> None:
@@ -1137,6 +1186,201 @@ def snapshot_content(user_id: str, note_id: str, title: str, content: str, reaso
                                 run_id=run_id, round_no=round_no)
 
 
+# ------------------------------------------------- 待处置的改动层（P39）
+#
+# 见 `note_change_layers` 那段建表注释。这里只放三件事：**取值表**、**淘汰规则**、
+# **写进去 / 读出来**。
+
+CHANGE_LAYER_SOURCES = (
+    "round",        # 智能续写（每次跑累积成一层，`replace`）
+    "continue",     # 续写（定向续写 / 接着写）
+    "rewrite",      # 重写
+    "polish",       # 润色
+    "expand",       # 扩展上下文
+    "format",       # 格式化（纯规则）
+    "restructure",  # 智能排版
+    "voice",        # 语音输入 / 插入音频
+    "table",        # 图片转表格
+    "block",        # `/` 块生成
+    "undo_round",   # 「只撤这一轮」产生的反向层（P16）
+    "other",        # **不认识的一律落这里，不丢**（探针、以后新加的动作）
+)
+"""层的来源。**`other` 是正经取值不是兜底借口**：不认识就记 `other`，
+比「认不出来就不存」强得多——不存等于又一次静默按「接受」。"""
+
+LAYER_STATES = ("on", "off")
+"""整层开 / 关。`off` = 这一层改的每一处都还原成了改之前，但记着它改成了什么。"""
+
+HUNK_STATES = ("pending", "off", "accepted", "reverted")
+"""一处改动的处置状态。**四个取值，四条真写真读的测试**（批 22 `stopped` 记不到
+`max_rounds` 那条教训）：
+
+  `pending`   还挂着「接受 / 撤回」两个钮，用户还没表态
+  `off`       这一处被关掉了（整层开关关下来的），正文是原文、新文字记在 `ins` 里
+  `accepted`  用户逐处按了「✓ 接受」——正文里留的是新文字
+  `reverted`  用户逐处按了「↩ 撤回」——正文已经换回 `del`
+
+后两个在编辑器里**本来就从 hunk 列表里消失了**（`acceptHunk` / `dropHunk` 直接 filter 掉），
+所以光把 field 里剩下的存下来，这两个取值一辈子写不进来——那正是 `stopped` 的坏法。
+前端为此在 field 里另留了一条 `settled` 账（`editor/roundDiff.ts`），这两个取值走那条路。"""
+
+CHANGE_LAYER_KEEP = 20
+"""一篇最多留几层。
+
+为什么按篇不按天：用户是**在一篇上**做决定的，「这篇上还挂着几层没处置」才是他
+要回答的问题；按天的话一天里在 30 篇上各点一次格式化，每篇都只剩不到一层。
+为什么是 20：九种动作里最碎的是 `/` 块和语音（一次一层），实测一段连续写作会
+攒到个位数；20 层的面板已经要滚两屏，再多本身就说明「这些决定用户不打算做了」。"""
+
+CHANGE_LAYER_MAX_AGE_DAYS = 30
+"""多久以前的层不再留。跟「最近删除」（`TRASH_KEEP_DAYS`）同一个数量级：
+一个月没处置的改动层，重建出来的高亮指向的正文早就不是那份了。"""
+
+CHANGE_LAYER_HUNKS = 500
+"""一层最多存几处。47k 字的长文点一次「格式化」能切出几千处；整层塞进一行 JSON
+既写得慢又读得慢。**超了就整层不存，并且说出来**——截断着存下来更糟：
+用户下次打开看到的是「这层有 300 处」，而真相是 3000 处里挑剩的那 300 处。"""
+
+
+def _change_hunk(h: dict, *, index: int) -> dict | None:
+    """一处改动的规范化。形状不对返回 None（调用方计数并报出去，不静默吞）。"""
+    if not isinstance(h, dict):
+        return None
+    state = str(h.get("state") or "pending")
+    if state not in HUNK_STATES:
+        return None
+    try:
+        frm = max(0, int(h.get("from") or 0))
+        to = max(frm, int(h.get("to") or 0))
+    except (TypeError, ValueError):
+        return None
+    return {
+        "k": int(h.get("k") if isinstance(h.get("k"), int) else index),
+        "from": frm,
+        "to": to,
+        "del": str(h.get("del") or ""),
+        "ins": str(h.get("ins") or ""),
+        "state": state,
+        "soft": bool(h.get("soft")),
+        "before": str(h.get("before") or "")[-48:],
+        "after": str(h.get("after") or "")[:48],
+    }
+
+
+def list_change_layers(user_id: str, note_id: str) -> list[dict]:
+    """这一篇上还挂着的改动层，层序（早的在上）。"""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT * FROM note_change_layers WHERE user_id=? AND note_id=?"
+            " ORDER BY seq, created_at, rowid", (user_id, note_id)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["hunks"] = json.loads(d.get("hunks") or "[]")
+        except (TypeError, ValueError):
+            d["hunks"] = []
+        out.append(d)
+    return out
+
+
+def save_change_layers(user_id: str, note_id: str, layers: list[dict]) -> dict:
+    """把这一篇上的改动层**整批换掉**（编辑器是这件事的唯一真相，增量同步只会多一种不一致）。
+
+    返回 `{"saved": n, "evicted": [...], "rejected": [...]}`——
+    **淘汰要吵闹**：淘汰掉的和没收下的都原样回给调用方，前端据此弹一句话。
+    悄悄少存一层，用户下次打开看到的就是「我明明留着的那层不见了」。
+    """
+    evicted: list[dict] = []
+    rejected: list[dict] = []
+    cleaned: list[dict] = []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=CHANGE_LAYER_MAX_AGE_DAYS)
+    for i, layer in enumerate(layers or []):
+        if not isinstance(layer, dict):
+            rejected.append({"label": "", "why": "这一层的形状不对，没存下来"})
+            continue
+        label = str(layer.get("label") or "")
+        raw = layer.get("hunks") or []
+        if not isinstance(raw, list):
+            rejected.append({"label": label, "why": "这一层的改动列表形状不对，没存下来"})
+            continue
+        if len(raw) > CHANGE_LAYER_HUNKS:
+            rejected.append({"label": label,
+                             "why": f"这一层有 {len(raw)} 处，超过 {CHANGE_LAYER_HUNKS} 处就不再留到下次打开"})
+            continue
+        hunks = []
+        dropped = 0
+        for j, h in enumerate(raw):
+            one = _change_hunk(h, index=j)
+            if one is None:
+                dropped += 1
+            else:
+                hunks.append(one)
+        if dropped:
+            rejected.append({"label": label, "why": f"这一层里有 {dropped} 处形状不对，没存下来"})
+        if not hunks:
+            continue
+        at = str(layer.get("at") or "")
+        try:
+            # 前端给的是 `toISOString()`（带 Z、带时区）。**`TypeError` 也要接**：
+            # 换成一个不带时区的串时，`naive < aware` 抛的是 TypeError 不是 ValueError，
+            # 漏接就是整条保存 500——而这一条只是「这层多老了」，不该有本事弄挂保存。
+            old = bool(at) and datetime.fromisoformat(at) < cutoff
+        except (ValueError, TypeError):
+            old = False
+        if old:
+            evicted.append({"label": label, "at": at,
+                            "why": f"超过 {CHANGE_LAYER_MAX_AGE_DAYS} 天没处置，不再留着"})
+            continue
+        source = str(layer.get("source") or "other")
+        state = str(layer.get("state") or "on")
+        cleaned.append({
+            "id": str(layer.get("id") or uuid.uuid4().hex[:12]),
+            "label": label,
+            "source": source if source in CHANGE_LAYER_SOURCES else "other",
+            "run_id": str(layer.get("run_id") or ""),
+            "round_no": int(layer.get("round_no") or 0),
+            "seq": int(layer.get("seq") if isinstance(layer.get("seq"), int) else i),
+            "state": state if state in LAYER_STATES else "on",
+            "at": at,
+            "content_tag": str(layer.get("content_tag") or ""),
+            "hunks": hunks,
+        })
+    # 按篇的上限：早的先走（层序就是时间序）
+    if len(cleaned) > CHANGE_LAYER_KEEP:
+        over = len(cleaned) - CHANGE_LAYER_KEEP
+        for gone in cleaned[:over]:
+            evicted.append({"label": gone["label"], "at": gone["at"],
+                            "why": f"这一篇的待处置改动层超过 {CHANGE_LAYER_KEEP} 层，最早的先不留"})
+        cleaned = cleaned[over:]
+    now = _now()
+    with connect() as c:
+        # 已经在库里的层保留它原来的 `created_at`：整批换掉是写法，不是「这层刚生出来」
+        born = {str(r[0]): str(r[1]) for r in c.execute(
+            "SELECT id, created_at FROM note_change_layers WHERE user_id=? AND note_id=?",
+            (user_id, note_id))}
+        c.execute("DELETE FROM note_change_layers WHERE user_id=? AND note_id=?", (user_id, note_id))
+        for l in cleaned:
+            c.execute(
+                "INSERT INTO note_change_layers"
+                " (id,user_id,note_id,label,source,run_id,round_no,seq,state,at,content_tag,hunks,created_at,updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (l["id"], user_id, note_id, l["label"], l["source"], l["run_id"], l["round_no"],
+                 l["seq"], l["state"], l["at"], l["content_tag"],
+                 json.dumps(l["hunks"], ensure_ascii=False), born.get(l["id"], now), now))
+        c.commit()
+    return {"saved": len(cleaned), "evicted": evicted, "rejected": rejected}
+
+
+def drop_change_layers(user_id: str, note_id: str) -> int:
+    """这一篇的改动层全清（烧进正文 / 删笔记）。返回清掉几层。"""
+    with connect() as c:
+        cur = c.execute("DELETE FROM note_change_layers WHERE user_id=? AND note_id=?",
+                        (user_id, note_id))
+        c.commit()
+        return int(cur.rowcount or 0)
+
+
 def open_harness_edit(user_id: str, note_id: str, *, run_id: str, key: str,
                       revision_id: str, base_chars: int, ai_chars: int) -> str:
     """跑完开一行。同一篇上还开着的旧行记 `superseded`。
@@ -1515,6 +1759,8 @@ def delete_note(user_id: str, note_id: str) -> list[str]:
             c.execute("DELETE FROM harness_edits WHERE user_id=? AND note_id=?", (user_id, nid))
             # 托盘是这篇的（P14）：笔记没了，摊在它桌上的材料也一起收
             c.execute("DELETE FROM note_tray WHERE user_id=? AND note_id=?", (user_id, nid))
+            # 待处置的改动层（P39）也是这篇的：正文都没了，「这几处改动要不要」就没有意义了
+            c.execute("DELETE FROM note_change_layers WHERE user_id=? AND note_id=?", (user_id, nid))
             removed.append(nid)
 
         drop(note_id)

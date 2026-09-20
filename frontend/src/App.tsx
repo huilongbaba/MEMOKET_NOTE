@@ -47,7 +47,7 @@ import RevisionPanel, { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
 import AgentActivity, { type AgentRound } from './components/AgentActivity'
-import { acceptAllHunks, diffParts, dropHunk, roundDiffField, type DiffPush }
+import { acceptAllHunks, diffParts, dropHunk, pendingHunks, restoreLayers as restoreLayersEffect, roundDiffField, type DiffPush }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import Gutter from './components/Gutter'
@@ -69,6 +69,7 @@ import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { undoRound } from './editor/undoRound'
 import { groupRuns, type RunRound } from './util/runRounds'
+import { restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
 import { checkLabel } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
@@ -116,6 +117,12 @@ import Icon from './components/Icon'
 const SKELETON_IDLE_MS = 8000
 const SKELETON_MIN_CHARS = 30
 const SKELETON_MIN_DELTA = 20
+
+/** 改动层落库的防抖（P39）。**故意比正文自动保存的 1500ms 晚一点**：
+ *  存进层里的 `content_tag` 说的是「这几处的坐标是对着哪份正文算的」，
+ *  晚一步写，那份正文刚好已经落库，下次打开走的就是「按坐标精确放回」那条路，
+ *  不必靠文字重新定位。 */
+const CHANGE_LAYER_SAVE_MS = 1600
 
 
 /** 无限续写 harness 的运行状态——挂在 App 这一级而不是 WritingPlanPanel
@@ -308,6 +315,24 @@ export default function App() {
   // 还剩几处 harness 改动没被处置。由编辑器上报——逐处接受/撤回、用户自己
   // 编辑、下一轮写入都会让它变，React 这边只是拿来决定要不要显示那条工具栏。
   const [pendingDiff, setPendingDiff] = useState(0)
+  /** 待处置的改动层落库（P39，痛点 8 的最后一块）。
+   *
+   * **落库时机为什么是这三下**（P37 #5 提醒过：`auto` 快照那一档的 600 秒间隔正是
+   * 为了别一敲字就写）：
+   *   ① **层一产生就写一次**——跑完一轮智能续写立刻断电，那一层也还在；
+   *   ② **处置状态一动就防抖写**（`CHANGE_LAYER_SAVE_MS`，比正文自动保存的 1500ms 稍晚一点，
+   *      于是存进去的 `content_tag` 说的正是刚落库的那份正文，重开时能走「按坐标精确放回」那条路）；
+   *   ③ **关窗口 / 换篇之前冲一次**（`keepalive`，不然页面一卸载请求就被掐）。
+   * 一敲一个字就写是**明确不做**的：位置漂了由 ② 那一下带走，而 `sameLayers` 会把
+   * 「其实什么都没变」的那些写请求全挡掉。 */
+  const layersSaved = useRef<{ noteId: string; payload: SavedLayer[] }>({ noteId: '', payload: [] })
+  const layersTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 层已经放回编辑器的是哪一篇。**换篇到放回来之间这一格是空的**——
+   *  这中间的任何一次防抖落库都会把上一篇的层写到新这篇名下。 */
+  const layersReady = useRef('')
+  const lastSettled = useRef<unknown>(undefined)
+  /** 处置过的那本账变了要重渲染面板（「已处置 2 接受 · 1 撤回」那一行） */
+  const [layersTick, setLayersTick] = useState(0)
   /** 续写写完之后把那一段封成一个撤销单位（P10 C3-2，`editor/undoUnit`）；seq 变了编辑器才动手。 */
   // 撤销分组（P11 #2）：智能续写每一轮开跑加一，编辑器把这一轮落地的所有片段（修订 + 续写）并成一条撤销事件，
   // ⌘Z 一次撤一轮（机制在 `editor/undoUnit.aiSyncSpec` / `MarkdownEditor` 的 content 同步）
@@ -350,7 +375,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve(), runVoice: (_f: number, _t: number) => Promise.resolve() })
+  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve(), runVoice: (_f: number, _t: number) => Promise.resolve(), flushChangeLayers: (_k?: boolean) => {} })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -1518,6 +1543,92 @@ export default function App() {
     }
   }
 
+  /** 这一篇还挂着哪几层没处置 —— 写进库（P39）。
+   *
+   * 整批替换：编辑器是这件事的唯一真相，增量同步只会多出一种「两边不一致」。
+   * 写之前先问一句「跟上次写下去的一模一样吗」，一样就一个字节都不发——
+   * 位置跟着打字漂一下就发一次请求的话，这条路就成了第二个自动保存。 */
+  const flushChangeLayers = useCallback((keepalive = false) => {
+    if (layersTimer.current) { clearTimeout(layersTimer.current); layersTimer.current = null }
+    const view = editorViewRef.current
+    const id = currentRef.current?.id
+    if (!view || !id || layersReady.current !== id) return
+    const payload = serializeLayers(view.state)
+    if (layersSaved.current.noteId === id && sameLayers(layersSaved.current.payload, payload)) return
+    layersSaved.current = { noteId: id, payload }
+    void api.saveChangeLayers(id, payload, keepalive)
+      .then((r) => {
+        // **淘汰要吵闹**：少存了哪一层、为什么，当场说一句。悄悄少一层，
+        // 下次打开就是「我留着的那层不见了」——跟这一批要修的毛病是同一个。
+        const gone = [...r.evicted, ...r.rejected]
+        if (gone.length) {
+          toast(`${gone.length} 层改动没能留到下次打开：${gone[0].label || '这一层'}——${gone[0].why}`
+            + (gone.length > 1 ? `（还有 ${gone.length - 1} 层同样没留下）` : ''), 'error')
+        }
+      })
+      .catch(() => { layersSaved.current = { noteId: '', payload: [] } })   // 没存上就别记成存过了
+  }, [])
+
+  /** 编辑器报「层动了一下」：防抖之后落库。
+   *
+   * **所有改层的路都走这一条**（悬停工具条上的「接受 / 撤回」根本不经过 React），
+   * 所以这里不去数是哪种处置——只要 `roundDiffField` 的值换了就算。 */
+  const onLayersChanged = useCallback(() => {
+    const st = editorViewRef.current?.state.field(roundDiffField, false)
+    // 「已处置」那本账变了才重渲染面板：位置跟着打字漂不该每敲一个字重画一次右栏
+    if (st && st.settled !== lastSettled.current) { lastSettled.current = st.settled; setLayersTick((n) => n + 1) }
+    if (layersTimer.current) clearTimeout(layersTimer.current)
+    layersTimer.current = setTimeout(() => { layersTimer.current = null; flushChangeLayers() }, CHANGE_LAYER_SAVE_MS)
+  }, [flushChangeLayers])
+
+  // 关窗口 / 关标签之前冲一次。`keepalive` 是承重的：不带的话页面一开始卸载，
+  // 这个请求就被浏览器掐掉了——「关掉 app 前存一次」等于没存。
+  useEffect(() => {
+    const on = () => flushChangeLayers(true)
+    window.addEventListener('beforeunload', on)
+    window.addEventListener('pagehide', on)
+    return () => { window.removeEventListener('beforeunload', on); window.removeEventListener('pagehide', on) }
+  }, [flushChangeLayers])
+
+  // 打开一篇：把库里挂着的改动层放回编辑器（P39 —— 这一批的正题）。
+  useEffect(() => {
+    const id = current?.id
+    layersReady.current = ''                       // 还没放回来之前，任何一次防抖落库都不许动手
+    layersSaved.current = { noteId: '', payload: [] }
+    lastSettled.current = undefined
+    if (layersTimer.current) { clearTimeout(layersTimer.current); layersTimer.current = null }
+    if (!id) return
+    let alive = true
+    void api.listChangeLayers(id)
+      .then((saved) => new Promise<SavedLayer[]>((res) => setTimeout(() => res(saved), 320)))
+      .then((saved) => {
+        // 正文同步进编辑器是子组件的 effect 干的；等一小会儿再放回去，
+        // 免得按上一篇的正文算坐标。等完还要再核一次开着的是不是同一篇。
+        const view = editorViewRef.current
+        if (!alive || !view || currentRef.current?.id !== id) return
+        if (saved.length) {
+          const r = restoreLayers(saved, view.state.doc.toString())
+          view.dispatch({ effects: restoreLayersEffect.of({ layers: r.layers, hunks: r.hunks, settled: r.settled }) })
+          setPendingDiff(pendingHunks(view))
+          setLayersTick((n) => n + 1)
+          // **数真的放回去的那几层**，不是库里那几行：一整层都对不上的时候
+          // 它一层都没进编辑器，说「重新打开了 3 层」就是又一次说假话（P37 #2 / #3 同形）。
+          const n = new Set([...r.hunks.map((h) => h.key), ...r.settled.map((x) => x.key)]).size
+          if (r.conflicts.length) {
+            toast(`重新打开了 ${n} 层还没处置的改动；${r.conflicts.length} 处因为正文改过对不上没能放回：${r.conflicts.slice(0, 2).join('；')}`, 'error')
+          } else if (n) {
+            toast(`上次没处置完的 ${n} 层改动还在右栏「改动」里`)
+          }
+        }
+        layersReady.current = id
+        const view2 = editorViewRef.current
+        if (view2) layersSaved.current = { noteId: id, payload: serializeLayers(view2.state) }
+        lastSettled.current = view2?.state.field(roundDiffField, false)?.settled
+      })
+      .catch(() => { layersReady.current = id })
+    return () => { alive = false }
+  }, [current?.id])
+
   // Cmd/Ctrl+S saves explicitly instead of falling through to the browser's
   // save-page dialog; Cmd/Ctrl+N starts a new note instead of opening a new
   // browser window -- power users expect both, autosave already makes S a
@@ -1748,6 +1859,7 @@ export default function App() {
   async function switchTo(n: Note, viaHarness = false) {
     if (current?.id === n.id) return
     await save()
+    flushChangeLayers()          // 离开这篇之前把挂着的改动层写下去（P39 ③）
     // 要开的这篇正在分屏里被改：先把分屏没存的冲进库，再拿最新的正文来开。
     // 不然主栏拿着旧正文开出来，1.5 秒后自动保存把分屏那几笔盖掉。
     if (split?.id === n.id && splitFlush.current) {
@@ -3264,7 +3376,7 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown, runVoice }
+  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown, runVoice, flushChangeLayers }
 
   return (
     <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
@@ -3918,7 +4030,7 @@ export default function App() {
                     用户关掉 app 再打开，高亮没了、正文留着——**等于替他按了「全部接受」**，
                     而界面上还摆着「全部接受 / 全部撤回」两个钮，读起来像「有个决定等你做」。
                     落库是下一批的事；在那之前，至少不许它是静悄悄的。 */}
-                <span className="muted">鼠标移到改动上可以逐处接受、撤回；<a href="#" onClick={(e) => { e.preventDefault(); setPaneFocus({ id: 'changes', n: Date.now() }) }}>按层处置</a>（保留第一次改的、放弃第三次的）。<strong>关掉这个 app 就当接受了</strong>——高亮不会留到下次打开。</span>
+                <span className="muted">鼠标移到改动上可以逐处接受、撤回；<a href="#" onClick={(e) => { e.preventDefault(); setPaneFocus({ id: 'changes', n: Date.now() }) }}>按层处置</a>（保留第一次改的、放弃第三次的）。<strong>关掉这个 app 再打开，这些改动还挂在这儿</strong>——你逐处按下去的接受 / 撤回也留着。</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button onClick={acceptAllDiff}>全部接受</button>
                   <button onClick={rejectAllDiff} title="把这一轮改的全部还原成改之前的样子">
@@ -3942,6 +4054,7 @@ export default function App() {
               roundDiff={roundDiff}
               undoGroup={undoGroup}
               onPendingDiff={setPendingDiff}
+              onLayersChanged={onLayersChanged}
               onSelectionContextMenu={(x, y, text) => setSelectionMenu({ x, y, text })}
               onCursorParagraph={setCursorPara}
               marginMarks={marginMarks}
@@ -4027,7 +4140,7 @@ export default function App() {
             // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
             // P16：烧进正文之后这次跑的每一轮还在（后端每轮开始前存一版）——有烧过的跑时这个标签也留着，逐轮「回到之前 / 只撤这一轮」
             { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined, hasContent: pendingDiff > 0 || runs.length > 0,
-              body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff} runs={runs} busy={loading === 'rounds'}
+              body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff + layersTick} runs={runs} busy={loading === 'rounds'}
                                        onRestoreBefore={(r) => void restoreBeforeRound(r)} onUndoRound={(r) => void undoRoundOnly(r)} /> },
             // 计划 = 完成标准（判据）+ 目录（每节状态）+ 写作骨架 + 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。

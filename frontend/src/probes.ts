@@ -26,6 +26,7 @@ import { runP15 } from './probesP15'
 import { runP16 } from './probesP16'
 import { runP18 } from './probesP18'
 import { runP19 } from './probesP19'
+import { runP39 } from './probesP39'
 
 export type ProbeCtx = Record<string, any>
 
@@ -55,6 +56,8 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
   if (probe?.startsWith('p18:')) { void runP18(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // P19：「只撤第 N 轮」当后一轮改过它的句子（P18 只在单测里验过，这条在真 app 里拍），代码在 probesP19.ts
   if (probe?.startsWith('p19:')) { void runP19(probe, ctx as ProbeCtx & { notes: Note[] }); return }
+  // P39：待处置的改动层落库——关掉再打开还在不在，代码在 probesP39.ts
+  if (probe?.startsWith('p39:')) { void runP39(probe, ctx as ProbeCtx & { notes: Note[] }); return }
   // 记忆范围存在 localStorage，上一次探针（digest:30:notes）切的会留给下一次——
   // 除非这次探针自己指定了范围，否则先复位到「全部记忆」（第 188 轮实拍右栏莫名「只看笔记」）
   const { notes, tree, switchTo, openVirtual, openInSplit, newNote, removeWithSubtree, remove, syncTab, formatNote, setSelectionMenu, setPaneFocus, setContent, setTreeMenu, setTabs, setTabMenu, setShowShortcuts, setReviewEachRound, setQuick, setNoteQuery, setFocusMode, editorViewRef, actionsRef, harnessProbeDone, moveNodeTo, setLoading, setNoteHarnessStatus } = ctx as ProbeCtx & { notes: Note[]; tree: TreeRow[] }

@@ -6,11 +6,12 @@
  * 层是**可开关的**：关掉 = 每一处还原成改之前，但记住它改成了什么；再打开 = 写回去
  * （原文那处被改过就重放不了，说清楚）。「接受」定稿、「丢弃」忘掉，这两个才是终点。
  *
- * **没烧的那一层关掉就没了**（P37 #5 / P35 #9）：层活在 CodeMirror 的编辑器状态里，
- * **一行都不落库**——P37 在真库上量过（44 行 `note_revisions` 里 `run_id` / `round_no`
- * 全是空的；除了 `round_snapshot` 那条路，九种改动层里有八种在库里什么都不留；
- * 能顶上的 `auto` 那一档又卡在 `REVISION_INTERVAL_S = 600s` 上）。所以重建不出来，
- * 落库是下一批的事。在那之前**至少说一句**：关掉 = 按「接受」处理。
+ * **关掉重开还在**（P39）：层和每一处的处置状态落在 `note_change_layers` 里
+ * （P37 #5 量出来的四个缺口——八种层什么都不留、`auto` 那档被 600s 掐掉、
+ * `harness_runs` 没有 `note_id`、处置状态根本没有载体——就是这张表要补的）。
+ * 逐处接受 / 撤回过的那几下也留着：`roundDiffField` 里另记了一本 `settled` 账，
+ * 不然按下去的那一刻 hunk 就从列表里没了，什么都写不进库。
+ * 烧之后（「全部接受」）这张表清空，那一段改由下面的「烧过的跑」接手（P16）。
  *
  * **烧之后还在**（P16）：接受 = 烧进正文，层就没了；但后端每轮开始前存了一版（`note_revisions.reason='round'`），
  * 所以这次跑的每一轮还列在下面——「回到这轮之前」恢复那一版（恢复前会再存一版，可逆）、「只撤这一轮」
@@ -18,7 +19,7 @@
  */
 import { useState, type RefObject } from 'react'
 import type { EditorView } from '@codemirror/view'
-import { acceptLayer, dropLayer, layersOf, turnLayerOff, turnLayerOn } from '../editor/roundDiff'
+import { acceptLayer, dropLayer, layersOf, settledOf, turnLayerOff, turnLayerOn } from '../editor/roundDiff'
 import { runTitle, type RunHistory, type RunRound } from '../util/runRounds'
 import { toast } from '../toast'
 
@@ -37,6 +38,17 @@ export default function ChangeLayersPanel({ viewRef, tick, runs = [], onRestoreB
   const [, bump] = useState(0)
   const view = viewRef.current
   const layers = view ? layersOf(view) : []
+  const settled = view ? settledOf(view) : []
+  const settledOn = (id: number) => settled.find((x) => x.id === id)
+  /** 处置完的层：一处活的都不剩，但「2 接受 · 1 撤回」这几下是用户真做过的决定，
+   *  关掉重开还得看得见（P39）。列成一行灰字，不给它一张带按钮的卡片——
+   *  卡片上那两个钮按下去什么都不会发生。 */
+  const settledOnly = settled.filter((x) => !layers.some((l) => l.id === x.id))
+  const settledLines = settledOnly.map((x) => (
+    <p key={x.id} className="muted layer-settled" style={{ fontSize: 'var(--t-xs)', margin: 0 }}>
+      {x.label} · {when(x.at)} · 已处置：{x.accepted} 处接受、{x.reverted} 处撤回
+    </p>
+  ))
   const toggle = (id: number, off: boolean) => {
     if (!view) return
     if (off) {
@@ -50,15 +62,18 @@ export default function ChangeLayersPanel({ viewRef, tick, runs = [], onRestoreB
   return (
     <div className="stack" style={{ gap: 6 }}>
       {!view || layers.length === 0
-        ? <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>AI 改过的地方会按动作分层列在这里：整层接受、整层撤回。现在没有待处置的改动。</p>
+        ? <>
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>AI 改过的地方会按动作分层列在这里：整层接受、整层撤回。现在没有待处置的改动。</p>
+          {settledLines}
+        </>
         : <>
-          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>{layers.length} 层 · 早的在上。开关一层 = 它改的每一处还原 / 写回；「接受」定稿、「丢弃」忘掉。<strong>关掉这个 app 就当接受了</strong>——这几层活在这次会话里，不会留到下次打开（下面「烧过的跑」那一段会留）。</p>
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>{layers.length} 层 · 早的在上。开关一层 = 它改的每一处还原 / 写回；「接受」定稿、「丢弃」忘掉。<strong>关掉这个 app 再打开，这几层和你逐处按下去的接受 / 撤回都还在</strong>（下面「烧过的跑」那一段也留）。</p>
           {layers.map((l, i) => (
             <div key={l.id} className={'card layer-card' + (l.off ? ' off' : '')} style={{ padding: '6px 10px' }}>
               <div className="row" style={{ gap: 8, alignItems: 'center' }}>
                 <button className={'switch' + (l.off ? '' : ' on')} role="switch" aria-checked={!l.off} title={l.off ? '打开这层：把它改的写回去' : '关掉这层：每一处还原成改之前，随时能再打开'} onClick={() => toggle(l.id, l.off)}><span /></button>
                 <strong style={{ fontSize: 'var(--t-md)' }}>{l.label} {layers.filter((x) => x.label === l.label).length > 1 ? '①②③④⑤⑥⑦⑧⑨'[layers.filter((x, j) => x.label === l.label && j <= i).length - 1] ?? '' : ''}</strong>
-                <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{when(l.at)} · {l.count} 处</span>
+                <span className="muted" style={{ fontSize: 'var(--t-xs)' }}>{when(l.at)} · {l.count} 处{(() => { const x = settledOn(l.id); return x ? ` · 已处置 ${x.accepted} 接受 / ${x.reverted} 撤回` : '' })()}</span>
                 <span style={{ marginInlineStart: 'auto', display: 'flex', gap: 4 }}>
                   {!l.off && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} title="保留这层改的全部（定稿）" onClick={() => view.dispatch({ effects: acceptLayer.of(l.id) })}>接受</button>}
                   <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} title={l.off ? '忘掉这层（正文已经是原文）' : '把这层改的每一处还原并忘掉'} onClick={() => dropLayer(view, l.id)}>{l.off ? '丢弃' : '撤回'}</button>
@@ -66,6 +81,7 @@ export default function ChangeLayersPanel({ viewRef, tick, runs = [], onRestoreB
               </div>
             </div>
           ))}
+          {settledLines}
         </>}
       {runs.length > 0 && (
         <div className="stack run-history" style={{ gap: 6, marginTop: layers.length ? 10 : 4 }}>
