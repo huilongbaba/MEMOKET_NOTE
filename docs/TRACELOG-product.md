@@ -15103,3 +15103,406 @@ worktree 里的 `backend/data/notes.sqlite3` 被 `.gitignore:14` 挡着；
    `selfcheck-selectors.mjs` 进哪条链）——**这一批没起壳，一条都没碰，照实记**。
 5. **P64 #1 要真判出是谁的，得有一次能复现的跑**：产品那两处口径已经钉上闸了（②），
    下一步是把走查那一趟读「+N 字」的那一行也钉住——**那需要走查脚本先进 git**。
+## P66 · 第 800 轮：壳那一侧的量具进仓库 + 接进 `npm test` · 那个 `null` 是量具读错了地方 · 第十二次走查（2026-09-20）
+
+> HEAD 开工 `83a3f3d`（worktree `agent-abd0858244067be26`，P63 / P64 两支的 merge）。三件事：
+> **A** 壳那一侧的量具搬进仓库（P62 ⑤ / P63 ④ / P64 留的第 4 条，四批挂着的那一格）；
+> **B** P64 问题 #2 那条「**没核清楚**」——这一批核清楚了；
+> **C** 照十一步走**第十二次**全流程走查，两个身份。
+>
+> 另一个 agent 同时在改 `kb/**`（取词排序）和 `app/harness/**`（字数口径）——
+> **这一批那两处一个字节没碰**；`frontend/src/**` / `desktop/src/**` / `backend/app/**`
+> 也**一个字节没碰**（收工 `git status` 逐条核过）。
+> 碰的是六处：新建 `frontend/scripts/walkthrough/{cdp.mjs,README.md}`、
+> 新建 `frontend/scripts/check-walkthrough-selectors.mts`、
+> 新建 `backend/scripts/walkthrough_udd.py`、新建 `backend/tests/test_p66.py`（18 条）、
+> `frontend/package.json`（把自检挂进 `npm test`）、
+> `frontend/scripts/check-greppable.mts`（扫描名单加 `.mjs`）、
+> `backend/tests/test_corpus_lineage.py`（白名单补一条，**带理由，而且那条理由本身有闸盯着**），
+> 外加三份文档。
+>
+> **量具**：`$S/p66/{fp66,copydb66,setup66,mkcleanday66,mutate66,scrub52,setmode,fakellm66,
+> reasar,reweb.sh,go.sh,launch.sh,step.sh,haspage,treehash.sh,backend-shim.sh}.py|mjs|sh`
+> + `$S/p66/steps/*.mjs`（从 p64 整套拷出来改路径，**p64 那一份一个字节没动**）。
+> **驱动走的是仓库里那一份**（`$S/p66/step.sh` 里写死
+> `<worktree>/frontend/scripts/walkthrough/cdp.mjs`）——搬进仓库了就得真用仓库那份，
+> 不然「搬了」只是多了一个副本。
+> 截图 `$S/p66-*.png`（**46 张**）。
+>
+> **安全**：真库只读做指纹，开工 = 收工两次全同
+> **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44**；
+> `llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**：
+> 全程假端点 127.0.0.1:18274–18275）。
+> 实验语料 `KITE_DATA_DIR` 那一份 = `$S/p66data`（`backend/data` 整目录拷，
+> **源和目标各核一遍** `terrence/codebook.xml` = **11,429,185 字节 / `403a1183`**）。
+> 老用户库：真库 `sqlite3.backup` 只读拷一份进 scratch，起 app 前扫**全库 24 张表**，
+> 命中 1 处（`provider_config.gpt_api_key`）换成 `fake-key-p52`，`sk-` **1 → 0**，
+> **三个 base_url 全部指本机**（扫完**再核一遍**才准起壳）。
+> `~/Library/Application Support/memoket-note-desktop` **一次都没写**
+> （开工 = 收工 mtime 都是 **09-20 00:57:49**；`journey_fixture --variant full` 对它是**只读**）；
+> `backend/data/backups/` 没有新文件；`backend/data/terrence/codebook.xml` 源文件 mtime
+> 还是 **09-17 11:56:14 / 11,429,185 字节**。
+> `unset ELECTRON_RUN_AS_NODE`（`launch.sh` 走 `env -u`）；CDP 端口 19340–19348、
+> 假模型 18274–18275，起之前逐个核过空着。
+> 壳里**四个可执行件逐字节核过**（`app.asar/dist/{main,preload,capture,backend}.js`
+> 全等于本 worktree 现编的那份：`6bf26ad445555e90` / `65b781768d05f753` /
+> `4f2a5eb7a337fb1d` / `e754819ef82ae65f`；`Resources/web` 整树 **`075322b97485eed8`**
+> = `frontend/dist`，跟 P64 那一趟逐格相同），adhoc 重签 + `codesign --verify` 过。
+> **这一批 `postnote` 一条都没发**（锁屏那一格 P64 已经摆过，这一批不重复发通知）。
+
+---
+
+### A. 壳那一侧的量具进仓库：三份进来，步骤脚本进不来（写清楚为什么）
+
+P63 把**后端**三把尺搬进 `backend/scripts/` 之后自己写着：
+「壳那一侧的量具还在 scratch 里（步骤脚本 / `selfcheck-selectors.mjs` 都不在 git）」。
+P64 又实测了一次这条闸**是有牙的**：收工那一趟 `selfcheck-selectors.mjs`
+**当场点名了它自己那一批新写的 `.journey-day-opt`**（前端里根本没有这个类）。
+
+#### 搬进来的三份 + 各自进了哪条链
+
+| 搬的 | 落在哪儿 | 接进哪条链 | 为什么在这儿 |
+|---|---|---|---|
+| CDP 驱动 `cdp.mjs` | `frontend/scripts/walkthrough/cdp.mjs` | 选择器那一半进 `npm test`（下一行）；跑的那一半要壳 | 它选的全是 `frontend/src` 的类名，跟着前端源码一起改 |
+| 选择器静态自检 | `frontend/scripts/check-walkthrough-selectors.mts` | **`npm test`**（`package.json` 的 `test` 串里，第 34 条 check） | `npm test` 是前端唯一那条链，`check-*.mts` 三十多条都在这儿 |
+| userData 造法 `udd.py` | `backend/scripts/walkthrough_udd.py` | **`pytest`**（`backend/tests/test_p66.py` 18 条） | 它是 Python、读 `backend/data` 那棵树；`frontend/scripts/` 那边**没有跑得动它的地方，也就没有闸接得住它** |
+
+**为什么不是 `desktop/scripts/`**：`desktop/package.json` 里**一条 `test` 都没有**
+（只有 `build` / `dev` / `start` / `dist`），放进去等于没进链。
+而这三份量具量的是**前端渲染出来的界面** + **后端那棵数据目录**，跟 Electron 主进程无关。
+
+搬进来只改了一处，别的一个字节没动：`d.shot()` 的落盘目录从**写死的 scratch 绝对路径**
+（`/private/tmp/claude-501/…/<session>/scratchpad`）改成 `WALKTHROUGH_SHOT_DIR`，
+**没设就抛**。一份进 git 的文件里写死某一次会话的路径，换一台机器就是**静默写到别处**，
+而截图是走查唯一的物证。（闸：突变验第 ⑤ 刀。）
+
+#### 进不来的：步骤脚本（`steps/*.mjs`）
+
+**不是懒得搬，是搬进来也跑不了**，三样 `npm test` / `pytest` 里一样都没有：
+
+1. **一个真打出来的 `.app`**：`vite build` + `pyinstaller`（几百 MB 单文件）+ `electron-builder`
+   + adhoc 重签，一次十几分钟，产物不进 git。
+2. **一份真用户库**：判据是「482 篇老用户身上长什么样」，而真库不进 git，
+   并且只读拷贝之前要扫全库换掉真 key。
+3. **一个活着的 CDP 端口**：起的是真窗口，一趟走查十几分钟。
+
+搬进来的后果会是一堆「在 CI 上永远跳过」的文件——**一条永远绿的闸不是闸**，
+而一份永远跳过的脚本比留在 scratch 更糟：**它看着像被覆盖了**。
+所以仓库里留的是 `frontend/scripts/walkthrough/README.md`：
+在仓库里说清楚这些脚本**怎么跑**（造 udd → 打壳 / 重打 asar → `WALKTHROUGH_SHOT_DIR` →
+`node cdp.mjs <port> <step>`）、每批都要重记的那几条
+（`unset ELECTRON_RUN_AS_NODE`、端口先核空、改了 `desktop/src/**` 必须重打 asar、
+`~/Library/Application Support` 一次都不许碰、真库只读 + 扫完再核一遍）。
+
+#### 那条自检这一批加了**第二遍抽取**，而且量过它真的多抓到东西
+
+原来的抽取是**一张前缀表**（`.mm-* / .cm-* / .palette-* / .journey-* …`）。
+**前缀表外的类名它一个都看不见**——而「新写的选择器用了个没见过的前缀」正是最容易漏的那一类。
+第二遍只看**真的被当选择器传进去**的字符串（`querySelectorAll('…')` / `d.must('…')` / … 的实参），
+从里头抠类名。
+
+**多抓到多少，是量出来的**（同一批语料：仓库里的 `cdp.mjs` + `$S/p64/steps` + `$S/p60/steps`，
+52 个文件）：**42 → 46 个类名，多出 4 个、一个都没少**——
+`doc-intent` / `doc-intent-input` / `doc-intent-src`（`b1b.mjs` 读意图三格用的）、
+`floating-buttons`（`bnew.mjs` 的 ⑪ 那一格）。
+
+顺手把两个**假类名**堵了，两条都是「闸门不该把不是选择器的东西当选择器」：
+
+* `window.memoketDesktop?.setTheme(…)` 里的 `.memoketDesktop` 被前缀表当成一个类
+  （`mem` 前缀）——后面跟 `?` 的排除掉。
+* `querySelector('button[title=${JSON.stringify(t)}]')` 里的 `.stringify`
+  被第二遍当成一个类——**带 `${}` 的模板整串不抠**（拼出来的选择器静态核不了），
+  出了 CSS 选择器字符集的串也整串扔掉。
+  跟 `check-css-classes.mts` 顶上记的「注释」/「`url()`」两次是同一个形状，第三次。
+
+再加一道**分母闸**（`_corpus.mts` 那条规矩）：抠出来的类名少于 8 个就自爆
+（只扫公共驱动那一份是 **14 个**，八是六成左右）。**扫不到东西的闸门会一直是绿的。**
+
+> 收工那一趟对着**这一批自己新写的步骤脚本**跑：
+> **30 个量具文件 / 47 个类名 / 32 处通配 / 对不上 0**。
+
+#### 还顺手补了一条：`check-greppable` 现在也扫 `.mjs`
+
+那条闸的 `EXTS` 里原来没有 `.mjs`——**量具进来了，闸得看得见它**。
+（闸：突变验第 ⑪ 刀，**两步**：先在 `cdp.mjs` 里埋一个真 NUL → 红且点名 `cdp.mjs`；
+再把 `.mjs` 从名单摘掉 → **同一个 NUL 还在，却绿了**。
+只摘名单不埋 NUL 不成立：名单少一项它照样全过，**红不了不等于闸没了**。）
+
+#### `test_corpus_lineage` 这一批又按响了一次——而这一次的答案是白名单
+
+新搬进来的 `walkthrough_udd.py` 撞上了 `test_从库里取数的脚本必须走血缘判据`
+（`backend/scripts/` 下提到 `notes.sqlite3` 的脚本必须走 `corpus_lineage`）。
+**它一行 SQL 都不跑**：提到那个串只有一处，是 `Path.is_file()` / `stat().st_size`
+——核这个文件在不在、有多大，一篇笔记都没取；它连 `sqlite3` 都没 import。
+跟 P63 给 `harness_run_ledger.py` 写的逐字同一条理由：撞上是因为**路径里有这个串**。
+
+**但「理由」是可以写错的。** 所以白名单那一条不是「例外」，是「核过」：
+`test_p66::test_walkthrough_udd_一行_SQL_都不跑_所以它进血缘白名单是核过的`
+盯着它不许 import `sqlite3`、不许出现 `SELECT` / `INSERT` / `.execute(` 这些串。
+哪天有人给它加一句 SQL，白名单那条理由不再成立，而这条闸会先吵。
+
+---
+
+### B. P64 问题 #2 核清楚了：**是量具读错了地方，产品那一格写得好好的**
+
+P64 的原话是「空库第一篇 `d.noteId()` 回 `null`，**没核清楚是量具（`localStorage`
+那一格还没写）还是产品**」。
+
+**三头各读一次，在同一屏上**（`$S/p66/steps/bnew.mjs` 的 P66 B 那一段，
+空库新用户 `p66-newbie`，打包壳，`p66-bnew-2-plan-light.png`）：
+
+| 读的是哪一格 | 读回来 |
+|---|---|
+| ① `d.noteId()`（**默认参数 `user = 'terrence'`**） | `null` |
+| ② `d.noteId('p66-newbie')`（这个窗口真的身份） | **`c278bd718790`** |
+| ③ 窗口自己认的身份（`?user=` / `memoket.user`） | `p66-newbie` |
+| ④ `localStorage` 里**所有** `memoket-note-active:*` | `{"memoket-note-active:p66-newbie": "c278bd718790"}` —— **只有这一个键** |
+| ⑤ 后端真有哪几篇（带 `X-User-Id` 问 `/api/notes`） | `["c278bd718790"]` —— **同一个 id** |
+
+**结论：量具。** `cdp.mjs` 的 `async noteId(user = 'terrence')` 默认读
+`memoket-note-active:terrence`，而空库那一趟的身份是 `p66-newbie`——
+`bnew.mjs:58` 调的是不带参数的那一版，于是读了**另一个人的那一格**。
+产品那一头一点问题没有：`App.tsx:704` 的 `useEffect([current])` 一建出来就写了，
+**第一篇也写**，写的 id 跟后端返回的逐字相同。
+
+同一趟里 `whoami52.mjs` 那行「现在开着哪一篇（note id）: null」**是同一个根因**
+（它也不带参数），老用户那一趟同一行读回 `df3b4f7e987d`——**身份对上了就读得到**。
+
+> **这一格的形状**：`d.noteId()` 有个「多数时候是对的」默认值，
+> 于是它在少数那一次**静默读错一个键**，而 `localStorage.getItem` 读不到就回 `null`——
+> **跟「产品没写」长得一模一样**。P62 立的那条（`must()`：选不到就抛）
+> 管的是选择器，这一格是**参数默认值**的同一个病。
+> **判据宁可窄**：这一批只把事实核清楚、写进台账，**没有去改那个默认值**
+> ——改默认值会动到历史上所有步骤脚本的读数，得单独一批先量。记给下一批。
+
+---
+
+### C. 第十二次全流程走查（P63 / P64 之后）
+
+两个身份：空库新用户 `p66-newbie`、482 篇老用户 `terrence`（真库只读拷贝 + 全库洗 key）。
+**起壳之前先跑 `check-walkthrough-selectors.mts`**（仓库里那一份）：
+开工 **52 文件 / 46 类名 / 对不上 0**（含 `p64` / `p60` 两批历史步骤脚本）。
+
+| # | 步骤 | 空库新用户 | 482 篇老用户（terrence） |
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：状态栏「还没配模型 · 去设置」、**一个内网 IP 都没有**；设置页第一条逐字「还没配模型，AI 功能全都用不了。…」；填假端点 →「连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」」→ 点 chip → 保存 →「还没配模型」和红条**同时消失**、库里真落了（`provider=local` / `local_base_url=http://127.0.0.1:18274/v1` / `local_model=fake-p52`）。**toast 恰好 1 条**「已切换到本地模型：fake-p52 @ …」`p66-bnew-1/1b/1c/1d-*`、`p66-bnew3-1-saved-light` | **对**：开到上次那篇 `df3b4f7e987d`（按 id 核的）、正文 364 字、右栏 `["记忆","幻灯片24","计划5"]`、`/api/health` 的 `data_dir` 指着 `p66/old/udd/data`、自检横幅（没有）`p66-b1-old-open-light` |
+| 2 | 新建 → 打标题 → 右栏「计划」 | **对**：右栏 `["记忆","计划"]`、意图三格预填 + **「预填」角标在**（`prefill: true`）`p66-bnew-2-plan-light` | **对**：新建 `c04868b02eb9`；**标题框 `value` 是空的，意图三格照样预填、`prefill: true`**——**P43 #2 / P44 问题 #4 回归 ✔** `p66-b1b-old-intent-light` |
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」 | **对**：**P32 #3 ✔** 空库图例收成一句 +「▶ 页边圆点和这份记忆是怎么来的」；**P35 #8 ✔** 空托盘收成一句 `p66-bnew-3-memory-light` | **对**：**P17 #12 回归 ✔**「日期跟知识库 2026-02-24 的记录不一致：那里是 3-20、4-20，你写的是 3-12」；**圆点 `{落槽 2（冲突 1 / 缺依据 1）· 图例 6 · 页面合计 8}`**——照 P63 ② / P64 #5 更正之后的口径记，见下面「重点盯 ①」`p66-b1-old-memory-light` / `p66-b1b-old-intent-light` |
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项**全在、Esc 之后剩 0（**P17 #2 ✔**）；正文末尾 `"\n\n/"`——**`/` 留着，P49 ③ 判成不是缺陷**；退三下之后**逐字**回到打 `/` 之前（`true`）`p66-b1-old-slash-light` |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]`、选中那一行逐字还在（「预热名单回收了 860 份，转化率按渠道排了一遍。」）、Esc 关得掉、**正文一个字没动**（`doc2 === doc`）`p66-b1b-old-ctx-light` |
+| 6 | 智能续写 → 轮次卡片 → **读库** | — | **对**：`ok` 档一轮 **105 → 205（+100）**；**库里 `notes.content` 205 = 编辑器 205、`json = false`**（**P45 #1 / P44 问题 #1 回归 ✔**）；`做爰片` **不在终稿里**（**P55 #1 ✔**）、`terrence-8F6` 也不在（**P55 #2 ✔**）；空括号「（）」**0**（**P35 #7 ✔**）。`adv` 档那一跑见「重点盯 ②」`p66-b2d-old-rounds-light` |
+| 7 | 导回到 Obsidian | — | **对（浅走）**：面板在、`vault` 路径格在、那四段逐字全在（「树的层级变成文件夹」/「克隆写成 .link.txt」/「_assets/」）`p66-b2d-old-export-light` |
+| 8 | 屏幕活动 | **对（知情屏这一半）**：五条（记什么 / 存在哪 / **留多久** / 不记什么 / 怎么关）+「开始记录 / 先不开」+ 权限那句；「留多久」里的数**从后端读**（`描述留 1 个月（30 天），缩略图留 1 周（7 天），原始截图最多 3 天`）**P21 #1 / P32 #4 ✔** `p66-bnew-4-consent-light` | **对**：今天 99 段 / 合计 11 小时 59 分钟、带 99 格、图例 9、95 个 run / 95 行 / 91 张缩略图、按钮是**「描述这 9 段」**（真数，P20 #5 / P50 #1 ✔）；保留期面板逐字「现在盘上有 **4 天 · 309 段 · 3.5 MB**（最早 2026-09-16）」；**一键全删两段式**（钮叫「全部删掉」，摊开「4 天的记录…309 段，其中 143 段有描述 / 289 张缩略图 / 2 份写好的日报 / 一共 3.5 MB」+「确认删掉这 4 天 / 先不删」，**先不删之后天列表逐字原封不动**）；翻天 + 「删掉这一天」确认框四行 + 「删完就真的没有了，没有回收站」；翻到别的一天**确认框作废**（P23 #5 ✔）；「去这天的日记」面包屑 `日记 / 2026 / 09 月 / 09-18 周五`、树 9334 → 9653（P23 #6 ✔）。**P62 ③ 那句提示见「重点盯 ③」** `p66-b3-old-journey-light` / `-delday` / `-journal` / `p66-b4-old-wipe-light` / `p66-b3b-old-wipe-light` |
+| 9 | ⌘K 全部去处 | **对**：**18 项**；搜「屏幕」3 项 `p66-bnew-5-cmdk-light` | **对**：**23 项**（最近 6 + 前往 17）；搜「屏幕」**11 项**跨命令 / 笔记 / 事实；Esc 关得掉 `p66-b1-old-cmdk-light` |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，壳是新起的） | — | **对**：带层那篇 `c04868b02eb9` → 页签 `["记忆","改动1","计划5"]` + toast **1 条**「上次没处置完的 1 层改动还在右栏「改动」里」，**P43 立的不变式（弹了 toast ⇒ 「改动」页签一定在）两头各读一次，成立**；不带层那篇 `df3b4f7e987d` → 页签 `["记忆","幻灯片24","计划5"]`，**没有「改动」，也没有 toast**（**P44 问题 #5 ✔**）`p66-C10-reopen-withlayer-light` / `-nolayer-light` |
+| 11 | 深色 + 900px | **对**：`bg rgb(18,15,26)`、深色下**近白的大块 0 处**；900px 下横向滚不动，唯一那个「溢出」是标签条（**判成不是缺陷**，同 P52 #3 / P58 / P60 / P64：`sw 732 > cw 560`、`overflow-x: auto` 滚得动）`p66-bnew-6-dark`、`p66-bnew3-2-tabs900-light` | **对**：`bg rgb(18,15,26)`、近白大块 **0**；900px **横向溢出 0**、横不动；屏幕活动那一页深色下近白大块 **0** `p66-b1-old-dark`、`p66-b1-old-900-light`、`p66-b3-old-journey-dark` |
+
+#### 重点盯的三格
+
+**① 圆点那一格：现在是 2 不是 8——而「2」和「8」都得摆出来，因为它们量的不是一件事**
+
+P63 ② / P64 #5 两条独立路径判的是同一件事：**8 = 图例 6 颗 + 落槽里真的 2 颗**。
+这一批壳上两个读数逐格复现，**跟 P64 那一趟一个数不差**：
+
+| 在哪一步读的 | `d.dots()` 读回来 | 意思 |
+|---|---|---|
+| `b1old` ③（右栏还没切到「记忆」） | `{落槽 2 · 图例 0 · 页面合计 2}`（冲突 1 / 缺依据 1） | 图例那一屏没挂上，页面上就只有页边那 2 颗 |
+| `b1b` ③（「记忆」摊开着） | `{落槽 2 · 图例 6 · 页面合计 8}`（冲突 1 / 缺依据 1） | 那 6 颗是右栏图例的六档色块 |
+
+**走查表第 3 步那一格这一批起写「落槽 2（冲突 1 / 缺依据 1）」**，
+不再写「8 个（冲突 2 / 印证 1 / 缺依据 2 / 合并 1）」。
+「页面合计 8」当**旁注**留着——它是真的，只是**它的分母是整页，不是编辑器落槽**。
+
+**② P64 问题 #1（收工「+1060 字」而正文只多 740）——复现了，一个字没改**
+
+另一个 agent 这一批在改字数口径，所以这一格**只复现不修**。
+`adv` 档假模型 + 打包壳 + 老用户库（`$S/p66/steps/adv64.mjs`，`p66-A2-adv-light/dark.png`）：
+
+| | P64 那一跑 | 这一批 |
+|---|---|---|
+| 编辑器 | 51 → 791（**+740**） | 50 → 790（**+740**） |
+| 收工那一行 | 「…停下留了最好的那轮 · 3 轮 · **+1060 字**」 | **逐字相同** |
+| advisory / judge_floor / 短路（反例） | 3 / 3 / 2 条 | **3 / 3 / 2 条，逐条相同** |
+
+**这一格顺带把 P64 A 整块验了回归**：advisory 那三条、judge_floor 那三条
+（「已经连着 2 轮没真打过分了，这一轮不再拦、照常打分。」）、
+短路那两条反例（「这一轮没再花模型调用去打分。」）——**三档还在同一屏上**。
+
+> ⚠️ 量具坑记一条：第一趟我拿 `--mode shapes` 跑，结果是
+> 「材料太薄 · 一次都没去查知识库 · 手上一条材料都没有」——**三档一档都没摆出来**，
+> 收工那行是「材料用完了 · 2 轮 · +681 字」（而且那一跑的 +681 跟编辑器 **对得上**）。
+> advisory 那个形状要的是 `--mode adv`（P64 加的那一档）。
+> **「跑了 ≠ 跑的是那一档」**——同一个脚本换个 mode，读回来的是另一件事的数。
+
+**③ P62 ③「历史坏数据提示」的回归 + 一个**现造的**反例**
+
+（`$S/p66/steps/journey64.mjs`，`p66-C8-journey-today/overlong/normal-light.png`）
+
+| 那一天 | 段数 / 合计 | 界面上说了什么 |
+|---|---|---|
+| 真数据 2026-09-20（今天） | 99 段 / 11 小时 59 分钟 | **说了**：「有 **4 段**…合计多出约 **5 小时 54 分钟**」——**跟 P64 逐字相同** |
+| 真数据 2026-09-19 | 152 段 / **20 小时 42 分钟** | **说了**：「有 **3 段**…合计多出约 **2 小时 22 分钟**」——**跟 P64 逐字相同** |
+| **现造的 2026-09-16**（20 段全是好的，`mkcleanday66.py`，门槛从 `JourneyPage.tsx` 源码里读） | 20 段 / 10 小时 | **一个字没说** ✔ |
+
+反例照 P64 那条教训**现造**，不从真数据里挑一个「看起来正常的」
+（P64 第一版拿 2026-09-19 当反例，而它恰恰是坏的那一天）。
+
+#### 问题清单（按「第一天用户会不会因此关掉 app」排序）
+
+| # | 现象 → 实拍 → 根因 | 处置 |
+|---|---|---|
+| 1 | **收工那行写「+1060 字」，而正文实际只多了 740 字**（50 → 790）。这一跑停在「停下留了最好的那轮」，第 3 轮那一段被撤回了，**而那个计数没跟着回退** `p66-A2-adv-light` | **复现了，没改**——另一个 agent 这一批在改字数口径（`app/harness/**`），跟它错开。P64 留的判断照旧：**判据宁可窄**，只该改「`ship_best` 回退过的那种跑」 |
+| 2 | **量具（结案）**：`d.noteId()` 的默认参数 `user = 'terrence'`。身份不是 terrence 的那一趟（空库新用户）**静默读了另一个人的那一格**，回 `null`——跟「产品没写」长得一模一样。P64 问题 #2 就是它 | **✔ 核清楚了，见 B**。**没改默认值**：改它会动到历史上所有步骤脚本的读数，得单独一批先量。记给下一批 |
+| 3 | **量具（结案 + 更正）**：`b3old.mjs` 的「一键全删」读回 `undefined`。P64 把根因记成**一条**（「钮叫『全部删掉』，它找的是『删掉全部屏幕活动』」）——**实测不止一条**：把文案改对之后**还是 `undefined`**，因为那个钮在保留期面板**最底下**，`clickExact` 不滚动，拿到的 bbox 在视口外，点下去一声不响（`b4old` 顶上逐字记着这条，走 `clickBtn` 会先 `scrollIntoView`） | **✔ 这一批两条都改了**，`$S/p66/steps/wipe66.mjs` 单独复核过：钮列表 `["删掉这一天","全部删掉"]`、bbox `{cx 397, cy 659}`、摊开那段六行齐全、两个钮 `["确认删掉这 4 天","先不删"]`、先不删之后天列表原封不动 `p66-b3b-old-wipe-light` |
+| 4 | **量具**：`selfcheck` 的前缀表**看不见前缀表外的类名**——同一批语料上第二遍多抓到 4 个（`doc-intent` / `doc-intent-input` / `doc-intent-src` / `floating-buttons`），而这 4 个在 P62–P64 三批里**一次都没被核过** | **✔ 这一批加了第二遍抽取**（选择器字面量），42 → 46，一个没少。见 A |
+
+#### 历史修复的回归（这一趟逐条核过）
+
+| 来源 | 修的是什么 | 今天 | 证据 |
+|---|---|---|---|
+| P17 #2 / #12 | Esc 关 `/` 菜单 · 日期冲突关系卡 | **✔ 还在** | 19 项 → Esc 剩 0；「那里是 3-20、4-20，你写的是 3-12」 |
+| P21 #1 / P32 #4 | 知情屏五条 + 留多久从后端读 | **✔ 还在** | `p66-bnew-4-consent-light` |
+| P21 #3 | 一键全删两段式、删之前逐条列清 | **✔ 还在** | 六行 + 「确认删掉这 4 天 / 先不删」，先不删之后天列表原封不动 |
+| P23 #5 / #6 | 「删掉这一天」是页面里的框、翻天作废 · 「去这天的日记」 | **✔ 还在** | 四行 + 「删完就真的没有了，没有回收站」；翻一天之后确认框 0；面包屑 `日记 / 2026 / 09 月 / 09-18 周五` |
+| P32 #3 / P35 #8 | 空库图例 / 空托盘各收成一句 | **✔ 还在** | `p66-bnew-3-memory-light` |
+| P35 #7 | 空括号「（）」 | **✔ 还在** | 0 次 |
+| P38 ⑤ / P40 #4 / P44 #4 | 召回命中词里不许出现「号上」这种碎片 | **✔ 还在** | 整块「记忆」里搜「号上」**0 次**；`evt` / `pcba` 带着自己的分档和库里条数 `p66-C3-recall-light` |
+| P43 #2 / P44 #4 | 标题空着时意图三格照样预填 + 角标 | **✔ 还在** | `prefill: true`、三格逐字 |
+| P43 #1 | 弹了「上次没处置完的 N 层」⇒「改动」页签一定在 | **✔ 还在** | 真·重开那一趟两头各读一次，成立 |
+| P44 #5 | 没有层的笔记不许冒出「改动」页签 / toast | **✔ 还在** | `["记忆","幻灯片24","计划5"]`、toast `[]` |
+| P45 #1 / P44 #1 | 库里 `content` 跟编辑器一样、不是 JSON | **✔ 还在** | 205 = 205、`json: false` |
+| P49 ③ | 打 `/` 之后那个 `/` 留着不是缺陷 | **✔ 还在** | 末尾 `"\n\n/"`、退三下逐字回原 |
+| P50 #1 / P20 #5 | 「描述这 N 段」是真数 | **✔ 还在** | 「描述这 **9** 段」 |
+| P52 #3 / P58 / P60 / P64 | 900px 标签条那 4px 不是缺陷 | **✔ 还在** | `sw 732 > cw 560`、`overflow-x: auto` |
+| P55 #1 / #2 | 垃圾尾巴 / 残骸编号不进终稿 | **✔ 还在** | `做爰片` 0、`terrence-8F6` 0 |
+| P59 ② | 7 处静默 `fix` 配了措辞 | **✔ 还在** | `adv` 那一跑 8 条 `⚑` 里没有一条是光秃秃的 |
+| P62 ① | toast 读法（`.toaster > .toast`） | **✔ 在** | 保存那一下 toast **恰好 1 条**；别处 `[]` |
+| P62 ③ | 历史坏数据那句提示 | **✔ 还在**，加了个**现造的反例** | 见「重点盯 ③」 |
+| P62 ④-① / P20 #6 | 锁屏别解掉用户按的暂停 | **这一批没摆**（不重发分布式通知） | P64 已在产品上摆过；突变验第 ⑧ 刀验过是真闸 |
+| **P63 ② / P64 #5** | **圆点那个 8 的更正** | **✔ 壳上两个读数逐格复现** | 见「重点盯 ①」 |
+| **P64 A** | **advisory / judge_floor 在壳上** | **✔ 还在，逐条相同** | 3 / 3 / 2 条，见「重点盯 ②」 |
+
+---
+
+### 突变验：**11 刀，11 刀按预期红，而且红的都是该红的那条**
+
+规矩逐条照 P61–P64：**锚点唯一性先断言**（不唯一就不下刀）、**整文件写回**、
+改完 / 还原各**逐字节 sha256 核一次**、每次清 `__pycache__`、
+**钉死每次真跑了 18 条**，而且**「红了」和「红的是那条」分开核**。
+收刀之前先证明这三条闸本来全绿（`pytest tests/test_p66.py` 18 条 /
+`check-walkthrough-selectors` / `check-greppable`）——**一条永远绿的闸不是闸**。
+
+| 刀 | 改的是 | 红了 | 红的是该红的那条 |
+|---|---|:--:|---|
+| ① | `cdp.mjs` 里塞一个前端没有的类（**已知前缀**，第 ① 遍抓） | ✔ | ✔「.toast-tray 在 frontend/src 里一个字都搜不到」 |
+| ② | 塞一个**前缀表外**的类（**只有第 ② 遍抓得到**——反例落在新加那条分支里） | ✔ | ✔「.zzz-gutter-bar …（选择器字面量）」 |
+| ③ | 分母闸打瘸（`MIN_CLASSES` 抬到 999，模拟「一个类名都抠不出来」） | ✔ | ✔「抽取正则或扫描目录坏了，这条闸会一直绿」 |
+| ④ | **接线洞**：把自检从 `npm test` 里摘掉（脚本还在仓库，但没进链） | ✔ | ✔「没挂进 frontend 的 npm test」 |
+| ⑤ | `cdp.mjs` 又写死那次会话的 scratch 路径 | ✔ | ✔「cdp.mjs 里还写死着 scratch 路径」 |
+| ⑥ | toast 读法退回通配（P62 ① 那两遍的直接反例） | ✔ | ✔「toast 不许走通配」 |
+| ⑦ | `copy_corpus` **源**那一道核砍掉 | ✔ | ✔「源语料对不上」 |
+| ⑧ | `copy_corpus` **拷完目标**那一道核砍掉 | ✔ | ✔「拷完对不上」 |
+| ⑨ | `check_udd` 只看 `identity.json` 在不在、不看里头是谁 | ✔ | ✔「不是 'someone-else'」 |
+| ⑩ | 钉死的语料指纹被悄悄换成 `710 / deadbeef` | ✔ | ✔ `assert U.CODEBOOK_P60 ==` |
+| ⑪ | `check-greppable` 把 `.mjs` 又摘出去（**两步**，见下） | ✔ | ✔ 埋 NUL → 红且点名 `cdp.mjs`；摘掉 `.mjs` → **同一个 NUL 还在却绿了** |
+
+**两次「红的不是那条」，两条都是我的预测写错，不是闸不准**（这正是分开核能核出来的事）：
+
+1. **第 ② 刀**：我钉的串漏了「—— 选不到 ≠ 没有」那半句，
+   而闸打出来的整句里有。**红了、也红对了，只是预测写窄了。**
+2. **第 ⑥ 刀第一趟砍的是 `.toaster > .toast` 本身**，于是**先红在前一条断言上**
+   （「精确选择器还在吗」），我钉的「不许走通配」那一条**压根没跑到**。
+   **反例得真的落在被测分支里**——改成在别处（`menuItems`）塞一个通配、精确那条留着，
+   这才是「退回通配」这件事。跟 P64 第 ⑦ 刀、P63 第 ④ 刀同族，第三次。
+
+**第 ⑪ 刀单记一条**：它不是「摘掉 `.mjs` 看它红不红」——**摘掉一项名单它照样全过**，
+`.mjs` 里本来就没有 NUL。**红不了不等于闸没了**。
+所以这一刀是两步：**先埋一个真 NUL**（证明 `.mjs` 真的在被扫），
+**再摘名单**（证明同一个 NUL 就看不见了）。
+
+**每一刀之后源文件都逐字节回到原样**；收工复核：
+`cdp.mjs` `9858eaefd4141831` · `check-walkthrough-selectors.mts` `75cb81a42a111d88` ·
+`walkthrough_udd.py` `13c9598453b5df06` · `package.json` `6b283902d2987f2c` ·
+`check-greppable.mts` `21170b56fda1f638`；三条闸全绿、18 条一条不少。
+
+---
+
+### 闸 / 指纹 / 成本
+
+* 后端 `pytest -q` **2982 passed / 1 skipped**（基线 **2963 passed / 1 skipped**，
+  **+19，每一条都对得上**：新建 `tests/test_p66.py` **18 条**，
+  外加 `tests/test_scripts_import.py::test_脚本导得进来[walkthrough_udd.py]` **1 条**
+  ——那条闸是**按 `backend/scripts/*.py` 参数化**的，多一个脚本就多一条。
+  `--ignore=tests/test_p66.py` 实测 **2964**，2964 + 18 = 2982，**加得起来**）。
+  ⚠️ **「跳过」和「跑过」分开数**：那 1 条 skipped 跟基线是同一条（不是这一批新增的）；
+  **`test_p66.py` 这 18 条一条都不跳过**——它们全靠 `tmp_path` 下现造的小文件判，
+  **不要真库**（P63 那 18 条里有 2 条要真库，是另一种形状）。
+* 前端 `npm test` **91 文件 / 803 条**全绿 + 三十几条 `check-*.mts`
+  （**这一批多了一条** `check-walkthrough-selectors.mts`）+ 三个 smoke，`EXIT=0`。
+  `tsc -b` / `eslint src` 照旧过（`tsconfig.json` 只 include `src`、
+  `eslint.config.mjs` 忽略 `scripts/**`，所以新加的 `.mjs` 不进那两条）。
+* `check-walkthrough-selectors.mts`：开工 **52 文件 / 46 类名 / 0 对不上**（含 p64 / p60 两批步骤脚本）；
+  收工 **30 文件 / 47 类名 / 32 处通配 / 0 对不上**（含这一批自己新写的）。
+  只扫仓库里那一份公共驱动时是 **1 文件 / 14 类名 / 4 处通配 / 0**。
+* **真模型 0 次调用 / 0 token**：`llm_usage` 最大 id 开工 = 收工 **5738**，全程假端点。
+* 真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+  `note_revisions` 44**（口径走 `scripts/db_guard.fingerprint`，**不自己另拼一个哈希**）。
+* `~/Library/Application Support/memoket-note-desktop` mtime 开工 = 收工 **09-20 00:57:49**；
+  `backend/data/backups/` 没有新文件；`backend/data/terrence/codebook.xml`
+  还是 **11,429,185 字节 / mtime 09-17 11:56:14**。
+* **`postnote` 这一批一条都没发**（不往整台机器发分布式通知）。
+* 截图 **46 张** `$S/p66-*.png`。
+
+### 收尾命令：这条路径在哪个环境下才对
+
+**`<scratch>` = `/private/tmp/claude-501/-Users-huilong-Skills-Bugfixing-Feishu/<session>/scratchpad`；
+`<worktree>` = `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-abd0858244067be26`；
+「主仓」= `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE`。**
+
+| 命令 | 只在哪儿跑 | 搬到别处会怎样 |
+|---|---|---|
+| `cd <worktree>/backend && ./.venv/bin/python -m pytest -q` | **本 worktree 的 `backend/`** | 在主仓 `backend/` 下跑，那几条读库的测试读的是**真库** |
+| `cd <worktree>/frontend && npm test` | **本 worktree 的 `frontend/`** | — |
+| `cd <worktree>/frontend && npx tsx scripts/check-walkthrough-selectors.mts [目录…]` | 哪儿都行（只读） | 不点名目录就只扫仓库里那一份公共驱动——**绿了不等于这一批的步骤脚本核过了** |
+| `cd <worktree>/backend && ./.venv/bin/python <scratch>/p66/setup66.py` | **本 worktree 的 `backend/`** | 它 `sys.path` 里写死本 worktree；**只读**拷主仓真库到 scratch，再扫全库换 key |
+| `cd <worktree>/backend && ./.venv/bin/python scripts/journey_fixture.py --variant full --stub-frames <scratch>/p66/old/udd` | **本 worktree 的 `backend/`** | 它**只读** `~/Library/Application Support/memoket-note-desktop/journey`（自带 `guard_dest` 拦着往真目录写）；`dest` 写错就会往别的 udd 里造数据 |
+| `zsh <scratch>/p66/go.sh <udd> <cdp端口> <steps 文件> fakellm66.py <llm端口> <mode>` | **本 worktree**（`go.sh` 里 `W=` 指死本 worktree，壳用 `--user-data-dir=<scratch>/p66/<udd>/udd`） | 端口撞了换（这一批 19340–19348 / 18274–18275，起之前逐个核过空着）。**`<mode>` 换一个读回来的就是另一件事的数**（见「重点盯 ②」） |
+| `node <worktree>/frontend/scripts/walkthrough/cdp.mjs <port> <step.mjs>` | 哪儿都行，但**必须 `export WALKTHROUGH_SHOT_DIR=<目录>`** | 不设这个环境变量，`d.shot()` 直接抛（这是有意的：**不猜一个目录静默写进去**） |
+| `cd <worktree> && ./backend/.venv/bin/python <scratch>/p66/fp66.py open｜close` | 哪儿都行 | 它**只读**主仓那份真库，这是有意的（指纹要对着用户那份做） |
+| `rm -rf <scratch>/p66data` `rm -rf <scratch>/p66` | **scratch** | **主仓**的 `backend/data` 是用户 482 篇 + 11.4MB codebook，**删了就没了** |
+| `rm <worktree>/backend/data/notes.sqlite3` | **本 worktree**（开工只读拷的那一份） | **主仓同名相对路径下是真库**——第 776 轮那次删库逐字就是这条 |
+| `rm <worktree>/backend/.venv` `rm <worktree>/frontend/node_modules` `rm <worktree>/desktop/node_modules` | **本 worktree**（三个都是指向主仓的软链） | `rm` 只删链接；但 `rm -rf` **加斜杠**（`.venv/`）会**跟着链接删主仓的内容** |
+
+**⚠️ `<scratch>/p66/mutate66.py` 会改 `<worktree>` 里的 5 个源文件**
+（`cdp.mjs` / `check-walkthrough-selectors.mts` / `walkthrough_udd.py` / `package.json` /
+`check-greppable.mts`，每刀改完立刻整文件写回 + 逐字节核 sha256 + 清 `__pycache__`）。
+**只在本 worktree 跑**；跑在主仓上会去改主仓的源码。
+
+**⚠️ `<scratch>/p66/reweb.sh` / `reasar.mjs` 会改 `<scratch>/p66/app/` 里那份 `.app`**
+（换 `Resources/web`、换 backend shim、重打 `app.asar`、adhoc 重签）。
+它不碰系统里安装的任何 app，但**改的是壳，改完必须重新核四个可执行件的哈希**。
+
+**本轮不需要任何清理命令**：`<scratch>/p66data` 和 `<scratch>/p66/**` 留在 scratch 下不进 git；
+worktree 里的 `backend/data/notes.sqlite3` 被 `.gitignore` 的 `data/` + `*.sqlite3` 两条挡着；
+`frontend/dist` / `desktop/dist` 也被忽略；
+三个软链**在 `git status` 里看得见**（忽略规则的 `.venv/` / `node_modules/` 只匹配目录、
+匹配不到符号链接），所以 commit 是**逐路径 `git add`，没有 `git add -A`**。
+
+### 留给下一批
+
+1. **`d.noteId()` 那个默认参数**（问题 #2 的后半）：`user = 'terrence'` 让它在别的身份上
+   **静默读错一个键**。改它会动到历史上所有步骤脚本的读数——**先量**有多少处在裸调它，
+   再决定是去掉默认值（调用方必须给）还是改成从页面上读当前身份。
+2. **收工那行的字数口径**（问题 #1）：这一批**复现了、没改**（+740 vs +1060），
+   另一个 agent 在改 `app/harness/**`。合并之后**要重跑一次 `adv` 档**核这个数。
+3. **步骤脚本还在 scratch**（A 里写清了为什么）。仓库里现在有 README 说怎么跑，
+   但**「按 README 跑得起来」这件事没有闸**。真要接，得先有一条
+   「打一次壳」的可重复脚本（现在是十几分钟的手工活）。
+4. **`selfcheck` 的第 ① 遍前缀表**：第 ② 遍补上了前缀外的那一类，
+   但前缀表本身还在（两遍的并集）。下一步可以量一量**只留第 ② 遍**会漏掉什么
+   ——那些不在选择器字面量里、而是拼出来的选择器（`'.' + kind`）今天两遍都抓不到。
+5. P59 留的第 2 / 3 条（6 个 block 模式要不要也停 `check_stuck`、`STUCK_ROUNDS`
+   要不要改读 `check_name_streak`）——都在 `modes.py` / `middleware/checks.py`，
+   **这一批没碰**（跟那一侧的 agent 错开）。
+6. P63 留的取词排序那一条（`_cjk_terms` 真词优先于滑窗碎片）
+   ——**另一个 agent 这一批正在做 `kb/**`**，这一批没碰。

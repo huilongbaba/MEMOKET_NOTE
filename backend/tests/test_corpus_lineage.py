@@ -313,6 +313,14 @@ def test_从库里取数的脚本必须走血缘判据():
         # 血缘判的是「这篇笔记是谁写的」，而这里一篇笔记都没取——
         # 硬套一个 `corpus_lineage` 进去只会让下一个人以为它筛过。
         "harness_run_ledger.py",
+        # **它一行 SQL 都不跑**（P66）。它是走查 userData 的造法：写 `identity.json`、
+        # 把语料目录整拷过去并核字节数 + sha8、起壳之前过一遍前置清单。
+        # 提到 `notes.sqlite3` 只有一处，而且是 `Path.is_file()` / `stat().st_size`
+        # ——**核这个文件在不在、有多大**，一篇笔记都没取；它连 `sqlite3` 都没 import。
+        # 跟 `harness_run_ledger.py` 逐字同一条理由：撞上这条闸是因为**路径里有这个串**。
+        # 这一条不是「例外」是「核过」：`test_p66.py` 里有一条闸盯着它
+        # **不许 import sqlite3、不许出现 SQL 关键字**——白名单才作数。
+        "walkthrough_udd.py",
     }
     scripts = Path(__file__).resolve().parent.parent / "scripts"
     touched = []
