@@ -174,6 +174,10 @@ class Watch:
         self.before: Fingerprint | None = None
 
     def __enter__(self) -> "Watch":
+        # 跑批开始时真库就得在。少了这一句，真库被删之后 `fingerprint()` 会
+        # 老老实实给出一个**空库的指纹**，收尾一比「变了」，而不是「没了」——
+        # 第 776 轮那次删库正是这个形状（`rm` 的是主仓不是 worktree）。
+        assert_real_db_present(self.db)
         self.before = fingerprint(self.db)
         return self
 
@@ -208,3 +212,35 @@ class Watch:
 
 class NotesTouched(RuntimeError):
     """跑批动了不该动的东西。"""
+
+
+# ------------------------------------------------------------ 真库还在不在
+
+def assert_real_db_present(db: Path | str = DEFAULT_DB) -> None:
+    """真库不见了就当场抛。
+
+    **为什么有这个**（第 776 轮）：一个 agent 的收尾报告里写着
+    「跑完整套测试后 `backend/data/notes.sqlite3` 会被凭空建出来（0 篇），已 `rm` 清掉」——
+    那句话对**它自己的 worktree** 是对的（worktree 里那份是拷贝或空库）。
+    我把这条命令原样搬到**主仓**跑了一遍，而主仓那个路径下是用户 482 篇笔记的真库。
+
+    靠备份救回来了（`notes-before-key-scrub-*.sqlite3` + 重做那一刀洗 key，
+    指纹逐项对回 `482 / 321250 / 47dcc54be60aa4f2`），一个字没丢。
+
+    **教训不是「下次小心点」**——这已经是这个仓第三次在真库上干了本该在拷贝上干的事
+    （批 13、批 16、这次）。前两次的结论都是「写成能跑的闸」，所以这次也是：
+
+      1. 这个函数：跑批 / 收尾脚本开头调一次，真库不见了**当场吵**，
+         而不是等到下一次 `fingerprint()` 报出一个空库的指纹。
+      2. `Watch` 的 `__enter__` 自动调它——**跑批开始时真库就得在**。
+
+    **别把它写成「自动恢复」**：恢复要挑哪一份备份、要不要重做中间那几刀，
+    是得有人看着决定的（这次就得重做洗 key 那一刀）。闸只负责吵。
+    """
+    p = Path(db)
+    if not p.is_file():
+        raise NotesTouched(
+            f"真库不见了：{p}\n"
+            "  备份在 data/backups/ 下，挑一份跟基线指纹对得上的拷回来，\n"
+            "  **并且把那份备份之后做过的写补回去**（比如洗 key 那一刀）。\n"
+            "  别自动恢复——挑哪一份、补哪几刀，得有人看着决定。")
