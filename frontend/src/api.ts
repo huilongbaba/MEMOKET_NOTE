@@ -1638,6 +1638,8 @@ export type JourneySegment = {
   i: number
   start: string; end: string; app: string; title: string
   desc: string; n: number; has_frame: boolean; has_thumb: boolean
+  /** 为什么这一段**永远**不会有描述（空串 = 还没轮到它）。老后端没有这个字段。 */
+  skip?: string
 }
 export type JourneyDay = {
   date: string; segments: JourneySegment[]; minutes: number

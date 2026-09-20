@@ -485,6 +485,7 @@ def day(date: str = "", user: str = Depends(current_user)) -> JourneyDayOut:
                                  n=int(s.get("n") or 0),
                                  has_frame=bool(s.get("frames")),
                                  has_thumb=bool(s.get("thumb")),
+                                 skip=str(s.get("skip") or ""),
                                  i=n)
                   for n, s in enumerate(segs) if not s.get("deleted")],
         minutes=round(sum(_secs(s) for s in segs if not s.get("deleted")) / 60),
@@ -531,6 +532,13 @@ async def catch_up(date: str = "", limit: int = 20,
         if not frame or not Path(frame).is_file():
             seg["desc"] = ""
             seg["skip"] = "没有截图"
+            # **顺手把那条指向不存在的文件的路径也抹掉。** 不抹的话
+            # `has_frame = bool(frames)` 还是 true，而界面正是拿它数
+            # 「描述这 N 段」的——于是按钮一直亮着、那些行一直写着「还没描述」，
+            # 点下去只回「没有要描述的了」，**点多少次都一样**（P20 清单 #5 那个
+            # 死胡同，第 793 轮 / P50 在真实数据上原样复现：09-16 37 段、09-17 71 段）。
+            # 这一下自己还会造出新的：每点一次，又有几段变成「skip 了但图还说在」。
+            seg["frames"] = []
             skipped += 1
             continue
         try:
