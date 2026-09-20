@@ -53,6 +53,18 @@
  * 现造一个量具目录，`d.count('.' + kind)` 一刀下去它**红且点名**，
  * `d.must('.' + kind)` 一刀下去它**绿、但第 ③ 遍的计数从 0 变 1**
  * —— **红不了不等于闸没了**（P66 第 ⑪ 刀那一课）。
+ *
+ * ### P70：第一次对着真调用点跑，第一发就误报了
+ *
+ * P67 留的第 3 条说得没错——它当时只有突变验撑着。P70 把这一批的步骤脚本
+ * （31 个 `.mjs` / 49 个调用点）点名喂进来，它当场点了 `b1old.mjs` 的
+ * `d.menuItems(20)`。**那是误报**：`menuItems(max)` 的第一个实参是**条数**，
+ * 它的选择器写死在驱动里（`.palette-item`），第 ② 遍早就管着了。
+ *
+ * 根因是这一遍**默认「名单里每一个读法的 arg0 都是选择器」**，而驱动里有一个不是。
+ * 修法不是把 `menuItems` 从名单里删掉了事（下次驱动再多一个这样的读法还会犯），
+ * 是**从 `cdp.mjs` 的签名上读**谁的 arg0 不是选择器，并且把「今天是且只有
+ * `menuItems` 一个」钉成一条断言：这份名单一变就红，改的人得先看一眼。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -97,6 +109,20 @@ const THROWS = new Set(['must', 'mustTexts', 'click', 'clickText', 'rclick', 're
 const SILENT = new Set(['querySelectorAll', 'querySelector', 'count', 'texts', 'text',
   'exists', 'menuItems', 'rect', 'findText', 'expandDetails'])
 
+/** 名单里**第一个实参不是选择器**的那几个读法（P70）。
+ *
+ *  `menuItems(max)` 的选择器写死在驱动里，arg0 是条数——拿 arg0 去判它必然误报。
+ *  **不手写这个名单，从 `cdp.mjs` 的签名上读**：手写的那份会跟驱动飘开，
+ *  而飘开的症状是「一条天天误报的闸」，跟它要治的病是同一个形状。 */
+function arg0NotSelector(driver: string): Set<string> {
+  const out = new Set<string>()
+  for (const name of [...THROWS, ...SILENT]) {
+    const m = driver.match(new RegExp(`async ${name}\\(\\s*([A-Za-z_$][\\w$]*)`))
+    if (m && !/^(sel|root)$/.test(m[1])) out.add(name)
+  }
+  return out
+}
+
 /** 这个实参是不是一个**写死的**选择器串（那第 ② 遍已经管着了）。 */
 function isPlainSelector(a: ts.Node): boolean {
   return ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)
@@ -124,6 +150,19 @@ for (const d of EXTRA) {
 }
 // **扫不到东西的闸门会一直是绿的**：公共驱动至少得在。
 corpus(files, 1, '量具文件')
+
+// ③ 的名单跟驱动的签名对齐（P70：第一次对着真调用点跑，第一发就在 `menuItems` 上误报）
+const DRIVER = readFileSync(path.join(here, 'walkthrough', 'cdp.mjs'), 'utf8')
+const SKIP_ARG0 = arg0NotSelector(DRIVER)
+{
+  const got = [...SKIP_ARG0].sort().join(',')
+  if (got !== 'menuItems') {
+    console.error(`✗ 驱动里「第一个实参不是选择器」的读法变成了 ${got || '(一个都没有)'}`
+      + '（之前是 menuItems 这一个）—— 第 ③ 遍是拿 arg0 判的，这份名单一变它就会误报'
+      + ' / 漏报。改之前先看一眼，确认过再把这里的期望改掉。')
+    process.exit(1)
+  }
+}
 
 let wilds = 0
 /** 第 ③ 遍的分母 / 战果。`builtSafe` 是「拼出来的，但走会抛的读法」——**它不是错**，
@@ -160,7 +199,9 @@ for (const f of files) {
       const name = n.expression.name.text
       // **`this.xxx(…)` 不算**：量具库自己把 `sel` 参数传来传去不是「拼选择器」。
       const onThis = n.expression.expression.kind === ts.SyntaxKind.ThisKeyword
-      if (!onThis && (THROWS.has(name) || SILENT.has(name))) {
+      // arg0 不是选择器的那几个（`menuItems(max)`）跳过——它们的选择器写死在驱动里，
+      // 第 ② 遍管着；拿 arg0 去判只会天天误报（P70 第一发就栽在这儿）。
+      if (!onThis && !SKIP_ARG0.has(name) && (THROWS.has(name) || SILENT.has(name))) {
         seenCalls++
         const a = n.arguments[0]
         if (!isPlainSelector(a)) {
