@@ -16706,3 +16706,32 @@ P70 留给下一批：① **A④ 的触发器今天是 0，闸钉着这个 0**�
 ③ `adv70.mjs` 那条状态栏字数的正则（问题 #2，步骤脚本还在 scratch）；
 ④ 步骤脚本还在 scratch，「按 README 跑得起来」仍然没有闸（P66 / P67 / P68 第 3–4 条）；
 ⑤ P59 留的第 2 / 3 条（`modes.py` / `middleware/checks.py`）。
+
+---
+
+## P69 / P70 合并收尾 · 第 802 轮：`strings` 核壳是**假阴性**（2026-09-21）
+
+> 合并 + 四道闸 + 打包之后，我要核「打好的壳里装的是不是这两批的源码」。
+> 第一趟用 `strings` 去那个后端可执行件里找 `display_terms` / `is_merged_word` / 连 `segment`
+> 都找不到——**三个 0**。按「壳里几个可执行件核几个」那条，0 看着就是「没打进去」。
+>
+> **不是。** PyInstaller 把纯 Python 模块压在 exe 尾巴的 PYZ 里，**每个模块各自 zlib 压过**，
+> 符号名根本不以明文出现。`strings` 在这里恒为 0 —— 换句话说，**这条「核对」不管壳对不对
+> 都会得出同一个答案，它压根不是一把尺**。这跟 §21 记的「一条永远绿的闸不是闸」是同一件事，
+> 只是这次它永远**红**，同样不带信息。
+>
+> 改成把 PYZ 解出来读 code object 的符号表（`backend/scripts/check_shipped_source.py`）：
+>
+> | 核的东西 | 结果 |
+> |---|---|
+> | `app.database.kb.search` | `display_terms=有 is_merged_word=有 _weigher=有` |
+> | `app.routers.memory` | `display_terms=有 segment=有`（P69 的接线） |
+> | **反例**：喂一个本来就不存在的符号 | **红，`EXIT=1`** |
+> | 壳里的 web 整树 vs `frontend/dist` | `diff -rq` **0 处不同**；`save-guard` 在同一个 chunk `index-DlUFtbcd.js` |
+>
+> 最后一格顺带纠一个自己的错：我先前 grep `isStaleShrink` 在壳里也是 0，**那也是假阴性**
+> ——前端是压过的，函数名被改短了，活下来的是字符串字面量 `save-guard`。
+> **两次「0」，两次都不是产品的问题，是我的判据比产品窄**（P70 问题 #2 那第五张脸）。
+>
+> 顺手记一条：TOC 有两种形状（`dict` 和 `[(name, (typ, pos, len))]`），第一版只认 dict，
+> 打出来的是「模块总数 1669 / 以 app 开头的 0 个」——**又一次「选不到 ≠ 没有」**。
