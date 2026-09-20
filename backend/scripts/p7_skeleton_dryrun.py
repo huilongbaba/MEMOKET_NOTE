@@ -14,6 +14,23 @@
 真库实拍（P25，2026-09-19）：全库 5 篇半句，其中 **3 篇是 user 血缘**（这个脚本会动的）——
 `e78306202d78` 6/6 条、`0eecee3d7b94` 5/5 条、`a941efecd390` 4/5 条；另外 2 篇
 （`shot-demo/f5e34e385aac`、`terrence/df3b4f7e987d`「harness 测试（可删）」）非 user 血缘，只列不动。
+
+## `--include-non-user`（P56 #2）
+
+P25-apply 之后真库里只剩那 2 篇非 user 血缘的还是半句，而**这个脚本连 `--apply --yes`
+都够不着它们**——`scan()` 按 `corpus_lineage` 只留 `user` 血缘，它们躺在 `skipped` 里。
+P53 #8 提议「照 P25-apply 那条路把这两篇也重生成一次」，可**当时没有任何一条命令做得到这件事**：
+dry-run 报告里写一句「跑 `--apply --yes`」是错的，跑完 0 篇会变。
+
+所以补一个显式的档：`--include-non-user` 把 `skipped` 那几篇也并进待修列表。
+**默认仍然不带**，而且它跟 `--apply --yes` 是三把钥匙，少一把都只列不改——
+理由同上：写笔记库是用户的决定，只是现在「用户点头之后要跑哪一条」有确切答案了。
+
+P56 实拍的血缘判词（`corpus_lineage.annotate` 逐字，**跟 P53 #8 的说法不一样，以这个为准**）：
+`shot-demo/f5e34e385aac`「4 月 10 日产品周会」是 **`fixture`**（「夹具用户 shot-demo：截图演示
+夹具，正文是写死的演示内容」）、`terrence/df3b4f7e987d` 是 **`script`**（「标题自标注为自测」）。
+**两篇都不是用户亲手写的笔记**；`f5e34e385aac` 要紧的地方在于它是**截图演示**用的那一篇，
+右栏「计划」里五条半句会出现在演示截图里。
 """
 
 from __future__ import annotations
@@ -52,7 +69,10 @@ def _half(rows: list[dict]) -> list[dict]:
         bad = half_sentence_beats(beats)
         if bad:
             out.append({"user": r["user_id"], "id": r["id"], "title": (r["title"] or "")[:30], "chars": len(r["content"] or ""),
-                        "beats": beats, "half": bad})
+                        "beats": beats, "half": bad,
+                        # 血缘跟着行走（P56 #2）：`--include-non-user` 把两拨并成一列之后，
+                        # 「哪几篇本来会被跳过」只能靠这一格看出来。
+                        "origin": r.get("origin") or "", "origin_reason": r.get("origin_reason") or ""})
     return out
 
 
@@ -108,6 +128,8 @@ def main() -> int:
     ap.add_argument("--db", default=str(db_guard.DEFAULT_DB))
     ap.add_argument("--apply", action="store_true", help="重新生成并落库（要打模型）")
     ap.add_argument("--yes", action="store_true", help="跟 --apply 一起给才真写")
+    ap.add_argument("--include-non-user", action="store_true",
+                    help="把非 user 血缘的那几篇也算进待修列表（P56 #2；默认不算）")
     args = ap.parse_args()
     db = Path(args.db)
     # **先定数据目录再碰 store**：`--apply` 那一步 import 的 `app.database.store` 是按
@@ -116,15 +138,27 @@ def main() -> int:
     before = db_guard.fingerprint(db)
     print("指纹（开工）:", fp_line(before))
     found, skipped = scan(db)
-    print(f"半句骨架：{len(found)} 篇（另有 {len(skipped)} 篇非 user 血缘，不动）")
+    if args.include_non_user:
+        # **并进来，但仍然摆明它们的出身**：下面那行打印会把 `origin` 一起报出来，
+        # 「这一篇为什么本来会被跳过」不该因为加了个开关就看不见了。
+        found, skipped = found + skipped, []
+    print(f"半句骨架：{len(found)} 篇（另有 {len(skipped)} 篇非 user 血缘，不动）"
+          + ("  ← --include-non-user：非 user 血缘的也算进来了" if args.include_non_user else ""))
     for n in found:
-        print(f"- {n['user']}/{n['id']} 「{n['title']}」 {n['chars']} 字，第 {n['half']} 条是半句：")
+        tag = f"（血缘 {n['origin']}：{n['origin_reason']}）" if n.get("origin") != "user" else ""
+        print(f"- {n['user']}/{n['id']} 「{n['title']}」 {n['chars']} 字，第 {n['half']} 条是半句{tag}：")
         for i in n["half"]:
             print(f"    B{i}: …{n['beats'][i - 1][-24:]}")
     for n in skipped:
         print(f"· 跳过（非 user 血缘）{n['user']}/{n['id']} 「{n['title']}」，第 {n['half']} 条是半句")
     if not args.apply:
-        print("\ndry-run 结束，没有改任何东西。要修：加 --apply --yes（会对上面每篇打一次模型）。")
+        # **别报一条跑完什么都不会变的命令**（P56 #2）：`found` 空而 `skipped` 非空时，
+        # `--apply --yes` 改的是 0 篇——上一版的提示逐字就是这么误导的。
+        if not found and skipped:
+            print("\ndry-run 结束，没有改任何东西。**待修 0 篇**：上面那几篇非 user 血缘，"
+                  "`--apply --yes` 够不着它们。真要修得加 --include-non-user --apply --yes。")
+        else:
+            print("\ndry-run 结束，没有改任何东西。要修：加 --apply --yes（会对上面每篇打一次模型）。")
         return 0
     if not args.yes:
         print("\n--apply 没带 --yes，不写。")
