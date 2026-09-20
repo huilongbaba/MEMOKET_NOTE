@@ -451,7 +451,12 @@ class NoteHooks:
                 # 上一轮判据自己动手改的那几处（P26 #3）。`middleware/checks` 攒、
                 # 在**下一轮**的 `before_judge` 里换掉——这一步跑在它之前，读到的
                 # 正是上一轮那份。
-                auto_fixes=st.bag.get("auto_fixes"))},
+                auto_fixes=st.bag.get("auto_fixes"),
+                # 上一轮 advisory 判据提的那件事（P58 A）。**没有这一行，advisory
+                # 就等于闭嘴**：steer 只从 `st.ev` 来（`loop.py:157-158`），而 advisory
+                # 轮的 `st.ev` 是打分器给的真分，判据那句话一个字都到不了模型手里。
+                # 攒 / 换的时机跟 `auto_fixes` 逐字同一条。
+                advisories=st.bag.get("advisories"))},
         ]
 
         text = ""

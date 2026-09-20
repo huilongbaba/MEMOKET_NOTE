@@ -1218,7 +1218,7 @@ export type NoteHarnessHandlers = {
    * 成一串，不能只留最后一条。 */
   /** `stopped` 为真的那条不是「这一轮命中」，是收工通知：同一条判据连响 `stuck_rounds` 轮，
    *  后端停了、交最好的一轮（reason=check_stuck）。收工那句话拿它拼「哪条、几轮」。 */
-  onCheckHit?: (d: { round?: number; check?: string; ran?: number; dimension: string; note: string; stuck_rounds?: number; stopped?: boolean }) => void
+  onCheckHit?: (d: { round?: number; check?: string; ran?: number; dimension: string; note: string; stuck_rounds?: number; stopped?: boolean; advisory?: boolean; judge_floor?: number }) => void
   /** 某条 middleware 抛异常了。循环会继续跑（这是能力分包的隔离好处），
    * 但**不能是静默的**——这一轮少了那个能力，用户得知道。 */
   onWarning?: (d: { middleware: string; hook: string; error: string }) => void

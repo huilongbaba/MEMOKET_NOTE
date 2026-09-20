@@ -151,7 +151,16 @@ class Checks:
         })]
 
     async def after_judge(self, st: State) -> None:
-        """判据被 `JUDGE_FLOOR` 放行的那一轮，不许判「写完了」（P24 #5）。
+        """判据响了、但这一轮被**放行**（照常打分）时，不许判「写完了」（P24 #5）。
+
+        **今天有两条路写这个键**：`JUDGE_FLOOR` 饿死放行、判据自己声明
+        `advisory`（P58 A）。键因此从 `judge_floor_released` 改名叫
+        `check_released`——名字里挂着其中一条，会让另一条看起来是在蹭别人的开关。
+
+        **`STUCK_ROUNDS` 卡死放行那一支到今天仍然不写它**（P58 走查 #5 记了这条）：
+        它同样是「判据还在响、这一轮照常打分」，按上面那句话本该一样压制。
+        这一批**没改**——按 P28 那一节的读数，这条压制实测一次都没开过火，
+        手上没有一个能复现的局面，照铁律「先复现再修」留给下一批带素材来改。
 
         放行的本意是「让打分器跑起来」，不是「把这条毛病一笔勾销」。
         这一轮的分数照样进 `st.best` 的排名（那正是要它的原因），
@@ -159,7 +168,7 @@ class Checks:
         不发事件，所以是普通协程不是 async generator（`loop._fire` 两种都认，
         `Repeats.before_judge` 是同一个形状）。
         """
-        if not st.bag.pop("judge_floor_released", False):
+        if not st.bag.pop("check_released", False):
             return
         if st.ev is not None and st.ev.status == "complete":
             st.ev = dataclasses.replace(st.ev, status="continue")
@@ -196,11 +205,14 @@ class Checks:
                  else JUDGE_FLOOR)
         # 上一轮的放行标记不许跨轮活着：`after_judge` 正常会 `pop` 它，但那一轮要是
         # 在 `after_judge` 之前就出错了，标记会留下来，下一轮的 `complete` 被无辜压掉。
-        st.bag.pop("judge_floor_released", None)
+        st.bag.pop("check_released", None)
         # 上一轮判据自己动手改的那几处，**这一轮写作的提示已经读过了**（`hooks/note`
         # 在 `before_judge` 之前跑）——到这儿就该换掉，不然下一轮会把上上轮的也一起说
         # 一遍（P26 #3）。跟上面 `check_streak` 那两份「轮末整只换掉」同一个套路。
         st.bag["auto_fixes"] = []
+        # 同上，advisory 那一份（P58 A）：`hooks/note.prepare` 跑在 `before_judge` 之前，
+        # 读到的是上一轮攒的那份；到这儿就该换掉，不然下一轮会把上上轮的也一起说一遍。
+        st.bag["advisories"] = []
 
         # ---- 三列探针（批 27 / §5 第 8、9 行）。读者是 `Ledger.after_judge`，
         # 它读完就 `pop`——bag 是跨轮活着的，留着会让下一轮继承上一轮的数。
@@ -322,13 +334,39 @@ class Checks:
                 })
                 continue
 
+            if verdict.advisory:
+                # **这一条只是提个醒，不收这一轮**（P58 A，理由在 `types.Verdict.advisory`）。
+                # 位置在 `JUDGE_FLOOR` 那一支**之前**：两支做的事一样（报 + 放行），
+                # 但走到这儿就不该再去动 `short_circuit_streak` 的账——
+                # advisory 轮本来就会真打分，把它记成「又饿了一轮」会让下一轮的
+                # 门槛凭空降一格。（`continue` 之后循环底下那两行会把 streak 归零、
+                # 记上 `had_real_judge`，那正是对的。）
+                st.bag["check_released"] = True
+                # **判词得自己找条路进下一轮的 prompt**（P58 A）：steer 只从 `st.ev` 来
+                # （`loop.py:157-158`），而这一轮的 `st.ev` 马上会被打分器的六维真分占掉。
+                # 不写这一行，「说话但不收轮子」就等于「闭嘴、还多花一次打分调用」——
+                # 比原来更糟。读者是 `prompts/note.advisory_block`（经 `hooks/note` 那一行），
+                # 攒 / 换的时机跟上面 `auto_fixes` 逐字同一条。
+                st.bag.setdefault("advisories", []).append(verdict.message)
+                yield Event.custom(CUSTOM_CHECK_HIT, {
+                    "round": st.round,
+                    "check": fired,
+                    "ran": ran,
+                    "dimension": verdict.dimension,
+                    "note": verdict.message,
+                    # 面板要靠它说对话：没有这个键的那一档写的是「这一轮没再花模型调用
+                    # 去打分」，而 advisory 轮**是打了分的**（P58 走查 #1 那个接线洞）。
+                    "advisory": True,
+                })
+                continue
+
             if sc_streak >= floor:
                 # 连着 `floor` 轮一次真打分都没有了（P24 #5）：报，但不短路。
                 # 跟上面那条放行的差别是「谁卡住了」：那条是**同一条判据**原样卡满两轮，
                 # 这条是**不同判据轮流**把打分饿死——P22 的 `e78306202d78` 正是后者，
                 # `citations_present`(r2/r3/r5) 和 `no_repeated_lists`(r4/r6) 交替，
                 # 每一条的 streak 都不超过 2，六轮一次分都没打上。
-                st.bag["judge_floor_released"] = True
+                st.bag["check_released"] = True
                 yield Event.custom(CUSTOM_CHECK_HIT, {
                     "round": st.round,
                     "check": fired,

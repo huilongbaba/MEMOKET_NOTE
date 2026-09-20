@@ -366,6 +366,15 @@ h2:first-child { margin-top: 0; }
   padding: 10px 18px; border-radius: var(--r); background: var(--ink);
   color: var(--mk-surface); font-size: var(--t-md); font-weight: var(--w-semi); cursor: pointer;
   box-shadow: var(--shadow-pop);
+  /* **后端拼进来的换行得真的换行**（P58 走查 #3）。
+     P56 ④ 把「删不掉」那条 toast 收成「抬头说一次目录，每行只留相对路径 + 原因」，
+     后端那一层量得干干净净（正文行里绝对路径 7 → 0）——**而壳上它是一坨**：
+     `journey.delete_day` 用 `\n` 拼的 5 行，在这里被折成一整段
+     （实拍 `p58-b7-2-ro-toast-light.png`：「thumbs：Permission denied report.json：
+     Permission denied segments.json：…」连成一行）。
+     `pre-line` 只认换行、照旧折行、连续空白照旧压成一个——不会把别的 toast 撑开。
+     P56 量的是**拼出来的串**，这一行管的是**看到的那一屏**：两件事，各有各的闸。 */
+  white-space: pre-line;
 }
 .toast.error { border-left: 3px solid var(--live); padding-left: 15px; }
 /* 进场淡入上移。源仓库的 toast 也有（`animation: hlFade .2s`）——**弹出来的

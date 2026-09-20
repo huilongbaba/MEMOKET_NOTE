@@ -88,8 +88,22 @@ def test_1_DoneCriteria_挂上去的位置就是那一位_第几条跟着变():
 
 
 def test_1_第一条响的赢_没改_P13_那一轮材料族先响时说的是同一件事():
-    """量程：`Checks.before_judge` 命中一条就 return（一轮一个指令）。P13 真跑第 1 轮 `citations_present` 先响、
-    `done_criteria` 也会响，两条说的都是「补编号」——同时报只是重复；这条钉住的是「一轮只有一条 check_hit」。"""
+    """量程：`Checks.before_judge` 里**短路那一支的 `return`**（一轮一条**硬**指令）。
+
+    **P58 A 改了这条的读数，原话留在下面。** 原来钉的是「一轮只有一条 `check_hit`」：
+    P13 真跑第 1 轮 `citations_present` 先响、`done_criteria` 也会响，两条说的都是
+    「补编号」，同时报只是重复。P58 把 `citations_present` 的 `located==0` 那两档改成
+    `advisory`（报了**不**收这一轮，理由和数在 `types.Verdict.advisory`），于是这个局面
+    变成：advisory 先报一条**软**的，`done_criteria` 再短路报一条**硬**的。
+
+    「一轮一个指令」这条纪律一个字没松，只是量程换了载体：
+      · **硬指令**（进 steer、决定下一轮改什么）仍然**只有一条**——短路是唯一会 `return`
+        的出口，`short_circuit` 就是那一条；
+      · 软的那条走 `bag["advisories"]` → `prompts/note.advisory_block`，措辞里自带
+        「做不到就跳过，不用为它停下来」。
+    这跟 `STUCK_ROUNDS` / `JUDGE_FLOOR` 两条放行支本来就是同一个形状（它们也 `continue`，
+    后面的判据照样能再报一条），advisory 没有新开一种行为。
+    """
     from app.harness.middleware.checks import Checks
     long = "这一轮写满一整段没有编号的内容。" * 30
     st = _st(fresh=long, intent="目标：x；读者：y；完成标准：每个结论有事实支撑", content_at_start="")
@@ -99,10 +113,17 @@ def test_1_第一条响的赢_没改_P13_那一轮材料族先响时说的是同
     async def go():
         return [e async for e in Checks().before_judge(st)]
     events = asyncio.run(go())
-    hits = [e.data["value"]["check"] for e in events if e.data.get("name") == "check_hit"]
-    assert hits == ["citations_present"]
-    assert st.bag["fired_checks"] == ["citations_present"]
-    assert D.done_criteria(st) is not None                                 # 它也会响，但这一轮没轮到、也不该重复报
+    vals = [e.data["value"] for e in events if e.data.get("name") == "check_hit"]
+    hits = [v["check"] for v in vals]
+    assert hits == ["citations_present", "done_criteria"]
+    assert st.bag["fired_checks"] == ["citations_present", "done_criteria"]
+    # **硬指令只有一条**：advisory 那条不 return、不短路，短路的是后面那条。
+    assert [v["check"] for v in vals if v.get("advisory")] == ["citations_present"]
+    assert st.bag["short_circuit"] == "done_criteria"
+    assert st.skip_judge is True
+    # 软的那条不进 steer，进 advisories（不这么写就等于闭嘴，见 `advisory_block`）。
+    assert st.bag["advisories"] and "编号补不出来" in st.bag["advisories"][0]
+    assert st.ev is not None and st.ev.scores["factual_grounding"].note == vals[1]["note"]
 
 
 def test_1_照着提示弃答的那几条不再算没出处_右栏那份照旧():

@@ -340,9 +340,14 @@ def test_3_素材真的能让那两条fix开火():
 
 
 def test_3_三处fix全都说得出自己改了什么():
-    """**一个信号有几个来源就得逐个数过来**（§21）。仓里带 `fix` 的判据就这三处，
-    每一处都得填 `fix_note`——漏填的那处会退回 P23 那版的静默，而静默正是这一条要修的病。
-    量程：把任意一处的 `fix_note=` 删掉，这条红。"""
+    """**一个信号有几个来源就得逐个数过来**（§21）。这三处每一处都得填 `fix_note`
+    ——漏填的那处会退回 P23 那版的静默，而静默正是这一条要修的病。
+    量程：把任意一处的 `fix_note=` 删掉，这条红。
+
+    ⚠️ **这条原来的抬头写着「仓里带 `fix` 的判据就这三处」，那句话是假的**（P58 走查 #2）。
+    它只构造了自己点名的三处，一次都没去数仓里到底有几处——而 P58 静态扫出来是
+    **12 处 `Verdict(... fix=...)`，其中只有 5 处填了 `fix_note`**。
+    「逐个数过来」得真的数，数的那条闸在下面 `test_3_仓里每一处fix_note都得是数出来的`。"""
     from app.harness.checks import structure
     seen = {}
 
@@ -365,6 +370,57 @@ def test_3_三处fix全都说得出自己改了什么():
         assert note and note.strip(), f"{name} 这处 fix 说不出自己改了什么"
         # 说的是**做了什么**，不是「哪里错了」——后者是 message 的活
         assert ("删掉" in note or "去掉" in note or "贴了" in note), (name, note)
+
+
+# 今天**动了正文却一个字不说**的那几处（`Verdict(... fix=...)` 但没有 `fix_note`）。
+# 白名单不是「这样是对的」，是「这是今天的实情，别再悄悄多一处」（P58 走查 #2）。
+# 每一条后面写清它摘掉的是什么——摘的是模型流出来的东西，不是用户写的字，
+# 所以危害比 P26 修的那三处低一档；但**用户看到正文里少了一句而没有任何一句话说过**
+# 这件事是同一个形状，该说的话下一批补。
+SILENT_FIXES = {
+    ("charts.py", "没授权的图整块摘掉"),
+    ("charts.py", "把清单再画一遍的图摘掉"),
+    ("grounding.py", "citations_exist：摘掉编出来的 [id]"),
+    ("language.py", "no_junk_tail：摘掉段末的语料垃圾词（P55 #1 刚放宽过射程）"),
+    ("language.py", "no_foreign_script：摘掉乱码字符"),
+    ("structure.py", "标题整体下沉一级"),
+    ("structure.py", "尾巴上多出来的小节整段删"),
+}
+
+
+def test_3_仓里每一处fix_note都得是数出来的():
+    """**「逐个数过来」得真的数**（P58 走查 #2）。
+
+    上面那条的抬头原来写着「仓里带 `fix` 的判据就这三处」，而它只构造了自己点名的三处，
+    一次都没扫过。静态一扫：`app/harness/checks/**` 里 `Verdict(...)` 带 `fix=` 的有
+    **12 处**，填了 `fix_note` 的只有 **5 处**——剩下 7 处动了正文、对模型和用户都不说话，
+    正是 P26 #3 要修的那个形状，只是当时没看见它们。
+
+    这一批**不改行为**（那 7 处摘的都是模型流出来的东西，不是用户写的字；
+    真要给它们配措辞是一件单独的事，照铁律「先复现再修」留给下一批）。
+    这条闸钉的是**分母**：数对不上就红，新加一处静默的 `fix` 当场被抓。
+
+    量程：往任意一条判据上加一个不带 `fix_note` 的 `fix=`，这条红。
+    """
+    import ast
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "app/harness/checks"
+    with_fix: list[tuple[str, int, bool]] = []
+    for f in sorted(root.glob("*.py")):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Verdict":
+                kw = {k.arg for k in node.keywords}
+                if "fix" in kw:
+                    with_fix.append((f.name, node.lineno, "fix_note" in kw))
+    spoken = [x for x in with_fix if x[2]]
+    silent = [x for x in with_fix if not x[2]]
+    assert len(with_fix) == 12, f"带 fix 的 Verdict 变成 {len(with_fix)} 处了：{with_fix}"
+    assert len(spoken) == 5, f"填了 fix_note 的变成 {len(spoken)} 处了：{spoken}"
+    assert len(silent) == len(SILENT_FIXES), (
+        f"静默的 fix 从 {len(SILENT_FIXES)} 处变成 {len(silent)} 处："
+        f"{silent}\n新加一处静默的 fix 就得在 SILENT_FIXES 里写明它摘的是什么，"
+        f"或者给它配一句 fix_note。")
+    assert {x[0] for x in silent} == {n for n, _ in SILENT_FIXES}
 
 
 # **`fix` 有两条出口，得各测各的**（§21「同一件事挡住一半等于没挡」）。第一版只写了
