@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import { Compartment, EditorState } from '@codemirror/state'
+import type { TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
@@ -15,6 +16,7 @@ import { imagePaste } from '../editor/imagePaste'
 import { htmlPaste } from '../editor/htmlPaste'
 import { listExitKeymap } from '../editor/listExit'
 import { aiSyncSpec } from '../editor/undoUnit'
+import { syncedFromApp, isAppEcho } from '../editor/syncEcho'
 import { linkClick } from '../editor/linkClick'
 import { markdownKeymap } from '../editor/markdownCommands'
 import { factCite } from '../editor/factCite'
@@ -208,7 +210,10 @@ export default function MarkdownEditor({
           if (update.docChanged) {
             const text = update.state.doc.toString()
             lastEmitted.current = text
-            liveRef.current.onChange?.(text)
+            // **自己刚同步进来的那一份不回声**（P68 A，`editor/syncEcho.ts` 里逐字写着
+            // 它掉了 320 个字）：回声是给「用户自己打的字」和「CM 又改了一道」用的，
+            // 原样弹回去只会在流式写入时把刚到的那一片盖回上一片。
+            if (!isAppEcho(update, text)) liveRef.current.onChange?.(text)
           }
           // 待处置的改动数：接受/撤回、用户自己编辑、下一轮写入都会让它变。
           // 只在变化时往上报，避免每次按键都触发一次 React 渲染。
@@ -292,7 +297,17 @@ export default function MarkdownEditor({
       // 只读刚开始、或 `undoGroup` 变了（智能续写新的一轮）的第一片另起一条，之后的并进去。
       const ai = readOnly || aiRef.current
       const fresh = freshRef.current || undoGroup !== lastGroup.current
-      view.dispatch({ changes: change, ...(ai ? aiSyncSpec(fresh) : {}) })
+      // `...(ai ? aiSyncSpec(fresh) : {})` 这个写法**原样留着**：P11 / P13 两条接线闸
+      // 逐字钉着它（撤销分组是「一轮 = 一次 ⌘Z」的承重墙）。这一批只在它后面**追加**
+      // 一条标注——而且是**把它自己带的那几条摊开再加**，不是另拼一份（拼一份就有了
+      // 两套 annotations，`isolateHistory` 会被悄悄挤掉）。
+      const spec: TransactionSpec = { ...(ai ? aiSyncSpec(fresh) : {}) }
+      view.dispatch({
+        ...spec,
+        changes: change,
+        // 带上**同步过去的那一份正文**，回声那一头逐字比一次（见 `editor/syncEcho.ts`）
+        annotations: [...(spec.annotations ? [spec.annotations].flat() : []), syncedFromApp.of(content)],
+      })
       if (ai) { freshRef.current = false; lastGroup.current = undoGroup }
     }
     lastEmitted.current = content

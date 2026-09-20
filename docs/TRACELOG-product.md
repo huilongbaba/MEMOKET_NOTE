@@ -15794,6 +15794,288 @@ P66 留的第 3 条）。所以它的证据不是「跑绿了」——是下面�
 **每一刀之后源文件都逐字节回到原样**；收工复核 `exit 0 · 红 0 · 跑了 15 条`，
 四个被动过的文件 sha8：`search.py 77c19c3356036812` · `kite_memory.py 7ac912a44f1cbd9e` ·
 `routers/memory.py e84cac801ac8fe70` · `memory_sample.jsonl 54d46bd5c6be64d9`。
+---
+
+## P68 · 第 801 轮：收工那行「+1060 字」判清楚了——**数是对的，丢字的是正文**（改了）+ `d.noteId()` 的默认参数（改了）+ 第十三次走查（2026-09-20）
+
+> HEAD 开工 `4e95bf7`（worktree `agent-a1da0414864e8c09e`，P65 / P66 两支的 merge）。三件事：
+> **A** P64 问题 #1 / P65 ② / P66 问题 #1 那一格（**三批都碰过没结论**）——这一批复现、判清、修了、验了；
+> **B** `d.noteId()` 的默认参数（P66 核清楚了没改）——量完 + 改了；
+> **C** 照十一步走**第十三次**全流程走查，两个身份。
+>
+> 另一个 agent 同时在改 `kb/**`（`matched_terms` 那条）——**这一批 `kb/` 一个字节没碰**。
+> 碰的是五处：新建 `frontend/src/editor/syncEcho.ts`、
+> 新建 `frontend/src/editor/__tests__/p68.test.ts`（6 条）、
+> `frontend/src/components/MarkdownEditor.tsx`（回声那一下）、
+> `frontend/scripts/walkthrough/cdp.mjs`（`noteId` 的默认参数）、
+> `frontend/scripts/check-walkthrough-selectors.mts`（加了身份那两条闸），外加三份文档。
+>
+> **量具**：`$S/p68/{fp68,copydb68,setup68,setmode,scrub52,mkcleanday68,fakellm68,wire68,mutate68}.py`
+> + `{go,launch,step,reweb,treehash,backend-shim}.sh` + `{haspage,reasar}.mjs` + `$S/p68/steps/*.mjs`
+> （从 p66 整套拷出来改路径，**p66 那一份一个字节没动**），新写两个：
+> `steps/adv68.mjs`（正文**两头各读一次**：`.cm-line` 和库里那一份）、
+> `wire68.py`（httpx 的 ASGITransport 直接打 `app.main:app`，**在 SSE 线上**读 `RUN_FINISHED.content`）。
+> `fakellm68.py` 加了一档 `--mode ship`（第 1 轮六维全 2、之后全 0，**把 `SHIP_BEST_ON` 那一支造成确定的**）。
+> 截图 `$S/p68-*.png`（**55 张**）。
+>
+> **安全**：真库只读做指纹，开工 = 收工两次全同
+> **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44**；
+> `llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**，全程假端点 127.0.0.1:18290）。
+> 实验语料 `KITE_DATA_DIR = $S/p68data`（`backend/data` 整目录拷，**源和目标各核一遍**
+> `terrence/codebook.xml` = **11,429,185 字节 / `403a1183`**）。
+> 老用户库：真库 `sqlite3.backup` 只读拷一份进 scratch，起 app 前扫**全库 24 张表**，
+> 命中 1 处（`provider_config.gpt_api_key`）换成 `fake-key-p52`，`sk-` **1 → 0**，
+> **三个 base_url 全部指本机**（扫完**再核一遍**才准起壳）。
+> `~/Library/Application Support/memoket-note-desktop` **一次都没写**（开工 = 收工 mtime 都是 **09-20 00:57:49**）；
+> `backend/data/backups/` 没有新文件（最新那份还是 09-20 09:02，早于本批开工的 23:03）。
+> **`postnote` 这一批一条都没发。**
+
+---
+
+### A. 收工那行「+1060 字」：**是产品的，但方向跟 P64 / P66 记的反了**
+
+P64 / P65 / P66 三批的记法都是「收工那行多算了，因为 `ship_best` 回退了正文而计数没跟着退」。
+**这一批把它判反过来了：那个 +1060 是对的，错的是正文——AI 写的最后 320 字在编辑器里丢了，
+而且自动保存 1.5 秒后把这份短的写回了库，把后端刚落的那一份盖掉。**
+
+#### ① 先把后端那一头钉死：交出去的、落进库的、`RUN_FINISHED` 带的，**是同一份**
+
+`wire68.py`：httpx 的 `ASGITransport` 直接打 `app.main:app`，读到的就是前端
+`consumeHarnessStream` 逐帧读到的**同一份字节**。两跑（`KITE_DATA_DIR=$S/p68data`，真语料）：
+
+| 跑 | 逐轮 `STEP_FINISHED` | `RUN_FINISHED.content` | 库里 `notes.content` | `note_revisions` 的 `harness` 行 |
+|---|---|---:|---:|---:|
+| `--mode adv`（`st.best` 就是最后一轮，**没回退**） | 406 · 729 · 1099 · 1468 · 1791 | **1791** | **1791** | 1791 |
+| `--mode ship`（新加的一档，**逼 `SHIP_BEST_ON` 真开火**） | 406 · 729 · 1099 · 1468 · 1791 | **406** | **406** | 406 |
+
+**回退那一跑三个数逐字相同。** 后端没有任何一格算错——这跟 P65 读代码读出来的结论一致
+（`App.tsx` 和 `runTitle` 两处都拿交出去那一份重算），也跟 `test_p45` 那两条闸一致。
+
+> `--mode ship` 是**造出来的**，不是真跑里长出来的：第 1 轮六维全 2、之后全 0，
+> 于是 `st.best` 钉在第 1 轮、`_regressed` / `check_stuck` 一停就交它。
+> 台账里这么写，**别冒充成实拍**。造它的理由是 `--mode adv` 那一档里
+> `rank >= st.best[0]` 平手归后来者，`best` 一路走到最后一轮，**那一支根本没开火**——
+> 「跑了 ≠ 跑的是那一档」，P66 已经栽过一次。
+
+#### ② 那 P66 那一跑的 790 是哪来的：**它是 1110 的前缀，断在句子中间**
+
+P66 那一跑的 userData 还在盘上（`$S/p66/adv/udd/data/notes.sqlite3`，note `1ea69a8b06f2`）：
+
+```
+note_revisions:  round r1 = 50 · round r2 = 417 · round r3 = 740 · harness r3 = 1110
+notes.content :  790          ← 而且是 1110 的**前缀**，末尾断在「…否则读的人只能选择相」
+updated_at    :  14:45:09     ← 比那一版 harness 快照（14:45:08）晚一秒
+```
+
+`harness` 那一行是 `Edits.after_run` 拿 `store.snapshot_note` 从**库里**取的（`--mode ship`
+那一跑已经证明它取的是 commit 之后那一份）——所以**后端交的、落的都是 1110**。
+790 是**跑完之后一秒，前端自动保存写回去的**（`adv.app.log` 里那一趟只有一次
+`PUT /api/notes/1ea69a8b06f2`）。790 = 740 + 2 + 48，**48 正好是假端点两片 24 字的流式块**。
+
+#### ③ 复现的条件是「**同一份 userData 的第二趟**」，不是随机
+
+| 趟 | 构建 | 会话 | `跑之前 → 跑完`（`.cm-line`） | 收工那行 |
+|---|---|---|---|---|
+| 1 | 带 `clientLog` 探针 | 干净 udd 第一趟 | 45 → 1105（+1060） | +1060 ✔ 一致 |
+| 2 | **干净** | 干净 udd 第一趟 | 46 → 1106（+1060） | +1060 ✔ 一致 |
+| 3 | **干净** | **同一份 udd 第二趟** | **50 → 790（+740）** | **+1060 ✘ 分家** |
+| 4 | 带 `clientLog` 探针 | 同一份 udd 第三趟 | 46 → 1106（+1060） | +1060 ✔（**探针把它压掉了**） |
+
+**第 3 趟跟 P64 / P66 实拍的数逐字相同**（50 → 790 / +740 / +1060）。
+第 4 趟是这一批最重要的一条教训：**量它就会改变它**——
+第一版探针每条走一次 `api.clientLog`（一次 fetch），十几次网络调用把竞态窗口压没了。
+换成**只往 `window.__p68` 推、跑完一次读走**（零网络包）之后，第 3 趟的形状当场回来：
+
+```
+16044 sync 735 -> 807 · emit 735 -> 807
+16080 roundEnd r=3 server=1103 live=1103 cm=807     ← 后端给的是 1103，编辑器停在 807
+16090 done reason=check_stuck server=1103 live=1103 base=43 cm=807 delta=1060
+16091 finally base=43 live=1103 cm=807
+17547 save content=807 cm=807 db=43                 ← 自动保存把 807 写回库
+18093 after2s live=1103 cm=807                      ← 两秒后还是 807，不是「还没同步完」
+```
+
+#### ④ 根因：**编辑器把「我们刚同步进去的那一份」原样回声了回去**
+
+`MarkdownEditor` 是双向的：`content` 变了往 CM `dispatch` 一次；CM 的文档变了通过
+`onChange` 报回去、上层 `setContent`。**回声本身是必要的**——用户自己打的字只有这条路进 React。
+原来靠 `lastEmitted` 这个 ref 防死循环：回来的跟刚发出去的一模一样，同步 effect 就不再 dispatch。
+
+**防得住死循环，防不住过期的回声盖掉新值。** 流式写入时一秒几十次 `setContent`，
+而回声那一下 `onChange(旧文档)` 是**在同步 effect 里**发出的，React 把它排在后面处理——
+于是「刚到的那一片」被「上一片的回声」盖回去，`content` 从此钉在 807，
+`content === lastEmitted` → 同步 effect 一路 skip，**卡死**。
+`liveContentRef` 走的是另一条路（不经 React），所以它是对的 1103 —— 收工那行读它，**那个数从头到尾没错**。
+
+**修法**（`frontend/src/editor/syncEcho.ts` + `MarkdownEditor` 两头）：同步那一下带一条标注，
+标注里带上**同步过去的那一份正文**；回声回来时**逐字比一次**，一模一样就不报给 React。
+**判据宁可窄**：不是「同步来的一律不回声」——CM 可能在同一条事务上又改一道，
+那一份只有回声报得上去，所以比的是逐字相等，不是「有没有标注」。
+
+`...(ai ? aiSyncSpec(fresh) : {})` 这个写法**原样留着**（P11 / P13 两条接线闸逐字钉着它），
+标注是**把它自己带的那几条摊开再追加**——另拼一份 `annotations` 会把 `isolateHistory` 挤掉。
+
+#### ⑤ 验：同一台壳、同一档、**同一个「第二趟」的条件**，修完连跑三趟
+
+| 趟 | `跑之前 → 跑完`（`.cm-line`） | 库里 | 收工那行 | 状态栏字数 |
+|---|---|---:|---|---|
+| 修完① | 44 → 1104 | **1104** | +1060 | — |
+| 修完② | 44 → 1104 | **1104** | +1060 | — |
+| 修完③（定稿源码重打的壳） | 43 → 1103 | **1103** | +1060 | **1067 字** |
+
+修之前同一屏上是「+1060 字」配「**763 字**」（`p66-A2-adv-light`），
+修完是「+1060 字」配「**1067 字**」（`p68-A9-advfix3-light`）——**用户一眼能看见的那一格对上了**。
+
+> **给 P64 / P66 那两处的更正**：台账里 P64 问题 #1 和 P66 问题 #1 写的
+> 「收工那行多算了 320 字 / 只该改 `ship_best` 回退过的那种跑」**不成立**。
+> 那两趟压根没有回退（`st.best` 就是最后一轮），后端交的就是 1110；
+> 多的不是计数，**少的是正文**。P65 ② 量的那 8 跑（`stopped='max_rounds'`）
+> 是另一件事，跟这一格无关——**它量得没错，只是量的不是这个**。
+
+---
+
+### B. `d.noteId()` 那个默认参数：先量，再改默认值（不是改 92 个调用点）
+
+**量**（全部 6 批步骤脚本 + 仓库里那份驱动自己，`.noteId(` 逐处数）：
+
+| | 处数 |
+|---|---:|
+| **裸调** `d.noteId()` | **92** |
+| 带参 `d.noteId(x)` | 5（全在 P66 三头各读一次那一段 + 这一批新写的 `adv68.mjs`） |
+
+**所以改的是默认值，不是调用点**：92 处里漏一个，那一处就还是静默读错一个键。
+
+**改成什么，理由**：默认**从这个窗口自己身上读**——`?user=` 优先，其次
+`localStorage['memoket-note-user']`，**两样都没有就抛**。
+不是「差不多一样」，是**照抄 `api.getUser()` 那两步**（同一个键、同样的优先级）：
+另写一把尺子就是下一次静默读空。显式传 `user` 仍然管用（跨身份读别人那一格时必须写出来）。
+**不选「去掉默认值、调用方必须给」**：那要改 92 个调用点，而漏掉的那个的症状仍然是静默的。
+
+**受影响的读数，这一批一起改掉的**：
+`steps/bnew.mjs` 里那行标签（「默认 user=terrence」→「默认=本窗口身份」），
+它的读数从 `null` 变成真 id（见下面走查表）；`steps/adv68.mjs` 里我自己第一版
+把键写成了 `memoket.user`（**真名是 `memoket-note-user`**）——**同一个病当场犯了一次**，
+也改了。`untilNote` / `openNoteById` 里那两处裸调跟着默认值一起变对，不用动。
+
+**闸**（`check-walkthrough-selectors.mts` 加的第二段，进 `npm test`）：
+① 驱动里不许再出现写死的身份默认值；② 它读身份的键跟 `src/api.ts` 的 `USER_KEY` **是同一个**；
+③ `?user=` 那一步在。
+
+---
+
+### C. 第十三次全流程走查（P65 / P66 之后）
+
+两个身份：空库新用户 `p68-newbie`、482 篇老用户 `terrence`（真库只读拷贝 + 全库洗 key）。
+**起壳之前先跑 `check-walkthrough-selectors.mts`**（仓库里那一份）：
+**58 文件 / 47 类名 / 60 处通配 / 对不上 0**（含 p68 / p64 两批步骤脚本）。
+
+| # | 步骤 | 空库新用户 | 482 篇老用户（terrence） |
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：状态栏「还没配模型 · 去设置」、**一个内网 IP 都没有**；设置页第一条逐字「还没配模型，AI 功能全都用不了。…」；填假端点 →「连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」」→ 点 chip → 保存 →「还没配模型」和红条**同时消失**、库里真落了（`provider=local` / `local_base_url=http://127.0.0.1:18290/v1` / `local_model=fake-p52`）、**toast 恰好 1 条** `p68-bnew-1/1b/1c/1d-*`、`p68-bnew3-1-saved-light` | **对**：开到上次那篇 `df3b4f7e987d`（按 id 核的）、正文 364 字、右栏 `["记忆","幻灯片24","计划5"]`、`/api/health` 的 `data_dir` 指着 `p68/old/udd/data`、自检横幅（没有）`p68-b1-old-open-light` |
+| 2 | 新建 → 打标题 → 右栏「计划」 | **对**：右栏 `["记忆","计划"]`、意图三格预填 + **「预填」角标在**（`prefill: true`）`p68-bnew-2-plan-light` | **对**：新建 `482c8d29b9df`；**标题框 `value` 是空的，意图三格照样预填、`prefill: true`**——**P43 #2 / P44 #4 回归 ✔** `p68-b1b-old-intent-light` |
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」 | **对**：**P32 #3 ✔** 空库图例收成一句；**P35 #8 ✔** 空托盘收成一句 `p68-bnew-3-memory-light` | **对**：**P17 #12 回归 ✔**「日期跟知识库 2026-02-24 的记录不一致：那里是 3-20、4-20，你写的是 3-12」；**圆点 `{落槽 2（冲突 1 / 缺依据 1）}`**，旁注「页面合计 8（图例 6）」`p68-b1-old-memory-light` / `p68-b1b-old-intent-light` |
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项**全在、Esc 之后剩 0（**P17 #2 ✔**）；正文末尾 `"\n\n/"`——**P49 ③ 判成不是缺陷**；退三下之后**逐字**回到打 `/` 之前（`true`）`p68-b1-old-slash-light` |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]`、选中那一行逐字还在、Esc 关得掉、**正文一个字没动**（`doc2 === doc`）`p68-b1b-old-ctx-light` |
+| 6 | 智能续写 → 轮次卡片 → **读库** | — | **对**：`ok` 档一轮 **105 → 205（+100）**；**库里 `notes.content` 205 = 编辑器 205、`json = false`**（**P45 #1 / P44 #1 回归 ✔**）；`做爰片` **不在终稿里**（**P55 #1 ✔**）、`terrence-8F6` 也不在（**P55 #2 ✔**）；空括号「（）」**0**（**P35 #7 ✔**）。`adv` 档那一跑见 A `p68-b2d-old-rounds-light` |
+| 7 | 导回到 Obsidian | — | **对（浅走）**：面板在、`vault` 路径格在、那四段逐字全在 `p68-b2d-old-export-light` |
+| 8 | 屏幕活动 | **对（知情屏这一半）**：五条（记什么 / 存在哪 / **留多久** / 不记什么 / 怎么关）+「开始记录 / 先不开」+ 权限那句；「留多久」里的数**从后端读**（`描述留 1 个月（30 天）…`）**P21 #1 / P32 #4 ✔** `p68-bnew-4-consent-light` | **对**：今天 99 段 / 11 小时 59 分钟；保留期面板逐字「现在盘上有 **4 天 · 309 段 · 3.5 MB**（最早 2026-09-16）」；**一键全删两段式**（钮叫「全部删掉」，摊开六行 +「确认删掉这 4 天 / 先不删」，**先不删之后天列表逐字原封不动**、确认框剩 0）；翻天 +「删掉这一天」确认框四行 +「删完就真的没有了，没有回收站」；翻到别的一天**确认框作废**（P23 #5 ✔）；「去这天的日记」面包屑（P23 #6 ✔）`p68-b3-old-journey-light` / `-delday` / `-journal` / `p68-b3b-old-wipe-light` |
+| 9 | ⌘K 全部去处 | **对**：**18 项**；搜「屏幕」3 项 `p68-bnew-5-cmdk-light` | **对**：**23 项**（最近 6 + 前往 17）；Esc 关得掉 `p68-b1-old-cmdk-light` |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，壳是新起的） | — | **对**：带层那篇 `482c8d29b9df` → 页签 `["记忆","改动1","计划5"]` + toast **1 条**「上次没处置完的 1 层改动还在右栏「改动」里」，**P43 那条不变式两头各读一次，成立**；不带层那篇 `df3b4f7e987d` → `["记忆","幻灯片24","计划5"]`，**没有「改动」、也没有 toast**（**P44 #5 ✔**）`p68-C10-reopen-withlayer-light` / `-nolayer-light` |
+| 11 | 深色 + 900px | **对**：`bg rgb(18,15,26)`、深色下**近白的大块 0 处**；900px 下横向滚不动，唯一那个「溢出」是标签条（**判成不是缺陷**，同 P52 #3 / P58 / P60 / P64 / P66：`sw 732 > cw 560`、`overflow-x: auto`）`p68-bnew-6-dark`、`p68-bnew3-2-tabs900-light` | **对**：`bg rgb(18,15,26)`、近白大块 **0**；900px **横向溢出 0**、横不动；屏幕活动那一页深色下近白大块 **0** `p68-b1-old-dark`、`p68-b1-old-900-light`、`p68-b3-old-journey-dark` |
+
+#### 重点盯的三格
+
+**① P65 改的取词排序，在界面上是「命中：」那一行短了**
+
+同一份语料、同一段光标位置，跟 P66 那一趟逐格对：
+
+| 光标停在 | P66 | 这一批（P65 之后） |
+|---|---|---|
+| 【预热名单回收了 860 份，转化率按渠道排了一遍】 | 命中：**众筹页面**（库里 32 条）、**转化率**（19 条）、**当天**（8 条） | 命中：**转化率**（19 条）——**只剩一个** |
+| 【EVT 准备 4 台主机，15 套 PCBA】 | 准备（59 条）、pcba（6 条）、evt（11 条） | **逐字相同** |
+| 【众筹页面那一版文案是 3 月 12 号上线的】 | 「没有一条记录同时命中两个」 | 同左 |
+| 步骤 1 那篇（`df3b4f7e987d`）右栏 | 「没有一条记录同时命中两个」 | **命中：上线（跟别的词一起才算 · 库里 76 条提到）** |
+
+**这一批不判它是缺陷**：另一个 agent 正在改 `matched_terms`，我走查的是**合并前的 HEAD**，
+看到的正是「排序改了、面板那行还没跟上」。**记下来交给合并之后重跑一次。**
+`「号上」`那个反例照旧 **0 次**（P38 ⑤ / P40 #4 / P44 #4 回归 ✔）。
+
+**② 圆点那一格：落槽 2（冲突 1 / 缺依据 1），「页面合计 8」当旁注**
+
+照 P66 定的写法。壳上两个读数跟 P64 / P66 **一个数不差**：
+右栏还没切到「记忆」时 `{落槽 2 · 图例 0 · 页面合计 2}`；「记忆」摊开着时 `{落槽 2 · 图例 6 · 页面合计 8}`。
+（`recall64` 那一篇正文不同，落槽是 3 —— 那是另一篇笔记，不是同一格。）
+
+**③ P66 问题 #3 的回归：`b3old` 里那个「一键全删」现在读得到了**
+
+P66 记着它在 `b3old` 里读回 `undefined`（两条根因：文案 + 钮在页底不滚动），
+修在 `wipe66.mjs` 上单独复核过、`b3old.mjs` 也跟着改了但没重跑。
+这一批 `b3old` 那一格**摊开六行齐全**、bbox `{cx 397, cy 659}`、两个钮
+`["确认删掉这 4 天","先不删"]` —— **在原来那个步骤脚本里也读得到了**。
+
+#### 问题清单（按「第一天用户会不会因此关掉 app」排序）
+
+| # | 现象 → 实拍 → 根因 | 处置 |
+|---|---|---|
+| 1 | **AI 写的最后一段在编辑器里丢了，自动保存还把这份短的写回库**（后端交 1103 / 编辑器 807 / 库 807，同屏上收工那行写着「+1060 字」、状态栏写着「763 字」）。根因是 `MarkdownEditor` 把自己刚同步进去的那一份**原样回声**回 React，过期的回声盖掉了刚到的那一片 `p68-A3-adv2nd-light` / `p66-A2-adv-light` | **✔ 改了**（`editor/syncEcho.ts` + 两头接线），6 条单测 + 突变验 3 刀；壳上**修完连跑三趟**，编辑器 = 库 = 后端 = 收工那行 |
+| 2 | **量具**：`d.noteId()` 的默认身份 `terrence`（P64 问题 #2 的后半，P66 量清楚没改） | **✔ 改了**：默认改成从窗口自己身上读、读不出来就抛；量了 **92 处裸调 / 5 处带参**；闸 3 条进 `npm test`，突变验 3 刀 |
+| 3 | **观察，不判缺陷**：右栏「命中：」那一行比 P66 短了（3 个词 → 1 个词） | 指向另一支：`kb/**` 的 `matched_terms` 正在改。**合并之后要重跑这一格** |
+| 4 | **量具（这一批自己犯的）**：探针走 `api.clientLog`（每条一次 fetch）**把竞态压没了** —— 干净构建复现得出 790，带探针两趟都读回 1106 | **✔ 改了**：探针改成只往 `window.__p68` 推、跑完一次读走（**零网络包**），第 3 趟的形状当场回来 |
+| 5 | **闸的洞（突变验第 ⑤ 刀当场抓的）**：身份那条闸拿整份文件 `includes` 判键名，**注释里那一份也算数** —— 把代码里的键换掉，闸一声不吭 | **✔ 改了**：判之前先摘掉整行注释。跟 `check-css-classes` 顶上记的「注释」/「`url()`」同一个形状，**第四次** |
+
+#### 历史修复的回归（这一趟逐条核过）
+
+| 来源 | 修的是什么 | 今天 | 证据 |
+|---|---|---|---|
+| P17 #2 / #12 | Esc 关 `/` 菜单 · 日期冲突关系卡 | **✔ 还在** | 19 项 → Esc 剩 0；「那里是 3-20、4-20，你写的是 3-12」 |
+| P21 #1 / P32 #4 | 知情屏五条 + 留多久从后端读 | **✔ 还在** | `p68-bnew-4-consent-light` |
+| P21 #3 | 一键全删两段式、删之前逐条列清 | **✔ 还在** | 六行 +「确认删掉这 4 天 / 先不删」，先不删之后天列表原封不动 |
+| P23 #5 / #6 | 「删掉这一天」是页面里的框、翻天作废 ·「去这天的日记」 | **✔ 还在** | 四行 +「删完就真的没有了」；翻一天之后确认框 0；面包屑在 |
+| P32 #3 / P35 #8 | 空库图例 / 空托盘各收成一句 | **✔ 还在** | `p68-bnew-3-memory-light` |
+| P35 #7 | 空括号「（）」 | **✔ 还在** | 0 次 |
+| P38 ⑤ / P40 #4 / P44 #4 | 召回命中词里不许出现「号上」这种碎片 | **✔ 还在** | 整块「记忆」里搜「号上」**0 次** |
+| P43 #2 / P44 #4 | 标题空着时意图三格照样预填 + 角标 | **✔ 还在** | `prefill: true`、三格逐字 |
+| P43 #1 | 弹了「上次没处置完的 N 层」⇒「改动」页签一定在 | **✔ 还在** | 真·重开那一趟两头各读一次，成立 |
+| P44 #5 | 没有层的笔记不许冒出「改动」页签 / toast | **✔ 还在** | `["记忆","幻灯片24","计划5"]`、toast `[]` |
+| P45 #1 / P44 #1 | 库里 `content` 跟编辑器一样、不是 JSON | **✔ 还在** | 205 = 205、`json: false` |
+| P49 ③ | 打 `/` 之后那个 `/` 留着不是缺陷 | **✔ 还在** | 末尾 `"\n\n/"`、退三下逐字回原 |
+| P50 #1 / P20 #5 | 「描述这 N 段」是真数 | **✔ 还在** | 同 P66 逐字 |
+| P52 #3 / P58 / P60 / P64 / P66 | 900px 标签条那 4px 不是缺陷 | **✔ 还在** | `sw 732 > cw 560`、`overflow-x: auto` |
+| P55 #1 / #2 | 垃圾尾巴 / 残骸编号不进终稿 | **✔ 还在** | `做爰片` 0、`terrence-8F6` 0 |
+| P62 ① | toast 读法（`.toaster > .toast`） | **✔ 在** | 保存那一下 toast **恰好 1 条**；别处 `[]` |
+| P62 ③ | 历史坏数据那句提示 | **✔ 还在** | 真数据两天都说了；**现造的** 2026-09-16（20 段 10 小时全是好的）**一个字没说** |
+| P63 ② / P64 #5 | 圆点那个 8 的更正 | **✔ 壳上两个读数逐格复现** | 见「重点盯 ②」 |
+| P64 A | advisory / judge_floor 在壳上 | **✔ 还在** | `adv` 那一跑 3 / 3 / 2 条，逐条同 P64 / P66 |
+| **P66 #3** | **`b3old` 的「一键全删」两条根因** | **✔ 这一批在原脚本里读得到了** | 见「重点盯 ③」 |
+
+---
+
+### 突变验：**6 刀，6 刀按预期红，而且红的都是该红的那条**
+
+规矩逐条照 P61–P66：**锚点唯一性先断言**、**整文件写回**、改完 / 还原各**逐字节 sha256 核一次**、
+**「红了」和「红的是那条」分开核**。收刀之前先证明两条闸本来全绿
+（`vitest p68.test.ts` 6 条 / `check-walkthrough-selectors`）——**一条永远绿的闸不是闸**。
+
+| 刀 | 改的是 | 红了 | 红的是该红的那条 |
+|---|---|:--:|---|
+| ① | 同步那一下**不带标注**了（接线洞的一半） | ✔ | ✔ 点名 `syncedFromApp.of(content)` 那条 |
+| ② | 回声那一头**不判**了（接线洞的另一半） | ✔ | ✔ 点名 `isAppEcho(update, text)` 那条 |
+| ③ | 「有标注就算回声」——**不再逐字比**（反例落在 ② 那条分支里） | ✔ | ✔ 红在「CM 又改了一道…照报」那条 |
+| ④ | 走查驱动**又写死一个默认身份** | ✔ | ✔「又有默认身份了」 |
+| ⑤ | 身份的**键换成另一个**（两把尺子） | ✔ | ✔「没按 api.getUser() 那个键」 |
+| ⑥ | 读身份**不再看 `?user=`** | ✔ | ✔「没有 `?user=` 那一步」 |
+
+**第 ⑤ 刀第一趟没红——而那不是预测写错，是闸真有洞**：它拿整份文件 `includes` 判键名，
+**文档注释里那一份也算数**，于是把代码里的键换掉之后闸照样绿。补上「判之前先摘整行注释」
+才红。跟 `check-css-classes.mts` 顶上记的「注释」/「`url()`」是同一个形状，**第四次**。
+（这也正是「红不了不等于闸没了」的反面：**红不了有时候就是闸真的没了**。）
+
+**产品那一侧的反例是真跑出来的，不是造的**：修之前的干净构建在「同一份 udd 第二趟」
+那个条件下**逐字复现** P64 / P66 的 50 → 790 / +740 / +1060；修完同样条件连跑三趟全对。
+
+**每一刀之后源文件都逐字节回到原样**；收工复核：
+`MarkdownEditor.tsx` `ef1e16e9c3c88f7d` · `syncEcho.ts` `3b2682d37a1e8a29` ·
+`cdp.mjs` `425efa620343f701`；两条闸全绿。
 
 ---
 
@@ -15819,11 +16101,28 @@ P66 留的第 3 条）。所以它的证据不是「跑绿了」——是下面�
   `backend/data/terrence/codebook.xml`（主仓）和 `<scratch>/p67data/terrence/codebook.xml`
   开工时**源和目标各核一遍**、收工再核，都是 **11,429,185 / `403a1183`**。
 * **截图 0 张**（这一批没起壳，也没占端口）。
+* 后端 `pytest -q` **2999 passed / 0 skipped**（跟基线一个数不差；`backend/app/**` 这一批没碰）。
+  ⚠️ **那 8 条 skip 是自己作的**：第一趟忘了把真库只读拷进 worktree 的 `backend/data/`，
+  于是 8 条「要真库」的测试静默跳过、读出来是 `2991 passed / 8 skipped`——
+  **加起来还是 2999**，光看总数看不出来。**「跳过」和「跑过」要分开数**（P66 立的那条，第二次）。
+* 前端 `npm test` **92 文件 / 809 条**全绿 + 三十几条 `check-*.mts` + 三个 smoke，`EXIT=0`
+  （基线 **91 / 803**，+1 文件 +6 条全是 `p68.test.ts`，**加得起来**）。
+* `check-walkthrough-selectors.mts`：开工 **58 文件 / 47 类名 / 60 通配 / 0 对不上**（含 p68 / p64 两批）；
+  只扫仓库那一份公共驱动时 **1 文件 / 14 类名 / 0**。
+* **真模型 0 次调用 / 0 token**：`llm_usage` 最大 id 开工 = 收工 **5738**，全程假端点 127.0.0.1:18290。
+* 真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+  `note_revisions` 44**（口径走 `scripts/db_guard.fingerprint`）。
+* `~/Library/Application Support/memoket-note-desktop` mtime 开工 = 收工 **09-20 00:57:49**；
+  `backend/data/backups/` 没有新文件；`backend/data/terrence/codebook.xml` 还是
+  **11,429,185 字节 / mtime 09-17 11:56:14**；主仓 `notes.sqlite3` mtime 还是 09-20 14:54。
+* **`postnote` 这一批一条都没发。**
+* 截图 **55 张** `$S/p68-*.png`。
 
 ### 收尾命令：这条路径在哪个环境下才对
 
 **`<scratch>` = `/private/tmp/claude-501/-Users-huilong-Skills-Bugfixing-Feishu/<session>/scratchpad`；
 `<worktree>` = `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-a374b88df634cc65a`；
+`<worktree>` = `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-a1da0414864e8c09e`；
 「主仓」= `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE`。**
 
 | 命令 | 只在哪儿跑 | 搬到别处会怎样 |
@@ -15863,3 +16162,38 @@ worktree 里的 `backend/data/notes.sqlite3` 被 `.gitignore` 的 `data/` + `*.s
 4. **`d.noteId()` 那个默认参数**（P66 留的第 1 条，`app/harness` / 走查那一侧，这一批没碰）。
 5. **收工那行的字数口径**（P64 #1 / P66 留的第 2 条，同上）。
 6. P59 留的第 2 / 3 条（`modes.py` / `middleware/checks.py`）——跟那一侧的 agent 错开，没碰。
+| `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p68data ./.venv/bin/python -m pytest -q` | **本 worktree 的 `backend/`** | 不带 `KITE_DATA_DIR` 就读主仓 `backend/data`（**用户真语料**）；在主仓 `backend/` 下跑，读库那几条读的是**真库** |
+| `cd <worktree>/frontend && npm test` | **本 worktree 的 `frontend/`** | — |
+| `cd <worktree>/frontend && npx tsx scripts/check-walkthrough-selectors.mts [目录…]` | 哪儿都行（只读） | 不点名目录就只扫仓库那一份公共驱动——**绿了不等于这一批的步骤脚本核过了** |
+| `cd <worktree>/backend && ./.venv/bin/python <scratch>/p68/setup68.py` | **本 worktree 的 `backend/`** | 它 `sys.path` 里写死本 worktree；**只读**拷主仓真库到 scratch，再扫全库换 key |
+| `cd <worktree>/backend && ./.venv/bin/python <scratch>/p68/copydb68.py` | **本 worktree 的 `backend/`** | 它把主仓真库**只读**拷成 `<worktree>/backend/data/notes.sqlite3`（被 `.gitignore` 的 `data/` + `*.sqlite3` 两条挡着）。**那 8 条 skip 就是没跑它** |
+| `cd <worktree>/backend && ./.venv/bin/python <scratch>/p68/wire68.py` | **本 worktree 的 `backend/`** | 它 `os.environ["KITE_DATA_DIR"] = <scratch>/p68data`，**在 import `app.main` 之前设**；漏了这一行就会往主仓真语料里建笔记 |
+| `cd <worktree>/backend && ./.venv/bin/python scripts/journey_fixture.py --variant full --stub-frames <scratch>/p68/old/udd` | **本 worktree 的 `backend/`** | 它**只读** `~/Library/Application Support/memoket-note-desktop/journey`（自带 `guard_dest` 拦着往真目录写）；`dest` 写错就往别的 udd 里造数据 |
+| `zsh <scratch>/p68/go.sh <udd> <cdp端口> <steps 文件> fakellm68.py <llm端口> <mode>` | **本 worktree**（`go.sh` 里 `W=` 指死本 worktree） | 端口撞了换（这一批 19360–19368 / 18290，起之前逐个核过空着）。**`<llm端口>` 必须跟 udd 库里 `provider_config` 那个一致**——这一批对照趟拿 18291 起、库里写的是 18290，整趟一条都没跑起来（日志里是「+0 字 / 0 条」，看着像产品坏了）。**`<mode>` 换一个读回来的就是另一件事的数** |
+| `node <worktree>/frontend/scripts/walkthrough/cdp.mjs <port> <step.mjs>` | 哪儿都行，但**必须 `export WALKTHROUGH_SHOT_DIR=<目录>`** | 不设就抛（有意的：**不猜一个目录静默写进去**） |
+| `zsh <scratch>/p68/reweb.sh` | **本 worktree** | 换的是 `<scratch>/p68/app` 里那份 `.app` 的 `Resources/web` + backend shim，**改完必须重新核四个可执行件的哈希**（这一批每次都核了：web 整树 / shim / `app.asar` 里的 `main.js` 逐字节） |
+| `cd <worktree> && ./backend/.venv/bin/python <scratch>/p68/fp68.py open｜close` | 哪儿都行 | 它**只读**主仓那份真库，这是有意的（指纹要对着用户那份做） |
+| `./backend/.venv/bin/python <scratch>/p68/mutate68.py` | **只在本 worktree** | 它会**改 worktree 里的 3 个源文件**（每刀改完立刻整文件写回 + 逐字节核 sha256）；跑在主仓上会去改主仓源码 |
+| `rm -rf <scratch>/p68data` `rm -rf <scratch>/p68` | **scratch** | **主仓**的 `backend/data` 是用户 482 篇 + 11.4MB codebook，**删了就没了** |
+| `rm <worktree>/backend/data/notes.sqlite3` | **本 worktree**（开工只读拷的那一份） | **主仓同名相对路径下是真库**——第 776 轮那次删库逐字就是这条 |
+| `rm <worktree>/backend/.venv` `rm <worktree>/frontend/node_modules` …（四个软链） | **本 worktree** | `rm` 只删链接；`rm -rf` **加斜杠**（`.venv/`）会**跟着链接删主仓的内容** |
+
+**本轮不需要任何清理命令**：`<scratch>/p68data` 和 `<scratch>/p68/**` 留在 scratch 下不进 git；
+worktree 里的 `backend/data/notes.sqlite3` 被 `.gitignore` 的 `data/` + `*.sqlite3` 两条挡着；
+`frontend/dist` / `desktop/dist` 也被忽略；四个软链（`backend/.venv` / `frontend/node_modules` /
+`desktop/node_modules` / `node_modules`）**在 `git status` 里看得见**（忽略规则的 `.venv/` /
+`node_modules/` 只匹配目录，匹配不到符号链接），所以 commit 是**逐路径 `git add`，没有 `git add -A`**。
+
+### 留给下一批
+
+1. **`matched_terms` 合并之后重跑「命中：」那一行**（问题 #3）：这一批看到的是
+   「排序改了、面板那行还没跟上」，**那是合并前的 HEAD**，不是结论。
+2. **回声那条路还有第二半没量**：这一批修的是「同步进去的原样回来」。
+   `onChange` 还有一条真回声（CM 在同一条事务上又改一道）——它**该**报上去，
+   但**报上去之后会不会也排在后面盖掉新值**没量过。要量得先造出「CM 真的改了一道」的场景。
+3. **`save()` 没有「别把更短的正文盖回刚交稿的那一份」这条护栏**：
+   这一批从根因那一头修掉了源头，但那条护栏本身仍然不存在——
+   下一个把正文写短的 bug 还是会被自动保存直接落库。
+4. **步骤脚本还在 scratch**（P66 A 里写清了为什么）。「按 README 跑得起来」这件事仍然没有闸。
+5. P59 留的第 2 / 3 条（6 个 block 模式要不要也停 `check_stuck`、`STUCK_ROUNDS` 要不要改读
+   `check_name_streak`）——都在 `modes.py` / `middleware/checks.py`，**这一批没碰**。
