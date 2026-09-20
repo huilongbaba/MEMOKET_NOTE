@@ -25,6 +25,7 @@ import SplitEditor from './components/SplitEditor'
 import { insertStreamed, tidyBlankLines, applyScrub, prepareInsert } from './editor/streamJoin'
 // 一轮里可以先后命中好几条判据，攒起来别互相盖掉（批 24 / 计划 12.1）
 import { withCheckHit } from './editor/agentRound'
+import { isStaleShrink, type Served } from './editor/saveGuard'
 import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
@@ -391,7 +392,34 @@ export default function App() {
   // StrictMode 还会双调用 updater，实测直接把 Agent 面板整个搞崩了。
   // 所以让 updater 只顺手写一下这个 ref（写 ref 是幂等的，双调用无害），
   // 轮末直接从 ref 读当前正文。
-  const liveContentRef = useRef<string>('')
+  //
+  // **它同时是 `save()` 那条护栏的锚点**（P70 B）：见下面 `servedRef`。
+  const liveContentRef = useMemo(() => {
+    let v = ''
+    return {
+      get current() { return v },
+      set current(next: string) {
+        v = next
+        // **写在 setter 里，不是写在 13 个赋值点上**（P68 B 那一课：`d.noteId()`
+        // 改的是默认值不是 92 个调用点——漏一个那一处就静默读错）。这里漏一个的
+        // 症状更糟：护栏拿着过期的锚点，会去挡一次**该存**的保存。
+        servedRef.current = { id: servedRef.current.id, text: next, edits: 0 }
+      },
+    }
+  }, [])
+  /** 「服务端 / 流式**最后交给这一篇**的那一份正文」+「自那以后编辑器自己报了几次改动」。
+   *
+   *  P70 B 的护栏就靠这两样：`edits === 0` 说明**用户一个字都没动**，
+   *  这时候 `content` 还比交下来的那一份短，那就只可能是 React 那边的镜像落后了
+   *  （P68 实拍：后端交 1103、编辑器剩 807，1.5 秒后自动保存把 807 写回库，
+   *  把后端刚落的那一份盖掉）。`id` 由 `open()` 写，正文由 `liveContentRef` 的 setter 写。 */
+  const servedRef = useRef<Served>({ id: '', text: '', edits: 0 })
+  /** 编辑器报上来的改动（**回声不算**，`editor/syncEcho.ts` 已经把它挡在外面了）：
+   *  用户敲的字、悬停工具条的「接受 / 撤回」、`/` 块、粘贴——全走这一条。 */
+  const onEditorChange = useCallback((next: string) => {
+    servedRef.current.edits++
+    setContent(next)
+  }, [])
   // 定向续写的插入光标：null = 追加到文末；每轮开始时复位
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
@@ -1424,6 +1452,9 @@ export default function App() {
     const d = resolveDraft(n, readDraft(n.id), !!new URLSearchParams(location.search).get('probe'))
     setTitle(d.title)
     setContent(d.content)
+    // 护栏的锚点跟着换篇（P70 B）。**按篇分是承重的**：不换的话，在 A 上跑完一轮
+    // 再打开一篇更短的 B，护栏会拿着 A 的字数去挡 B 的保存（量具 B5 就是这一格）。
+    servedRef.current = { id: n.id, text: d.content, edits: 0 }
     if (d.restored) toast('上次没存上的内容已恢复到这篇里，会在下一次自动保存时存回去')
     if (d.clear) clearDraft(n.id)
     // 骨架跟着笔记读回来，**不是清空**。清空那版的后果是「一会儿就没了」：
@@ -1591,8 +1622,27 @@ export default function App() {
     // switchTo / openVirtual 离开笔记前都会走到这里（实拍：三篇笔记各多了几行
     // 「据 […] 所述」）。
     if (new URLSearchParams(location.search).get('probe')) return
+    // **别把更短的正文盖回刚交稿的那一份**（P70 B）。
+    //
+    // 判据宁可窄，三条同时成立才算数：① 锚点是**这一篇**的；② 自那一份交下来之后
+    // 编辑器**一次改动都没报过**（`edits === 0`）；③ 要存的这一份**比它短**。
+    // 用户自己删字、悬停工具条上的「撤回」、「全部撤回」、`/` 块——全都会让 ② 不成立，
+    // 一次都拦不到（量具 B1 / B2）；服务端自己交了更短的一份（清洗、去重）会把锚点
+    // 一起换掉，也拦不到（B6）。剩下能中的只有一种：**用户没动，而它变短了**（B3）。
+    //
+    // 拦下之后不是「不存」——那样这次连标题都存不上；是**拿服务端交的那一份去存**，
+    // 顺手把编辑器也拉回来：P68 实拍那一格里，用户眼前少掉的 296 个字就在这一份里。
+    const served = servedRef.current
+    let body = content
+    if (isStaleShrink(served, current.id, content)) {
+      void api.clientLog('warn',
+        `挡下一次回退的保存：要存 ${content.length} 字，服务端刚交的是 ${served.text.length} 字，`
+        + `而编辑器从那以后一次改动都没报过——用服务端那一份存`, '', 'save-guard')
+      body = served.text
+      if (content !== served.text) setContent(served.text)
+    }
     try {
-      const n = await api.saveNote(current.id, title, content)
+      const n = await api.saveNote(current.id, title, body)
       setCurrent(n)
       setSaveStatus({ at: Date.now() })
       clearDraft(current.id)
@@ -1604,7 +1654,9 @@ export default function App() {
       setSaveStatus({ at: Date.now(), error: String(e) })
       // **没存上的正文先落到本机**：后端崩了 / 网断了的那几秒里用户还在写，
       // 这时关掉应用就全没了。下次打开这篇如果库里的版本更旧，把草稿放回去。
-      writeDraft(current.id, title, content)
+      // 落草稿的也是**真要存的那一份**（`body`）：护栏改写过之后还写 `content`，
+      // 等于把刚挡掉的那一份短的从草稿这条路又放回去（P70 B）。
+      writeDraft(current.id, title, body)
       throw e
     }
   }
@@ -4193,7 +4245,10 @@ export default function App() {
             )}
             <MarkdownEditor
               content={content}
-              onChange={setContent}
+              // **不是裸 `setContent`**（P70 B）：编辑器报上来的每一次改动都要在
+              // `servedRef` 上记一笔「用户动过」，护栏靠它区分「用户自己删的」和
+              // 「React 那边的镜像落后了」。回声不走这条（`editor/syncEcho.ts` 挡住了）。
+              onChange={onEditorChange}
               // AI 在写的时候锁住编辑器：这时手改的字会被轮末的服务端正文盖掉（同步是
               // 服务端权威）。逐轮暂停、跑完、停止都会解锁。
               // 文件夹 harness 正在写的那篇也只读：它跟单篇那条一样在逐块往正文里写，
