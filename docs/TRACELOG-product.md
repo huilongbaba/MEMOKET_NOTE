@@ -13465,3 +13465,318 @@ P57 写的是「材料都在，够不着而已，根因在 `_cjk_terms` 挑 grep
    要摆得先让假模型造出 `citations_present` 那一档的形状，`fakellm58.py` 今天造不出来。
 6. P58 留下的 1 / 2 / 4 / 5 / 7（7 处静默 `fix` 的措辞、`STUCK_ROUNDS` 的 `check_released`、
    run 记录补逐轮材料、`truncated_citations` 的命名空间、P52 的 ① ③）**照旧没做**。
+
+## P62 · 第 778 轮：那两遍 toast 是**量具多选的** + 走查量具三条收口（2026-09-20）
+
+> HEAD 开工 `203c768`（worktree `agent-ae0c3569581ebbd60`）。五条：
+> **①** 同一条 toast 连出两遍（P60 #5 / P58 都记了没改）；
+> **②** 走查量具三条收口进**公共那份**（P60 #2 #3 #4）+ `b1old.mjs` 的过时选择器（P60 #6）；
+> **③** `advisory` / `judge_floor` 两档摆出来（P60 ⑤）；
+> **④** P52 的 ①（锁屏别解掉用户按的暂停）③（历史坏数据那句提示）；
+> **⑤** P58 留下的那几条。
+>
+> 另一个 agent 同时在改 `kb/**`、`kite/**`、`app/harness/modes.py`、`middleware/checks.py`
+> ——**这一批那四处一个字节没碰**。碰的是 `frontend/src/components/JourneyPage.tsx`、
+> `frontend/package.json`，外加四个新文件（`scripts/check-journey-tick-parity.mts`、
+> `scripts/check-toast-single.mts`、两份 `src/editor/__tests__/p62*.test.tsx`）和三份文档。
+>
+> **量具**：公共那份 `$S/cdp.mjs`（加了 `must` / `mustTexts` / `toasts` / `dots` /
+> `menuItems` / `expandDetails` / `readCard`）、新的 `$S/udd.py`、`$S/selfcheck-selectors.mjs`，
+> 外加 `$S/p62/{postnote.m,powerprobe/,fakellm62.py,adv62.py,mutate62.py}`。
+> **这一批没起打包壳**（理由见 ③ / ④），所以**一张 `p62-*.png` 都没有**——
+> 台账里不摆没拍过的图。
+>
+> **安全**：真库只读做指纹，开工 = 收工两次全同
+> **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44**；
+> `llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**：这一批
+> 一个模型端点都没连过，`adv62.py` 走的是判据层，不经过 `llm.stream()`）。
+> 实验语料 `KITE_DATA_DIR=$S/p62data`（`backend/data` 整目录拷，核过
+> `terrence/codebook.xml` **11,429,185 字节 / `403a1183`**）。
+> `~/Library/Application Support` **一次都没碰**。`unset ELECTRON_RUN_AS_NODE`。
+
+---
+
+### ① 那两遍 toast：**不是产品的，是读它的那个选择器多选了一个**
+
+P58 / P60 两批的日志里逐字躺着这两行：
+
+```
+toast: ["已切换到本地模型：fake-p52 @ http://127.0.0.1:18260/v1",
+        "已切换到本地模型：fake-p52 @ http://127.0.0.1:18260/v1"]
+toast: ["没删成 2026-09-19，这一天还在：…", "没删成 2026-09-19，这一天还在：…"]
+```
+
+**先复现，再判**。几条路各查一遍：
+
+| 可能 | 查法 | 结论 |
+|---|---|---|
+| 事件重复派发 | 读两处调用点（`SettingsPanel.save` / `JourneyPage.wipe`），各只 `toast(...)` 一次；步骤脚本 `bnew3.mjs` / `ro.mjs` 也各只点一下 | **不是** |
+| React 重渲染 | `toast()` 是 external store（`useSyncExternalStore`），不在 render 里调；打包的是 production React，`StrictMode` 不双跑 | **不是** |
+| toast 自己没去重 | —— | **不需要**，见下 |
+| **读它的选择器多选** | `lib52.mjs` 的 `toasts()` 读 `[class*="toast"]`，而**外层容器叫 `toaster`** | **就是这个** |
+
+`<Toaster/>` 的结构是 `.toaster > .toast`。`toaster` 这个串里含 `toast`，
+通配 `[class*="toast"]` **把容器和里面那一条一起选中**，而容器的 `textContent`
+正好等于里面那一条的正文 —— 于是**一条读回来是两条一模一样的字**。
+
+**物证两份，互相独立**：
+
+* **实拍截图** `$S/p60-b7-2-ro-toast-light.png` 上**只有一个 toast 框**（那一屏读回来是「两条」）。
+* **jsdom 复现**（`frontend/src/editor/__tests__/p62Toast.test.tsx`，真 store + 真组件）：
+  一条真 toast → 库里 1 条、DOM 里 1 个 `.toast`、通配选择器 **2**、精确选择器 **1**；
+  **两条真 toast → 精确选择器 2、通配 3**（容器 1 + 真的 2）。
+  「2 条一模一样」这个形状，只有「1 条 + 容器」才产得出来。
+
+**所以产品一个字没改，而且不该改。** P60 留的那句「下一批要修」照字面做就是给
+`toast()` 加「同一条消息短时间内去重」——那会**吞掉用户真的连点两次的反馈**
+（删两次、失败两次，用户只看见一条）。这一刀是突变验 ④ / ⑤，两条闸各自接住。
+
+> **这一批新立一条**：**「选不到 ≠ 没有」的镜像是「选到两个 ≠ 真有两个」。**
+> 通配选择器既会漏也会多，而**多出来那一份长得跟真的一模一样**，比漏更难看出来——
+> 漏了是空数组（一眼可疑），多了是一段读起来像 bug 的证据，能在台账上躺两批。
+
+改的是量具（`d.toasts()` 精确到 `.toaster > .toast`，并且断言容器只有一个），
+仓里留两条闸：行为那条在 `p62Toast.test.tsx`，源码那条在 `scripts/check-toast-single.mts`
+（`<Toaster/>` 只许挂一处 + `toast.ts` 里不许按 message 去重）。
+
+---
+
+### ② 走查量具三条收口进公共那份 + 过时选择器
+
+三条都从「上一批改在自己目录里的拷贝」挪进了**公共那份**：
+
+| 条 | 收在哪 | 它防的那个症状 |
+|---|---|---|
+| 新建 udd 要写 `identity.json` | **新文件 `$S/udd.py`**：`write_identity()` / `copy_corpus()` / `check_udd()`，**写完读回来核** | 不写就回落成随机用户、482 篇一篇看不见；**先写 localStorage 再 reload 没用**（启动按 URL `?user=` 覆盖） |
+| 拷 codebook 要核字节数 + sha8 | 同上，`copy_corpus(..., expect_bytes=11_429_185, expect_sha8="403a1183")`，**源和目标各核一遍** | 710 字节空壳，**症状是静默变差不是报错**（圆点 0 / 「知识库还是空的」），同 P29 那个 718 字节的 |
+| 读轮次卡片前先摊开 `<details>` | **`$S/cdp.mjs`**：`d.expandDetails()` / `d.readCard()`（返回这一趟摊开了几个） | 收着时 `innerText` 读不到，两批读回 `[]`；P58 台账那一格是靠截图断的 |
+
+`cdp.mjs` 另外加了**会吵的一组**：`d.must(sel, {min,max})` / `d.mustTexts()`
+（选不到、或者选多了，**当场抛**）、`d.toasts()` / `d.dots()` / `d.menuItems()`（真类名，不用通配）。
+
+**`b1old.mjs` 那两个过时选择器修掉了**，而且**顺手把「怎么会躺两批没人发现」这件事做成了闸**：
+新写 `$S/selfcheck-selectors.mjs` —— 跑之前把步骤脚本里所有类名对着 `frontend/src` 点一遍名。
+
+**它当场又挖出三个 P60 不知道的**：
+
+| 选择器 | 在哪 | 真名 | 后果 |
+|---|---|---|---|
+| `.cm-margin-dot` | `b1old.mjs` ③ | `.mm-dot` | 圆点一律报 0（P60 已知） |
+| `.context-menu …` | `b1old.mjs` ⑤ | `.palette-item` | 右键菜单一律报 `[]`（P60 已知） |
+| **`.mm-continues`** | **`b1b.mjs`** | **`.mm-continuation`** | **「延续」那一档永远 0** |
+| **`.mm-adds`** | **`b1b.mjs`** | **`.mm-accumulation`** | **「叠加」那一档永远 0** |
+| `.cmdk-item` | `cdp.mjs` / `b1old` / `bnew` | `.palette-item` | 三选一里的一路永远走不通 |
+
+> ⚠️ **台账更正**：P52 / P58 / P60 三批都写着「圆点 **8** 个（冲突 2 / 印证 1 / 缺依据 2 / 合并 1）」
+> —— **那四档加起来只有 6**。另外 2 颗正是掉进 `.mm-continues` / `.mm-adds` 这两个
+> **永远选不到的空档**里的。合计那个 8 是对的（它走的是别的选择器），
+> **分档那四个数从来没盖住过全部**。这跟 P54 记的「五批抄的是同一个数」是同一个形状：
+> **一个数摆了三批，没人把它加一遍。**
+
+收工时 `selfcheck-selectors.mjs`：**24 个文件 / 42 个类名 / 36 处通配 / 对不上 0 个**。
+突变刀 ⑧（把 `b1old` 的圆点退回 `.cm-margin-dot`）按预期红。
+
+---
+
+### ③ `advisory` / `judge_floor` 两档：**摆出来了（判据侧），不是「假模型造不出」**
+
+P60 的原话是「假模型造不出 `citations_present` 那个形状」。**不是造不出。**
+量一下就看得见（`fakellm58.py` 的三段，`len(x.strip())`）：
+
+| | 实测 | 正文里自己声称的 | 门槛 `MIN_CITED_ROUND_CHARS` |
+|---|---:|---|---:|
+| R1 | **250** | 「这一段到这里为止一共写了三百多个字。」 | **300** |
+| R2 | **129** | 「写够长度：…」 | 300 |
+| R3 | **195** | 「再补一句，让这一段稳稳过三百字」 | 300 |
+
+**三段都比自己声称的短，一段都没过线。** 于是 `citations_present` 在第一道
+`if len(fresh) < MIN_CITED_ROUND_CHARS: return None` 上就掉下去了，
+`material_thin`（门槛 200）接着短路，advisory 那一档一次都轮不上。
+
+> **这正是「一个数没带参数和语料就不是个数」**：三段各自的「我够长了」
+> 都是**写在正文里的一句话**，一个是量出来的都没有。连那段注释
+> （`# r1：一整段，≥300 字`）也是照着那句话写的。
+
+修掉之后（`$S/p62/fakellm62.py`，R1/R2/R3 → **367 / 315 / 314**），
+**并且在 import 的时候拿后端真的那个常量核一遍**（`_assert_shapes()`，
+门槛从 `checks/grounding.py` 读，不在假模型里抄第二份）。
+
+拿修好的形状走**真的中间件**（`Checks().before_judge` + `modes.for_run(modes.NOTE)`
+的整条判据链，驱动法逐字照 `tests/test_p58.py:57` 的 `_drive`），`$S/p62/adv62.py`：
+
+| 档 | 摆法 | `check_hit` 事件 |
+|---|---|---|
+| **advisory**（第 1 轮） | R1 367 字 + 1 条**摘录形状**的材料（没有 `[id]` 抬头 → `located == 0` 是**必然**，不靠运气） | `{"check":"citations_present","advisory":true}` ✔ |
+| **advisory**（第 ≥2 轮） | 同上 + `check_name_streak_prev={"citations_present":1}` | `advisory: true` ✔ |
+| **judge_floor** | 带 `[id]` 抬头的真材料 + 正文逐字抄它的锚点（走 `located>0` 那三档，**绕开排在前面的 advisory 分支**）+ `short_circuit_streak=2` | `{"judge_floor":2,"judge_floor_bar":2}` ✔ |
+| **反例** | **同一份材料、同一条链，只把正文退回 P60 那个 250 字** | **advisory 0 条** —— P60 量到的正是它 |
+
+**说清楚这是什么、不是什么**：这是**判据侧的实跑**（真中间件、真判据链、真常数），
+**不是壳上的实拍**。壳上还差一步，而且那一步跟形状无关：`judge_floor` 要**三轮**
+（前两轮短路），而手上没材料时 `material_used_up`（`st.round >= 2 and dry_rounds >= 2`）
+会在第 2 轮收工——**P60 那句「2 轮 +381 字」记的就是它**。要在壳上摆，
+得让假模型在检索规划那一发回一个**每轮不同的 `search_memory` 工具调用**
+（`llm.py` 对 `message.tool_calls` 照单全收、`agent_loop._parse_call` 解析很宽，
+**事实文本是真知识库给的，假模型只挑查询词**）。**这一批没起壳，所以壳那一格照旧空着，不冒充。**
+
+---
+
+### ④ P52 那两条
+
+#### ④-① 锁屏别解掉用户按的暂停：**有办法，不动系统设置、不黑屏——验过了**
+
+P52 / P58 / P59 / P60 四批都写着「那四个 `powerMonitor` 事件只能由系统发」。**不对。**
+
+macOS 上 Electron 的 `lock-screen` / `unlock-screen` 是观察
+`NSDistributedNotificationCenter` 的 `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked`
+来的（**先扒二进制确认，不是猜**：`strings` 这台机器上那份
+`Electron Framework` 44.3.0，两个串都在）。**分布式通知谁都能发。**
+
+实测（`$S/p62/postnote.m` 三十行 ObjC + `$S/p62/powerprobe/`，用的是
+`desktop/node_modules/electron` 那份 **44.3.0**，跟壳同一个大版本）：
+
+```
+posted com.apple.screenIsLocked
+posted com.apple.screenIsUnlocked
+[powerprobe] 收到 lock-screen
+[powerprobe] 收到 unlock-screen
+[powerprobe] 收到的全部：["lock-screen","unlock-screen"]   EXIT=0
+```
+
+**反例**（不发通知、其余一模一样）：`收到的全部：[]`，**EXIT=3**。
+—— 「红了」和「红的是那条」分开核过：收到的那两条确实来自 `postnote`。
+
+**全程用户的系统设置一个字没动，屏幕一下都没暗。**
+
+所以这条**从「只能靠单测」改判成「摆得出来，只是这一批没摆到产品上」**。
+壳上还差的那一步是**把窗口开到「正在记录 → 用户自己按暂停」那个局面**再发 unlock
+（`onPowerEvent('unlock', 'paused', autoPaused=false)` 该回 `null`）。
+那需要起打包壳 + journey 的 udd，这一批没起。**下一批照抄 `postnote` + `powerprobe` 即可**，
+不必再从「这能不能摆」开始。
+
+#### ④-③ 历史坏数据那句提示：**做了，但判的不是「旧版本」**
+
+**产品决定：做。** 理由是那个数坏得太显眼——「合计 20 小时 42 分钟」是一个
+**自信的、错了三五倍的数**；用户看到它的第一反应是「这个功能坏了」，
+按问题清单的排序口径（「用户会不会因此把这个功能关掉」）这一条排得很前。
+
+**但判据换了个口径，这是这条的关键**：
+
+* 原来的提法是「这一天是 <某版本> 之前采的，时长可能偏长」。**这句话不可知**——
+  段里**没有任何版本 / 写入方标记**（盘上的键就是
+  `app/desc/end/frames/n/session/skip/start/thumb/title`，一个版本字段都没有），
+  而用户什么时候升的壳，后端也不知道。**说出来就是猜。**
+* 换成**段内自相矛盾**：这一段**跨了多久** vs 它**采到几个样本**。
+  成因在源码里钉死（`desktop/src/capture.ts` 的 tick 循环）：
+  睡眠 / 锁屏醒来那一下走 `else { cur.end = now; cur.n += 1 }` ——
+  **`end` 跳几个小时，`n` 只涨 1**。所以「时长 ≫ n × 采样周期」**当场量得出来，
+  跟哪一版采的无关**。**能用代码判准的就别交给猜。**
+
+**必须逐段判，日级比值救不了**（闸 ⑤ 钉的就是这件事）：
+整天大部分 `n` 是真在 tick，被吞的空白只压在少数几段上——
+造一天「18 小时真样本 + 两段各吞 1 小时」，**日级比值 1.11**，够不着任何合理的日级门槛；
+逐段则两段都挑得出来、合计多出 2 小时。
+
+判据宁可窄，两头都要够：单段 `多出 ≥ 600 秒` **而且** `时长 > 采样 × 2`；
+一天合计多出 ≥ 1800 秒才说话。突变刀 ①②（各拆掉一半）都按预期红。
+
+**接线洞单独一条断言**：采样周期在前端是**从壳里抄来的**（两个进程 import 不到彼此），
+所以 `frontend/scripts/check-journey-tick-parity.mts` 盯着
+`capture.ts` 的 `INTERVAL_MS` 和 `JourneyPage.tsx` 的 `JOURNEY_TICK_SEC`。
+抄错了不会报错，**只会让页面对着一堆好数据说「这个合计偏长」——判错的提示比不提示更伤**。
+突变刀 ③ 按预期红。
+
+---
+
+### ⑤ P58 留下的那几条：**其中四条 P59 已经做掉了，P60 的「留给下一批」抄错了**
+
+P60 留给下一批 ⑥ 写的是「P58 留下的 1 / 2 / 4 / 5 / 7 **照旧没做**」。**逐条对回去核：**
+
+| P58 留的 | P60 说 | 真实情况 |
+|---|---|---|
+| ① 给那 7 处静默 `fix` 配措辞 | 没做 | **P59 ② 做完了**：7 处逐处配了措辞，`SILENT_FIXES` 清空，`test_p26` 那三个数 **12 / 5 / 7 → 12 / 12 / 0**。今天仓里 `fix_note=` **12** 处、`fix=` 13 处、`SILENT_FIXES: set[tuple[str, str]] = set()`（`tests/test_p26.py:391`）——**核过，不是抄的** |
+| ② `STUCK_ROUNDS` 写不写 `check_released` | 没做 | **P59 ④ 摆出了局面并结案「不加」**，三条理由（0/284 轮开过火 / 6 个 block 模式接不住 / 只对 2 个模式是纯收益），写进了 `Checks.after_judge` 的 docstring + `test_p59.py::test_4_*` |
+| ④ run 记录补逐轮材料 | 没做 | **P59 ⑤ 做完了**（重放器那一侧） |
+| ⑤ `truncated_citations` 的命名空间 | 没做 | **P59 ③ 量完结案「一个字不改」** |
+| ⑦ P52 的 ① ③ | 没做 | **真的没做**——这一批做了，见 ④ |
+
+> **这是台账自己的毛病，跟 P54 记的是同一条**：「留给下一批」那一节是**抄上一批的**，
+> 抄的时候没回去核。**下一批的规矩**：写「照旧没做」之前，
+> 去被点名的那个文件里**核一眼**（这一批核的是 `SILENT_FIXES` 那一行和两个计数），
+> 核不动就写「没核」，别写「没做」。
+
+至于 ① ② ⑤ 那几条**今天要改也改不了**：它们全在 `app/harness/middleware/checks.py`
+和 `app/harness/checks/*.py` 里，而 `middleware/checks.py` 这一批是另一个 agent 的射程。
+
+---
+
+### 闸 / 突变 / 指纹 / 成本
+
+* 后端 `pytest -q` **2931 passed**（基线 **2931**，**一条没加也没减**：这一批不碰后端）。
+  ⚠️ 照 P58 / P60 那条规矩，跑之前把真库 `sqlite3.backup` 只读拷了一份进
+  `<worktree>/backend/data/`（`.gitignore:14` 挡着，核过）；
+  不拷的话那 4 条读库的测试会跳过。**「跳过」和「跑过」要分开数。**
+* 前端 `npm test` **91 文件 / 803 条**全绿（基线 89 / 793，**+2 文件 / +10 条**）；
+  `tsc -b` / `eslint` / 全部 `check-*.mts`（含新的两条）/ 三个 smoke 全过。
+* **突变验 9 刀，9 刀按预期红**（`$S/p62/mutate62.py` 七刀 + 量具两刀）：
+  每刀**锚点唯一性先断言**（不唯一就不下刀）、**整文件写回**、改完**逐字节核**、
+  **只跑被点名的那一条闸**（「红了」和「红的是那条」分开核）、收工**整文件复原再逐字节核**。
+  **第 5 刀第一趟没红——那是真收获**：`check-toast-single.mts` 的
+  `/\.some\s*\([^)]*message/` 里 `[^)]*` 在箭头函数自己的 `)` 上就停了，
+  于是它对着**真正的去重写法一声不响地放行**。*一条永远绿的闸不是闸。* 改完重跑 7/7。
+  第 9 刀第一趟也没砍够（R1 砍完还有 337 > 300），**反例没落在被测分支里**；
+  砍到 **232** 之后才红——`AssertionError: …{'R1': 232}，门槛 300`。
+* 真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+  `note_revisions` 44**（口径走 `scripts/db_guard.fingerprint`，**不自己另拼一个哈希**——
+  开工时随手拼的那个是 `86c6fd42a57ed968`，五个数里四个一样、哈希对不上，**口径不同而已**）。
+  `llm_usage` 最大 id 开工 = 收工 **5738**，**真模型 0 次调用 / 0 token**。
+* `~/Library/Application Support/memoket-note-desktop` 一次都没碰；
+  `backend/data/backups/` 没有新文件；`backend/data/terrence/codebook.xml` 源文件没动
+  （`p62data` 是整拷，核过 11,429,185 / `403a1183`）。
+* **截图 0 张**：这一批没起打包壳（③ 的壳那一格、④-① 的产品那一格都明写着没摆）。
+  **不摆没拍过的图。**
+
+### 收尾命令：这条路径在哪个环境下才对
+
+**`<scratch>` = `/private/tmp/claude-501/-Users-huilong-Skills-Bugfixing-Feishu/<session>/scratchpad`；
+`<worktree>` = `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-ae0c3569581ebbd60`；
+「主仓」= `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE`。**
+
+| 命令 | 只在哪儿跑 | 搬到别处会怎样 |
+|---|---|---|
+| `rm -rf <scratch>/p62data` | **scratch**（`backend/data` 的整拷） | **主仓**的 `backend/data` 是用户 482 篇笔记 + 11.4MB codebook，**删了就没了** |
+| `rm <worktree>/backend/data/notes.sqlite3` | **本 worktree**（开工时只读拷的那一份） | **主仓同名相对路径下是真库**——第 776 轮那次删库逐字就是这条 |
+| `rm <worktree>/backend/.venv` `rm <worktree>/frontend/node_modules` | **本 worktree**（两个都是指向主仓的软链） | `rm` 只删链接不伤主仓；但 `rm -rf` **加斜杠**（`.venv/`）会**跟着链接删主仓的内容** |
+| `cd <worktree>/backend && .venv/bin/python -m pytest -q` | **本 worktree 的 `backend/`** | 在主仓 `backend/` 下跑，那 4 条读库的测试读的是**真库** |
+| `cd <worktree>/backend && .venv/bin/python <scratch>/p62/adv62.py` | **本 worktree 的 `backend/`**（脚本自己把 `KITE_DATA_DIR` 指死 `<scratch>/p62data`） | 不带 `KITE_DATA_DIR` 就直接读 worktree 里那份拷贝；在主仓下跑会去读真库 |
+| `cd <worktree>/frontend && npm test` | **本 worktree 的 `frontend/`** | — |
+| `cd 主仓/backend && .venv/bin/python <scratch>/p60/fp60.py` | **主仓 `backend/`**（指纹要对着真库做，**只读**） | 在 worktree 里跑读的是拷贝，数一样但核的不是用户那份 |
+
+**⚠️ `<scratch>/p62/mutate62.py` 会改 `<worktree>/frontend/src/**` 的源文件**
+（改完立刻整文件写回 + 逐字节核）。**只在本 worktree 跑**；跑在主仓上会去改主仓的源码。
+
+**⚠️ `<scratch>/p62/postnote` 会往整台机器发一条分布式通知**：
+发的是 `com.apple.screenIsLocked`，**别的在监听这条通知的 app 也会收到**
+（它们会以为屏幕锁了）。跑之前心里有数，别在正干活的时候随手发。
+
+**本轮不需要任何清理命令**：`<scratch>/p62data` 留在 scratch 下不进 git；
+worktree 里的 `backend/data/notes.sqlite3` 被 `.gitignore` 挡着；
+`backend/.venv` / `frontend/node_modules` 两个软链**在 `git status` 里看得见**
+（`.gitignore` 的 `.venv/` / `node_modules/` 只匹配目录，匹配不到符号链接），
+所以 commit 时是**逐个路径添加**，没有整目录添加。
+
+### 留给下一批
+
+1. **`advisory` / `judge_floor` 在壳上那一格**（③ 的后半）：形状不再是障碍，
+   差的是**让那一跑活过第 2 轮**——假模型要在检索规划那一发回**每轮不同的
+   `search_memory` 工具调用**，好让 `dry_rounds` 不撞 `material_used_up`。
+2. **锁屏那一格摆到产品上**（④-① 的后半）：`postnote` + `powerprobe` 已经验通，
+   下一批只需把壳开到「正在记录 → 用户自己按暂停」再发 unlock，核 `autoPaused` 没被解掉。
+3. **`b1b.mjs` 那两个空档补上之后，圆点的分档要重量一次**：
+   P52 / P58 / P60 三批的「冲突 2 / 印证 1 / 缺依据 2 / 合并 1」**加起来只有 6**，
+   另外 2 颗落在哪一档**今天还不知道**（这一批没起壳，没法量）。
+4. **P59 留的第 2 / 3 条**（6 个 block 模式要不要也停 `check_stuck`、
+   `STUCK_ROUNDS` 要不要改读 `check_name_streak`）——两条都是「**先量再改**」，
+   而且都在 `modes.py` / `middleware/checks.py` 里，得跟那一侧的 agent 错开。
+5. **`$S/selfcheck-selectors.mjs` 该进哪条链**：今天它是手跑的。
+   步骤脚本不在 git 里，所以进不了 `npm test`；但每批走查**起壳之前**该跑一次。

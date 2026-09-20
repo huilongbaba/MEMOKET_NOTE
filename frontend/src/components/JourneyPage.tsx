@@ -54,6 +54,51 @@ export function saySpan(sec: number): string {
   return `${Math.floor(m / 60)} 小时 ${m % 60 ? `${m % 60} 分钟` : ''}`.trim()
 }
 
+/** 采样周期，秒。**必须跟壳里的 `desktop/src/capture.ts` 的 `INTERVAL_MS` 一致**——
+ *  接线洞单独一条闸盯着：`frontend/scripts/check-journey-tick-parity.mts`。 */
+export const JOURNEY_TICK_SEC = 15
+
+/** 一段「时长远大于采样次数」要多离谱才算数（秒）。**判据宁可窄**：
+ *  少于半小时的出入不值得在页面上给这一天泼一盆冷水。 */
+export const OVERLONG_MIN_EXCESS_SEC = 600
+/** 一天合计多出这么久才说话。 */
+export const OVERLONG_DAY_EXCESS_SEC = 1800
+/** 时长要超过采样时间这么多倍才算「远大于」。 */
+export const OVERLONG_RATIO = 2
+
+/** **这一天的「合计」里有多少是采样根本没覆盖到的**（P62 / P52 遗留 ③）。
+ *
+ * 背景：P20 之前，`tick` 停过（睡眠 / 锁屏 / 手动暂停 / 截图失败）之后醒来那一下，
+ * 前台窗口多半没变 → `changed=false` → 走 `cur.end = now; cur.n += 1`
+ * （`desktop/src/capture.ts`，那两行今天还在，它们本身是对的）。
+ * 于是**那一段的 `end` 跳了几个小时，`n` 只涨了 1**。P20 修了成因，
+ * 但**已经记错的历史改不回来**，页面照旧把它算进「合计」——
+ * 实拍「合计 20 小时 42 分钟」。
+ *
+ * **为什么判的是「段内自相矛盾」，不是「这是旧版本采的」**：
+ * 段里**没有任何版本 / 写入方标记**（盘上的键就是
+ * `app/desc/end/frames/n/session/skip/start/thumb/title`，一个版本字段都没有），
+ * 所以「旧版本」这件事**不可知**，说出来就是猜。
+ * 而「这一段跨了 3 小时、只采到 21 个样本」是**当场量得出来的**，
+ * 跟哪一版采的无关——**能用代码判准的就别交给猜**。
+ *
+ * 日级的比值没用，得逐段看：整天大部分 `n` 是真的在 tick，
+ * 被吞掉的空白只集中在少数几段上（日级比值会被稀释到看不见）。
+ *
+ * @returns `{ segs, excess }` —— 几段可疑、合计多出多少秒。`excess < 门槛` 时不说话。 */
+export function overlongExcess(segs: { start: string; end: string; n: number }[]):
+{ segs: number; excess: number } {
+  let n = 0, excess = 0
+  for (const s of segs) {
+    const dur = secs(s)
+    const sampled = Math.max(0, s.n) * JOURNEY_TICK_SEC
+    const over = dur - sampled
+    // 两头都要够：倍数（相对）**而且**绝对时长（别被一段 3 分钟的四舍五入拖下水）
+    if (over >= OVERLONG_MIN_EXCESS_SEC && dur > sampled * OVERLONG_RATIO) { n += 1; excess += over }
+  }
+  return { segs: n, excess }
+}
+
 /** 两段之间隔了这么久，就算一段「没在记」的空档：中午出去吃饭、下午开会。
  *  带上不画出来的话，`合计 4 小时 24 分钟` 和一条从早排到晚的实心带互相矛盾。 */
 export const GAP_MIN = 15
@@ -432,6 +477,7 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
   const colors = appColors(segs.map((s) => s.app))
   const runs = groupRuns(segs)
   const total = segs.reduce((n, s) => n + secs(s), 0)
+  const overlong = overlongExcess(segs)
   const byApp = new Map<string, number>()
   for (const s of segs) byApp.set(s.app, (byApp.get(s.app) ?? 0) + secs(s))
   const left = describable(segs)
@@ -505,6 +551,16 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
             : '记录中。'}
         {segs.length > 0 && ` ${date ? '这天' : '今天'} ${segs.length} 段，合计 ${saySpan(total)}。`}
       </p>
+      {/* **合计明显偏长就当场说**（P62，P52 遗留 ③）：那个数是按段首尾相减来的，
+          而 P20 之前睡眠 / 锁屏醒来的那一下会把整段空白吞进某一段的 `end` 里。
+          历史数据改不回来，**但「这一段跨了多久」和「它采到几个样本」对不上，是量得出来的**。
+          不说的话，用户看到的是一个自信的、错了三五倍的数——他会认为这个功能坏了。 */}
+      {overlong.excess >= OVERLONG_DAY_EXCESS_SEC && (
+        <p className="muted journey-state"><Icon n="bx-error" /> 这个「合计」偏长：
+          有 {overlong.segs} 段的时长远大于它采到的样本数，合计多出约 {saySpan(overlong.excess)}。
+          多半是睡眠 / 锁屏之后醒来的那一下把中间的空白也算进了上一段（老版本的毛病，已经修了，
+          但**已经记下的改不回来**）。带里那几段照旧点得开，逐段的起止时间是准的。</p>
+      )}
       {/* **挂着假采集源就得当场说**（P52）：这条路是走查用的（`journey/_fake.json`），
           可这一页的全部前提是「这里写的都是真发生过的事」。一个安静的假数据源
           比没有这条路糟得多，所以它一开，这一句就在最显眼的地方。 */}
