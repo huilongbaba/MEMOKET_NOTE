@@ -71,8 +71,14 @@ TIMEOUT = httpx.Timeout(300.0, connect=CONNECT_TIMEOUT)
 STREAM_TIMEOUT = httpx.Timeout(600.0, connect=CONNECT_TIMEOUT)
 
 
-# 还没配模型时每条路给用户的同一句话（前端 `editor/preconditions.NOT_CONFIGURED` 同款）
-NOT_CONFIGURED = "还没配置模型——打开设置：选「本地模型」填地址和模型名，或选「OpenAI 兼容」填 key"
+# 还没配模型时每条路给用户的同一句话。**跟前端 `editor/preconditions.NOT_CONFIGURED_HINT`
+# 逐字同一句**，`shared/precondition-cases.json` 钉着（`tests/test_precondition_parity.py`）。
+# 原来这行注释就写着「同款」，而两边其实不是同一句：这边说「还没配**置**模型」、而且没有那个
+# 能直接抄的 Ollama 地址——第一天用户最需要的恰恰是它（P40 · A 对出来的）。
+NOT_CONFIGURED = (
+    "还没配模型——打开设置：选「本地模型」填地址和模型名（本机 Ollama 是 "
+    "http://127.0.0.1:11434/v1），或选「OpenAI 兼容」填 key"
+)
 
 
 def describe_error(exc: BaseException) -> str:

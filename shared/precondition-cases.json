@@ -1,0 +1,136 @@
+{
+  "why": [
+    "「开跑前规则就能判死」这条纪律前后端各写了一遍（P1 块生成 / P3 整篇动作）：",
+    "  frontend/src/editor/preconditions.notePrecondition ↔ backend/app/editor/preconditions.note_precondition",
+    "  frontend/src/editor/slashMenu.blockPrecondition    ↔ backend/app/routers/compose_block.block_precondition",
+    "前端先拦是为了**不发请求**（点了立刻看到那句话、不转圈），后端再拦是为了**发了也不花一次模型调用**。",
+    "原来只有 backend/tests/test_p3_edge_cases.py 拿正则去前端的 .ts 源码里 grep 那几句话——",
+    "**那是核字面，不是核行为**：EMPTY_NOTE 的七句话一字不差，而「有标题算不算数」这条规则",
+    "两边各判各的，谁改了另一边不会红。块生成那一组连字面都没人核。",
+    "P40 拿这张表一对，当场对出两处不一致（见 diverges / TRACELOG「P40」）。"
+  ],
+  "runs": [
+    "frontend/scripts/check-precondition-parity.mts  （接在 npm test 里）",
+    "backend/tests/test_precondition_parity.py       （接在 pytest 里）"
+  ],
+
+  "empty_note": {
+    "skeleton": "先写点内容（或标题）再生成骨架",
+    "tap": "先写点内容（或标题）再续写",
+    "harness": "先写个标题或几句话，智能续写才有东西可接",
+    "polish": "正文是空的——打磨没有可改的内容",
+    "restructure": "正文是空的——智能排版没有可排的内容",
+    "slides": "这篇还没有正文，没有可以做成幻灯片的内容",
+    "ingest": "正文是空的，先写点东西再存入知识库"
+  },
+  "body_only": ["polish", "restructure", "slides", "ingest"],
+
+  "note_min_cases": 20,
+  "note": [
+    { "name": "骨架·空正文空标题", "action": "skeleton", "content": "", "title": "", "expect": "先写点内容（或标题）再生成骨架" },
+    { "name": "骨架·只有标题也够", "action": "skeleton", "content": "", "title": "周报 9-20", "expect": "" },
+    { "name": "骨架·只有空白", "action": "skeleton", "content": "   \n\t", "title": "", "expect": "先写点内容（或标题）再生成骨架" },
+    { "name": "骨架·标题只有空白", "action": "skeleton", "content": "", "title": "  ", "expect": "先写点内容（或标题）再生成骨架" },
+    { "name": "骨架·有正文（反例，不许拦）", "action": "skeleton", "content": "第一段", "title": "", "expect": "" },
+    { "name": "续写·空", "action": "tap", "content": "", "title": "", "expect": "先写点内容（或标题）再续写" },
+    { "name": "续写·只有标题也够", "action": "tap", "content": "", "title": "标题", "expect": "" },
+    { "name": "续写·有正文（反例）", "action": "tap", "content": "正文", "title": "", "expect": "" },
+    { "name": "智能续写·空", "action": "harness", "content": "", "title": "", "expect": "先写个标题或几句话，智能续写才有东西可接" },
+    { "name": "智能续写·只有标题也够", "action": "harness", "content": "", "title": "标题", "expect": "" },
+    { "name": "打磨·空", "action": "polish", "content": "", "title": "", "expect": "正文是空的——打磨没有可改的内容" },
+    { "name": "打磨·只有标题**不够**", "action": "polish", "content": "", "title": "标题", "expect": "正文是空的——打磨没有可改的内容" },
+    { "name": "打磨·有正文（反例）", "action": "polish", "content": "一句话", "title": "", "expect": "" },
+    { "name": "智能排版·空", "action": "restructure", "content": "", "title": "", "expect": "正文是空的——智能排版没有可排的内容" },
+    { "name": "智能排版·只有标题**不够**", "action": "restructure", "content": "", "title": "标题", "expect": "正文是空的——智能排版没有可排的内容" },
+    { "name": "幻灯片·空", "action": "slides", "content": "", "title": "", "expect": "这篇还没有正文，没有可以做成幻灯片的内容" },
+    { "name": "幻灯片·只有标题**不够**", "action": "slides", "content": "", "title": "标题", "expect": "这篇还没有正文，没有可以做成幻灯片的内容" },
+    { "name": "幻灯片·有正文（反例）", "action": "slides", "content": "# 一\n\n内容", "title": "", "expect": "" },
+    { "name": "存入知识库·空", "action": "ingest", "content": "", "title": "", "expect": "正文是空的，先写点东西再存入知识库" },
+    { "name": "存入知识库·只有标题**不够**", "action": "ingest", "content": "", "title": "标题", "expect": "正文是空的，先写点东西再存入知识库" },
+    { "name": "存入知识库·有正文（反例）", "action": "ingest", "content": "一句话", "title": "标题", "expect": "" },
+    { "name": "不认识的动作·两边都放行", "action": "bogus", "content": "", "title": "", "expect": "",
+      "why": "后端收的是 HTTP 传上来的任意字符串；前端有类型闸，但 `?? ''` 那一下也得有，不然它返回的是 undefined 而签名写着 string" }
+  ],
+
+  "max_prompt_chars": 2000,
+  "prompt_required": ["prompt", "custom", "analysis"],
+  "block_modes": ["prompt", "chart", "table", "eda", "analysis", "custom"],
+  "block_flags": {
+    "prompt": { "needsPrompt": true, "promptOptional": false },
+    "chart": { "needsPrompt": false, "promptOptional": false },
+    "table": { "needsPrompt": true, "promptOptional": true },
+    "eda": { "needsPrompt": false, "promptOptional": false },
+    "analysis": { "needsPrompt": true, "promptOptional": false },
+    "custom": { "needsPrompt": true, "promptOptional": false }
+  },
+
+  "block_min_cases": 16,
+  "block": [
+    { "name": "用 AI 写·空指令", "mode": "prompt", "prompt": "", "selection": "", "doc": "正文",
+      "expect": "先写一句要它做什么。" },
+    { "name": "用 AI 写·指令只有空白", "mode": "prompt", "prompt": " \n\t", "selection": "", "doc": "正文",
+      "expect": "先写一句要它做什么。" },
+    { "name": "智能数据分析·空指令", "mode": "analysis", "prompt": "", "selection": "", "doc": "正文",
+      "expect": "先写一句要它做什么。" },
+    { "name": "自定义提示·空指令（另一句话）", "mode": "custom", "prompt": "", "selection": "选中的一段", "doc": "正文",
+      "expect": "先写一句要对选中的这段做什么——什么都不写，它不知道该改成什么样。" },
+    { "name": "自定义提示·空选区", "mode": "custom", "prompt": "改成三条要点", "selection": "", "doc": "正文",
+      "expect": "没有选中任何文字——先选一段，再右键「自定义提示」。" },
+    { "name": "自定义提示·选区只有空白", "mode": "custom", "prompt": "改成三条要点", "selection": "  \n", "doc": "正文",
+      "expect": "没有选中任何文字——先选一段，再右键「自定义提示」。" },
+    { "name": "自定义提示·空指令排在空选区前面", "mode": "custom", "prompt": "", "selection": "", "doc": "正文",
+      "expect": "先写一句要对选中的这段做什么——什么都不写，它不知道该改成什么样。",
+      "why": "两条都踩中时先报哪一句——顺序也是判据的一部分" },
+    { "name": "自定义提示·都齐了（反例）", "mode": "custom", "prompt": "改成三条要点", "selection": "选中的一段", "doc": "正文",
+      "expect": "" },
+    { "name": "智能表格·空指令放行（界面写着「留空则自动判断」）", "mode": "table", "prompt": "", "selection": "", "doc": "正文",
+      "expect": "" },
+    { "name": "智能插图·空指令放行", "mode": "chart", "prompt": "", "selection": "", "doc": "正文", "expect": "" },
+    { "name": "数据可视化·空指令放行", "mode": "eda", "prompt": "", "selection": "", "doc": "正文", "expect": "" },
+    { "name": "指令超一个字", "mode": "prompt", "prompt": "字x2001", "selection": "", "doc": "正文",
+      "expect": "指令太长了（2001 字，上限 2000）——一句话说要做什么就行，正文不用贴进来。",
+      "why": "prompt 这一格里 `字xN` = N 个「字」，避免把两千字塞进表里" },
+    { "name": "指令正好卡上限（反例，不许拦）", "mode": "prompt", "prompt": "字x2000", "selection": "", "doc": "正文",
+      "expect": "" },
+    { "name": "超长指令先按长度报（空指令那条已经过了）", "mode": "table", "prompt": "字x2001", "selection": "", "doc": "正文",
+      "expect": "指令太长了（2001 字，上限 2000）——一句话说要做什么就行，正文不用贴进来。" },
+    { "name": "用 AI 写·空正文照样放行（反例）", "mode": "prompt", "prompt": "写一段", "selection": "", "doc": "",
+      "expect": "",
+      "why": "prompt 不在 NEEDS_CONTENT 里：一条指令本身就够写" },
+    { "name": "自定义提示·空正文照样放行（反例）", "mode": "custom", "prompt": "改写", "selection": "选中的一段", "doc": "",
+      "expect": "" },
+    { "name": "智能数据分析·空指令排在空正文前面", "mode": "analysis", "prompt": "", "selection": "", "doc": "",
+      "expect": "先写一句要它做什么。",
+      "why": "两条都踩中时先报哪一句" }
+  ],
+
+  "block_diverges_why": [
+    "**两边有意不一样的只有这一组**：前端多一条「笔记还是空的」（NEEDS_CONTENT = chart/table/eda/analysis）。",
+    "后端那个函数的签名是 block_precondition(mode, prompt, selection)——**它根本拿不到正文**，",
+    "所以这条规则后端做不了。记在这里是为了：① 别再说两边「同一套规则」；",
+    "② 以后谁给后端补上、或者前端把它删了，这张表当场红。",
+    "闸的规矩：**这张清单之外不许再有第二处不一样**。"
+  ],
+  "block_diverges": [
+    { "name": "智能插图·空正文", "mode": "chart", "prompt": "", "selection": "", "doc": "",
+      "fe": "笔记还是空的——先写点内容（哪怕一句话说这篇讲什么），再来插图 / 拼表 / 分析。", "be": "" },
+    { "name": "智能表格·空正文", "mode": "table", "prompt": "", "selection": "", "doc": "  \n ",
+      "fe": "笔记还是空的——先写点内容（哪怕一句话说这篇讲什么），再来插图 / 拼表 / 分析。", "be": "" },
+    { "name": "数据可视化·空正文", "mode": "eda", "prompt": "", "selection": "", "doc": "",
+      "fe": "笔记还是空的——先写点内容（哪怕一句话说这篇讲什么），再来插图 / 拼表 / 分析。", "be": "" },
+    { "name": "智能数据分析·有指令但空正文", "mode": "analysis", "prompt": "算一下", "selection": "", "doc": "",
+      "fe": "笔记还是空的——先写点内容（哪怕一句话说这篇讲什么），再来插图 / 拼表 / 分析。", "be": "" }
+  ],
+
+  "not_configured": {
+    "short": "还没配模型",
+    "hint": "还没配模型——打开设置：选「本地模型」填地址和模型名（本机 Ollama 是 http://127.0.0.1:11434/v1），或选「OpenAI 兼容」填 key",
+    "why": [
+      "「还没配过模型」这一档前后端各有一句话：前端 editor/preconditions.NOT_CONFIGURED（状态栏那一行，短的）",
+      "+ NOT_CONFIGURED_HINT（点下去给的那一段，长的）；后端 app/util/llm.NOT_CONFIGURED（502 的 detail）。",
+      "后端那行注释写着「前端 NOT_CONFIGURED 同款」——**P40 对出来它们不是同一句**：",
+      "后端说「还没配**置**模型」、而且没有那个 Ollama 的例子（第一天用户最需要的恰恰是那个能直接抄的地址）。",
+      "两边说同一件事就得是同一句话，所以长的那句**两边逐字相同**，短的那句只有状态栏用。"
+    ]
+  }
+}

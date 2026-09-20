@@ -71,6 +71,7 @@ import { undoRound } from './editor/undoRound'
 import { groupRuns, type RunRound } from './util/runRounds'
 import { restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
 import { checkLabel } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）
+import { checkLabel, stuckTail } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）+ 后面那半句下一步（P40 · B #2）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
 import { setIngestActive } from './util/ingestActive'
@@ -2547,7 +2548,9 @@ export default function App() {
           // P6 问题 4：同一条判据连响几轮、模型一次都没照做，后端停了交最好的一轮。
           // 「哪条、几轮」来自收工前那条带 stopped 的 check_hit 事件。
           : reason === 'check_stuck' ? (stuckCheckRef.current
-              ? `「${checkLabel(stuckCheckRef.current.check)}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮`
+              // 后面那半句「下一步做什么」只给**模型答的形状不对**那一档（`stuckTail`，P40 · B #2）：
+              // 别的判据连响几轮说的是内容还没写到位，下一步是「你自己看一眼」，不是「换个模型」。
+              ? `「${checkLabel(stuckCheckRef.current.check)}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮${stuckTail(stuckCheckRef.current.check)}`
               : '同一条判据连响几轮都没解决，停下留了最好的那轮')
           : '到达轮数上限，自动停止'
         stuckCheckRef.current = null

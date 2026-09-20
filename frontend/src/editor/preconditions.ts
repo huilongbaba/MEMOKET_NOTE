@@ -25,7 +25,10 @@ const BODY_ONLY = new Set<NoteAction>(['polish', 'restructure', 'slides', 'inges
 export function notePrecondition(action: NoteAction, content: string, title = ''): string {
   const hasBody = !!content.trim()
   const hasTitle = !!title.trim() && !BODY_ONLY.has(action)
-  return hasBody || hasTitle ? '' : EMPTY_NOTE[action]
+  // `?? ''`：认不出的动作放行（跟后端那份一样）。前端这边有类型闸拦着，但签名写的是
+  // `string`，缺这一下它返回的是 `undefined`——`shared/precondition-cases.json` 那条
+  // 「不认识的动作」当场把它照出来了（P40 · A）。
+  return hasBody || hasTitle ? '' : (EMPTY_NOTE[action] ?? '')
 }
 
 /** 状态栏「还没配模型」那一档的原话（P19 #1）。**跟「配了但连不上」是两句不同的话**：
