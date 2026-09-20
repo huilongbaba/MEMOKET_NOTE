@@ -2209,6 +2209,26 @@ def is_cancel_requested(job_id: str) -> bool:
 
 # ------------------------------------------------------------ 批量任务的 items
 
+# 第 775 轮：真库 `ingest_items.filename` 里躺着 **7 行**，整个文件名就是一枚完整的
+# OpenAI key（`sk-proj-…`，80 字符，跟设置里那枚还不是同一枚）。多半是某次 Apple Notes
+# 导入时把 key 粘进了文件名格。它不是"待在它该待的表里"的东西——**导入历史页会显示它，
+# 导出和备份都会带着它走**。用户吊销了那枚 key，库里那 7 行按他的决定洗成了这个占位串。
+#
+# 判据**故意窄**：只认那几家真的有固定前缀的（OpenAI / Anthropic / GitHub / Slack），
+# 而且要求够长。文件名本来就千奇百怪，宁可漏掉一种没见过的前缀，
+# 也不要把 `sk-2026年的笔记.md` 这种正常文件名吞掉（误伤比漏报贵）。
+_SECRETISH = ("sk-proj-", "sk-ant-", "sk-", "ghp_", "gho_", "github_pat_", "xoxb-", "xoxp-")
+SECRET_FILENAME = "（已隐去的凭据）"
+
+
+def scrub_secret(name: str) -> str:
+    """文件名长得像一枚凭据就别落库。**只换名字，不拦这次导入**——
+    用户要导的那份内容本身没问题，有问题的是他不小心粘进来的这个名字。"""
+    s = (name or "").strip()
+    if len(s) >= 24 and any(s.startswith(p) for p in _SECRETISH):
+        return SECRET_FILENAME
+    return name
+
 def create_batch_job(user_id: str, files: list[dict]) -> tuple[str, list[dict]]:
     """建一个 job + N 个 item（每个文件一行），全部初始状态 queued。"""
     job_id = uuid.uuid4().hex[:12]
@@ -2219,7 +2239,7 @@ def create_batch_job(user_id: str, files: list[dict]) -> tuple[str, list[dict]]:
                   (job_id, user_id, "queued", 0, "", _now()))
         for idx, f in enumerate(files):
             item = {"id": uuid.uuid4().hex[:12], "job_id": job_id, "idx": idx,
-                    "filename": f["filename"], "kind": f["kind"], "status": "queued",
+                    "filename": scrub_secret(f["filename"]), "kind": f["kind"], "status": "queued",
                     "facts": 0, "detail": "", "updated_at": _now()}
             c.execute(
                 "INSERT INTO ingest_items (id,job_id,idx,filename,kind,status,facts,detail,updated_at) VALUES "
