@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { factSources } from '../api'
 import type { SourceLine, VerifyFinding } from '../api'
+import { clickable } from '../util/clickable'
 import Icon from './Icon'
 
 const VERDICT_STYLE: Record<VerifyFinding['verdict'], string> = {
@@ -52,10 +53,35 @@ export function verifyScopeLine(passage: string, gone = false): string {
   return `说的是你选中的这一段：「${head}」` + (gone ? '——正文后来改过，这一段现在不在正文里了。' : '')
 }
 
+/** 这一段在正文的第几行（1 起），**跳不回去就回 `null`**（P46 #4 / P41 留的第 4 条）。
+ *
+ *  P43 #5 把「说的是哪一段」抄到了「脉络」上，两块卡都报了户口，**但点不了**——
+ *  用户看完一句「说的是「这周把众筹页面的文案定稿了…」」，下一步就是回正文找那一段，
+ *  而那一段可能在两屏之外。
+ *
+ *  **判据窄到只剩一种情况**：整段原话在正文里**不多不少出现一次**才给跳。
+ *  · 一次都没有 = 后来改过 / 删了（`verifyScopeLine` 的 `gone` 那一档），跳到哪儿都是猜；
+ *  · 出现两次以上 = 跳到第一处就是**替用户猜他指的是哪一处**，而这块卡的全部价值
+ *    就是「说清自己在说哪一段」，猜错等于当场自打嘴巴。
+ *  这跟 `changeLayers.relocate` 的「唯一命中才算」是同一条规矩，也是同一个问题的两半。
+ *
+ *  纯函数（只吃正文和那一段），所以「跳到第几行」这件事能不挂 DOM 直接钉住。 */
+export function passageLine(content: string, passage: string): number | null {
+  const p = (passage || '').trim()
+  if (!p || !content) return null
+  const first = content.indexOf(p)
+  if (first < 0) return null
+  if (content.indexOf(p, first + 1) >= 0) return null      // 不止一处：不猜
+  // `\n` 的个数就是前面有几行；行号 1 起，跟 CodeMirror 的 `doc.line(n)` 对齐
+  let line = 1
+  for (let i = 0; i < first; i++) if (content[i] === '\n') line++
+  return line
+}
+
 /** 校验结果：跟 TapProvenance 一样的"点击展开原文"模式，判断没有可回溯的
  * 证据就只是模型的又一句自称——尤其是"矛盾"这种会让用户重新怀疑自己写的
  * 内容的判断，必须能让用户自己核实，不能只信一句话结论。 */
-export default function VerifyPanel({ findings, checked = 0, unparsed = false, passage = '', gone = false, onClose }: {
+export default function VerifyPanel({ findings, checked = 0, unparsed = false, passage = '', gone = false, onJump, onClose }: {
   findings: VerifyFinding[]
   checked?: number
   unparsed?: boolean
@@ -63,6 +89,9 @@ export default function VerifyPanel({ findings, checked = 0, unparsed = false, p
   passage?: string
   /** 这一段现在还在不在正文里（调用方按当前正文判，不是猜的）。 */
   gone?: boolean
+  /** 点那一行跳回正文那一段（P46 #4）。**跳不回去的时候调用方不给**——
+   *  见 `passageLine`：正文里不多不少一处才给，不猜。 */
+  onJump?: () => void
   onClose: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
@@ -84,7 +113,9 @@ export default function VerifyPanel({ findings, checked = 0, unparsed = false, p
       </div>
       {!!verifyScopeLine(passage, gone) && (
         <p className="muted verify-scope" style={{ margin: '2px 0 6px', fontSize: 'var(--t-sm)' }}>
-          {verifyScopeLine(passage, gone)}
+          {onJump
+            ? <span className="scope-jump" title="跳回正文这一段" {...clickable(onJump)}>{verifyScopeLine(passage, gone)}</span>
+            : verifyScopeLine(passage, gone)}
         </p>
       )}
       {findings.length === 0 && (

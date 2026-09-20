@@ -115,32 +115,47 @@ def position_stats(terms: list[str], query: str, fact: str) -> dict:
             "sameorder": all(g >= 0 for g in fg)}
 
 
-def display_stats(run: str, query: str, cut: list[str]) -> dict:
-    """这一串**摆不摆得到用户眼前**，摆出来长什么样（P44）。**纯函数，不碰库。**
+#: `display_stats` 认的两把尺子。**冻下来的标注属于它当时那一把**——
+#: 拿今天的尺子去核 P44 冻的那 64 条，红的不是代码而是「尺子换过了」这件事本身。
+RULERS = ("p44", "p46")
+
+
+def display_stats(run: str, query: str, cut: list[str], ruler: str = "p46") -> dict:
+    """这一串**摆不摆得到用户眼前**，摆出来长什么样（P44 / P46）。**纯函数，不碰库。**
 
     `cut` 是**冻下来的**「查询挤掉空白之后的分词结果」——所以这一层跟
     `position_stats` 一样离线就能重算：不问库、不问 codebook、不问冻结的 df。
     下一批要换一把尺子（比如「碎片补成整词」而不是丢掉），拿这个函数在
     `memory_sample.jsonl` 的 `p44-frag64` 那一组上重跑，**不用再读一遍 64 条**。
+    **P46 就是这么用它的**（见 `tests/test_p46.py::test_P44那64条在新尺子下重跑`）。
 
-    回 `{"label", "aligned", "rule", "shown"}`：
+    `ruler`：
+      · `p44` —— 一律剥 `_EDGE_STOP`。`p44-frag64` 那一组冻的标注是按这一把出的。
+      · `p46` —— 多认一条「它自己就是一个词的不剥」（`search.is_whole_token`）。默认这一把，
+        因为默认该是**今天的代码在做什么**；要核对冻下来的资产就显式传 `p44`。
+
+    回 `{"label", "aligned", "rule", "shown", "ruler"}`：
     `rule` 空串 = 摆得出来；`R1-跨词边界` / `R2-合不出两个字` = 被那一条砍了。
     """
     from app.database.kb import search
 
+    if ruler not in RULERS:
+        raise ValueError(f"没有这把尺子：{ruler!r}，只有 {RULERS}")
     squeezed = re.sub(r"\s+", "", (query or "").lower())
     joined = "".join(cut)
     if cut and joined != squeezed:
         raise ValueError(f"冻下来的分词拼不回查询：{joined[:40]!r} != {squeezed[:40]!r}")
-    label = search.evidence_label(run)
-    aligned = search._aligned(label, squeezed, (lambda _t: cut) if cut else None)
+    segment = (lambda _t: cut) if cut else None
+    label = (search.evidence_label(run) if ruler == "p44"
+             else search.evidence_label(run, squeezed, segment))
+    aligned = search._aligned(label, squeezed, segment)
     if aligned is False:
         rule = "R1-跨词边界"
     elif not run.isascii() and len(label) < 2:
         rule = "R2-合不出两个字"
     else:
         rule = ""
-    return {"label": label, "aligned": aligned, "rule": rule, "shown": not rule}
+    return {"label": label, "aligned": aligned, "rule": rule, "shown": not rule, "ruler": ruler}
 
 
 class FrozenCorpus:

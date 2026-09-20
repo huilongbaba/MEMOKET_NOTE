@@ -54,10 +54,13 @@ def recall(body: RecallIn, user: str = Depends(current_user)):
             why = "no_terms" if not search._terms(mem, search.clean_query(body.query)) else "weak"
         except Exception:      # noqa: BLE001 — 解释是附赠的
             why = ""
+    # **`[]` 和 `None` 分得开**（P46 #1）：判过了、一条都摆不出来是 `[]`；
+    # 判据自己抛了是 `None`。抛了的时候退回 `terms` 是对的（那时候确实没人判过），
+    # 判过了还退回去就是拿一份**没判过**的去顶后端刚判掉的那几串。
     try:
-        ev = mem.recall_evidence(body.query, rows) if rows else []
+        ev: list[dict] | None = mem.recall_evidence(body.query, rows) if rows else []
     except Exception:          # noqa: BLE001 — 解释是附赠的，别让它挡住召回本身
-        ev = []
+        ev = None
     return RecallOut(facts=rows_to_facts(mem, rows), took_ms=round(took, 3),
                      # 给人看的是整词，不是「小时预」「号上众」这种切碎的 n-gram（P4 #6）
                      terms=search.display_terms(terms, body.query), kb_empty=mem.is_empty(),

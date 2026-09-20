@@ -50,7 +50,10 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   const [terms, setTerms] = useState<string[]>([])
   // 每个命中**凭什么算证据**（计划 §2 A5）：光说「命中：再决定」不够——P31 实拍那一条
   // 说对了自己在干什么，干的这件事本身是错的。
-  const [evidence, setEvidence] = useState<RecallEvidence[]>([])
+  // **`[]` 和 `null` 不许压成一个**（P46 #1）：`[]` = 后端判过了、一条都摆不出来；
+  // `null` = 这一趟没判成（老后端 / 判据自己抛了）。压成一个，「判过了」那一档就会
+  // 退回 `terms` 那串没判过的碎词——那正是 P44 问题 #3。
+  const [evidence, setEvidence] = useState<RecallEvidence[] | null>(null)
   const [whyEmpty, setWhyEmpty] = useState<'' | 'no_terms' | 'weak'>('')
   const [mode, setMode] = useState<'cursor' | 'tail'>('tail')
   const lastQueried = useRef('')
@@ -95,13 +98,13 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   // 用户在顶部写华为芯片、右栏是尾段恒瑞翻译的记忆）。零模型，每次 ~100ms。
   useEffect(() => {
     const q = recallQuery(content, paragraph)
-    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setEvidence([]); setWhyEmpty(''); return }
+    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); return }
     if (q.query === lastQueried.current) return
     const t = setTimeout(() => {
       lastQueried.current = q.query
       setLoading(true)
       recall(q.query, RECALL_LIMIT)
-        .then((r) => { setFacts(r.facts); setTerms(r.terms ?? []); setEvidence(r.evidence ?? []); setWhyEmpty(r.why_empty ?? ''); setMode(q.mode) })
+        .then((r) => { setFacts(r.facts); setTerms(r.terms ?? []); setEvidence(r.evidence ?? null); setWhyEmpty(r.why_empty ?? ''); setMode(q.mode) })
         .catch(() => {})
         .finally(() => setLoading(false))
     }, IDLE_MS)

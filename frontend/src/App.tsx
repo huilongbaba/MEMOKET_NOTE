@@ -99,7 +99,7 @@ import SkillsPanel from './components/SkillsPanel'
 import TapProvenance from './components/TapProvenance'
 import Toaster from './components/Toaster'
 import UserSwitcher from './components/UserSwitcher'
-import VerifyPanel, { verifyScopeLine } from './components/VerifyPanel'
+import VerifyPanel, { passageLine, verifyScopeLine } from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
 import { dupSuffixes } from './util/dupTitles'
 import { traceRecallHint } from './util/recallContext'
@@ -124,6 +124,18 @@ const SKELETON_MIN_DELTA = 20
  *  晚一步写，那份正文刚好已经落库，下次打开走的就是「按坐标精确放回」那条路，
  *  不必靠文字重新定位。 */
 const CHANGE_LAYER_SAVE_MS = 1600
+
+/** 意图行预填的防抖（P46 #5）：**名字停下来多久才重推一次预填**。
+ *
+ *  **不是为 CPU**——P43 量过一次 0.03–0.10ms，占一帧的 0.6%。是为**帧数**：
+ *  真机上一个字一个字敲 32 个字（160ms 一个），「目标」那一格变了 **19 次**，
+ *  中间十几帧是半句话（「周报 9-20：这周把众**：这段时间做了什么…**」）。
+ *  标签页跟着变没关系——那是标题；这三格是**用户能改的输入框**，
+ *  一个输入框在你打字时自己一格一格换内容，读起来就是坏了。
+ *
+ *  为什么是 500：一个字的间隔 ~160ms，500ms 落在「真的停下来想了一下」那一侧，
+ *  句读之间的停顿（~300ms）还够不着它。实测 19 次 → 1 次。 */
+const INTENT_PREFILL_IDLE_MS = 500
 
 
 /** 无限续写 harness 的运行状态——挂在 App 这一级而不是 WritingPlanPanel
@@ -533,11 +545,31 @@ export default function App() {
   // 「会不会覆盖用户勾过的完成标准」那个担心从根上没了；名字真变了才重推，
   // 跟原来在标题框里打字时的行为逐字一样（`source === 'user'` 照旧永不覆盖）。
   const shownTitle = useMemo(() => displayTitle({ title, content }), [title, content])
+  // **真机上数出来的**（P46 #5，P43 留的「下一步」：「视觉上会跳，真机上看一眼再定」）。
+  // 一个字一个字敲 `# 周报 9-20：这周把众筹页面的文案定稿了，3月12号上线。`（32 个字、160ms 一个）：
+  // 「目标」那一格**变了 19 次**，而且中间那十几帧是半句话——
+  //   第 3 个字：「围绕「周」写清楚一件事」（**先跳到另一个模板**）
+  //   第 4 个字：「周报：这段时间做了什么、进展到哪、卡在哪」（模板又跳回来）
+  //   第 11–23 个字：「周报 9-20：这周把众**：这段时间做了什么…**」一个字一个字长出来
+  // 标签页跟着变 20 次那是**标题**，看着正常；而这三格是**用户能改的输入框**——
+  // 一个输入框在你打字时自己一格一格换内容，读起来就是坏了。**所以加防抖。**
+  // 不是为 CPU（P43 量过 0.03–0.10ms / 次，占一帧的 0.6%），是为这 19 帧。
+  const [settledTitle, setSettledTitle] = useState(shownTitle)
+  useEffect(() => {
+    if (settledTitle === shownTitle) return
+    const t = setTimeout(() => setSettledTitle(shownTitle), INTENT_PREFILL_IDLE_MS)
+    return () => clearTimeout(t)
+  }, [shownTitle, settledTitle])
+  // **换篇不等**：那一下不是「打字打到一半」，是一篇新的东西开了，
+  // 晚半秒才填出来会被读成「这篇没预填」。
+  useEffect(() => { setSettledTitle(displayTitle({ title, content })) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current?.id])
   useEffect(() => {
     if (!current) return
-    setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, shownTitle)))
+    setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, settledTitle)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownTitle, current?.id])
+  }, [settledTitle, current?.id])
   const [scopeTick, setScopeTick] = useState(0)
   useEffect(() => {
     const on = () => setScopeTick((t) => t + 1)
@@ -616,6 +648,14 @@ export default function App() {
     v.dispatch({ selection: { anchor: l.from }, effects: EditorView.scrollIntoView(l.from, { y: 'center' }) })
     v.focus()
   }, [])
+  /** 「说的是你选中的这一段」那两行的点击动作（P46 #4 / P41 留的第 4 条）。
+   *  **跳不回去就回 `undefined`**，那时候两块卡都只把那一行当普通字摆着——
+   *  一个点了没反应的链接比不能点更糟。判据在 `passageLine`：正文里不多不少一处才给。
+   *  跳本身复用 P12 那个 `jumpToLine`，不另写一套滚动。 */
+  const jumpToPassage = useCallback((passage?: string) => {
+    const line = passageLine(content, passage ?? '')
+    return line === null ? undefined : () => jumpToLine(line)
+  }, [content, jumpToLine])
   const abortRef = useRef<AbortController | null>(null)
 
   // setTimeout callbacks close over whatever `loading` was at schedule time,
@@ -4220,6 +4260,7 @@ export default function App() {
                        unparsed={verifyResult.unparsed ?? false}
                        passage={verifyResult.passage}
                        gone={!!verifyResult.passage && !content.includes(verifyResult.passage)}
+                       onJump={jumpToPassage(verifyResult.passage)}
                        onClose={() => setVerifyResult(null)} />
         )}
         <RightPane
@@ -4334,7 +4375,13 @@ export default function App() {
                       等于只解决了一半（P42 问题 #6）。「还在不在正文里」照旧按现在的正文判。 */}
                   {!!verifyScopeLine(trace.passage ?? '', !!trace.passage && !content.includes(trace.passage)) && (
                     <p className="muted verify-scope" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>
-                      {verifyScopeLine(trace.passage ?? '', !!trace.passage && !content.includes(trace.passage))}
+                      {/* P46 #4：跟「校验结果」那块**用同一个 `jumpToPassage`**——
+                          一块能跳回去、另一块不能，用户还是得自己找。跳不回去时两块都只是普通字。 */}
+                      {jumpToPassage(trace.passage)
+                        ? <span className="scope-jump" title="跳回正文这一段" {...clickable(jumpToPassage(trace.passage)!)}>
+                            {verifyScopeLine(trace.passage ?? '', !!trace.passage && !content.includes(trace.passage))}
+                          </span>
+                        : verifyScopeLine(trace.passage ?? '', !!trace.passage && !content.includes(trace.passage))}
                     </p>
                   )}
                   <p style={{ margin: 0, lineHeight: 1.6 }}>{trace.answer}</p>

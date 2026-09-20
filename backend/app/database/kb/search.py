@@ -409,7 +409,7 @@ def evidence_runs(hits: list[str], query: str) -> list[str]:
     其中**只有这 1 对**会因此从「放行」变成「砍掉」，别的 7 对本来就还有别的合格证据。
     **判据宁可窄：这一刀只切它该切的那一条。**
     """
-    squeezed = _WS.sub("", (query or "").lower())
+    squeezed = squeeze(query)
     spans: list[list[int]] = []
     loose: list[str] = []
     for h in _clusters(hits):
@@ -475,7 +475,7 @@ def _weigher(query: str, segment, common=None):
     if segment is None:
         return None
     from . import tokenize as _tok
-    squeezed = _WS.sub("", (query or "").lower())
+    squeezed = squeeze(query)
 
     def useless(t: str) -> bool:
         return _is_cn_filler(t) or (common is not None and common(t))
@@ -492,7 +492,48 @@ def _ALL_CJK(s: str) -> bool:
     return bool(s) and all("一" <= c <= "鿿" for c in s)
 
 
-def evidence_label(run: str) -> str:
+def squeeze(query: str) -> str:
+    """查询挤掉空白、转小写——`evidence` / `_aligned` / `is_whole_token` / `display_terms`
+    **都按这一份定位**。一处定义：两处各挤各的，偏移就会差一位，而差一位的偏移
+    在「两端在不在词边界上」这种判据里是静默错。"""
+    return _WS.sub("", (query or "").lower())
+
+
+def _token_spans(text: str, segment) -> set[tuple[int, int]]:
+    """`text` 切完词之后每个词各自占的那一段 `[起, 止)`。"""
+    out: set[tuple[int, int]] = set()
+    pos = 0
+    for t in segment(text):
+        out.add((pos, pos + len(t)))
+        pos += len(t)
+    return out
+
+
+def is_whole_token(run: str, squeezed: str, segment) -> bool:
+    """这一串在查询的切词里**正好是一个整 token**——也就是说**它自己就是一个词**。
+
+    **跟 `_aligned` 不是一回事，P46 量出来的**：`_aligned` 问的是「它是不是若干整词
+    接起来的」，所以 `的高频`（的 | 高频）、`月前后`（月 | 前后）、`导出的` 两端**都**在
+    词边界上，它们对齐、但前后挂着虚词，剥恰恰是对的。这一条问的是「它是不是**一个**词」：
+    `华为` / `阿里` / `不变` / `上线` 是，`的高频` 不是。
+
+    **判据宁可窄**：只认查询自己的切词，不拿 `run` 单独再切一次——单独切
+    （`segment("的高频")`）跟它在句子里怎么被切根本是两件事。
+    """
+    if segment is None or not run or run.isascii():
+        return False
+    spans = _token_spans(squeezed, segment)
+    start = 0
+    while True:
+        i = squeezed.find(run, start)
+        if i < 0:
+            return False
+        if (i, i + len(run)) in spans:
+            return True
+        start = i + 1
+
+
+def evidence_label(run: str, squeezed: str | None = None, segment=None) -> str:
     """这一串**摆到用户眼前**时长什么样：剥掉两端的虚词 / 方位 / 日期后缀。
 
     跟 `display_terms` 用的是同一把剪刀（`_EDGE_STOP`），也跟它同一条规矩：
@@ -502,8 +543,23 @@ def evidence_label(run: str) -> str:
     「号上」（号 / 上 都在 `_EDGE_STOP` 里）剥空之后被原样退回，直接摆到了用户眼前。
 
     英文 / 带数字的串**原样**：`_EDGE_STOP` 是一张汉字表，拿它去剥 `kol` / `3月15` 没有意义。
+
+    **P46 多的那一条：它自己就是一个词的，不剥**（P44 A0b 顺带读出来的那条——
+    `华为` 是这个人库里的词条、两端都在词边界上，却被剥掉 `为` 成了单字「华」而砍掉）。
+    判据是 `is_whole_token`，**不是 `_aligned`**：拿 `_aligned` 当判据全库量过，
+    会把 `的高频` / `月前后` / `导出的` / `希望通过` 这一堆也留下来（62 条查询的行变了，
+    多摆 70 串次），**那把尺子量的是「碎」不是「它是不是一个词」**。
+    换成 `is_whole_token` 之后全库只有 9 条行变了：多摆 `华为` `阿里` `不变` `上线`
+    `视为` `跟着` 6 种，少摆 1 串次（`ppu`，是前 6 那一刀挪了位，不是被判掉的）。
+
+    `squeezed` / `segment` 任一为 `None` = 这一档不启用，**不启用就是原样剥**
+    （老调用方、假的 memory、建不出索引）。
     """
-    return run if run.isascii() else run.strip(_EDGE_STOP)
+    if run.isascii():
+        return run
+    if squeezed is not None and segment is not None and is_whole_token(run, squeezed, segment):
+        return run
+    return run.strip(_EDGE_STOP)
 
 
 def _word_bounds(text: str, segment) -> set[int]:
@@ -574,13 +630,16 @@ def evidence(hits: list[str], query: str, *, common=None, attested=None,
     """
     runs = evidence_runs(hits, query)
     weigh = _weigher(query, segment, common)
-    squeezed = _WS.sub("", (query or "").lower())
+    squeezed = squeeze(query)
     out: list[dict] = []
     for r in runs:
         if common is not None and common(r):
             continue
+        # **判的是摆出来的那一串**，而「摆出来长什么样」这件事只有一个定义
+        # （`evidence_label`，P46 起它自己会认「它就是一个词」那一档）。
+        # 这里再抄一遍剥法 = 两把尺子，`recall_evidence` 摆的和这里判的会对不上。
         out.append({"term": r, "why": _why(r, attested, weigh),
-                    "aligned": _aligned(evidence_label(r), squeezed, segment)})
+                    "aligned": _aligned(evidence_label(r, squeezed, segment), squeezed, segment)})
     return out
 
 
@@ -605,7 +664,7 @@ def display_terms(terms: list[str], query: str) -> list[str]:
     """给右栏看的查询词：英文词 / 数字原样；中文 n-gram 片段（「小时预」「号上众」「并以」）合成它们在
     查询里连成的整段、再剥掉两端的虚词——用户看到的是「众筹」「学位」这种词，不是切碎的三个字（P4 #6）。
     没有分词器，这是最接近「整词」的做法；合不出 ≥2 字的就不显示。"""
-    squeezed = _WS.sub("", (query or "").lower())
+    squeezed = squeeze(query)
     plain: list[str] = []
     spans: list[tuple[int, int]] = []
     for t in terms:

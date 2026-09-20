@@ -69,8 +69,10 @@ describe('P31 #1 勾过的完成标准要活过一次重开', () => {
     // 还是 0/2，就是栽在这一行）。
     // P43 #2 起第二个实参从 `title`（标题框那一格）换成了 `shownTitle`
     // （= `displayTitle({ title, content })`，界面上到处显示的那个名字）。
-    // **这一条守的性质一个字没变**：传下去的第一个实参还是 `i`（现在这份意图），不是 `null`。
-    expect(appSrc).toContain("setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, shownTitle)))")
+    // P46 #5 起又换了一次：换成 `settledTitle`（= 名字**停下来 500ms 之后**那一份，真机上
+    // 数出来 32 个字里那一格变了 19 次）。**这一条守的性质照旧一个字没变**：
+    // 传下去的第一个实参还是 `i`（现在这份意图），不是 `null`。
+    expect(appSrc).toContain("setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, settledTitle)))")
     // 全文里 `resolveIntent(null, …)` 只许有一处：`useState` 的初值（那会儿真的什么都没有）
     expect(appSrc.match(/resolveIntent\(null,/g) ?? []).toHaveLength(1)
     expect(appSrc).not.toContain('resolveIntent(null, title)')
