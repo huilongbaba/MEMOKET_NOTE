@@ -70,7 +70,6 @@ import { minimalChange } from './editor/minimalChange'
 import { undoRound } from './editor/undoRound'
 import { groupRuns, type RunRound } from './util/runRounds'
 import { restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
-import { checkLabel } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）
 import { checkLabel, stuckTail } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）+ 后面那半句下一步（P40 · B #2）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
