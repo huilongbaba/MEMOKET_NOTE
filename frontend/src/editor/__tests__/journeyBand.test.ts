@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appColors, bandCells, describable, hhmm, saySpan, stepDay } from '../../components/JourneyPage'
+import { appColors, bandCells, describable, hhmm, sayNoDesc, saySpan, stepDay } from '../../components/JourneyPage'
 
 const seg = (start: string, end: string, app = 'Code') =>
   ({ i: 0, start, end, app, title: '', desc: '', n: 1, has_frame: true, has_thumb: false })
@@ -88,5 +88,36 @@ describe('还能补描述的段', () => {
       { desc: '', has_frame: false },       // 黑名单挡过 / 存图失败 / 三天过期：补不了
       { desc: '改 capture.ts', has_frame: false },
     ])).toBe(1)
+  })
+
+  // —— P50（第 793 轮）：那个死胡同从另一扇门回来了 ——————————————————
+  //
+  // 真实数据实拍：09-16 **37 段**、09-17 **71 段** 的 `skip` 是「没有截图」，
+  // 而 `frames` 里还留着一条早就不存在的路径 → `has_frame` 照样是 true。
+  // 只看 `has_frame` 的话这些段全被数进「描述这 N 段」，点下去只回
+  // 「没有要描述的了」，**点多少次都一样**。
+  it('后端已经判出局的（skip）不算，哪怕 has_frame 还说图在', () => {
+    expect(describable([
+      { desc: '', has_frame: true },                              // 真正等着描述的
+      { desc: '', has_frame: true, skip: '没有截图' },              // ← 悬空路径那一类
+      { desc: '', has_frame: true, skip: '截图已过期' },
+    ])).toBe(1)
+  })
+
+  it('skip 是空串 = 还没轮到它，照旧要数进去（误报比漏报更糟）', () => {
+    expect(describable([{ desc: '', has_frame: true, skip: '' }])).toBe(1)
+  })
+})
+
+describe('一行没有描述时写什么', () => {
+  it('图还在就说「还没描述」——那是一句「等一等就会有」的承诺', () => {
+    expect(sayNoDesc({ has_frame: true })).toBe('还没描述')
+  })
+  it('图没了就当场说清，别让人一直等', () => {
+    expect(sayNoDesc({ has_frame: false })).toBe('没截图，补不了描述')
+  })
+  it('后端说得出理由时就用它的原话', () => {
+    expect(sayNoDesc({ has_frame: true, skip: '截图已过期' })).toBe('截图已过期，补不了描述')
+    expect(sayNoDesc({ has_frame: false, skip: '没有截图' })).toBe('没有截图，补不了描述')
   })
 })

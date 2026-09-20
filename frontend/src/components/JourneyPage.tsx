@@ -76,12 +76,27 @@ export function stepDay(days: string[], date: string, delta: number): string | n
 
 type Cell = { seg?: JourneySegment; sec: number; gap?: [string, string] }
 
-/** 还能补描述的段：没描述**而且大图还在**。没大图的（黑名单挡过、存图失败、
- *  三天过期）再点多少次「描述」都还是没描述——原来它们也被数进「描述这 N 段」，
- *  09-17 那天 71 段没截图，按钮一直亮着、点了只回一句「没有要描述的了」
- *  （第 778 轮 / P20 走查）。 */
-export function describable(segs: { desc: string; has_frame: boolean }[]): number {
-  return segs.filter((s) => !s.desc && s.has_frame).length
+/** 还能补描述的段：没描述、**后端没判它出局**、而且大图还在。
+ *
+ *  没大图的（黑名单挡过、存图失败、三天过期）再点多少次「描述」都还是没描述
+ *  ——原来它们也被数进「描述这 N 段」，09-17 那天 71 段没截图，按钮一直亮着、
+ *  点了只回一句「没有要描述的了」（第 778 轮 / P20 走查）。
+ *
+ *  **`skip` 那一半是第 793 轮（P50）补的，因为 `has_frame` 会骗人**：后端
+ *  `catch_up` 判定「没有截图」时只写了 `skip`，**那条指向不存在的文件的路径
+ *  留在 `frames` 里**，于是 `has_frame` 照样是 true。真实数据上 09-16 有 37 段、
+ *  09-17 有 71 段正是这个样子——P20 修过的死胡同从另一扇门原样回来了，
+ *  而且每点一次「描述」还会新造出几段。后端那一侧已经把路径抹掉了，
+ *  这里再守一道：**「补不了」是后端说了算的事实，不是拿 `has_frame` 猜出来的**。 */
+export function describable(segs: { desc: string; has_frame: boolean; skip?: string }[]): number {
+  return segs.filter((s) => !s.desc && !s.skip && s.has_frame).length
+}
+
+/** 一行没有描述时写什么。**「还没描述」是句承诺**——等一等就会有；
+ *  补不了的那些要当场说清是为什么，别让人一直等下去。 */
+export function sayNoDesc(s: { has_frame: boolean; skip?: string }): string {
+  if (s.skip) return `${s.skip}，补不了描述`
+  return s.has_frame ? '还没描述' : '没截图，补不了描述'
 }
 
 /** 壳那边的状态（`journey:state`）。`until` / `stalled` 是 P20 加的，老壳没有——都可选。 */
@@ -226,9 +241,15 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
     setBusy(true)
     try {
       const r = await journeyCatchUp(date, 10)
+      // **一段都没描述成，不等于「什么都没发生」**（第 793 轮 / P50 实拍）：
+      // 这一下常常是把几段**永久判成补不上**（截图早就没了）。原来一律回
+      // 「没有要描述的了」——用户刚看着按钮写「描述这 10 段」，点完那句话等于
+      // 说「本来就没有」，而盘上刚刚多了 9 条 `skip`。
       toast(r.described
         ? `描述了 ${r.described} 段，入库 ${r.ingested} 段${r.left ? `，还剩 ${r.left} 段` : ''}`
-        : '没有要描述的了')
+        : r.skipped
+          ? `这 ${r.skipped} 段的截图已经没了，补不了描述${r.left ? `，还剩 ${r.left} 段等着` : ''}`
+          : '没有要描述的了')
       await refresh()
     } catch (e) { toast(friendlyError(e), 'error') } finally { setBusy(false) }
   }
@@ -565,7 +586,9 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
                     <div className="journey-row journey-run-head">
                       <span className="journey-time">{hhmm(run.start)}–{hhmm(run.end)}</span>
                       <span className={'journey-desc' + (run.desc ? '' : ' muted')}>
-                        {run.desc || (run.segs.some((s) => s.has_frame) ? '还没描述' : '没截图，补不了描述')}
+                        {/* 这一块里**只要还有一段补得上**就说「还没描述」；
+                            一段都补不上时，说其中第一条给出的理由。 */}
+                        {run.desc || sayNoDesc(run.segs.find((s) => !s.skip && s.has_frame) ?? run.segs[0])}
                       </span>
                       <span className="journey-app" title={run.app}>
                         <i className="journey-dot" style={{ background: colors.get(run.app) ?? OTHER }} />
@@ -587,7 +610,7 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
                     <div key={s.i} className="journey-row">
                       <span className="journey-time">{hhmm(s.start)}–{hhmm(s.end)}</span>
                       <span className={'journey-desc' + (s.desc ? '' : ' muted')}>
-                        {s.desc || (s.has_frame ? '还没描述' : '没截图，补不了描述')}
+                        {s.desc || sayNoDesc(s)}
                         {/* 缩略图是**凭据**：一句没有任何依据的描述，用户没法判断它是不是编的。
                             默认不占地方，鼠标停在那一行才出现。 */}
                         {s.has_thumb && (

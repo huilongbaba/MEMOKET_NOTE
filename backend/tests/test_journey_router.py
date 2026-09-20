@@ -57,10 +57,19 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def _day(root: Path, segs: list[dict]) -> None:
-    d = root / "journey" / "2026-09-14"
+def _day(root: Path, segs: list[dict], day: str = "2026-09-14") -> None:
+    d = root / "journey" / day
     d.mkdir(parents=True, exist_ok=True)
     (d / "segments.json").write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
+
+
+def _today() -> str:
+    """今天。**要验「大图还在」的用例必须用近的日子**——`_expire_frames` 挂在
+    `GET /day` 上，超过 `FRAME_KEEP_DAYS` 的那天一开就把 `frames` 清了、
+    顺手写上 `skip: 截图已过期`，夹具里那个写死的 2026-09-14 早就过期了。"""
+    from datetime import date
+
+    return date.today().isoformat()
 
 
 def test_读某天_日期不合法要拦下来(client, tmp_path):
@@ -587,3 +596,71 @@ def test_一段都没有的一天不落一个空文件(tmp_path, monkeypatch):
     assert out.described == 0 and out.left == 0
     assert not (tmp_path / "2026-09-19").exists()
     assert J.days(user="tester") == []
+
+
+# ---------------------------------------------------------------- P50（第 793 轮）
+#
+# 「描述这 N 段」那个死胡同（P20 清单 #5）**从另一扇门原样回来了**，
+# 而且它自己还会不断造出新的：`catch_up` 判定「没有截图」时只写了 `skip`，
+# 那条指向不存在的文件的路径留在 `frames` 里 → `has_frame` 照样是 true →
+# 页面 `describable()` 照样把它数进「描述这 N 段」→ 点下去只回
+# 「没有要描述的了」，**点多少次都一样**。
+#
+# 真实数据上实拍到的量（`~/Library/Application Support/.../journey`，只读）：
+# 09-16 **37 段**、09-17 **71 段**、09-18 **2 段**正是这个形状。
+
+
+def test_判成没有截图时_那条悬空的大图路径也要抹掉(client, tmp_path):
+    """真因那一条：`skip` 写了、`frames` 没清，`has_frame` 于是一直在骗人。"""
+    _day(tmp_path, [{"start": "2026-09-14T09:00:00", "end": "2026-09-14T09:30:00",
+                     "app": "Code", "title": "", "n": 12,
+                     "frames": [str(tmp_path / "早就没了.png")]}])
+    r = client.post("/api/journey/catch-up?date=2026-09-14").json()
+    assert r["skipped"] == 1 and r["described"] == 0
+
+    disk = json.loads((tmp_path / "journey" / "2026-09-14" / "segments.json").read_text())
+    assert disk[0]["skip"] == "没有截图"
+    assert disk[0]["frames"] == []                  # ← 这一行就是判据本身
+
+    seg = client.get("/api/journey/day?date=2026-09-14").json()["segments"][0]
+    assert seg["has_frame"] is False                # 页面按它数「描述这 N 段」
+    assert seg["skip"] == "没有截图"
+
+
+def test_接口要把_skip_交给界面_别让它拿_has_frame_去猜(client, tmp_path):
+    """**判据守来源**：补不了是后端知道的事实，不该由界面拿一个替身推出来。
+
+    这里故意摆一个**图真的在、却已经被判出局**的段：只看 `has_frame` 的话
+    它是「等着描述」，只有 `skip` 说得出真话。
+    """
+    day = _today()
+    frame = tmp_path / "在的.png"
+    frame.write_bytes(b"\x89PNG\r\n\x1a\n")
+    _day(tmp_path, [{"start": f"{day}T09:00:00", "end": f"{day}T09:30:00",
+                     "app": "Code", "title": "", "n": 12,
+                     "frames": [str(frame)], "skip": "没说出具体的东西"}], day)
+    seg = client.get(f"/api/journey/day?date={day}").json()["segments"][0]
+    assert seg["has_frame"] is True and seg["desc"] == ""
+    assert seg["skip"] == "没说出具体的东西"
+
+
+def test_没被判出局的段_skip_是空串(client, tmp_path):
+    """反面：**别把「还没轮到它」也说成补不了**（误报比漏报更糟）。"""
+    day = _today()
+    _day(tmp_path, [{"start": f"{day}T09:00:00", "end": f"{day}T09:30:00",
+                     "app": "Code", "title": "", "n": 12, "frames": ["/还在/的.png"]}], day)
+    seg = client.get(f"/api/journey/day?date={day}").json()["segments"][0]
+    assert seg["skip"] == ""
+
+
+def test_已经判出局的段_再点多少次描述都不会被重新数进去(client, tmp_path):
+    """死胡同那个循环本身：连点两次，第二次盘上不该再多出任何变化。"""
+    _day(tmp_path, [{"start": "2026-09-14T09:00:00", "end": "2026-09-14T09:30:00",
+                     "app": "Code", "title": "", "n": 12,
+                     "frames": [str(tmp_path / "没了.png")]}])
+    first = client.post("/api/journey/catch-up?date=2026-09-14").json()
+    before = (tmp_path / "journey" / "2026-09-14" / "segments.json").read_text()
+    second = client.post("/api/journey/catch-up?date=2026-09-14").json()
+    after = (tmp_path / "journey" / "2026-09-14" / "segments.json").read_text()
+    assert first["skipped"] == 1 and second["skipped"] == 0
+    assert before == after
