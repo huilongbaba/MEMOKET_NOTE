@@ -18,6 +18,9 @@
  *   p39:settled:<id>:back   重开：页签还在不在、面板上那行「已处置…」在不在、toast 说了什么
  *   p39:evict:<id>:hunks    一次「格式化」在长文上切出 **501 处** → `CHANGE_LAYER_HUNKS` 整层不存
  *   p39:evict:<id>:age      库里躺着一层 40 天前的 → `CHANGE_LAYER_MAX_AGE_DAYS` 淘汰掉并说出来
+ *
+ * P46 加的一条：
+ *   p39:evict:<id>:settled20  20 层**每一处都处置完** + 第 21 层活的 → 一句话不说、21 层一层不少
  */
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -252,6 +255,54 @@ export async function runP39(probe: string, ctx: Ctx): Promise<boolean> {
       await wait(2500)
       out.push(`toasts=${JSON.stringify(readToasts())}`)
       out.push(`库里剩 ${(await api.listChangeLayers(id)).length} 层`)
+      log('p39 ' + out.join(' | '))
+      return true
+    }
+
+    /** **处置完的层不该占那 20 个名额**（P46 #3 / P43 #1 那条「下一步」）。
+     *
+     *  P43 实拍那句话的毛病：一篇上做满 20 次 AI 动作、**每一处都逐处处置完**，
+     *  第 21 次会弹「1 层改动没能留到下次打开：格式化——这一篇的待处置改动层超过 20 层」——
+     *  而那 20 层早就处置完了，**这句话请用户去关心一个他已经做完的决定**。
+     *
+     *  摆法：20 层「格式化」，每一层生出来就把它那一处「✓ 接受」掉（跟 `settled` 那一条
+     *  同一条路，也就是悬停工具条上那个钩），再叠**第 21 层不处置**，然后冲库。
+     *  判据两条：`toasts` 一句不说 + 库里 21 层一层不少。 */
+    if (phase === 'settled20') {
+      let cur0 = v.state.doc.toString()
+      for (let k = 1; k <= 20; k++) {
+        const next = cur0 + `\n第${k}层加的一句，马上就处置掉。`
+        ctx.setContent(next)
+        await wait(50)
+        ctx.actionsRef.current.pushDiff('格式化', cur0, next)
+        cur0 = next
+        await wait(120)
+        // 这一层那几处，每一处都「✓ 接受」——一处活的都不剩
+        const hs = [...(v.state.field(roundDiffField, false)?.hunks ?? [])].filter((h) => !h.soft && !h.off)
+        for (const h of hs) v.dispatch({ effects: acceptHunk.of(h.id) })
+        await wait(60)
+      }
+      await wait(800)
+      out.push(snapshot(v, 'after-20-settled'))
+      // 第 21 层：**不处置**，留一层活的
+      const live = cur0 + '\n第 21 层加的一句，这一层不处置。'
+      ctx.setContent(live)
+      await wait(300)
+      ctx.actionsRef.current.pushDiff('格式化', cur0, live)
+      await wait(1200)
+      out.push(snapshot(v, 'plus-one-live'))
+      ctx.setPaneFocus({ id: 'changes', n: Date.now() })
+      await api.saveNote(id, n.title, v.state.doc.toString())
+      ctx.actionsRef.current.flushChangeLayers()
+      // **等它真的落库**：`flushChangeLayers` 之后还有一次网络往返。等 3 秒实拍撞到过
+      // 「编辑器 20 受 + 1 活、库里 0 层」——那不是行为不同，是**读早了**
+      // （P39 `back` 那一条栽过的同一件事）。宁可多等，也别把时序读成判据。
+      for (let i = 0; i < 40 && (await api.listChangeLayers(id)).length === 0; i++) await wait(300)
+      await wait(1500)
+      out.push(`toasts=${JSON.stringify(readToasts())}`)
+      const rows21 = await api.listChangeLayers(id)
+      const liveRows = rows21.filter((r: any) => (r.hunks ?? []).some((h: any) => h.state === 'pending' || h.state === 'off'))
+      out.push(`库里剩 ${rows21.length} 层（其中还有活口的 ${liveRows.length} 层）`)
       log('p39 ' + out.join(' | '))
       return true
     }

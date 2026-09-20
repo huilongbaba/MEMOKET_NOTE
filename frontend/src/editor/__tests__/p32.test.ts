@@ -107,12 +107,17 @@ describe('P32 A5 为什么这个词算证据', () => {
     ], ['kol'])
     expect(line).toBe('按光标这段找的，命中：kol（知识库里的词条 · 库里 30 条提到）、电池容量（整段原话对上 · 库里 6 条提到）')
   })
+  // **P46 #1 改了这两条喂进去的值，守的性质一个字没变**：「后端没给这一格」
+  // 从 `[]` 改成 `undefined` / `null` 来表示（`[]` 现在专指「判过了，一条都摆不出来」）。
+  // 这一条钉的一直是「**没人判过**的时候退回原来那句、不是空白」。
   it('后端没给 evidence（老版本 / 兜底）时退回原来那句，不是空白', () => {
-    expect(evidenceLine('tail', [], ['众筹', '上线'])).toBe('按正文末尾找的，命中：众筹、上线')
-    expect(evidenceLine('tail', [], [])).toBe('按正文末尾找的')
+    expect(evidenceLine('tail', undefined, ['众筹', '上线'])).toBe('按正文末尾找的，命中：众筹、上线')
+    expect(evidenceLine('tail', null, ['众筹', '上线'])).toBe('按正文末尾找的，命中：众筹、上线')
+    expect(evidenceLine('tail', undefined, [])).toBe('按正文末尾找的')
   })
   it('接线：面板真的在用 evidenceLine，而且 evidence 跟着每次召回更新', () => {
     expect(memSrc).toMatch(/\{evidenceLine\(mode, evidence, terms\)\}/)
-    expect(memSrc).toMatch(/setEvidence\(r\.evidence \?\? \[\]\)/)
+    // `?? null` 而不是 `?? []`：压成 `[]` 就把「没判成」和「判过了、空的」并成一档（P46 #1）
+    expect(memSrc).toMatch(/setEvidence\(r\.evidence \?\? null\)/)
   })
 })

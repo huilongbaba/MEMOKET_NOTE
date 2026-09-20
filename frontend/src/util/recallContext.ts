@@ -86,16 +86,34 @@ export function traceRecallHint(factCount: number, recalled?: number | null): st
   return `那 ${n} 条在右栏「记忆」里按同一段话就能直接看到——「脉络」要的是先后顺序，这一步没串起来。`
 }
 
+/** 证据一条都摆不出来时那一句（P46 #1）。
+ *
+ *  **P44 实拍的毛病**：后端那两条显示过滤让 9 / 765 条查询的证据列表空掉，
+ *  这里原来退回 `display_terms`，摆出来的是「矿山行业最重要、**希望通过智能化能**、
+ *  矿区工作环境恶劣」——**比被砍掉的那个碎片还长、还碎**（`display_terms` 会往后
+ *  接到汉字串的尽头）。后端刚判完「这些串都不合格」，前端转手拿一份**没判过**的去顶，
+ *  等于把后端那一刀原地撤销，还撤成了更难看的样子。
+ *
+ *  **判过了就如实说一句。** 召回那几条一条不少（`qualifies` 没动），
+ *  说不出来的只是「为什么是这几条」。 */
+export const NO_EVIDENCE_LINE = '这一段没有可摆出来的证据'
+
 /** 右栏那一行：按什么找的、命中了什么、每个命中凭什么算证据。
- *  后端没给 `evidence`（老版本 / 出错兜底）就退回原来那句「命中：X、Y」。 */
+ *
+ *  **`[]` 和 `null` / `undefined` 不是一回事**（P46 #1，后端 `RecallOut.evidence` 同一条口径）：
+ *    · 有东西 —— 摆前 3 个，每个带上它凭什么算证据；
+ *    · `[]`   —— **判过了，一条都摆不出来**：如实说一句，**不许**退回 `terms`
+ *               那串没判过的（那正是 P44 问题 #3 摆出「希望通过智能化能」的那条路）；
+ *    · 没这一格（老后端 / 判据自己抛了）—— 没人判过，退回原来那句「命中：X、Y」是对的。 */
 export function evidenceLine(
   mode: 'cursor' | 'tail',
-  evidence: { term: string; why: string; units: number }[],
+  evidence: { term: string; why: string; units: number }[] | null | undefined,
   terms: string[],
 ): string {
   const head = '按' + (mode === 'cursor' ? '光标这段' : '正文末尾') + '找的'
-  if (evidence.length) {
+  if (evidence && evidence.length) {
     return head + '，命中：' + evidence.slice(0, 3).map((e) => `${e.term}（${evidenceWhy(e)}）`).join('、')
   }
+  if (evidence) return head + '，' + NO_EVIDENCE_LINE
   return head + (terms.length ? '，命中：' + terms.slice(0, 6).join('、') : '')
 }

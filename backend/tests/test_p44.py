@@ -106,15 +106,22 @@ def test_aligned判的是摆出来的那一串_不是原始的run():
     反过来 `华为` 这一条正好相反，**反例真的落在被测那条分支里**：
 
     「引入**华为**的方案」里 run `华为` 两端都在词边界上，可 `为` 在 `_EDGE_STOP` 里，
-    剥完只剩「华」，压在「华为」中间——**摆出来的那一串是碎的**，所以这一条判 `False`。
-    （顺带：这也说明「对齐了的串不该再剥」，留给下一批。）
+    P44 那一版剥完只剩「华」、压在「华为」中间，于是这一条判 `False`。
+
+    **这个期望值 P46 改了，守的性质一个字没变**：`evidence_label` 现在认「它自己就是
+    一个词」那一档（`is_whole_token`），`华为` 不再被剥，摆出来的那一串就是 `华为` 本身，
+    **而它是对齐的**。这一条钉的从来不是「`华为` 该判 False」，是
+    **「`aligned` 判的是 `evidence_label` 回出来的那一串」**——所以下面两行原样留着
+    （run 对齐 / 单字「华」不对齐），最后一行跟着 label 走。P46 那一刀的反例在
+    `test_p46.py::test_它自己就是一个词的不剥`。
     """
     q = "引入华为的方案"
     seg = lambda _t: ["引入", "华为", "的", "方案"]      # noqa: E731
     assert search._aligned("华为", q, seg) is True          # run 自己是对齐的
-    assert search._aligned("华", q, seg) is False           # 摆出来的那一串不是
+    assert search._aligned("华", q, seg) is False           # 单字「华」压在「华为」中间
+    assert search.evidence_label("华为", "引入华为的方案", seg) == "华为"
     assert [(e["term"], e["aligned"]) for e in
-            search.evidence(["华为"], q, segment=seg)] == [("华为", False)]
+            search.evidence(["华为"], q, segment=seg)] == [("华为", True)]
     # 反过来那一侧：`众筹后` 剥完是「众筹」，是真词，不许判成碎片
     q2 = "作为众筹后交付"
     seg2 = lambda _t: ["作为", "众筹", "后", "交付"]      # noqa: E731
@@ -278,7 +285,7 @@ def test_这64条离线逐条重算得上():
     下一批换尺子拿它重跑，不用再读一遍 64 条（同 P42 那 82 条冻位置指标）。"""
     _meta, rows = R.load_sample(set_name="p44-frag64")
     for r in rows:
-        got = R.display_stats(r["run"], r["query"], r["cut"])
+        got = R.display_stats(r["run"], r["query"], r["cut"], ruler="p44")
         assert got["rule"] == r["rule"], (r["i"], r["shown"], got)
         assert got["aligned"] == r["aligned"], (r["i"], r["shown"], got)
         assert got["label"] == r["stripped"], (r["i"], r["shown"], got)

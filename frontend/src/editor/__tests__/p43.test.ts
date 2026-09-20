@@ -194,7 +194,9 @@ describe('P43 #5 「脉络」也要写清自己在说哪一段', () => {
   // 而两块常常说的是**不同的两段**（实拍：校验说第 2 行、脉络说第 6 行）。
   // P41 给「校验」那块写了户口，这块没写——一块报一块不报，只解决了一半。
   it('两块卡用的是**同一个** `verifyScopeLine`，不是各写一句', () => {
-    expect(appSrc).toContain("import VerifyPanel, { verifyScopeLine } from './components/VerifyPanel'")
+    // P46 #4 在同一行上多导了一个 `passageLine`（跳回正文那一段的判据），
+    // **钉的东西没变**：`verifyScopeLine` 是从 `VerifyPanel` 那一份拿的，不是 App 自己又写一句。
+    expect(appSrc).toContain("import VerifyPanel, { passageLine, verifyScopeLine } from './components/VerifyPanel'")
     const at = appSrc.indexOf("id: 'trace', title: '脉络'")
     expect(at).toBeGreaterThan(0)
     const block = appSrc.slice(at, at + 1200)
@@ -255,8 +257,11 @@ describe('P43 #2 意图预填认的是界面上那个名字，不是标题框那
 
   it('接线洞：App 真的按 `displayTitle({ title, content })` 算名字，effect 依赖的是它', () => {
     expect(appSrc).toContain('const shownTitle = useMemo(() => displayTitle({ title, content }), [title, content])')
-    expect(appSrc).toContain('setIntent((i) => (i.source === \'user\' ? i : resolveIntent(i, shownTitle)))')
-    expect(appSrc).toContain('}, [shownTitle, current?.id])')
+    // P46 #5 在名字和 effect 之间多插了一层防抖（`settledTitle`），**这一条守的性质没变**：
+    // 依赖的还是「**算出来的名字**」那条链，不是 `content`。防抖本身在 `p46.test.ts` 里钉。
+    expect(appSrc).toContain('setIntent((i) => (i.source === \'user\' ? i : resolveIntent(i, settledTitle)))')
+    expect(appSrc).toContain('}, [settledTitle, current?.id])')
+    expect(appSrc).toContain('setSettledTitle(shownTitle), INTENT_PREFILL_IDLE_MS')
     // **依赖不许直接挂 `content`**：那才是「每敲一个字重推一次」
     expect(appSrc).not.toContain('}, [title, content, current?.id])')
   })

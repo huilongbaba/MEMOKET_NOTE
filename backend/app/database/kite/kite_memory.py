@@ -942,10 +942,17 @@ class UserMemory:
         · `aligned is False` —— 跨词边界的碎片，不摆（`kb/search._aligned`）；
         · 剥完合不出 ≥2 个字的，不摆（跟 `search.display_terms` 同一条规矩）。
 
+        **P46 松了一格：它自己就是一个词的，剥之前先放过**（`search.is_whole_token`）。
+        `华为` / `阿里` / `不变` / `上线` 都是这个形状——真词，只是末字碰巧在 `_EDGE_STOP`
+        那张表里，剥完剩一个字就被第二条砍了。全库代价逐条读过：9 条查询的行变了。
+
         **过滤必须留底**：这两条砍的只是「这一串摆不摆出来」，**召回那几条一条都不少**
-        （`rows` 是调用方传进来的，`qualifies` 这一批一个字没动）。全被砍光时这里回空列表，
-        前端 `util/recallContext.evidenceLine` 自己退回 `display_terms` 那一行——
+        （`rows` 是调用方传进来的，`qualifies` 这一批一个字没动）。全被砍光时这里回空列表——
         **一条证据都摆不出来 ≠ 这条召回不成立**。全库量过：765 条查询里有 9 条落到这一档。
+        **空列表是一个判断，不是「没判成」**（P46 #1）：前端据此如实说一句
+        「这一段没有可摆出来的证据」，**不再退回 `display_terms`**——后端已经判出
+        「这些串都不合格」，前端拿一份没判过的去顶，摆出来的是「希望通过智能化能」
+        这种更碎的。「没判成」走的是另一条路：`/recall` 那里 `evidence=None`。
 
         **去重按摆出来的那一串**（不是按原始的 run）：`众筹后` 和 `众筹的` 剥完都是「众筹」，
         按 run 去重会把同一个词摆两遍（全库量过真的有，见 P44 台账）。
@@ -954,6 +961,7 @@ class UserMemory:
         q = search.clean_query(query)
         terms = search._terms(self, q)
         common, attested, segment = self.common_term(), self.vocab_term(), self.segment()
+        squeezed = search.squeeze(q)
         idx = self._grep_index(store)
         seen: set[str] = set()
         out: list[dict] = []
@@ -965,7 +973,10 @@ class UserMemory:
                 term = e["term"]
                 if e.get("aligned") is False:
                     continue
-                label = search.evidence_label(term)
+                # **这两个实参不能省**（P46）：省了就退回「一律剥」，而上面那格 `aligned`
+                # 是按**带着它们**算出来的 label 判的——两把尺子，`华为` 会判成对齐、
+                # 摆出来却是被剥成单字的「华」。接线洞，`test_p46` 专门钉了一条。
+                label = search.evidence_label(term, squeezed, segment)
                 if not term.isascii() and len(label) < 2:
                     continue
                 if label in seen:

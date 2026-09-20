@@ -1225,12 +1225,30 @@ HUNK_STATES = ("pending", "off", "accepted", "reverted")
 前端为此在 field 里另留了一条 `settled` 账（`editor/roundDiff.ts`），这两个取值走那条路。"""
 
 CHANGE_LAYER_KEEP = 20
-"""一篇最多留几层。
+"""一篇最多留几层**还有活口的**。
 
 为什么按篇不按天：用户是**在一篇上**做决定的，「这篇上还挂着几层没处置」才是他
 要回答的问题；按天的话一天里在 30 篇上各点一次格式化，每篇都只剩不到一层。
 为什么是 20：九种动作里最碎的是 `/` 块和语音（一次一层），实测一段连续写作会
-攒到个位数；20 层的面板已经要滚两屏，再多本身就说明「这些决定用户不打算做了」。"""
+攒到个位数；20 层的面板已经要滚两屏，再多本身就说明「这些决定用户不打算做了」。
+
+**「活口」那三个字是 P46 加的**（P43 #1 留的「下一步」）：原来这一格数的是
+**所有**层，于是一篇上做满 20 次 AI 动作、每一处都逐处处置完之后，第 21 次会弹
+「N 层改动没能留到下次打开」——而那几层早就处置完了，**这句话对用户没有意义**：
+它请用户去关心一个他已经做完的决定。这一条闸守的是「面板别长到滚两屏」，
+而处置完的层在面板上只占一行灰字（P39 的 `settledOnly`），不是它要防的东西。
+处置完的层另走 `CHANGE_LAYER_SETTLED_KEEP`。"""
+
+CHANGE_LAYER_SETTLED_KEEP = 60
+"""一篇最多留几层**已经全处置完的**（P46）。
+
+单独一档、比 `CHANGE_LAYER_KEEP` 宽三倍，因为它挡的是另一件事：
+待处置的层要用户**做决定**（20 层就已经是一屏做不完的债），处置完的层只是
+「你当时怎么决定的」那一行灰字——留着几乎不要钱，扔掉却会让面板那句承诺
+（「你逐处按下去的接受 / 撤回都还在」）变成空头支票。
+
+还是有上限，理由跟 `CHANGE_LAYER_HUNKS` 一样：整篇的层挤在一行 JSON 里，
+无限长下去读写都慢。60 是实测一篇连续写作攒不到的量级。"""
 
 CHANGE_LAYER_MAX_AGE_DAYS = 30
 """多久以前的层不再留。跟「最近删除」（`TRASH_KEEP_DAYS`）同一个数量级：
@@ -1265,6 +1283,23 @@ def _change_hunk(h: dict, *, index: int) -> dict | None:
         "before": str(h.get("before") or "")[-48:],
         "after": str(h.get("after") or "")[:48],
     }
+
+
+#: 一处改动**还是个待办**的两个取值。`accepted` / `reverted` 是用户已经表过态的。
+#: 跟前端 `util/changeLayers.serializeLayers` 那一格逐字一致：`live` 那几处存成
+#: `pending` / `off`，`settled` 那本账存成 `accepted` / `reverted`。
+LIVE_HUNK_STATES = ("pending", "off")
+
+
+def _layer_is_live(layer: dict) -> bool:
+    """这一层还有没有活口——**还有至少一处等着用户点**（P46）。
+
+    一处都不剩 = 用户逐处处置完了。**那不是「烧」**：层还在（面板上是一行灰字
+    「已处置：N 处接受、M 处撤回」，P39 的 `settledOnly`），只是不该再占
+    `CHANGE_LAYER_KEEP` 那 20 个名额、更不该为它弹「N 层改动没能留到下次打开」。
+    跟前端 `roundDiff.layersOf`（「这层还有没有 hunk」）是同一条口径。
+    """
+    return any(h.get("state") in LIVE_HUNK_STATES for h in (layer.get("hunks") or []))
 
 
 def list_change_layers(user_id: str, note_id: str) -> list[dict]:
@@ -1346,13 +1381,24 @@ def save_change_layers(user_id: str, note_id: str, layers: list[dict]) -> dict:
             "content_tag": str(layer.get("content_tag") or ""),
             "hunks": hunks,
         })
-    # 按篇的上限：早的先走（层序就是时间序）
-    if len(cleaned) > CHANGE_LAYER_KEEP:
-        over = len(cleaned) - CHANGE_LAYER_KEEP
-        for gone in cleaned[:over]:
-            evicted.append({"label": gone["label"], "at": gone["at"],
-                            "why": f"这一篇的待处置改动层超过 {CHANGE_LAYER_KEEP} 层，最早的先不留"})
-        cleaned = cleaned[over:]
+    # 按篇的上限：早的先走（层序就是时间序）。**两档分开数**（P46）——
+    # 还有活口的按 `CHANGE_LAYER_KEEP`，全处置完的按 `CHANGE_LAYER_SETTLED_KEEP`。
+    # 混在一起数就会为几层早就处置完的层报警，而那句话对用户没有意义（P43 #1 的「下一步」）。
+    drop: set[int] = set()
+    live_idx = [i for i, l in enumerate(cleaned) if _layer_is_live(l)]
+    done_idx = [i for i, l in enumerate(cleaned) if not _layer_is_live(l)]
+    for idxs, cap, why in (
+        (live_idx, CHANGE_LAYER_KEEP,
+         f"这一篇的待处置改动层超过 {CHANGE_LAYER_KEEP} 层，最早的先不留"),
+        (done_idx, CHANGE_LAYER_SETTLED_KEEP,
+         f"这一篇已经处置完的改动层超过 {CHANGE_LAYER_SETTLED_KEEP} 层，最早的先不留"),
+    ):
+        if len(idxs) > cap:
+            for i in idxs[:len(idxs) - cap]:
+                drop.add(i)
+                evicted.append({"label": cleaned[i]["label"], "at": cleaned[i]["at"], "why": why})
+    if drop:
+        cleaned = [l for i, l in enumerate(cleaned) if i not in drop]
     now = _now()
     with connect() as c:
         # 已经在库里的层保留它原来的 `created_at`：整批换掉是写法，不是「这层刚生出来」
