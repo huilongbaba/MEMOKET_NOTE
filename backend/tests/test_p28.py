@@ -372,22 +372,32 @@ def _release_st(check) -> State:
 
     素材是 `citations_present` 真正要的那一份：手上有材料、这一轮写了整整一段
     （≥ `MIN_CITED_ROUND_CHARS`）、正文里一个编号都没有。
+
+    **P58 A 之后这份素材多了一个硬要求：得落在 `located > 0` 那一档。**
+    `located == 0` 那两档现在是 `advisory`（报了不短路，`types.Verdict.advisory`），
+    永远攒不满 `JUDGE_FLOOR`，这个局面就跑不出来了。所以每一轮的正文里都带一句
+    **逐字**抄材料的话（`locate_sources` 能唯一定位到 `terrence-2046-12F1`），
+    判据走的是「编号照抄在句末就行」那一档——照旧短路。
+    **顺带**：那一档是 P58 量出来 17 批 / 268 轮**一次都没开火过**的三档之一，
+    这里等于给它补了一份能跑的素材（假模型造形状）。
     """
     from app.harness.checks.grounding import MIN_CITED_ROUND_CHARS
     st = _st(mode=_mode(checks=(check,)))
     st.facts = ["[terrence-2046-12F1] EVT 准备 4 台主机，15 套 PCBA"]
+    # 这一句逐字含着材料里的数字锚，`locate_sources` 定得到它，且只定得到这一条。
+    anchored = "这一轮把 EVT 准备 4 台主机，15 套 PCBA 这件事写清楚。"
     for k in range(JUDGE_FLOOR):
         st.round = k + 1
-        st.fresh = f"这一段是第 {k + 1} 轮写的。" + "把节奏讲清楚。" * MIN_CITED_ROUND_CHARS
+        st.fresh = anchored + f"这一段是第 {k + 1} 轮写的。" + "把节奏讲清楚。" * MIN_CITED_ROUND_CHARS
         st.ev, st.skip_judge = None, False
         evs = _drive(Checks().before_judge(st))
         assert st.skip_judge, f"第 {k + 1} 轮该照旧短路，实际 {[e.data for e in evs]}"
     st.round = JUDGE_FLOOR + 1
-    st.fresh = "这一段是放行轮写的。" + "把节奏讲清楚。" * MIN_CITED_ROUND_CHARS
+    st.fresh = anchored + "这一段是放行轮写的。" + "把节奏讲清楚。" * MIN_CITED_ROUND_CHARS
     st.ev, st.skip_judge = None, False
     _drive(Checks().before_judge(st))
     assert not st.skip_judge, "第 floor+1 轮该放行，让打分器真跑"
-    assert st.bag.get("judge_floor_released") is True, \
+    assert st.bag.get("check_released") is True, \
         "这个键得是 before_judge 自己写的（往 bag 里塞一个是在测自己编的局面）"
     return st
 
@@ -426,11 +436,11 @@ def test_没被放行的那一轮complete照旧是complete():
     """反向：这条压制只该在**放行轮**开火。挡住一切的守卫跟没有守卫一样坏
     ——每一轮都压回 continue 的话，这条 harness 就再也停不下来了。
 
-    量程：把 `if not st.bag.pop("judge_floor_released", False): return` 那两行删掉，这条红。"""
+    量程：把 `if not st.bag.pop("check_released", False): return` 那两行删掉，这条红。"""
     st = _st(mode=_mode(checks=()))
     st.ev, st.skip_judge = None, False
     _drive(Checks().before_judge(st))                    # 一条判据都没命中 → 真打分
-    assert st.bag.get("judge_floor_released") is None
+    assert st.bag.get("check_released") is None
     st.ev = _six_dim("complete")
     _await(Checks().after_judge(st))
     assert st.ev.status == "complete", "没判据在响，写完了就是写完了"

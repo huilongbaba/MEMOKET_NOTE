@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { NoteHarnessToolCall } from '../api'
 import Icon from './Icon'
 import { dimLabel, checkLabel } from '../editor/dimLabel'
-import type { CheckHit } from '../editor/agentRound'
+import { checkHitKind, type CheckHit } from '../editor/agentRound'
 
 /** 一轮里 agent 干了什么。按轮聚合而不是按事件平铺——用户关心的是
  * "这一轮它查了什么、改了什么、打了几分、然后决定下一轮怎么跑"这条
@@ -527,7 +527,7 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                                                   display: 'flex', gap: 5 }}>
               <span style={{ flexShrink: 0 }}>⚑</span>
               <span>
-                {h.stuck_rounds ? (
+                {checkHitKind(h) === 'stopped' || checkHitKind(h) === 'stuck' ? (
                   <>
                     判据 <b>{checkLabel(h.check)}</b>{dimParen(h.dimension)}已经连着
                     {' '}{h.stuck_rounds} 轮原样卡在这里，改不动——
@@ -537,6 +537,21 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                         于是停机那条写着「照常打分」，跟它自己后半句
                         「停下，交最好的一轮」当场打架（P35 走查 #7）。 */}
                     {h.stopped ? '这一次不再往下写了。' : '这一轮不再拦，照常打分。'}{h.note}
+                  </>
+                ) : checkHitKind(h) === 'released' ? (
+                  <>
+                    {/* P58 走查 #1：这一档原来掉进下面那句「这一轮没再花模型调用去打分」，
+                        **而它恰恰是打了分的**——`advisory`（判据只提醒，见
+                        `types.Verdict.advisory`）和 `judge_floor`（连着几轮没真分，
+                        这一轮放行）两条都是。字面反了的一句话比不说更糟。 */}
+                    代码判据 <b>{checkLabel(h.check)}</b> 提了{dimLabel(h.dimension)}上的一件事
+                    {h.ran && r.checksTotal ? `（${r.checksTotal} 条里的第 ${h.ran} 条）` : ''}
+                    ，{h.judge_floor
+                      ? `已经连着 ${h.judge_floor} 轮没真打过分了，这一轮不再拦、照常打分。`
+                      : '但没有拦这一轮——分照常打，这条当提醒看。'}
+                    {notes.length === 1 ? notes[0] : notes.map((n, j) => (
+                      <span key={j} style={{ display: 'block', marginTop: 2 }}>· {n}</span>
+                    ))}
                   </>
                 ) : (
                   <>

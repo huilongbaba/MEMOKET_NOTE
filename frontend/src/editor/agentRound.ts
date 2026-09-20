@@ -25,6 +25,30 @@ export type CheckHit = {
    * 跟 `stuck_rounds` 那条「放行、照常打分」的正好相反，面板上要说两句不同的话
    * ——原来两条共用「这一轮不再拦，照常打分」，而这一条明明已经停了（P35 走查 #7）。 */
   stopped?: boolean
+  /** `true` = 这条判据**只是提个醒**：它报了，但这一轮**照常花模型调用打了分**
+   * （后端 `middleware/checks.py` 的 advisory 那一支 / `types.Verdict.advisory`，P58 A）。 */
+  advisory?: boolean
+  /** 连着几轮一次真打分都没有，于是这一轮**放行**（报了但不短路）。
+   * 后端 `middleware/checks.JUDGE_FLOOR`，带的是那个连续轮数。 */
+  judge_floor?: number
+}
+
+/** 这条命中该用哪一句话说。**四档互斥**，面板三句话 + 一句收工通知。
+ *
+ * **为什么单独抽出来**（P58 走查 #1）：AgentActivity 里原来只分两档
+ * （`h.stuck_rounds ? 卡死 : 短路`），于是 `judge_floor` 放行的那一条
+ * 落进了「短路」那一句，界面上写着「这一轮没再花模型调用去打分」——
+ * **而那一轮恰恰是为了打分才放行的**，字面是反的。跟 P35 走查 #7
+ * （停机通知写着「照常打分」）是同一个形状的洞，只是在另一支上。
+ * 一个 JSX 里的三元判不出来也测不着，所以是个纯函数 + 自己的闸。
+ */
+export type CheckHitKind = 'stopped' | 'stuck' | 'released' | 'shortCircuit'
+
+export function checkHitKind(h: CheckHit): CheckHitKind {
+  if (h.stopped) return 'stopped'                       // 收工通知，整个跑停了
+  if (h.stuck_rounds) return 'stuck'                    // 连着卡满 → 放行
+  if (h.advisory || h.judge_floor) return 'released'    // 提醒 / 饿死放行 → 放行
+  return 'shortCircuit'                                 // 真短路：这一轮没打分
 }
 
 /** 把一条命中记到这一轮上，**不丢掉先到的那些**。 */

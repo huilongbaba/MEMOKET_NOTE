@@ -188,7 +188,8 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
                                sections: list[str] | None = None,
                                facts_index: list[str] | None = None,
                                tray: list[str] | None = None,
-                               auto_fixes: list[str] | None = None) -> str:
+                               auto_fixes: list[str] | None = None,
+                               advisories: list[str] | None = None) -> str:
     parts = []
     block = profile_block(profile)
     if block:
@@ -223,9 +224,35 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
         "请接着往下写，优先覆盖结构节拍里还没被正文实质覆盖的部分。没有给"
         "结构节拍的话，凭正文内容本身判断接下来该写什么。"
     )
+    # **advisory 判据那句话摆在「接着往下写」后面**（P58 A）：它说的是这一段**怎么写**
+    # （把这一段改写成材料里真有的那几条），不是「你眼前的正文变了」——
+    # 后者才是 `auto_fix_block` 那个位置（读正文之前）。
+    adv_block = advisory_block(advisories)
+    if adv_block:
+        parts.append(adv_block)
     if sections:
         parts.append(place_directive_block(sections))
     return "\n\n".join(parts)
+
+
+def advisory_block(notes: list[str] | None) -> str:
+    """上一轮 advisory 判据提的那件事（P58 A）。
+
+    **为什么必须有这一块**：短路轮的判词走 `st.ev` → `focus`/`focus_note` → steer 进
+    下一轮；而 advisory 轮**不短路**，`st.ev` 是打分器给的六维真分，判据那句话
+    在 `loop.py:157-158` 那条线上一个字都传不下去。没有这一块，「让它说话但不收轮子」
+    实际效果是「闭嘴、还多花一次打分调用」——比原来更糟。
+
+    跟 `auto_fix_block` 的分工：那一块说**我替你改了什么**（正文已经变了），
+    这一块说**还差什么**（正文没变，是给这一轮的要求）。两块可以同时出现。
+
+    `None` 和 `[]` 同样是一回事（上一轮没有 advisory 判据响）。
+    """
+    lines = [f"- {n}" for n in (notes or []) if n and n.strip()]
+    if not lines:
+        return ""
+    return ("【上一轮代码判据提了一件事——这一轮顺手做掉，做不到就跳过，不用为它停下来】\n"
+            + "\n".join(lines[:4]))
 
 
 def auto_fix_block(fixes: list[str] | None) -> str:
