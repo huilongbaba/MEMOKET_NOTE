@@ -71,7 +71,17 @@ def main() -> int:
     raw = marshal.loads(data[tocpos:])
     # PyInstaller 有两种 TOC 形状：dict 和 [(name, (typ, pos, len))] 列表。
     entries = dict(raw) if isinstance(raw, list) else raw
-    mods = sorted(k for k in entries if needle in k)
+    # **名字对得上就只核那一个**（P74 实测修的）。这一行原来只有 `needle in k`，
+    # 于是 `app/harness/checks/grounding.py` 那个模块名会**连 `…grounding_rules` 一起收**，
+    # （这里故意写成路径形，不写成点号形——`test_db_guard` 那条「会跑 harness 的脚本
+    #   必须夹在 Watch 里」是拿**整份文件**搜点号形的，一句注释就能把它误报成红。
+    #   P74 当场撞了一次：这个脚本一行 harness 都不跑，只是注释里提了一嘴。）
+    # 而下面那个循环要求「每一个收进来的模块都得有全部符号」——
+    # 于是核一个完全正确的壳也会红 2 个符号。**一条会误报的闸迟早被人当成噪声**
+    # （`db_guard.py` 的 `WATCHED` 不收 `harness_runs` 是同一条理由）。
+    # 模糊匹配那一半保留（用法里写着可以只给半个名字），但**精确名优先**：
+    # 传全名就核那一个，传半个名字才铺开。
+    mods = [needle] if needle in entries else sorted(k for k in entries if needle in k)
     if not mods:
         raise SystemExit(f"壳里没有叫 *{needle}* 的模块")
     bad = 0
