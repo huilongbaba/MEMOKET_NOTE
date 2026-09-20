@@ -1252,7 +1252,13 @@ CHANGE_LAYER_SETTLED_KEEP = 60
 
 CHANGE_LAYER_MAX_AGE_DAYS = 30
 """多久以前的层不再留。跟「最近删除」（`TRASH_KEEP_DAYS`）同一个数量级：
-一个月没处置的改动层，重建出来的高亮指向的正文早就不是那份了。"""
+一个月没处置的改动层，重建出来的高亮指向的正文早就不是那份了。
+
+**这一个数对两档都生效**（活口的和处置完的），而且 P48 ④ 量过之后**有意没动**：
+真库 `note_change_layers` 0 行、10 份历史备份里这张表根本不存在，
+「处置完的层实际活多久」今天**答不了**——拿 0 个样本去调它，
+改成 60 还是 90 都只是换一个没有依据的数。等库里有真实的层再定。
+P49 ① 改的只有**被扔时说的那句话**：两档的话不再共用一句（见 `save_change_layers`）。"""
 
 CHANGE_LAYER_HUNKS = 500
 """一层最多存几处。47k 字的长文点一次「格式化」能切出几千处；整层塞进一行 JSON
@@ -1364,8 +1370,18 @@ def save_change_layers(user_id: str, note_id: str, layers: list[dict]) -> dict:
         except (ValueError, TypeError):
             old = False
         if old:
-            evicted.append({"label": label, "at": at,
-                            "why": f"超过 {CHANGE_LAYER_MAX_AGE_DAYS} 天没处置，不再留着"})
+            # **两句话分开**（P46 #3 给按篇上限立的那条规矩，年龄这一档 P48 ④ 读出来没跟上）。
+            # 这一刀在 `_layer_is_live` 前面，所以一层**逐处处置完**的层被扔掉时，
+            # 原来那句「超过 30 天没处置」对它**是假的**——用户早就一处一处点完了，
+            # 这句话请他去关心一个他已经做完的决定（跟 P43 #1 / P46 #3 修掉的是同一个形状）。
+            # **阈值一个都没动**：P48 量过，真库 0 行、10 份历史备份里这张表根本不存在，
+            # 拿 0 个样本去调 30 只是换一个没有依据的数。改的只有话术。
+            evicted.append({
+                "label": label, "at": at,
+                "why": (f"处置完之后放了超过 {CHANGE_LAYER_MAX_AGE_DAYS} 天，不再留着"
+                        if not _layer_is_live({"hunks": hunks})
+                        else f"超过 {CHANGE_LAYER_MAX_AGE_DAYS} 天没处置，不再留着"),
+            })
             continue
         source = str(layer.get("source") or "other")
         state = str(layer.get("state") or "on")
