@@ -17238,3 +17238,36 @@ P72 留给下一批：
 得先把分母做大（`harness_run_ledger.py --append` 是现成的口子，缺的是**真跑**）；
 ④ P70 留的 ①②（A④ 那条触发器今天是 0 / 护栏只拦「编辑器一次都没报过」那一档）没碰；
 ⑤ P69 留的 ①②③（VC 两端吸附到词边界 / 那 6 条变差 / `天津港` 那半条归分词器）没碰——在 `kb/` 那一侧。
+
+---
+
+## P71 / P72 合并收尾 · 第 803 轮：我自己把 `desktop/package.json` 写坏了（2026-09-21）
+
+> 合并完跑后端全量，`test_packaging.py::test_打包配置把前后端都装进去` **红了**，
+> `KeyError: 'build'`。两个 agent 谁都没碰过 `desktop/`——**是我。**
+>
+> 上一轮我要核「壳里装的是不是这份源码」，敲了
+> `npx asar extract-file "$A" package.json /dev/stdout`。
+> **`asar extract-file` 不认 stdout**——它把抽出来的文件按 basename 写进**当前目录**。
+> 当前目录是 `desktop/`。于是 app.asar 里那份精简的 `package.json`
+> （只有 `name/private/license/version/description/main`）**盖掉了真的那份**，
+> `scripts` / `devDependencies` / `build.extraResources` 全没了。
+>
+> 讽刺的地方：**那条命令本来就没产出**（我当时看到「空输出」就往下走了）。
+> 一条命令**看着什么也没干**，实际上把仓库里的文件换了——
+> 而它是在「我正要核对一件事」的时候敲的。
+>
+> 修：`git checkout -- desktop/package.json`（`build.extraResources`
+> 四项 `LICENSE / third-party-notices.md / web / backend` 回来了），重跑 → 3057 全绿。
+> 那条闸**本来就在**、**本来就该红**，它是唯一发现这件事的东西。
+>
+> **新立一条（§21）：一条「看着没产出」的命令，不等于它没写盘。**
+> 抽包 / 解档 / 导出这类命令默认往 cwd 写，**要么 `cd` 进 scratch 再敲，要么先看清楚它写哪儿**。
+> 核对动作本身也会改仓库——**核之前先看一眼 `git status`，核完再看一眼**。
+>
+> 顺带把一个数钉死：**`4afa984` 的后端基线是 3030，不是我写进 P71/P72 任务书里的 3029**。
+> 3029 是 `eb2520a` 那一格的数；我自己那一笔 `check_shipped_source.py` 让
+> `test_scripts_import.py::test_脚本导得进来` 这条**按 `backend/scripts/*.py` 参数化**的闸
+> 多收一格，+1。**P72 实测的 3030 是对的，我抄的 3029 是隔了一个 commit 的旧数**——
+> 又一次「基线要量不要抄」（P54）。合并后 3030 + 13(p71) + 14(p72) = **3057**，逐项对得上。
+
