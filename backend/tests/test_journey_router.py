@@ -329,20 +329,155 @@ def test_日报存成笔记挂在当天那页日记下面_重写覆盖不留一�
     assert "改了 b.py" in store.get_note("tester", again.note_id)["content"]
 
 
+def _seg(day: str) -> dict:
+    return {"start": f"{day}T09:00:00Z", "end": f"{day}T09:30:00Z",
+            "app": "Code", "title": "", "n": 12, "frames": []}
+
+
 def test_有记录的日子按新到旧列_没段落文件的目录不算(tmp_path, monkeypatch):
     """翻天要按这个列表走：**按日期加一减一会走进一串空日子**。
     它同时回答「有没有用过」——停掉记录之后如果只看当天，页面会退回那一屏
-    知情选择，以前记的东西就既看不到也删不掉了。"""
+    知情选择，以前记的东西就既看不到也删不掉了。
+
+    *（第 794 轮 / P52：三个夹具日原来写的是 `[]`，只是当时随手填的
+    ——这条闸要的是「有没有那个文件」那一格。`[]` 现在另有一条闸，见下面那几条。）*"""
     from app.routers import journey as J
 
     for d in ("2026-09-04", "2026-09-11", "2026-09-14"):
         (tmp_path / d).mkdir()
-        (tmp_path / d / "segments.json").write_text("[]", encoding="utf-8")
+        (tmp_path / d / "segments.json").write_text(json.dumps([_seg(d)]), encoding="utf-8")
     (tmp_path / "2026-09-12").mkdir()            # 只有目录、没有段落文件
     (tmp_path / "_tmp").mkdir()                  # 壳的临时目录，不是日期
     monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
 
     assert J.days(user="tester") == ["2026-09-14", "2026-09-11", "2026-09-04"]
+
+
+# —— P52：「有记录」= 有活的段 / 有日报，**不是「有 segments.json」** ——————————
+#
+# 复现（`$S/p52/repro_tomb.py`，素材是 `journey_fixture.py` 的 `synthetic` 档）：
+# 把一天的段**逐条**走 `DELETE /segment` 删光之后，盘上剩的是一串墓碑，
+# `segments.json` 还在 → 那一天还留在翻天列表里，翻过去是「这一天没有记录」，
+# 而「删掉这一天」因为 `segs` 是空的本来就置灰 —— **既看不到也删不掉**，
+# 正是 `days()` 自己的 docstring 承诺要避免的那件事。
+
+def test_段被逐条删光只剩墓碑的那一天不再算有记录(tmp_path, monkeypatch):
+    from app.routers import journey as J
+
+    (tmp_path / "2026-09-14").mkdir()
+    (tmp_path / "2026-09-14" / "segments.json").write_text(json.dumps(
+        [{"start": "2026-09-14T09:00:00Z", "end": "2026-09-14T09:30:00Z",
+          "app": "", "title": "", "desc": "", "deleted": True, "n": 0}] * 3), encoding="utf-8")
+    (tmp_path / "2026-09-11").mkdir()
+    (tmp_path / "2026-09-11" / "segments.json").write_text(json.dumps([_seg("2026-09-11")]),
+                                                           encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    assert J.days(user="tester") == ["2026-09-11"]
+
+
+def test_一条活的段就够_墓碑混在里面照样算有记录(tmp_path, monkeypatch):
+    """反面：**别把「删过几段」也读成「整天没了」**（误报比漏报更糟）。"""
+    from app.routers import journey as J
+
+    (tmp_path / "2026-09-14").mkdir()
+    (tmp_path / "2026-09-14" / "segments.json").write_text(json.dumps(
+        [{"start": "x", "end": "x", "app": "", "title": "", "deleted": True, "n": 0},
+         _seg("2026-09-14")]), encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    assert J.days(user="tester") == ["2026-09-14"]
+
+
+def test_段全删光但日报还在的那一天要留着_否则那份日报被藏起来了(tmp_path, monkeypatch):
+    """`JourneyPage` 对 `day?.report` 单独画一张卡：段一条不剩、日报还在的那一天，
+    页面上照样有东西看。把它从列表里摘掉 = 把那份日报藏了，也删不掉了。"""
+    from app.routers import journey as J
+
+    d = tmp_path / "2026-09-14"
+    d.mkdir()
+    (d / "segments.json").write_text(json.dumps(
+        [{"start": "x", "end": "x", "app": "", "title": "", "deleted": True, "n": 0}]),
+        encoding="utf-8")
+    (d / "report.json").write_text(json.dumps({"report": "## 推进了什么\n- 写了 P52\n"}),
+                                   encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    assert J.days(user="tester") == ["2026-09-14"]
+
+
+# —— P52：**文件删不掉时，记忆一条都不许动** ——————————————————————
+#
+# 走查里用只读目录（`chmod 500`）摆出来的（P50「留给下一批」③ 结案）：
+# 后端确实吵了——toast 逐字「没删成 2026-09-19，这一天还在：这一天没删干净，
+# 下面这些删不掉：… Permission denied」，盘上那一天原封不动。
+# 顺手读出来的第二件事才是这条闸守的：原来 `delete_day` **先删记忆再删文件**，
+# 于是失败那一路「这一天还在」是真的，而那些句子**已经没了**——
+# 用户以为什么都没发生，实际上知识库被删了一半。
+
+def test_这一天删不掉时_抽进知识库的记忆一条都不许动(tmp_path, monkeypatch):
+    import os
+    import stat
+
+    from fastapi import HTTPException
+
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T02:00:00Z", "app": "A",
+         "desc": "一", "session": "screen-20260914-000"},
+    ], ensure_ascii=False), encoding="utf-8")
+    forgot: list[str] = []
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    monkeypatch.setattr(J, "UserMemory", lambda user: type(
+        "M", (), {"remove_sessions": lambda self, s: (forgot.append(s), 3)[1]})())
+
+    os.chmod(day, stat.S_IRUSR | stat.S_IXUSR)            # r-x：读得进来，删不掉
+    try:
+        with pytest.raises(HTTPException) as e:
+            J.delete_day(date="2026-09-14", user="tester")
+    finally:
+        os.chmod(day, stat.S_IRWXU)
+
+    assert e.value.status_code == 500
+    assert "这一天没删干净" in str(e.value.detail)
+    assert (day / "segments.json").is_file()              # 盘上原封不动
+    assert forgot == []                                   # **记忆一条都没动**
+
+
+def test_真删掉了才轮到删记忆(tmp_path, monkeypatch):
+    """反面：正常那一路一个字没变——文件没了，记忆跟着没（§1 ⑤ 那条承诺）。"""
+    from app.routers import journey as J
+
+    day = tmp_path / "2026-09-14"
+    day.mkdir()
+    (day / "segments.json").write_text(json.dumps([
+        {"start": "2026-09-14T01:00:00Z", "end": "2026-09-14T02:00:00Z", "app": "A",
+         "desc": "一", "session": "screen-20260914-000"},
+    ], ensure_ascii=False), encoding="utf-8")
+    forgot: list[str] = []
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+    monkeypatch.setattr(J, "UserMemory", lambda user: type(
+        "M", (), {"remove_sessions": lambda self, s: (forgot.append(s), 3)[1]})())
+
+    out = J.delete_day(date="2026-09-14", user="tester")
+    assert out.removed_facts == 3
+    assert forgot == ["screen-20260914-000"]
+    assert not day.exists()
+
+
+def test_空的那一天也不算有记录_不管是谁写出来的(tmp_path, monkeypatch):
+    """P20 #12 修的是**写的那一侧**（catch-up 不再落空文件）。这一条守**读的那一侧**：
+    不管哪条路写出一个 `[]`，翻天都不该走进去。两道各守一半，缺一个就会再回来一次。"""
+    from app.routers import journey as J
+
+    (tmp_path / "2026-09-19").mkdir()
+    (tmp_path / "2026-09-19" / "segments.json").write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(J, "journey_root", lambda: tmp_path)
+
+    assert J.days(user="tester") == []
 
 
 def test_没有任何记录时列表是空的不是报错(tmp_path, monkeypatch):

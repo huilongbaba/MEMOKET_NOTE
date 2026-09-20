@@ -336,6 +336,100 @@ async function saveFrame(src: string, dst: string, thumb: string, tmpDir: string
   catch { /* 缩略图存不下不影响这一段 */ }
 }
 
+/** 锁屏 / 睡眠那一下该怎么办。**纯函数**，因为它在壳上摆不出来。
+ *
+ * 规矩（计划 §8.2「明确的动作要赢过被动规则」，第 778 轮 / P20 #6）：
+ * 锁屏 / 睡眠自动暂停，解锁 / 醒来**只恢复自己按下去的那一次**——
+ * 用户按的「暂停到我再打开」/「暂停 1 小时」不因为一次锁屏解锁就被替他打开。
+ *
+ * 为什么把它从 `main.ts` 里抽出来（第 794 轮 / P52）：这四个 `powerMonitor` 事件
+ * **在走查里摆不出来**（要真锁一次屏 / 真睡一次），所以从 P20 提出到现在
+ * 三次走查都写着「没摆出来」，而它一条自动化的闸都没有。抽成纯函数之后
+ * `check-journey-fake.mts` 能逐档判一遍，`main.ts` 那一侧只剩接线。
+ *
+ * @returns `'pause'` = 现在该自动暂停；`'resume'` = 该把自动暂停解掉；`null` = 什么都不做。
+ */
+export function onPowerEvent(ev: 'lock' | 'unlock', state: CaptureState,
+                             autoPaused: boolean): 'pause' | 'resume' | null {
+  if (ev === 'lock') return state === 'running' ? 'pause' : null
+  return autoPaused && state === 'paused' ? 'resume' : null
+}
+
+// ——— 采集源：真的那一套 vs 注入进来的假的 ——————————————————————
+//
+// **为什么要有这个口**（第 794 轮 / P52，P50「留给下一批」①）：上面那四个函数全都
+// 要真的屏幕录制权限——`screencapture` 拍不到就整条路走不下去。于是
+// 「暂停 1 小时到点自己醒」「锁屏别解掉用户按的暂停」「自动描述停了：<原因>」
+// 这几格**在壳上一次都没摆出来过**（P20 #4 / #6 从第 778 轮留到现在）：
+// 要摆得真按下「开始记录」，而那会让走查用的那份壳**真开始录屏、真弹一次权限框**。
+//
+// 做法跟 `idleSec` 一模一样：**由调用方注入，这个文件不碰 electron**
+// （`frontend/scripts/check-journey-merge.mts` 把它当普通模块 import，加一行 electron
+// 就全塌）。默认值是真的那一套，所以产品行为一个字没变。
+
+export type CaptureSource = {
+  /** 前台应用 + 窗口标题 */
+  front: () => Promise<{ app: string; title: string }>
+  /** 拍一张到 `to`。**回 false = 拍不到**（多半是屏幕录制权限被系统收走了） */
+  shot: (to: string) => Promise<boolean>
+  /** 感知哈希：这一帧跟上一帧比，画面换了没有 */
+  hash: (file: string, tmpDir: string) => Promise<bigint>
+  /** 存一帧给描述用 + 顺手做缩略图 */
+  frame: (src: string, dst: string, thumb: string, tmpDir: string) => Promise<void>
+}
+
+/** 真的那一套：`screencapture` + `sips` + `osascript`。**默认值**。 */
+export const REAL_SOURCE: CaptureSource = { front: frontApp, shot, hash: dhash, frame: saveFrame }
+
+/** 假采集源要照着什么演。 */
+export type FakeSpec = {
+  /** 依次轮着当前台窗口的那几个。每 `hold` 个 tick 换下一个（默认 1）。 */
+  windows: { app: string; title: string }[]
+  hold?: number
+  /** `true` = 一张都拍不到（走 `no-permission` 那一路）。 */
+  blind?: boolean
+}
+
+/** 1×1 的 PNG。**内容无所谓，在不在、非不非空才是判据**（`shot()` 判的就是
+ *  `existsSync && size > 0`）。 */
+const PNG_1PX = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64')
+
+/**
+ * **假采集源**：一个字节都不拍屏幕，也不要任何权限。
+ *
+ * 哈希直接由「现在是第几个窗口」算出来，所以「画面换了」这件事是**摆出来的**
+ * 而不是碰运气：换窗口 = 哈希差满 64 位，不换 = 一个 bit 都不差。
+ * 这样 `changed` 那一串判断（切段 / `tooLong` / `staleTick`）走的还是真的那条路。
+ */
+export function fakeSource(spec: FakeSpec): CaptureSource {
+  const hold = Math.max(1, spec.hold ?? 1)
+  let tick = 0
+  const at = () => spec.windows[Math.floor(tick / hold) % spec.windows.length]
+  return {
+    async front() { const w = at(); tick++; return { app: w.app, title: w.title } },
+    async shot(to: string) {
+      if (spec.blind) return false
+      mkdirSync(path.dirname(to), { recursive: true })
+      writeFileSync(to, PNG_1PX)
+      return true
+    },
+    async hash() {
+      // 每个窗口一个互不相同的 64 位数：相邻两个窗口之间的 hamming 距离是 64，
+      // 远大于 NEW_SEG_BITS（18）；同一个窗口两次 tick 距离是 0。
+      const i = Math.floor(Math.max(0, tick - 1) / hold) % spec.windows.length
+      return ~BigInt(i) & ((1n << 64n) - 1n)
+    },
+    async frame(_src: string, dst: string, thumb: string) {
+      mkdirSync(path.dirname(dst), { recursive: true })
+      mkdirSync(path.dirname(thumb), { recursive: true })
+      writeFileSync(dst, PNG_1PX)
+      writeFileSync(thumb, PNG_1PX)
+    },
+  }
+}
+
 // ——— 循环 ————————————————————————————————————————————————
 
 export type Recorder = {
@@ -359,7 +453,11 @@ export type Recorder = {
 export function makeRecorder(userData: string, log: (s: string) => void,
                             /** 距上次动键盘 / 鼠标多少秒。**由壳注入**——
                              *  这一份要能在对拍脚本里当普通模块 import，不能碰 electron。 */
-                            idleSec: () => number = () => 0): Recorder {
+                            idleSec: () => number = () => 0,
+                            /** 从哪儿拿画面。**默认是真的那一套**（`REAL_SOURCE`）；
+                             *  走查要摆「暂停 / 托盘 / 自动描述停了」那几格时由壳换成
+                             *  `fakeSource(...)`，于是不用真开屏幕录制。见 `CaptureSource`。 */
+                            src: CaptureSource = REAL_SOURCE): Recorder {
   let state: CaptureState = 'off'
   let timer: NodeJS.Timeout | null = null
   let pauseUntil = 0
@@ -448,14 +546,14 @@ export function makeRecorder(userData: string, log: (s: string) => void,
     }
     if (wasAway) { wasAway = false; log('[journey] 人回来了，继续记\n') }
 
-    const { app, title } = await frontApp()
+    const { app, title } = await src.front()
     // 黑名单：连截图都不拍。**也不把上一段的 `end` 往后拖**——原来这里会把
     // 上一段延到现在，于是在银行页面待两小时，时间轴上是上一个应用「连续两小时」
     // （第 778 轮 / P20）。黑名单的时间就该是一段空白：那才是「不记」。
     if (denied(app, title, deny())) return
 
     const raw = path.join(tmp, 'now.png')
-    if (!await shot(raw)) {
+    if (!await src.shot(raw)) {
       // **权限被系统收走是最坑的一种**：用户以为在记，其实早就断了。要主动变状态，
       // 托盘图标跟着变 ⚠（docs/daily-journey-plan.md §8.5）。
       if (state !== ('no-permission' as CaptureState)) {
@@ -466,7 +564,7 @@ export function makeRecorder(userData: string, log: (s: string) => void,
     }
     if ((state as CaptureState) === 'no-permission') state = 'running'
 
-    const h = await dhash(raw, tmp)
+    const h = await src.hash(raw, tmp)
     const now = new Date().toISOString()
     const cur = segs[segs.length - 1]
     const tooLong = cur && Date.now() - Date.parse(cur.start) > MAX_SEG_MIN * 60_000
@@ -481,7 +579,7 @@ export function makeRecorder(userData: string, log: (s: string) => void,
       const stem = String(segs.length + 1).padStart(3, '0')
       const frame = path.join(dir, 'shots', `${stem}.png`)
       const thumb = path.join(dir, 'thumbs', `${stem}.jpg`)
-      try { await saveFrame(raw, frame, thumb, tmp) } catch { /* 存不下就这一段没图 */ }
+      try { await src.frame(raw, frame, thumb, tmp) } catch { /* 存不下就这一段没图 */ }
       segs.push({ start: now, end: now, app, title, frames: [frame], thumb, n: 1 })
       flush()                                  // 每切一段落一次盘：崩了不血本无归
     } else {

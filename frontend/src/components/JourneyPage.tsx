@@ -63,15 +63,31 @@ const GAP_CAP_SEC = 20 * 60
 /** 在**有记录的日子**之间翻。按日期加一减一会走进一串什么都没有的日子——
  *  病了一周、出差没带电脑，翻七下才回到上一条记录。
  *
- *  `days` 是新的在前。回到最新的那天就还原成空串：让后端继续负责「今天是哪天」，
- *  不然开着页面过零点，日期就钉死在昨天了。翻到头就返回 null（按钮置灰）。 */
-export function stepDay(days: string[], date: string, delta: number): string | null {
+ *  `days` 是新的在前。回到今天就还原成空串：让后端继续负责「今天是哪天」，
+ *  不然开着页面过零点，日期就钉死在昨天了。翻到头就返回 null（按钮置灰）。
+ *
+ *  **`today` 这个参数是第 794 轮（P52）补的，因为「今天一定是 `days[0]`」不成立。**
+ *  原来 `date === ''`（= 今天）直接当 `i = 0`，而 `j === 0` 又直接当「回到今天」。
+ *  今天一段记录都没有的时候（停了几天没开、或者今天的段被删光了）今天**不在列表里**，
+ *  `days[0]` 是最近**记过**的那一天，于是实拍（`$S/p52/stepday_probe.mjs`，
+ *  `days=['2026-09-19','2026-09-18']`、今天 09-20）：
+ *    · 今天按「上一条记录」→ `2026-09-18`，**把 09-19 整个跳过去了**；
+ *    · 09-18 按「下一条记录」→ `''`（今天），**又把 09-19 跳过去了**。
+ *  09-19 是最近记的那一天，翻页**两个方向都够不着它**。
+ *  `today` 不给（老的调用方 / 还没拉到今天是哪天）时行为跟以前逐字一样。 */
+export function stepDay(days: string[], date: string, delta: number, today = ''): string | null {
   if (!days.length) return null
-  const i = date ? days.indexOf(date) : 0
-  if (i < 0) return null
+  const cur = date || today
+  const i = cur ? days.indexOf(cur) : 0
+  if (i < 0) {
+    // 今天不在「有记录的日子」里：它排在列表最前面**之外**——
+    // 往前翻就是列表第一条，往后翻没有了。
+    if (!date) return delta < 0 ? (days[0] ?? null) : null
+    return null
+  }
   const j = i + (delta < 0 ? 1 : -1)          // 往前翻 = 往列表后面走（新的在前）
   if (j < 0 || j >= days.length) return null
-  return j === 0 ? '' : days[j]
+  return days[j] === (today || days[0]) ? '' : days[j]
 }
 
 type Cell = { seg?: JourneySegment; sec: number; gap?: [string, string] }
@@ -99,8 +115,9 @@ export function sayNoDesc(s: { has_frame: boolean; skip?: string }): string {
   return s.has_frame ? '还没描述' : '没截图，补不了描述'
 }
 
-/** 壳那边的状态（`journey:state`）。`until` / `stalled` 是 P20 加的，老壳没有——都可选。 */
-type BridgeState = { state: JourneyState; today: number; until?: number; stalled?: string }
+/** 壳那边的状态（`journey:state`）。`until` / `stalled` 是 P20 加的、`fake` 是 P52 加的，
+ *  老壳都没有——全可选。 */
+type BridgeState = { state: JourneyState; today: number; until?: number; stalled?: string; fake?: boolean }
 
 /** 段 + 空档，按时间排成一条带能画的东西。 */
 export function bandCells(segs: JourneySegment[]): Cell[] {
@@ -189,6 +206,10 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
   const [confirmDay, setConfirmDay] = useState(false)
   /** ⌘K 的「这一周的屏幕活动」把人送到这一页时，把「最近 7 天」标出来**但不开跑**
    *  （P23 #7）。理由写在 `util/journeyOpen.takePendingJourneySpan` 上。 */
+  /** 今天是哪天。**后端说了算**（开着页面过零点也跟得上），第一次加载时 `date` 是空串，
+   *  回来的 `day.date` 就是今天。`stepDay` 要它——见那个函数（P52）。 */
+  const [today, setToday] = useState('')
+  const [fake, setFake] = useState(false)
   const [spanHint, setSpanHint] = useState(takePendingJourneySpan)
   const spanBox = useRef<HTMLDivElement>(null)
   const bridge = window.memoketDesktop?.journey
@@ -196,9 +217,9 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
   const refresh = useCallback(async () => {
     // 网页版压根没有壳：那不是出错，就是「没开过」（这一页会告诉你要用桌面版）。
     if (!bridge) setState('off')
-    else await bridge.state().then((s: BridgeState) => { setState(s.state); setUntil(s.until ?? 0); setStalled(s.stalled ?? '') })
+    else await bridge.state().then((s: BridgeState) => { setState(s.state); setUntil(s.until ?? 0); setStalled(s.stalled ?? ''); setFake(!!s.fake) })
       .catch(() => setState((v) => v ?? 'unknown'))
-    journeyDay(date).then((d) => { setDay(d); setOffline(false) }).catch(() => { setDay(null); setOffline(true) })
+    journeyDay(date).then((d) => { setDay(d); setOffline(false); if (!date) setToday(d.date) }).catch(() => { setDay(null); setOffline(true) })
     journeyDays().then(setDays).catch(() => setDays((v) => v ?? []))
     // 后端读不到就保住上一份：那一屏知情选择上「留多久」宁可不写，也不能写错
     journeyRetention().then(setKeepFor).catch(() => setKeepFor((v) => v ?? null))
@@ -334,8 +355,8 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
   }
 
   const known = days ?? []
-  const prev = stepDay(known, date, -1)
-  const next = stepDay(known, date, 1)
+  const prev = stepDay(known, date, -1, today)
+  const next = stepDay(known, date, 1, today)
 
   if (state === null || days === null) return <p className="muted" style={{ padding: 16 }}>…</p>
   if (state === 'unknown') {
@@ -443,8 +464,12 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
               跟启动栏「今天的日记」同一个规矩（后端 `journal_node` 那一份）。 */}
           <button className="linklike" onClick={() => onOpenJournal(day?.date ?? '')}
                   title="打开这一天的日记（没有就建一篇）">去这天的日记</button>
-          <button className="linklike danger" onClick={() => setConfirmDay(true)} disabled={!segs.length || confirmDay}
-                  title={segs.length ? '' : '这一天还没有记录'}>删掉这一天</button>
+          {/* **有日报、段被删光的那一天也得删得掉**（第 794 轮 / P52）：后端 `days()` 现在按
+              「有活的段**或者**有日报」列天，那一天照样在翻天列表里、页面上照样画着那张日报卡，
+              这个钮却只看 `segs.length`——于是列得出来、删不掉。判据跟后端那句对齐。 */}
+          <button className="linklike danger" onClick={() => setConfirmDay(true)}
+                  disabled={(!segs.length && !day?.report) || confirmDay}
+                  title={segs.length || day?.report ? '' : '这一天还没有记录'}>删掉这一天</button>
         </span>
       </div>
 
@@ -454,10 +479,12 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
         <div className="journey-keep-confirm" role="alertdialog" aria-label={`删掉 ${day.date} 的屏幕活动`}>
           <b>删掉 {day.date} 的屏幕活动？这一下会删掉：</b>
           <ul>
-            <li>{segs.length} 段，其中 {segs.filter((s) => s.desc).length} 段有描述</li>
+            {/* 段已经删光、只剩日报的那一天也走这条路（P52）：那时候写
+                「0 段，其中 0 段有描述」是句废话，删掉的其实只有日报。 */}
+            {segs.length > 0 && <li>{segs.length} 段，其中 {segs.filter((s) => s.desc).length} 段有描述</li>}
             {segs.some((s) => s.has_thumb) && <li>{segs.filter((s) => s.has_thumb).length} 张缩略图，连同还没删的原始截图</li>}
             {day.report && <li>这一天写好的那份日报</li>}
-            <li>这些描述抽进知识库的那些记忆</li>
+            {segs.length > 0 && <li>这些描述抽进知识库的那些记忆</li>}
           </ul>
           <p className="muted">删完就真的没有了，没有回收站。存成笔记的那几份日报留着——那是笔记，不是记录。</p>
           <div className="row" style={{ gap: 6 }}>
@@ -478,6 +505,14 @@ export default function JourneyPage({ onLater, onOpenNote, onOpenJournal }: Prop
             : '记录中。'}
         {segs.length > 0 && ` ${date ? '这天' : '今天'} ${segs.length} 段，合计 ${saySpan(total)}。`}
       </p>
+      {/* **挂着假采集源就得当场说**（P52）：这条路是走查用的（`journey/_fake.json`），
+          可这一页的全部前提是「这里写的都是真发生过的事」。一个安静的假数据源
+          比没有这条路糟得多，所以它一开，这一句就在最显眼的地方。 */}
+      {fake && (
+        <p className="muted journey-state"><Icon n="bx-error" /> 这一页画的不是真的屏幕活动
+          ——这个实例挂着假采集源（<code>journey/_fake.json</code>），一张屏都没拍。
+          删掉那个文件再重开才会真的记。</p>
+      )}
       {offline && (
         <p className="muted journey-state"><Icon n="bx-error" /> 后端没应答，这一天的记录读不出来——采集照常在壳里跑，稍后再刷新。</p>
       )}

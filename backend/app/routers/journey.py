@@ -325,6 +325,26 @@ def _sweep_if_due(user: str) -> None:
         _sweep_failures[:] = [f"清理没跑成：{exc}"]
 
 
+def _has_records(day: str) -> bool:
+    """这一天**还剩得下东西给人看吗**。
+
+    第 794 轮（P52）复现出来的（素材是 `journey_fixture.py` 的 `synthetic` 档）：
+    原来这里的判据是「目录里有没有 `segments.json`」，于是**一天的段被逐条删光、
+    只剩墓碑之后，那一天还留在翻天列表里**——翻过去是「这一天没有记录」，
+    而「删掉这一天」因为 `segs` 是空的本来就置灰，**既看不到也删不掉**。
+    那正是这个函数的 docstring 自己承诺要避免的那件事。
+
+    判据写成「有没有**活的**段、或者有没有日报」而不是「文件在不在」：
+      · 墓碑（`deleted`）不是记录 —— `day()` 本来就把它们跳过去了，两边得是同一句话。
+      · **日报要单独算一格**：段全删光、日报还在的那一天，页面上照样画那张日报卡
+        （`JourneyPage` 的 `day?.report ?`），把它从列表里摘掉就等于把那份日报藏了。
+    """
+    d = journey_root() / day
+    if any(not s.get("deleted") for s in _load(day)):
+        return True
+    return (d / "report.json").is_file()
+
+
 @router.get("/days")
 def days(limit: int = 400, user: str = Depends(current_user)) -> list[str]:
     """有记录的日期，新的在前。
@@ -333,17 +353,23 @@ def days(limit: int = 400, user: str = Depends(current_user)) -> list[str]:
       · **翻天要跳过空的**——按日期加一减一会走进一串什么都没有的日子。
       · **判断「有没有用过」**。停掉记录之后如果只看当天，页面会退回那一屏
         知情选择，于是**以前记的东西既看不到也删不掉**（第 645 轮自查）。
+
+    「有记录」= `_has_records`（活的段 / 日报），**不是「有没有 `segments.json`」**
+    ——见那个函数（第 794 轮 / P52）。空壳的那一天留在列表里，上面两个用处都是假的：
+    翻天翻进去什么都没有，「有没有用过」也答错。
     """
     # 过期的先清掉再列：不然刚删完的那一天还会在翻天的列表里出现一下
     _sweep_if_due(user)
     root = journey_root()
     try:
-        out = sorted((d.name for d in root.iterdir()
-                      if d.is_dir() and _ok_day(d.name) and (d / "segments.json").is_file()),
-                     reverse=True)
+        names = sorted((d.name for d in root.iterdir()
+                        if d.is_dir() and _ok_day(d.name) and (d / "segments.json").is_file()),
+                       reverse=True)
     except OSError:
         return []
-    return out[:max(1, limit)]
+    # 读盘只对**列出来的那些天**做一次。保留期封着天数（默认段落 30 天），
+    # 这里的 N 就是那个数量级，不是无限长。
+    return [d for d in names if _has_records(d)][:max(1, limit)]
 
 
 # 用户自己加的黑名单：条数和长度都封顶。名单是要逐条比对的，几千条会拖慢每一次
@@ -769,11 +795,6 @@ def delete_day(date: str, user: str = Depends(current_user)) -> JourneyRunOut:
     """
     day_s = date
     segs = _load(day_s)
-    mem = UserMemory(user)
-    gone = 0
-    for s in segs:
-        if s.get("session"):
-            gone += mem.remove_sessions(s["session"])
     d = _day_dir(day_s)
     # **删不掉要吵。** 原来这里是 `shutil.rmtree(ignore_errors=True)`——
     # 一个被别的进程占着的文件会让半个目录留在盘上，而用户拿到的是
@@ -782,6 +803,16 @@ def delete_day(date: str, user: str = Depends(current_user)) -> JourneyRunOut:
     fails: list[str] = []
     keep.rm_tree(d, fails)
     if fails:
+        # **文件删不掉时记忆一条都不许动**（第 794 轮 / P52，走查里用只读目录摆出来的）。
+        # 原来这两步是反的：先把这一天抽进知识库的事实全删了，再去删文件；
+        # 删文件失败就抛 500，用户看到的是「没删成，这一天还在」——
+        # **而那些句子已经没了**。一半删一半留，两边说的还不是同一件事。
+        # 现在的次序是「文件真没了，才动记忆」：失败那一路盘上和知识库里都原封不动。
         raise HTTPException(500, "这一天没删干净，下面这些删不掉：\n" + "\n".join(fails[:10]))
+    mem = UserMemory(user)
+    gone = 0
+    for s in segs:
+        if s.get("session"):
+            gone += mem.remove_sessions(s["session"])
     return JourneyRunOut(date=day_s, described=0, ingested=0, skipped=0,
                          left=0, removed_facts=gone)

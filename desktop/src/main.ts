@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSy
 import path from 'node:path'
 
 import { startBackend, type Backend } from './backend.js'
-import { makeRecorder, type CaptureState, type Recorder } from './capture.js'
+import { fakeSource, makeRecorder, onPowerEvent, type CaptureSource, type CaptureState, type FakeSpec, type Recorder } from './capture.js'
 
 // **--dev 只管开不开 devtools。** 「前端从哪来」必须看 app.isPackaged：
 // 用命令行标志决定的话，忘了带 --dev 就会去找打包后才存在的目录，后端挂不上
@@ -560,6 +560,8 @@ function setupJourneyIpc() {
     state: journey?.state() ?? 'off', today: journey?.today().length ?? 0,
     // 限时暂停到几点、自动描述卡在哪：页面要能回答「为什么没在记 / 为什么没描述」
     until: journey?.pausedUntil() ?? 0, stalled: describeStalled,
+    // 挂着假采集源时页面必须说出来（见 `readFakeSource`）——这一页的全部前提是可信
+    fake: fakeCapture,
   }))
   ipcMain.handle('journey:start', () => { userStart() })
   ipcMain.handle('journey:pause', (_e, minutes: unknown) => {
@@ -569,9 +571,56 @@ function setupJourneyIpc() {
   ipcMain.handle('journey:stop', () => { journey?.stop(); autoPaused = false; refreshTray() })
 }
 
+/** **假采集源**（第 794 轮 / P52，P50「留给下一批」①）。
+ *
+ * 为什么非有这条路不可：P20 #4 / #6 那几格（「暂停 1 小时到点自己醒」、
+ * 「锁屏别解掉用户按的暂停」、「自动描述停了：<原因>」）**要真按下「开始记录」才走得到**，
+ * 而那会让走查那份壳**真开始录屏、真弹一次屏幕录制权限框**——于是从第 778 轮
+ * 一路留到现在，三次走查都写着「没摆出来」。
+ *
+ * 触发它的不是环境变量而是 `<userData>/journey/_fake.json`：走查一律走 Chromium 的
+ * `--user-data-dir`，这个文件因此**只可能落在走查自己那个目录里**，碰不到正式安装那份。
+ * 而且要求文件里逐字写着一句承认（`fake` 那个键），**踩不进来**。
+ *
+ * 它一开就到处吵：日志一行、`journey:state` 多一格 `fake`、页面上摆一句
+ * ——「这一页画的不是真的屏幕活动」。这一条比什么都要紧：这个功能的全部前提是可信，
+ * 一个**安静**的假数据源比没有这条路糟得多。
+ */
+const FAKE_OK = '我知道这不是真的屏幕活动'
+let fakeCapture = false
+
+function readFakeSource(userData: string): { src: CaptureSource; idleSec: number } | null {
+  let j: unknown
+  try {
+    j = JSON.parse(readFileSync(path.join(userData, 'journey', '_fake.json'), 'utf8'))
+  } catch { return null }                      // 没有这个文件 = 正常情况，不吵
+  const spec = j as Partial<FakeSpec> & { fake?: unknown; idleSec?: unknown }
+  if (spec?.fake !== FAKE_OK) {
+    remember(`[journey] journey/_fake.json 在，但里面没有那句承认（fake: "${FAKE_OK}"）——当它不存在\n`)
+    return null
+  }
+  if (!Array.isArray(spec.windows) || !spec.windows.length) {
+    remember('[journey] journey/_fake.json 里 windows 是空的——当它不存在\n')
+    return null
+  }
+  // **`idleSec` 也得一起假掉**（第 794 轮实拍）：走查是拿 CDP 驱的，一次真的键鼠
+  // 都没有，`powerMonitor.getSystemIdleTime()` 几分钟就过 `IDLE_SEC`，
+  // 于是每一 tick 都在「人离开了，先不记」那一行返回——段一条都攒不出来，
+  // 看起来像「按了开始记录却什么都没发生」。
+  return { src: fakeSource({ windows: spec.windows, hold: spec.hold, blind: spec.blind }),
+           idleSec: typeof spec.idleSec === 'number' ? spec.idleSec : 0 }
+}
+
 function setupJourney() {
+  const fake = readFakeSource(app.getPath('userData'))
+  fakeCapture = !!fake
+  if (fake) {
+    remember('[journey] **假采集源**：journey/_fake.json 在，这个实例记下来的不是真的屏幕活动，'
+             + `一张屏也不会拍（假的「多久没动过」= ${fake.idleSec} 秒）。删掉那个文件再重开才会真的记。\n`)
+  }
   journey = makeRecorder(app.getPath('userData'), remember,
-                         () => powerMonitor.getSystemIdleTime())
+                         fake ? () => fake.idleSec : () => powerMonitor.getSystemIdleTime(),
+                         fake?.src)
   journey.restore()                    // 上次是开着的就接着开——见 capture.ts 的 optIn
   setupJourneyIpc()
   refreshTray()
@@ -579,8 +628,15 @@ function setupJourney() {
   // 锁屏 / 睡眠自动暂停：屏保上没什么可记的，而且「离开座位时还在录」最让人不安
   // **只恢复自己按下去的暂停。** 用户按的「暂停到我再打开」/「暂停 1 小时」
   // 不因为一次锁屏解锁就被打开——那是他明确的动作（第 778 轮 / P20）。
-  const autoPause = () => { if (journey?.state() === 'running') { journey.pause(); autoPaused = true; refreshTray() } }
-  const autoResume = () => { if (autoPaused && journey?.state() === 'paused') { journey.resume(); autoPaused = false; refreshTray() } }
+  // 「该暂停 / 该恢复 / 什么都不做」那一下是 `onPowerEvent`（capture.ts 里的纯函数，
+  // 因为这四个事件在走查里摆不出来，得有一条闸守着）；这里只剩接线。
+  const onPower = (ev: 'lock' | 'unlock') => {
+    const what = onPowerEvent(ev, journey?.state() ?? 'off', autoPaused)
+    if (what === 'pause') { journey?.pause(); autoPaused = true; refreshTray() }
+    if (what === 'resume') { journey?.resume(); autoPaused = false; refreshTray() }
+  }
+  const autoPause = () => onPower('lock')
+  const autoResume = () => onPower('unlock')
   powerMonitor.on('lock-screen', autoPause)
   powerMonitor.on('suspend', autoPause)
   powerMonitor.on('unlock-screen', autoResume)
