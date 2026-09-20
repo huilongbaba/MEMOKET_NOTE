@@ -492,6 +492,65 @@ def _ALL_CJK(s: str) -> bool:
     return bool(s) and all("一" <= c <= "鿿" for c in s)
 
 
+def evidence_label(run: str) -> str:
+    """这一串**摆到用户眼前**时长什么样：剥掉两端的虚词 / 方位 / 日期后缀。
+
+    跟 `display_terms` 用的是同一把剪刀（`_EDGE_STOP`），也跟它同一条规矩：
+    **剥完合不出 ≥2 个字的就不显示**——调用方自己按 `len(...) < 2` 判。
+    这里**故意不回退到原串**：`kite_memory.recall_evidence` 原来那行
+    `label = term.strip(_EDGE_STOP) or term` 的 `or term` 就是 P40 问题 #4 的第二个坑——
+    「号上」（号 / 上 都在 `_EDGE_STOP` 里）剥空之后被原样退回，直接摆到了用户眼前。
+
+    英文 / 带数字的串**原样**：`_EDGE_STOP` 是一张汉字表，拿它去剥 `kol` / `3月15` 没有意义。
+    """
+    return run if run.isascii() else run.strip(_EDGE_STOP)
+
+
+def _word_bounds(text: str, segment) -> set[int]:
+    """`text` 切完词之后每个词边界的偏移（含 0 和 len）。"""
+    out = {0}
+    pos = 0
+    for t in segment(text):
+        pos += len(t)
+        out.add(pos)
+    return out
+
+
+def _aligned(label: str, squeezed: str, segment) -> bool | None:
+    """这一串**两端在不在查询的词边界上**（P41 尺子 C）。`None` = 这一层判不了。
+
+    落不上 = 它不是若干**整词**接起来的，是切在词中间的碎片：
+    「号上」（号 | 上线）✗、「可以实」（可以 | 实现）✗、「数据隐」（数据 | 隐私）✗；
+    「众筹页面」（众筹 | 页面）✓、「用户」✓、「比如」✓ —— **常用词不算碎片**。
+
+    **这把尺子量的是「碎」，不是「泛」，两件事别混**（P41 #2 量出来的）：
+    「一个实词都没盖住」（`content_chars == 0`）那把尺子会把 `用户` / `功能` / `算力`
+    这种**真词**也数进去——它们是被 `common` 判成「满库都是」才拿 0 分的。用这一把。
+
+    `None` 的三档，都按「不知道」处理（**不许当成碎片**，那是把话说死）：
+    · 没有分词器（`segment is None`：假的 memory / 建不出索引）——不启用就是原样；
+    · 不是纯汉字串——带数字的那一档 `_weigher` 自己就退回字数了（P32 专门量过、专门留下的），
+      拿分词去判它是量程用错；英文串本来就是整词切的，这一层不该再插一手；
+    · 在查询里定位不到（`evidence_runs` 的 `loose` 那一档）。
+
+    **同一串在查询里出现多次，只要有一次两端都在词边界上就算对齐**——判据宁可窄。
+    """
+    if segment is None or not _ALL_CJK(label):
+        return None
+    bounds = _word_bounds(squeezed, segment)
+    start = 0
+    seen = False
+    while True:
+        i = squeezed.find(label, start)
+        if i < 0:
+            break
+        seen = True
+        if i in bounds and (i + len(label)) in bounds:
+            return True
+        start = i + 1
+    return False if seen else None
+
+
 def evidence(hits: list[str], query: str, *, common=None, attested=None,
              segment=None) -> list[dict]:
     """每条**合格**证据串 + 它凭什么算证据。
@@ -502,14 +561,26 @@ def evidence(hits: list[str], query: str, *, common=None, attested=None,
 
     `why` 是给用户看的那句「为什么这个词算证据」的原料：
     `vocab` = 它是你知识库里的一个词条；`span` = 这么长的一段原话逐字对上；`pair` = 跟别的词一起命中。
+
+    `aligned` 是 P44 **多带的那一格**（跟 P37 #2 的 `VerifyOut`、P41 #1 的 `recalled` 同一条路子）：
+    这一串**剥掉两端虚词之后**（`evidence_label`）在不在查询的词边界上。
+    `False` = 它是跨词边界的碎片，**显示层别摆**；`None` = 这一层判不了。
+    **判的是摆出来的那一串，不是原始的 run**——拿 run 去判会把 `众筹后` → 「众筹」
+    这种剥完是真词的也判成碎片（P44 先量那一趟当场读出来的，64 条里有 6 条是这个形状）。
+
+    **这一格只给显示层看。`qualifies` 一个字不动**：证据够不够硬是另一个问题，
+    「这个词摆出来难看」不是「这条召回不该进来」——把它接进 `qualifies` 就是拿显示规则
+    去判死召回，那是最贵的那种错（P32 `evidence_runs` 的 `loose` 同理）。
     """
     runs = evidence_runs(hits, query)
     weigh = _weigher(query, segment, common)
+    squeezed = _WS.sub("", (query or "").lower())
     out: list[dict] = []
     for r in runs:
         if common is not None and common(r):
             continue
-        out.append({"term": r, "why": _why(r, attested, weigh)})
+        out.append({"term": r, "why": _why(r, attested, weigh),
+                    "aligned": _aligned(evidence_label(r), squeezed, segment)})
     return out
 
 
