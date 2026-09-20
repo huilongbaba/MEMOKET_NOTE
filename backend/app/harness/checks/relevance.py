@@ -78,6 +78,10 @@ BROAD_TOPIC_FACTS = 1000
 
 _EN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
 _NUM = re.compile(r"\d{2,}(?:[.,]\d+)?%?")
+# 月份自己就是一个词元（P57 #3）。`4 月 10 号` / `8月5号` / `2026年12月18号` 都认，
+# **前面紧挨着数字的不认**（`2026年` 里的 `26` 不是月份）。中文数字那一侧靠
+# 调用方注入的 `relations.cn_month_to_digits` 先换成阿拉伯数字。
+_MONTH = re.compile(r"(?<!\d)(\d{1,2})\s*月")
 _CJK = re.compile(r"[一-鿿]+")
 # 材料行的两种前缀：``[terrence-2046-2F3] 正文`` / ``[terrence-2046-2F3 的原话] - 2026-03-10｜user：正文``
 _HEAD = re.compile(r"^\[([A-Za-z0-9_\-]+)(?P<src> 的原话)?\]\s*(?:-\s*[\d-]+｜[^：:]{0,12}[：:]\s*)?")
@@ -119,10 +123,28 @@ _STOP_EN = {
 }
 
 
-def terms(text: str) -> set[str]:
-    """一段文字的特征词。"""
+def terms(text: str, *, normalize=None) -> set[str]:
+    """一段文字的特征词。
+
+    `normalize`（P57 #3）：**调用方注入**的一个 `str -> str`，在抽词元之前先过一遍。
+    生产那一侧传的是 `kb/relations.cn_month_to_digits`（`就八月` → `就8月`）。
+    为什么是注入而不是 import：这个模块在 `tests/test_layering.py` 的 `PURE` 名单里，
+    只许依赖标准库——而 P56 又明说「别在这儿再写一份数字归一」。同 P29 给
+    `relations.detect` 注 `common`、P32 给 `recall` 注 `qualifies` 的做法。
+
+    `N月` 单独算一个词元（`_MONTH`）：归一只走一半。`八月` 归一成 `8月` 之后，
+    `_CJK` 那个 run 只剩一个 `月` 字**连 2-gram 都出不来**，`_NUM` 又是 `\\d{2,}`
+    一位数的 `8` 也不算——不补这一条，归一救不回任何一条。
+    实测账在 `relations.cn_month_to_digits` 的 docstring 里（误剔 3 → 1，剔对的 29 条没动）。
+    """
+    if normalize is not None:
+        text = normalize(text or "")
     out = {w.lower() for w in _EN.findall(text or "")} - _STOP_EN
     out |= set(_NUM.findall(text or ""))
+    for m in _MONTH.finditer(text or ""):
+        n = int(m.group(1))
+        if 1 <= n <= 12:
+            out.add(f"{n}月")
     for run in _CJK.findall(text or ""):
         for i in range(len(run) - 1):
             g = run[i:i + 2]
@@ -160,8 +182,8 @@ def fact_key(fact: str) -> tuple[str, bool]:
     return m.group(1), bool(m.group("src"))
 
 
-def shared_terms(fact: str, context_terms: set[str]) -> int:
-    return len(terms(fact_body(fact)) & context_terms)
+def shared_terms(fact: str, context_terms: set[str], *, normalize=None) -> int:
+    return len(terms(fact_body(fact), normalize=normalize) & context_terms)
 
 
 def sampled_ids(calls) -> set[str]:
@@ -187,7 +209,7 @@ def _query_text(args) -> str:
                     if isinstance((args or {}).get(k), str)).strip()
 
 
-def queried_ids(calls) -> set[str]:
+def queried_ids(calls, *, normalize=None) -> set[str]:
     """按查询取回、却跟取回它的那句查询**零重合**的事实 id（P11）——来处说明它不是词法命中，
     是查询解析到的主题 / 实体桶按时间取的，跟 `filter_facts` 的抽样同一个形状。
     同一条事实被别的查询真命中过就不算。"""
@@ -196,12 +218,12 @@ def queried_ids(calls) -> set[str]:
     for name, args, result in calls or ():
         if name not in _QUERY_TOOLS:
             continue
-        qterms = terms(_query_text(args))
+        qterms = terms(_query_text(args), normalize=normalize)
         for line in (result or "").splitlines():
             fid, is_src = fact_key(line.strip())
             if not fid or is_src:
                 continue
-            if qterms and shared_terms(line, qterms) >= MIN_SHARED_TERMS:
+            if qterms and shared_terms(line, qterms, normalize=normalize) >= MIN_SHARED_TERMS:
                 hit.add(fid)
             else:
                 miss.add(fid)
@@ -237,7 +259,7 @@ MIN_KEPT = 3
 def gate(facts: list[str], calls, context: str, *,
          min_shared: int = MIN_SHARED_TERMS, min_kept: int | None = None,
          apply: bool = True,
-         refill=None) -> tuple[list[str], list[tuple[str, int]]]:
+         refill=None, normalize=None) -> tuple[list[str], list[tuple[str, int]]]:
     """材料分成 ``(留下的, [(剔掉的, 重合数)])``，顺序保持。
 
     只剔「从超大主题抽样回来（或按查询取回却跟查询零重合，P11）**且** 跟 `context`（标题 + 骨架 + 正文 + 查询）零重合」的；
@@ -252,9 +274,9 @@ def gate(facts: list[str], calls, context: str, *,
     只有 `refill` 没给、或者它也空手时，才退回 P8 那套「把刚剔掉的按重合度塞回来」——
     那是最后一道防线（P8b 实测第 1 轮空手 → `material_thin` 弃答，代价比材料脏大）。
     """
-    ctx = terms(strip_ids(context or ""))
+    ctx = terms(strip_ids(context or ""), normalize=normalize)
     # 两档来处（`sampled_ids` 抽样 + `queried_ids` 按查询取回却跟查询零重合），同一道筛
-    sampled = sampled_ids(calls) | queried_ids(calls)
+    sampled = sampled_ids(calls) | queried_ids(calls, normalize=normalize)
     if not ctx or not sampled:
         return list(facts), []
     facts = list(facts)
@@ -262,7 +284,7 @@ def gate(facts: list[str], calls, context: str, *,
     for f in facts:
         fid, is_src = fact_key(f)
         if fid and not is_src and fid in sampled:
-            scored[fid] = shared_terms(f, ctx)
+            scored[fid] = shared_terms(f, ctx, normalize=normalize)
     drop_ids = {fid for fid, n in scored.items() if n < min_shared}
     # 下限在调用时读模块常量（不是默认参数绑死的那份）——测试和突变验改的就是它
     if min_kept is None:
@@ -314,7 +336,7 @@ def gate(facts: list[str], calls, context: str, *,
         else:
             ok = True                                     # 多跳 / 兜底检索回来的不带 id：不动
         if not ok:
-            dropped.append((f, shared_terms(f, ctx)))
+            dropped.append((f, shared_terms(f, ctx, normalize=normalize)))
         if ok or not apply:
             kept.append(f)
     return kept, dropped

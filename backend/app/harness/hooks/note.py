@@ -30,6 +30,10 @@ from ..tailing import acceptable_tail, needs_tail
 from ..agent_loop import ToolTrace
 from ...database import store
 from ...database.retrieval import retrieve as _retrieve
+# P57 #3：中文数字月份的归一**复用 `kb/relations` 那一份**，不在 `relevance` 里再写一遍
+# （P56 留的话）。`relevance` 在 `tests/test_layering.PURE` 名单里只许依赖标准库，
+# 所以是**这一侧注入**过去的（同 P29 给 `relations.detect` 注 `common` 的做法）。
+from ...database.kb.relations import cn_month_to_digits as _cn_month
 from ..middleware import ledger as ledger_mw
 from .. import params
 from .. import tray as tray_mod
@@ -45,6 +49,78 @@ from ..state import State
 # stops being a plan and becomes a copy of the table of contents.
 MAX_OUTLINE_BEATS = 12
 
+
+def refill_facts(user: str, content: str, spine: str, beats: list[str], *,
+                 title: str = "", scope: str = "all", retrieve=None) -> list[str]:
+    """`relevance.gate` 剔到下限时**再检索一次**拿回来的那批材料（P28 #2③ / P57 #1）。
+
+    走的是这个文件里已经用过两次的那条零模型关键词检索（`trace.error` 兜底用的同一条）：
+    它按标题 / 骨架 / 正文的词去命中，**不是「从一个上千条的桶里按时间取 15 条」**——
+    而「抽样」正是 `relevance` 判无关的唯一来处，所以这批新材料按 gate 自己的判据
+    本来就一条都不该被剔。不花模型调用、几毫秒，失败了就返回空、由 `gate` 退回旧的兜底。
+
+    ## P57 #1：整句空手就**退回只用「标题 + spine」再问一次**
+
+    P56 把病因钉在播种那一层：`retrieve(anchor_first=True)` 拼的 query 是
+    `标题 + spine + beats[-3:] + 正文尾部 300 字`，而 `search.plan` 一共只拿
+    `CJK_GREPS = 4` 个中文 grep 词、`kite_memory._cjk_terms` 的轮转又是
+    「每个句段先给头三个字」——query 越长、句段越多，那 4 个名额越是被 harness
+    自己行文的句首碎片吃光（`看清分` / `推进成` / `就先缩`），一条都命中不了，
+    `seeds = 0`，`recall_clustered` 整条空。
+
+    P57 在 P53 那 5 跑的 **20 轮 × 8 种 query 组合**上重量了一遍
+    （`<scratch>/p57/seeds57.py`，两个数一起报：`seeds` 和走完 `recall_clustered`
+    之后的 `items`）。**空手轮数**（`items == 0`；分母 20 轮 / P56 表内 7 轮 / 撞下限 5 轮）：
+
+    | 组合 | 20 轮 | 表 7 | 下限 5 |
+    |---|---:|---:|---:|
+    | 今天这条 `标题+spine+beats+尾部` | 11 | 3 | 3 |
+    | `标题+spine+beats`（去尾部） | 19 | 6 | 5 |
+    | **`标题+spine`** | **6** | **3** | **2** |
+    | `标题+spine+尾部` | 12 | 4 | 3 |
+    | 只用标题 | **0** | 0 | 0 |
+    | 只用 spine | 6 | 3 | 2 |
+    | 只用 beats | 19 | 6 | 5 |
+    | 只用尾部 | 12 | 4 | 3 |
+
+    **「只用标题」那个 0/20 是假的赢，读一条就露馅**：这 5 篇的标题是 `未命名` / `hi`，
+    `未命名` 召回回来的是库里带「命名」的六句（`给他命名的规则` / `版本命名为一点儿零`…）
+    ——**是垃圾不是材料**。所以台阶上**没有**「只用标题」这一级。同理试过「短探针」
+    （spine / beats 逐句各查一次再并起来，`<scratch>/p57/probe57.py`）：`603dca` 确实
+    从 0 变成 9 条，可**逐条读下来只有 3 条沾边，其中 3 条正是那个 `未命名` 探针带进来的**
+    ——拿垃圾换覆盖率，不要。
+
+    **顺手更正 P56 一句**：P56 写的「同一篇只用标题 + spine 时 `seeds=6`」是
+    **`3a3a` 的数，不是 `603dca` 的**。实测 `603dca` 五轮 × 8 种组合**全部空手**，
+    根因在 `_cjk_terms` 挑词那一层（语料里 `中介` 7 条 / `报价` 16 条 / `成交` 14 条都在，
+    够不着而已），**不是 query 拼法能救的**——动那一层就是动 `recall` 全局
+    （四栏留下率 + 765 条全库对拍都挂在它上面），不在这一批里。
+
+    台阶只有两级，**第二级只在第一级一条都没拿回来时才问**（不是「拿得少就再问」——
+    判据宁可窄一点）：拿回来的只会多不会少，所以这一步不可能让产出变差。
+    实测（`<scratch>/p57/refill57.py`，同样 20 轮）：空手 **11/20 → 5/20**、
+    表内 7 轮 **3 → 2**、撞下限 5 轮 **3 → 2**，**一轮都没变少**。
+
+    `retrieve` 是给测试注入用的；生产走模块里那一份。
+    """
+    _r = retrieve or _retrieve
+
+    def _once(c: str, s: str, b: list[str]) -> list[str]:
+        try:
+            more, _ids, _took = _r(user, c, s, b, limit=6,
+                                   title=title, anchor_first=True, scope=scope)
+            return list(more)
+        except Exception:                                    # noqa: BLE001
+            return []                                        # 取材料不承重
+
+    got = _once(content, spine, beats)
+    if got:
+        return got
+    # 第二级：正文尾部和 beats 都不要了，只剩「标题 + spine」这两个稳定锚点。
+    # `retrieve` 的 query 是 `[title, spine, " ".join(beats[-3:]), content[-300:]]`
+    # 里非空的那几段拼起来 —— 所以 `beats=[]` + `content=""` 拼出来的正是「标题 + spine」
+    # （末尾会多一个空段，`search.clean_query` 之后逐字相同，`refill57.py` 单独核过）。
+    return _once("", spine, [])
 
 
 class NoteHooks:
@@ -300,25 +376,13 @@ class NoteHooks:
                              relevance.queries_of(trace.calls)])
 
         def _refill() -> list[str]:
-            """剔到下限了 —— **再检索一次**，不是把刚判过的抽样行塞回来（P28 #2③）。
-
-            走的是这个文件里已经用过两次的那条零模型关键词检索（`trace.error` 兜底
-            用的同一条）：它按标题 / 骨架 / 正文的词去命中，**不是「从一个上千条的桶里
-            按时间取 15 条」**——而「抽样」正是 `relevance` 判无关的唯一来处，
-            所以这批新材料按 gate 自己的判据本来就一条都不该被剔。
-            不花模型调用、几毫秒，失败了就返回空、由 `gate` 退回旧的兜底。
-            """
-            try:
-                more, _ids, _took = _retrieve(
-                    st.ctx.user, st.content, spine, beats, limit=6,
-                    title=title, anchor_first=True, scope=st.ctx.scope)
-                return list(more)
-            except Exception:                                # noqa: BLE001
-                return []                                    # 取材料不承重
+            """剔到下限了 —— 再检索一次（P28 #2③）。台阶和账在 `refill_facts` 里。"""
+            return refill_facts(st.ctx.user, st.content, spine, beats,
+                                title=title, scope=st.ctx.scope)
 
         facts, dropped = relevance.gate(facts, trace.calls, context,
                                         apply=params.RELEVANCE_FILTER,
-                                        refill=_refill)
+                                        refill=_refill, normalize=_cn_month)
         st.bag["facts_irrelevant"] = dropped
         st.bag["facts_irrelevant_dropped"] = bool(params.RELEVANCE_FILTER)
         st.bag["facts_irrelevant_total"] = int(st.bag.get("facts_irrelevant_total") or 0) + len(dropped)

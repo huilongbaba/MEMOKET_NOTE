@@ -333,13 +333,18 @@ def test_再检索也空手时才退回旧的兜底():
 
 
 def test_只记不剔那一档一个字都没变():
-    """**开关照旧默认关**（P8b 的教训 + 要等 `harness_edits` 的「用户留没留」）。
-    `apply=False` 时 `refill` 一次都不许被调用——只记不剔那一档不该花任何检索。
+    """`apply=False` 时 `refill` 一次都不许被调用——只记不剔那一档不该花任何检索。
 
     量程：把 `gate` 里的 `if apply and drop_ids:` 放宽成 `if drop_ids:`
-    （= 把 refill 那段挪到 `if apply` 外面），这条红。"""
-    from app.harness import params
-    assert params.RELEVANCE_FILTER is False, "这一批不许把开关打开"
+    （= 把 refill 那段挪到 `if apply` 外面），这条红。
+
+    **P57 拿掉了这条里 `params.RELEVANCE_FILTER is False` 那一行，理由写在这儿**：
+    P28 那一批加它是为了钉住「这一批不许把开关打开」，钉的是**那一批的纪律**，
+    不是 `gate` 这个纯函数的性质。P57 把默认改成开（判据和三列对照在
+    `params.RELEVANCE_FILTER` 的注释 + `TRACELOG-product.md` P57 节），
+    默认值那一格由 `test_p57::test_2_默认值在这一批里是什么_由台账那一节负责解释` 一条管着，
+    **一个事实只钉一处**——留两处，改默认值时总有一处忘了改。
+    这条剩下的部分（`apply=False` 一条不剔、`refill` 一次不调）是 `gate` 自己的性质，一个字没动。"""
     called = []
     facts, calls = _sampled(3, ["EVT 4 台主机", "T0 5 月 15", "对，好理解，"])
     kept, dropped = relevance.gate(facts, calls, _CTX, apply=False,
@@ -352,12 +357,22 @@ def test_prepare里真的把refill接上了():
     """**建了判据不等于用了判据**（§21）：上面那几条测的是 `gate` 这个纯函数，
     生产那一侧有没有把 `refill` 传进去，它们一个字都没在查。
 
-    量程：把 `hooks/note.prepare` 里 `refill=_refill` 那个实参删掉，这条红。"""
+    量程：把 `hooks/note.prepare` 里 `refill=_refill` 那个实参删掉，这条红。
+
+    **P57 #1 改了第二条断言，理由写在这儿**：那条原来是
+    `"_retrieve(" in src.split("def _refill")[1]` —— 它钉的是「`_refill` 这个闭包体里
+    有没有那个函数名」。P57 把台阶（第一级空手就退回「标题 + spine」再问一次）
+    挪成模块级的 `note.refill_facts`，闭包只剩一句转调，那条断言就只是在查
+    「有没有搬过家」，**不再是在查「它真去检索了没有」**。
+    换成两条更贴着性质的：闭包转调的是那个函数、而那个函数体里真有 `retrieve`。
+    行为那一半由 `test_p57` 拿注入的假 `retrieve` 单独钉（那才是「真去检索一次」的可判形式）。"""
     from app.harness.hooks import note as note_hooks
     src = inspect.getsource(note_hooks.NoteHooks.prepare)
     assert "refill=_refill" in src, "gate 的第三条前置没接到生产那条线上"
-    assert "_retrieve(" in src.split("def _refill")[1].split("return facts")[0], \
-        "_refill 得真去检索一次，不能返回一个空列表充数"
+    assert "refill_facts(" in src.split("def _refill")[1].split("return facts")[0], \
+        "_refill 得转调 note.refill_facts，不能返回一个空列表充数"
+    assert "retrieve(" in inspect.getsource(note_hooks.refill_facts), \
+        "refill_facts 得真去检索一次"
 
 
 # ================================ 3. after_judge 那条 complete → continue 压制（P28 #3）

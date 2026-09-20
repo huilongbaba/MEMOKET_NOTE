@@ -125,9 +125,13 @@ def test_5_特征词_样机容量时间线不再被单字虚词吃掉():
 
 def test_5_退回_默认只记不剔_开着也剔不到三条以下():
     """P8 退回：`apply=False` 第二项照样列出「本该剔的」，第一项是原样的材料；`apply=True` 时留下的
-    材料条不能少于 `MIN_KEPT`（3a3a 实拍 12 条全剔 → 弃答），候选按重合度从高到低补回来。"""
-    from app.harness import params
-    assert params.RELEVANCE_FILTER is False, "默认必须关（计划铁律第 7 条：让产出变差的退回去）"
+    材料条不能少于 `MIN_KEPT`（3a3a 实拍 12 条全剔 → 弃答），候选按重合度从高到低补回来。
+
+    **P57 拿掉了 `params.RELEVANCE_FILTER is False` 那一行，理由写在这儿**：它钉的是
+    P8b 那次退回的**决定**，不是 `gate` 这个纯函数的性质；而 P57 已经把那个决定改了
+    （P56 诊断出卡点是 `refill` 的播种、P57 修掉之后重量，判据 + 真跑三列在
+    `params.RELEVANCE_FILTER` 的注释里）。默认值只由 `test_p57` 那一条管——一个事实只钉一处。
+    这条其余的断言（只记不剔、下限、按重合度补回来）是 `gate` 自己的性质，一个字没动。"""
     calls = [("filter_facts", {"topic": "work_product_design", "limit": 15}, BROAD)]
     kept, dropped = R.gate(_lines(BROAD), calls, NOTE_3A3A, apply=False)
     assert kept == _lines(BROAD), "只记不剔：材料原样"
@@ -169,10 +173,16 @@ def _prep_broad(monkeypatch):
 
 
 def test_5_prepare接上了筛_默认只记_开关打开才剔(monkeypatch):
-    """`hooks/note.prepare` 真的调了它：默认（开关关）材料原样、bag 里记着「本该剔的」；
-    开关打开（`params.RELEVANCE_FILTER`）才从返回给循环的材料里拿掉，而且剔不到 3 条以下。"""
+    """`hooks/note.prepare` 真的调了它：**关着**材料原样、bag 里记着「本该剔的」；
+    **开着**才从返回给循环的材料里拿掉，而且剔不到 3 条以下。
+
+    **P57 改了一处：两档都由 `monkeypatch` 明确设成 `False` / `True`，不再让第一档
+    「跟着默认值走」。** 理由：P57 把默认改成开，这条原来靠默认值提供第一档，
+    默认一翻它就红——而它真正要钉的是「`prepare` 两档都接对了」，跟默认值是哪一档无关。
+    **一条闸不该因为别处改了个默认值就红**（那是把两件事绑在一起）。"""
     from app.harness.hooks.note import NoteHooks
     mod = _prep_broad(monkeypatch)
+    monkeypatch.setattr(mod.params, "RELEVANCE_FILTER", False)
     st = _st(NOTE_3A3A)
     st.bag["spine"], st.bag["beats"] = "", []
     facts, _trace = asyncio.run(NoteHooks(polish=False).prepare(st))

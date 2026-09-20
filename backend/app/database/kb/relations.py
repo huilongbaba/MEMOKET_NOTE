@@ -127,12 +127,34 @@ def cn_to_int(s: str) -> int | None:
     return total + cur
 
 
-def _cn_numerals_to_digits(text: str) -> str:
-    """把「六月末」「三百台」换成「6月末」「300台」，其余原样。只在抽量 / 日期前用，不改用户正文。"""
+def cn_month_to_digits(text: str) -> str:
+    """只做月份那一半：「六月末」→「6月末」、「五月到六月」→「5月到6月」。其余原样。
+
+    **公开出来是给 `harness/checks/relevance` 用的**（P57 #3）。那边判「材料跟这篇
+    零重合」时，`就八月` 对不上正文里的 `8月`，三条误剔全是这个形状；
+    P56 留话「别在 `relevance` 里再写一份数字归一」——这就是被复用的那一份。
+    但 `relevance` 在 `tests/test_layering.py` 的 `PURE` 名单里（只许依赖标准库），
+    **不能 import 这个模块**，所以走的是「调用方注入」（`hooks/note.py` 传进去，
+    同 P29 给 `relations.detect` 注 `common`、P32 给 `recall` 注 `qualifies` 那两档的做法）。
+
+    **为什么只给月份、不给带硬单位的量那一半**：`relevance.terms()` 的中文那一路是
+    2-gram，`三台` 归一成 `3台` 之后 `3` 一位数不算 `_NUM`（那个正则是 `\\d{2,}`）、
+    `台` 一个字凑不出 2-gram —— 原来那个 `三台` 词元**白丢**。
+    实测（`<scratch>/p57/month57.py`，P53 那 5 跑上 P56 逐条读过的那 32 条剔除）：
+    「只归一不加月份词元」救回 **0** 条；「只加月份词元不归一」救回 1 条；
+    两半一起才救回 2 条（误剔 3 → 1，剔对的 29 条**一条都没被顺手救回来**）；
+    而「整个 `_cn_numerals_to_digits`（月份 + 量）+ 月份词元」跟只做月份**逐格相同**——
+    量那一半在这条路上一分钱都没买到，所以不给。
+    """
     def _m(m):
         n = cn_to_int(m.group(1))
         return f"{n}月" if n and 1 <= n <= 12 else m.group(0)
-    text = _CN_MONTH.sub(_m, text)
+    return _CN_MONTH.sub(_m, text or "")
+
+
+def _cn_numerals_to_digits(text: str) -> str:
+    """把「六月末」「三百台」换成「6月末」「300台」，其余原样。只在抽量 / 日期前用，不改用户正文。"""
+    text = cn_month_to_digits(text)
 
     def _q(m):
         n = cn_to_int(m.group(1))
