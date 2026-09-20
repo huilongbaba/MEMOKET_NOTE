@@ -87,3 +87,26 @@ export function checkLabel(check?: string): string {
   if (!check) return '代码判据'
   return CHECKS[check] ?? check
 }
+
+/**
+ * 「同一条判据连响几轮、停下了」那句话后面该不该再补一句**下一步**（P40 · B #2）。
+ *
+ * **这条修的是什么。** 走查实拍（`p40-B-harness-streamjson-light`）：模型每一轮都吐整串 JSON，
+ * 判据每一轮都拦住（正文一个字没进，**对的**），跑了 3 轮之后收工那行写的是
+ * 「『整段答成了一串 JSON』这条判据连响 3 轮都没解决，停下留了最好的那轮 · 3 轮 · 正文没有改动」。
+ * 用户等了几十秒、一个字没拿到，而这句话是**判据的黑话**：它没说这是模型的毛病（不是他写的内容
+ * 有问题），也没说下一步做什么。P37 给 `/verify`、`/trace`、`/expand` 三条都写了那么一句
+ * （「换个模型，或者再试一次」），**收工这一句当时漏了**。
+ *
+ * **判据宁可窄：只认这一条。** 别的判据（完成标准、引用覆盖、节拍…）连响几轮说的是
+ * **内容**还没写到位，下一步是「你自己看一眼」，不是「换个模型」——给它们套同一句话就是指错地方。
+ */
+const STUCK_TAIL: Record<string, string> = {
+  output_not_json:
+    '。模型每一轮答的都是一串 JSON，不是能写进正文的内容——不是你写的内容有问题。换个模型，或者再跑一次',
+}
+
+/** 收工那句话后面那半句（没有就回空串）。 */
+export function stuckTail(check?: string): string {
+  return (check && STUCK_TAIL[check]) || ''
+}

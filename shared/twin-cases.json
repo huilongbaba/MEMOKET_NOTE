@@ -1,0 +1,46 @@
+{
+  "why": [
+    "P40 扫「同一条判据前后端各写一遍」的时候扫出来的其余三处——它们都在注释里写着",
+    "「跟前端/后端同一份」，而**谁都没有闸盯着**（引用正则 / 查询清洗 / 分页 / 字数 / 首行 /",
+    "说话人标签 / 空档阈值 那几处已经有 `check-*-parity` 起一个 python 子进程当场对拍，这三处没有）：",
+    "  ① 记忆范围的标签   frontend/src/api.SCOPE_LABEL        ↔ backend/app/database/kb/scope.SCOPE_LABEL",
+    "  ② 占位标题那一组   frontend/src/util/displayTitle.PLACEHOLDER ↔ backend/app/harness/tray.PLACEHOLDER_TITLES",
+    "  ③ 空行分段         frontend/src/editor/marginMemory.paragraphsWithLines ↔ backend/app/harness/checks/skeleton._paragraphs",
+    "③ 尤其要紧：段落文本拿去查关系、**行号回来画页边圆点**——两边切得不一样，点就画在别的段上。"
+  ],
+  "runs": [
+    "frontend/scripts/check-twin-parity.mts  （接在 npm test 里）",
+    "backend/tests/test_twin_parity.py       （接在 pytest 里）"
+  ],
+
+  "scope_label": {
+    "all": "全部（不含屏幕）",
+    "notes": "只看笔记",
+    "meetings": "只看会议记录",
+    "imports": "只看导入的",
+    "screen": "只看屏幕活动"
+  },
+
+  "placeholder_titles": ["", "未命名", "Untitled", "note"],
+
+  "paragraphs_min_cases": 8,
+  "paragraphs": [
+    { "name": "两段中间一个空行", "content": "第一段\n第二行\n\n第二段\n",
+      "expect": [{ "line": 1, "text": "第一段\n第二行" }, { "line": 4, "text": "第二段" }] },
+    { "name": "标题也算一段", "content": "# 标题\n\n正文",
+      "expect": [{ "line": 1, "text": "# 标题" }, { "line": 3, "text": "正文" }] },
+    { "name": "连着几个空行只算一个分隔", "content": "一\n\n\n\n二",
+      "expect": [{ "line": 1, "text": "一" }, { "line": 5, "text": "二" }] },
+    { "name": "开头就是空行（行号不能错位）", "content": "\n\n正文",
+      "expect": [{ "line": 3, "text": "正文" }] },
+    { "name": "只有空白的行当空行", "content": "一\n   \n二",
+      "expect": [{ "line": 1, "text": "一" }, { "line": 3, "text": "二" }] },
+    { "name": "行尾空格留着（文本不许被 trim）", "content": "一  \n二",
+      "expect": [{ "line": 1, "text": "一  \n二" }] },
+    { "name": "整篇是空的", "content": "", "expect": [] },
+    { "name": "整篇只有空白", "content": "  \n\t\n", "expect": [] },
+    { "name": "末尾没有换行", "content": "一\n\n二", "expect": [{ "line": 1, "text": "一" }, { "line": 3, "text": "二" }] },
+    { "name": "表格是一整段", "content": "| a | b |\n|---|---|\n| 1 | 2 |\n\n后面",
+      "expect": [{ "line": 1, "text": "| a | b |\n|---|---|\n| 1 | 2 |" }, { "line": 5, "text": "后面" }] }
+  ]
+}

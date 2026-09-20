@@ -44,36 +44,53 @@ from .pick import pick_dimension
 
 # 段落之间的分隔：一个空行及以上。
 _PARA_SPLIT = re.compile(r"\n{2,}")
-_FENCE_HEAD = re.compile(r"^```[A-Za-z0-9_-]*\s*\n")
 
 
 def _unfence(text: str) -> str:
     """剥掉整段外面的代码围栏（模型爱把产出裹一层 ```），**只用来判形状**，不改落进正文的字。
 
     跟 `frontend/src/editor/blockShape.unfence` 是同一条，逐行对着写的。
+
+    P40 的对拍表（`shared/shape-cases.json`）把这句话核了一遍，**核出来它不是真的**：
+    原来这里拿 `^```[A-Za-z0-9_-]*\\s*\\n` 去认围栏那一行，而前端认的是「第一个换行之前
+    都算围栏那一行」。于是 ``` ```json extra ```、``` ``` json ```（中间有空格）、
+    ``` ```json title=x ``` 这三种，前端剥得掉、后端剥不掉——**同一串 JSON，`/` 那条路拦得住，
+    智能续写那条路原样落进正文**。改回逐字同一条：第一个换行之前的都不要，末尾那三个反引号之后
+    的也不要。判据没有变宽——`json.loads` 那一关还在，剥出来不是 JSON 照样放行。
     """
     s = (text or "").strip()
     if not s.startswith("```"):
         return s
-    m = _FENCE_HEAD.match(s)
-    if not m:
+    i = s.find("\n")
+    if i < 0:
         return s
-    inner = s[m.end():]
+    inner = s[i + 1:]
     j = inner.rfind("```")
     return (inner if j < 0 else inner[:j]).strip()
+
+
+def _no_json_constant(token: str):      # noqa: ANN202 — 只为了抛
+    """`NaN` / `Infinity` / `-Infinity` 一律当 parse 失败。
+
+    P40 的对拍表核出来的第二处：Python 的 `json.loads` **默认收**这三个字面量，
+    而前端的 `JSON.parse` 不收（它们不在 JSON 规范里）。于是 `{"a": NaN}` 后端算 JSON、
+    前端不算。两边只能留一条，取**窄**的那条（§21「判据宁可窄」）：按 `JSON.parse` 算。
+    """
+    raise ValueError(token)
 
 
 def looks_like_json(text: str) -> bool:
     """整段是不是一个 JSON 对象 / 数组。**要真能 parse**。
 
-    `frontend/src/editor/blockShape.looksLikeJson` 的 Python 孪生——两边逐字同一条判据，
-    `tests/test_p37.py` 里有一条闸拿同一组样本对着钉。
+    `frontend/src/editor/blockShape.looksLikeJson` 的 Python 孪生——两边逐字同一条判据。
+    判据只留一份：`shared/shape-cases.json`，`tests/test_shape_parity.py` 跑这边、
+    `frontend/scripts/check-shape-parity.mts` 跑那边（P40 · A）。
     """
     s = _unfence(text)
     if not ((s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]"))):
         return False
     try:
-        v = json.loads(s)
+        v = json.loads(s, parse_constant=_no_json_constant)
     except (ValueError, TypeError):
         return False
     return isinstance(v, (dict, list))
@@ -95,12 +112,36 @@ def json_paragraphs(content: str, before: str = "") -> list[str]:
 
 
 def drop_json_paragraphs(content: str, before: str = "") -> str:
-    """把那几段摘掉，顺手把留下的空行压平。纯函数——`Verdict.fix` 的契约。"""
+    """把那几段摘掉，**别的一个字节都不动**。纯函数——`Verdict.fix` 的契约。
+
+    P40 · B 实拍出来的：原来这里是 ``re.sub(r"\\n{3,}", "\\n\\n", "\\n\\n".join(keep).strip())``
+    ——它**把整篇的空行重排了一遍**：用户笔记里三个以上连着的空行被压成一个，首尾的空白被
+    ``strip()`` 吃掉。而这个函数的文档写着「开跑前正文里就有的段落一个字不动」，
+    **那句话对段落成立，对段落之间不成立**。实拍的症状是收工那行写着「-1 字」：
+    这一轮一个字都没落进正文，界面却报正文少了一个字（那是用户原本结尾的那个换行）。
+
+    改法：每一段跟着**它前面**那个分隔一起走。摘掉一段 = 摘掉它自己和它前面那个空行，
+    留下的段之间的空行原样保留。第一段前面本来就没有分隔，所以开头也不会多出空行。
+
+    还差一个换行的那一种（**追加在末尾**：用户原来的正文以一个换行结尾，那个换行和新写
+    那段前面的换行合成了一个 ``\\n\\n`` 分隔，从字符串上分不开）——最后那一手补上：
+    留下来的字**正好是开跑前那版的一个前缀**、差的只是尾部空白时，直接把开跑前那版原样还回去。
+    这一趟等于「这一轮什么都没写进来」，正文就该**一个字节都不差**（实拍的症状是收工那行
+    写着「-1 字」：一个字都没落进正文，界面却报正文少了一个字）。
+    """
     bad = set(json_paragraphs(content, before))
     if not bad:
         return content
-    keep = [p for p in _PARA_SPLIT.split(content or "") if p.strip() not in bad]
-    return re.sub(r"\n{3,}", "\n\n", "\n\n".join(keep).strip())
+    parts = _PARA_SPLIT.split(content or "")
+    seps = [""] + _PARA_SPLIT.findall(content or "")     # 每段**前面**那个分隔
+    kept = [(s, p) for s, p in zip(seps, parts) if p.strip() not in bad]
+    if not kept:
+        return ""
+    out = kept[0][1] + "".join(s + p for s, p in kept[1:])
+    # 这一轮写的全被摘光了 → 还原成开跑前那一版，一个字节不差。
+    if before and before.startswith(out) and not before[len(out):].strip():
+        return before
+    return out
 
 
 def output_not_json(st: State) -> Verdict | None:

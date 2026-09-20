@@ -54,7 +54,9 @@ def block_precondition(mode: str, prompt: str, selection: str) -> str:
     """开跑前规则能判死的：返回给用户看的那句话，空串 = 放行。纯函数，前端有同款。"""
     p = (prompt or "").strip()
     if mode in PROMPT_REQUIRED and not p:
-        return ("先写一句要它做什么" if mode != "custom"
+        # 句号是前端那句的一部分（`slashMenu.blockPrecondition`）。原来这边少一个句号——
+        # 同一件事两句话，看用户被哪一层拦下（P40 · A，`shared/precondition-cases.json` 对出来的）。
+        return ("先写一句要它做什么。" if mode != "custom"
                 else "先写一句要对选中的这段做什么——什么都不写，它不知道该改成什么样。")
     if mode == "custom" and not (selection or "").strip():
         return "没有选中任何文字——先选一段，再右键「自定义提示」。"
