@@ -1964,6 +1964,65 @@ P62 留给下一批：① advisory / judge_floor 在**壳上**那一格（差的
 （那 8 颗里有 2 颗今天还不知道落在哪一档）；④ P59 留的第 2 / 3 条（都在
 `modes.py` / `middleware/checks.py`，得跟那一侧错开）；⑤ `selfcheck-selectors.mjs` 该进哪条链。
 
+
+### P64（第 779 轮）：advisory / judge_floor 摆到壳上 + 锁屏接到产品 + 第十一次走查
+
+> **这一批一行产品代码都没改**：收工 `git status --porcelain` 只有三个软链
+> （`backend/.venv` / `frontend/node_modules` / `desktop/node_modules`），
+> `desktop/src` / `frontend/src` / `backend/app` 干净。改的全在量具和三份文档上。
+> `backend/scripts/**` 和 `kb/**` **一个字节没碰**（另一个 agent 的射程）。
+> 安全：真库只读做指纹，开工 = 收工 **482 / 2026-09-16T02:53:27 / 321250 /
+> `47dcc54be60aa4f2` / `note_revisions` 44**；`llm_usage` 最大 id **5738** 不动，
+> **真模型 0 次调用 / 0 token**；`KITE_DATA_DIR=<scratch>/p64data`
+> （整拷，核过 `codebook.xml` 11,429,185 / `403a1183`，**源和目标各核一遍**）；
+> `~/Library/Application Support` mtime 开工 = 收工 **09-20 00:57**（只被只读过一次）。
+> 截图 **73 张** `p64-*.png`。
+
+| 条 | 结论 |
+|---|---|
+| **A · advisory / judge_floor 在壳上** | **摆出来了。** 差的那一步跟形状无关：`citations_present` 第一行 `if ... not st.facts: return None` —— **手上没材料，那一档连看都不会被看一眼**，而没材料又让 `material_used_up` 第 2 轮收工。根因是假端点**从来没回过 `tool_calls`**。让它每轮回一个**不同的** `search_memory`（事实文本仍由真知识库给）之后：一跑 3 轮，**advisory 3 条 · judge_floor 3 条 · 短路（反例）2 条**，同一屏上三档措辞各不相同。judge_floor 走的正是 P22 那个形状（不同判据轮流把打分饿死） |
+| **B · 锁屏接到产品** | **摆出来了**（P20 #6，四批挂着）。**先做正向对照**：`running` + lock → `paused`（证明这个实例里监听是活的）、unlock → `running`。**再摆那一格**：用户自己按「暂停 1 小时」→ `paused` + `until>0` → 发 unlock → **还是 `paused`，`until` 一秒没动**；再来一轮锁 + 解锁，照旧。界面钮变「继续记录」、那句话是「已暂停 —— 到 22:41 自己继续。」。**系统设置一个字没动、屏幕一下都没暗** |
+| **C · 第十一次走查** | 十一步 × 两个身份全走完。**P61 换量程之后的召回在界面上**：「号上」那个不是词的词**不在了**（整块搜 0 次），`evt` / `pcba` 这类词条进得了「拿给用户看的那一列」并各自挂着分档和库里条数。**P62 ③ 历史坏数据提示第一次在壳上摆出来**（造的那一天说「有 2 段…多出约 2 小时」，真数据的 09-19 说「有 3 段…2 小时 22 分钟」——**P62 引的「合计 20 小时 42 分钟」逐字就是它**；现造的干净那一天**一个字没说**）。**P62 修的量具三条这一批真用上了**（`identity.json` / codebook 字节数 / 摊开 `<details>`） |
+| **台账更正** | P52 / P58 / P60 三批的「圆点 **8** 个」——**那 8 个里有 6 个是右栏图例的色块**，页边真正的圆点一直只有 **2** 个（冲突 1 / 缺依据 1）。P62 猜的「另外 2 颗落在两个空档里」**不对**。P62 留的 ③ 就此结案 |
+
+问题清单 6 条（**产品的只有 1 条**）：① 收工那行写「+1060 字」而正文实际只多了 740
+（`ship_best` 回退过的跑，计数没跟着退；跟 P40 问题 #3 同形，**先量再改**）；
+② 空库第一篇 `d.noteId()` 回 `null`——**没核清楚是量具还是产品，写「没核」**；
+③④⑥ 三条量具（`b2old` 没摊 `<details>`、我自己新写的 `.journey-day-opt` 不存在、
+`b3old` 的「一键全删」文案过时），③④ 这一批改了；⑤ 见上面台账更正。
+
+闸：后端 `pytest -q` **2943**（基线原样，不碰后端；没有只读库拷贝时是 2939 passed / 4 skipped）；
+前端 `npm test` **91 文件 / 803 条**（基线原样，不碰前端）。
+`selfcheck-selectors.mjs` 开工 24/42/0、收工 29/42/0（**中途当场点名了这一批新写的一个**）。
+**突变验 9 刀 9 刀按预期红，红的都是该红的那条**——其中三次「第一趟没红」都是真收获：
+第 ⑦ 刀**反例没落在被测分支里**（`copy_corpus` 有两道核，只砍了一道）、
+第 ⑤ 刀**刀压根没进解释器**（字节数一样 + mtime 同秒 → 拿旧 `.pyc` 跑的，
+scratch 的 `__pycache__` 没清）、
+第 ⑨ 刀顺手把 P62 那句「日级比值救不了」在壳上量了出来（日级 1.109，那句提示整个消失）。
+
+> ⚠️ **收尾命令的环境注解**（第 776 轮那条规矩）：
+> · 后端 `pytest -q` 在 **worktree 的 `backend/`** 下跑，`.venv` 软链到主仓；
+>   `backend/data/notes.sqlite3` 是**这个 worktree 里的只读拷贝**（`.gitignore:14` 挡着）。
+> · 前端 `npm test` 在 **worktree 的 `frontend/`** 下跑；`node_modules` 同样软链。
+>   忽略规则匹配不到软链，所以**提交逐路径 `git add`，绝不 `git add -A`**。
+> · `<scratch>/p64/mutate64.py` / `mutate64_shell.py` **会改 worktree 里的源文件并重打 asar**
+>   （每刀整文件写回 + 逐字节核）——**只在本 worktree 跑**。
+> · **`<scratch>/p64/postnote` 会往整台机器发分布式通知**
+>   （`com.apple.screenIsLocked` / `…Unlocked`，这一批一共 **16 条**），
+>   **别的在监听的 app 也会收到**。跑之前心里有数，别在用户正干活的时候随手发。
+> · `backend/scripts/journey_fixture.py --variant full` 会**只读**
+>   `~/Library/Application Support/memoket-note-desktop/journey`（它自己有 `guard_dest` 拦着写）。
+> · 唯一对着真库的动作：开收工各一次 `db_guard.fingerprint`（`mode=ro`）、
+>   一次 `cp -R backend/data`、两次 `sqlite3.backup` 只读拷贝。
+>   **没有任何一条收尾命令写真库。**
+
+P64 留给下一批：① 收工那行的字数口径（问题 #1，**先量**有多少跑会 `ship_best` 回退）；
+② 空库第一篇的 active-note 那一格（问题 #2，**没核**）；
+③ 还在用老读法的步骤脚本（`b3old` 的文案等）——**公共那份改了得回去点名**；
+④ `selfcheck-selectors.mjs` 该进哪条链（它这一批抓到了新写的过时选择器，值得自动化）；
+⑤ P59 留的第 2 / 3 条（在 `modes.py` / `middleware/checks.py`，跟那一侧错开）；
+⑥ 量具进仓库（另一个 agent 这一批正在做）。
+
 ## 4. 不做
 
 - 不再写新的调研文档（§1.4）。
