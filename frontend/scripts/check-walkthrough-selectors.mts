@@ -131,3 +131,43 @@ if (seen.size < MIN_CLASSES) {
 console.log(`\n扫了 ${files.length} 个量具文件 / ${seen.size} 个类名 / ${wilds} 处通配；对不上 ${bad} 个`)
 if (bad) process.exit(1)
 console.log('OK: 量具里选的每一个类名在 frontend/src 里都真的有')
+
+// ── 第二件事：**身份别写死**（P68 B）───────────────────────────────────────
+//
+// 「选不到 ≠ 没有」的第四张脸是**默认参数**（P66 立）：`d.noteId()` 原来默认
+// `user = 'terrence'`，身份不是 terrence 的那一趟静默读了**另一个人**的那一格，
+// `localStorage.getItem` 读不到回 `null` —— 跟「产品压根没写」长得一模一样，
+// P64 问题 #2 在台账上躺了两批。类名那条闸看不见这一类：它选的东西没错，
+// 错的是**参数**。所以这里单独钉两条：
+//   ① 驱动里不许再出现写死的身份默认值；
+//   ② 它读身份的那两步跟 `src/api.ts` 的 `getUser()` **是同一把尺子**
+//      （同一个 `localStorage` 键 + `?user=` 优先）——键名飘了就是静默读空。
+/** 注释里写着不算数 —— **这一条是突变验第 ⑤ 刀当场抓出来的**：把代码里的键换掉、
+ *  文档注释里那一份还在，整份文件 `includes` 照样命中，闸一声不吭。
+ *  跟 `check-css-classes.mts` 顶上记的「注释」/「`url()`」是同一个形状，第四次。
+ *  只摘**整行**的 `//` 和 `/* *\/` 块（不碰行尾，免得把 `http://…` 里的串一起切掉）。 */
+function code(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n')
+}
+
+const drv = code(readFileSync(path.join(FE, 'scripts/walkthrough/cdp.mjs'), 'utf8'))
+const apiSrc = readFileSync(path.join(FE, 'src/api.ts'), 'utf8')
+const idBad: string[] = []
+if (/async noteId\(\s*\w+\s*=/.test(drv)) {
+  idBad.push('cdp.mjs 的 noteId() 又有默认身份了 —— 那是 P64 问题 #2 那次静默读错一个键的根因')
+}
+const USER_KEY = (apiSrc.match(/const USER_KEY = '([^']+)'/) ?? [])[1]
+if (!USER_KEY) {
+  idBad.push("在 src/api.ts 里找不到 USER_KEY —— 这条闸失去了对照物（别让它静默变绿）")
+} else if (!drv.includes(`'${USER_KEY}'`)) {
+  idBad.push(`cdp.mjs 没按 api.getUser() 那个键（'${USER_KEY}'）读身份 —— 两把尺子就是静默读空`)
+}
+if (!/getUser\(\)/.test(apiSrc) || !/location\.search\)\.get\('user'\)/.test(drv)) {
+  idBad.push("cdp.mjs 读身份没有 `?user=` 那一步 —— 壳就是靠它把 identity.json 挂上窗口的")
+}
+if (idBad.length) {
+  for (const m of idBad) console.error('✗ ' + m)
+  process.exit(1)
+}
+console.log(`OK: 走查驱动的身份从窗口自己身上读（键 '${USER_KEY}'，跟 api.getUser() 同一把尺子），没有写死的默认身份`)

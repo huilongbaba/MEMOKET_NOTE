@@ -238,9 +238,31 @@ async function main() {
      *
      * 读的是 app 自己记这件事的那一格：`App.tsx` 每次 `current` 变就写一次
      * `localStorage['memoket-note-active:' + api.getUser()]`，重启也是靠它回到上次那篇。
-     * **不是另造一把尺子**，是问 app 它自己认为现在开着哪一篇。 */
-    async noteId(user = 'terrence') {
-      return this.eval(`(() => { try { return localStorage.getItem('memoket-note-active:' + ${JSON.stringify(user)}) } catch (e) { return null } })()`)
+     * **不是另造一把尺子**，是问 app 它自己认为现在开着哪一篇。
+     *
+     * **身份默认从这个窗口自己身上读**，不写死一个名字（P68 B）：
+     * 这里原来是 `user = 'terrence'`，于是身份不是 terrence 的那一趟（空库新用户）
+     * **静默读了另一个人的那一格**，`localStorage.getItem` 读不到回 `null`——
+     * 跟「产品压根没写」长得一模一样。P64 问题 #2 就是它，P66 三头各读一次才核清楚。
+     * 量过：全部 6 批步骤脚本 + 这份驱动自己，**92 处裸调 / 5 处带参**——
+     * 所以修的是默认值，不是去改 92 个调用点（改调用点漏一个就还是静默读错）。
+     *
+     * 读法跟 `api.getUser()` **同一条**（`?user=` 优先，其次
+     * `localStorage['memoket-note-user']`）：不是「差不多一样」，是照抄它那两步，
+     * 否则就又多了一把尺子。两样都没有就**抛**——猜一个身份正是这条的病根。
+     * 显式传 `user` 仍然管用（跨身份读别人那一格时必须显式写出来）。 */
+    async noteId(user) {
+      const who = user ?? await this.eval(
+        `(() => { try {
+           const u = new URLSearchParams(location.search).get('user')
+           return (u && u.trim()) || localStorage.getItem('memoket-note-user') || ''
+         } catch (e) { return '' } })()`)
+      if (!who) {
+        throw new Error('noteId: 这个窗口的身份读不出来（?user= 和 localStorage["memoket-note-user"] 都是空的）'
+          + '——不猜一个（猜就是 P64 问题 #2 那次静默读了别人那一格）；要跨身份读就显式传 user')
+      }
+      const key = JSON.stringify('memoket-note-active:' + who)
+      return this.eval(`(() => { try { return localStorage.getItem(${key}) } catch (e) { return null } })()`)
     },
     /** 等到「开着的那一篇」变成 `id`（或超时）。 */
     async untilNote(id, ms = 15000) {
