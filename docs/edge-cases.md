@@ -571,3 +571,47 @@ P35 #1、P32 #2 全部逐字复现）。新扫出来的两格都不在那一列�
 它在**显示**这一层把正文首行顶上去了，而所有**判据**层（预填、完成标准）读的还是原始 `title`。
 一个只在显示层生效的兜底，会让下游每一条「按标题来」的规则各自失灵一次。
 *给一个字段做兜底的时候，先数一遍有几处在读它的原始值。*
+
+## P43 补：**P42 那两格收了 + 走查量具一次性换掉**（2026-09-20，台账 `TRACELOG-product.md` P43 节）
+
+* **✅P43**：这一批修了 + 闸 + 突变验（#51 / #52 从 ❌P42 变成 ✅P43，就在上面那张表里）
+
+| # | 格 | 摆出来是什么 | 记号 | 探针 |
+|---|---|---|---|---|
+| 51 | 改动层 · 一层里每一处都处置完了 × 关掉重开 | **修之前在壳上逐字复现**：toast「上次没处置完的 1 层改动还在右栏「改动」里」，页签条只有 `["记忆","计划2"]`、整页搜不到「改动」。两头各错一半——toast 数的是 `hunks ∪ settled`（**一处活的都不剩**的层也算），页签看的是 `pendingDiff`（**不算只差空白的那几处**），**两把尺子** | **✅P43** | 收进两个纯函数 `reopenedLayersNotice` / `changesTabHasContent`，并钉住它们之间那条不变式：**弹了 toast ⇒ 页签一定在**。修之后同一条路：**一个字都不说**，页签条 `["记忆","改动","计划2"]`，面板上那行灰字「润色 · 12:00 · 已处置：3 处接受、0 处撤回」看得到。`$S/p43/steps/{toastwatch,tabcheck,changestab}.mjs` · `p43-1c-before-notab-light.png` → `p43-1d-after-tab-light.png` / `p43-1e-after-settled-panel-{light,dark}.png`；闸 `p43.test.ts` |
+| 52 | 文档意图 · 标题只写在正文 H1 里 × 新建笔记 | 同 P42：树 / 标签页 / 状态栏全叫「周报 9-20」，`input.note-title` 是空的 → 意图行一个字没预填 | **✅P43** | 预填改认 `displayTitle({ title, content })`，**依赖挂的是算出来的名字而不是 `content`**（名字没变一次都不跑）。重推代价先量过：47k 字 / 2402 行最坏 **0.10 ms**、30k 字 **0.03 ms**，一帧 16.67ms → **不用防抖**（`$S/p43/bench2.ts`）。壳上：标题框仍是空的，意图行「目标：周报 9-20：这段时间做了什么、进展到哪、卡在哪 / 读者：老板 / 团队 / 完成标准：每条进展有日期、有依据；卡住的说清要什么」+「预填」角标 + `0/2`。`p43-2b-after-intent-{light,dark}.png` |
+
+### 走查量具：**读正文一律用 `d.docText()`，不要自己去数 `.cm-line`**（这是第五次栽在这上面）
+
+栽过的五次：P35 占位块 widget、P40 删除标 widget、P42（docText 145 / 库 111 / 状态栏 101，
+34 个字全是删除标记，差点记成「关掉重开正文多了 34 个字」）。这一批一次性收掉：
+
+* **量具在 `$S/p17/cdp.mjs`（走查每一批都从这份拷）**：`d.docRead()` / `d.docText()`，
+  `$S/p43/steps/lib.mjs` 的 `docText(d)` 转调它；老那串按 `.cm-line` 拼的改名成
+  `DOC_JS_DONT_USE`，注释里写清它错在哪。
+* **首选问 CodeMirror 自己要**：`view.state.doc` 是文档的定义，widget 根本不在里面。
+  内容 DOM 上挂着内部视图对象——**老版本叫 `.cmView`，@codemirror/view 6.43（这个仓在用的）
+  叫 `.cmTile`，两个都要试**（第一版只认 `cmView`，在真壳上当场静静退到了 DOM 那条近似路）。
+  拿不到就**抛**，不静静退到近似值——「用退路量出来的数」跟「量准了」不是一回事。
+* **两个方向都会错，而且会同时错**（这一批在壳上实测，`$S/p43/steps/widgetdelta.mjs`，
+  右键「重写」一段之后，`p43-6-widget-delta-light.png`）：
+
+  | 读法 | 数 | 错在哪 |
+  |---|---:|---|
+  | `doc`（`view.state.doc`） | **606** | 正文，基准 |
+  | `raw`（按 `.cm-line` 读，P40 / P42 那把尺子） | 437 | 多算了 widget（`widgets = [[".harness-del", 34]]`——**正是 P42 追的那 34 个字**），又**少**了视口外的行 |
+  | `dom`（摘掉 widget 再按 `.cm-line` 读） | 403 | widget 不算了，但 **CM6 只渲染视口里那几行**，长文读出来是半篇 |
+
+  `.cm-line` 那把尺子**同时往两个方向错**，所以「跟状态栏对一遍」也救不了它。
+* **widget 名单**（`cdp.mjs` 顶上 `WIDGET_SELECTORS`，跟 `grep -rn "extends WidgetType" frontend/src` 对齐）：
+  `.cm-widgetBuffer` `.cm-placeholder` `.harness-del` `.harness-actions` `.cm-run-block`
+  `.cm-md-table` `.cm-image-embed` `.cm-note-link` `.cm-task-checkbox` `.cm-mermaid-widget`。
+  **新加一个 `WidgetType` 就要往这张名单里加一条**——它只喂退路那条分支，首选那条不受影响。
+
+### 还有一条量具教训：**`--light` / `--dark` 一旦上了命令行，`d.setTheme()` 就是空操作**
+
+`desktop/src/main.ts:350` 的 `ipcMain.on('set-theme')` 第一行就是 `if (forcedTheme) return`。
+这一批第一轮的五张「深色」截图**全是浅色**（肉眼看图才发现，不是脚本报的错——
+又一次「渲染出来 ≠ 屏幕上看得见」的同族）。**深色截图只能靠起 app 时带 `--dark`**，
+步骤脚本里不要再自己切主题。
+

@@ -211,7 +211,13 @@ describe('P41 #5 ② 放不回来的那几层要有出路', () => {
   })
 
   it('「改动」这个页签在只剩放不回来的层时也得出现，不然出路摆在一个看不见的页签里', () => {
-    expect(appSrc).toContain('runs.length > 0 || layerStuck.length > 0')
+    // P43 #1 起这一格收进了 `changesTabHasContent`。**守的性质一个字没变**：
+    // `stuck` 那一格还在里面，只剩放不回来的层时页签照样出现。
+    const at = appSrc.indexOf("{ id: 'changes', title: '改动'")
+    expect(at).toBeGreaterThan(0)
+    const block = appSrc.slice(at, at + 700)
+    expect(block).toContain('hasContent: changesTabHasContent({')
+    expect(block).toContain('stuck: layerStuck.length')
   })
 })
 

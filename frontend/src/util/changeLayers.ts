@@ -252,3 +252,45 @@ export function restoreLayers(saved: SavedLayer[], doc: string): Restored {
 export function sameLayers(a: SavedLayer[], b: SavedLayer[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
+
+/** 重开一篇之后那句 toast——**说什么，以及说不说**（P43 #1）。
+ *
+ * **P42 实拍的毛病**：一层里唯一那一处点了「✓ 接受」→ 关掉重开 → toast 说
+ * 「上次没处置完的 1 层改动还在右栏「改动」里」，而**整页搜不到「改动」这两个字**。
+ * 两头各错一半：这句话数的是「放回来的层」（`hunks ∪ settled`，**一处活的都不剩**的层
+ * 也算一层），而右栏那个页签当时只看还有几处待处置。
+ *
+ * **判据宁可窄**：只数**真有活改动放回编辑器**的层（`r.hunks` 里出现过的 key）。
+ * 一层活的都没有就一个字不说——**宁可不弹 toast，也别指一个不存在的地方**。
+ * 这个数跟 `roundDiff.layersOf` 会列出几张卡片**逐格相同**（那边也是「这层还有没有 hunk」），
+ * 所以「弹了 toast」⇒「页签一定在」是一条**代码判得准**的不变式，
+ * `changesTabHasContent` 和 p43 的闸钉的就是它。
+ *
+ * 处置完的那几层**没有消失**：它们在「改动」面板里是一行灰字
+ * 「已处置：N 处接受、M 处撤回」（P39 的 `settledOnly`），页签的出现条件跟着一起改了。
+ *
+ * 冲突那一档照旧要说——那一档「改动」页签一定在（`stuck.length > 0`）；
+ * 活层数是 0 时把前半句去掉，别说「重新打开了 0 层」。 */
+export function reopenedLayersNotice(r: Restored): { text: string; kind: 'info' | 'error' } | null {
+  const live = new Set(r.hunks.map((h) => h.key)).size
+  if (r.conflicts.length) {
+    const head = live ? `重新打开了 ${live} 层还没处置的改动；` : ''
+    return {
+      kind: 'error',
+      text: `${head}${r.conflicts.length} 处因为正文改过对不上没能放回`
+        + `——右栏「改动」里可以重新算或者丢掉：${r.conflicts.slice(0, 2).join('；')}`,
+    }
+  }
+  return live ? { kind: 'info', text: `上次没处置完的 ${live} 层改动还在右栏「改动」里` } : null
+}
+
+/** 右栏「改动」页签什么时候出现（P43 #1）。
+ *
+ * **跟面板自己会画出什么算同一次**：`layers` = `roundDiffField` 里还有活改动的层
+ * （`layersOf`）、`settled` = 处置完只剩一行灰字的层（`settledOf`）、
+ * `runs` = 烧过的跑、`stuck` = 上次放不回来、正等着用户按钮的层。
+ * 原来这一格只看 `pendingDiff`（**不算只差空白的那几处**），而面板按 `layersOf` /
+ * `settledOf` 画——两把尺子，于是「面板还有东西可画、页签已经没了」。 */
+export function changesTabHasContent(x: { layers: number; settled: number; runs: number; stuck: number }): boolean {
+  return x.layers > 0 || x.settled > 0 || x.runs > 0 || x.stuck > 0
+}

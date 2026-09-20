@@ -47,7 +47,7 @@ import RevisionPanel, { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
 import AgentActivity, { type AgentRound } from './components/AgentActivity'
-import { acceptAllHunks, diffParts, dropHunk, pendingHunks, restoreLayers as restoreLayersEffect, roundDiffField, type DiffPush }
+import { acceptAllHunks, diffParts, dropHunk, layersOf, pendingHunks, restoreLayers as restoreLayersEffect, roundDiffField, settledOf, type DiffPush }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
 import Gutter from './components/Gutter'
@@ -69,7 +69,7 @@ import { sectionEnd } from './util/sectionEnd'
 import { minimalChange } from './editor/minimalChange'
 import { undoRound } from './editor/undoRound'
 import { groupRuns, type RunRound } from './util/runRounds'
-import { restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
+import { changesTabHasContent, reopenedLayersNotice, restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
 import { checkLabel, stuckTail } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）+ 后面那半句下一步（P40 · B #2）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
@@ -99,7 +99,7 @@ import SkillsPanel from './components/SkillsPanel'
 import TapProvenance from './components/TapProvenance'
 import Toaster from './components/Toaster'
 import UserSwitcher from './components/UserSwitcher'
-import VerifyPanel from './components/VerifyPanel'
+import VerifyPanel, { verifyScopeLine } from './components/VerifyPanel'
 import { toast, toastAction } from './toast'
 import { dupSuffixes } from './util/dupTitles'
 import { traceRecallHint } from './util/recallContext'
@@ -517,11 +517,27 @@ export default function App() {
   // 盖掉，于是 `checked` 每次开篇都被抹掉——勾过的完成标准关掉重开就退回 `0/n`
   // （库里 `notes.intent.checked` 一直是对的，纯粹丢在这一行）。传 `i` 照样跟着标题重推，
   // 只是把勾带过去；标题改了、判据对不上的那几个勾在 `resolveIntent` 里作废。
+  //
+  // **认的是界面上那个名字，不是标题框那一格**（P43 #2 / P42 问题 #2）。实拍：新建笔记、
+  // 正文第一行打 `# 周报 9-20`，左栏树、标签页、状态栏**全都叫「周报 9-20」**，
+  // 唯独 `input.note-title` 的 value 是空的——于是意图行一直空着、没有「预填」角标。
+  // 一篇笔记只有一个名字（`displayTitle`，App 里另外五处用的就是它），预填也得认这一个。
+  //
+  // **重推的代价量过了**（$S/p43/bench2.ts，真函数 + 真库最长的两篇，各 2000 次取均值）：
+  //   47k 字 / 2402 行（最长那篇）：`displayTitle` + `resolveIntent` = **0.10 ms**
+  //   30k 字 / 533 行（公司汇报）：**0.03 ms**
+  //   标题框里有字时 `displayTitle` 压根不碰正文：**0.0001 ms**
+  // 一帧是 16.67ms，一个字的间隔 ~160ms——最坏那一档也只占一帧的 0.6%，**不用防抖**。
+  // 真正要防的不是 CPU 是**重推的次数**：所以依赖挂的是**算出来的名字**，不是 `content`。
+  // 名字没变（正文改的是第三段、或者标题框里本来就有字）这个 effect 一次都不跑，
+  // 「会不会覆盖用户勾过的完成标准」那个担心从根上没了；名字真变了才重推，
+  // 跟原来在标题框里打字时的行为逐字一样（`source === 'user'` 照旧永不覆盖）。
+  const shownTitle = useMemo(() => displayTitle({ title, content }), [title, content])
   useEffect(() => {
     if (!current) return
-    setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, title)))
+    setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, shownTitle)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, current?.id])
+  }, [shownTitle, current?.id])
   const [scopeTick, setScopeTick] = useState(0)
   useEffect(() => {
     const on = () => setScopeTick((t) => t + 1)
@@ -589,7 +605,7 @@ export default function App() {
   /** 「来龙去脉」的结果。落在右栏的标签里而不是弹层——判据 2：看一条旧记录
    *  不该离开这一页，弹层要么盖住正文、要么关掉就没了。 */
   const [trace, setTrace] = useState<
-    { answer: string; facts: api.Fact[]; recalled?: number | null; at: string } | null>(null)
+    { answer: string; facts: api.Fact[]; recalled?: number | null; at: string; passage?: string } | null>(null)
 
   const editorViewRef = useRef<EditorView | null>(null)
   /** 右栏「计划」里点目录 / 节拍的行号（P12）：光标跳到正文那一行、滚到中间 */
@@ -1627,9 +1643,6 @@ export default function App() {
           view.dispatch({ effects: restoreLayersEffect.of({ layers: r.layers, hunks: r.hunks, settled: r.settled }) })
           setPendingDiff(pendingHunks(view))
           setLayersTick((n) => n + 1)
-          // **数真的放回去的那几层**，不是库里那几行：一整层都对不上的时候
-          // 它一层都没进编辑器，说「重新打开了 3 层」就是又一次说假话（P37 #2 / #3 同形）。
-          const n = new Set([...r.hunks.map((h) => h.key), ...r.settled.map((x) => x.key)]).size
           if (r.conflicts.length) {
             // **不止一句 toast**（P41 #5 ②）：对不上的那几层留在右栏「改动」里，
             // 每一层给「按现在的正文重新算 / 丢掉这一层」两个出路。
@@ -1638,10 +1651,12 @@ export default function App() {
             // ref 当场也写一份：下面那行基线要把它们算进去，而 setState 是异步的
             layerStuckRef.current = stuck
             setLayerStuck(stuck)
-            toast(`重新打开了 ${n} 层还没处置的改动；${r.conflicts.length} 处因为正文改过对不上没能放回——右栏「改动」里可以重新算或者丢掉：${r.conflicts.slice(0, 2).join('；')}`, 'error')
-          } else if (n) {
-            toast(`上次没处置完的 ${n} 层改动还在右栏「改动」里`)
           }
+          // **说什么、说不说都在 `reopenedLayersNotice` 那一处判**（P43 #1）：
+          // 原来这儿数的是 `hunks ∪ settled`，把**一处活的都不剩**的层也数成
+          // 「上次没处置完的 1 层」，而它指的那个「改动」页签当时根本不出现。
+          const notice = reopenedLayersNotice(r)
+          if (notice) toast(notice.text, notice.kind)
         }
         layersReady.current = id
         const view2 = editorViewRef.current
@@ -2892,7 +2907,11 @@ export default function App() {
    *  **用户不写问题**——问题由后端拼（判据 1）；结果不是弹层（判据 2）。 */
   async function traceFull(text: string, signal?: AbortSignal) {
     const r = await api.traceMemory(text, 10, signal)
-    setTrace({ answer: r.answer, facts: r.facts, recalled: r.recalled ?? null, at: new Date().toISOString() })
+    // **说的是哪一段也要带着走**（P43 #5）：跑完这一趟，右栏上面会同时挂着「校验结果」
+    // 和「脉络」两块，而它们常常说的是**不同的两段**（P42 问题 #6 实拍）。
+    // 「校验」那块 P41 已经写清了自己在说哪一段，这块没写——两块并排、一块报户口一块不报，
+    // 用户还是分不清。用的是同一个 `verifyScopeLine`，一份判据，两处不会各说各的。
+    setTrace({ answer: r.answer, facts: r.facts, recalled: r.recalled ?? null, at: new Date().toISOString(), passage: text })
     // 结果落在右栏「脉络」——要把那个标签切过去，不然用户等了 40 秒只看到角标变了（实拍）
     setPaneFocus({ id: 'trace', n: Date.now() })
   }
@@ -4231,8 +4250,19 @@ export default function App() {
             // 改动的分层账本：每次 AI 动作一层，整层接受 / 撤回（痛点 8：AI 改了三轮只想要第一轮）
             // P16：烧进正文之后这次跑的每一轮还在（后端每轮开始前存一版）——有烧过的跑时这个标签也留着，逐轮「回到之前 / 只撤这一轮」
             // 放不回来的那几层也算「有内容」：出路摆在这个页签里，页签自己不出现就等于没出路（P41 #5 ②）
+            // P43 #1：页签出不出现**跟面板这一次会画出什么算同一份判据**（`changesTabHasContent`）。
+            // 原来这一格只看 `pendingDiff`（不算只差空白的那几处），面板却按 `layersOf` /
+            // `settledOf` 画——一层逐处处置完之后面板还有「已处置 N 接受 / M 撤回」那行灰字
+            // 可画，页签已经没了，于是重开时那句 toast 指着一个不存在的地方（P42 问题 #1）。
+            // 这两个数**当场从编辑器读**——跟下面 `ChangeLayersPanel` 同一个渲染回合、同一个
+            // view，所以两边不可能对不上；重渲染照旧由 `pendingDiff` / `layersTick` 触发。
             { id: 'changes', title: '改动', icon: 'bx-git-compare', badge: pendingDiff || undefined,
-              hasContent: pendingDiff > 0 || runs.length > 0 || layerStuck.length > 0,
+              hasContent: changesTabHasContent({
+                layers: editorViewRef.current ? layersOf(editorViewRef.current).length : 0,
+                settled: editorViewRef.current ? settledOf(editorViewRef.current).length : 0,
+                runs: runs.length,
+                stuck: layerStuck.length,
+              }),
               body: <ChangeLayersPanel viewRef={editorViewRef} tick={pendingDiff + layersTick} runs={runs} busy={loading === 'rounds'}
                                        stuck={layerStuck} onRecomputeStuck={recomputeStuckLayer} onDropStuck={dropStuckLayer}
                                        onRestoreBefore={(r) => void restoreBeforeRound(r)} onUndoRound={(r) => void undoRoundOnly(r)} /> },
@@ -4299,6 +4329,14 @@ export default function App() {
               badge: trace?.facts.length || undefined,
               body: trace ? (
                 <div className="stack">
+                  {/* P43 #5：跟「校验结果」那块**用同一个 `verifyScopeLine`**报户口——
+                      两块卡并排挂在右栏上面时，一块写清说的是哪一段、另一块不写，
+                      等于只解决了一半（P42 问题 #6）。「还在不在正文里」照旧按现在的正文判。 */}
+                  {!!verifyScopeLine(trace.passage ?? '', !!trace.passage && !content.includes(trace.passage)) && (
+                    <p className="muted verify-scope" style={{ margin: 0, fontSize: 'var(--t-sm)' }}>
+                      {verifyScopeLine(trace.passage ?? '', !!trace.passage && !content.includes(trace.passage))}
+                    </p>
+                  )}
                   <p style={{ margin: 0, lineHeight: 1.6 }}>{trace.answer}</p>
                   {/* P41 #1：KITE 一条都没串出来、而词法召回真的有数时，说清那几条在哪儿看得到。
                       后端那句话已经不说假的了（`AskOut.recalled` 三档），这里补的是出路那半句。 */}

@@ -191,7 +191,13 @@ describe('界面：烧之后「改动」页签还在、每轮两个按钮', () =
     expect(html.match(/<button[^>]*disabled=""[^>]*>回到这轮之前<\/button>/g)).toBeNull()
   })
   it('App：有烧过的跑时「改动」页签留着（hasContent 不只看 pendingDiff）', () => {
-    expect(appSrc).toContain('hasContent: pendingDiff > 0 || runs.length > 0')
+    // P43 #1 起这一格收进了 `changesTabHasContent`（页签的判据要跟面板画什么是同一份）。
+    // **守的性质一个字没变**：`runs` 那一格还在里面，有烧过的跑时页签照样留着。
+    const at = appSrc.indexOf("{ id: 'changes', title: '改动'")
+    expect(at).toBeGreaterThan(0)
+    const block = appSrc.slice(at, at + 700)
+    expect(block).toContain('hasContent: changesTabHasContent({')
+    expect(block).toContain('runs: runs.length')
     expect(appSrc).toContain('onRestoreBefore={(r) => void restoreBeforeRound(r)} onUndoRound={(r) => void undoRoundOnly(r)}')
   })
 })

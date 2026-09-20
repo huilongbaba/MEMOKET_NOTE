@@ -67,7 +67,12 @@ describe('P31 #1 勾过的完成标准要活过一次重开', () => {
     // 这个 effect 也挂在 current?.id 上，每开一篇都会在「从库里读」之后再跑一次；
     // 传 null = 拿干净的预填把刚读出来的盖掉，checked 又没了（P31 实拍：改完 resolveIntent
     // 还是 0/2，就是栽在这一行）。
-    expect(appSrc).toContain("setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, title)))")
+    // P43 #2 起第二个实参从 `title`（标题框那一格）换成了 `shownTitle`
+    // （= `displayTitle({ title, content })`，界面上到处显示的那个名字）。
+    // **这一条守的性质一个字没变**：传下去的第一个实参还是 `i`（现在这份意图），不是 `null`。
+    expect(appSrc).toContain("setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, shownTitle)))")
+    // 全文里 `resolveIntent(null, …)` 只许有一处：`useState` 的初值（那会儿真的什么都没有）
+    expect(appSrc.match(/resolveIntent\(null,/g) ?? []).toHaveLength(1)
     expect(appSrc).not.toContain('resolveIntent(null, title)')
   })
 })

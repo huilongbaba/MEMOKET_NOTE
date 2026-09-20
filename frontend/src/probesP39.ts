@@ -12,6 +12,12 @@
  *   p39:pain8:<id>:make     痛点 8 原话：三层改动（第 1 / 2 / 3 轮）摆在那儿
  *   p39:pain8:<id>:back     重开 → 撤回第 3 轮那一层 → 正文里第 1 轮的还在、第 3 轮的没了
  *   p39:evict:<id>:make     摆出超过上限的局面 → 淘汰那条路真的会触发，而且**吵闹**
+ *
+ * P43 加的三条（前两条是 P42「留给下一批」⑦ 那三条淘汰闸里没摆过的两条）：
+ *   p39:settled:<id>:make   一层里**每一处都**「✓ 接受」→ 一处活的都不剩 → 落库
+ *   p39:settled:<id>:back   重开：页签还在不在、面板上那行「已处置…」在不在、toast 说了什么
+ *   p39:evict:<id>:hunks    一次「格式化」在长文上切出 **501 处** → `CHANGE_LAYER_HUNKS` 整层不存
+ *   p39:evict:<id>:age      库里躺着一层 40 天前的 → `CHANGE_LAYER_MAX_AGE_DAYS` 淘汰掉并说出来
  */
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
@@ -85,7 +91,9 @@ export async function runP39(probe: string, ctx: Ctx): Promise<boolean> {
   if (phase === 'back') {
     // **等层真的放回来再看**：读库 + App 那条 320ms 的等待 + 重新定位都在异步里，
     // 第一版实拍在这儿拍到的是 `layers=[] hunks=0`——不是没存下来，是拍早了。
-    for (let i = 0; i < 40 && layersOf(v).length === 0; i++) await wait(250)
+    // 「放回来了」= 有活层**或者**有处置完的层（P43 #1：全处置完那一档 `layersOf` 恒为 0，
+    // 只等它的话这儿要空等 10 秒，然后拍到的还是「什么都没有」——又一次拍早了）
+    for (let i = 0; i < 40 && layersOf(v).length === 0 && settledOf(v).length === 0; i++) await wait(250)
     ctx.setPaneFocus({ id: 'changes', n: Date.now() })   // 「改动」页签是层回来之后才出现的
     await wait(900)
     out.push(snapshot(v, 'reopened'))
@@ -146,6 +154,34 @@ export async function runP39(probe: string, ctx: Ctx): Promise<boolean> {
     return true
   }
 
+  /** **一层里每一处都处置完**（P43 #1，P42 问题 #1 实拍的那一档）。
+   *  `dispose` 那一条留着一层活的（智能续写那层），这一条**一处活的都不剩**——
+   *  它才是「toast 说有「改动」页签、页签根本不在」的那个局面。 */
+  if (what === 'settled') {
+    const doc0 = v.state.doc.toString()
+    const at = [0.75, 0.5, 0.25].map((f) => {
+      const k = Math.floor(doc0.length * f)
+      const stop = doc0.indexOf('。', k)
+      return stop < 0 ? k : stop + 1
+    })
+    let next = doc0
+    at.forEach((pos, i) => { next = next.slice(0, pos) + `（润色补的第${3 - i}处）` + next.slice(pos) })
+    ctx.setContent(next)
+    await wait(500)
+    ctx.actionsRef.current.pushDiff('润色', doc0, next)
+    await wait(900)
+    out.push(snapshot(v, 'after-polish'))
+    // 逐处「✓ 接受」**每一处**——跟悬停工具条上那个按钮走的是同一条路
+    const hs = [...(v.state.field(roundDiffField, false)?.hunks ?? [])].filter((h) => !h.soft && !h.off)
+    for (const h of hs) v.dispatch({ effects: acceptHunk.of(h.id) })
+    await wait(800)
+    out.push(snapshot(v, 'all-settled'))
+    await persist('persisted')
+    out.push(`panel=${JSON.stringify(panelText())}`)
+    log('p39 ' + out.join(' | '))
+    return true
+  }
+
   if (what === 'pain8') {
     // 三层改动。走的是每一次 AI 动作都走的那个 `pushDiff`——层是怎么生出来的，这里就怎么生
     const base = v.state.doc.toString()
@@ -167,6 +203,59 @@ export async function runP39(probe: string, ctx: Ctx): Promise<boolean> {
   }
 
   if (what === 'evict') {
+    const readToasts = () => Array.from(document.querySelectorAll('.toast, .toasts > *'))
+      .map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+
+    /** **一层最多几处**（`CHANGE_LAYER_HUNKS = 500`，P43 #4）：超了**整层不存**，回 `rejected`。
+     *  走的是真路径——一次「格式化」在长文上切出 501 处，跟 P39 那句
+     *  「47k 字长文点一次格式化能切出几千处」是同一件事。
+     *  501 处要真的是 501 处：`toHunks` 的 MERGE_GAP 是 8，插入点之间留得远远够。 */
+    if (phase === 'hunks') {
+      const base = v.state.doc.toString()
+      // 要的是**切出来 > 500 处**，不是「插 501 个记号」：`toHunks` 会把挨得近的并成一处，
+      // 实拍插 501 个只切出 441 处（第一版就是这么差一点没摸到闸）。多插一些，
+      // 真正作数的是下面 `snapshot` 里那个 hunks 数。
+      const N = 700
+      const gap = Math.max(12, Math.floor(base.length / (N + 1)))
+      let next = ''
+      for (let k = 0; k < N; k++) next += base.slice(k * gap, (k + 1) * gap) + `〔${k}〕`
+      next += base.slice(N * gap)
+      ctx.setContent(next)
+      await wait(600)
+      ctx.actionsRef.current.pushDiff('格式化', base, next)
+      await wait(1500)
+      out.push(snapshot(v, 'one-fat-layer'))
+      ctx.setPaneFocus({ id: 'changes', n: Date.now() })
+      await api.saveNote(id, n.title, v.state.doc.toString())
+      ctx.actionsRef.current.flushChangeLayers()
+      await wait(2500)
+      out.push(`toasts=${JSON.stringify(readToasts())}`)
+      out.push(`库里剩 ${(await api.listChangeLayers(id)).length} 层`)
+      log('p39 ' + out.join(' | '))
+      return true
+    }
+
+    /** **多久不留**（`CHANGE_LAYER_MAX_AGE_DAYS = 30`，P43 #4）。
+     *  老的那一层是**库里本来就躺着的**（`at` 是 40 天前，落库时间也就是 40 天前那次），
+     *  这一趟打开时它照常被放回编辑器；再随手叠一层新的逼出一次冲库——
+     *  后端按 `at` 把老的那层淘汰掉，前端弹那句话。 */
+    if (phase === 'age') {
+      out.push(snapshot(v, 'reopened-with-old-layer'))
+      const cur = v.state.doc.toString()
+      const next = cur + '\n新叠的一层，只为逼出一次冲库。'
+      ctx.setContent(next)
+      await wait(400)
+      ctx.actionsRef.current.pushDiff('润色', cur, next)
+      await wait(900)
+      ctx.setPaneFocus({ id: 'changes', n: Date.now() })
+      ctx.actionsRef.current.flushChangeLayers()
+      await wait(2500)
+      out.push(`toasts=${JSON.stringify(readToasts())}`)
+      out.push(`库里剩 ${(await api.listChangeLayers(id)).length} 层`)
+      log('p39 ' + out.join(' | '))
+      return true
+    }
+
     // 超上限：后端只留 20 层，最早的几层淘汰掉——**而且要说出来**
     const base = v.state.doc.toString()
     let cur = base
@@ -183,8 +272,7 @@ export async function runP39(probe: string, ctx: Ctx): Promise<boolean> {
     await api.saveNote(id, n.title, v.state.doc.toString())
     ctx.actionsRef.current.flushChangeLayers()
     await wait(2500)
-    const toasts = Array.from(document.querySelectorAll('.toast, .toasts > *')).map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim())
-    out.push(`toasts=${JSON.stringify(toasts)}`)
+    out.push(`toasts=${JSON.stringify(readToasts())}`)
     const rows = await api.listChangeLayers(id)
     out.push(`库里剩 ${rows.length} 层`)
     log('p39 ' + out.join(' | '))
