@@ -63,7 +63,12 @@ def recall(body: RecallIn, user: str = Depends(current_user)):
         ev = None
     return RecallOut(facts=rows_to_facts(mem, rows), took_ms=round(took, 3),
                      # 给人看的是整词，不是「小时预」「号上众」这种切碎的 n-gram（P4 #6）
-                     terms=search.display_terms(terms, body.query), kb_empty=mem.is_empty(),
+                     # **`segment=` 是 P69 ② 接上的**：这一行里那几串也要过一遍
+                     # 「在不在查询的词边界上」，跟右栏证据 chip 同一格判据——不接就是
+                     # 同一屏上两把尺（`间天天关注房子附` 出现在「命中：」、不出现在 chip 里）。
+                     # `mem.segment()` 上面 `recall(evidence=True)` 已经建过，这里是命中缓存。
+                     terms=search.display_terms(terms, body.query, segment=mem.segment()),
+                     kb_empty=mem.is_empty(),
                      evidence=ev, why_empty=why)
 
 

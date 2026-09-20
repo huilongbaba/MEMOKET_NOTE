@@ -850,10 +850,35 @@ def qualifies(hits: list[str], query: str, *, common=None, attested=None,
     return ev[0]["why"] != "pair"
 
 
-def display_terms(terms: list[str], query: str) -> list[str]:
+def display_terms(terms: list[str], query: str, *, segment=None) -> list[str]:
     """给右栏看的查询词：英文词 / 数字原样；中文 n-gram 片段（「小时预」「号上众」「并以」）合成它们在
     查询里连成的整段、再剥掉两端的虚词——用户看到的是「众筹」「学位」这种词，不是切碎的三个字（P4 #6）。
-    没有分词器，这是最接近「整词」的做法；合不出 ≥2 字的就不显示。"""
+    没有分词器，这是最接近「整词」的做法；合不出 ≥2 字的就不显示。
+
+    **`segment` 是 P69 ② 接上的那道显示过滤**：合出来的那一段**在不在查询的词边界上**
+    （`_aligned`），跨边界的碎片不摆。判据逐字照 `evidence()` 那三行算——含 P48 ② 那个
+    第四档 `None`（`is_merged_word`：被邻词并成一个 token 的真词，`链接` ⊂ `链接面板`）。
+
+    **为什么是这把尺而不是新写一把**：`kite_memory.recall_evidence` 那条路今天已经拿
+    `aligned is False` 当显示过滤了，而这一处没有——于是同一屏上「命中：」里写着
+    `间天天关注房子附`、右栏证据 chip 里却没有它（P67 ② 实拍，那 4 条变差的根因）。
+    **一屏一把尺**。P67 ② 量过根因：`common` 把前面那个「满库都是」的词剔掉之后
+    （`数据` / `算力` / `时间`），这里合出来的那一段就从**词的中间**起头
+    （`数据隐私安全` → `据隐私安全`）。
+
+    **不给 `segment` 就是原样**（`_aligned` 回 `None` = 这一层判不了 = 不启用），
+    假的 memory / 建不出索引那一档逐字退回改之前那一版。
+
+    全库 765 条对拍（`scripts/recall_ruler.py`，`terrence=11429185B/403a1183`）：
+    命中行变了 **341** 条（user 248 / script 73 / fixture 20），**一条召回都没动**；
+    摆出来的中文串 2614 → 2198 串次，其中 `_aligned` 判「跨边界碎片」的 **488 → 8**
+    （剩下的 8 是 `is_merged_word` 那一档故意放回来的）；
+    341 条逐条读完（`p69-line341`）：变好 330 · 中性 5（整行变空）· **变差 6**
+    ——6 条全是同一个形状：`众筹页面`(众筹|页面**上**) / `天津港`(那天|津港) /
+    `电脑屏幕`(电脑|屏幕**上**) / `瓷器纹路`(瓷器|纹|路**上**)，右端被分词器
+    连着方位词吃进一个 token，而这里剥两端虚词时把那个字剥掉了。**那是 ③ 那一刀的活**
+    （两端吸附到词边界，替掉「接到汉字串尽头」），账记在 `docs/TRACELOG-product.md` P69 ③。
+    """
     squeezed = squeeze(query)
     plain: list[str] = []
     spans: list[tuple[int, int]] = []
@@ -882,6 +907,14 @@ def display_terms(terms: list[str], query: str) -> list[str]:
         while b < len(squeezed) and b - a < 8 and _IS_CJK(squeezed[b]) and squeezed[b] not in _EDGE_STOP:
             b += 1
         w = squeezed[a:b].strip(_EDGE_STOP)
+        # **跨词边界的碎片不摆**（P69 ②）：跟 `recall_evidence` 砍证据 chip 的是同一格
+        # （`evidence()` 里那三行逐字，含 `is_merged_word` 那个第四档 `None`）。
+        # `segment is None` 时 `_aligned` 回 `None`，这一条整个不启用 = 原样。
+        al = _aligned(w, squeezed, segment)
+        if al is False and is_merged_word(w, squeezed, segment):
+            al = None
+        if al is False:
+            continue
         # 「众筹」已经在了就不再列「众筹里面会」；反过来「众筹里面会」在了也不列「众筹」
         if len(w) >= 2 and not any((w in o or o in w) for o in out if not o.isascii()):
             out.append(w)
@@ -995,11 +1028,24 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int,
     # 每行只打一次分（P11 #3：原来 `if score(r)[0] > 0` 又算一遍，4.4 万行 × 2）
     scored = [(sc, r) for r in rows if (sc := score(r))[0] > 0]
     scored.sort(key=lambda x: x[0], reverse=True)
-    # 伪相关反馈（第 533 轮实验）：词面排前两名的事实挂着什么主题，其余候选挂同一主题的 +1 再排一次——
+    # 伪相关反馈（第 533 轮实验）：词面排**第一名**的事实挂着什么主题，其余候选挂同一主题的 +1 再排一次——
     # 「给一个片段找同主题的别的事实」这条口径靠它；查询片段本身很少能直接认出主题（TOPIC_BONUS 试过零效果）
+    #
+    # **种子是 `[:1]` 不是 `[:2]`，P69 ① 落的地，三批的账**：
+    # P65 ① 记下「一个真词（`华为`）吃掉了 user 侧 16 对不硬里的 11 对」；P67 ① 查明那 11 对
+    # **词面上跟一条合法的单专名召回长得一模一样**，把它们顶进 top-8 的正是这里——
+    # `lead` 从前两名取主题，而**第 2 名自己就是那堆闲聊里的一条**，`work` 一进 `lead`
+    # 剩下的闲聊全部 +1（实测把词面第 34 名的「拍马屁」那条顶进了第 8 格）。
+    # **这跟「同一个专名的两个义项」不是一回事**（供应商华为 vs 雇主华为，那是词面分不开）：
+    # 这一刀治的是**种子被污染**，治好之后第 2 名不再有资格定调，义项那件事跟着让路。
+    # 全库 765 条对拍（`scripts/recall_ruler.py`）：top8 变了 48（成员真变了 15 / 只换顺序 33），
+    # 进 23 掉 23，**掉错了（硬）0**（`p67-lead1-15` 逐条读的），user 侧净 +7 对硬，
+    # 那 5 条闲聊事实全库被召回 14 → 10。
+    # **`len(scored) > 2` 这道门逐字保持原样**：量的时候只动了取种子那一行，
+    # 顺手把门槛一起改就是另一个旋钮，账对不上（P61 那条「换量程时 fallback 的阈值逐字不动」同族）。
     if len(scored) > 2:
         lead: set[str] = set()
-        for (_s, r) in scored[:2]:
+        for (_s, r) in scored[:1]:
             f = store.facts.get(r.get("id"))
             lead |= set(getattr(f, "topics", ()) or ()) if f is not None else set()
         if lead:
