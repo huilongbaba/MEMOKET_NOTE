@@ -307,6 +307,12 @@ def test_从库里取数的脚本必须走血缘判据():
         "db_guard.py",
         # 按写死的 id 恢复那两篇。目标是具体的两个 id，不是「某一类笔记」。
         "restore_damaged_notes.py",
+        # **它根本不读 `notes`**（P63）。读的是 `harness_runs` / `harness_rounds`，
+        # 蒸馏出来的每一栏都是判据名 / 状态 / 计数，一个字的正文都没有。
+        # 它撞上这条闸只是因为默认库的**路径**里有 `notes.sqlite3` 这个串。
+        # 血缘判的是「这篇笔记是谁写的」，而这里一篇笔记都没取——
+        # 硬套一个 `corpus_lineage` 进去只会让下一个人以为它筛过。
+        "harness_run_ledger.py",
     }
     scripts = Path(__file__).resolve().parent.parent / "scripts"
     touched = []
