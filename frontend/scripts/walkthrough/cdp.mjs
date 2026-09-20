@@ -57,6 +57,8 @@
 //     （不是选择器错，是**读法**错）。P58 / P60 两批「判据那几行」都是 `[]`，
 //     而 P58 台账那一格是靠截图断的 —— **日志里其实是 0**。
 // ─────────────────────────────────────────────────────────────────────────────
+import { withBatchPrefix } from './shotname.mjs'
+
 const port = process.argv[2]
 const stepPath = process.argv[3]
 const args = process.argv.slice(4)
@@ -226,6 +228,11 @@ async function main() {
           + '不猜一个目录静默写进去（截图是走查唯一的物证）。'
           + '要么 export WALKTHROUGH_SHOT_DIR=<目录>，要么传绝对路径')
       }
+      // **批次前缀从环境变量来**（P74 问题 #6 / P76 C①）：30 份步骤脚本里的截图名
+      // 写死成 `p70-*`，每批跑完都得事后改名（P74 那批 36 张）。**所有截图只有这一条出口**，
+      // 所以前缀在这儿换 —— 步骤脚本一个字节不用动，而「名字从参数来」从此是结构性的。
+      // `WALKTHROUGH_SHOT_PREFIX` 没设就**原样不动**（老批次的跑法逐字复现得出来）。
+      name = withBatchPrefix(name, process.env.WALKTHROUGH_SHOT_PREFIX)
       const p = name.startsWith('/') ? name : `${dir.replace(/\/$/, '')}/${name}`
       if (!opts.overwrite && fs.existsSync(p)) {
         throw new Error(`shot: ${p} 已经有一张了——覆盖它等于把上一趟的物证抹掉。`

@@ -1,5 +1,6 @@
 // P58 · 第九次全流程走查（老用户）第三趟：⑩（后半，关掉重开）+ ⑧（屏幕活动整页）
 import { clickExact } from './clickexact.mjs'
+import { flip } from './flipday60.mjs'
 import { clickBtn, journeyFacts, openJourney, toTop, toasts, until, wait } from './lib52.mjs'
 import { pageText } from './lib.mjs'
 
@@ -101,11 +102,24 @@ export default async function (d, [noteId, plainId]) {
   console.log('  逐条:', JSON.stringify(await d.texts('.journey-keep-confirm li', 10)))
   console.log('  那句话:', (await pageText(d)).includes('删完就真的没有了，没有回收站'))
   await d.shot('p70-b3-old-delday-light.png')
-  console.log('— 翻到别的一天，确认作废 —')
+  console.log('— 翻到别的一天，确认作废（P23 #5）—')
+  // **P76 C②**（P74 问题 #1）：这一格原来是 `clickTitle(d, '上一条记录')`——
+  // 跟上面「翻天 + 删掉这一天」那一下**同一个方向**。站在最老那一天上时那个钮是
+  // `disabled`，第二下什么都没发生（P74 实拍 `next: false`），于是「确认框还在」
+  // 被读成产品问题，而实际上**那一下压根没翻页**。
+  // **「点过了 ≠ 翻过了」**——P58 问题 #8 在这一格里原样重演了两批。
+  //
+  // 换成 `flipday60.mjs` 里那一份（为这件事写的那份，**只有它是对的**）：
+  // 翻之前把两个箭头的 `disabled` 打出来、**只点亮着的那个**，
+  // 并且拿**「日期真的变了」**当翻页成功的判据；没翻成就明写「这一格不算数」，
+  // **不报成缺陷**——量不到跟量到「没问题」是两回事。
   await toTop(d)
-  await clickTitle(d, '上一条记录')
-  await toTop(d)
-  console.log('  确认框还在吗（该 0）:', await d.count('.journey-keep-confirm'))
+  const flipped = await flip(d)
+  console.log('  点的是:', JSON.stringify(flipped.clicked), ' 日期:', flipped.from, '→', flipped.to,
+              ' **真翻了吗:**', flipped.from !== flipped.to)
+  const left = await d.count('.journey-keep-confirm')
+  console.log('  确认框还在吗（该 0）:', left,
+              flipped.from !== flipped.to ? (left === 0 ? '✔' : '✘ 没作废') : '（没翻成，这一格不算数）')
   const t3 = await pageText(d)
   console.log('  现在这一页:', line(t3, /\d{4}-\d{2}-\d{2} · 屏幕活动/), ' 翻页:', JSON.stringify(await nav(d)))
 

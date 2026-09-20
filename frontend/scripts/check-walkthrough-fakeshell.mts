@@ -54,8 +54,17 @@ if (bad) { console.error('✗ 路上缺了东西，后面的数一个都不算')
 // **拿 AST 不拿正则**：`PLAN` 里有一堆带中文和转义的正则字面量，正则去扒它自己就是
 // 又一把会漏的尺子（`check-walkthrough-selectors.mts` 第 ③ 遍同一条理由）。
 const runnerSrc = readFileSync(RUNNER, 'utf8')
+// **判「这段代码还在吗」之前先把整行注释摘掉**（P68 第 ⑤ 刀立的规矩）。
+// ⚠️ P76 第 ⑪ 刀实拍：把 `await stopShell()` 那一行**注释掉**，
+// 下面 ②′ 那条锚在它身上的断言**没红**——串还在文件里，只是在注释里了。
+// **「文件里有这个串」≠「这段代码还在跑」**，跟 ③ 那条「匹配上了 ≠ 匹配的是那一处」
+// 是同一个形状。结构上的断言一律对着 `runnerCode` 问；
+// 要核注释里写没写清楚的（⑦「够不着什么」那一段）才对着 `runnerSrc` 问。
+const runnerCode = runnerSrc.split('\n')
+  .map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l)).join('\n')
 const sf = ts.createSourceFile(RUNNER, runnerSrc, ts.ScriptTarget.Latest, true)
-type Plan = { name: string, step: string, must: number, refute: number }
+type Plan = { name: string, step: string, must: number, refute: number,
+              hasBefore: boolean, beforeCount: number, afterCount: number, restart: boolean }
 const plan: Plan[] = []
 const visit = (n: ts.Node) => {
   if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === 'PLAN'
@@ -66,7 +75,26 @@ const visit = (n: ts.Node) => {
         (p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === k) as ts.PropertyAssignment | undefined
       const str = (k: string) => { const p = get(k); return p && ts.isStringLiteral(p.initializer) ? p.initializer.text : '' }
       const len = (k: string) => { const p = get(k); return p && ts.isArrayLiteralExpression(p.initializer) ? p.initializer.elements.length : -1 }
-      plan.push({ name: str('name'), step: str('step'), must: len('must'), refute: len('refute') })
+      // **P76 加的三样**（`before` / `after` / `restart`）也得扒出来：它们报的问题跟
+      // `must` / `refute` 一样算数，**而静态这条闸看不见它们的话，把它们删掉照样绿**。
+      const num = (k: string) => {
+        const p = get(k)
+        if (!p || !ts.isNumericLiteral(p.initializer)) return 0
+        return Number(p.initializer.text)
+      }
+      const afterCount = (() => {
+        const p = get('after')
+        if (!p || !ts.isObjectLiteralExpression(p.initializer)) return 0
+        const c = p.initializer.properties.find(
+          (x) => ts.isPropertyAssignment(x) && ts.isIdentifier(x.name) && x.name.text === 'count') as ts.PropertyAssignment | undefined
+        return c && ts.isNumericLiteral(c.initializer) ? Number(c.initializer.text) : -1
+      })()
+      const restart = (() => {
+        const p = get('restart')
+        return !!p && p.initializer.kind === ts.SyntaxKind.TrueKeyword
+      })()
+      plan.push({ name: str('name'), step: str('step'), must: len('must'), refute: len('refute'),
+        hasBefore: !!get('before'), beforeCount: num('beforeCount'), afterCount, restart })
     }
   }
   ts.forEachChild(n, visit)
@@ -74,14 +102,16 @@ const visit = (n: ts.Node) => {
 visit(sf)
 
 // **扫不到东西的闸门会一直是绿的**：`PLAN` 空了 / AST 没扒着，这一整段就白跑了。
-const MIN_STEPS = 3
+// **只准往上调**（同 `check-walkthrough-selectors.mts` 的 `MIN_CLASSES`）：
+// P74 是 3 步，P76 把走查第 ④⑤⑥⑩ 加进来之后是 7 步。
+const MIN_STEPS = 7
 if (plan.length < MIN_STEPS) {
   console.error(`✗ 从 run-walkthrough-fakeshell.mjs 里只扒出 ${plan.length} 步（至少该有 ${MIN_STEPS} 步）`
     + '—— 要么 PLAN 被砍了，要么这段 AST 扒法坏了。别把这个数字改小')
   process.exit(1)
 }
 const stepFiles = new Set(readdirSync(path.join(WALK, 'steps')).filter((n) => n.endsWith('.mjs')))
-let musts = 0, refutes = 0
+let musts = 0, refutes = 0, extra = 0
 for (const s of plan) {
   if (!stepFiles.has(s.step)) fail(`PLAN 里的「${s.name}」指着 steps/${s.step}，而那个文件不在`)
   // **判据和反例都得有**。只有 `must` 的闸：步骤脚本整个不跑、只打一句话，也可能全过；
@@ -89,6 +119,30 @@ for (const s of plan) {
   if (s.must < 3) fail(`「${s.name}」只有 ${s.must} 条判据 —— 一步至少 3 条，不然「跑过了」跟「跑了一半」分不开`)
   if (s.refute < 1) fail(`「${s.name}」一条反例都没有 —— 只有 must 的闸，步骤脚本只打一句话也可能全过`)
   musts += Math.max(s.must, 0); refutes += Math.max(s.refute, 0)
+  // **声明了 `before` 却没给 `beforeCount`** = 那几条跑了但不进总数：
+  // 「核了 N 条」那个数会少报，而一个报不准条数的闸，下一批没法拿它对账。
+  // `after` 同理（它的条数写在 `after.count` 上）。
+  if (s.hasBefore && s.beforeCount < 1) {
+    fail(`「${s.name}」有 before 却没给 beforeCount —— 那几条跑了但不进「核了 N 条」`)
+  }
+  if (s.afterCount < 0) fail(`「${s.name}」的 after 没给 count —— 同上`)
+  extra += Math.max(s.beforeCount, 0) + Math.max(s.afterCount, 0)
+}
+
+// ── ②′ **关掉重开那一段的接线洞**（P76 加的第 ⑩ 步）────────────────────────
+// `reopen64.mjs` 头上逐字写着「**换了一篇 ≠ 重开过一次**」。那一步要是没真把壳关掉，
+// 它那六条判据**照样全过**——突变验第 ⑥ 刀量到的正是这件事（把 `if (s.restart)`
+// 短路掉，红的只有「壳从头到尾只起过 1 次」那一条，外加一条页签上的角标差异）。
+// 所以这儿三样一起核：**有人声明了 restart / 那个分支真的在收摊重起 / 那条 pid 判据还在**。
+if (!plan.some((p) => p.restart)) {
+  fail('PLAN 里没有一步声明 `restart: true` —— 走查第 ⑩ 步「关掉重开」没在跑')
+}
+for (const [re, why] of [
+  [/if \(s\.restart\) \{[\s\S]{0,400}?await stopShell\(\)/, '`restart` 那一支里没有 `stopShell()`——壳没关掉'],
+  [/if \(s\.restart\) \{[\s\S]{0,400}?ctx\.shellPids\.push\(await startShell\(\)\)/, '`restart` 那一支里没有重起一个壳'],
+  [/function shellReallyRestarted/, '「壳真换了一个进程吗」那条判据没了——「点过了 ≠ 翻过了」'],
+] as [RegExp, string][]) {
+  if (!re.test(runnerCode)) fail(why)
 }
 
 // ── ③ **接线洞单独一条断言**（P72 那一课）────────────────────────────────
@@ -100,11 +154,11 @@ for (const s of plan) {
 // 突变验第 ⑧ 刀把 `spawn` 那一处改成 `cdp-抄了一份.mjs`，**闸没红**：
 // 它匹配上的是 preflight 里那一处。**这正是它自己要治的那个接线洞**
 // （P72 #3：「手动才跑的闸等于没接进链」的同族——**匹配上了 ≠ 匹配的是那一处**）。
-if (!/spawn\(process\.execPath, \[path\.join\(WALK, 'cdp\.mjs'\)/.test(runnerSrc)) {
+if (!/spawn\(process\.execPath, \[path\.join\(WALK, 'cdp\.mjs'\)/.test(runnerCode)) {
   fail('那条闸不再是拿 `walkthrough/cdp.mjs` **跑**步骤了（preflight 里提一嘴不算）'
     + ' —— 抄一份驱动出来，跑绿了也不算')
 }
-if (!/path\.join\(STEPS, stepFile\)/.test(runnerSrc)) {
+if (!/path\.join\(STEPS, stepFile\)/.test(runnerCode)) {
   fail('那条闸不再是从 `walkthrough/steps/` 里取步骤脚本了')
 }
 // 步骤脚本**一个字节都不许为了这条闸改**：PLAN 里点的必须是走查本来就在用的那些。
@@ -193,6 +247,7 @@ if (!readme.includes('run-walkthrough-fakeshell.mjs')) {
 
 console.log(`\n假壳那条路：${PARTS.length} 份东西都在；${plan.length} 步（`
   + plan.map((p) => `${p.name}=${p.must}+${p.refute}`).join(' / ')
-  + `）共 ${musts} 条判据 / ${refutes} 条反例；写死的绝对路径 0；对不上 ${bad} 个`)
+  + `）共 ${musts} 条判据 / ${refutes} 条反例 / ${extra} 条闸自己跑的（before + after）`
+  + `；写死的绝对路径 0；对不上 ${bad} 个`)
 if (bad) process.exit(1)
 console.log('OK: 假壳那条路还接着（跑得绿不绿这条闸答不了，见文件头「够不着什么」）')
