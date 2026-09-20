@@ -859,6 +859,18 @@ class UserMemory:
           （印证 `1439-0F4`）当场掉了——`detect` 是靠「同值同单位」判出来的，
           而那条候选的词面证据只有一条站不住的串。**「留下率不许跌」说的就是这种。**
 
+        **P38 #5：`search.plan` 的中文 grep 通道跟着 `evidence` 一起开关，理由是同一条。**
+        那一处从「2–3 字滑窗」换成「分词出来的实词」之后，全库 37/765 条查询的 top-8 变了
+        （掉 33 对 / 进 43 对）。**37 条逐条读过**：18 条明确变好（`自动化测试` 一条捞回 7 条真沾边、
+        `80%以上` 砍掉 5 条撞词、「好几回」那段砍掉 7 条撞 `好几` 的、`3月10日众筹版本` /
+        `算力底座…行业知识` / `相关功能7月前后` 几条逐句对应的进来了）、9 条明确变差
+        （`成功经验`、`希望通过`、「这篇用来看链接面板」这种虚词撞的，和 `投资人` 那 5 条
+        股权架构合规的）、8 条平手。自召回那一栏跌的 2 条**逐条找出来读过**：
+        `terrence-596-6F3`「嗯,那我们这个键就不要了」（拿口水句自己召回自己）和
+        `terrence-2029-8F9` 的 40 字截断档——**两条都是退化用例，不是真相关性掉了**。
+        **但候选池那条路不能开**：开了之后 N4 那个绿点又掉了一次（`corroborated → no_record`），
+        跟 P32 那一刀是同一个根因——**候选池宁可宽，一个闸别管所有调用方**。
+
         **先撒网再排序**，不是「命中主题后按时间取前 8」。原来那个写法等于
         「这个主题下最近的 8 条」，跟查询内容无关——实测拿一条事实自己的原文
         去查，只有 22% 能召回它自己、38% 能召回同主题的东西。撒网 + 按词面
@@ -875,19 +887,19 @@ class UserMemory:
         # 第 530 轮正式版冒烟 recall terms=['speaker b', 'ideas']——用户看着像是拿说话人在搜
         surfaces = [x for x in surfaces if not is_speaker_tag(x)]
 
-        queries = search.plan(self, query, vocab)
+        # 证据资格那两档由调用方注入（P32 #1，同 P29 给 `relations.detect` 注 `common` 的做法）：
+        # `kb/search` 不依赖 app 的其它模块，拿不到这个人的 df 索引和词表。
+        common, attested = ((self.common_term(), self.vocab_term()) if evidence
+                            else (None, None))
+        # 中文切词只在**开着证据闸**的那条路上要（P34 #1 / P38 #5）：`qualifies` 和
+        # `search.plan` 的中文 grep 通道都只在那条路上问它，闸不开就没人问，白建一份词典。
+        segment = self.segment() if evidence else None
+        queries = search.plan(self, query, vocab, segment=segment)
         facts: list[dict] = []
         if queries:
             rows, _trace = execute_plan(store, vocab, {"queries": self._prescreen(store, queries)},
                                         budget=search.POOL * 2)
             facts = [r for r in rows if r.get("type") == "fact"]
-        # 证据资格那两档由调用方注入（P32 #1，同 P29 给 `relations.detect` 注 `common` 的做法）：
-        # `kb/search` 不依赖 app 的其它模块，拿不到这个人的 df 索引和词表。
-        common, attested = ((self.common_term(), self.vocab_term()) if evidence
-                            else (None, None))
-        # 中文切词只在**开着证据闸**的那条路上要（P34 #1）：它只被 `qualifies` 用，
-        # 闸不开就没人问它，白建一份词典。
-        segment = self.segment() if evidence else None
         # 多留一些候选再筛：无论哪个范围，筛完都可能不够 `limit` 条
         # （「全部」也会筛掉屏幕活动，见 kb/scope.filter_rows）
         facts = search.rank(facts, query, self, store, limit=limit * 4,

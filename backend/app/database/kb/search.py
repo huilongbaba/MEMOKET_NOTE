@@ -56,13 +56,19 @@ WORD_GREPS = 3
 MAX_QUERIES = 8
 
 
-def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
+def plan(memory, query: str, vocab, *, pool: int = POOL, segment=None) -> list[dict]:
     """The queries whose union forms the candidate pool.
 
     Three channels, deliberately overlapping: symbolic (topics and entities
     resolved from the query), English lexical, Chinese lexical. Overlap is
     fine -- ranking sorts it out, and a channel that returns nothing costs
     nothing.
+
+    `segment`（P38 #5）：给了切词函数，中文那个通道就拿**分词出来的实词**当 grep 词，
+    不拿 2–3 字滑窗。P34 量过这一处、没接，理由是「自召回跌了 1–2 条，换来的
+    四十来条变动要逐条读才知道值不值，这一批没那个预算」。P38 把那 37 条读完了，
+    结论和账在 `kite_memory.recall` 那段注释里。**只在拿给用户看的那条路上给**
+    （`recall(evidence=True)`），候选池那条路不给——见那段注释里 N4 那个绿点。
     """
     topics, entities, _surfaces = memory._match_vocab(query, vocab)
     # 查询里认出的实体扩到同一组的所有写法：问「MemoCat」也要拿到挂在 memo_cat 上的事实（kb/entities.py）
@@ -92,10 +98,31 @@ def plan(memory, query: str, vocab, *, pool: int = POOL) -> list[dict]:
     # and then used only against raw lines when everything else had already
     # failed. Searching facts with them is what took same-topic recall from
     # 38% to 97%.
-    for gram in memory._cjk_terms(query)[:CJK_GREPS]:
+    for gram in _cjk_greps(memory, query, segment):
         queries.append({"select": "facts", "where": {"grep": gram},
                         "pipe": [{"op": "head", "n": pool}]})
     return queries[:MAX_QUERIES]
+
+
+def _cjk_greps(memory, query: str, segment) -> list[str]:
+    """中文通道拿哪几个词去 grep：滑窗（默认）还是分词出来的实词（P38 #5）。
+
+    滑窗那份是「先 3 字后 2 字」，分词这份**按长度从长到短**取前 `CJK_GREPS` 个，
+    同一个意思：长的那个更能把候选池收窄到真的相关的那几条。
+    口水词 / 单字不算（`_is_cn_filler`）——它们当 grep 词等于不筛。
+    切不出来（分词器没启用、或者这段里没有实词）就**原样退回滑窗**，不留空手。
+    """
+    grams = memory._cjk_terms(query)[:CJK_GREPS]
+    if segment is None:
+        return grams
+    words: list[str] = []
+    for t in segment(_WS.sub("", (query or "").lower())):
+        if len(t) >= 2 and _ALL_CJK(t) and not _is_cn_filler(t) and t not in words:
+            words.append(t)
+    if not words:
+        return grams
+    words.sort(key=lambda w: -len(w))
+    return words[:CJK_GREPS]
 
 
 # 拿正文当查询之前要剥掉的东西（跟前端 util/wordCount.stripForRecall 同一条规则，
@@ -344,6 +371,16 @@ def evidence_runs(hits: list[str], query: str) -> list[str]:
     **这是 P27「那个 2 数的是同一个词被切成的两半」的第三个变种**：
     P27 是一个词被切成两半，P32 是两个滑窗重叠，这次是同一个词出现两次。
     位置在这里的用处只有一个——把重叠的滑窗并起来；并完之后**证据是词，不是位置**。
+
+    **第四个变种（P38 #2，逐条读 83 条时当场抓到的）：合并会把包含关系重新造出来。**
+    `_clusters` 的「互不包含」去重是在**合并之前**做的，而合并按位置走：
+    「…追问的『为什么现在写』和『**前提是**什么』。**前提是我**承认…」里，
+    `前提是` 在第一处、`前提是我` 在第二处，两处不重叠，于是并完回两串——
+    可 `前提是` 整个落在 `前提是我` 里面，**它不是第二条独立证据**。
+    所以并完之后**再去一次包含**。全库量过：有包含关系的只有 8 对
+    （`商业找人`/`找人`、`一方面`/`另一方面`、`950 超节点` 那一串…），
+    其中**只有这 1 对**会因此从「放行」变成「砍掉」，别的 7 对本来就还有别的合格证据。
+    **判据宁可窄：这一刀只切它该切的那一条。**
     """
     squeezed = _WS.sub("", (query or "").lower())
     spans: list[list[int]] = []
@@ -373,7 +410,8 @@ def evidence_runs(hits: list[str], query: str) -> list[str]:
     for r in [squeezed[a:b] for a, b in merged] + loose:
         if r not in out:
             out.append(r)
-    return out
+    # 并完再去一次包含（见上面「第四个变种」）。按原顺序留下长的那条。
+    return [r for r in out if not any(r != o and r in o for o in out)]
 
 
 def _why(run: str, attested, weigh=None) -> str:
