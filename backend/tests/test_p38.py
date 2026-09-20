@@ -213,9 +213,10 @@ def test_recall只在开着证据闸的那条路上给segment(monkeypatch):
     seen: list[bool] = []
     real_plan = KM.search.plan
 
-    def spy(memory, query, vocab, *, pool=search.POOL, segment=None):
+    def spy(memory, query, vocab, *, pool=search.POOL, segment=None, common=None):
+        # `common` 是 P42 A2 加的，跟 `segment` 同一个闸；这条测的还是 `segment`
         seen.append(segment is not None)
-        return real_plan(memory, query, vocab, pool=pool, segment=segment)
+        return real_plan(memory, query, vocab, pool=pool, segment=segment, common=common)
 
     class _St:
         facts: dict = {}

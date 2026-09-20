@@ -34,8 +34,20 @@ CORPUS = FIXTURES / "memory_sample_corpus.json"
 _CJK_ONLY = re.compile(r"[一-鿿]{2,8}\Z")
 
 
-def load_sample(path: Path = SAMPLE) -> tuple[dict, list[dict]]:
-    """回 `(_meta, 47 条)`。第一行是 `_meta`，其余每行一条标注。"""
+#: 默认那一组 —— P34 分层抽的 47 条，`replay` / `tally` / P38 那几条闸都在它上面
+DEFAULT_SET = "p34-sample47"
+
+
+def load_sample(path: Path = SAMPLE, *, set_name: str = DEFAULT_SET) -> tuple[dict, list[dict]]:
+    """回 `(_meta, 这一组的那些条)`。
+
+    文件里现在装着**两组**（P42 A3 起，每组一行 `_meta` + 若干条，用 `set` 分开）：
+      · `p34-sample47` —— P34 分层抽的 47 条，`qualifies` 的重放和 P38 那三条闸都在它上面
+      · `p42-allpair82` —— 「两个弱证据凑够 2」那一形状的**全部** 82 对，冻的是**位置指标**
+
+    **默认只回第一组**，这样 P38 写的一切（replay / tally / 三条闸）一个字不用改。
+    老格式（没有 `set` 字段）按默认组算——夹具是资产，读它的代码不许挑格式。
+    """
     meta: dict = {}
     rows: list[dict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -43,11 +55,59 @@ def load_sample(path: Path = SAMPLE) -> tuple[dict, list[dict]]:
         if not line:
             continue
         obj = json.loads(line)
+        if obj.get("set", DEFAULT_SET) != set_name:
+            continue
         if "_meta" in obj:
             meta = obj["_meta"]
         else:
-            rows.append(obj)
+            rows.append({k: v for k, v in obj.items() if k != "set"})
     return meta, rows
+
+
+def position_stats(terms: list[str], query: str, fact: str) -> dict:
+    """证据串在**查询**和**事实**里的排布（P42 A1）。**纯函数，不碰库。**
+
+    量的是「两串离得近不近」这件事的两个侧面：`qgaps` 是相邻两串在挤掉空白的查询里
+    隔了几个字，`fgaps` 是同样两串在事实里隔了几个字（负数 = 在事实里反了序 / 重叠），
+    `dmax = max|qgap - fgap|`——**一整句原话逐字对上时它是 0**。
+
+    P42 A1 拿全库 82 对量完的结论是**这个量程分不开**：`dmax ≤ 5` 那一档虽然
+    「留下的 24 条一条误判都没有」，但代价是 25 硬换 30 不硬（1.20 : 1），
+    按这条线的账法不够。数留在 `memory_sample.jsonl` 的 `p42-allpair82` 那一组里，
+    下一批要再试位置判据，拿这个函数在那 82 条上重算，**不用再读一遍**。
+    """
+    ws = re.compile(r"\s+")
+    q, f = ws.sub("", (query or "").lower()), ws.sub("", (fact or "").lower())
+
+    def locate(run: str, hay: str, near=None):
+        idx = [m.start() for m in re.finditer(re.escape(run), hay)]
+        if not idx:
+            return None
+        return idx[0] if near is None else min(idx, key=lambda i: abs(i - near))
+
+    qpos = {}
+    for r in terms:
+        i = locate(r, q)
+        if i is not None:
+            qpos[r] = (i, i + len(r))
+    ordered = sorted((r for r in terms if r in qpos), key=lambda r: qpos[r][0])
+    fpos, prev = {}, None
+    for r in ordered:
+        i = locate(r, f, near=prev)
+        if i is not None:
+            fpos[r] = (i, i + len(r))
+            prev = i + len(r)
+    both = [r for r in ordered if r in fpos]
+    if len(both) < 2:
+        return {"qgaps": None, "fgaps": None, "qgapmax": None, "fgapmax": None,
+                "dmax": None, "qspan": None, "fspan": None, "sameorder": None}
+    qg = [qpos[b][0] - qpos[a][1] for a, b in zip(both, both[1:])]
+    fg = [fpos[b][0] - fpos[a][1] for a, b in zip(both, both[1:])]
+    return {"qgaps": qg, "fgaps": fg, "qgapmax": max(qg), "fgapmax": max(fg),
+            "dmax": max(abs(x - y) for x, y in zip(qg, fg)),
+            "qspan": qpos[both[-1]][1] - qpos[both[0]][0],
+            "fspan": fpos[both[-1]][1] - fpos[both[0]][0],
+            "sameorder": all(g >= 0 for g in fg)}
 
 
 class FrozenCorpus:
