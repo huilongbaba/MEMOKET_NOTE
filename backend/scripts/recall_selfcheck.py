@@ -15,6 +15,28 @@ sys.path.insert(0, ".")
 from app.database.kite.kite_memory import UserMemory  # noqa: E402
 
 
+def _corpus_tag(user: str) -> str:
+    """语料的出身：`KITE_DATA_DIR` 下这个人的 codebook 有多大、内容摘要是什么。
+
+    **为什么要它**（第 777 轮）：台账上同一格「留下率」躺着两组数、都没写参数——
+    P34 记 197/195/95，P42–P48 **五批记着同一个 194/190/103**，而那五批各自都改过
+    `kb/` 的代码。实测：同一份语料上 `terrence 200 11` 稳定 197/195/95，
+    而 194/190/103 在 seed 7/11/42 三档里一档都对不上。**那个数不是每批真跑的，是抄的。**
+
+    光有参数还不够：P29 抓到过一份「拷贝」里四个 `codebook.xml` 是 718 字节的空壳，
+    而那一批所有「全库」的数都建在它上面。**同样的参数在不同语料上是不同的数。**
+    所以这一格把「在哪份语料上跑的」跟数字绑在一起——**整行抄进台账，出身跟着走。**
+    """
+    import hashlib
+    import os
+    from pathlib import Path
+    root = Path(os.environ.get("KITE_DATA_DIR") or (Path(__file__).resolve().parent.parent / "data"))
+    cb = root / user / "codebook.xml"
+    if not cb.is_file():
+        return "no-codebook"
+    return f"{cb.stat().st_size}B/{hashlib.sha256(cb.read_bytes()).hexdigest()[:8]}"
+
+
 def main(user: str = "terrence", n: int = 60, seed: int = 7) -> None:
     m = UserMemory(user)
     idx = m._index()
@@ -45,7 +67,7 @@ def main(user: str = "terrence", n: int = 60, seed: int = 7) -> None:
         others = [r for r in rows if (r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) != f.id][:5]
         if mine and any(mine & set((store.facts.get(r.get("id") if isinstance(r, dict) else getattr(r, "id", "")) or f).topics or ()) for r in others):
             topic += 1
-    print(f"user={user} seed={seed} n={len(sample)}: full {full}/{len(sample)}  short40 {short}/{len(sample)}  sametopic(excl self, short40) {topic}/{len(sample)}  median {statistics.median(times):.0f} ms")
+    print(f"user={user} seed={seed} n={len(sample)} corpus={_corpus_tag(user)}: full {full}/{len(sample)}  short40 {short}/{len(sample)}  sametopic(excl self, short40) {topic}/{len(sample)}  median {statistics.median(times):.0f} ms")
     for line in misses:
         print("MISS", line)
 
