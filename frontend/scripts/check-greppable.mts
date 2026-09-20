@@ -32,7 +32,9 @@ const REPO = path.join(here, '../..')
 const ROOTS = ['frontend/src', 'frontend/scripts', 'desktop/src', 'backend/app',
                'backend/scripts', 'backend/tests', 'docs', 'shared']
 const SKIP = new Set(['node_modules', 'dist', '__pycache__', '.vite'])
-const EXTS = new Set(['.ts', '.tsx', '.mts', '.js', '.jsx', '.css', '.json', '.jsonl',
+// `.mjs` 是 P66 加的：走查的公共驱动（`frontend/scripts/walkthrough/cdp.mjs`）搬进仓库了，
+// 而这条闸要治的正是「在源码里 grep 一下」——量具进来了，闸得看得见它。
+const EXTS = new Set(['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx', '.css', '.json', '.jsonl',
                       '.md', '.html', '.py'])
 
 function walk(dir: string): string[] {

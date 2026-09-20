@@ -2073,6 +2073,94 @@ P64 留给下一批：① 收工那行的字数口径（问题 #1，**先量**�
 ⑤ P59 留的第 2 / 3 条（在 `modes.py` / `middleware/checks.py`，跟那一侧错开）；
 ⑥ 量具进仓库（另一个 agent 这一批正在做）。
 
+### P66（第 800 轮，2026-09-20）：壳那一侧的量具进仓库 + 接进 `npm test` · 那个 `null` 是量具 · 第十二次走查
+
+开工 `83a3f3d`（worktree `agent-abd0858244067be26`，P63 / P64 两支的 merge）。
+**`frontend/src/**` / `desktop/src/**` / `backend/app/**` / `kb/**` / `app/harness/**`
+一个字节没碰**（后两处另一个 agent 这一批在改）。
+
+**A. 壳那一侧的量具搬进仓库了**（P62 ⑤ / P63 ④ / P64 第 4 条，四批挂着的那一格）：
+
+| 搬的 | 落在哪儿 | 进了哪条链 |
+|---|---|---|
+| CDP 驱动 `cdp.mjs`（`must` / `toasts` / `dots` / `expandDetails` / `readCard` / `noteId` / `openNoteById` / `shot` / `cmText` …） | `frontend/scripts/walkthrough/cdp.mjs` | 选择器那一半进 `npm test` |
+| 选择器静态自检 | `frontend/scripts/check-walkthrough-selectors.mts` | **`npm test`**（第 34 条 check） |
+| userData 造法（`identity.json` / 拷语料核字节数 / 起壳前过闸） | `backend/scripts/walkthrough_udd.py` | **`pytest`**（`tests/test_p66.py` 18 条） |
+
+搬进来只改一处：`d.shot()` 的落盘目录从**写死的 scratch 绝对路径**改成
+`WALKTHROUGH_SHOT_DIR`，**没设就抛**——进 git 的文件里写死某次会话的路径，
+换台机器就是静默写到别处，而截图是走查唯一的物证。
+**不进 `desktop/scripts/`** 的理由：`desktop/package.json` 里一条 `test` 都没有，放进去等于没进链。
+
+**步骤脚本（`steps/*.mjs`）进不来**，三样 CI 里一样都没有：真打出来的 `.app`（十几分钟）、
+真用户库（不进 git）、活着的 CDP 端口。搬进来会变成一堆「永远跳过」的文件——
+**一条永远绿的闸不是闸**，而一份永远跳过的脚本比留在 scratch 更糟，它看着像被覆盖了。
+仓库里留的是 `frontend/scripts/walkthrough/README.md`：怎么跑、每批要重记哪几条。
+
+自检这一批加了**第二遍抽取**（选择器字面量），因为原来那张前缀表**看不见表外的类名**。
+同一批语料（52 个文件）实测 **42 → 46 个类名，多 4 少 0**：
+`doc-intent` / `doc-intent-input` / `doc-intent-src` / `floating-buttons`
+——这四个在 P62–P64 三批里**一次都没被核过**。
+顺手堵了两个假类名（`.memoketDesktop?` 是属性、`${JSON.stringify(t)}` 里的 `.stringify`），
+再加一道分母闸（抠不出 8 个类名就自爆）。
+`check-greppable` 的扫描名单补了 `.mjs`——**量具进来了，闸得看得见它**。
+
+`test_corpus_lineage` 又按响一次（`walkthrough_udd.py` 提到 `notes.sqlite3`）。
+这一次答案是白名单，**而白名单那条理由本身有闸盯着**：
+`test_p66` 里一条断言它不许 import `sqlite3`、不许出现 SQL 关键字。
+
+**B. P64 问题 #2 核清楚了：是量具，不是产品。**
+`d.noteId()` 的默认参数 `user = 'terrence'`，空库那一趟身份是 `p66-newbie`，
+于是它读了**另一个人的那一格**。同一屏上三头各读一次：
+默认那格 `null` · 真身份那格 `c278bd718790` · `localStorage` 里**只有一个** active 键 ·
+后端 `/api/notes` 也是同一个 id。**产品一点问题没有。**
+**判据宁可窄**：这一批只把事实核清楚，**没改那个默认值**（会动到所有历史步骤脚本的读数）。
+
+**C. 第十二次全流程走查**（两个身份，46 张 `p66-*.png`）：十一步逐格对上，
+**圆点那一格这一批起写「落槽 2（冲突 1 / 缺依据 1）」**，
+「页面合计 8」当旁注（它是真的，只是分母是整页不是编辑器落槽）；
+P62 ③ 那句提示在真数据两天上都说了、在**现造的**干净那天一个字没说；
+P64 问题 #1 **复现了没改**（编辑器 50 → 790 = +740，收工那行「+1060 字」，逐字同 P64）。
+问题清单 4 条：#1 产品（复现不修，另一个 agent 在改）、#2 #3 #4 全是量具，#2 #3 #4 已改。
+`b3old` 的「一键全删」那一格 **P64 记的根因不止一条**：文案改对之后**还是 `undefined`，
+因为那个钮在页底、`clickExact` 不滚动**——两条都改了才读得到。
+
+闸：后端 `pytest -q` **2982 passed / 1 skipped**（基线 **2963 / 1**，+19 每条对得上：
+`test_p66.py` 18 条 + `test_scripts_import` 按脚本参数化多出来的 1 条；
+`--ignore=tests/test_p66.py` 实测 2964，**加得起来**；那 18 条**一条都不跳过**，不要真库）；
+前端 `npm test` **91 文件 / 803 条** + 三十几条 `check-*.mts`（**多了一条**）+ 三个 smoke，`EXIT=0`。
+**突变验 11 刀 11 刀按预期红，红的都是该红的那条**；两次「红的不是那条」都是**预测写错不是闸不准**
+（第 ② 刀串写窄了；第 ⑥ 刀砍到了前一条断言上，**反例没落在被测分支里**，改成在别处塞通配才对）。
+第 ⑪ 刀单记：**摘掉扫描名单它照样全过**，得先埋一个真 NUL 再摘——**红不了不等于闸没了**。
+
+> ⚠️ **收尾命令的环境注解**（第 776 轮那条规矩）：
+> · 后端 `pytest -q` 在 **worktree 的 `backend/`** 下跑，`.venv` 软链到主仓；
+>   `backend/data/notes.sqlite3` 是**这个 worktree 里的只读拷贝**（`.gitignore` 的 `data/` + `*.sqlite3` 挡着）。
+> · 前端 `npm test` 在 **worktree 的 `frontend/`** 下跑；`node_modules` 同样软链。
+>   忽略规则匹配不到软链，所以**提交逐路径 `git add`，绝不 `git add -A`**。
+> · `npx tsx scripts/check-walkthrough-selectors.mts` **不点名目录就只扫仓库里那一份公共驱动**
+>   ——绿了不等于这一批的步骤脚本核过了。
+> · `<scratch>/p66/mutate66.py` **会改 worktree 里那 5 个源文件**（每刀整文件写回 + 逐字节核 + 清 `__pycache__`），
+>   `<scratch>/p66/reweb.sh` / `reasar.mjs` **会改 `<scratch>/p66/app/` 那份 `.app`**（重打 asar + adhoc 重签）
+>   ——**都只在本 worktree / scratch 跑**。
+> · `node …/walkthrough/cdp.mjs` **必须先 `export WALKTHROUGH_SHOT_DIR=<目录>`**，
+>   没设它直接抛（有意的：不猜一个目录静默写进去）。
+> · `backend/scripts/journey_fixture.py --variant full` 会**只读**
+>   `~/Library/Application Support/memoket-note-desktop/journey`（自带 `guard_dest` 拦着写）。
+> · **`postnote` 这一批一条都没发**（不往整台机器发分布式通知）。
+> · 唯一对着真库的动作：开收工各一次 `db_guard.fingerprint`（`mode=ro`）、
+>   一次 `cp -R backend/data`、两次 `sqlite3.backup` 只读拷贝。
+>   **没有任何一条收尾命令写真库。**
+
+P66 留给下一批：① `d.noteId()` 那个默认参数（**先量**有多少处在裸调它）；
+② 收工那行的字数口径（这一批复现了没改，合并之后**要重跑一次 `adv` 档**核这个数）；
+③ 步骤脚本还在 scratch——仓库里有 README 了，但「按 README 跑得起来」这件事**没有闸**，
+要接得先有一条可重复的「打一次壳」脚本；
+④ `selfcheck` 两遍抽取的并集里还漏一类：**拼出来的选择器**（`'.' + kind`）两遍都抓不到；
+⑤ P59 留的第 2 / 3 条（`modes.py` / `middleware/checks.py`，跟那一侧错开）；
+⑥ P63 留的取词排序（`kb/**`，另一个 agent 这一批在做）。
+
+
 ## 4. 不做
 
 - 不再写新的调研文档（§1.4）。
