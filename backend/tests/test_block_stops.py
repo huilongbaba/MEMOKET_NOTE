@@ -164,8 +164,10 @@ def test_长文那两条没被这两条顶掉():
     `nothing_left_to_fix` / `pause_for_review` 是两批人花了好几轮定下来的。"""
     # `check_stuck`（P6 问题 4）是长文自己的：同一条判据连响三轮就停，block 模式
     # 三轮封顶本来就到不了那一档。
+    # `best_stalled`（P55 #4）同样是长文自己的：`best` 连 4 轮不涨，block 三轮封顶也到不了。
     assert {f.__name__ for f in modes.NOTE.stop_when} == {
-        "check_stuck", "material_used_up", "stalled", "nothing_left_to_fix", "pause_for_review"}
+        "check_stuck", "material_used_up", "stalled", "best_stalled",
+        "nothing_left_to_fix", "pause_for_review"}
     assert {f.__name__ for f in modes.SECTION.stop_when} == {
         "check_stuck", "material_used_up", "pause_for_review"}
 

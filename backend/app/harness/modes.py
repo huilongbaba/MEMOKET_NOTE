@@ -138,6 +138,44 @@ def check_stuck(st: State) -> str | None:
     return "check_stuck" if n >= CHECK_STUCK_ROUNDS else None
 
 
+# ------------------------------------------ `best` 不涨就停（P53 #5 / P55 #4）---
+#
+# P53 实拍 `3a3a96354546`：`citations_present` 响在 r1 / r2 / r5 / r7 ——
+# **任何 4 轮窗口里都凑不满 3 次**，`check_stuck` 漏出去，跑满 8 轮 224k prompt token，
+# 而真正该停的理由摆在那儿没人读：**`best` 从 r3 的 [4, 1.667] 起，r4–r8 五轮一格没涨。**
+# P22 问题 #5 的建议里本来就有这半句（「判据都在响**且** `best` 没涨」），P24 #3 只做了前半句。
+#
+# 这一条**不看判据**，只看 `best`：判据响不响是「有没有人抱怨」，`best` 涨不涨是
+# 「这几轮到底有没有换来更好的一份」。前者漏得掉（轮流响、隔轮响），后者漏不掉。
+#
+# ## 阈值是量出来的（`<scratch>/p55_beststall.py`）
+#
+# 射程先收对：p5 / p6 / p8 / p11 / p14 / p15 那 20 份 run json **没记 `best_rank`**
+# （逐轮全是 `()`），拿它当「没涨」会把 20 份跑凭空算成 stall——**这一格只在
+# 真记了的 27 份跑上量**（p18 / p22 / p24 / p26 / p28 / p53）。反事实重放：
+#
+# | N | 会提前停 | 共省 | **误伤**（后面 best 还会涨 / 本来能 `complete`） |
+# |---|---|---|---|
+# | 3 | 7 份 | 12 轮 | **2 份**（`p22/da080ca847cf`、`p24/da080ca847cf`，都是第 5 轮才 `complete`） |
+# | **4** | **4 份** | **5 轮** | **0** |
+# | 5 | 1 份 | 1 轮 | 0 |
+#
+# 取 4：**误伤为 0 的最小阈值**。N=3 便宜 7 轮，代价是那两份本来能写完的跑在第 4 轮被掐掉
+# ——「宁可多跑一轮，不许把一份写得完的稿子提前交」跟 `COVER_MIN` 那条取舍是同一个方向。
+# N=5 在这 27 份上只动 1 份，等于没加。
+# 被 N=4 停下的四份全是该停的：`p53/3a3a96354546`（8→7）、`p26/da080ca847cf`（8→6）、
+# `p28/e78306202d78`（8→7）、`p22/e78306202d78`（6→5，本来按 `stalled` 收场）。
+BEST_STALL_ROUNDS = 4
+
+
+def best_stalled(st: State) -> str | None:
+    """`best` 连着 BEST_STALL_ROUNDS 轮一格没涨：再跑只是烧轮数，交 `best`（`loop.SHIP_BEST_ON`）。
+
+    计数在 `middleware/best_of.BestOf.after_judge`（`st.best` 只有那一处在写）。
+    """
+    return "best_stalled" if int(st.bag.get("best_stall", 0)) >= BEST_STALL_ROUNDS else None
+
+
 def pause_for_review(st: State) -> str | None:
     """Stop after each round and wait for the user.
 
@@ -628,8 +666,11 @@ NOTE = Mode(
             charts_from_tools, unsupported_specifics),
     # `check_stuck` 排在最前（P6 问题 4）：判据连响三轮说的是「这次跑动不了
     # 它」，比材料用完 / 卡住更早该看见；两条同时成立时用户更需要知道前者。
-    stop_when=(check_stuck, material_used_up, stalled, nothing_left_to_fix,
-               pause_for_review),
+    # `best_stalled` 排在 `stalled` **后面**（P55 #4）：两条都说「再跑也不会更好」，
+    # 而 `stalled` 说的是「连正文都没变」——更具体、更该先说。`best_stalled` 是
+    # 「正文在变、换来的东西没变好」，是它漏掉之后的那一档。
+    stop_when=(check_stuck, material_used_up, stalled, best_stalled,
+               nothing_left_to_fix, pause_for_review),
     # `Cited`（P6 问题 2）：正文里已经引着的事实展开成材料，打分 / 修订都读。
     # `DoneCriteria`（P13 #1）：「完成标准」里代码判得了的那几条挂成判据（before_run，跟 Checklist 一个做法）。
     extra_mw=(DoneCriteria(), Cited(), Revise(), Repair(), Runtime(), Replan(), Sections(), Save()),

@@ -497,7 +497,12 @@ def _over_budget(st: State) -> str | None:
 # `check_stuck`（P6 问题 4）属于这一档：同一条代码判据连响 ≥3 轮，说明这次跑的
 # 写作动不了它，再跑只是烧轮数——停机理由跟这一轮写得好不好无关。判据本身在
 # `modes.check_stuck`，事件在 `middleware/checks.Checks.after_run`。
-SHIP_BEST_ON = ("regressed", "cost_cap", "check_stuck")
+#
+# `best_stalled`（P55 #4）也属于这一档，而且是这一档里最直白的一个：这条规则的**判断
+# 本身**就是「最近 N 轮没有一轮比 `best` 更好」，交这一轮等于明知故犯（同 `regressed`）。
+# 规则和阈值在 `modes.best_stalled` / `modes.BEST_STALL_ROUNDS`，计数在
+# `middleware/best_of.BestOf.after_judge`。
+SHIP_BEST_ON = ("regressed", "cost_cap", "check_stuck", "best_stalled")
 
 BUILTIN_STOPS = (_complete, _blocked, _over_budget, _no_progress, _regressed)
 

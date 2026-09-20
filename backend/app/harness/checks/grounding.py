@@ -148,22 +148,61 @@ def citations_exist(st: State) -> Verdict | None:
     跟 citations_hold 的区别：那条是模糊文本匹配（模型自报），这条是确定性的
     ——id 要么在这轮的材料里、要么在知识库里查得到，否则就是编的。可自动修：
     摘掉那个编造的 ``[id]``，正文其他部分不动。
+
+    ## 被吃掉中段的编号也算（P55 #2）
+
+    P53 实拍 `[terrence-8F6]`（真编号 `terrence-1833-8F6` 的残骸）一路留到终稿，
+    **而这条判据当时连看都没看见它**：`cited_ids` 的 `CITE` 要三段，两段的不收，
+    于是第一行 `return None`，手边的 `fact_by_id` 一次都没被问到。
+    `truncated_citations` 补的就是这一格（射程和为什么不放宽 `CITE` 见那个函数上面那段）。
+
+    **只报这次跑新写进来的**（`content_at_start` 里已经有的一个不碰）。
+    理由跟 `Cited`（P6 问题 2 / P23 / P26 那条路）逐字同一条：用户自己贴在正文里的编号
+    **不是这次跑编的**，P5 实拍 `a941efecd390` 被删掉 8 条正确引用就是从「把用户贴的
+    当成本轮产物」开始的。三段的那一档（`dangling_citations`）行为一个字不动——
+    它有自己的老量程和老闸，这一批不碰。
     """
     from ...database.kite.kite_memory import UserMemory
-    from .citations import cited_ids, dangling_citations, strip_citations
-    if not cited_ids(st.content):
-        return None
+    from .citations import (cited_ids, dangling_citations, strip_citations,
+                            truncated_citations)
+    before = str(st.bag.get("content_at_start") or "")
     user = getattr(st.ctx, "user", "")
     mem = UserMemory(user) if user else None
     exists = (lambda fid: mem.fact_by_id(fid) is not None) if mem else (lambda _fid: False)
+    cut = [fid for fid in truncated_citations(st.content, st.facts, exists)
+           if f"[{fid}]" not in before]
+    if not cited_ids(st.content):
+        return _truncated_verdict(st, cut) if cut else None
     bad = dangling_citations(st.content, st.facts, exists)
+    if cut and not bad:
+        return _truncated_verdict(st, cut)
     if not bad:
         return None
+    bad = bad + cut
     return Verdict(
         pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
         f"引用了 {len(bad)} 条不存在的事实（{', '.join(bad[:3])}）。只引用材料里列出的编号，"
         "不要自己编——一个像真的一样的引用比不引用更糟。",
         fix=lambda text: strip_citations(text, bad),
+    )
+
+
+def _truncated_verdict(st: State, cut: list[str]) -> Verdict:
+    """只有「被吃掉中段」那一档时的措辞（P55 #2）。
+
+    跟上面那句分开写：用户看到的得是**对**的那一句。「引用了 N 条不存在的事实」
+    对一个 `[terrence-8F6]` 来说是错的诊断——它长得像真编号，模型下一轮会以为
+    自己引错了材料，而实际上它是把一个真编号写漏了中段。
+    """
+    from .citations import strip_citations
+    return Verdict(
+        pick_dimension(st, "factual_grounding", "no_fabrication", "data_grounding"),
+        f"有 {len(cut)} 个编号查不到（{', '.join(cut[:3])}）——它长得像事实编号，"
+        "但知识库里没有这个 id，多半是把材料里的编号抄漏了一段。已摘掉；"
+        "编号只能从材料里**整个**抄，一个字都不能少。",
+        fix=lambda text: strip_citations(text, cut),
+        # P26 #3：动了手就得说一句。**说做了什么，不说哪里错了**（后者是 `message` 的事）。
+        fix_note=f"上一轮我把正文里查不到的编号摘掉了：{', '.join(cut[:3])}。",
     )
 
 

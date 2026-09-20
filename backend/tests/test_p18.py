@@ -94,13 +94,38 @@ def test_1_done_criteria短路的轮沿用上一轮排名_交更长的那份():
 
 
 def test_1_别的判据照旧打到底():
-    """反向闸：把 NOT_A_VETO 改成「所有判据」也能让上一条绿。这一条钉住重复段 / 没出处仍然作废。"""
-    for check in ("no_same_sources_twice", "citations_present", "no_placeholder", "no_repeated_lists"):
+    """反向闸：把 NOT_A_VETO 改成「所有判据」也能让上面两条绿。这一条钉住重复段 / 占位句仍然作废。
+
+    **`citations_present` P55 #3 挪到上面那条正例去了**：它说的是「缺了编号」，不是
+    「这一轮坏了」——量的数在 `middleware/best_of.NOT_A_VETO` 上面（72 轮 / 32,700 字）。
+    留在这张表里的三条是 p5–p15 21 次真跑人读判定「确实不该交」的那几种。"""
+    for check in ("no_same_sources_twice", "no_placeholder", "no_repeated_lists"):
         st = _st()
         _judge(st, "r1"); _round(st, 1)
         _hit(st, check, "r1 r2"); _round(st, 2)
         assert st.best[1] == "r1", check
-    assert NOT_A_VETO == ("done_criteria",)
+    assert NOT_A_VETO == ("done_criteria", "citations_present")
+
+
+# P53 真跑 `603dca25403a` 的形状（`<scratch>/p53/runs/603dca25403a.json`）：
+# r1 五维真打分 (4, 1.8)；r2 / r3 被 `citations_present` 短路各写 343 / 358 字；
+# r4 四维真打分 (3, 1.75) 追不上；r5 又被 `citations_present` 短路 → `check_stuck` 停。
+# 修前交 r1 的 1,158 字，r2–r5 的 1,469 字全扔。
+def test_1_citations_present短路的轮也沿用上一轮排名():
+    """量程：把 `citations_present` 从 `NOT_A_VETO` 里拿掉 → best 钉死在 r1，这条红。"""
+    st = _st()
+    _judge(st, "r1"); _round(st, 1)
+    r1 = st.best[0]
+    _hit(st, "citations_present", "r1 r2"); _round(st, 2)
+    assert st.best[1] == "r1 r2", "沿用 r1 的排名、平手归后来者 → 交更长的那份"
+    _hit(st, "citations_present", "r1 r2 r3"); _round(st, 3)
+    assert st.best[1] == "r1 r2 r3"
+    assert st.best[0] == r1, "**排名一格没变**：换的只是交哪一份正文"
+    # r4 真打分但维度少一个，排名更低 → best 不动；r5 沿用 r4 的低排名，也不动。
+    _judge(st, "r1 r2 r3 r4", coherence=0, non_repetition=0); _round(st, 4)
+    assert st.best[1] == "r1 r2 r3", "真打分打低了就是低了，沿用不等于免检"
+    _hit(st, "citations_present", "r1 r2 r3 r4 r5"); _round(st, 5)
+    assert st.best[1] == "r1 r2 r3", "沿用的是**上一轮**那个低排名，不是 best"
 
 
 def test_1_第一轮就被done_criteria短路_没有上一轮可沿用_照旧最低():

@@ -313,6 +313,86 @@ def beat_coverage(body: str, content: str) -> tuple[float, int | None]:
     return round(best, 3), best_line
 
 
+# ------------------------------------- 一条节拍列了四件事、正文写了三件（P53 #7 / P55 #5）---
+#
+# P53 实拍 N4 B5：「把午餐会后的**试点责任、接入对象、课程标签与时间表**具体化…」
+# 覆盖 0.452 ≥ 0.42 → 标成「已写（正文第 29 行起）」。逐行核过：接入对象在 L29、
+# 课程标签在 L51、时间窗口在 L27，**试点责任全文一个字没有**。
+# 病根是 `beat_coverage` 是**裸双字重合取最高窗口**：它答得了「这条节拍的词在不在正文里」，
+# 答不了「这条节拍点的**每一件事**是不是都写了」。
+#
+# **不再抬 `COVER_MIN`**：P24 已经量过两簇本来就重叠（真·已写最低 0.165，真·待补最高 0.387），
+# 0.42 再往上会开始误伤真·已写。改成在覆盖率之外**另加一条**。
+#
+# ## 三件事是量出来的，不是想出来的（`<scratch>/p55_beats*.py`）
+#
+# ① **射程只有「missing → written」那一支**。`verify_beats` 本来就不动已经标「已写」的那些
+#    （`elif status == "written"` 原样留着），所以一条新规则**只可能**影响被翻上来的那几条。
+#    P4 / P4-after / P22 / P25 / P53 五批骨架产出里，被翻上来的（带「（正文第 N 行起）」的）
+#    **一共 8 条**，这就是全部射程。头两刀把标「已写」的也算成「会被翻掉」，是**算错了射程**。
+# ② **切并列项的三种严格度，逐条读过**（真值 = 逐条读原文判的）：
+#    「任意一个词元命中就算写了」漏掉实拍那条（首项被切成「餐会后的试点责任」，
+#    `餐会` 蒙混过关）；「全部词元都要命中」在 89 条上翻掉 19 条，太狠；
+#    **「≥ 半数词元命中」**（下面这条）把 8 条射程里该挡的全挡住、不该挡的一条没碰。
+# ③ **8 条射程逐条的真值**：按今天的 0.42，只有 3 条还会被翻上来
+#    （`P4-after/N2 B6` 0.463、`P25/N5 B3` 0.429、`P53/N4 B5` 0.452），**三条真值全是「待补」**
+#    ——`N2 B6` 要的「验收负责人 / 测试样本」正文没有、`N5 B3` 那张表格子里逐字写着「填写具体金额」、
+#    `N4 B5` 就是实拍那条。旧规则 3 条全翻错，这条规则 3 条全挡住，**0 条误伤**。
+#
+# 只在**真的有一串顿号**（≥3 项）时启用：一条不列举的节拍走不到这儿，行为一个字不变。
+_ENUM_RUN = re.compile(r"[一-鿿A-Za-z0-9]{2,8}(?:、[一-鿿A-Za-z0-9]{2,8}){2,}"
+                       r"(?:(?:与|和|及|以及)[一-鿿A-Za-z0-9]{2,8})?")
+COVER_ITEM_MIN = 0.5      # 一个并列项至少有这么大比例的词元落在那个窗口里，才算「这件事写了」
+
+
+def enum_items(body: str) -> list[str]:
+    """一条节拍里那串顿号并列的每一项（含首末项）。没有（或不足 3 项）就是空表。"""
+    m = _ENUM_RUN.search(body or "")
+    if not m:
+        return []
+    return [x for x in re.sub(r"(与|和|及|以及)", "、", m.group(0)).split("、") if x]
+
+
+def enum_inner_items(body: str) -> list[str]:
+    """并列串里**两端都被顿号夹住**的那几项——判据只用这几项。
+
+    首项前面挂着动词 / 定语（「**把午餐会后的**试点责任」「**围绕**昇腾」），
+    末项后面拖着谓语（「证据**逐**」= 「证据、逐项填入表格」被截断）——
+    没有分词器，这两端就是切错的重灾区，而切错的项会**凭空报一个漏项**。
+    实测：在全部 8 条射程上，「用全部项」和「只用内部项」挡对的都是同样 3 条、误伤都是 0，
+    但内部项少切出 5 个坏项（`证据逐` / `餐会后的试点责任` / `各中介的实际金额` …）。
+    **一样的收益、更小的面**，按「判据宁可窄」取后者。
+    """
+    return enum_items(body)[1:-1]
+
+
+def uncovered_items(body: str, content: str) -> list[str]:
+    """这条节拍的并列项里，哪几项在**最佳窗口**里连一半词元都没有。零模型。"""
+    items = enum_inner_items(body)
+    if not items:
+        return []
+    bt = _cov_terms(body)
+    paras = _paragraphs(_strip_placeholders(content))
+    if not bt or not paras:
+        return []
+    pterms = [(ln, _cov_terms(t)) for ln, t in paras]
+    best, union = 0.0, set()
+    for i in range(len(pterms)):
+        win = pterms[i:i + COVER_WINDOW]
+        u: set[str] = set()
+        for _ln, t in win:
+            u |= t
+        score = len(bt & u) / len(bt)
+        if score > best:
+            best, union = score, u
+    out: list[str] = []
+    for it in items:
+        t = _cov_terms(it)
+        if t and len(t & union) < COVER_ITEM_MIN * len(t):
+            out.append(it)
+    return out
+
+
 def verify_beats(beats: list[str], content: str, *, threshold: float = COVER_MIN) -> list[str]:
     """生成后的代码核对（零模型）：标「待补」的在正文里找覆盖，找到就改标「已写（正文第 N 行起）：」；
     标签统一成「已写：」「待补：」；没标的，正文里盖住了就标「已写：」，盖不住的不乱标（不能确定是编的还是修辞功能）。"""
@@ -323,7 +403,10 @@ def verify_beats(beats: list[str], content: str, *, threshold: float = COVER_MIN
             continue
         score, line = beat_coverage(body, content)
         if status == "missing":
-            if score >= threshold and line:
+            # **并列项逐项核**（P55 #5）：覆盖率过了门槛还不够——这条节拍点了四件事、
+            # 正文只写了三件时，「已写（第 N 行起）」是一句假话，用户据此**漏掉不写**。
+            # 只在这一支上加（别的两支本来就不动标签，见上面那段的射程）。
+            if score >= threshold and line and not uncovered_items(body, content):
                 out.append(f"已写（正文第 {line} 行起）：{body}")
             else:
                 out.append(BEAT_MISSING + body)

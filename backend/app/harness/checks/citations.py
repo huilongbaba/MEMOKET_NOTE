@@ -136,6 +136,56 @@ def fake_citations(text: str, facts: list[str], exists) -> list[str]:
     return dangling_citations(text, facts, exists) + malformed_citations(text)
 
 
+# ---------------------------------------------------- 被吃掉中段的编号（P55 #2）
+#
+# P53 实拍：`3a3a96354546` 第 2 轮写进「…把用户推回了额外步骤。**[terrence-8F6]**」，
+# 一路留到终稿；`fact_by_id` 查无此 id。形状是真编号 `terrence-1833-8F6` **被吃掉中段**
+# 之后的残骸——而 `1833-8F6` 正是同一次跑批里另一篇（`a941efecd390`）引到的那一条。
+#
+# **判据侧不是「没查库」，是「压根没看见它」**（P55 #2 量的第一件事）：
+#   · `CITE` 要**三段**（`前缀-数字或12位hex-hex`），`terrence-8F6` 只有两段 → `cited_ids` 不收；
+#   · `_LOOSE`（`malformed_citations`）要**至少两条短横**（`{2,}`）→ 也不收。
+# 于是 `citations_exist` 拿到一个空列表，第一行就 `return None`，`fact_by_id` 根本没被问到。
+# P5 / P22 / P24 三批这一格都是 0，P53 是第一次破。
+#
+# **不放宽 `CITE`**：它跟 `store._CITE` / 前端 `editor/factCite.ts` 是对拍的三处之一，
+# 放宽会把这种残骸画成正文里的引用角标——「一个像真的一样的引用比不引用更糟」。
+# **也不放宽 `_LOOSE`**：`{2,}` 降成 `{1,}` 会把 `[Fig-1]` `[TODO-2]` 这种正常方括号一起收进来。
+#
+# 这里单开一条**窄得多**的：只认「长得像这篇笔记**自己那套编号**」的方括号——
+# 前缀（第一段）必须是这轮材料里 / 正文里某个**合法** id 用过的前缀（实拍即 `terrence`）。
+# 没有那个命名空间就一个都不报，所以 `[Fig-1]` / `[TODO-2]` / `[see-A]` 天然不在射程里。
+_ID_LIKE = _re.compile(r"(?<!\[)\[([A-Za-z][A-Za-z0-9_]*(?:-[0-9A-Za-z]+)+)\](?!\()")
+
+
+def id_prefixes(ids) -> set[str]:
+    """一批合法 id 的前缀（第一段）。`terrence-1833-8F6` → `terrence`。"""
+    return {str(i).split("-")[0] for i in ids if str(i).split("-")[0]}
+
+
+def truncated_citations(text: str, facts: list[str], exists) -> list[str]:
+    """正文里长得像**这篇笔记自己那套编号**、但既不是合法 id 也查不到的方括号。
+
+    ``exists(id) -> bool`` 同 `dangling_citations`（生产是 `UserMemory.fact_by_id`）——
+    这个模块保持纯函数、不碰 I/O。查得到就不报：编号的段数不是我们发的唯一形状，
+    **能查到就是真的**，形状好不好看不归这条管。
+    """
+    valid = cited_ids(text)
+    ns = id_prefixes(valid) | id_prefixes(supplied_ids(facts))
+    if not ns:
+        return []                                  # 这篇笔记没有自己的编号命名空间：一个都不报
+    good = set(valid)
+    out: dict[str, None] = {}
+    for m in _ID_LIKE.finditer(text or ""):
+        fid = m.group(1)
+        if fid in good or fid.split("-")[0] not in ns:
+            continue
+        if exists(fid):
+            continue
+        out.setdefault(fid, None)
+    return list(out)
+
+
 # ---------------------------------------------------------------- 引笔记（P15 #2）
 #
 # 托盘里的**笔记**被用上时，正文里的出处不是 `[事实编号]`，是 `[标题](note://id)`（`harness/tray.py`

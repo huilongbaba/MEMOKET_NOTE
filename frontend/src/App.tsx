@@ -2682,6 +2682,10 @@ export default function App() {
               // 别的判据连响几轮说的是内容还没写到位，下一步是「你自己看一眼」，不是「换个模型」。
               ? `「${checkLabel(stuckCheckRef.current.check)}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮${stuckTail(stuckCheckRef.current.check)}`
               : '同一条判据连响几轮都没解决，停下留了最好的那轮')
+          // P55 #4：`best` 连着几轮一格没涨。**不能落到下面那句兜底上**——
+          // 「到达轮数上限」会让用户以为再多给几轮就能更好，而这条规则说的恰好相反：
+          // 已经量过了，接着跑不会更好（`modes.BEST_STALL_ROUNDS`）。
+          : reason === 'best_stalled' ? '接连几轮都没写得更好，停下留了最好的那轮'
           : '到达轮数上限，自动停止'
         stuckCheckRef.current = null
         const delta = liveContentRef.current.length - runBaseRef.current.length
