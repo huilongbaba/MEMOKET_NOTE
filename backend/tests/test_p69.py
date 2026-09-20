@@ -202,17 +202,41 @@ def test_被邻词并成一个token的真词救得回来():
     """P48 ② 那个第四档 `None`（`is_merged_word`）：`链接` ⊂ `链接面板`——
     它够不着词边界**是因为那条边界被分词吃掉了**，不是因为它碎。
     这一格跟 `evidence()` 那边**必须同进同退**，不然又是两把尺。
-    全库量出来它在这一处救回 **8 串次 / 5 行**（跟 P48 ② 在 `evidence()` 那边量的同族）。
+
+    **P71 更新：这条闸红过一次，红得对，所以它改的是断言不是结论。**
+    P71 ① 落了 VC（两端吸附到词边界）之后，这一格的走法变了：
+    `链接` 不再是「判成碎片、再靠第四档救回来」，而是**一开始就吸附成整个那个 token**
+    ——`链接面板` 那个真实形状摆出来的是 `链接面板`（**比 `链接` 更对**，P4 #6 要的就是它）。
+    所以**这条闸问的那件事一个字没变**（「被邻词并进去的真词不许掉」），
+    变的是它长什么样。两个夹具一起钉：
+
+      · `链接面板`（真实形状，实体词把 `链接` 吞进去）→ 摆 `链接面板`；
+      · `链接的`（P69 原来那个夹具，真词 + 虚词被并成一个 token）→ 摆 `链接的`，
+        **不许整行掉**。
+
+    **「再按字剥一道」那个候选量过、否掉了**（P71，`<scratch>/p71/disp3.py`，全库 765 条）：
+    剥完再问同一把尺、不是碎片才允许（VCW2）——碎片 0 → **8**、对齐 2463 → 2445，
+    而且它把 `为什么` 剥成 `什么`、`不确定性` 剥成 `确定性`、`中短期` 剥成 `短期`、
+    `一方面` 剥成 `方面`。**旋钮证明了自己在动，动的方向是反的**（同 P69 的 VB）。
 
     夹具的分词器是写死的（同 `test_p48` 的 `_SEGL`）：真分词器认不认某个词跟这条闸无关，
     要问的是「**并成一个 token 之后这一格怎么判**」。"""
-    q = "看链接的版本"
-    seg = lambda _t: ["看", "链接的", "版本"]      # noqa: E731 —— `链接的` 被并成一个 token
-    squeezed = kb_search.squeeze(q)
-    assert kb_search._aligned("链接", squeezed, seg) is False      # 够不着右边那条词边界
-    assert kb_search.is_merged_word("链接", squeezed, seg) is True  # 但它自己是底表里的词
-    # 于是命中行照摆——跟 `recall_evidence` 那边同进同退
-    assert "链接" in kb_search.display_terms(["链接"], q, segment=seg)
+    # ① 真实形状：实体词 `链接面板` 把 `链接` 吞进去 → 摆出来的是整个实体词
+    q1 = "看链接面板的版本"
+    seg1 = lambda _t: ["看", "链接面板", "的", "版本"]   # noqa: E731
+    sq1 = kb_search.squeeze(q1)
+    assert kb_search._aligned("链接", sq1, seg1) is False       # 够不着右边那条词边界
+    assert kb_search.is_merged_word("链接", sq1, seg1) is True   # 但它自己是底表里的词
+    assert kb_search.display_terms(["链接"], q1, segment=seg1) == ["链接面板"]
+
+    # ② P69 原来那个夹具：真词 + 虚词被并成一个 token。**不许整行掉。**
+    q2 = "看链接的版本"
+    seg2 = lambda _t: ["看", "链接的", "版本"]          # noqa: E731
+    got = kb_search.display_terms(["链接"], q2, segment=seg2)
+    assert got == ["链接的"], got
+    assert any("链接" in w for w in got), "被邻词并进去的真词整行掉了 = P48 ② 那一刀没了"
+    # 而且摆出来的这一串**过得了同一把尺**（这才是 P69 ② 那句「一屏一把尺」要的）
+    assert kb_search._aligned("链接的", kb_search.squeeze(q2), seg2) is True
 
 
 def test_那道过滤一条召回都不动():
@@ -275,9 +299,19 @@ def test_第三条_那条接到汉字串尽头的规则_这一批量了没改():
 
     **这条闸钉的是「量过、判过、没改」**：规则还在、`_EDGE_STOP` 还是那张表，
     而 P48 ③ 那句「0 个用户看得见」在 `docs/TRACELOG-product.md` P69 ③ 里更正了。
+
+    ---
+
+    **P71 更新：VC 落了。** 这条闸**没删也没放宽**，它守的那句话缩小成了一格——
+    「往右接到汉字串尽头」那条规则现在只剩 **`segment is None` 那一档**
+    （假的 memory / 建不出索引，**不启用就是原样**，逐字退回这一版）；
+    有分词器的时候走的是 `_word_window`（两端吸附到词边界 + 按整词剥）。
+    下面三条断言**一个字没改**，因为那三样东西确实一个字没动：
+    老规则那一行还在（在退路里）、没有往左接、`_EDGE_STOP` 还是那张表。
+    P71 那一刀落在哪儿、四栏怎么样，在 `tests/test_p71.py`。
     """
     src = _src(kb_search.display_terms)
-    # 往右接到汉字串尽头那一行，逐字还在
+    # 往右接到汉字串尽头那一行，逐字还在（P71 起：在 `segment is None` 那条退路里）
     assert "while b < len(squeezed) and b - a < 8 and _IS_CJK(squeezed[b])" in src
     # 没有往左接
     assert "squeezed[a - 1]" not in src
