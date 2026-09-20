@@ -6,6 +6,12 @@
  * 层是**可开关的**：关掉 = 每一处还原成改之前，但记住它改成了什么；再打开 = 写回去
  * （原文那处被改过就重放不了，说清楚）。「接受」定稿、「丢弃」忘掉，这两个才是终点。
  *
+ * **没烧的那一层关掉就没了**（P37 #5 / P35 #9）：层活在 CodeMirror 的编辑器状态里，
+ * **一行都不落库**——P37 在真库上量过（44 行 `note_revisions` 里 `run_id` / `round_no`
+ * 全是空的；除了 `round_snapshot` 那条路，九种改动层里有八种在库里什么都不留；
+ * 能顶上的 `auto` 那一档又卡在 `REVISION_INTERVAL_S = 600s` 上）。所以重建不出来，
+ * 落库是下一批的事。在那之前**至少说一句**：关掉 = 按「接受」处理。
+ *
  * **烧之后还在**（P16）：接受 = 烧进正文，层就没了；但后端每轮开始前存了一版（`note_revisions.reason='round'`），
  * 所以这次跑的每一轮还列在下面——「回到这轮之前」恢复那一版（恢复前会再存一版，可逆）、「只撤这一轮」
  * 拿这一轮前后两版做 diff 反向应用到现在的正文（`editor/undoRound`，冲突说清楚）。留一二轮、丢第三轮，烧之后也做得到。
@@ -46,7 +52,7 @@ export default function ChangeLayersPanel({ viewRef, tick, runs = [], onRestoreB
       {!view || layers.length === 0
         ? <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>AI 改过的地方会按动作分层列在这里：整层接受、整层撤回。现在没有待处置的改动。</p>
         : <>
-          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>{layers.length} 层 · 早的在上。开关一层 = 它改的每一处还原 / 写回；「接受」定稿、「丢弃」忘掉。</p>
+          <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: 0 }}>{layers.length} 层 · 早的在上。开关一层 = 它改的每一处还原 / 写回；「接受」定稿、「丢弃」忘掉。<strong>关掉这个 app 就当接受了</strong>——这几层活在这次会话里，不会留到下次打开（下面「烧过的跑」那一段会留）。</p>
           {layers.map((l, i) => (
             <div key={l.id} className={'card layer-card' + (l.off ? ' off' : '')} style={{ padding: '6px 10px' }}>
               <div className="row" style={{ gap: 8, alignItems: 'center' }}>

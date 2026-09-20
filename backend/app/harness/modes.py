@@ -20,7 +20,7 @@ from .checks import (chart_numbers_grounded, chart_readable, chart_restates_list
                      charts_from_tools, citations_exist, citations_present, citations_hold,
                      heading_fits, language_consistent, material_thin, material_used,
                      no_audit_voice, no_echoed_text, no_fake_charts, no_foreign_script,
-                     no_junk_tail, no_placeholder,
+                     no_junk_tail, no_placeholder, output_not_json,
                      no_repeated_lists, no_restated_paragraph, no_same_sources_twice,
                      numbers_from_tools, outline_intact, section_budget,
                      table_columns_match, table_present, tail_clashes,
@@ -615,7 +615,12 @@ NOTE = Mode(
     # 一个认外文乱码、一个认中文垃圾尾巴，都是摘掉就完事的机械缺陷，挨着放。
     # `no_echoed_text`（P24 #4）跟它们同一档、挨着放：它的前两种形状也是「摘掉就完事」，
     # 修好了不算命中、不短路，**不占轮**——而 P22 实拍里重复正是最占篇幅的那个问题。
-    checks=(no_foreign_script, no_junk_tail, no_echoed_text, chart_restates_list,
+    # `output_not_json` 排在**最前面**（P37 #1）：整段答成一串 JSON 的时候，
+    # 后面每一条说的都是这串 JSON 的副作用而不是病根——P37 复现实拍里唯一响过的
+    # 是 `no_echoed_text`（「这两段重复了」），**指错了地方**。而且它前面那几条
+    # 是能自动修的机械缺陷，先让它们去改一串本来就不该落地的 JSON 纯属白费。
+    checks=(output_not_json,
+            no_foreign_script, no_junk_tail, no_echoed_text, chart_restates_list,
             language_consistent,
             no_placeholder, no_audit_voice, outline_intact, citations_hold,
             citations_exist, material_thin, citations_present, material_used,
@@ -642,7 +647,10 @@ SECTION = Mode(
     # 那一面」，而前面每一条说的都是「已经写的这些有毛病」。一条「接着写」的
     # 诊断压在一条「这里有占位符 / 引用是编的」前面，等于让模型在一堆烂摊子
     # 上再加一段——第 606 轮那次死锁的教训是判据之间的**先后本身就是设计**。
-    checks=(no_foreign_script, no_junk_tail, no_echoed_text, chart_restates_list,
+    # `output_not_json` 同 `NOTE`，排最前（P37 #1）：分段写作的 `produce` 跟长文续写
+    # 是同一条流式路径，同一种答错形状。
+    checks=(output_not_json,
+            no_foreign_script, no_junk_tail, no_echoed_text, chart_restates_list,
             language_consistent,
             no_placeholder, no_audit_voice, citations_hold, citations_exist,
             material_thin, citations_present, material_used, no_repeated_lists,

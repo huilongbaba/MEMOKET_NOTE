@@ -10,6 +10,8 @@ from ..database import store
 from ..database.kb import pages
 from ..database.kb import relations as kb_relations
 from ..database.kb import search
+from memoket_kite.errors import ProviderError
+
 from ..database.kite.kite_memory import ProviderFailed, UserMemory
 from ..harness import prompts
 from ..util import llm
@@ -328,6 +330,27 @@ def trace(body: TraceIn, user: str = Depends(current_user)):
                       facts=[], took_ms=round((time.perf_counter() - t0) * 1000, 1))
     try:
         text, facts = mem.ask(question, limit=body.limit)
+    except ProviderError as exc:
+        # **「答得不合形状」≠「没应答」**（P37 #3 / P35 #4）。
+        #
+        # KITE 的 `providers/llm.llm_json` 在模型答的里面找不到 JSON 时抛
+        # `ProviderError("no JSON in llm output: …")`。这条原来**没人接**，500 原样透出去，
+        # 前端 `friendlyError` 把 5xx 一律翻成「后端处理出错（多半是模型没应答）——看一眼
+        # 设置里的 LLM 供应商」并挂一个「打开设置」。P35 实拍：模型明明答了（200 + 一段字），
+        # 供应商也是通的，而界面把人指去改模型地址 / key ——**指错地方比不说更糟**
+        # （P26 那条「探针把好的说成坏的」同一形状；P3 那条「后端没起来 ≠ 模型连不上」升一层）。
+        #
+        # 判据**故意窄**：只认 `no JSON in llm output` 这一句。别的 ProviderError
+        # （连不上 / 超时 / 401）本来就是「模型侧出了事」，照旧透出去，
+        # 「打开设置」对它们是对的出口。
+        if "no JSON" not in str(exc):
+            raise
+        # 502 + **一句中文**：`friendlyError` 见到状态码后面是中文就原样给，
+        # 而这句话不以「模型连不上 / 后端处理出错 / 模型服务」开头，
+        # `isLlmUnreachable` 因此是 false ——**不带「打开设置」**。
+        raise HTTPException(
+            502, "模型答的不是这个动作要的格式（不是没应答，供应商是通的）"
+                 "——换个模型，或者再试一次") from exc
     except ProviderFailed as exc:
         # P9：模型出错要说出错，不能翻成「知识库里没有沾边的记录」（那是 KITE 回退出来的假答案）
         raise HTTPException(502, f"来龙去脉没查成：{exc}（{store.get_active_llm_config()['base_url']}）——去设置里看一眼 LLM 供应商") from exc

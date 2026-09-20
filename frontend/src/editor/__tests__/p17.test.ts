@@ -70,8 +70,11 @@ describe('P17 #4 浮动按钮 vs 紧跟其后的条', () => {
 })
 
 describe('P17 #5 校验结果 / 改动层消息不跟篇', () => {
-  it('换篇（current.id 变）就清 verifyFindings', () => {
-    expect(appSrc).toMatch(/useEffect\(\(\) => \{ setVerifyFindings\(null\) \}, \[current\?\.id\]\)/)
+  // P37 #2 把这个 state 从 `verifyFindings`（只留 findings）换成 `verifyResult`（整个回包，
+  // 多带 `checked` / `unparsed`）——**守的性质一个字没变**：换篇就得清掉，不然上一篇的
+  // 校验结果会挂在下一篇上。只跟着改了符号名。
+  it('换篇（current.id 变）就清校验结果', () => {
+    expect(appSrc).toMatch(/useEffect\(\(\) => \{ setVerifyResult\(null\) \}, \[current\?\.id\]\)/)
   })
   it('换篇也清 roundDiff：那是发给编辑器的一次性「加层」消息，编辑器重挂时不能再按旧坐标加一遍', () => {
     expect(appSrc).toMatch(/useEffect\(\(\) => \{ setRoundDiff\(null\) \}, \[current\?\.id\]\)/)

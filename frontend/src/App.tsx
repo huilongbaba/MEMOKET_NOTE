@@ -16,7 +16,7 @@ import { friendlyError, isBackendDown, isLlmUnreachable } from './util/friendlyE
 import { NOT_CONFIGURED, healthMessage, llmGateMessage, notePrecondition } from './editor/preconditions'
 import { EditorView } from '@codemirror/view'
 import * as api from './api'
-import type { Note, Revision, TapMeta, TreeRow, VerifyFinding, WritingPlan, WritingSection } from './api'
+import type { Note, Revision, TapMeta, TreeRow, VerifyResult, WritingPlan, WritingSection } from './api'
 import AudioRecorder from './components/AudioRecorder'
 import CommandPalette from './components/CommandPalette'
 import DocumentOutline from './components/DocumentOutline'
@@ -29,7 +29,7 @@ import IconPicker from './components/IconPicker'
 import SlashPrompt from './components/SlashPrompt'
 import { formatMarkdown, fixBoldPunct, stripCommonIndent } from './editor/format'
 import { blockPrecondition, SLASH_ITEMS, type SlashItem } from './editor/slashMenu'
-import { blockShapeProblem, splitBadRevisions, badRevisionNote } from './editor/blockShape'
+import { blockShapeProblem, splitBadRevisions, badRevisionNote, unparsedEditNote } from './editor/blockShape'
 import type { NoteLinkMenuDetail } from './editor/noteLink'
 import { landNotesInTray, noteExcerpt, requestTrayAdd, trayPrecondition } from './util/tray'
 import { diffBaseForBlock, textToLand } from './editor/blockLanding'
@@ -543,9 +543,10 @@ export default function App() {
   const [selectionBusy, setSelectionBusy] = useState<false | SelectionAction>(false)
   // 右键菜单那五个动作的「停止」（P3：模型卡住时原来只能干等 300 秒，连 Esc 都关不掉那个转圈）
   const selectionAbortRef = useRef<AbortController | null>(null)
-  const [verifyFindings, setVerifyFindings] = useState<VerifyFinding[] | null>(null)
+  // 整个回包而不是只留 findings（P37 #2）：空 findings 那句话要按 `checked` / `unparsed` 分三说。
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   // P17 实拍：在 A 篇右键「校验」，切到 B 篇，右栏顶上还挂着 A 的「校验结果」——它是按 A 的选区算的，换篇就清
-  useEffect(() => { setVerifyFindings(null) }, [current?.id])
+  useEffect(() => { setVerifyResult(null) }, [current?.id])
   // P17 实拍：右键「自定义提示」→「全部撤回」→ 关掉这篇再打开，正文里冒出一个幻影「硬件」删除标 + 「改动 1」——
   // `roundDiff` 是给编辑器的一条「加一层」消息，层本身活在编辑器的 field 里；消息发过就该作废，
   // 不清的话编辑器一重挂（关掉重开 / 换篇）就按旧坐标再加一遍层，标到别的字上
@@ -1602,10 +1603,18 @@ export default function App() {
    * 拿「该是表格」去卡它会把「帮我改成一张表」判死。
    *
    * 三种落法，各说各的话：全被拦下 → 只说被拦；拦了一部分 → 好的照落、坏的说清；
-   * 一条都没有 → 还是原来那句（`emptyNote`）。 */
+   * 一条都没有 → 还是原来那句（`emptyNote`）。
+   *
+   * **`unparsed` 那一档不许说 `emptyNote`**（P37 #4 / P35 #5）：「模型认为不需要补充
+   * 上下文。」是一句**模型从没说过的话**，而后端现在分得清「模型按格式答了、没话说」
+   * 和「模型答的抽不出建议」。抽不出的时候就说抽不出——替模型表态比不说更糟。 */
   function landRevisions(list: Revision[], note: string | undefined,
-                         label: string, emptyNote: string): void {
-    if (list.length === 0) { toast(note || emptyNote, note ? 'error' : undefined); return }
+                         label: string, emptyNote: string, unparsed = false): void {
+    if (list.length === 0) {
+      toast(note || (unparsed ? unparsedEditNote(label) : emptyNote),
+            (note || unparsed) ? 'error' : undefined)
+      return
+    }
     const { keep, bad } = splitBadRevisions(list)
     if (bad.length) toast(badRevisionNote(label, bad.length), 'error')
     if (keep.length === 0) return
@@ -1644,7 +1653,7 @@ export default function App() {
     try {
       if (action === 'verify') {
         const r = await api.verifySelection(content, selection, signal, intentText(intent), current?.id ?? '')
-        setVerifyFindings(r.findings)
+        setVerifyResult(r)
       } else if (action === 'trace') {
         // 来龙去脉：这段涉及的事情按时间怎么演进的。**用户不写问题**——
         // 问题由后端拼（判据 1）。结果落在右栏的「来龙去脉」标签里，
@@ -1652,10 +1661,10 @@ export default function App() {
         await traceFull(selection, signal)
       } else if (action === 'expand') {
         const r = await api.expandSelection(content, selection, signal, intentText(intent), current?.id ?? '')
-        landRevisions(r.revisions, r.note, '扩展上下文', '模型认为不需要补充上下文。')
+        landRevisions(r.revisions, r.note, '扩展上下文', '模型认为不需要补充上下文。', r.unparsed)
       } else if (action === 'rewrite' || action === 'polish') {
         const r = await api.rewriteSelection(content, selection, action, spine, beats, signal, intentText(intent))
-        landRevisions(r.revisions, r.note, action === 'polish' ? '润色' : '重写', '模型没有给出修改建议。')
+        landRevisions(r.revisions, r.note, action === 'polish' ? '润色' : '重写', '模型没有给出修改建议。', r.unparsed)
       } else {
         /* **走不到这里，但要让编译器来保证走不到。**
            原来这一支写的是 `action as 'rewrite' | 'polish'`——一个不查的强转，
@@ -3904,7 +3913,12 @@ export default function App() {
               >
                 <span style={{ color: 'var(--ins)' }}>●</span>
                 <span>改了 {pendingDiff} 处</span>
-                <span className="muted">鼠标移到改动上可以逐处接受、撤回；<a href="#" onClick={(e) => { e.preventDefault(); setPaneFocus({ id: 'changes', n: Date.now() }) }}>按层处置</a>（保留第一次改的、放弃第三次的）</span>
+                {/* **关掉就定稿了，得先说一句**（P37 #5 / P35 #9）：这一层活在编辑器状态里，
+                    一行都不落库（P37 量过 `note_revisions` / `harness_runs`，见台账）。
+                    用户关掉 app 再打开，高亮没了、正文留着——**等于替他按了「全部接受」**，
+                    而界面上还摆着「全部接受 / 全部撤回」两个钮，读起来像「有个决定等你做」。
+                    落库是下一批的事；在那之前，至少不许它是静悄悄的。 */}
+                <span className="muted">鼠标移到改动上可以逐处接受、撤回；<a href="#" onClick={(e) => { e.preventDefault(); setPaneFocus({ id: 'changes', n: Date.now() }) }}>按层处置</a>（保留第一次改的、放弃第三次的）。<strong>关掉这个 app 就当接受了</strong>——高亮不会留到下次打开。</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button onClick={acceptAllDiff}>全部接受</button>
                   <button onClick={rejectAllDiff} title="把这一轮改的全部还原成改之前的样子">
@@ -3979,8 +3993,11 @@ export default function App() {
       )}
       {rightShown && (
       <div className="right-pane" style={{ width: panes.rightW }}>
-        {verifyFindings && (
-          <VerifyPanel findings={verifyFindings} onClose={() => setVerifyFindings(null)} />
+        {verifyResult && (
+          <VerifyPanel findings={verifyResult.findings}
+                       checked={verifyResult.checked ?? 0}
+                       unparsed={verifyResult.unparsed ?? false}
+                       onClose={() => setVerifyResult(null)} />
         )}
         <RightPane
           onCollapse={() => setPanes((p) => ({ ...p, rightOn: false }))}

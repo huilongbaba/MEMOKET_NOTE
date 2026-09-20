@@ -377,7 +377,24 @@ async def rewrite(body: RewriteIn, user: str = Depends(current_user)):
                 text=new_text, reason=str(parsed.get("reason") or default_reason),
             ))
     note = _truncated_note(stats, revisions)   # 撞上限会把 revisions 清空
-    return EditOut(revisions=revisions, note=note, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    # 抽不出建议时，是「模型没按格式答」还是「模型按格式答了、只是没话说」（P37 #4）。
+    # `REWRITE_SYSTEM` / `POLISH_SYSTEM` 要的是 `{"text":…}`：**`text` 这个键在不在**
+    # 就是这条线。撞上限那一档另有措辞（`note`），不归这一格管。
+    return EditOut(revisions=revisions, note=note,
+                   unparsed=_unparsed(parsed, "text") and not note,
+                   took_ms=round((time.perf_counter() - t0) * 1000, 1))
+
+
+def _unparsed(parsed, *keys: str) -> bool:
+    """模型这次答的**抽不出建议**：不是 JSON 对象，或者对象里一个该有的键都没有。
+
+    **只看键在不在，不看值**（P37 #4）：`{"before": "", "after": ""}` 是模型按格式答的
+    「两个方向都不用补」——`EXPAND_SYSTEM` 明写着这条路——把它算成「没答上来」等于
+    又一次替模型表态，只是换了个方向说谎。判据宁可窄。
+    """
+    if not isinstance(parsed, dict):
+        return True
+    return not any(k in parsed for k in keys)
 
 
 def _truncated_note(stats: dict, revisions: list) -> str:
@@ -434,7 +451,11 @@ async def expand(body: ExpandIn, user: str = Depends(current_user)):
                 text=after, reason="往后补充上下文", sources=sources,
             ))
     note = _truncated_note(stats, revisions)   # 撞上限会把 revisions 清空
-    return EditOut(revisions=revisions, note=note, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    # 同 `/rewrite`（P37 #4）：`before` / `after` 两个键**只要有一个在**就算按格式答了，
+    # 值是空串的那一档是模型真的说了「这个方向不用补」。
+    return EditOut(revisions=revisions, note=note,
+                   unparsed=_unparsed(parsed, "before", "after") and not note,
+                   took_ms=round((time.perf_counter() - t0) * 1000, 1))
 
 
 def _cited_near(content: str, selection: str) -> list[str]:
@@ -500,4 +521,12 @@ async def verify(body: VerifyIn, user: str = Depends(current_user)):
                 verdict=verdict, reason=str(item.get("reason") or ""),
                 fact_id=fact_id, fact_text=fact_text, sources=sources,
             ))
-    return VerifyOut(findings=findings, took_ms=round((time.perf_counter() - t0) * 1000, 1))
+    # **「没查到」和「查到了、模型没按格式答」是两件事**（P37 #2 / P35 #3）。
+    # 判据窄，只认代码判得准的那两档：
+    #   · 不是列表（模型回了个对象 / 一段散文 / 抽不出 JSON）→ 形状不对；
+    #   · 是列表、非空，但**一条都没活下来**（item 不是对象 / verdict 不在那三个词里）
+    #     ——模型确实说了话，被我们全丢了，这时候说「没找到」同样是假的。
+    # **空列表 `[]` 不算**：那是模型按格式答的「翻过了，没话说」，是一个正当答案。
+    unparsed = (not isinstance(parsed, list)) or (bool(parsed) and not findings)
+    return VerifyOut(findings=findings, checked=len(facts), unparsed=unparsed,
+                     took_ms=round((time.perf_counter() - t0) * 1000, 1))

@@ -70,6 +70,8 @@ const CHECKS: Record<string, string> = {
   language_consistent: '换了语言',
   no_foreign_script: '混进了乱码字符',
   no_junk_tail: '段末贴了句垃圾',
+  // P37 #1：整段答成一串 JSON（P35 #2 实拍两段整串落进正文，还进了目录）
+  output_not_json: '整段答成了一串 JSON',
   section_budget: '这一节还没写够',
   chart_numbers_grounded: '图里的数字没依据',
   chart_readable: '图读不出来',

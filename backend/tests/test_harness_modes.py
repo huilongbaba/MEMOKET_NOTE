@@ -269,6 +269,9 @@ def test_每条check打翻的维度这个mode真的有():
                 # P19 #5：中文垃圾尾巴（da080 实拍原文）。跟上面那句古吉拉特文残留是一对：
                 # 一条判据认外文、一条认中文，素材里两样都得有，不然新那条永远不开火。
                 "这一步的验收标准是下一位教师能直接从这份素材继续备课。 日本一本道")
+    # P37 #1：智能续写「写」这一步吐的那一整串（P37 真跑里假模型逐字回的）。
+    JSON_FRESH = ('{"text": "（假模型改写）这一段由假模型返回，整串都是 JSON。", '
+                  '"reason": "假模型"}')
     ASKED_AND_EMPTY = {
         "queries": [{"key": "filter_facts\t{\"topic\": \"work_pricing\"}",
                      "tool": "filter_facts", "hit": 0, "empty": True}],
@@ -306,9 +309,14 @@ def test_每条check打翻的维度这个mode真的有():
                         # （`no_foreign_script`，e783 实拍「મંત્રી」）+ 一张把上面那条四步清单
                         # 逐节点重画的流程图（`chart_restates_list`，e783 P6 实拍的形状）。
                         # 三条都要「开跑前有什么」这个量程，前五份没有它，所以单开一份。
-                        (P8_FRESH, "", FACTS, {}, "p8")):
+                        (P8_FRESH, "", FACTS, {}, "p8"),
+                        # P37 #1 的第七份：**这一轮整段答的就是一串 JSON**
+                        # （复现实拍那一串，逐字）。它也必须单开一份——`output_not_json`
+                        # 要的是「`st.fresh` 整段能 parse」，而前六份的 fresh 全是正文；
+                        # 一段字不可能既是一整串 JSON 又是一段带引用带清单的中文。
+                        (JSON_FRESH, "", FACTS, {}, "json")):
                     st.fresh = fresh
-                    if short == "p8":
+                    if short in ("p8", "json"):
                         st.bag["content_at_start"] = P8_BEFORE
                         st.content = P8_BEFORE + "\n\n" + fresh
                     else:
@@ -351,10 +359,12 @@ def test_每条check打翻的维度这个mode真的有():
         ("note", "language_consistent"),   # 换语言（P8）：无 profile 时没有 style_fit
         ("note", "no_foreign_script"),     # 乱码字符（P8）：打 fits_context，长文没有
         ("note", "no_junk_tail"),          # 中文垃圾尾巴（P19 #5）：跟乱码字符同一维、同样落桶
+        ("note", "output_not_json"),       # 整段答成 JSON（P37 #1）：同 fits_context，长文没有
         ("section", "no_audit_voice"),
         ("section", "language_consistent"),
         ("section", "no_foreign_script"),
         ("section", "no_junk_tail"),
+        ("section", "output_not_json"),
         ("section", "no_fake_charts"),
         ("section", "charts_from_tools"),
     }, f"落进 mechanics 兜底桶的判据变了：{sorted(bucketed)}"

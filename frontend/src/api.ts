@@ -305,6 +305,16 @@ export const clipToTray = (noteId: string, url: string) =>
 // 右键选中一段文本触发。都产出同一个 Revision 形状的结果，
 // 复用同一套接受/拒绝 UI。
 
+/** 右键三个动作的回包。`unparsed` = 模型这次答的**抽不出建议**（形状不对）——
+ *  有它就不许再说「模型认为不需要补充上下文」（P37 #4）。老后端没有这一格，
+ *  缺省 false，措辞退回原来那句。 */
+export type EditResult = {
+  revisions: Revision[]
+  took_ms: number
+  note?: string
+  unparsed?: boolean
+}
+
 export const rewriteSelection = (
   content: string, selection: string, intent: 'rewrite' | 'polish', spine: string, beats: string[], signal?: AbortSignal,
   /** 文档意图那句（P9）——润色终于知道这篇是给谁看的 */
@@ -315,7 +325,7 @@ export const rewriteSelection = (
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection, intent, spine, beats, doc_intent: docIntent }),
     signal,
-  }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
+  }).then(json<EditResult>)
 
 export const expandSelection = (content: string, selection: string, signal?: AbortSignal, intent = '', noteId = '') =>
   fetch('/api/expand', {
@@ -324,7 +334,7 @@ export const expandSelection = (content: string, selection: string, signal?: Abo
     // note_id（P14）：后端拿它把托盘里的材料摆在最前
     body: JSON.stringify({ content, selection, scope: memoryScope(), intent, note_id: noteId }),
     signal,
-  }).then(json<{ revisions: Revision[]; took_ms: number; note?: string }>)
+  }).then(json<EditResult>)
 
 export type VerifyFinding = {
   verdict: '矛盾' | '支持' | '无法判断'
@@ -340,7 +350,18 @@ export const verifySelection = (content: string, selection: string, signal?: Abo
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, selection, scope: memoryScope(), intent, note_id: noteId }),
     signal,
-  }).then(json<{ findings: VerifyFinding[]; took_ms: number }>)
+  }).then(json<VerifyResult>)
+
+/** 校验的回包。**空 `findings` 有三种来历，后端分开告诉我们**（P37 #2）：
+ *  `checked` = 这一次真翻过几条记录（0 才是「知识库里没有相关信息」）；
+ *  `unparsed` = 模型答的抽不出判断（形状不对）——有它就不许说「没找到」。 */
+export type VerifyResult = {
+  findings: VerifyFinding[]
+  took_ms: number
+  /** 老后端没有这两格，缺省按「查到了 0 条 / 模型答得没问题」读，措辞退回原来那句。 */
+  checked?: number
+  unparsed?: boolean
+}
 
 export type TapMeta = {
   facts: number; recall_ms: number; grounded: boolean

@@ -58,7 +58,7 @@ flowchart TB
     MODE["Mode ×8<br/>工具组 · 维度 · 判据 · 停止条件 · extra_mw"]
     HOOKS["Hooks ×3<br/>prepare / produce / commit"]
     MW["Middleware ×21<br/>Cost Skills Facts Provenance Repeats Checks BestOf CrossRun History Edits Ledger Supersede<br/>Cited Revise Repair Runtime Replan Sections Save Checklist DoneCriteria"]
-    CHK["checks/ ×20 代码判据<br/>+ rubric 模型打分"]
+    CHK["checks/ ×21 代码判据<br/>+ rubric 模型打分"]
     TOOLS["tools/ ×22 · registry 分组授权<br/>memory · data · chart · table · image · skill · longform"]
     AL["agent_loop<br/>模型自己决定查什么"]
     SK["skills.py + sandbox/<br/>SKILL.md 三层披露 · Seatbelt/bwrap"]
@@ -137,7 +137,7 @@ flowchart TB
 | # | 需求 | 从哪来 | 落地 |
 |---|---|---|---|
 | **R1** | 没有 oracle，合格与否靠一组可插拔的判据 | 写作没有编译器和测试 | `Dimension`（模型打分）+ `Check`（代码判定），都是 Mode 的配置 |
-| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 27 条 check 在打分之前跑，命中就不花模型调用 |
+| **R2** | 判据不能只靠模型：打分器和被打分的是同一个模型 | 实测打分器给通篇假图打过 `has_charts=2` | 28 条 check 在打分之前跑，命中就不花模型调用 |
 | **R3** | 多种任务形态：整篇 / 分段 / 生成一段 / 改选区 | 8 个功能共用一套闭环 | 8 个 Mode，三组 Hooks |
 | **R4** | 流式：一次调用几十秒，产出必须边生成边看 | 本地模型的实测延迟 | `TEXT_MESSAGE_CONTENT` 逐段流；子步骤用 `phase_delta` 也流 |
 | **R5** | 可追溯 + 可处置：修订逐条 accept/reject，能看到依据；**改动按层（每次动作一层）整层接受 / 撤回** | `roundDiff.ts`（`addLayer` / `acceptLayer` / `dropLayer`）· 右栏「改动」「计划」 | 轮末暂停（snapshot）+ `/resume`；`revision` / `dropped` 事件带原因和依据 |
@@ -207,9 +207,12 @@ backend/app/
       · edits（跑完落一版正文 + 开一行采集用户接下来对它做了什么，计划 9.1）
       （sections 批 15 顶替了 compact 在两条长文 harness 上的位置；compact.py 本身还在，
         「智能续写」那条一次性路径仍然用它——那条路没有工具循环，给指针取不回来）
-    checks/                  26 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
+    checks/                  28 条代码判据 + rubric.py（模型打分）+ pick.py（打翻哪一维）
       citations · grounding · grounding_rules · structure · charts · numbers · instructions · claims
       · budget · blockcheck · rubric · pick
+      · shape（P37 #1：这一轮整段答成一串 JSON → `output_not_json`，不落正文 + 短路打分 +
+        下一轮 steer 要求重写。判据跟前端 `editor/blockShape.looksLikeJson` 逐字同一条，
+        量程是 `st.fresh`，`fix` 只摘这次跑新写的那几段）
       · relevance（P8 问题 5：材料进 prompt 前的零模型相关性筛——只认「从 >1000 条的主题里抽样回来
         **且** 跟标题 + 骨架 + 正文 + 这次跑的查询零重合」的；纯函数，`hooks/note.prepare` 调。
         **P8 退回：默认只记不剔**（`params.RELEVANCE_FILTER`，真剔那版让 da080 / 3a3a 变差），
@@ -360,7 +363,7 @@ RUN_FINISHED(content, reason, run_id?)
 正文，必须在 `Sections` 拼「小节索引 + 当前小节逐字」之前——否则续写 prompt 拿到的
 是**修订前**的正文（这条依赖是从 `Compact` 原样继承的，它当年就是为这件事写的）。
 
-**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（27 条 check，
+**判据的三层**（R8）：工具层拒绝（模型调不到没授权的工具）→ 检查层（28 条 check，
 纯函数，命中就不打分，能自动修的当场修）→ 打分层（`rubric.evaluate`，一次几十秒）。
 
 **打分器能看见什么**（批 8 改过一轮，改之前这里是一笔空账）：
@@ -572,7 +575,7 @@ Mode 按需追加的：
 
 ---
 
-## 8. 27 条 check（代码判据）
+## 8. 28 条 check（代码判据）
 
 | check | 打翻哪一维（按 Mode 挑） | 可自动修 | 抓什么 |
 |---|---|---|---|
@@ -604,13 +607,14 @@ Mode 按需追加的：
 | `language_consistent` | style_fit / fits_context / **mechanics** | | **这次跑新写的内容跟开跑前正文的主语言不一致**（P8 问题 8，a941 实拍：英文笔记被修订「翻译并压缩」成中文）。主语言由代码定（CJK 字数 vs 拉丁字母数 / 4，≥ 40 个字才判），不靠模型、不靠 profile——没有偏好档的用户没有 `style_fit`，此前没有任何一维在看语言。同一份量程也拦修订：`reject_revision(body_lang=)` 把换语言的 text 整条丢 |
 | `no_foreign_script` | **mechanics** | ✔ 摘掉那几个字符 | **混进了这篇笔记没有的书写系统的字符**（P8 问题 10，两次实拍：P6 e783 段末「મંત્રી」、P5 da080 打分器点名「अ」）。「正文脚本」= 开跑前正文 + 这轮材料里出现过的 Unicode 块，CJK / 拉丁 / 希腊 / 西里尔 / 数字标点符号 emoji 一律常见块；其余块的字符出现在这次写的字里就摘掉。用户自己写阿拉伯文 / 泰文不受影响 |
 | `no_junk_tail` | **mechanics** | ✔ 摘掉那句 | **段落末尾硬贴了一句跟正文无关的中文垃圾**（P19 #5，实拍「 日本一本道」）。`no_foreign_script` 认不出它——它是中文。**判据宁可窄，三条同时成立才开火**：① 位置在段末、前面是句末标点 + 空白（中文句子之间不空格）；② 2–12 个汉字且跟这一段其余部分 **2-gram 零重合**；③ 命中 `JUNK_WORDS`——**词表只从实拍来**，现在只有一个词根，不拍脑袋扩。量：p5–p18 全部 25 份真跑日志，这个形状**只命中过它**，模型当场吐出来 7 次（p5 r8 / p6 r1 / p8 r8 / p8b r5 / p11-intent r7 / p11-noint r5 / p14-tray r8，全是 da080 这一篇）；落进正文之后一路带下去（p15 / p18 那两篇开跑前正文就有，4 轮 + 终稿共 13 处）。量程同上：只看这次跑新写的，开跑前正文里的不动（那归用户处置，P6 守卫也碰不了） |
+| `output_not_json` | fits_context / **mechanics** | ✔ 把那几段从正文里摘掉 | **这一轮整段答的是一串 JSON，不是能写进正文的内容**（P37 #1，P35 #2 实拍：智能续写「写」这一步吐 `{"text": …, "reason": …}`，**两段整串落进正文、还跟着进了目录**，117 → 211 字，一句话都不说）。**闸装在判据层而不是前端**：流式增量逐 token 落地，在前端拿到第一个 `{` 时不知道整段是什么，落完再撤又会跟 `undoRound` 打架；`STEP_FINISHED` 本来就带服务端的权威正文回去，前端 `onRoundEnd` 照它对齐，所以后端改完前端一行不用动。**判据跟 P32 的 `blockShape.looksLikeJson` 逐字同一条**：整段 unfence 之后能 `json.loads` 成对象 / 数组——只看开头那个 `{` 会把「{产品名} 的定价还没定」判死；块生成那三条（该是表格 / 该有围栏 / 该有图片）**一条都不搬**，长文写的是一段人话，形状本来就只有这一种。量程是 `st.fresh`（这一轮流出来的字），不是整篇——拿整篇判的话用户笔记里贴的一段 JSON 会每轮都响而模型改不动它（第 601 轮 `no_placeholder` 那次死锁的形状）。`fix` 摘掉的也只有**这次跑新写的**、本身是整串 JSON 的自然段。命中后三件事一起发生：产出不落正文（`fix`）+ 正文留下摘完那版（`fix_done`）+ 短路打分并把「这一轮重写」送进 `State.steer`。真跑验过（零真模型调用）：修前 53 → **169** 字、两段 JSON 在正文里、当轮唯一响的是 `no_echoed_text`（「这两段重复了」，**指错了地方**）；修后 53 → **53**（一个字没进）、⚑ ×2、下一轮 steer 有话说；**误伤那一侧同样跑了**：同一套代码下正常中文产出照样落进正文（53 → 187，0 条 ⚑） |
 
-- **第 28 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
+- **第 29 条判据不在这张表里，因为它不在 `Mode.checks` 上**：
   `instruction_constraints`（批 17 / 阶段 6.2）判的是用户那条指令里可程序验证的约束，
   内容来自用户刚打的那句话，所以由 `middleware/checklist` 在 `before_run` 里
-  `dataclasses.replace` 进这一次跑的 Mode。上面那个 27 是「写死在 Mode 上的判据」，
+  `dataclasses.replace` 进这一次跑的 Mode。上面那个 28 是「写死在 Mode 上的判据」，
   `tests/test_doc_counts.py` 数的也是那一个。
-- **第 29 条同理**：`done_criteria`（P13 #1）判的是这篇文档意图里的「完成标准」（字数上下限 /
+- **第 30 条同理**：`done_criteria`（P13 #1）判的是这篇文档意图里的「完成标准」（字数上下限 /
   每条有日期 / 有出处 / 「X、Y 各有一节」/ 结论在前），内容来自用户在标题下写的那句话，由
   `middleware/done.DoneCriteria` 在 `before_run` 挂进 `note` 这次跑的 Mode。**它跟前端右栏
   「计划」第一格用的是同一份判定**（`checks/done.py` ↔ `util/doneChecks.ts`：`shared/done-cases.json`

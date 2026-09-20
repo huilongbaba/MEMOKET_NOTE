@@ -116,3 +116,13 @@ export function splitBadRevisions<T extends { text: string }>(list: T[]): { keep
 export function badRevisionNote(label: string, n: number): string {
   return `${label}：模型这次答的是一串 JSON，不是能写进正文的内容——这 ${n} 处没有落进正文，正文一个字没动。再点一次试试。`
 }
+
+/** 模型这次答的**抽不出建议**时说的那句（P37 #4 / P35 #5）。
+ *
+ * 原来这一档说的是「模型认为不需要补充上下文。」——**一句模型从没说过的话**：
+ * P35 实拍散文档 / 错键档下都弹它，而那两档里模型根本没表过态。
+ * 后端 `EditOut.unparsed` 现在分得清「按格式答了、没话说」和「答的抽不出」，
+ * 这句只用在后者。同 `badRevisionNote`：**纯文本**，不许带 markdown 粗体。 */
+export function unparsedEditNote(label: string): string {
+  return `${label}：模型这次没按要求的格式答，抽不出可以落进正文的建议——正文一个字没动。再点一次试试。`
+}

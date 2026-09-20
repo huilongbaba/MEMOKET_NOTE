@@ -93,6 +93,15 @@ FALLS_IN_BUCKET = {
     ("note", (True, True), "no_foreign_script"),
     ("section", (False, False), "no_foreign_script"),
     ("section", (True, False), "no_foreign_script"),
+    # P37 #1：整段答成一串 JSON 跟乱码字符是同一档机械缺陷——同一维（`fits_context`，
+    # 长文没有）、同样带 `fix`，所以落桶的格子跟 `no_foreign_script` 逐格相同。
+    # 它只挂在 note / section 两个长文模式上（block 那条路有 P32 的前端形状闸）。
+    ("note", (False, False), "output_not_json"),
+    ("note", (False, True), "output_not_json"),
+    ("note", (True, False), "output_not_json"),
+    ("note", (True, True), "output_not_json"),
+    ("section", (False, False), "output_not_json"),
+    ("section", (True, False), "output_not_json"),
     # P19 #5：中文垃圾尾巴跟乱码字符是一对——同一维（`fits_context`，长文没有）、同样带 `fix`，
     # 所以落桶的格子一模一样。
     ("note", (False, False), "no_junk_tail"),
