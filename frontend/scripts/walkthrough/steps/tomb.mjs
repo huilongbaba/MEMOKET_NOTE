@@ -5,6 +5,7 @@
 // 修之前：`/days` 会把今天和前天都列出来，翻过去是「这一天没有记录」，
 // 而「删掉这一天」置灰——**既看不到也删不掉**。
 import { openJourney, pageText, toTop, wait } from './lib52.mjs'
+import { USER } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -16,7 +17,7 @@ export default async function (d, [tag, today, y]) {
   console.log('  标题:', line(t0, /\d{4}-\d{2}-\d{2} · 屏幕活动/))
   console.log('  那一句:', line(t0, /今天还没有记录[^\n]*|这一天没有记录[^\n]*/))
   console.log('  知情选择那一屏出现了吗（不该）:', await d.count('.journey-consent'))
-  const days = await d.eval(`(async () => { const u = localStorage.getItem('memoket.user') || 'default'; const r = await fetch('/api/journey/days', { headers: { 'X-User-Id': u } }); return JSON.stringify(await r.json()) })()`)
+  const days = await d.eval(`(async () => { const u = ${USER}; const r = await fetch('/api/journey/days', { headers: { 'X-User-Id': u } }); return JSON.stringify(await r.json()) })()`)
   console.log('  后端 /days:', days, '← 今天（墓碑）和前天（[]）都该不在里面')
   const nav = await d.eval(`(() => {
     const g = (t) => { const b = document.querySelector('button[title=' + JSON.stringify(t) + ']'); return b ? b.disabled : null }

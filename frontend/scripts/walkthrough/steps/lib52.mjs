@@ -5,6 +5,7 @@
 // 而后端认的是 **`X-User-Id` 头**（`routers/deps.current_user`），查询串它压根不看。
 // 于是不管窗口里开着谁，那条日志一律报 `[]`。这一版一律带头。
 
+import { USER, USER_SOFT } from '../whoami.mjs'
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** 等到 fn() 为真（或超时）。**别用固定 sleep**。 */
@@ -31,7 +32,7 @@ export async function toasts(d) {
 /** 这个窗口现在是谁（前端自己记的那份身份，跟它发出去的头是同一个来源）。 */
 export async function whoami(d) {
   return d.eval(`(() => {
-    const u = new URLSearchParams(location.search).get('user') || localStorage.getItem('memoket.user') || '(默认)'
+    const u = ${USER_SOFT} || '(默认)'
     return u
   })()`)
 }
@@ -39,7 +40,7 @@ export async function whoami(d) {
 /** 拿窗口自己的身份问后端（**带 X-User-Id 头**）。 */
 export async function api(d, path) {
   return d.eval(`(async () => {
-    const u = new URLSearchParams(location.search).get('user') || localStorage.getItem('memoket.user') || 'default'
+    const u = ${USER}
     const r = await fetch(${JSON.stringify(path)}, { headers: { 'X-User-Id': u } })
     const t = await r.text()
     return r.status + ' ' + t.slice(0, 400)

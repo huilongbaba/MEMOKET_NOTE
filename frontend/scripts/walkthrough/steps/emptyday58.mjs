@@ -6,6 +6,7 @@
 // 改成造两天（昨天一段 + 今天 `[]`）之后，该走到正常那一页再落到
 // 「今天还没有记录」那一屏。这里就核这一件事，外加「删掉这一天」那个钮的状态。
 import { journeyFacts, openJourney, pageText, toTop, wait } from './lib52.mjs'
+import { USER } from '../whoami.mjs'
 
 export default async function (d, [shotName]) {
   await d.setTheme('light'); await wait(600)
@@ -21,7 +22,7 @@ export default async function (d, [shotName]) {
   console.log('  facts:', JSON.stringify(await journeyFacts(d)))
 
   const days = await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/journey/days', { headers: { 'X-User-Id': u } })
     return JSON.stringify(await r.json())
   })()`)

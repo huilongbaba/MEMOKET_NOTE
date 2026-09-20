@@ -3,6 +3,7 @@
 //   ② `synthetic` 档摆出来的形状：假的「连续 3 小时」、「没截图补不了」、空的一天
 //   ③ **真按下「开始记录」**（一张屏都不拍）→ 段真的攒出来 → 暂停 → 到点自己醒
 import { journeyFacts, openJourney, pageText, toTop, until, wait } from './lib52.mjs'
+import { USER } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -18,7 +19,7 @@ export default async function (d, [tag]) {
   console.log('  今天:', JSON.stringify(f0))
   const rows = await d.texts('.journey-desc', 20)
   console.log('  今天每一行写的是:', JSON.stringify(rows))
-  const days = await d.eval(`(async () => { const r = await fetch('/api/journey/days', { headers: { 'X-User-Id': localStorage.getItem('memoket.user') || 'default' } }); return JSON.stringify(await r.json()) })()`)
+  const days = await d.eval(`(async () => { const r = await fetch('/api/journey/days', { headers: { 'X-User-Id': ${USER} } }); return JSON.stringify(await r.json()) })()`)
   console.log('  后端 /days（**空的那一天该不在里面**，P50 问题 #3 修完的样子）:', days)
   await d.shot(`p70-${tag}-1-fake-today-light.png`)
 

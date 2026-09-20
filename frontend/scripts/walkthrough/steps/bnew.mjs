@@ -2,6 +2,7 @@
 import { clickExact } from './clickexact.mjs'
 import { journeyFacts, openJourney, toTop, wait } from './lib52.mjs'
 import { docText, pageText, until } from './lib.mjs'
+import { USER, USER_SOFT } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -64,12 +65,12 @@ export default async function (d, [llmPort]) {
   console.log('=== P66 B：空库第一篇的 active-note 那一格 ===')
   console.log('  ① d.noteId()（默认=本窗口身份，P70 B 改的）:', await d.noteId())
   console.log('  ② d.noteId(本窗口身份):', await d.noteId('p70-newbie'))
-  console.log('  ③ api.getUser() =', await d.eval(`(new URLSearchParams(location.search).get('user') || localStorage.getItem('memoket.user'))`))
+  console.log('  ③ api.getUser() =', await d.eval(USER_SOFT))
   console.log('  ④ localStorage 里所有 active 那一格:', JSON.stringify(await d.eval(`
     Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('memoket-note-active'))
       .map((k) => [k, localStorage.getItem(k)]))`)))
   console.log('  ⑤ 后端真有哪几篇:', JSON.stringify(await d.eval(`(async () => {
-    const u = new URLSearchParams(location.search).get('user') || localStorage.getItem('memoket.user')
+    const u = ${USER}
     const r = await fetch('/api/notes', { headers: { 'X-User-Id': u } })
     const j = await r.json()
     return (Array.isArray(j) ? j : (j.items || j.notes || [])).map((n) => n.id)

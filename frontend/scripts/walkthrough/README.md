@@ -10,6 +10,7 @@ P66 把驱动搬了进来，**步骤脚本留在了外面**——于是 P66 / P6
 |---|---|---|
 | CDP 驱动 `cdp.mjs`（`d.must` / `d.toasts` / `d.dots` / `d.menuItems` / `d.expandDetails` / `d.readCard` / `d.noteId` / `d.openNoteById` / `d.shot` / `d.cmText` …） | `frontend/scripts/walkthrough/cdp.mjs` | 选择器那一半进了 `npm test`；跑的那一半要壳 |
 | **步骤脚本 31 份**（十一步 + 几批专题探针 + 两份共用量具） | `frontend/scripts/walkthrough/steps/` | **`npm test`**（`check-walkthrough-selectors.mts` 现在**默认扫它们**；`check-walkthrough-runnable.mts` 逐个 import） |
+| **身份的唯一出处**（P78 A）`whoami.mjs`（`USER_KEY` / `USER` / `USER_SOFT`） | `frontend/scripts/walkthrough/whoami.mjs` | **`npm test`**（`check-walkthrough-selectors.mts` 第三件事：这个键只准在这一份里出现） |
 | 选择器静态自检 | `frontend/scripts/check-walkthrough-selectors.mts` | **`npm test`** |
 | 「按 README 跑得起来」那条闸 | `frontend/scripts/check-walkthrough-runnable.mts` | **`npm test`** |
 | userData 造法（写 `identity.json`、拷 codebook 并核字节数、起壳前过闸） | `backend/scripts/walkthrough_udd.py` | **`pytest`**（`backend/tests/test_p66.py`） |

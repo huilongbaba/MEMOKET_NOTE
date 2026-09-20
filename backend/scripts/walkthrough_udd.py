@@ -52,7 +52,10 @@ def write_identity(udd: Path, user: str, saved_at: str = "2026-09-20T00:00:00.00
     """给这个 userData 写上身份，**写完读回来核一遍**。
 
     壳启动时读 `<udd>/identity.json`，把 `user` 挂到窗口 URL 的 `?user=` 上；
-    前端 `api.getUser()` 认的就是那一个（`localStorage['memoket.user']` 只是回落）。
+    前端 `api.getUser()` 认的就是那一个（`localStorage['memoket-note-user']` 只是回落——
+    **键名 P78 A 才改对**：这儿原来写的是 `memoket.user`，前端里根本没有那个键，
+    16 份步骤脚本跟着这句话抄了一遍，靠 `|| 'terrence'` 兜底装了十四批没露馅。
+    走查量具那一侧现在只有一个出处：`frontend/scripts/walkthrough/whoami.mjs`）。
     **不写这个文件，前端会自己随机生成一个身份，然后一篇笔记都看不见。**
     """
     udd = Path(udd)
