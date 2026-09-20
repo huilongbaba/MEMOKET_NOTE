@@ -5,6 +5,7 @@
 //   ② 900px 下有 1 个元素横向溢出 —— 把它是谁打出来（P47 是 0 个）
 import { clickBtn, toTop, wait } from './lib52.mjs'
 import { pageText } from './lib.mjs'
+import { USER } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -54,7 +55,7 @@ export default async function (d, [llmPort]) {
   console.log('  保存之后「还没配模型」还在吗:', t.includes('还没配模型'))
   console.log('  toast:', JSON.stringify(await d.toasts()))
   console.log('  后端 /api/provider（库里真落了吗）:', await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'default'
+    const u = ${USER}
     for (const p of ['/api/provider', '/api/settings/provider', '/api/provider-config']) {
       const r = await fetch(p, { headers: { 'X-User-Id': u } })
       if (r.ok) return p + ' → ' + (await r.text()).slice(0, 300)

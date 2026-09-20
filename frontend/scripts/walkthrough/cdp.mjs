@@ -58,6 +58,7 @@
 //     而 P58 台账那一格是靠截图断的 —— **日志里其实是 0**。
 // ─────────────────────────────────────────────────────────────────────────────
 import { withBatchPrefix } from './shotname.mjs'
+import { USER_KEY, USER_SOFT } from './whoami.mjs'
 
 const port = process.argv[2]
 const stepPath = process.argv[3]
@@ -257,15 +258,16 @@ async function main() {
      * 读法跟 `api.getUser()` **同一条**（`?user=` 优先，其次
      * `localStorage['memoket-note-user']`）：不是「差不多一样」，是照抄它那两步，
      * 否则就又多了一把尺子。两样都没有就**抛**——猜一个身份正是这条的病根。
-     * 显式传 `user` 仍然管用（跨身份读别人那一格时必须显式写出来）。 */
+     * 显式传 `user` 仍然管用（跨身份读别人那一格时必须显式写出来）。
+     *
+     * **P78 A：那两步搬去了 `whoami.mjs`**，这儿只 `import` 它。
+     * 原来这段是**抄**在这儿的，于是 16 份步骤脚本各自又抄了一遍——
+     * 抄的那 16 份把键写成了 `memoket.user`（前端里根本没有这个键），
+     * 一路靠 `|| 'terrence'` 兜底装了十四批没人发现。**抄得到的地方就会被抄。** */
     async noteId(user) {
-      const who = user ?? await this.eval(
-        `(() => { try {
-           const u = new URLSearchParams(location.search).get('user')
-           return (u && u.trim()) || localStorage.getItem('memoket-note-user') || ''
-         } catch (e) { return '' } })()`)
+      const who = user ?? await this.eval(USER_SOFT)
       if (!who) {
-        throw new Error('noteId: 这个窗口的身份读不出来（?user= 和 localStorage["memoket-note-user"] 都是空的）'
+        throw new Error(`noteId: 这个窗口的身份读不出来（?user= 和 localStorage["${USER_KEY}"] 都是空的）`
           + '——不猜一个（猜就是 P64 问题 #2 那次静默读了别人那一格）；要跨身份读就显式传 user')
       }
       const key = JSON.stringify('memoket-note-active:' + who)

@@ -5,6 +5,7 @@
 // 这一趟换个摆法：**把昨天那个目录 chmod 500**——读得进来（页面照常画、钮照常亮），
 // 删的时候 `rm_tree` 一条都删不掉，后端 500，页面上那句红字才摆得出来。
 import { openJourney, pageText, toTop, toasts, until, wait } from './lib52.mjs'
+import { USER } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -82,7 +83,7 @@ export default async function (d, [tag, day]) {
   console.log('  这一天还在吗（标题）:', line(t2, /\d{4}-\d{2}-\d{2} · 屏幕活动/))
   console.log('  段数那一行:', line(t2, /[这今]天 \d+ 段[^\n]*/))
   console.log('  后端直接问一次:', (await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'default'
+    const u = ${USER}
     const r = await fetch('/api/journey/day?date=${day}', { headers: { 'X-User-Id': u } })
     const j = await r.json(); return r.status + ' segments=' + j.segments.length
   })()`)))

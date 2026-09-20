@@ -8,6 +8,7 @@
 //
 // usage: journey64.mjs <偏长那天 yyyy-mm-dd> <正常那天 yyyy-mm-dd> <截图前缀>
 import { openJourney, pageText, toTop, until, wait } from './lib52.mjs'
+import { USER } from '../whoami.mjs'
 
 const SAY = '这个「合计」偏长'
 
@@ -43,7 +44,7 @@ export default async function (d, [badDay, goodDay, shot]) {
   // 那两个下拉的选项读了回来，打出来是「1 周（7 天）/ 3 个月（90 天）…」。
   // **「选到东西 ≠ 选到那个东西」**。
   console.log('  天列表（后端 /api/journey/days）:', await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/journey/days', { headers: { 'X-User-Id': u } })
     return JSON.stringify(await r.json())
   })()`))

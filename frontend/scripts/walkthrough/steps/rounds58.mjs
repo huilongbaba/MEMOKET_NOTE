@@ -6,6 +6,7 @@
 // 这一版直接找含「Agent 运行」的那个容器，整段 innerText 打出来，再逐条对。
 import { docText, pageText, until, wait } from './lib.mjs'
 import { clickExact } from './clickexact.mjs'
+import { USER } from '../whoami.mjs'
 
 export default async function (d, [noteId, shotName]) {
   await d.setTheme('light'); await wait(400)
@@ -47,7 +48,7 @@ export default async function (d, [noteId, shotName]) {
   console.log('  正文里还有「terrence-8F6」吗:', (after || '').includes('terrence-8F6'))
   // 读库（P45 #1 / P44 问题 #1 的回归）：库里那份得跟编辑器逐字一样，而且不是 JSON
   console.log('  库:', await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/notes/${noteId}', { headers: { 'X-User-Id': u } })
     const j = await r.json()
     return JSON.stringify({ len: (j.content||'').length, json: /\\{"scores"|\\{"spine"/.test(j.content||'') })

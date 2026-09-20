@@ -5,10 +5,11 @@
 import { clickExact } from './clickexact.mjs'
 import { selectLineAndRightClick } from './ctxmenu52.mjs'
 import { docText, pageText, toasts, until, wait } from './lib.mjs'
+import { USER } from '../whoami.mjs'
 
 async function dbContent(d, id) {
   return d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/notes/${id}', { headers: { 'X-User-Id': u } })
     const j = await r.json()
     return { len: (j.content || '').length, json: /\\{"text":|"reason": "假模型"/.test(j.content || '') }
@@ -16,7 +17,7 @@ async function dbContent(d, id) {
 }
 async function layers(d, id) {
   return d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/notes/${id}/change-layers', { headers: { 'X-User-Id': u } })
     return JSON.stringify(await r.json()).slice(0, 400)
   })()`)

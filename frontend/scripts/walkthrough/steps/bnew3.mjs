@@ -6,6 +6,7 @@
 //   ② 900px 下溢出的那一个是 `.note-tab`「屏幕活动×」。量清楚它的 × 到底够不够得着。
 import { clickBtn, toTop, wait } from './lib52.mjs'
 import { pageText } from './lib.mjs'
+import { USER } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -50,7 +51,7 @@ export default async function (d, [llmPort]) {
   console.log('  红条还在吗:', t.includes('还没配模型，AI 功能全都用不了'))
   console.log('  toast:', JSON.stringify(await d.toasts()))
   console.log('  库里:', await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'default'
+    const u = ${USER}
     const r = await fetch('/api/settings/provider', { headers: { 'X-User-Id': u } })
     const j = await r.json()
     return JSON.stringify({ provider: j.provider, local_base_url: j.local_base_url, local_model: j.local_model })

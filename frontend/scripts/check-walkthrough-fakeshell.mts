@@ -103,8 +103,9 @@ visit(sf)
 
 // **扫不到东西的闸门会一直是绿的**：`PLAN` 空了 / AST 没扒着，这一整段就白跑了。
 // **只准往上调**（同 `check-walkthrough-selectors.mts` 的 `MIN_CLASSES`）：
-// P74 是 3 步，P76 把走查第 ④⑤⑥⑩ 加进来之后是 7 步。
-const MIN_STEPS = 7
+// P74 是 3 步，P76 把走查第 ④⑤⑥⑩ 加进来之后是 7 步，
+// P78 B① 把第 ② 步（`b1b`，意图预填那一格）加进来之后是 8 步。
+const MIN_STEPS = 8
 if (plan.length < MIN_STEPS) {
   console.error(`✗ 从 run-walkthrough-fakeshell.mjs 里只扒出 ${plan.length} 步（至少该有 ${MIN_STEPS} 步）`
     + '—— 要么 PLAN 被砍了，要么这段 AST 扒法坏了。别把这个数字改小')

@@ -6,6 +6,7 @@
 // 这一次不是选择器错，是**读法**错。
 import { docText, pageText, until, wait } from './lib.mjs'
 import { clickExact } from './clickexact.mjs'
+import { USER } from '../whoami.mjs'
 
 export default async function (d, [noteId, shotName]) {
   await d.setTheme('light'); await wait(400)
@@ -52,7 +53,7 @@ export default async function (d, [noteId, shotName]) {
   console.log('  正文里还有「做爰片」吗（该 false）:', (after || '').includes('做爰片'))
   console.log('  正文里还有「terrence-8F6」吗（该 false）:', (after || '').includes('terrence-8F6'))
   console.log('  库:', await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/notes/${noteId}', { headers: { 'X-User-Id': u } })
     const j = await r.json()
     return JSON.stringify({ len: (j.content||'').length, json: /\\{"scores"|\\{"spine"/.test(j.content||'') })

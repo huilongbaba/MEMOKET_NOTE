@@ -15,6 +15,7 @@
 // usage: adv68.mjs <seed 标题> <截图前缀>
 import { clickExact } from './clickexact.mjs'
 import { docText, pageText, statusWords, until, wait } from './lib.mjs'
+import { USER, USER_SOFT } from '../whoami.mjs'
 
 export default async function (d, [tag, shot]) {
   await until(async () => (await pageText(d)).length > 50, 30000)
@@ -27,7 +28,7 @@ export default async function (d, [tag, shot]) {
   await clickExact(d, '新建笔记', 0, 8)
   await wait(3000)
   // **不用默认参数**（P70 B）：这个窗口的身份从页面上读，别读另一个人的那一格。
-  const who = await d.eval(`(new URLSearchParams(location.search).get('user') || localStorage.getItem('memoket-note-user') || '')`)
+  const who = await d.eval(USER_SOFT)
   const noteId = await d.noteId(who)
   console.log('窗口身份:', who, ' 新建出来的:', noteId)
   await d.focusEditor()
@@ -45,7 +46,7 @@ export default async function (d, [tag, shot]) {
 
   const three = await d.eval(`(async () => {
     const lines = Array.from(document.querySelectorAll('.cm-content .cm-line')).map((l) => l.textContent ?? '').join('\\n')
-    const user = new URLSearchParams(location.search).get('user') || localStorage.getItem('memoket-note-user') || ''
+    const user = ${USER}
     let db = null
     try {
       const r = await fetch('/api/notes/' + ${JSON.stringify('')} + ${JSON.stringify(noteId)}, { headers: { 'X-User-Id': user } })

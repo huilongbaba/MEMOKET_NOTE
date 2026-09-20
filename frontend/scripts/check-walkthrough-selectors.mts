@@ -370,14 +370,119 @@ if (/async noteId\(\s*\w+\s*=/.test(drv)) {
 const USER_KEY = (apiSrc.match(/const USER_KEY = '([^']+)'/) ?? [])[1]
 if (!USER_KEY) {
   idBad.push("在 src/api.ts 里找不到 USER_KEY —— 这条闸失去了对照物（别让它静默变绿）")
-} else if (!drv.includes(`'${USER_KEY}'`)) {
-  idBad.push(`cdp.mjs 没按 api.getUser() 那个键（'${USER_KEY}'）读身份 —— 两把尺子就是静默读空`)
 }
-if (!/getUser\(\)/.test(apiSrc) || !/location\.search\)\.get\('user'\)/.test(drv)) {
-  idBad.push("cdp.mjs 读身份没有 `?user=` 那一步 —— 壳就是靠它把 identity.json 挂上窗口的")
+if (!/getUser\(\)/.test(apiSrc)) {
+  idBad.push('src/api.ts 里没有 getUser() —— 这条闸失去了对照物')
 }
 if (idBad.length) {
   for (const m of idBad) console.error('✗ ' + m)
   process.exit(1)
 }
-console.log(`OK: 走查驱动的身份从窗口自己身上读（键 '${USER_KEY}'，跟 api.getUser() 同一把尺子），没有写死的默认身份`)
+
+// ── 第三件事：**那个键只有一个出处**（P78 A）───────────────────────────────
+//
+// P76 量出来的那笔账：**16 份步骤脚本 / 28 处**读身份写的是
+// `localStorage.getItem('memoket.user') || 'terrence'` —— 前端里**根本没有
+// `memoket.user` 这个键**（真键是上面那个 `USER_KEY`）。`getItem` 读不到回 `null`，
+// 于是每一次都走那个兜底，而**那个兜底恰好等于老用户的身份**：P47 到 P74 十四批
+// 走查一次没露过馅。换成空库新用户当场现形（`{"len":0}` / `note not found`），
+// 而库里那篇好好的。
+//
+// **这条闸钉的不是「键写对了」，是「键只有一个出处」。**「把 16 处都改对」治不了：
+// 下一份新步骤脚本照样抄一份旧的。P76 自己写新量具时就把键写成了 `memoket.user`
+// ——**抄得到的地方就会被抄**。所以读法收进 `walkthrough/whoami.mjs`，
+// 别处再写一遍这个键，这儿当场红。
+const WALK = path.join(FE, 'scripts/walkthrough')
+const WHOAMI = path.join(WALK, 'whoami.mjs')
+/** 走查量具那一侧要扫的每一份 `.mjs`（驱动 + 步骤脚本 + 真跑那条闸）。 */
+function walkFiles(): string[] {
+  const out = [path.join(FE, 'scripts/run-walkthrough-fakeshell.mjs')]
+  for (const dir of [WALK, path.join(WALK, 'steps')]) {
+    for (const n of readdirSync(dir)) {
+      const p = path.join(dir, n)
+      if (n.endsWith('.mjs') && statSync(p).isFile()) out.push(p)
+    }
+  }
+  return out
+}
+
+// **判之前先喂它一个该红 / 该绿的反例**（每一批都要做的那件事）。
+// 这六条跑在下面那些断言**之前**：扒法坏了的话，这儿先红。
+type Probe = [string, string, boolean]   // [叫什么, 一段源码, 该不该算「写了这个键」]
+const KEY_PROBES: Probe[] = [
+  ['代码里写了这个键', `const u = localStorage.getItem('${USER_KEY}')`, true],
+  ['双引号也算', `localStorage.getItem("${USER_KEY}")`, true],
+  ['整行注释里的不算', `// 真键是 '${USER_KEY}'，见 src/api.ts`, false],
+  ['块注释里的不算', `/* localStorage.getItem('${USER_KEY}') */`, false],
+  ['`*` 开头的文档行不算', ` * \`localStorage['${USER_KEY}']\` 只是回落`, false],
+  ['别的串不算', `const u = localStorage.getItem('memoket-note-active:' + who)`, false],
+]
+const hasKey = (src: string) => code(src).includes(USER_KEY)
+for (const [why, sample, want] of KEY_PROBES) {
+  if (hasKey(sample) !== want) {
+    console.error(`✗ 这条闸自己的例 / 反例就不对：「${why}」判成 ${!want}`)
+    process.exit(1)
+  }
+}
+
+const idFiles = walkFiles()
+const keyOwners = idFiles.filter((p) => hasKey(readFileSync(p, 'utf8')))
+// ① 键只准出现在 `whoami.mjs` 的代码里，**而且真的在那儿**（两头都要，
+//    少了后半条，把 `whoami.mjs` 删了这条也是绿的）。
+if (!(keyOwners.length === 1 && keyOwners[0] === WHOAMI)) {
+  idBad.push(`'${USER_KEY}' 这个键在 ${keyOwners.length} 份文件的**代码**里出现`
+    + `（${keyOwners.map((p) => path.basename(p)).join(' / ')}）——该只有 whoami.mjs 一份。`
+    + '**抄得到的地方就会被抄**，P78 A 那 28 处正是这么来的')
+}
+// ② `whoami.mjs` 认的键 = 产品认的键。产品那边改了名这儿没跟上 = 静默读空。
+const whoamiSrc = readFileSync(WHOAMI, 'utf8')
+const whoamiKey = (code(whoamiSrc).match(/export const USER_KEY = '([^']+)'/) ?? [])[1]
+if (whoamiKey !== USER_KEY) {
+  idBad.push(`whoami.mjs 的 USER_KEY 是 ${JSON.stringify(whoamiKey)}，`
+    + `而 src/api.ts 的是 '${USER_KEY}' —— 两把尺子就是静默读空`)
+}
+// ③ 那个**不存在的键**一次都不许再出现在代码里（注释里当账记着是可以的）。
+const ghost = idFiles.filter((p) => code(readFileSync(p, 'utf8')).includes('memoket.user'))
+if (ghost.length) {
+  idBad.push(`'memoket.user' 这个前端里根本没有的键又回到代码里了：`
+    + ghost.map((p) => path.basename(p)).join(' / '))
+}
+// ④ **凡是发 `X-User-Id` 的都得从这一个出处拿身份。** 这一条比「别写死默认值」宽一点，
+//    而宽得对：写死 `'terrence'` 只是**一种**猜法，`|| 'default'` / `|| ''` 是另外两种，
+//    三种在 P78 之前的步骤脚本里全出现过。
+//    ⚠️ **只管浏览器里跑的那一半**（`walkthrough/**`）。`run-walkthrough-fakeshell.mjs`
+//    也发 X-User-Id，但它是**从 node 发的**，身份来自它自己写进 `identity.json` 的那个
+//    常量——它是身份的**源头**，不是读者，拿 `whoami.mjs` 去要求它是问错了对象。
+//    这条碑先量后立：第一版没排除它，当场红了，**而红的是判据不是产品**。
+//    **预测错了照实记。**
+const senders = idFiles.filter((p) => p !== WHOAMI && p.startsWith(WALK + path.sep)
+  && /['"]X-User-Id['"]/.test(code(readFileSync(p, 'utf8'))))
+for (const p of senders) {
+  // **`^import` 顶格问**，不对着摘注释的那一份问：`code()` 在 cdp.mjs 上把 import 行
+  // 一起吃掉了（文件里别处有个 `/*` 把块注释的非贪婪匹配拉长了），而
+  // `// import … whoami.mjs` 这种注释掉的写法也过不了 `^import`。
+  if (!/^import .*from '\.\.?\/whoami\.mjs'/m.test(readFileSync(p, 'utf8'))) {
+    idBad.push(`${path.relative(FE, p)} 发 X-User-Id，却没从 whoami.mjs 拿身份 —— 那就是第二把尺子`)
+  }
+}
+// ⑤ **扫不到东西的闸门会一直是绿的。** 只准往上调。
+const MIN_SENDERS = 17
+if (senders.length < MIN_SENDERS) {
+  idBad.push(`只扫到 ${senders.length} 份发 X-User-Id 的量具（至少该有 ${MIN_SENDERS} 份）`
+    + '—— 要么步骤脚本被砍了，要么这段扒法坏了。别把这个数字改小')
+}
+// ⑥ **接线洞单独一条**：`cdp.mjs` 的 `noteId()` 真的在用 `whoami.mjs` 那一段，
+//    **对着摘掉整行注释的那一份问**（P76 第 ⑪ 刀：串在注释里，断言照样绿）。
+//    少了这一条，`import` 留着、`noteId()` 里把那两步又抄一遍，上面五条全绿。
+if (!/^import .*from '\.\/whoami\.mjs'/m.test(readFileSync(path.join(WALK, 'cdp.mjs'), 'utf8'))
+    || !/this\.eval\(USER_SOFT\)/.test(drv)) {
+  idBad.push('cdp.mjs 的 noteId() 没在用 whoami.mjs 的 USER_SOFT —— 身份的读法又多了一把尺子')
+}
+
+if (idBad.length) {
+  for (const m of idBad) console.error('✗ ' + m)
+  process.exit(1)
+}
+console.log(`OK: 走查量具的身份从窗口自己身上读（键 '${USER_KEY}'，跟 api.getUser() 同一把尺子），`
+  + `没有写死的默认身份；扫了 ${idFiles.length} 份量具 / ${senders.length} 份发 X-User-Id 的，`
+  + `键的出处 ${keyOwners.length} 个（whoami.mjs），例 / 反例 ${KEY_PROBES.length} 条`)

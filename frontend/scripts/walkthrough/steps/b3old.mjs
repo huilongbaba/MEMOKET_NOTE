@@ -3,6 +3,7 @@ import { clickExact } from './clickexact.mjs'
 import { flip } from './flipday60.mjs'
 import { clickBtn, journeyFacts, openJourney, toTop, toasts, until, wait } from './lib52.mjs'
 import { pageText } from './lib.mjs'
+import { USER } from '../whoami.mjs'
 
 const line = (t, re) => (t.match(re) || [])[0] || null
 
@@ -38,9 +39,13 @@ export default async function (d, [noteId, plainId]) {
   await wait(2500)
   console.log('  开着的是:', await d.noteId())
   console.log('  右栏页签:', JSON.stringify(await d.texts('.pane-tab', 12)))
-  console.log('  toast（该一条都没有）:', JSON.stringify(await toasts(d)))
+  // **P76 问题 #2 / P78 B②**：这一格开的是**带层**那篇，弹 toast 是**对的**（P43）。
+  // 措辞原来抄的是 `reopen64.mjs` 里**不带层**那一格的（「该一条都没有」），
+  // 于是每批日志上都摆着一句跟它量的东西正好相反的话，读日志的人会当成缺陷。
+  // **一句写反的措辞，和一条写反的判据，代价是一样的。**
+  console.log('  toast（带层这篇**该有 1 条** · P43）:', JSON.stringify(await toasts(d)))
   const lay = await d.eval(`(async () => {
-    const u = localStorage.getItem('memoket.user') || 'terrence'
+    const u = ${USER}
     const r = await fetch('/api/notes/${noteId}/change-layers', { headers: { 'X-User-Id': u } })
     const j = await r.json(); return (j.layers || []).map((l) => l.label + ':' + l.hunks.length + '处/' + l.state).join(' | ')
   })()`)
@@ -54,7 +59,7 @@ export default async function (d, [noteId, plainId]) {
     await wait(2000)
     console.log('   开着的是:', await d.noteId())
     console.log('   右栏页签:', JSON.stringify(await d.texts('.pane-tab', 12)))
-    console.log('   toast:', JSON.stringify(await toasts(d)))
+    console.log('   toast（不带层这篇**该一条都没有** · P44 #5）:', JSON.stringify(await toasts(d)))
   }
 
   console.log('=== ⑧ 屏幕活动整页 ===')
@@ -124,12 +129,12 @@ export default async function (d, [noteId, plainId]) {
   console.log('  现在这一页:', line(t3, /\d{4}-\d{2}-\d{2} · 屏幕活动/), ' 翻页:', JSON.stringify(await nav(d)))
 
   console.log('— 「去这天的日记」（P23 #6）—')
-  const before = await d.eval(`(async () => { const u = localStorage.getItem('memoket.user') || 'terrence'; const r = await fetch('/api/tree', { headers: { 'X-User-Id': u } }); return JSON.stringify(await r.json()).length })()`)
+  const before = await d.eval(`(async () => { const u = ${USER}; const r = await fetch('/api/tree', { headers: { 'X-User-Id': u } }); return JSON.stringify(await r.json()).length })()`)
   await clickExact(d, '去这天的日记', 0, 4).catch((e) => console.log('  没点到:', e.message))
   await wait(3000)
   const crumb = await d.texts('.crumbs, [class*="crumb"]', 4)
   console.log('  面包屑:', JSON.stringify(crumb))
-  const after = await d.eval(`(async () => { const u = localStorage.getItem('memoket.user') || 'terrence'; const r = await fetch('/api/tree', { headers: { 'X-User-Id': u } }); return JSON.stringify(await r.json()).length })()`)
+  const after = await d.eval(`(async () => { const u = ${USER}; const r = await fetch('/api/tree', { headers: { 'X-User-Id': u } }); return JSON.stringify(await r.json()).length })()`)
   console.log('  树大小:', before, '→', after)
   await d.shot('p70-b3-old-journal-light.png')
 
