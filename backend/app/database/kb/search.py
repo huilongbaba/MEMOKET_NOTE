@@ -390,10 +390,54 @@ def _clusters(hits: list[str]) -> list[str]:
 LONG_QUERY = 100
 LONG_QUERY_MIN_WORDS = 2
 
+# 「这一条够硬」的那个量（P61 #1）。**换的是量程，不是阈值**——跟 P34 给 `_why` 换量程
+# 是同一件事，这里把那一课用在 P4 立的这道门上。
+#
+# **P4 那个「≥3 字」是给滑窗定的**：`_cjk_terms` 的窗口最长 3，合出 3 个字意味着
+# 两个窗口都对上了，不像是一个窗口撞出来的。可**中文词大多是 2 个字**，
+# 于是分词切出来的**真词**——`华为` / `芯片` / `周敏` / `手环` / `合规` / `记忆`——
+# 一个都过不了这道门。P60 量到头的那句「取词那一层已经量到头了」说的就是这里：
+# 给上一层塞再好的牌，牌到了这道门前照样被字数挡回去。
+#
+# 换完之后问的是真正要问的那一句：**这一串在查询的分词里整词覆盖了几个字的实词**
+# （`tokenize.content_chars`，跟 `_why` / `_weigher` **同一个函数、同一份口径**，
+# 不另起一把尺子）。门槛 `STRONG_CJK_MIN = 2` = 「至少盖住一个实词」，
+# 这正是 P4 那句「不能全靠 ≤2 字的碎片」在词这个量程上的原话——
+# 碎片的实词字数是 **0**（`用户的` / `可以实` / `的数据` 全是 0），一个真词是 2。
+#
+# **门槛为什么不是 3 / 4**（全库 765 条量过，grid 在台账 P61 #1）：
+# 实词字数 ≥3 会让 513/1086 串次**掉**资格、top-8 变 36 条里 **14 条整条变空**、召回对 1282 → 1245；
+# ≥4 更狠（613 掉）。**那不是换量程，那是顺手把门抬高两档。**
+#
+# **`None` 那一档退回的是原样的 `len(h) >= 3`，不是新门槛**：`_weigher` 对英文 /
+# 数字串一律回 `None`，拿 2 去套它就是**顺手把英文那一档从 3 降到 2**，而 P32 量过，
+# 撞词的重灾区正是**两个字母**那一档（`ai` / `ui` / `os` / `md` / `pr`）。
+# **第一版就是这么栽的**：24 条变动里一度混进 6 条全靠 `ui` / `os` 撞进来的
+# （教室方案的项目表召回一屏 UI 设计讨论），逐条读的时候当场抓到。
+# 这一行是**接线**，`test_p61` 单独钉了一条。
+STRONG_CJK_MIN = 2
 
-def _strong_enough(hits: list[str]) -> bool:
+
+def _strong_enough(hits: list[str], query: str = "", segment=None, common=None) -> bool:
+    """长查询（自动召回）那道门：至少两条不同的证据串，而且**至少一条站得住**。
+
+    `segment` / `common` 由调用方注入（同 `qualifies` / `_why`）。**不给就是原样**
+    ——`evidence=False` 那条路（候选池 / 写作取材料 / 关系判据）今天不注 `segment`，
+    于是它在这条路上逐字等于 P4 那一版。「候选池宁可宽」那条没被这一批动过。
+    """
     cl = _clusters(hits)
-    return len(cl) >= LONG_QUERY_MIN_WORDS and any(len(h) >= 3 for h in cl)
+    if len(cl) < LONG_QUERY_MIN_WORDS:
+        return False
+    weigh = _weigher(query, segment, common)
+    for h in cl:
+        n = weigh(h) if weigh is not None else None
+        if n is None:
+            if len(h) >= 3:          # 英文 / 数字 / 定位不到：原样那把尺
+                return True
+            continue
+        if n >= STRONG_CJK_MIN:
+            return True
+    return False
 
 
 # ------------------------------------------------------------ 证据资格（P32 #1）
@@ -892,7 +936,9 @@ def rank(rows: list[dict], query: str, memory, store, *, limit: int,
         # 数字命中比同长度的字词更硬（「4月16」几乎就是在指那一天），多给 2 分
         hits = _hits(terms, text)
         # 长查询（自动召回）：只靠一个泛词命中的候选不要——那不是相关，是凑数（P4 #6）
-        if long_query and not _strong_enough(hits):
+        # **这三个实参不能省**（P61 #1）：省了 `_weigher` 就是 `None`，整条退回「≥3 字」
+        # 那把给滑窗定的尺——`华为` / `周敏` / `手环` 这些真词又全被挡回去。接线洞。
+        if long_query and not _strong_enough(hits, query, segment, common):
             return (0, row.get("date") or "")
         # 拿不出**合格证据**的不要（P32 #1）。跟上面那条不是一回事：那条只在 ≥100 字时看
         # 「有没有两个不同的 cluster」，这条在任何长度上问「这两条到底凭什么算相关」——

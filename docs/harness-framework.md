@@ -548,7 +548,14 @@ State: mode · ctx(user/note/cursor/intent/tray) · request · round        # ct
   P59 ④ 把局面摆出来过——`<scratch>/p59/stuck9.py`，真 `loop.run` + 假打分器，停机从 `'complete'` 变 `'check_stuck'`——
   **结论还是不加**，三条理由在 `Checks.after_judge` 的 docstring 里，最硬的两条是
   「这一支在 15 批 / 61 份跑 / 284 轮里 0 次开火」和「8 个模式里 6 个的 `stop_when` 没有 `check_stuck`，
-  在那 6 个上压回 `continue` 没人接得住，会一路跑到 `max_rounds`」），
+  在那 6 个上压回 `continue` 没人接得住，会一路跑到 `max_rounds`」；
+  **P61 #3 换了个角度又量了一遍，结论一样**——把 `streak` 改读按判据名数的那一份
+  （`check_name_streak`，`citations_present` 的判词里带「这一轮写了 N 字」，按原话数永远升不到 3）
+  之后，放行轮是 **r3 起每一轮**；可在真跑的条件下（`JUDGE_FLOOR` 活着）**它买不到东西**：
+  `JUDGE_FLOOR` 已经在 r2 放行、r2 就有真分，而 `modes.check_stuck` 本来就读按名字数的那一份，
+  r3 就成立——NOTE / SECTION 上停机轮和交付轮**一轮不变**；在那 6 个模式上则是从 r3 起
+  每轮多一次真打分调用、没人接得住。**「误伤」那一栏是空的**：放行不停跑，它只是「不短路」。
+  局面在 `<scratch>/p61/stage61.py`（真 `Checks.before_judge` 八轮，五列对照），闸 `tests/test_p61.py::test_3_*`），
   在这之前没有任何规则看「连响」；P5 实拍 `citations_present` 连响 10 轮跑到 15 轮 385 秒。
   **P24 #3 把「连续 3 轮」换成「最近 `CHECK_STUCK_WINDOW` = 4 轮里 3 次」**：`Checks.before_judge`
   每轮把 `check_name_streak` 整只换掉（「连续」该有的语义），于是**两条判据交替响就互相清零**
