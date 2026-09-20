@@ -208,7 +208,14 @@ export type CheckHitGroup = { head: CheckHit; notes: string[] }
 
 function hitKey(h: CheckHit): string | null {
   if (h.stuck_rounds || h.stopped) return null     // 这两种各自只会出现一条，不参与合并
-  return `${h.check ?? ''} ${h.dimension ?? ''} ${h.ran ?? ''}`
+  // **分隔符写成转义，不许在源码里放真的 NUL 字节**（P56 #5⑥）。
+  // 运行期一模一样（`\u0000` 就是那个字节），改的只是源文件的编码：
+  // 一个真 NUL 会让 `file(1)` 把整份 `.tsx` 判成 `data`，于是 `grep` **静默跳过它**——
+  // P52「轮次卡片那几句话在 `frontend/src` 里一个字都搜不到」就是这么来的，
+  // 那几句一直在这个文件里（「照它改的」/「判词就是下面」，P33 写进去之后一个字没动），
+  // 是 grep 看不见。闸在 `frontend/scripts/check-greppable.mts`。
+  // 一个会让搜索静默失败的字节，比它省下的那点事贵得多。
+  return `${h.check ?? ''}\u0000${h.dimension ?? ''}\u0000${h.ran ?? ''}`
 }
 
 /** 相邻且抬头一样的 ⚑ 并成一条：抬头说一次，判词逐条列。 */

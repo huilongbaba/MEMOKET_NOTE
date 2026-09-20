@@ -6965,7 +6965,7 @@ session」——那是运气，不是工程。**所以它进仓库。**
 | 召回对 | 1273 | **1273** |
 | D2 表 B（五篇末 500 字 · limit 5） | 8 条（N2 5 · N4 3） | **8 条逐条相同** |
 | 圆点（172 段口径） | 判出 140 · 真画 34 | **逐段相同** |
-| `recall_selfcheck` 种子 11 / n 200 | 194 / 190 / 103 | **逐个相同** |
+| `recall_selfcheck` 种子 11 / n 200 | 194 / 190 / 103 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 197/195/95） |
 
 **尺是同一把**，下面所有的数都在这把尺上。
 
@@ -7264,8 +7264,8 @@ session」——那是运气，不是工程。**所以它进仓库。**
   |---|---|---|
   | D2 表 B（五篇末 500 字 · limit 5） | 8 条（N2 5 · N4 3） | **8 条逐条相同** |
   | 页边圆点（172 段口径） | 判出 140 · 真画 34 | **判出 140 · 真画 34，逐段相同** |
-  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同** |
-  | **右栏那条路真走的那档（`evidence=True`）** | 190 / 186 / 63 | **190 / 185 / 67** |
+  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 197/195/95） |
+  | **右栏那条路真走的那档（`evidence=True`）** | 190 / 186 / 63 | **190 / 185 / 67**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 192/190/67） |
 
   **第四栏是必须加的**：#5 的闸只开在 `evidence=True` 上，而 `recall_selfcheck` 走的是 `evidence=False`——
   **只报前三栏就是在拿一条闸管不着的路当证据**。第四栏里 full **一格没动**、同主题 **+4**、
@@ -8194,7 +8194,7 @@ session」——那是运气，不是工程。**所以它进仓库。**
   |---|---|---|
   | D2 表 B（五篇末 500 字 · limit 5） | 8 条（N2 5 · N4 3） | **逐条相同** |
   | 页边圆点（172 段口径） | 判出 140 · 真画 34 | **逐段相同** |
-  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同** |
+  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 197/195/95） |
   | 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 67 | 190 / 185 / **68** |
 
 - **改了什么**：`search.plan(…, common=None)` + `search._cjk_greps(memory, query, segment, common=None)`：
@@ -8783,8 +8783,8 @@ P39 只摆过 `CHANGE_LAYER_KEEP` 那一条，另外两条从来没在屏幕上�
 |---|---|---|
 | D2 表 B（五篇末 500 字 · limit 5） | 8 条（N2 5 · N4 3） | **逐条相同** |
 | 页边圆点（172 段口径） | 判出 140 · 真画 34 | **逐段相同**（N1 112/17 · N2 17/12 · N3 9/4 · N4 2/1） |
-| `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同** |
-| 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 68 | **逐个相同** |
+| `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 197/195/95） |
+| 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 68 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 192/190/67） |
 
 **全库对拍**（`scan44` + `dedup44` + `diff44`，同一把尺：**765 条查询（cursor 727 / tail 38）·
 有召回 331 · 召回对 1282**，跟 P38 / P42 收尾**逐格相同**）：
@@ -9397,8 +9397,8 @@ behavioural 那几条**全绿**，只有接线闸红了。要是当时收手，�
   |---|---|---|
   | D2 表 B（五篇末 500 字 · limit 5） | 8 条（N2 5 · N4 3） | **逐条相同** |
   | 页边圆点（172 段口径） | 判出 140 · 真画 34 | **逐段相同**（N1 112/17 · N2 17/12 · N3 9/4 · N4 2/1） |
-  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同** |
-  | 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 68 | **逐个相同** |
+  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 197/195/95） |
+  | 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 68 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 192/190/67） |
 
   **全库对拍**（`scan46` + `dedup46` + `diff46`，同一把尺：**765 条查询（cursor 727 / tail 38）·
   有召回 331 · 召回对 1282**，跟 P38 / P42 / P44 收尾**逐格相同**）：
@@ -10090,8 +10090,8 @@ P45 自己写着：`startBackend` 的重试那一圈**没在真 app 上摆出来
   |---|---|---|
   | D2 表 B（五篇末 500 字 · limit 5） | 8 条（N2 5 · N4 3） | **逐条相同** |
   | 页边圆点（172 段口径） | 判出 140 · 真画 34 | **逐段相同**（N1 112/17 · N2 17/12 · N3 9/4 · N4 2/1） |
-  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同** |
-  | 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 68 | **逐个相同** |
+  | `recall_selfcheck` 原口径（`evidence=False`） | 194 / 190 / 103 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 197/195/95） |
+  | 右栏那条路真走的那档（`evidence=True`） | 190 / 185 / 68 | **逐个相同**（⚠️ **这个数没带参数、复现不出来**，见 P54 / P56；同语料同参数今天是 192/190/67） |
 
   **全库对拍**（`scan48` + `dedup48` + `diff48b`，同一把尺：**765 条查询（cursor 727 / tail 38）·
   有召回 331 · 召回对 1282**，跟 P38 / P42 / P44 / P46 收尾**逐格相同**）：
@@ -11864,6 +11864,268 @@ P53：N4 B5 覆盖 **0.452** ≥ `COVER_MIN` 0.42，把「试点责任 / 接入�
 **但这不算复现**：今天 N4 那 5 条 beats 模型自己全标了「已写」，`verify_beats` 没东西可翻，
 **这一格只证明没有回归，不证明修好了**——修好了那件事的证据是上面 8 条射程的逐条重放 + M11/M13/M14/M15 四刀。
 5 次调用，33,721 + 2,605 = **36,326 token**（P53 36,381）。
+## P56 · 第 795 轮：记忆那条线 + 屏幕活动的收尾（2026-09-20）
+
+> HEAD 开工 `634e23f`（worktree `agent-ab20487ff74daa578`）。五条：
+> **①** 在 P53 那 5 跑的材料上把 `relevance.gate` 的 would-drop 表重新量一遍（**量完不开**）；
+> **②** 真库剩下那 2 篇半句骨架出 dry-run（**绝不 `--apply`**）；
+> **③** `recall_selfcheck` 基线在 HEAD 上重新钉 + 回头给 P38/P42/P44/P46/P48 那几处加注；
+> **④** 「删不掉」那条 toast 收不收（产品决定）；
+> **⑤** P52「留给下一批」的 ⑤ `emptyday` 和 ⑥ 轮次卡片那几句话。
+>
+> 另一个 agent 同时在改 harness 判据（`app/harness/**`、`middleware/checks.py`、`modes.py`、
+> `checks/*.py`）——**这一批那些文件一个字节没碰**（第 ① 条的结论正是「不改代码」）。
+> 碰的是 `backend/scripts/p7_skeleton_dryrun.py`、`backend/scripts/journey_fixture.py`、
+> `backend/app/routers/journey.py`、`frontend/src/components/AgentActivity.tsx`、
+> `frontend/package.json`，新的 `backend/tests/test_p56.py`、
+> `frontend/scripts/check-greppable.mts`，外加 `tests/fixtures/memory_sample.jsonl` 和两份文档。
+>
+> **这一批没起打包壳、没起 app、真模型 0 次调用**（`llm_usage` 最大 id 开工 = 收工 **5738**）。
+> 第 ④ ⑤ 两条改的是后端消息和造数据脚本，**没在壳上摆过就不冒充摆过**（P41 那条规矩）——
+> 验的层次逐条写在下面。
+>
+> **量具**：`$S/p56/{fp56,wouldrop56,read56,refill56,whyempty56,notes56,selfcheck_ev,
+> lineage56,toast56,emptyday56,annotate54,sample56,mutate56,common56,d2_56,scan56,dedup56}.py`。
+> **安全**：真库只开 `db_guard.readonly`（`mode=ro`）；指纹开工 = 收工
+> **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44**；
+> `~/Library/Application Support/memoket-note-desktop` 一次都没碰（收工 mtime 还是 09-20 00:57）；
+> `backend/data/backups/` 没有新文件（最新还是 P36 那份 09:02:18）。
+> 实验库 `KITE_DATA_DIR=$S/p56data`（真目录整拷，`terrence/codebook.xml` 核过
+> **11,429,185 字节 / `403a1183`**，跟真库逐字节同一份）。
+> `backend/data/notes.sqlite3` 拷了一份进 worktree（gitignored，**不进 commit**）。
+
+---
+
+### ① 无关材料照样进正文（P53 #3，连着五批）—— **量完不开**，差的不是「剔得对不对」
+
+P26 那张 would-drop 表是在 P22/P24 的材料上量的，而且 `refill` 那条路当时**只有单测走过**。
+这一批用同一个做法（两条互相独立的量法，都钉在**真 `gate`** 上）在 **P53 那 5 跑**上重量一遍，
+并且**第一次把 `refill` 真的接上**（`$S/p56/wouldrop56.py` 里那个 `_refill` 跟
+`hooks/note.py` 的 `_refill` 逐字同一条：`retrieve(..., limit=6, anchor_first=True)`）。
+
+**量法可不可信，先自证**：第 1 轮的 `tool_calls` 记录是全的，把它们在冻结语料上重放、
+用真 `ToolTrace.as_facts()` 重建材料表、照 `hooks/note.py` 拼 context，
+再调真 `gate(apply=False)`——**5 跑的第 1 轮全部逐条复现运行时记录的 `facts_irrelevant`
+（`A_reproduces_runtime` 5/5 true）**。后面几轮记录不全，改用
+「零重合超集 == 运行时记下的剔除条数」把剔除集钉死（`B_exact`）。
+
+#### would-drop 表（7 个会剔的轮，条数都是**材料条**、不含元信息行）
+
+| 跑 | 轮 | 给了 | 会剔 | 剩 | < `MIN_KEPT`=3？ | `refill` | 最后进 prompt |
+|---|---:|---:|---:|---:|---|---|---:|
+| `da080ca847cf` | r1 | 6 | 1 | 5 | 否 | 没触发 | **5** |
+| `e78306202d78` | r1 | 6 | 2 | 4 | 否 | 没触发 | **4** |
+| `603dca25403a` | r4 | 9 | 7 | 2 | **是** | **空手** | 兜底塞回 1 → **3** |
+| `603dca25403a` | r5 | 6 | 5 | 1 | **是** | **空手** | 兜底塞回 2 → **3** |
+| `a941efecd390` | r1 | 6 | 6 | 0 | **是** | **拿回 6 条** | **6**（全是新检索的） |
+| `a941efecd390` | r3 | 6 | 6 | 0 | **是** | **拿回 6 条** | **6** |
+| `3a3a96354546` | r1 | 6 | 5 | 1 | **是** | **空手** | 兜底塞回 2 → **3**（**全是刚剔掉的 EVT**） |
+
+（`603dca` r4/r5 那两行的「最后进 prompt」是按 `gate` 的兜底规则推的——那两轮驱不动 `gate`，
+但 `refill` 是**单独实测**的，见下。剔除集本身是 `B_exact` 钉死的。）
+
+#### 32 条剔除逐条读过（**不是抽样，是全部**；标注当批进 `tests/fixtures/memory_sample.jsonl`，`set=p56-wouldrop32`）
+
+| | 条 | 占比 |
+|---|---:|---:|
+| **剔对**（人读也判跟这篇无关） | **29** | 90.6% |
+| **误剔**（跟这篇相关） | **3** | 9.4% |
+
+- **剔对的那 29 条里，P53 #3 点名的两批一条不漏**：`a941` r1 的 6 条硬件节点
+  （T0 5/15、EVT 4/16、4 台主机 15 套 PCBA、手环表带机甲项链）、`a941` r3 的 6 条
+  华为鲲鹏/昇腾芯片；`3a3a` r1 的 5 条 EVT 也都在。
+  另外 12 条是 `603dca`（卖房决策材料）里的 `Wi-Fi is not good.` / `Can you hear Angela?` /
+  `Speaker A greets Angela.` 这类纯连线噪声——**这一格是白捡的**。
+- **误剔的 3 条全是同一个形状，而且全在 da080 / e78306 的第 1 轮**：
+  `Speaker C: 就Worstcase，最糟的情况，就八月。`、`七月份的时候可以就可以了哦`
+  （e78306 的 spine 逐字写着「6月末/7月上市窗口」，留下的 4 条讲的正是 7月29号 / 8月5号）、
+  `Speaker E 希望 4 月 10 号的那个周，来 MakeDecision。`（da080 留下的 5 条全是同族硬件节点）。
+  **零重合的原因是「八月」/「七月」对不上正文里的「8月」/「7月」**（中文数字 vs 阿拉伯数字），
+  不是内容不相关。
+
+#### 够不够格开：**不够格**。差的不是判据，是下限那条路
+
+**P28 #2③ 那条前置——「剔到下限先再检索一次」——在真材料上只成立 2/5。**
+单独实测 `_refill`（`$S/p56/refill56.py`，20 轮逐轮跑）：
+
+| 跑 | `refill` 拿回来几条 |
+|---|---|
+| `da080` r1 / `e78306` r1–r2 / `a941` r1–r4 | 6 / 6 / 1 / 6 / 6 / 6 / 6 |
+| **`603dca` r1–r5** | **0 / 0 / 0 / 0 / 0** |
+| **`3a3a` r1 / r2 / r4 / r5 / r6 / r8** | **全 0**（只有 r3 / r7 是 6） |
+
+**而空手的那几轮，正好就是会触发下限的那几轮。** 于是 `3a3a` r1 走的是 P8 那套
+「把刚剔掉的按重合度塞回来」——结果是 **6 条 EVT → 3 条 EVT**，P53 抱怨的那批材料一半原样进 prompt。
+P26 #5 说过这条兜底「买的安全根本没买到」，这一批在今天的材料上**又复现了一次**。
+
+**空手的原因量清楚了**（`$S/p56/whyempty56.py`）：`retrieve(anchor_first=True)` 的播种那次
+`recall` 命中的是 **harness 自己行文被切出来的 3 字碎片**——`603dca` 是
+`看清分` / `而是一` / `推进成` / `被记录` / `就先缩` / `如果案`，语料里一条都查不到，`seeds=0`，
+`recall_clustered` 整条空。**同一篇只用「标题 + spine」时 `seeds=6`**，加上 beats 和正文尾部反而归零。
+（形状跟 P44「召回命中词里的碎片」同族，只是发生在另一条路上。）
+
+**还有一条开了也挡不住的**：`3a3a` r5 那 6 条华为芯片事实（跟 `a941` r3 被剔的是**同一批**）
+在 `3a3a` 上 `B_zero_overlap = 0`——**一条都不会被剔**。所以「开着筛」对 `3a3a` 这一篇
+最多只解决一半。
+
+**决定**：`RELEVANCE_FILTER` 一个字不动，**也不加档位**——加档位只是把
+「下限一响就塞回刚判过的垃圾」那条路留在原地，再多一个开关。
+**下一批要做的是先修播种那一步**（`app/database/retrieval.py` 里 `anchors + tail` 那句 query，
+或者在 `hooks/note.py` 的 `_refill` 里加一次「整句空手就退回只用标题 + spine」的重试——
+后者在开关关着时是死代码，改它不可能让今天的产出变差）。
+**`refill` 覆盖率从 2/5 抬上去之前，这道筛不该开。**
+
+---
+
+### ② 真库那 2 篇半句骨架 —— dry-run 出了，**没有 `--apply`**，而且 P53 #8 的说法要更正
+
+**先说更正**：P53 #8 写的是「剩下的两篇里有一篇是用户的真笔记（`f5e34e385aac`）」。
+`corpus_lineage.annotate` 的判词逐字是：
+
+| 篇 | 血缘 | 判词 |
+|---|---|---|
+| `shot-demo/f5e34e385aac`「4 月 10 日产品周会」 | **`fixture`** | 夹具用户 shot-demo：截图演示夹具，正文是写死的演示内容 |
+| `terrence/df3b4f7e987d`「harness 测试（可删） · 幻灯片」 | **`script`** | 标题自标注为自测 |
+
+**两篇都不是用户亲手写的笔记。** 要紧的地方换了一个：`f5e34e385aac` 是**截图演示**用的那一篇，
+右栏「计划」里那五条半句会出现在演示截图里。
+
+**第二件事：P53 #8 那条建议本身报错了。** `p7_skeleton_dryrun.py` 的 `scan()` 按血缘只留 `user`，
+这两篇躺在 `skipped` 里——**照原样跑 `--apply --yes` 会改 0 篇**，而当时的提示行逐字写着
+「要修：加 --apply --yes」。**一条跑完什么都不会变的命令，比没有命令更坏**，所以这一批
+给脚本补了 `--include-non-user` 这一档（默认不带；三把钥匙少一把都只列不改），
+顺手把那句提示改成不会骗人的。
+
+**dry-run 实拍**（真库，只读；命令在**主仓 `backend/` 下**跑）：
+
+```
+cd /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/backend
+PYTHONPATH=. .venv/bin/python scripts/p7_skeleton_dryrun.py --include-non-user
+```
+```
+指纹（开工）: notes=482 note_revisions=44 max(updated_at)=2026-09-16T02:53:27+00:00 chars=321250 digest=47dcc54be60aa4f2
+半句骨架：2 篇（另有 0 篇非 user 血缘，不动）  ← --include-non-user：非 user 血缘的也算进来了
+- shot-demo/f5e34e385aac 「4 月 10 日产品周会」 1921 字，第 [1, 2, 3, 4, 5] 条是半句（血缘 fixture：…）：
+    B1: …h 扩至 200mAh 为变更起点，指出三项改动
+    B2: …还是必须等待 DVT——补出通信测试报告、结构与
+    B3: … 20 台 KOL 扩测设为出货前闸门，并特别追
+    B4: …确预购、订阅、收款、交付、取消、退款及延期不能被
+    B5: …APP 闸门、老 MP 版本判断、12 台样机口
+- terrence/df3b4f7e987d 「harness 测试（可删） · 幻灯片」 2959 字，第 [1, 2, 3, 4, 5] 条是半句（血缘 script：…）：
+    B1: …当时计划和决策，再按时间补入后续证据，防止最终结
+    B2: …cago Booth测试者通过Zoom录音导入使
+    B3: …、下单与样机安排逐步把DVT从6月3日推至8月5
+    B4: …广，为什么还不能算上市或市场验证”的追问：拆开产
+    B5: …果待核实与停止推进，补齐变更提出/确认/接收/交
+dry-run 结束，没有改任何东西。要修：加 --apply --yes（会对上面每篇打一次模型）。
+```
+
+**真要修的确切命令**（**用户点头之后才跑，这一批没跑**）：
+
+```
+cd /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/backend
+PYTHONPATH=. .venv/bin/python scripts/p7_skeleton_dryrun.py --include-non-user --apply --yes
+```
+
+**它会改哪几列**：只有 `notes` 表的 **`spine` 和 `beats`** 两列，两篇各一次
+（`store.set_skeleton` 只 `UPDATE notes SET spine=?, beats=?`）。
+`content` / `updated_at` / `note_revisions` **一个字节不动**——
+所以指纹那四样（行数 / `max(updated_at)` / 正文总字数 / 逐篇正文摘要）跑完必须逐格相同，
+脚本自己会打印「正文没动：True」，不同就退 1。成本：**两次模型调用**（每篇一次骨架重生成）。
+
+---
+
+### ③ `recall_selfcheck` 基线重钉（P53 #9 / 第 777 轮）
+
+**在 HEAD `634e23f` 上跑的新基线，整行抄**（语料 = `$S/p56data`，跟真库逐字节同一份）：
+
+```
+user=terrence seed=11 n=200 corpus=11429185B/403a1183: full 197/200  short40 195/200  sametopic(excl self, short40) 95/200  median 15 ms
+```
+```
+evidence=True user=terrence seed=11 n=200 corpus=11429185B/403a1183: full 192/200  short40 190/200  sametopic(excl self, short40) 67/200  median 18 ms
+```
+
+跟 P34 记的 197/195/95、跟 P53 今天量到的 192/190/67 **逐格相同**。
+
+**回头核 P38/P42/P44/P46/P48 那几处**：`194/190/103` 和 `190/185/68` 在同一份语料、
+同一组参数上**复现不出来**（P54 已经把 seed 7/11/42 三档都试过，一档都对不上）。
+按规矩**一个数都没删**，在那 6 处 `evidence=False` 行和 4 处 `evidence=True` 行上
+各就地加了一句「⚠️ 这个数没带参数、复现不出来，见 P54 / P56；同语料同参数今天是 …」。
+**删了就看不出教训了。**
+
+---
+
+### ④ 「删不掉」那条 toast（P52 #4）—— **收了，但不是收成「详情看日志」**
+
+**判断**：收。**理由**：P52 实拍那条的形状是 8 行、1,253 字符、最长一行 183 字符，
+而**五行的前 90 个字符逐字相同**——摊开的是公共前缀，不是信息。
+
+**但收法不许是「N 个文件删不掉，详情看日志」**：P21 立的规矩是「删不掉要吵」
+（`shutil.rmtree(ignore_errors=True)` 那种安静失败正是它修的），把清单挪进日志
+等于把那次修的问题原样放回去——用户按的是「删掉」，他得知道剩下的是哪几个。
+所以改的只有拼法：**目录提到抬头说一次，每行只留目录里的相对路径 + 原因**，
+一条都不少（`backend/app/routers/journey.py` 的 `delete_day`）。
+
+同一批 `fails`、两种拼法（`$S/p56/toast56.py`，5 个只读的缩略图 + `thumbs` + 这一天的目录本身）：
+
+| | 总字符 | 行数 | 最长一行 | 正文行里出现绝对路径 |
+|---|---:|---:|---:|---:|
+| 收之前 | 1,253 | 8 | **183** | **7 次** |
+| 收之后 | **455** | 8 | **154**（就是抬头那一行） | **0 次** |
+
+正文那 7 行最长的从 183 收到 47。**写这条闸的时候当场被抓到一个漏**：目录自己那一行
+没有结尾的 `/`，只换 `f"{d}/"` 换不掉它——它会成为整段里**唯一还摊着绝对路径的一行**。
+
+---
+
+### ⑤ P52「留给下一批」⑤：`emptyday` 现在摆得出「今天还没有记录」那一屏了
+
+**为什么原来摆不出**（前端判据逐字）：知情选择屏的条件是
+`state === 'off' && known.length === 0`（`JourneyPage.tsx`，`known = days ?? []`）。
+P32 的 A2 之后 `[]` 不算「有记录的一天」，只造今天的话整个库一天记录都没有 →
+`days()` 空 → 退回知情屏，而这个档要摆的是它后面那一屏
+（「今天还没有记录——现在没在记录，点右上角「开始记录」才会开始攒。」）。
+
+**实测两版**（同一条后端判据，`$S/p56/emptyday56.py`）：
+
+| `emptyday` | `days()` | `_has_records(今天)` | 前端走哪一屏 |
+|---|---|---|---|
+| 改之前（只造今天 `[]`） | **`[]`** | False | **知情选择屏**（`known.length === 0`） |
+| 改之后（昨天一段 + 今天 `[]`） | **`['2026-09-19']`** | False | 正常那一页 → `segs.length === 0` → **「今天还没有记录…」** |
+
+「今天是空的」这件事一个字没变，变的是它不再顺带把整个库也清空。
+**验的层次**：后端 `days()` / `_has_records` / `_load` 三个判据 +
+前端那两句条件对着读。**没在打包壳上摆**——这一批没起壳，不冒充摆过。
+
+### ⑥ P52「留给下一批」⑥：那几句话**一直都在**，是 `grep` 看不见
+
+P52 写的是「今天在 `frontend/src` 里一个字都搜不到，所以那几句已经不在了」。
+**去源码对了一遍：两句都在，而且 P33 写进去之后一个字没动过**——
+`frontend/src/components/AgentActivity.tsx` 里
+「——就是上面第 N 轮那张卡上那句，这一轮就是照它改的。」和
+「最弱是「X」——这一轮没打分，判词就是下面那条 ⚑ 代码判据。」。
+
+**搜不到的真原因**：同一个文件的 `hitKey()` 里拿**一个真的 NUL 字节**当分隔符。
+`file(1)` 于是把整份 `.tsx` 判成 `data`，而 `grep` 对二进制文件默认只说一句
+「Binary file matches」——带 `-n`、在 `-r` 里更是**一行都不打**。
+于是一次「源码里搜一下」得到了空结果，而**空结果被读成了「这几句没了」**。
+
+**要紧的不是那两个字节，是「搜不到」和「不存在」在终端里长得一模一样。**
+改的只有编码：分隔符写成转义（反斜杠 + `u0000`，运行期分毫不差），并加一条闸
+`frontend/scripts/check-greppable.mts`（进 `npm test` 链）：
+`frontend/src` / `frontend/scripts` / `desktop/src` / `backend/app` / `backend/scripts` /
+`backend/tests` / `docs` / `shared` 下 **816 个源文件和文档**里一个 NUL 都不许有，
+**分母先报出来**（扫到少于 600 个当没跑过）。反例实测两次：往 `AgentActivity.tsx`
+和往 `docs/TRACELOG-product.md` 各塞回一个 NUL → 当场红并指出文件:行。
+
+**这条闸的第一版只扫 `frontend/src` + `desktop/src`（262 个文件），于是它看不见自己**——
+写它的那半小时里，`docs/TRACELOG-product.md`、`docs/product-readiness-plan.md`
+和 `check-greppable.mts` 自己各被留下了一个真 NUL（都是写「`\u0000`」这四个字的时候
+被当成转义写成了那个字节），**三个全从闸底下过去了**，是提交时被
+「a NUL byte in commit log message not allowed」拒了才炸出来的。
+所以扫描范围扩到 8 个目录，**`docs/` 必须在里面**——「在台账里搜一下」
+正是这个仓每一批都在做的事。
 
 ---
 
@@ -11912,3 +12174,64 @@ worktree 里的 `backend/data/notes.sqlite3`、`backend/.venv`、`node_modules`�
 P55 留给下一批：① **先做 P53 #3**（`relevance.gate`）——#3 那条改动让产出变长，这条的代价跟着放大；
 ② P53 #6（续写不写编号）四批没修；③ 台账上「无关材料」那个正则口径要带着「逐条读过 7 段里 2 段真·无关」这句话读，
 别把 7 当成 7 段无关材料；④ `p5–p15` 那 20 份 run json 没记 `best_rank`，**下次谁再用「best 涨没涨」量东西，先看这一格在不在**。
+- **四栏留下率**（`$S/p56/{d2_56,scan56,dedup56,selfcheck_ev}.py` + `scripts/recall_selfcheck.py`）：
+
+  | 栏 | 基线 | 本轮 |
+  |---|---|---|
+  | D2 表 B（五篇末 500 字 · limit 5 · `evidence=True`） | 8 条（N2 5 · N4 3） | **8 条逐条相同** |
+  | 页边圆点（172 段口径） | 判出 140 · 真画 34 | **逐段相同**（N1 112/17 · N2 17/12 · N3 9/4 · N4 2/1） |
+  | `recall_selfcheck` 原口径（`evidence=False`） | **本批重钉**（见 ③） | `user=terrence seed=11 n=200 corpus=11429185B/403a1183: full 197/200 short40 195/200 sametopic 95/200` |
+  | 右栏那条路真走的那档（`evidence=True`） | **本批重钉**（见 ③） | `evidence=True … full 192/200 short40 190/200 sametopic 67/200` |
+
+  **全库对拍**：765 条去重查询（cursor 727 / tail 38）· 有召回 331 · 对 1282
+  —— 跟 P48 那把尺**逐格相同**。
+  **47 条三条闸**（`python -m scripts.memory_sample_replay`）：留下 46 · 硬 36 · 勉强 4 · 不硬 6 · 误判率 13%，
+  跟 P34-收尾 / P38-收尾**逐格相同**。
+  这四栏本来就该一格不动：**这一批 `kb/` `kite/` `app/harness/` 一个字节都没碰**。
+- 后端 `pytest -q` **2873 passed**（基线 2866 + `test_p56.py` 7 条）；
+  前端 `npm test` **88 文件 / 780 条**（基线 88 / 780）+ 新的 `check-greppable.mts` 进链。
+- **突变验 7 刀，7 刀全红、而且红的都是该红的那一条**（`$S/p56/mutate56.py`；
+  唯一锚点 + 整文件写回 + 逐字节 `filecmp` + 每次清 `__pycache__` + 钉死每次跑 7 条闸 +
+  还原后回到绿）。另有 `check-greppable.mts` 的一刀（塞回一个 NUL）单独验过。
+- **指纹**：真库开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+  `note_revisions` 44**（`digest` = `sha256(json.dumps(digests, sort_keys=True))[:16]`）。
+  `llm_usage` 最大 id 开工 = 收工 **5738**——**真模型 0 次调用 / 0 token**。
+  `~/Library/Application Support/memoket-note-desktop` mtime 还是 09-20 00:57；
+  `backend/data/backups/` 最新还是 P36 那份 09:02:18。
+- **成本**：本轮**没打过一次模型**（第 ① 条是在 P53 已有的 run json 上离线重放，
+  第 ② 条是 dry-run，其余都是零模型的量）。
+
+### 收尾命令：这条路径在哪个环境下才对
+
+**`<scratch>` = `/private/tmp/claude-501/<session>/scratchpad`；
+`<worktree>` = `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-ab20487ff74daa578`；
+「主仓」= `/Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE`。**
+
+| 命令 | 只在哪儿跑 | 搬到别处会怎样 |
+|---|---|---|
+| `rm -rf <scratch>/p56data <scratch>/p56ud <scratch>/p56old` | **scratch** | 主仓的 `backend/data` 是用户 482 篇笔记 + 11.4MB codebook，**删了就没了** |
+| `rm <worktree>/backend/data/notes.sqlite3` | **本 worktree**（这一份是开工时拷的） | **主仓同名路径是真库**——第 776 轮那次删库逐字就是这条 |
+| `rm <worktree>/backend/.venv` `rm <worktree>/frontend/node_modules` | **本 worktree**（两个都是指向主仓的软链） | 这两个是 `ln -s`，`rm` 只删链接不伤主仓；但 `rm -rf` 加斜杠（`.venv/`）会**跟着链接删主仓的内容** |
+| `PYTHONPATH=. .venv/bin/python scripts/p7_skeleton_dryrun.py …` | **主仓 `backend/`**（要真库才有那两篇） | 在 worktree 里跑读的是 worktree 那份拷贝，数一样但改的不是用户那份 |
+
+**本轮不需要任何清理命令**：三份 scratch 目录留在 `<scratch>` 下不进 git；
+worktree 里的 `backend/data/notes.sqlite3` 被 `.gitignore` 挡着；
+`backend/.venv` / `frontend/node_modules` 两个软链**在 `git status` 里看得见**
+（`.gitignore` 的 `.venv/` / `node_modules/` 只匹配目录，匹配不到符号链接），
+所以 commit 时是**逐个路径 `git add`**，没有 `git add -A`。
+
+### 留给下一批
+
+1. **`refill` 的播种那一步**（① 的结论）：`retrieve(anchor_first=True)` 在长中文骨架 query 上
+   会把 harness 自己的行文切成 3 字碎片当检索词，`603dca` 五轮、`3a3a` 六轮全部 `seeds=0`。
+   **这是 `RELEVANCE_FILTER` 能不能开的唯一卡点**，而且它在开关关着时改起来是死代码。
+2. **`3a3a` r5 那 6 条华为芯片事实开着筛也剔不掉**（`B_zero_overlap = 0`）。
+   同一批事实在 `a941` r3 上剔得掉——差别在正文里有没有「公司 / 产业 / 计算」这类词。
+   要不要为这一形状加一档，**先量，别直接加**。
+3. **误剔那 3 条的形状是「中文数字月份 vs 阿拉伯数字月份」**（`八月` vs `8月`）。
+   `relevance.terms` 的 CJK 2-gram 不做数字归一。**这条别急着修**：
+   `kb/relations.py` 那边已经有一套单位/数字归一，两处各写一份正是 §21 点过的名。
+4. **P52 ⑤ 和 ⑥ 都是「在打包壳上没摆过」**：这一批改的是后端判据和造数据脚本，
+   验到后端那一层为止。下一批做走查时，`emptyday` 那一档可以直接用了。
+5. **P52 留给下一批的 ①（锁屏别解掉用户按的暂停）、③（历史坏数据那句提示）照旧没做**
+   —— 这一批没碰它们。

@@ -33,7 +33,9 @@ variant（决定摆出什么形状）：
 
     full       四天真数据的骨架，最富的那天搬成「今天」（走查主用）
     consent    journey 目录存在但空的 —— 那一屏知情选择
-    emptyday   只有今天，且 segments.json 是 `[]` —— 「这一天没有记录」
+    emptyday   昨天有一段、今天 `[]` —— 「今天还没有记录」那一屏
+               （**昨天那一天是必需的**：A2 之后 `[]` 不算有记录的一天，
+                 只摆今天的话 `days()` 是空的，前端退回知情选择屏。P52 ⑤）
     synthetic  现造三天（含一段假的「连续 3 小时」和一段闲置），不读真目录
     keep       full + 把 retention.json 写成短保留期（验到期清理）
 
@@ -252,6 +254,22 @@ def main() -> int:
     if a.variant == "consent":
         pass                                          # 空目录就是那一屏
     elif a.variant == "emptyday":
+        # **光有「今天是 `[]`」摆不出那句话**（P52「留给下一批」⑤，这一批修的）。
+        # P32 的 A2 之后 `[]` 不再算「有记录的一天」（`_has_records`：要有活着的段、
+        # 或者有日报），于是整个库里一天记录都没有 → `days()` 空 → `state === 'off'`
+        # → 前端退回**知情选择屏**，而这个档要摆的恰恰是它后面那一屏
+        # （「今天还没有记录 —— 现在没在记录…」）。
+        # P52 只好拿 `synthetic` 再把今天的段删光去摆，绕了一圈。
+        #
+        # 所以这个档现在造**两天**：昨天一段真记录（让 `days()` 非空），今天 `[]`。
+        # 「今天是空的」这件事一个字没变，变的是它不再顺带把整个库也清空。
+        y = today - timedelta(days=1)
+        made.append(stage_day(root, y.isoformat(), [
+            {"start": f"{y.isoformat()}T01:00:00Z", "end": f"{y.isoformat()}T01:12:00Z",
+             "app": "Code", "title": "journey.py — MEMOKET_NOTE", "frames": [], "thumb": "x",
+             "n": 49, "desc": "昨天有记录，今天没有 —— 这一档要摆的就是这个对比",
+             "session": f"screen-{y:%Y%m%d}-000"},
+        ], None, 0, None))
         made.append(stage_day(root, today.isoformat(), [], None, 0, None))
     elif a.variant == "synthetic":
         for day, segs, rep in synth_days(today):
