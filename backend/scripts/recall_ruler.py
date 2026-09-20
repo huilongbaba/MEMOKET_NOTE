@@ -193,6 +193,89 @@ def identity(qs: list[tuple[str, str, str, str]]) -> str:
             f"血缘[{lin}]  ⚠️ 要算比率先按血缘分开")
 
 
+# ---------------------------------------------------------------- 这把尺跟产品差在哪（P79 ③）
+#
+# **P78 ⑤ 留的那笔账**：「产品窗口是光标段 + 前一段约 200 字，而离线尺子喂的是整段 300 字
+# ——两头量的不是同一条」。**这件事影响的是过去所有离线数**，所以它得先被量出来。
+#
+# 量法：两处**分段**口径逐行摆出来比。
+#   · 离线（`queries()`）：`re.split(r"\n\s*\n", content)` ——**只按空行分段**；
+#   · 产品（`frontend/src/components/MarkdownEditor.paragraphAt`）：光标那一行往上往下走到
+#     空行为止，**标题行也算边界，而且标题行自己单独算一段**。
+# 分完段两边喂的都是同一个 `recall_query`（三个参数逐字一致，`test_p63` 钉着）。
+#
+# ⚠️ **量出来跟 P78 ⑤ 的判断相反，照实记**（P79 ③）：
+# 765 条里产品**产不出来的只有 1 条**（i=630：离线把一个前面没空行的 `### 标题`
+# 粘进了段里）；剩下 764 条产品**原样产得出来**。P78 点名的 i=80 那 300 字
+# **产品照样产得出来**，壳上读到的那条「约 200 字」是**下一段**（i=81）的查询
+# ——同 P78 自己问题 #3 那个「右栏读回来的是上一段」的形状。**是量具，不是两把尺。**
+# 反过来产品能产出 16 条离线没有的（全是「标题分节」那一档 + 3 条 tail 档）。
+EXPECT_PROD_TOTAL = 780
+EXPECT_ONLY_OFFLINE = 1
+EXPECT_ONLY_PRODUCT = 16
+
+
+def paragraph_at(lines: list[str], n: int) -> str:
+    """`MarkdownEditor.paragraphAt` 的逐行 Python 对应（行号 1-based）。
+
+    **改那边就得改这边**——闸在 `tests/test_p79.py`，读的是真源文件。
+    """
+    cur = lines[n - 1]
+    if not cur.strip():
+        return ""
+    if _HEAD.match(cur):
+        return cur.strip()
+    a = b = n
+    while a > 1 and lines[a - 2].strip() and not _HEAD.match(lines[a - 2]):
+        a -= 1
+    while b < len(lines) and lines[b].strip() and not _HEAD.match(lines[b]):
+        b += 1
+    return "\n".join(lines[a - 1:b]).strip()
+
+
+def product_queries(db: Path | None = None) -> set[tuple[str, str]]:
+    """产品那一头**光标停在任何一行**都能产生的 (用户, 查询)，同样全局去重。"""
+    conn = db_guard.readonly(db or (BACKEND / "data" / "notes.sqlite3"))
+    users = set(users_with_codebook())
+    rows = conn.execute("SELECT user_id, content FROM notes ORDER BY id").fetchall()
+    conn.close()
+    out: set[tuple[str, str]] = set()
+    for user, content in rows:
+        if user not in users or not content:
+            continue
+        lines = content.split("\n")
+        for n in range(1, len(lines) + 1):
+            q, _mode = recall_query(content, paragraph_at(lines, n))
+            if q:
+                out.add((user, q))
+    return out
+
+
+def window_gap(db: Path | None = None) -> dict:
+    """离线这把尺和产品那一头**差在哪几条**。"""
+    off = {(u, q) for u, q, _m, _o in queries(db)}
+    prod = product_queries(db)
+    return {"offline": len(off), "product": len(prod),
+            "only_offline": sorted(off - prod), "only_product": sorted(prod - off)}
+
+
+def check_paragraph_at_source() -> list[str]:
+    """产品那个 `paragraphAt` 还是不是我们抄的这一份（同 `test_p63` 那三个参数的做法）。"""
+    src = (BACKEND.parent / "frontend" / "src" / "components" / "MarkdownEditor.tsx")
+    if not src.is_file():
+        return ["找不到 MarkdownEditor.tsx——`paragraph_at` 抄的那一份没法核"]
+    t = src.read_text(encoding="utf-8")
+    bad = []
+    for need in ("export function paragraphAt(",
+                 "if (!cur.text.trim()) return ''",
+                 "if (/^#{1,6}\\s/.test(cur.text)) return cur.text.trim()",
+                 "while (a > 1 && doc.line(a - 1).text.trim() && !/^#{1,6}\\s/.test(doc.line(a - 1).text)) a--",
+                 "while (b < doc.lines && doc.line(b + 1).text.trim() && !/^#{1,6}\\s/.test(doc.line(b + 1).text)) b++"):
+        if need not in t:
+            bad.append(f"`paragraphAt` 里找不到 `{need[:60]}`")
+    return bad
+
+
 def check(qs: list[tuple[str, str, str, str]]) -> list[str]:
     """量程对不对。返回对不上的那几条（空 = 对得上）。"""
     cur = sum(1 for _u, _q, m, _o in qs if m == "cursor")
@@ -214,12 +297,31 @@ def main(argv: list[str]) -> int:
         for user, q, mode, origin in qs[:n]:
             print(f"  [{mode}/{origin}] {user} {q[:90]!r}")
     bad = check(qs)
+    if "--window" in argv:
+        bad += check_paragraph_at_source()
+        g = window_gap()
+        idx = {(u, q): i for i, (u, q, _m, _o) in enumerate(qs)}
+        print(f"  离线 {g['offline']} 条 · 产品那一头 {g['product']} 条"
+              f"（离线覆盖 {(g['offline'] - len(g['only_offline'])) / g['product'] * 100:.1f}%）")
+        print(f"  **离线有、产品产不出来的：{len(g['only_offline'])} 条**"
+              f"（该打折扣的就这几条）")
+        for u, q in g["only_offline"]:
+            print(f"    i={idx.get((u, q))} user={u} {q[:120]!r}")
+        print(f"  产品有、离线没有的：{len(g['only_product'])} 条（离线**少覆盖**的那一档）")
+        for u, q in g["only_product"][:6]:
+            print(f"    user={u} len={len(q)} {q[:90]!r}")
+        for name, got, want in (("产品条数", g["product"], EXPECT_PROD_TOTAL),
+                                ("只在离线", len(g["only_offline"]), EXPECT_ONLY_OFFLINE),
+                                ("只在产品", len(g["only_product"]), EXPECT_ONLY_PRODUCT)):
+            if got != want:
+                bad.append(f"{name}: {got} ≠ {want}")
     if bad:
         print("尺子对不上钉死的量程：" + "；".join(bad), file=sys.stderr)
         print("**这一刻台账上所有拿它当分母的数都失效了**——先查口径 / 语料，别换尺子继续量。",
               file=sys.stderr)
         return 9
-    print(f"ruler OK = {EXPECT_TOTAL} 条那把尺（P38–P61 逐格相同）")
+    print(f"ruler OK = {EXPECT_TOTAL} 条那把尺（P38–P61 逐格相同）"
+          + ("；窗口口径 OK（P79 ③ 逐格相同）" if "--window" in argv else ""))
     return 0
 
 
