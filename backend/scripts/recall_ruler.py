@@ -135,6 +135,33 @@ EXPECT_CF_SPREAD_LIBS = (("terrence-rewrite", 28),)   # 变了的那几条落在
 # 语料、`SPREAD_GENERIC` 或者「只问汉字」那一条变了，28 条标注的分母跟着换人。
 EXPECT_CF_SPREAD_RESCUED = 63
 
+# ── **大库那一档到底接不接**（P86 ①，`--cf-bigcorpus`）────────────────────────
+#
+# P84 ⑤ 留的账：「大库上这条轴**一个反事实都没跑**……不限库大小那一版全库变 175 条
+# （其中 `terrence` 134 条）——**量了形状，一条都没读**」。这一支把那 175 条**跑出来**，
+# 而且把它**拆成两档**——因为「大库那一档接不接」和「英文那一半问不问」是**两个旋钮**，
+# P84 那个 175 是**两个一起拆**量出来的，直接拿它去判大库会把两笔账混成一笔。
+#
+#   基准 V0 = 没有这条轴（`_df_only_common`，跟 `--cf-common` / `--cf-spread` 共用一份）
+#   SIZE   = 只拆**库大小**那道闸，「只问汉字」那一条**原样留着** ← 判大库真正要看的那一档
+#   BOTH   = 两道闸全拆                                        ← P84 ⑤ 记的那个 175
+#
+# 自检：`SIZE` / `BOTH` 在 `terrence-rewrite` 上必须跟 `EXPECT_CF_SPREAD_CHANGED`(28) /
+# P84 ② 那个 41 各自对得上——小库那一档两支都不动它，对不上就是这一支接错层了。
+#
+# **这几个数是 P86 ① 判「大库不接」的全部分量**（175 条逐条读完，标注
+# `tests/fixtures/memory_sample.jsonl` 的 `p86-bigcorpus-175`）：
+# SIZE 那一档大库 25 条 **变好 8 / 中性 7 / 变差 10**（不是赢，是净亏，
+# 跟小库那一档 14:7 的形状**相反**）；BOTH 那一档大库 134 条 **变好 14 / 中性 27 / 变差 93**。
+EXPECT_CF_BIG_SIZE_CHANGED = 53      # 只拆库大小闸：top-8 变了的查询数
+EXPECT_CF_BIG_SIZE_ADD = 108         # 它比「没有这条轴」多进来的召回对
+EXPECT_CF_BIG_SIZE_DROP = 33         # 它比「没有这条轴」少掉的召回对
+EXPECT_CF_BIG_SIZE_LIBS = (("terrence", 25), ("terrence-rewrite", 28))
+EXPECT_CF_BIG_BOTH_CHANGED = 175     # 两闸全拆：**这就是 P84 ⑤ 记的那个 175**
+EXPECT_CF_BIG_BOTH_ADD = 577         # 进 577 / 掉 80 —— 这个 7:1 的不对称本身就是判据：
+EXPECT_CF_BIG_BOTH_DROP = 80         # 它不是「多召回一点」，是**把空屏灌满**（93/134 条变差）
+EXPECT_CF_BIG_BOTH_LIBS = (("terrence", 134), ("terrence-rewrite", 41))
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -526,6 +553,95 @@ def cf_spread_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
             "rescued": tuple(sorted(rescued))}
 
 
+def _axis_variant(ask_size: bool, ask_cjk: bool):
+    """`common_term()` 的一个反事实版本：那条轴的**两道闸各开各关**。
+
+    `ask_size=True` = 只在小库问（HEAD 今天的样子）；`ask_cjk=True` = 只对汉字串问（同）。
+    两个都 `True` 时**必须跟产品那一份逐条同结果**——`cf_bigcorpus()` 每次跑都拿这个自检，
+    对不上就是这一支复刻错了，下面所有数当场作废（P84 那一课：接错层的量具会静静地给出漂亮的数）。
+    """
+    from app.database.kb import relations as R
+    from app.database.kb import topic_face as TF
+
+    def common_term(self):
+        store, _v = self._index()
+        idx = self._grep_index(store)
+        if idx is None or not idx.unit_count:
+            return None
+        total = idx.unit_count
+        small = total * R.COMMON_DF_RATIO < R.COMMON_DF_MIN
+
+        def is_common(term: str) -> bool:
+            n = idx.unit_df(term, floor=R.COMMON_DF_MIN)
+            if not (n is not None and n >= R.COMMON_DF_MIN
+                    and n / total >= R.COMMON_DF_RATIO):
+                return False
+            if ask_size and not small:
+                return True
+            if ask_cjk and not TF.has_cjk(term):
+                return True
+            face = self._topic_face(store, idx)
+            if face is None:
+                return True
+            return face.generic(term) is not False
+        return is_common
+    return common_term
+
+
+def cf_bigcorpus(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**大库那一档接不接**的全库对拍（P86 ①）。
+
+    基准是 `_df_only_common`（没有这条轴），对照两档：只拆库大小闸 / 两道闸全拆。
+    读数的人按 `by_lib` 分（**别按血缘分**，理由在 `EXPECT_BY_LIB`）。
+
+    ⚠️ **两个旋钮别混成一个**：P84 ⑤ 记的那个 175 是**两闸全拆**量出来的，
+    而「大库接不接」只该看 `size` 那一档。这也正是这一支要拆开跑的理由。
+    """
+    from collections import Counter
+
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+
+    def run() -> list[list[str]]:
+        out = []
+        for user, q, _m, _o in qs:
+            m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+            facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+            out.append([f.get("id") for f in facts])
+        return out
+
+    orig = UserMemory.common_term
+    runs: dict[str, list[list[str]]] = {}
+    for name, fn in (("v0", _df_only_common),
+                     ("head_copy", _axis_variant(True, True)),
+                     ("size", _axis_variant(False, True)),
+                     ("both", _axis_variant(False, False)),
+                     ("head", orig)):
+        UserMemory.common_term = fn
+        try:
+            runs[name] = run()
+        finally:
+            UserMemory.common_term = orig
+
+    # **接线自检**：复刻的 HEAD 必须跟产品那一份逐条同结果。
+    mismatch = sum(1 for a, b in zip(runs["head_copy"], runs["head"]) if a != b)
+
+    out: dict = {"selfcheck_mismatch": mismatch}
+    for name in ("size", "both"):
+        changed, drop, add = [], 0, 0
+        for i, (a, b) in enumerate(zip(runs["v0"], runs[name])):
+            if a == b:
+                continue
+            changed.append(i)
+            add += sum(1 for x in b if x not in a)     # 对照多进来的
+            drop += sum(1 for x in a if x not in b)    # 对照少掉的
+        out[name] = {"changed": changed, "add": add, "drop": drop,
+                     "libs": tuple(sorted(Counter(qs[i][0] for i in changed).items()))}
+    return out
+
+
 def check(qs: list[tuple[str, str, str, str]]) -> list[str]:
     """量程对不对。返回对不上的那几条（空 = 对得上）。"""
     cur = sum(1 for _u, _q, m, _o in qs if m == "cursor")
@@ -585,6 +701,33 @@ def main(argv: list[str]) -> int:
                                 ("捞回来的串", len(g["rescued"]), EXPECT_CF_SPREAD_RESCUED)):
             if got != want:
                 bad.append(f"cf-spread {name}: {got} ≠ {want}")
+    if "--cf-bigcorpus" in argv:
+        g = cf_bigcorpus(qs)
+        if g["selfcheck_mismatch"]:
+            bad.append(f"cf-bigcorpus 接线自检: 复刻的 HEAD 跟产品那一份差了 "
+                       f"{g['selfcheck_mismatch']} 条 —— **下面的数全部作废**")
+        print("  大库那一档（P86 ①）—— 基准都是「没有这条轴」，**两个旋钮分开跑**：")
+        for name, label in (("size", "只拆库大小闸（汉字闸留着）← 判大库要看的就是这一档"),
+                            ("both", "两道闸全拆 ← P84 ⑤ 记的那个 175")):
+            d = g[name]
+            print(f"    {label}")
+            print(f"      变了 {len(d['changed'])} 条 / {EXPECT_TOTAL}；"
+                  f"多进 {d['add']} 少掉 {d['drop']}；落在：{d['libs']}")
+        print("    （175 条逐条读完 → **P86 ① 判「大库不接」**：`size` 那一档大库 25 条"
+              " 变好 8 / 中性 7 / 变差 10（净亏，跟小库 14:7 形状相反）；"
+              "`both` 那一档大库 134 条 变好 14 / 中性 27 / **变差 93**。"
+              "理由在 `kb/topic_face` 文件头第 ④ 格）")
+        for name, got, want in (
+                ("size 变了", len(g["size"]["changed"]), EXPECT_CF_BIG_SIZE_CHANGED),
+                ("size 多进", g["size"]["add"], EXPECT_CF_BIG_SIZE_ADD),
+                ("size 少掉", g["size"]["drop"], EXPECT_CF_BIG_SIZE_DROP),
+                ("size 落在哪几个库", g["size"]["libs"], EXPECT_CF_BIG_SIZE_LIBS),
+                ("both 变了", len(g["both"]["changed"]), EXPECT_CF_BIG_BOTH_CHANGED),
+                ("both 多进", g["both"]["add"], EXPECT_CF_BIG_BOTH_ADD),
+                ("both 少掉", g["both"]["drop"], EXPECT_CF_BIG_BOTH_DROP),
+                ("both 落在哪几个库", g["both"]["libs"], EXPECT_CF_BIG_BOTH_LIBS)):
+            if got != want:
+                bad.append(f"cf-bigcorpus {name}: {got} ≠ {want}")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()

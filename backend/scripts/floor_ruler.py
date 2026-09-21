@@ -83,8 +83,8 @@ WATCHED_NAME = re.compile(r"^(MIN_[A-Z0-9_]*|MAX_[A-Z0-9_]*|EXPECT[A-Z0-9_]*|SHO
 # **一条在每次正当改动上都会红的闸，迟早会被人不假思索地改成不红的那个数。**
 # 所以这两个数按「只准往上」记在这儿，各批的测试去问它，别各自钉一份。
 # 它挡得住的是「有人把登记删了」；挡不住「加了一条没登记」——那是 `check()` 的完整性闸的活。
-REGISTRY_SIZE_FLOOR = 70   # 第 810 轮（P84+P85 合并）实测
-CHECKED_COUNT_FLOOR = 82   # 同上；共核 = 登记表 + 例反例
+REGISTRY_SIZE_FLOOR = 78   # 第 811 轮（P86 登记了 --cf-bigcorpus 那八个数）实测；810 轮是 70
+CHECKED_COUNT_FLOOR = 90   # 同上；共核 = 登记表 + 例反例；810 轮是 82
 
 
 FLOOR = "floor"      # 只准往上调
@@ -259,6 +259,41 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         PINNED, 63, "这条轴真从 `common` 手里捞回来的串数（`terrence-rewrite` 上）。"
                     "一动说明语料、`SPREAD_GENERIC`(0.75) 或者「只问汉字」那一条变了，"
                     "28 条标注的分母跟着换人——先去读 `kb/topic_face` 文件头第 ① 格"),
+
+    # —— P86 ①：大库那一档接不接（175 条逐条读完，判**不接**）——
+    # **八个数分两组**，因为它们答的是**两个**问题，混着读就判错（P84 ⑤ 那个 175
+    # 正是两道闸一起拆量出来的）：`SIZE` 只拆库大小闸 → 判「大库接不接」；
+    # `BOTH` 两道闸全拆 → 它是上界，顺带复现 P84 ⑤ 记的那个 175。
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_SIZE_CHANGED"): (
+        PINNED, 53, "只拆库大小闸那一档全库变了几条。它是 `p86-bigsize-25` 那 25 条的来源，"
+                    "一动那 25 条标注（变好 8 / 中性 7 / 变差 10）的分母就换人，"
+                    "「大库不接」这个判得整条重读——先去读 `kb/topic_face` 文件头第 ④ 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_SIZE_ADD"): (
+        PINNED, 108, "它比「没有这条轴」多进来的召回对。跟 DROP 一起读才看得出是「多召回」还是「灌满」"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_SIZE_DROP"): (
+        PINNED, 33, "它比「没有这条轴」少掉的召回对。**掉的那一侧是代价**，一动去重读 "
+                    "`p86-bigsize-25` 里 i=1 / i=2 / i=35 / i=607 那四格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_SIZE_LIBS"): (
+        PINNED, (("terrence", 25), ("terrence-rewrite", 28)),
+        "**这一条是「两个旋钮真的分开了」的全部证据**：小库那一行必须逐条等于 "
+        "`EXPECT_CF_SPREAD_CHANGED`(28)——拆库大小闸不该动小库。对不上就是量具接错层了，"
+        "上面三个数当场作废；大库那 25 一动，`p86-bigsize-25` 整组重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_BOTH_CHANGED"): (
+        PINNED, 175, "**两道闸全拆那一档 = P84 ⑤ 记的那个 175**（这一批把它跑出来并逐条读完）。"
+                     "一动，`p86-bigcorpus-175` 那 175 条标注整组失效"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_BOTH_ADD"): (
+        PINNED, 577, "**进 577 / 掉 80 这个 7:1 的不对称本身就是判据**：它说明那不是"
+                     "「多召回一点」，是把空屏灌满（134 条里 93 条变差）。这个比例一塌，"
+                     "「不接」的理由就少了一半"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_BOTH_DROP"): (
+        PINNED, 80, "两闸全拆少掉的召回对。一动去重读 i=78 / i=407（掉的是「公司专注的领域"
+                    "主要是ICT」那条逐字出处）和 i=293 / i=607（1→0，整屏变空）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_BIG_BOTH_LIBS"): (
+        PINNED, (("terrence", 134), ("terrence-rewrite", 41)),
+        "175 = 134 + 41。`terrence` 那 134 是这一批的正题（**真实用户那条路**，血缘 user 124 / "
+        "script 10）；`terrence-rewrite` 那 41 就是 P84 ② 读过的那一组"
+        "（P84 读成 17:17，这一批重读 10:18，口径差在哪写在 `p86-bigcorpus-175` 的 `_meta` 里）。"
+        "**一旦够得着第三个库，按库分那张表和两组标注的分母全部换人**"),
 
     # —— P82 ②：quorum 有多脆（量了没改，这四个数就是那个「多脆」）——
     ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_CALLS"): (
