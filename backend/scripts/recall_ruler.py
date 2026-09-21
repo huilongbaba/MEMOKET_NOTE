@@ -118,8 +118,16 @@ EXPECT_CF_COMMON_LIBS = (("terrence-rewrite", 49),)   # 变了的那几条落在
 # ── **P84 那条轴的全库对拍**（`--cf-spread`）──────────────────────────────────
 #
 # 反事实：**把 P84 那一问拆掉**——`common_term()` 回到「只看 df」。
-# 于是这几个数读的是「**HEAD 相对于没有这条轴的样子**」：
-# `变了` = top-8 变了的查询数；`进` / `掉` = HEAD 比反事实**多**了多少对 / **少**了多少对。
+# 于是这几个数读的是「**P84 那条轴单独相对于没有这条轴的样子**」：
+# `变了` = top-8 变了的查询数；`进` / `掉` = 它比反事实**多**了多少对 / **少**了多少对。
+#
+# ⚠️ **P88 起这一支的左边不再是 HEAD，是「只有 `topics` 那条轴」那个反事实**
+# （`_axis_variant(True, True, ask_who=False)`）。理由是 P86 ① 那一课的原话：
+# **两个旋钮别混成一个**。P88 在 `common_term()` 里串了第二条轴（主语面），
+# 拿今天的 HEAD 去减「没有任何轴」量出来的是**两条轴一起拆**，
+# 那张表就不是 P84 读过的那 28 条了（实测会变成 27 条 / 进 37 掉 15 / 捞回 54 种）。
+# 左边钉在「P84 那一版」上，**这 6 个数才继续是 P84 那 28 条标注的分母**。
+# P88 那条轴单独一支在 `--cf-whoaxis`，**接线自检在那儿**（复刻的 HEAD ≡ 产品）。
 #
 # **这几个数是 P84 判「接」的全部分量**（28 条逐条读完：变好 14 / 变差 7 / 中性 7，
 # 标注在 `tests/fixtures/memory_sample.jsonl` 的 `p84-spread-28`）。任何一个动了，
@@ -127,13 +135,32 @@ EXPECT_CF_COMMON_LIBS = (("terrence-rewrite", 49),)   # 变了的那几条落在
 # （`total * COMMON_DF_RATIO < COMMON_DF_MIN`），一旦够得着 `terrence`，
 # **四栏那四个数就不再是「对这一刀是瞎的」，而是真被动过了**，得整批重读。
 EXPECT_CF_SPREAD_CHANGED = 28       # top-8 变了的查询数
-EXPECT_CF_SPREAD_ADD = 36           # HEAD 比「没有这条轴」多出来的召回对
-EXPECT_CF_SPREAD_DROP = 16          # HEAD 比「没有这条轴」少掉的召回对
-EXPECT_CF_SPREAD_HIT = (345, 341)   # 有召回的查询数：HEAD → 反事实
+EXPECT_CF_SPREAD_ADD = 36           # 「只有 topics 轴」比「没有这条轴」多出来的召回对
+EXPECT_CF_SPREAD_DROP = 16          # 「只有 topics 轴」比「没有这条轴」少掉的召回对
+EXPECT_CF_SPREAD_HIT = (345, 341)   # 有召回的查询数：「只有 topics 轴」→ 反事实
 EXPECT_CF_SPREAD_LIBS = (("terrence-rewrite", 28),)   # 变了的那几条落在哪几个库上
 # 这条轴在 `terrence-rewrite` 上真的从 `common` 手里捞回来的串。**63 一动**说明
 # 语料、`SPREAD_GENERIC` 或者「只问汉字」那一条变了，28 条标注的分母跟着换人。
 EXPECT_CF_SPREAD_RESCUED = 63
+
+# ── **P88 那条主语面轴的全库对拍**（P88 ①，`--cf-whoaxis`）───────────────────
+#
+# 反事实：**只把 P88 那一问拆掉**（`_axis_variant(True, True, ask_who=False)`
+# = P84 那一版），左边是**今天的 HEAD**。**一刀只动一处**：库大小闸、汉字闸、
+# `topics` 那条轴三样一个字不动，只差「问不问主语面」。
+#
+# **这几个数是 P88 ① 判「接」的全部分量**（2 条逐条读完：变好 1 / 中性 1 / 变差 0，
+# 标注在 `tests/fixtures/memory_sample.jsonl` 的 `p88-whoaxis-2`）。
+# 尤其 `EXPECT_CF_WHO_DROP` 那个 **0**：这一刀答应的是「**只做减法、不挤掉任何人**」，
+# 它一旦不是 0，那句话就不成立了，两条标注和判都得重读。
+# `EXPECT_CF_WHO_BLOCKED` 是「被主语面挡回去、不再捞回来的串」（63 − 54 = 9），
+# 它一动说明 `WHO_GENERIC` 那个 0.85 或者语料变了。
+EXPECT_CF_WHO_CHANGED = 2           # top-8 变了的查询数（i=26 · i=293）
+EXPECT_CF_WHO_ADD = 2               # HEAD 比「没有主语面」多出来的召回对
+EXPECT_CF_WHO_DROP = 0              # HEAD 比「没有主语面」少掉的召回对 —— **必须是 0**
+EXPECT_CF_WHO_HIT = (346, 345)      # 有召回的查询数：HEAD → 反事实
+EXPECT_CF_WHO_LIBS = (("terrence-rewrite", 2),)       # 只够得着这一个库
+EXPECT_CF_WHO_BLOCKED = 9           # 被主语面挡回去的串（`公司` / `反馈` / `客户` …）
 
 # ── **大库那一档到底接不接**（P86 ①，`--cf-bigcorpus`）────────────────────────
 #
@@ -482,9 +509,13 @@ def cf_common_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
 def cf_spread_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     """「把 P84 那一问拆掉，`common_term()` 回到只看 df」的全库对拍。
 
-    **先跑 HEAD 再跑反事实，同一组查询、同一份索引缓存**，只换 `UserMemory.common_term`。
-    `add` / `drop` 读的是 **HEAD 相对反事实**：HEAD 多进来多少对、少掉多少对。
+    **两趟都是反事实，同一组查询、同一份索引缓存**，只换 `UserMemory.common_term`。
+    `add` / `drop` 读的是 **「只有 topics 轴」那一版相对反事实**：多进来多少对、少掉多少对。
     读数的人按 `by_lib` 分（**别按血缘分**，理由在 `EXPECT_BY_LIB`）。
+
+    ⚠️ **P88 起左边不再是 HEAD**，是 `_axis_variant(True, True, ask_who=False)`
+    （= P84 那一版）。理由写在 `EXPECT_CF_SPREAD_CHANGED` 上面那段：
+    **两个旋钮别混成一个**，这 6 个数得继续是 `p84-spread-28` 那 28 条标注的分母。
     """
     from collections import Counter
 
@@ -504,10 +535,12 @@ def cf_spread_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
         return out
 
     orig = UserMemory.common_term
+    # **左边是「只有 topics 轴」那一版，不是 HEAD**（P88；理由见 EXPECT_CF_SPREAD_* 那段）
+    spread_only = _axis_variant(True, True, ask_who=False)
 
     def watched(self):
-        """HEAD 那一趟：顺手记下**哪些串真的被这条轴从 `common` 手里捞回来了**。"""
-        fn = orig(self)
+        """那一趟：顺手记下**哪些串真的被这条轴从 `common` 手里捞回来了**。"""
+        fn = spread_only(self)
         if fn is None:
             return None
         store, _v = self._index()
@@ -553,12 +586,18 @@ def cf_spread_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
             "rescued": tuple(sorted(rescued))}
 
 
-def _axis_variant(ask_size: bool, ask_cjk: bool):
-    """`common_term()` 的一个反事实版本：那条轴的**两道闸各开各关**。
+def _axis_variant(ask_size: bool, ask_cjk: bool, ask_who: bool = True):
+    """`common_term()` 的一个反事实版本：那几道闸**各开各关**。
 
-    `ask_size=True` = 只在小库问（HEAD 今天的样子）；`ask_cjk=True` = 只对汉字串问（同）。
-    两个都 `True` 时**必须跟产品那一份逐条同结果**——`cf_bigcorpus()` 每次跑都拿这个自检，
-    对不上就是这一支复刻错了，下面所有数当场作废（P84 那一课：接错层的量具会静静地给出漂亮的数）。
+    `ask_size=True` = 只在小库问（HEAD 今天的样子）；`ask_cjk=True` = 只对汉字串问（同）；
+    `ask_who=True` = 话题面判「不泛」之后再问一句主语面（P88 ①，也是 HEAD 今天的样子）。
+
+    **三个都 `True` 时必须跟产品那一份逐条同结果**——`cf_bigcorpus()` / `cf_whoaxis()`
+    每次跑都拿这个自检，对不上就是这一支复刻错了，下面所有数当场作废
+    （P84 那一课：接错层的量具会静静地给出漂亮的数）。
+
+    `ask_who=False` = **P84 那一版**（P88 之前的产品）。`--cf-spread` 的左边用它，
+    `--cf-whoaxis` 的右边也用它——**两个旋钮分开跑**（P86 ① 那一课）。
     """
     from app.database.kb import relations as R
     from app.database.kb import topic_face as TF
@@ -583,9 +622,90 @@ def _axis_variant(ask_size: bool, ask_cjk: bool):
             face = self._topic_face(store, idx)
             if face is None:
                 return True
-            return face.generic(term) is not False
+            if face.generic(term) is not False:
+                return True
+            if not ask_who:
+                return False
+            who = self._who_face(store, idx)
+            if who is None:
+                return False
+            return who.generic(term) is not False
         return is_common
     return common_term
+
+
+def cf_whoaxis(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**只拆 P88 那条主语面轴**的全库对拍（P88 ①）。
+
+    左边是**今天的 HEAD**，右边是 `_axis_variant(True, True, ask_who=False)`
+    （= P84 那一版）。**一刀只动一处。**
+
+    先跑一遍**接线自检**：`_axis_variant(True, True, True)` 必须跟产品那一份逐条相同，
+    对不上下面所有数当场作废。
+    """
+    from collections import Counter
+
+    from app.database.kb import relations as R
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+    blocked: set[tuple[str, str]] = set()
+
+    def run() -> list[list[str]]:
+        out = []
+        for user, q, _m, _o in qs:
+            m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+            facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+            out.append([f.get("id") for f in facts])
+        return out
+
+    orig = UserMemory.common_term
+    no_who = _axis_variant(True, True, ask_who=False)
+
+    def watched(self):
+        """HEAD 那一趟：顺手记下**哪些串被主语面挡回去了**（话题面放行、主语面按住）。"""
+        fn = orig(self)
+        if fn is None:
+            return None
+        store, _v = self._index()
+        idx = self._grep_index(store)
+        if idx is None or idx.unit_count * R.COMMON_DF_RATIO >= R.COMMON_DF_MIN:
+            return fn
+        prev = no_who(self)
+
+        def wrap(term: str) -> bool:
+            r = fn(term)
+            if r and prev is not None and not prev(term):
+                blocked.add((self.user_id, term))
+            return r
+        return wrap
+
+    def swap(fn):
+        UserMemory.common_term = fn
+        try:
+            return run()
+        finally:
+            UserMemory.common_term = orig
+
+    head = swap(watched)
+    copy = swap(_axis_variant(True, True, True))
+    mismatch = sum(1 for a, b in zip(head, copy) if a != b)
+    cf = swap(no_who)
+
+    changed, drop, add = [], 0, 0
+    for i, (a, b) in enumerate(zip(head, cf)):
+        if a == b:
+            continue
+        changed.append(i)
+        add += sum(1 for x in a if x not in b)     # HEAD 多出来的
+        drop += sum(1 for x in b if x not in a)    # HEAD 少掉的
+    libs = Counter(qs[i][0] for i in changed)
+    return {"changed": changed, "drop": drop, "add": add,
+            "hit": (sum(1 for x in head if x), sum(1 for x in cf if x)),
+            "libs": tuple(sorted(libs.items())),
+            "blocked": tuple(sorted(blocked)),
+            "selfcheck_mismatch": mismatch}
 
 
 def cf_bigcorpus(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
@@ -616,8 +736,15 @@ def cf_bigcorpus(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     runs: dict[str, list[list[str]]] = {}
     for name, fn in (("v0", _df_only_common),
                      ("head_copy", _axis_variant(True, True)),
-                     ("size", _axis_variant(False, True)),
-                     ("both", _axis_variant(False, False)),
+                     # ⚠️ **这两档故意 `ask_who=False`**（P88）：它们问的是
+                     # 「**P84 那条轴**拆掉库大小闸 / 两道闸会怎样」，而 `p86-bigcorpus-175`
+                     # 那 175 条就是在这个形状上读完的。带上 P88 那条主语面轴的话，
+                     # 大库那一档会整片塌掉（`terrence` 的 `who` 93.8% 是说话人标签，
+                     # 主语面在那个库上一律回 `None` = 一个串都不捞回来），
+                     # 这张表就不再是 P86 读过的那 175 条了。
+                     # **接线自检不受影响**：`head_copy` 是三个闸全开那一版，仍然 ≡ 产品。
+                     ("size", _axis_variant(False, True, ask_who=False)),
+                     ("both", _axis_variant(False, False, ask_who=False)),
                      ("head", orig)):
         UserMemory.common_term = fn
         try:
@@ -684,6 +811,28 @@ def main(argv: list[str]) -> int:
                                 ("落在哪几个库", g["libs"], EXPECT_CF_COMMON_LIBS)):
             if got != want:
                 bad.append(f"cf-common {name}: {got} ≠ {want}")
+    if "--cf-whoaxis" in argv:
+        g = cf_whoaxis(qs)
+        if g["selfcheck_mismatch"]:
+            bad.append(f"cf-whoaxis 接线自检: 复刻的 HEAD 跟产品那一份差了 "
+                       f"{g['selfcheck_mismatch']} 条 —— **下面的数全部作废**")
+        print(f"  P88 那条主语面轴（只拆它）那个反事实：top-8 变了 {len(g['changed'])} 条"
+              f" / {EXPECT_TOTAL}；HEAD 多进 {g['add']} 少掉 {g['drop']}"
+              f"；有召回 {g['hit'][0]} → {g['hit'][1]}")
+        print(f"    变了的是：{g['changed']}，落在：{g['libs']}"
+              "  ⚠️ **这条轴串在 topics 那条后面，只做减法**")
+        print(f"    被主语面挡回去的串 {len(g['blocked'])} 种："
+              f"{'、'.join(t for _u, t in g['blocked'])}")
+        print("    （2 条逐条读完：变好 1（i=293 那条逐句出处回来了）/ 中性 1 / **变差 0**"
+              " → P88 ① 判「接」，理由在 `kite_memory.common_term` 和 `kb/topic_face` 两段注释）")
+        for name, got, want in (("变了", len(g["changed"]), EXPECT_CF_WHO_CHANGED),
+                                ("多进", g["add"], EXPECT_CF_WHO_ADD),
+                                ("少掉", g["drop"], EXPECT_CF_WHO_DROP),
+                                ("有召回", g["hit"], EXPECT_CF_WHO_HIT),
+                                ("落在哪几个库", g["libs"], EXPECT_CF_WHO_LIBS),
+                                ("挡回去的串", len(g["blocked"]), EXPECT_CF_WHO_BLOCKED)):
+            if got != want:
+                bad.append(f"cf-whoaxis {name}: {got} ≠ {want}")
     if "--cf-spread" in argv:
         g = cf_spread_off(qs)
         print(f"  P84 那条轴（拆掉它）那个反事实：top-8 变了 {len(g['changed'])} 条 / {EXPECT_TOTAL}"

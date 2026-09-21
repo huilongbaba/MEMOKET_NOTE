@@ -299,8 +299,13 @@ def test_第三条d_不限汉字那一版是白干_这件事写进了台账():
 def test_第四条_记忆卡那把尺的分母动了_但那四个数没动():
     """**爆炸半径照实记**：P83 A 那一节的四条判（133 / 62 / 29 / 33）建在卡总数上，
     这一批把分母从 964 抬到 977。**四个数一格没动**，所以那四条判不用重读——
-    但这件事得有个闸看着，不能靠人记得。"""
-    assert CO.EXPECT_CARDS == 977 and CO.EXPECT_WITH_CARDS == 314
+    但这件事得有个闸看着，不能靠人记得。
+
+    ⚠️ **P88 把分母又抬了一档（977 → 979 / 314 → 315）**，照实改这一条断言：
+    新串的那条主语面轴让 i=26 / i=293 各多摆出一张卡。
+    **这一条要钉的那件事一个字没变**——「分母动了、那四个数没动」——
+    所以四个数的断言原样留着，只有分母跟着走。"""
+    assert CO.EXPECT_CARDS == 979 and CO.EXPECT_WITH_CARDS == 315
     assert CO.EXPECT_MARKED == 133
     assert CO.EXPECT_QUERIES_WITH_MARK == 62
     assert CO.EXPECT_MIXED == 29
@@ -318,7 +323,7 @@ def test_第四条b_新钉的数全登记了_而且那把尺自己是绿的():
         assert kind == FR.PINNED and getattr(RR, name) == want
         assert why.strip(), f"{name} 登记了但没写「一动要去重读什么」"
     # 分母那两条的登记也跟着改了，而且写清楚了「那四个数没动」
-    assert FR.REGISTRY[("backend/scripts/card_origin_ruler.py", "EXPECT_CARDS")][1] == 977
+    assert FR.REGISTRY[("backend/scripts/card_origin_ruler.py", "EXPECT_CARDS")][1] == 979
     assert "那四个数一格没动" in FR.REGISTRY[
         ("backend/scripts/card_origin_ruler.py", "EXPECT_CARDS")][2]
     bad, n, missing = FR.check()

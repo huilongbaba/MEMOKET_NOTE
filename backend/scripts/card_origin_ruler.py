@@ -61,17 +61,23 @@ SHOW = 5        # 产品 `RelatedMemory.LIST_MAX`：屏幕上最多摆几张卡
 # 钉死的量程。**这六个数是这把尺自己的身份**：对不上说明判据或语料变了，
 # 那一刻 P83 A 那一节所有拿它当分母的数全部失效——所以宁可 `exit 9`。
 # 出处：P83 A 在 `KITE_DATA_DIR=<scratch>/p83data`（= 真 `backend/data` 整棵拷）上实测。
-EXPECT_CARDS = 977            # 727 条 cursor 查询一共摆出几张卡（上界口径，见文件头）
+EXPECT_CARDS = 979            # 727 条 cursor 查询一共摆出几张卡（上界口径，见文件头）
                               # ⚠️ P84 从 964 涨到 977：那条「泛词 vs 主题词」的轴在小库上
                               # 把 63 个串从 `common` 手里捞了回来，`terrence-rewrite` 上
                               # 多摆出 13 张卡。**P83 A 那四个数（133 / 62 / 29 / 33）一格没动**
                               # ——动的只有分母。
+                              # ⚠️ P88 从 977 涨到 979：新串的那条**主语面**轴
+                              # （`kb/topic_face.WhoFace`）让 i=26 / i=293 各多摆出一张卡
+                              # （i=293 那张正是「离开安克」那条逐句出处）。
+                              # **P83 A 那四个数照旧一格没动**，动的还是分母。
 EXPECT_MARKED = 133           # 其中几张会被盖上「前一段带进来的」
 EXPECT_QUERIES_WITH_MARK = 62 # 几条查询屏幕上至少有一张被盖
 EXPECT_MIXED = 29             # **几条查询是两种卡混着摆的**（这一批要修的正是这一格）
 EXPECT_ALL_MARKED = 33        # 几条查询整屏 5 张全是前一段带回来的
-EXPECT_WITH_CARDS = 314       # 727 条里几条真摆出了卡（其余 413 条一张都没有）
+EXPECT_WITH_CARDS = 315       # 727 条里几条真摆出了卡（其余 412 条一张都没有）
                               # ⚠️ P84 从 312 涨到 314：两条原来 0 张卡的小库查询现在摆得出卡了
+                              # ⚠️ P88 从 314 涨到 315：i=293 那条原来整屏是空的，现在摆得出
+                              # 那一张逐句出处了（i=26 本来就有卡，只是多了一张）
 
 
 def term_from_before(term: str, paragraph: str, before: str) -> bool:
@@ -222,7 +228,7 @@ def main(argv: list[str]) -> int:
         return 9
     print(f"ruler OK = {EXPECT_CARDS} 张卡那把尺（P83 A 那四个数 "
           f"{EXPECT_MARKED}/{EXPECT_QUERIES_WITH_MARK}/{EXPECT_MIXED}/{EXPECT_ALL_MARKED} "
-          f"逐格相同；分母 P84 从 964 抬到 977）；前端那两份判据还在原地")
+          f"逐格相同；分母 P84 从 964 抬到 977、P88 再到 979）；前端那两份判据还在原地")
     return 0
 
 

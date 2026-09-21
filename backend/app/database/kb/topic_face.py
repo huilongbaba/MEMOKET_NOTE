@@ -111,9 +111,74 @@ df 23.3%，而 `_is_cn_filler` 那张固定表里一个都没有）。
    自己给自己背书，是循环。**结论：信号找到了，缺的那一块是「这个库是关于谁的」，
    而库里没记这件事。**
 
+6. **第 ⑤ 格最后那半句话是错的，这一批更正**（P88 ①）。
+   ⚠️ **并排写**：上面那句「**库里没记这件事**」留在原地，跟下面这段对照着读——
+   删掉它就不叫更正叫改口。
+
+   **对的那半**：「要分开它们的信息不在 `topics` 里」——**成立**，这一批又加了四条
+   `topics` 以外但同样分不开的轴（见下表）。
+   **错的那半**：「库里没记这件事」。**库里记了，记在 `FactRecord.who` 上**——
+   每条事实一个主语，`terrence-rewrite` 上 100% 填着（`团队` 671 / `speaker a` 234 /
+   `项目团队` 219 / `用户` 138 …，413 个不同值）。P86 只在 `entities` 上找过「库级的
+   那一个主语」，**没有在 `who` 上找过「每条事实的主语」**。
+
+   把 `spread` 那条量法**一个字不动**地搬到 `who` 轴上（就是下面的 `WhoFace`），
+   拿 P86 那两批反例重量（A = 该捞回来的 8 个汉字串 · B = 该挡的 4 个英文串 ·
+   C = 今天真被这条轴捞回来的 **63** 个串，`recall_ruler --cf-spread` 里取，不是手挑）：
+
+   | 轴 | A | B | 判 |
+   |---|---|---|---|
+   | `topics`（P86 已知）| .467–.587 | .450–.730 | 分不开 |
+   | **`who`** | **.436–.747** | **.819–.932** | **分得开**（无重叠）|
+   | `obj`（1237 个码）| .519–.673 | .582–.777 | 分不开 |
+   | `kind`（7 个码）| .488–.965 | .833–1.014 | 分不开 |
+   | `event`（15 个码）| .493–.754 | .701–.969 | 分不开 |
+   | `place`（106 个码）| A / B 都够不着 20 次 | — | **判不了**（太稀）|
+
+   **S6 那两版自动取主语也实测了**（P86 只推断，这一批在库上跑过，两版都废）：
+
+   | 主语从哪来 | A | B | 判 |
+   |---|---|---|---|
+   | 手写正则（P86 第一版，禁止清单上那条）| .000–.016 | .065–.314 | 分得开，但**手写的不算**|
+   | **出现最多的实体** `app` | .000–.142 | **.029**–1.000 | **分不开，而且反着**——`app` 自己 1.000（自己给自己背书，P86 那句推断**坐实了**），而 `agent`/`ai`/`memory` 只有 .029–.057，**比 A 里的 `录音` .142 还低** |
+   | 出现最多的 `who` `团队` | .346–.522 | .229–.343 | **反向**（A 比 B 还高）|
+
+   **所以这一批接的是 `WhoFace`，不是 S6**——它**不需要知道「这个库是关于谁的」**，
+   只需要每条事实自己的主语。「库级的那一个主语」到今天仍然拿不到，
+   **而这条路绕开了它**。
+
+7. **`who` 这条轴今天**够不着**哪一格**（P88 实测，跟第 ①②③ 格同样照实写）：
+
+   * **转写库上它分不开**。`terrence`（2362 unit）上 A .466–.793 / B .684–1.207，
+     **重叠**。根因不是巧合：那个库的 `who` 有 **93.8%** 是说话人标签
+     （`speaker a` 7291 / `speaker b` 6122 / `speaker c` 3190…），
+     **那一栏装的不是主语，是谁在说话**。六个库逐个数下来这个比例是
+     0.0% / 0.0% / 0.0% / **14.3%** / **93.8%** / 11.9%——两头差 6.6 倍，中间是空的。
+     所以 `WhoFace` 自带一道 `SPEAKER_TAG_MAX` 闸：**过半是说话人标签就一律回 `None`**。
+     ⚠️ **这道闸今天一条产出都不改**（唯一过线的 `terrence` 是大库，
+     `common_term()` 那道库大小闸本来就不问这一档）。它在这儿是为了**别的小库**
+     ——一个 193 unit 的转写库今天不存在，但没有理由不会存在。
+     闸本身由 `test_p88` 拿**假事实表**直接测，不靠真语料（同这个文件下面那句）。
+   * **门槛 `WHO_GENERIC` 的留出集只有一个库**。0.75–1.00 全库扫下来，
+     产出好的那一段是 **[0.80, 0.90]**（2 条变、2 进 0 掉、0 条「有→空」），
+     而**两头各由一个串顶着**：下沿 `测试` .789（掉到 0.78 就把 i=26 从 3 条打成 0 条）、
+     上沿 `公司` .900（抬到 0.95 就救不回 i=293）。取的是**平台中点 0.85**，
+     **这是这条判据今天最弱的一格**——跟第 ②③ 格是同一个病（这个仓只有一个
+     `terrence-rewrite` 够得着这一档）。
+   * ⚠️ **那个 0.85 不是从 A / B 那条缝里挑的，两件事别混**。A 和 B 之间的缝是
+     **(.747, .819)**，而 0.85 落在**缝的上方**——于是在产品这个门槛下
+     **`ai`(.819) 会被判「不泛」**。今天不出事，因为英文那一半根本不问这条轴
+     （汉字闸，第 ① 格）；**但下一批要是拿这条轴去拆汉字闸，0.85 会把 `ai` 放进来**，
+     那正是 P84 实测「产出白干」的那个形状。要拆汉字闸就得**先重新挑门槛**，
+     而挑门槛需要的留出集这个仓今天还没有。闸在 `test_p88::第一条g`。
+   * **它只做减法**。`common_term()` 里它串在 `TopicFace` **后面**：
+     `topics` 已经判「不泛」了才问它，而且只有它也说「不泛」才捞回来。
+     所以它**只可能少捞回几个串，不可能多捞回**——英文那一半、大库那一档逐字不动。
+
 ## `TopicFace` 要什么
 
 `facts` 只要求三样：`.text` / `.topics` / `.unit`——拿一份假的事实表就能测，不必有真语料。
+（`WhoFace` 多要一样 `.who`。）
 `units_for` 是可选的预筛（`_GrepIndex.units_for`）：给了就只扫候选 unit 里的事实，
 **给不给结果必须一样**（回 `None` = 预筛不了，就全表扫）。
 """
@@ -121,6 +186,8 @@ df 23.3%，而 `_is_cn_filler` 那张固定表里一个都没有）。
 from __future__ import annotations
 
 import re
+
+from .who import is_speaker_tag, norm_who
 
 # 判得了的门槛：这个串在库里落到的**话题次**至少这么多，少于它一律 `None`（判不了）。
 # **它是可判定性门槛，不是分数**——`spread` 本身已经把 n 除掉了。
@@ -132,6 +199,22 @@ SPREAD_MIN_HITS = 20
 # P77 拿 80 条盲标留出集核过：0.75 那一档判泛 42 条、准确率 **100%**。
 # ⚠️ 那份留出集全是汉字、全在 `terrence`（2362 unit）上 —— 见文件头第 ①②③ 格。
 SPREAD_GENERIC = 0.75
+
+# `who` 那条轴判「泛」的门槛（P88 ①）。**它是另一条轴，所以是另一个数**——
+# 拿 `SPREAD_GENERIC` 那个 0.75 直接套过来实测是会出事的：
+# 0.78 以下 `测试`(.789) 就不再被捞回来，i=26 从 3 条打成 0 条。
+# 全库 765 条扫 0.75 / 0.78 / 0.80 / 0.85 / 0.90 / 0.95 六档下来，
+# **[0.80, 0.90] 这一段产出一模一样**（2 条变 · 2 进 0 掉 · 0 条「有→空」），
+# 取的是这个平台的中点。两头各由一个串顶着（下沿 `测试` .789 / 上沿 `公司` .900），
+# **留出集只有 `terrence-rewrite` 一个库** —— 文件头第 ⑦ 格把这一格的弱点写清楚了。
+WHO_GENERIC = 0.85
+
+# `who` 那一栏里说话人标签占到这个比例，就判「这个库的 `who` 装的不是主语」，
+# 整条轴回 `None`（判不了）。六个库实测 0.0% / 0.0% / 0.0% / 14.3% / **93.8%** / 11.9%
+# ——中间是空的，0.5 落在 14.3% 和 93.8% 之间（6.6 倍间隔）。
+# ⚠️ **它今天一条产出都不改**（唯一过线的 `terrence` 是大库，库大小闸本来就不问这一档），
+# 理由和它为什么还是要在，写在文件头第 ⑦ 格。
+SPEAKER_TAG_MAX = 0.5
 
 # ASCII 串按**词边界**核（同 `kite_memory._GrepIndex.unit_df` 那条）：拿子串数去数
 # `pr` 会在 product / approve 里命中。中文没有词边界，子串就是要的那个数。
@@ -148,7 +231,18 @@ def has_cjk(term: str) -> bool:
 
 
 class TopicFace:
-    """一个人的库的「话题面」。"""
+    """一个人的库的「话题面」。
+
+    **轴是 `_keys()` 一个方法定的**（P88 把它拆出来的）：`WhoFace` 换的就是这一个方法，
+    稀疏化那段数学**一行都没抄**——抄一份出去两份迟早会飘，而这两条轴是要并排读的。
+    """
+
+    AXIS = "topics"
+    GENERIC = SPREAD_GENERIC
+
+    def _keys(self, f) -> tuple:
+        """这条事实落在这条轴的哪几个码上。"""
+        return tuple(getattr(f, "topics", None) or ())
 
     def __init__(self, facts, units_for=None) -> None:
         self._units_for = units_for
@@ -158,11 +252,13 @@ class TopicFace:
         for f in facts:
             self.all.append(f)
             self.by_unit.setdefault(getattr(f, "unit", "") or "", []).append(f)
-            for t in (getattr(f, "topics", None) or ()):
+            for t in self._keys(f):
                 prior[t] = prior.get(t, 0) + 1
         total = sum(prior.values()) or 1
         self.ps = [v / total for v in prior.values()]
         self._memo: dict[str, tuple[int, int]] = {}
+        # `False` = 这个库的这条轴根本不该开口（`WhoFace` 用得上，见那儿）。
+        self.usable = True
 
     # -------------------------------------------------------------- 内部
 
@@ -198,7 +294,7 @@ class TopicFace:
         seen: dict[str, int] = {}
         for f in self._pool(term):
             if rx.search(getattr(f, "text", "") or ""):
-                for t in (getattr(f, "topics", None) or ()):
+                for t in self._keys(f):
                     seen[t] = seen.get(t, 0) + 1
         out = (sum(seen.values()), len(seen))
         if len(self._memo) >= 8192:
@@ -215,5 +311,51 @@ class TopicFace:
 
     def generic(self, term: str) -> bool | None:
         """`True` = 泛 · `False` = 不泛 · `None` = **判不了**（别当 `False` 用）。"""
+        if not self.usable:
+            return None
         s = self.spread(term)
-        return None if s is None else s >= SPREAD_GENERIC
+        return None if s is None else s >= self.GENERIC
+
+
+class WhoFace(TopicFace):
+    """同一个库的「**主语面**」——轴换成 `FactRecord.who`（P88 ①）。
+
+    ## 它为什么在这儿
+
+    P86 判「`topics` 那条轴分不开两种『窄』」，并留下一句
+    「**缺的那一块叫「这个库是关于谁的」，库里没记这件事**」。
+    **后半句是错的**（文件头第 ⑥ 格并排写着更正）：库里记了，
+    记在**每条事实的 `who`** 上。P86 找的是**库级**的那一个主语（`entities` 里取最多的），
+    那个确实拿不到、而且拿了是循环（`app` 给自己背书，第 ⑥ 格里实测坐实了）；
+    **而分开两种「窄」根本不需要库级那一个**，每条事实自己的主语就够。
+
+    量法跟 `TopicFace` **逐字同一条**（稀疏化），只换 `_keys()`：
+    `spread ≈ 1` = 命中它的那些事实的主语面跟随手抓一把一样宽 = **泛**。
+
+    ## 它什么时候闭嘴
+
+    **`who` 那一栏在转写库里装的不是主语，是谁在说话。** `terrence` 上 93.8% 是
+    说话人标签，而这条轴在那个库上**实测分不开**（A .466–.793 / B .684–1.207，重叠）。
+    所以过半是说话人标签就整条回 `None`（判不了）——**`None` 不是「不泛」**，
+    调用方照旧不许拿它当 `False` 用（同 `TopicFace` 那条）。
+    """
+
+    AXIS = "who"
+    GENERIC = WHO_GENERIC
+
+    def _keys(self, f) -> tuple:
+        w = norm_who(getattr(f, "who", "") or "")
+        return (w,) if w else ()
+
+    def __init__(self, facts, units_for=None) -> None:
+        super().__init__(facts, units_for)
+        filled = tagged = 0
+        for f in self.all:
+            for w in self._keys(f):
+                filled += 1
+                if is_speaker_tag(w):
+                    tagged += 1
+        self.filled = filled
+        self.speaker_share = (tagged / filled) if filled else 0.0
+        # 一条 `who` 都没有的库也一样闭嘴：没有这条轴可量。
+        self.usable = filled > 0 and self.speaker_share < SPEAKER_TAG_MAX
