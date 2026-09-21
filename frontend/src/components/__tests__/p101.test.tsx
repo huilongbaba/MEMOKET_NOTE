@@ -272,10 +272,13 @@ describe('B `guarded` 那一刀：误伤治了没有', () => {
   it('22 条 handler 一条不少地归了档', () => {
     expect(Object.keys(HARNESS_GUARD)).toHaveLength(22)
   })
-  it('放行 11 条 / 照拦 10 条 / 自理 1 条', () => {
-    expect(guardedKeys('rounds')).toHaveLength(11)
-    expect(guardedKeys('blocked')).toHaveLength(10)
-    expect(guardedKeys('self')).toEqual(['onDone'])
+  // ⚠️ **这三个数 P103 动过**（11 / 10 / 1 → 12 / 7 / 3）：P103 A 把 `onSkeleton`
+  //    挪进 `rounds`，B 把 `onCost` / `onCrossRun` 挪进 `self`。**照实改，不留旧数**
+  //    ——留着的话这条会对着治好的代码红，而它红的理由跟对错无关。
+  it('放行 12 条 / 照拦 7 条 / 自理 3 条（P103 之后）', () => {
+    expect(guardedKeys('rounds')).toHaveLength(12)
+    expect(guardedKeys('blocked')).toHaveLength(7)
+    expect(guardedKeys('self')).toEqual(['onCost', 'onCrossRun', 'onDone'])
   })
   it('**P99 实拍那一条**（`onDelta` 的 `streamed`）从此不拦', () => {
     expect(guardBlocks('onDelta')).toBe(false)

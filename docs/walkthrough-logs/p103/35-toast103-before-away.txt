@@ -1,0 +1,11 @@
+步骤脚本: toast103.mjs sha256=db8012a781b13ddf689086f9f2675ce4506fc0ff5556714b6fe16ec74fa29dfd
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/clickexact.mjs=476c0780c3787bf98bbdb576660f117bc6704d0609350c96d23f76dbdb599348 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+=== 现造一篇（**这一趟自己造的**）===
+  新建出来的 note id: <ID12>  标题记号: P103toastTbnrsuv
+=== 点「智能续写」（这一趟 MEMOKET_RUN_TOKEN_CAP=1，第一轮末尾必发 cost）===
+  第几毫秒真的切走了: 290
+  [第 9148 毫秒] toast: "「另一篇笔记」的智能续写已结束，内容已保存在那篇里"
+shot → <DIR>/<B>-B改前-away-toast1.png
+=== 这一趟攒到的 toast（并集，按第一次出现排）===
+   {"档":"away","盯了几秒":70,"几条":1,"逐条":[{"毫秒":9148,"字":"「另一篇笔记」的智能续写已结束，内容已保存在那篇里"}],"带篇名的几条":0}
+shot → <DIR>/<B>-B改前-away-收尾.png
