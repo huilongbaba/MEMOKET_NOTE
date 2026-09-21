@@ -242,4 +242,10 @@ def test_floor_ruler_登记了这一批新钉的四个数():
         assert len(why) > 30, f"{key} 的「一动要去重读什么」写得太短：{why!r}"
     assert "frontend/scripts/check-components-gate.mts" in FR.WATCHED
     assert "backend/scripts/journey_fixture.py" in FR.WATCHED
-    assert len(FR.REGISTRY) == 64, f"登记表现在 {len(FR.REGISTRY)} 条，钉死 64"
+    # ⚠️ 这里本来钉死 64。第 810 轮合并时它和 test_p84 那条**一起红了**——
+    # P84 在另一个 worktree 里同时加了 6 条登记，两批都没做错事。
+    # 钉死一个「每加一条登记就红一次」的数，等于造一条迟早被人改成不红的闸。
+    # 改成问 floor_ruler 自己那条「只准往上」的数：删登记会红，加登记不会。
+    assert len(FR.REGISTRY) >= FR.REGISTRY_SIZE_FLOOR, (
+        f"登记表现在 {len(FR.REGISTRY)} 条，少于记在 floor_ruler 里的 "
+        f"{FR.REGISTRY_SIZE_FLOOR} 条——有人把登记删了，去读 diff")
