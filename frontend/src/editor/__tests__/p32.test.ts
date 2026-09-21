@@ -116,7 +116,9 @@ describe('P32 A5 为什么这个词算证据', () => {
     expect(evidenceLine('tail', undefined, [])).toBe('按正文末尾找的')
   })
   it('接线：面板真的在用 evidenceLine，而且 evidence 跟着每次召回更新', () => {
-    expect(memSrc).toMatch(/\{evidenceLine\(mode, evidence, terms\)\}/)
+    // P80 A 起多一个 `qCtx`（**发那一问时**的光标段 + 前一段）：
+    // 那一行要点出哪几个词是前一段带进来的。**接线还是这一处**，多的是第四个实参。
+    expect(memSrc).toMatch(/\{evidenceLine\(mode, evidence, terms, qCtx\)\}/)
     // `?? null` 而不是 `?? []`：压成 `[]` 就把「没判成」和「判过了、空的」并成一档（P46 #1）
     expect(memSrc).toMatch(/setEvidence\(r\.evidence \?\? null\)/)
   })
