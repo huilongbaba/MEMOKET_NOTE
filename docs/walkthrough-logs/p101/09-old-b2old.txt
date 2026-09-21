@@ -1,0 +1,42 @@
+步骤脚本: b2old.mjs sha256=d272c507b22c457140ae1a6747f9037b7909ea2359386b5011ace438e259d44a
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/clickexact.mjs=476c0780c3787bf98bbdb576660f117bc6704d0609350c96d23f76dbdb599348 steps/ctxmenu52.mjs=bd37b50c8a59cac9dd19426e2adcffd0ea4b18134bc196514ab9072096709544 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+开的是 <ID12> （第 0 个候选： P58 走查（可删）标签 ）
+开着的是: <ID12>
+=== ⑥ 智能续写 → 轮次卡片 → 读库 ===
+  跑之前：编辑器 105  库 {"len":105,"json":false}
+  摊开了 1 个折叠块
+  跑完：编辑器 205 （+ 100 ）
+  库: {"len":205,"json":false} ← len 该跟编辑器一样、json 该是 false
+  「照它改的」 0 次；「判词就是下面」 0 次；空括号「（）」 0 次（该 0）
+  「这一次不再往下写了」: false  「照常打分」: false
+  收工那行: []
+  ⚑ 判据那几行: []
+  「照常打分」出现: 0 次；「没再花模型调用去打分」出现: 0 次
+  「当提醒看」出现: 0 次
+  垃圾尾巴那条: undefined
+  残骸编号那条: undefined
+  正文里还有「做爰片」吗（该 false）: false
+  正文里还有「[terrence-8F6]」吗（该 false）: false
+shot → <DIR>/<B>-b2d-old-rounds-light.png
+=== ⑩ 改动层：润色生一层 ===
+  在第 8 行上右键「润色」
+  正文字数: 205 → 213 （+8）
+  文档变了吗: true （等了 1 秒；false = 干等超时，不是「润色落地了」）
+  假模型那一段落地了吗（记号「（假模型润色过）」几处，该 1）: 1
+  toast: []
+  改动条: "改了 2 处"
+  右栏页签: ["记忆","改动2","计划2"]
+  编辑器里的新增高亮 .harness-ins: 9 段（**段 ≠ 处**：CM 把跨行的 mark 按行切开，空行不出 span）
+  P43 #1 ①（改动条 == 页签角标，同一个 pendingDiff）: true {条 2 · 角标 2}
+  P43 #1 ②（有处数就该有高亮、没处数就不该有，两个方向）: true {处 2 · 段 9}
+  库里的层: {"layers":[{"id":"<ID12>","label":"智能续写","source":"round","run_id":"","round_no":0,"seq":0,"state":"on","at":"<TS>","content_tag":"213:<TAG>","hunks":[{"k":0,"from":113,"to":213,"del":"","ins":"## 时间去哪了\n\n（这一段由假模型给的，不是真调用）\n\n## 推进了什么\n- 走查用的假日报，钉住的是接线不是内容。\n## 卡在哪\n- 无。\n\n## 时间去哪了\n\n（这一段由假模型给的，不是真调用）","state":"pending","soft":false,"before":"单回收了 860 份，转化率按渠道排了一遍。\n
+shot → <DIR>/<B>-b2d-old-layer-light.png
+=== ⑦ 导回到 Obsidian ===
+  面板在吗: true
+  逐字「vault」: true
+  逐字「树的层级变成文件夹」: true
+  逐字「克隆写成 .link.txt」: true
+  逐字「_assets/」: true
+  「导回 N 篇」: undefined
+shot → <DIR>/<B>-b2d-old-export-light.png
+  toast: []

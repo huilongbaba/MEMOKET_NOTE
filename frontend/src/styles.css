@@ -1961,3 +1961,10 @@ label.plan-check-row { cursor: pointer; }
 .outline-fallback-note { word-break: break-all; }              /* 目录：没有 # 标题时按什么列的说明（P7 #3） */
 .skills-rule code { font-family: var(--mono); font-size: var(--t-xs); }   /* 技能面板：什么时候生效 */
 .agent-skills { line-height: 1.6; }                            /* 轮次卡片：这次带了哪几条技能 */
+/* 轮次卡片：**这张卡是从库里读回来的骨架**（P101 A）。虚线框 + 灰字，
+   一眼看得出它跟底下那些「这一趟真跑出来的」不是一回事；框里逐条写着库里没有哪几样。 */
+.agent-restored {
+  margin: 0 0 6px; padding: 5px 8px; line-height: 1.6;
+  border: 1px dashed var(--line); border-radius: var(--r-xs);
+  background: var(--bg); color: var(--muted); font-size: var(--t-xs);
+}

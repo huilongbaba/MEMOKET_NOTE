@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..database.wordcount import word_count
 from ..database import store
 from ..database.kite.kite_memory import UserMemory
-from .schemas import ChangeLayersBurnOut, ChangeLayersIn, ChangeLayersOut, ChangeLayersSaveOut, CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
+from .schemas import ChangeLayersBurnOut, ChangeLayersIn, ChangeLayersOut, ChangeLayersSaveOut, CitingNoteOut, EntityOut, Note, NoteBriefPage, NoteCreateIn, NoteGraphOut, NoteIconIn, NoteIn, NoteIntentIn, NoteLinksOut, NoteRoundsOut, TopicEntityLink, TopicOut, RevisionFullOut, RevisionOut, SkeletonSaveIn, TrayClipIn, TrayIn, TrayOut
 from .deps import current_user
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -191,6 +191,35 @@ def list_change_layers(note_id: str, user: str = Depends(current_user)):
     if not store.get_note(user, note_id):
         raise HTTPException(404, "note not found")
     return ChangeLayersOut(layers=store.list_change_layers(user, note_id))
+
+
+@router.get("/{note_id}/rounds", response_model=NoteRoundsOut)
+def note_rounds(note_id: str, user: str = Depends(current_user)):
+    """这一篇**最近那一次智能续写 / 打磨**的每一轮骨架（P101 A，收 P99 B 判②）。**只读。**
+
+    ── 为什么有它 ────────────────────────────────────────────────────────
+    P99 在真壳上实拍：那一篇 **6 次跑 / 12 行轮次**好端端躺在 `harness_rounds` 里，
+    而**关掉重开之后右栏是 0 张卡**——轮次卡只活在内存里，
+    **前端一行都没读，而且根本没有这条 API**。这条就是那条路。
+
+    **不新开表、不加一列、零迁移**：读的全是 `record_harness_round` 本来就在记的那几样，
+    而它自己按 key 修剪到最近 400 行 ⇒ 体积也不涨。
+
+    ── 它**够不着**什么（别读成「轮次卡从此不丢了」）──────────────────────
+    卡上那几样**明细文本**（本轮写出的正文 / 工具调用逐条 / 技能名单 / 出错 / 丢弃 /
+    策略理由 / 上一轮诊断原话 / 阶段输出 / **打分器那句判词**）库里一个字都没有，
+    逐条在 `missing` 里回给前端，**前端照实标在卡上**。
+    要把它们也存下来是 P99 判③明确判过的「不落库」（那会是第三把尺——
+    `note_change_layers.hunks` 和 `note_revisions` 已经各答了一半）。
+
+    ── 只读这件事怎么保证 ────────────────────────────────────────────────
+    `store.last_note_run_rounds` 里一条写 SQL 都没有，闸在 `backend/tests/test_p101.py`：
+    调完前后三张表的指纹逐字相同，**并且先喂一个真会写的反例**证明那条闸看得见写
+    （不然它是一条永远绿的闸）。
+    """
+    if not store.get_note(user, note_id):
+        raise HTTPException(404, "note not found")
+    return NoteRoundsOut(**store.last_note_run_rounds(note_id))
 
 
 @router.put("/{note_id}/change-layers", response_model=ChangeLayersSaveOut)

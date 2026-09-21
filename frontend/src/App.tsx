@@ -74,6 +74,8 @@ import { changesTabHasContent, reopenedLayersNotice, restoreLayers, sameLayers, 
 import { PLAN_EMPTY_HINT, planTabContent } from './util/planTab'
 // 轮次卡按 note id 存（P95 A）：为什么不是一条「换篇就清」的 effect，见那份文件的抬头
 import { roundsFor, writeRoundsIn, type RoundsByNote } from './util/roundsByNote'
+import { guardBlocks } from './util/harnessGuard'
+import { mergeRestored, restoredRounds } from './util/roundsRestore'
 import { checkLabel, stuckTail } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）+ 后面那半句下一步（P40 · B #2）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
@@ -1786,6 +1788,37 @@ export default function App() {
     return () => { alive = false }
   }, [current?.id])
 
+  // 打开一篇：**把库里那次跑的轮次骨架读回来**（P101 A —— 这一批的正题）。
+  //
+  // P99 在真壳上实拍：那一篇 **6 次跑 / 12 行轮次**好端端躺在 `harness_rounds` 里，
+  // 而**关掉重开之后右栏是 0 张卡**——轮次卡只活在内存里，前端一行都没读。
+  // 判下来的是**不新开表、不把卡整个落库**，补的是**读回来这条路**
+  // （零迁移 / 零新表 / 零体积增长），而**缺的那几样明细在卡上照实标**
+  // （`util/roundsRestore` 的抬头逐条写着）。
+  //
+  // ⚠️ **活的卡一张都不许被盖住**（`mergeRestored` 那一条）：这一趟跑过、
+  //    或者跑着切走又切回的那一份带着明细（P101 B 那一刀之后更全），
+  //    读回来的只是骨架——**骨架不许盖住全量**。
+  useEffect(() => {
+    const id = current?.id
+    if (!id) return
+    let alive = true
+    void api.listNoteRounds(id)
+      .then((p) => {
+        // 等回来之后**再核一次开着的是不是同一篇**：这几百毫秒里用户可能已经切走了
+        // （`listChangeLayers` 那条路同一条理由）。
+        if (!alive || currentRef.current?.id !== id) return
+        const restored = restoredRounds(p)
+        if (!restored.length) return
+        // **走 `writeRounds`**（不是自己 `setRoundsByNote`）：直接动那张表的地方
+        // 该正好 1 处，多一处就是绕过了「写入必须点名写给哪一篇」——
+        // `util/roundsWiring` 第 ⑤ 问钉的就是这个，闸在 `npm test` 里。
+        writeRounds(id, (cur) => mergeRestored(cur, restored))
+      })
+      .catch(() => { /* 读不回来就是没有卡，跟改之前一模一样——不弹话打扰用户 */ })
+    return () => { alive = false }
+  }, [current?.id, writeRounds])
+
   /** 放不回来的那一层：**按现在的正文再算一次**（P41 #5 ②）。
    *
    *  正文在这之后可能又变了（用户照着 toast 把那段话改回去了、或者撤销了一步），
@@ -2403,10 +2436,8 @@ export default function App() {
         setNoteHarnessStatus('已自动生成骨架，开始第一轮')
       },
       onRoundStart: (d) => {
-        if (currentRef.current?.id !== noteId) return
-        // 新的一轮 = 新的一条撤销事件（P11 #2）：这一轮落地的修订 + 续写全并进它，⌘Z 一次撤一轮。
-        // **在预留空行之前加**——那个空行也是这一轮插的，⌘Z 之后不该剩下它。
-        setUndoGroup((g) => g + 1)
+        // **记账这一句排在 guard 前面**（P101 B）：`patchRound` 按 noteId 写，
+        // 切走了照样该建这一轮的卡——拦住它就是 P99 实拍那个 2 → 1 的上游。
         // skipped_continue：上一轮评分说重复是当前最弱的一项，这一轮
         // 后端直接跳过续写、只再跑一次聚焦修订，不会有 delta 事件
         // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
@@ -2438,6 +2469,11 @@ export default function App() {
           citeMarked: d.cite_marked,
           citeMatched: d.cite_matched,
     })
+        // ── 记账到此为止，下面全是**动当前这篇**的（P101 B 那一刀的分界线）──
+        if (currentRef.current?.id !== noteId) return
+        // 新的一轮 = 新的一条撤销事件（P11 #2）：这一轮落地的修订 + 续写全并进它，⌘Z 一次撤一轮。
+        // **在预留空行之前加**——那个空行也是这一轮插的，⌘Z 之后不该剩下它。
+        setUndoGroup((g) => g + 1)
         if (d.skipped_continue) {
           setNoteHarnessStatus(`第 ${d.round} 轮：修订 ${d.revisions_applied} 处，正在清理重复内容…`)
           return
@@ -2495,6 +2531,21 @@ export default function App() {
         })
       },
       onDelta: (text) => {
+        // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
+        // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
+        // 干等的状态文案有用得多。
+        //
+        // **这一句排在 guard 前面**（P101 B）：它按 noteId 写，跟「现在显示的是哪篇」
+        // 无关。P99 实拍丢的就是它——跑着切走 20 秒，卡上「本轮写出的正文」**2 → 1**，
+        // 不切走的对照是 2。
+        writeRounds(noteId, (rs) => {
+          if (!rs.length) return rs
+          const next = [...rs]
+          const last = next[next.length - 1]
+          next[next.length - 1] = { ...last, streamed: (last.streamed ?? '') + text }
+          return next
+    })
+        // ── 记账到此为止，下面是**动正文**（切走了一个字都不许动）──
         if (currentRef.current?.id !== noteId) return
         {
           // 从 liveContentRef 算，不用 updater：updater 的执行时机跟闭包里的游标
@@ -2507,16 +2558,6 @@ export default function App() {
           liveContentRef.current = next
           setContent(next)
         }
-        // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
-        // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
-        // 干等的状态文案有用得多。
-        writeRounds(noteId, (rs) => {
-          if (!rs.length) return rs
-          const next = [...rs]
-          const last = next[next.length - 1]
-          next[next.length - 1] = { ...last, streamed: (last.streamed ?? '') + text }
-          return next
-    })
       },
       onTextEnd: () => {
         if (currentRef.current?.id !== noteId) return
@@ -2557,9 +2598,7 @@ export default function App() {
         if (base && cur && base.replace(/\s+$/, '') !== cur.replace(/\s+$/, '')) pushDiff('智能续写', base, cur, true)
       },
       onEvaluate: (d) => {
-        if (currentRef.current?.id !== noteId) return
-        const beatScore = d.scores['beat_coverage']
-        if (beatScore) setBeatCoverage(beatScore)
+        // **记账排在 guard 前面**（P101 B）：按 noteId 写，切走了照样该记这一轮的分。
         writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
@@ -2571,19 +2610,23 @@ export default function App() {
           }
           return next
     })
+        // ── 记账到此为止，下面是**动当前这篇的右栏 / 状态行** ──
+        if (currentRef.current?.id !== noteId) return
+        const beatScore = d.scores['beat_coverage']
+        if (beatScore) setBeatCoverage(beatScore)
         if (d.status === 'continue' && d.weakest) {
           setNoteHarnessStatus(`这一轮评分：${d.weakest} 还不够，下一轮优先改这个`)
     }
       },
       onPhase: (d) => {
-        if (currentRef.current?.id !== noteId) return
+        // **整条都是按 noteId 记账**（P101 B）：那句一刀切的 guard 在这儿纯属误伤，删了。
         // 用 patchRound 而不是改"最后一张卡片"：修订 pass 跑在
         // round-start **之前**，第 1 轮的 edit 阶段到达时卡片还不存在，
         // 直接改最后一张会把它整段丢掉——而那正是最想看的第一段。
         patchRound(noteId, d.round, { phase: d.phase, phaseLabel: d.label })
       },
       onPhaseDelta: (d) => {
-        if (currentRef.current?.id !== noteId) return
+        // **整条都是按 noteId 记账**（P101 B）：一刀切的 guard 在这儿是误伤，删了。
         writeRounds(noteId, (rs) => {
           const i = rs.findIndex((r) => r.round === d.round)
           const base = i < 0 ? null : rs[i]
@@ -2605,12 +2648,13 @@ export default function App() {
     })
       },
       onToolCalls: (d) => {
-        if (currentRef.current?.id !== noteId) return
+        // **记账排在 guard 前面**（P101 B）；状态行那句是「现在显示的这篇」的，照旧拦。
         patchRound(noteId, d.round, { toolCalls: d.calls, toolTruncated: d.truncated })
+        if (currentRef.current?.id !== noteId) return
         setNoteHarnessStatus(`第 ${d.round} 轮：agent 自己查了知识库 ${d.calls.length} 次，续写中…`)
       },
       onPolicy: (d) => {
-        if (currentRef.current?.id !== noteId) return
+        // **整条都是按 noteId 记账**（P101 B）：一刀切的 guard 在这儿是误伤，删了。
         // round 0 = 开跑前用历史运行记录定的初始策略，还没有对应的轮次卡片，
         // 挂到第 1 轮上；其余挂在产生它的那一轮
         patchRound(noteId, Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
@@ -2643,7 +2687,7 @@ export default function App() {
       },
       onDropped: (detail) => {
         // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
-        if (currentRef.current?.id !== noteId) return
+        // **整条都是按 noteId 记账**（P101 B）：一刀切的 guard 在这儿是误伤，删了。
         writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
@@ -2657,7 +2701,7 @@ export default function App() {
       onSkills: (d) => {
         // 这次跑带了哪几条技能（P1-1b）。第一轮开跑就到，记在那一轮的卡片上；
         // 用户第 768 轮「Skill 有时能加载有时不能」——此前界面上没有任何一处说过这件事。
-        if (currentRef.current?.id !== noteId) return
+        // **整条都是按 noteId 记账**（P101 B）：一刀切的 guard 在这儿是误伤，删了。
         patchRound(noteId, d.round, { skills: { scope: d.scope, injected: d.injected, menu: d.menu } })
       },
       onCheckHit: (d) => {
@@ -2669,7 +2713,10 @@ export default function App() {
         // **攒成一串，不是留最后一条**（计划 12.1）：一轮里可以先到几条
         // 「卡住了放行」的、最后才到短路的那一条，原来后到的把先到的盖掉
         // ——判据真的命中了，用户看不见。
-        if (currentRef.current?.id !== noteId) return
+        //
+        // **整条都是这次跑的账**（P101 B）：`writeRounds` 按 noteId 写，
+        // `stuckCheckRef` 是 `onDone` 那句「连响几轮」的唯一来源，而 `onDone`
+        // 切走了照样跑——拦住这儿等于让收工那句话少半截。一刀切的 guard 删了。
         if (d.stopped) stuckCheckRef.current = { check: d.check || '', rounds: d.stuck_rounds || 0 }
         writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
@@ -2699,13 +2746,8 @@ export default function App() {
         toast(`「${d.middleware}」这一步出错了，本轮少了这个能力：${d.error}`, 'error')
       },
       onError: (detail) => {
-        if (currentRef.current?.id !== noteId) return
-        // `loop.run` 只在整个跑挂掉时才发 RUN_ERROR（之后没有 RUN_FINISHED）。P3 实拍：模型 500 时
-        // 轮次卡片上挂着一段红字、状态却停在「在写…」，没有 toast、没有「停下了」。这里把话说全。
-        setHarnessDone(true); harnessDoneRef.current = true
-        setNoteHarnessStatus(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`)
-        if (/连不上|拒绝|返回 \d{3}|没应答/.test(detail)) toastAction(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
-        else toast(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, 'error')
+        // **记账排在 guard 前面**（P101 B）：这一轮报了什么错是这一篇的账，
+        // 按 noteId 写；切走了这张卡照样该留着那段红字。
         writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
@@ -2715,6 +2757,14 @@ export default function App() {
           }
           return next
     })
+        // ── 下面全是**现在显示的这篇**的（状态行 / toast / 「跑完了」那个开关）──
+        if (currentRef.current?.id !== noteId) return
+        // `loop.run` 只在整个跑挂掉时才发 RUN_ERROR（之后没有 RUN_FINISHED）。P3 实拍：模型 500 时
+        // 轮次卡片上挂着一段红字、状态却停在「在写…」，没有 toast、没有「停下了」。这里把话说全。
+        setHarnessDone(true); harnessDoneRef.current = true
+        setNoteHarnessStatus(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`)
+        if (/连不上|拒绝|返回 \d{3}|没应答/.test(detail)) toastAction(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
+        else toast(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, 'error')
       },
       onDone: (reason, blockedReason, runId, serverContent) => {
         // **用户已经切到别的笔记了**：这一篇的结果绝不能写进现在显示的那篇——
@@ -2770,14 +2820,21 @@ export default function App() {
         notifyIfHidden('MEMOKET NOTE · 智能续写', `${notes.find((x) => x.id === noteId)?.title || '笔记'}：${label}`)
       },
     }
-    // **统一挡一层**：run 属于 noteId 那篇，用户切走之后它的每个事件都不该碰
-    // 现在显示的这篇——之前只有一半 handler 各自写了这条判断，漏掉的那半
+    // **统一挡一层**：run 属于 noteId 那篇，用户切走之后**动正文 / 动编辑器**那几条
+    // 都不该碰现在显示的这篇——之前只有一半 handler 各自写了这条判断，漏掉的那半
     // （onDone 的正文对齐、骨架）把 A 的内容和骨架写进了 B（探针实拍两次）。
-    // onDone 自己处理了跨笔记的情况（只提示不动正文），其余一律忽略。
+    //
+    // **P101 B：这一层原来是「一刀切」，那是误伤。** `writeRounds` / `patchRound`
+    // 本来就**按 noteId 写**（P95 A 那一刀），碰不到「现在显示的那篇」；拦住它们的后果
+    // 是 P99 在真壳上实拍到的 **2 → 1**（跑着切走 20 秒，卡上「本轮写出的正文」少一整块，
+    // 不切走的对照是 2）。所以现在**按 `util/harnessGuard` 那张表逐条问**：
+    // 有按 noteId 记账那一份的放行（它们自己把记账那几句排在自己那句 guard 前面），
+    // 一点账都不记的照旧拦。**表里没有的键一律拦**（保守那一侧），
+    // 而「新加一条忘了归档」有闸当场红（`scripts/check-harness-guard.mts`：集合相等）。
     const guarded: api.NoteHarnessHandlers = {}
     for (const [k, fn] of Object.entries(h) as [keyof api.NoteHarnessHandlers, (...a: unknown[]) => void][]) {
       guarded[k] = ((...args: unknown[]) => {
-        if (k !== 'onDone' && currentRef.current?.id !== noteId) return
+        if (k !== 'onDone' && guardBlocks(k) && currentRef.current?.id !== noteId) return
         fn(...args)
       }) as never
     }

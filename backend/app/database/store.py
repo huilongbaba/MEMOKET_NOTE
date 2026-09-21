@@ -3235,3 +3235,113 @@ def prune_snapshots(user_id: str, keep: int = 20) -> int:
             c.execute("DELETE FROM harness_snapshots WHERE id=?", (run_id,))
         c.commit()
     return len(stale)
+
+
+# ---------------------------------------------------------------- 轮次卡读回来（P101 A）
+
+#: 轮次卡上有、`harness_rounds` 里**一个字都没有**的那几样（P99 B1 逐条数出来的）。
+#:
+#: 这份名单是**判据的一部分**，不是文案：P99 判②里那半句「缺的明细在卡上照实标」
+#: 说的就是它。回给前端、前端**逐条摆在卡上**，用户于是看得出
+#: 「这是从库里读回来的骨架」而不是「那一轮就写了这么点东西」。
+#: **「读回的是这一段 ≠ 右栏摆的是这一段」**——宁可少摆，也别把骨架冒充成全量。
+ROUND_SKELETON_MISSING = (
+    "本轮写出的正文",
+    "工具调用逐条",
+    "技能名单",
+    "出错 / 丢弃的修订",
+    "策略调整理由",
+    "上一轮诊断原话",
+    "阶段实时输出",
+    "打分器的判词",
+)
+
+
+def last_note_run_rounds(note_id: str) -> dict:
+    """**这一篇最近那一次跑的每一轮**，读回来给右栏重建卡片骨架（P101 A，收 P99 B 判②）。
+
+    ── 为什么是「读回来」而不是「落库」（P99 B 判①②③ 逐条量过）────────────
+    `harness_rounds` **早就逐轮记着骨架**（`round` / `scores` / `status` / `weakest` /
+    `content_len` / `tool_calls` / `fired_checks` / `cite_*`…），而且
+    `record_harness_round` 自己按 key 修剪到最近 400 行 ⇒ **体积本来就有上限**。
+    P99 实拍：那一篇 **6 次跑 / 12 行轮次**躺在库里，而界面重开之后是 **0 张卡**
+    ——**前端一行都没读，也没有这条 API**。所以缺的是**读回来那条路**，
+    不是再开一张表（同一件事第二把尺）。
+
+    ── 它**只读**，而且只读得到骨架 ──────────────────────────────────────
+    * 一条 `INSERT` / `UPDATE` / `DELETE` 都没有；闸在 `backend/tests/test_p101.py`
+      （调完前后 `harness_rounds` / `harness_runs` / `notes` 三张表的指纹逐字相同，
+      并且**先喂一个真会写的反例证明那条闸看得见写**）。
+    * **卡上有、库里没有的那几样**在 {!ROUND_SKELETON_MISSING} 里逐条列着，一样都读不回来
+      ——`scores` 在库里是 `{维度: 档位}`，**打分器那句判词本来就没存**。
+
+    ── 两处「选不到 ≠ 没有」────────────────────────────────────────────
+    * `key` **逐字等于** `note:<id>`，**不是任何一种松一点的匹配**：库里真有
+      `note:stage3-92d07b760f1e-67861` 这种 key（分段跑的），而它**里头含着那篇的 id**
+      ——`like '%'||<id>||'%'` 会把分段跑的那几轮当成整篇的端上来。
+      ⚠️ **不是所有松法都会出事**：`like 'note:<id>%'`（前缀）在这个形状上**咬不到**它
+      （`note:stage3-…` 不以 `note:<id>` 开头）。这一条是砍刀实拍出来的
+      ——第一版拿前缀当反例，闸没红，**刀没砍到判据上不等于闸瞎了**。
+    * `run_id` 是空串的那几行**不认**（没挂 `Ledger` 的老跑法）：`rounds_of_run('')`
+      会把**所有**空 run_id 的行一锅端回来，那是好几次跑混在一起。
+      这一档回 `reason='no_run_id'`（**不是「这一篇没跑过」**——两件事不许长成同一个 0）。
+    """
+    key = f"note:{note_id}"
+    with connect() as c:
+        row = c.execute(
+            "SELECT run_id, created_at FROM harness_rounds WHERE key=? "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1", (key,)).fetchone()
+        runs_total = c.execute(
+            "SELECT count(DISTINCT run_id) FROM harness_rounds WHERE key=?", (key,)).fetchone()[0]
+        rounds_total = c.execute(
+            "SELECT count(*) FROM harness_rounds WHERE key=?", (key,)).fetchone()[0]
+        if row is None:
+            return {"runId": "", "at": "", "status": "", "stopped": "", "rounds": [],
+                    "reason": "no_rounds", "runsTotal": 0, "roundsTotal": 0,
+                    "missing": list(ROUND_SKELETON_MISSING)}
+        run_id = row["run_id"] or ""
+        if not run_id:
+            return {"runId": "", "at": row["created_at"], "status": "", "stopped": "",
+                    "rounds": [], "reason": "no_run_id",
+                    "runsTotal": runs_total, "roundsTotal": rounds_total,
+                    "missing": list(ROUND_SKELETON_MISSING)}
+        rows = c.execute(
+            "SELECT * FROM harness_rounds WHERE key=? AND run_id=? ORDER BY round",
+            (key, run_id)).fetchall()
+        run = c.execute("SELECT * FROM harness_runs WHERE id=?", (run_id,)).fetchone()
+    return {
+        "runId": run_id,
+        "at": row["created_at"],
+        # 这一次跑收工时的那一行（`stopped` = 为什么停的）。**没有也正常**：
+        # 跑到一半被关掉 / 崩掉时 `record_harness_run` 根本没跑到那一句。
+        "status": (run["status"] if run is not None else ""),
+        "stopped": (run["stopped"] if run is not None and "stopped" in run.keys() else ""),
+        "rounds": [{
+            "round": r["round"],
+            # 库里是 `{维度: 档位}`（`ledger.after_judge` 那一句
+            # `{n: s.level for n, s in st.ev.scores.items()}`）——**判词没存**。
+            "scores": json.loads(r["scores"] or "{}"),
+            "status": r["status"],
+            "weakest": r["weakest"],
+            "contentLen": r["content_len"],
+            "toolCalls": r["tool_calls"],
+            "repeatCalls": r["repeat_calls"],
+            "revisionsProposed": r["revisions_proposed"],
+            "revisionsDropped": r["revisions_dropped"],
+            "depthDropped": r["depth_dropped"],
+            "factsNew": r["facts_new"],
+            "factsTotal": r["facts_total"],
+            # `cite_*` 三列 **`-1` 是「这一轮压根没走到 `before_judge`」**，
+            # `0` 是「算过了、一句可引的都没有」（`citeCoverLine` 那两句话）。
+            # **不许 `or 0`**，两件事不许长成同一个数。
+            "citeLocated": r["cite_located"],
+            "citeMarked": r["cite_marked"],
+            "citeMatched": r["cite_matched"],
+            "firedChecks": r["fired_checks"] or "",
+            "at": r["created_at"],
+        } for r in rows],
+        "reason": "ok",
+        "runsTotal": runs_total,
+        "roundsTotal": rounds_total,
+        "missing": list(ROUND_SKELETON_MISSING),
+    }
