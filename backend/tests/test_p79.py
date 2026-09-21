@@ -143,17 +143,27 @@ def test_第一条e_跨空白那条判据自己也有反例():
 
 def test_第二条_那条路今天还在_而且连空结果都照摆():
     """**P48 ③ 判过「今天 0 个用户看得见」，P69 已经更正为「不成立」。**
-    这一格再核一遍：那一行今天仍然在摆，**而且 `facts.length` 一个字都没问**。
+    这一格再核一遍：那一行今天仍然在摆——**0 召回也照摆**（真库上 9/10 条）。
 
-    `hits` 非空就渲染 `KbSection`，`extra` 里那一段只看 `hits.terms.length`——
-    所以「0 条结果 · 命中词：潜水艇」这一屏今天照样摆得出来（真库上 9/10 条）。
+    ⚠️ **P81 ③ 落刀之后这条断言改了两处，照实记**（原文留在下面）：
+
+    * 原来钉的是 `"命中词：' + hits.terms.slice(0, 6)"` 一整串。P81 ③ 把那一行
+      拆成两个标签（有召回「命中词：」/ 0 召回「找过：」），这一串不再逐字存在。
+      **钉的东西变了，钉的那件事没变**：`slice(0, 6)` 还在 ⇒ `SHOW=6` 还成立。
+    * 原来还钉着 `"facts.length" not in line`——那正是 P79 ② 报的 bug 本身
+      （「那一行只看 `terms.length`，`facts.length` 一个字都没问」）。
+      **P81 ③ 修的就是它**，所以这一条现在反过来断言：那一行**必须**看 `facts.length`。
+
+    `EXPECT_EMPTY_WITH_LINE = 9` 这个数 **P81 一个字没动**——
+    **摆不摆是一件事，摆的叫什么是另一件。**
     """
     src = KB_DASH.read_text(encoding="utf-8")
-    assert "命中词：' + hits.terms.slice(0, 6)" in src, "那一行变了，P79 ② 的数跟着废"
+    assert "hits.terms.slice(0, 6)" in src, "那一行不再 slice(0, 6)，SHOW=6 跟着废"
     assert "recall(q, 20)" in src, "limit 变了，这把尺的 LIMIT=20 跟着废"
-    line = next(ln for ln in src.splitlines() if "命中词：" in ln)
-    assert "hits.terms.length ?" in line
-    assert "facts.length" not in line, "如果这一行开始看 facts.length，P69 那笔账要重读"
+    line = next(ln for ln in src.splitlines() if "hits.terms.slice(0, 6)" in ln)
+    assert "hits.terms.length ?" in line, "那一行不再先看 terms.length 决定摆不摆"
+    assert "hits.facts.length ?" in line, "P81 ③ 那一刀不在了——0 召回又开始叫「命中词」"
+    assert "' · 命中词：' : ' · 找过：'" in line, "P81 ③ 那两个标签变了"
     assert K.SHOW == 6 and K.LIMIT == 20
 
 

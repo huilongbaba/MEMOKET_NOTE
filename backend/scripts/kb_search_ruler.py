@@ -19,7 +19,9 @@ P77 ② 把渲染那一层量清楚了（765 条实测）：
 **⇒ 右栏那一行一条都走不到 `terms`。** 真摆 `display_terms` 的只剩一处：
 `frontend/src/components/kb/KbDashboard.tsx` 的
 
-    {hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}
+    {hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}   ← P79 那天
+    {hits.terms.length ? (hits.facts.length ? ' · 命中词：' : ' · 找过：')
+                         + hits.terms.slice(0, 6).join('、') : ''}                 ← P81 ③ 之后
 
 **而那条路的查询是用户手打的搜索词**——短、常常就一两个词、没有上下文，
 跟 `recall_ruler` 那 765 条（自动召回，光标段 + 前一段，中位数三位数字）**完全不是一个形状**。
@@ -71,6 +73,19 @@ P77 ② 把渲染那一层量清楚了（765 条实测）：
   可 `9月` / `30%` / `150` 打进去一条都搜不到。根因没查，**判据宁可窄，这一批不动。**
 * **「库里没有」那一档 10 条里 9 条 0 结果、却照样摆着「命中词：潜水艇」**——
   那一行摆的是**找过的词**，不是**命中的词**。跟第 1 条是同一件事的两半。
+
+---
+
+## P81 在这把尺上加了什么（**只加不改**，P79 钉死的九个数一个没动）
+
+* **上面第二格修了**（P81 ③）：`KbDashboard` 那一行 0 召回时改口「找过：」。
+  `check_source()` 跟着钉新的三段（两个标签的字面 + `facts.length` 那个判据）；
+  `--line` 把**用户眼前那一行的前后对比**原样打出来，两个标签**从 `.tsx` 里现读**，
+  这儿不另抄一份（抄一份就是两把尺，P67 ② 那一课）。
+  ⚠️ `EXPECT_EMPTY_WITH_LINE = 9` **这个数没动**——**摆不摆是一件事，摆的叫什么是另一件。**
+* **上面第一格量完了、判「不修」**（P81 ②）：数字日期那 20 条的解剖进了这把尺，
+  五个数钉死（库里真有 20/20 · 没通道 9 · 切不出词 11 = 两位数 4 + 日期量词 7）。
+  理由整段在 `EXPECT_NUMDATE_IN_CORPUS` 那几行上面。
 """
 
 from __future__ import annotations
@@ -119,6 +134,38 @@ EXPECT_GAP_MERGED_HEAD = 3     # 改之前：跨空白合出来的词
 EXPECT_GAP_MERGED_NOW = 0      # 改之后
 EXPECT_TOKEN_MISS = 0          # 打了的词一个都没摆出来
 EXPECT_NUMDATE_EMPTY = 20      # 数字日期那一档全 0 条
+
+# ── 数字日期那一档**为什么**全 0（P81 ②，只加不改：这几个数是 P79 ② 留的账的量化）──
+#
+# 那 20 条是从**这个库自己的事实原文**里长出来的（`_NUM` 找 ≥5 次的串），所以
+# 「库里有没有」这件事本来就该是 20/20。量下来正是：**20 条串库里全都有，20 条全搜不到。**
+# 产品搜索框写着 `placeholder="搜知识库：人、事、数字、日期…"`——**答应了的事它做不到。**
+#
+# 根因**是两个洞，不是一个**（P79 ② 只定位到前一个）：
+#   · `plan` 没有数字通道 —— `_number_terms` 只喂 `_terms`（那一行「命中词：」），
+#     `search.plan` 的三条通道（symbolic / 英文词 / 中文 grep）和 `_recall_via_lines`
+#     的两条（`_cjk_terms` + `_candidate_terms`）**都不收数字**。
+#     `_terms` 认得出 `150` / `30%` / `8个`，`plan` 回空 → 候选池空 → 0 条。
+#   · `_NUM` 自己就切不出来 —— `\d+月\d+|\d+(\.\d+)?[台套个件人次轮版元万亿%]|\d{3,}`：
+#     两位数的裸数字（`11` `13` `42` `95`）过不了 `\d{3,}`；
+#     而那张量词表里**没有 `月` / `号` / `日` / `年`**，于是 `9月` `23号` `19号` `30号`
+#     `29号` `4号` `23年` 连 `_terms` 都是空的——**产品自己写的「日期」那两个字，
+#     是这一档里连词都切不出来的那个形状。**
+#
+# 能搜到的「数字」全是**别的通道顺带救的**，不是数字通道（P81 ② 逐条量过）：
+# `Q3` / `T0` / `DVT` 走英文词通道、`950` 走 symbolic（`950 超节点` 是实体）。
+#
+# **这一批量完判「不修」**，理由在台账 P81 ②：补 `plan` 那个洞的反事实
+# 在 765 那把尺上爆炸半径确实是 0，但逐条读那 9 条捞回来的——
+# `600` 命中 `60000000` / `4600万` / `1,600毫米`、`8个` 命中 `18个` / `128个`
+# ——因为 `_hits` 对数字是**去空白后子串匹配**（注释里写着理由：事实原文写成「4 月 16 号」）。
+# 要它不噪就得给数字加数位边界，而 `_hits` 同时喂着 765 条自动召回的排序和命中词行。
+# **一刀只动一处**，这一批先把量程钉下来。
+EXPECT_NUMDATE_IN_CORPUS = 20   # 20 条串，库里真的有的（= 全部）
+EXPECT_NUMDATE_NO_CHANNEL = 9   # `_terms` 切得出、`plan` 没通道 → 0 条
+EXPECT_NUMDATE_NO_TOKEN = 11    # `_NUM` 连词都切不出来（4 条两位数 + 7 条日期量词）
+EXPECT_NUMDATE_TWO_DIGIT = 4    # 其中：两位数裸数字
+EXPECT_NUMDATE_DATE_UNIT = 7    # 其中：`月` / `号` / `日` / `年` 这张量词表外的
 
 
 def corpus_tag(user: str = USER) -> str:
@@ -207,6 +254,29 @@ def crosses_gap(term: str, squeezed: str, gaps: set[int]) -> bool:
         start = i + 1
 
 
+_DATE_UNIT = re.compile(r"^\d+[月号日年]$")
+
+
+def numdate_shape(memory, q: str) -> str:
+    """数字日期那一档的一条**为什么**搜不到——三选一，机械判据（P81 ②）。
+
+    `no_token` = `_NUM` 连词都切不出来；`no_channel` = 切得出但 `plan` 没这条通道；
+    `ok` = 真搜得到。判的是**今天的源码**，不是台账上的数。
+    """
+    if kb_search._number_terms(q):
+        store, vocab = memory._index()
+        plan = kb_search.plan(memory, q, vocab, segment=memory.segment(),
+                              common=memory.common_term())
+        return "no_channel" if not plan else "ok"
+    return "no_token"
+
+
+def in_corpus(memory, q: str) -> int:
+    """这一串在**事实原文**里出现在几条上——ground truth，跟召回那条路无关。"""
+    store, _vocab = memory._index()
+    return sum(1 for f in store.facts.values() if q in (f.text or ""))
+
+
 def measure(memory) -> dict:
     qs = queries(memory)
     rows = []
@@ -228,6 +298,10 @@ def measure(memory) -> dict:
                                and not any(tk in kb_search.squeeze(t) or
                                            kb_search.squeeze(t) in tk
                                            for tk in toks for t in now)),
+            # 数字日期那一档多带两格（P81 ②）：库里到底有没有，以及**为什么**搜不到。
+            # 别的档不算（`in_corpus` 要扫两万条事实，只在这 20 条上花这个钱）。
+            "in_corpus": in_corpus(memory, q) if stratum == "数字日期" else None,
+            "shape": numdate_shape(memory, q) if stratum == "数字日期" else None,
         })
     return {"rows": rows}
 
@@ -305,13 +379,21 @@ def check_source() -> list[str]:
     if not kb.is_file():
         return ["找不到 KbDashboard.tsx——这把尺量的那条路可能已经不在了"]
     src = kb.read_text(encoding="utf-8")
-    if "命中词：' + hits.terms.slice(0, 6)" not in src:
-        bad.append("`KbDashboard` 里那一行「命中词：」变了（这把尺的 SHOW=6 跟着废）")
+    # **P81 ③ 之后这一行是两个标签**：有召回 → 「命中词：」，0 召回 → 「找过：」。
+    # 三段都钉着：两个标签的字面 + 那个三元的判据。
+    # （P79 那版钉的是 `"命中词：' + hits.terms.slice(0, 6)"` 一整串——这一批改了口，
+    #   所以这里跟着改；`SHOW=6` 仍然由 `slice(0, 6)` 那一段钉着。）
+    if "hits.terms.slice(0, 6)" not in src:
+        bad.append("`KbDashboard` 里那一行不再 `slice(0, 6)`（这把尺的 SHOW=6 跟着废）")
+    if "' · 命中词：' : ' · 找过：'" not in src:
+        bad.append("那一行的两个标签变了——P81 ③ 那一刀（0 召回时改口「找过：」）不在了")
+    if "hits.facts.length ?" not in src:
+        bad.append("那一行不再按 `facts.length` 分两支——P81 ③ 那一刀不在了")
     if "recall(q, 20)" not in src:
         bad.append("`KbDashboard` 不再按 limit=20 召回（这把尺的 LIMIT 跟着废）")
-    # P69 更正过的那一格：那一行**只**看 `terms.length`，没问 `facts.length`
+    # P69 更正过的那一格：那一行仍然先看 `terms.length` 决定摆不摆（P81 ③ 只改了标签）
     if "hits.terms.length ?" not in src:
-        bad.append("那一行不再只看 `terms.length`——P48 ③ / P69 那笔账要重读")
+        bad.append("那一行不再先看 `terms.length`——P48 ③ / P69 / P81 那笔账要重读")
     import inspect
     import textwrap
     dt = textwrap.dedent(inspect.getsource(kb_search.display_terms))
@@ -354,18 +436,56 @@ def main(argv: list[str]) -> int:
               f" · 0 结果还摆命中词 {sum(1 for r in g if r['n'] == 0 and r['shown']):3}"
               f" · 摆了没打的词 {sum(1 for r in g if r['unasked']):3}"
               f" · 跨空白合出来的（改之前）{sum(1 for r in g if r['gap_head']):3}")
-    print(f"  **0 条结果还摆命中词：{len(empty_line)} 条**"
-          f"（P48 ③ 判过「今天 0 个用户看得见」，P69 更正为不成立——**今天仍然成立**）")
+    print(f"  **0 条结果还摆着那一行：{len(empty_line)} 条**"
+          f"（P48 ③ 判过「今天 0 个用户看得见」，P69 更正为不成立，P79 第三次核实仍在摆；"
+          f"**P81 ③ 落刀**：这 {len(empty_line)} 条今天的标签是「找过：」不是「命中词：」，"
+          f"`--line` 打前后对比。**这个数本身没动**——摆不摆是一件事，摆的叫什么是另一件。）")
     print(f"  摆了用户没打过的词：{len(unasked)} 条")
     print(f"  跨空白合出来的词：改之前 {len(gap_head)} 条 → 改之后 {len(gap_now)} 条"
           f"；两版不一样的 {len(moved)} 条（**旋钮在动**）"
           f"  改之前那几条：{[r['gap_head'] for r in gap_head]}"
           f" → 今天 {[r['shown'] for r in gap_head]}")
     print(f"  打了的词一个都没摆出来：{len(tmiss)} 条")
+
+    # ── 数字日期那一档的解剖（P81 ②，只加不改）────────────────────────────
+    nd = [r for r in rows if r["档"] == "数字日期"]
+    nd_in = [r for r in nd if (r["in_corpus"] or 0) > 0]
+    nd_nochan = [r for r in nd if r["shape"] == "no_channel"]
+    nd_notok = [r for r in nd if r["shape"] == "no_token"]
+    nd_2d = [r for r in nd_notok if r["q"].isdigit() and len(r["q"]) <= 2]
+    nd_date = [r for r in nd_notok if _DATE_UNIT.match(r["q"])]
     print(f"  ⚠️ 数字日期那一档 {len(numdate_empty)}/20 条 **0 结果**"
-          f"——搜索框自己写着「数字、日期」。**这一批只量，没修。**")
+          f"——搜索框自己写着「数字、日期」。**P81 ② 量完判「不修」，账在台账。**")
+    print(f"     库里真的有这一串的：{len(nd_in)}/20 条"
+          f"（这一档本来就是从事实原文里长出来的——**有，但搜不到**）")
+    print(f"     `_terms` 切得出、`plan` 没通道：{len(nd_nochan)} 条 "
+          f"{[r['q'] for r in nd_nochan]}")
+    print(f"     `_NUM` 连词都切不出来：{len(nd_notok)} 条"
+          f"（两位数裸数字 {len(nd_2d)} {[r['q'] for r in nd_2d]}"
+          f" · `月/号/日/年` 不在量词表里 {len(nd_date)} {[r['q'] for r in nd_date]}）")
     print(f"  「库里没有」那一档真有命中的：{len(missing_hit)} 条"
           f"（{[r['q'] for r in missing_hit]}）")
+
+    if "--line" in argv:
+        # **用户眼前那一行，改之前 / 改之后**（P81 ③）。
+        # 两个标签的字面**从 `KbDashboard.tsx` 里读出来**，不在这儿另抄一份——
+        # 抄一份就是两把尺，产品改了口这儿还照旧印（P67 ② 那一课）。
+        src = (BACKEND.parent / "frontend" / "src" / "components" / "kb"
+               / "KbDashboard.tsx").read_text(encoding="utf-8")
+        mm = re.search(r"\? '( · [^']+)' : '( · [^']+)'", src)
+        if not mm:
+            print("读不出那两个标签——`KbDashboard.tsx` 那一行的形状变了", file=sys.stderr)
+            return 9
+        hit_label, miss_label = mm.group(1), mm.group(2)
+        print(f"\n  用户眼前那一行（标签从 `KbDashboard.tsx` 现读：命中={hit_label.strip()}"
+              f" / 0 召回={miss_label.strip()}）：")
+        for r in rows:
+            if r["n"] or not r["shown"]:
+                continue
+            words = "、".join(r["shown"][:SHOW])
+            print(f"    搜 {r['q']!r}")
+            print(f"      改之前： {r['n']} 条结果{hit_label}{words}")
+            print(f"      改之后： {r['n']} 条结果{miss_label}{words}")
 
     if "--list" in argv:
         for r in rows:
@@ -392,6 +512,16 @@ def main(argv: list[str]) -> int:
         bad.append(f"打了的词一个都没摆 {len(tmiss)} ≠ {EXPECT_TOKEN_MISS}")
     if len(numdate_empty) != EXPECT_NUMDATE_EMPTY:
         bad.append(f"数字日期档 0 结果 {len(numdate_empty)} ≠ {EXPECT_NUMDATE_EMPTY}")
+    if len(nd_in) != EXPECT_NUMDATE_IN_CORPUS:
+        bad.append(f"数字日期档库里真有的 {len(nd_in)} ≠ {EXPECT_NUMDATE_IN_CORPUS}")
+    if len(nd_nochan) != EXPECT_NUMDATE_NO_CHANNEL:
+        bad.append(f"数字日期档「没通道」{len(nd_nochan)} ≠ {EXPECT_NUMDATE_NO_CHANNEL}")
+    if len(nd_notok) != EXPECT_NUMDATE_NO_TOKEN:
+        bad.append(f"数字日期档「切不出词」{len(nd_notok)} ≠ {EXPECT_NUMDATE_NO_TOKEN}")
+    if len(nd_2d) != EXPECT_NUMDATE_TWO_DIGIT:
+        bad.append(f"数字日期档两位数裸数字 {len(nd_2d)} ≠ {EXPECT_NUMDATE_TWO_DIGIT}")
+    if len(nd_date) != EXPECT_NUMDATE_DATE_UNIT:
+        bad.append(f"数字日期档日期量词 {len(nd_date)} ≠ {EXPECT_NUMDATE_DATE_UNIT}")
     if len(missing_hit) != EXPECT_MISSING_HIT:
         bad.append(f"「库里没有」那一档命中 {len(missing_hit)} ≠ {EXPECT_MISSING_HIT}")
     if bad:
