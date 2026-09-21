@@ -68,8 +68,10 @@ WATCHED: tuple[str, ...] = (
     "backend/scripts/card_origin_ruler.py",
     "backend/scripts/margin_dot_ruler.py",
     "backend/scripts/topic_spread_ruler.py",
+    "backend/scripts/journey_fixture.py",
     "frontend/scripts/check-walkthrough-fakeshell.mts",
     "frontend/scripts/check-walkthrough-selectors.mts",
+    "frontend/scripts/check-components-gate.mts",
 )
 # 哪些名字算「闸门常数」。**宁可窄**：只认这几个前缀，别的名字（`SEED` / `LIMIT` /
 # `USER`…）不进登记表，也就不受这把尺管——它们不是「下限」也不是「实测结论」。
@@ -88,6 +90,20 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         FLOOR, 30, "走查量具里选到的类名数。调低 = 量具被掏空了，选择器闸照样绿"),
     ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_SENDERS"): (
         FLOOR, 17, "发 `X-User-Id` 的量具份数（P78 A ⑤）。调低 = 身份那条契约扫不到人了"),
+    ("frontend/scripts/check-components-gate.mts", "MIN_COMPONENT_TESTS"): (
+        FLOOR, 1, "**vitest 真要跑的** `src/components/` 底下的测试文件数（P85 A 开的那条路）。"
+                  "调低到 0 = 那条路被关掉了还让闸绿着——而「不跑」和「跑绿了」在终端里长得一模一样。"
+                  "它一动去重读 P85 A 那一节：70 个源文件今天只有 1 份测试，这个数**只准往上**"),
+
+    # —— `pinned`：P85 A 那条新闸抄产品的两个数 ——
+    ("frontend/scripts/check-components-gate.mts", "EXPECT_LABEL_HITS"): (
+        PINNED, 1, "`KbDashboard.tsx` 代码行里 `' · 命中词：'` / `' · 找过：'` **各**出现几次。"
+                   "这两个标签是 P81 ③ 落的那一刀（0 条结果时那几个词是「找过的」不是「命中的」）。"
+                   "一动去重读 P81 ③ 和 P82 ③ 两节：那一行是不是被抄了第二份、或者哪一支被删了"),
+    ("frontend/scripts/check-components-gate.mts", "SHOW"): (
+        PINNED, 6, "**产品这一侧**的 `hits.terms.slice(0, 6)`——跟 `kb_search_ruler.SHOW` 是同一个 6，"
+                   "但那一份是尺子抄的、这一份钉的是源码本身。P79 第 ⑤ 刀实拍过「6 → 3 那把尺自己量不到」，"
+                   "P85 A 补上的正是这一头。一动 = 摆几串换了，`kb_search_ruler` 那 108 / 0 两个数一起重读"),
 
     # —— `pinned`：抄产品的那几个数。一动 = 尺子跟产品飘开了 ——
     ("backend/scripts/kb_search_ruler.py", "SHOW"): (
@@ -233,6 +249,18 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
     ("backend/scripts/kb_search_ruler.py", "EXPECT_DATEWRITE_PARTIAL"): (
         PINNED, 2, "那 2 串**两串都是只摆了一截**（`179美元`→`美元`、`1万台`→`万台`，数字被整个丢掉）。"
                    "跟上面那个 2 一起读：摆出来的每一串都名不副实，但总共只有两串"),
+
+    # —— P85 C②：走查第 ⑧ 步那个夹具（`--variant synthetic`）逐格钉死 ——
+    ("backend/scripts/journey_fixture.py", "EXPECT_SYNTHETIC"): (
+        PINNED, {"days": 3, "segs": (4, 2, 0), "desc": (2, 2, 0), "frames": (1, 0, 0),
+                 "thumbs": 6, "reports": 1, "bytes_norm": 4198},
+        "**走查第 ⑧ 步唯一可复现的那份夹具**（P83 留的第 ④ 条）。屏幕上那五行"
+        "（「3 天的记录 / 6 段，其中 4 段有描述 / 6 张缩略图 / 1 份写好的日报 / 一共 5 KB」）"
+        "逐格就是这张表。一动，⑧ 那一格跟 P83 / P85 的逐格对账当场作废——"
+        "先去重读走查表第 ⑧ 行和 `backend/tests/test_p85.py` 那四条。"
+        "⚠️ 钉的是**归一之后**的字节数：真字节数会随「造在哪个目录」变（`segments.json` 里 7 个绝对路径）。"
+        "P85 连栽两次才定下来——先钉 5066 换个目录红成 5073，退到「折成 KB」pytest 里又红成 4 KB。"
+        "**「粗一点」不等于「跟路径无关」**"),
 
     ("backend/scripts/margin_dot_ruler.py", "EXPECT"): (
         PINNED, {"dots": {"segments": 166, "judged": 137, "drawn": 33},

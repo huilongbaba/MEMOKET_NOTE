@@ -66,15 +66,21 @@ def test_第一条_下限那把尺今天全绿():
 def test_第一条b_哪几条是_floor_哪几条是_pinned():
     """**判哪些该钉死、哪些该只准往上**，这张表本身就是一条结论，钉死它。
 
-    只准往上的只有三条，全是「扫不到东西就一直绿」的那一类计数——它们**本来就该随代码涨**，
+    只准往上的这几条全是「扫不到东西就一直绿」的那一类计数——它们**本来就该随代码涨**，
     钉死等于每加一份量具红一次，而那样的闸迟早被人改成不红。
     别的全是**实测结论 / 抄产品的数**，一动就得重读，所以钉死。
+
+    **P85 加了第 4 条**（`MIN_COMPONENT_TESTS`）：`src/components/` 底下 vitest 真要跑的
+    测试文件数。它属于同一类——今天 1 份 / 70 个源文件，**该随代码涨**，
+    钉死等于每写一条 `components/` 的测试就红一次。调低到 0 才是要拦的那个方向
+    （那意味着那条路被关掉了，而「不跑」和「跑绿了」在终端里长得一模一样）。
     """
     floors = {k for k, v in F.REGISTRY.items() if v[0] == F.FLOOR}
     assert floors == {
         ("frontend/scripts/check-walkthrough-fakeshell.mts", "MIN_STEPS"),
         ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_CLASSES"),
         ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_SENDERS"),
+        ("frontend/scripts/check-components-gate.mts", "MIN_COMPONENT_TESTS"),
     }
     # 每一条登记都得说清楚**它一动要去重读什么**：一句空话的登记等于没登记
     for key, (kind, _base, why) in F.REGISTRY.items():

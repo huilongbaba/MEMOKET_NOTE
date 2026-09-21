@@ -1,0 +1,7 @@
+窗口 origin: http://127.0.0.1:<PORT>
+  /api/health: {"status":"ok","backend":{"pid":26273,"data_dir":"<DIR>","started_at":"2026-09
+  窗口自己认的身份: terrence
+  带头问 /api/notes?limit=1: 200 [{"ingested_at":"","source":"slides","source_id":"","imported_at":"","id":"<ID12>","user_id":"terrence","title":"harness 测试（可删） · 幻灯片","content":"---\nmarp: true\nslides: true\n---\n\n# 创业一年
+  带头问 /api/journey/days: 200 ["<D0>","<D-1>"]
+  现在开着哪一篇（note id）: <ID12>
+  自检横幅: (没有)

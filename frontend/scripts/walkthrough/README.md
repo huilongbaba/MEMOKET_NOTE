@@ -14,6 +14,8 @@ P66 把驱动搬了进来，**步骤脚本留在了外面**——于是 P66 / P6
 | 选择器静态自检 | `frontend/scripts/check-walkthrough-selectors.mts` | **`npm test`** |
 | 「按 README 跑得起来」那条闸 | `frontend/scripts/check-walkthrough-runnable.mts` | **`npm test`** |
 | userData 造法（写 `identity.json`、拷 codebook 并核字节数、起壳前过闸） | `backend/scripts/walkthrough_udd.py` | **`pytest`**（`backend/tests/test_p66.py`） |
+| **走查日志归一化**（P85 C①：洗掉每批必变的，留下判据，让**跨批逐行 diff** 做得了） | `frontend/scripts/walkthrough/normalize-log.mjs`；存放处 `docs/walkthrough-logs/` | **`npm test`**（`--selftest`：例 / 反例 20 条 + 扫仓库里存着的每一份） |
+| **第 ⑧ 步那个夹具逐格钉死**（P85 C②：`--variant synthetic` 造完当场对 `EXPECT_SYNTHETIC`） | `backend/scripts/journey_fixture.py` | **`pytest`**（`backend/tests/test_p85.py`）+ `floor_ruler` |
 | **起壳那一套**（P74 搬的）：`go.sh` / `launch.sh` / `step.sh` / `haspage.mjs` | `frontend/scripts/walkthrough/` | 路径和「有没有写死的绝对路径」进 **`npm test`**（`check-walkthrough-fakeshell.mts`）；跑得起来要真 `.app` |
 | **假模型端点**（P74 搬的） | `backend/scripts/walkthrough_fakellm.py` | **`pytest`**（`backend/tests/test_p74.py` 直接 import 跑形状自检） |
 | **假壳那条路**（P74 立的）：不打包也能真跑几步 | `frontend/scripts/walkthrough/fakeshell/main.cjs` + `frontend/scripts/walkthrough/fakeshell/preload.cjs` + `frontend/scripts/run-walkthrough-fakeshell.mjs` | 真跑那一半**手动**（本机才有 Electron / venv / dist）；「这条路还接着吗」进 **`npm test`**（`check-walkthrough-fakeshell.mts`） |
