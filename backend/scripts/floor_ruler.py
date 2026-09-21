@@ -125,6 +125,19 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         PINNED, 3, "**旋钮在动的那个证据**（改之前 3 条）。调成 0 这把尺就量不到 P79 ④ 那一刀了"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_GAP_MERGED_NOW"): (PINNED, 0, "P79 ④ 那一刀改之后跨空白合出来的词。跟 HEAD 那 3 条一起才分得开「旋钮在动」和「产出对了」"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_TOKEN_MISS"): (PINNED, 0, "用户打了的词一个都没摆出来的条数。这个 0 一动，搜索框那一行的判据就得重读"),
+    # P81 ② 把 P79 那个「20/20 全搜不到」拆成了形状表：库里有没有、哪个洞挡的、各几条。
+    # 五个数一起才说得清「产品 placeholder 答应了『数字、日期』而它做不到」是怎么个做不到，
+    # 任何一个动了，P81 ② 那张「不修」的判据表就得整张重读（三个旋钮的爆炸半径至今没量）。
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_IN_CORPUS"): (
+        PINNED, 20, "P81 ②：那 20 条串**库里真的有**（= 全部）。这个 20 掉下来就不是「搜不到」是「没有」，整条结论换方向"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_NO_CHANNEL"): (
+        PINNED, 9, "P81 ② 第一个洞：`_terms` 切得出、`plan` 没通道 → 0 条。P79 只定位到这一个"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_NO_TOKEN"): (
+        PINNED, 11, "P81 ② 第二个洞：`_NUM` 连词都切不出来。P79 漏了这一个，9 + 11 = 20 才是全账"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_TWO_DIGIT"): (
+        PINNED, 4, "第二个洞里的两位数裸数字那一族。跟下面那 7 条分开记，是因为两族要动的是不同的东西"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_DATE_UNIT"): (
+        PINNED, 7, "第二个洞里 `月`/`号`/`日`/`年` 那一族——**产品自己写的「日期」两个字，正是量词表里没有的那个形状**"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_EMPTY"): (
         PINNED, 20, "P79 ② C：数字日期那一档 20/20 全 0 条（量到了没修，这个 20 是那条账的分量）"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_BLOCKED_OCC"): (PINNED, 568, "P77 那道英文 ≥3 的门挡掉的串次"),
