@@ -1,0 +1,11 @@
+  测一下: 连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」
+  模型名 chip: [{"i":4,"t":"fake-p52","y":142},{"i":5,"t":"fake-vision-p52","y":142}]
+  点完之后哪个格里写着模型名: ["fake-p52"]
+  保存之后「还没配模型」还在吗（该 false）: false
+  红条还在吗: false
+  toast: ["已切换到本地模型：fake-p52 @ http://127.0.0.1:<PORT>/v1"]
+  库里: {"provider":"local","local_base_url":"http://127.0.0.1:<PORT>/v1","local_model":"fake-p52"}
+shot → <DIR>/<B>-bnew3-1-saved-light.png
+=== ② 900px：标签条那 4px ===
+   {"innerWidth":900,"tabs":[{"text":"设置×","left":172,"right":412,"xRight":407,"xLeft":385},{"text":"P58 走查（新用户 · 可删）","left":418,"right":658,"xRight":653,"xLeft":631},{"text":"屏幕活动×","left":664,"right":904,"xRight":899,"xLeft":877}],"stripScroll":{"sw":732,"cw":560,"overflowX":"auto"}}
+shot → <DIR>/<B>-bnew3-2-tabs900-light.png

@@ -1,0 +1,33 @@
+开的是 <ID12> （第 0 个候选： P58 走查（可删）标签 ）
+开着的是: <ID12>
+=== ⑥ 智能续写 → 轮次卡片 → 读库 ===
+  跑之前：编辑器 105  库 {"len":105,"json":false}
+  摊开了 1 个折叠块
+  跑完：编辑器 205 （+ 100 ）
+  库: {"len":205,"json":false} ← len 该跟编辑器一样、json 该是 false
+  「照它改的」 0 次；「判词就是下面」 0 次；空括号「（）」 0 次（该 0）
+  「这一次不再往下写了」: false  「照常打分」: false
+  收工那行: []
+  ⚑ 判据那几行: []
+  「照常打分」出现: 0 次；「没再花模型调用去打分」出现: 0 次
+  「当提醒看」出现: 0 次
+  垃圾尾巴那条: undefined
+  残骸编号那条: undefined
+  正文里还有「做爰片」吗（该 false）: false
+  正文里还有「[terrence-8F6]」吗（该 false）: false
+shot → <DIR>/<B>-b2d-old-rounds-light.png
+=== ⑩ 改动层：润色生一层 ===
+  在第 8 行上右键「润色」
+  改动条: undefined
+  右栏页签: ["记忆","计划2"]
+  库里的层: {"layers":[{"id":"<ID12>","label":"智能续写","source":"round","run_id":"","round_no":0,"seq":0,"state":"on","at":"<TS>","content_tag":"205:<TAG>","hunks":[{"k":0,"from":105,"to":205,"del":"","ins":"## 时间去哪了\n\n（这一段由假模型给的，不是真调用）\n\n## 推进了什么\n- 走查用的假日报，钉住的是接线不是内容。\n## 卡在哪\n- 无。\n\n## 时间去哪了\n\n（这一段由假模型给的，不是真调用）","state":"pending","soft":false,"before":"单回收了 860 份，转化率按渠道排了一遍。\n\
+shot → <DIR>/<B>-b2d-old-layer-light.png
+=== ⑦ 导回到 Obsidian ===
+  面板在吗: true
+  逐字「vault」: true
+  逐字「树的层级变成文件夹」: true
+  逐字「克隆写成 .link.txt」: true
+  逐字「_assets/」: true
+  「导回 N 篇」: undefined
+shot → <DIR>/<B>-b2d-old-export-light.png
+  toast: []

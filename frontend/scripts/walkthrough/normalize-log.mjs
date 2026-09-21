@@ -66,6 +66,12 @@ export function normalize(text, { today } = {}) {
   s = s.replace(/\b[0-9a-f]{12}\b/g, '<ID12>')
   // ③ 端口 / pid
   s = s.replace(/(127\.0\.0\.1|localhost):\d{2,5}/g, '$1:<PORT>')
+  // ⚠️ **JSON 里那一格单独一条**（P87 A 逐行 diff 实拍出来的洞）：
+  // 下面那条要求 `pid` 后面**紧挨着** `=` / `:` / 空格，而 `/api/health` 回的是
+  // `{"status":"ok","backend":{"pid":26273,…}}` —— `pid` 和 `:` 中间隔着一个引号，
+  // 于是 `05-old-whoami52.txt` 里那个 pid **一批都没洗掉**，p85 ↔ p87 的 diff 上
+  // 它是唯一一条纯噪声。**「有一条规则在管这类东西」不等于「这一处被管到了」。**
+  s = s.replace(/"pid"\s*:\s*\d+/g, '"pid":<PID>')
   s = s.replace(/\bpid[=: ]\s*\d+/g, 'pid=<PID>')
   // ⑥⑦ 批次前缀 / 随机身份
   s = s.replace(/\bp\d+-newbie\b/g, '<B>-newbie')
@@ -86,6 +92,9 @@ export const LEFTOVERS = [
   [/\/private\/tmp\//, '绝对路径（/private/tmp/…）'],
   [/\b[0-9a-f]{12}\b/, '12 位十六进制（note id）'],
   [/(127\.0\.0\.1|localhost):\d{2,5}/, '写死的端口'],
+  // P87 A：**扫描这一侧原来也没有 pid 这一条**——洗的规则漏了一处，
+  // 而「洗完不许剩下什么」也没看着它，于是两头一起瞎了一整批。
+  [/\bpid"?\s*[=: ]\s*\d+/, '没洗的 pid'],
   [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, 'ISO 时间戳'],
 ]
 
@@ -103,6 +112,15 @@ const BATTERY = [
   ['窗口 origin: http://127.0.0.1:47231', '窗口 origin: http://127.0.0.1:<PORT>', '端口洗掉'],
   ['假模型端点 127.0.0.1:18386（--mode ok） pid=26535',
    '假模型端点 127.0.0.1:<PORT>（--mode ok） pid=<PID>', '端口 + pid'],
+  // —— P87 A 那个洞的正反例（**引号隔在中间的那一格**）——
+  ['  /api/health: {"status":"ok","backend":{"pid":26273,"data_dir":"<DIR>"',
+   '  /api/health: {"status":"ok","backend":{"pid":<PID>,"data_dir":"<DIR>"',
+   '**JSON 里的 pid**（`pid` 和 `:` 中间隔着引号）—— P87 逐行 diff 抓出来的洞'],
+  ['{"pid": 26273}', '{"pid":<PID>}', 'JSON 里冒号后有空格的也洗'],
+  ['壳关掉了（pid 59267，SIGTERM 自己退的）', '壳关掉了（pid=<PID>，SIGTERM 自己退的）',
+   '中文括号里那种写法照旧洗得掉（老规则没被新规则挤掉）'],
+  // —— **不许洗的**：名字里带 pid 的别的东西 ——
+  ['  rapid 3 次', '  rapid 3 次', '**`rapid` 不是 `pid`**（`\\b` 边界守着）'],
   ['"started_at":"2026-09-21T05:10:35.394Z"', '"started_at":"<TS>"', 'ISO 时间戳'],
   ['"content_tag":"205:4rpyb9"', '"content_tag":"205:<TAG>"', 'content_tag 的哈希那一截'],
   ['③ api.getUser() = p85-newbie', '③ api.getUser() = <B>-newbie', '批次身份'],
@@ -139,6 +157,9 @@ function selftest() {
     ['开着的是 6b9bb40ae341', 1, '没洗的 note id 要被扫出来'],
     ['开着的是 <ID12>', 0, '洗过的不该再被扫出来'],
     ['/Users/x/y', 1, '没洗的绝对路径要被扫出来'],
+    ['{"pid":26273}', 1, '**JSON 里没洗的 pid 也要被扫出来**（P87 A 那个洞的另一半）'],
+    ['{"pid":<PID>}', 0, '洗过的 pid 不该再被扫出来'],
+    ['rapid 3 次', 0, '**`rapid` 不算**——扫描这一侧也不许把它当 pid'],
   ]
   for (const [src, want, why] of LEFT) {
     const got = leftovers(src).length

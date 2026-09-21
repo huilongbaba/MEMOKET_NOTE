@@ -101,9 +101,10 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
     ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_SENDERS"): (
         FLOOR, 17, "发 `X-User-Id` 的量具份数（P78 A ⑤）。调低 = 身份那条契约扫不到人了"),
     ("frontend/scripts/check-components-gate.mts", "MIN_COMPONENT_TESTS"): (
-        FLOOR, 1, "**vitest 真要跑的** `src/components/` 底下的测试文件数（P85 A 开的那条路）。"
-                  "调低到 0 = 那条路被关掉了还让闸绿着——而「不跑」和「跑绿了」在终端里长得一模一样。"
-                  "它一动去重读 P85 A 那一节：70 个源文件今天只有 1 份测试，这个数**只准往上**"),
+        FLOOR, 2, "**vitest 真要跑的** `src/components/` 底下的测试文件数（P85 A 开的那条路）。"
+                  "调低 = 那条路被关掉了还让闸绿着——而「不跑」和「跑绿了」在终端里长得一模一样。"
+                  "它一动去重读 P87 B 那一节：**P85 开路时 1 份，P87 抬到 2 份**"
+                  "（70 个源文件今天 2 份，离「够」远得很），这个数**只准往上**"),
 
     # —— `pinned`：P85 A 那条新闸抄产品的两个数 ——
     ("frontend/scripts/check-components-gate.mts", "EXPECT_LABEL_HITS"): (
