@@ -237,7 +237,12 @@ def test_12_地址全指本机_四列一个都不许漏(tmp_path):
 
     p = _mini_db(tmp_path)
     got = W.point_provider_at_localhost(p, 18374)
-    assert got == {"base": "http://127.0.0.1:18374/v1", "rows": 1}
+    # P89 多回两样（`model` / `vision_model`）：那一步现在**把模型名也读回来核一遍**。
+    # 收的是 P87 问题 #1——四个 `*_base_url` 全改对了、`local_model` 留着空串，
+    # 于是假模型一个请求都没收到，壳上看着跟 P68 那条丢字回退一模一样。
+    # 这一行照旧是**全等**（不是 `<=`）：多回一样东西就得有人在这儿点头。
+    assert got == {"base": "http://127.0.0.1:18374/v1", "rows": 1,
+                   "model": "fake-p52", "vision_model": "fake-vision-p52"}
     c = sqlite3.connect(str(p))
     c.row_factory = sqlite3.Row
     row = dict(c.execute("SELECT * FROM provider_config").fetchone())

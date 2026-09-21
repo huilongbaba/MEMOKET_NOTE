@@ -72,6 +72,7 @@ WATCHED: tuple[str, ...] = (
     "frontend/scripts/check-walkthrough-fakeshell.mts",
     "frontend/scripts/check-walkthrough-selectors.mts",
     "frontend/scripts/check-components-gate.mts",
+    "frontend/scripts/check-walkthrough-diff.mts",
 )
 # 哪些名字算「闸门常数」。**宁可窄**：只认这几个前缀，别的名字（`SEED` / `LIMIT` /
 # `USER`…）不进登记表，也就不受这把尺管——它们不是「下限」也不是「实测结论」。
@@ -105,6 +106,13 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
                   "调低 = 那条路被关掉了还让闸绿着——而「不跑」和「跑绿了」在终端里长得一模一样。"
                   "它一动去重读 P87 B 那一节：**P85 开路时 1 份，P87 抬到 2 份**"
                   "（70 个源文件今天 2 份，离「够」远得很），这个数**只准往上**"),
+    ("frontend/scripts/check-walkthrough-diff.mts", "MIN_WHY"): (
+        FLOOR, 4, "跨批 diff 归类表里「为什么」那一列至少几个字（P89 B）。"
+                  "调低 = 一行写个 `-` 就算归过类了，那张表就退回成一张打勾表，"
+                  "而这条闸的全部价值就在于**每一行都带着一句能读的理由**。"
+                  "它一动去重读 P89 B 那一节 + `check-walkthrough-diff.mts` 的「它答不了什么」——"
+                  "这把尺管不了「归得对不对」，它唯一管得住的就是「有没有人写下为什么」。"
+                  "这个数**只准往上**（写得更长不是坏事）"),
 
     # —— `pinned`：P85 A 那条新闸抄产品的两个数 ——
     ("frontend/scripts/check-components-gate.mts", "EXPECT_LABEL_HITS"): (

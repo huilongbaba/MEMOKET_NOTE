@@ -22347,3 +22347,413 @@ P87 留给下一批：
 ⑦ P85 留的 ③，P84 留的 ①②③④⑤⑥⑦，P83 留的 ①②，P81 留的 ①②③④，
    P79 留的 ①②③④⑥、P78 留的 ④、P77 留的 ②④、P76 留的 ②③④⑤、P74 留的 ①②③、
    P69 留的 ①②③ 都没碰。
+
+## P89 · 第 813 轮：**⑩ 那一格的真根因查清了（是量具，改了）**（收 P87 ②）+ **跨批 diff 那条闸做出来了**（收 P87 ⑥）+ 第二十二次走查（2026-09-21）
+
+> 开工 `b8c793c`（worktree `agent-a359909dc7b0823d5`）。**基线自己量了一遍**，
+> 四个数跟任务书逐格相同——**但第一遍量出来是错的，记在下面 §0**：
+> 后端带 `KITE_DATA_DIR` **3231 / 0 skipped**、前端 **98 文件 / 883 条**、
+> 假壳那条闸**真跑一趟** **8 步 / 110 条判据**；`floor_ruler` 开工
+> **看着 10 份 / 登记 78 条（4 · 74）/ 共核 90 条 / 落后 0 / 对不上 0**。
+> 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+> `note_revisions` 44 / `llm_usage` 最大 id 5738**。
+> **这一批没碰 `backend/app/database/kb/` 和 `backend/app/database/kite/`**（另有 agent 在那儿）。
+
+### §0 开工第一个数就量偏了：**3200 / 31 skipped**
+
+摆完 `KITE_DATA_DIR=<scratch>/p89data`（主仓 `backend/data` 整棵拷，`ls -1a` 两边 **0 差异**）
+就跑第一遍，得到 **3200 passed / 31 skipped**，跟任务书的「3231 / 0」对不上。
+
+**没有抄那个数，也没有当成「环境差异」**。`-rs` 把 31 条的理由打出来：
+
+    本机没有 notes.sqlite3（False）或 KITE_DATA_DIR 下的 codebook（True）
+
+`HAS_DB = (ROOT / "backend" / "data" / "notes.sqlite3").exists()` —— `ROOT` 是 **worktree**，
+而 worktree 的 `backend/data/` **开工时整个不存在**。
+`KITE_DATA_DIR` 只喂了语料那一半，**真库指纹那一半的测试是照着 worktree 里那个路径找的**。
+从主仓只读拷一份进 `<worktree>/backend/data/notes.sqlite3`（`.gitignore` 的 `data/` 挡着，
+`git status` 看不见它；**没 `chmod 444`**）之后重量：**3231 passed / 0 skipped** ✔。
+
+⚠️ **这一格是「基线要量不要抄」的正面例子，也是它的反面**：
+抄了就直接开工，31 条「要真语料的测试」**整批不跑**，而终端上写着一个很像绿的数。
+**「跑了」和「跑的是那一档」又一次。**（P87 的收尾命令里 ⓪ 那一段写着这件事，
+但它写的是「语料先摆齐」，没写**摆两处**——这一批把它补全，见收尾。）
+
+---
+
+### A. ⑩ 那一格右栏没刷到（P87 问题 #2）——**查清了：是量具，改了**
+
+P87 逐行 diff 抓到、没查清的那两行：
+
+> `09-old-b2old` 的 ⑩ 那一格 P85 是 `改动条 "改了 1 处"`、P87 是 `undefined`。
+> 证据：`POST /api/rewrite` **200**、库里那一层两批逐字节相同、`b3old` 和 `reopen64` 都读到了
+> ⇒ **差的是这一刻右栏刷没刷到。**
+
+#### A0 先去读 P80 那两条守卫：**在，但够不着这一格**
+
+P80 A2 在 `RelatedMemory.tsx` 里加了两条（`recallSeq` / `relSeq`，召回和关系各一条）
++ 一档 `failed` 状态。**今天还在**（`components/RelatedMemory.tsx:71/85/92-99/124-140`，逐行核过）。
+
+但它们**够不着 ⑩ 这一格**，两个理由都不是「我觉得」：
+
+* **不是同一块**：那两条守的是右栏「记忆」那一块的两发 `fetch`；
+  ⑩ 看的是「改动」页签 + 改动条，数据源是**编辑器的 CodeMirror state**（`roundDiffField`），
+  **一发 fetch 都没有**，没有可乱序的东西。
+* **这一格根本没有在途请求**：`/api/rewrite` 那一发是 `await` 完才走下一步的，
+  毫秒级返回。P80 那一族（答案只在成功时被覆盖 / 乱序 / 没刷新）**一个都套不上**。
+
+#### A1 复现：**离线就复现完了，一次壳都不用起**
+
+P87 记的「`POST /api/rewrite` 200」是真的，**但 200 ≠ 落了一层**。顺着那一发往回读：
+
+| 读的是什么 | 实测 |
+|---|---|
+| `POLISH_SYSTEM` / `REWRITE_SYSTEM` 要的形状 | `只输出 JSON，形如 {"text":"润色后的内容","reason":…}` |
+| 走查用的假模型（`walkthrough_fakellm.py`）怎么认这一发 | `is_continue` / `is_skeleton` / `is_score` / `is_revise` **四条全不命中** |
+| ⤷ 为什么 `is_revise` 不命中 | 它要 raw 里有 `revisions` 或 `修订`，而润色那一发的 system + user 里**这两个串一个都没有**（当场量的） |
+| 于是走哪一支 | 最后那个 `else`：**`text = REPORT`**（一段 markdown 日报） |
+| 后端拿到 `REPORT` 之后 | `llm.extract_json(REPORT)` → **`None`** → `revisions: []` + `unparsed: True` + **HTTP 200** |
+| 前端 `landRevisions([], …, unparsed=true)` | 弹一句「模型没按格式答」的 toast，**正文一个字不动** |
+
+**⇒ ⑩ 那一格自称的「润色生一层」，在 P85 / P87 / 更早的每一批里，一次都没成立过。**
+`is_revise` 那两条分支（回 `{"revisions": []}`）是给别的形状留的，**这条路上够不着**。
+
+#### A2 那 P85 印到 1、P87 印到 0，印的是什么
+
+量具接着往下读，两条叠在一起：
+
+* `await until(async () => (await docText(d)) !== doc0, 120000, 800)` —— 文档**永远不会变**，
+  所以**每一趟都干等满 120 秒**；而 `until` 超时**静默 `return null`**
+  （`steps/lib.mjs:111`）。日志上「落地了」和「等了两分钟没等到」**长得一模一样**。
+* 等满之后再 `wait(3000)`，然后读 `改动条` / `右栏页签`。
+  **读到的是 ⑥ 留下的残留**，而这 123 秒里后台一直在动：
+  健康轮询 30 秒一次（`App.tsx:1544`）、**停顿 8 秒就重算一次的后台骨架**
+  （`SKELETON_IDLE_MS = 8000`，⑥ 之后正文 +100 字 > `SKELETON_MIN_DELTA = 20`，必触发）、
+  改动层 1.6 秒防抖落库。
+
+**1 和 0 都不是这一格自己做出来的**，两个数都不该被当成读数。
+P87 写的「差的是这一刻右栏刷没刷到」——**右栏没问题，是那一刻根本没有东西该刷**。
+
+#### A3 判：**是量具，改了**（三处，各修一层）
+
+| 改哪儿 | 改了什么 | 修的是哪一层 |
+|---|---|---|
+| `backend/scripts/walkthrough_fakellm.py` | 认得出润色 / 重写那一发了（`_system_text` + `POLISH_MARK` / `REWRITE_MARK`），回一份**真能落地**的 `{"text": EDIT_MARK + 选中那一段}`；`_assert_edit_shape()` **import 就核**那三个串今天还在后端真的提示里 | 「这一格测不到它自己写的那件事」 |
+| `frontend/scripts/walkthrough/steps/b2old.mjs` | ⑩ 那一格重写：**正文字数前后**、**等到了还是干等超时（带秒数）**、**记号在正文里几处**、**toast**、**编辑器那一头的新增高亮** | 「超时静默」+「看到 ≠ 真在正文里」 |
+| 同上 | P43 #1 拆成**两条**：① 改动条 == 页签角标（同一个 `pendingDiff`，钉死等式）；② 有处数 ⇔ 有高亮（**两个方向**） | 「读回的是这一段 ≠ 右栏摆的是这一段」 |
+
+⚠️ **`EDIT_MARK` 只在选中那一段前面加 8 个字，别的一个字不动**——
+这样「改了几处」是 1、「正文长了几个字」恰好是 8，**产品有没有真落地是一个数，不是看一眼截图**。
+
+#### A4 改完在真壳上重拍（`p89-b2d-old-layer-light.png`）
+
+| | P87（改之前） | P89（改之后） |
+|---|---|---|
+| 正文字数 | 日志里**没有这一行** | `205 → 213 （+8）` |
+| 文档变了吗 | 日志里**没有这一行**（`until` 静默超时） | `true （等了 **1 秒**）` ← 原来是干等 120 秒 |
+| 记号在正文里 | — | `1` 处 |
+| 改动条 | `undefined` | `"改了 2 处"` |
+| 右栏页签 | `["记忆","计划2"]` | `["记忆","改动2","计划2"]` |
+| 库里的层 | `智能续写:1处/on` | **`智能续写:1处/on | 润色:1处/on`** |
+| 关掉重开（`reopen64`，**新起的壳**） | `改动1` / 正文 205 | `改动2` / **正文 213**，P43 不变式成立 |
+
+**「右栏刷没刷到」这条猜法当场被否掉**：改动条、页签角标、编辑器高亮三者这一刻**同时在**，
+而且 ① 那条等式成立（`{条 2 · 角标 2}`）。
+
+#### A5 ⚠️ 我自己在这一格上量错过一次，照实记
+
+第一版的 ③ 写的是「改动条 == 页签角标 == `.harness-ins` 段数」，实拍 **`{条 2 · 角标 2 · 高亮 9}`**，
+判成 `false`。**错的是我的判据，不是产品**：
+CodeMirror 把跨行的 `Decoration.mark` **按行切成一个 span**，空行那一段宽度为 0、一个 span 都不出。
+当场算了一遍：⑥ 那一处 `ins` 有 12 行、**其中 8 行非空**，加上 ⑩ 润色那一处的 1 行 = **9**，
+跟实测逐格相同。**拿「段」去等「处」就是拿两把尺当一把用**——
+跟这一格原来那个毛病是同一个形状。改成钉死 ① 那条等式 + ② 两个方向的有无判，
+段数原样印出来并在那一行里写清它是「段不是处」。
+
+---
+
+### B. 跨批 diff 那条闸（P87 留的第 ⑥ 条）——**做出来了**
+
+`frontend/scripts/check-walkthrough-diff.mts`（新）+ 接进 `npm test`。
+
+#### B① 形状：**一张逐行归类表 + 多集相等**
+
+归类表 = `docs/walkthrough-logs/<to>/DIFF-FROM-<from>.tsv`，五列（TAB 分）：
+
+    类别 <TAB> 文件 <TAB> 方向（< / > / - / +） <TAB> **那一行逐字** <TAB> 为什么
+
+闸做三件事，**一个数都不钉**：
+
+1. **多集相等**。diff 里有、表里没有 → 红（「有差异却没人归类」）；
+   表里有、diff 里没有 → 红（上一批的归类照抄下来就是这样）。
+2. **类别是闭集**（6 类：入参素材 / 归一化漏洞 / 走查随机 / 量具改了 / 产品改了 / 解释不了）。
+   随手写一个词把事情盖过去 → 红。
+3. **「为什么」那一列不许空**（`MIN_WHY = 4`，登记进 `floor_ruler` 的 `floor` 档）。
+   **这一条当场拦了我自己**：第一版归类表里有两行的理由我写的是「同上」，闸红了，逐行点名。
+
+**「该有几行差异」一个数都没钉**，这是它最要紧的一件事：
+0 行是绿的，200 行也是绿的——只要每一行都被归过类。
+钉那个数等于「每一次正当改动都红一次」，而一条天天误报的闸迟早被人改成不红
+（同 P80 B② 判 `db_guard.WATCHED` 不收 `harness_runs` 的那条理由）。
+
+⚠️ 另加一条**防「这一批忘了做」**：**最新那一批必须有归类表**。
+比它老的那几批**不追认**——我没跑过 P85 / P87 那两趟，**不替它们在归类表上签字**
+（P87 的分类写在散文里，是 summary 级的，不是逐行的）。
+
+#### B② 例 / 反例（`--selftest`，每次跑闸都先跑一遍，**9 条**）
+
+| | 喂什么 | 该怎样 | 实测 |
+|---|---|---|---|
+| 例① | 三条差异 + 齐全的三行归类 | 绿 | ✔ |
+| 例② | **跟自己比**（0 行差异）+ **空表** | **绿**（「该有几行」没钉在任何方向上） | ✔ |
+| 反例① | 少归一行 | 红，**且点名那一行** | ✔ 点名「字数 205」 |
+| 反例② | 多归一行（抄上一批的） | 红，且点名 | ✔ 点名「字数 999」 |
+| 反例③ | 行对、**归到别的文件上** | **同时**报 1 漏 + 1 陈 | ✔ |
+| 反例④ | 类别写成「大概是环境」 | 红 | ✔ 点名「不在闭集里」 |
+| 反例⑤ | 理由留成 `-` | 红 | ✔ 点名「没写为什么」 |
+| 反例⑥ | 只有 4 列 | 红 | ✔ 点名「要 5 列」 |
+| 计数 | `diff` 收到几条 | 一行改动 = `<` + `>` 两条，外加只在一边的整份文件 | ✔ 3 条 |
+
+**它答不了什么**（写在闸身上）：**归得对不对**一条都答不了——把 29 行全归成「入参素材」它照样绿。
+它能做到的是让这件事**在 diff 里是 29 行数据**，而不是一句「都看过了」。
+最后一只乌龟仍然是人读 diff，但读的是逐行写着理由的数据行（同 P80 B③）。
+
+#### B③ 顺手判掉 P87 留的第 ③ 条：`"started_at":"2026-09` —— **判「洗」**
+
+P87 判「宁可窄」留着，理由是**放宽到「年-月」会咬语料里的日期**。
+那个理由对的是「放宽 ISO 那条通则」，而**这一处根本不需要通则：它有自己的键**。
+所以这一条**两头都钉死**：左边紧挨着 `"started_at":"`、右边必须是**行尾**（被截断才会这样）。
+语料里的日期两个条件一个都够不着。
+
+**为什么非洗不可**：这半截里带着「年-月」。它不是每批都变，是**每个月变一次**——
+一条平时安静、跨月那一批突然红一行的噪声，恰恰是最难读的那种。**安静不等于洗干净了。**
+
+⚠️ **这条规则我写错过一次，实测才知道**：第一版按 P87 日志里那个样子写成
+`\d{4}-\d{2}(-\d{2})?(T…)?`，而 P89 这一趟实得 `…"started_at":"**20**` ——
+**截断点跟着 `data_dir` 那条绝对路径的长度走**，这一批的 scratch 路径比 P87 长几个字符。
+**「我见过的那个样子」不是「它的样子」。** 改成「数字开头、一路到行尾」。
+
+补的四样一样不少（同 P87 A 那条 pid 的处置）：
+① 洗的规则；② `LEFTOVERS` 那一侧**也加一条**（P87 那一课：洗的漏了、扫的也没有，两头一起瞎）；
+③ 例 / 反例各两侧（**该洗 4 条**含「断在第 2 位」那一格，**不许洗 2 条**：没有 `started_at` 键的、
+后面还有字不算被截断的）；④ **把 `p85` / `p87` 那两份重洗了一遍**（**不传 `--today`**）。
+`--selftest` 从 **27 条 → 36 条**，扫仓库里存着的 **48 份**。
+
+⚠️ 重洗之后 p85 / p87 / p89 那一行**三批全一样**（`"started_at":"<TS`）——
+而 p87 剩的是 `2026-09`、p89 剩的是 `20`，**不洗的话这一行下一批就是一条永远解释不清的差异**。
+
+---
+
+### C. 第二十二次全流程走查（真打好的壳）
+
+#### 起壳之前先证明「壳里装的就是这一份源码」
+
+| 核什么 | 怎么核 | 结果 |
+|---|---|---|
+| `Resources/web` 整树 | 逐文件 sha256 → 排序再取一次 | **179 个 / `0a96363423ad03d8`**，= `frontend/dist` **逐格相同** |
+| `app.asar/dist/{main,preload,capture,backend}.js` | `asar extract` → 跟 `desktop/dist` 现编的 `cmp` | **四个逐字节相同** |
+| 后端那个件（13,065,264 字节） | `check_shipped_source.py`（**不用 `strings`**） | `display_terms` / `is_merged_word` / `squeezed_gaps` 全有；**这一批碰的那一处也核了**（`app.routers.compose` 的 `_unparsed` / `rewrite`）；**反例**（不存在的符号）`EXIT=1` |
+
+⚠️ **产品源码这一批一个字节没动**（`git status --porcelain frontend/src desktop/src backend/app` 空）。
+壳是为走查打的，不是为改动打的。
+
+#### 走查表（两个身份 × 十一步）
+
+| # | 步骤 | 空库新用户（`p89-newbie`） | 482 篇老用户（terrence） |
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：「还没配模型 / 去设置」都在；填假端点 →「连上了，2 个模型可用」→ 点 chip → 保存 → 红条和那句话同时消失、toast 恰好 1 条逐字、**库里真落了**（`local` / `19302` / `fake-p52`） | **对**：`③ api.getUser() = <B>-newbie` / `窗口自己认的身份: terrence`（P78 A）；`/api/health` 的 `data_dir` 指着这一趟的 udd |
+| 2 | 新建 → 打标题 → 右栏「计划」 | **对**：右栏 `["记忆","计划"]`、意图三格预填 + `prefill: true` | **对**：`{"found":true,…,"prefill":true,"titleBox":""}`——**标题框空、意图三格照样预填**（**P43 #2 / P44 #4 ✔**） |
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」 | **对**：**P32 #3 ✔** 空库图例；**P35 #8 ✔** 空托盘 | **对**：**两档都量了**——没切到「记忆」时 `{落槽 2 · 图例 0 · 页面合计 2}`、摊开着时 `{落槽 2 · 图例 6 · **页面合计 8**}`，落槽那 2 是**冲突 1 / 缺依据 1**（跟 P64 起每一批**一个数不差**） |
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项**、Esc 之后剩 **0** |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]` 逐字连顺序 |
+| 6 | 智能续写 → 轮次卡片 → **读库** | **对**：`44 → 144（+100）`、**库 144 = 编辑器 144**（**`--mode ok`**） | **对**：`105 → 205（+100）`；**库 205 = 编辑器 205、`json=false`**（**P45 #1 / P44 #1 ✔**）；`做爰片` **0**（**P55 #1 ✔**）、`terrence-8F6` **0**（**P55 #2 ✔**）、空括号 **0**（**P35 #7 ✔**） |
+| 7 | 导回到 Obsidian | — | **对（浅走）**：面板在、那四段逐字全在 |
+| 8 | 屏幕活动 | **对**：`.journey-consent` + 五条 facts；「留多久」里的数**从后端读**（**P21 #1 / P32 #4 ✔**） | **对**：今天 **4 段 / 27 分钟**；保留期面板逐字「现在盘上有 **3 天 · 6 段 · 5 KB**（最早 `<D-2>`）」**跟 P87 逐字相同**；一键全删两段式（**先不删之后天列表原封不动**，**P66 #3 ✔**）；翻天两个方向各一次（**P23 #5 ✔**）；面包屑（**P23 #6 ✔**）；**P62 ③ 正例 + 反例都摆出来了** |
+| 9 | ⌘K 全部去处 | **对** | **对**：Esc 关得掉 |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，`19308`） | — | **对**：带层那篇 `<ID12>` → `["记忆","改动2","计划5"]` + toast 1 条「上次没处置完的 **2** 层」、**P43 不变式成立**、正文 **213**；不带层那篇 `df3b4f7e987d` → `["记忆","幻灯片24","计划5"]`，**没有「改动」、也没有 toast**（**P44 #5 ✔**） |
+| 11 | 深色 + 900px | **对**：900px 唯一那个「溢出」是标签条（`sw 732 > cw 560`、`overflow-x: auto`，判成不是缺陷） | **对**：`bg rgb(18,15,26)`、近白大块 **0**、900px **横向溢出 0**（`溢出的是谁: []`） |
+
+#### 重点盯的几格
+
+* **`@LAST_NEW_NOTE` 是这一趟现造的**：`328ebc4a237e`，由 `b1old` 自己打在日志里、`go.sh` 接给
+  `b1b` / `b2old` / `b3old`；⑩ 那一发（单独一次 `go.sh`）的两个 id **在这一趟的库拷贝上查过**。
+* **P87 那 25 条新前端测试在壳上对得上**：`wipeLines` 钉的六行跟壳上那一段
+  **前五行逐字相同**（`3 天的记录（最早 …）` / `6 段，其中 4 段有描述` / `6 张缩略图，连同还没删的原始截图` /
+  `1 份写好的日报` / `这些描述抽进知识库的那些记忆`）；第六行测试是「一共 **4** KB」、壳上是「一共 **5** KB`——
+  **这一处差异 P87 的测试文件里自己逐字写着理由**（测试喂的是 `bytes_norm` 4198，壳上是真字节 5066）。
+  `JourneyRetentionPanel` 那一行跟 P87 **逐字相同**。
+* **P83 / P80 / P81 三刀都没回退**（记忆卡分组、「前一段带进来的」、命中行）。
+* **截图 49 张，全 `p89-*`，一张都没事后改名**（`ls | grep -cv '^p89-'` = **0**）。
+
+#### 历史修复的回归：**26 条逐条去日志里找证据，0 条找不到**
+
+P87 那 24 条全在（其中 P62 ③ 和 P78 A 各拆成正 / 反两条去核，所以是 26 条）。
+⚠️ **第一遍跑出来「1 条找不到」，是我的判据写错了**：我按 `窗口身份: p89-newbie` 去找，
+而日志是**洗过的**——那儿是 `<B>-newbie`。**判据要写洗过之后的样子**，照实记。
+
+#### 跨批逐行 diff：`diff docs/walkthrough-logs/p87 p89`
+
+**29 行变动**，16 份里 **12 份逐字节相同**（P87 那一趟是 78 行 / 4 份相同）。
+**逐行归完类，两类，0 条解释不了**（归类表 `docs/walkthrough-logs/p89/DIFF-FROM-p87.tsv`）：
+
+| 类 | 行数 | 哪几行 |
+|---|---:|---|
+| **量具改了** | **25** | `09-old-b2old` 13 行（⑩ 那一格重写）· `10-old-b3old` 6 行 · `13-old-reopen64` 6 行（层数 1→2、toast 1 层→2 层、正文 205→213） |
+| **走查随机** | **4** | `10-old-b3old` / `12-old-b4old` 各 2 行：那一大段 innerText 里**少了一句**「打开一篇笔记后，这里会跟着你写的内容浮现相关记忆。」 |
+
+那 4 行**查到底了**（没有留成「解释不了」）：右栏停在哪个页签是**存在 `localStorage` 里的**
+（`RightPane.RIGHT_TAB_KEY = 'memoket.rightTab'`），跟着整趟会话史走。
+p87 那一趟停在「记忆」（虚拟页上 `current` 为 null → 摆那句「打开一篇笔记后…」），
+p89 停在「计划」。**截图上看得见**（`p89-b4-old-wipe-light.png`：「计划 2」那个页签是高亮的）。
+产品源码这一批一个字节没动，所以**不是产品变了**。
+
+⚠️ **但它顺手照出一处产品的洞**（记成问题 #1）：
+「计划」页签在**虚拟页**（屏幕活动）上**留着一片纯空白**——
+而 `RightPane` 自己的类型注释上逐字写着「`hasContent` 为 false 时内容区说一句为什么是空的，**别留白**」。
+「计划」是 `alwaysShown: true` 且**从不设 `hasContent`**，于是那条 `emptyHint` 的路**永远走不到**。
+这是**旧洞**（产品源码跟 P87 逐字节相同），只是以前没被摆到 diff 上过。
+
+⇒ **这正是跨批 diff 的价值**：P87 用它抓到一处台账错，P89 用它抓到一处产品留白。
+
+### 问题清单
+
+| # | 现象 → 实拍 → 根因 | 处置 |
+|---|---|---|
+| 1 | **产品**：「计划」页签在虚拟页上**一片空白**（截图 `p89-b4-old-wipe-light.png`），而 `RightPane` 自己的规矩写着「别留白」 | **判成旧洞，这一批不改**（产品源码跟 P87 逐字节相同，不是回退；而这一批的题目是量具和闸）。留给下一批：`alwaysShown` 的页签也得有 `hasContent` / `emptyHint`，判据窄一点只看「计划」在虚拟页上这一格 |
+| 2 | **量具**：开工第一遍后端基线 **3200 / 31 skipped**，跟任务书的 3231 / 0 对不上 | **判成语料只摆了一半**（`KITE_DATA_DIR` 有了，**worktree 的 `backend/data/notes.sqlite3` 没有**）。**✔ 补了**：收尾命令里 ⓪ 那一段写清**摆两处** |
+| 3 | **我自己的判据**：⑩ 那一格第一版把 `.harness-ins` **段数**当**处数**，判 `false` | **判成判据用错了单位**（CM 把跨行 mark 按行切开；8 个非空行 + 1 = 9，跟实测逐格相同）。**✔ 改了**：钉死「条 == 角标」，高亮只判有 / 没有（两个方向） |
+| 4 | **我自己的判据**：认润色那一发的串第一版写成 `'{"text":"润色后的内容"'`，**一次都匹配不上** | **判成比错了对象**：别的判据比的是 `raw`（请求体原文），里头的 `"` 被 JSON 转义成 `\"`。**✔ 改了**：串里不许带引号 + 比**解开之后的 system 那几条**；`test_p89` 有一条专门钉这件事 |
+| 5 | **我自己的判据**：归一化那条新规则第一版按 P87 见过的 `2026-09` 写，这一趟实得 `20` | **判成「我见过的那个样子」不是「它的样子」**（截断点跟着路径长度走）。**✔ 改了**：数字开头一路到行尾 |
+| 6 | **我自己的判据**：回归名单那条按**没洗过**的样子（`p89-newbie`）去日志里找，报「找不到」 | **判成判据写错了**（日志是洗过的，那儿是 `<B>-newbie`）。**✔ 改了** |
+| 7 | **我自己的归类表**：两行的「为什么」写的是「同上」（2 个字） | **闸当场拦住了**（`MIN_WHY = 4`），逐行点名。**✔ 改了**，两行都写成能读的理由 |
+| 8 | **突变验**：第 ⑧ 刀（砍掉假模型那条回复分支）第一遍 **41 条全绿** | **判成反例没落在被测分支里**：那一节全在直接调 `edit_json` / `_system_text`，**一条都没走 `do_POST` 里那个 `elif`**。**✔ 补了**：`_ask_fake()` **真起一次假模型、真发一发**，补完再砍第 ⑧ 刀 → 当场红且点名 |
+
+### 突变验：**10 刀（9 真 + 1 对照）**
+
+每一刀：**唯一锚点先断言**（出现次数 ≠ 1 就一个字节都不动）→ 砍 → **跑闸** → **整文件写回** →
+**逐字节 sha256 比**（10 刀全相同）。**「红了」和「红的是那条」分开核**。
+
+| 刀 | 动的是 | 跑哪条闸 | 预期 | 实测 |
+|---|---|---|---|---|
+| ① | `check-walkthrough-diff` 砍掉 `uncovered` 那一路 | 那条闸 | 红 | ✔ 点名**反例① + 反例③**（都靠它） |
+| ② | 砍掉类别闭集那道门 | 同上 | 红 | ✔ 点名反例④ |
+| ③ | 砍掉「必须写理由」那道门 | 同上 | 红 | ✔ 点名反例⑤ |
+| ④ | 砍掉 `stale` 那一路 | 同上 | 红 | ✔ 点名**反例② + 反例③** |
+| ⑤ | 归一化砍掉「半截时间戳」那条洗的规则 | `--selftest` | 红 | ✔ 点名那 **4 条**该洗的 |
+| ⑥ | 归一化砍掉 `LEFTOVERS` 里那一条 | 同上 | 红 | ✔ 点名那 2 条扫描反例 |
+| ⑦ | 假模型 `POLISH_MARK` 改成后端里没有的串 | `pytest` | 红 | ✔ **import 期就抛**，点名「静默退回 REPORT」 |
+| ⑧ | 假模型砍掉润色那条回复分支 | `pytest` | 红 | ✔ 点名 `test_真发一发润色_回的是能落地的建议`（**补了真发一发的测试之后才红**，见问题 #8） |
+| ⑨ | `walkthrough_db` 砍掉「模型名不许是空的」 | `pytest` | 红 | ✔ 点名 `test_模型名是空串当场抛` |
+| **对照** | 只在 `b2old.mjs` 里**加一行注释** | 上面**四条闸各跑一遍** | **全绿** | ✔ 跨批 diff 0 / 归一化 0 / 选择器 0 / `test_p89` 43 条全过 |
+
+**砍完跑了完整 pytest + 完整 npm test**（见收尾）。
+
+### 收尾的数
+
+后端带 `KITE_DATA_DIR` **3274 passed / 0 skipped**（开工基线 3231 / 0；新增 43 条 `test_p89`）；
+前端 **98 文件 / 883 条**（跟基线逐格相同）。
+⚠️ **三条钉死的老判据这一批红过、逐条点头改的**（不是顺手改绿）：
+`test_db_guard` 的假模型 import 白名单（加 `prompts as _p`，**理由仍成立：那个模块一行库都不碰**）、
+`test_p74` 的 `point_provider_at_localhost` 返回形状（多回 `model` / `vision_model`，**仍是全等不是 `<=`**）、
+`test_p80` 的 `floor` 名单（加 `MIN_WHY`）。
+
+假壳那条闸**真跑一趟** **8 步 / 110 条判据**（跟基线逐格相同）。
+⚠️ 它红过两次，**都是因为它钉的是「润色从来没落地」那个世界**：
+① 「库里该恰好 1 层」→ 改成**钉死两层的名字** `["智能续写:1处/on","润色:1处/on"]`
+（原来只数个数，于是「这一层其实是 ⑥ 的」跟「⑩ 真落了一层」在那条判据上长得一模一样）；
+② 那一发 `readbackAfterRounds` 名字叫「⑥ 读库」，**其实跑在整个 `b2old` 之后**——
+它拿 `ROUNDS_LEN`（205）比，只是因为 ⑩ 从来没改过东西。改成 `POLISHED_LEN = 205 + 8`，
+并写清 ⑥ 自己那个 205 另有人钉（`must` 里那条 `库: {"len":205,"json":false}`）。
+
+`floor_ruler` **看着 11 份 / 登记 79 条（只准往上 5 · 钉死 74）/ 共核 91 条 / 落后 0 / 对不上 0**
+（新看一份 `check-walkthrough-diff.mts`，新登记一条 `MIN_WHY`；
+⚠️ **登记表的完整性闸当场拦了我一次**——加了 `MIN_WHY` 没登记，`floor_ruler` 直接红）。
+**七把尺各跑一遍，全部逐格复现**。
+真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44 / `llm_usage` 最大 id 5738**（**真模型 0 次调用 / 0 token**）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；钥匙**按值扫全库 25 张表**，换掉 **1 处**、
+换完再扫 **0 处**；四个 `*_base_url` + `local_model` + `vision_model` 起壳前全核过；
+`~/Library/Application Support` **一次都没碰**；`postnote` **一条都没发**。
+
+### 收尾命令（**每一条都写明在哪个目录、哪个环境跑**）
+
+```bash
+# ── ⓪ 语料先摆**两处**（⚠️ P89 §0：只摆一处会静默少跑 31 条，而终端上那个数很像绿的）
+#   <worktree>/backend/data/notes.sqlite3  ← 主仓那份**只读拷一份**（gitignored，**别 chmod 444**）
+#                                            —— `tests/*.py` 的 `HAS_DB` 按 **worktree 的路径**找它
+#   <scratch>/p89data                      ← 主仓 backend/data **整棵拷**（`KITE_DATA_DIR` 指它）
+#   ⚠️ 拷之前先看 <scratch>/p89data 在不在：在的话 `cp -R .../data p89data` 会**拷成 p89data/data**。
+#      拷完 `diff <(ls -1a 源) <(ls -1a 目标)`，这一批实得 **0 差异**。
+#   <worktree>/{backend/.venv, frontend/node_modules, desktop/node_modules} ← **软链**到主仓
+# ── ① 后端（cwd = <worktree>/backend）
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python -m pytest -q      # 3274 passed / 0 skipped
+# ── ② 七把尺 + floor_ruler（cwd = <worktree>/backend，**前七把要语料，最后一把不读**）
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/recall_ruler.py
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/recall_ruler.py --window
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/margin_dot_ruler.py
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/topic_spread_ruler.py
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/en_gate_ruler.py
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/kb_search_ruler.py
+KITE_DATA_DIR=<scratch>/p89data ./.venv/bin/python scripts/card_origin_ruler.py
+./.venv/bin/python scripts/floor_ruler.py                            # 看着 11 份 / 登记 79 条
+# ── ③ 前端（cwd = <worktree>/frontend，node_modules 是软链）
+npm test                                                             # 98 文件 / 883 条
+# ── ④ 这一批碰到的几条闸单跑（**走 node_modules/.bin，别走 npx**）
+./node_modules/.bin/tsx scripts/check-walkthrough-diff.mts           # 新：29 行 / 29 行归类
+node scripts/walkthrough/normalize-log.mjs --selftest                # 36 条 / 48 份
+./node_modules/.bin/tsx scripts/check-walkthrough-selectors.mts
+./node_modules/.bin/tsx scripts/check-walkthrough-runnable.mts
+./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts
+./node_modules/.bin/tsx scripts/check-components-gate.mts
+# ── ⑤ 假壳那条闸**真跑一趟**（cwd = <worktree>/frontend；要本机 Electron + venv + frontend/dist）
+unset ELECTRON_RUN_AS_NODE
+WALKTHROUGH_SCRATCH=<scratch>/p89/fs-run4 node scripts/run-walkthrough-fakeshell.mjs   # 8 步 / 110 条
+# ── ⑥ 打壳（**打的是 <worktree>/desktop**）。⚠️ **分四步跑，别一条 `npm run dist`**
+cd <worktree>/frontend && npm run build                              # → frontend/dist
+cd <worktree>/backend  && ./.venv/bin/pyinstaller backend.spec --noconfirm --clean
+cd <worktree>/desktop  && npm run build && ./node_modules/.bin/electron-builder
+codesign --force --deep --sign - "out/mac-arm64/MEMOKET NOTE.app"
+# ── ⑦ 壳里几个可执行件核几个（cwd = <worktree>；后端那个**不许用 `strings`**）
+#      **先喂一个不存在的符号，该 EXIT=1**，再喂真的
+backend/.venv/bin/python backend/scripts/check_shipped_source.py "<app>/…/memoket-note-backend" \
+  app.database.kb.search display_terms is_merged_word squeezed_gaps
+# ── ⑧ 造 udd（cwd = <worktree>/backend）。⚠️ 起壳前四道：identity / codebook 字节+sha8 /
+#      钥匙**按值**扫全库 / 四列地址 **+ `local_model` + `vision_model`**（P87 问题 #1，P89 收进仓库）
+./.venv/bin/python <scratch>/p89/setup.py 19302
+./.venv/bin/python scripts/journey_fixture.py <scratch>/p89/walk/old/udd --variant synthetic
+# ── ⑨ 走查（cwd = <worktree>；**三次 go.sh**：新用户 / 老用户 / 真·关掉重开）
+unset ELECTRON_RUN_AS_NODE
+env WALKTHROUGH_APP="<app>" WALKTHROUGH_UDD=<…/udd> WALKTHROUGH_SHOT_DIR=<…/shots> \
+    WALKTHROUGH_LOG_DIR=<…/log-*> WALKTHROUGH_SHOT_PREFIX=p89 LLM_MODE=ok \
+    zsh frontend/scripts/walkthrough/go.sh <cdp-port> 19302 <steps 清单>
+# ── ⑩ 走查日志洗干净存进仓库（cwd = <worktree>/frontend）
+node scripts/walkthrough/normalize-log.mjs --today 2026-09-21 \
+  --out ../docs/walkthrough-logs/p89 <scratch>/p89/walk/log-{new,old,old2}/*.txt
+#   ⚠️ 补了归一化规则之后**上一批那几份也要重洗**（**不传 `--today`**）
+node scripts/walkthrough/normalize-log.mjs --out <scratch>/p89/rewash-p87 ../docs/walkthrough-logs/p87/*.txt
+# ── ⑪ 跨批逐行 diff + 归类表（cwd = <worktree>）
+diff -r docs/walkthrough-logs/p87 docs/walkthrough-logs/p89     # 29 行
+# → 逐行归类写进 docs/walkthrough-logs/p89/DIFF-FROM-p87.tsv，闸在 ④ 那条
+# ── ⑫ 真库指纹（cwd = **主仓** /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE，**只读**）
+sqlite3 "file:backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), (select max(id) from llm_usage), (select count(*) from note_revisions) from notes;"
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm` 只出现在「重造 scratch 里那份 udd」这一处
+（第 776 轮那一课）。
+⚠️ **入库逐路径 `git add`**：worktree 里 `backend/.venv` / `frontend/node_modules` /
+`desktop/node_modules` 是**软链**，`.gitignore` 里的斜杠只挡目录，**挡不住软链**。
+
+P89 留给下一批：
+① **「计划」页签在虚拟页上留白**（问题 #1，产品的旧洞，判据窄一点只看这一格）；
+② **跨批 diff 那条闸只追认最新一批**——`p85` / `p87` 两份没有归类表，
+   要补得有人真去逐行读那 78 行（**我没跑过那两趟，不替它们签字**）；
+③ `components/` 再往下是「非得真 React」那 57 个，**不便宜**；
+④ `floor_ruler` 仍只跑在 `pytest` 那条链上（P83 ⑥ / P85 ④ / P87 ④ 原样留着）；
+⑤ 假壳够不着的仍是 ⑦ ⑧ 的采集那一半 +「后端重起」那一半；
+⑥ **走查 ⑩ 那一格现在测得到润色了，但「重写 / 扩展 / 自定义提示」那三条右键动作
+   在走查里仍然一次都没真落地过**——假模型这一批只接了 `{"text":…}` 那一族，
+   `EXPAND_SYSTEM` 要的 `{"before","after"}` **还是退回 `REPORT`**（有反例钉着，不是忘了）；
+⑦ P87 留的 ②③⑤、P85 留的 ③、P84 留的 ①–⑦、P83 留的 ①②、P81 留的 ①②③④、
+   P79 留的 ①②③④⑥、P78 留的 ④、P77 留的 ②④、P76 留的 ②③④⑤、P74 留的 ①②③、
+   P69 留的 ①②③ 都没碰。

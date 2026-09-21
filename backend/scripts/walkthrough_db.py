@@ -130,5 +130,24 @@ def point_provider_at_localhost(db: Path | str, port: int | str, *,
         raise AssertionError(f"改完还有地址不指本机：{bad}")
     if not rows:
         raise AssertionError("provider_config 一行都没有 —— 那这一趟根本没配过模型，先想清楚")
-    print(f"供应商 → {base}（{len(rows)} 行，{len(BASE_URL_COLS)} 个地址列都核过）")
-    return {"base": base, "rows": len(rows)}
+    # **模型名也得核一遍**（P87 问题 #1，P89 从 scratch 收进仓库）。
+    #
+    # P87 那一趟四个 `*_base_url` 全改对了，**`local_model` 留着空串**。症状是：
+    # ⑥「智能续写」读回 `+0 字`、收工那行空的、`until` 干等 300 秒、假模型
+    # **一个请求都没收到** —— 看起来跟 P68 那条「丢字」回退一模一样，
+    # 那一趟 32 张截图白跑。地址对了不等于这一发发得出去：
+    # **模型名是空的，后端根本不会去发那一发。**
+    #
+    # 上面那圈只核了地址列，`local_model` / `vision_model` 写进去就没人读回来过——
+    # 「我写了一条 UPDATE」和「库里现在是那个值」是两件事（同这个函数自己的那条理由）。
+    want = {"local_model": model, "vision_model": vision_model}
+    if not model or not vision_model:
+        raise AssertionError(
+            f"模型名不许是空的（local_model={model!r} / vision_model={vision_model!r}）"
+            " —— 空的话后端连那一发都不会发，壳上看着像「AI 全都不响应」（P87 问题 #1）")
+    wrong = [(r.get("id"), c, r.get(c)) for r in rows for c, v in want.items() if r.get(c) != v]
+    if wrong:
+        raise AssertionError(f"改完模型名对不上：{wrong}，要的是 {want}")
+    print(f"供应商 → {base}（{len(rows)} 行，{len(BASE_URL_COLS)} 个地址列 + "
+          f"local_model={model!r} / vision_model={vision_model!r} 都核过）")
+    return {"base": base, "rows": len(rows), "model": model, "vision_model": vision_model}
