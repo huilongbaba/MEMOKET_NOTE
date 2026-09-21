@@ -533,6 +533,32 @@ class UserMemory:
         self._cache[key] = (mtime, idx, store)
         return idx
 
+    def _topic_face(self, store, idx):
+        """这个库的「话题面」（P84）。按 mtime 缓存在 `_cache["…#topicface"]`，
+        跟 `#grepidx` 同一个位置和同一条回收规则。
+
+        **只有 `common_term()` 里真的要问「泛词还是主题词」时才建**——它要扫一遍
+        `store.facts`，而 2362 unit 的真库上那条分支根本不会走到（见 `common_term`）。
+        建不出来回 `None` = 这条判据不插手，**不插手就是原样**（同 `_grep_index`）。
+        """
+        from ..kb.topic_face import TopicFace
+
+        try:
+            mtime = self.path.stat().st_mtime
+        except OSError:
+            return None
+        key = f"{self.path}#topicface"
+        hit = self._cache.get(key)
+        if hit and hit[0] == mtime and hit[2] is store:
+            return hit[1]
+        try:
+            face = TopicFace(store.facts.values(),
+                             units_for=(idx.units_for if idx is not None else None))
+        except Exception:      # noqa: BLE001 —— 建不出来就是不启用这一档
+            return None
+        self._cache[key] = (mtime, face, store)
+        return face
+
     def common_term(self):
         """回一个「这个词在**这个人的**库里到处都是」的判据，给 `kb/relations.detect(common=…)`。
 
@@ -542,18 +568,51 @@ class UserMemory:
 
         零模型、零额外 IO：走的是 `search.plan` 已经在用的那份 2-gram 倒排表。
         建不出索引（或库是空的）就回 `None` = 不启用这条判据，**不启用就是原样**。
+
+        ## P84：小库那一档再问一句「泛词还是主题词」
+
+        P81 / P82 量清楚的根因：**单主题小库里主题词的 df 天然就高，df 高 ≠ 它不是证据**。
+        P82 试过「按库大小把整条判据关掉」——变好 16 / 变差 23，**退回**，因为
+        `common` 在那种库上还兼着口水词兜底（`因此` df 23.3%，`_is_cn_filler` 里一个都没有）。
+
+        **这一批不关它，只在它已经判 True 之后加问一句**
+        （`kb/topic_face.TopicFace.generic`，轴是 `FactRecord.topics` 的话题面，不是 df）：
+
+        * **只在 `total * RATIO < MIN` 那一档问**（< 333 unit）。大库上 6% 自己就是有效门槛，
+          这条判据一个字都不插手——`terrence`（2362 unit）逐格不动，**四栏对这一刀是瞎的**
+          （P82 那一课），唯一看得见它的是 `recall_ruler --by-lib` 的小库那一行。
+        * **只对汉字串问**。泛尺在英文那一半没有留出集（P77 ③ / P79 ④ 两批的账），
+          而 P84 实测这一格是真的会出事——理由和两组数写在 `kb/topic_face` 文件头第 ① 格。
+        * **只有明确判「不泛」才捞回来**。`None`（判不了）当 `False` 用不得。
+
+        全库对拍（765 条，`recall_ruler --cf-spread`）：**变了 28 条，全部落在
+        `terrence-rewrite`（193 unit）**；28 条逐条读完 **变好 14 / 变差 7 / 中性 7**
+        （标注 `p84-spread-28`）。
         """
         from ..kb import relations as R
+        from ..kb import topic_face as TF
 
         store, _vocab = self._index()
         idx = self._grep_index(store)
         if idx is None or not idx.unit_count:
             return None
         total = idx.unit_count
+        # **大库那一档一个字都不动**：6% 本来就是有效门槛，`MIN` 绑不住它。
+        # 这个判断只跟库大小有关，所以在这儿算一次，不进每个串的热路。
+        ask_face = total * R.COMMON_DF_RATIO < R.COMMON_DF_MIN
 
         def is_common(term: str) -> bool:
             n = idx.unit_df(term, floor=R.COMMON_DF_MIN)
-            return n is not None and n >= R.COMMON_DF_MIN and n / total >= R.COMMON_DF_RATIO
+            if not (n is not None and n >= R.COMMON_DF_MIN
+                    and n / total >= R.COMMON_DF_RATIO):
+                return False
+            if not (ask_face and TF.has_cjk(term)):
+                return True
+            face = self._topic_face(store, idx)
+            if face is None:
+                return True
+            # **只有明确「不泛」才捞回来**；`None` = 判不了，照旧算 common。
+            return face.generic(term) is not False
 
         return is_common
 

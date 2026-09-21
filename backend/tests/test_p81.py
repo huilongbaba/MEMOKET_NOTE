@@ -173,7 +173,16 @@ def test_第一条e_在库上重数众筹(real_corpus):
         idx = m._grep_index(store)
         got[user] = (idx.unit_count, idx.unit_df("众筹", floor=0), m.common_term()("众筹"))
     assert got["terrence"] == (2362, 107, False), got["terrence"]
-    assert got["terrence-rewrite"] == (193, 33, True), got["terrence-rewrite"]
+    # ⚠️ **P84 之后第三格翻了**：df 还是 33/193 = 17.1%（**第二格一个没动**），
+    # 但 `common_term()` 在小库那一档现在会再问一句「泛词还是主题词」，
+    # 而 `众筹` 的话题面 spread=0.47 —— **判「不泛」，捞回来了**。
+    # P79 台账那笔账（「多砍 众筹 38」来自这个库）读的是 df 那一格，**依旧成立**；
+    # 翻的是「今天它还被不被 `common` 挡着」，那正是 P84 修的东西。
+    assert got["terrence-rewrite"] == (193, 33, False), got["terrence-rewrite"]
+    from app.database.kb import topic_face as TF
+    from scripts import topic_spread_ruler as TS
+    face = TS.from_memory("terrence-rewrite")
+    assert face.generic("众筹") is False and face.spread("众筹") < TF.SPREAD_GENERIC
 
 
 @NEEDS_CORPUS
@@ -187,10 +196,18 @@ def test_第一条f_小库兜底那句注释不成立(real_corpus):
     idx = m._grep_index(store)
     assert idx.unit_count == 193 and idx.unit_count < 333, "这个库不在「小库」那一档了"
     common = m.common_term()
-    still = [t for t in ("众筹", "硬件", "工作", "手环", "ai", "app", "memory",
-                         "2026", "agent", "产品", "设计", "记录", "使用", "连接")
-             if common(t)]
-    assert len(still) == 14, f"{len(still)} ≠ 14：{still}"
+    probes = ("众筹", "硬件", "工作", "手环", "ai", "app", "memory",
+              "2026", "agent", "产品", "设计", "记录", "使用", "连接")
+    # 「兜底没兜住」这一条判的是 **df 那道门**——它一格没动：14 个探针 14 个照样过 df。
+    df_still = [t for t in probes if idx.unit_df(t, floor=0) >= R.COMMON_DF_MIN
+                and idx.unit_df(t, floor=0) / 193 >= R.COMMON_DF_RATIO]
+    assert len(df_still) == 14, f"{len(df_still)} ≠ 14：{df_still}"
+    # ⚠️ **P84 之后 `common_term()` 自己只剩 8 个**：那条「泛词 vs 主题词」的轴
+    # 把 `众筹`(0.47) / `手环`(0.54) / `设计`(0.65) / `产品`(0.74) / `硬件`(0.74) /
+    # `连接`(0.68) 六个判「不泛」捞了回来；`ai` / `app` / `memory` / `2026` / `agent`
+    # 是**英文那一半，这条轴不问**（泛尺在那半没有留出集），`工作` / `记录` / `使用` 判「泛」。
+    still = [t for t in probes if common(t)]
+    assert still == ["工作", "ai", "app", "memory", "2026", "agent", "记录", "使用"], still
 
 
 # ── ② 搜索框搜不到数字 / 日期：量完了，判「不修」 ─────────────────────────────

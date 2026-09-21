@@ -177,9 +177,13 @@ def test_第一条e_六个库各自的有效门槛(real_corpus):
         idx = m._grep_index(store)
         fn = m.common_term()
         got[user] = (idx.unit_count, sum(1 for t in probes if fn and fn(t)))
+    # ⚠️ **P84 之后 `terrence-rewrite` 那一格从 14 掉到 8**：df 那道门一格没动
+    # （14 个探针 14 个照样过 df，闸在 `test_p81::第一条f`），掉的是 P84 那条轴
+    # 从 `common` 手里捞回来的六个串。**「兜底只在 20–333 那一档没兜住」这条判照旧成立**
+    # ——它说的正是 df 那道门，而 P84 补的就是那一档。
     assert got == {"fresh678": (2, 0), "fresh678b": (2, 0), "fresh678c": (2, 0),
                    "shot-demo": (11, 0), "terrence": (2362, 6),
-                   "terrence-rewrite": (193, 14)}, got
+                   "terrence-rewrite": (193, 8)}, got
     # MIN 是不是绑定约束，就是「库大小 × 6% 够不够得着 20」这一句
     assert R.COMMON_DF_MIN / R.COMMON_DF_RATIO == pytest.approx(333.33, abs=0.01)
 
@@ -195,8 +199,17 @@ def test_第一条f_这一刀为什么退回_那几个口水串今天只有commo
     big = UserMemory("terrence").common_term()
     for t in ("因此", "团队", "说明", "消费者", "连接"):
         assert not kb_search._is_cn_filler(t), f"{t!r} 进了口水词表——根因要重读"
-        assert small(t) is True, f"{t!r} 在 193 unit 的库上不再是 common"
         assert big(t) is False, f"{t!r} 在 2362 unit 的真库上也成了 common"
+    # ⚠️ **P84 之后这五串在小库上分成了两档，照实钉**：那条「泛词 vs 主题词」的轴
+    # 认出了 `因此`(spread 0.97) / `团队`(0.77) / `说明`(0.77) 是泛词 —— **P82 的根因
+    # 在这三串上成立，而且现在是被那条轴顶着，不再只靠 df**；
+    # 而 `消费者`(0.72) / `连接`(0.68) 被判「不泛」捞了回来。
+    # **P82 那条「换不了」的判不受影响**（它判的是「只按库大小关掉整条判据」那个旋钮，
+    # 49 条逐条读的结论一个字没改）；变的是「谁在挡这五串」。
+    for t in ("因此", "团队", "说明"):
+        assert small(t) is True, f"{t!r} 在 193 unit 的库上不再是 common——根因要重读"
+    for t in ("消费者", "连接"):
+        assert small(t) is False, f"{t!r} 没被 P84 那条轴捞回来——那 28 条标注要重读"
     # `如果` / `用户` 两个库上都是 common —— **对照**：不是每一串都只有小库挡
     assert small("如果") and big("如果")
     assert small("用户") and big("用户")
@@ -206,18 +219,25 @@ def test_第一条f_这一刀为什么退回_那几个口水串今天只有commo
 
 def test_第二条_那四个数钉进了尺子():
     """**先量别急着改**：这一批只把 quorum 的分量钉下来。"""
-    assert EG.EXPECT_QUORUM_CALLS == 375864
-    assert EG.EXPECT_QUORUM_TRUE == 1771
-    assert EG.EXPECT_QUORUM_EDGE == 1488
-    assert EG.EXPECT_QUORUM_REJECT_AT_2 == 11
-    assert EG.EXPECT_QUORUM_SHOWN == (1347, 298, 778, 1049)
-    # **84.0% 就是这条判本身**（算术，不是又抄一个数）
-    assert round(EG.EXPECT_QUORUM_EDGE / EG.EXPECT_QUORUM_TRUE * 100, 1) == 84.0
+    # ⚠️ **P84 之后这五个数各抬了一点**：那条「泛词 vs 主题词」的轴在小库上多放了
+    # 63 个串进证人名单，于是这道门多被问了几趟。**P82 ② 那条判一个字没变**——
+    # 84.0% → 84.1%、74.2% → 74.3%，**换的是分母，不是形状**。
+    assert EG.EXPECT_QUORUM_CALLS == 375963      # P84 之前 375864
+    assert EG.EXPECT_QUORUM_TRUE == 1821         # P84 之前 1771
+    assert EG.EXPECT_QUORUM_EDGE == 1531         # P84 之前 1488
+    assert EG.EXPECT_QUORUM_REJECT_AT_2 == 11    # **这一个一格没动**
+    assert EG.EXPECT_QUORUM_SHOWN == (1367, 301, 792, 1066)   # P84 之前 (1347, 298, 778, 1049)
+    # **84.1% 就是这条判本身**（算术，不是又抄一个数）；P84 之前那一版是 84.0%
+    assert round(EG.EXPECT_QUORUM_EDGE / EG.EXPECT_QUORUM_TRUE * 100, 1) == 84.1
+    assert round(1488 / 1771 * 100, 1) == 84.0
     shown, short, edge, managed = EG.EXPECT_QUORUM_SHOWN
     assert short + managed == shown, "用户眼前那一档三个数对不上"
-    assert round(edge / managed * 100, 1) == 74.2
-    # 1347 是 P77 起每批都在对的那个数
-    assert shown == 1347
+    assert round(edge / managed * 100, 1) == 74.3      # P84 之前 74.2
+    assert round(778 / 1049 * 100, 1) == 74.2          # P82 当时那一版
+    # ⚠️ 1347 是 P77 起每批都在对的那个数，**P84 把它抬到 1367**——
+    # 那条轴在小库上多捞回 20 对召回。它一动说明的**正是召回本身变了**，
+    # 而这一整节要说的「quorum 有多脆」那个形状（84% / 74%）反倒一格没动。
+    assert shown == 1367
 
 
 def test_第二条b_quorum就是那一行_而且它只有2():

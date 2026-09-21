@@ -124,8 +124,10 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
 
     # —— `pinned`：记忆卡那把尺（P83 A）。**六个数一动，A 那一节整节失效** ——
     ("backend/scripts/card_origin_ruler.py", "EXPECT_CARDS"): (
-        PINNED, 964, "727 条 cursor 查询摆出来的卡总数（上界口径，见那把尺的文件头）。"
-                     "它是 133 / 62 / 29 / 33 四个数共同的分母——一动，四条判全部重读"),
+        PINNED, 977, "727 条 cursor 查询摆出来的卡总数（上界口径，见那把尺的文件头）。"
+                     "它是 133 / 62 / 29 / 33 四个数共同的分母——一动，四条判全部重读。"
+                     "⚠️ P84 把它从 964 抬到 977：那条「泛词 vs 主题词」的轴在小库上多摆出 13 张卡，"
+                     "而**那四个数一格没动**——所以 P83 A 那一节的四条判不用重读，重读的是分母那一句"),
     ("backend/scripts/card_origin_ruler.py", "EXPECT_MARKED"): (
         PINNED, 133, "会被盖上「前一段带进来的」的卡数。**这一批「该不该改」的全部依据**："
                      "133/964 不是个可以忽略的零头。一动就去重读 `cardFromBefore` 那两条判据"),
@@ -139,8 +141,9 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         PINNED, 33, "整屏 5 张全是前一段带回来的查询数。最坏的那一档："
                     "标签写着「按光标这段找的」而底下一张都不是。一动去重读那条判据的第 ① 条"),
     ("backend/scripts/card_origin_ruler.py", "EXPECT_WITH_CARDS"): (
-        PINNED, 312, "727 条里真摆出了卡的条数（其余 415 条一张都没有）。"
-                     "它是「盖戳率」唯一正确的分母——拿 727 去除是把 415 条空屏也算进去了"),
+        PINNED, 314, "727 条里真摆出了卡的条数（其余 413 条一张都没有）。"
+                     "它是「盖戳率」唯一正确的分母——拿 727 去除是把 413 条空屏也算进去了。"
+                     "⚠️ P84 从 312 抬到 314：两条原来整屏空的小库查询现在摆得出卡了"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_MISSING_HIT"): (
         PINNED, 1, "「库里没有」那一档真有 1 条（`羽毛球`）。调成 0 = 把那条不好看的实测抹了"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_TOTAL"): (PINNED, 110, "知识库搜索框那把尺的量程（P79 ② 的 110 条手打搜索词）。五档之和，一动全表重排"),
@@ -167,14 +170,16 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         PINNED, 7, "第二个洞里 `月`/`号`/`日`/`年` 那一族——**产品自己写的「日期」两个字，正是量词表里没有的那个形状**"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_NUMDATE_EMPTY"): (
         PINNED, 20, "P79 ② C：数字日期那一档 20/20 全 0 条（量到了没修，这个 20 是那条账的分量）"),
-    ("backend/scripts/en_gate_ruler.py", "EXPECT_BLOCKED_OCC"): (PINNED, 568, "P77 那道英文 ≥3 的门挡掉的串次"),
-    ("backend/scripts/en_gate_ruler.py", "EXPECT_BLOCKED_KINDS"): (PINNED, 14, "那道英文 ≥3 的门挡掉了多少**种**串。跟 568 串次一起读（P77 ①）"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_BLOCKED_OCC"): (PINNED, 583, "P77 那道英文 ≥3 的门挡掉的串次。"
+                                                                         "⚠️ P84 抬了它（那条「泛词 vs 主题词」的轴在小库上多放了 63 个串进证人名单，这道门就多被问了几趟）；比率没变。568 → 583"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_BLOCKED_KINDS"): (PINNED, 14, "那道英文 ≥3 的门挡掉了多少**种**串。跟 583 串次一起读（P77 ①；P84 抬了串次，**种数一格没动**）"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_TOP_BLOCKED"): (
-        PINNED, ("ai", 451), "**P79 ① 那条判的全部分量**：`ai` 被挡 451 串次"),
+        PINNED, ("ai", 466), "**P79 ① 那条判的全部分量**：`ai` 被挡 466 串次。"
+                              "⚠️ P84 抬了它（那条「泛词 vs 主题词」的轴在小库上多放了 63 个串进证人名单，这道门就多被问了几趟）；比率没变。451 → 466，而 466/583 = 79.9% ≈ P77 量的 79.4%——**形状没变**"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_FLIP_AT_2"): (PINNED, 11, "英文门放宽到 2（= 不设门）会翻盘的调用数。P77 「这道门该不该换轴」架在这上面"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_FLIP_QUERIES_AT_2"): (PINNED, 7, "放宽到 2 时会翻盘的查询条数（11 次调用落在 7 条查询上）"),
-    ("backend/scripts/en_gate_ruler.py", "EXPECT_FLIP_AT_4"): (PINNED, 213, "英文门收紧到 4 会翻盘的调用数。跟放宽那一档的 11 是同一条判的两头"),
-    ("backend/scripts/en_gate_ruler.py", "EXPECT_FLIP_QUERIES_AT_4"): (PINNED, 100, "收紧到 4 时会翻盘的查询条数（213 次调用落在 100 条查询上）"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_FLIP_AT_4"): (PINNED, 211, "英文门收紧到 4 会翻盘的调用数。跟放宽那一档的 11 是同一条判的两头（P84：213 → 211，条数 100 没动）"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_FLIP_QUERIES_AT_4"): (PINNED, 100, "收紧到 4 时会翻盘的查询条数（211 次调用落在 100 条查询上）"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_CF"): (
         PINNED, {2: (342, 1353, 2), 1: (342, 1353, 2), 4: (317, 1225, 67)},
         "三档门槛各自的全库对拍。P77 「这道门该不该换轴」那条判就架在这张表上"),
@@ -203,21 +208,50 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         "**这个旋钮只够得着一个库**。一旦够得着第二个库，「按库分」那张表和 49 条标注的分母全部换人——"
         "也就是说 `COMMON_DF_MIN` / `COMMON_DF_RATIO` 或者某个库的大小变了"),
 
+    # —— P84：那条「泛词 vs 主题词」的轴（`kb/topic_face`）接进 `common_term()` 之后的全库对拍 ——
+    # ⚠️ 这一组的「一动要重读什么」全部指向同一处：`kite_memory.common_term()` 那段注释里
+    # P84 判「接」的那几行、`kb/topic_face` 文件头那三格「够不着哪里」，
+    # 以及 `memory_sample.jsonl` 的 `p84-spread-28`。
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_SPREAD_CHANGED"): (
+        PINNED, 28, "**P84 那条判的分量**：拆掉这条轴，765 里变 28 条。"
+                    "这 28 条逐条读完才得出「变好 14 / 变差 7 / 中性 7 → 接」。一动就得重读那 28 条"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_SPREAD_ADD"): (
+        PINNED, 36, "HEAD 比「没有这条轴」多进来多少召回对。跟 DROP 的 16 一起读才分得清"
+                    "「捞回来的多了」和「捞对了」（P73 那一课）——净 +20 不是判据，那 28 条读下来才是"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_SPREAD_DROP"): (
+        PINNED, 16, "HEAD 比「没有这条轴」少掉多少召回对。**这 16 条里有 7 条判了变差**"
+                    "（i=293 那条逐句出处就在里面）——它一动，「变好 14 / 变差 7」那一栏要重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_SPREAD_HIT"): (
+        PINNED, (345, 341), "有召回的查询数 HEAD → 反事实。341 是 P77 起每批都在对的那个数，"
+                            "**它现在在反事实那一头**；345 一动说明的不是这条轴，是 765 那把尺本身"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_SPREAD_LIBS"): (
+        PINNED, (("terrence-rewrite", 28),),
+        "**这条轴只够得着小库那一档**（`total * COMMON_DF_RATIO < COMMON_DF_MIN`）。"
+        "一旦够得着 `terrence`，四栏就不再是「对这一刀是瞎的」而是真被动过了——"
+        "197/195/96、192/190/92、166/137/33、46/36/4/6 四栏得整批重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_SPREAD_RESCUED"): (
+        PINNED, 63, "这条轴真从 `common` 手里捞回来的串数（`terrence-rewrite` 上）。"
+                    "一动说明语料、`SPREAD_GENERIC`(0.75) 或者「只问汉字」那一条变了，"
+                    "28 条标注的分母跟着换人——先去读 `kb/topic_face` 文件头第 ① 格"),
+
     # —— P82 ②：quorum 有多脆（量了没改，这四个数就是那个「多脆」）——
     ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_CALLS"): (
-        PINNED, 375864, "`_strong_enough` 在 765 上被问了多少次。它是下面三个数的分母，一动三个数一起废"),
+        PINNED, 375963, "`_strong_enough` 在 765 上被问了多少次。它是下面三个数的分母，一动三个数一起废。"
+                        "⚠️ P84 抬了它（那条「泛词 vs 主题词」的轴在小库上多放了 63 个串进证人名单，这道门就多被问了几趟）；比率没变。375864 → 375963"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_TRUE"): (
-        PINNED, 1771, "其中判 True 的次数。EDGE / TRUE = 84.0% 是 P82 ② 的结论本身"),
+        PINNED, 1821, "其中判 True 的次数。EDGE / TRUE = **84.1%** 是 P82 ② 的结论本身（P84 之前 1771 / 84.0%）"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_EDGE"): (
-        PINNED, 1488, "**P82 ② 那条判的全部分量**：判 True 里证人正好两条的有 1488 次 = 84.0%，"
-                      "少一条证人就翻 False。这个数一动，「quorum 有多脆」就得重量"),
+        PINNED, 1531, "**P82 ② 那条判的全部分量**：判 True 里证人正好两条的有 1531 次 = **84.1%**，"
+                      "少一条证人就翻 False。这个数一动，「quorum 有多脆」就得重量。"
+                      "⚠️ P84 抬了它（那条「泛词 vs 主题词」的轴在小库上多放了 63 个串进证人名单，这道门就多被问了几趟）；比率没变。1488 → 1531，**比率 84.0% → 84.1%，形状没变**"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_REJECT_AT_2"): (
         PINNED, 11, "够了 quorum 又被后面那道 `≥3 字 / 实词` 判回去的次数——**只有 len(cl)==2 这一档有**。"
                     "它一动说明后面那道门的量程变了（那是 `EN_STRONG_MIN` / `STRONG_CJK_MIN` 的事）"),
     ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_SHOWN"): (
-        PINNED, (1347, 298, 778, 1049),
-        "**用户眼前**那 1347 条召回对里，这道门管着 1049 条、其中 778 条靠正好两条证人撑着（74.2%）。"
-        "1347 是 P77 起每批都在对的那个数——它一动说明的不是 quorum，是召回本身"),
+        PINNED, (1367, 301, 792, 1066),
+        "**用户眼前**那 1367 条召回对里，这道门管着 1066 条、其中 792 条靠正好两条证人撑着（**74.3%**）。"
+        "⚠️ P84 把召回对从 1347 抬到 1367（那条轴在小库上多捞回 20 对），"
+        "比率 74.2% → 74.3%——**说明的正是召回本身变了，而 quorum 那个形状没变**"),
 
     # —— P82 ③：屏幕上写的串 ≠ 用户打的串 ——
     ("backend/scripts/kb_search_ruler.py", "EXPECT_SHOWN_TOTAL"): (
