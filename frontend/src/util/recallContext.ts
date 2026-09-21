@@ -11,7 +11,13 @@ export const RECALL_MIN_CHARS = 8
 /** 光标段前面带多少字的上下文（只取前一段，不跨空行再往前） */
 export const RECALL_CONTEXT_BEFORE = 200
 
-export type RecallQuery = { query: string; mode: 'cursor' | 'tail' }
+/** `before` = **这一趟真的拼进查询的那一截前一段**（已 strip 过；`tail` 档恒为 `''`）。
+ *
+ *  P80 A：面板上那一行写着「按**光标这段**找的」，而查询是「前一段 + 这一段」——
+ *  前一段词多的时候，摆出来的命中词**一个都可以不在光标这段里**（实拍见
+ *  `editor/__tests__/p80.test.ts`）。要把那句话说老实，就得让面板知道
+ *  「哪一截是前一段带进来的」。**这儿只是把它交出去，判在 `termFromBefore`。** */
+export type RecallQuery = { query: string; mode: 'cursor' | 'tail'; before: string }
 
 export function recallQuery(content: string, paragraph: string, tailChars = RECALL_TAIL_CHARS): RecallQuery {
   const para = (paragraph || '').trim()
@@ -24,10 +30,27 @@ export function recallQuery(content: string, paragraph: string, tailChars = RECA
     before = before.trim()
     if (/^#{1,6}\s/.test(before)) before = ''
     const q = stripForRecall((before ? before + '\n' : '') + para).trim()
-    return { query: q, mode: 'cursor' }
+    return { query: q, mode: 'cursor', before: stripForRecall(before).trim() }
   }
-  return { query: stripForRecall(content.slice(-tailChars)).trim(), mode: 'tail' }
+  return { query: stripForRecall(content.slice(-tailChars)).trim(), mode: 'tail', before: '' }
 }
+
+/** 这个命中词是**前一段带进来的**吗（P80 A）。
+ *
+ *  **两条都成立才算**，宁可少说一句：
+ *    ① 它**不在光标这段里**，而且 ② 它**确实在前一段那一截里**。
+ *
+ *  只判前半条会冤枉人：命中词是后端在**拼好的查询**上切出来的，切法跟这里的子串判法
+ *  不是同一把尺（**判据比产品窄**那张脸），落差会变成屏幕上一句假话——
+ *  比原来那句含糊话更糟。两条都要，落差只会让它**少说**一句。 */
+export function termFromBefore(term: string, paragraph: string, before: string): boolean {
+  if (!term || !before) return false
+  const inPara = stripForRecall(paragraph || '').includes(term)
+  return !inPara && before.includes(term)
+}
+
+/** 那半句本身。单独拎出来是为了**量具和判据引的是同一个串**（P67 ② 那条「一屏一把尺」）。 */
+export const FROM_BEFORE_NOTE = '前一段带进来的'
 
 const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
 const grams = (s: string) => { const g = new Set<string>(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g }
@@ -104,16 +127,29 @@ export const NO_EVIDENCE_LINE = '这一段没有可摆出来的证据'
  *    · 有东西 —— 摆前 3 个，每个带上它凭什么算证据；
  *    · `[]`   —— **判过了，一条都摆不出来**：如实说一句，**不许**退回 `terms`
  *               那串没判过的（那正是 P44 问题 #3 摆出「希望通过智能化能」的那条路）；
- *    · 没这一格（老后端 / 判据自己抛了）—— 没人判过，退回原来那句「命中：X、Y」是对的。 */
+ *    · 没这一格（老后端 / 判据自己抛了）—— 没人判过，退回原来那句「命中：X、Y」是对的。
+ *
+ *  **P80 A 加的第四件事**：`ctx` 给了的话，摆出来的每个词再问一句
+ *  「它是不是**前一段带进来的**」，是就当场点出来。`ctx` 不给逐字不变
+ *  （老调用、老快照一个字都不动）。**`ctx` 里那两段必须是「发那一问时」的，
+ *  不是渲染这一刻的**——拿新光标段去标旧结果又是一次张冠李戴。 */
 export function evidenceLine(
   mode: 'cursor' | 'tail',
   evidence: { term: string; why: string; units: number }[] | null | undefined,
   terms: string[],
+  ctx?: { paragraph: string; before: string } | null,
 ): string {
   const head = '按' + (mode === 'cursor' ? '光标这段' : '正文末尾') + '找的'
+  const why = (e: { term: string; why: string; units: number }) => {
+    const base = evidenceWhy(e)
+    return ctx && termFromBefore(e.term, ctx.paragraph, ctx.before) ? `${FROM_BEFORE_NOTE} · ${base}` : base
+  }
   if (evidence && evidence.length) {
-    return head + '，命中：' + evidence.slice(0, 3).map((e) => `${e.term}（${evidenceWhy(e)}）`).join('、')
+    return head + '，命中：' + evidence.slice(0, 3).map((e) => `${e.term}（${why(e)}）`).join('、')
   }
   if (evidence) return head + '，' + NO_EVIDENCE_LINE
-  return head + (terms.length ? '，命中：' + terms.slice(0, 6).join('、') : '')
+  if (!terms.length) return head
+  const shown = terms.slice(0, 6).map((t) =>
+    ctx && termFromBefore(t, ctx.paragraph, ctx.before) ? `${t}（${FROM_BEFORE_NOTE}）` : t)
+  return head + '，命中：' + shown.join('、')
 }

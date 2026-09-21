@@ -189,12 +189,17 @@ def test_第四条_那925是什么_以及它今天摆到哪儿去了():
     rel = (ROOT / "frontend" / "src" / "components" / "RelatedMemory.tsx").read_text("utf-8")
     # 「有召回才渲染那一行」——424 条看不见，靠的就是这一行
     assert "{facts.length > 0 && !loading && (" in rel
-    assert "{evidenceLine(mode, evidence, terms)}" in rel
+    # P80 A 起多一个 `qCtx`（发那一问时的光标段 + 前一段）。**接线还是这一处。**
+    assert "{evidenceLine(mode, evidence, terms, qCtx)}" in rel
     ctx = (ROOT / "frontend" / "src" / "util" / "recallContext.ts").read_text("utf-8")
     # `evidenceLine` 三支：有 chip 摆 chip · `[]` 说那句话 · **只有 `null` 才退回 terms**
     assert "if (evidence && evidence.length) {" in ctx
     assert "if (evidence) return head + '，' + NO_EVIDENCE_LINE" in ctx
-    assert "return head + (terms.length ? '，命中：' + terms.slice(0, 6).join('、') : '')" in ctx
+    # P80 A 把这一支拆成了三行（每个词多问一句「是不是前一段带进来的」），
+    # **守的两件事一个字没变**：空了不摆那一行 · 摆也只摆前 6 个。
+    assert "if (!terms.length) return head" in ctx
+    assert "const shown = terms.slice(0, 6).map((t) =>" in ctx
+    assert "return head + '，命中：' + shown.join('、')" in ctx
     # 另一条真摆 terms 的路还在（它是「判据宁可窄」那一条的全部理由）
     kb = (ROOT / "frontend" / "src" / "components" / "kb" / "KbDashboard.tsx").read_text("utf-8")
     assert "' · 命中词：' + hits.terms.slice(0, 6).join('、')" in kb

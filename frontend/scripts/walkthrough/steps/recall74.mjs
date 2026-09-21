@@ -64,6 +64,8 @@ export default async function (d, args) {
   const lines = await d.eval(`Array.from(document.querySelectorAll('.cm-content .cm-line')).map((l, i) => [i, (l.textContent||'').slice(0, 30)])`)
   console.log('行:', JSON.stringify(lines))
 
+  // 上一段那一行，用来当场回答「右栏跟上了没有」（P80 A）
+  let prevLine = null
   for (let i = 0; i < seeds.length; i++) {
     const head = seeds[i].slice(0, 6)
     const row = lines.find(([, t]) => t.includes(head))
@@ -74,6 +76,17 @@ export default async function (d, args) {
     const mem = await memPane(d)
     console.log(`\n═══ 光标停在第 ${i + 1} 段【${head}…】═══`)
     console.log('  整段原文:', JSON.stringify(seeds[i]))
+    // **整行读元素，不从整块正文里正则抠**（P80 A 的量具那一半）：
+    // 原来那条 `/命中[：:][^\n]{0,200}/` 把**「按光标这段找的」/「按正文末尾找的」**
+    // 这个前缀扔掉了，而那正是这一行自称属于哪一段的唯一标签——两段都退回「按正文末尾找的」
+    // 时，抠出来的「命中：…」会逐字相同，而那不是「右栏没刷新」。**判据比产品窄**。
+    const termsLine = await d.text('.mem-terms')
+    console.log('  那一行整行（带「按…找的」前缀）:', JSON.stringify(termsLine))
+    console.log('  跟上一段逐字相同吗:', prevLine !== null && termsLine === prevLine)
+    // P80 A：摆出来的词里有几个是**前一段带进来的**（面板自己标的那半句）
+    console.log('  「前一段带进来的」标了几处:', ((termsLine || '').match(/前一段带进来的/g) || []).length)
+    console.log('  这一段没查成那一句在吗（该 false）:', await d.exists('.mem-failed'))
+    prevLine = termsLine
     console.log('  命中行:', JSON.stringify((mem || '').match(/命中[：:][^\n]{0,200}/g)))
     // **逐个点名**：这一族里 P71 说「被顶掉 / 被切错」的那几个词，界面上到底摆没摆
     const WORDS = ['灵衢交换架构', '灵衢互联总线', '灵衢', '欧拉操作系统', '欧拉', '计算柜',

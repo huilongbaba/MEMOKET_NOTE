@@ -4,7 +4,7 @@ import { memoryRelations, memoryScope, recall, SCOPE_LABEL, setMemoryScope, type
 import type { Fact, MemoryRelation, RecallEvidence } from '../api'
 import { stripForRecall } from '../util/wordCount'
 import { evidenceLine, factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
-import { KB_EMPTY_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RELATION_LABEL } from '../editor/marginMemory'
+import { KB_EMPTY_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RECALL_FAILED_NOTE, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
 import { requestTrayAdd } from '../util/tray'
@@ -56,7 +56,19 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   const [evidence, setEvidence] = useState<RecallEvidence[] | null>(null)
   const [whyEmpty, setWhyEmpty] = useState<'' | 'no_terms' | 'weak'>('')
   const [mode, setMode] = useState<'cursor' | 'tail'>('tail')
+  // **发那一问时**的光标段和前一段那一截（P80 A）。
+  // 摆出来的词是不是「前一段带进来的」，判的是这两段，**不是渲染这一刻的 `paragraph`**
+  // ——拿新光标段去标旧结果又是一次张冠李戴（P17 #2「A 篇的校验结果挂在 B 篇上」同形）。
+  const [qCtx, setQCtx] = useState<{ paragraph: string; before: string } | null>(null)
   const lastQueried = useRef('')
+  // **这一问没答上**（P80 A）。`why_empty` 是后端给的三档「为什么空」，
+  // 这一档是**客户端自己的**：根本没拿到回答。两件事别压成一个——
+  // 压成一个就会把「没查成」说成「知识库里没有相关内容」，那是另一句谎。
+  const [failed, setFailed] = useState(false)
+  // 「这一问是不是最新那一问」。**只认最新那一问的回答**（P80 A 的第二条路）：
+  // 光标从第 1 段挪到第 2 段，两问都在飞，第 1 问**后到**的话原来会把第 2 段的
+  // 答案盖回第 1 段的，而 `lastQueried` 已经是第 2 问了 → **它不会自己修回来**。
+  const recallSeq = useRef(0)
   // 记忆范围：换了就把两个缓存键清掉，让召回和关系都重来
   const [scope, setScope] = useState<MemoryScope>(() => memoryScope())
   useEffect(() => {
@@ -70,14 +82,21 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   const [relBusy, setRelBusy] = useState(false)
   const [ignored, setIgnored] = useState<Set<string>>(() => ignoredSet())
   const lastPara = useRef('')
+  const relSeq = useRef(0)
   useEffect(() => {
     const p = stripForRecall(paragraph).trim()
     if (p.length < MIN_CHARS || !/\d/.test(p)) { setRels([]); return }
     if (p === lastPara.current) return
     const t = setTimeout(() => {
       lastPara.current = p
+      const seq = ++relSeq.current
       setRelBusy(true)
-      memoryRelations(p).then((r) => setRels(r.relations)).catch(() => {}).finally(() => setRelBusy(false))
+      memoryRelations(p)
+        .then((r) => { if (seq === relSeq.current) setRels(r.relations) })
+        // 跟召回那一半同一条（P80 A）：没答上就把**上一段的关系卡**撤掉。
+        // 原来这儿也是空的 `catch`，于是「光标这段跟知识库的关系」底下摆着上一段的卡。
+        .catch(() => { if (seq === relSeq.current) { lastPara.current = ''; setRels([]) } })
+        .finally(() => { if (seq === relSeq.current) setRelBusy(false) })
     }, IDLE_MS)
     return () => clearTimeout(t)
   }, [paragraph, scope])
@@ -98,15 +117,27 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   // 用户在顶部写华为芯片、右栏是尾段恒瑞翻译的记忆）。零模型，每次 ~100ms。
   useEffect(() => {
     const q = recallQuery(content, paragraph)
-    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); return }
+    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); setQCtx(null); setFailed(false); return }
     if (q.query === lastQueried.current) return
     const t = setTimeout(() => {
       lastQueried.current = q.query
+      const seq = ++recallSeq.current
       setLoading(true)
       recall(q.query, RECALL_LIMIT)
-        .then((r) => { setFacts(r.facts); setTerms(r.terms ?? []); setEvidence(r.evidence ?? null); setWhyEmpty(r.why_empty ?? ''); setMode(q.mode) })
-        .catch(() => {})
-        .finally(() => setLoading(false))
+        .then((r) => {
+          if (seq !== recallSeq.current) return       // 不是最新那一问的回答：丢掉，别盖回上一段
+          setFacts(r.facts); setTerms(r.terms ?? []); setEvidence(r.evidence ?? null)
+          setWhyEmpty(r.why_empty ?? ''); setMode(q.mode); setQCtx({ paragraph, before: q.before }); setFailed(false)
+        })
+        .catch(() => {
+          if (seq !== recallSeq.current) return
+          // **上一段的答案当场作废**：原来这儿是空的 `catch`，于是「按光标这段找的，
+          // 命中：…」那一行**逐字还是上一段的**，而标签写着这一段。P78 在真壳上
+          // 拍到过（一篇五段，第 2 段那一行跟第 1 段逐字相同）。
+          lastQueried.current = ''                    // 清掉，下一次依赖变了还问得动
+          setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); setMode(q.mode); setQCtx(null); setFailed(true)
+        })
+        .finally(() => { if (seq === recallSeq.current) setLoading(false) })
     }, IDLE_MS)
     return () => clearTimeout(t)
   }, [content, paragraph, scope])
@@ -201,12 +232,15 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
       {/* 为什么给我看这几条（A5 的第一步）：按哪几个词找的、按光标段还是末尾 */}
       {facts.length > 0 && !loading && (
         <p className="muted mem-terms" style={{ fontSize: 'var(--t-xs)', margin: '0 0 6px' }}>
-          {evidenceLine(mode, evidence, terms)}
+          {evidenceLine(mode, evidence, terms, qCtx)}
         </p>
       )}
       {facts.length === 0 && !loading && (
-        <p className="muted" style={{ fontSize: 'var(--t-md)' }}>
-          {kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
+        <p className={'muted' + (failed ? ' mem-failed' : '')} style={{ fontSize: 'var(--t-md)' }}>
+          {/* **「没问成」排在最前**（P80 A）：没拿到回答的时候，关于知识库的任何一句
+              （空库 / 没找到 / 没有可查的关键词）都是在替空气背书。 */}
+          {failed ? RECALL_FAILED_NOTE
+            : kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
             : tooShort ? '再多写几个字就会开始自动检索。'
             // P4 #6：查询退化到一个泛词（「记录」）时原来硬凑 5 条不相干的；现在后端不凑，这里说清楚为什么空
             : whyEmpty === 'no_terms' ? (mode === 'cursor' ? '光标这段' : '正文末尾') + '没有可查的关键词（人名、项目、日期、数字这类具体的词）。'
