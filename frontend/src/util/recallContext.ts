@@ -52,6 +52,56 @@ export function termFromBefore(term: string, paragraph: string, before: string):
 /** 那半句本身。单独拎出来是为了**量具和判据引的是同一个串**（P67 ② 那条「一屏一把尺」）。 */
 export const FROM_BEFORE_NOTE = '前一段带进来的'
 
+/** 这一趟拿哪几个词去判「前一段带进来的」（P83 A）。
+ *
+ *  **三档跟 `evidenceLine` 逐字同一条**（P46 #1）——同一屏上两把尺就是 P40 那次
+ *  「校验说有 6 条、脉络说没有」的形状：
+ *    · 有证据 —— 用证据里的词（后端**判过**的那一份）；
+ *    · `[]`   —— **判过了、一条都摆不出来**：那就一个词都别拿去判卡。退回 `terms`
+ *               等于把后端刚判掉的那几串捡回来当依据（P44 问题 #3 那条路），
+ *               而这一次捡回来是要往卡上盖戳，比印在那一行上更难撤；
+ *    · 没这一格（老后端 / 判据自己抛了）—— 没人判过，退回 `terms` 是对的，
+ *               跟那一行**同进同退**。 */
+export function evidencePool(
+  evidence: { term: string; why: string; units: number }[] | null | undefined,
+  terms: string[],
+): string[] {
+  if (evidence && evidence.length) return evidence.map((e) => e.term)
+  if (evidence) return []
+  return terms
+}
+
+/** 底下那张记忆卡是**前一段带回来的**吗（P83 A）。
+ *
+ *  P80 只把那**一行**的说法改老实了（「命中：X（前一段带进来的）」），
+ *  底下那 5 张卡还是混着的：哪几张是因为「光标这一段」捞回来的、哪几张是因为
+ *  「前一段」捞回来的，用户一点提示都没有。真库实测 964 张卡里 **133 张**
+ *  是前一段带回来的，其中 **29 条查询是混着的**、**33 条整屏 5 张全是前一段的**。
+ *
+ *  **两条都成立才标**（照抄 P80 立的形状，宁可少说一句）：
+ *    ① 这张卡里**一个「光标这段里的命中词」都没有**；
+ *    ② 这张卡里**至少有一个「前一段带进来的命中词」**（`termFromBefore` 那两条）。
+ *
+ *  ⚠️ **第 ① 条是「一票否决」不是「多数决」**：只要卡里沾着一个光标这段的词，
+ *  它就至少有一半是因为这一段被捞回来的，那时候盖一个「前一段带进来的」是句假话。
+ *  ⚠️ 命中词是后端在**拼好的查询**上切出来的，卡里一个词都不含是常有的事
+ *  （召回不是靠子串）——那时候两条都不成立，**不标**。落差只会让它少说。
+ *
+ *  ⚠️ **`paragraph` / `before` 必须是「发那一问时」的那两段**，不是渲染这一刻的
+ *  ——跟 `evidenceLine` 的 `ctx` 同一条口径（P80 A）。 */
+export function cardFromBefore(factText: string, pool: string[], paragraph: string, before: string): boolean {
+  const body = stripForRecall(factText || '').toLowerCase()
+  if (!body || !before) return false
+  const inPara = stripForRecall(paragraph || '')
+  let fromBefore = false
+  for (const t of pool) {
+    if (!t || !body.includes(t)) continue
+    if (termFromBefore(t, paragraph, before)) fromBefore = true
+    else if (inPara.includes(t)) return false     // ① 一票否决
+  }
+  return fromBefore
+}
+
 const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
 const grams = (s: string) => { const g = new Set<string>(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g }
 

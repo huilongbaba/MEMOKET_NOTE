@@ -65,6 +65,7 @@ WATCHED: tuple[str, ...] = (
     "backend/scripts/en_gate_ruler.py",
     "backend/scripts/kb_search_ruler.py",
     "backend/scripts/recall_ruler.py",
+    "backend/scripts/card_origin_ruler.py",
     "backend/scripts/margin_dot_ruler.py",
     "backend/scripts/topic_spread_ruler.py",
     "frontend/scripts/check-walkthrough-fakeshell.mts",
@@ -94,6 +95,12 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
                    "P79 第 ⑤ 刀实拍：把它 6 → 3，**那把尺自己量不到**，只有一条源码对拍红"),
     ("backend/scripts/margin_dot_ruler.py", "MIN_CHARS"): (
         PINNED, 8, "抄的是 `marginParagraphs` 的 `p.text.length >= 8`。一动，圆点那三个数换了口径"),
+    ("backend/scripts/card_origin_ruler.py", "SHOW"): (
+        PINNED, 5, "抄的是 `RelatedMemory.LIST_MAX`（屏幕上最多摆几张记忆卡）。"
+                   "一动，P83 A 那 964 / 133 换了分母，那条「混着 29」的判要重跑"),
+    ("backend/scripts/card_origin_ruler.py", "MAX_ASKED"): (
+        PINNED, 8, "抄的是 `RelatedMemory.RECALL_LIMIT`（`out[:8]`，P80 / P83 都明写「一个字不许动」）。"
+                   "一动就不只是尺子飘了——先去看召回那一层是不是真的改了口径"),
     ("backend/scripts/topic_spread_ruler.py", "SPREAD_MIN_HITS"): (
         PINNED, 20, "泛尺「够不够得着判」的门槛。一动，P75 那张 116 种逐种的表要重读"),
     ("backend/scripts/topic_spread_ruler.py", "SPREAD_GENERIC"): (
@@ -114,6 +121,26 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         PINNED, 1, "**P79 ③ 那条判的全部分量**：离线有、产品产不出来的只有 1 条 / 765。"
                    "这个 1 一动，「过去所有离线数要不要打折扣」就得重判"),
     ("backend/scripts/recall_ruler.py", "EXPECT_ONLY_PRODUCT"): (PINNED, 16, "产品有、离线没有的那 16 条（P79 ③ 的反方向）。跟 EXPECT_ONLY_OFFLINE 一起读才是那条判"),
+
+    # —— `pinned`：记忆卡那把尺（P83 A）。**六个数一动，A 那一节整节失效** ——
+    ("backend/scripts/card_origin_ruler.py", "EXPECT_CARDS"): (
+        PINNED, 964, "727 条 cursor 查询摆出来的卡总数（上界口径，见那把尺的文件头）。"
+                     "它是 133 / 62 / 29 / 33 四个数共同的分母——一动，四条判全部重读"),
+    ("backend/scripts/card_origin_ruler.py", "EXPECT_MARKED"): (
+        PINNED, 133, "会被盖上「前一段带进来的」的卡数。**这一批「该不该改」的全部依据**："
+                     "133/964 不是个可以忽略的零头。一动就去重读 `cardFromBefore` 那两条判据"),
+    ("backend/scripts/card_origin_ruler.py", "EXPECT_QUERIES_WITH_MARK"): (
+        PINNED, 62, "屏幕上至少有一张卡被盖的查询数（= 混着 29 + 整屏 33）。"
+                    "它跟那两个数是加法关系，只有一条动过它必然也动——一起重读"),
+    ("backend/scripts/card_origin_ruler.py", "EXPECT_MIXED"): (
+        PINNED, 29, "**两种卡混着摆的查询数**——P80 留给这一批的那句「卡还是混着的」就是这 29 条。"
+                    "一动，这一批改的那件事本身得重新判一次值不值"),
+    ("backend/scripts/card_origin_ruler.py", "EXPECT_ALL_MARKED"): (
+        PINNED, 33, "整屏 5 张全是前一段带回来的查询数。最坏的那一档："
+                    "标签写着「按光标这段找的」而底下一张都不是。一动去重读那条判据的第 ① 条"),
+    ("backend/scripts/card_origin_ruler.py", "EXPECT_WITH_CARDS"): (
+        PINNED, 312, "727 条里真摆出了卡的条数（其余 415 条一张都没有）。"
+                     "它是「盖戳率」唯一正确的分母——拿 727 去除是把 415 条空屏也算进去了"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_MISSING_HIT"): (
         PINNED, 1, "「库里没有」那一档真有 1 条（`羽毛球`）。调成 0 = 把那条不好看的实测抹了"),
     ("backend/scripts/kb_search_ruler.py", "EXPECT_TOTAL"): (PINNED, 110, "知识库搜索框那把尺的量程（P79 ② 的 110 条手打搜索词）。五档之和，一动全表重排"),

@@ -86,6 +86,14 @@ export default async function (d, args) {
     // P80 A：摆出来的词里有几个是**前一段带进来的**（面板自己标的那半句）
     console.log('  「前一段带进来的」标了几处:', ((termsLine || '').match(/前一段带进来的/g) || []).length)
     console.log('  这一段没查成那一句在吗（该 false）:', await d.exists('.mem-failed'))
+    // **P83 A**：底下那几张卡自己说不说得出「我是前一段带回来的」。
+    // P80 只改了上面那一行，卡还是混着的——这一格就是那件事的用户可见证据。
+    const cards = await d.eval(`Array.from(document.querySelectorAll('.memory-card')).map((c) => [
+      ((c.firstElementChild || {}).textContent || '').slice(0, 40),
+      !!c.querySelector('.mem-card-from-before')])`)
+    console.log('  底下那几张卡（头 40 字 / 是不是前一段带回来的）:', JSON.stringify(cards))
+    console.log('  卡几张 / 其中标上的几张:',
+                (cards || []).length, '/', (cards || []).filter((c) => c[1]).length)
     prevLine = termsLine
     console.log('  命中行:', JSON.stringify((mem || '').match(/命中[：:][^\n]{0,200}/g)))
     // **逐个点名**：这一族里 P71 说「被顶掉 / 被切错」的那几个词，界面上到底摆没摆

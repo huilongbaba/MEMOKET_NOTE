@@ -120,8 +120,18 @@ def clean(s: str) -> str:
     return kb_search.clean_query(s or "")
 
 
-def recall_query(content: str, paragraph: str) -> tuple[str, str]:
-    """`recallContext.recallQuery` 的逐行 Python 对应。返回 (查询, 'cursor' | 'tail')。"""
+def recall_query3(content: str, paragraph: str) -> tuple[str, str, str]:
+    """`recallContext.recallQuery` 的逐行 Python 对应。
+
+    返回 (查询, `'cursor' | 'tail'`, **这一趟真的拼进查询的那一截前一段**)。
+    第三格逐字对应前端 `RecallQuery.before`（已 `clean` 过；`tail` 档恒为 `''`）。
+
+    **为什么是三格而不是另写一份**（P83 A）：判「这张记忆卡是不是前一段带回来的」
+    要的正是那一截前一段，而它原来只活在这个函数的局部变量里。再抄一份切法出去
+    就是**同一个口径两份实现**——`corpus_lineage` 顶上那条「每个脚本各写一份正是
+    批 6 出事的原因」说的就是这件事。所以这儿只多交出一格，`recall_query`
+    原样保留（它的两格返回值有六处调用点在用，签名一个字没动）。
+    """
     para = (paragraph or "").strip()
     p = clean(para).strip()
     if len(p) >= RECALL_MIN_CHARS and not _HEAD.match(p):
@@ -134,8 +144,14 @@ def recall_query(content: str, paragraph: str) -> tuple[str, str]:
         before = before.strip()
         if _HEAD.match(before):
             before = ""
-        return clean((before + "\n" if before else "") + para).strip(), "cursor"
-    return clean(content[-RECALL_TAIL_CHARS:]).strip(), "tail"
+        return clean((before + "\n" if before else "") + para).strip(), "cursor", clean(before).strip()
+    return clean(content[-RECALL_TAIL_CHARS:]).strip(), "tail", ""
+
+
+def recall_query(content: str, paragraph: str) -> tuple[str, str]:
+    """`recall_query3` 的前两格。**实现只有一份**，这里只是把第三格丢掉。"""
+    q, mode, _before = recall_query3(content, paragraph)
+    return q, mode
 
 
 def users_with_codebook() -> list[str]:
@@ -146,11 +162,14 @@ def users_with_codebook() -> list[str]:
                   and (d / "codebook.xml").stat().st_size > 1000)
 
 
-def queries(db: Path | None = None) -> list[tuple[str, str, str, str]]:
-    """[(用户, 查询, 'cursor' | 'tail', 血缘)]，按 (用户, 查询) 全局去重、顺序稳定。
+def queries_ctx(db: Path | None = None) -> list[tuple[str, str, str, str, str, str]]:
+    """`queries()` 再多带两格：**发这一问时的那两段**。
 
-    血缘走 `corpus_lineage.classify`（**不另写一份夹具名单**——每个脚本各写一份
-    正是批 6 出事的原因）。**一条都不筛**，理由在模块注释里。
+    [(用户, 查询, 'cursor' | 'tail', 血缘, **光标这段（原样，没 clean）**, **前一段那一截（clean 过）**)]
+
+    去重、顺序、筛不筛**跟 `queries()` 逐字同一条**——因为它就是这一份，
+    `queries()` 只是把后两格丢掉。**一份走法，两个投影**（P83 A：
+    两份走法一定会在某一批悄悄飘开，而那时两边的数谁也不知道该信哪个）。
     """
     conn = db_guard.readonly(db or (BACKEND / "data" / "notes.sqlite3"))
     users = set(users_with_codebook())
@@ -158,21 +177,32 @@ def queries(db: Path | None = None) -> list[tuple[str, str, str, str]]:
     rows = conn.execute("SELECT id, user_id, title, content FROM notes ORDER BY id").fetchall()
     conn.close()
     seen: set[tuple[str, str]] = set()
-    out: list[tuple[str, str, str, str]] = []
+    out: list[tuple[str, str, str, str, str, str]] = []
     for nid, user, title, content in rows:
         if user not in users or not content:
             continue
         origin = corpus_lineage.classify(user, title or "", lineage.get(nid)).kind
         for para in re.split(r"\n\s*\n", content):
-            q, mode = recall_query(content, para)
+            q, mode, before = recall_query3(content, para)
             if not q:
                 continue
             key = (user, q)
             if key in seen:
                 continue
             seen.add(key)
-            out.append((user, q, mode, origin))
+            out.append((user, q, mode, origin, para, before))
     return out
+
+
+def queries(db: Path | None = None) -> list[tuple[str, str, str, str]]:
+    """[(用户, 查询, 'cursor' | 'tail', 血缘)]，按 (用户, 查询) 全局去重、顺序稳定。
+
+    血缘走 `corpus_lineage.classify`（**不另写一份夹具名单**——每个脚本各写一份
+    正是批 6 出事的原因）。**一条都不筛**，理由在模块注释里。
+
+    **它是 `queries_ctx()` 的前四格**——走法只有一份（P83 A）。
+    """
+    return [(u, q, m, o) for u, q, m, o, _p, _b in queries_ctx(db)]
 
 
 def by_origin(qs: list[tuple[str, str, str, str]]) -> dict[str, int]:

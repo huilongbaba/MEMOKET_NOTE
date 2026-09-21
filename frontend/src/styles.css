@@ -1953,6 +1953,9 @@ label.plan-check-row { cursor: pointer; }
 /* 右栏「记忆」：这一段**没查成**（P80 A）。跟「问过了，没有」两句话、两个样子——
    不然「没拿到回答」会被当成「知识库里确实没有」。 */
 .mem-failed { color: var(--warn); line-height: 1.6; }
+/* 右栏「记忆」：**这张卡是前一段带回来的**（P83 A）。跟「已引用」那个绿章分得开——
+   它说的不是「这条怎么样」，是「这条为什么在这儿」，所以走 muted 不抢正文。 */
+.mem-card-from-before { color: var(--muted); border-style: dashed; }
 .mem-inbody summary { user-select: none; }                     /* 右栏「记忆」：已在正文里的原话折叠（P7 #8） */
 .mem-inbody[open] summary { margin-bottom: 2px; }
 .outline-fallback-note { word-break: break-all; }              /* 目录：没有 # 标题时按什么列的说明（P7 #3） */

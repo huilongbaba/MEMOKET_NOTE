@@ -3,7 +3,7 @@ import { clickable } from '../util/clickable'
 import { memoryRelations, memoryScope, recall, SCOPE_LABEL, setMemoryScope, type MemoryScope } from '../api'
 import type { Fact, MemoryRelation, RecallEvidence } from '../api'
 import { stripForRecall } from '../util/wordCount'
-import { evidenceLine, factInBody, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
+import { cardFromBefore, evidenceLine, evidencePool, factInBody, FROM_BEFORE_NOTE, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
 import { KB_EMPTY_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RECALL_FAILED_NOTE, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
@@ -144,6 +144,10 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   // 已经在正文里的原话折叠掉（P4 #8：N4 5 条全是用户刚写的），位子让给新的
   const fresh = facts.filter((f) => !factInBody(f.text, content)).slice(0, LIST_MAX)
   const inBody = facts.filter((f) => factInBody(f.text, content))
+  // **这一趟拿哪几个词去判卡**（P83 A）：跟上面那一行同一条三档，**同进同退**。
+  // 召回和 `out[:8]` 一个字没动——变的只有「怎么说」，不是「捞什么」。
+  const pool = evidencePool(evidence, terms)
+  const fromBefore = (text: string) => !!qCtx && cardFromBefore(text, pool, qCtx.paragraph, qCtx.before)
 
   // 之前 facts 是空的时候整个组件（连带标题）直接 return null——这是这个
   // 面板在"写作"/"相关记忆"/"知识库" 三个 tab 里唯一的内容，点进"相关记忆"
@@ -263,6 +267,16 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <span className="row" style={{ gap: 4 }}>
               {f.when ? <span className="badge">{f.when}</span> : null}
+              {/* **这张卡是前一段带回来的**（P83 A）。上面那一行 P80 已经会说这句了，
+                  底下这几张卡在这一批之前是**混着的**：真库实测 964 张里 133 张属于这一档，
+                  29 条查询里两种卡摆在一起、33 条整屏 5 张全是前一段的，而用户一点提示都没有。
+                  判据两条都成立才盖（`cardFromBefore`），落差只会让它少说一句。 */}
+              {fromBefore(f.text) && (
+                <span className="badge mem-card-from-before"
+                      title={`这条不是按光标这段捞回来的：命中的是前一段（约 ${RECALL_CONTEXT_BEFORE} 字）带进查询的词`}>
+                  {FROM_BEFORE_NOTE}
+                </span>
+              )}
               {/* 正文里已经引过的标出来——不然同一条会被插两次（实拍：一段里两个同样的出处） */}
               {content.includes(`[${f.id}]`) && <span className="badge ok" title="正文里已经引用了这条">已引用</span>}
             </span>
