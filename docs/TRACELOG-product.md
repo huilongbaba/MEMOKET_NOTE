@@ -24497,3 +24497,368 @@ P93 留给下一批：
 > 15 道静态闸 + `normalize --selftest` + 七把尺全绿；
 > 四栏 `197/195/96`、`192/190/92`、圆点 `166/137/33`、47 条 `46/36/4/6`。
 
+
+## P95 · 第 817 轮：**换篇没清那张轮次卡，改了（按 note id 存）**（收 P93 问题 #1）+ **第二十五次走查** + **「台账上的数」那笔账判了**（2026-09-21）
+
+> 开工 `435532c`（worktree `agent-a54cee91c757a92ce`）。**基线自己量了一遍**：
+> 后端带 `KITE_DATA_DIR` **3337 / 0 skipped**、前端 **100 文件 / 913 条**、
+> 假壳那条闸**真跑一趟** **8 步 / 110 条判据**、
+> `floor_ruler` **看着 11 份 / 登记 104 条（只准往上 5 · 钉死 99）/ 例反例 12 条 / 共核 116 条 /
+> 落后 0 / 对不上 0**——四个都跟任务书逐格相同。
+> ⚠️ **量的时候先撞上一次「同一句话两把尺」**：`npm test` 里那条**静态**闸打印的是
+> **8 步 / 60 条判据 + 39 条反例 + 9 条闸自己跑的 = 108**，而台账里那句「8 步 / 110 条判据」
+> 说的是**真跑一趟**（静态那 108 条 + 2 条通道对照）。两个数都对，只是**指的不是同一件事**。
+> 我先按 108 去对 110，差点记成「台账错了」；把 P78 / P80 那两节翻出来才对上
+> （`19557` 行逐字写着「静态那份 8 步 / 107 条…真跑一趟 8 步 / 109 条（再加 2 条通道对照）」）。
+> **这件事进了 C 那笔账。**
+> 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+> `note_revisions` 44 / `llm_usage` 最大 id 5738**。
+> **语料摆两处**：worktree 的 `backend/data/notes.sqlite3` 只读拷一份（**没 `chmod 444`**）
+> + `KITE_DATA_DIR=<scratch>/p95data`（主仓 `backend/data` 整棵拷，目标**开工时不存在**，
+> `ls -1a` 两边 **39 条 / 0 差异**、没套娃）。
+> **这一批没碰 `backend/app/database/kb/` 和 `backend/app/database/kite/`**（另有 agent 在那儿）。
+
+---
+
+### A. 换篇没清那张轮次卡：**按 note id 存**（收 P93 问题 #1，这一批的正题）
+
+P93 量清了、判「这一批不改」，并写下正经改法。这一批做那个改法。
+
+#### A0 先核 P93 写下的那两条代价**今天还成不成立**（**「台账上的数」和「源码里的数」是两把尺**）
+
+P93 给的理由是：一行 `useEffect(() => setAgentRounds([]), [current?.id])` 会让
+「跑着 harness 切走再切回」把这次的轮次卡**永久丢**。**在源码上重读了一遍，成立**，
+而且比它写的还紧一格：
+
+* `App.tsx` 那个 `guarded` 包装（`noteHarnessHandlers` 收尾那几行）对**除 `onDone` 外的每个事件**
+  都写着 `if (currentRef.current?.id !== noteId) return`——**用户切走的那几秒，事件本来就全丢**。
+  所以那一行 effect 之后：切走时清空、切回来时再清一次，而**丢掉的那几轮不会自己回来**
+  （轮次卡只活在内存里，不落库）。⇒ **「永久丢」成立。**
+* 第二条代价 P93 没写但同样成立：那一行会在**每次换篇**上跑，于是「A 跑完 → 去 B 查一眼 → 回 A」
+  也丢——而这正是产品自己在 `spots`（每篇看到哪儿了）那一处**特意花力气保住**的那种来回。
+
+#### A1 P17 给 `verifyResult` / `roundDiff` 立的那两条是什么形状——**先读它们，再判该不该一样**
+
+`App.tsx:659-665`（HEAD 上逐字）：
+
+```ts
+// P17 实拍：在 A 篇右键「校验」，切到 B 篇，右栏顶上还挂着 A 的「校验结果」——它是按 A 的选区算的，换篇就清
+useEffect(() => { setVerifyResult(null) }, [current?.id])
+// P17 实拍：右键「自定义提示」→「全部撤回」→ 关掉这篇再打开，正文里冒出一个幻影「硬件」删除标 + 「改动 1」——
+// `roundDiff` 是给编辑器的一条「加一层」消息，层本身活在编辑器的 field 里；消息发过就该作废，
+// 不清的话编辑器一重挂（关掉重开 / 换篇）就按旧坐标再加一遍层，标到别的字上
+useEffect(() => { setRoundDiff(null) }, [current?.id])
+```
+
+**判：这一条不该跟它们一样。** 那两条清的是**消息**，清掉就是清掉：
+
+| | 它是什么 | 清掉之后该有东西回来吗 |
+|---|---|---|
+| `verifyResult` | **按 A 的选区**算出来的一块结果，换篇之后它说的那一段根本不在屏幕上 | **不该** |
+| `roundDiff` | 给编辑器的**一条「加一层」消息**，层本身活在编辑器的 field 里 | **不该**（再发一次反而标错字） |
+| `agentRounds` | **这一篇的一段历史**，而且只活在内存里 | **该**——切回来就该还在 |
+
+⇒ 照抄那个形状 = 拿「A 篇的卡摆到 B 篇上」这个毛病，换成「A 篇的卡没了」那个毛病。
+**正经改法是按 note id 存**（P93 自己写的那句），这一批做的就是它。
+
+#### A2 改成什么样
+
+新模块 `frontend/src/util/roundsByNote.ts`（46 行代码 + 一页抬头）：
+
+```ts
+export const NO_ROUNDS: AgentRound[] = []                       // 模块级常量，不是每次现造一个 []
+export type RoundsByNote = Record<string, AgentRound[]>
+export function roundsFor(m, noteId): AgentRound[]              // noteId 空 ⇒ 空，不是「上一篇那一份」
+export function writeRoundsIn(m, noteId, fn): RoundsByNote      // 没改就把原来那张表原样返回
+```
+
+`App.tsx` 那一头：
+
+* `const [agentRounds, setAgentRounds] = useState<AgentRound[]>([])`
+  → `const [roundsByNote, setRoundsByNote] = useState<RoundsByNote>({})`
+  \+ `const agentRounds = roundsFor(roundsByNote, current?.id)`；
+* **14 处写入**全部点名写给哪一篇：`patchRound(noteId, …)`（5 处）/ `writeRounds(noteId, …)`（9 处，
+  含开跑那一刻的 `writeRounds(noteId, () => [])`）；
+* 收工那句话原来数的是 `agentRoundsRef`（**现在显示的那篇**有几轮）——用户切走了它就是 0，
+  改成从 `roundsByNoteRef.current[noteId]` 数（**跑的那一篇**）。`agentRoundsRef` 整个去掉。
+
+**顺手治了另外两件**（都是同一个源头）：**虚拟页**（`current === null`）上取不到任何卡；
+**两篇之间不串台**（A 在跑、切到 B，B 上看到的是 B 自己的）。
+
+**没改什么**（这一段别含糊过去）：`guarded` 那层拦截**一个字没动**，所以「切走的那几秒里
+到达的事件」照旧丢——改完之后「切走再切回」丢的是**那段时间的轮次**，
+**切走之前那几轮还在**（P93 担心的「永久丢」是指连之前的也没了）。轮次卡仍然**不落库**。
+
+#### A3 用户可见的前后对比（**壳上实拍**，两个身份各一遍）
+
+走查日志里逐字（`docs/walkthrough-logs/`，`17-new-panes93.txt` / `18-old-panes93.txt`）：
+
+| 那一屏 | P93（改前） | P95（改后） |
+|---|---|---|
+| 空库新用户 · ⌘K 新建一篇**空**笔记 | `[emptynote] 条上 2 格: ["记忆","计划2"]` | `["记忆","计划"]` |
+| 482 篇老用户 · 同上 | `["记忆","计划2"]` | `["记忆","计划"]` |
+| 老用户 · 开一篇**幻灯片** | `[slides] 条上 3 格: ["记忆","幻灯片24","计划2"]` | `["记忆","幻灯片24","计划5"]`（落回**这一篇自己**的 5 拍） |
+| 第 ⑧ 步「屏幕活动」那一页 | `右栏页签: ["记忆","计划2"]` | `["记忆","计划"]` |
+| 第 ⑧ 步日记那一篇 | `["记忆","幻灯片24","计划2"]` | `["记忆","幻灯片24","计划5"]` |
+
+**底下那一整块**（日志只截 160 字，截图上是整屏）由这一批新加的步骤逐格读出来
+（`steps/rounds95.mjs`，`19-old-rounds95.txt`）：
+
+```
+[A跑完]       「计划」页签逐字: "计划2"  角标里有数字吗: true    底下有几种「第 N 轮」: 2 ["第 1 轮","第 2 轮"]  「本轮写出的正文」出现 2 次
+[新建空笔记]  「计划」页签逐字: "计划"   角标里有数字吗: false   底下有几种「第 N 轮」: 0 []                 「本轮写出的正文」出现 0 次
+[A切回来]     「计划」页签逐字: "计划2"  角标里有数字吗: true    底下有几种「第 N 轮」: 2 ["第 1 轮","第 2 轮"]  「本轮写出的正文」出现 2 次
+```
+
+第三行就是**那行 `useEffect` 的代价没付**的实拍：照 P93 说的那条路改的话，这一行会是 `0 []`。
+截图 `p95-old-rounds-A跑完-计划.png` / `p95-old-rounds-新建空笔记-计划.png` / `p95-old-rounds-A切回来-计划.png`。
+
+#### A4 **抓得到这个洞**的那条闸（P93 那条通用闸抓不到：那一格「有字」，只不过字是别人的）
+
+`frontend/src/components/__tests__/p95.test.tsx`（**18 条**）+ 解析器 `frontend/src/util/roundsWiring.ts`。
+三块，分工写在文件头上：
+
+| 块 | 核什么 | 怎么核 |
+|---|---|---|
+| ① **源码侧**（5 问） | 屏幕上那份卡是 `roundsFor(<表>, current?.id)` 取的；不是全 App 一份的 `useState`；每一处写入的第一个实参是**变量**（不是字面量、不是 `current?.id`）；`planTabContent` 的 `rounds:` 两处 + `<AgentActivity rounds={…}>` 用的是同一个名字；**直接动那张表的地方正好 1 处** | 从 `App.tsx` 现解（不抄名单）；每一条抱怨都**点名到那一行的原文** |
+| ② **真挂一次** | 表里只有 A 的两轮：开着 B ⇒ 「计划」**没角标、一张「第 N 轮」都没有**；**切回 A** ⇒ 角标 2、两张卡都在；虚拟页 ⇒ 一张都读不到 | 真 `createRoot` + 真 `RightPane` + 真 `AgentActivity` + 真 `planTabContent` |
+| ③ **纯函数的例 / 反例** | `roundsFor` / `writeRoundsIn` / `isNoteIdVar` / 「解不出来就抛」 | 含「取不到时回的是**同一份**空数组」「写 B 不碰 A」「`fn` 原样返回 ⇒ 整张表原样返回」 |
+
+**它答不了什么**（写在文件头）：切走那几秒的事件丢不丢；`App.tsx` 真跑起来长什么样
+（第 ② 块挂的是这份文件自己搭的 `PaneTab`，跟 P93 那一条同一个射程——那件事在**壳上**量）；
+**那一格空的时候有没有字**（那是 P93 A 那 17 条的地盘，**别在这儿抄第二份**）。
+
+`MIN_COMPONENT_TESTS` **4 → 5**，`floor_ruler` 登记表同步抬到 5。
+
+#### A5 砍刀实拍（**8 真 + 2 对照**，唯一锚点先断言 → 砍 → 跑闸 → 整文件写回 → 逐字节 sha256 比）
+
+| 刀 | 砍哪儿 | 结果 |
+|---|---|---|
+| ① | `App.tsx`：`roundsFor(roundsByNote, current?.id)` → `roundsFor(roundsByNote, trayTarget)` | 红，点名**「按哪一篇取」那个实参里头没有 `current`** |
+| ② | `roundsByNote.ts`：`roundsFor` 回 `Object.values(m)[0]`（**把那个产品缺陷原样搬回来**） | **4 条红**，头一条逐字是 `expected '计划2' to be '计划'`——**P93 实拍那一格** |
+| ③ | `writeRoundsIn` 的 `if (next === prev) return m` 删掉 | 红（「`fn` 原样返回 ⇒ 整张表原样返回」） |
+| ④ | `roundsFor` 改成每次现造 `[]` | 红（「取不到时给的是**同一份**空数组」） |
+| ⑤ | `isNoteIdVar` 放宽成只判「是不是标识符」 | 红（**闸自己那一半也有人看着**，P85 第 ⑦ 刀那一课） |
+| ⑥ | `readRoundsWiring` 的 `throw` → 静默回一张空表 | 红（**「选不到 ≠ 没有」**） |
+| ⑦ | `App.tsx`：`<AgentActivity rounds={agentRounds}>` → `rounds={[]}` | 红，点名**「摆的不是 `agentRounds`」** |
+| ⑧ | `MIN_COMPONENT_TESTS` 5 → 4 | `floor_ruler` 红（exit 9），并原样打出「这个数一动去重读什么」 |
+| **对照 a** | `roundsByNote.ts` 顶上加一行注释 | **五条闸全绿**（p95 18 / p93 17 / components-gate / floor_ruler / walkthrough-runnable） |
+| **对照 b** | `steps/rounds95.mjs` 里改一句 `console.log` 的中文 | **五条闸全绿** |
+
+十刀写回后**逐字节 sha256 全相同**。**砍完跑了完整 pytest（3337 / 0 skipped）和完整 npm test（101 文件 / 931 条）**。
+（vitest 5 的 `fsModuleCache` 默认关着，没有落盘的转译缓存要清。）
+
+---
+
+### B. 第二十五次全流程走查（真打好的壳）
+
+#### 起壳前：壳里几个可执行件核几个
+
+| 核什么 | 怎么核 | 结果 |
+|---|---|---|
+| `Resources/web` 整树 | 逐文件 sha256 → 排序再取一次 | **179 个 / `c6c813e3e0ccb60d`** = `frontend/dist` 逐格相同。⚠️ **跟 P93 那份（`6754fba19cd47cf2`）不是同一个哈希，那是对的**——这一批 A 动了 `App.tsx`，壳里装的必须跟着变 |
+| `app.asar/dist/{main,preload,capture,backend}.js` | `asar extract` → 跟 `desktop/dist` 现编的 `cmp` | **四个逐字节相同** |
+| 后端那个件（13,080,576 字节） | `check_shipped_source.py`（**不用 `strings`**） | **先喂一个不存在的符号 → EXIT=1**；再喂真的：`app.database.kb.search` 的 `display_terms` / `is_merged_word`、`app.database.store` 的 `list_notes` 全有 |
+| 四个 `*_base_url` + `local_model` + `vision_model` | 起壳前走 `walkthrough_db.py` **写完读回来再断言** | 1 行 × 4 个地址列 = `http://127.0.0.1:19360/v1` / `fake-p52` / `fake-vision-p52` |
+| 钥匙 | `scrub_credentials`（**按值扫全库，不按列名**） | 换掉 **1 处**（`provider_config.gpt_api_key`，`sk-` 前缀），换完再扫 **0 处** |
+
+#### 走查表（两个身份 × 十一步；四次 `go.sh`：新用户 / 老用户 / `rounds95` / 真·关掉重开）
+
+| # | 步骤 | 空库新用户（`p95-newbie`） | 482 篇老用户（terrence） |
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：「还没配模型 / 去设置」都在；「测一下」→「连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」」；模型名没填全时保存红字还在（`true`），填全之后**红条和那句话同时消失**（两头各读一次都是 `false`）；toast「已切换到本地模型：fake-p52」；库里真落了 | **对**：`窗口自己认的身份: terrence` |
+| 2 | 新建 → 打标题 → 右栏「计划」 | **对** | **对**：`{"found":true,…,"prefill":true,"titleBox":""}`（P43 #2 / P44 #4 ✔） |
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」 | **对**：`P32 #3 空库图例收成一句: true`、`P35 #8 空托盘收成一句: true` | **对**：`{落槽合计 2 · 图例 6 · **页面合计 8**}`，落槽那 2 是**冲突 1 / 缺依据 1**（跟 P64 起每一批**一个数不差**） |
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项** |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]` 逐字连顺序 |
+| 6 | 智能续写 → 轮次卡片 → **读库** | **对**：`{"lines":143,"db":143}`（**`--mode ok`**，**P68 ✔**）、收工那行「2 轮 · +100 字」、状态栏 `107 字` | **对**：`库: {"len":205,"json":false}`；`做爰片` **0**、`terrence-8F6` **0**、空括号 **0** |
+| 7 | 导回到 Obsidian | — | **对（浅走）** |
+| 8 | 屏幕活动 | **对**：知情五条；「留多久」那一行的数**从后端读** | **对**：保留期面板跟 P89 / P91 / P93 逐字相同；一键全删两段式；翻天两个方向各一次；**P62 ③ 正例 + 反例** |
+| 9 | ⌘K 全部去处 | **对** | **对** |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，`19463`） | — | **对，但入参跟 P93 不一样**（见问题 #2）：带层那篇 `1a406b551278` → `["记忆","改动1","计划5"]`、`toast: []`；不带层那篇 `df3b4f7e987d` → `["记忆","幻灯片24","计划5"]`，**没有「改动」也没有 toast**（P44 #5 ✔）。**把前置换回 P93 那一档重跑**（`20-old-reopen64-repro.txt`）：`["记忆","改动2","计划5"]` + `上次没处置完的 2 层改动还在右栏「改动」里` + `P43 不变式：成立` + `正文字数: 213`，**跟 P93 逐字相同** |
+| 11 | 深色 + 900px | **对**：`rgb(18, 15, 26)` | **对**：`rgb(18, 15, 26)`、900px **横向溢出 0**（`溢出的是谁: []`） |
+| **A** | **（新）右栏那叠轮次卡是不是这一篇的** | — | **对**：三档见 A3 那张表（`19-old-rounds95.txt`） |
+
+#### 重点盯的几格
+
+* **P68 丢字不回退**（`--mode ok`）：两个身份各验一次，**库 == 编辑器**（143/143、205/205）。
+* **A 改完之后那一屏**：见 A3（两个身份 + 三档 + 「切回 A」）。
+* **P93 那条通用闸在壳上对得上**：三档（虚拟页 / 空笔记 / 幻灯片）**留白的格子各 0 个**
+  （`[virtual] []` / `[emptynote] []` / `[slides] []`，两个身份）。
+* **P91 / P89 / P83 / P80 / P81 各刀都没回退**：虚拟页那句 `PLAN_EMPTY_HINT` 在、
+  `正文字数: 205 → 213 （+8）`、`文档变了吗: true （等了 1 秒）`、
+  `（知识库里的词条 · 库里 6 条提到）`、「前一段带进来的」标了 2 处、
+  「这一段没有可摆出来的证据」不编命中词——**逐条在日志里找到证据**（见下）。
+* **`@LAST_NEW_NOTE` 是这一趟现造的**：`1a406b551278`，由 `06-old-b1old` 自己打在日志里。
+  **在这一趟的库拷贝上查过**：真库 **0** 条、这一趟的拷贝 **1** 条（482 → 487 篇）；
+  而 P93 那一趟的 `fffb98de7cac` 在这一趟的拷贝里是 **0** ⇒ 不是同一篇，也没拿旧的顶。
+* **截图 63 张，全 `p95-*`**（`ls | grep -cv '^p95-'` = **0**），一张都没事后改名；
+  作废的那 30 张挪进了 `shots-PORTMISMATCH-作废/`，复现跑那几张在 `walkrepro/shots-repro/`，
+  假壳那条闸自己的 28 张全 `fakeshell-*`（`grep -cv '^fakeshell-'` = 0）。
+
+#### 历史修复的回归：**51 条逐条去日志里找证据，0 条找不到**
+
+P93 那 42 条 + 这一批加的 **7 条**（A 那一刀的三档 × 两个身份 + 虚拟页）+ 第 ⑩ 步那两条改指复现那一份。
+**先喂了两个该红的反例**：① 老反例（`/` 菜单 19 → 18）当场红且点名；
+② **这一批自己的反例**（把「切回 A 之后 2 张卡」改成 `0 []`，也就是那行 `useEffect` 的后果）
+**当场红且点名到 `P95 A④`** ⇒ **这份名单真的能拦住那条路**。
+
+⚠️ 改了 P93 留下的一条判据：`[slides] 条上 3 格: ["记忆","幻灯片24","计划2"]` → `计划5`。
+**那个 `2` 正是这一批修掉的洞**（上一篇留下的两轮），判据跟着产品走；「幻灯片24」那一半一个字没动。
+
+#### 跨批逐行 diff：`diff -r docs/walkthrough-logs/p93 p95`
+
+**104 行**（含两份整份文件），**逐行归完类，5 类**（`docs/walkthrough-logs/p95/DIFF-FROM-p93.tsv`）：
+
+| 类 | 行数 | 哪几行 · 为什么 |
+|---|---:|---|
+| **走查随机** | **67** | `01` / `02` / `03` 三份：**这一趟右栏没被收起来**（按钮清单里有 `pane-tab`、没有 `right-pane-reopen`），P93 那一趟是收起来的 ⇒ 宽度 / 序号 / 坐标 / 近白大块 / 900px 溢出全跟着变。**这一批读到的正是 P91 那一档**（近白大块 0 · 900px 溢出 1 · `note-new-tab x=878` · `cw 560`）——**P93 留的第 ④ 条（看它下一批还在不在）到此有答案：不在了** |
+| **产品改了** | **26** | A 那一刀：`计划2` → `计划` / `计划5`，五处屏幕 + 右栏 `innerText` 里那两行裸角标 |
+| **入参素材** | **9** | 第 ⑩ 步那 8 行（见问题 #2）+ 复现那一份整份文件 |
+| **量具改了** | **1** | `19-old-rounds95.txt` 整份文件只在这一批 |
+| **解释不了** | **1** | `17-new-panes93.txt` 里 `=== ③ 没给 note id，这一档跳过 ===` 只在这一批（见问题 #3） |
+
+**先喂了三个该红的反例**（少归一行 / 类别不在闭集 / 理由写「同上」）——三次都红且点名，写回逐字节相同。
+
+#### 问题清单
+
+| # | 现象 → 实拍 → 根因 | 处置 |
+|---|---|---|
+| 1 | **我自己的操作**：老用户那一趟第一次起壳，假模型开在 **19361**，而 udd 库里存的是 **19360** | **`go.sh` 那条闸当场吵**（P68 那条坑）。**整趟停掉（SIGTERM 等它自己退）、udd 重造、夹具重造、重跑**——30 张截图 + 整个日志目录标成「作废」挪开，**一张都没混进这一批的 63 张**。⚠️ 这是那条闸**第四次**拦住写它的人（P91 第二次、P93 第三次），照 P93 的处置逐字执行 |
+| 2 | **我自己的编排**：第 ⑩ 步那句 toast 没了（P93 有：`上次没处置完的 2 层改动还在右栏「改动」里`） | **量清了，判「入参素材，不是回归」**。这一批在第 ⑩ 步之前多跑了一步 `rounds95`，它收尾开着的正是带层那篇 ⇒ 重开之后「上次开着的那一篇」就是它，`openNoteById` 成了空操作，层在**壳启动那一刻**就放回去了，这一步读不到那句 toast。**证法照 P93 那条**：同一份 `.app`、另一份**全新 udd**、把前置换回 P93 那一档（`b1old + b2old`，收尾开的是幻灯片那篇）重跑 ⇒ **逐字回来了**（`20-old-reopen64-repro.txt`）。⚠️ **留一条**：「重开之后正好开着带层那篇」这一档，这一步**读不到**那句 toast，是量具够不着还是用户也看不到，**这一批没量**，下一批的活 |
+| 3 | **对不上**：`17-new-panes93.txt` 里 `=== ③ 没给 note id，这一档跳过 ===` 这一行只在这一批 | **判「解释不了」**，进这一节。证据：P93 自己 scratch 里那份**原始日志**也没有这一行，而 HEAD 上 `panes93.mjs` 那个 `else` 分支在（`git log` 显示 P93 之后没人动过 `walkthrough/`）。最像的解释是**P93 跑的那一份跟它入库的那一份差着这一行**（**「文件里有这个串」≠「那一趟跑的就是这一份」**的另一张脸），但我手上没有它当时的 worktree，**证不实，所以照实记「解释不了」** |
+| 4 | **我自己的编排**：`rounds95` 排在 `panes93` 后面，`@LAST_NEW_NOTE` 解成了 **panes93 刚造的那篇空笔记**，`openNoteById` 当场 FAIL | **判成任务书的锅不在产品**：`@LAST_NEW_NOTE` 的定义是「**这一趟里最近一步现造出来的那篇**」，而 `panes93` 第 ② 档自己会造一篇。改成**单独一次 `go.sh` + 显式 note id**（跟第 ⑩ 步同款），清单文件里把这条坑逐字写在注释上 |
+
+---
+
+### C. 收一笔账：台账里那些**会随合并 / 随口径变的数**，要不要立规矩
+
+P93 留的原话：P91 台账里 `floor_ruler` 是「登记 85 条 / 共核 97 条」，而 HEAD 上是 **95 / 107**
+——P91 那个 worktree 从 P90 合并**之前**分的叉。**「这不是第一次」**，所以这一批判一次。
+
+**先把历史上的读数摆出来**（P93 立的那条：判一样东西之前先量）。今天手上有**两笔**，
+而且它们**不是同一种病**：
+
+| 笔 | 台账写的 | 今天源码/命令给的 | 病因 |
+|---|---|---|---|
+| P91 的 `floor_ruler` 85 / 97 | 85 / 97 | 95 / 107（P93 量的） | **分叉**：数在它自己的 worktree 上是对的，合并之后变了，台账没回补 |
+| 「假壳那条闸 8 步 / **110** 条判据」（P83 起抄了 6 批） | 110 | `npm test` 那条**静态**闸打印 **108**；**真跑一趟**打印 **110** | **口径**：两把尺被写成了同一句话。两个数都对，没人错，但**读台账的人分不出来**（我这一批开工就差点把它记成「台账错了」） |
+
+⇒ **判：立规矩，但只立一条，而且不立闸。**
+
+规矩（已写进 `docs/product-readiness-plan.md`）：
+
+> **台账里每一个数，必须带着「谁打出来的」和「在哪个 HEAD 上」。**
+> 一条数据长这样：`<数> ← <逐字的命令> @ <sha7>`。
+> 两条推论：
+> ① **下一批不许把上一批的数当基线抄**——基线一律**自己再量一遍**；
+>    抄来的数只能当「上一批在它的 HEAD 上读到的」，**不是今天的真值**。
+> ② 同一件事有**两把尺**（静态 / 真跑、worktree / 合并后）时，**两个数都写，各带各的命令**，
+>    不许只留一个数让下一批去猜是哪把。
+
+**为什么不立闸**（这一段别含糊过去）：要判「台账里的数跟今天的源码对不对得上」，
+闸就得知道**每个数是怎么来的**——那等于把台账变成可执行的东西。今天的台账是散文，
+硬判会天天误报，而**一条天天误报的闸迟早被人改成不红**（P80 B② / P89 那条 diff 闸各写过一遍同一句）。
+**代价照实写**：这条规矩**靠人守**，守不住的时候只有下一批开工重量才发现得了——
+而「开工重量」正是推论 ①，**它本来就是这一族问题今天唯一真正管用的东西**。
+
+---
+
+### 收尾
+
+后端 **3337 / 0 skipped**（跟基线逐格相同，这一批没加后端测试）、
+前端 **101 文件 / 931 条**（基线 100 / 913，**+1 文件 / +18 条** `p95.test.tsx`）；
+假壳那条闸**真跑一趟** **8 步 / 110 条判据**（跟基线逐格相同；`npm test` 里那条**静态**的是
+**8 步 / 60 判据 + 39 反例 + 9 条闸自己跑的 = 108**，**两个数都记，别再混**）；
+`floor_ruler` **看着 11 份 / 登记 104 条（只准往上 5 · 钉死 99）/ 例反例 12 条 / 共核 116 条 /
+落后 0 / 对不上 0**（`MIN_COMPONENT_TESTS` 从 4 抬到 5，**登记表同步抬了**，所以「落后」仍是 0）；
+归一化 `--selftest` **44 条**（该洗 20 · 不许洗 12），扫仓库里存着的 **101 份**（P93 是 82 份，+19 是这一批的）；
+跨批 diff 那条闸：比了 **4 对**（共 **216 行差异 / 216 行归类**），**先喂了三个该红的反例**；
+历史修复回归 **51 条 / 0 条找不到**，**先喂了两个该红的反例**；
+**七把尺各跑一遍，读数跟 P91 / P93 逐格复现**（`765` / `765 + 窗口` / 圆点 `3 段 · 判出 2 · 落槽 2` /
+泛尺三档 / `en-gate` 10 格 / `kb-search` 6+3 格 / `979 张卡 · 133/62/29/33`）。
+真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44 / `llm_usage` 最大 id 5738**（**真模型 0 次调用 / 0 token**）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；
+⑧ 的夹具走 `journey_fixture --variant synthetic`（**没跑 `--variant full`**）；
+`~/Library/Application Support` **一次都没碰**；`postnote` **一条都没发**。
+
+### 收尾命令（**每一条都写明在哪个目录、哪个环境跑**）
+
+```bash
+# ── ⓪ 语料摆**两处**（P89 §0 那一跤）
+#   <worktree>/backend/data/notes.sqlite3  ← 主仓那份**只读拷一份**（gitignored，**别 chmod 444**）
+#   <scratch>/p95data                      ← 主仓 backend/data **整棵拷**（`KITE_DATA_DIR` 指它）
+#   ⚠️ 拷之前先 `ls -1a <scratch>/p95data`：在的话 `cp -R` 会套娃成 p95data/data。
+#      拷完 `diff <(ls -1a 源) <(ls -1a 目标)` —— 这一批实得 **39 条 / 0 差异**。
+#   <worktree>/{backend/.venv, node_modules, frontend/node_modules, desktop/node_modules} ← **软链**到主仓
+# ── ① 后端（cwd = <worktree>/backend）
+PYTHONPATH=. KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python -m pytest -q     # 3337 passed / 0 skipped
+# ── ② 七把尺 + floor_ruler（cwd = <worktree>/backend，**前七把要语料，最后一把不读**）
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/recall_ruler.py
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/recall_ruler.py --window
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/margin_dot_ruler.py
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/topic_spread_ruler.py
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/en_gate_ruler.py
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/kb_search_ruler.py
+KITE_DATA_DIR=<scratch>/p95data ./.venv/bin/python scripts/card_origin_ruler.py
+PYTHONPATH=. ./.venv/bin/python scripts/floor_ruler.py                           # 登记 104 条 / 共核 116
+# ── ③ 前端（cwd = <worktree>/frontend，node_modules 是软链）
+npm test                                                                          # 101 文件 / 931 条
+# ── ④ 这一批碰到的几条闸单跑（**走 node_modules/.bin，别走 npx**）
+./node_modules/.bin/tsx scripts/check-walkthrough-diff.mts            # 4 对 / 216 行 / 216 归类
+node scripts/walkthrough/normalize-log.mjs --selftest                 # 44 条 / 101 份
+./node_modules/.bin/tsx scripts/check-components-gate.mts             # components 下 5 份
+./node_modules/.bin/tsx scripts/check-walkthrough-selectors.mts
+./node_modules/.bin/tsx scripts/check-walkthrough-runnable.mts        # 步骤脚本 33 份（入口 31）
+./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts       # 静态：8 步 / 60+39+9 = 108
+# ── ⑤ 假壳那条闸**真跑一趟**（cwd = <worktree>/frontend；要本机 Electron + venv + frontend/dist）
+unset ELECTRON_RUN_AS_NODE
+WALKTHROUGH_SCRATCH=<scratch>/p95/fs-final node scripts/run-walkthrough-fakeshell.mjs   # 8 步 / 110 条
+# ── ⑥ 打壳（**打的是 <worktree>/desktop**）。⚠️ **分四步跑，别一条 `npm run dist`**
+cd <worktree>/frontend && npm run build                               # → frontend/dist（179 个 / c6c813e3e0ccb60d）
+cd <worktree>/backend  && ./.venv/bin/pyinstaller backend.spec --noconfirm --clean
+cd <worktree>/desktop  && npm run build && ./node_modules/.bin/electron-builder
+codesign --force --deep --sign - "out/mac-arm64/MEMOKET NOTE.app"
+# ── ⑦ 壳里几个可执行件核几个（cwd = <worktree>；后端那个**不许用 `strings`**）
+#      **先喂一个不存在的符号，该 EXIT=1**，再喂真的
+backend/.venv/bin/python backend/scripts/check_shipped_source.py "<app>/…/memoket-note-backend" \
+  app.database.kb.search display_terms is_merged_word
+backend/.venv/bin/python backend/scripts/check_shipped_source.py "<app>/…/memoket-note-backend" \
+  app.database.store list_notes
+# ── ⑧ 造 udd（cwd = <worktree>/backend）。⚠️ 起壳前四道：identity / codebook 字节+sha8 /
+#      钥匙**按值**扫全库 / 四列地址 **+ `local_model` + `vision_model`**（走 walkthrough_db.py，别现写）
+./.venv/bin/python <scratch>/p95/setup.py 19360
+./.venv/bin/python scripts/journey_fixture.py <scratch>/p95/walk/old/udd --variant synthetic
+# ── ⑨ 走查（cwd = <worktree>；**四次 go.sh**：新用户 / 老用户 / rounds95 / 真·关掉重开）
+#      ⚠️ `<llm-port>` 必须跟 udd 库里存的 `local_base_url` 对得上（**这一批又栽了一次，见问题 #1**）
+#      ⚠️ `@LAST_NEW_NOTE` = 这一趟**最近一步**现造的那篇；`panes93` 自己会造一篇（**问题 #4**）
+unset ELECTRON_RUN_AS_NODE
+env WALKTHROUGH_APP="<app>" WALKTHROUGH_UDD=<…/udd> WALKTHROUGH_SHOT_DIR=<…/shots> \
+    WALKTHROUGH_LOG_DIR=<…/log-*> WALKTHROUGH_SHOT_PREFIX=p95 LLM_MODE=ok \
+    zsh frontend/scripts/walkthrough/go.sh <cdp-port> 19360 <steps 清单>
+# ── ⑩ 走查日志洗干净存进仓库（cwd = <worktree>/frontend）
+node scripts/walkthrough/normalize-log.mjs --today 2026-09-21 \
+  --out ../docs/walkthrough-logs/p95 <scratch>/p95/walk/log-{new,old,old2}/*.txt
+# ── ⑪ 跨批逐行 diff + 归类表（cwd = <worktree>）
+diff -r docs/walkthrough-logs/p93 docs/walkthrough-logs/p95     # 104 行
+# → 逐行归类写进 docs/walkthrough-logs/p95/DIFF-FROM-p93.tsv，闸在 ④ 那条
+# ── ⑫ 真库指纹（cwd = **主仓** /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE，**只读**）
+sqlite3 "file:backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), (select max(id) from llm_usage), (select count(*) from note_revisions) from notes;"
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm -rf` 只出现在「重造 scratch 里那份 udd」
+这一处（第 776 轮那一课）。
+⚠️ **入库逐路径 `git add`**：worktree 里 `backend/.venv` / `node_modules` / `frontend/node_modules` /
+`desktop/node_modules` 是**软链**，`.gitignore` 里的斜杠只挡目录，**挡不住软链**。
+
+P95 留给下一批：
+① **第 ⑩ 步那句 toast**：「重开之后正好开着带层那篇」这一档读不到它，**是量具够不着还是用户也看不到，这一批没量**；
+② **`17-new-panes93.txt` 那一行「解释不了」**还挂着（P93 跑的那一份跟入库的那一份差着一行，证不实）；
+③ **切走那几秒里到达的 harness 事件照旧丢**（`guarded` 那层，HEAD 上本来就这样，这一批没动）——
+   轮次卡**仍然不落库**，关掉 app 还是没了；
+④ 跨批 diff 那条闸仍**只追认最新一批**，`p85` / `p87` 还是没有归类表；
+⑤ **「走查随机」那 67 行**：P93 记的那一档（右栏被收起来）这一批**没再出现**，读数回到 P91 那一档
+   ——下一批继续看；
+⑥ P89 留的 ③④⑤⑥⑦ 一条都没碰。

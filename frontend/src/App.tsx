@@ -72,6 +72,8 @@ import { undoRound } from './editor/undoRound'
 import { groupRuns, type RunRound } from './util/runRounds'
 import { changesTabHasContent, reopenedLayersNotice, restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
 import { PLAN_EMPTY_HINT, planTabContent } from './util/planTab'
+// 轮次卡按 note id 存（P95 A）：为什么不是一条「换篇就清」的 effect，见那份文件的抬头
+import { roundsFor, writeRoundsIn, type RoundsByNote } from './util/roundsByNote'
 import { checkLabel, stuckTail } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）+ 后面那半句下一步（P40 · B #2）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
@@ -315,9 +317,28 @@ export default function App() {
   const spots = useRef(loadSpots(api.getUser()))
   /** agent 每一轮干了什么，喂给 AgentActivity 可视化。按轮聚合：用户关心的是
    * "这一轮查了什么 → 改了什么 → 打了几分 → 于是下一轮怎么调"这条因果链，
-   * 事件流水账看不出所以然。 */
-  const [agentRounds, setAgentRounds] = useState<AgentRound[]>([])
-  useEffect(() => { agentRoundsRef.current = agentRounds.length }, [agentRounds])
+   * 事件流水账看不出所以然。
+   *
+   * **按 note id 存**（P95 A，收 P93 问题 #1）：原来是一整个 App 一份，
+   * 只在 harness 开跑那一刻清一次，于是「A 篇跑完 2 轮 → ⌘K 新建一篇空笔记」
+   * 那一屏上，右栏「计划」写着 `计划 2`、底下摆着 A 篇那两轮的执行记录（P93 实拍）。
+   * 为什么不照抄 P17 给 `verifyResult` / `roundDiff` 立的那条「换篇就清」——
+   * 理由逐条写在 `util/roundsByNote.ts` 的抬头里（一句话：那两个是**消息**，
+   * 这个是**这一篇的一段历史**，清掉就再也回不来）。 */
+  const [roundsByNote, setRoundsByNote] = useState<RoundsByNote>({})
+  /** 收工那句话要数的是**跑的那篇**有几轮，不是**现在显示的那篇**——
+   *  用户切走了的话后者是空的。写 ref 是幂等的（跟 `liveContentRef` 同一条理由）。 */
+  const roundsByNoteRef = useRef<RoundsByNote>({})
+  /** 现在显示的这一篇的轮次卡。虚拟页 / 没开笔记 ⇒ 空。 */
+  const agentRounds = roundsFor(roundsByNote, current?.id)
+  /** 往**某一篇**的轮次卡上写。**note id 是必给的**——「往当前这篇写」正是那个洞。 */
+  const writeRounds = useCallback((noteId: string, fn: (rs: AgentRound[]) => AgentRound[]) => {
+    setRoundsByNote((m) => {
+      const next = writeRoundsIn(m, noteId, fn)
+      roundsByNoteRef.current = next
+      return next
+    })
+  }, [])
   /** 这一轮 harness 改了什么（新增/删除），传给编辑器做只读高亮。
    * 自动应用的改动用户否则完全看不见被动了哪里。 */
   const [roundDiff, setRoundDiff] = useState<DiffPush | null>(null)
@@ -437,7 +458,6 @@ export default function App() {
   /** reason=check_stuck 收工时「哪条判据、连响几轮」——后端在 RUN_FINISHED 之前
    *  发一条带 `stopped` 的 check_hit 事件（P6 问题 4），收工那句话从这儿取。 */
   const stuckCheckRef = useRef<{ check: string; rounds: number } | null>(null)
-  const agentRoundsRef = useRef(0)
   // 逐轮处置：开着的话每轮写完就停下来，等你在编辑器里逐条接受/撤回，
   // 处置完再点「接着写」。关着是原来的行为——一口气跑完再处置，而那意味着
   // 你在跑的过程中做的处置会被下一轮盖掉。
@@ -2354,8 +2374,8 @@ export default function App() {
    * 的另一篇笔记上。 */
   /** 往某一轮的记录里打补丁。事件是分散到达的（round-start / tool-calls /
    * evaluate / policy 各一条），先到的先建这一轮的空壳，后到的往上补。 */
-  function patchRound(round: number, patch: Partial<AgentRound>) {
-    setAgentRounds((rs) => {
+  function patchRound(noteId: string, round: number, patch: Partial<AgentRound>) {
+    writeRounds(noteId, (rs) => {
       const i = rs.findIndex((r) => r.round === round)
       if (i < 0) {
         return [...rs, {
@@ -2392,7 +2412,7 @@ export default function App() {
         // 跟着到达（见 TRACELOG [25]）——状态文案要如实说"在清理重复"，
         // 不能说"续写中"，不然用户会以为卡住了；也不能预留续写用的
         // 空行，因为这一轮根本不会有内容来填上这个空行。
-        patchRound(d.round, {
+        patchRound(noteId, d.round, {
           cleanupOnly: !!d.skipped_continue,
           revisions: d.revisions_applied,
           // 「这一轮为什么这么跑」（后端计划 12.1）：上一轮诊断出了什么、
@@ -2490,7 +2510,7 @@ export default function App() {
         // 同时流进 Agent 运行面板。两段式之后编辑器有几十秒完全不动
         // （检索规划是非流式的），面板里能实时看到写出来的字，比一行
         // 干等的状态文案有用得多。
-        setAgentRounds((rs) => {
+        writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
           const last = next[next.length - 1]
@@ -2540,7 +2560,7 @@ export default function App() {
         if (currentRef.current?.id !== noteId) return
         const beatScore = d.scores['beat_coverage']
         if (beatScore) setBeatCoverage(beatScore)
-        setAgentRounds((rs) => {
+        writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
           next[next.length - 1] = {
@@ -2560,11 +2580,11 @@ export default function App() {
         // 用 patchRound 而不是改"最后一张卡片"：修订 pass 跑在
         // round-start **之前**，第 1 轮的 edit 阶段到达时卡片还不存在，
         // 直接改最后一张会把它整段丢掉——而那正是最想看的第一段。
-        patchRound(d.round, { phase: d.phase, phaseLabel: d.label })
+        patchRound(noteId, d.round, { phase: d.phase, phaseLabel: d.label })
       },
       onPhaseDelta: (d) => {
         if (currentRef.current?.id !== noteId) return
-        setAgentRounds((rs) => {
+        writeRounds(noteId, (rs) => {
           const i = rs.findIndex((r) => r.round === d.round)
           const base = i < 0 ? null : rs[i]
           const pt = { ...(base?.phaseText ?? {}) }
@@ -2586,14 +2606,14 @@ export default function App() {
       },
       onToolCalls: (d) => {
         if (currentRef.current?.id !== noteId) return
-        patchRound(d.round, { toolCalls: d.calls, toolTruncated: d.truncated })
+        patchRound(noteId, d.round, { toolCalls: d.calls, toolTruncated: d.truncated })
         setNoteHarnessStatus(`第 ${d.round} 轮：agent 自己查了知识库 ${d.calls.length} 次，续写中…`)
       },
       onPolicy: (d) => {
         if (currentRef.current?.id !== noteId) return
         // round 0 = 开跑前用历史运行记录定的初始策略，还没有对应的轮次卡片，
         // 挂到第 1 轮上；其余挂在产生它的那一轮
-        patchRound(Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
+        patchRound(noteId, Math.max(1, d.round), { policyReasons: d.reasons, policy: d.policy })
       },
       onScrub: ({ sentence }) => {
         // 服务端在轮内把一整句删了（元话语 / 审计腔）：本地同一句也删掉，不然到轮末两边差一整句（第 381 轮真跑）。
@@ -2624,7 +2644,7 @@ export default function App() {
       onDropped: (detail) => {
         // 防线丢掉一条修订不是出错，收在单独的可折叠区里，不占报错的红色。
         if (currentRef.current?.id !== noteId) return
-        setAgentRounds((rs) => {
+        writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
           next[next.length - 1] = {
@@ -2638,7 +2658,7 @@ export default function App() {
         // 这次跑带了哪几条技能（P1-1b）。第一轮开跑就到，记在那一轮的卡片上；
         // 用户第 768 轮「Skill 有时能加载有时不能」——此前界面上没有任何一处说过这件事。
         if (currentRef.current?.id !== noteId) return
-        patchRound(d.round, { skills: { scope: d.scope, injected: d.injected, menu: d.menu } })
+        patchRound(noteId, d.round, { skills: { scope: d.scope, injected: d.injected, menu: d.menu } })
       },
       onCheckHit: (d) => {
         // 代码判据当场判不合格，这一轮不会再花模型调用去打分。不标出来的话
@@ -2651,7 +2671,7 @@ export default function App() {
         // ——判据真的命中了，用户看不见。
         if (currentRef.current?.id !== noteId) return
         if (d.stopped) stuckCheckRef.current = { check: d.check || '', rounds: d.stuck_rounds || 0 }
-        setAgentRounds((rs) => {
+        writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
           const last = next[next.length - 1]
@@ -2686,7 +2706,7 @@ export default function App() {
         setNoteHarnessStatus(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`)
         if (/连不上|拒绝|返回 \d{3}|没应答/.test(detail)) toastAction(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, '打开设置', () => void openVirtual('app:settings', '设置'), 8000)
         else toast(`${mode === 'polish' ? '打磨' : '智能续写'}出错停下：${detail}`, 'error')
-        setAgentRounds((rs) => {
+        writeRounds(noteId, (rs) => {
           if (!rs.length) return rs
           const next = [...rs]
           next[next.length - 1] = {
@@ -2710,7 +2730,7 @@ export default function App() {
           setContent(serverContent)
         }
         // 跑完 / 暂停了，卡片上的「在写…」阶段标签得摘掉，不然停了还显示在写（实拍）
-        setAgentRounds((rs) => rs.map((r) => (r.phaseLabel ? { ...r, phase: undefined, phaseLabel: undefined } : r)))
+        writeRounds(noteId, (rs) => rs.map((r) => (r.phaseLabel ? { ...r, phase: undefined, phaseLabel: undefined } : r)))
         if (reason === 'awaiting_review' && runId) {
           // 这一轮写完了，等你处置。**正文的最终形态由编辑器说了算**——
           // 逐条接受/撤回都在这儿做，点「接着写」时把当前正文送回去。
@@ -2742,7 +2762,7 @@ export default function App() {
           : '到达轮数上限，自动停止'
         stuckCheckRef.current = null
         const delta = liveContentRef.current.length - runBaseRef.current.length
-        const summary = `${label} · ${agentRoundsRef.current || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`
+        const summary = `${label} · ${(roundsByNoteRef.current[noteId]?.length ?? 0) || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`
         setNoteHarnessStatus(summary)
         harnessDoneRef.current = true
         setHarnessDone(true)
@@ -2789,7 +2809,7 @@ export default function App() {
     setNoteHarnessStatus('启动中…')
     setHarnessDone(false); harnessDoneRef.current = false
     setBeatCoverage(null)
-    setAgentRounds([])
+    writeRounds(noteId, () => [])
     setRoundDiff(null)
     setPausedRun(null)
     pausedRef.current = false
@@ -4375,7 +4395,9 @@ export default function App() {
             // `agentRounds` 数出「计划 2」，而正文那四块在虚拟页上一块都画不出来，
             // 于是 `alwaysShown` 的页签底下是**一片纯空白**（P89 实拍 `p89-b4-old-wipe-light.png`），
             // 而 `RightPane` 自己的注释写着「别留白」——那条 `emptyHint` 的路当时一条都走不到。
-            // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats / agentRounds 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
+            // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
+            // P95 A：`agentRounds` 这一半从**源头**治了——它按 note id 取，换篇 / 虚拟页上本来就取不到上一篇的
+            // （P93 实拍：A 篇跑完 2 轮，⌘K 新建一篇空笔记，这儿写着「计划 2」、底下摆着 A 篇那两轮的执行记录）
             { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,
               badge: planTabContent({ hasNote: !!current, running: loading === 'note-harness' || !!harness?.running,
                                       rounds: agentRounds.length, beats: beats.length }).badge || undefined,
