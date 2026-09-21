@@ -26768,3 +26768,428 @@ P99 留给下一批：
 ⑤ **「走查随机」14 行全来自那个毫秒级探针**——右栏那一族仍然逐格相同，**还是不能读成「治好了」**；
 ⑥ 跨批 diff 那条闸仍**只追认最新一批**，`p85` / `p87` 还是没有归类表；
 ⑦ P89 留的 ③④⑤⑥⑦ 一条都没碰。
+
+---
+
+## P100 · 第 820 轮：**屏级判据那份留出集造出来了**（收 P98 ④）+ **i=388 第四条路判「不接」（效果不够，不是别的）**（2026-09-22）
+
+> 出身：worktree HEAD `ad1b2cf`（`git log -1` 钉过），worktree `agent-ad3c31e4dc6cdea92`。
+> 真库只读做指纹；实验一律 `KITE_DATA_DIR=<scratch>/p100data`（= 主仓 `backend/data` **整棵拷**，
+> 目标**开工时不存在**，`ls -1a` 两边 **39 行对 39 行 / 0 差异**，没套娃；
+> `recall_ruler` 自报 `users 6`）；worktree 的 `backend/data/notes.sqlite3` 是主仓那份的
+> 只读拷贝（**没 `chmod 444`**；`backend/data/` 开工时不存在，先 `mkdir -p`）。
+> **这一批没碰 `frontend/` 和 `docs/walkthrough-logs/`**（另有 agent 在走查那一侧）。
+>
+> **基线四个数，每个带出处**（P95 那个格式，**四条都是自己跑出来的，没抄任务书**）：
+>
+> * 后端 **3403 passed / 0 skipped** ← `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python -m pytest -q -p no:cacheprovider` @ `ad1b2cf`
+> * 前端 **101 文件 / 931 条** ← `cd <worktree>/frontend && npm test` @ `ad1b2cf`
+> * `floor_ruler` **看着 11 份 / 登记 125 条（只准往上 5 · 钉死 120）/ 例反例 12 条 / 共核 137 条 / 落后 0 / 对不上 0** ← `cd <worktree>/backend && ./.venv/bin/python scripts/floor_ruler.py` @ `ad1b2cf`
+> * 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 / `llm_usage` 最大 id 5738** ← `sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" "select count(*), max(updated_at), sum(length(content)), (select max(id) from llm_usage), (select count(*) from note_revisions) from notes;"` @ `ad1b2cf`
+>
+> 四个都跟任务书逐格相同。
+
+> **这一批产品逻辑一个字节没改。** 动的是：`recall_ruler` 多一支反事实 `--cf-hold`
+> （+ `_hold_clique` / `_hold_grams` / `_hold_containment` 三个私有帮手 + **十五条新常数**）、
+> `floor_ruler` **十五条新登记 + 两个 floor 抬到真值（140 / 152）**、
+> **一份新闸 `test_p100`（22 条）**、**一组 27 条留出标注**（`p100-holdout-27`，28 行）、
+> `fact_distinct` 的**文档**（新的第 ⑨ 格 + 第 ⑥ 格补一条实拍，**代码一行没动**）、
+> `test_p94` / `test_p96` / `test_p98` 里**被抬 floor 改到的那各两行**（并排改，老值留在行尾）。
+
+---
+
+### A **留出集是怎么造的**（P98 ①②，这一批的正题）
+
+P98 ④ 把话说得很清楚：**卡的那一格不是「想不出来」，是「没有留出集」**。
+所以这一批**第一步不是调那个 0.07–0.10，是造留出集**。
+
+#### A-1 **顺序**（P77 立、P90 栽过、P92 做对过）——**逐条列，一步都没换**
+
+1. **写 `RULE.md`**（`<scratch>/p100/RULE.md`），**在读第一屏之前**。里面钉死了：
+   验的是哪一头、population 从哪来、分层怎么分、label 口径、揭晓的顺序、
+   「盲性怎么算弄坏」、以及**门槛不许按留出集调**。
+2. 跑 `shapes100.py`（**只打计数和下标，不打任何一屏的正文/团/分数**）量 population。
+3. 跑 `holdout100.py` 造留出屏 → 出 **`blind_sheet.md`**（**只有槽位字母 + 正文**）
+   + **`holdout_key.json`**（屏号 / fact id / obj / topics / unit / 团 / 包含度 —— **先别开**）。
+4. **只读 `blind_sheet.md`**，逐屏填 `labels.tsv`（族是哪几个字母 / 半屏 Y·N / 一句为什么）。
+5. **标完才跑 `reveal100.py`**（它才打开 `holdout_key.json`）。
+6. 再跑 `detail100.py <hid>` 逐屏摊开，写这一节。
+
+#### A-2 **从哪抽**（先量再改：那 765 屏上「判是」那一头**已经读光了**）
+
+← `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python <scratch>/p100/shapes100.py` @ `ad1b2cf`：
+
+| | 共几屏 | 读过 | **没读过** |
+|---|---:|---:|---:|
+| 判得了的屏（`measurable >= 3`） | **175** | 25 | 150 |
+| **`K` 团 ≥3**（字面那条路**唯一说得了话**的那批） | **31** | 25 | **6** |
+| `M` 团 ≥3 | **19** | 19 | **0** |
+| `M` + 今天这道门判「是」 | **17** | 17 | **0** |
+| `K` + P94 老那道门判「是」 | **18** | 18 | 0 |
+
+（175 / 17 / 18 三个数跟 P98、P94 **逐格相同**，是自己重量出来的。）
+
+⇒ **留出集不可能从那 765 屏里抽**：判「是」那一头的分母已经被 P94/P96/P98 读完了。
+**换的是一族没人跑过的查询**：同一份 `recall_query3` 实现、同一份语料、同一批段落，
+**只把 `RECALL_CONTEXT_BEFORE` 换掉**（HEAD 是 200，这儿走
+`0 / 40 / 80 / 120 / 160 / 300 / 400 / 600 / 1000` 九个值，**200 不在里面**），
+按 `(用户, 查询)` 互相 + 跟 765 那套去重。
+
+⚠️ **这不改产品、不改 `recall_ruler` 那 765 条量程的任何一个 `EXPECT_*`**——
+换宽度只发生在 `cf_hold()` 里面，**跑完立刻还回去**，还不回去当场抛。
+
+#### A-3 **防污染 + 池内去重 + 分层**
+
+← `… ./.venv/bin/python <scratch>/p100/holdout100.py` @ `ad1b2cf`：
+
+```
+留出查询 2058 条（before=0 新增 535 · 40→476 · 80→377 · 120→302 · 160→191
+                 · 300→121 · 400→40 · 600→12 · 1000→4）
+空屏 1233 · 防污染剔 51 · 池内重复剔 532 · **留 242 屏**
+判得了（measurable>=3）106 屏：**A 层（`K` 团>=3）7 屏** · B 层 99 屏
+上单子：A 7（census，没抽） · B 20（种子 100100） = **27 屏**
+```
+
+* **防污染**：留出屏的 fact id 集合跟 `p94-shape-18` / `p96-halfdoor-7` 那 **25 屏**
+  任意一屏 Jaccard ≥ 0.5 的，**整屏剔掉**。
+* **池内去重**：同一条规则在留出池**内部**再跑一遍（免得同一屏被不同宽度捞回来标两遍）。
+
+#### A-4 **这份验的是哪一头：「判是」那一头**
+
+字面 3-gram 那条路的形状是 **`K` 判「是」之后再套一个过滤器**
+（它量的是**团里两两**的包含度 mean —— **没有团就没有这个数**）。
+**过滤器只会把「判是」翻成「判不是」，动不了「判不是」那一头。**
+⇒ **主验面 = 精确率 / 假阳性**；B 层那 20 屏是**顺带**验漏，**不是这条路的验收面**。
+
+#### A-5 **盲性：没弄坏**（照实记，连两处「差点」一起记）
+
+* `RULE.md` 写在读第一屏之前，**此刻还没跑过 `holdout100.py`**。
+* `shapes100.py` / `holdout100.py` / `count100.py` 在终端**只打计数**
+  （层的条数、各去重键下剩几屏），**没打任何一屏的 fact id / 正文 / 团 / 包含度**。
+* 盲标单**只有槽位字母 + 正文**：没有 fact id（fact id 前缀就是 unit，而 unit 是 `M` 的第三条轴）、
+  没有 obj / topics / unit / who / kind、没有屏号、没有库名、没有查询、没有任何分数。
+  两层**混在一起按种子打乱、不标层**。
+* `holdout_key.json` 在 `labels.tsv` 填完之前**一次都没打开**。
+* **两处口径改动都在「只看见计数」的时候发生，并排写在 `RULE.md` 底下，原文一个字没抹**：
+  **更正 ①**（第一版只有 `before=0` 一个口径，A 层只出 5 屏 ⇒ 换成九个宽度那一族）、
+  **记一笔 ②**（换完还是 7 屏 ⇒ 把「为什么只有这么点」量了，**口径没改**）。
+
+⚠️ **一个已知的盲性缺口，照实记**：标注的人读过 P94/P96/P98 台账，
+**认得出这个库里反复出现的那几族**（众筹时间 / 定位套话 / `手环`）。
+台账没说哪一屏是哪一屏，逐屏的判仍然是现读的，但这件事本身会让判得**比一个生人准一点**。
+**这是这份留出集的一个上限，不是可以忽略的。**
+
+---
+
+### B **拿它验两条路**（P98 那条 3-gram 的路 + 今天在跑的 `M`）——**两条都验了**
+
+← `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_ruler.py --cf-hold` @ 本批改动（`EXIT=0`，**十一格逐格对上，三条结构自检全过**）：
+
+**A 层 7 屏（主验面）**：
+
+| 判据 | 判「是」 | 真 | 假 |
+|---|---:|---:|---:|
+| `K` + 今天这道门 | 6 | **0** | **6** |
+| **`M` + 今天这道门（今天在跑的那一版）** | **0** | 0 | 0 |
+| `K` + 门 + 字面 3-gram ≥ **0.07** | 5 | **0** | 5 |
+| `K` + 门 + 字面 3-gram ≥ **0.08 / 0.09 / 0.10** | 3 | **0** | 3 |
+
+**B 层 20 屏（顺带）**：三条判据**一屏都没判「是」**，**漏 1 屏**（H05）。
+
+**人标（分母 = 量得了的格）**：判「是这形状」**1 屏** / 「不是」**25 屏** / 拿不准 **1 屏**。
+
+#### B-1 **那 6 屏假阳性逐条读**（`K` 那一版）
+
+| hid | 库 | 格/量得了 | `K` 团 | 盖住 | 共同码 | 包含度 | 人读 | 为什么假 |
+|---|---|---|---:|---:|---|---:|---|---|
+| H02 | rewrite | 5/5 | 3 | 4 | `product_strategy` | 0.073 | 假 | ask memory 差异点 / any pin recap 销售证据 / recap 优先级下降 —— **三件不同的事** |
+| H04 | terrence | 6/6 | 3 | 4 | `work_hardware` | 0.011 | 假 | 华为内存池化 / 协议时延 3us / 液冷配比 —— **跟 P94 i=101 是同一个形状** |
+| H07 | rewrite | 5/5 | 3 | 4 | `product_strategy` | 0.075 | 假 | recap 销售证据 / recap 优先级 / 功能统计表不完整 |
+| H09 | rewrite | 8/8 | 3 | **4** | `product_strategy` | 0.215 | 假 | 团 3 里只有 2 条真同（a/d 是同一句），b 是「砍 task 页面」 |
+| H19 | rewrite | 8/8 | 3 | **6** | `product_integration` | 0.205 | 假 | ⚠️ **`K` 圈错了族**：人读的真族是 d/g/h（三条「在做第三方工具打通」），`K` 圈的是 c/d/e |
+| H24 | rewrite | 8/8 | 3 | **5** | `product_strategy` | 0.215 | 假 | a 和 f 是同一句，d 不是 |
+
+* **六屏的共同码全是宽码**（`product_strategy` ×4 / `product_integration` / `work_hardware`），
+  撑团的 obj 全是泛 obj（`feature` / `product` / `memory`）——
+  **跟 P98 查到的 i=388 根因是同一个形状：两条轴同时接近退化。**
+* ⚠️ **H09 / H19 / H24 这 3 屏是靠 P98 那道 `cover` 门开的**（团 3×2 < 8，cover 4/6/5 ×2 ≥ 8）
+  —— 这是第 ⑥ 格「会多放」那个口子在**留出集上的第一批实拍**。
+  **但它不是对那道门的判决**：这三屏是在 `K` 上量的，**HEAD 跑的是 `M`**，
+  而 `M` 在这 27 屏上**一次都没开口**。⚠️ **别把反事实里的伤亡记成 HEAD 缺陷。**
+* ⚠️ **H20 那一屏新门判对了**（团 3、cover 3，两句都不过半屏 ⇒ 不判是；人读也是假）。
+
+#### B-2 **`M` 那个「0 假阳性」是空的**
+
+`M` 在这 27 屏上**一次都没开口**（`M` 团最大只有 2），**分母是 0**。
+不许读成「`M` 在留出集上判得准」。**`M` 在这儿真正量到的是漏那一头**：
+
+> **H05**（B 层，8 格 / 量得了 7）：**人读判「是」**——
+> `1647-17F2`（A 问：要不要拿 hello@memocat.ai 当社媒上的对外联系邮箱）/
+> `1647-17F3`（C 说：可以）/ `1647-17F5`（A 担心这样会影响发信）/
+> `1647-19F3`（A 接下来两周当这个邮箱的联系人），**四条是同一件事**，4/7 过半屏。
+> `K` 团只打到 **2**（前两条，共同码 `work_marketing`）。
+> **漏掉的两条不是没挂码，是被抽成了另一个码，而且两条轴同时**：
+> `1647-17F5` 是 `obj=['e_mail']` / `topics=['work']`，团里那一对是
+> `obj=['e_mail_address']` / `topics=['work_marketing']` ——
+> **`e_mail` ↔ `e_mail_address`、`work` ↔ `work_marketing`，一个都不相交**；
+> `1647-19F3` 是 `obj=['contact']` / `topics=['memo_cat_product']`，同样两条轴都不沾。
+> ⚠️ **这跟第 ⑦-e 格「`topics` 会把同一族劈开」是同一个根因，只是这一次 `obj` 也被劈开了**
+> —— `family_cover` 只救得了 `topics` 那一半。
+> ⚠️ **而那一对的字面包含度是全场最高（0.787），却根本没机会说话**：
+> 字面那条路是**套在团上的过滤器**，团不成立它就出不了声。
+> **这正是第 ⑥ 格「它不认字面 / 跟字面去重是两把尺」那条的正面实拍。**
+
+---
+
+### C **i=388 第四条路：判「不接」**——**理由是效果不够，不是别的**
+
+**接不接由我判，判的是「不接」**，理由分三条，**逐条说清是哪一种「不够」**：
+
+1. **效果没有出样本**（这是主要理由）。in-sample 那 18 屏上 **真 12/12、假 1/6**；
+   换到留出集 A 层 **5 个没见过的团**上，**真 0 / 假 3–5**。
+   ⚠️ **不是门槛不对**：门槛用的就是 P98 那一批定死的 0.07–0.10，**一格都没按留出集调**
+   （按留出集调过的门槛就不是门槛了）。
+2. **它过滤的那个底在留出集上一屏真的都没有**（`K` + 门：判是 6、真 0、假 6）。
+   **过滤器只会更窄** —— 底下没有真的，过滤完也变不出真的来。
+   所以这条路在留出集上**最好的可能结果也只是「少几屏假阳性」**，
+   而它今天在跑的对照（`M`）在同一批屏上是 **0 判是**，**本来就没有假阳性可省**。
+3. **它会改变这把尺是什么**（P98 已经点名）：第 ⑥ 格写着「**它不认字面**…
+   跟字面去重是两把尺，不是一把的两个版本」。接了这条路就是把两把尺焊成一把。
+   ⚠️ 这一条**不是独立理由**，是前两条成立之后才算数的加权。
+
+⚠️ **「不接」这个判的强度，也得说清楚**（判据宁可窄一点）：
+这份留出集**量得了假阳性、量不了召回**（27 屏里人读判「是」只有 1 屏，**还在 B 层**），
+所以它**能否掉这条路，肯不了它**。换句话说：
+**「在 5 个没见过的团上一个真的都没圈出来」这句话是站得住的；
+「这条路在别的语料上也没用」这句话这份留出集说不了。**
+
+---
+
+### D **这份留出集自己的上限，也量了**（别拿它当比它能答的更多的东西）
+
+← `… ./.venv/bin/python <scratch>/p100/count100.py` @ `ad1b2cf`（**只打计数**）：
+
+| 去重键 | A 层剩几屏 |
+|---|---:|
+| 不做池内去重 | **27** |
+| ① 整屏 fact id Jaccard ≥ 0.5（**今天在用的**） | **7** |
+| ② 按**团自己**的 fact id 集合去重（证据的单位是团） | **6** |
+| ③ 团之间再按 Jaccard ≥ 0.5 去重 | **3** |
+
+⇒ **这不是抽样抽少了，是这个语料上「有团的屏」本来就稀有**：
+765 那套上 31/175 = **17.7%**，留出那 2058 条查询上 27/320 = **8.4%**，
+而 27 屏背后**只有 6 个互不相同的团 / 3 个互不相同的族**（上单子那 7 屏里是 **5 个团**）。
+
+**另外三条限制，一条都不许省**：
+
+* **留出池里 532/2058 屏是彼此的近重复**（`EXPECT_HOLD_POOL` 第三格）——
+  **「多捞几条查询」≠「多出几份独立证据」**。下一批想把留出集做厚，第一个撞的就是这堵墙。
+* **这不是 765 那套查询的 i.i.d. 抽样**：同一批语料、同一批段落、**换上下文宽度**，
+  分布偏短查询；按库分 `terrence` 17 / `terrence-rewrite` 10（**63%**），
+  而 765 那套是 **83.8%** 落在大库。**读数只能说「在这一族查询上」。**
+* **那 6 屏 765 里没读过的（27 / 31 / 603 / 604 / 662 / 663）判「不用」**：
+  不是它们脏，是**说不清干不干净**——`p71-line637` / `p81-common95` / `p67-panel77`
+  那几份问的是别的问题，但**同样出现过这几个下标**，而那几份的 `i` 是不是同一条轴我没重数。
+  **「说不清干不干净」就当脏的。**
+
+---
+
+### E 闸 / 突变 / 尺 / 指纹
+
+**动的源码只有两处 + 一处文档**：
+`scripts/recall_ruler.py`（新的 `cf_hold()` + `_hold_clique` / `_hold_grams` /
+`_hold_containment` + `--cf-hold` 那一段 + **十五条新常数**）·
+`scripts/floor_ruler.py`（**十五条新登记 + 两个 floor 抬到 140 / 152**）·
+`app/database/kb/fact_distinct.py`（**新的第 ⑨ 格 + 第 ⑥ 格补一条实拍，代码一行没动**）。
+**`app/` 底下除了这把尺自己，仍然没有一处 import 它**（`test_p100::第四条e` 钉着）。
+
+**新闸**：`backend/tests/test_p100.py` **22 条**（一 6 · 二 4 · 三 5 · 四 7）。**这份闸不要真语料。**
+**改到的老闸**：`test_p94` / `test_p96` / `test_p98` **各两行**（抬 floor，**老值留在行尾注释里**）。
+
+**新标注**：`p100-holdout-27`（27 行）+ 1 行 `_meta` = **28 行**。
+
+**⚠️ 开工就把自己要断言的字面量 `grep -c` 了一遍**（这一课连着六批咬人）：
+`EXPECT_HOLD` 在仓库里 **0 处**（干净），`EXPECT_SHAPE_HEAD` 15 处 / `family_cover` 16 处 /
+`--cf-shape` 22 处（都不碰）。**这一批没被它咬到**——但**被它的表亲咬了一次**，见下面预测错第三条。
+
+**突变验：真刀 21 把（其中 ⑱ / ⑳ 重切）+ 对照刀 5 把**，钉死收集 **107 条**
+（= `test_p100` 22 + `test_p98` 24 + `test_p96` 25 + `test_p94` 17 + `test_p90` 19）。
+规矩逐条照 P61–P98：**唯一锚点先断言**（`src.count(old) == 1`，不唯一 = 不算数、重切）→
+整文件写回 → 逐字节 `sha256` 确认真改到 → 清 `__pycache__`（**只清 `app/` `scripts/` `tests/` 三棵树**）→
+钉死收集数（不对当场作废）→ **「红了」和「红的是那条」分开核** → 还原 → 还原后 hash 必须等于原值。
+
+| 结果 | 刀 |
+|---|---|
+| **按预期红，红的正是预期** | ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮ ⑯ ⑰ **⑱′ ⑲ ⑳′ ㉑**（**21 把**）|
+| **⚠️ 一条都没红 ⇒ 补了断言再重切** | **⑱**（`--cf-hold` 那张对照表的 `bad.append` 换成 `pass`）|
+| **⚠️ 锚点切成空 `if` ⇒ SyntaxError ⇒ 收集数 -1 ⇒ 当场作废、重切** | **⑳** |
+| **对照刀全绿，各跑 107 条** | 对照A（`recall_ruler` 加一行无关注释）· 对照B（`floor_ruler`）· 对照C（`test_p100`）· **对照D（`fact_distinct`——这一批只改了它的文档，加一行注释不该红）** · 对照E（`cf_hold` 定义上方）|
+
+⚠️ **⑱ 那一刀是这一批最值钱的一格**：把 `main()` 里 `--cf-hold` 那张对照表的
+`bad.append(f"cf-hold {name}: {got} ≠ {want}")` 换成 `pass`，**107 条一条都没红**
+—— **当时确实没有一条闸钉着「这一趟对不上会不会报出来」**。
+**闸跑绿不等于闸有用**：`--cf-hold` 自己 EXIT=0 只说明今天的数对得上，
+**不说明它明天对不上的时候会红**。
+**先补了 `test_p100::第四条cc`**（钉三样：那句 `bad.append` 在、
+**十五个数一个都不许没人看着**（12 个读数进 `main()` 的对照表、3 个入参在 `cf_hold()` 身上）、
+三条结构自检都在）**再重切 ⑱′**，红在预期那条；
+**再补切 ⑲ / ⑳′ / ㉑ 三把**分别验它的三半，各红一条。
+⚠️ **这正是 P98 ⑤ 那一课（「这道新门只数量得了的格」没人钉着）在这一批的复刻**。
+
+⚠️ **预测错了照实记（第一条，预测对了的那一条也记）**：
+**动 `EXPECT_*` 的值会红 `test_p90::第四条b`** —— P96 / P98 **连着两批在这一格上预测错**，
+这一批**开工就写进了预测**（`test_p100::第四条d` 的 docstring 里），
+①–⑩ ⑮⑯⑰ **十三把刀逐把对上，一把都没漏**。**这一格终于不欠了。**
+
+⚠️ **预测错了照实记（第二条）**：我以为新补的 `第四条cc` 只会在 ⑱′ 上红。
+**第一版写错了**：它要求**全部十五个** `EXPECT_HOLD_*` 都出现在 `main()` 那张对照表里，
+而 `EXPECT_HOLD_WIDTHS` / `_SEED` / `_READ25` 是**造留出集的入参**，
+本来就只在 `cf_hold()` 函数体里用 —— **在干净的源码上就红**。
+**「读数」和「入参」是两件事，第一版把它们混成一件。** 改成分两半各查一半。
+
+⚠️ **预测错了照实记（第三条，「同一个字面量有第二份」的表亲）**：
+突变脚本判「红的是不是预期那条」用的是**子串匹配**，
+而新补的 `test_第四条cc_…` **前缀就是 `第四条c`** ——
+于是 `"第四条c" in "…第四条cc_…"` 为真，**五把刀多红的那一条被静静吞掉了**，
+第二趟看上去「①–⑩ 全对」其实是假的。
+**预期一律改成带下划线边界的前缀**（`第四条c_` / `第四条cc_`），脚本里加了一条断言挡这件事。
+⚠️ **这是「同一个字面量有第二份」这一课的第七次**，这一次咬的不是源码，是**量具自己的匹配口径**。
+
+**砍完跑了完整 pytest**：带语料 **3425 passed / 0 skipped**
+← `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python -m pytest -q -p no:cacheprovider` @ 本批改动
+（基线 3403 / 0，**+22 = `test_p100` 那 22 条**）；前端 **101 文件 / 931 条**（**+0 / +0**，这一批没碰 `frontend/`）。
+
+**八把尺一条一条跑，每条单独 `EXIT=$?`、不接管道**，全部 **EXIT=0**：
+`recall_ruler`（765 条）· `--window` · `margin_dot_ruler`（**166/137/33**）·
+`topic_spread_ruler`（泛 6 · 不泛 6 · 判不了 2）· `en_gate_ruler --quorum` · `kb_search_ruler` ·
+`card_origin_ruler`（**979/315/133/62/29/33** 逐格相同）· `floor_ruler`（**140 / 152 / 落后 0 / 对不上 0**）。
+**六支反事实**（五支老的一趟 + `--cf-shape` 一趟）全部 **EXIT=0**；
+**第七支 `--cf-hold`**（这一批新造的）**EXIT=0**。
+
+**四栏 / 圆点 / 47 条对这一批是瞎的**（产品逻辑一个字节没改），当回归跑了，逐格复现：
+四栏 **197/195/96**、带 evidence **192/190/92**；47 条 **46/36/4/6（13%）**。
+说明事的是 `--cf-hold` 那一组数和那 27 条标注。
+
+**真库指纹开工 = 收工**：**482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44**；`llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；
+`~/Library/Application Support` **一次都没碰**。
+
+---
+
+### 收尾命令（**每一条都写明在哪个目录、拿哪个解释器跑**，第 776 轮那一课）
+
+```bash
+# ── ① 摆语料（**两处都要**，先摆再量，不然基线偏）
+mkdir -p <worktree>/backend/data                 # ⚠️ 这个目录开工时**整个不存在**
+cp <主仓>/backend/data/notes.sqlite3 <worktree>/backend/data/notes.sqlite3   # **别 chmod 444**
+cp -R <主仓>/backend/data <scratch>/p100data     # ⚠️ 目标**必须不存在**，否则拷成 p100data/data
+ls -1a <主仓>/backend/data > a; ls -1a <scratch>/p100data > b; diff a b       # 0 差异才往下走（39 行对 39 行）
+#   `recall_ruler` 自报 `users 6` 是第二道核对
+
+# ── ② 软链（worktree 里没有 .venv / node_modules）
+ln -sfn <主仓>/backend/.venv           <worktree>/backend/.venv
+ln -sfn <主仓>/frontend/node_modules   <worktree>/frontend/node_modules
+ln -sfn <主仓>/node_modules            <worktree>/node_modules
+
+# ── ③ 后端（cwd = **本 worktree 的 backend/**，解释器 = 那儿的 .venv 软链）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python -m pytest -q -p no:cacheprovider   # 3425 / 0 skipped
+
+# ── ④ 八把尺（**一条一条跑，每条后面单独 `EXIT=$?`，别接管道**；⚠️ 别 `| tail`）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_ruler.py            ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_ruler.py --window   ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/margin_dot_ruler.py        ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/topic_spread_ruler.py      ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/en_gate_ruler.py --quorum  ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/kb_search_ruler.py         ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/card_origin_ruler.py       ; EXIT=$?
+./.venv/bin/python scripts/floor_ruler.py                                             ; EXIT=$?   # 不读语料
+
+# ── ⑤ 五支老反事实 + 第六支 + **这一批新造的第七支**（各自单独 `EXIT=$?`）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_ruler.py \
+  --cf-whoaxis --cf-spread --cf-common --cf-bigcorpus --cf-gates                      ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_ruler.py --cf-shape ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_ruler.py --cf-hold  ; EXIT=$?
+#   ⚠️ `--cf-hold` 跑 2058 + 25 趟召回，**约十分钟**；它**不改产品**，只读。
+#      它会临时换 `RECALL_CONTEXT_BEFORE` 造留出查询，**跑完立刻还回去**，还不回去当场抛
+
+# ── ⑥ 四栏 + 47 条（cwd = **本 worktree 的 backend/**；这一批它们是瞎的，只当回归跑）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_selfcheck.py terrence 200 11
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/recall_selfcheck.py terrence 200 11 evidence
+KITE_DATA_DIR=<scratch>/p100data ./.venv/bin/python scripts/memory_sample_replay.py
+
+# ── ⑦ 前端（cwd = **本 worktree 的 frontend/**；node_modules 是软链到主仓）
+cd <worktree>/frontend && npm test                                   # 101 文件 / 931 条
+#   ⚠️ 这一批**没碰 frontend/**（另有 agent 在走查那一侧），这条只当基线 + 回归
+
+# ── ⑧ 这一批的 scratch 脚本（路径写死指向**本 worktree**；`lib100` 顶上
+#     一句 `assert os.environ.get("KITE_DATA_DIR")`，漏了就是在真语料上量）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python -u \
+  <scratch>/p100/dump100.py        # 先跑：765 屏落到 <scratch>/p100/screens.json
+KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python -u \
+  <scratch>/p100/shapes100.py      # 量 population（**只打计数和下标**）
+KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python -u \
+  <scratch>/p100/holdout100.py     # 造留出集 + 盲标单（**约十分钟**）
+KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python -u \
+  <scratch>/p100/count100.py       # 各去重键下 A 层剩几屏（**只打计数**）
+#   ⚠️ **标完 `labels.tsv` 才跑下面这两条**（它们会打开钥匙）
+KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python -u \
+  <scratch>/p100/reveal100.py
+KITE_DATA_DIR=<scratch>/p100data PYTHONPATH=<scratch>/p100 ./.venv/bin/python -u \
+  <scratch>/p100/detail100.py H02 H04 H07 H09 H19 H20 H24 H05    # 要传 hid
+cd <worktree>/backend
+./.venv/bin/python <scratch>/p100/write_fixture100.py             # **不读语料**
+#   ⚠️ 它**追加写** `tests/fixtures/memory_sample.jsonl`，自带「已经追加过就抛」的断言；
+#      `FIX` 写死指向本 worktree，**跑在主仓上就是往主仓那份里写**
+cd <worktree>/backend
+./.venv/bin/python -u <scratch>/p100/mutate100.py                 # **不读语料**，26 把刀约两分钟
+#   不传参 = 全跑；传编号（`mutate100.py ① 对照A`）只跑那几把
+#   ⚠️ 它会**改 worktree 里的 4 个文件**（每刀改完立刻整文件写回 + 逐字节核 + 还原后再核）；
+#      **跑在主仓上就是去改主仓源码**
+#   ⚠️ **别 `pkill` 它**：`finally` 跑不到，那一刀的改动会留在文件里（P96 实拍）
+#   ⚠️ `clear_pyc` **只清 `app/` `scripts/` `tests/` 三棵树**：`BE.rglob("__pycache__")`
+#      会顺着 `.venv` 那个软链爬进主仓的 venv
+#   ⚠️ **别 `| tail`**：`tail` 会把整趟输出憋到最后才吐（P98 实拍）。要看进度就 `> 文件` 再 `tail -f`
+
+# ── ⑨ 真库指纹（cwd 无关，路径写绝对路径指向**主仓**，**只读**）
+sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), max(updated_at), sum(length(content)), (select max(id) from llm_usage),
+          (select count(*) from note_revisions) from notes;"
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm` 一律不出现在收尾里（第 776 轮那一课）。
+⚠️ **入库逐路径 `git add`**，别 `git add -A`：worktree 里 `backend/.venv` / `frontend/node_modules` /
+`node_modules` 是**软链**，`.gitignore` 里那个斜杠只挡目录、**挡不住软链**；
+`backend/data/notes.sqlite3` 是只读拷贝，**不进库**。
+
+P100 留给下一批：
+① **第四条路（字面 3-gram）判「不接」，理由是效果没有出样本**——
+   **别再走它**，除非先把留出集做厚。而做厚的那堵墙已经量出来了：
+   **留出池里 532/2058 屏是彼此的近重复，27 屏 A 层背后只有 6 个团 / 3 个族**。
+   ⇒ **想要一份能「肯」这条路的留出集，得先有新语料，不是新查询。**
+② **P98 ② 那第三条路（话题码的 `obj` 分布画像）这一批没碰**——
+   它卡的三格里有一格跟第四条路是同一格（没留出集），
+   而这一批量到的是「**这个语料上造不出更厚的留出集**」，
+   所以**第三条路今天也走不到「验得动」那一步**。它欠的那 26 对仍然没人读。
+③ **`M` 在留出集上一次都没开口（分母 0）**——它的精确率在样本外**仍然没被验过**。
+   要验它，得等到留出集里出现 `M` 会开口的屏；今天 27 屏里一屏都没有。
+④ **H05 那种漏是「抽取把同一个东西抽成两个码」**（`e_mail` ↔ `e_mail_address`、
+   `work` ↔ `work_marketing`），**两条轴同时被劈开**。这跟 P98 ② 想治的是同一件事，
+   但 P98 ② 只看 `topics`。**`obj` 那一半今天第一次有实拍。**
+⑤ **P98 那道 `cover` 门「会多放」的口子，在 `K` 上有了 3 屏实拍**（H09 / H19 / H24）——
+   ⚠️ **但 HEAD 跑的是 `M`，`M` 在这 27 屏上一次都没开口，所以这不是对那道门的判决。**
+   哪天 `M` 在一屏「宽话题码盖大半屏 + 团只有 3」上开口，那才是它。
+⑥ **「同一个字面量有第二份」第七次咬人**，这一次咬的是**量具自己的匹配口径**
+   （`第四条c` 吞掉 `第四条cc`）——**突变脚本的预期一律要带边界**。
+⑦ **`--cf-hold` 跑一趟约十分钟**，比 `--cf-shape` 还贵。它进了收尾清单，
+   但**不适合每批都跑**；下一批要是嫌慢，正确的省法是缓存那 2058 屏的召回，不是砍口径。
+⑧ P99 留的 ①–⑦、P98 留的 ②③④⑤⑥⑦、P97 留的 ①–⑥、P96 留的 ④⑤⑥⑦、P95 留的 ①–⑥、
+   P94 留的 ⑤⑥、P93 留的 ①–⑤、P92 留的 ②③④⑤、P91 留的 ①–⑤、P90 留的 ⑤⑥⑦、
+   P89 留的 ①–⑦、P88 留的 ④⑤、P87 留的 ②③⑤、P85 留的 ③、P84 留的 ①–⑦、
+   P83 留的 ①②、P81 留的 ①②③④、P79 留的 ①②③④⑥、P78 留的 ④、P77 留的 ②④、
+   P76 留的 ②③④⑤、P74 留的 ①②③、P69 留的 ①②③ 都没碰。

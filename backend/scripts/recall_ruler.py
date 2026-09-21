@@ -354,6 +354,59 @@ EXPECT_SHAPE_NOHALF_BIGLIB = (5, 2)
 # ⇒ 卡的是同一格 P92 那句话：**「不泛」≠「挂它的两条事实说的是同一件事」**。
 EXPECT_SHAPE_OBJFACE = ((0.440, 0.752), (0.361, 0.764))   # (真的那批 min/max, 假的那批 min/max)
 
+# ── `--cf-hold`：**屏级判据的留出集**（P100，收 P98 ④）────────────────────────
+#
+# **为什么这一支必须在仓库里**：P98 量到「字面 3-gram 包含度」那条路在读过的 18 屏上
+# **真活 12/12、假活 1/6**，比 `M` 还好，**但它卡在「没有留出集」那一格**。
+# P90 给 `WHO_GENERIC=0.85` 造过两份留出集、204 条人标才敢定值——这一支就是那件事。
+# 造法（口径写死在 `cf_hold()` 里，**改那儿就得改这几个数**）：
+#
+#   ① **换一族没人跑过的查询**：同一份 `recall_query3`、同一份语料、同一批段落，
+#      只把 `RECALL_CONTEXT_BEFORE` 换成 `EXPECT_HOLD_WIDTHS` 那九个值
+#      （**200 是 HEAD 那一套，不在里面**），按 `(用户, 查询)` 互相 + 跟 765 那套去重；
+#   ② **防污染**：留出屏的 fact id 集合跟 `p94-shape-18` / `p96-halfdoor-7`
+#      那 25 屏任意一屏 Jaccard ≥ 0.5 的**整屏剔掉**；池内同一条规则再去一次重；
+#   ③ **分层**：A 层 = `K` 团 ≥3（**字面那条路唯一说得了话的那批屏**，主验面 =「判是」），
+#      B 层 = 判得了但 `K` 团 <3（顺带验「判不是」），种子 `EXPECT_HOLD_SEED` 打乱；
+#   ④ **盲标**：单子上只有槽位字母 + 正文，**没有分数 / 团 / fact id / 屏号**，
+#      标完才揭晓（顺序见 `docs/TRACELOG-product.md` P100 §A）。
+#
+# ⚠️ **这不是 765 那套查询的 i.i.d. 抽样**：同一批语料、同一批段落、**换上下文宽度**，
+# 分布偏短查询。留出集的读数只能说「**在这一族查询上**」，不能直接当 765 上的期望值。
+EXPECT_HOLD_WIDTHS = (0, 40, 80, 120, 160, 300, 400, 600, 1000)
+EXPECT_HOLD_SEED = 100100
+EXPECT_HOLD_QUERIES = 2058          # 九个宽度合起来、去过重之后的留出查询条数
+EXPECT_HOLD_POOL = (1233, 51, 532, 242)   # (空屏, 防污染剔掉, 池内重复剔掉, 留下)
+EXPECT_HOLD_LAYERS = (7, 99)        # 判得了的留出屏分层（A 层全体, B 层全体），**抽之前**
+EXPECT_HOLD_SHEET = (7, 20)         # 真上了盲标单的 (A, B)
+EXPECT_HOLD_LIBS = (("terrence", 17), ("terrence-rewrite", 10))
+# **A 层那 7 屏背后只有这么多个互不相同的团**——「7 屏」这个分母是虚的，
+# 证据的单位是团。⚠️ 这个数就是这份留出集**分辨率的上限**。
+EXPECT_HOLD_FAMS = 5
+# **人标的原始读数**（`H01…H27` 顺序）：这一屏里说同一件事的那一族是哪几个槽位字母；
+# `""` = 没有 ≥3 条的族；`"?"` = 拿不准（**不进分母**）。
+# ⚠️ **只记原始读数，不记「这屏该不该判是」**——「够不够半屏」在揭晓那一步按
+# 「量得了的格」算（`measurable` 本身是被测判据的一部分，盲标的人看不见）。
+EXPECT_HOLD_FAM = ("abc", "", "", "", "cefg", "", "", "", "", "", "", "", "",
+                   "?", "", "", "", "", "dgh", "", "", "", "", "", "", "", "")
+EXPECT_HOLD_READ = (1, 25, 1)       # 人判「是这形状」/「不是」/ 拿不准（分母 = 量得了的格）
+# —— 三条判据在 **A 层**（主验面）上的读数：(判「是」, 真, 假) ——
+EXPECT_HOLD_A_K = (6, 0, 6)         # `K` + 今天这道门：**判是 6 屏，一屏真的都没有**
+EXPECT_HOLD_A_M = (0, 0, 0)         # `M` + 今天这道门：**一次都没开口**（0 假阳性是空的，分母 0）
+# **P98 那条路**（`K` + 门 + 团里两两字面 3-gram 包含度 mean ≥ cut），
+# cut **用 P98 那一批定死的 0.07–0.10，一格都没按留出集调**：(cut×100, 判是, 真, 假)。
+# ⚠️ **这一行就是「不接」那个判的全部分量**：in-sample 真 12/12、假 1/6，
+# 换到 5 个没见过的团上**真 0 / 假 3–5**。
+EXPECT_HOLD_A_GRAM = ((7, 5, 0, 5), (8, 3, 0, 3), (9, 3, 0, 3), (10, 3, 0, 3))
+# **人读判「是」、而 `K` / `M` / 字面那条路三条都漏掉的那一屏**（B 层）。
+# H05：四条「用 hello@memocat.ai 当对外联系邮箱」，`K` 团只打到 2（另两条 obj/topics 都不相交）。
+EXPECT_HOLD_MISS = ("H05",)
+# **防污染的基准是哪 25 屏**：`p94-shape-18` 那 18 屏（`K` + 老那道门判「是」）
+# + `p96-halfdoor-7` 那 7 屏（= `EXPECT_SHAPE_HALF_P96`，`M` 团够了只差半屏）。
+# ⚠️ 它一动，**这份留出集「没人读过」这句话就不成立了**，27 条人标连同下面所有读数一起作废。
+EXPECT_HOLD_READ25 = (22, 40, 65, 94, 101, 273, 307, 337, 388, 427, 575, 587, 588,
+                      590, 591, 595, 596, 597, 637, 638, 655, 656, 657, 677, 698)
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -1160,6 +1213,180 @@ def cf_shape(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
             "libs": tuple(sorted((u, libs.get(u, 0), dens.get(u, 0)) for u in dens))}
 
 
+def _hold_clique(facts, same) -> list[int]:
+    """一屏里最大的团，**在量得了的格之间**算。
+
+    ⚠️ 这是 `fact_distinct.largest_family` 的**第二份实现**，存在只有一个理由：
+    那一份把 `same_thing`（= `M`）写死了，而这一支要在**同一屏上同时量 `K` 和 `M`**。
+    「同一个字面量有第二份」这一课在这个仓库里咬过六次，所以 `cf_hold()` 顶上有一条
+    **强制自检**：喂 `FD.same_thing` 的时候这一份必须跟那一份**逐屏相同**，
+    对不上当场抛、整支的数作废。
+    """
+    from itertools import combinations
+
+    from app.database.kb import fact_distinct as FD
+
+    idx = [i for i, f in enumerate(facts) if FD.measurable(f)]
+    for size in range(len(idx), 0, -1):
+        for combo in combinations(idx, size):
+            if all(same(facts[a], facts[b]) for a, b in combinations(combo, 2)):
+                return list(combo)
+    return []
+
+
+def _hold_grams(s: str, n: int = 3) -> set[str]:
+    s = "".join((s or "").lower().split())
+    return {s[i:i + n] for i in range(max(0, len(s) - n + 1))}
+
+
+def _hold_containment(a: str, b: str) -> float:
+    """**字面 3-gram 包含度**（交 / 两边较小的那个）——P92 量过、P98 拿它走第四条路的那一版。
+
+    ⚠️ 用**包含度**不是 Jaccard：P92 实测那一族样板句长短差一倍，Jaccard 量错了轴
+    （34 条命中只认出 5.9%）。
+    """
+    ga, gb = _hold_grams(a), _hold_grams(b)
+    if not ga or not gb:
+        return 0.0
+    return len(ga & gb) / min(len(ga), len(gb))
+
+
+def cf_hold(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**屏级判据的留出集**（P100，收 P98 ④）。口径和理由写在 `EXPECT_HOLD_*` 上面那段。
+
+    ⚠️ **这一支不改产品，只读**；它跑 `EXPECT_HOLD_QUERIES` + 25 趟召回，**约十分钟**。
+    ⚠️ 人标那 27 条是**数据**（`EXPECT_HOLD_FAM`，同一份也在
+    `tests/fixtures/memory_sample.jsonl` 的 `p100-holdout-27` 里，
+    `test_p100::第三条a` 钉着两份逐格相同）——这一支只负责**把机械的那一半重算一遍**。
+    """
+    import random
+    from collections import Counter
+
+    from app.database.kb import fact_distinct as FD
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+
+    def recall_recs(user: str, q: str) -> list:
+        m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+        facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+        store, _v = m._index()
+        return [store.facts[f["id"]] for f in facts if f.get("id") in store.facts]
+
+    def same_k(a, b) -> bool:
+        return bool(set(a.obj) & set(b.obj)) and bool(set(a.topics) & set(b.topics))
+
+    # ① 防污染的基准：读过的那 25 屏各自的 fact id 集合
+    read_sets = [{f.id for f in recall_recs(qs[i][0], qs[i][1])} for i in EXPECT_HOLD_READ25]
+
+    # ② 留出查询：九个宽度，互相 + 跟 765 那套去重
+    base = {(u, q) for u, q, _m, _o in qs}
+    seen = set(base)
+    hq: list[tuple[str, str, str, str]] = []
+    old_before = RECALL_CONTEXT_BEFORE
+    try:
+        for w in EXPECT_HOLD_WIDTHS:
+            globals()["RECALL_CONTEXT_BEFORE"] = w
+            for u, q, m, o in queries():
+                if (u, q) in seen:
+                    continue
+                seen.add((u, q))
+                hq.append((u, q, m, o))
+    finally:
+        globals()["RECALL_CONTEXT_BEFORE"] = old_before
+    if RECALL_CONTEXT_BEFORE != old_before:
+        raise AssertionError("上下文宽度没还回去 —— 后面所有数作废")
+
+    # ③ 跑召回 + 防污染 + 池内去重
+    jac = 0.5
+    kept: list[tuple[tuple, list]] = []
+    kept_sets: list[set] = []
+    empty = dirty = dup = 0
+    for user, q, mode, origin in hq:
+        recs = recall_recs(user, q)
+        ids = {f.id for f in recs}
+        if not ids:
+            empty += 1
+            continue
+        if any(len(ids | rs) and len(ids & rs) / len(ids | rs) >= jac for rs in read_sets):
+            dirty += 1
+            continue
+        if any(len(ids | ks) and len(ids & ks) / len(ids | ks) >= jac for ks in kept_sets):
+            dup += 1
+            continue
+        kept.append(((user, q, mode, origin), recs))
+        kept_sets.append(ids)
+
+    # ④ 分层（**自检**：`_hold_clique` 喂 `same_thing` 必须跟产品那一份逐屏相同）
+    A, B = [], []
+    for meta, recs in kept:
+        n = sum(1 for f in recs if FD.measurable(f))
+        if n < FD.FAMILY_MIN:
+            continue
+        fm = _hold_clique(recs, FD.same_thing)
+        if fm != FD.largest_family(recs):
+            raise AssertionError("`_hold_clique` 跟 `largest_family` 对不上 —— 第二份实现飘了，数作废")
+        fk = _hold_clique(recs, same_k)
+        row = {"meta": meta, "recs": recs, "meas": n, "famK": fk, "famM": fm,
+               "coverK": FD.family_cover(recs, fk), "coverM": FD.family_cover(recs, fm)}
+        (A if len(fk) >= FD.FAMILY_MIN else B).append(row)
+
+    rnd = random.Random(EXPECT_HOLD_SEED)
+    a_cap, b_n = 40, 20
+    sheetA = A if len(A) <= a_cap else rnd.sample(A, a_cap)
+    sheetB = B if len(B) <= b_n else rnd.sample(B, b_n)
+    pool = [(r, "A") for r in sheetA] + [(r, "B") for r in sheetB]
+    rnd.shuffle(pool)
+
+    # ⑤ 逐屏对上人标
+    if len(pool) != len(EXPECT_HOLD_FAM):
+        raise AssertionError(f"单子 {len(pool)} 屏，人标 {len(EXPECT_HOLD_FAM)} 条 —— 对不上，数作废")
+    rows = []
+    for n, ((r, layer), fam_s) in enumerate(zip(pool, EXPECT_HOLD_FAM), 1):
+        recs, meas = r["recs"], r["meas"]
+
+        def door(f: int, c: int, meas: int = meas) -> bool:
+            return (meas >= FD.FAMILY_MIN and f >= FD.FAMILY_MIN
+                    and (f * 2 >= meas or c * 2 >= meas))
+
+        flag_m = door(len(r["famM"]), r["coverM"])
+        if flag_m != FD.screen_shape(recs)["flagged"]:
+            raise AssertionError("这一支的门跟 `screen_shape` 对不上 —— 第二份实现飘了，数作废")
+        letters = [chr(ord("a") + j) for j in range(len(recs))]
+        unsure = fam_s == "?"
+        human = [] if unsure or not fam_s else [letters.index(x) for x in fam_s]
+        human_meas = [j for j in human if FD.measurable(recs[j])]
+        真 = len(human_meas) >= FD.FAMILY_MIN and len(human_meas) * 2 >= meas
+        contK = [_hold_containment(recs[a].text, recs[b].text)
+                 for k, a in enumerate(r["famK"]) for b in r["famK"][k + 1:]]
+        rows.append({"hid": f"H{n:02d}", "layer": layer, "user": r["meta"][0],
+                     "K": door(len(r["famK"]), r["coverK"]), "M": flag_m,
+                     "cont": (sum(contK) / len(contK)) if contK else 0.0,
+                     "真": 真, "拿不准": unsure})
+
+    def tally(pop, pick):
+        hit = [r for r in pop if pick(r)]
+        return (len(hit), sum(1 for r in hit if r["真"]),
+                sum(1 for r in hit if not r["真"] and not r["拿不准"]))
+
+    Arows = [r for r in rows if r["layer"] == "A"]
+    gram = tuple((int(round(c * 100)), *tally(Arows, lambda r, c=c: r["K"] and r["cont"] >= c))
+                 for c in (0.07, 0.08, 0.09, 0.10))
+    return {"queries": len(hq), "pool": (empty, dirty, dup, len(kept)),
+            "layers": (len(A), len(B)), "sheet": (len(sheetA), len(sheetB)),
+            "libs": tuple(sorted(Counter(r["user"] for r in rows).items())),
+            "fams": len({frozenset(r["recs"][j].id for j in r["famK"]) for r, _l in pool
+                         if _l == "A"}),
+            "read": (sum(1 for r in rows if r["真"]),
+                     sum(1 for r in rows if not r["真"] and not r["拿不准"]),
+                     sum(1 for r in rows if r["拿不准"])),
+            "a_k": tally(Arows, lambda r: r["K"]), "a_m": tally(Arows, lambda r: r["M"]),
+            "a_gram": gram,
+            "miss": tuple(r["hid"] for r in rows
+                          if r["真"] and not r["K"] and not r["M"])}
+
+
 def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     """**库大小闸和汉字闸今天各自还挡着什么**（P90）。
 
@@ -1492,6 +1719,55 @@ def main(argv: list[str]) -> int:
         if set(g["flip_on"]) - set(EXPECT_CF_GATES_EN060_IDX):
             bad.append("cf-shape: 翻成「是」的屏里有不在 en060 变了的那 11 条里的 —— "
                        "**这一刀没落在被测分支里**，数作废")
+    if "--cf-hold" in argv:
+        g = cf_hold(qs)
+        print(f"  **屏级判据的留出集**（P100，收 P98 ④）：留出查询 {g['queries']} 条 "
+              f"（空屏 {g['pool'][0]} / 防污染剔 {g['pool'][1]} / 池内重复剔 {g['pool'][2]} "
+              f"/ 留 {g['pool'][3]}）")
+        print(f"    判得了的留出屏分层：A 层（`K` 团>=3）{g['layers'][0]} 屏 · "
+              f"B 层 {g['layers'][1]} 屏；上单子的是 {g['sheet']}，按库 {g['libs']}")
+        print(f"    ⚠️ **A 层那 {g['sheet'][0]} 屏背后只有 {g['fams']} 个互不相同的团**"
+              " —— 屏是虚分母，**证据的单位是团**，这就是这份留出集分辨率的上限")
+        print(f"    人标（分母 = 量得了的格）：判「是这形状」{g['read'][0]} 屏 / "
+              f"「不是」{g['read'][1]} 屏 / 拿不准 {g['read'][2]} 屏")
+        print(f"    **A 层上三条判据**（判是 / 真 / 假）：`K`+门 {g['a_k']} · "
+              f"`M`+门 {g['a_m']} · 字面 3-gram 各档 {g['a_gram']}")
+        print("    ⇒ **P98 那条路判「不接」，理由是效果不够、不是别的**："
+              "in-sample 那 18 屏上真 12/12、假 1/6，"
+              "换到 5 个没见过的团上 **真 0 / 假 3–5**；"
+              "而它过滤的那个底（`K`+门）在留出集上 **判是 6、一屏真的都没有**。"
+              "⚠️ 门槛是 P98 定死的 0.07–0.10，**一格都没按留出集调**")
+        print(f"    ⚠️ **`M` 那个 0 假阳性是空的**：它在这份留出集上一次都没开口（分母 0）。"
+              f"真正量到的是漏那一头 —— {g['miss']} 那一屏人读判「是」，"
+              "四条「用 hello@memocat.ai 当对外联系邮箱」，`K` 团只打到 2："
+              "漏掉的两条**被抽成了另一个码，而且两条轴同时**"
+              "（`e_mail` ↔ `e_mail_address`、`work` ↔ `work_marketing`）"
+              " —— 三条路一条都没捡到，去读 `kb/fact_distinct` 第 ⑨-c 格")
+        for name, got, want in (("留出查询条数", g["queries"], EXPECT_HOLD_QUERIES),
+                                ("池子拆账", g["pool"], EXPECT_HOLD_POOL),
+                                ("分层", g["layers"], EXPECT_HOLD_LAYERS),
+                                ("上单子的", g["sheet"], EXPECT_HOLD_SHEET),
+                                ("按库", g["libs"], EXPECT_HOLD_LIBS),
+                                ("独立的团", g["fams"], EXPECT_HOLD_FAMS),
+                                ("人标", g["read"], EXPECT_HOLD_READ),
+                                ("A 层 K", g["a_k"], EXPECT_HOLD_A_K),
+                                ("A 层 M", g["a_m"], EXPECT_HOLD_A_M),
+                                ("A 层 3gram", g["a_gram"], EXPECT_HOLD_A_GRAM),
+                                ("三条都漏的", g["miss"], EXPECT_HOLD_MISS)):
+            if got != want:
+                bad.append(f"cf-hold {name}: {got} ≠ {want}")
+        # **分层是分割**（每一屏只能落一层），而且上单子的不许多于分层的
+        if g["sheet"][0] > g["layers"][0] or g["sheet"][1] > g["layers"][1]:
+            bad.append("cf-hold: 上单子的比分层的还多 —— 抽样飘了，这一支的数作废")
+        if sum(g["read"]) != sum(g["sheet"]):
+            bad.append(f"cf-hold: 人标 {sum(g['read'])} 条 ≠ 单子 {sum(g['sheet'])} 屏 —— 数作废")
+        if sum(n for _u, n in g["libs"]) != sum(g["sheet"]):
+            bad.append("cf-hold: 按库那一行加起来 ≠ 单子屏数 —— 数作废")
+        # **字面那条路必须严格窄于它过滤的那个底**（它只会把「判是」翻成「判不是」）
+        for cut, n, _t, _f in g["a_gram"]:
+            if n > g["a_k"][0]:
+                bad.append(f"cf-hold: cut={cut/100} 判是 {n} 屏 > `K`+门 的 {g['a_k'][0]} 屏 —— "
+                           "它是套在 `K` 上的过滤器，只该更窄，数作废")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()

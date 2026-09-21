@@ -396,8 +396,8 @@ def test_第六条b_新钉的数都进了floor_ruler():
 
 def test_第六条c_两个floor抬到了本worktree的真值():
     """**加了登记就同时把那两个 floor 抬到真值**（`test_p90::第四条b` 钉的是「== 真值」本身）。"""
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 125
-    assert FR.CHECKED_COUNT_FLOOR == 137
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 140   # P98 那一批是 125
+    assert FR.CHECKED_COUNT_FLOOR == 152                            # P98 那一批是 137
 
 
 def test_第六条d_47条那把尺的分母一个没动():
