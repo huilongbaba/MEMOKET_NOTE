@@ -269,11 +269,16 @@ const PLAN = [
       // **截图存没存下**——P72 把这一条写在「够不着的那三分之二」里。
       // 这一份的截图名**本来就从参数来**（`args[1]`），所以这儿顺带钉住那件事：
       // 落盘的得是 `PLAN` 给的那个名字，不是脚本里写死的默认名。
-      [/shot → .*\/p76-fs-ctx-light\.png$/m, null, '截图按 `PLAN` 给的名字落了盘'],
+      // ⚠️ **批次前缀被换掉了**（P83 收 P80 问题 #9）：`runStep` 现在给每一步
+      // `WALKTHROUGH_SHOT_PREFIX=fakeshell`，于是 `p76-` 那一段落盘时是 `fakeshell-`。
+      // 判据跟着改——**「名字从参数来」这件事没变，变的是前缀那一段谁说了算**。
+      [/shot → .*\/fakeshell-fs-ctx-light\.png$/m, null, '截图按 `PLAN` 给的名字 + 这条闸自己的批次前缀落了盘'],
     ],
     refute: [
       [/右键菜单: \[\]/, '右键菜单空的——「选不到 ≠ 没有」'],
       [/p47-5-old-ctx-light\.png/, '落盘的是脚本里写死的默认名，不是 `PLAN` 给的那个'],
+      [/shot → .*\/p\d+-fs-ctx-light\.png$/m, '落盘的还带着写死的批次号 —— '
+        + '`WALKTHROUGH_SHOT_PREFIX` 没吃到（P80 问题 #9：那 28 张一直叫 `p70-*`）'],
       [/选中: ""/, '压根没选上（选区空）'],
       [/选中: "预热名单回收了 860 份，转化率按渠道排了一遍。[^"]/, '选区越过了那一行'],
     ],
@@ -514,7 +519,17 @@ function runStep(cdpPort, stepFile, args, shotDir, logFile) {
     const p = spawn(process.execPath, [path.join(WALK, 'cdp.mjs'), String(cdpPort),
       path.join(STEPS, stepFile), ...args], {
       cwd: FRONTEND,
-      env: { ...process.env, WALKTHROUGH_SHOT_DIR: shotDir, ELECTRON_RUN_AS_NODE: undefined },
+      // **这条闸自己的截图也得有批次前缀**（P80 问题 #9 → P83 收）：
+      // 它真跑一趟会落 28 张，而在这一批之前它**没设 `WALKTHROUGH_SHOT_PREFIX`**，
+      // 于是那 28 张一直叫 `p70-*`——P76 C① 立的那条规矩它一份都没吃到。
+      // 默认走 `fakeshell`（它的产物不进走查台账，跟哪一批无关），
+      // 外面给了 `WALKTHROUGH_SHOT_PREFIX` 就听外面的。
+      env: {
+        ...process.env,
+        WALKTHROUGH_SHOT_DIR: shotDir,
+        WALKTHROUGH_SHOT_PREFIX: process.env.WALKTHROUGH_SHOT_PREFIX || 'fakeshell',
+        ELECTRON_RUN_AS_NODE: undefined,
+      },
     })
     p.stdout.on('data', (b) => out.push(b))
     p.stderr.on('data', (b) => out.push(b))

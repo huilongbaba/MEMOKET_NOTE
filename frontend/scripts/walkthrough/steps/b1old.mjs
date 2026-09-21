@@ -168,6 +168,26 @@ export default async function (d) {
   })()`)
   const scrollable = await d.eval(`document.documentElement.scrollWidth > document.documentElement.clientWidth + 1`)
   console.log('  900px 横向溢出:', over, ' 页面横向滚得动吗:', scrollable)
+  // **「溢出 N 个」这个数自己答不了「是不是缺陷」**（P83 C）：一个 `overflow-x: auto`
+  // 的标签条会连着它里面每一层各算一个。P80 那一格报的是 0、这一批报 9，
+  // 光看数字分不出「产品变差了」和「这一趟标签开得多」——所以**把它们逐个摆出来**，
+  // 跟 `bnew2.mjs` 那一格同一份读法（那边本来就打明细，这边原来只打个数）。
+  const overWho = await d.eval(`(() => {
+    const out = []
+    for (const e of document.querySelectorAll('*')) {
+      const r = e.getBoundingClientRect()
+      if (r.width > 0 && r.right > innerWidth + 1) {
+        const p = e.parentElement
+        out.push({ tag: e.tagName, cls: (e.className || '').toString().slice(0, 40),
+                   right: Math.round(r.right), w: Math.round(r.width),
+                   ox: getComputedStyle(e).overflowX,
+                   pox: p ? getComputedStyle(p).overflowX : null,
+                   text: (e.textContent || '').trim().slice(0, 24) })
+      }
+    }
+    return out.slice(0, 12)
+  })()`)
+  console.log('  溢出的是谁:', JSON.stringify(overWho))
   await d.setTheme('light'); await wait(600)
   await d.shot('p70-b1-old-900-light.png')
   await d.resize(0)

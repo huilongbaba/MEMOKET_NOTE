@@ -267,6 +267,77 @@ for (const [name, prefix, want] of SHOT_CASES) {
   if (hard === 0) fail('一张写死的批次前缀都没扒到 —— 抽取正则坏了，第 ⑦ 条会一直绿')
 }
 
+// ── 第三件事之二：**步骤脚本里不许再出现写死的 note id**（P80 问题 #7 → P83 B）──
+//
+// P80 那一趟第一条 `openNoteById` 当场 FAIL：清单里写着 `6cec5c7275c8`，
+// 而那是**上一批**现造出来的那篇，真库里根本没有。看起来像产品坏了，其实是量具。
+// **写死一个 note id 在结构上就是错的**——每一趟造出来的都是新的一篇。
+// `go.sh` 这一批加了 `@LAST_NEW_NOTE`（从上一步自己的日志里接），这条闸钉住
+// 「别再往回走」：**摘掉整行注释之后**，步骤脚本和 `go.sh` 的代码行里
+// 出现 12 位十六进制当场红。
+//
+// ⚠️ **射程里没有 README、没有注释**：那两处正是把这条坑写下来的地方
+// （`go.sh` 顶上那段、README 那张表），把它们判红等于「记住教训」本身犯规。
+// ⚠️ **例 / 反例跑在断言之前**——不先喂它一个该红的，「扫了 0 条」和「正则坏了」分不开。
+{
+  // 12 位十六进制、两头不许再接十六进制字符（`b06e3a8a622a1` 这种不是 note id）。
+  const NOTE_ID_RE = /(?<![0-9a-f])[0-9a-f]{12}(?![0-9a-f])/g
+  const ID_CASES: [string, boolean][] = [
+    // 例：这四个都是真出现过的 note id，**必须扒得到**
+    ['b1b.mjs b1b 6cec5c7275c8', true],
+    ["await d.openNoteById('3ed47d33e73c')", true],
+    ['const OLD = "df3b4f7e987d"', true],
+    ['开着的还是 b06e3a8a622a，不是 b1b', true],
+    // 反例：**不许**误伤的四种
+    ['const MIN_STEPS = 8', false],
+    ['await d.shot("p83-b1old-1-open")', false],          // 批次前缀不是 id
+    ['color: #a1b2c3', false],                            // 6 位色值
+    ['b06e3a8a622a1f 不是 12 位', false],                  // 13 位：两头那道门挡住
+  ]
+  for (const [s, want] of ID_CASES) {
+    NOTE_ID_RE.lastIndex = 0
+    const got = NOTE_ID_RE.test(s)
+    if (got !== want) fail(`note id 样本 ${JSON.stringify(s)}：读回 ${got}，该是 ${want}`)
+  }
+  const strip = (src: string, sharp: boolean) => src.split('\n')
+    .map((l) => (sharp ? /^\s*#/.test(l) : /^\s*(\/\/|\*|\/\*)/.test(l)) ? '' : l).join('\n')
+  const targets: [string, string][] = [
+    ...stepFiles.map((f) => [f, strip(readFileSync(f, 'utf8'), false)] as [string, string]),
+    [path.join(KIT, 'go.sh'), strip(readFileSync(path.join(KIT, 'go.sh'), 'utf8'), true)],
+  ]
+  let ids = 0
+  for (const [f, code] of targets) {
+    for (const m of code.matchAll(NOTE_ID_RE)) {
+      ids++
+      fail(`${path.basename(f)} 的代码行里写死了一个 note id \`${m[0]}\` —— `
+        + '每一趟造出来的都是新的一篇（P80 问题 #7）。清单里用 `@LAST_NEW_NOTE`，'
+        + '它从上一步日志里那行「新建出来的 note id:」接过来')
+    }
+  }
+  console.log(`⑧ 步骤脚本 + go.sh 代码行里写死的 note id：${ids} 个（钉死 0）；`
+    + `例 / 反例 ${ID_CASES.length} 条`)
+
+  // **接线洞单独一条断言**：`go.sh` 真的换了那个占位符，而且**没造出来就出声**。
+  // 光扫「没有写死的 id」是一条永远绿的闸——步骤清单不在仓库里，没人写死也照样绿。
+  const goCode = strip(readFileSync(path.join(KIT, 'go.sh'), 'utf8'), true)
+  if (!/line=\$\{line\/\/@LAST_NEW_NOTE\/\$last_new_note\}/.test(goCode)) {
+    fail('`go.sh` 没在替换 `@LAST_NEW_NOTE` —— 那这条闸只是不让人写死 id，没给出路')
+  }
+  if (!/新建出来的 note id: \[0-9a-f\]\{12\}/.test(goCode)) {
+    fail('`go.sh` 不再从步骤日志里接「新建出来的 note id:」—— `@LAST_NEW_NOTE` 没有来源了')
+  }
+  if (!/不拿上一批的 id 顶上去/.test(goCode)) {
+    fail('`go.sh` 里「这一趟还没造过新笔记」那一档没了 —— '
+      + '**「没有」和「拿旧的凑一个」不是一回事**，静默顶上去就是 P80 #7 换个样子重演')
+  }
+  // 源头那一行也得还在：`b1old.mjs` 不打这一句，上面那条接线就接了个空。
+  const b1old = readFileSync(path.join(STEPS, 'b1old.mjs'), 'utf8')
+    .split('\n').map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l)).join('\n')
+  if (!/新建出来的 note id:/.test(b1old)) {
+    fail('`b1old.mjs` 不再打印「新建出来的 note id:」—— `@LAST_NEW_NOTE` 的唯一来源断了')
+  }
+}
+
 // ── 第四件事：**「翻页成功」只许有一个判法**（P74 问题 #1 / P76 C②）─────────
 //
 // P58 问题 #8 → P74 问题 #1，**同一个坑在同一格里重演了两批**：

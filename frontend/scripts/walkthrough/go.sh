@@ -20,6 +20,15 @@
 #
 # `<steps 清单文件>` 每行一条：`<步骤脚本名> <日志名> [args...]`，`#` 开头是注释。
 # 参数里写 `@LLM_PORT` 会被替换成这一趟真正的假模型端口。
+#
+# **`@LAST_NEW_NOTE`（P83 B）**：替换成**这一趟里最近一步现造出来的那篇**的 note id。
+#   P80 问题 #7：`old2.txt` 里写死着 `6cec5c7275c8`，而那是**上一批**现造的那篇，
+#   真库里根本没有 → `openNoteById` 当场 FAIL，看起来像产品坏了。
+#   写死一个 id 在结构上就是错的：**每一趟造出来的都是新的一篇**。
+#   来源是**上一步自己打在日志里的那一行**（`b1old.mjs` 的「新建出来的 note id:」），
+#   不是猜、不是查库——查库会查到上一趟留下的那一篇，那正是这条坑的另一半。
+#   **这一趟还没有哪一步造过新笔记**就用它 → 当场出声并记一次失败，
+#   **绝不拿上一批的 id 顶上去**（「没有」和「拿旧的凑一个」不是一回事）。
 set -u
 here=${0:A:h}
 repo=${here:h:h:h}                       # frontend/scripts/walkthrough → 仓库根
@@ -86,9 +95,20 @@ sleep 5
 
 # ── ④ 逐条跑 ─────────────────────────────────────────────────────────────
 fails=0
+# 这一趟里最近一步现造出来的那篇（P83 B）。**空着就是空着**，不许拿别的顶。
+last_new_note=""
 while read -r line; do
   [[ -z "$line" || "$line" == \#* ]] && continue
   line=${line//@LLM_PORT/$llmport}
+  if [[ "$line" == *@LAST_NEW_NOTE* ]]; then
+    if [[ -z "$last_new_note" ]]; then
+      echo "[go.sh] 这一行要 @LAST_NEW_NOTE，可这一趟到现在还没有哪一步打出过「新建出来的 note id:」" >&2
+      echo "        —— **不拿上一批的 id 顶上去**（P80 问题 #7 那条坑就是这么来的）。跳过这一行。" >&2
+      fails=$((fails + 1))
+      continue
+    fi
+    line=${line//@LAST_NEW_NOTE/$last_new_note}
+  fi
   echo "=== $line ==="
   # **`${(z)line}` 不是 `${=line}`**：后者按空白硬切，**引号不算数**，
   # 于是清单里 `adv70.mjs adv1 "P74-A 壳上第一趟" p74-A1-adv1` 会被切成 5 段，
@@ -103,6 +123,13 @@ while read -r line; do
     "$here/steps/$name" "$WALKTHROUGH_LOG_DIR/$logname.txt" ${rest[@]}
   EXIT=$?
   [[ $EXIT != 0 ]] && fails=$((fails + 1))
+  # 这一步要是现造了一篇，把 id 接下来给后面的 `@LAST_NEW_NOTE`（P83 B）。
+  # **读的是这一步自己的日志**，`tail -1` 取最后一条——一步里造两篇时后面的那篇才是「最近的」。
+  newid=$(grep -oE '新建出来的 note id: [0-9a-f]{12}' "$WALKTHROUGH_LOG_DIR/$logname.txt" 2>/dev/null | tail -1)
+  if [[ -n "$newid" ]]; then
+    last_new_note=${newid##* }
+    echo "   （这一步现造了 $last_new_note，后面的 @LAST_NEW_NOTE 用它）"
+  fi
 done < "$steps"
 
 # ── ⑤ 收摊 ───────────────────────────────────────────────────────────────
