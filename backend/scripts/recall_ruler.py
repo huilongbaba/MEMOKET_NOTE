@@ -273,21 +273,64 @@ EXPECT_CF_GATES_EN060_TH = 0.60                           # P90 ① 点名的那
 # 右边就是 `EXPECT_CF_GATES_EN060_TH` 那一刀，**产品逻辑一个字节没动**。
 # 判「不接」的四条理由逐字在 `kb/fact_distinct` 文件头第 ⑤ 格。
 EXPECT_SHAPE_TOTAL = 175          # 765 屏里「量得了 ≥3 格」的有几屏（这把尺的分母）
-EXPECT_SHAPE_BLIND = 441          # 一个字都说不出来的屏（量得了 = 0）——57.6%，**它是判「不接」的第 2 条**
-EXPECT_SHAPE_HEAD = 18            # HEAD 上判「是这形状」的屏数
-EXPECT_SHAPE_EN060 = 21           # en060 那一刀之后
-EXPECT_SHAPE_FLIP_ON = (640, 642, 645)    # 从「不是」翻成「是」的是哪几屏
+EXPECT_SHAPE_BLIND = 441          # 一个字都说不出来的屏（量得了 = 0）——57.6%
+#
+# ⚠️ **P96 ② 把 `EXPECT_SHAPE_BLIND` 那笔账拆开了，并排更正 P94 ⑤-2**：
+# P94 把这 441 屏整笔归给「`terrence` 43.3% 的事实没有 `obj`」。**拆开是三笔**：
+# **419 屏是空屏（`recall` 一条都没回）**、3 屏有事实但一条 `topics` 都没有、
+# **真能归到「没有 obj」头上的只有 19 屏**（= 441 的 4.3% / 765 的 2.5%）。
+# ⇒ 「补抽取那一头」这件事**的上限就是这 19 屏**，不是 441 屏（第 ② 条的判据）。
+EXPECT_SHAPE_BLIND_WHY = (419, 3, 19)     # (空屏, 有事实但无 topics, 有 topics 但一条 obj 都没有)
+#
+# ⚠️ **P96 ① 把判据从 `K` 换成了 `M`**（`obj∩ ∧ topics∩ ∧ 不同 unit`），
+# 下面这一组数**全部是在 `M` 上重量的**，不是 P94 那一组。改判的理由：
+# P94 用的分母是**十组手挑的正反例**（`K` 和 `M` 在那十组上都全对），
+# P96 换成**读过的那 18 屏**重量 —— `M` 把 6 屏假阳性治好 5 屏，代价 1 屏真的（i=94）。
+EXPECT_SHAPE_HEAD = 12            # HEAD 上判「是这形状」的屏数（`K` 那一版是 18）
+EXPECT_SHAPE_EN060 = 14           # en060 那一刀之后（`K` 那一版是 21）
+EXPECT_SHAPE_FLIP_ON = (640, 645)         # 从「不是」翻成「是」的是哪几屏
 EXPECT_SHAPE_FLIP_OFF = ()                # 反向一屏都没有
-# HEAD 上判「是」的 18 屏落在哪几个库（库, 判「是」, 量得了>=3 的分母）
+# ⚠️ **换 `M` 的代价照实记在这儿**：`K` 那一版翻的是 (640, 642, 645) **三屏**，
+# `M` 只翻两屏 —— **i=642 在 `M` 上团 3 / 8 格，差半屏一格**。
+# 这把尺第 ③ 个用途（当 en060 那一支的量具）因此**钝了一格**：3 屏 → 2 屏。
+EXPECT_SHAPE_FLIP_ON_K = (640, 642, 645)
+# HEAD 上判「是」的 12 屏落在哪几个库（库, 判「是」, 量得了>=3 的分母）
 EXPECT_SHAPE_LIBS = (("fresh678", 0, 2), ("fresh678b", 0, 4), ("fresh678c", 0, 2),
-                     ("shot-demo", 2, 14), ("terrence", 12, 97), ("terrence-rewrite", 4, 56))
-# 那 18 屏**逐条读完**（标注 `p94-shape-18`）：(真, 假)
-EXPECT_SHAPE_READ = (12, 6)
-# ⚠️ **同一笔账按库拆开**——这一对才是判「不接」的第 1 条理由：
-# 大库 `terrence` 上真 6 / 假 6 = **假阳性 50%**，而 641/765 = 83.8% 的查询落在大库。
-EXPECT_SHAPE_READ_BIGLIB = (6, 6)
-# 两个小库上真 6 / 假 0。**别把这两对合成一个「真 12 假 6 = 67%」去读**（那是两笔账混成一笔）。
+                     ("shot-demo", 2, 14), ("terrence", 6, 97), ("terrence-rewrite", 4, 56))
+# 那 12 屏**逐条读完**：(真, 假)。⚠️ **这 12 屏是 P94 读过的那 18 屏的子集**
+# （`M` 严格比 `K` 窄，`flagged(M) ⊆ flagged(K)`），所以**不需要再读一遍**，
+# 标注照旧是 `p94-shape-18`；P96 只多读了半屏那道门拦下来的 7 屏（`p96-halfdoor-7`）。
+EXPECT_SHAPE_READ = (11, 1)
+# ⚠️ **同一笔账按库拆开**：大库 `terrence` 上真 5 / 假 1 = **假阳性 16.7%**
+# （`K` 那一版是 6/6 = 50%），而 641/765 = 83.8% 的查询落在大库。
+EXPECT_SHAPE_READ_BIGLIB = (5, 1)
+# 两个小库上真 6 / 假 0。**别把这两对合成一个「真 11 假 1」去读**（那是两笔账混成一笔）。
 EXPECT_SHAPE_READ_SMALLLIB = (6, 0)
+# 剩下那一屏假阳性是 **i=388（`手环`）**：五条各说各的手环事，**五场不同的录音**，
+# 所以 `M` 那一条也拦不住它。**照实记着，这一批没治好它。**
+EXPECT_SHAPE_LEFTOVER = (388,)
+#
+# ── **半屏那道门**（P96 ③）──────────────────────────────────────────────
+# P94 ⑤ 那一刀在**十组手挑的正反例**上量到「半屏一格都没承重」，并写下
+# 「放宽它之前先看那一刀」。P96 把分母换成**全库 765 屏**重量：
+# **它拦着 7 屏**（`K` 上是 13 屏）。⇒ **它不是「永远绿的闸」，它真拦东西。**
+EXPECT_SHAPE_HALF = (65, 587, 588, 590, 595, 596, 597)
+# 那 7 屏**逐条读完**（标注 `p96-halfdoor-7`）：(该放, 该拦) = (真, 假)。
+# **1 屏该拦（i=65，三条各说各的 app 事）/ 6 屏该放**（众筹时间那一族 ×5、定位套话那一族 ×1）。
+EXPECT_SHAPE_HALF_READ = (6, 1)
+# ⚠️ **这一批没动这道门**（一刀只动一处，这一批已经动了 `same_thing`）。
+# 摘掉它的读数先钉在这儿：判「是」12 → 19 屏、真 11 → 17、假 1 → 2。
+EXPECT_SHAPE_NOHALF = (19, 17, 2)
+#
+# ── **稀疏化那条量法能不能直接量 `obj`**（P96 ①，判「不能」）────────────────
+# P75/P88 那条 `spread = k / E(n)` 接得上 `obj`（只换一个「谁算命中」的口，
+# 稀疏化数学一行都不用抄），**但量出来的数在读过的那 18 屏上正反例完全重叠**：
+# 人读**真**的那几个撑团 obj：0.752(`product`) 0.728(`note`) 0.707(`ui`)
+#   0.580(`tool`) 0.440(`memory`) + 4 个 `None`（`diploma`/`battery`/`slide` 命中不够 20 次）；
+# 人读**假**的那几个：0.764(`agent`) 0.592(`手环`) **0.361(`广告`)** + 2 个 `None`(`chip`)。
+# ⚠️ **方向还是反的**：P94 点名的泛 obj `广告` 打出全场最低分（= 最「不泛」）。
+# ⇒ 卡的是同一格 P92 那句话：**「不泛」≠「挂它的两条事实说的是同一件事」**。
+EXPECT_SHAPE_OBJFACE = ((0.440, 0.752), (0.361, 0.764))   # (真的那批 min/max, 假的那批 min/max)
 
 _HEAD = re.compile(r"^#{1,6}\s")
 
@@ -1043,7 +1086,14 @@ def cf_shape(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
             facts, _t, _ms = m.recall(q, limit=8, evidence=True)
             store, _v = m._index()
             recs = [store.facts[f["id"]] for f in facts if f.get("id") in store.facts]
-            out.append(FD.screen_shape(recs))
+            s = FD.screen_shape(recs)
+            # **「瞎掉」那一栏为什么瞎，当场记下来**（P96 ②）：P94 把 441 屏整笔
+            # 归给「43.3% 的事实没有 `obj`」，拆开看**只有 19 屏**真能归到 obj 头上。
+            s["why_blind"] = ("空屏" if not recs
+                              else "无topics" if not any(f.topics for f in recs)
+                              else "只缺obj" if not any(f.obj for f in recs)
+                              else "能说话")
+            out.append(s)
         return out
 
     orig = UserMemory.common_term
@@ -1066,8 +1116,15 @@ def cf_shape(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     fe = [i for i, s in enumerate(en) if s["measurable"] >= 3 and s["flagged"]]
     libs = Counter(qs[i][0] for i in fh)
     dens = Counter(qs[i][0] for i in den)
+    # **半屏那道门自己拦下来的是哪几屏**（P96 ③）：团够了（≥ `FAMILY_MIN`）、
+    # 只差「≥ 半屏」那一格。P94 ⑤ 那一刀在**十组手挑的正反例**上量到「一格都没承重」，
+    # 换成**全库 765 屏**它拦着 7 屏 —— 逐条读完 **1 屏该拦 / 6 屏该放**。
+    half = tuple(i for i in den
+                 if head[i]["family"] >= FD.FAMILY_MIN and not head[i]["flagged"])
+    wb = Counter(s["why_blind"] for s in head)
     return {"total": len(den), "blind": sum(1 for s in head if s["measurable"] == 0),
-            "head": tuple(fh), "en060": tuple(fe),
+            "head": tuple(fh), "en060": tuple(fe), "half": half,
+            "blind_why": (wb["空屏"], wb["无topics"], wb["只缺obj"]),
             "flip_on": tuple(i for i in fe if i not in set(fh)),
             "flip_off": tuple(i for i in fh if i not in set(fe)),
             "libs": tuple(sorted((u, libs.get(u, 0), dens.get(u, 0)) for u in dens))}
@@ -1358,18 +1415,33 @@ def main(argv: list[str]) -> int:
         print(f"    HEAD 那 {len(g['head'])} 屏是：{g['head']}")
         print(f"    按库（库, 判「是」, 量得了>=3）：{g['libs']}")
         print(f"    ⚠️ **逐条读完按库分**：大库 `terrence` 真 {EXPECT_SHAPE_READ_BIGLIB[0]} / "
-              f"假 {EXPECT_SHAPE_READ_BIGLIB[1]}（假阳性 50%，而 83.8% 的查询落在大库）；"
+              f"假 {EXPECT_SHAPE_READ_BIGLIB[1]}（假阳性 16.7%，而 83.8% 的查询落在大库）；"
               f"两个小库真 {EXPECT_SHAPE_READ_SMALLLIB[0]} / 假 {EXPECT_SHAPE_READ_SMALLLIB[1]}"
-              " → **判「不接」**，四条理由在 `kb/fact_distinct` 第 ⑤ 格")
+              f"；**没治好的那一屏是 i={EXPECT_SHAPE_LEFTOVER[0]}（`手环`）**"
+              " → 判仍然是「不接」，理由在 `kb/fact_distinct` 第 ⑤⑦ 格")
+        print(f"    **半屏那道门自己拦下来的**：{g['half']}（{len(g['half'])} 屏），"
+              f"逐条读完 该放 {EXPECT_SHAPE_HALF_READ[0]} / 该拦 {EXPECT_SHAPE_HALF_READ[1]}"
+              f" —— **它不是永远绿的闸**；摘掉它是 {EXPECT_SHAPE_NOHALF[0]} 屏"
+              f"（真 {EXPECT_SHAPE_NOHALF[1]} / 假 {EXPECT_SHAPE_NOHALF[2]}），**这一批没摘**")
+        print(f"    **那 {g['blind']} 屏「瞎掉」拆开是**：空屏 {g['blind_why'][0]} / "
+              f"有事实但无 topics {g['blind_why'][1]} / **真能归到没有 obj 头上的 "
+              f"{g['blind_why'][2]} 屏**（= {g['blind_why'][2] / g['blind'] * 100:.1f}% of 瞎掉）"
+              " ⚠️ P94 ⑤-2 把这 441 屏整笔归给 obj，**那是两笔账混成一笔**")
         for name, got, want in (("量得了>=3 的屏", g["total"], EXPECT_SHAPE_TOTAL),
                                 ("瞎掉的屏", g["blind"], EXPECT_SHAPE_BLIND),
+                                ("瞎掉为什么", g["blind_why"], EXPECT_SHAPE_BLIND_WHY),
                                 ("HEAD 判是", len(g["head"]), EXPECT_SHAPE_HEAD),
                                 ("en060 判是", len(g["en060"]), EXPECT_SHAPE_EN060),
                                 ("翻成是", g["flip_on"], EXPECT_SHAPE_FLIP_ON),
                                 ("反向翻", g["flip_off"], EXPECT_SHAPE_FLIP_OFF),
+                                ("半屏拦下", g["half"], EXPECT_SHAPE_HALF),
                                 ("按库", g["libs"], EXPECT_SHAPE_LIBS)):
             if got != want:
                 bad.append(f"cf-shape {name}: {got} ≠ {want}")
+        if sum(g["blind_why"]) + g["total"] < 0 or sum(g["blind_why"]) != g["blind"]:
+            bad.append(f"cf-shape 瞎掉拆账对不上：{sum(g['blind_why'])} ≠ {g['blind']} —— 这一支的数作废")
+        if set(g["head"]) & set(g["half"]):
+            bad.append("cf-shape: 判「是」和「被半屏拦下」出现同一屏 —— 两档互斥，这一支的数作废")
         if set(g["flip_on"]) - set(EXPECT_CF_GATES_EN060_IDX):
             bad.append("cf-shape: 翻成「是」的屏里有不在 en060 变了的那 11 条里的 —— "
                        "**这一刀没落在被测分支里**，数作废")

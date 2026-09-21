@@ -346,23 +346,42 @@ def test_第二条a_判不了的格整格不进分母():
     assert not FD.measurable(blind2), "`topics` 空也算判不了 —— 两条轴都要"
 
 
+def _K(a, b):
+    """**P94 那一版判据（两条轴）**，冻在这儿当镜子——`FD.same_thing` 今天是三条轴（P96 ①）。"""
+    return bool(set(a.obj) & set(b.obj)) and bool(set(a.topics) & set(b.topics))
+
+
 def test_第二条b_三条和半屏两道门各自承重():
     """**一道一道点名核**：把 `FAMILY_MIN` 调成 2 会多放行哪一组、
-    把「半屏」那一半摘掉会多放行哪一组。两道门少任一道，`第一条a` 都红。"""
-    # 只摘「≥3」：NEGA / NEGK / NEGC 三组团都正好是 2，会全部翻成「是」
+    把「半屏」那一半摘掉会多放行哪一组。两道门少任一道，`第一条a` 都红。
+
+    ⚠️ **P96 ① 把判据从 `K` 换成了 `M`（多一条「不同 unit」）**，所以这一条
+    **两版并排核**：`K` 那一版是 P94 冻死的历史读数，`M` 那一版是今天真在跑的。
+    """
+    # ── K 那一版（冻死的历史读数）：NEGA / NEGK / NEGC 三组团都正好是 2
     for name, facts, _w in (NEGA, NEGK, NEGC):
+        assert _clique(facts, _K) == 2, f"{name} 在 `K` 上团该是 2"
+    # ── M 那一版（今天真在跑的）：NEGK 那两条出自**同一场录音**，于是掉到 1
+    assert _clique(NEGK[1], FD.same_thing) == 1, \
+        "NEGK 那一组在 `M` 上该掉到 1（那两条同一场录音）—— 这正是 `M` 多拦下来的那一格"
+    for name, facts, _w in (NEGA, NEGC):
         sh = FD.screen_shape(facts)
         assert sh["family"] == 2, f"{name} 团该是 2，实际 {sh['family']}"
         assert sh["family"] * 2 >= sh["measurable"], f"{name} 拦住它的只有「≥3」那一道"
     # 只摘「半屏」：NEG7 / NEGH 团是 2 < 3，拦住它们的是「≥3」；
-    # 真正只靠半屏拦住的是 i=590 / i=641 那种（团 3 / 8 格）——这儿拿那一族的三条
-    # （`1580F5` / `366F1` / `1589F9` 两两都同）配五条各说各的凑出来
+    # 真正只靠半屏拦住的是 en060 的 i=641 那种（团 3 / 8 格）——这儿拿那一族的三条
+    # （`1580F5` / `366F1` / `1589F9` 两两都同、三场不同录音）配五条各说各的凑出来
     part = F("1580F5", "366F1", "1589F9") + list(NEG7[1])[:5]
     sh = FD.screen_shape(part)
     assert sh["measurable"] == 8, sh
     assert sh["family"] == 3, f"该正好是团 3（不到半屏），实际 {sh['family']}"
-    assert not sh["flagged"], "团 3 / 8 格 = 不到半屏，该判「不是」（i=590 / i=641 就是这一格）"
-    # ⚠️ 这一格也是这把尺**漏的那一头**：i=641 人读判「是」，尺子在这儿判「不是」
+    assert not sh["flagged"], "团 3 / 8 格 = 不到半屏，该判「不是」"
+    # ⚠️ **P96 ③ 更正了这儿原来那句话**（并排写）：原来写的是
+    # 「i=590 / i=641 就是这一格」+「i=641 人读判「是」，尺子在这儿判「不是」」。
+    # 重数下来：**HEAD 的 i=641 是团 2，不是团 3**——团 3 / 8 格那个数是 **en060** 那一屏的。
+    # HEAD 上那一屏八格全是各说各的 `Ask Memory` 事实，**判「不是」是对的**。
+    # i=590 那一屏倒是真的落在这一格（团 3 / 8 格，人读该放），它在 `EXPECT_SHAPE_HALF` 里。
+    assert 590 in RR.EXPECT_SHAPE_HALF and 641 not in RR.EXPECT_SHAPE_HALF
 
 
 def test_第二条c_same_thing是对称的而且两条轴都要():
@@ -381,34 +400,48 @@ def test_第二条c_same_thing是对称的而且两条轴都要():
 # ═══ 第三条：全库那十个数 + 「没接进产品」 ═════════════════════════════════
 
 def test_第三条a_十个数逐个钉死():
+    """⚠️ **P96 ① 换判据（`K` → `M`）之后，这十个数里有六个动了**，并排记在这儿：
+    `HEAD` 18 → 12 · `EN060` 21 → 14 · `FLIP_ON` (640,642,645) → (640,645) ·
+    `LIBS` 大库那格 12 → 6 · `READ` (12,6) → (11,1) · `READ_BIGLIB` (6,6) → (5,1)。
+    `TOTAL` / `BLIND` / `FLIP_OFF` / `READ_SMALLLIB` **一个没动**
+    （前两个是 `measurable` 决的，换判据本来就不该动它们 —— 这是这一刀的自检）。
+    """
     assert RR.EXPECT_SHAPE_TOTAL == 175
     assert RR.EXPECT_SHAPE_BLIND == 441
-    assert RR.EXPECT_SHAPE_HEAD == 18
-    assert RR.EXPECT_SHAPE_EN060 == 21
-    assert RR.EXPECT_SHAPE_FLIP_ON == (640, 642, 645)
+    assert RR.EXPECT_SHAPE_HEAD == 12
+    assert RR.EXPECT_SHAPE_EN060 == 14
+    assert RR.EXPECT_SHAPE_FLIP_ON == (640, 645)
     assert RR.EXPECT_SHAPE_FLIP_OFF == ()
     assert RR.EXPECT_SHAPE_LIBS == (("fresh678", 0, 2), ("fresh678b", 0, 4), ("fresh678c", 0, 2),
-                                    ("shot-demo", 2, 14), ("terrence", 12, 97),
+                                    ("shot-demo", 2, 14), ("terrence", 6, 97),
                                     ("terrence-rewrite", 4, 56))
-    assert RR.EXPECT_SHAPE_READ == (12, 6)
-    assert RR.EXPECT_SHAPE_READ_BIGLIB == (6, 6)
+    assert RR.EXPECT_SHAPE_READ == (11, 1)
+    assert RR.EXPECT_SHAPE_READ_BIGLIB == (5, 1)
     assert RR.EXPECT_SHAPE_READ_SMALLLIB == (6, 0)
+    # `K` 那一版的历史读数**还在**，没被抹掉
+    assert RR.EXPECT_SHAPE_FLIP_ON_K == (640, 642, 645)
+    assert set(RR.EXPECT_SHAPE_FLIP_ON) < set(RR.EXPECT_SHAPE_FLIP_ON_K), \
+        "`M` 翻的屏必须是 `K` 翻的那批的**真子集**（`M` 严格比 `K` 窄）"
 
 
 def test_第三条b_两笔账没混成一笔():
-    """**按库分**那两对加起来必须等于合起来那一对，而且方向相反。
+    """**按库分**那两对加起来必须等于合起来那一对。
 
-    ⚠️ 判「不接」靠的是 `_BIGLIB` 那一对（假阳性 50%），**不是**合起来那个 12:6。
+    ⚠️ 读的是 `_BIGLIB` 那一对（大库假阳性），**不是**合起来那个 11:1。
     """
     big, small = RR.EXPECT_SHAPE_READ_BIGLIB, RR.EXPECT_SHAPE_READ_SMALLLIB
     assert (big[0] + small[0], big[1] + small[1]) == RR.EXPECT_SHAPE_READ
     assert sum(RR.EXPECT_SHAPE_READ) == RR.EXPECT_SHAPE_HEAD
-    assert big[1] == big[0], "大库上真假各半 —— 这就是那 50%"
+    # ⚠️ **P94 这儿原来断言的是 `big[1] == big[0]`（「大库上真假各半 = 那 50%」）**。
+    # P96 ① 把那 6 屏治好了 5 屏，所以今天是 5:1 —— **并排写**：
+    assert big == (5, 1), "大库上真 5 / 假 1 = 假阳性 16.7%（`K` 那一版是 6:6 = 50%）"
     assert small[1] == 0, "两个小库上一条都没误判"
-    # 按库那张表：判「是」的加起来 = 18，分母加起来 = 175
+    # 剩下那一屏假阳性必须点名（不许写成「还有一屏」）
+    assert RR.EXPECT_SHAPE_LEFTOVER == (388,) and big[1] == len(RR.EXPECT_SHAPE_LEFTOVER)
+    # 按库那张表：判「是」的加起来 = 12，分母加起来 = 175
     assert sum(n for _u, n, _d in RR.EXPECT_SHAPE_LIBS) == RR.EXPECT_SHAPE_HEAD
     assert sum(d for _u, _n, d in RR.EXPECT_SHAPE_LIBS) == RR.EXPECT_SHAPE_TOTAL
-    # 大库上判「是」的 12 屏 = 真 6 + 假 6
+    # 大库上判「是」的 6 屏 = 真 5 + 假 1
     assert dict((u, n) for u, n, _d in RR.EXPECT_SHAPE_LIBS)["terrence"] == sum(big)
 
 
@@ -473,16 +506,29 @@ def test_第四条a_这一批的标注都在而且是p94的():
     # 下标必须跟 `--cf-shape` 打出来的那 18 屏逐个对得上
     assert tuple(sorted(r["i"] for r in rows)) == (
         22, 40, 94, 101, 273, 307, 337, 388, 427, 575, 591, 637, 638, 655, 656, 657, 677, 698)
-    # 真 12 / 假 6，而且**按库分**跟钉死的那两对逐格相同
+    # ⚠️ **这 18 条是 P94 在判据 `K` 上读的**，真 12 / 假 6 —— **原样冻着**
     真 = [r for r in rows if r["判"] == "真"]
     假 = [r for r in rows if r["判"] == "假"]
-    assert (len(真), len(假)) == RR.EXPECT_SHAPE_READ
-    big = [r for r in rows if r["user"] == "terrence"]
+    assert (len(真), len(假)) == (12, 6), "P94 那 18 屏的人读读数不许动"
+    # ⚠️ **P96 ① 换成 `M` 之后判「是」的只剩 12 屏，而那 12 屏是这 18 屏的子集**，
+    # 所以 `EXPECT_SHAPE_READ` 那一对**必须能从这份标注里重算出来**，不用重读一遍。
+    # 这一格就是「新数跟旧标注对得上」的那道闸。
+    now = {22, 40, 307, 388, 591, 637, 638, 655, 656, 657, 677, 698}
+    assert now <= {r["i"] for r in rows}, "`M` 判「是」的屏必须都在 P94 读过的那 18 屏里"
+    sub = [r for r in rows if r["i"] in now]
+    assert (sum(1 for r in sub if r["判"] == "真"),
+            sum(1 for r in sub if r["判"] == "假")) == RR.EXPECT_SHAPE_READ
+    big = [r for r in sub if r["user"] == "terrence"]
     assert (sum(1 for r in big if r["判"] == "真"),
             sum(1 for r in big if r["判"] == "假")) == RR.EXPECT_SHAPE_READ_BIGLIB
-    small = [r for r in rows if r["user"] != "terrence"]
+    small = [r for r in sub if r["user"] != "terrence"]
     assert (sum(1 for r in small if r["判"] == "真"),
             sum(1 for r in small if r["判"] == "假")) == RR.EXPECT_SHAPE_READ_SMALLLIB
+    # 掉出去的那 6 屏：5 屏是 P94 读「假」的（治好了），1 屏是读「真」的（i=94，代价）
+    gone = [r for r in rows if r["i"] not in now]
+    assert sorted(r["i"] for r in gone) == [94, 101, 273, 337, 427, 575]
+    assert sum(1 for r in gone if r["判"] == "假") == 5
+    assert [r["i"] for r in gone if r["判"] == "真"] == [94], "换 `M` 的代价正好是 i=94 那一屏"
 
 
 def test_第四条b_47条那把尺的分母一个没动():
@@ -505,5 +551,5 @@ def test_第四条c_新钉的数进了floor_ruler():
 def test_第四条d_两个floor抬到了本worktree的真值():
     """**合并时那两个 floor 要抬到真值**——这一批在自己 worktree 里加了 10 条登记，
     就得同时把它俩抬上去（`test_p90::第四条b` 钉的是「== 真值」这件事本身）。"""
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 114
-    assert FR.CHECKED_COUNT_FLOOR == 126
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 121
+    assert FR.CHECKED_COUNT_FLOOR == 133
