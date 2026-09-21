@@ -38,8 +38,9 @@ import { join, relative, resolve } from 'node:path'
  *  P85 开路时是 1（`p85.test.tsx`）；P87 加了 `p87.test.tsx`，抬到 **2**；
  *  P91 加了 `p91.test.tsx`（右栏「计划」那片纯空白），抬到 **3**；
  *  P93 加了 `p93.test.tsx`（把那件事做成通用的：**`alwaysShown` 的页签空了都得有字**），
- *  抬到 **4**。 */
-const MIN_COMPONENT_TESTS = 4
+ *  抬到 **4**；P95 加了 `p95.test.tsx`（**那一格的字得是这一篇的**——P93 那条闸
+ *  抓不到「有字，只不过字是别人的」），抬到 **5**。 */
+const MIN_COMPONENT_TESTS = 5
 /** 那两个标签在 `KbDashboard.tsx` 代码行里各出现几次。钉死 1：出现两次说明那一行被抄了一份。 */
 const EXPECT_LABEL_HITS = 1
 /** `hits.terms.slice(0, N)` 里的那个 N。`backend/scripts/kb_search_ruler.py` 的 `SHOW` 抄的就是它。 */
