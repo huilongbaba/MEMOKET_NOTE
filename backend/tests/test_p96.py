@@ -246,37 +246,60 @@ def test_第三条d_那43点3不是这把尺瞎掉的原因():
 
 def test_第四条a_它在全库上真拦东西():
     """**一条在正反例上一格都没承重的门，跟一条永远绿的闸是同一族**——
-    这一条就是那个反例：**它在十组手挑的正反例上没承重，在全库上拦着 7 屏**。"""
-    assert RR.EXPECT_SHAPE_HALF == (65, 587, 588, 590, 595, 596, 597)
-    assert len(RR.EXPECT_SHAPE_HALF) == 7
-    assert RR.EXPECT_SHAPE_HALF_READ == (6, 1)
-    assert sum(RR.EXPECT_SHAPE_HALF_READ) == len(RR.EXPECT_SHAPE_HALF)
-    # 判「是」的那 12 屏和被门拦下的那 7 屏**必须不相交**
-    assert not set(RR.EXPECT_SHAPE_HALF) & {22, 40, 307, 388, 591, 637, 638, 655, 656, 657, 677, 698}
-    # 摘掉门的读数：19 = 12 + 7，真 17 = 11 + 6，假 2 = 1 + 1
+    这一条就是那个反例：**它在十组手挑的正反例上没承重，在全库上拦着 7 屏**。
+
+    ⚠️ **P98 换了这道门的判据**（并排改）：P96 那 7 屏冻在 `EXPECT_SHAPE_HALF_P96`
+    （**P98 复现过，逐格相同**），今天在跑的那一档在 `EXPECT_SHAPE_HALF`（2 屏）。
+    """
+    # ── P96 那一版（冻死的历史读数，P98 重数过）
+    assert RR.EXPECT_SHAPE_HALF_P96 == (65, 587, 588, 590, 595, 596, 597)
+    assert len(RR.EXPECT_SHAPE_HALF_P96) == 7
+    assert RR.EXPECT_SHAPE_HALF_READ_P96 == (6, 1)
+    assert sum(RR.EXPECT_SHAPE_HALF_READ_P96) == len(RR.EXPECT_SHAPE_HALF_P96)
+    # ── **摘掉门**的读数（**不是今天在跑的那一版**）：19 = 12 + 7，真 17 = 11 + 6，假 2 = 1 + 1
     n, t, f = RR.EXPECT_SHAPE_NOHALF
-    assert n == RR.EXPECT_SHAPE_HEAD + len(RR.EXPECT_SHAPE_HALF) == 19
-    assert (t, f) == (RR.EXPECT_SHAPE_READ[0] + RR.EXPECT_SHAPE_HALF_READ[0],
-                      RR.EXPECT_SHAPE_READ[1] + RR.EXPECT_SHAPE_HALF_READ[1]) == (17, 2)
+    assert n == 12 + len(RR.EXPECT_SHAPE_HALF_P96) == 19
+    assert (t, f) == (11 + RR.EXPECT_SHAPE_HALF_READ_P96[0],
+                      1 + RR.EXPECT_SHAPE_HALF_READ_P96[1]) == (17, 2)
+    # ── 今天在跑的那一档：新门拦下 2 屏，判「是」17 屏，两档**必须不相交**、加起来 = 摘光
+    assert RR.EXPECT_SHAPE_HALF == (65, 590)
+    assert RR.EXPECT_SHAPE_HALF_READ == (1, 1)
+    assert sum(RR.EXPECT_SHAPE_HALF_READ) == len(RR.EXPECT_SHAPE_HALF)
+    assert RR.EXPECT_SHAPE_HEAD + len(RR.EXPECT_SHAPE_HALF) == n == 19
+    assert not set(RR.EXPECT_SHAPE_HALF) & {22, 40, 307, 388, 591, 637, 638,
+                                            655, 656, 657, 677, 698}
 
 
 def test_第四条b_这一批没动那道门():
-    """**一刀只动一处**：这一批动的是 `same_thing`，半屏那道门**逐字没动**。"""
+    """**一刀只动一处**：P96 那一批动的是 `same_thing`，半屏那道门**逐字没动**。
+
+    ⚠️ **P98 动了它**（并排改）：`团×2 ≥ n` **那半句原样还在**，
+    多了一句「**或** 这一族的话题码盖住 ×2 ≥ n」。P96 那句话**原样留着**，
+    只是后面并排加了一条 P98 的更正——**更正要并排写，不许抹**。
+    """
     src = inspect.getsource(FD.screen_shape)
-    assert "len(fam) * 2 >= n" in src, "半屏那道门不见了"
+    assert "len(fam) * 2 >= n" in src, "老那半句门不见了"
     assert src.count("len(fam) * 2 >= n") == 1
+    assert "cover * 2 >= n" in src and src.count("cover * 2 >= n") == 1, \
+        "P98 加的那半句不见了或者有第二份"
     assert "FAMILY_MIN" in src and FD.FAMILY_MIN == 3
+    # P96 的原话还在（并排写）
     assert "**这一批没动它**" in FD.__doc__
+    # P98 的更正也在，而且说清了「不是摘，是换判据」
+    assert "**P98 动了它**" in FD.__doc__
+    assert "**不是摘**" in FD.__doc__ and "**是换判据**" in FD.__doc__
 
 
 def test_第四条c_那7屏读完不重不漏():
     rows = _rows("p96-halfdoor-7")
     assert len(rows) == 7
     assert {r["labeled_by"] for r in rows} == {"P96"}
-    assert tuple(sorted(r["i"] for r in rows)) == RR.EXPECT_SHAPE_HALF
+    # ⚠️ **P98 换门之后今天在跑的那一档只剩 2 屏**，这 7 条标注对的是
+    # `EXPECT_SHAPE_HALF_P96`（老那道门），并排改。
+    assert tuple(sorted(r["i"] for r in rows)) == RR.EXPECT_SHAPE_HALF_P96
     放 = [r for r in rows if r["判"] == "该放"]
     拦 = [r for r in rows if r["判"] == "该拦"]
-    assert (len(放), len(拦)) == RR.EXPECT_SHAPE_HALF_READ
+    assert (len(放), len(拦)) == RR.EXPECT_SHAPE_HALF_READ_P96
     assert [r["i"] for r in 拦] == [65], "该拦的只有 i=65 那一屏"
     # 七屏的团都正好卡在「≥3 但不到半屏」上 —— 不然它们根本不该在这一组里
     for r in rows:
@@ -330,12 +353,22 @@ def test_第六条a_cf_shape自己核三件事():
     """⚠️ **同一个字面量可能有第二 / 第三份**（P88/P90/P92/P94 连着四批都咬过）——
     **一份一份点名核**，不许只断言「这个名字在源码里出现过」。"""
     main = inspect.getsource(RR.main)
-    # `EXPECT_SHAPE_HALF` 在 `main` 里出现 3 次，但**只有 1 次是这个常数本身**，
-    # 另外 2 次是 `EXPECT_SHAPE_HALF_READ`。光数 3 会被 `_READ` 那两份骗过去。
-    assert main.count("EXPECT_SHAPE_HALF") == 3
-    assert main.count("EXPECT_SHAPE_HALF_READ") == 2
+    # `EXPECT_SHAPE_HALF` 这个前缀在 `main` 里出现 7 次，但**只有 1 次是这个常数本身**：
+    # 另外 6 次是 `_READ`(2) / `_P96`(2) / `_READ_P96`(2)。
+    # ⚠️ **P98 把这一课又演了一遍，这是第六次**：换门的时候新加了 `_P96` / `_READ_P96`
+    # 两个前缀一样的名字，`count("EXPECT_SHAPE_HALF")` 从 3 变 7 —— **光数总数没有意义**，
+    # 承重的是下面那条负向前瞻。
+    assert main.count("EXPECT_SHAPE_HALF") == 7
+    assert main.count("EXPECT_SHAPE_HALF_READ") == 4
+    assert main.count("EXPECT_SHAPE_HALF_P96") == 2
+    assert main.count("EXPECT_SHAPE_HALF_READ_P96") == 2
     assert len(re.findall(r"EXPECT_SHAPE_HALF(?!_)", main)) == 1, \
         "`main` 里 `EXPECT_SHAPE_HALF` 本身该正好一份"
+    assert len(re.findall(r"EXPECT_SHAPE_HALF_READ(?!_)", main)) == 2
+    assert len(re.findall(r"EXPECT_SHAPE_NOHALF(?!_)", main)) == 3, \
+        "`EXPECT_SHAPE_NOHALF` 本身该三份（两处打印 + 一条自检）"
+    assert main.count("EXPECT_SHAPE_NOHALF_BIGLIB") == 1
+    assert main.count("EXPECT_SHAPE_COVER7") == 1
     assert main.count("EXPECT_SHAPE_BLIND_WHY") == 1
     for guard in ('if sum(g["blind_why"]) + g["total"] < 0 or sum(g["blind_why"]) != g["blind"]:',
                   'if set(g["head"]) & set(g["half"]):',
@@ -343,6 +376,8 @@ def test_第六条a_cf_shape自己核三件事():
         assert main.count(guard) == 1, f"`--cf-shape` 的自检少了一条（或多了一份）：{guard}"
     src = inspect.getsource(RR.cf_shape)
     assert src.count('"half"') == 1 and src.count('"blind_why"') == 1
+    # P98 加的两档（换门 / 摘门要在同一趟里都拿得到）
+    assert src.count('"nohalf"') == 1 and src.count('"cover7"') == 1
     assert src.count("_swap_run") == 2, "换 `common_term` 得走 `_swap_run` 那一份实现（签名一次 + 调一次）"
     assert "EXPECT_CF_GATES_PURGES" in src, "得断言缓存清了两次，不然右边那趟量的还是 HEAD 的屏"
 
@@ -361,8 +396,8 @@ def test_第六条b_新钉的数都进了floor_ruler():
 
 def test_第六条c_两个floor抬到了本worktree的真值():
     """**加了登记就同时把那两个 floor 抬到真值**（`test_p90::第四条b` 钉的是「== 真值」本身）。"""
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 121
-    assert FR.CHECKED_COUNT_FLOOR == 133
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 125
+    assert FR.CHECKED_COUNT_FLOOR == 137
 
 
 def test_第六条d_47条那把尺的分母一个没动():
