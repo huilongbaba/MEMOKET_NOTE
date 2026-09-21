@@ -57,7 +57,7 @@
 //     （不是选择器错，是**读法**错）。P58 / P60 两批「判据那几行」都是 `[]`，
 //     而 P58 台账那一格是靠截图断的 —— **日志里其实是 0**。
 // ─────────────────────────────────────────────────────────────────────────────
-import { stepProvenance } from './provenance.mjs'
+import { depsProvenance, stepProvenance } from './provenance.mjs'
 import { withBatchPrefix } from './shotname.mjs'
 import { USER_KEY, USER_SOFT } from './whoami.mjs'
 
@@ -94,11 +94,31 @@ const args = process.argv.slice(4)
  *    闸里那份「豁免名单」是**逐字钉死的 6 个目录**，加一个进去得有人动代码。
  *  · **步骤脚本之外**跑的那些（`go.sh` 自己打的几行、`fakellm.log`）不经这儿。
  *  · **产品那一侧**装的是不是这份源码：那是 `check_shipped_source.py` 的地盘。
- *  · **这一份驱动自己**（`cdp.mjs`）改没改：没记。射程只到「入口那一份步骤脚本」，
- *    **判据宁可窄**——把驱动也钉进去的话，动一次量具就得把整趟走查重跑一遍，
- *    而那样的闸迟早被人绕过去（P80 B② 那条理由）。
  *
- * 拼那一句和认那一句**在同一份文件里**：`provenance.mjs`（两头各写一份就会各改一半）。 */
+ * ── 第二行：**被 import 的那几份 + 这一份驱动自己**（P99 A 补的）───────────
+ * P97 那一版只钉入口，自己写着「`lib*.mjs` / `clickexact.mjs` 没钉、`cdp.mjs` 自己也没钉」。
+ * 这一批补上，补法是**紧跟着的第二行**：
+ *
+ *     依赖: cdp.mjs=<64 位> provenance.mjs=<64 位> steps/lib.mjs=<64 位> …
+ *
+ * 路径相对 `frontend/scripts/walkthrough/`，按名排序。上面的每一份都是
+ * **从入口和这一份驱动出发、顺着相对 import 一步步够得到的**——
+ * **不是**「把 `walkthrough/` 目录哈希一遍」：那样隔壁那一步改一行，这一批的日志全红，
+ * 而一条天天误报的闸迟早被人改成不红。
+ *
+ * ⚠️ **代价照实写**：从这一批起，**跑完走查再动 `cdp.mjs` / `lib*.mjs`，入库的日志当场红**。
+ * 这跟入口那一份本来就是一样的规矩（P97 立的），补上之后覆盖面从 1 份变成整条 import 链。
+ * 顺序因此是**先把量具定死，再跑走查，跑完不动量具**。
+ *
+ * ── 它还是答不了什么 ──────────────────────────────────────────────────────
+ *  · **老日志**（p85…p95）一份没有第一行、p97 那一批没有第二行，这条闸**不替它们签字**——
+ *    闸里那两份「豁免名单」都是**逐字钉死的目录名**，加一个进去得有人动代码。
+ *  · **步骤脚本之外**跑的那些（`go.sh` 自己打的几行、`fakellm.log`）不经这儿。
+ *  · **产品那一侧**装的是不是这份源码：那是 `check_shipped_source.py` 的地盘。
+ *  · **动态拼出来的 import**（`import(变量)`）够不到：第二行那张单子是**静态**顺着
+ *    相对 import 走出来的。工具箱里现在一个都没有（`node:fs` 那种不算），有了得有人改这儿。
+ *
+ * 拼那两句和认那两句**在同一份文件里**：`provenance.mjs`（两头各写一份就会各改一半）。 */
 
 const MOD = { alt: 1, ctrl: 2, meta: 4, shift: 8 }
 const VK = { Enter: 13, Escape: 27, Backspace: 8, Tab: 9, Space: 32, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46, Home: 36, End: 35, '/': 191, '\\': 220, '[': 219, ']': 221, ',': 188, '.': 190, '-': 189, '=': 187, ';': 186, "'": 222, '`': 192 }
@@ -121,9 +141,13 @@ class Conn {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function main() {
-  // **第一行就把出处打出来**（P97 A）：壳起不来 / 步骤当场抛的那几趟也得有这一行，
-  // 所以它在连 CDP 之前。
-  console.log(stepProvenance(stepPath.startsWith('/') ? stepPath : process.cwd() + '/' + stepPath))
+  // **头两行就把出处打出来**（P97 A + P99 A）：壳起不来 / 步骤当场抛的那几趟也得有这两行，
+  // 所以它们在连 CDP 之前。
+  const abs = stepPath.startsWith('/') ? stepPath : process.cwd() + '/' + stepPath
+  console.log(stepProvenance(abs))
+  // 驱动那一份**用 `import.meta.filename` 指自己**：写成 `dirname + '/cdp.mjs'` 的话，
+  // 这份驱动被改名 / 被拷一份出来跑，日志里记的还是原来那个名字（**「文件里有这个串」的又一张脸**）。
+  console.log(depsProvenance(abs, import.meta.filename, import.meta.dirname))
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
   const page = list.find((t) => t.type === 'page' && /127\.0\.0\.1:\d+/.test(t.url)) ?? list.find((t) => t.type === 'page')
   if (!page) throw new Error('没有 page target: ' + JSON.stringify(list.map((t) => [t.type, t.url])))

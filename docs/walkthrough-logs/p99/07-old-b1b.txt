@@ -1,0 +1,17 @@
+步骤脚本: b1b.mjs sha256=6cff1fcc65685eaac7a6303acaa82ed6471d06b8403917c0dd2832ae594c4b0b
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/clickexact.mjs=476c0780c3787bf98bbdb576660f117bc6704d0609350c96d23f76dbdb599348 steps/ctxmenu52.mjs=bd37b50c8a59cac9dd19426e2adcffd0ea4b18134bc196514ab9072096709544 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+开的是 <ID12> （第 0 个候选： P58 走查（可删）标签 ）
+开着的是: <ID12>
+正文字数: 105
+=== ② 意图三格 + 「预填」角标（P43 #2 / P44 问题 #4 的回归）===
+  意图行: {"found":true,"vals":[["目标","围绕「P58 走查（可删）」写清楚一件事"],["读者","自己"],["完成标准","每个论断有依据（引用或出处）"]],"prefill":true,"titleBox":""}
+shot → <DIR>/<B>-b1b-old-intent-light.png
+=== ③ 页边圆点两档（.mm-*）===
+  圆点: {"落槽合计":2,"图例":6,"页面合计":8,"冲突":1,"印证":0,"缺依据":1,"延续":0,"叠加":0,"合并":0}
+=== ⑤ 右键六项（点在选区 bbox 上）===
+  「预热名单」在第 8 行
+  选中: "预热名单回收了 860 份，转化率按渠道排了一遍。"
+  右键菜单: 6 项 ["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]
+shot → <DIR>/<B>-b1b-old-ctx-light.png
+  Esc 之后还剩: 0
+  正文一个字没动吗: true

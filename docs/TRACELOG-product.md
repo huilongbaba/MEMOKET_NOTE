@@ -26030,3 +26030,354 @@ P97 留给下一批：
 ④ 跨批 diff 那条闸仍**只追认最新一批**，`p85` / `p87` 还是没有归类表；
 ⑤ **「走查随机」这一批 0 行**（P93 / P95 各 67 行）——**不是治好了**，是两批的右栏开合正好一样，下一批接着看；
 ⑥ P89 留的 ③④⑤⑥⑦ 一条都没碰。
+
+## P99 · 第 819 轮：**出处闸补到够得着的那一格**（被 import 的那几份 + 驱动自己）+ **轮次卡落不落库量完了（判「不新开表」）** + **第二十七次走查**（2026-09-22）
+
+worktree `.claude/worktrees/agent-a9492c4155ac80ed0`，HEAD `4cd2521`。
+
+> **数怎么记**（P95 立的规矩）：每个数带 `<数> ← <逐字命令> @ <sha7>`。**基线一律自己再量，不抄上一批。**
+
+**基线**（都在 `4cd2521` 上自己量的）：
+* 后端 **3379 passed / 0 skipped** ← `cd backend && PYTHONPATH=. KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python -m pytest -q` @ `4cd2521`
+* 前端 **101 文件 / 931 条** ← `cd frontend && npm test` @ `4cd2521`
+* 假壳那条闸**两个数都对**：**静态 108**（60 判据 + 39 反例 + 9 条闸自跑）
+  ← `cd frontend && ./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts` @ `4cd2521`；
+  **真跑 110**（再加 2 条通道对照）← `cd frontend && WALKTHROUGH_SCRATCH=… node scripts/run-walkthrough-fakeshell.mjs` @ `4cd2521`
+* `floor_ruler` **看着 11 份 / 登记 121 条（只准往上 5 · 钉死 116）/ 例反例 12 条 / 共核 133 / 落后 0 / 对不上 0**
+  ← `cd backend && PYTHONPATH=. ./.venv/bin/python scripts/floor_ruler.py` @ `4cd2521`
+  （⚠️ P97 台账写的是 **114 / 109 / 126**——**同一种分叉**，跟 P93 说 P91、P97 说 P95 一模一样：
+  那是**它那个 worktree 上那一刻**的数，不是今天的真值。**两笔都留着，各带各的出处。**）
+* 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 / `llm_usage` 最大 id 5738**
+  ← `./backend/.venv/bin/python <scratch>/p99/fp99.py`（走 `db_guard.readonly()`，**主仓，只读**）
+
+---
+
+### A. 出处闸补齐（收 P97 ①）：**被 import 的那几份 + `cdp.mjs` 自己**
+
+P97 立了「走查日志第一行带步骤脚本 sha256」那条闸，并**自己写下射程**：
+被 import 的 `lib*.mjs` / `clickexact.mjs` 没钉、`cdp.mjs` 自己也没钉。这一批把**够得着的**补上。
+
+#### 补法：**第二行**，而且**只钉这一趟真读进来的那些字节**
+
+```
+步骤脚本: panes93.mjs sha256=<64 位>
+依赖: cdp.mjs=<64 位> provenance.mjs=<64 位> shotname.mjs=<64 位> steps/clickexact.mjs=<64 位> steps/lib52.mjs=<64 位> whoami.mjs=<64 位>
+```
+
+* 路径相对 `frontend/scripts/walkthrough/`，按名排序；**入口自己不在里头**（它在第一行）。
+* 这张单子是 **`importClosure()` 顺着相对 `import` 一步步走出来的**，
+  **不是「把 `walkthrough/` 目录哈希一遍」**——目录里躺着 30 多份别的步骤脚本，
+  整目录哈希 = 隔壁那一步改一行这一批全红 = **一条天天误报的闸**，而天天误报的闸迟早被人改成不红。
+  实拍：`panes93` 的单子里**没有** `steps/lib.mjs`（它不 import 它），`probe60` 的单子里**只有** `lib.mjs`。
+* **注释里那一句 `from './x.mjs'` 不算**（`relImports()` 先剔整行注释）——
+  **「文件里有这个串」≠「这段代码还在跑」**。selftest 里**专门放了一份带假 import 注释的 fixture** 钉这一格。
+* 够到工具箱外头 ⇒ **当场抛**，不静默放宽也不静默收窄（实拍：一份放在 scratch 里的一次性探针当场被拦下）。
+
+| 处 | 是什么 |
+|---|---|
+| `frontend/scripts/walkthrough/provenance.mjs` | 新增 `DEPS_RE` / `relImports` / `importClosure` / `depsProvenance` / `parseDeps`。**拼的那一头和认的那一头还是同一份文件** |
+| `frontend/scripts/walkthrough/cdp.mjs` | 第二行紧跟第一行打出来，**在连 CDP 之前**；驱动那一份**用 `import.meta.filename` 指自己**（写成 `dirname + '/cdp.mjs'` 的话，驱动被改名 / 拷一份出来跑，日志里记的还是原来那个名字）|
+| `frontend/scripts/check-walkthrough-provenance.mts` | 核两件事：**单子对不对**（拿今天的入口 + `cdp.mjs` 重算一遍闭包，逐条比名字；少一份 / 多一份都红）、**字节对不对**（逐份 sha256 比）|
+
+**第二份豁免名单，一样逐字钉死**：`LEGACY_NO_DEPS = ['p97']`、`LEGACY_NO_DEPS_COUNT = 1`。
+**不跟 `LEGACY` 合成一份**（它们答的不是同一个问题：一个是「连入口都没记」，一个是「入口记了、被 import 的没记」），
+而且**两份名单不许有交集**（叠着豁免看上去像多一道保险，实际是下一个人读不出到底豁免的是哪一档）。
+
+**⚠️ 代价照实写**（P97 当初正是为这个判「不做」）：从这一批起，**跑完走查再动 `cdp.mjs` / `lib*.mjs` / `provenance.mjs`，入库的日志当场红**。
+这跟入口那一份本来就是同一条规矩，只是覆盖面从 1 份变成整条 import 链。顺序因此是
+**「先把量具定死 → 跑走查 → 跑完不动量具」**——**这正是这条闸要的那个压力**。
+这一批自己就付了一次：中途改 `rounds99.mjs` 的判据，**把 B 那两趟整个重跑了一遍**。
+
+#### 砍刀证明：**12 真 + 2 对照**（唯一锚点先断言 → 砍 → 跑闸 → 整文件写回 → 逐字节 `shasum -c`）
+
+`python3 <scratch>/p99/cut.py anchors` → **锚点不唯一的：0 条**。
+
+| 刀 | 砍在哪 | 闸 EXIT | 红了几条 | 红的是不是那一条 |
+|---|---|---:|---:|---|
+| ① | **`steps/lib.mjs` 加一行**（被 import 的那份）| 1 | **18** | ✔ 逐份点名「被 import 的那一份**不是同一份** `steps/lib.mjs`」——**P97 够不着的正是这一格** |
+| ② | **`cdp.mjs` 加一行**（驱动自己）| 1 | **23** | ✔ 逐份点名 `cdp.mjs`——**P97 明写着没钉的另一格** |
+| ③ | `DEPS_RE` 去掉行首 `^` | 1 | 24 | ✔ 「**前面多一个空格不算**」 |
+| ④ | `DEPS_RE` 去掉行尾 `$` | 1 | 25 | ✔ 「行尾多字不算」+「两个空格不算」 |
+| ⑤ | `parseDeps` 改成「哪一行都认」 | 1 | 24 | ✔ 反例⑩（第二行贴在中间）|
+| ⑥ | `parseDeps` 里 `..` 那条去掉 | 1 | 24 | ✔ 「`..` 一个都不许有」 |
+| ⑦ | 闸里依赖的 sha 不比 | 1 | **2** | ✔ 反例⑦（被 import 的改了）/ 反例⑧（驱动改了）|
+| ⑧ | 闸里单子的名字不比 | 1 | **2** | ✔ 反例⑪（少一份，点名 `helper.mjs`）/ 反例⑫（多一份）|
+| ⑨ | `LEGACY_NO_DEPS_COUNT` 1 → 2 | 1 | 1 | ✔ 「这两个数得一起动」 |
+| ⑩ | `LEGACY_NO_DEPS` 换成 `['p95']`（跟 `LEGACY` 撞）| 1 | 21 | ✔ 「同时写在两份豁免名单上」+ p97 那 20 份当场变成「第二行不是依赖出处」 |
+| ⑪ | `cdp.mjs` 里打第二行那一句删掉 | 1 | 24 | ✔ 「代码行里调 `depsProvenance(` **0 次**」 |
+| ⑫ | `relImports` 不剔注释 | 1 | 0 | ⚠️ **红了，但形状是抛异常不是一条 `✗`**：闭包把注释里那句 `notreal.mjs` 算进去，读它时 `ENOENT` 点名到那一份。**照实记**（见问题清单 #3）|
+| **对照 a** | `steps/lock64.mjs` 加一行注释（**闭包外头那一份**）| **0** | 0 | ✔ 该全绿 |
+| **对照 b** | 闸里改一句注释 | **0** | 0 | ✔ 该全绿 |
+
+写回之后 `shasum -a 256 -c` **5 份全 OK**（`cmp EXIT=0`）。
+
+> ⚠️ **对照刀第一趟设计错了，实拍抓到**：起先拿 `provenance.mjs` 加一行注释当对照，**它红了 23 条**。
+> 不是闸坏了——`provenance.mjs` **自己就在每一份日志的依赖单子里**，碰一下就该红一片。
+> ⇒ **对照刀得砍在闭包外头那一份**。这也是「这条闸从此覆盖多广」最直白的一张实拍。
+
+#### 还够不着什么（写清楚，别读成「日志从此可信」）
+
+* **老那六批**（`LEGACY`）一份都不管；**`p97` 那一批只有第一行**，它那一趟的 `lib*.mjs` / `cdp.mjs` 改没改
+  **永远查不回来**——**不硬追认**（P97 那份名单逐字钉死 6 批就是这个道理）。
+* **动态拼出来的 `import(变量)` 够不到**：闭包是**静态**走出来的。工具箱里现在一个都没有，有了得有人改 `provenance.mjs`。
+* **日志内容对不对**一条都答不了（那一档归 `normalize-log.mjs --selftest` 和跨批 diff 那条闸）。
+* **`go.sh` 自己打的那几行**不经 `cdp.mjs`，入库的日志里也没有它们。
+* **scratch 里的一次性探针跑不了**：闭包不许够到工具箱外头 ⇒ 临时探针得放进 `steps/`（这一批放了一份 `_p99gap.mjs`，**用完当场删了**）。
+
+---
+
+### B. 轮次卡落不落库：**先量，再判**（收 P95 / P97 ③）
+
+#### B0 先量：用户真撞上的是什么形状
+
+新量具 `steps/rounds99.mjs`（**只读不判**），三个档：`away` / `crash-mark` / `crash-read`。
+「跑着切走」在 `--mode ok` 的原速下**演不出来**（整个跑一两秒就完了），
+所以给 `walkthrough_fakellm.py` 加了 `--delay-ms`（**默认 0，别的批次一个字不受影响**），
+这一趟 `LLM_DELAY_MS=7000`、切走 20 秒。
+
+| 情形 | 轮次卡 | 卡上「本轮写出的正文」 | 正文 | 改动层 | 出处 |
+|---|---|---|---|---|---|
+| **① 跑着切走 20 秒再切回** | **2 张都在**（`patchRound` 缺了会补建）| **2 → 1**（**切走那一轮那一整块没了**）| **不丢**：切走时编辑器一度落后库里（273 vs 300），`onDone` 用 `serverContent` 对齐回 446/446 | 不丢 | `22-old-rounds99-away.txt` |
+| **对照：没切走** | 2 张 | **2** | 504/504 | 不丢 | `23-old-rounds99-crashmark.txt` |
+| **② 关掉重开** | **0** | **0** | 不丢（库 446，状态栏 342 字）| **不丢**：`改动1` 页签 + 「上次没处置完的 N 层改动…」toast | `22`（reload）+ **`13-old-reopen64.txt`（真的关掉重开）** |
+| **③ 崩溃（`kill -9`，`before-quit` / `beforeunload` 一条都不跑）** | **0** | **0** | **丢最后一次自动保存之后打的那几个字**：崩之前编辑器里有 `P99崩溃记号`（+8 字），崩完重开**没了**（库 504）| 已落库的那一层还在 | `23` + `24-old-rounds99-crashread.txt` |
+
+#### B1 **「轮次卡不落库」这句话只对一半**——库里早就有骨架
+
+在这一趟的**库拷贝**上直接数（**没有那条 API，前端一行都没读**）：
+
+| 数 | 逐字命令 |
+|---|---|
+| 这一篇（`df03418bbbaf`）**6 次跑 / 12 行轮次**，而界面重开之后是 **0 张卡** | `select count(*) from harness_runs / harness_rounds where key='note:df03418bbbaf'` |
+| 走查那份库全库 **126 次跑 / 501 行轮次** | 同上去掉 where |
+| 真语料那一份（开工时的只读拷贝）**120 / 489** | 同上，`backend/data/notes.sqlite3` |
+
+`harness_rounds` 一行里已经有：`round` / `scores` / `status` / `weakest` / `content_len` /
+`tool_calls` / `repeat_calls` / `cached_calls` / `revisions_proposed` / `revisions_dropped` /
+`depth_dropped` / `claim_atoms` / `fired_checks` / `abstained` / `cite_*`，
+而且**每个 key 只留最近 400 行**（`record_harness_round` 自己修剪，50 次跑 × 8 轮）——**体积本来就有上限**。
+
+**卡上有、库里没有的**只有那几样**明细文本**：
+`streamed`（「本轮写出的正文」）/ 工具调用逐条 / 技能名单 / `errors` / `dropped` / `policyReasons` / `steer` / phase 标签。
+
+#### B2 判
+
+**判①：不新开表、不把轮次卡整个落库。** 骨架已经在库里，新开一张表 = 同一件事第二把尺。
+
+**判②：该补的是「读回来那条路」，不是「落库」。**
+一条只读 API（`GET /api/notes/<id>/rounds`，走 `key='note:<id>'` + `rounds_of_run`）+ 前端打开时重建卡片骨架，
+**零迁移、零新表、零体积增长**。缺的那几样明细在卡上**照实标「这一轮的明细只活在那一趟里」**——
+**「读回的是这一段 ≠ 右栏摆的是这一段」**，宁可少摆也别把骨架冒充成全量。**留给下一批。**
+
+**判③：明细文本不落库。**
+要落就得给 `harness_rounds` 加文本列；按 400 行/篇的上限，重度用户单篇最坏几百 KB。
+更要紧的是**这件事已经有两把尺各答了一半**：`note_change_layers.hunks` 存着每一处的 `ins`/`del`（能逐处撤回），
+`note_revisions` 存着整版正文。再存一份「那一轮当时写了什么」= **第三把尺**。
+
+**判④：`guarded` 那一格不该靠落库补。**
+实拍证据就是上面那个 **2 → 1**：`writeRounds` / `patchRound` 本来就是**按 noteId 写**的，
+被 `currentRef.current?.id !== noteId` 一刀切拦住纯属误伤；真正该拦的是**动正文 / 动编辑器**那几条
+（`onText` / `onScrub` / `onDedup` / `setContent`，P95 A0 记的那条「A 的内容写进了 B」）。
+判据现成（同一篇、同一个探针，切走 1 / 不切走 2）。**留给下一批，代价小。**
+
+**判⑤：崩溃那一格不是轮次卡的事。** 崩溃比「关掉重开」多丢的只有
+「最后一次自动保存之后打的那几个字」+ `rememberSpot` + 未落库的层处置——**那是自动保存窗口的账，不是卡的账**。
+
+---
+
+### C. 第二十七次全流程走查（真打好的壳）
+
+#### 起壳前：壳里几个可执行件核几个
+
+| 核什么 | 怎么核 | 结果 |
+|---|---|---|
+| `Resources/web` 整树 | 逐文件 sha256 → 排序再取一次 | **179 个 / `c6c813e3e0ccb60d`** = `frontend/dist` 逐格相同（跟 P95 / P97 同一个哈希——这一批没动 `frontend/src`，**本该相同**）|
+| `app.asar/dist/{main,preload,capture,backend}.js` | `asar extract` → 跟 `desktop/dist` 现编的 `cmp` | **四个逐字节相同** |
+| 后端那个件（13,080,576 字节）| `check_shipped_source.py`（**不用 `strings`**）| **先喂一个不存在的符号 → `对不上 1 个符号` / EXIT=1**；再喂真的：`app.database.kb.search` 的 `display_terms` / `is_merged_word`、`app.database.store` 的 `list_notes` 全有（EXIT=0）|
+| 四个 `*_base_url` + `local_model` + `vision_model` | 起壳前走 `walkthrough_db.py` **写完读回来再断言** | 1 行 × 4 个地址列 = `http://127.0.0.1:19370/v1` / `fake-p52` / `fake-vision-p52` |
+| 钥匙 | `scrub_credentials`（**按值扫全库，不按列名**）| 换掉 **1 处**（`provider_config.gpt_api_key`，`sk-` 前缀），换完再扫 **0 处** |
+| 假模型端口 vs udd 里存的 | `go.sh --check-provider-port` | 每一趟老用户都问一次：`库里存的 local_base_url：http://127.0.0.1:19370/v1 ← 跟 19370 对得上` |
+
+#### 走查表（两个身份 × 十一步；**七次起壳**：新用户 / 老用户 / 第 ⑩ 步 / `rounds95` / `toast97` / **B-away** / **B-crash（两次壳，中间 `kill -9`）**）
+
+| # | 步骤 | 空库新用户（`p99-newbie`）| 482 篇老用户（terrence）|
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：「还没配模型 / 去设置」都在；「测一下」→「连上了，2 个模型可用…先用第一个「fake-p52」」；模型名没填全时保存红字还在（`true`），填全之后**红条和那句话同时消失**（两头各读一次都是 `false`）；toast「已切换到本地模型：fake-p52」；库里真落了 | **对**：`窗口自己认的身份: terrence` |
+| 2 | 新建 → 打标题 → 右栏「计划」| **对** | **对**：`{"found":true,…,"prefill":true,"titleBox":""}`（P43 #2 / P44 #4 ✔）|
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」| **对**：`P32 #3 空库图例收成一句: true`、`P35 #8 空托盘收成一句: true` | **对**：`{"落槽合计":2,"图例":6,"页面合计":8}`，落槽那 2 是**冲突 1 / 缺依据 1**（跟 P64 起每一批**一个数不差**）|
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项**，Esc 之后 0 |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]` 逐字连顺序 |
+| 6 | 智能续写 → 轮次卡片 → **读库** | **对**：`{"lines":143,"db":143}`（**`--mode ok`**，**P68 ✔**）| **对**：`库: {"len":205,"json":false}`（编辑器 205 == 库 205）；`做爰片` **0**、`terrence-8F6` **0**、空括号 **0** |
+| 7 | 导回到 Obsidian | — | **对（浅走）** |
+| 8 | 屏幕活动 | **对**：知情五条；「留多久」那一行的数**从后端读** | **对**：一键全删两段式；「先不删」之后天列表原封不动；翻天两个方向各一次；**P62 ③ 正例 + 反例** |
+| 9 | ⌘K 全部去处 | **对** | **对**：23 项 |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，`19472`）| — | **对，跟 P93 / P97 逐字相同**：`["记忆","改动2","计划5"]` + `toast: ["上次没处置完的 2 层改动还在右栏「改动」里"]` + `P43 不变式：成立` + `正文字数: 213`；不带层那篇 `["记忆","幻灯片24","计划5"]` + `toast: []` |
+| 11 | 深色 + 900px | **对**：`rgb(18, 15, 26)`；900px 溢出 **1**（`note-tab`「屏幕活动×」right=904）| **对**：`rgb(18, 15, 26)`、近白大块 **0**、900px **溢出 0**（`溢出的是谁: []`）|
+| **A** | 右栏那叠轮次卡是不是这一篇的（`rounds95`）| — | **对**：`{"A跑完":{"页签":"计划2","几种轮次卡":2},"新建空笔记":{"页签":"计划","几种轮次卡":0,"页签里有数字吗":false},"A切回来":{"页签":"计划2","几种轮次卡":2}}`（跟 P97 逐格相同）|
+| **B** | ⑩ 那句 toast 看不看得见（`toast97`）| — | **看得见**：出现在第 518 毫秒、**在屏幕上活了 3501 毫秒**、框 306×42 @ (1118,820) |
+| **C** | 轮次卡三种情形各丢什么（`rounds99`）| — | 见 §B |
+
+#### 重点盯的几格
+
+* **P68 丢字不回退**（`--mode ok`）：两个身份各验一次，**库 == 编辑器**（143/143、205/205）。
+* **P95 那一刀**：新建空笔记 `["记忆","计划"]`（**不是「计划2」**）、切回 A 那两张卡还在。
+* **P93 那条通用闸在壳上对得上**：三档留白的格子**各 0 个**；
+  而且 `17-new-panes93.txt` 这一批**有**那一行 `=== ③ 没给 note id，这一档跳过 ===`
+  ——**P97 查实的那件事（跑的那份 ≠ 入库的那份）在这一批的日志上正过来了**。
+* **P91 / P89 / P83 / P80 / P81 各刀都没回退**——逐条在日志里找到证据（63 条那张单子）。
+* **P97 那条出处闸在这一趟真生效**：入库 23 份日志**每一份第一行有 sha、第二行有依赖单子**，
+  闸核了 **2 批 / 43 份 / 依赖 138 次**。
+* **`@LAST_NEW_NOTE` 是这一趟现造的**：`df03418bbbaf`，由 `06-old-b1old` 自己打在日志里，
+  `07 / 09 / 10` 三步和 B 那三趟用的都是它；**在这一趟的库拷贝上查过**：`harness_runs` 6 行、`harness_rounds` 12 行，
+  真库里 **0** 条。⚠️ `rounds95` / `rounds99` **都没写 `@LAST_NEW_NOTE`**（写了会解成 `18-old-panes93` 刚造的那篇空笔记，P95 问题 #4）。
+* **截图 76 张，全 `p99-*`**（`ls | grep -cv '^p99-'` = **0**），一张都没事后改名；
+  作废的三摞挪进 `walk/shots-{old1-入参过期,old2-残留标签页,b1-量具改过}-作废/`（39 + 39 + 10 张）；
+  假壳那条闸自己的 28 张全 `fakeshell-*`（`grep -cv` = 0）。
+
+#### 历史修复的回归：**63 条逐条去日志里找证据，0 条找不到**
+
+P97 那 55 条 + 这一批加的 **8 条**（A 的第二行 ×3 / B 的三种情形 + 两条对照）。
+⚠️ **P97 那 55 条里有一条得改**：它把一个毫秒数钉死了（`在屏幕上活了 3499 毫秒`），
+这一批实拍 **3501** ⇒ 照抄必红。换成那条 toast 的**时长量级**（`在屏幕上活了 35`，即 3.5 秒那一档）——
+**闸别钉会变的数**（见问题清单 #1）。
+
+**先喂了三个该红的反例**，三次都红、EXIT=1、且点名到那一条：
+① 老反例（`/` 菜单 19 → 18）；
+② **这一批自己的**：把 A② 那条点名成 `steps/nosuchlib.mjs`；
+③ **这一批自己的**：把 B① 那条改成「切走也是 2 块」（即「没丢」）。
+
+#### 跨批逐行 diff：`diff -r docs/walkthrough-logs/p97 docs/walkthrough-logs/p99`
+
+**37 行**，**逐行归完类，2 类**（`docs/walkthrough-logs/p99/DIFF-FROM-p97.tsv`）：
+
+| 类 | 行数 | 哪几行 · 为什么 |
+|---|---:|---|
+| **量具改了** | **23** | 20 份老日志各多一行**依赖出处**（A 那一刀）+ `22/23/24` 三份整份（B 那个新探针）|
+| **走查随机** | **14** | 全在 `21-old-toast97.txt`：那个毫秒级探针的读数（出现 518 vs 477 / 消失 4019 vs 3976 / 活了 3501 vs 3499 / 录了 4348 vs 4277 / 连上算起 2409 vs 2415 / `pageText>50` 等了 1 vs 2 / reload 之后 250 vs 251）。**值都在同一量级，判词一个字没变** |
+| 入参素材 / 归一化漏洞 / 产品改了 / 解释不了 | **各 0** | — |
+
+⚠️ **「走查随机」这一格，P97 是 0 行、这一批是 14 行——两个数都对，说的不是同一件事**：
+P97 那 0 行说的是**右栏开合 / 宽度 / 序号 / 坐标 / 近白大块 / 900px 溢出**逐格相同，这一批**照样逐格相同**；
+这 14 行是 P97 自己新加的那个**毫秒级**探针带进来的一档新随机性。
+**P93 / P95 那 67 行（右栏开合不同）这一批仍然一行都没有**——**还是不能读成「治好了」**，下一批接着看。
+
+#### 问题清单
+
+| # | 现象 → 实拍 → 根因 | 处置 |
+|---|---|---|
+| 1 | **上一批的回归判据钉死了一个毫秒数**：`在屏幕上活了 3499 毫秒`，这一批实拍 3501，照抄必红 | 换成时长量级 `在屏幕上活了 35`（3.5 秒那一档）。**「闸别钉会变的数」**——同一条规矩 P97 自己写在跨批 diff 那条闸里，却在回归单子上违了一次 |
+| 2 | **`docText()` 只数得到视口里渲染出来的那几行**（CodeMirror 虚拟化）：同一篇库里 387 字的笔记，刚打开读回 **300**、⌘End 之后读回 **246**；`.status-bar` 那一格和单篇 API 一直对得上（387 → 打一个字 388）| **不是产品丢数据**，是**量具够不着**。`rounds99.mjs` 抬头逐字写着这条，并**同时读状态栏**；判正文有没有丢**一律看库里那个数**。⚠️ 这一条只在**长到一屏放不下**的笔记上现形——走查里那几篇（143 / 205 / 213 字）都放得下，所以十几批都没撞上 |
+| 3 | **我自己的砍刀第 ⑫ 刀只红在抛异常上**：`relImports` 不剔注释 ⇒ 闭包多算一份 ⇒ 读它时 `ENOENT`，**红了但不是一条 `✗`** | **照实记，这一批不改**：改 `importClosure` 就是改 `provenance.mjs`，而它在每一份日志的依赖单子里 ⇒ **整趟走查得重跑**。留给下一批（跟别的量具改动一起做，一次重跑）|
+| 4 | **我自己的对照刀设计错了**：拿 `provenance.mjs` 加注释当对照，红了 23 条 | **不是闸坏了**：它自己就在依赖单子里。对照刀改砍 `steps/lock64.mjs`（闭包外头），当场全绿 |
+| 5 | **第一趟老用户 FAIL**：`journey64` 报「2026-09-20 那天该说「合计偏长」，没说」 | **入参过期，不是产品坏了**：夹具按**今天**现造，P97 那批今天是 09-21，这一批过了 0 点 ⇒ 两个日期各往后挪一天（09-21 / 09-22）。改完当场绿 |
+| 6 | **第二趟老用户 900px 溢出 9**（P97 是 0）| **量具环境残留，不是回退**：`setup.py old` 重建的是 identity / 库 / 语料，**没清 Chromium 的 localStorage**，上一趟开着的三个笔记标签页留着 ⇒ 标签条超出 900px。**整棵 udd 删掉重建**之后：`900px 横向溢出: 0  溢出的是谁: []` |
+
+---
+
+### 收尾（**每个数带出处**）
+
+| 数 | 逐字命令 | HEAD |
+|---|---|---|
+| 后端 **3379 passed / 0 skipped**（砍完重跑同样 3379）| `cd backend && PYTHONPATH=. KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python -m pytest -q` | `4cd2521` + 本批改动 |
+| 前端 **101 文件 / 931 条**（**+0 / +0**：这一批加的是 `.mts` 闸和步骤脚本，不是 vitest 文件）| `cd frontend && npm test` | 同上 |
+| 假壳**静态 108**（60 判据 + 39 反例 + 9 条闸自跑）| `cd frontend && ./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts` | 同上 |
+| 假壳**真跑 8 步 / 110 条判据**（28 张截图全 `fakeshell-*`）| `cd frontend && unset ELECTRON_RUN_AS_NODE; WALKTHROUGH_SCRATCH=<scratch>/p99/fs-final node scripts/run-walkthrough-fakeshell.mjs` | 同上 |
+| **出处那条闸：2 批 / 43 份；依赖逐份核 138 次；整批豁免 6 批 / 只豁免第二行 1 批；例 / 反例 37 条；对不上 0** | `cd frontend && ./node_modules/.bin/tsx scripts/check-walkthrough-provenance.mts` | 同上 |
+| 跨批 diff 闸 **6 对 / 282 行差异 / 282 行归类**；例反例 9 条 | `cd frontend && ./node_modules/.bin/tsx scripts/check-walkthrough-diff.mts` | 同上 |
+| 归一化 `--selftest` **44 条**（该洗 20 · 不许洗 12），扫仓库里 **145 份** | `cd frontend && node scripts/walkthrough/normalize-log.mjs --selftest` | 同上 |
+| 走查量具那三条闸：`runnable` **README 点名 50 条 / 步骤脚本 35 份（入口 33）**；`selectors` **41 份量具 / 59 个类名**；`components` **5 份 / 例反例 14** | `cd frontend && ./node_modules/.bin/tsx scripts/check-walkthrough-{runnable,selectors}.mts` / `check-components-gate.mts` | 同上 |
+| `floor_ruler` **看着 11 份 / 登记 121 条（5 · 116）/ 例反例 12 / 共核 133 / 落后 0 / 对不上 0** | `cd backend && PYTHONPATH=. ./.venv/bin/python scripts/floor_ruler.py` | `4cd2521` |
+| 七把尺 `765` / `765 + 窗口` / 圆点 `3 段 · 判出 2 · 落槽 2` / 泛尺三档（泛 6 · 不泛 6 · 判不了 2）/ `en-gate` / `kb-search` / `979 张卡 · 133/62/29/33` | `cd backend && KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/<尺>.py` | `4cd2521` |
+| 历史修复回归 **63 条 / 0 条找不到**（先喂三个该红的反例，三次 EXIT=1）| `node <scratch>/p99/regress.mjs` | 同上 |
+| 砍刀 **12 真 + 2 对照**；锚点不唯一 0 条；写回 5 份逐字节相同 | `python3 <scratch>/p99/cut.py anchors` / `zsh <scratch>/p99/cuts.sh` | 同上 |
+
+真库指纹**开工 = 收工**：**482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44 / `llm_usage` 最大 id 5738**（**真模型 0 次调用 / 0 token**，全程假模型 `--mode ok`）；
+codebook **源和目标各核 11,429,185 / `403a1183`**；
+⑧ 的夹具走 `journey_fixture --variant synthetic`（**没跑 `--variant full`**）；
+`~/Library/Application Support/MEMOKET NOTE` **不存在，一次都没碰**；`postnote` **一条都没发**。
+
+### 收尾命令（**每一条都写明在哪个目录、哪个环境跑**）
+
+```bash
+# ── ⓪ 语料摆**两处**（P89 §0 那一跤）
+#   <worktree>/backend/data/notes.sqlite3  ← 主仓那份**只读拷一份**（gitignored，**别 chmod 444**）
+#   <scratch>/p99data                      ← 主仓 backend/data **整棵拷**（`KITE_DATA_DIR` 指它）
+#   ⚠️ 拷之前先 `ls -1a <scratch>/p99data`：在的话 `cp -R` 会套娃成 p99data/data。
+#      拷完 `diff <(ls -1a 源) <(ls -1a 目标)` —— 这一批实得 **39 条 / 0 差异**。
+#   <worktree>/{backend/.venv, frontend/node_modules, desktop/node_modules} ← **软链**到主仓
+# ── ① 后端（cwd = <worktree>/backend）
+PYTHONPATH=. KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python -m pytest -q     # 3379 passed / 0 skipped
+# ── ② 七把尺 + floor_ruler（cwd = <worktree>/backend，**前七把要语料，最后一把不读**）
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/recall_ruler.py          # 765
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/recall_ruler.py --window
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/margin_dot_ruler.py
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/topic_spread_ruler.py
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/en_gate_ruler.py
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/kb_search_ruler.py
+KITE_DATA_DIR=<scratch>/p99data ./.venv/bin/python scripts/card_origin_ruler.py
+PYTHONPATH=. ./.venv/bin/python scripts/floor_ruler.py                           # 登记 121 条 / 共核 133
+# ── ③ 前端（cwd = <worktree>/frontend，node_modules 是软链）
+npm test                                                                          # 101 文件 / 931 条
+# ── ④ 这一批碰到的几条闸单跑（**走 node_modules/.bin，别走 npx**）
+./node_modules/.bin/tsx scripts/check-walkthrough-provenance.mts      # 2 批 / 43 份 / 依赖 138 次 / 例反例 37
+./node_modules/.bin/tsx scripts/check-walkthrough-diff.mts            # 6 对 / 282 行 / 282 归类
+node scripts/walkthrough/normalize-log.mjs --selftest                 # 44 条 / 145 份
+./node_modules/.bin/tsx scripts/check-walkthrough-runnable.mts        # 步骤脚本 35 份（入口 33）
+./node_modules/.bin/tsx scripts/check-walkthrough-selectors.mts
+./node_modules/.bin/tsx scripts/check-components-gate.mts
+./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts       # 静态：8 步 / 60+39+9 = 108
+# ── ⑤ 假壳那条闸**真跑一趟**（cwd = <worktree>/frontend；要本机 Electron + venv + frontend/dist）
+unset ELECTRON_RUN_AS_NODE
+WALKTHROUGH_SCRATCH=<scratch>/p99/fs-final node scripts/run-walkthrough-fakeshell.mjs   # 8 步 / 110 条
+# ── ⑥ 打壳（**打的是 <worktree>/desktop**）。⚠️ **分四步跑，别一条 `npm run dist`**
+cd <worktree>/frontend && npm run build                               # → frontend/dist（179 个 / c6c813e3e0ccb60d）
+cd <worktree>/backend  && ./.venv/bin/pyinstaller backend.spec --noconfirm --clean
+cd <worktree>/desktop  && npm run build && ./node_modules/.bin/electron-builder
+codesign --force --deep --sign - "out/mac-arm64/MEMOKET NOTE.app"
+# ── ⑦ 壳里几个可执行件核几个（cwd = <worktree>；后端那个**不许用 `strings`**）
+#      **先喂一个不存在的符号，该 EXIT=1**，再喂真的
+backend/.venv/bin/python backend/scripts/check_shipped_source.py "<app>/…/memoket-note-backend" \
+  app.database.store no_such_symbol_p99          # 该 EXIT=1
+backend/.venv/bin/python backend/scripts/check_shipped_source.py "<app>/…/memoket-note-backend" \
+  app.database.kb.search display_terms is_merged_word
+# ── ⑧ 造 udd（cwd = <worktree>/backend）。⚠️ 起壳前四道：identity / codebook 字节+sha8 /
+#      钥匙**按值**扫全库 / 四列地址 **+ `local_model` + `vision_model`**（走 walkthrough_db.py，别现写）
+./.venv/bin/python <scratch>/p99/setup.py 19370
+./.venv/bin/python scripts/journey_fixture.py <scratch>/p99/walk/old/udd --variant synthetic
+#      ⚠️ **重跑老用户那一趟之前，整棵 udd 删掉重建**：`setup.py` 不清 Chromium 的 localStorage，
+#         上一趟开着的标签页会留着（这一批实拍：900px 溢出从 0 变成 9，**看着像回退**）
+# ── ⑨ 走查（cwd = <worktree>；**五次 go.sh + 一次 crash.sh**）
+#      ⚠️ 顺序要紧：**第 ⑩ 步排在 rounds95 之前**；`<llm-port>` 必须跟 udd 库里存的对得上
+#      ⚠️ **journey64 那两个日期是相对「今天」的**，跨过 0 点就得往后挪一天
+unset ELECTRON_RUN_AS_NODE
+env WALKTHROUGH_APP="<app>" WALKTHROUGH_UDD=<…/udd> WALKTHROUGH_SHOT_DIR=<…/shots> \
+    WALKTHROUGH_LOG_DIR=<…/log-*> WALKTHROUGH_SHOT_PREFIX=p99 LLM_MODE=ok [LLM_DELAY_MS=7000] \
+    zsh frontend/scripts/walkthrough/go.sh <cdp-port> 19370 <steps 清单>
+zsh <scratch>/p99/crash.sh     # B ③：起壳 → crash-mark → **kill -9** → 再起壳 → crash-read
+# ── ⑩ 走查日志洗干净存进仓库（cwd = <worktree>/frontend）
+node scripts/walkthrough/normalize-log.mjs --today 2026-09-22 \
+  --out ../docs/walkthrough-logs/p99 <scratch>/p99/walk/log-{new,old,old2,rounds,toast,away,crash}/*.txt
+# ── ⑪ 跨批逐行 diff + 归类表（cwd = <worktree>）
+diff -r docs/walkthrough-logs/p97 docs/walkthrough-logs/p99     # 37 行
+node <scratch>/p99/mkledger.mjs   # → docs/walkthrough-logs/p99/DIFF-FROM-p97.tsv（**逐字那一列从 diff 自己身上抄**）
+# ── ⑫ 砍刀实拍（cwd = <worktree>）。⚠️ **先 anchors 断言唯一**，再逐刀砍
+python3 <scratch>/p99/cut.py anchors        # 锚点不唯一的：0 条
+zsh <scratch>/p99/cuts.sh                   # 12 真 + 2 对照；末尾 `shasum -c` 该全 OK
+# ── ⑬ 真库指纹（cwd = **主仓** /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE，**只读**）
+./backend/.venv/bin/python <scratch>/p99/fp99.py     # 走 db_guard.readonly()，**不以可写方式开真库**
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm -rf` 只出现在两处
+（「整棵删掉重建老用户那份 udd」和「清掉砍刀那份过期备份」），第 776 轮那一课。
+⚠️ **入库逐路径 `git add`**：worktree 里 `backend/.venv` / `frontend/node_modules` /
+`desktop/node_modules` 是**软链**，`.gitignore` 里的斜杠只挡目录，**挡不住软链**。
+
+P99 留给下一批：
+① **轮次卡那条「读回来的路」还没做**（只读 API + 前端重建骨架）——判据和数都在 §B，**零迁移**；
+② **`guarded` 那一刀还没切**（`writeRounds` / `patchRound` 不该被 `currentRef` 拦）——判据现成：切走 1 / 不切走 2；
+③ **`relImports` 不剔注释那一刀只红在抛异常上**（砍刀 ⑫）——改它要连整趟走查一起重跑，**跟别的量具改动攒一批再做**；
+④ **老那六批 + `p97` 第二行**永远没有出处，**不硬追认**；**动态 `import(变量)` 够不到**；
+⑤ **「走查随机」14 行全来自那个毫秒级探针**——右栏那一族仍然逐格相同，**还是不能读成「治好了」**；
+⑥ 跨批 diff 那条闸仍**只追认最新一批**，`p85` / `p87` 还是没有归类表；
+⑦ P89 留的 ③④⑤⑥⑦ 一条都没碰。

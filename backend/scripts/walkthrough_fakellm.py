@@ -69,6 +69,8 @@ def _ensure_backend_on_path() -> None:
         sys.path.insert(0, str(_BACKEND_ROOT))
 
 MODE = "ok"
+#: 每一发回之前先睡多少毫秒（P99 B）。**默认 0**——别的批次一个字都不受影响。
+DELAY_MS = 0
 CALLS = []
 ROUND = {"n": 0}
 TOOLN = {"n": 0}   # P66：检索计划那一发发到第几个查询词了
@@ -449,6 +451,13 @@ class H(BaseHTTPRequestHandler):
             time.sleep(600)
             return
 
+        # **每一发慢一点**（P99 B 加）。`--mode ok` 那一趟整个跑只要一两秒，
+        # 「跑着切走再切回」在那种速度上**根本演不出来**——不是产品没这个毛病，
+        # 是量具快得够不着（P97 那条「量具最早能到场就已经晚了」的同一族）。
+        # **默认 0**：别的批次一个字都不受影响。
+        if DELAY_MS:
+            time.sleep(DELAY_MS / 1000)
+
         # ── P66：带 `tools` 的那一发 = 检索计划（`agent_loop.gather_context`）──
         #
         # **一轮只发一次**：gather 的循环里第二次问模型时，`messages` 里已经带着
@@ -541,7 +550,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("port", type=int)
     ap.add_argument("--mode", default="ok", choices=("ok", "hang", "shapes", "adv", "floor", "ship"))
+    # **每一发慢多少毫秒**（P99 B）。0 = 一个字不变（别的批次照旧）。
+    ap.add_argument("--delay-ms", type=int, default=0)
     a = ap.parse_args()
     MODE = a.mode
-    print(f"fake llm on 127.0.0.1:{a.port} mode={a.mode}", flush=True)
+    DELAY_MS = a.delay_ms
+    print(f"fake llm on 127.0.0.1:{a.port} mode={a.mode} delay_ms={a.delay_ms}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", a.port), H).serve_forever()
