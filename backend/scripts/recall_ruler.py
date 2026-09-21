@@ -189,6 +189,40 @@ EXPECT_CF_BIG_BOTH_ADD = 577         # 进 577 / 掉 80 —— 这个 7:1 的不
 EXPECT_CF_BIG_BOTH_DROP = 80         # 它不是「多召回一点」，是**把空屏灌满**（93/134 条变差）
 EXPECT_CF_BIG_BOTH_LIBS = (("terrence", 134), ("terrence-rewrite", 41))
 
+# ── **那两道闸今天各自还挡着什么**（P90，`--cf-gates`）─────────────────────────
+#
+# 左边一律是**今天的 HEAD**，右边三档各只动一处：
+#
+#   SIZE = 拆**库大小闸**，主语面照问
+#   TAG  = 同 SIZE，**再**把 `SPEAKER_TAG_MAX` 那道闸摘掉（强行 `usable=True`）
+#   EN   = 拆**汉字闸**，别的一个字不动
+#
+# **SIZE 那个 0 是这一支的正题**：库大小闸今天在这份语料上**一条产出都不改**——
+# 因为唯一够得着它的大库是 `terrence`，而那个库的 `who` 93.8% 是说话人标签，
+# `WhoFace` 在那儿 `usable=False` → `generic()` 回 `None` → `None is not False` 为真
+# → **判「是 common」= 不捞回来**。也就是说 P88 那条主语面轴**不是在大库上什么都不做，
+# 是把话题面那一问整个按住了**。
+#
+# ⚠️ **但这不等于那道闸可以拆**，`TAG` 那一档就是来证明这件事的：把说话人标签那道闸
+# 一摘，同样的语料上立刻 **24 条变了、全在 `terrence`、i=607 从 1 条打成 0 条**。
+# 所以**大库上的安全来自「这个库的 `who` 恰好装的不是主语」这个偶然，不是来自这条轴判得准**
+# —— 实测 `用户`(.460) / `需要`(.473) / `产品`(.559) / `手机`(.534) 在主语面上全都远低于
+# `WHO_GENERIC`(0.85)，真让它开口它会把这四个一起捞回来。
+# **两道闸今天在这份语料上是冗余的，但它们挡的不是同一种库**，所以两道都留着。
+#
+# `EN` 那一档是 P88 ③ 留的「拆汉字闸通不通」：6 条逐条读完
+# **变好 0 / 中性 2 / 变差 4**（标注 `p90-engate-6`）。判：**不通**。
+EXPECT_CF_GATES_SIZE_CHANGED = 0     # 拆库大小闸 · 主语面照问：**一条都不变**
+EXPECT_CF_GATES_TAG_CHANGED = 24     # 再摘掉说话人标签那道闸：24 条，全在大库
+EXPECT_CF_GATES_TAG_LIBS = (("terrence", 24),)
+EXPECT_CF_GATES_TAG_607 = (1, 0)     # i=607 的召回条数：HEAD → 摘闸后（**1 → 0，同 i=293 那条链**）
+EXPECT_CF_GATES_EN_CHANGED = 6       # 拆汉字闸：top-8 变了的查询数
+EXPECT_CF_GATES_EN_ADD = 25          # 它比 HEAD 多进来的召回对
+EXPECT_CF_GATES_EN_DROP = 5          # 它比 HEAD 少掉的召回对
+EXPECT_CF_GATES_EN_EMPTY = 0         # 「有→空」的条数（主语面把 `app`/`agent` 挡住了，没打空屏）
+EXPECT_CF_GATES_EN_LIBS = (("terrence-rewrite", 6),)
+EXPECT_CF_GATES_EN_IDX = (295, 296, 316, 318, 319, 320)   # `p90-engate-6` 那 6 条就是它们
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -769,6 +803,94 @@ def cf_bigcorpus(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     return out
 
 
+def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**库大小闸和汉字闸今天各自还挡着什么**（P90）。
+
+    左边一律是今天的 HEAD，右边三档各只动一处（理由和三个判逐字写在
+    `EXPECT_CF_GATES_*` 上面那段）。先跑**接线自检**：
+    `_axis_variant(True, True, True)` 必须跟产品那一份逐条相同，对不上下面所有数作废。
+
+    ⚠️ **这一支必须自己清 `UserMemory._cache` 里的 `#whoface` / `#topicface`**。
+    那个缓存是**类级**的，而 `TAG` 那一档换的是 `WhoFace.__init__` 本身——
+    不清缓存的话摘了闸的那一份**根本不会被建出来**，于是「24 条」会静静地量成
+    **「0 条变了」**。这不是假设：这一批第一遍就是这么量出来的，
+    而 0 看上去恰好像个漂亮的结论（「那道闸拆了也没事」），**正好是反的**。
+    所以 `TAG` 那一档还带一条自检：**强行 `usable=True` 的 `WhoFace` 必须真的被建出来过，
+    而且必须有一份是说话人标签过半的**——建不出来就是这一刀没落在被测分支里，当场抛。
+    """
+    from collections import Counter
+
+    from app.database.kb import topic_face as TF
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+
+    def purge() -> None:
+        for k in list(UserMemory._cache):
+            if k.endswith("#whoface") or k.endswith("#topicface"):
+                UserMemory._cache.pop(k, None)
+
+    def run() -> list[list[str]]:
+        out = []
+        for user, q, _m, _o in qs:
+            m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+            facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+            out.append([f.get("id") for f in facts])
+        return out
+
+    orig = UserMemory.common_term
+
+    def swap(fn):
+        UserMemory.common_term = fn
+        mems.clear()
+        purge()
+        try:
+            return run()
+        finally:
+            UserMemory.common_term = orig
+            mems.clear()
+            purge()
+
+    head = swap(orig)
+    mismatch = sum(1 for a, b in zip(head, swap(_axis_variant(True, True, True))) if a != b)
+
+    def diff(cf: list[list[str]]) -> dict:
+        changed = [i for i, (a, b) in enumerate(zip(head, cf)) if a != b]
+        return {"changed": tuple(changed),
+                "add": sum(sum(1 for x in cf[i] if x not in head[i]) for i in changed),
+                "drop": sum(sum(1 for x in head[i] if x not in cf[i]) for i in changed),
+                "empty": sum(1 for i in changed if head[i] and not cf[i]),
+                "libs": tuple(sorted(Counter(qs[i][0] for i in changed).items()))}
+
+    out: dict = {"selfcheck_mismatch": mismatch}
+    out["size"] = diff(swap(_axis_variant(False, True, ask_who=True)))
+    out["en"] = diff(swap(_axis_variant(True, False, ask_who=True)))
+
+    # —— TAG：**只摘 `SPEAKER_TAG_MAX` 那一档**，别的一个字不动 ——
+    real_init = TF.WhoFace.__init__
+    built: list[tuple[int, float]] = []
+
+    def forced(self, facts, units_for=None):
+        real_init(self, facts, units_for)
+        self.usable = self.filled > 0
+        built.append((self.filled, self.speaker_share))
+
+    TF.WhoFace.__init__ = forced
+    try:
+        tag = swap(_axis_variant(False, True, ask_who=True))
+    finally:
+        TF.WhoFace.__init__ = real_init
+    # **反例得真的落在被测分支里**（P89 第 ⑧ 刀那一课）
+    if not built:
+        raise AssertionError("摘了闸的 `WhoFace` 一份都没建出来 —— 这一刀没落在被测分支里，数作废")
+    if not any(s > TF.SPEAKER_TAG_MAX for _n, s in built):
+        raise AssertionError(f"没建出说话人标签过半的那一份（建出来的是 {built}）—— 数作废")
+    out["tag"] = diff(tag)
+    out["tag"]["i607"] = (len(head[607]), len(tag[607]))
+    return out
+
+
 def check(qs: list[tuple[str, str, str, str]]) -> list[str]:
     """量程对不对。返回对不上的那几条（空 = 对得上）。"""
     cur = sum(1 for _u, _q, m, _o in qs if m == "cursor")
@@ -877,6 +999,41 @@ def main(argv: list[str]) -> int:
                 ("both 落在哪几个库", g["both"]["libs"], EXPECT_CF_BIG_BOTH_LIBS)):
             if got != want:
                 bad.append(f"cf-bigcorpus {name}: {got} ≠ {want}")
+    if "--cf-gates" in argv:
+        g = cf_gates(qs)
+        if g["selfcheck_mismatch"]:
+            bad.append(f"cf-gates 接线自检: 复刻的 HEAD 跟产品那一份差了 "
+                       f"{g['selfcheck_mismatch']} 条 —— **下面的数全部作废**")
+        print("  那两道闸今天各自还挡着什么（P90）—— 左边一律是今天的 HEAD：")
+        print(f"    拆库大小闸 · 主语面照问：变了 {len(g['size']['changed'])} 条 / {EXPECT_TOTAL}"
+              "  ⚠️ **0 = 今天这两道闸在这份语料上是冗余的**"
+              "（大库的 `who` 93.8% 是说话人标签 → 主语面回 `None` → 判「是 common」）")
+        print(f"    再摘掉 `SPEAKER_TAG_MAX`：变了 {len(g['tag']['changed'])} 条，"
+              f"落在 {g['tag']['libs']}；**i=607 {g['tag']['i607'][0]} → {g['tag']['i607'][1]} 条**"
+              "  ⚠️ **所以大库上的安全来自「那个库的 `who` 恰好不是主语」，不是来自这条轴判得准**")
+        print(f"    拆汉字闸 · 别的不动：变了 {len(g['en']['changed'])} 条 {g['en']['changed']}，"
+              f"多进 {g['en']['add']} 少掉 {g['en']['drop']}，有→空 {g['en']['empty']}，"
+              f"落在 {g['en']['libs']}")
+        print("    （6 条逐条读完：**变好 0 / 中性 2 / 变差 4** → P90 判「拆汉字闸不通」。"
+              "卡在两格：门槛（`ai` 主语面 .819 < 0.85，被当成「不泛」放进来）"
+              "和轴（主语面在英文串上没有信号，`p90-holdout-en-60` 量过）。"
+              "理由在 `kb/topic_face` 文件头第 ⑧ 格）")
+        for name, got, want in (
+                ("size 变了", len(g["size"]["changed"]), EXPECT_CF_GATES_SIZE_CHANGED),
+                ("tag 变了", len(g["tag"]["changed"]), EXPECT_CF_GATES_TAG_CHANGED),
+                ("tag 落在哪几个库", g["tag"]["libs"], EXPECT_CF_GATES_TAG_LIBS),
+                ("tag i=607", g["tag"]["i607"], EXPECT_CF_GATES_TAG_607),
+                ("en 变了", len(g["en"]["changed"]), EXPECT_CF_GATES_EN_CHANGED),
+                ("en 多进", g["en"]["add"], EXPECT_CF_GATES_EN_ADD),
+                ("en 少掉", g["en"]["drop"], EXPECT_CF_GATES_EN_DROP),
+                ("en 有→空", g["en"]["empty"], EXPECT_CF_GATES_EN_EMPTY),
+                ("en 落在哪几个库", g["en"]["libs"], EXPECT_CF_GATES_EN_LIBS),
+                ("en 是哪几条", g["en"]["changed"], EXPECT_CF_GATES_EN_IDX)):
+            if got != want:
+                bad.append(f"cf-gates {name}: {got} ≠ {want}")
+        if 607 not in g["tag"]["changed"]:
+            bad.append("cf-gates: i=607 不在摘闸后变了的那批里 —— "
+                       "**P90 ① 那条链的落点变了**，整节重读")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()
