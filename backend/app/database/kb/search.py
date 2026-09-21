@@ -616,6 +616,41 @@ def squeeze(query: str) -> str:
     return _WS.sub("", (query or "").lower())
 
 
+def squeezed_gaps(query: str) -> set[int]:
+    """`squeeze(query)` 里**前面刚被挤掉过空白**的那些下标（P79 ②）。
+
+    **为什么要留这一份。** `squeeze` 把空白删掉之后，「用户自己打的那个空格」就没了；
+    可那个空格是**用户亲手划的词边界**，比任何判据都硬。`display_terms` 合并命中窗口时
+    「相邻就合」（P71 ①，为的是把 `众筹`+`筹页`+`页面` 这种切碎的 n-gram 重新接成
+    `众筹页面`），而空白被挤掉之后两个**本来隔着空格**的词在 squeezed 串里正好相邻——
+    于是它们也被接成了一个词。
+
+    实拍（P79 ② 那把新尺，知识库搜索框）：搜 `广州 深圳` → 「命中词：**广州深圳**」；
+    `上海 深圳` → `上海深圳`；`亚马逊 苹果` → `亚马逊苹果`。
+    **摆出来的是一个库里没有、用户也没打过的词。**
+    离线那 765 条上也有一条同一个形状（i=658 `# 9 月 14 日 周一\\n你好` → 「周一你好」）。
+
+    **标点不用管**：`squeeze` 只挤空白（`_WS`），逗号句号原样留着，
+    `众筹，页面` 在 squeezed 串里本来就不相邻。**丢掉的边界只有空白这一种，补的也只有这一种。**
+
+    只给「相邻就合」那一条用。**真重叠（`a < 上一段的尾`）照合**：一个命中串
+    本来就可能跨过被挤掉的空格（用户打 `华 为`，`华为` 这一串在 squeezed 里横跨它），
+    那时候两段是同一个词的两半，不是两个词。**判据宁可窄。**
+    """
+    out: set[int] = set()
+    n = 0
+    pending = False
+    for ch in (query or "").lower():
+        if _WS.match(ch):
+            pending = True
+            continue
+        if pending:
+            out.add(n)
+            pending = False
+        n += 1
+    return out
+
+
 def _token_spans(text: str, segment) -> set[tuple[int, int]]:
     """`text` 切完词之后每个词各自占的那一段 `[起, 止)`。"""
     out: set[tuple[int, int]] = set()
@@ -989,9 +1024,13 @@ def display_terms(terms: list[str], query: str, *, segment=None) -> list[str]:
             spans.append((i, i + len(t)))
             start = i + 1
     spans.sort()
+    # **合并不跨过用户自己打的空白**（P79 ②）：`squeeze` 把空白删掉之后，隔着一个空格的
+    # 两个词在 squeezed 串里正好相邻，于是「相邻就合」把它们接成一个词——搜 `广州 深圳`
+    # 摆出「命中词：广州深圳」。理由整段在 `squeezed_gaps` 上。**只挡相邻那一档，真重叠照合。**
+    gaps = squeezed_gaps(query)
     merged: list[list[int]] = []
     for a, b in spans:
-        if merged and a <= merged[-1][1]:
+        if merged and a <= merged[-1][1] and not (a == merged[-1][1] and a in gaps):
             merged[-1][1] = max(merged[-1][1], b)
         else:
             merged.append([a, b])
