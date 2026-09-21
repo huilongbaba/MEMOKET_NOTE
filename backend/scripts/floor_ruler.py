@@ -68,6 +68,7 @@ WATCHED: tuple[str, ...] = (
     "backend/scripts/card_origin_ruler.py",
     "backend/scripts/margin_dot_ruler.py",
     "backend/scripts/topic_spread_ruler.py",
+    "backend/scripts/code_pair_ruler.py",
     "backend/scripts/journey_fixture.py",
     "frontend/scripts/check-walkthrough-fakeshell.mts",
     "frontend/scripts/check-walkthrough-selectors.mts",
@@ -84,10 +85,10 @@ WATCHED_NAME = re.compile(r"^(MIN_[A-Z0-9_]*|MAX_[A-Z0-9_]*|EXPECT[A-Z0-9_]*|SHO
 # **一条在每次正当改动上都会红的闸，迟早会被人不假思索地改成不红的那个数。**
 # 所以这两个数按「只准往上」记在这儿，各批的测试去问它，别各自钉一份。
 # 它挡得住的是「有人把登记删了」；挡不住「加了一条没登记」——那是 `check()` 的完整性闸的活。
-REGISTRY_SIZE_FLOOR = 140  # 第 820 轮 P100 在自己 worktree 里实测（+15 条：留出集那一组读数）；819 轮是 125、818 轮是 121、817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
+REGISTRY_SIZE_FLOOR = 148  # 第 821 轮 P102 在自己 worktree 里实测（+8 条：码表对那把尺）；820 轮是 140（+15 条：留出集那一组读数）、819 轮是 125、818 轮是 121、817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
 # ⚠️ 合并时记得抬到**合并后**那个数：两批各自在自己 worktree 里抬到 84 / 79，
 # 合并后真值是 85——取任一边都会让「删掉一条登记」不红（这个数只准往上，抬是绿的）。
-CHECKED_COUNT_FLOOR = 152  # 同上；共核 = 登记表 + 例反例；819 轮是 137、818 轮是 133、817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
+CHECKED_COUNT_FLOOR = 160  # 同上；共核 = 登记表 + 例反例；820 轮是 152、819 轮是 137、818 轮是 133、817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
 
 
 FLOOR = "floor"      # 只准往上调
@@ -745,6 +746,56 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         "⚠️ 钉的是**归一之后**的字节数：真字节数会随「造在哪个目录」变（`segments.json` 里 7 个绝对路径）。"
         "P85 连栽两次才定下来——先钉 5066 换个目录红成 5073，退到「折成 KB」pytest 里又红成 4 KB。"
         "**「粗一点」不等于「跟路径无关」**"),
+
+    # —— P102：「同一个东西被抽成了两个码」这件事有多大（收 P100 ④）——
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_TABLES"): (
+        PINNED, {"fresh678": (17, 11, 10), "fresh678b": (15, 10, 9), "fresh678c": (14, 9, 9),
+                 "shot-demo": (45, 30, 17), "terrence": (20417, 3299, 129),
+                 "terrence-rewrite": (2922, 1237, 200)},
+        "**两张码表各多大**（事实数 / `obj` 码 / `topics` 码），六个库逐个。"
+        "它是下面每一个比率的分母 —— 一动，P102 那一整节的读数全部失效，"
+        "第一步是重跑 `code_pair_ruler.py` 而不是改这一行"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_PAIRS"): (
+        PINNED, {("fresh678c", "topics"): (1, 1),
+                 ("shot-demo", "obj"): (1, 5), ("shot-demo", "topics"): (5, 0),
+                 ("terrence", "obj"): (3687, 4017), ("terrence", "topics"): (1813, 140),
+                 ("terrence-rewrite", "obj"): (1502, 1002),
+                 ("terrence-rewrite", "topics"): (603, 24)},
+        "两条口径各捞到多少对 `(R1\\R2, R2)`。**这两条口径都没有门槛可调**，"
+        "所以这个数一动只可能是码表变了（不可能是有人调了旋钮）——"
+        "这正是 P102 挑「字面包含」不挑「共现 / 分布」的理由"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_READ"): (
+        PINNED, {("obj", "R2"): (105, 14, 41, 50, 0), ("topics", "R2"): (164, 24, 135, 5, 0),
+                 ("obj", "R1only"): (30, 0, 2, 28, 0), ("topics", "R1only"): (30, 0, 1, 29, 0)},
+        "**330 对盲标的读数**（`p102-codepairs-330`）：`(n, S 同义, H 上下位, N 无关, ? 说不准)`。"
+        "`S` 率 14.1% / `S+H` 率 79.6% 这两句话就是这张表。⚠️ 它是从标注文件**现数**出来的，"
+        "所以这一条红 = **有人动了 `memory_sample.jsonl` 里那 330 行**，去读 diff，别改这儿"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_NAMED"): (
+        PINNED, 1, "台账点过名、**摘出准确率分母**的对数（`work` ↔ `work_marketing`）。"
+                   "标注的人认得出它，留在分母里等于拿答案当考题。这个数一动，"
+                   "上面那张读数表的分母就跟着动"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_PARENTS"): (
+        PINNED, {"terrence": (123, 123, 84), "terrence-rewrite": (194, 194, 13),
+                 "shot-demo": (11, 11, 0)},
+        "**层级是库里本来就记着的**（`<topic parents=>`）：(有父的码, 库内父子边, 这些边里 R2 也捞到的)。"
+        "P102 判「上下位那一半不用补数据，`parents` 现成」靠的就是这一行；"
+        "而那棵树**只有两层**（6 个根），所以 `work_product` 和 `work_product_design` 是兄弟不是父子"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_MERGE_READ"): (
+        PINNED, (18, 1, 17),
+        "五支反事实新增的屏的**并集逐条读完**：18 屏 · 真 1 · 假 17（`p102-merge-read-18`）。"
+        "**P102 判「不接」的两条依据之一**（另一条是 `EXPECT_IMPACT` 里 `S` 那个 0）"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_IMPACT"): (
+        PINNED, {"HEAD": (17, 0, 0), "S": (17, 0, 0), "R2": (20, 3, 0),
+                 "R2X": (21, 4, 0), "SH": (29, 12, 0), "PAR": (31, 14, 0)},
+        "765 屏上五支反事实 `(判是, 新增, 掉)`。**`S` 那一行的 `(17, 0, 0)` 是 P102 判「不接」的正文**："
+        "只合人读过判同义的那些对，**产出跟 HEAD 逐格一模一样**。"
+        "⚠️ 只有 `--impact` 才核（跑六趟 765 屏召回，贵）"),
+    ("backend/scripts/code_pair_ruler.py", "EXPECT_FIRE"): (
+        PINNED, (2463, 4, 2),
+        "**`S` 那个 0 分得开两种**：(量过的事实对, 翻成「是」的对, 团变大的屏)。"
+        "2463 对里翻了 4 对、2 屏的团 1→2，而 `FAMILY_MIN = 3` —— "
+        "所以准确说法是「**开了口、顶不过门**」，不是「合表没开口」。"
+        "⚠️ `FAMILY_MIN` 一动这三个数就得重读"),
 
     ("backend/scripts/margin_dot_ruler.py", "EXPECT"): (
         PINNED, {"dots": {"segments": 166, "judged": 137, "drawn": 33},

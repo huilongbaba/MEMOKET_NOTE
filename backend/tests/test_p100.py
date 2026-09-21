@@ -298,8 +298,8 @@ def test_第四条d_两个floor抬到了本worktree的真值():
     """
     bad, checked, behind = FR.check()
     assert bad == [] and behind == [], (bad, behind)
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 140   # P98 那一批是 125
-    assert FR.CHECKED_COUNT_FLOOR == checked == 152            # P98 那一批是 137
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 148   # P100 那一批是 140、P98 是 125
+    assert FR.CHECKED_COUNT_FLOOR == checked == 160            # P100 那一批是 152、P98 是 137
 
 
 def test_第四条e_产品逻辑一个字节没改():

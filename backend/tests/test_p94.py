@@ -590,5 +590,5 @@ def test_第四条c_新钉的数进了floor_ruler():
 def test_第四条d_两个floor抬到了本worktree的真值():
     """**合并时那两个 floor 要抬到真值**——这一批在自己 worktree 里加了 10 条登记，
     就得同时把它俩抬上去（`test_p90::第四条b` 钉的是「== 真值」这件事本身）。"""
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 140   # P98 那一批是 125
-    assert FR.CHECKED_COUNT_FLOOR == 152                            # P98 那一批是 137
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 148   # P100 那一批是 140、P98 是 125
+    assert FR.CHECKED_COUNT_FLOOR == 160                            # P100 那一批是 152、P98 是 137

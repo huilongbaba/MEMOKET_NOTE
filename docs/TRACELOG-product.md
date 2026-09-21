@@ -27594,3 +27594,349 @@ zsh <scratch>/p101/cuts.sh                                  # 14 真 + 2 对照�
 # ── ⑫ 真库指纹（**主仓，只读**；开工 / 收尾各一次，必须逐字相同）
 ./backend/.venv/bin/python <scratch>/p101/fp101.py
 ```
+
+## P102 · 第 821 轮：**「同一个东西被抽成了两个码」量清了**（两张码表 + 330 对盲标 + 五支反事实）+ **判「不接」，理由是效果是 0 不是代价**（2026-09-22）
+
+> 出身：worktree `.claude/worktrees/agent-ac5efd03739d08920`，HEAD `8472afd`（`git log -1` 钉过）。
+> 真库只读做指纹；实验一律 `KITE_DATA_DIR=<scratch>/p102data`（= 主仓 `backend/data` **整棵拷**，
+> 目标**开工时不存在**，`ls -1a` 两边 **0 差异**，没套娃；`recall_ruler` 自报 `users 6`）；
+> worktree 的 `backend/data/notes.sqlite3` 是主仓那份的只读拷贝
+> （`sha256` 逐字相同，**没 `chmod 444`**；`backend/data/` 开工时不存在，`mkdir` 出来的）。
+> **这一批没碰 `frontend/` 和 `docs/walkthrough-logs/`**（另有 agent 在走查那一侧）。
+>
+> **基线四个数，每个带出处（P95 那个格式）**：
+>
+> * 后端 **3442 passed / 0 skipped** ← `cd backend && KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python -m pytest -q -p no:cacheprovider` @ `8472afd`
+> * 前端 **102 文件 / 968 条** ← `cd frontend && npm test` @ `8472afd`
+> * `floor_ruler` **看着 11 份 / 登记 140 条（只准往上 5 · 钉死 135）/ 例反例 12 条 / 共核 152 / 落后 0 / 对不上 0** ← `cd backend && ./.venv/bin/python scripts/floor_ruler.py` @ `8472afd`
+> * 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 / `llm_usage` 最大 id 5738 / `harness_runs` 120 / `harness_rounds` 489** ← `sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" "select …"` @ `8472afd`
+>
+> 四个都跟任务书逐格相同。**没抄上一批的数，四条都是自己跑出来的。**
+
+> **这一批产品逻辑一个字节没改**（`test_p102::第六条` 扫 `app/` 钉着这一条）。
+> 动的是：**一把新尺 `scripts/code_pair_ruler.py`（第九把）**、
+> **八条新登记 + 两个 floor 抬到真值（148 / 160）**、
+> **一份新闸 `test_p102`（25 条）**、**两组人读标注（350 行）**、
+> `test_p94` / `test_p96` / `test_p98` / `test_p100` 里**各两条硬写那两个 floor 的断言**
+> （**并排改，历史读数一个没抹**）。
+
+---
+
+### ① 量法：**两条口径，都没有门槛可调**（任务书点名「量法你定 + 写理由」）
+
+两张码表：**`obj` 码表** = 全库 `<fact obj="…">` 按空格切出来的不同串
+（口径逐字抄自抽取那一头 `memoket_kite/core/algebra.py` 的 `(fe.get("obj") or "").split()`，
+`test_p102::第六条c` 读真源文件钉着）；
+**`topics` 码表** = `<vocab><topic code="…">`
+（六个库逐个核过 `topics=` 属性里的码**全是 vocab 的子集**，`attr - vocab` 全是 0）。
+
+| 口径 | 怎么判 | 干什么用 |
+|---|---|---|
+| **R2 字面包含** | `lower()` + 去掉非字母数字非汉字之后，一个码的字面是另一个的**真子串** | **估计口径** |
+| **R1 共享词元** | 按非字母数字切；ASCII 段就是它自己，含汉字的段取**全部 2-gram** | **漏检探针**（严格更宽） |
+
+**为什么挑「字面」，理由有三条，两条是从台账里读出来的**：
+
+1. **共现那条路 P98 ② 量过判死，而且方向是反的**——
+   同义码正因为是同义，抽取时二选一，所以**反而不共现**（Jaccard 0.025 / 613 对里排 201）。
+2. **`obj` 分布 cos（P98 ③）活着，但它停在「cut 0.77 是拿目标那一对反推的」**
+   （那一对自己 0.7777，cut 取 0.778 就够不着）。**任务书点名这一格不许再走。**
+3. **字面包含没有 cut 可调**，所以它出来的数**不可能是反推出来的**。
+   `test_p102::第一条a` 用 `ast` 扫 `tokens` / `flat` 两个函数体，
+   **一个数字常量都不许有**（只剩切 2-gram 的 0/1/2，那是口径本身不是门槛）。
+
+⚠️ **诚实登记（`RULE.md` 第六节，写在读第一对之前）**：
+**规则的「选」是有先验的**——我知道任务书点名那两对都满足 R2。
+所以 **R2 的准确率不许在它们身上读**（点名那一对摘出分母，`EXPECT_NAMED = 1`），
+而且 **R2 的召回从一开始就不许声称**。
+
+⚠️ **CJK 是这条轴上的真问题**：`terrence` 的 3299 个 `obj` 码里 **2190 个含汉字、只有 227 个带 `_`**。
+所以按 `_` 切词元的写法**对三分之二的 `obj` 码是瞎的**——
+`flat` 那一版（去掉分隔符之后比真子串）中英文同一条，这是它被选中的第四条理由。
+
+### ② `RULE.md` 的顺序（P77/P90/P92/P100 那一条）
+
+**写 `RULE.md`（`<scratch>/p102/RULE.md`，时间戳 `2026-09-22 03:01:29`）
+→ 量 population（只打计数，三个探针一个码的内容都没打）
+→ 造盲标单（每行只有两个码的字面 + 各自事实数 + 各自一条示例正文，
+**没有库名 / 轴名 / 口径名 / 分数 / 原始顺序**，按种子 102 洗过）
+→ 填 `labels.tsv`（只有 `行号 → S/H/N/?`）→ 标完才揭晓。**单子上一个分数都没有。**
+
+⚠️ **口径改动一处，并排追加在 `RULE.md` 底下，原文一个字没抹**：
+「范畴后缀算不算 `S`」标到一半落成一条可操作细则
+（多出来的词指向**另一类所指** ⇒ `H`/`N`；只是同一个所指的**角色或范畴前缀** ⇒ `S`）。
+**这一条是看见 330 行之后定的，不是盲的**——所以
+**`S+H` 那个数比 `S` 那个数硬**（它只挪 `S`/`H` 的界，不挪 `S+H` 跟 `N` 的界）。
+
+⚠️ **已知盲性缺口照实记**：`topics` 码全是 ASCII 蛇形、`obj` 码三分之二是中文，
+**轴认得出来**。⇒ 盲的是「哪条口径捞的 / 打了多少分」，**不是「哪条轴」**。
+
+### ③ **两张码表各量出多少对（按库分）+ 准确率**
+
+← `cd backend && KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/code_pair_ruler.py` @ `8472afd` + 本批新尺
+
+| 库 · 轴 | 码 | **R2 对** | R1\\R2 | 读法 | `S` | `H` | `N` | **`S` 率** | **`S+H` 率** |
+|---|---:|---:|---:|---|---:|---:|---:|---:|---:|
+| `terrence` · `topics` | 129 | **140** | 1813 | **普查 139**（点名 1 对摘出） | 22 | 114 | 3 | **15.8%** | **97.8%** |
+| `terrence` · `obj` | 3299 | **4017** | 3687 | 随机 60（种子 102） | 4 | 22 | 34 | 6.7% | 43.3% |
+| `terrence-rewrite` · `topics` | 200 | **24** | 603 | **普查 24** | 2 | 20 | 2 | 8.3% | 91.7% |
+| `terrence-rewrite` · `obj` | 1237 | **1002** | 1502 | 随机 40 | 8 | 17 | 15 | **20.0%** | 62.5% |
+| `shot-demo` · `obj` | 30 | **5** | 1 | **普查 5** | 2 | 2 | 1 | 40.0% | 80.0% |
+| `shot-demo` · `topics` | 17 | **0** | 5 | — | — | — | — | — | — |
+| `fresh678c` · `topics` | 9 | **1** | 1 | **普查 1** | 0 | 1 | 0 | 0% | 100% |
+| `fresh678` / `fresh678b` 两条轴 | | **0** | 0 | — | — | — | — | — | — |
+| **R2 合计** | | | | **269 行** | **38** | **176** | **55** | **14.1%** | **79.6%** |
+
+**折成「这个库里大概有多少对」**（⚠️ 普查那几档不是估计，是真值）：
+
+* **`topics` 轴**：`terrence` **`S` 22 对（真值）· `S+H` 136 对（真值）**；
+  `terrence-rewrite` **`S` 2 对 · `S+H` 22 对（都是真值）**。
+* **`obj` 轴**（抽样，区间很宽）：`terrence` 4017 对 × 6.7% ≈ **`S` 270 对**、× 43.3% ≈ `S+H` 1740 对；
+  `terrence-rewrite` 1002 对 × 20.0% ≈ **`S` 200 对**、× 62.5% ≈ `S+H` 630 对。
+
+**漏检探针（R1\\R2，两条轴各 30）：`S` 一对都没读到**（0/30 · 0/30）。
+⚠️ **但 0/30 不是 0%**：95% 上界还有 ~9.5%，折到 `terrence·topics` 那 1813 对上
+**最多还有约 170 对没被看见**。而且 **R2 的盲区是实拍过的**——
+`ai_memory_os` ↔ `memory_powered_intelligence`（P98 ③ 点名那一对）
+在 `terrence-rewrite` 上**落在 R1\\R2，R2 一次都捞不到它**
+（`test_p102::第一条c` 钉着这三格）。
+
+### ④ 第二件量出来的事：**层级是库里本来就记着的，但那棵树只有两层**
+
+`<topic parents="…">`：`terrence` 129 个码 **123 个有父**、`terrence-rewrite` 200 个 **194 个有父**。
+**但只有 6 个根**（`work`/`project`/`personal`/`learning`/`health`/`finance`），
+`terrence` 的深度分布是 **6 / 113 / 10**。
+⇒ **`work_product` 和 `work_product_design` 在库里是兄弟，不是父子。**
+R2 捞到的 140 对里 **84 对就是库里已记的边、56 对库里没记**。
+
+⇒ **「上下位那一半要不要在用的时候走一步」不需要补任何数据**，
+`parents` 现成。**值不值得走，第 ⑤ 格量了。**
+
+### ⑤ **判：不接。理由是效果，不是代价。**
+
+← `… ./.venv/bin/python scripts/code_pair_ruler.py --impact` @ `8472afd` + 本批新尺
+
+| 支 | 动的是哪一处 | 判「是」 | 新增 | 掉 | **新增里真的** |
+|---|---|---:|---:|---:|---|
+| HEAD（`M`） | — | **17** | — | — | — |
+| **`S`** | 只合**人读过判同义**的那些对 | **17** | **0** | **0** | — |
+| `R2` | `topics∩` 换成字面包含 | 20 | 3 | 0 | **0/3** |
+| `R2X` | **两条轴都**换成字面包含 | 21 | 4 | 0 | **0/4** |
+| `SH` | 同义 + 上下位一起合 | 29 | 12 | 0 | **0/12** |
+| `PAR` | 沿库里已记的 `parents` 走满 | 31 | 14 | 0 | **1/14** |
+
+**五支新增的并集 18 屏，逐条读完（`p102-merge-read-18`，按库分）：真 1 / 假 17。**
+按库分：**大库 `terrence` 新增 12 屏，一屏真的都没有**；`terrence-rewrite` 新增 6 屏，真 1 / 假 5。
+
+**⑤-a `S` 那个 0 才是判据的正文，而且它分得开两种**：
+**不是合表没开口**——765 屏召回到的事实 **2463 对**里，`S` 让 **4 对**
+从「不是同一件事」翻成「是」、**2 屏的团从 1 涨到 2**（i=694 / i=696），
+但 `FAMILY_MIN = 3`，**够不着门**。
+⇒ **准确说法是「开了口、顶不过门」**（`EXPECT_FIRE = (2463, 4, 2)`，`test_p102::第四条b` 钉着）。
+⇒ **旋钮动完产出一模一样 → 退回。**
+
+**⑤-b 那 4 屏已经有人读过，判得跟老台账一样**（`test_p102::第四条d` 钉着这一格）：
+
+* **i=65**（`R2`/`R2X`/`PAR`/`SH` 都新增）——**P96 `p96-halfdoor-7` 读过，判「该拦」**。
+  合码只是让它顶过了半屏那道门，**内容还是三件事**。
+* **i=337**（`PAR` 新增）——**P94/P96 读过，判「假」**（泛 `obj` `广告` 撑团那一屏）。
+* **i=24**（`R2X` 新增）——**P94 在 `largest_family` 那一刀上读过，判「假」**。
+  ⚠️ 字面包含把它从「连通块版才有的假阳性」变成了**团版也有的假阳性**。
+* **i=590**（`PAR` 新增）——**P96 读过，判「该放」**。**这是五支里唯一一屏真的**，
+  而且正是 P98 ③ 追的那一族（`ai_memory_os` ↔ `memory_powered_intelligence`）。
+
+**⑤-c `PAR` 那一支为什么必然糙**：那棵树只有两层，所以「沿 `parents` 走满」
+在这个库上等于**「走到那 6 个根」**——`topics∩` 几乎恒真，判据退化成**单轴 `obj`**，
+而 **P98 ① 已经判过单轴 `obj` 堵死**（全库 41 屏、是 `M` 的 3.4 倍、读过的那部分 33% 假阳性）。
+`PAR` 量到 31 屏，正好卡在 `M` 的 17 和单轴的 41 之间。**这一格逐格兑现了 P98 ① 那条判。**
+
+**⑤-d 判「抽取那一头」还是「用的时候合」**：
+
+* **用的时候合**（`S` / `SH` / `PAR` / `R2` / `R2X` 五支都是这一头）——**量完了，判「不接」**。
+  代价确实小（零模型调用、零 id 变动、`parents` 还是现成的），
+  **但买不到东西**：最好的那一支（`S`）产出跟 HEAD 逐格相同，
+  其余四支**买来的 17 屏全是假的**。
+* **抽取那一头**——**这一批判「不做，而且没必要为它重抽」**，
+  理由跟 P96 ③-f **不是同一条**（第 ⑥ 格）。
+
+### ⑥ **P96 那个「不值」的理由今天成不成立？重核了，答案是两句话**
+
+P96 ③-f 判的是**「补 `obj` 缺的那一头」**（43.3% 的事实没有 `obj`），三条理由：
+**上限只有 19 屏（2.5%）· 补得出的只有约 57% · 代价是 2006 次真模型调用 + 整套台账的 id 作废**。
+
+* **对它自己那个问题，三条今天仍然成立**：
+  `EXPECT_SHAPE_BLIND_WHY = (419, 3, 19)` 这一批 `--cf-shape` 逐格复现；
+  `p96-noobj-42` 那 42 条标注原样在仓库里；
+  重抽的分母也重数了——`terrence` 源行 **2,673,365 字**（P96 台账写的就是这个数，逐位相同）。
+* **但它不成立于「同一个东西被抽成两个码」这个问题。** 这个问题**根本不需要重抽**：
+  合码是**码表的规范化**（改 `topics=` / `obj=` 的值，或者干脆只在用的时候合），
+  **事实 id 一个都不变**，所以 P96 ③-f 那条「id 全部作废」的账在这儿是 **0**。
+  ⇒ **不能拿 P96 的「不值」来否掉这一条路——它的代价结构不一样。**
+* ⇒ **这一批判「不接」换了一条理由：不是代价太大，是效果是 0**（第 ⑤ 格）。
+  ⚠️ **这两句话别混成一句**：「便宜」和「值得」是两件事，这一批实测的是后者。
+
+### ⑦ **接不接：不接。留出集够不够得着：不够，但这一批不靠它**
+
+**P100 那份 27 屏留出集**自己写着「**量得了假阳性、量不了召回**」。
+这一批要判的是**一个只会放宽、不会收窄的改动**（五支一屏都没掉），
+所以**它要的恰恰是「假阳性」那一面**——留出集在这一格上是够得着的。
+**但这一批没走到那一步**：`S` 那一支在 HEAD 上产出就一模一样，
+**连一个需要拿留出集去验的候选都没造出来**。
+⇒ **留出集这一批一次都没跑**（`--cf-hold` 照跑但那是收尾的七支之一，不是判据）。
+**下一批要走这条路，第一步不是造尺，是先解释 `S` 为什么顶不过 `FAMILY_MIN`。**
+
+### ⑧ 闸 / 突变 / 尺 / 指纹
+
+**动的源码只有三处**：新尺 `scripts/code_pair_ruler.py`（整份新增）·
+`scripts/floor_ruler.py`（`WATCHED` +1 份、`REGISTRY` +8 条、两个 floor 抬到 148 / 160）·
+`tests/test_p94|p96|p98|p100.py` 各两条硬写那两个 floor 的断言（**并排改，历史读数没抹**）。
+
+⚠️ **「同一个字面量有第二份」第八次咬人，这次开工就 `grep -c` 了**（任务书第 ⑥ 条纪律）：
+`REGISTRY_SIZE_FLOOR == … == 140` 硬写在**四份**测试里（`p94`/`p96`/`p98`/`p100`），
+`CHECKED_COUNT_FLOOR == 152` 也是**四份**——**不是两份**。
+⚠️ **「动 `EXPECT_*` 的值会红 `test_p90::第四条b`」这一格开工就写进了预测**
+（加 8 条登记 ⇒ 两个 floor 必须跟着抬到 148 / 160，不抬当场红），**逐把刀对上了**。
+
+#### ⑧-a 突变验：**两趟，真刀 19 把 + 对照刀 5 把**
+
+**第一趟 14 真刀 + 3 对照刀**（`<scratch>/p102/mutate.py`）：
+**锚点不唯一 0 把**（`src.count(anchor) != 1` 当场抛）；**整文件写回 + 逐字节 `filecmp` 还原，17 把全过**；
+**预期用整条 `nodeid` 精确比，不做子串匹配**（P100 那一课）。
+
+| | 红没红 | 红的是不是那几条 |
+|---|---|---|
+| 14 真刀 | **12 把对上**（红了就是该红） | **6 把逐条对上** |
+| 3 对照刀 | **3 把全绿**（砍在闭包外头：`kb/who.py` 的归一化正则 / `soak.py` 的并行度 / `entity_merge.py` 的音译门槛 0.62→0.63） | — |
+
+**⚠️ 「红了」和「红的是那条」分开核之后，账是这样的**（预测错了照实记）：
+
+* **两把「预期红、实际绿」——`⑬` 是闸真有洞，`⑭` 是刀自己切反了**：
+  * **⑬ 闸有洞**：`test_第七条` 第一版拿**子串**数 `EXPECT_IMPACT` 在不在 `--impact` 那一支里。
+    把 `_cmp(…, EXPECT_IMPACT)` 换成 `pass  # EXPECT_IMPACT`，
+    **注释里那个名字把子串检查喂饱了，闸没红**。
+    ⚠️ **跟 P100 记的「子串匹配会吞掉长名字」是同一个形状，只是这次吞的是注释**——
+    **第九次**。改成走 `ast` 找**真的 `Name` 结点**。
+  * **⑭ 刀切反了**：我想把一条 `why` 改短，实际写成了改长，`len >= 30` 当然还成立。**不算数，重切。**
+* **一把「反例没落在被测分支里」**：⑬ 之外还有 **②**——
+  `flat` 不去掉 `_` 之后，`work` **仍然是** `work_marketing` 的真子串，
+  所以 `第一条c` 本来就不该红。**⚠️ 承重的是「真子串」那一步，不是「去掉 `_`」那一步。不算数，重切。**
+* **三把是我预期写窄 / 写错了**（不是洞）：
+  * **凡是调 `floor_ruler.check()` 的测试都会红**，一共**五条**
+    （`p86::第四条b` · `p88::第三条` · `p90::第四条b` · `p100::第四条d` · `p102::第五条c`），
+    我只预测了两条。⚠️ `p94`/`p96`/`p98` 那三条不红，因为它们钉的是**常数**不是 `check()`。
+  * **③** 的 `第一条a` 只管「有没有可调的数」，把分词整段删掉它本来就不该红。
+  * **⑩** 改的是**标注文件**，而 `第二条c` 读的是**常数** —— 抓它的是 `第五条a`/`第五条b`。
+
+**第二趟 5 真刀 + 2 对照刀**（`<scratch>/p102/mutate2.py`，重切 ② ⑬ ⑭ + 补 ⑬″ ⑮）：
+
+| 刀 | 红没红 | 红了几条 |
+|---|---|---:|
+| **②′** `flat` 的真子串那一步废掉（每个码尾巴加个 `z`） | ✅ 红 | 4 |
+| **⑬′** 贵的那一支的核对整句删掉（**注释里也不留那个名字**） | ✅ 红 | 1 |
+| **⑬″** 那句核对**挪到默认分支**（另一个方向） | ✅ 红 | 2 |
+| **⑭′** 一条读数的「为什么」**真的改短** | ✅ 红 | 1 |
+| **⑮** `measure()` 里偷偷 import 召回（默认那一趟就变贵了） | ✅ 红 | 1 |
+| 对照 D / E（`entity_merge` 的 `SPELL_MIN` / `MIN_FACTS`） | ✅ **全绿** | 0 |
+
+⚠️ **⑬″ 还剩一条预期写错**：我以为 `第五条a` 会跟着红，实际只有 `第五条b` 红——
+`第五条a` 直接调 `CP.check(g)`，**够不着 `main()`**。**这是预期的错，不是洞**
+（那一刀真正要守的那条 `第七条` 红了）。
+
+⇒ **合计真刀 19 把 · 对照刀 5 把 · 对照刀 5 把全绿 · 砍出两个真洞（⑬ 一个闸洞 + ② 一把砍空的刀）**，
+**当场补上、重切、全红**。⚠️ **砍完跑了完整 pytest：3468 passed / 0 skipped。**
+
+---
+
+### 收尾（**每个数带出处**）
+
+| 数 | 逐字命令（cwd 写明） | sha7 |
+|---|---|---|
+| 后端 **3442 → 3468 passed / 0 skipped**（+26 = `test_p102` 25 条 + `floor_ruler` 那条按 `WATCHED` 参数化的 +1） | `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python -m pytest -q -p no:cacheprovider` | `8472afd` |
+| 前端 **102 文件 / 968 条**（+0 / +0，**这一批没碰 `frontend/`**） | `cd <worktree>/frontend && npm test` | `8472afd` |
+| `floor_ruler` **登记 140 → 148（只准往上 5 · 钉死 143）/ 共核 152 → 160 / 落后 0 / 对不上 0**；**看着 11 → 12 份** | `cd <worktree>/backend && ./.venv/bin/python scripts/floor_ruler.py` | `8472afd` |
+| **九把尺各跑一遍全 `EXIT=0`** · `765` / `765 + 窗口` / 圆点 **166 段 · 判出 137 · 真画 33** / 泛尺三档（泛 6 · 不泛 6 · 判不了 2）/ `en-gate` **1369 / 1067 / 793 = 74.3%** / `kb-search` **108 / 0 / 2 / 2** / 卡 **979 / 315 / 133 / 62 / 29 / 33** / `floor_ruler` / **新的第九把 `code_pair_ruler`** | 见下面的收尾命令 ② | `8472afd` |
+| **七支反事实全 `EXIT=0`**（`whoaxis`+`spread`+`common`+`bigcorpus`+`gates` 一趟 · `--cf-shape` · `--cf-hold`） | 见下面的收尾命令 ③ | `8472afd` |
+| `--cf-shape` 逐格复现：**175 / 441 / HEAD 17 / (419, 3, 19) / 摘门 19（真 17 / 假 2）** | `… scripts/recall_ruler.py --cf-shape` | `8472afd` |
+| 真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 / `llm_usage` 最大 id 5738 / `harness_runs` 120 / `harness_rounds` 489**（**真模型 0 次调用 / 0 token**） | `sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" "select …"` | `8472afd` |
+| codebook 源和目标各核 **11,429,185 / `403a1183`**（`sha256` 逐字相同） | `shasum -a256 <主仓>/backend/data/terrence/codebook.xml <scratch>/p102data/terrence/codebook.xml` | `8472afd` |
+
+`~/Library/Application Support` **一次都没碰**；`postnote` **一条都没发**；真模型 **0 次调用**。
+
+#### 这一批的收尾命令（**逐条写明在哪个目录、哪个环境跑**；第 776 轮删库事故那条规矩）
+
+```sh
+# ── ⓪ 语料摆**两处**（P89 §0 那一跤）
+#   <worktree>/backend/data/notes.sqlite3  ← 主仓那份**只读拷一份**（gitignored，**别 chmod 444**；
+#                                             `backend/data/` 这一批**不存在，要先 mkdir**）
+#   <scratch>/p102data                     ← 主仓 backend/data **整棵拷**（`KITE_DATA_DIR` 指它）
+#   ⚠️ 拷之前先 `ls -ld <scratch>/p102data`：**在的话 `cp -R` 会套娃成 p102data/data**。
+#      拷完 `diff <(ls -1a 源) <(ls -1a 目标)` —— 这一批实得 **0 差异**；`recall_ruler` 自报 `users 6`。
+#   <worktree>/{backend/.venv, frontend/node_modules, node_modules} ← **软链**到主仓
+cd /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-ac5efd03739d08920
+mkdir -p backend/data
+cp <主仓>/backend/data/notes.sqlite3 backend/data/notes.sqlite3
+cp -R <主仓>/backend/data <scratch>/p102data
+ln -sfn <主仓>/backend/.venv backend/.venv
+ln -sfn <主仓>/frontend/node_modules frontend/node_modules
+ln -sfn <主仓>/node_modules node_modules
+
+# ── ① 后端（cwd = <worktree>/backend）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python -m pytest -q -p no:cacheprovider   # 3468 / 0 skipped
+
+# ── ② 九把尺（**一条一条跑，每条后面单独 `EXIT=$?`，别接管道**；⚠️ 别 `| tail`）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/recall_ruler.py            ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/recall_ruler.py --window   ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/margin_dot_ruler.py        ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/topic_spread_ruler.py      ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/en_gate_ruler.py --quorum  ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/kb_search_ruler.py         ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/card_origin_ruler.py       ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/code_pair_ruler.py         ; EXIT=$?   # **这一批新造的第九把**
+./.venv/bin/python scripts/floor_ruler.py                                              ; EXIT=$?   # 不读语料
+
+# ── ②b 新那把尺的**贵的那一支**（⚠️ 跑六趟 765 屏召回，约五分钟；**不进每批的例行清单**）
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/code_pair_ruler.py --impact ; EXIT=$?
+
+# ── ③ 七支反事实（各自单独 `EXIT=$?`）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/recall_ruler.py \
+  --cf-whoaxis --cf-spread --cf-common --cf-bigcorpus --cf-gates                       ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/recall_ruler.py --cf-shape ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python scripts/recall_ruler.py --cf-hold  ; EXIT=$?
+#   ⚠️ `--cf-hold` 跑 2058 + 25 趟召回，**约十分钟**；它**不改产品**，只读。
+
+# ── ④ 前端（cwd = <worktree>/frontend，node_modules 是软链）
+cd <worktree>/frontend && npm test          # 102 文件 / 968 条；**这一批没碰 frontend/**
+
+# ── ⑤ 突变验（cwd = <worktree>/backend；⚠️ **别 pkill**；`clear_pyc` 只清 app/ scripts/ tests/）
+cd <worktree>/backend
+./.venv/bin/python <scratch>/p102/mutate.py      # 第一趟：14 真 + 3 对照
+./.venv/bin/python <scratch>/p102/mutate2.py     # 第二趟：重切 ②⑬⑭ + 补 ⑬″⑮，5 真 + 2 对照
+KITE_DATA_DIR=<scratch>/p102data ./.venv/bin/python -m pytest -q -p no:cacheprovider   # ⚠️ **砍完跑完整的**
+
+# ── ⑥ 真库指纹（**主仓，只读**；开工 / 收尾各一次，必须逐字相同）
+sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), max(updated_at), sum(length(content)), (select max(id) from llm_usage), \
+   (select count(*) from note_revisions), (select count(*) from harness_runs), \
+   (select count(*) from harness_rounds) from notes;"
+shasum -a256 <主仓>/backend/data/terrence/codebook.xml <scratch>/p102data/terrence/codebook.xml
+```
+
+P102 留给下一批：
+
+① **这条路要再走，第一步不是造尺，是先解释 `S` 为什么顶不过 `FAMILY_MIN`**
+   ——`S` 在 2463 对上翻了 4 对、2 屏的团 1→2，**差的是 1**。
+   先该量的是「团 == 2 的那 99 屏里有多少是真的」，而不是接着合码；
+② **`obj` 那两档是抽样（60 / 40），区间很宽**——要把那两个 `S` 率（6.7% / 20.0%）当数用，得再读一批；
+③ **R1\\R2 那 5500 对只读了 60 行**，0/30 的上界还有 ~9.5%，
+   `ai_memory_os` ↔ `memory_powered_intelligence` 就活在那儿。**「没读到」不是「没有」**；
+④ **P98 ③ 那 26 对仍然没人读**——这一批读的是 R2 那一族，跟它**不是同一批对**；
+⑤ **`parents` 那棵树只有两层**，所以「沿层级走一步」在这个库上就是「走到 6 个根」。
+   要让上下位那一半有用，得先有**真的多层树**，那是抽取 / 码表那一头的事；
+⑥ **子串匹配第九次咬人，这次咬的是注释**（`pass  # EXPECT_IMPACT` 喂饱了子串检查）——
+   **凡是「某个名字在不在某一段代码里」的闸，一律走 `ast` 找 `Name` 结点**；
+⑦ **「同一个字面量有第二份」这次是四份不是两份**（`REGISTRY_SIZE_FLOOR == … == 140` 在
+   `p94`/`p96`/`p98`/`p100` 各一条）。下一批加登记之前，**先 `grep -rn` 数一遍有几份**；
+⑧ P101 / P100 / P89 留的那几条一条都没碰。
