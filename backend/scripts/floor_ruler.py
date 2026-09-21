@@ -84,10 +84,10 @@ WATCHED_NAME = re.compile(r"^(MIN_[A-Z0-9_]*|MAX_[A-Z0-9_]*|EXPECT[A-Z0-9_]*|SHO
 # **一条在每次正当改动上都会红的闸，迟早会被人不假思索地改成不红的那个数。**
 # 所以这两个数按「只准往上」记在这儿，各批的测试去问它，别各自钉一份。
 # 它挡得住的是「有人把登记删了」；挡不住「加了一条没登记」——那是 `check()` 的完整性闸的活。
-REGISTRY_SIZE_FLOOR = 114  # 第 817 轮 P94 在自己 worktree 里实测（+10 条 `EXPECT_SHAPE_*`）；816 轮是 104、814 轮是 95、813 轮是 85
+REGISTRY_SIZE_FLOOR = 121  # 第 818 轮 P96 在自己 worktree 里实测（+7 条：拆账/半屏/泛 obj 那一组）；817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
 # ⚠️ 合并时记得抬到**合并后**那个数：两批各自在自己 worktree 里抬到 84 / 79，
 # 合并后真值是 85——取任一边都会让「删掉一条登记」不红（这个数只准往上，抬是绿的）。
-CHECKED_COUNT_FLOOR = 126  # 同上；共核 = 登记表 + 例反例；816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
+CHECKED_COUNT_FLOOR = 133  # 同上；共核 = 登记表 + 例反例；817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
 
 
 FLOOR = "floor"      # 只准往上调
@@ -425,47 +425,93 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
                      "先去读 `kb/fact_distinct` 第 ⑤ 格那张按库的表"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_BLIND"): (
         PINNED, 441, "**一个字都说不出来的屏**（`obj` 或 `topics` 空到量不了，= 57.6%）。"
-                     "⚠️ **它是判「不接」的第 2 条理由本身**：`terrence` 有 43.3% 的事实没有 `obj`。"
-                     "它要是掉下去（抽取补上了 `obj`），「这把尺在一半屏上说不了话」就不成立了，"
-                     "**「不接」那个判得整条重读**——去读第 ⑤ 格和第 ⑥ 格"),
+                     "⚠️ **P96 ② 把它拆开了，别再拿它整笔归给 `obj`**："
+                     "419 屏是空屏、3 屏没 topics、**真能归到没有 obj 头上的只有 19 屏**"
+                     "（拆账钉在 `EXPECT_SHAPE_BLIND_WHY`）。"
+                     "它一动先去读 `EXPECT_SHAPE_BLIND_WHY`，再去读 `kb/fact_distinct` 第 ⑦-c 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_BLIND_WHY"): (
+        PINNED, (419, 3, 19),
+        "441 屏「瞎掉」**拆成三笔**：(空屏, 有事实但无 topics, 有 topics 但一条 obj 都没有)。"
+        "⚠️ **第三个数就是「补抽取那一头」的上限**——19 屏 = 765 的 2.5%，"
+        "**不是 441 屏**。P94 ⑤-2 那句话方向对、量级错了两个数量级。"
+        "它一动（尤其第三个），「补不补抽取」那个判得整条重读——去读 `kb/fact_distinct` 第 ⑦-c 格。"
+        "⚠️ 三个数加起来必须等于 `EXPECT_SHAPE_BLIND`（`--cf-shape` 自己有这条自检）"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_HEAD"): (
-        PINNED, 18, "HEAD 上判「半屏是同一句话的多种说法」的屏数。"
-                    "**它是 `p94-shape-18` 那 18 条标注的来源**，一动那 18 条"
-                    "（真 12 / 假 6）的分母就换人，「不接」那个判得重读"),
+        PINNED, 12, "HEAD 上判「半屏是同一句话的多种说法」的屏数（**判据 `M`**；`K` 那一版是 18）。"
+                    "⚠️ **这 12 屏是 `p94-shape-18` 那 18 屏的子集**（`M` 严格比 `K` 窄），"
+                    "所以不用重读标注。它一动说明子集关系破了——"
+                    "先核 `flagged(M) ⊆ flagged(K)`，再去读 `kb/fact_distinct` 第 ⑦-b 格"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_EN060"): (
-        PINNED, 21, "en060 那一刀之后的屏数。**跟 HEAD 那个 18 一起读才有意义**："
-                    "18 → 21 = 那一刀**净造出 3 屏灌屏**。它一动去读 `EXPECT_SHAPE_FLIP_ON`"),
+        PINNED, 14, "en060 那一刀之后的屏数。**跟 HEAD 那个 12 一起读才有意义**："
+                    "12 → 14 = 那一刀**净造出 2 屏灌屏**。"
+                    "⚠️ `K` 那一版是 18 → 21（净 3 屏）——**换 `M` 把这个用途钝了一格**，"
+                    "钝掉的那一屏是 i=642（钉在 `EXPECT_SHAPE_FLIP_ON_K`）。它一动去读 `EXPECT_SHAPE_FLIP_ON`"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_FLIP_ON"): (
-        PINNED, (640, 642, 645),
-        "**从「不是这形状」翻成「是」的是哪三屏**。⚠️ 这三个下标必须落在 "
+        PINNED, (640, 645),
+        "**从「不是这形状」翻成「是」的是哪两屏**（判据 `M`）。⚠️ 这两个下标必须落在 "
         "`EXPECT_CF_GATES_EN060_IDX` 那 11 条里面（`--cf-shape` 自己有这条自检）——"
         "掉出去就说明这一刀没落在被测分支里，数作废。"
         "它一动，P92 ① 那句「i=645 最清楚」就换了实拍，得重读第 ⑪ 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_FLIP_ON_K"): (
+        PINNED, (640, 642, 645),
+        "**`K` 那一版翻的是哪三屏**——留着当 `M` 的代价的凭据（第 ⑦-b 格代价第 3 条）。"
+        "⚠️ 它是**冻死的历史读数**，不是今天跑出来的：`--cf-shape` 今天跑的是 `M`。"
+        "它跟 `EXPECT_SHAPE_FLIP_ON` 的差就是 i=642 那一屏；两个一起读才知道换判据钝了多少。它一动去读 `kb/fact_distinct` 第 ⑦-b 格代价第 3 条"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_FLIP_OFF"): (
         PINNED, (), "**反向一屏都没有**——en060 没有把任何一屏从灌屏改成不灌屏。"
                     "⚠️ 这个空元组是「这一刀方向单一」的证据；它一动说明那一刀开始有两个方向的效果，"
                     "「11 条里 0 好 9 差」那个逐条读的结论得重读"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_LIBS"): (
         PINNED, (("fresh678", 0, 2), ("fresh678b", 0, 4), ("fresh678c", 0, 2),
-                 ("shot-demo", 2, 14), ("terrence", 12, 97), ("terrence-rewrite", 4, 56)),
-        "HEAD 那 18 屏**按库分**（库, 判「是」, 量得了>=3 的分母）。"
+                 ("shot-demo", 2, 14), ("terrence", 6, 97), ("terrence-rewrite", 4, 56)),
+        "HEAD 那 12 屏**按库分**（库, 判「是」, 量得了>=3 的分母）。"
         "⚠️ **比率要按对的那条轴分**：三个 2 条语料的小库上分母是 2/4/2，"
-        "拿它们算百分比没有意义。它一动去重读 `p94-shape-18` 里那个库的几行"),
+        "拿它们算百分比没有意义。它一动去重读 `p94-shape-18` 里那个库的几行。"
+        "⚠️ 第三个数（分母）是 `measurable` 决的，**换判据不该动它**——分母动了先查语料"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_READ"): (
-        PINNED, (12, 6), "那 18 屏**逐条读完**的 (真, 假)。"
+        PINNED, (11, 1), "那 12 屏**逐条读完**的 (真, 假)。"
                          "⚠️ **别拿这一对读结论**——它是两笔账混成一笔，"
                          "拆开看是下面 `_BIGLIB` / `_SMALLLIB` 那两对"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_READ_BIGLIB"): (
-        PINNED, (6, 6), "**大库 `terrence` 上真 6 / 假 6 = 假阳性 50%**，"
+        PINNED, (5, 1), "**大库 `terrence` 上真 5 / 假 1 = 假阳性 16.7%**（`K` 那一版是 6/6 = 50%），"
                         "而 641/765 = 83.8% 的查询落在大库。"
-                        "**这一对就是判「不接」的第 1 条理由**，它一动那个判直接翻——"
-                        "去读 `kb/fact_distinct` 第 ⑤ 格"),
+                        "**这一对就是「治那 6 屏」治到哪儿的读数**，它一动那个判直接翻——"
+                        "去读 `kb/fact_distinct` 第 ⑦-b 格"),
     ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_READ_SMALLLIB"): (
         PINNED, (6, 0), "两个小库（`terrence-rewrite` 4 屏 + `shot-demo` 2 屏）上真 6 / 假 0。"
-                        "⚠️ **它跟上面那一对方向相反，这正是「按库分」的现钱**："
-                        "同一把尺在小库上 100% 准、在大库上一半是错的。"
+                        "⚠️ **它跟上面那一对方向相反，这正是「按库分」的现钱**。"
                         "它一动说明小库那一头也开始误判，去重读 `p94-shape-18` 里那六行，"
                         "「这把尺至少在小库上能用」那句话作废"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_LEFTOVER"): (
+        PINNED, (388,),
+        "**P96 这一批没治好的那一屏**：i=388（`手环` 五条各说各的手环事，"
+        "**出自五场不同的录音**，所以「不同 unit」那条轴拦不住）。"
+        "⚠️ 它是「治好了 5/6，不是 6/6」的**凭据本身**，"
+        "被写成空元组之前得先有一屏真的被治好——去读 `kb/fact_distinct` 第 ⑦-b 格代价第 2 条"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_HALF"): (
+        PINNED, (65, 587, 588, 590, 595, 596, 597),
+        "**半屏那道门自己拦下来的是哪 7 屏**（团 ≥3、只差「≥ 半屏」那一格）。"
+        "⚠️ **它推翻的是 P94 ⑤ 那句「半屏在正反例上一格都没承重」**——"
+        "那句话是在**十组手挑的正反例**上量的，换成全库 765 屏它拦着 7 屏。"
+        "**一条在正反例上没承重的门 ≠ 一条永远绿的闸**，这一格就是那个反例。"
+        "它一动去重读 `p96-halfdoor-7` 那 7 条标注"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_HALF_READ"): (
+        PINNED, (6, 1),
+        "那 7 屏**逐条读完**的 (该放, 该拦)。**6 屏该放 / 1 屏该拦（i=65）**。"
+        "⚠️ 它说的是**这道门拦错了 6/7**，不是「这道门没用」——"
+        "两句话差得很远，动门之前先把这一对和 `EXPECT_SHAPE_NOHALF` 一起读；它一动去重读 `p96-halfdoor-7` 那 7 条标注"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_NOHALF"): (
+        PINNED, (19, 17, 2),
+        "**摘掉半屏那道门的读数**（判「是」屏数, 真, 假）= 12 → 19 屏、真 11 → 17、假 1 → 2。"
+        "⚠️ 它是**钉着的、没落地的读数**：P96 一刀只动一处（已经动了 `same_thing`），"
+        "**这一批没摘那道门**。哪天要摘，第一步是核这三个数今天还成不成立，再去读 `kb/fact_distinct` 第 ⑦-d 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_OBJFACE"): (
+        PINNED, ((0.440, 0.752), (0.361, 0.764)),
+        "**稀疏化那条量法量 `obj` 的读数**（人读真的那批 min/max, 人读假的那批 min/max）。"
+        "⚠️ **两头完全重叠，而且方向是反的**——P94 点名的泛 obj `广告` 打 0.361（全场最低 = 最不泛）。"
+        "**这一对就是「不能用这条轴治那 6 屏」的全部依据**，也是「别再造第二把泛尺」的依据。"
+        "它一动（比如两头分开了）说明 `topics` 的分布或 `obj` 的抽取变了，"
+        "「稀疏化量不了 obj」那个判得整条重读——去读 `kb/fact_distinct` 第 ⑦-a 格"),
 
     ("backend/scripts/recall_ruler.py", "EXPECT_CF_WHO_BLOCKED"): (
         PINNED, 9, "被主语面挡回去、不再捞回来的串数（价格/公司/反馈/客户/收到/更新/能力/自动/连接）。"
