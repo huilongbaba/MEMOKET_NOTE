@@ -50,11 +50,15 @@ if [[ ! -f "$steps" ]]; then echo "[go.sh] 清单文件不在：$steps" >&2; exi
 if [[ ! -x "$py" ]]; then echo "[go.sh] python 不在：$py" >&2; exit 65; fi
 
 # ── ① 假模型端点 ─────────────────────────────────────────────────────────
-"$py" "$repo/backend/scripts/walkthrough_fakellm.py" "$llmport" --mode "$mode" \
+# `LLM_DELAY_MS`（P99 B）：**每一发慢多少毫秒**。默认 0 = 一个字不变。
+# 为什么要有它：`--mode ok` 整个跑一两秒就完了，「跑着切走再切回」在那种速度上
+# **演不出来**——那不是产品没毛病，是量具够不着（P97 那条「量具最早能到场就已经晚了」同一族）。
+delay=${LLM_DELAY_MS:-0}
+"$py" "$repo/backend/scripts/walkthrough_fakellm.py" "$llmport" --mode "$mode" --delay-ms "$delay" \
   > "$WALKTHROUGH_LOG_DIR/fakellm.log" 2>&1 &
 llm_pid=$!
 sleep 1
-echo "假模型端点 127.0.0.1:$llmport（--mode $mode） pid=$llm_pid"
+echo "假模型端点 127.0.0.1:$llmport（--mode $mode --delay-ms $delay） pid=$llm_pid"
 
 # ── ②「上一趟存进库里的端口」跟这一趟对得上吗（P68 那条坑）──────────────
 # 对不上不拦着跑，但**必须出声**：那一趟里模型调用会全部打到一个没人听的端口上，
