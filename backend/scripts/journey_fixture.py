@@ -59,6 +59,72 @@ from pathlib import Path
 SCRATCH = Path("/private/tmp/claude-501")
 REAL = Path.home() / "Library/Application Support/memoket-note-desktop/journey"
 
+#: **`--variant synthetic` 造出来的那一份，逐格钉死**（P85 C②）。
+#:
+#: P83 留的第 ④ 条：走查第 ⑧ 步那几个数（「3 天 / 6 段 / 4 段有描述 / 6 张缩略图 /
+#: 1 份日报 / 一共 5 KB」）**没有可复现的来源**——`--variant full` 要读
+#: `~/Library/Application Support`（走查一个字节都不碰），而 P76 / P78 / P80 三批
+#: 拷的是**上一批 scratch 里的夹具**，那些 scratch 早就没了。于是 P83 只能写
+#: 「形状同、内容不同源，不当逐格对账用」。
+#:
+#: 这一张表把那条账收掉：`synthetic` 这一档**本来就一个字节都不读真目录**，
+#: 形状全在 `synth_days()` 里现造，唯一随天变的是日期串（长度固定）——
+#: 所以它是**可重建**的，缺的只是「重建出来的该是什么」这句话。
+#: 现在 `main()` 每次造完当场对一遍，对不上**当场抛**。
+#:
+#: **一动要去重读什么**：走查第 ⑧ 步那一格的每一个数（台账 P83 / P85 的走查表、
+#: 以及「全部删掉」确认框里逐字那五行），还有 `backend/tests/test_p85.py` 的四条断言。
+#: 这几个数是那一格**唯一**的对账依据，动了就等于换了口径。
+EXPECT_SYNTHETIC = {
+    "days": 3,            # 今天 / 昨天 / 前天
+    "segs": (4, 2, 0),    # 今天 4 段、昨天 2 段、前天空的一天
+    "desc": (2, 2, 0),    # 有描述的：合计 4 段
+    "frames": (1, 0, 0),  # 「还没描述但大图还在」那一段，只有今天有一段
+    "thumbs": 6,          # 缩略图总数
+    "reports": 1,         # 写好的日报：只有昨天那份
+    "bytes_norm": 4198,   # **把绝对路径归一之后**整棵树的字节数（见下；两个长短差很远的目的地实测都是它）
+}
+#: ⚠️ **钉的是「归一之后的字节数」，这一条是当场量出来两次才定下来的**：
+#:  · 第一版写 `"bytes": 5066`，换个目的地重造当场红成 **5073**——
+#:    `segments.json` 里存着 **7 个绝对路径**（6 张缩略图 + 1 张大图），
+#:    目的地每长一个字符整棵树就多 7 字节；
+#:  · 第二版退到「按 `saySize()` 折成 KB」，以为够粗了，**pytest 里当场红成 4 KB**：
+#:    pytest 的 `tmp` 目的地比走查那个 scratch 短了几百个字符，7 份路径一乘就跨过了
+#:    4.5 KB 那道坎。**「粗一点」不等于「跟路径无关」。**
+#: 所以这里钉的是 `normalized_bytes()`：`segments.json` 里那个 journey 根**换成定长占位符**
+#: 之后再数。它跟造在哪个目录**完全无关**，那才是「可复现」该有的样子。
+#:
+#: 屏幕上那一行的「一共 N KB」是另一回事：它读的是**真字节数**
+#: （`JourneyRetentionPanel.saySize`），所以它跟 udd 路径的长度有关。
+#: 走查那一趟读到的是「一共 5 KB」，那个数记在走查日志里（`docs/walkthrough-logs/`），
+#: 跨批对账靠那份 diff，不靠这张表。
+
+
+def kb_of(size: int) -> int:
+    """抄 `frontend/src/components/JourneyRetentionPanel.tsx` 的 `saySize()` 那一支。
+
+    ⚠️ 它吃的是**真字节数**，而真字节数跟 udd 路径长度有关（见上）——
+    所以这个函数**不进** `EXPECT_SYNTHETIC`，只在读走查日志那一行时用得上。
+    """
+    return max(1, round(size / 1024))
+
+
+def normalized_bytes(root: Path) -> int:
+    """整棵树的字节数，**但把 `segments.json` 里那个 journey 根换成定长占位符**。
+
+    不这么做的话这个数会随「造在哪个目录」变（7 个绝对路径），
+    而一条会因为目的地路径长度而红的闸是一条永远红的闸。
+    """
+    total = 0
+    for f in sorted(root.rglob("*")):
+        if not f.is_file():
+            continue
+        if f.name == "segments.json":
+            total += len(f.read_text(encoding="utf-8").replace(str(root), "<ROOT>").encode())
+        else:
+            total += f.stat().st_size
+    return total
+
 # 1×1 的 JPEG，够 <img> 和 FileResponse 用，也够看出「有没有缩略图」这件事
 JPG_1PX = bytes.fromhex(
     "ffd8ffe000104a46494600010100000100010000ffdb004300ffffffffffffffffffffffffffffff"
@@ -229,6 +295,24 @@ def synth_days(today: date) -> list[tuple[str, list[dict], dict | None]]:
             (dby.isoformat(), [], None)]
 
 
+def summarize(made: list[dict], root: Path) -> dict:
+    """把 `stage_day()` 回的那几条收成一张**跟日期无关**的表（P85 C②）。
+
+    跟日期无关是判据的一半：夹具每天造出来的日期都不一样，把日期算进去
+    这条对账就成了一条永远红的闸。段数 / 描述数 / 缩略图 / 日报 / 字节数
+    才是走查第 ⑧ 步真读的那几个数。
+    """
+    return {
+        "days": len(made),
+        "segs": tuple(m["segs"] for m in made),
+        "desc": tuple(m["desc"] for m in made),
+        "frames": tuple(m["frames"] for m in made),
+        "thumbs": sum(m["thumbs"] for m in made),
+        "reports": sum(1 for m in made if m["report"]),
+        "bytes_norm": normalized_bytes(root),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("dest", help="userData 目录（journey/ 会造在它底下）")
@@ -342,6 +426,16 @@ def main() -> int:
         assert p.stat().st_size == len(JPG_1PX), f"{p} 不是现造的占位图"
 
     size = sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
+    # **造完当场对一遍**（P85 C②）：`synthetic` 这一档是走查第 ⑧ 步唯一可复现的来源，
+    # 它飘了而没人出声，下一批那几个数就又成了「形状同、内容不同源」。**对不上当场抛。**
+    if a.variant == "synthetic":
+        got = summarize(made, root)
+        if got != EXPECT_SYNTHETIC:
+            raise AssertionError(
+                f"`--variant synthetic` 造出来的跟 EXPECT_SYNTHETIC 对不上：\n"
+                f"  实得 {got}\n  钉的 {EXPECT_SYNTHETIC}\n"
+                "**别直接把上面那张表改成现在这个数** —— 先去重读走查第 ⑧ 步那一格"
+                "（台账 P83 / P85 的走查表 + 「全部删掉」确认框里逐字那五行）")
     print(json.dumps({"dest": str(root), "variant": a.variant, "days": made,
                       "thumbs": sum(m["thumbs"] for m in made), "bytes": size,
                       "on_file": (root / "on").exists()}, ensure_ascii=False, indent=1))

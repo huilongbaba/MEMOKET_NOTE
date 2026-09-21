@@ -21294,3 +21294,323 @@ codebook 源和目标各核 **11,429,185 / `403a1183`**；`~/Library/Application
 ⑦ P82 留的 ②（quorum 那个 `2` 的爆炸半径）③（`_is_cn_filler` 补表）、P81 留的 ②⑤、
    P79 留的 ④⑤⑥、P78 留的 ②③④、P77 留的 ②④、P76 留的 ①②③④⑤、P74 留的 ①②③、
    P69 留的 ①②③ 都没碰。
+
+---
+
+## P85 · 第 810 轮：**`components/` 底下第一条跑得起来的前端闸**（收 P81 ⑤ / P82 ④）+ **走查日志进仓库** + **⑧ 那个夹具钉死**（收 P83 ③④）+ 第二十次走查（2026-09-21）
+
+> 开工 `6fa51a2`（worktree `agent-a652906f168e63b85`）。基线**自己量了一遍**，四个数跟任务书逐格相同：
+> 后端带 `KITE_DATA_DIR` **3180 / 0 skipped**、不带 **3160 / 20 skipped**、前端 **96 文件 / 854 条**、
+> 假壳那条闸真跑一趟 **8 步 / 110 条判据**；`floor_ruler` 开工 **看着 8 份 / 登记 60 条（3 · 57）/ 共核 72 条**。
+> 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 /
+> `llm_usage` 最大 id 5738**。
+> **这一批没碰 `backend/app/database/kb/` 那一侧**（另有 agent 在那儿）。
+
+---
+
+### A. `components/` 今天有没有跑得起来的前端闸——**先量，量完发现那句话的形状记错了**
+
+P81 ⑤ / P82 ④ 连着两批留着同一句：「`components/kb/` 今天跑不起来前端测试，
+全部靠后端源码对拍钉」。**开工先量：**
+
+| 量的是什么 | 实测 |
+|---|---|
+| `src/components/` 底下的源文件 | **70 个**（顶层 59 + `kb/` 11；69 个 `.tsx` + 1 个 `.ts`） |
+| 其中**有纯函数导出、不用 React 就能直接测**的 | **13 个文件 / 35 个小写开头的具名导出** |
+| 其中**只有组件导出、非得真 React 才测得动**的 | **57 个** |
+| `src/components/` 底下今天的测试文件 | **0 个**（96 个测试文件确实**全部**在 `src/editor/__tests__/`） |
+| `src/editor/__tests__` 里 import 到 `components/` 的 | **29 / 70**；`kb/` 那 11 个里只有 **2 个**（`FactsTable` / `KbBits`） |
+| **`KbDashboard.tsx`（被点名了三批的那一个）** | **0 条测试 import 过它** |
+
+**然后拿探针真试了一次**（这一步是判「那句话对不对」的全部分量）：
+在 `src/components/__tests__/` 放一个一行的 `zzprobe.test.ts`，`vitest run` 当场
+**96 → 97 文件 / 854 → 855 条**。
+
+⇒ **「跑不起来」这句话是错的**：这个仓没有 `test.include` 覆盖，vitest 走默认通配，
+`src/components/` 底下本来就收得到。缺的是**东西不是路**——
+**那条便宜的路一直开着，两批都绕去了「后端源码对拍」那条更贵的。**
+（`tsconfig.include` 是 `["src"]`、eslint 管 `src/**`，两头都不拦；
+`check-a11y` / `check-css-classes` / `check-icons` / `check-shortcuts` / `check-ui-tokens`
+早就在跳过任何路径里含 `__tests__` 的目录，新目录一条都不碰。）
+
+#### 开的那条路：**不是搬家，是在那儿摆第一条真闸**
+
+* **第一条测试**：`frontend/src/components/__tests__/p85.test.tsx`，**真 React 19 挂 `KbDashboard`**
+  （照 `p70` / `p80` / `p83` 那个路子：`createRoot` + `act`，`vi.mock('../../api')` 换掉 `recall` / `kbDashboard`）。
+  靶子挑的是 **P79 ② / P81 ③ / P82 ③ 三批点名的那一行**：
+
+      {hits.terms.length ? (hits.facts.length ? ' · 命中词：' : ' · 找过：')
+                           + hits.terms.slice(0, 6).join('、') : ''}
+
+  四条：① 有结果 → 说「命中词：」**且「找过：」一个字都不出现**；② 0 条结果 → 说「找过：」
+  **且「命中词：」一个字都不出现**；③ `terms` 空 → 那一段整个不渲染（毫秒数还在）；
+  ④ 8 个词只摆 **6** 个（`slice(0, 6)`，`kb_search_ruler.SHOW` 抄的就是它）。
+  ⚠️ **判据只读那一行自己那个节点**（`.kb-section-title` 的下一个兄弟 = `KbSection` 的 `extra`），
+  **不搜整页 `textContent`**——图例、空态文案、事实正文里都有这几个字。
+
+* **一条静态闸**：`frontend/scripts/check-components-gate.mts`（进了 `npm test`，
+  **走裸 `tsx` 不走 `npx`**，P78 那个野包）。它看两件事：
+  ① **那条路不许被悄悄关掉**——判据**不读 glob 不读配置**，直接问 vitest 自己
+  （`vitest list --filesOnly`，那是它真要跑的清单）；外加「磁盘上有、vitest 却不跑」的对拍。
+  ② **那一行的两个标签不许只剩一个**——**双向**：源码里（摘掉整行注释之后）各在 1 次，
+  **而且**各被一份「真 `createRoot` 挂了 `KbDashboard`」的测试断言到。
+  例 / 反例 **14 条**。
+
+* **三个新常数进了 `floor_ruler`**：`MIN_COMPONENT_TESTS`（`floor` 1）、
+  `EXPECT_LABEL_HITS`（`pinned` 1）、`SHOW`（`pinned` 6），每条都写了「它一动要去重读什么」。
+  ⚠️ **登记之前先跑了一遍**：三个全被点名 **`EXIT=9`**。
+  ⚠️ `MIN_COMPONENT_TESTS` 是**第 4 条 `floor`**，而 `test_p80` 那条闸把「哪几条是 floor」
+  当结论钉死着——**它当场红了一次**，改的时候连理由一起写进去了（该随代码涨，调低到 0 才是要拦的方向）。
+
+**砍了一刀证明它会红、且红的是那条**（突变验第 ① 刀）：把 `' · 找过：'` 换成 `' · 命中词：'`
+（= P81 ③ 那一刀原样回退）→ `p85.test.tsx` **红在第 ②/④ 条**、`check-components-gate` **红并点名「找过」**。
+对照刀 C1（同一份文件加一整行注释）三条闸全绿。
+
+---
+
+### B. 第二十次全流程走查（真打好的壳）
+
+壳：`<worktree>/desktop` 现打的 `MEMOKET NOTE.app` + adhoc 重签。
+**壳里那一个可执行件核过**：`check_shipped_source.py` → `app.database.kb.search` 的
+`display_terms` / `is_merged_word` **都在**（**先喂了它一个不存在的符号，`EXIT=1` 红**）；
+`Resources/web` 里 `KbNoteView-Nil71URV.js` **「找过：」和「命中词：」两个串都在**（grep 字符串字面量）。
+
+#### 走查表（两个身份 × 十一步）
+
+| # | 步骤 | 空库新用户（`p85-newbie`） | 482 篇老用户（terrence） |
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：「还没配模型 / 去设置」都在、**内网 IP 三个全 false**；填假端点 →「连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」」→ **点 chip** → 保存 → 红条和那句话同时消失、toast 逐字「已切换到本地模型：fake-p52 @ …」、**库里真落了**（`local` / `18385` / `fake-p52`）；**不点 chip 就保存红条留着**（`bnew2` 那一格，toast 逐字「保存了，但模型还没配全…」） | **对**：开到上次那篇（按 id 核）、没有「还没配模型」、**没有「LLM 不可达」** |
+| 2 | 新建 → 打标题 → 右栏「计划」 | **对**：右栏 `["记忆","计划"]`、意图三格预填 + `prefill: true` | **对**：`b1b` 那一格 `{"found":true,"vals":[["目标",…],["读者","自己"],["完成标准",…]],"prefill":true,"titleBox":""}`（**P43 #2 / P44 #4 ✔**） |
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」 | **对**：**P32 #3 ✔** 空库图例；**P35 #8 ✔** 空托盘 | **对**：**两档都量了**——没切到「记忆」时 `{落槽 2 · 图例 0 · 页面合计 2}`、摊开着时 `{落槽 2 · 图例 6 · 页面合计 8}`，落槽那 2 是**冲突 1 / 缺依据 1**（跟 P64 起每一批**一个数不差**） |
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项**；Esc 之后剩 **0**；逐字回到打 `/` 之前（`true`） |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]` 逐字连顺序；选中的是**整行**逐字；Esc 之后剩 0、**正文一个字没动** |
+| 6 | 智能续写 → 轮次卡片 → **读库** | **对（`--mode ok`）**：`49 → 149`，**库 149 = 编辑器 149**，收工那行逐字「知识库里能用的材料用完了，自动停止 · 2 轮 · +100 字」，状态栏 111 字 | **对**：`105 → 205（+100）`；**库里 205 = 编辑器 205、`json = false`**（**P45 #1 / P44 #1 ✔**）；`做爰片` **0**（**P55 #1 ✔**）、`terrence-8F6` **0**（**P55 #2 ✔**）、空括号 **0**（**P35 #7 ✔**） |
+| 7 | 导回到 Obsidian | — | **对（浅走）**：面板在、`vault` 在、那四段逐字全在（`树的层级变成文件夹` / `克隆写成 .link.txt` / `_assets/`） |
+| 8 | 屏幕活动 | **对（知情屏这一半）**：`.journey-consent` 1 个、五条 facts +「开始记录 / 先不开」；「留多久」里的数**从后端读**（**P21 #1 / P32 #4 ✔**） | **对**：**一键全删两段式**（摊开那段逐字「3 天的记录（最早 2026-09-19）/ 6 段，其中 4 段有描述 / 6 张缩略图 / 1 份写好的日报 / 一共 5 KB」、**「先不删」之后天列表逐字原封不动**、确认框剩 0，**P66 #3 ✔**）；`cy 659.71875` 跟 P80 / P83 **同一个亚像素**；`journey64` 正例「这个「合计」偏长」**在**、反例（正常那天）**不在** |
+| 9 | ⌘K 全部去处 | **对**：**18 项**；搜「屏幕」**3 项**逐字 | **对**：**23 项** |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，壳是新起的） | — | **对**：带层那篇 → `["记忆","改动1","计划5"]` + toast **1 条**逐字「上次没处置完的 1 层改动还在右栏「改动」里」，**P43 那条不变式成立**、正文 205 字；不带层那篇 `df3b4f7e987d` → `["记忆","幻灯片24","计划5"]`，**没有「改动」、也没有 toast**（**P44 #5 ✔**）；`b4old` 那一格新建一篇 → 库里的层 `{"layers":[]}` |
+| 11 | 深色 + 900px | **对**：`bg rgb(18,15,26)`、近白大块 **0**；900px 唯一那个「溢出」是标签条（`sw 732 > cw 560`、`overflow-x: auto`，**判成不是缺陷**） | **对**：`bg rgb(18,15,26)`、近白大块 **0**；900px 溢出 **0**（P83 那一格是 9/10，**差别是这份 udd 的标签页少**，明细为空——收 P83 问题 #3 立的那条「只报数量分不出产品变差和素材变多」） |
+
+#### 重点盯的几格
+
+**① P68 那条丢字的不回退（每批必验；`--mode ok`）**
+
+| 趟 | 跑之前 → 跑完（`.cm-line`） | 库 | 收工那行 | 同屏状态栏 |
+|---|---|---:|---|---|
+| 空库新用户 | 49 → **149** | **149** | +100（49 + 100 = 149） | **111 字** |
+| 老用户 | 105 → **205** | **205** | +100（105 + 100 = 205） | — |
+| 老用户重开之后再读一次 | — | **205** | — | — |
+
+**不变式 `跑前 + 100 = 跑完 = 库` 三头逐格成立，一格没回退。**
+（起点 49 / 105 跟 P83 的 44 / 105 不同只是种子标题长度和 udd 起点不同，不变式一个字没变。）
+
+**② P83 那一刀（记忆卡的「前一段带进来的」戳）**：用 P83 那两段原话逐字重跑
+（`recall74.mjs` 带 seeds）：
+
+| | 那一行标了几处 | 卡几张 / 其中盖戳几张 |
+|---|---:|---|
+| 第 1 段（`公司大模型平台…`） | **0** | 1 / **0** |
+| 第 2 段（`智影相机…`） | **2** | 1 / **1** |
+
+**第 2 段该盖的盖上了，第 1 段一处都没盖。没回退。**
+
+**③ P80 那一行**：第 2 段整行 `按光标这段找的，命中：主流（前一段带进来的 · …）、更简单（前一段带进来的 · …）`
+——**标 2 处**；第 1 段 `按光标这段找的，命中：主流大模型（整段原话对上 · …）、更简单（…）`——**0 处**。**没回退。**
+
+**④ P81 那一行（0 条结果时是「找过：」）**：这一批**第一次有了跑得起来的前端闸**
+（A 那条 `p85.test.tsx` 第 ② 条）。外加源码 `KbDashboard.tsx` 摘注释后两个标签各 1 次、
+**壳里那份 `KbNoteView-Nil71URV.js` 两个串都在**、`kb_search_ruler` 110 条那一档逐格复现。
+
+**⑤ `@LAST_NEW_NOTE`**：这一趟的 note id 是**这一趟现造的**
+（`b1old` 打出「新建出来的 note id: 6b9bb40ae341」→ `go.sh` 接给 `b1b` / `b2old`）。
+**没抄台账**：`reopen64` 的两个 id **是在这一趟的库拷贝上查过的**
+（`select note_id, count(*) from note_change_layers` → `6b9bb40ae341` 1 层、`df3b4f7e987d` 0 层）。
+
+**⑥ 对照刀在真壳上也绿**：`recall64.mjs` 整份日志里「前一段带进来的」**0 次**；
+「号上」**false**（P44 #4 / P40 #4）。
+`recall74.mjs` 默认那两段两段都走 `evidence=[]` 那一支（「这一段没有可摆出来的证据」），
+**卡 5 张 / 3 张一张都没盖**——第 2 段「跟上一段逐字相同 true」**是警报不是判词**（P80 立的）。
+
+**⑦ 圆点**：`落槽 2（冲突 1 / 缺依据 1）` + 页面合计 **8**（摊开档）/ **2**（没切过去）。
+
+#### 历史修复的回归
+
+P19 #1 / P17 #1 · P32 #3 · P35 #8 · P21 #1 / P32 #4 · P43 #2 / P44 #4 · P47 ·
+P49 ③ · P45 #1 / P44 #1 · P55 #1 · P55 #2 · P35 #7 · P66 #3 · P43 · P44 #5 ·
+P52 #3 系列 · **P68 A**（重点盯 ①）· **P70 B** · **P72**（状态栏字数正则）·
+**P78 A**（身份键）· **P79 ④ / P81 ③**（重点盯 ④）· **P80 A**（重点盯 ③）·
+**P83 A**（重点盯 ②）—— **23 条全在**。
+
+⚠️ **逐行 diff 判回归这一批仍然做不到**——P83 那份日志在它自己的 scratch 里，开工时已经没了。
+**但这一批把出路做出来了**（见 C①）：P85 的日志洗干净存进了 `docs/walkthrough-logs/p85/`，
+**跨批逐行 diff 从 P86 起做得了**。照实记：这一批判回归靠的还是「台账那一格的数」+ 源码 / 库上重数。
+
+### 问题清单
+
+| # | 现象 → 实拍 → 根因 | 处置 |
+|---|---|---|
+| 1 | **判断**：P81 ⑤ / P82 ④ 两批写着「`components/kb/` 跑不起来前端测试」，**实测是错的**——探针一放就被收走（96 → 97 / 854 → 855）。真正缺的是东西不是路 | **✔ 收了**（A：第一条测试 + 一条静态闸 + 三个常数进 `floor_ruler`）。教训进 `edge-cases`：**「做不到」和「没人做过」在结论那一栏长得一模一样** |
+| 2 | **量具**：老用户第一趟**跑错了端口**（我给 18386、库里指着 18385），日志里「LLM 不可达: true」 | **判成量具用错，不是产品缺陷**：`go.sh` 那条 P68 闸**当场吵了**（「库里存的 local_base_url 是…这一趟的假模型在 18386 —— 对不上」）。重摆语料 + 换对端口重跑；那 8 张截图**没删没改名**，挪到 `shots-aborted/` 存着 |
+| 3 | **闸**：新写的 `check-components-gate.mts` 第 ① 条**自己没人看着**——突变验第 ⑦ 刀把它换成 `false &&`（= 整条关掉）**跑什么都不红** | **✔ 改了**：第 ① 条单拎成纯函数 `componentsShortfall(listed, min)` + 四条例 / 反例（含「vitest 只列 editor 底下的」那个形状）。**刀没砍到是闸的洞，不是刀钝了** |
+| 4 | **闸**：⑧ 那个夹具第一版钉 `bytes: 5066` → 换目的地红成 **5073**；退到「折成 KB」→ pytest 里红成 **4 KB** | **✔ 改了**：钉 `normalized_bytes()`（`segments.json` 里那个根换成定长占位符再数），两个长短差很远的目的地实测都是 **4198**。教训进 `edge-cases`：**「粗一点」不等于「跟无关变量无关」** |
+| 5 | **闸**：`MIN_COMPONENT_TESTS` 是第 4 条 `floor`，`test_p80` 那条「哪几条是 floor」的结论当场红 | **判成闸干了它该干的事**：把它加进那张表，**连理由一起写**（该随代码涨；要拦的是调低到 0） |
+| 6 | **走查**：⑪ 那一格老用户 900px 溢出 **0**，跟 P83 的 9/10 对不上 | **判成不是缺陷**：明细为空（P83 那一格逐个摆出来全是 `note-tab`），**差别是这份 udd 是新造的、标签页少**。这正是 P83 问题 #3 立那条规矩要的效果 |
+
+### C. 收两笔账
+
+**① 走查日志留个地方，让跨批逐行 diff 做得了**（P83 留的第 ③ 条）
+
+* **固定位置**：`docs/walkthrough-logs/<批次>/`，一步一个文件、按走查表顺序编号。
+  P85 这一批 **16 份**（`01-new-bnew` … `16-old-recall64`）。
+* **先洗再存**：`frontend/scripts/walkthrough/normalize-log.mjs`。
+  **洗掉的 8 类**（每批必变）：绝对路径的目录那一截（**文件名留着**）、12 位十六进制（note id / 层 id）、
+  `127.0.0.1:<端口>`、`pid=<数字>`、ISO 时间戳、**这一趟自己的今天 / 昨天 / 前天**、
+  截图名的批次前缀和身份 `p<数字>-newbie`、前端随手生成的 `user-xxxxxx`、`content_tag` 里那截哈希。
+  **一个字都不洗的**：字数 / 段数 / 项数 / 圆点那几个数、逐字文案、各种 true/false、
+  **语料里的日期**（`2026-02-24 的记录` 是冲突卡的判据）、**亚像素坐标**（`cy 659.71875`）。
+  ⚠️ 日期那条**要把「今天」告诉它**（`--today`）：全洗会把语料日期一起洗掉，
+  不洗则走查那三天每批都不一样——**判据宁可窄，只洗这一趟自己那三天**。
+* **闸**：`node scripts/walkthrough/normalize-log.mjs --selftest`（进了 `npm test`）——
+  例 / 反例 **20 条**（该洗的 11 / **不许洗的** 6 / 「洗完不许剩下什么」3），
+  外加把 `docs/walkthrough-logs/` 底下**每一份都扫一遍**，剩了 note id / 绝对路径 / 端口 / 时间戳**当场红**。
+  `backend/tests/test_p85.py` 另有三条：位置在、洗过了、**判据那几样一个字没被洗掉**。
+* ⚠️ **照实记**：`p85` 是第一份，**跨批逐行 diff 从 P86 起才做得了**——
+  「留了地方」不等于「已经对过账」。
+
+**② ⑧ 那几个数固定下来，让下一批起能逐格对账**（P83 留的第 ④ 条）
+
+* `--variant synthetic` **本来就一个字节都不读 `~/Library`**，形状全在 `synth_days()` 里现造
+  ——它一直是可重建的，**缺的只是「重建出来的该是什么」这句话**。
+* 补上的就是那句话：`journey_fixture.EXPECT_SYNTHETIC`
+  `{days 3 · segs (4,2,0) · desc (2,2,0) · frames (1,0,0) · thumbs 6 · reports 1 · bytes_norm 4198}`，
+  `main()` **每次造完当场对一遍，对不上当场抛**（喂了它一个该红的反例：今天多塞一段 → 抛）。
+* **而且钉的是产品那一头读的数**：`test_p85` 走 `app.routers.journey.get_retention` 核
+  `(days, segments, described, thumbs, reports) == (3, 6, 4, 6, 1)`、`oldest == 前天`、
+  `days() == [今天, 昨天]`（前天是空的一天，不算）。
+  **「夹具自己说有 6 段」跟「产品那一头读出来 6 段」是两件事。**
+* `EXPECT_SYNTHETIC` 进了 `floor_ruler`（`pinned`），写了「一动要去重读什么」。
+* ⚠️ **屏幕上那一行的「一共 5 KB」不在这张表里**：它读的是**真字节数**，而真字节数跟 udd 路径长度有关
+  （见问题 #4）。那个 5 记在走查日志里，跨批对它靠 C① 那份 diff。
+
+### 突变验：**18 刀（14 真 + 4 对照），钉死每条闸跑几条**
+
+每一刀：**唯一锚点先断言**（出现次数 ≠ 1 就一个字节都不动）→ 砍 → 跑闸 → **整文件写回** →
+**逐字节 sha256 比**（18 刀全 `True`）→ 清 `__pycache__` + `node_modules/.vite`。
+**砍之前先证一遍全绿、砍完再证一遍全绿**，两次都钉死 `vitest 4 passed` / `pytest 11 passed`。
+**「红了」和「红的是那条」分开核**：每刀钉死「红里必须出现哪个串」。
+
+| 刀 | 动的是 | 跑哪条闸 | 预期 | 实测 |
+|---|---|---|---|---|
+| ① | `' · 找过：'` → `' · 命中词：'`（P81 ③ 回退） | `p85.test.tsx` + 新闸 | 红 | ✔ 两条都红，点名「找过」 |
+| ② | `terms.slice(0, 6)` → `slice(0, 3)` | 上面两条 + `test_p85` | 红 | ✔ 三条都红，点名 ④ / `slice(0, 6)` |
+| ③ | `hits.terms.length ?` 那个条件拿掉（空 terms 也摆） | `p85.test.tsx` | 红 | ✔ 红在第 ③ 条 |
+| ④ | `MIN_COMPONENT_TESTS` 1 → 0 | `floor_ruler` | 红 | ✔ 点名 `MIN_COMPONENT_TESTS` |
+| ⑤ | `EXPECT_LABEL_HITS` 1 → 2 | `floor_ruler` + 新闸 | 红 | ✔ 两条都红 |
+| ⑥ | 新闸里的 `SHOW` 6 → 3 | 同上 | 红 | ✔ 两条都红 |
+| ⑦ | **把新闸第 ① 条整个关掉**（`false &&`） | 新闸 | 红 | ✔（**第一版没红，见问题 #3**） |
+| ⑧ | **给 `vite.config.ts` 加一条只收 editor 的 `test.include`**（= 把那条路悄悄关掉） | 新闸 | 红 | ✔ 点名 `test.include` |
+| ⑨ | `EXPECT_SYNTHETIC` 的 `segs` `(4,2,0)` → `(4,2,1)` | `floor_ruler` + `test_p85` | 红 | ✔ 两条都红 |
+| ⑩ | `synth_days` 昨天那段的 app 名改一个字 | `test_p85` | 红 | ✔ 点名 `bytes_norm` |
+| ⑪ | 归一化里洗 note id 那条 replace 砍掉 | `--selftest` | 红 | ✔ 点名「note id」 |
+| ⑫ | 归一化里**多加**一条「所有日期都洗」 | `--selftest` | 红 | ✔ 点名「语料里的日期」（**不许洗的那一侧**） |
+| ⑬ | 把存进仓库那份日志里的 `<ID12>` 换回真 note id | `--selftest` + `test_p85` | 红 | ✔ 两条都红 |
+| ⑭ | `normalized_bytes` 退回真字节数 | `test_p85` | 红 | ✔ 点名 `bytes_norm` |
+| C1 | **对照刀**：`KbDashboard.tsx` 加一整行注释 | 三条 | 不许红 | ✔ 绿 |
+| C2 | **对照刀**：`check-components-gate.mts` 加一整行注释 | 三条 | 不许红 | ✔ 绿 |
+| C3 | **对照刀**：`normalize-log.mjs` 文档串里改一句散文 | 两条 | 不许红 | ✔ 绿 |
+| C4 | **对照刀**：`journey_fixture.py` 文档串里改一句散文 | 两条 | 不许红 | ✔ 绿 |
+
+**砍完跑完整 pytest + 完整 npm test**（P81 那一课）：后端 **3191 / 0 skipped**、
+前端 **97 文件 / 858 条**，工作区只剩这一批自己的十来个文件，**18 刀一处残留都没有**。
+
+### 闸与指纹
+
+后端 `pytest -q` 带 `KITE_DATA_DIR=<scratch>/p85data`：**3191 passed / 0 skipped**
+（基线实测 **3180 / 0**，`+11` = `tests/test_p85.py` **11 条**）；
+不带 **3171 / 20 skipped**（基线 **3160 / 20**）。
+前端 `npm test`：**97 文件 / 858 条**（基线 **96 / 854**，`+1 文件 / +4 条` = `p85.test.tsx`）。
+假壳那条闸真跑 **8 步 / 110 条判据**（跟基线一个数不差），**28 张截图全 `fakeshell-*`**。
+`floor_ruler` **看着 10 份 / 登记 64 条（只准往上 4 · 钉死 60）/ 例反例 12 条 / 共核 76 条 /
+落后 0 / 对不上 0**（**新登记 4 条**；开工是 8 份 / 60 条 / 72 条）。
+**八把尺各跑一遍，全部逐格复现**：
+`recall_ruler` 765（727 / 38）· users 6 · `--window` OK；
+`margin_dot_ruler` **166 / 137 / 33**（缺依据 23 · 印证 10）+ 表 B 8 条；
+`topic_spread_ruler` 反例三档全对上（泛 6 · 不泛 6 · 判不了 2）；
+`en_gate_ruler` 568 串次 / 14 种 / `ai` 451 / 翻盘 11 次 7 条 / 收紧到 4 是 213 次 100 条 /
+quorum 1771 判 True 里 **1488 = 84.0%** 正好两条证人 / 那道后门 11 次；
+`kb_search_ruler` 110 条 / 0 结果 30 / 跨空白 3 → 0 / 数字日期 20 = 9 + 11（4 + 7）/ 摆出 108 串 / 只摆一截 0 / 日期写法 2 串 2 截；
+`card_origin_ruler` 964 张 / 133 盖戳 / 62 条（混着 29 · 整屏 33）/ 312 条摆了卡；
+`floor_ruler` 见上。
+
+真库指纹**开工 = 收工**：**482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44**；`llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**；
+走查那份拷贝涨到 **488 篇 / 5755**，全是假端点）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；`backend/data` **整棵拷**（两边 `ls -1a` **0 差异**，128M）；
+老用户库起 app 前**扫全库换掉钥匙 1 处**（`provider_config.gpt_api_key`，换完再扫 **0 处**）、
+`provider_config` **四个地址列全指本机**（`gpt_base_url` / `asr_base_url` / `local_base_url` / `vision_base_url`）；
+`~/Library/Application Support/memoket-note-desktop` **一次都没碰**（mtime 停在 2026-09-20 00:57，开工之前）；
+截图 **49 张 `p85-*`，一张都没改名**（另有 8 + 8 张同样 `p85-*` 的挪进 `shots-trip1/` / `shots-aborted/` 存着，也没改名）。
+⚠️ worktree 里那份只读拷的 `notes.sqlite3` **没有 `chmod 444`**（P69 那一课），收工指纹跟真库逐格相同。
+
+### 收尾命令：每一条在哪个环境下才对
+
+```bash
+# ── ⓪ 语料先摆齐
+#   <worktree>/backend/data/notes.sqlite3  ← 从主仓**只读拷一份**（gitignored，**别 chmod 444**）
+#   <scratch>/p85data                      ← 主仓 backend/data **整棵拷**（37 个条目）
+#   <worktree>/backend/.venv               ← **软链**到主仓那一份
+#   <worktree>/frontend/node_modules       ← **软链**（desktop/node_modules、仓库根那份也一样）
+#   ⚠️ 拷之前先看 <scratch>/p85data 在不在：在的话 `cp -R .../data p85data` 会**拷成 p85data/data**。
+#      拷完 `diff <(ls -1a 源) <(ls -1a 目标)`，这一批实得 **0 差异 / 128M**。
+# ── ① 后端两跑，**都在 worktree 的 backend/ 下**
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python -m pytest -q      # 3191 passed / 0 skipped
+./.venv/bin/python -m pytest -q                                      # 3171 passed / 20 skipped
+# ── ② 八把尺（**对不上 exit 9**）。前七把要语料，最后一把不读语料
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/recall_ruler.py
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/recall_ruler.py --window
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/margin_dot_ruler.py
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/topic_spread_ruler.py
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/en_gate_ruler.py
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/kb_search_ruler.py
+KITE_DATA_DIR=<scratch>/p85data ./.venv/bin/python scripts/card_origin_ruler.py
+./.venv/bin/python scripts/floor_ruler.py                            # 不读语料
+# ── ③ 前端，**在 worktree 的 frontend/ 下**，node_modules 是软链
+cd <worktree>/frontend && npm test -- --run                          # 97 文件 / 858 条
+# ── ④ 这一批的两条新闸单跑（`npm test` 里本来就有）。**走 node_modules/.bin，别走 npx**（P78）
+./node_modules/.bin/tsx scripts/check-components-gate.mts
+node scripts/walkthrough/normalize-log.mjs --selftest
+# ── ⑤ 三条静态闸单跑
+./node_modules/.bin/tsx scripts/check-walkthrough-selectors.mts
+./node_modules/.bin/tsx scripts/check-walkthrough-runnable.mts
+./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts
+# ── ⑥ 假壳那条闸**真跑一趟**（要本机的 Electron + venv + frontend/dist，CI 上跑不了）
+unset ELECTRON_RUN_AS_NODE
+WALKTHROUGH_SCRATCH=<scratch>/p85/fs-run node scripts/run-walkthrough-fakeshell.mjs   # 8 步 / 110 条
+# ── ⑦ 真壳那一趟（`<worktree>/desktop/out/...` 的 .app；**别指主仓那份**）
+cd <worktree>/desktop && npm run dist && codesign --force --deep --sign - "out/mac-arm64/MEMOKET NOTE.app"
+# ── ⑧ 走查（`@LAST_NEW_NOTE` 照 P83 那条；**假模型端口必须跟库里那一列对上**，
+#      对不上 go.sh 会吵——这一批当场吵过一次，见问题 #2）
+WALKTHROUGH_APP=<…/MEMOKET NOTE.app> WALKTHROUGH_UDD=<…/udd> WALKTHROUGH_SHOT_DIR=<…/shots> \
+WALKTHROUGH_LOG_DIR=<…/log> WALKTHROUGH_SHOT_PREFIX=p85 LLM_MODE=ok \
+  zsh <worktree>/frontend/scripts/walkthrough/go.sh <cdp-port> <llm-port> <steps 清单>
+# ── ⑨ 走查日志洗干净存进仓库（P85 C①；cwd = <worktree>/frontend）
+node scripts/walkthrough/normalize-log.mjs --today 2026-09-21 \
+  --out ../docs/walkthrough-logs/p85 <scratch>/p85/log-新那几个目录里的 *.txt
+# ── ⑩ 真库指纹（cwd = 主仓 /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE，**只读**）
+sqlite3 "file:backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), (select max(id) from llm_usage), (select count(*) from note_revisions) from notes;"
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm` 一律不出现在收尾里（第 776 轮那一课）。
+
+P85 留给下一批：
+① **跨批逐行 diff 这一批只做了一半**：地方留好了、闸也有了，但 `p85` 是第一份，
+   **真正的逐行 diff 要 P86 才做得成**——下一批跑完走查第一件事就是 `diff docs/walkthrough-logs/p85 p86`；
+② **`components/` 今天只有 1 份测试 / 70 个源文件**：`MIN_COMPONENT_TESTS` 是个下限不是覆盖率，
+   13 个「有纯函数导出」的文件是最便宜的下一批（不用真 React）；
+③ **新闸第 ① 条要跑 `vitest list`**（多花约 3 秒），`npm test` 里 vitest 因此起了两次——没优化；
+④ `floor_ruler` 仍然只跑在 `pytest` 那条链上（P83 ⑥ 原样留着）；
+⑤ 假壳够不着的仍是 ⑦ ⑧ 的采集那一半 +「后端重起」那一半（P83 ⑤）；
+⑥ P83 留的 ①②，P81 留的 ①②③④，P79 留的 ①②③④⑥、P78 留的 ④、P77 留的 ②④、
+   P76 留的 ②③④⑤、P74 留的 ①②③、P69 留的 ①②③ 都没碰。
