@@ -20315,3 +20315,321 @@ P81 留给下一批：
 > 修法不是补一个 ` ``` `，是**把两节各自从它们的分支上原样取回来重拼**。
 > **「冲突两边都留」在散文里是安全的，在带围栏的块里不是。**
 
+
+---
+
+## P82 · 第 809 轮：**`COMMON_DF_MIN` 那道兜底量完了（判「换不了」）** + **quorum 有多脆量出来了** + **`_terms` 那笔账的形状记错了**（2026-09-21）
+
+> 开工 `e41eab6`（worktree `agent-a70375475ef65681d`）。
+> **产品代码一个字节没改**（后端 + 前端都是）。`kb/relations.py` 改的只有**一段注释**
+> ——那段注释里有一句是错的（P81 量到），这一批按实测重写了它。
+> 新增 `backend/tests/test_p82.py`（15 条）；
+> `backend/scripts/recall_ruler.py` / `en_gate_ruler.py` / `kb_search_ruler.py` **只加不改**
+> （各加一个新的量法 + 新的钉死数，P77 / P79 / P81 钉死的数**一个没动**）；
+> `backend/scripts/floor_ruler.py` 登记新钉的 **15 个数**；
+> `tests/fixtures/memory_sample.jsonl` **+50 行标注**（`p82-off333-49`）；两份文档。
+> `frontend/scripts/walkthrough/` · `frontend/scripts/run-walkthrough-fakeshell.mjs` ·
+> `frontend/src/editor/` **一个字节没碰**（另有 agent 在那一侧）。
+> 真库只读做指纹；实验一律 `KITE_DATA_DIR=<scratch>/p82data`（**整棵 `backend/data` 拷过去**，
+> 两边 `ls -1a` 对到 0 差异，源和目标各核 `11,429,185 / 403a1183`，`recall_ruler` 自报 `users 6`）。
+>
+> **基线自己量的，不抄**：`e41eab6` 后端带 `KITE_DATA_DIR` **3149 passed / 0 skipped**、
+> 不带 **3135 / 14 skipped**、前端 **95 文件 / 845 条**。（跟任务书给的三个数一致，仍然自己跑了一遍。）
+>
+> 四栏留下率**整行、一栏没跌**（自己量的）：`recall_selfcheck terrence 200 11` **197/195/96**、
+> `… evidence` **192/190/92** · 圆点 **166 段 / 判出 137 / 真画 33**（缺依据 23 · 印证 10）·
+> D2 表 B **8 条**（N2 5 · N4 3）· 47 条 **46/36/4/6（13%）**。
+> 七把尺各跑一遍，**旧的七把逐格复现**。
+
+---
+
+### ① `COMMON_DF_MIN` 那道小库兜底——**量完判「换不了」**
+
+#### 先说清楚：**动的是哪条路上的哪个门**
+
+那句错的注释写在 `kb/relations.py` 里，而 `relations.py` 今天只管**一条**路（关系卡「沾边」，
+`evidence_runs` / `shared_evidence`）——**那正是 P29 当年量 6% 时量的那条**。
+可它上面定义的 `COMMON_DF_MIN` / `COMMON_DF_RATIO` 被 `UserMemory.common_term()`
+（`kite_memory.py:536`）读走，而那个判据**同一个对象注给四处**：
+
+| 门 | 在哪 | 谁接上去的 |
+|---|---|---|
+| 关系卡「沾边」的证人名单 | `relations.evidence_runs(common=…)` | **P29**（6% 就是在这条路上量的）|
+| 中文 grep 通道取词 | `search._cjk_greps` | P42 A2 |
+| **`_weigher` 判「实词」** | `search._weigher.useless()` | P32 / P67 ② |
+| 证据 chip 的资格 | `search.evidence` / `qualifies` | P32 #1 |
+
+**要动的那个门是 `common_term()` 自己**（它一动，四处一起动）。
+**这一条从头到尾是判「该不该动它」，不是动它。**
+
+#### 那句注释错在哪（先在六个库上重量一遍，不抄 P81）
+
+`COMMON_DF_MIN / COMMON_DF_RATIO = 333`。注释说「库不到 333 个 unit 时这条判据等于不启用」。
+**实际有效门槛是 `max(6%, 20/total)`**：
+
+| 库 | unit | 有效门槛 | 14 个探针串里还是 `common` 的 |
+|---|---:|---:|---:|
+| `fresh678` / `b` / `c` | 2 | ——（df 到不了 20）| **0 / 14** |
+| `shot-demo` | 11 | ——（同上）| **0 / 14** |
+| **`terrence-rewrite`** | **193** | **10.4%** | **14 / 14** |
+| `terrence`（真用户库）| 2362 | 6.0% | 6 / 14 |
+
+**兜底在 ≤20 unit 那一档是真兜住了，在 20–333 那一档没兜住**
+——**而真实用户正落在后一档**：193 条记录的库比 2362 条的库**多砍掉一倍**的词。
+
+#### 把注释答应的那件事**真做出来**，全库对拍（`recall_ruler --cf-common`，量具进了仓库）
+
+反事实：`common_term()` 在 `unit_count * COMMON_DF_RATIO < COMMON_DF_MIN` 时回 `None`。
+
+| | 有召回 | 召回对 | top-8 变了 | 掉 / 进 |
+|---|---:|---:|---:|---:|
+| HEAD | 341 | 1347 | — | — |
+| 「小库不启用」 | **347** | **1435** | **49** | 掉 52 / 进 140（净 **+88**）|
+
+**⚠️ 按库分，不按血缘分**（P81 ① 那一课，这一批把它钉进 `recall_ruler.EXPECT_BY_LIB`）：
+
+| 库 / 血缘 | 分母 | 变了 | 比率 |
+|---|---:|---:|---:|
+| `terrence` / user | 549 | **0** | 0.0% |
+| `terrence` / script | 92 | **0** | 0.0% |
+| `shot-demo` / fixture | 20 | **0** | 0.0% |
+| `fresh678` / `b` / `c` / fixture | 6 + 6 + 6 | **0** | 0.0% |
+| **`terrence-rewrite` / script** | **86** | **49** | **57.0%** |
+
+**这个旋钮只够得着一个库**——因为 `MIN=20` 在 ≤11 unit 的库上本来就等于不启用、
+在 2362 unit 的库上本来就不绑定。
+
+#### 49 条**逐条读完**（标注 `p82-off333-49`）：变好 16 · **变差 23** · 中性 10 → **退回**
+
+**净 +88 对是好看的，逐条读下来不是**（P73 那一课：捞回来的多了 ≠ 捞对了）：
+
+| | 形状 | 例 |
+|---|---|---|
+| **变好 16** | 掉的是撞词 / 进的是逐句出处 | i=316/319/320（「硬件与一年 AI 使用权打包 **179 美元**」**逐句出处**进来了）· i=321（0 条 → 进「当前 App 缺少支付模块…众筹测试用户可以免费使用」**逐句出处**）· i=596/597（「不再制作原定于 4 月 10 日提供给 KOL 的样品」**逐句出处**）· i=301/598（掉的是撞 `投资人` 的红筹架构 / 37 号登记）|
+| **变差 23** | **整屏被虚词撞词灌满** | i=39/295/296/686/688/692（进的 7–8 条全靠 `因此` / `如果` / `消费者` 撞进来：表带 Logo 耐磨、四张图同时动、AI 辅助编程、开箱脖挂硬件…）· **i=293**（唯一那条「Speaker A…最终因大健康业务裁员而**离开安克**」是查询的逐句出处，掉了之后整屏变空）· i=23（掉的是查询第一句的逐句英文对应）· i=665/686/692（0 条 → 一屏撞词）|
+| 中性 10 | 只换了名次，或一对一错 | i=25/595/664（八条一条没换）· i=587/588（两种写法说同一件事）|
+
+#### 根因量出来了：**`common` 在那个库上兼着第二份工**
+
+关掉它之后冒出来当证据的是什么？逐串核 `_is_cn_filler` 和 `common` 两道门：
+
+| 串 | `terrence-rewrite`（193）df | 谁挡着 | `terrence`（2362）df | 谁挡着 |
+|---|---:|---|---:|---|
+| `团队` | 105 = **54.4%** | **只有 `common`** | 99 = 4.2% | **谁都不挡**（也没事）|
+| `用户` | 98 = 50.8% | 只有 `common` | 340 = 14.4% | `common` |
+| `如果` | 67 = 34.7% | 只有 `common` | 590 = 25.0% | `common` |
+| `因此` | 45 = **23.3%** | **只有 `common`** | 7 = **0.3%** | **谁都不挡**（也没事）|
+| `说明` | 33 = 17.1% | 只有 `common` | 56 = 2.4% | 谁都不挡 |
+| `消费者` | 22 = 11.4% | 只有 `common` | 67 = 2.8% | 谁都不挡 |
+| `连接` | 26 = 13.5% | 只有 `common` | 36 = 1.5% | 谁都不挡 |
+
+**`_is_cn_filler` 那张固定表里一个都没有。**
+在 2362 unit 的真库上它们 df 天然就低，谁都不挡也没事；
+在 193 unit 的单主题库上，**`common` 是唯一挡着它们的东西**。
+
+> **判：换不了**（`COMMON_DF_MIN` / `COMMON_DF_RATIO` / `common_term()` 一个字节没动）。
+> P81 读出来的根因**成立**——「单主题小库里主题词的 df 天然就高，df 高 ≠ 它不是证据」；
+> 但**同一个 df 判据在那个库上还兼着口水词兜底**，
+> **只按库大小去关它，砍掉的是第二份工**，产出净变差（23 : 16）。
+> 要真修得先把「泛词」和「主题词」分开，而 P29 已经量过实体层 / 主题层今天两头都不顶用
+> （1239 个实体里混着 `app` / `device`，又盖不住 `超节点`）——**那是另一条路，不是这个旋钮。**
+
+#### ⚠️ **四栏对这一刀是瞎的**（这一批读出来的，照实记）
+
+`recall_selfcheck` / 圆点 / D2 表 B / 47 条标注**全部建在 `terrence` 上**，
+而这个旋钮**一条都动不到 `terrence`**。
+**四栏全绿不等于这一刀没事**——唯一看得见它的是 765 那把尺**按库分**之后的那一行
+（`recall_ruler --by-lib`，这一批新加的）。
+
+**这一批改的那段注释**把上面这些数原样写进了 `kb/relations.COMMON_DF_MIN` 头上，
+**代码一个字节没动**。
+
+---
+
+### ② quorum 有多脆——**量出来了，没改**
+
+P81 ④ 顺手读到 i=595/596「几乎同一条查询判反」，只记了形状。这一批量它。
+
+#### A. 那道门本身（白拿的数：`en_gate_ruler` 早就在记每一次 `(cl, ns)`）
+
+`_strong_enough` 在 765 上被问 **375864** 次，`len(cl)` 分布：
+
+```text
+len(cl)=  0  312743 次   True      0 / False 312743
+len(cl)=  1   61339 次   True      0 / False  61339
+len(cl)=  2    1499 次   True   1488 / False     11     <-- 全部的重量都在这一行
+len(cl)=  3     179 次   True    179 / False      0
+len(cl)>= 4     104 次   True    104 / False      0
+```
+
+> **判 True 一共 1771 次，其中 1488 次证人正好两条 = 84.0%。少一条证人就翻 False。**
+
+`len(cl)==2` 还是**唯一**一档「够了 quorum 还会被后面那道 `≥3 字 / 实词` 判回去」的（11 / 1499），
+≥3 那几档一次都没有——**这道 quorum 之后的那层过滤，实际上也只在这一档里起作用。**
+
+#### B. **用户眼前**那一屏（`en_gate_ruler --quorum`，这一批新加）
+
+1347 条召回对里，这道门管着 **1049** 条（另 298 条是短查询，它不问），
+其中 **778 条靠正好两条证人撑着 = 74.2%**。
+
+**i=595 / 596 逐条摆出来**（P81 顺手读到的那两条，都在 `terrence` 上）：
+
+```text
+i=595  8 条里 7 条的证人是  ['kickstarter', '2026']   <-- 两条，一条不多
+i=596  8 条里 7 条的证人是  ['kickstarter', '2026']
+```
+
+**整屏 7/8 条记忆押在 `kickstarter` + `2026` 这两个串上。**
+
+#### C. ⚠️ **预测错了，照实记**
+
+任务书按 P81 ④ 的形状问「有多少对『几乎同一条查询、判却相反』」。量下来：
+765 里「一条是另一条前缀」的查询对 **79 对**（涉及 154 条查询），
+两边 top-8 并集上共判 281 次、**判反 132 次 = 47.0%**，有翻盘的 36 / 79 对。
+**但那 36 对里长的那条中位多出 78% 的正文**（最小 12%、最大 93%）——**那不叫「几乎同一条」**。
+收紧到「长的那条只多出 ≤25%」，**全库只剩 4 次翻盘**（其中 3 次证人正好两条）。
+其中 **46 / 132 = 34.8% 是「一条证人定生死」**（一边 2 条判 True、另一边 1 条判 False）。
+
+> **真正的脆在 84.0% / 74.2%，不在那个 47%。**
+> **先量别急着改**：这一批只把分量钉进 `en_gate_ruler`（五个数），一个判据没动。
+
+---
+
+### ③ `_terms` 摆出用户没打完的串——**P81 那笔账的形状记错了**
+
+P81 ② 顺手记：「`9月14日` → 命中词摆 `9月14`；`2026-09` → 摆 `2026`」。
+**⚠️ 那笔账记的是 `search._number_terms` 的产出，不是屏幕上那一行。**
+
+唯一真渲染那一行的路是 `/recall` → `RecallOut.terms` → `display_terms` → `KbDashboard`，
+而 `UserMemory.recall()` 回的 `terms` 是 **`surfaces`（词表表层词）+ `_cjk_terms(query)[:3]`**
+——**`_number_terms` 一个字都进不去**（源码对拍钉在 `test_p82::第三条b`，判的是行为不是文本）。
+
+#### 20 种**用户真会打的**日期 / 数字写法，屏幕上到底摆出什么
+
+```text
+打「9月14日」   _number_terms=['9月14']   屏幕 []        0 条结果   <-- 一个字都不摆
+打「2026-09」  _number_terms=['2026']    屏幕 []        0 条
+打「2026-03-10」「2025/10/27」「3月15日」「4月16号」「8月5日」「2026年3月」「30%」「150」「500台」… 同上
+打「179美元」   _number_terms=['179']     屏幕 ['美元']   0 条      <-- 数字被整个丢掉
+打「1万台」     _number_terms=['1万']      屏幕 ['万台']  15 条      <-- 同上
+```
+
+> **20 条里屏幕上一共只摆出 2 串**，两串都是**前面那截数字被整个丢掉**，
+> **不是「后面的 `日` 被吃掉」——`9月14` 在用户眼前一次都没出现过。**
+
+110 条那一档更干净：摆出来 **108 串**，**「只摆了一截」0 条**。
+唯一被机械判据挑出来的是 `极梦ai` → 摆 `ai`，可**整串 `极梦ai` 跟它同行摆着**
+（`命中词：ai、极梦ai`），而那 20 条结果里确实有 16 条是靠 `ai` 进来的——**它没说谎**，
+反而是在如实交代「你这一屏为什么全是 AI 闲聊」。
+
+#### 「找过：9月14」跟「找过：9月14日」哪个更诚实——**都不诚实，今天这样最诚实**
+
+* 摆 `9月14`：用户**没打过**这一截，后端也**没拿它去找过**（这条路上 `_number_terms` 进不来）；
+* 摆 `9月14日`：后端从头到尾**没拿这一串找过任何东西**（`plan` 空、`_cjk_terms` 空）；
+* **今天**：`terms` 是空的 → 那一行整段不渲染 → 屏幕上只有「0 条结果 · N ms」。
+  **「什么都没找过」的诚实说法就是什么都不说。**
+
+> **判：不修。** 三条理由：(1) 台账记的那个形状**在渲染那条路上不存在**，没有靶子；
+> (2) 剩下那个真形状（数字被整个丢掉）在 110 条那一档是 **0 条**、在手造的 20 种写法上是 **2 串**，
+> 而要修它得动 `recall()` 回的 `terms`——**那同时喂着 765 条自动召回**，是第二个旋钮；
+> (3) 真正名不副实的是搜索框自己那句 `placeholder="…数字、日期…"`，那笔账 P81 ② 判过「不修」。
+
+⚠️ **这一条有没有闸**：`components/kb/` 今天**没有跑得起来的前端闸**（P81 ⑤：94 个前端测试文件
+全在禁碰的 `frontend/src/editor/__tests__/`）。所以这一条**全部靠后端源码对拍 + 真库行为钉**：
+`kb_search_ruler` 四个新数 + `test_p82` 五条（含一条只读 `KbDashboard.tsx` 那一行的源码对拍）。
+**说清楚它没有前端闸，而不是假装有。**
+
+---
+
+### 突变验：**16 刀（14 真 + 2 对照），全部对上**
+
+每一刀：**唯一锚点先断言**（出现次数 ≠ 1 就当场判这一刀不算数）→ 整文件写回 →
+逐字节 `cmp` 确认真改到 → 清 `__pycache__` → 跑 `test_p82`（**钉死跑 15 条**）→
+**「红了」和「红的是那条」分开核** → 还原 → 再逐字节 `cmp`。
+
+| 刀 | 红的是 |
+|---|---|
+| 把那句错的注释放回去 | `第一条` |
+| `COMMON_DF_MIN` 20 → 21 | `第一条` + `第一条e` |
+| 注释里「变好 16 / 变差 23」改口成「变好 23 / 变差 16 → 采纳」 | `第一条` |
+| 标注 i=293 变差 → 变好 | `第一条b` + `第一条c` |
+| 标注 i=295 掉的那条被抹掉 | `第一条c` |
+| `EXPECT_CF_COMMON_CHANGED` 49 → 48 | `第一条d` + 登记表 |
+| `EXPECT_BY_LIB` 里 86 → 85 | `第一条d` + 登记表 |
+| `EXPECT_QUORUM_EDGE` 1488 → 1489 | `第二条` + 登记表 |
+| `EXPECT_QUORUM_SHOWN` 里 778 → 700 | `第二条` + 登记表 |
+| 「真正的脆在 84.0%」那句被删 | `第二条c` |
+| `LONG_QUERY_MIN_WORDS` 2 → 1 | `第二条b` |
+| `EXPECT_DATEWRITE_SHOWN` 2 → 3 | `第三条` + `第三条d` + 登记表 |
+| `partial_shown` 去掉「整串同行也摆着」那一档 | `第三条c` + `第三条e` |
+| `_number_terms` 回空 | `第三条b` + `第三条d` |
+| **对照刀 A**：`relations.py` 加一行无关注释 | **绿，15 条全过** |
+| **对照刀 B**：`partial_shown` 里改个局部变量名 | **绿，15 条全过** |
+
+⚠️ **两刀第一版是我自己砍错了，照实记**：
+① 「标注 i=293 变差→变好」第一版是往那一行**加**一个 `"读下来": "变好"` 键——
+JSON **后一个同名键赢**，原来那个 `"变差"` 还在后面，所以**没红**；
+② 「i=295 掉的那条被抹掉」第一版是把 `AI辅助编程` 改成 `AI辅助编程XX`——
+断言是 `needle in blob`，**加后缀仍然包含**，所以**没红**。
+两次都是**刀没砍到，不是闸没用**；改成真的替换掉之后两刀都红在那一条上。
+
+⚠️ **「新加闸门常数不登记就当场红」这条当场兑现了一次**：登记之前跑 `floor_ruler`，
+**15 个新常数一个不落全被点名**（`EXIT=9`）；登记完 **52 条（只准往上 3 · 钉死 49）/ 对不上 0**。
+
+⚠️ **砍完跑了完整 pytest**（P81 那一课：同一行可能被三个地方钉着）——
+**3164 / 0 skipped，一条没红。**
+
+---
+
+### 收尾（**每条都写明环境**）
+
+```bash
+# 以下全部在 worktree 根 /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-a70375475ef65681d
+# <scratch> = /private/tmp/claude-501/-Users-huilong-Skills-Bugfixing-Feishu/401a09f3-c80d-446c-a096-c81ed0fa949a/scratchpad
+# backend/.venv 与 frontend/node_modules 是软链到主仓的；真库只读，实验一律走 KITE_DATA_DIR
+
+# 后端（cwd = <worktree>/backend）—— 两个数分开记
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python -m pytest -q      # 3164 passed / 0 skipped
+.venv/bin/python -m pytest -q                                      # 3146 passed / 18 skipped
+
+# 前端（cwd = <worktree>/frontend）
+npm test                                                           # 95 文件 / 845 条
+
+# 七把尺（cwd = <worktree>/backend；floor_ruler 不读语料，给不给 KITE_DATA_DIR 都一样）
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/recall_ruler.py
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/recall_ruler.py --window
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/margin_dot_ruler.py
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/topic_spread_ruler.py
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/en_gate_ruler.py
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/kb_search_ruler.py
+.venv/bin/python scripts/floor_ruler.py
+
+# 这一批新加的三个量法（慢，opt-in；cwd = <worktree>/backend）
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/recall_ruler.py --by-lib --cf-common
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/en_gate_ruler.py --quorum
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/kb_search_ruler.py --writings
+
+# 四栏（cwd = <worktree>/backend）
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/recall_selfcheck.py terrence 200 11
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/recall_selfcheck.py terrence 200 11 evidence
+KITE_DATA_DIR=<scratch>/p82data .venv/bin/python scripts/memory_sample_replay.py
+
+# 真库指纹（cwd = 主仓 /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE，**只读**）
+sqlite3 "file:backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), (select max(id) from llm_usage), (select count(*) from note_revisions) from notes;"
+```
+
+真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44**；
+`llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；`~/Library/Application Support` **一次都没碰**；截图 0 张。
+
+**P82 留给下一批**：
+① **`common` 兼着两份工这件事本身**——「泛词 vs 主题词」要分开得换一条轴（分布形状 / 位置 / 词性），
+   这一批只证明了「按库大小关它」这条路走不通，**新轴一条都没量**；
+② **quorum 那个 `2` 的爆炸半径没量**——84.0% 押在第二条证人上是**现状**，
+   改成 3 会掉多少、改成「两条里至少一条 ≥N 字」会怎样，**一个反事实都没跑**；
+③ `_is_cn_filler` 那张固定表**在小库上明显不够用**（`因此` / `团队` / `说明` 都不在里面），
+   补表的爆炸半径没量（它跟 `relations._terms` 共用，动它同时动 `overlap`）；
+④ P81 留的 ②（数字日期三个旋钮）、⑤（`components/kb/` 没有前端闸）**原样留着**；
+⑤ P79 留的 ④⑤⑥、P78 留的 ②③④、P77 留的 ②④、P76 留的 ①②③④⑤、P74 留的 ①②③、
+   P69 留的 ①②③ 都没碰。

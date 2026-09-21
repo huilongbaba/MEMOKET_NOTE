@@ -151,6 +151,62 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
     ("backend/scripts/en_gate_ruler.py", "EXPECT_CF"): (
         PINNED, {2: (342, 1353, 2), 1: (342, 1353, 2), 4: (317, 1225, 67)},
         "三档门槛各自的全库对拍。P77 「这道门该不该换轴」那条判就架在这张表上"),
+    # —— P82 ①：`common_term()` 那个旋钮的全库对拍 + 按库分的分母 ——
+    # ⚠️ 这一组的「一动要重读什么」全部指向同一处：`kb/relations.COMMON_DF_MIN` 上面
+    # 那段注释里 P82 判「换不了」的那几行，以及 `memory_sample.jsonl` 的 `p82-off333-49`。
+    ("backend/scripts/recall_ruler.py", "EXPECT_BY_LIB"): (
+        PINNED, {("fresh678", "fixture"): 6, ("fresh678b", "fixture"): 6,
+                 ("fresh678c", "fixture"): 6, ("shot-demo", "fixture"): 20,
+                 ("terrence", "script"): 92, ("terrence", "user"): 549,
+                 ("terrence-rewrite", "script"): 86},
+        "**按库分的分母**（P81 ① 那一课：`common_term()` 是按人建的，按血缘分会把 62.8% 平成 6.9%）。"
+        "一动 = 语料换人了，所有「某个库上翻了百分之几」的数当场失效，49 条标注跟着重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_COMMON_CHANGED"): (
+        PINNED, 49, "**P82 ① 那条判的分量**：把「小库不启用 `common`」真做出来，765 里变 49 条。"
+                    "这 49 条逐条读完才得出「变好 16 / 变差 23 / 中性 10 → 退回」。一动就得重读那 49 条"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_COMMON_DROP"): (
+        PINNED, 52, "那 49 条里掉了多少召回对。跟 ADD 的 140 一起读才分得清「捞回来的多了」和「捞对了」（P73 那一课）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_COMMON_ADD"): (
+        PINNED, 140, "那 49 条里进来多少召回对。净 +88 看着是好事，逐条读下来 23 条变差——**别拿聚合分当判据**"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_COMMON_HIT"): (
+        PINNED, (341, 347), "有召回的查询数 HEAD → 反事实。341 是 P77 起每批都在对的那个数，"
+                            "它一动说明的不是这个旋钮，是 765 那把尺本身"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_COMMON_LIBS"): (
+        PINNED, (("terrence-rewrite", 49),),
+        "**这个旋钮只够得着一个库**。一旦够得着第二个库，「按库分」那张表和 49 条标注的分母全部换人——"
+        "也就是说 `COMMON_DF_MIN` / `COMMON_DF_RATIO` 或者某个库的大小变了"),
+
+    # —— P82 ②：quorum 有多脆（量了没改，这四个数就是那个「多脆」）——
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_CALLS"): (
+        PINNED, 375864, "`_strong_enough` 在 765 上被问了多少次。它是下面三个数的分母，一动三个数一起废"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_TRUE"): (
+        PINNED, 1771, "其中判 True 的次数。EDGE / TRUE = 84.0% 是 P82 ② 的结论本身"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_EDGE"): (
+        PINNED, 1488, "**P82 ② 那条判的全部分量**：判 True 里证人正好两条的有 1488 次 = 84.0%，"
+                      "少一条证人就翻 False。这个数一动，「quorum 有多脆」就得重量"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_REJECT_AT_2"): (
+        PINNED, 11, "够了 quorum 又被后面那道 `≥3 字 / 实词` 判回去的次数——**只有 len(cl)==2 这一档有**。"
+                    "它一动说明后面那道门的量程变了（那是 `EN_STRONG_MIN` / `STRONG_CJK_MIN` 的事）"),
+    ("backend/scripts/en_gate_ruler.py", "EXPECT_QUORUM_SHOWN"): (
+        PINNED, (1347, 298, 778, 1049),
+        "**用户眼前**那 1347 条召回对里，这道门管着 1049 条、其中 778 条靠正好两条证人撑着（74.2%）。"
+        "1347 是 P77 起每批都在对的那个数——它一动说明的不是 quorum，是召回本身"),
+
+    # —— P82 ③：屏幕上写的串 ≠ 用户打的串 ——
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_SHOWN_TOTAL"): (
+        PINNED, 108, "110 条手打搜索词一共摆出来几串——**下面那个 `EXPECT_PARTIAL_SHOWN = 0` 的分母**。它一动说明 `display_terms` 摆出来的东西整体变了，那个 0 就不是在同一批串上数的了"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_PARTIAL_SHOWN"): (
+        PINNED, 0, "**「屏幕上写的是用户打的那个 token 的一截」在 110 条上是 0 条**。"
+                   "这个 0 是 P82 ③ 判「不修」的依据之一；它一动说明 `display_terms` / "
+                   "`recall()` 回的 `terms` 换了口径，那一行的诚实度要重判"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_DATEWRITE_SHOWN"): (
+        PINNED, 2, "**20 种用户真会打的日期 / 数字写法，屏幕上一共只摆出 2 串**——"
+                   "P81 ② 记的 `9月14日 → 摆 9月14` 在渲染那条路上一次都没发生过。"
+                   "这个 2 一动说明 `recall()` 开始收数字了，P81 ② / P82 ③ 两笔账一起重读"),
+    ("backend/scripts/kb_search_ruler.py", "EXPECT_DATEWRITE_PARTIAL"): (
+        PINNED, 2, "那 2 串**两串都是只摆了一截**（`179美元`→`美元`、`1万台`→`万台`，数字被整个丢掉）。"
+                   "跟上面那个 2 一起读：摆出来的每一串都名不副实，但总共只有两串"),
+
     ("backend/scripts/margin_dot_ruler.py", "EXPECT"): (
         PINNED, {"dots": {"segments": 166, "judged": 137, "drawn": 33},
                  "walk": {"segments": 3, "judged": 2, "drawn": 2},
