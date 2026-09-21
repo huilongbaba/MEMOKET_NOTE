@@ -263,6 +263,32 @@ EXPECT_CF_GATES_EN060_IDX = (32, 318, 319, 584, 585, 589, 593, 640, 641, 642, 64
 EXPECT_CF_GATES_EN060_TERMS = (("agent", 0.450), ("memory", 0.592))
 EXPECT_CF_GATES_EN060_TH = 0.60                           # P90 ① 点名的那个「英文专用低门槛 ≈0.60」
 
+# ── `--cf-shape`：**P92 留的第三格，这一批造了尺**（P94）────────────────────────
+#
+# 上面那段说「八格的屏一进就是半屏」是**眼看出来的**。这一批把它量成数：
+# `kb/fact_distinct` 判一屏里有没有半屏是**同一句话的多种说法**
+# （判据 = `obj` 相交非空 ∧ `topics` 相交非空，然后取**最大团** ≥3 且 ≥ 半屏）。
+#
+# ⚠️ **这一支不是反事实的对照组，是给 en060 那一支配的量具**：左边一样是今天的 HEAD，
+# 右边就是 `EXPECT_CF_GATES_EN060_TH` 那一刀，**产品逻辑一个字节没动**。
+# 判「不接」的四条理由逐字在 `kb/fact_distinct` 文件头第 ⑤ 格。
+EXPECT_SHAPE_TOTAL = 175          # 765 屏里「量得了 ≥3 格」的有几屏（这把尺的分母）
+EXPECT_SHAPE_BLIND = 441          # 一个字都说不出来的屏（量得了 = 0）——57.6%，**它是判「不接」的第 2 条**
+EXPECT_SHAPE_HEAD = 18            # HEAD 上判「是这形状」的屏数
+EXPECT_SHAPE_EN060 = 21           # en060 那一刀之后
+EXPECT_SHAPE_FLIP_ON = (640, 642, 645)    # 从「不是」翻成「是」的是哪几屏
+EXPECT_SHAPE_FLIP_OFF = ()                # 反向一屏都没有
+# HEAD 上判「是」的 18 屏落在哪几个库（库, 判「是」, 量得了>=3 的分母）
+EXPECT_SHAPE_LIBS = (("fresh678", 0, 2), ("fresh678b", 0, 4), ("fresh678c", 0, 2),
+                     ("shot-demo", 2, 14), ("terrence", 12, 97), ("terrence-rewrite", 4, 56))
+# 那 18 屏**逐条读完**（标注 `p94-shape-18`）：(真, 假)
+EXPECT_SHAPE_READ = (12, 6)
+# ⚠️ **同一笔账按库拆开**——这一对才是判「不接」的第 1 条理由：
+# 大库 `terrence` 上真 6 / 假 6 = **假阳性 50%**，而 641/765 = 83.8% 的查询落在大库。
+EXPECT_SHAPE_READ_BIGLIB = (6, 6)
+# 两个小库上真 6 / 假 0。**别把这两对合成一个「真 12 假 6 = 67%」去读**（那是两笔账混成一笔）。
+EXPECT_SHAPE_READ_SMALLLIB = (6, 0)
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -983,6 +1009,70 @@ def _swap_run(fn, *, install, run, restore, purge):
         purge("after")
 
 
+def cf_shape(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**一屏里有没有半屏是同一句话的多种说法**，HEAD 和 en060 各量一遍（P94）。
+
+    尺在 `app/database/kb/fact_distinct`（**没接进产品**）。这儿只是把它套在
+    `cf_gates` 那同一个 `recall(limit=8, evidence=True)` 上跑两趟。
+
+    ⚠️ **换 `common_term` 一样要清那两份脸的类级缓存**，理由逐字同 `cf_gates`：
+    不清的话右边那趟量的还是 HEAD 的屏，于是「翻了 3 屏」会静静地量成 **0**，
+    而 0 看上去恰好像个漂亮的结论（「en060 没造出灌屏」），**正好是反的**。
+    这儿用的就是 `_swap_run` 那一份实现，账本一样断言 `EXPECT_CF_GATES_PURGES`。
+    """
+    from collections import Counter
+
+    from app.database.kb import fact_distinct as FD
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+    ledger: list[str] = []
+
+    def purge(when: str) -> None:
+        ledger.append(when)
+        mems.clear()
+        for k in list(UserMemory._cache):
+            if k.endswith("#whoface") or k.endswith("#topicface"):
+                UserMemory._cache.pop(k, None)
+
+    def run() -> list[dict]:
+        out = []
+        for user, q, _m, _o in qs:
+            m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+            facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+            store, _v = m._index()
+            recs = [store.facts[f["id"]] for f in facts if f.get("id") in store.facts]
+            out.append(FD.screen_shape(recs))
+        return out
+
+    orig = UserMemory.common_term
+
+    def swap(fn):
+        mark = len(ledger)
+        out = _swap_run(fn, install=lambda f: setattr(UserMemory, "common_term", f),
+                        restore=lambda: setattr(UserMemory, "common_term", orig),
+                        run=run, purge=purge)
+        got = tuple(ledger[mark:])
+        if got != EXPECT_CF_GATES_PURGES:
+            raise AssertionError(
+                f"缓存该清两次（{EXPECT_CF_GATES_PURGES}），这一趟清的是 {got} —— 这一支的数当场作废")
+        return out
+
+    head = swap(orig)
+    en = swap(_en_low_variant(EXPECT_CF_GATES_EN060_TH))
+    den = [i for i, s in enumerate(head) if s["measurable"] >= 3]
+    fh = [i for i in den if head[i]["flagged"]]
+    fe = [i for i, s in enumerate(en) if s["measurable"] >= 3 and s["flagged"]]
+    libs = Counter(qs[i][0] for i in fh)
+    dens = Counter(qs[i][0] for i in den)
+    return {"total": len(den), "blind": sum(1 for s in head if s["measurable"] == 0),
+            "head": tuple(fh), "en060": tuple(fe),
+            "flip_on": tuple(i for i in fe if i not in set(fh)),
+            "flip_off": tuple(i for i in fh if i not in set(fe)),
+            "libs": tuple(sorted((u, libs.get(u, 0), dens.get(u, 0)) for u in dens))}
+
+
 def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     """**库大小闸和汉字闸今天各自还挡着什么**（P90）。
 
@@ -1258,6 +1348,31 @@ def main(argv: list[str]) -> int:
         if 607 not in g["tag"]["changed"]:
             bad.append("cf-gates: i=607 不在摘闸后变了的那批里 —— "
                        "**P90 ① 那条链的落点变了**，整节重读")
+    if "--cf-shape" in argv:
+        g = cf_shape(qs)
+        print(f"  **这几条事实彼此有没有区别**（P94，尺在 `kb/fact_distinct`，**没接进产品**）："
+              f"量得了 ≥3 格的屏 {g['total']} / {EXPECT_TOTAL}"
+              f"（一个字都说不出来的 {g['blind']} 屏 = {g['blind'] / EXPECT_TOTAL * 100:.1f}%）")
+        print(f"    判「半屏是同一句话的多种说法」：HEAD **{len(g['head'])}** 屏 → "
+              f"en060 **{len(g['en060'])}** 屏；翻成「是」的 {g['flip_on']}、反向 {g['flip_off']}")
+        print(f"    HEAD 那 {len(g['head'])} 屏是：{g['head']}")
+        print(f"    按库（库, 判「是」, 量得了>=3）：{g['libs']}")
+        print(f"    ⚠️ **逐条读完按库分**：大库 `terrence` 真 {EXPECT_SHAPE_READ_BIGLIB[0]} / "
+              f"假 {EXPECT_SHAPE_READ_BIGLIB[1]}（假阳性 50%，而 83.8% 的查询落在大库）；"
+              f"两个小库真 {EXPECT_SHAPE_READ_SMALLLIB[0]} / 假 {EXPECT_SHAPE_READ_SMALLLIB[1]}"
+              " → **判「不接」**，四条理由在 `kb/fact_distinct` 第 ⑤ 格")
+        for name, got, want in (("量得了>=3 的屏", g["total"], EXPECT_SHAPE_TOTAL),
+                                ("瞎掉的屏", g["blind"], EXPECT_SHAPE_BLIND),
+                                ("HEAD 判是", len(g["head"]), EXPECT_SHAPE_HEAD),
+                                ("en060 判是", len(g["en060"]), EXPECT_SHAPE_EN060),
+                                ("翻成是", g["flip_on"], EXPECT_SHAPE_FLIP_ON),
+                                ("反向翻", g["flip_off"], EXPECT_SHAPE_FLIP_OFF),
+                                ("按库", g["libs"], EXPECT_SHAPE_LIBS)):
+            if got != want:
+                bad.append(f"cf-shape {name}: {got} ≠ {want}")
+        if set(g["flip_on"]) - set(EXPECT_CF_GATES_EN060_IDX):
+            bad.append("cf-shape: 翻成「是」的屏里有不在 en060 变了的那 11 条里的 —— "
+                       "**这一刀没落在被测分支里**，数作废")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()

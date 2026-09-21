@@ -24497,3 +24497,384 @@ P93 留给下一批：
 > 15 道静态闸 + `normalize --selftest` + 七把尺全绿；
 > 四栏 `197/195/96`、`192/190/92`、圆点 `166/137/33`、47 条 `46/36/4/6`。
 
+
+---
+
+## P94 · 第 817 轮：**「这几条事实彼此有没有区别」那把尺造出来了**（全库量完 + 18 屏逐条读完 + **判「不接」**）（2026-09-21）
+
+> 出身：worktree HEAD `435532c`（`git log -1` 钉过），worktree `agent-ac46bef705339f956`。
+> 真库只读做指纹；实验一律 `KITE_DATA_DIR=<scratch>/p94data`（= 主仓 `backend/data` **整棵拷**，
+> `ls -1a` 两边对到 **0 差异**，39 行对 39 行；`recall_ruler` 自报 `users 6`）；
+> worktree 的 `backend/data/notes.sqlite3` 是主仓那份的只读拷贝（**没 `chmod 444`**）。
+> **基线自己量的**（不抄）：后端带 `KITE_DATA_DIR` **3337 / 0 skipped**、
+> 不带 **3303 / 34 skipped**、前端 **100 文件 / 913 条**——三个都跟任务书逐格相同。
+> `floor_ruler` 开工 **看着 11 份 / 登记 104 条（5 · 99）/ 例反例 12 条 / 共核 116 条 /
+> 落后 0 / 对不上 0**，也跟任务书逐格相同。
+
+> **这一批产品逻辑一个字节没改。** 动的是：**一份新尺**（`kb/fact_distinct`，**没接进产品**）、
+> `recall_ruler` 一支新读数（`--cf-shape`，十个钉死的数）、一份新闸（`test_p94`，17 条）、
+> 一组标注（19 行）、`floor_ruler` 十条新登记 + 两个 floor 抬到本 worktree 真值（**114 / 126**）、
+> 三处**并排写**的自我更正。
+
+---
+
+### ① 先把那一族摆出来，逐条读（**这是这把尺要抓的东西**）
+
+**i=645 先复现**（`terrence-rewrite`，HEAD vs `en060`）：**8 → 8、七进七出、整屏换人**，
+跟 P92 记的逐格相同。**出去的七条**全是 `Ask Memory` 的具体事实：
+
+| id | 讲的是什么 |
+|---|---|
+| `1604F19` | Ask Memory 接 Notion 等 MCP 要用户**明确授权**；生成报告 / 文件可能成为后续交互 |
+| `1458F12` | 团队认为产品当前最主要的差异化能力是 ask memory + 与 GPT / Slack 的 integration |
+| `1458F14` | ask memory 的 UX 应贯穿多个页面（跨时间提问 / 周期性总结 / 重复声纹会议的记忆建议）|
+| `1604F10` | Ask Memory 在 **1.2 版本**计划支持多轮对话，主要基于用户自己的录音回答 |
+| `1604F11` | **暂不开放**互联网公共数据检索；web browsing 只作辅助 |
+| `1604F16` | 使用额度**绑录音时长**：免费 300 分钟 / 1200 分钟档 / 无限档，不按提问次数收费 |
+| `1458F19` | 计划用功能样机做实际体验测试，因为 ask memory 的场景很难凭想象得出 |
+
+**进来的那一族，逐条读**（P92 点名的六条 + 在同屏灌进来的 `366F1`）：
+
+| id | 正文 | `kind` | `who` | `unit` |
+|---|---|---|---|---|
+| `1578F1` | MemuKet **is described as** a wearable AI agent powered by the user's own memory. | identity | memuket | 1578 |
+| `1580F5` | MemuKet **is presented as** a wearable AI agent powered by the user's own memory. | opinion | memuket | 1580 |
+| `1579F8` | MemoKet **is presented as** a wearable AI agent powered by the user's own memory **and intended to store, organize, and use** memories from conversations. | other | memoket | 1579 |
+| `1581F2` | Speaker A **is developing** Memocat **as a** memory AI agent that **stores, organizes, and puts** users' memories into use. | other | memocat | 1581 |
+| `1589F9` | MemoCat **is positioned as** a memory-powered AI agent that connects memories across time, topics, conversations, and tools. | opinion | memocat | 1589 |
+| `1522F14` | The team **describes** Memo Cat **as** a memory OS or AI assistant with the user's own memory, rather than merely a recorder. | opinion | memo cat team | 1522 |
+| `366F1` | 团队的长期愿景是为每个人构建一个**个人记忆操作系统（memory OS）**和一个基于长记忆的**超级 agent**。 | opinion | 公司团队 | 366 |
+
+**「同一句话的六种说法」长这样**：同一个谓词框架（`X is described / presented / positioned as
+a (wearable) (memory-powered) AI agent powered by the user's own memory`），
+换的只有**三样东西**——**产品名的转写**（MemuKet / MemoKet / MemoCat / Memo Cat / Memocat，
+全是同一个名字在 ASR 里的不同落点）、**那个系动词**（described / presented / positioned /
+is developing / describes）、**后面挂不挂一串动词**（store, organize, use / stores, organizes,
+puts into use）。**七条里没有一条给出第二条信息。**
+
+⚠️ **这一族不是「同一场录音里说了七遍」**：七条出自**七场各不相同的录音**，
+`who` **五种**、`kind` **三种**。而被它们挤掉的那七条具体事实是
+**同一个说话人（`产品团队` 7/7）、`kind` 6/7 都是 `plan`、只出自两场录音**
+（`terrence-1604` 四条 + `terrence-1458` 三条）。
+**⇒「同一句话的多种说法」正好长在「不同的人、不同的场合、不同的体裁」上。**
+
+---
+
+### ② 库里所有够得着的轴摆了一遍（P88 的教训），**`who` / `kind` / `unit` 是反着的**
+
+`FactRecord` 八条轴，正例 = 那族 7 条，反例 = 挤出去的 7 条，取**最大团**：
+
+| 轴 | 正例 7 条 | 反例 7 条 | 判 |
+|---|---:|---:|---|
+| **`obj` 相交非空** | **团 6** | **团 2** | **分得开，方向对** |
+| `topics` 相交非空 | 团 4 | 团 4 | 分不开 |
+| `entities` 相交非空 | 团 4 | 团 3 | 缝只剩一格 |
+| `who` 相同 | 团 2 | **团 7** | ⚠️ **完全反着** |
+| `kind` 相同 | 团 4 | **团 6** | ⚠️ **反着** |
+| `unit` 相同 | 团 1 | **团 4** | ⚠️ **反着** |
+| `event` / `place` | 团 1 | 团 1 | 两边基本全空，量不了 |
+
+⚠️ **这是这一批最值钱的反例**：**按说话人 / 体裁 / 录音去重，砍掉的正好是该留的那七条。**
+⚠️ `obj` 这条轴 P90 ⑥ 记着「**只量过 A/B 分不开**」——**没被排除过**，这一批量的就是它。
+
+**`obj` 的背景率（分母，按库分）**：随便两条事实 `obj` 相交非空的概率——
+`terrence` **0.64%** · `terrence-rewrite` **3.51%** · `shot-demo` 8.8% · 三个 2 unit 的小库 23–27%
+（词表只有 9–11 种）。那一族是 **18/21 = 85.7%**——`terrence-rewrite` 上 **24 倍** 提升。
+⚠️ **`terrence` 有 43.3% 的事实根本没有 `obj`**（20417 条里 8836 条）——这个数后面要用。
+
+---
+
+### ③ 判据：**`obj` 相交非空 ∧ `topics` 相交非空**，取**最大团**，团 ≥3 且 ≥ 半屏
+
+**单轴 `obj` 不够**：全库读下来**一个泛 obj 就能把团撑起来**——`app` 撑起 i=39 / i=41、
+`product` 撑起 i=686 / i=692、`kol` 撑起 i=298。`terrence-rewrite` 上读 10 屏，**单轴版真 4 / 假 6**。
+
+**十组正反例**（四组该判「同」、六组该判「各说各的」，后四组是**读过的**真 / 假团）：
+
+| 判据 | POS8 POS7 POSK POST | NEG7 NEGH NEGA NEGP NEGK NEGC | 错在哪 |
+|---|---|---|---|
+| `obj∩≠∅` | 7 6 5 4 ✅ | 2 2 **3 3 3 3** | **误 4 组** |
+| `topics∩≠∅` | 4 4 5 4 ✅ | **4 4** 2 1 2 2 | 误 2 组 |
+| **`obj∩≠∅ ∧ topics∩≠∅`** | **4 4 5 4 ✅** | **2 2 2 1 2 2 ✅** | **十组全对** |
+| `entities∩≠∅` | 4 4 5 4 ✅ | 3 3 1 1 2 1 | 误 2 组 |
+| `who` 相同 | **2 2 2 1** ❌ | **7 8** 1 1 2 1 | 漏 4 + 误 2 |
+| `kind` 相同 | 4 4 5 3 ✅ | **6 7** 1 2 2 1 | 误 2 组 |
+| `unit` 相同 | **1 1 1 1** ❌ | **4 4** 1 1 2 1 | 漏 4 + 误 2 |
+| `obj` 交集 ≥2 | **3 3 1** 3 ❌ | 1 2 1 1 1 1 | 漏 3 组 |
+| `obj` Jaccard ≥0.5 | **3 3** 3 **2** ❌ | 1 2 1 1 1 1 | 漏 3 组 |
+| `K ∧ 不同 unit`（`M`）| 4 4 5 4 ✅ | 1 1 2 1 1 2 ✅ | **也全对，没要** |
+
+**废掉的版本，照实记**：
+
+* **`M`（K + 「不同 `unit`」）十组也全对、反例还更低，仍然没要**。两条理由：
+  **同一场录音里的重复说法也是灌屏**，豁免掉等于给这把尺开一个永远不会红的口子；
+  **一刀只动一处**。读数钉在 `test_p94::第一条c`，哪天两条轴不够了直接拿来用。
+* **两个收窄版（`obj` 交集≥2 / `obj` Jaccard≥0.5）在那一族七条上都只打到团 3**
+  ——⚠️ **跟 P92 量的字面 3-gram 包含度那一版逐格相同（六条里只认出三条）**。
+  **收窄到「说的是同一个东西的同一面」，就从另外两条路退化回字面去重。**
+  （字面去重**这一批没再走一遍**，只把 P92 那一版原样搬进候选表当对照跑了一次，口径对得上。）
+* **取团不取连通块**：全库上**团版 18 屏 / 连通块版 23 屏**，多出来的 5 屏
+  （i=24 / 82 / 88 / 412 / 418）**逐条读完全是假**——i=82/412 和 i=88/418 是同一批华为
+  950 超节点的事实（「超节点由哪些刀片构成」/「一个计算柜装几片」/「鲲鹏 CPU 和昇腾 NPU
+  两条线」）靠 `server` / `chip` 串成一条链。⇒ **换成连通块，`terrence` 上的假阳性 6 → 10、
+  `terrence-rewrite` 上 0 → 1，一屏都没多抓对。**
+
+⚠️ **更正我自己这一批的一句话（并排写）**：我第一版写的是
+「**连通块会串，实拍在 i=591：三对各靠一个不同的 obj 串成一个团**」。**量完是错的**——
+`i=591` 那三条在**单轴 `obj`** 上是**三角形**（团 3 = 连通块 3，每一对真的都相交），
+在判据 `K` 上是**团 2 = 连通块 2**。**那一组上根本没有「串」这回事**，
+真正的那一刀在全库上（上面那 5 屏）。`test_p94::第一条b` 现在**把两头都断言了**。
+
+⚠️ **另外两处自我更正（也并排写）**：第一版说那一族「**七个不同的 `who`、四个 `kind`**」、
+被挤掉的七条「**大半同一个 kind（plan 5/7）、三条出自同一场录音**」。
+**重数是**：那一族 **五种 `who`、三种 `kind`**；被挤掉的七条 **`plan` 6/7、只出自两场录音**。
+（**引用台账的数前先在源码 / 库上重数**——这一条这一批是在自己刚写下的字上撞的。）
+
+**屏级判据**：最大团 **≥3** 且 **≥ 半屏**（`团 × 2 >= 量得了的格数`）。
+`≥3` 是因为两条撞一块儿太常见（全库 `团 == 2` 的屏 **99** 个）；**半屏**是 P92 那句原话。
+**判不了的格（`obj` 或 `topics` 空）整格不进分母**——不是「判不了就放行」。
+
+---
+
+### ④ 全库 765 屏量完 + 18 屏逐条读完（**按库分**）
+
+| 库 | 屏 | 量得了 ≥3 格 | **判「是这形状」** | 单轴 `obj` 版（对照）|
+|---|---:|---:|---:|---:|
+| `fresh678` / `b` / `c` | 6 / 6 / 6 | 2 / 4 / 2 | **0 / 0 / 0** | 0 / 0 / 0 |
+| `shot-demo` | 20 | 14 | **2**（14.3%）| 3（21.4%）|
+| `terrence` | 641 | 97 | **12**（12.4%）| 26（26.8%）|
+| `terrence-rewrite` | 86 | 56 | **4**（7.1%）| 10（17.9%）|
+| **合计** | **765** | **175** | **18（10.3%）** | 39（22.3%）|
+
+只看满 8 格的屏：`terrence` **9/39（23.1%）**· `terrence-rewrite` **2/38（5.3%）**· `shot-demo` 2/4。
+
+**那 18 屏逐条读完了**（标注 `p94-shape-18`，19 行）。⚠️ **比率要按对的那条轴分**：
+
+| 库 | 判「是」 | 人读**真** | 人读**假** | 假阳性率 |
+|---|---:|---:|---:|---:|
+| `terrence-rewrite` | 4 | **4** | 0 | **0%** |
+| `shot-demo` | 2 | **2** | 0 | **0%** |
+| **`terrence`（大库）** | **12** | 6 | **6** | **50%** |
+| 合计 | 18 | 12 | 6 | 33% |
+
+**真的那 12 屏里最干净的一屏是 i=657**（`terrence`，n=4、**团 4、100%**）：
+四格全是「Speaker B 在哪儿记笔记」的四种说法（OneNote 记个人东西 / 有时用手机备忘录 /
+用 Word 副标题记 / 回去用 OneNote 打勾记要点），**没有一条给出新信息**。
+i=22 / i=307 是「2026 年 3 月在 Kickstarter 众筹」的四种说法（英文两条中文两条），
+i=40 是「MemoCat 跟 Slack / ChatGPT / Notion 打通」的四种说法，
+i=637 / i=638 是夹具库里**故意造的**「电池容量定到 380mAh」三种说法。
+
+**假的那 6 屏全在大库**，形状是同一个：**一个泛 obj 把三到五条各说各的事撑成团**——
+`chip`（i=101 / 427，华为芯片三件事）、`agent`（i=273 / 575）、`广告`（i=337）、
+`手环`（i=388，**团占满 5/8 格，这是最大的一次误判**）。
+⚠️ **18 屏里有三对是相邻段落切出来的近乎同一条查询**（101/427、273/575、655/656）
+——拿 18 当分母读「假阳性率」时得记着这一条，**这不是 18 笔独立的账**。
+
+---
+
+### ⑤ 它拿 en060 那条路量出了什么（**P92 那句话第一次成了数**）
+
+P92 判 en060「不接」的理由是**眼看出来的**。这把尺把它量成数（`--cf-shape`）：
+
+* en060 变了的 **11 屏**（`(32, 318, 319, 584, 585, 589, 593, 640, 641, 642, 645)`，
+  跟 `EXPECT_CF_GATES_EN060_IDX` 逐格相同）里，
+  **3 屏从「不是这形状」翻成「是」**（**i=640 / 642 / 645**）、**反向 0 屏**；
+* 翻的那三屏的团**逐条就是那族定位套话**
+  （i=645 / i=640 是 `1580F5` `366F1` `1589F9` `1581F2`；i=642 是 `366F14` `1579F8` `366F1` `1578F1`）；
+* **HEAD 18 屏 → en060 21 屏。**
+
+⚠️ **这一支自带「反例真的落在被测分支里」的自检**：翻成「是」的屏必须是
+`EXPECT_CF_GATES_EN060_IDX` 的子集，掉出去当场报错、数作废。
+
+---
+
+### ⑥ **判：不接**（造出来 ≠ 要接，同 P75）
+
+四条理由，**都是量出来的**：
+
+1. **大库上假阳性 50%**（真 6 / 假 6），而 **641/765 = 83.8% 的查询落在大库**。
+   拿它去产品里去重，大库上**一半的时候会砍掉真正有区别的事实**。
+2. **它在 441/765 = 57.6% 的屏上一个字都说不出来**（`量得了 = 0`）：
+   `terrence` 43.3% 的事实没有 `obj`。**一把在一半以上的屏上说不了话的尺，不该当产品的闸。**
+3. **它本来的活不是当闸，是当第三格的量具**——⑤ 那三个数不需要改产品一个字节。
+4. **召回那一头也不满**：**`i=641` 人读判「是」**（五进五出、掉的五条全是 `Ask Memory`，
+   而查询第一句就是「第一阶段应继续围绕 ask memory 展开」），
+   **这把尺打的是团 3 / 8 格，差半屏一格，判「不是」**。**漏的这一格照实记着**
+   （`test_p94::第二条b` 拿同一个形状钉着它）。
+
+**⇒ 拆汉字闸这件事到今天挡过四次，四次都判「留着」**（P84 22 条变 17:17 白干 ·
+P90 ③ 6 条变 0 好 4 差 · P92 ① 11 条变 0 好 9 差 · **P94 那 11 条里 3 屏翻成灌屏、反向 0**）。
+
+---
+
+### ⑦ 闸 / 突变 / 尺 / 指纹
+
+**新尺**：`backend/app/database/kb/fact_distinct.py`（`FAMILY_MIN` / `measurable` /
+`same_thing` / `largest_family` / `screen_shape`）。**`app/` 底下除了它自己没有一处 import 它**
+（`test_p94::第三条d` 扫全 `app/` 钉着这一条，刀 ㉑ 红）。
+
+**新读数**：`recall_ruler --cf-shape` + **十个钉死的数**（`EXPECT_SHAPE_*`），
+十条全进 `floor_ruler`，各带「它一动要去重读什么」。
+⚠️ **`floor_ruler` 的完整性闸当场拦了一次**：十个常数一个没登记时 **exit 9**，逐条点名。
+
+**新闸**：`backend/tests/test_p94.py` **17 条**（① 5 条 · ② 3 条 · ③ 5 条 · ④ 4 条）。
+⚠️ 十组正反例的五条轴**从真语料冻成字面表**塞在闸里——**这份闸不要真语料**，跑 0.3 秒。
+它跟语料对不对得上由 `--cf-shape` 在真语料上那一趟负责。
+
+**突变验：真刀 22 次切（其中 1 次重切）+ 对照刀 3 次切。** 规矩逐条照 P61–P92：
+**唯一锚点先断言** → 整文件写回 → 逐字节 `sha256` 确认真改到 → 清 `__pycache__` →
+**钉死收集 17 条**（不对当场作废）→ **「红了」和「红的是那条」分开核** →
+还原 → 再逐字节核（还原后 hash 必须等于原值）。
+
+| 结果 | 刀 |
+|---|---|
+| **按预期红，红的正是预期** | ① ② ③ ④ ⑥ ⑦ ⑧ ⑩ ⑪ ⑫ ⑬ ⑭ **⑮′** ⑰ ⑱ ⑲ ⑳ ㉑ ㉒ **（19 刀）** |
+| **红了，但比预期少红一条**（预测**不全**，方向没错）| **⑤ ⑨ ⑯**（3 刀，见下）|
+| **没红，而预测该红** ⚠️ → **闸太松，改闸重切** | **⑮**（1 刀，见下）|
+| **对照刀全绿，各跑 17 条** | 对照A（`fact_distinct` 加一行无关注释）· 对照B（`recall_ruler` 的 `cf_shape` 签名后加注释）· 对照C（`test_p94` 里 `_rows` 后加注释）|
+
+⚠️ **⑮ 那一刀暴露的是闸太松，是这一批的现钱，而且是同一课第四次咬人**：
+摘掉 `--cf-shape` 里那条「翻的那几屏得落在 en060 那 11 条里」的自检，**闸没红**。
+查下来是——`第三条c` 断言的是「`EXPECT_CF_GATES_EN060_IDX` 出现在 `main` 的源码里」，
+而**这个常数在 `main` 里有两份**（`--cf-gates` 那一格也引它），摘掉一份照样绿。
+⇒ 改成**一份一份点名核**：`main.count(常数) == 2` **且**
+`main.count('if set(g["flip_on"]) - set(EXPECT_CF_GATES_EN060_IDX):') == 1`。
+重切 **⑮′** → **红在预期那条**。
+**「同一个字面量可能有第二 / 第三份」这一课，P88 / P90 / P92 各咬过一次，这是第四次。**
+
+⚠️ **预测错了照实记（三条）**：
+
+* **⑤**（摘掉「半屏」那一半，只留 `≥3`）：我预测 `第一条a` + `第二条b` 都红。
+  **只红了 `第二条b`**——十组反例的团**全部 < 3**，拦住它们的从来是 `FAMILY_MIN` 那一道，
+  半屏那一道在这十组上**一格都没承重**。⇒ 承重的是 `第二条b` 里那个「团 3 / 8 格」的构造。
+* **⑨**（`EXPECT_SHAPE_HEAD` 18 → 19）：我预测 `第三条a` + `第三条b` + `第四条a` 都红。
+  **`第四条a` 没红**——它比的是标注里的 (真, 假) 跟 `EXPECT_SHAPE_READ`，跟 `HEAD` 无关；
+  真正接上的是 `第三条b` 里那句 `sum(READ) == HEAD`。
+* **⑯**（把一条登记的键名改掉）：我预测 `第四条c` + `第四条d` 都红。
+  **`第四条d` 没红**——键名改了但**条数没变**（还是 114），`REGISTRY_SIZE_FLOOR` 当然对得上。
+  真正会红的是**删掉**一条登记，那是刀 ⑰ 的活（`REGISTRY_SIZE_FLOOR` 不抬 → 红）。
+
+⚠️ **另外有 11 刀「多红了一条」，那一条全是 `test_p90::第四条b`**——它钉的是
+`floor_ruler` 全绿 + 两个 floor == 真值，而动任何一个 `EXPECT_SHAPE_*` 都会让
+`floor_ruler` 的 `pinned` 那一档红。**这是那条闸在干活，不是噪声**，照实记。
+
+**砍完跑了完整 pytest**：带语料 **3354 / 0 skipped**、不带 **3320 / 34 skipped**；
+前端 **100 文件 / 913 条**（基线实测 3337 / 0、3303 / 34、100 / 913）。
+⚠️ 第一次跑完整套时 `test_no_undefined_names` **红了一条**（`test_p94` 里 `import pytest` 没用到）
+——摘掉那一行再跑，全绿。**这条闸拦对了。**
+
+**七把尺一条一条跑，每条单独 `EXIT=$?`、不接管道**（P84 / P88 / P90 三次栽过的那一跤），
+全部 **EXIT=0**、逐格复现：
+`recall_ruler` **765**（cursor 727 / tail 38 / users 6）· `--window` OK ·
+`margin_dot_ruler` **166/137/33**（D2 表 B **8 条**）· `topic_spread_ruler` OK（泛 6 · 不泛 6 · 判不了 2）·
+`en_gate_ruler --quorum` OK（1369/302/793/1067 · **74.3%**）· `kb_search_ruler` OK ·
+`card_origin_ruler` **979/315/133/62/29/33** ·
+`floor_ruler` **看着 11 份 / 登记 114 条（5 · 109）/ 例反例 12 条 / 共核 126 条 / 落后 0 / 对不上 0**。
+
+**五支反事实一起跑**（`--cf-whoaxis --cf-spread --cf-common --cf-bigcorpus --cf-gates`）：
+**EXIT=0**，四支老的逐格不动（49 / 2 / 28 / 53·175），
+`--cf-gates` 四档 **0 / 24（i=607 1→0）/ 6（进 25 掉 5）/ 11（进 37 掉 26，`agent`+`memory`）**。
+**第六支 `--cf-shape` 单跑**：EXIT=0，**175 / 441 / 18 → 21 / 翻 (640,642,645) / 反向 ()**。
+
+**四栏留下率整行、一栏没跌**：`recall_selfcheck terrence 200 11` **197/195/96** ·
+`… evidence` **192/190/92** · 圆点 **166/137/33** · D2 表 B **8 条** · 47 条 **46/36/4/6（13%）**。
+⚠️ **四栏对这一批是瞎的**——产品逻辑一个字节没改。
+说明事的是 `--cf-shape` 那十个数、`p94-shape-18` 那 18 条人读、和那张十组正反例的判据表。
+
+**真库指纹开工 = 收工**：**482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44**；`llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；`backend/data/backups/` 没有新文件
+（最新那份 `notes-20260921.sqlite3` 时间戳 00:01）；
+`~/Library/Application Support` **一次都没碰**。
+
+---
+
+### 收尾命令（**每一条都写明在哪个目录、拿哪个解释器跑**，第 776 轮那一课）
+
+```bash
+# ── ① 摆语料（**两处都要**，先摆再量，不然基线偏）
+cp <主仓>/backend/data/notes.sqlite3 <worktree>/backend/data/notes.sqlite3   # **别 chmod 444**
+cp -R <主仓>/backend/data <scratch>/p94data        # ⚠️ 目标**必须不存在**，否则拷成 p94data/data
+ls -1a <主仓>/backend/data > a; ls -1a <scratch>/p94data > b; diff a b       # 0 差异才往下走（39 行对 39 行）
+#   `recall_ruler` 自报 `users 6` 是第二道核对
+
+# ── ② 软链（worktree 里没有 .venv / node_modules）
+ln -sfn <主仓>/backend/.venv           <worktree>/backend/.venv
+ln -sfn <主仓>/frontend/node_modules   <worktree>/frontend/node_modules
+ln -sfn <主仓>/node_modules            <worktree>/node_modules
+
+# ── ③ 后端（cwd = **本 worktree 的 backend/**，解释器 = 那儿的 .venv 软链）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python -m pytest -q -p no:cacheprovider  # 3354 / 0 skipped
+./.venv/bin/python -m pytest -q -p no:cacheprovider                                   # 3320 / 34 skipped
+
+# ── ④ 七把尺（**一条一条跑，每条后面单独 `EXIT=$?`，别接管道**）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/recall_ruler.py            ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/recall_ruler.py --window   ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/margin_dot_ruler.py        ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/topic_spread_ruler.py      ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/en_gate_ruler.py --quorum  ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/kb_search_ruler.py         ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/card_origin_ruler.py       ; EXIT=$?
+./.venv/bin/python scripts/floor_ruler.py                                             ; EXIT=$?   # 不读语料
+
+# ── ⑤ 五支反事实 + **这一批新加的第六支**（各自单独 `EXIT=$?`）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/recall_ruler.py \
+  --cf-whoaxis --cf-spread --cf-common --cf-bigcorpus --cf-gates                      ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/recall_ruler.py --cf-shape ; EXIT=$?
+#   ⚠️ `--cf-shape` 跑两趟全库召回（HEAD + en060），约 3 分钟；它**不改产品**，只读
+
+# ── ⑥ 四栏 + 47 条（cwd = **本 worktree 的 backend/**）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/recall_selfcheck.py terrence 200 11
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/recall_selfcheck.py terrence 200 11 evidence
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python scripts/memory_sample_replay.py
+
+# ── ⑦ 前端（cwd = **本 worktree 的 frontend/**；node_modules 是软链到主仓）
+cd <worktree>/frontend && npm test                                   # 100 文件 / 913 条
+
+# ── ⑧ 这一批的 scratch 脚本（路径写死指向**本 worktree**；`lib94` 顶上
+#     一句 `assert os.environ.get("KITE_DATA_DIR")`，漏了就是在真语料上量）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p94data ./.venv/bin/python <scratch>/p94/{dump645,axes,axisscan,bg,
+  screens,readflag,counter,counter2,screens2,viamodule,en060cmp,compvsclique,read5,gentable}.py
+cd <worktree>/backend
+./.venv/bin/python <scratch>/p94/probe_gates.py                       # 这一支**不读语料**
+./.venv/bin/python <scratch>/p94/write_fixture.py                     # 也不读语料
+#   ⚠️ `write_fixture.py` **追加写** `tests/fixtures/memory_sample.jsonl`，
+#      自带「已经追加过就抛」的断言；`FIX` 写死指向本 worktree，
+#      **跑在主仓上就是往主仓那份里写**
+cd <worktree>/backend
+./.venv/bin/python <scratch>/p94/mutate94.py                          # 不传参 = 22 刀 + 3 把对照刀全跑
+#   ⚠️ 它会**改 worktree 里的 5 个文件**（每刀改完立刻整文件写回 + 逐字节核 + 还原后再核）；
+#      **跑在主仓上就是去改主仓源码**；传编号（`mutate94.py ⑮ 对照A`）只跑那几刀
+
+# ── ⑨ 真库指纹（cwd 无关，路径写绝对路径指向**主仓**，**只读**）
+sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), max(updated_at), sum(length(content)), (select max(id) from llm_usage),
+          (select count(*) from note_revisions) from notes;"
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm` 一律不出现在收尾里（第 776 轮那一课）。
+⚠️ **入库逐路径 `git add`**，别 `git add -A`：worktree 里 `backend/.venv` / `frontend/node_modules` /
+`node_modules` 是**软链**，`.gitignore` 里那个斜杠只挡目录、**挡不住软链**。
+
+P94 留给下一批：
+① **这把尺造出来了但判「不接」**，卡的是**大库**：假阳性 6/12 全在 `terrence`，
+   形状是同一个——**一个泛 obj（`chip` / `agent` / `广告` / `手环`）把三到五条各说各的事撑成团**。
+   ⚠️ **别去调 obj 的门槛或写词表**（这一批试过的收窄版全部退化成字面去重）；
+   真要救得换一条轴，而**这个库里 `obj` 是唯一一条方向对的轴**（② 那张表）。
+② **`terrence` 43.3% 的事实没有 `obj`**——这把尺在 57.6% 的屏上一个字都说不出来。
+   要让它在大库上说得上话，缺的是**抽取那一头**，不是判据。
+③ **i=641 漏了**（人读判「是」，尺子团 3 / 8 格，差半屏一格）。
+   ⚠️ **把「半屏」放宽之前先看 ⑤ 那一刀**：十组反例的团全部 < 3，
+   **半屏那一道在正反例上一格都没承重**——放宽它等于只动 `FAMILY_MIN` 那一道的分母。
+④ **`M`（K + 「不同 unit」）十组全对、反例更低，这一批判「不要」**，读数在 `test_p94::第一条c`。
+⑤ **「同一个字面量有第二份」这一课第四次咬人**（⑮）——`recall_ruler.main` 里
+   `EXPECT_CF_GATES_EN060_IDX` 有两份。**仓库里 B 形状 28 处 / C 形状 38 处还都在**（P92 ④ 登记的）。
+⑥ P93 留的 ①–⑤、P92 留的 ②③④⑤、P91 留的 ①–⑤、P90 留的 ⑤⑥⑦、P89 留的 ①–⑦、
+   P88 留的 ④⑤、P87 留的 ②③⑤、P85 留的 ③、P84 留的 ①–⑦、P83 留的 ①②、P81 留的 ①②③④、
+   P79 留的 ①②③④⑥、P78 留的 ④、P77 留的 ②④、P76 留的 ②③④⑤、P74 留的 ①②③、
+   P69 留的 ①②③ 都没碰。

@@ -84,10 +84,10 @@ WATCHED_NAME = re.compile(r"^(MIN_[A-Z0-9_]*|MAX_[A-Z0-9_]*|EXPECT[A-Z0-9_]*|SHO
 # **一条在每次正当改动上都会红的闸，迟早会被人不假思索地改成不红的那个数。**
 # 所以这两个数按「只准往上」记在这儿，各批的测试去问它，别各自钉一份。
 # 它挡得住的是「有人把登记删了」；挡不住「加了一条没登记」——那是 `check()` 的完整性闸的活。
-REGISTRY_SIZE_FLOOR = 104  # 第 816 轮合并后实测（P92 的 9 条）；814 轮是 95、813 轮是 85、811 轮是 78、810 轮是 70
+REGISTRY_SIZE_FLOOR = 114  # 第 817 轮 P94 在自己 worktree 里实测（+10 条 `EXPECT_SHAPE_*`）；816 轮是 104、814 轮是 95、813 轮是 85
 # ⚠️ 合并时记得抬到**合并后**那个数：两批各自在自己 worktree 里抬到 84 / 79，
 # 合并后真值是 85——取任一边都会让「删掉一条登记」不红（这个数只准往上，抬是绿的）。
-CHECKED_COUNT_FLOOR = 116  # 同上；共核 = 登记表 + 例反例；814 轮是 107、813 轮是 97、811 轮是 90、810 轮是 82
+CHECKED_COUNT_FLOOR = 126  # 同上；共核 = 登记表 + 例反例；816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
 
 
 FLOOR = "floor"      # 只准往上调
@@ -412,6 +412,58 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         "它一动 = 有人动了那段缓存接线 —— 去读 `_swap_run` 顶上那段，"
         "以及 `cf_gates` 里「摘了闸的 `WhoFace` 一份都没建出来」那条自检"
         "（那条自检靠的正是「清干净了再建」，少清一次它会静静地量出「0 条变了」）"),
+
+    # —— P94 `--cf-shape`：**「这几条事实彼此有没有区别」那把尺**（造出来了，判「不接」）——
+    # 尺在 `app/database/kb/fact_distinct`，**没接进产品**。这十个数是那个判的全部分量。
+    # ⚠️ 它们跟上面 `EN060_*` 那组**不是同一件事**：`EN060_*` 量的是「产出变了多少」，
+    # 这一组量的是「变出来的是什么形状」。**两组要对着读**（en060 变 11 条 → 其中 3 条翻成灌屏）。
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_TOTAL"): (
+        PINNED, 175, "765 屏里「量得了 ≥3 格」的有几屏——**这把尺的分母**。"
+                     "它一动，下面按库那张表的每一个百分比都得重算；"
+                     "先去读 `kb/fact_distinct` 第 ⑤ 格那张按库的表"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_BLIND"): (
+        PINNED, 441, "**一个字都说不出来的屏**（`obj` 或 `topics` 空到量不了，= 57.6%）。"
+                     "⚠️ **它是判「不接」的第 2 条理由本身**：`terrence` 有 43.3% 的事实没有 `obj`。"
+                     "它要是掉下去（抽取补上了 `obj`），「这把尺在一半屏上说不了话」就不成立了，"
+                     "**「不接」那个判得整条重读**——去读第 ⑤ 格和第 ⑥ 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_HEAD"): (
+        PINNED, 18, "HEAD 上判「半屏是同一句话的多种说法」的屏数。"
+                    "**它是 `p94-shape-18` 那 18 条标注的来源**，一动那 18 条"
+                    "（真 12 / 假 6）的分母就换人，「不接」那个判得重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_EN060"): (
+        PINNED, 21, "en060 那一刀之后的屏数。**跟 HEAD 那个 18 一起读才有意义**："
+                    "18 → 21 = 那一刀**净造出 3 屏灌屏**。它一动去读 `EXPECT_SHAPE_FLIP_ON`"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_FLIP_ON"): (
+        PINNED, (640, 642, 645),
+        "**从「不是这形状」翻成「是」的是哪三屏**。⚠️ 这三个下标必须落在 "
+        "`EXPECT_CF_GATES_EN060_IDX` 那 11 条里面（`--cf-shape` 自己有这条自检）——"
+        "掉出去就说明这一刀没落在被测分支里，数作废。"
+        "它一动，P92 ① 那句「i=645 最清楚」就换了实拍，得重读第 ⑪ 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_FLIP_OFF"): (
+        PINNED, (), "**反向一屏都没有**——en060 没有把任何一屏从灌屏改成不灌屏。"
+                    "⚠️ 这个空元组是「这一刀方向单一」的证据；它一动说明那一刀开始有两个方向的效果，"
+                    "「11 条里 0 好 9 差」那个逐条读的结论得重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_LIBS"): (
+        PINNED, (("fresh678", 0, 2), ("fresh678b", 0, 4), ("fresh678c", 0, 2),
+                 ("shot-demo", 2, 14), ("terrence", 12, 97), ("terrence-rewrite", 4, 56)),
+        "HEAD 那 18 屏**按库分**（库, 判「是」, 量得了>=3 的分母）。"
+        "⚠️ **比率要按对的那条轴分**：三个 2 条语料的小库上分母是 2/4/2，"
+        "拿它们算百分比没有意义。它一动去重读 `p94-shape-18` 里那个库的几行"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_READ"): (
+        PINNED, (12, 6), "那 18 屏**逐条读完**的 (真, 假)。"
+                         "⚠️ **别拿这一对读结论**——它是两笔账混成一笔，"
+                         "拆开看是下面 `_BIGLIB` / `_SMALLLIB` 那两对"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_READ_BIGLIB"): (
+        PINNED, (6, 6), "**大库 `terrence` 上真 6 / 假 6 = 假阳性 50%**，"
+                        "而 641/765 = 83.8% 的查询落在大库。"
+                        "**这一对就是判「不接」的第 1 条理由**，它一动那个判直接翻——"
+                        "去读 `kb/fact_distinct` 第 ⑤ 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_SHAPE_READ_SMALLLIB"): (
+        PINNED, (6, 0), "两个小库（`terrence-rewrite` 4 屏 + `shot-demo` 2 屏）上真 6 / 假 0。"
+                        "⚠️ **它跟上面那一对方向相反，这正是「按库分」的现钱**："
+                        "同一把尺在小库上 100% 准、在大库上一半是错的。"
+                        "它一动说明小库那一头也开始误判，去重读 `p94-shape-18` 里那六行，"
+                        "「这把尺至少在小库上能用」那句话作废"),
 
     ("backend/scripts/recall_ruler.py", "EXPECT_CF_WHO_BLOCKED"): (
         PINNED, 9, "被主语面挡回去、不再捞回来的串数（价格/公司/反馈/客户/收到/更新/能力/自动/连接）。"
