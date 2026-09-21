@@ -224,7 +224,14 @@ def test_第三条_全库量出来的数_钉住它的前提():
             and p.name not in ("search.py", "memory.py")]
     assert hits == [], hits
     # 话题轴的前提：`FactRecord.topics` 还是那条轴
-    assert "getattr(f, \"topics\", None)" in _src(R.TopicFace.__init__)
+    # ⚠️ **P88 挪了地方，没换东西**：轴原来写死在 `__init__` 的循环里，P88 把它拆成
+    # `_keys()` 一个方法好让 `WhoFace` 换轴（稀疏化那段数学一行都没抄）。
+    # 这一条要钉的是「`TopicFace` 的轴仍然是 `topics`」，所以跟着挪到 `_keys` 上，
+    # **判据一个字没放宽**；顺手再钉一句「`__init__` 是拿 `_keys` 在数」，
+    # 免得有人只改 `_keys` 而 `__init__` 还在读别的东西。
+    assert "getattr(f, \"topics\", None)" in _src(R.TopicFace._keys)
+    assert "self._keys(f)" in _src(R.TopicFace.__init__)
+    assert R.TopicFace.AXIS == "topics"
 
 
 def test_第四条_判不接进search_三条理由_钉住每一条的前提():

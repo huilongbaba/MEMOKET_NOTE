@@ -559,6 +559,32 @@ class UserMemory:
         self._cache[key] = (mtime, face, store)
         return face
 
+    def _who_face(self, store, idx):
+        """这个库的「主语面」（P88 ①）。跟 `_topic_face` 逐字同一条缓存和回收规则，
+        只是轴换成 `FactRecord.who`。
+
+        **只有 `TopicFace` 已经判「不泛」之后才建**——它跟 `_topic_face` 一样要扫一遍
+        `store.facts`，而走到这儿的串一个库里只有几十个（`terrence-rewrite` 实测 63 个）。
+        建不出来回 `None` = 这条判据不插手，**不插手就是原样**。
+        """
+        from ..kb.topic_face import WhoFace
+
+        try:
+            mtime = self.path.stat().st_mtime
+        except OSError:
+            return None
+        key = f"{self.path}#whoface"
+        hit = self._cache.get(key)
+        if hit and hit[0] == mtime and hit[2] is store:
+            return hit[1]
+        try:
+            face = WhoFace(store.facts.values(),
+                           units_for=(idx.units_for if idx is not None else None))
+        except Exception:      # noqa: BLE001 —— 建不出来就是不启用这一档
+            return None
+        self._cache[key] = (mtime, face, store)
+        return face
+
     def common_term(self):
         """回一个「这个词在**这个人的**库里到处都是」的判据，给 `kb/relations.detect(common=…)`。
 
@@ -588,6 +614,35 @@ class UserMemory:
         全库对拍（765 条，`recall_ruler --cf-spread`）：**变了 28 条，全部落在
         `terrence-rewrite`（193 unit）**；28 条逐条读完 **变好 14 / 变差 7 / 中性 7**
         （标注 `p84-spread-28`）。
+
+        ## P88 ①：捞回来那一问**再串一条轴**（`WhoFace`）
+
+        P86 判「那条轴分不开『指着一个具体东西的窄』和『整个库都在讲这件事的窄』」，
+        并留下「缺的那一块叫**这个库是关于谁的**，库里没记这件事」。
+        **后半句错了**：库里记了，记在**每条事实的 `who`** 上——
+        P86 找的是**库级**那一个主语（`entities` 取最多的，拿了是循环），
+        **而分开两种「窄」不需要库级那一个**。理由和五张表在 `kb/topic_face`
+        文件头第 ⑥⑦ 格（含这一批新废掉的四条轴 `obj`/`kind`/`event`/`place`
+        和两版自动取主语）。
+
+        **这一刀只许做减法**：`WhoFace` 串在 `TopicFace` **后面**，
+        `topics` 已经判「不泛」了才问，而且只有它也说「不泛」才真捞回来。
+        所以它**只可能少捞回几个串，不可能多捞回**——
+        英文那一半（汉字闸）和大库那一档（库大小闸）**逐字不动**。
+
+        全库对拍（765 条，`recall_ruler --cf-whoaxis`）：**变了 2 条，都在
+        `terrence-rewrite`，进 2 掉 0，「有→空」0 条**；两条逐条读完
+        **变好 1 / 中性 1 / 变差 0**（标注 `p88-whoaxis-2`）：
+
+        * **i=293 变好**：`0 → 1`，回来的正是 P82 / P84 / P86 三批一直丢的那条逐句出处
+          （`terrence-1837F16`「她最终因大健康业务裁员而**离开安克**」）。
+          链条是 `公司` 的主语面 .900 ≥ 0.85 → 不再被捞回来 → `大公司`/`公司病`/`公司运`
+          退出实词档 → `开安克` 回到 `_cjk_terms` 那 16 个名额里 → `span` 回来 →
+          `qualifies` 和 `_strong_enough` 两道闸一起放行。
+          **这就是 `_cjk_terms` 那段注释里记的「不动那 16 也能治它」的那条路**
+          （它跟 `test_p86::第三条` 的 A 刀是同一件事，区别是 A 刀靠手按、这一条是算出来的）。
+        * **i=26 中性**：`3 → 4`，屏没满时多进来一条同领域的（`团队希望尽快将…APP
+          提供给外部团队测试并收集反馈`），沾边但没正面答题，**没挤掉任何人**。
         """
         from ..kb import relations as R
         from ..kb import topic_face as TF
@@ -612,7 +667,14 @@ class UserMemory:
             if face is None:
                 return True
             # **只有明确「不泛」才捞回来**；`None` = 判不了，照旧算 common。
-            return face.generic(term) is not False
+            if face.generic(term) is not False:
+                return True
+            # **第二条轴**（P88 ①）：话题面说「不泛」了，再问一句主语面。
+            # 串在后面而不是并排，是因为**这一刀只许做减法**——见下面那段。
+            who = self._who_face(store, idx)
+            if who is None:
+                return False
+            return who.generic(term) is not False
 
         return is_common
 
@@ -873,6 +935,38 @@ class UserMemory:
         （抬名额把碎片和真词一起放进来，user 侧误判率 43.0%）。
         **不重读那 190 对就动这个数，等于拿一条查询换一整张读过的表。**
         账记在 `docs/TRACELOG-product.md` 的 P86 ③。
+
+        ## ⚠️ **上面那句「能修它的旋钮就是这个 16」是错的**（P88 ②，**更正 P86 ③**）
+
+        ⚠️ **并排写**：错的那句留在原地，跟这一段对照着读。
+
+        **① 「不重读那 190 对就不能动这个 16」这句话，前提就不成立**——
+        P86 引的那 190 对**不是今天该重读的那一批**，这一批在夹具和库上重数过：
+
+        | | 单位 | 查询 | (查询,事实) 对 | 基准 HEAD 的 `有召回 / 召回对` |
+        |---|---|---:|---:|---|
+        | `p63-cap24-190` | **对** | **86** | **190**（进 153 / 掉 37）| 337 / 1345 |
+        | `p73-cap24-134` | **条（查询）** | **134** | 231（进 207 / 掉 24）| 341 / 1347 |
+        | **今天（P88 重量）** | | **144** | 252（进 219 / 掉 33）| **345 / 1367** |
+
+        **两把尺量的不是同一批**：按 `(user, i)` 比，P63 那 86 条跟 P73 那 134 条
+        **只交 15 条**；按查询原文比也只交 59 条。而且 **P63 判「不改」的那条理由
+        已经被 P73 证伪了**（P63 说「抬名额只是把碎片和真词一起放进来」，
+        P73 实测多出来的 5898 串次里 **98.3% 是实词**、碎片只有 1.7%）。
+        **P86 引的是一张两代之前的、理由已经作废的表。**
+        （P73 那 134 条跟今天也差了 13 条新的 / 3 条没了——P84 那条轴落地之后 HEAD 动过。）
+
+        **② 而且这一批找到了一条不动这个 16 也能治 i=293 的路**，所以这 16
+        今天**不必**动：`common_term()` 里新串的那条主语面轴（`kb/topic_face.WhoFace`）
+        让 `公司` 不再被捞回来（主语面 .900 ≥ `WHO_GENERIC`），
+        于是 `大公司`/`公司病`/`公司运` 退出实词档，`开安克` **自己回到这 16 个名额里**，
+        `span` 回来、两道闸一起放行、那条逐句出处回到屏幕上。
+        **那条因果链一个字没改，改的是链条最前面那一环。**
+        全库对拍见 `common_term()` 的 P88 ① 那段（变了 2 条 · 进 2 掉 0 · 变好 1 中性 1）。
+        账记在 `docs/TRACELOG-product.md` 的 P88 ②。
+
+        > **留给下一批**：真要动这 16，该重读的是**今天这 144 条**，
+        > 不是 P63 那 190 对、也不是 P73 那 134 条。
         """
         runs = [r for r in re.findall(r"[一-鿿]{2,}", text)
                 if r not in STOPWORDS]

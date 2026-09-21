@@ -110,7 +110,12 @@ def test_第一条_那175条的量具进了仓库_而且两个旋钮是分开的
     src = pathlib.Path(RR.__file__).read_text(encoding="utf-8")
     assert '"--cf-bigcorpus" in argv' in src, "这一支没接进 `main()`，跑 ruler 根本量不到"
     # **两个旋钮真的是两个**：`_axis_variant` 的两个实参各自独立
-    assert '_axis_variant(False, True)' in src and '_axis_variant(False, False)' in src, \
+    # ⚠️ **P88 给它加了第三个实参 `ask_who`**，这两档**故意钉死 `ask_who=False`**：
+    # 它们问的是「**P84 那条轴**拆闸会怎样」，而那 175 条就是在这个形状上读完的。
+    # 带上 P88 那条主语面轴的话大库那一档会整片塌掉（`terrence` 的 `who` 93.8% 是
+    # 说话人标签，主语面在那儿一律回 `None`），这张表就不是 P86 读过的那 175 条了。
+    assert '_axis_variant(False, True, ask_who=False)' in src \
+        and '_axis_variant(False, False, ask_who=False)' in src, \
         "`size` / `both` 两档不是用两套实参跑出来的——那就不是两个旋钮"
     # **接线自检不许被摘掉**：复刻的 HEAD 必须跟产品那一份对拍
     assert '_axis_variant(True, True)' in src and 'selfcheck_mismatch' in src, \
@@ -298,6 +303,18 @@ def test_第三条_i293的真根因_一次只动一样(real_corpus):
       B：只把 `_cjk_terms` 那 16 抬到 17    → 同样全部回来
 
     A 和 B 都能救它，而两条路动的是**同一个东西**：那 16 个名额谁拿。
+
+    ## ⚠️ P88 ② 把这条链的最前面那一环改掉了 —— **这一条整条重挂，一个断言没删**
+
+    **并排读**：上面那三刀（C / A / B）说的话今天**一个字都还成立**，
+    但它们的「HEAD 原样」指的是 **P88 之前**那一版 `common_term()`。
+    P88 在 `common_term()` 里串了一条主语面轴（`kb/topic_face.WhoFace`），
+    它判 `公司` 主语面 .900 ≥ `WHO_GENERIC` → **不再捞回来**，
+    也就是**自动地做了 A 那一刀本来要手按的那件事**。
+
+    所以这一条今天挂在 `p86_common`（= 那一版的逐字复刻，`ask_who=False`）上跑，
+    三刀原样；末尾多一条断言：**今天的 HEAD 上 i=293 是好的**
+    （`开安克` 在、`span` 在、`qualifies` 放行）——那正是这条链被治好的证据。
     """
     from app.database.kite.kite_memory import UserMemory
     qs = RR.queries()
@@ -311,7 +328,10 @@ def test_第三条_i293的真根因_一次只动一样(real_corpus):
     fact = store.facts.get("terrence-1837F16")
     assert fact is not None and "离开安克" in fact.text
     segment, attested = m.segment(), m.vocab_term()
-    head_common = UserMemory.common_term(m)
+    # **P86 那一版的 `common_term()`**（P88 之前的产品）：`recall_ruler` 里那份逐字复刻，
+    # `--cf-whoaxis` 每跑一次都拿它的三闸全开版跟产品对拍，所以它不会悄悄飘走。
+    head_common = RR._axis_variant(True, True, ask_who=False)(m)
+    today_common = UserMemory.common_term(m)
 
     def look(common, cap=16):
         real = KM._rotate
@@ -351,6 +371,17 @@ def test_第三条_i293的真根因_一次只动一样(real_corpus):
 
     # **`公司` 真的被那条轴捞回来了**（这条因果链的第一环）
     assert head_common("公司") is False, "`公司` 不再被捞回来了——A 那一刀就不是「只动一处」了"
+
+    # ── P88 ②：**今天的 HEAD 上这条链已经被治好了**，而且治的正是最前面那一环 ──
+    assert today_common("公司") is True, \
+        "`公司` 又被捞回来了——那 P88 那条主语面轴没在这条路上，i=293 会再次整屏变空"
+    today = look(today_common)
+    assert today["有开安克"] is True, "`开安克` 没回到那 16 个名额里——P88 ② 那条判要重读"
+    assert today["hits"] == ["离开安", "开安克"] and today["why"] == ["span"]
+    assert today["strong"] is True and today["qualifies"] is True
+    # **那 16 一个字没动**：不是靠抬名额治好的（这正是 P88 ② 要的那条路）
+    assert "_rotate(second, _rotate(first, [], 16), 16)" in \
+        pathlib.Path(KM.__file__).read_text(encoding="utf-8")
 
 
 def test_第三条b_那16个名额是硬编码的_而且它就在这条路上():
@@ -414,13 +445,23 @@ def test_第四条b_登记表自己那两个只准往上的数没被调低():
 
 
 def test_第四条c_这一批产品的判据一个字节没改():
-    """**这一批三条判全是「不改」**——那就得有一条闸看着产品判据真的没动。
-    `common_term()` 那三条限制、`SPREAD_GENERIC`、`SPREAD_MIN_HITS` 逐个核。"""
+    """**P86 这一批三条判全是「不改」**——那就得有一条闸看着产品判据真的没动。
+    `common_term()` 那三条限制、`SPREAD_GENERIC`、`SPREAD_MIN_HITS` 逐个核。
+
+    ⚠️ **P88 动了第三条，照实改这一条断言**（并排写，别把上面那句删了）：
+    P88 ① 在「话题面判不泛」**后面**又串了一条主语面轴，所以那一句从
+    `return face.generic(term) is not False` 变成了
+    `if face.generic(term) is not False: return True` + 再问一句 `_who_face`。
+    **前两条（库大小闸、汉字闸）和两个门槛一个字节没动**，这一条照旧钉着它们；
+    第三条改钉「话题面那一问还在、而且它后面串的是主语面」——
+    判据只窄不宽（只做减法）这件事由 `test_p88::第一条d` 单独钉。
+    """
     from app.database.kb import topic_face as TF
     assert TF.SPREAD_GENERIC == 0.75 and TF.SPREAD_MIN_HITS == 20
     src = pathlib.Path(
         ROOT / "backend" / "app" / "database" / "kite" / "kite_memory.py").read_text(encoding="utf-8")
     for need in ("ask_face = total * R.COMMON_DF_RATIO < R.COMMON_DF_MIN",
                  "if not (ask_face and TF.has_cjk(term)):",
-                 "return face.generic(term) is not False"):
+                 "if face.generic(term) is not False:",
+                 "who = self._who_face(store, idx)"):
         assert need in src, f"`common_term()` 里那句 `{need}` 没了——这一批说好三条都不改"
