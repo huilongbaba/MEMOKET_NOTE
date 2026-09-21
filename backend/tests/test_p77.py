@@ -196,8 +196,12 @@ def test_第四条_那925是什么_以及它今天摆到哪儿去了():
     assert "if (evidence) return head + '，' + NO_EVIDENCE_LINE" in ctx
     assert "return head + (terms.length ? '，命中：' + terms.slice(0, 6).join('、') : '')" in ctx
     # 另一条真摆 terms 的路还在（它是「判据宁可窄」那一条的全部理由）
+    # ⚠️ **P81 ③ 把那一行拆成了两个标签**（有召回「命中词：」/ 0 召回「找过：」），
+    # 原来钉的 `"' · 命中词：' + hits.terms.slice(0, 6).join('、')"` 一整串不再逐字存在。
+    # **钉的东西变了，钉的那件事没变**：这一格要的是「这条路今天还在摆 `terms`」。
     kb = (ROOT / "frontend" / "src" / "components" / "kb" / "KbDashboard.tsx").read_text("utf-8")
-    assert "' · 命中词：' + hits.terms.slice(0, 6).join('、')" in kb
+    assert "hits.terms.slice(0, 6).join('、')" in kb
+    assert "' · 命中词：' : ' · 找过：'" in kb
     # 后端那一头：`display_terms` 仍然只有一个调用点，喂的仍然是 `surfaces`
     router = (ROOT / "backend" / "app" / "routers" / "memory.py").read_text("utf-8")
     assert router.count("display_terms(") == 1

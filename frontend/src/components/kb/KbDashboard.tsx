@@ -53,9 +53,24 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
         </div>
       )}
 
+      {/* 一条都没召回时，那几个词**不是命中的词，是找过的词**（P81 ③，下面那个 `extra`）。
+          后端 `UserMemory.recall` 背靠背两支：主路排出东西 → `surfaces` 接的是
+          `matched_terms(facts, …)` = 真跟这几条对上的词；主路空 → 走 `_recall_via_lines`，
+          `surfaces` 接的是 `_cjk_terms(query)[:3]` = **只是拿去找过的词**。
+          这一行原来两支共用一个标签「命中词」，于是真库上「0 条结果 · 命中词：潜水艇」
+          摆了出来（P79 ② 实测 10 条里 9 条）。P48 ③ 判过这条路「今天 0 个用户看得见」→
+          P69 更正「不成立」→ P79 第三次核实仍在摆，从 2026-09-15 `d51ea29` 起就在。
+          **不是不摆，是改口**：0 结果时这几个词是唯一能告诉用户「系统到底拿什么去找的」
+          那一格（打 `9月14日` 它找的是 `9月14`、打 `2026-09` 它找的是 `2026`），
+          不摆等于把「为什么 0 条」也一起藏了。
+          **为什么判据是 `facts.length` 而不是问后端走了哪一支**：两者在**唯一真摆这一行的
+          那条路**（搜索框）上逐条重合——`kb_search_ruler` 110 条实测「走了回退又捞回东西」
+          **0 条**，`facts.length === 0` ⇔ 走了回退。（765 那条自动召回上有 7 条不重合，
+          但 P77 ② 量过那条路 `evidence=null` 退回 `terms` 是 **0/765**，这一行在那边
+          一次都不渲染。）**判据宁可窄。** */}
       {hits ? (
         <KbSection title={`${hits.facts.length} 条结果`}
-                   extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>{Math.round(hits.took)} ms{hits.terms.length ? ' · 命中词：' + hits.terms.slice(0, 6).join('、') : ''}</span>}>
+                   extra={<span className="muted" style={{ fontSize: 'var(--t-sm)' }}>{Math.round(hits.took)} ms{hits.terms.length ? (hits.facts.length ? ' · 命中词：' : ' · 找过：') + hits.terms.slice(0, 6).join('、') : ''}</span>}>
           <FactList facts={hits.facts} actions={actions} />
           {/* 空库上「换个说法」是句废话——换多少个说法都是空。分开说（第 677 轮） */}
           {hits.facts.length === 0 && <p className="muted" style={{ fontSize: 'var(--t-sm)' }}>
