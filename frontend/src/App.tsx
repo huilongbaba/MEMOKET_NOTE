@@ -71,6 +71,7 @@ import { minimalChange } from './editor/minimalChange'
 import { undoRound } from './editor/undoRound'
 import { groupRuns, type RunRound } from './util/runRounds'
 import { changesTabHasContent, reopenedLayersNotice, restoreLayers, sameLayers, serializeLayers, type SavedLayer } from './util/changeLayers'
+import { PLAN_EMPTY_HINT, planTabContent } from './util/planTab'
 import { checkLabel, stuckTail } from './editor/dimLabel'   // 收工那句话里的判据名要中文（P13 实拍「done_criteria」原样蹦出来）+ 后面那半句下一步（P40 · B #2）
 import { dimLabel } from './editor/dimLabel'
 import { runProbe } from './probes'
@@ -4369,9 +4370,18 @@ export default function App() {
             // 计划 = 完成标准（判据）+ 目录（每节状态）+ 写作骨架 + 每轮做了什么（执行）。判据 3：计划要看得见——
             // 在右栏一直看得见，比把正文顶下去好。harness 跑起来自动切到这里。
             // P12（§3.1 / §3.5）：「完成标准」逐条核、目录每一节带「空 / 草稿 / 有依据」——目录就是计划，不再单开一个页签。
+            // P91 A：**角标、出不出内容、空了说哪句话，三样同一份判据**（`planTabContent`，
+            // 跟「改动」那一格 P43 #1 同一条理由）。原来这一格是两把尺：角标拿上一篇留下的
+            // `agentRounds` 数出「计划 2」，而正文那四块在虚拟页上一块都画不出来，
+            // 于是 `alwaysShown` 的页签底下是**一片纯空白**（P89 实拍 `p89-b4-old-wipe-light.png`），
+            // 而 `RightPane` 自己的注释写着「别留白」——那条 `emptyHint` 的路当时一条都走不到。
+            // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats / agentRounds 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
             { id: 'plan', title: '计划', icon: 'bx-target-lock', alwaysShown: true,
-              // 虚拟页（知识库 / 设置…）上 current 是 null，但 beats / agentRounds 还是上一篇的：角标别拿旧骨架充数（第 524 轮实拍事实表页顶着「计划 5」）
-              badge: agentRounds.length || (current ? beats.length : 0) || undefined,
+              badge: planTabContent({ hasNote: !!current, running: loading === 'note-harness' || !!harness?.running,
+                                      rounds: agentRounds.length, beats: beats.length }).badge || undefined,
+              hasContent: planTabContent({ hasNote: !!current, running: loading === 'note-harness' || !!harness?.running,
+                                           rounds: agentRounds.length, beats: beats.length }).has,
+              emptyHint: PLAN_EMPTY_HINT,
               // 跑起来之后轮次卡排在最前：骨架是一屏高的静态文本，跑动中用户要看的是
               // 「这一轮在干什么、判了什么」，原来得滚过整份骨架才看得到（第 579 轮实拍）。
               // 不跑的时候判据 → 目录 → 骨架 → 执行——那会儿规划才是主角。

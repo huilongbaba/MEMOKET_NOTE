@@ -35,8 +35,9 @@ import { join, relative, resolve } from 'node:path'
 
 // ── 闸门常数（`backend/scripts/floor_ruler.py` 登记着这三个）───────────────
 /** `src/components/` 底下 vitest **真要跑**的测试文件数下限。只准往上。
- *  P85 开路时是 1（`p85.test.tsx`）；P87 加了 `p87.test.tsx`，抬到 **2**。 */
-const MIN_COMPONENT_TESTS = 2
+ *  P85 开路时是 1（`p85.test.tsx`）；P87 加了 `p87.test.tsx`，抬到 **2**；
+ *  P91 加了 `p91.test.tsx`（右栏「计划」那片纯空白），抬到 **3**。 */
+const MIN_COMPONENT_TESTS = 3
 /** 那两个标签在 `KbDashboard.tsx` 代码行里各出现几次。钉死 1：出现两次说明那一行被抄了一份。 */
 const EXPECT_LABEL_HITS = 1
 /** `hits.terms.slice(0, N)` 里的那个 N。`backend/scripts/kb_search_ruler.py` 的 `SHOW` 抄的就是它。 */
