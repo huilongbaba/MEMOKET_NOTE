@@ -57,12 +57,48 @@
 //     （不是选择器错，是**读法**错）。P58 / P60 两批「判据那几行」都是 `[]`，
 //     而 P58 台账那一格是靠截图断的 —— **日志里其实是 0**。
 // ─────────────────────────────────────────────────────────────────────────────
+import { stepProvenance } from './provenance.mjs'
 import { withBatchPrefix } from './shotname.mjs'
 import { USER_KEY, USER_SOFT } from './whoami.mjs'
 
 const port = process.argv[2]
 const stepPath = process.argv[3]
 const args = process.argv.slice(4)
+
+/** **每一份日志的第一行：这一趟跑的到底是哪一份步骤脚本**（P97 A）。
+ *
+ * ── 为什么有它 ────────────────────────────────────────────────────────────
+ * P95 跨批 diff 里有一行判了「解释不了」：`17-new-panes93.txt` 少一行
+ * `=== ③ 没给 note id，这一档跳过 ===`，而 HEAD 上 `panes93.mjs` 那个 `else` 分支在。
+ * P97 查清了，而且**证实了**：P93 那份**原始日志**落盘在 19:10:21（`go-new.log` 里
+ * `step.sh` 自己打的 `17 行`），而它 worktree 里 `panes93.mjs` 的 mtime 是 **19:10:57**
+ * ——**跑完之后 36 秒那份脚本被改过**，同目录别的 32 份步骤脚本全是 18:47:28（签出那一刻）。
+ * 入库的那一份（commit 19:49:54）跟跑出那份日志的那一份**不是同一份**。
+ *
+ * 这是**走查日志这件事本身的一个洞**：跨批逐行 diff 靠的就是这些日志，
+ * 而「日志是哪一份代码跑出来的」原来一个字都没记——
+ * **「文件里有这个串」≠「那一趟跑的就是这一份」**的又一张脸。
+ *
+ * ── 它记什么 ──────────────────────────────────────────────────────────────
+ * 日志第一行逐字长这样（闸按这个正则认，改措辞就得同步改闸）：
+ *
+ *     步骤脚本: panes93.mjs sha256=<64 位十六进制>
+ *
+ * 记的是**这一刻真读进来的那个文件的字节**，不是文件名、不是 git 里那一份——
+ * 名字对得上而内容被改过，正是 P93 栽的那一格。
+ * 64 位十六进制**归一化那一侧一个字不洗**：`\b[0-9a-f]{12}\b` 两头要边界，
+ * 64 连着的十六进制字符里头一个边界都没有，咬不到它（P97 实拍核过）。
+ *
+ * ── 它答不了什么 ──────────────────────────────────────────────────────────
+ *  · **老日志**（p85…p95）一份都没有这一行，这条闸**不替它们签字**——
+ *    闸里那份「豁免名单」是**逐字钉死的 6 个目录**，加一个进去得有人动代码。
+ *  · **步骤脚本之外**跑的那些（`go.sh` 自己打的几行、`fakellm.log`）不经这儿。
+ *  · **产品那一侧**装的是不是这份源码：那是 `check_shipped_source.py` 的地盘。
+ *  · **这一份驱动自己**（`cdp.mjs`）改没改：没记。射程只到「入口那一份步骤脚本」，
+ *    **判据宁可窄**——把驱动也钉进去的话，动一次量具就得把整趟走查重跑一遍，
+ *    而那样的闸迟早被人绕过去（P80 B② 那条理由）。
+ *
+ * 拼那一句和认那一句**在同一份文件里**：`provenance.mjs`（两头各写一份就会各改一半）。 */
 
 const MOD = { alt: 1, ctrl: 2, meta: 4, shift: 8 }
 const VK = { Enter: 13, Escape: 27, Backspace: 8, Tab: 9, Space: 32, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46, Home: 36, End: 35, '/': 191, '\\': 220, '[': 219, ']': 221, ',': 188, '.': 190, '-': 189, '=': 187, ';': 186, "'": 222, '`': 192 }
@@ -85,6 +121,9 @@ class Conn {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function main() {
+  // **第一行就把出处打出来**（P97 A）：壳起不来 / 步骤当场抛的那几趟也得有这一行，
+  // 所以它在连 CDP 之前。
+  console.log(stepProvenance(stepPath.startsWith('/') ? stepPath : process.cwd() + '/' + stepPath))
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
   const page = list.find((t) => t.type === 'page' && /127\.0\.0\.1:\d+/.test(t.url)) ?? list.find((t) => t.type === 'page')
   if (!page) throw new Error('没有 page target: ' + JSON.stringify(list.map((t) => [t.type, t.url])))
