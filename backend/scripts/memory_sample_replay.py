@@ -171,11 +171,16 @@ class FrozenCorpus:
     `df` 里记的是 `[units_for(词) 的大小, unit_df(词, floor=0)]`；**查不到 = df 0**
     （建夹具时 df 0 的条目不记，省下九成体积）。`[null, null]` = 这个词预筛不了
     （形状里有正则元字符），调用方按「不知道」处理——跟真索引一个字不差。
+
+    `generic` 是 P84 加的第二张表（只有小库那几个人有）：`TopicFace.generic(串)` 的答案。
+    口径写在 `common_term()` 上面。
     """
 
     def __init__(self, blob: dict, user: str) -> None:
         u = blob["users"][user]
+        self._user = user
         self._df: dict[str, list] = u["df"]
+        self._generic: dict[str, bool | None] = u.get("generic") or {}
         self._vocab = set(u["vocab"])
         self.unit_count: int = u["unit_count"]
 
@@ -193,15 +198,37 @@ class FrozenCorpus:
     # ---- 三个注入口，跟 `kite_memory` 那三个方法一一对应 ----
 
     def common_term(self):
+        """跟 `UserMemory.common_term()` **逐行同一条判据**（P84 之后是两段）。
+
+        第二段（小库那一档问「泛词还是主题词」）要的是 `FactRecord.topics`，
+        而这份夹具里没有事实表——所以**把答案冻下来**，跟 `df` 同一个做法：
+        `users[人]["generic"]` 记的是 `TopicFace.generic(串)`（`true` 泛 / `false` 不泛 /
+        `null` 判不了）。只冻**真会被问到的那一档**（小库 × 有汉字 × df 已经判 True）。
+
+        ⚠️ **冻的那张表里查不到 = 当场抛，不许静默走 `True`**：静默那条路会让这份
+        重放悄悄量的是 P84 之前的代码，而表面上照样全绿（P82 那两刀的同一个形状）。
+        """
         from app.database.kb import relations as R
+        from app.database.kb import topic_face as TF
 
         total = self.unit_count
         if not total:
             return None
+        ask_face = total * R.COMMON_DF_RATIO < R.COMMON_DF_MIN
 
         def is_common(term: str) -> bool:
             n = self.unit_df(term, floor=R.COMMON_DF_MIN)
-            return n is not None and n >= R.COMMON_DF_MIN and n / total >= R.COMMON_DF_RATIO
+            if not (n is not None and n >= R.COMMON_DF_MIN
+                    and n / total >= R.COMMON_DF_RATIO):
+                return False
+            if not (ask_face and TF.has_cjk(term)):
+                return True
+            if term not in self._generic:
+                raise KeyError(
+                    f"{self._user} 的 `generic` 表里没有 {term!r}——这份夹具是 P84 之前冻的，"
+                    f"或者冻的时候口径跟 `common_term()` 对不上。**别静默放行**，"
+                    f"去重跑一遍 `generic` 那一把（口径写在这个方法的注释里）。")
+            return self._generic[term] is not False
 
         return is_common
 

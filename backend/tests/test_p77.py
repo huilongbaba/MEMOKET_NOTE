@@ -135,9 +135,17 @@ def test_第三条_挡掉的那14种和它们的量_全在标注里():
     """
     rows = _rows("p77-engate-14")
     assert len(rows) == 14
-    assert sum(r["串次"] for r in rows) == G.EXPECT_BLOCKED_OCC == 568
+    # ⚠️ **标注是冻下来的，尺子是活的——P84 之后这两个数分开了，别硬绑在一起。**
+    # 标注这 14 行是 P77 在**当时那一版代码**上一条一条读出来的（568 串次 / `ai` 451）：
+    # 人读的东西不能因为代码改了就改口。而 P84 那条「泛词 vs 主题词」的轴在小库上
+    # 多放了 63 个串进证人名单，于是这道门今天被多问了几趟 → 583 / `ai` 466。
+    # **这一条判的形状没变**：`ai` 一个词还是占了近八成（451/568 = 79.4% → 466/583 = 79.9%）。
+    assert sum(r["串次"] for r in rows) == 568, "P77 冻下来的那 14 行被改了"
     top = max(rows, key=lambda r: r["串次"])
-    assert (top["term"], top["串次"]) == G.EXPECT_TOP_BLOCKED == ("ai", 451)
+    assert (top["term"], top["串次"]) == ("ai", 451), "P77 冻下来的那一行被改了"
+    assert G.EXPECT_BLOCKED_OCC == 583 and G.EXPECT_TOP_BLOCKED == ("ai", 466)
+    assert round(G.EXPECT_TOP_BLOCKED[1] / G.EXPECT_BLOCKED_OCC * 100, 1) == 79.9
+    assert round(451 / 568 * 100, 1) == 79.4
     terms = {r["term"] for r in rows}
     assert "dvt" not in terms, "P75 ① 说 dvt 被挡——量下来没有，这一格钉的就是那条更正"
     assert {"ev", "t0", "q3", "ib", "mp"} <= terms
@@ -148,7 +156,7 @@ def test_第三条_挡掉的那14种和它们的量_全在标注里():
     assert flipped == {"ai", "5%", "8个"}
     assert all(r["读下来"] == "噪声" for r in rows if r["term"] in flipped)
     assert G.EXPECT_FLIP_AT_2 == 11 and G.EXPECT_FLIP_QUERIES_AT_2 == 7
-    assert G.EXPECT_FLIP_AT_4 == 213 and G.EXPECT_FLIP_QUERIES_AT_4 == 100
+    assert G.EXPECT_FLIP_AT_4 == 211 and G.EXPECT_FLIP_QUERIES_AT_4 == 100  # P84：213 → 211
     assert G.EXPECT_CF[2] == G.EXPECT_CF[1] == (342, 1353, 2)
     assert G.EXPECT_CF[4] == (317, 1225, 67)
 
