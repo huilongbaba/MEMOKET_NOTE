@@ -375,7 +375,16 @@ def test_第四条_这一批的新数进了登记表():
 def test_第四条b_下限那把尺全绿_而且两个只准往上的数抬到了合并后的真值():
     bad, checked, behind = FR.check()
     assert bad == [] and behind == [], (bad, behind)
-    assert FR.REGISTRY_SIZE_FLOOR == 95 and FR.CHECKED_COUNT_FLOOR == 107
+    # ⚠️ 这里本来钉死 `== 95 and == 107`。第 816 轮合并（P92 加了 9 条登记）当场红——
+    # 而这两个数正是第 810 轮为了**不在每次正当改动上红**才从各批测试里搬进 floor_ruler 的
+    # （见那两个常数上面的注释）。钉死它们的值，等于把同一个洞又搬回来了一次。
+    # 这一条要守的意思是「**合并时必须把它俩抬到合并后的真值**」——那就直接钉这件事：
+    # 它俩 == 当下的真值。加登记不抬 → 红；抬了 → 绿；把登记删了 → 下面两条红。
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY), (
+        f"登记表 {len(FR.REGISTRY)} 条，而 REGISTRY_SIZE_FLOOR 还停在 "
+        f"{FR.REGISTRY_SIZE_FLOOR}——合并后要把它抬到真值（只准往上，抬是绿的）")
+    assert FR.CHECKED_COUNT_FLOOR == checked, (
+        f"共核 {checked} 条，而 CHECKED_COUNT_FLOOR 还停在 {FR.CHECKED_COUNT_FLOOR}")
     assert len(FR.REGISTRY) >= FR.REGISTRY_SIZE_FLOOR
     assert checked >= FR.CHECKED_COUNT_FLOOR
 
