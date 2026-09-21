@@ -22,20 +22,33 @@
  *    `if (currentRef.current?.id !== noteId) return` 前面**，其余照旧排在后面）。
  *  · `blocked` —— 一点账都不记，整条都是**动正文 / 动编辑器 / 动当前这篇的右栏 /
  *    弹一句 toast**。**照旧拦**——它们正是那一刀本来要拦的东西。
- *  · `self` —— 只有 `onDone` 一条：它**自己**处理跨篇（切走了就只提示一句、
- *    正文由服务端保存），所以从来就不在那一刀的射程里。
+ *  · `self` —— **自己判跨篇**：切走了不是闭嘴，是说一句**点了名**的话
+ *    （「「<篇名>」：…」），正文一个字不动。P101 只有 `onDone` 一条，
+ *    P103 B 判完之后是三条（加 `onCost` / `onCrossRun`）。
+
+ * ── P103 这一批动的两处（收 P101 B 留的两条）────────────────────────────
+ *  · **A（`onSkeleton`）**：从 `blocked` 挪到 `rounds`。**实拍先行**
+ *    （`steps/skel103.mjs`，真壳，`LLM_MODE=adv` + 每发慢 7 秒）：
+ *    **不切走 → 库里 `spine` 第 8 秒变非 0（17 字 / 3 条）；点完 262 毫秒切走 →
+ *    盯了 60 秒一直是 0，跑完 0，关掉重开还是 0。**
+ *    而全仓只有 `PUT /api/notes/<id>/skeleton` 一条路能把跑里现生成的骨架写进笔记
+ *    （`store.set_skeleton` 唯一调用点），发它的只有前端 `persistSkeleton`
+ *    ⇒ 拦住 = **那一次生成的骨架永久没了**。
+ *    **拆法**：`persistSkeleton(s, b, noteId)` 提到 guard 前面（它按 noteId 落库），
+ *    `setSpine` / `setBeats` / `setSkeletonNotes` / `setNoteHarnessStatus` 照旧排在 guard 后面
+ *    （**那半边是「现在显示的这篇」的右栏，放行就是把 A 的骨架摆进 B**）。
+ *    ⇒ **`persistSkeleton` 该放行、`setSpine`/`setBeats` 该照拦，两件事两个判。**
+ *  · **B（三条 toast）**：`onCost` / `onCrossRun` 挪到 `self`（切走照弹、**点名**），
+ *    `onWarning` **照拦不动**——逐条的理由写在各自的 `why` 和 `App.tsx` 里。
  *
  * ── 为什么**不是**把 `blocked` 那一摞也放行 ──────────────────────────────
  * **判据宁可窄一点。** 那一摞里有两类，各有各的账，都不是这一批的正题：
  *  · **动正文那几条**（`onRevision` / `onInsertAt` / `onDelta` 的后半 / `onTextEnd` /
  *    `onScrub` / `onDedup` / `onRoundEnd`）——放行就是 P95 A0 记的那条
  *    「A 的内容写进了 B」当场长回来。
- *  · **弹 toast / 动当前这篇右栏那几条**（`onCost` / `onCrossRun` / `onWarning` /
- *    `onSkeleton`）——放行不会写坏正文，但**它们该不该在你已经切走之后弹**
- *    是另一条判据（弹出来的话用户看不出说的是哪一篇），这一批**不动**，
- *    逐条记在 `docs/edge-cases.md`。⚠️ `onSkeleton` 里那句 `persistSkeleton(s, b, noteId)`
- *    **确实是按 noteId 落库的**，切走就丢——**那是另一处误伤，照实记，这一批不治**
- *    （治它要把 `setSpine` / `setBeats` 那半边拆开，而它没有 P99 那样的实拍判据）。
+ *  · **弹 toast 那一条**（`onWarning`）——放行不会写坏正文，但切走之后弹出来
+ *    用户看不出说的是哪一篇，而且它**一轮可以来好几条**。P103 B 逐条判完之后
+ *    只剩它还在这一摞里，理由写在它自己的 `why` 上。
  *
  * ── 它答不了什么 ────────────────────────────────────────────────────────
  *  · **卡上那几样明细该不该落库**：一条都答不了（P99 判③判的「不落库」）。
@@ -70,6 +83,8 @@ export const HARNESS_GUARD: Record<string, GuardEntry> = {
   onCheckHit: { verdict: 'rounds', why: '`writeRounds(noteId, …)` 攒判据命中；`stuckCheckRef` 是这次跑的账，`onDone` 要读' },
   onError: { verdict: 'rounds', why: '`writeRounds(noteId, … errors …)` 记这一轮的报错；toast / 状态行排在 guard 后面' },
 
+  onSkeleton: { verdict: 'rounds', why: '`persistSkeleton(s, b, noteId)` 按 noteId 落库（P103 A 实拍：切走 60 秒库里 spine 一直是 0，跑完 / 重开还是 0）；`setSpine` / `setBeats` 那半边排在自己那句 guard 后面，照旧拦' },
+
   // ── 一点账都不记 ⇒ 照旧拦 ──────────────────────────────────────────────
   onRevision: { verdict: 'blocked', why: '动正文：`applyRevision` 之后 `setContent`——放行就是「A 的内容写进 B」' },
   onInsertAt: { verdict: 'blocked', why: '动正文 + 滚编辑器：`prepareInsert` / `EditorView.scrollIntoView`' },
@@ -77,13 +92,12 @@ export const HARNESS_GUARD: Record<string, GuardEntry> = {
   onRoundEnd: { verdict: 'blocked', why: '动正文（用服务端的对齐）+ `pushDiff` 往编辑器加一层改动' },
   onScrub: { verdict: 'blocked', why: '动正文：服务端删了一整句，本地同一句也删' },
   onDedup: { verdict: 'blocked', why: '动正文：剥掉重复的那一段 / 行' },
-  onSkeleton: { verdict: 'blocked', why: '动当前这篇的右栏：`setSpine` / `setBeats` / `setSkeletonNotes`（里头那句 persistSkeleton 是另一处误伤，见抬头）' },
-  onCost: { verdict: 'blocked', why: '只弹一句 toast：切走之后弹出来看不出说的是哪一篇，另一条判据' },
-  onCrossRun: { verdict: 'blocked', why: '只弹一句 toast：同 onCost' },
-  onWarning: { verdict: 'blocked', why: '只弹一句 toast：同 onCost' },
+  onWarning: { verdict: 'blocked', why: '只弹一句 toast，而且一轮能来好几条（每个 middleware 每个钩子抛一次就一条）；跑还在继续，切走之后用户一件事都做不了 ⇒ 是噪声不是通知' },
 
-  // ── 自己处理跨篇 ──────────────────────────────────────────────────────
-  onDone: { verdict: 'self', why: '它自己判跨篇：切走了就只提示一句「已保存在那篇里」，正文一个字不动' },
+  // ── 自己处理跨篇：切走了不闭嘴，说一句**点了名**的话 ──────────────────
+  onDone: { verdict: 'self', why: '它自己判跨篇：切走了就只提示一句「「X」的…已保存在那篇里」，正文一个字不动' },
+  onCost: { verdict: 'self', why: '它是**停机的理由**，而 onDone 切走那一支只说「已结束」、理由那半句丢了；花掉的 token 是用户的钱，切走了也该点名说一句' },
+  onCrossRun: { verdict: 'self', why: '它给的下一步动作落在「历史版本」那一栏，而那是**按篇**的；不点名等于把人送去翻错的那一篇 ⇒ 要么点名要么别弹' },
 }
 
 /** 切走之后这一条**不许跑**吗。`App.tsx` 那个包装只问这一句。

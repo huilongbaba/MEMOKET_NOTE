@@ -13,10 +13,13 @@
  *     `const h: api.NoteHarnessHandlers = { … }` 真定义出来的那些。
  *     多一个少一个都红——**「表里有的都在」是不够的**，那是
  *     **「测试数据比判据窄」**的那张脸（新加一条忘了归档就静默绿）。
- *  ② `rounds` 那一档：那条 handler 的函数体里**真的有** `writeRounds(noteId`
- *     或 `patchRound(noteId`（或者是 `onCheckHit` 那种记 `stuckCheckRef` 的跑账）。
+ *  ② `rounds` 那一档：那条 handler 的函数体里**真的有**一句**按 noteId 写**的
+ *     （`writeRounds(noteId` / `patchRound(noteId` / **`persistSkeleton(…, noteId)`**，
+ *     或者是 `onCheckHit` 那种记 `stuckCheckRef` 的跑账）。
  *     归错档 = 把一条动正文的 handler 放行 = P95 A0 那个洞长回来。
- *  ③ `blocked` 那一档：函数体里**一句 `writeRounds(noteId` / `patchRound(noteId` 都没有**。
+ *     ⚠️ **`persistSkeleton` 是 P103 A 补进来的**：它跟前两个一样按 noteId 落库
+ *     （`api.saveSkeleton(id, …)`），少了它这条闸会对着治好的代码红。
+ *  ③ `blocked` 那一档：函数体里**一句按 noteId 写的都没有**。
  *     有的话就是「明明记着账却被拦着」，正是这一批要治的那种误伤。
  *  ④ `rounds` 那一档里**还动正文**的那几条（`onRoundStart` / `onDelta` / `onEvaluate` /
  *     `onToolCalls` / `onError`），**记账那几句必须排在自己那句
@@ -24,7 +27,13 @@
  *     判法：函数体里第一处 `writeRounds(noteId` / `patchRound(noteId` 的下标
  *     **小于**第一处那句 guard 的下标。
  *  ⑤ **那个包装真的在问这张表**：`App.tsx` 里那一行是 `guardBlocks(k)` 而不是
- *     原来那句一刀切；`self` 那一档**正好是 `onDone` 一条**；每条的 `why` 不短于 8 个字。
+ *     原来那句一刀切；每条的 `why` 不短于 8 个字。
+ *  ⑥ **`self` 那一档每条都真的自己判了跨篇、而且点了名**（P103 B）。
+ *     P101 这一条写的是「`self` 正好 `onDone` 一条」——**那是钉了个会变的数**，
+ *     这一批 `self` 从 1 条变成 3 条它就该红，而它红的理由跟对错无关。
+ *     换成不变式：每条 `self` 的函数体里那句跨篇判断**是个带花括号的分支**
+ *     （不是光 `return`），而且分支里**拿 `notes.find(… === noteId)?.title` 点了名**。
+ *     ⇒ 「切走之后弹出来看不出说的是哪一篇」这件事**在结构上就发生不了**。
  *
  * ── 它**答不了**什么（别读成「切走之后什么都不丢了」）─────────────────────
  *  · **那一刀放行之后真的留住了没有**：一条都答不了。它读的是源码的形状。
@@ -85,7 +94,9 @@ ok(JSON.stringify(inApp) === JSON.stringify(inTable),
     : `：表里多了 ${inTable.filter((k) => !inApp.includes(k))}，少了 ${inApp.filter((k) => !inTable.includes(k))}`))
 
 // ── ② / ③ 归档对不对：拿函数体的原文说话 ──────────────────────────────────
-const KEEPS_BOOKS = /\b(writeRounds|patchRound)\(noteId\b/
+// **按 noteId 写**的那几句。`persistSkeleton` 的 noteId 在第三个参数上，
+// 所以它单独一条（`[^)]*` 不跨括号，摘不到别人家的 noteId）。
+const KEEPS_BOOKS = /\b(writeRounds|patchRound)\(noteId\b|\bpersistSkeleton\([^)]*\bnoteId\b/
 const GUARD_LINE = 'if (currentRef.current?.id !== noteId) return'
 
 for (const k of inApp) {
@@ -97,7 +108,7 @@ for (const k of inApp) {
     ok(books, `\`${k}\` 归 rounds，函数体里真的有按 noteId 记的那一句`)
   } else if (e.verdict === 'blocked') {
     ok(!KEEPS_BOOKS.test(body),
-      `\`${k}\` 归 blocked，函数体里一句 \`writeRounds(noteId\` / \`patchRound(noteId\` 都没有`)
+      `\`${k}\` 归 blocked，函数体里一句**按 noteId 写**的都没有（writeRounds / patchRound / persistSkeleton）`)
   }
   ok((e.why ?? '').length >= 8, `\`${k}\` 的「为什么」不短于 8 个字`)
 }
@@ -118,10 +129,17 @@ for (const k of inApp) {
 // `pushDiff` / `view.dispatch` 是动正文和编辑器；`toast` / `setNoteHarnessStatus` /
 // `setBeatCoverage` / `setUndoGroup` / `setHarnessDone` / `insertCursorRef` 是
 // 动**这一刻屏幕上那一篇**的东西——切走之后它们说的都是另一篇的事。
+// ⚠️ **P103 A 又补了三个名字**（`setSpine` / `setBeats` / `setSkeletonNotes`）。
+// 不补的话：`onSkeleton` 挪进 `rounds` 之后，这条闸会判它「整条都是记账 ⇒
+// 那句 guard 该删干净」，**对着治好的代码红**——跟 P101 记的第二次栽法
+// （`onEvaluate` / `onToolCalls` / `onError` 被判成该删）**一模一样，这是第三次**。
+// 名单**逐条点名**，不写一句「动 UI 的」：那三个 set 动的是右栏「计划」那一格，
+// 切走之后它们摆出来的是另一篇的骨架。
 const TOUCHES_CURRENT = new RegExp([
   'setContent\\(', 'liveContentRef\\.current =', 'pushDiff\\(', 'view\\.dispatch',
   'toast\\(', 'toastAction\\(', 'setNoteHarnessStatus\\(', 'setBeatCoverage\\(',
   'setUndoGroup\\(', 'setHarnessDone\\(', 'insertCursorRef\\.current =',
+  'setSpine\\(', 'setBeats\\(', 'setSkeletonNotes\\(',
 ].join('|'))
 for (const k of guardedKeys('rounds')) {
   const body = bodies[k]
@@ -138,12 +156,34 @@ for (const k of guardedKeys('rounds')) {
 
 // ── ⑤ 包装真的在问这张表 + 两条形状 ──────────────────────────────────────
 const stripped = stripComments(src)
-ok(/if \(k !== 'onDone' && guardBlocks\(k\) && currentRef\.current\?\.id !== noteId\) return/.test(stripped),
+ok(/if \(guardBlocks\(k\) && currentRef\.current\?\.id !== noteId\) return/.test(stripped),
   '那个包装那一行真的在问 `guardBlocks(k)`（不是原来那句一刀切）')
 ok(!/if \(k !== 'onDone' && currentRef\.current\?\.id !== noteId\) return/.test(stripped),
   '原来那句一刀切**不在了**（留着的话两条同时在，后一条照样拦光）')
-ok(JSON.stringify(guardedKeys('self')) === JSON.stringify(['onDone']),
-  '`self` 那一档正好是 `onDone` 一条')
+ok(!/k !== 'onDone' &&/.test(stripped),
+  '那句写死的 `k !== \'onDone\'` 也不在了（`self` 已经不止它一条，留着会读成「只有它是例外」）')
+
+// ── ⑥ `self` 那一档：自己判跨篇，而且**点了名** ────────────────────────────
+//
+// **不钉「正好几条」**（P101 那条钉的是 1，这一批变成 3 就该红——而它红的理由
+// 跟对错无关）。钉的是不变式：**每一条 `self` 都得自己把跨篇那一支写出来，
+// 并且那一支里点了篇名。**
+const NAMES_THE_NOTE = /notes\.find\(\(x\) => x\.id === noteId\)\?\.title/
+// 点名这件事可以**自己写一句**（`onDone` 那样），也可以走那个共用的
+// `awayToast(…)`（`onCost` / `onCrossRun`）。**走共用的那条也得证明**：
+// 所以这儿先单独核一次那个共用件自己真的点了名——
+// 不核的话，把 `awayToast` 改成 `toast(detail)` 这条闸会一声不吭
+// （**「它调了那个函数」≠「那个函数干了那件事」**，跟 P101 刀 ⑦ 同一族）。
+const awayDef = stripComments(src).match(/const awayToast = \([^)]*\) =>[\s\S]{0,240}/)
+ok(!!awayDef && NAMES_THE_NOTE.test(awayDef[0]),
+  '那个共用的 `awayToast` 自己真的点了名（`notes.find(… === noteId)?.title`）')
+for (const k of guardedKeys('self')) {
+  const body = bodies[k]
+  ok(/if \(currentRef\.current\?\.id !== noteId\) \{/.test(body),
+    `\`${k}\` 归 self，跨篇那一支是个**带花括号的分支**（光 \`return\` 就等于闭嘴，那是 blocked 干的事）`)
+  ok(NAMES_THE_NOTE.test(body) || /\bawayToast\(/.test(body),
+    `\`${k}\` 切走之后那句话**点了名**（自己写的，或走共用的 \`awayToast(\`）——不点名就看不出说的是哪一篇`)
+}
 ok(guardBlocks('onDelta') === false && guardBlocks('onRevision') === true,
   '`guardBlocks` 自己：onDelta 放行 / onRevision 照拦')
 ok(guardBlocks('onNeverHeardOf') === true,

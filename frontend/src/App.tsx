@@ -2427,12 +2427,30 @@ export default function App() {
    * 一份的话，恢复之后的运行就会少掉几个 handler，而那是最难发现的一类
    * 差异：界面看起来在跑，只是某个面板不再更新了。 */
   function noteHarnessHandlers(noteId: string, mode: 'write' | 'polish'): api.NoteHarnessHandlers {
+    /** 用户已经切走了，这句话**必须点名说的是哪一篇**（P103 B）。
+     *
+     * 跟 `onDone` 那一支逐字同一个做法（它是这条做法的出处）：不点名的话，
+     * 屏幕上开着 B，弹出来一句「这次跑到了上限，就停在这儿了」——用户会读成 B 的事，
+     * 而 B 上可能正跑着另一次。**一句没有主语的通知，在多标签页里就是一句错话。**
+     * 切走那一支**不用 `error` 那个红档**：那是「你现在这一篇出事了」的语气，
+     * 而这句说的是另一篇（`onDone` 切走那一支也是平的）。 */
+    const awayToast = (detail: string) =>
+      toast(`「${notes.find((x) => x.id === noteId)?.title || '另一篇笔记'}」：${detail}`)
     const h: api.NoteHarnessHandlers = {
       onSkeleton: (s, b, notes) => {
+        // **落库这一句排在自己那句 guard 前面**（P103 A，收 P101 B 留的第一处）：
+        // `persistSkeleton(s, b, noteId)` 是**按 noteId 落库**的（`api.saveSkeleton(id, …)`
+        // 再按 id 改 `notes` 里那一行），碰不到「现在显示的那篇」。
+        // 拦住它的后果实拍过（`p103` 走查 `skel103.mjs`，真壳）：
+        // **不切走 → 库里 `spine` 第 8 秒变非 0；点完 262 毫秒就切走 → 盯了 60 秒一直是 0，
+        // 跑完是 0，关掉重开还是 0。** 而全仓只有这一条路能把跑里现生成的骨架写进笔记
+        // （`store.set_skeleton` 唯一调用点在 `PUT /api/notes/<id>/skeleton`），
+        // ⇒ 拦住它 = **这一次生成的骨架永久没了**，下次打开还得再打一次模型。
+        void persistSkeleton(s, b, noteId)
+        // ── 下面全是**现在显示的这篇**的（右栏那三格 + 状态行）──
+        // 这半边**照旧拦**：切走之后把 A 的骨架摆进 B 的右栏，正是那一刀本来要拦的东西。
         if (currentRef.current?.id !== noteId) return
         setSpine(s); setBeats(b); setSkeletonNotes(notes ?? [])
-        // 自动生成的一样要存——否则下一轮/下一次打开又得重新生成一份
-        void persistSkeleton(s, b, noteId)
         setNoteHarnessStatus('已自动生成骨架，开始第一轮')
       },
       onRoundStart: (d) => {
@@ -2729,19 +2747,39 @@ export default function App() {
       onCost: (d) => {
         // 单次跑的成本上限（后端计划 12.3）。**停下来告诉用户，不是静默截断**——
         // 不说一声的话，用户看到的只是「这次怎么只跑了两轮」。
-        if (currentRef.current?.id !== noteId) return
+        //
+        // **切走之后照样说，但点名**（P103 B ①）。判据：这一句是**停机的理由**，
+        // 而紧跟着那条 `onDone(reason='cost_cap')` 在切走那一支里只说「已结束」、
+        // **理由那半句丢了**（逐字：「「X」的智能续写已结束，内容已保存在那篇里」）。
+        // 花掉的 token 是用户的钱，「为什么只跑了两轮」不该因为他换了个标签页就没人说。
+        if (currentRef.current?.id !== noteId) { awayToast(d.detail); return }
         toast(d.detail, 'error')
       },
       onCrossRun: (d) => {
         // 这次跑完比上一次跑差（后端计划 9.3）。**只报不回滚**：上一版正文在
         // 「历史版本」里，回不回去是用户的决定，不是我们的。
-        if (currentRef.current?.id !== noteId) return
+        //
+        // **切走之后照样说，但点名**（P103 B ②）。判据比 `onCost` 还硬一格：
+        // 这一句给了**下一步动作**（「上一次的正文在『历史版本』里，要回去随时可以」），
+        // 而「历史版本」是**按篇的右栏**。不点名 = 把人送去翻**错的那一篇**的历史版本。
+        // ⇒ 这一条要么点名要么别弹，**原样放行是三条里最坏的一条**。
+        if (currentRef.current?.id !== noteId) { awayToast(d.detail); return }
         toast(d.detail, 'error')
       },
       onWarning: (d) => {
         // 一条 middleware 抛异常了。循环继续跑（能力分包的隔离好处），但这一轮
         // 少了那个能力——后端注释写着「不能是静默的」，可在这之前前端根本没接
         // 这个事件，发出来的警告全被丢掉了。
+        //
+        // **切走之后照旧拦**（P103 B ③，三条里唯一不改的那条）。两条理由，都窄：
+        //  · **跑还在继续，用户这一刻做不了任何事**——`onCost` / `onCrossRun` 各自
+        //    给了一件事（钱花完了 / 去翻历史版本），这一条给不出。
+        //  · **它一轮可以来好几条**：`loop._wrap` 里**每个 middleware 每个钩子**
+        //    抛一次就发一条，`hooks/note.py` 光骨架那一处就有两种（生成失败 / 存着的是半句）。
+        //    切走之后连弹几条无从下手的红字，是噪声不是通知。
+        // ⚠️ 它被拦掉之后**这一轮少了哪个能力这件事在界面上就没有第二个出处了**
+        //    （轮次卡上没有这一格）。照实记在 `docs/edge-cases.md`，
+        //    要接就得先给轮次卡加一格「这一轮少了什么」——**那是另一刀**。
         if (currentRef.current?.id !== noteId) return
         toast(`「${d.middleware}」这一步出错了，本轮少了这个能力：${d.error}`, 'error')
       },
@@ -2831,10 +2869,16 @@ export default function App() {
     // 有按 noteId 记账那一份的放行（它们自己把记账那几句排在自己那句 guard 前面），
     // 一点账都不记的照旧拦。**表里没有的键一律拦**（保守那一侧），
     // 而「新加一条忘了归档」有闸当场红（`scripts/check-harness-guard.mts`：集合相等）。
+    //
+    // **P103 B：那句 `k !== 'onDone'` 拿掉了。** 它本来就是多余的
+    // （`guardBlocks('onDone')` 因为归在 `self` 档本来就回 false），
+    // 而这一批 `self` 档从 1 条变成 3 条（`onDone` / `onCost` / `onCrossRun`：
+    // 三条都**自己判跨篇**，切走了就说一句**点了名**的话），
+    // 留着那个写死的键名会读成「只有 onDone 是例外」——**跟表里写的不是一回事**。
     const guarded: api.NoteHarnessHandlers = {}
     for (const [k, fn] of Object.entries(h) as [keyof api.NoteHarnessHandlers, (...a: unknown[]) => void][]) {
       guarded[k] = ((...args: unknown[]) => {
-        if (k !== 'onDone' && guardBlocks(k) && currentRef.current?.id !== noteId) return
+        if (guardBlocks(k) && currentRef.current?.id !== noteId) return
         fn(...args)
       }) as never
     }
