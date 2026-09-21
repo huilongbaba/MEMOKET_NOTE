@@ -69,6 +69,29 @@ export type AgentRound = {
   streamed?: string
   /** 这次跑带了哪些技能（第一轮开跑就有）：按范围自动带上的、留给模型按需加载的（P1-1b） */
   skills?: { scope: string; injected: string[]; menu: string[] }
+  /** **这张卡是从库里读回来的骨架**（P101 A），不是这一趟跑出来的。
+   *
+   * 有它 ⇒ 卡顶上摆一条虚线横条，**逐条写着库里没有哪几样**
+   * （本轮写出的正文 / 工具调用逐条 / 技能名单 / 判词…）。
+   * **这不是装饰，是判据的一部分**：P99 判②那半句「缺的明细在卡上照实标」
+   * 说的就是它——**「读回的是这一段 ≠ 右栏摆的是这一段」**，
+   * 宁可少摆也别让用户以为「那一轮就写了这么点东西」。
+   * 造法在 `util/roundsRestore.ts`；形状就是下面那个 {@link RestoredMark}
+   * （**一处定义**：两边各写一份就是两把尺）。 */
+  restored?: RestoredMark
+}
+
+/** 「这张卡是读回来的」那个记号（P101 A）。**唯一定义在这儿**，
+ *  `util/roundsRestore` 造它、这份组件摆它。 */
+export type RestoredMark = {
+  /** 这一次跑是什么时候的（库里那一行的 `created_at`）。 */
+  at: string
+  /** **库里没有哪几样**，逐条（后端 `store.ROUND_SKELETON_MISSING` 给的）。 */
+  missing: string[]
+  /** 这一轮**库里有**的那几个数，摆成一行人话（`restoredFactsLine`）。 */
+  facts: string
+  /** 这一轮哪几条判据命中了（库里 `fired_checks`，解不出来就是空）。 */
+  firedChecks: string[]
 }
 
 /** 「技能」那一行的文案。抽成纯函数是让闸够得着：这是用户判断「Skill 到底加载了没有」的唯一依据。 */
@@ -339,13 +362,44 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 只清理，不续写
               </span>
             )}
-            <span className="muted">修订 {r.revisions} 处</span>
+            {/* **读回来的卡不摆「修订 N 处」**（P101 A）：那个数是
+                `revisions_applied`，而库里存的是 `proposed` / `dropped`
+                两个**别的**数。摆一个 `修订 0 处` 就是编——真实的那两个数
+                在下面那条横条的 `facts` 里，**用它们自己的名字**。 */}
+            {!r.restored && <span className="muted">修订 {r.revisions} 处</span>}
             {r.phaseLabel && (
               <span style={{ color: 'var(--accent)', marginLeft: 'auto' }}>
                 {r.phaseLabel}
               </span>
             )}
           </div>
+
+          {/* ── **这张卡是读回来的骨架**（P101 A）────────────────────────────
+              P99 判②里那半句「缺的明细在卡上照实标」就是这一条，**它是判据不是文案**。
+              关掉重开之后右栏原来是 **0 张卡**（轮次卡只活在内存里）；现在从
+              `harness_rounds` 把骨架读回来摆上，而卡上那几样**明细**库里一个字都没有
+              ——**逐条写出来**，用户于是看得出这是从库里读回来的，
+              而不是「那一轮就写了这么点东西」。 */}
+          {r.restored && (
+            <div className="agent-restored">
+              <div>
+                <b>这张卡是从库里读回来的骨架</b>
+                {r.restored.at && `（那次跑：${r.restored.at.slice(0, 16).replace('T', ' ')}）`}
+                ——这一轮的明细只活在跑的那一趟里，没有落库。
+              </div>
+              {r.restored.facts && <div style={{ marginTop: 2 }}>库里存着的：{r.restored.facts}</div>}
+              {r.restored.firedChecks.length > 0 && (
+                <div style={{ marginTop: 2 }}>
+                  命中的代码判据：{r.restored.firedChecks.map((c) => checkLabel(c)).join('、')}
+                </div>
+              )}
+              {r.restored.missing.length > 0 && (
+                <div style={{ marginTop: 2 }}>
+                  库里<b>没有</b>：{r.restored.missing.join('、')}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 「这一轮为什么这么跑」的第一样：上一轮诊断出了什么，以及这条
               诊断**这一轮去了哪儿**。面板此前只显示 `adjust()` 的结果

@@ -579,6 +579,56 @@ class ChangeLayersOut(BaseModel):
     layers: list[ChangeLayerIn] = Field(default_factory=list)
 
 
+class RestoredRound(BaseModel):
+    """从 `harness_rounds` 读回来的**一轮骨架**（P101 A）。
+
+    **它不是轮次卡的全部**——卡上那几样明细（写出的正文 / 工具调用逐条 / 技能 /
+    判词 / 丢弃 / 策略理由 / 阶段输出）库里一个字都没有，逐条在
+    `NoteRoundsOut.missing` 里点名，前端照实标在卡上。
+    """
+    round: int = 0
+    #: `{维度: 档位}`。**档位是个 int，不是 `{level, note}`**——判词没落库。
+    scores: dict[str, int] = Field(default_factory=dict)
+    status: str = ""
+    weakest: str = ""
+    contentLen: int = 0
+    toolCalls: int = 0
+    repeatCalls: int = 0
+    revisionsProposed: int = 0
+    revisionsDropped: int = 0
+    depthDropped: int = 0
+    factsNew: int = 0
+    factsTotal: int = 0
+    #: 三列都是 **`-1` = 这一轮没走到那一步**，`0` = 算过了、一句可引的都没有。
+    #: 默认值因此是 `-1` 不是 `0`（两件事不许长成同一个数）。
+    citeLocated: int = -1
+    citeMarked: int = -1
+    citeMatched: int = -1
+    firedChecks: str = ""
+    at: str = ""
+
+
+class NoteRoundsOut(BaseModel):
+    """这一篇**最近那一次跑**的轮次骨架（P101 A · 只读）。
+
+    `reason` 三档，**分开的理由是「选不到 ≠ 没有」**：
+      · `ok` —— 读到了；
+      · `no_rounds` —— 这一篇一轮都没跑过（库里真没有）；
+      · `no_run_id` —— 有轮次，但最近那些是没挂 `Ledger` 的老跑法（`run_id` 空），
+        按 run 分不开 ⇒ **不摆**。这**不是**「这一篇没跑过」。
+    """
+    runId: str = ""
+    at: str = ""
+    status: str = ""
+    stopped: str = ""
+    rounds: list[RestoredRound] = Field(default_factory=list)
+    reason: str = "ok"
+    runsTotal: int = 0
+    roundsTotal: int = 0
+    #: 卡上有、库里没有的那几样，逐条。**前端照实摆出来。**
+    missing: list[str] = Field(default_factory=list)
+
+
 class ChangeLayerDropped(BaseModel):
     label: str = ""
     at: str = ""

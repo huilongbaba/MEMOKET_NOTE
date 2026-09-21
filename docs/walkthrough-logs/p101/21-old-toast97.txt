@@ -1,0 +1,25 @@
+步骤脚本: toast97.mjs sha256=bf080f8b84507b755acca9f3f0788ce19beb85cb240d82b2c8e324ff0ff66103
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+=== ① 「⑩ 那个时刻」的读法（照 reopen64.mjs：until(pageText>50) + wait(2000) + setTheme + wait(400)）===
+  pageText>50 等了 1 毫秒
+  壳刚起来，现在开着: <ID12>
+  右栏页签: ["记忆","改动1","计划2"]
+  这一刻的 toast: []
+  （从这一步连上算起 2409 毫秒）
+shot → <DIR>/<B>-toast-1-at10.png
+=== ② 从连上那一刻起每 80ms 读一次，读满 20000 毫秒 ===
+  这段时间里读到过的 toast: []
+  ⚠️ 读不到**不等于**屏幕上没有过：`go.sh` 等 page target 之后还 sleep 5，量具最早能到场的时候，app 早就启动完了
+=== ③ 把录音机装在页面脚本之前，再 reload 让 app 完整重走一遍启动 ===
+  第一次看见（reload 之后 314 毫秒）: ["上次没处置完的 1 层改动还在右栏「改动」里"]
+shot → <DIR>/<B>-toast-3-onscreen.png
+  录音机装上了吗: true
+  录到的 toast（带毫秒 + 那一刻它在屏幕上的位置 / 样式）: [{"text":"上次没处置完的 1 层改动还在右栏「改动」里","出现":548,"消失":4049,"屏幕上":{"x":1118,"y":820,"w":306,"h":42,"opacity":"0","visibility":"visible","display":"block"}}]
+  录了 4395 毫秒
+  含「上次没处置完的」的: [{"text":"上次没处置完的 1 层改动还在右栏「改动」里","出现":548,"消失":4049,"屏幕上":{"x":1118,"y":820,"w":306,"h":42,"opacity":"0","visibility":"visible","display":"block"}}]
+    · 在屏幕上活了 3501 毫秒；出现在第 548 毫秒；框 306×42 @ (1118,820)；opacity=0 visibility=visible display=block
+  判： **用户看得见**——它真的出现在屏幕上过；⑩ 那一格读不到是**量具够不着**（它到场的时候已经过去了）
+  reload 之后的右栏页签: ["记忆","改动1","计划2"]
+  P43 不变式（弹了 toast ⇒ 页签在）: 成立
+  开着的是: <ID12>
+shot → <DIR>/<B>-toast-4-after.png

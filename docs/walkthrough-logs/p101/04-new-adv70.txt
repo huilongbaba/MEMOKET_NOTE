@@ -1,0 +1,10 @@
+步骤脚本: adv70.mjs sha256=d1858bb1b46a610cdae2fc2ecd0e038b54636048eb1754236048c34c1a9791a9
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/clickexact.mjs=476c0780c3787bf98bbdb576660f117bc6704d0609350c96d23f76dbdb599348 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+窗口身份: <B>-newbie  新建出来的: <ID12>
+跑之前 编辑器(.cm-line): 44
+=== 正文两头 === {"lines":144,"db":144}
+--- 收工那一行 --- ["知识库里能用的材料用完了，自动停止 · 2 轮 · +100 字"]
+--- 状态栏那个字数 --- "108 字"
+--- window.__p70（1 条）---
+  没有 __p70：这一份壳不是带探针那一版
+shot → <DIR>/<B>-new-adv-light.png

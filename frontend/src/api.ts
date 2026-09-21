@@ -1,6 +1,7 @@
 /** 后端 API 封装。用户身份走 X-User-Id 头，原型阶段不做认证。 */
 import type { DocIntent } from './util/docIntent'
 import type { SavedLayer } from './util/changeLayers'
+import type { NoteRoundsPayload } from './util/roundsRestore'
 
 export type Note = {
   id: string
@@ -760,6 +761,16 @@ export const saveChangeLayers = (noteId: string, layers: SavedLayer[], keepalive
 export const burnChangeLayers = (noteId: string, keepalive = false) =>
   fetch(`/api/notes/${noteId}/change-layers`, { method: 'DELETE', headers: headers(), keepalive })
     .then(json<{ dropped: number }>)
+
+/** 这一篇**最近那一次智能续写 / 打磨**的每一轮骨架（P101 A）。**只读**，
+ *  后端 `GET /api/notes/<id>/rounds` 里一条写 SQL 都没有。
+ *
+ *  关掉重开之后右栏原来是 **0 张卡**（P99 实拍：库里 6 次跑 / 12 行轮次，界面上 0 张）
+ *  ——轮次卡只活在内存里，而**骨架早就在 `harness_rounds` 里**。这条就是把它读回来。
+ *  **缺的明细**（本轮写出的正文 / 工具调用逐条 / 技能 / 判词…）在 `missing` 里逐条回来，
+ *  由 `util/roundsRestore` 摆到卡上。 */
+export const listNoteRounds = (noteId: string) =>
+  fetch(`/api/notes/${noteId}/rounds`, { headers: headers() }).then(json<NoteRoundsPayload>)
 
 /** 笔记之间的链接：这篇链出去的 + 链进来的（Trilium 的 note links / referenced by）。 */
 export type NoteGraph = { facts: number; topics: TopicNode[]; entities: EntityNode[]; links: TopicEntityLink[] }

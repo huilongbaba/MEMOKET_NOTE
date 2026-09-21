@@ -1,0 +1,5 @@
+步骤脚本: ctxmenu52.mjs sha256=bd37b50c8a59cac9dd19426e2adcffd0ea4b18134bc196514ab9072096709544
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+选中: "众筹页面那一版文案是 3 月 12 号上线的，当天点击 12700。"
+右键菜单: ["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]
+shot → <DIR>/<B>-old-ctx-light.png
