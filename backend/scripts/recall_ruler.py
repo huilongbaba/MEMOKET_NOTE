@@ -223,6 +223,46 @@ EXPECT_CF_GATES_EN_EMPTY = 0         # 「有→空」的条数（主语面把 `
 EXPECT_CF_GATES_EN_LIBS = (("terrence-rewrite", 6),)
 EXPECT_CF_GATES_EN_IDX = (295, 296, 316, 318, 319, 320)   # `p90-engate-6` 那 6 条就是它们
 
+# ⚠️ **这一支每跑一趟必须清两次缓存，前后各一次**（P92 ③，收 P90 ④）。
+# P90 ④ 原话：那两句 `purge()` 写了两份、**摘任一份都绿、两份都摘才红**，闸分不开是哪一份被摘了。
+# 现在两句各带一个 `when` 标签、各记一笔，`_swap_run` 顶上那段写着为什么两句都得留着。
+# **它一动 = 有人动了那段缓存接线**，去读 `_swap_run` 的注释和 `cf_gates` 里那句
+# 「摘了闸的 `WhoFace` 一份都没建出来」的自检——那条自检靠的正是「清干净了再建」。
+EXPECT_CF_GATES_PURGES = ("before", "after")
+
+# ── **`topics` + 英文专用低门槛那条路**（P92 ①，收 P90 ①）─────────────────────
+#
+# P90 ① 留的原话：「真要拆汉字闸，该走的是 `topics` 轴 + 一个英文专用的低门槛（≈0.60），
+# 不是主语面。**这一批没接**」。这一批把这条路**走完了**，判**还是不接**，
+# 但**卡的不是 P90 猜的那两格**——门槛和轴这两格今天都过得去：
+#
+#   · 留出集做厚了（P92 的 `p92-holdout-en-*`：**108 条真盲 + 29 条 tainted = 137**，
+#     = 六个库上 `topics` 面判得了的英文串**全部**，不是抽样）；
+#   · 产品那一堆（`terrence-rewrite` 上 df 过 common 的 9 个英文串）上 `topics` 轴
+#     **有缝、无重叠**：人标「不泛」.450–.663 / 人标「泛」.708–.880，
+#     假捞回 0.0% 的最高门槛是 **0.705**——0.60 稳稳落在缝里。
+#
+# **然后产出还是变差了**：EN@0.60 全库对拍变 11 条，逐条读完 **变好 0 / 中性 2 / 变差 9**。
+# 根因是第三格，P90 / P86 / P84 都没量到过这一格：
+# **「不泛」≠「值得当证据」**。这一刀真正放行的只有两个串（`agent` .450 / `memory` .592），
+# 两个**人标都对**，可它们命中的是这个库里**同一句产品定位话的六种说法**
+# （`MemuKet / MemoKet / MemoCat is presented as a wearable AI agent powered by the user's
+# own memory` …），八格的屏一进就是半屏，把「Ask Memory 接 MCP 要明确授权」
+# 这类**逐句沾边**的事实挤出去。**串指着一件具体的事，不等于命中它的那些事实彼此有区别。**
+#
+# ⚠️ **门槛扫出来产出真的在动**（不是「旋钮动完产出一样」那种退回）：
+# 0.45 变 0 条 / 0.50–0.55 变 5 条 / **0.60–0.65 变 11 条** / 0.70 变 18 / 0.75 变 20 / 0.80 变 22。
+# 也就是说这条路**有工作点可挑**，挑哪一档都只是决定伤多大——**方向没有一档是对的**。
+EXPECT_CF_GATES_EN060_CHANGED = 11        # EN 走 topics@0.60：top-8 变了的查询数
+EXPECT_CF_GATES_EN060_ADD = 37            # 它比 HEAD 多进来的召回对
+EXPECT_CF_GATES_EN060_DROP = 26           # 它比 HEAD 少掉的召回对
+EXPECT_CF_GATES_EN060_EMPTY = 0           # 「有→空」的条数
+EXPECT_CF_GATES_EN060_LIBS = (("terrence-rewrite", 11),)
+EXPECT_CF_GATES_EN060_IDX = (32, 318, 319, 584, 585, 589, 593, 640, 641, 642, 645)
+# 这一刀真正多放行的英文串——**只有两个**，就是它俩把上面那 11 条全带出来的
+EXPECT_CF_GATES_EN060_TERMS = (("agent", 0.450), ("memory", 0.592))
+EXPECT_CF_GATES_EN060_TH = 0.60                           # P90 ① 点名的那个「英文专用低门槛 ≈0.60」
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -504,11 +544,14 @@ def cf_common_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
         return out
 
     orig = UserMemory.common_term
-    UserMemory.common_term = _df_only_common
-    try:
-        head = run()
-    finally:
-        UserMemory.common_term = orig
+    # **还原只写一份**（P92 ③ 顺手收的）：这儿原来是两段一模一样的
+    # `try: … finally: UserMemory.common_term = orig`，摘掉**前面那一段**的 `finally`
+    # 在正常路径上一个字都看不出来（下一句马上又把它覆盖掉了）——
+    # 跟 `cf_gates` 那两份 `purge()` 是**同一课**。走 `_swap_run` 之后实现只剩一份。
+    ledger: list[str] = []
+    swap = _swap_ledger(UserMemory, orig, run, ledger)
+
+    head = swap(_df_only_common)
 
     def patched(self):
         fn = _df_only_common(self)     # ← 基准也是「只看 df」，两边只差「小库关不关」这一条
@@ -521,11 +564,7 @@ def cf_common_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
             return None
         return fn
 
-    UserMemory.common_term = patched
-    try:
-        cf = run()
-    finally:
-        UserMemory.common_term = orig
+    cf = swap(patched)
 
     changed, drop, add = [], 0, 0
     for i, (a, b) in enumerate(zip(head, cf)):
@@ -595,16 +634,11 @@ def cf_spread_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
 
     df_only = _df_only_common      # 反事实：P84 之前那一版（跟 `--cf-common` 共用一份）
 
-    UserMemory.common_term = watched
-    try:
-        head = run()
-    finally:
-        UserMemory.common_term = orig
-    UserMemory.common_term = df_only
-    try:
-        cf = run()
-    finally:
-        UserMemory.common_term = orig
+    # **还原只写一份**（同 `cf_common_off`，P92 ③）
+    ledger: list[str] = []
+    swap = _swap_ledger(UserMemory, orig, run, ledger)
+    head = swap(watched)
+    cf = swap(df_only)
 
     changed, drop, add = [], 0, 0
     for i, (a, b) in enumerate(zip(head, cf)):
@@ -803,6 +837,152 @@ def cf_bigcorpus(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     return out
 
 
+def _swap_ledger(UserMemory, orig, run, ledger: list):
+    """给 `cf_common_off` / `cf_spread_off` 用的 `swap`：**还原只有一份实现**（P92 ③）。
+
+    这两支原来各自写了**两段一模一样**的 `try: … finally: UserMemory.common_term = orig`。
+    摘掉前面那一段的 `finally` **在正常路径上看不出来**（下一句马上又覆盖了它），
+    于是任何闸都是绿的——**跟 `cf_gates` 那两份 `purge()` 是同一课**（P90 ④）。
+    这儿不改行为、只把实现收成一份：两次调用走同一个 `_swap_run`，
+    `ledger` 留下 `("before", "after") × 趟数` 的脚印。
+
+    ⚠️ **这两支故意不清缓存**（`mems` 跨两趟共用，`--cf-common` / `--cf-spread`
+    的数就是在这个形状上量出来的）。所以这儿的 `purge` **只记账、不动缓存**——
+    真去清一遍会把那两支钉死的数全改掉。
+    """
+    def swap(fn):
+        return _swap_run(
+            fn,
+            install=lambda f: setattr(UserMemory, "common_term", f),
+            restore=lambda: setattr(UserMemory, "common_term", orig),
+            run=run,
+            purge=ledger.append,      # **只记账**：见上面那段 ⚠️
+        )
+    return swap
+
+
+def _en_low_variant(en_th: float):
+    """HEAD 逐字不动，**只把「英文串一律 `return True`」那一格换掉**（P92 ①）。
+
+    英文串改问 `topics` 面、门槛 `en_th`：`spread < en_th` 才捞回来；
+    `None`（判不了）照旧算 common。**不问主语面**（那条轴在英文串上没有信号）。
+
+    ⚠️ 汉字串那一整条链（`topics@SPREAD_GENERIC` → `who@WHO_GENERIC`）**一个字不动**——
+    这就是 P90 ① 那句「一个门槛服两个 population = 一刀动两处」的解法：
+    **英文单独一个常数**。它是**第二个旋钮**，所以这一支只用来量，没进产品。
+    """
+    from app.database.kb import relations as R
+    from app.database.kb import topic_face as TF
+
+    def common_term(self):
+        store, _v = self._index()
+        idx = self._grep_index(store)
+        if idx is None or not idx.unit_count:
+            return None
+        total = idx.unit_count
+        small = total * R.COMMON_DF_RATIO < R.COMMON_DF_MIN
+
+        def is_common(term: str) -> bool:
+            n = idx.unit_df(term, floor=R.COMMON_DF_MIN)
+            if not (n is not None and n >= R.COMMON_DF_MIN
+                    and n / total >= R.COMMON_DF_RATIO):
+                return False
+            if not small:
+                return True
+            face = self._topic_face(store, idx)
+            if face is None:
+                return True
+            if not TF.has_cjk(term):
+                s = face.spread(term)
+                return not (s is not None and s < en_th)
+            if face.generic(term) is not False:
+                return True
+            who = self._who_face(store, idx)
+            if who is None:
+                return False
+            return who.generic(term) is not False
+        return is_common
+    return common_term
+
+
+def _en_low_rescued(en_th: float) -> tuple:
+    """`_en_low_variant(en_th)` 比 HEAD **真正多放行的那些英文串**，(串, spread) 排好序。
+
+    **反例得真的落在被测分支里**（P89 第 ⑧ 刀那一课）：这一支的「变了 N 条」只有在
+    确实多放行了串的时候才算数。候选串不是手挑的，是这个库那几条查询切出来的全部
+    （分词器 + `_candidate_terms` 两路都要——只取分词器那一路会漏掉 `speaker` / `memory`，
+    **P90 那张「英文串一共 7 个」的表就是这么漏的，P92 重数是 9 个**）。
+    """
+    from app.database.kb import relations as R
+    from app.database.kb import search as S
+    from app.database.kb import topic_face as TF
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = queries()
+    got: list[tuple[str, float]] = []
+    for user in sorted({u for u, *_r in qs}):
+        m = UserMemory(user)
+        store, _v = m._index()
+        idx = m._grep_index(store)
+        if idx is None or not idx.unit_count:
+            continue
+        total = idx.unit_count
+        if not (total * R.COMMON_DF_RATIO < R.COMMON_DF_MIN):
+            continue                       # 大库：这一刀够不着
+        face = TF.TopicFace(store.facts.values(), units_for=idx.units_for)
+        seg = m.segment()
+        cand: set[str] = set()
+        for u, q, _mo, _o in qs:
+            if u != user:
+                continue
+            cand |= set(seg(S.squeeze(S.clean_query(q))))
+            cand |= set(m._candidate_terms(S.clean_query(q)))
+        for t in sorted(cand):
+            if TF.has_cjk(t) or len(t) < 2:
+                continue
+            n = idx.unit_df(t, floor=R.COMMON_DF_MIN)
+            if not (n is not None and n >= R.COMMON_DF_MIN
+                    and n / total >= R.COMMON_DF_RATIO):
+                continue
+            s = face.spread(t)
+            if s is not None and s < en_th:
+                got.append((t, round(s, 3)))
+    return tuple(sorted(got))
+
+
+def _swap_run(fn, *, install, run, restore, purge):
+    """换一份 `common_term` 跑一趟：**装上 → 清一次 → 跑 → 还原 → 再清一次**。
+
+    ## 为什么它是个模块级函数而不是 `cf_gates` 里的闭包（P92 ③）
+
+    P90 ④ 留的账，原话：
+
+    > `cf_gates` 的 `purge()` **写了两份**（`try:` 前面一次、`finally:` 里一次），
+    > 而**任何一份单独就够清干净缓存**。所以 ⑥（只摘前面那份）绿、⑥″（只摘 `finally`
+    > 那份）也绿、⑥′（两份都摘）才红。**闸分不开「是哪一份被摘了」。**
+    > 要分开就得让那两处**各自可观测**（比如各记一次），**这一批没做**。
+
+    这一批做了，做法就是这个函数：
+
+    * 两次 `purge` 各带一个 `when`（`"before"` / `"after"`），调用方把它**各记一笔**；
+    * `cf_gates` 每跑完一趟就断言那本账等于 `EXPECT_CF_GATES_PURGES`；
+    * `test_p92::第三条` 拿**假的 install/run/restore/purge** 直接测这个函数
+      （不要真语料、不要 `UserMemory`），所以**摘掉任何一句 `purge(...)` 都红，
+      而且红的是能指出「少的是哪一句」的那条**。
+
+    ⚠️ **那份冗余本身不是错**——「前面先清一次」是防御性写法（缓存是类级的，
+    上一趟别的支路可能留了脏东西）。这儿收紧的是**闸的分辨率**，不是把一句删掉：
+    两句都还在，只是现在各自留了脚印。
+    """
+    install(fn)
+    purge("before")
+    try:
+        return run()
+    finally:
+        restore()
+        purge("after")
+
+
 def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     """**库大小闸和汉字闸今天各自还挡着什么**（P90）。
 
@@ -826,7 +1006,17 @@ def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     qs = qs or queries()
     mems: dict[str, UserMemory] = {}
 
-    def purge() -> None:
+    ledger: list[str] = []
+
+    def purge(when: str) -> None:
+        """清掉类级缓存里那两份脸，**并记一笔**（`when` = `"before"` / `"after"`）。
+
+        `when` 不是装饰：P92 ③ 之前这儿是**两句一模一样的裸 `purge()`**，
+        摘任何一句都还绿（另一句把活干了），闸分不开是哪一句被摘了。
+        记了这一笔之后，两处各自可观测——见 `_swap_run` 那段和 `EXPECT_CF_GATES_PURGES`。
+        """
+        ledger.append(when)
+        mems.clear()
         for k in list(UserMemory._cache):
             if k.endswith("#whoface") or k.endswith("#topicface"):
                 UserMemory._cache.pop(k, None)
@@ -842,15 +1032,20 @@ def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     orig = UserMemory.common_term
 
     def swap(fn):
-        UserMemory.common_term = fn
-        mems.clear()
-        purge()
-        try:
-            return run()
-        finally:
-            UserMemory.common_term = orig
-            mems.clear()
-            purge()
+        mark = len(ledger)
+        out = _swap_run(
+            fn,
+            install=lambda f: setattr(UserMemory, "common_term", f),
+            restore=lambda: setattr(UserMemory, "common_term", orig),
+            run=run,
+            purge=purge,
+        )
+        got = tuple(ledger[mark:])
+        if got != EXPECT_CF_GATES_PURGES:
+            raise AssertionError(
+                f"缓存该清两次（{EXPECT_CF_GATES_PURGES}），这一趟清的是 {got} —— "
+                "少清一次，摘了闸的那份脸就可能没被重建，这一支的数当场作废")
+        return out
 
     head = swap(orig)
     mismatch = sum(1 for a, b in zip(head, swap(_axis_variant(True, True, True))) if a != b)
@@ -888,6 +1083,18 @@ def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
         raise AssertionError(f"没建出说话人标签过半的那一份（建出来的是 {built}）—— 数作废")
     out["tag"] = diff(tag)
     out["tag"]["i607"] = (len(head[607]), len(tag[607]))
+
+    # —— EN060：**P90 ① 留的那条路**（`topics` 轴 + 英文专用低门槛），P92 ① 走完它 ——
+    # 一刀只动一处：汉字闸那一格换成「英文串改问 `topics` 面、门槛 `EXPECT_CF_GATES_EN060_TH`」，
+    # 大库那道闸、汉字串那一整条链（topics@0.75 → who@0.85）**逐字不动**。
+    # 英文那一半**不问主语面**——P90 的 `p90-holdout-en-60` 量过它在英文串上没有信号
+    # （`ai` / `agent` 两个最要紧的判反），P92 的 137 条又量了一遍（见 `EXPECT_CF_GATES_EN060_*`）。
+    out["en060"] = diff(swap(_en_low_variant(EXPECT_CF_GATES_EN060_TH)))
+    # **反例得真的落在被测分支里**：这一刀必须真的多放行了串，否则「变了 11 条」是别处来的
+    rescued = _en_low_rescued(EXPECT_CF_GATES_EN060_TH)
+    if not rescued:
+        raise AssertionError("EN060 这一刀一个英文串都没多放行 —— 没落在被测分支里，数作废")
+    out["en060"]["terms"] = rescued
     return out
 
 
@@ -1018,6 +1225,16 @@ def main(argv: list[str]) -> int:
               "卡在两格：门槛（`ai` 主语面 .819 < 0.85，被当成「不泛」放进来）"
               "和轴（主语面在英文串上没有信号，`p90-holdout-en-60` 量过）。"
               "理由在 `kb/topic_face` 文件头第 ⑧ 格）")
+        print(f"    英文改走 `topics`@{EXPECT_CF_GATES_EN060_TH}（P90 ① 留的那条路，P92 ① 走完）："
+              f"变了 {len(g['en060']['changed'])} 条 {g['en060']['changed']}，"
+              f"多进 {g['en060']['add']} 少掉 {g['en060']['drop']}，"
+              f"有→空 {g['en060']['empty']}，落在 {g['en060']['libs']}")
+        print(f"      真正多放行的串只有 {g['en060']['terms']} —— "
+              "**两个人标都对**（`p92-holdout-en-137` 里 `agent`/`memory` 都标「不泛」），"
+              "而 11 条逐条读完 **变好 0 / 中性 2 / 变差 9**。")
+        print("      ⇒ **卡的不是门槛也不是轴，是第三格**：「不泛」≠「值得当证据」。"
+              "这两个串命中的是同一句产品定位话的六种说法，一进就是半屏，"
+              "把逐句沾边的事实挤出去。全文在 `kb/topic_face` 文件头第 ⑪ 格")
         for name, got, want in (
                 ("size 变了", len(g["size"]["changed"]), EXPECT_CF_GATES_SIZE_CHANGED),
                 ("tag 变了", len(g["tag"]["changed"]), EXPECT_CF_GATES_TAG_CHANGED),
@@ -1028,7 +1245,14 @@ def main(argv: list[str]) -> int:
                 ("en 少掉", g["en"]["drop"], EXPECT_CF_GATES_EN_DROP),
                 ("en 有→空", g["en"]["empty"], EXPECT_CF_GATES_EN_EMPTY),
                 ("en 落在哪几个库", g["en"]["libs"], EXPECT_CF_GATES_EN_LIBS),
-                ("en 是哪几条", g["en"]["changed"], EXPECT_CF_GATES_EN_IDX)):
+                ("en 是哪几条", g["en"]["changed"], EXPECT_CF_GATES_EN_IDX),
+                ("en060 变了", len(g["en060"]["changed"]), EXPECT_CF_GATES_EN060_CHANGED),
+                ("en060 多进", g["en060"]["add"], EXPECT_CF_GATES_EN060_ADD),
+                ("en060 少掉", g["en060"]["drop"], EXPECT_CF_GATES_EN060_DROP),
+                ("en060 有→空", g["en060"]["empty"], EXPECT_CF_GATES_EN060_EMPTY),
+                ("en060 落在哪几个库", g["en060"]["libs"], EXPECT_CF_GATES_EN060_LIBS),
+                ("en060 是哪几条", g["en060"]["changed"], EXPECT_CF_GATES_EN060_IDX),
+                ("en060 放行了哪几个串", g["en060"]["terms"], EXPECT_CF_GATES_EN060_TERMS)):
             if got != want:
                 bad.append(f"cf-gates {name}: {got} ≠ {want}")
         if 607 not in g["tag"]["changed"]:

@@ -354,6 +354,63 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
                    "⚠️ **但它不是「所以可以拆」**：方向没变，还是 0 好 4 差。"
                    "它一动，第 ⑩ 格里「缩小了伤口但方向没变」那句话得重读"),
 
+    # —— P92：**P90 ① 留的那条路走完了**（`topics` 轴 + 英文专用低门槛 0.60），判「不接」——
+    # 这七个数 + `EXPECT_CF_GATES_EN060_TH` 是那个判的全部分量。⚠️ 它们跟上面 P90 那组 `EN_*` **不是同一个旋钮**：
+    # `EN_*` 是「拆汉字闸、英文照走 topics@0.75 + who@0.85」，`EN060_*` 是
+    # 「拆汉字闸、英文改走 topics@0.60、不问主语面」。**两支不能对着读**。
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_TH"): (
+        PINNED, 0.60, "P90 ① 点名的那个「英文专用低门槛 ≈0.60」。"
+                      "它不是随手挑的：`p92-holdout-en-137` 的 tainted 栏（= 产品那 9 个串）上"
+                      "人标「不泛」.450–.663 / 「泛」.708–.880，**缝是 (.663, .708)**，0.60 落在缝里。"
+                      "它一动，`p92-en060-11` 那 11 条的分母就换人——先去读"
+                      "`kb/topic_face` 文件头第 ⑪ 格那张门槛扫表"
+                      "（0.45 变 0 条 / 0.50 变 5 / 0.60 变 11 / 0.70 变 18 / 0.80 变 22）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_CHANGED"): (
+        PINNED, 11, "英文改走 `topics`@0.60 之后全库变了几条。"
+                    "**它是 `p92-en060-11` 那 11 条标注的来源**，一动那 11 条"
+                    "（变好 0 / 中性 2 / 变差 9）的分母就换人，"
+                    "「P90 ① 那条路也不通」这个判得整条重读——先读第 ⑪ 格"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_ADD"): (
+        PINNED, 37, "这一刀多进来的召回对。**跟 DROP(26) 一起读才有意义**："
+                    "37:26 看着像「多召回一点」，而逐条读下来是 **0 好 2 中 9 差**"
+                    "——多进来的多数是那族「wearable AI agent powered by the user's own memory」"
+                    "样板句。**这一对数是「别拿聚合分当判据」的第二笔现钱**（第一笔是 P90 的 25:5）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_DROP"): (
+        PINNED, 26, "这一刀挤掉的召回对。**掉的绝大多数是 `Ask Memory` 的具体事实**"
+                    "（i=641 掉 5 条、i=645 掉 7 条，整屏换人）。"
+                    "它一动去重读 `p92-en060-11` 里 i=641 / i=645 那两行"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_EMPTY"): (
+        PINNED, 0, "「有→空」的条数。**这个 0 是「它没打空屏」那半事实**——"
+                   "⚠️ **但它不是「所以可以接」**：11 条里 9 条变差，伤口的形状是**换人**不是**打空**。"
+                   "它一动，第 ⑪ 格里「进 37 掉 26、有→空 0」那一行得重写"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_LIBS"): (
+        PINNED, (("terrence-rewrite", 11),),
+        "变了的 11 条落在哪几个库上。**只有一个库**——它是唯一一个"
+        "「小库 ∧ 有 df 过 common 的英文串 ∧ `topics` 面判得了」的库。"
+        "一旦出现第二个库，`p92-holdout-en-137` 那句「做厚的上限 = 9 个串、全在一个库里」"
+        "就不成立了，整条「这个仓喂不饱产品那一格」得重数"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_IDX"): (
+        PINNED, (32, 318, 319, 584, 585, 589, 593, 640, 641, 642, 645),
+        "变了的**是哪 11 条**。`p92-en060-11` 那 11 行标注就是按这些下标写的，"
+        "下标一动标注就对不上人（查询按 note id 排，语料一变下标就挪）。"
+        "⚠️ **它跟条数那个 11 是两件事**：条数对得上、下标对不上 = 换了一批查询，"
+        "那时候 11 条标注全部作废"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_EN060_TERMS"): (
+        PINNED, (("agent", 0.450), ("memory", 0.592)),
+        "**这一刀真正多放行的英文串——只有两个**，11 条全是它俩带出来的。"
+        "⚠️ **这两个串人标都是「不泛」，尺子判对了，产出照样变差**——"
+        "这正是第 ⑪ 格那句「**「不泛」≠「值得当证据」**」的全部分量。"
+        "它一动（多出第三个串、或者分数变了）说明语料或 `SPREAD_MIN_HITS` 变了，"
+        "「卡在第三格而不是门槛」这个判得重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_CF_GATES_PURGES"): (
+        PINNED, ("before", "after"),
+        "`cf_gates` 每换一次 `common_term` 必须清两次类级缓存（前后各一次）的**账本**。"
+        "P90 ④ 留的账：那两句 `purge()` 原来写成两份裸调用，**摘任一份都绿、两份都摘才红**，"
+        "闸分不开是哪一份被摘了。现在两句各带 `when` 标签、各记一笔。"
+        "它一动 = 有人动了那段缓存接线 —— 去读 `_swap_run` 顶上那段，"
+        "以及 `cf_gates` 里「摘了闸的 `WhoFace` 一份都没建出来」那条自检"
+        "（那条自检靠的正是「清干净了再建」，少清一次它会静静地量出「0 条变了」）"),
+
     ("backend/scripts/recall_ruler.py", "EXPECT_CF_WHO_BLOCKED"): (
         PINNED, 9, "被主语面挡回去、不再捞回来的串数（价格/公司/反馈/客户/收到/更新/能力/自动/连接）。"
                    "一动说明 `WHO_GENERIC`(0.85)、`SPEAKER_TAG_MAX`(0.5) 或者语料变了——"
