@@ -161,6 +161,42 @@ EXPECT_NUMDATE_EMPTY = 20      # 数字日期那一档全 0 条
 # ——因为 `_hits` 对数字是**去空白后子串匹配**（注释里写着理由：事实原文写成「4 月 16 号」）。
 # 要它不噪就得给数字加数位边界，而 `_hits` 同时喂着 765 条自动召回的排序和命中词行。
 # **一刀只动一处**，这一批先把量程钉下来。
+# ── **「屏幕上写的串 ≠ 用户打的串」**（P82 ③，量完判「不修」）──────────────────
+#
+# P81 ② 顺手记了一笔：「`9月14日` → 命中词摆 `9月14`；`2026-09` → 摆 `2026`」。
+# ⚠️ **那笔账记的是 `search._number_terms` 的产出，不是屏幕上那一行**（P82 ③ 重量的）。
+# 唯一真渲染那一行的那条路是 `/recall` → `RecallOut.terms` → `display_terms`，
+# 而 `UserMemory.recall()` 回的 `terms` 是 **`surfaces`（词表表层词）+ `_cjk_terms(query)[:3]`**
+# ——`_number_terms` 一个字都进不去。实测 20 种用户真会打的日期 / 数字写法：
+#
+#   打「9月14日」   → `_number_terms=['9月14']`  **屏幕：一个字都不摆**（0 条结果）
+#   打「2026-09」  → `_number_terms=['2026']`   **屏幕：一个字都不摆**
+#   打「2026-03-10」`2025/10/27` `3月15日` `4月16号` `8月5日` `150` `30%` `500台` … 同上
+#   打「179美元」   → 屏幕「**美元**」（0 条结果）   ← 数字被整个丢掉
+#   打「1万台」     → 屏幕「**万台**」（15 条结果）  ← 同上
+#
+# **所以 `9月14` 那个截断串在用户眼前一次都没出现过。** 20 条里屏幕上一共只摆出 **2 串**，
+# 两串都是**前面那截数字被整个丢掉**，不是「后面的 `日` 被吃掉」。
+# 110 条那一档更干净：摆出来 108 串，**「只摆了一截」0 条**
+# （`极梦ai` → 摆 `ai`、`极梦ai`——**整串跟它同行摆着**，那不是没打完，
+# 是多摆了一个更泛的命中词，而那 20 条结果里确实有 16 条是靠 `ai` 进来的，**它没说谎**）。
+#
+# **「找过：9月14」跟「找过：9月14日」哪个更诚实？——都不诚实，今天这样最诚实**（P82 ③ 判的）：
+# 这条路上 `terms` 是**空的**，那一行整段不渲染。摆 `9月14` 是假的（用户没打过这一截，
+# 后端也没拿它去找过）；摆 `9月14日` 也是假的（后端从头到尾没拿这一串找过任何东西）。
+# **「什么都没找过」的诚实说法就是什么都不说。**
+# 真正名不副实的是搜索框自己那句 `placeholder="…数字、日期…"`——那笔账在 P81 ② 判过「不修」。
+EXPECT_SHOWN_TOTAL = 108        # 110 条一共摆出来几串
+EXPECT_PARTIAL_SHOWN = 0        # 其中「只摆了一截、整串又不在同一行上」的
+EXPECT_DATEWRITE_SHOWN = 2      # 20 种日期 / 数字写法一共摆出来几串
+EXPECT_DATEWRITE_PARTIAL = 2    # 其中「只摆了一截」的（两串都是数字被整个丢掉）
+
+# 20 种**用户真会打的**日期 / 数字写法。跟上面那 20 条不是一回事：
+# 那 20 条是从库里长出来的串，这 20 种是**产品 placeholder 答应的那两个字的形状**。
+DATE_WRITINGS = ("9月14日", "2026-09", "2025/10/27", "3月15日", "2026年3月", "4月16号",
+                 "2026-03-10", "第2款", "179美元", "30%", "150", "11", "9月", "23号",
+                 "2026年", "2026.03.10", "3月15", "8月5日", "1万台", "500台")
+
 EXPECT_NUMDATE_IN_CORPUS = 20   # 20 条串，库里真的有的（= 全部）
 EXPECT_NUMDATE_NO_CHANNEL = 9   # `_terms` 切得出、`plan` 没通道 → 0 条
 EXPECT_NUMDATE_NO_TOKEN = 11    # `_NUM` 连词都切不出来（4 条两位数 + 7 条日期量词）
@@ -271,6 +307,38 @@ def numdate_shape(memory, q: str) -> str:
     return "no_token"
 
 
+def partial_shown(shown: list[str], q: str) -> list[tuple[str, str]]:
+    """摆出来的串里，哪几个**只是用户打的那个 token 的一截**（P82 ③）。
+
+    判据：按空白切出用户打的每个 token，摆出来的串 `squeeze` 之后如果是某个 token 的
+    **真子串**，而**那个 token 自己又没同行摆着**，就是「只摆了一截」。
+    ⚠️ 「整串同行也摆着」那一档不算（`命中词：ai、极梦ai`）——那不是没打完，
+    是多摆了一个更泛的命中词，读法完全不同。
+    """
+    toks = [kb_search.squeeze(t) for t in q.split() if kb_search.squeeze(t)]
+    sq_shown = {kb_search.squeeze(x) for x in shown}
+    out = []
+    for t in shown:
+        st = kb_search.squeeze(t)
+        host = next((tk for tk in toks if st in tk), None)
+        if host is None or st == host or host in sq_shown:
+            continue
+        out.append((host, t))
+    return out
+
+
+def date_writings(memory) -> list[dict]:
+    """那 20 种**用户真会打的**日期 / 数字写法，屏幕上到底摆出什么（P82 ③）。"""
+    rows = []
+    for q in DATE_WRITINGS:
+        facts, terms, _ms = memory.recall(q, limit=LIMIT, evidence=True)
+        shown = kb_search.display_terms(terms, q, segment=memory.segment())[:SHOW]
+        rows.append({"q": q, "n": len(facts), "shown": shown,
+                     "num": kb_search._number_terms(q),
+                     "partial": partial_shown(shown, q)})
+    return rows
+
+
 def in_corpus(memory, q: str) -> int:
     """这一串在**事实原文**里出现在几条上——ground truth，跟召回那条路无关。"""
     store, _vocab = memory._index()
@@ -302,8 +370,10 @@ def measure(memory) -> dict:
             # 别的档不算（`in_corpus` 要扫两万条事实，只在这 20 条上花这个钱）。
             "in_corpus": in_corpus(memory, q) if stratum == "数字日期" else None,
             "shape": numdate_shape(memory, q) if stratum == "数字日期" else None,
+            # 屏幕上写的串 ≠ 用户打的串（P82 ③）
+            "partial": partial_shown(now, q),
         })
-    return {"rows": rows}
+    return {"rows": rows, "writings": date_writings(memory)}
 
 
 # ------------------------------------------------------------------ 反例两头
@@ -466,6 +536,25 @@ def main(argv: list[str]) -> int:
     print(f"  「库里没有」那一档真有命中的：{len(missing_hit)} 条"
           f"（{[r['q'] for r in missing_hit]}）")
 
+    # ── 屏幕上写的串 ≠ 用户打的串（P82 ③，量完判「不修」）──────────────────
+    shown_total = sum(len(r["shown"]) for r in rows)
+    partial = [r for r in rows if r["partial"]]
+    wr = got["writings"]
+    wr_shown = sum(len(r["shown"]) for r in wr)
+    wr_partial = [r for r in wr if r["partial"]]
+    print(f"  屏幕上一共摆出 {shown_total} 串，**「只摆了一截」{len(partial)} 条**"
+          f"{[(r['q'], r['partial']) for r in partial]}")
+    print(f"  那 {len(wr)} 种用户真会打的日期 / 数字写法：屏幕上一共只摆出 **{wr_shown} 串**，"
+          f"其中只摆了一截的 {len(wr_partial)}"
+          f"{[(r['q'], r['shown']) for r in wr_partial]}")
+    print(f"     ⚠️ **`_number_terms` 切出来的那个截断串（`9月14日` → `9月14`）"
+          f"在用户眼前一次都没出现过**——`recall()` 回的 `terms` 根本不收数字。"
+          f"（P81 ② 记的那笔是 `_number_terms` 的产出，不是屏幕上那一行；P82 ③ 重量的。）")
+    if "--writings" in argv:
+        for r in wr:
+            print(f"     打「{r['q']:11s}」_number_terms={str(r['num']):14s} "
+                  f"屏幕 {str(r['shown']):20s} {r['n']:2d} 条结果")
+
     if "--line" in argv:
         # **用户眼前那一行，改之前 / 改之后**（P81 ③）。
         # 两个标签的字面**从 `KbDashboard.tsx` 里读出来**，不在这儿另抄一份——
@@ -524,6 +613,12 @@ def main(argv: list[str]) -> int:
         bad.append(f"数字日期档日期量词 {len(nd_date)} ≠ {EXPECT_NUMDATE_DATE_UNIT}")
     if len(missing_hit) != EXPECT_MISSING_HIT:
         bad.append(f"「库里没有」那一档命中 {len(missing_hit)} ≠ {EXPECT_MISSING_HIT}")
+    for name, got_, want in (("摆出来的串数", shown_total, EXPECT_SHOWN_TOTAL),
+                             ("只摆了一截", len(partial), EXPECT_PARTIAL_SHOWN),
+                             ("日期写法摆出来的串数", wr_shown, EXPECT_DATEWRITE_SHOWN),
+                             ("日期写法只摆了一截", len(wr_partial), EXPECT_DATEWRITE_PARTIAL)):
+        if got_ != want:
+            bad.append(f"{name} {got_} ≠ {want}")
     if bad:
         print("真库那一头对不上：" + "；".join(bad), file=sys.stderr)
         print("**这一刻 P79 ② 那几个数全部失效**——先查口径 / 语料，别换把尺继续量。",

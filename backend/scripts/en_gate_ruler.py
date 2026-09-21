@@ -99,6 +99,31 @@ EXPECT_FLIP_QUERIES_AT_4 = 100
 # `--cf` 那三行
 EXPECT_CF = {2: (342, 1353, 2), 1: (342, 1353, 2), 4: (317, 1225, 67)}
 
+# ── **quorum 有多脆**（P82 ②，量了没改）──────────────────────────────────────
+#
+# 这把尺记的是每一次 `_strong_enough` 的 `(cl, ns)`，所以「`len(cl) >= 2` 这个 quorum
+# 到底撑着多少东西」**是它手上已经有的数**，白拿不要钱。P81 ④ 顺手读到 i=595/596
+# 「几乎同一条查询判反」，只记了形状没量分量——这四个数是那个分量。
+#
+#   · `len(cl)` 分布：0 → 312743 · 1 → 61339 · **2 → 1499** · 3 → 179 · 4 → 40 · 5 → 27
+#     · 6 → 11 · 7 → 15 · 8 → 8 · 9 → 2 · 10 → 1
+#   · 判 True 的一共 1771 次，其中 **1488 次证人正好两条**——**少一条就翻 False**。
+#     **84.0% 的「过了」全押在第二条证人身上。**
+#   · `len(cl)==2` 也是**唯一**一档「够了 quorum 还会被后面那道 `≥3 字 / 实词` 判回去」的
+#     （1499 里 False 11 次）；≥3 那几档一次都没有。
+#
+# ⚠️ **「一条查询多出一段就翻盘」不等于脆**（P82 ② 读出来的，照实记）：
+# 765 里「一条是另一条前缀」的查询对有 79 对，两边 top-8 并集上判反 132/281 = 47.0%——
+# 但那 36 对有翻盘的里**长的那条中位多出 78% 的正文**，那不叫「几乎同一条」。
+# 收紧到「只多出 ≤25%」那一档，全库**只剩 4 次翻盘**（其中 3 次证人正好两条）。
+# **真正的脆在上面那个 84.0%，不在这个 47%。**
+EXPECT_QUORUM_CALLS = 375864     # `_strong_enough` 被问了多少次
+EXPECT_QUORUM_TRUE = 1771        # 其中判 True 的
+EXPECT_QUORUM_EDGE = 1488        # 判 True 且**证人正好两条**（少一条就翻）
+EXPECT_QUORUM_REJECT_AT_2 = 11   # 够了 quorum 却被后面那道门判回去的（只有这一档有）
+# `--quorum` 那一行：**用户眼前**那 1347 条召回对，各自靠几条证人撑着
+EXPECT_QUORUM_SHOWN = (1347, 298, 778, 1049)   # (召回对, 短查询·这道门不问, 正好两条, 这道门管着的)
+
 _CJK_ALL = re.compile(r"^[一-鿿]+$")
 
 
@@ -260,10 +285,18 @@ def measure(cf: bool = False) -> dict:
                         resp[m][h] += 1
                         break
 
+    # quorum 那一格（P82 ②）：这把尺手上已经有 (cl, ns)，白拿
+    band = Counter(len(cl) for _i, _o, cl, _ns in calls)
+    qtrue = sum(1 for _i, _o, cl, ns in calls if ns and decide(cl, ns, EN_STRONG_MIN))
+    qedge = sum(1 for _i, _o, cl, ns in calls
+                if ns and len(cl) == 2 and decide(cl, ns, EN_STRONG_MIN))
+    qrej = sum(1 for _i, _o, cl, ns in calls
+               if ns and len(cl) == 2 and not decide(cl, ns, EN_STRONG_MIN))
     out = {"calls": ncalls, "short": nshort, "occ": occ, "kind": by_kind,
            "lineage": by_lineage, "flip": {k: len(v) for k, v in flip.items()},
            "flip_calls": dict(flip_calls), "resp": {k: v.most_common(8) for k, v in resp.items()},
-           "hit": sum(1 for ids in truth if ids), "pairs": sum(len(ids) for ids in truth)}
+           "hit": sum(1 for ids in truth if ids), "pairs": sum(len(ids) for ids in truth),
+           "band": dict(sorted(band.items())), "qtrue": qtrue, "qedge": qedge, "qrej": qrej}
     if cf:
         out["cf"] = {}
         for en in (2, 1, 4):
@@ -271,6 +304,45 @@ def measure(cf: bool = False) -> dict:
             out["cf"][en] = (sum(1 for ids in r if ids), sum(len(ids) for ids in r),
                              sum(1 for a, b in zip(truth, r) if a != b))
     return out
+
+
+def quorum_shown() -> tuple[int, int, int, int]:
+    """**用户眼前**那 1347 条召回对，各自靠几条证人撑着（P82 ②，`--quorum`）。
+
+    上面 `measure()` 数的是**调用**——候选池里绝大多数是 `len(cl)==0` 的路人。
+    这一支只看**真摆到屏幕上的那几条**：`(召回对, 短查询这道门不问的, 正好两条的, 这道门管着的)`。
+    判据逐行照 `rank` 里那一处算（`_terms` → `_hits` → `_clusters`），**不另起一把尺**。
+    """
+    from app.database.kite.kite_memory import UserMemory
+    from scripts import recall_ruler
+
+    qs = recall_ruler.queries()
+    mems: dict[str, UserMemory] = {}
+    stores: dict[str, object] = {}
+    shown = short = edge = managed = 0
+    for user, q, _m, _o in qs:
+        m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+        facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+        if not facts:
+            continue
+        if user not in stores:
+            stores[user], _v = m._index()
+        st = stores[user]
+        cq = kb_search.clean_query(q)
+        is_long = len(cq.strip()) >= kb_search.LONG_QUERY
+        weigh = kb_search._weigher(cq, m.segment(), m.common_term())
+        terms = kb_search._terms(m, cq, weigh)
+        for r in facts:
+            shown += 1
+            if not is_long:
+                short += 1
+                continue
+            managed += 1
+            f = st.facts.get(r.get("id"))
+            cl = kb_search._clusters(kb_search._hits(terms, (f.text if f else "") or ""))
+            if len(cl) == 2:
+                edge += 1
+    return (shown, short, edge, managed)
 
 
 def corpus_tag(user: str = "terrence") -> str:
@@ -312,8 +384,29 @@ def main(argv: list[str]) -> int:
         for en in (2, 1, 4):
             h, p, c = m["cf"][en]
             print(f"  换量程 EN_MIN={en}：有召回 {h}/765 · 召回对 {p} · top-8 变了 {c}")
+    # quorum 那一格（P82 ②）
+    print(f"  **quorum（`len(cl) >= {kb_search.LONG_QUERY_MIN_WORDS}`）有多脆**："
+          f"证人条数分布 {m['band']}")
+    print(f"    判 True {m['qtrue']} 次，其中**证人正好两条** {m['qedge']} 次 = "
+          f"{m['qedge'] / max(1, m['qtrue']):.1%}——**少一条就翻 False**")
+    print(f"    「够了 quorum 又被后面那道门判回去」只在这一档有：{m['qrej']} / "
+          f"{m['band'].get(2, 0)}（≥3 那几档 0 次）")
+    shown = None
+    if "--quorum" in argv:
+        shown = quorum_shown()
+        print(f"    **用户眼前**那 {shown[0]} 条召回对：这道门管着 {shown[3]} 条"
+              f"（另 {shown[1]} 条是短查询，这道门不问），其中**正好两条证人撑着的 {shown[2]}** = "
+              f"{shown[2] / max(1, shown[3]):.1%}")
 
     bad = []
+    for name, got, want in (("quorum 调用数", m["calls"], EXPECT_QUORUM_CALLS),
+                            ("quorum True", m["qtrue"], EXPECT_QUORUM_TRUE),
+                            ("quorum 正好两条", m["qedge"], EXPECT_QUORUM_EDGE),
+                            ("quorum 两条又被判回去", m["qrej"], EXPECT_QUORUM_REJECT_AT_2)):
+        if got != want:
+            bad.append(f"{name} {got} ≠ {want}")
+    if shown is not None and shown != EXPECT_QUORUM_SHOWN:
+        bad.append(f"用户眼前那一档 {shown} ≠ {EXPECT_QUORUM_SHOWN}")
     if sum(m["occ"].values()) != EXPECT_BLOCKED_OCC:
         bad.append(f"挡掉串次 {sum(m['occ'].values())} ≠ {EXPECT_BLOCKED_OCC}")
     if len(m["occ"]) != EXPECT_BLOCKED_KINDS:

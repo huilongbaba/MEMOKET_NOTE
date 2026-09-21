@@ -82,6 +82,39 @@ EXPECT_CURSOR = 727
 EXPECT_TAIL = 38
 EXPECT_USERS = 6
 
+# ── **按库 × 血缘的分母**（P82 ①，新加）────────────────────────────────────────
+#
+# **为什么这一格要单独存在**：P81 ① 那一跤是「比率按血缘分，把 62.8% 平成了 6.9%」。
+# 血缘（`user` / `script` / `fixture`）说的是**这段文字谁写的**，
+# 而 `UserMemory.common_term()` / `_grep_index` / `unit_df` 全是**按人**建的——
+# 同一个旋钮在 2362 unit 的 `terrence` 上翻 6.9%、在 193 unit 的 `terrence-rewrite`
+# 上翻 62.8%。**要读比率，先看这张表，不是上面那行血缘分布。**
+EXPECT_BY_LIB = {
+    ("fresh678", "fixture"): 6,
+    ("fresh678b", "fixture"): 6,
+    ("fresh678c", "fixture"): 6,
+    ("shot-demo", "fixture"): 20,
+    ("terrence", "script"): 92,
+    ("terrence", "user"): 549,
+    ("terrence-rewrite", "script"): 86,
+}
+
+# ── **`common_term()` 那个旋钮的全库对拍**（P82 ①，`--cf-common`）──────────────
+#
+# 反事实：`kb/relations.py` 那段注释原来写着「库不到 333 个 unit 时这条判据等于不启用」。
+# 这一支**把它真的做出来**（`unit_count * COMMON_DF_RATIO < COMMON_DF_MIN` 就回 `None`），
+# 然后跟 HEAD 逐条比 top-8。**产品代码一个字节没改**——这里是尺子，不是那一刀。
+#
+# **这几个数是 P82 ① 判「换不了」的全部分量**（49 条逐条读完：变好 16 / 变差 23 / 中性 10，
+# 标注在 `tests/fixtures/memory_sample.jsonl` 的 `p82-off333-49`）。任何一个动了，
+# 那条判就得重读——尤其 `EXPECT_CF_COMMON_LIBS`：它说的是**这个旋钮只够得着一个库**，
+# 一旦够得着第二个库，「按库分」那张表和 49 条标注的分母全部换人。
+EXPECT_CF_COMMON_CHANGED = 49       # top-8 变了的查询数
+EXPECT_CF_COMMON_DROP = 52          # 掉了的召回对
+EXPECT_CF_COMMON_ADD = 140          # 进来的召回对
+EXPECT_CF_COMMON_HIT = (341, 347)   # 有召回的查询数：HEAD → 反事实
+EXPECT_CF_COMMON_LIBS = (("terrence-rewrite", 49),)   # 变了的那几条落在哪几个库上
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -181,6 +214,13 @@ def by_origin(qs: list[tuple[str, str, str, str]]) -> dict[str, int]:
     return {k: c.get(k, 0) for k in corpus_lineage.ORIGINS}
 
 
+def by_lib(qs: list[tuple[str, str, str, str]]) -> dict[tuple[str, str], int]:
+    """**(库, 血缘) -> 条数**（P82 ①）。要从这把尺上读比率，分母在这儿。"""
+    from collections import Counter
+    c = Counter((u, o) for u, _q, _m, o in qs)
+    return dict(sorted(c.items()))
+
+
 def identity(qs: list[tuple[str, str, str, str]]) -> str:
     """出身 + 量程，一行。**整行抄进台账。**"""
     users = sorted({u for u, *_r in qs})
@@ -276,6 +316,63 @@ def check_paragraph_at_source() -> list[str]:
     return bad
 
 
+# ---------------------------------------------------------------- `common_term()` 反事实（P82 ①）
+
+def cf_common_off(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """「库不到 `COMMON_DF_MIN / COMMON_DF_RATIO` 个 unit 就不启用 `common`」的全库对拍。
+
+    **先跑 HEAD 再跑反事实，同一组查询、同一份索引缓存**，只换 `UserMemory.common_term`。
+    回的是逐条的 top-8 差，读数的人按 `by_lib` 分（**别按血缘分**，理由在 `EXPECT_BY_LIB`）。
+    """
+    from collections import Counter
+
+    from app.database.kb import relations as R
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+
+    def run() -> list[list[str]]:
+        out = []
+        for user, q, _m, _o in qs:
+            m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+            facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+            out.append([f.get("id") for f in facts])
+        return out
+
+    head = run()
+    orig = UserMemory.common_term
+
+    def patched(self):
+        fn = orig(self)
+        if fn is None:
+            return None
+        store, _v = self._index()
+        idx = self._grep_index(store)
+        # **注释原来答应的那件事**：小到 6% 那条线够不着 `COMMON_DF_MIN` 时，整条判据不启用
+        if idx is None or idx.unit_count * R.COMMON_DF_RATIO < R.COMMON_DF_MIN:
+            return None
+        return fn
+
+    UserMemory.common_term = patched
+    try:
+        cf = run()
+    finally:
+        UserMemory.common_term = orig
+
+    changed, drop, add = [], 0, 0
+    for i, (a, b) in enumerate(zip(head, cf)):
+        if a == b:
+            continue
+        changed.append(i)
+        drop += sum(1 for x in a if x not in b)
+        add += sum(1 for x in b if x not in a)
+    libs = Counter(qs[i][0] for i in changed)
+    return {"changed": changed, "drop": drop, "add": add,
+            "hit": (sum(1 for x in head if x), sum(1 for x in cf if x)),
+            "libs": tuple(sorted(libs.items()))}
+
+
 def check(qs: list[tuple[str, str, str, str]]) -> list[str]:
     """量程对不对。返回对不上的那几条（空 = 对得上）。"""
     cur = sum(1 for _u, _q, m, _o in qs if m == "cursor")
@@ -285,6 +382,9 @@ def check(qs: list[tuple[str, str, str, str]]) -> list[str]:
                             ("tail", len(qs) - cur, EXPECT_TAIL), ("users", users, EXPECT_USERS)):
         if got != want:
             bad.append(f"{name}: {got} ≠ {want}")
+    got_lib = by_lib(qs)
+    if got_lib != EXPECT_BY_LIB:
+        bad.append(f"按库分的分母变了: {got_lib} ≠ {EXPECT_BY_LIB}")
     return bad
 
 
@@ -297,6 +397,24 @@ def main(argv: list[str]) -> int:
         for user, q, mode, origin in qs[:n]:
             print(f"  [{mode}/{origin}] {user} {q[:90]!r}")
     bad = check(qs)
+    if "--by-lib" in argv:
+        print("  按库 × 血缘（**要读比率就看这张，别看上面那行血缘分布**）：")
+        for (u, o), n in by_lib(qs).items():
+            print(f"    {u:18s}/{o:8s} {n:4d}")
+    if "--cf-common" in argv:
+        g = cf_common_off(qs)
+        print(f"  `common` 小库不启用 那个反事实：top-8 变了 {len(g['changed'])} 条 / {EXPECT_TOTAL}"
+              f"；掉 {g['drop']} 进 {g['add']}；有召回 {g['hit'][0]} → {g['hit'][1]}")
+        print(f"    变了的落在：{g['libs']}  ⚠️ **这个旋钮只够得着这几个库**")
+        print("    （49 条逐条读完：变好 16 / 变差 23 / 中性 10 → P82 ① 判「换不了」，"
+              "理由在 `kb/relations.COMMON_DF_MIN` 那段注释）")
+        for name, got, want in (("变了", len(g["changed"]), EXPECT_CF_COMMON_CHANGED),
+                                ("掉", g["drop"], EXPECT_CF_COMMON_DROP),
+                                ("进", g["add"], EXPECT_CF_COMMON_ADD),
+                                ("有召回", g["hit"], EXPECT_CF_COMMON_HIT),
+                                ("落在哪几个库", g["libs"], EXPECT_CF_COMMON_LIBS)):
+            if got != want:
+                bad.append(f"cf-common {name}: {got} ≠ {want}")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()
@@ -321,7 +439,8 @@ def main(argv: list[str]) -> int:
               file=sys.stderr)
         return 9
     print(f"ruler OK = {EXPECT_TOTAL} 条那把尺（P38–P61 逐格相同）"
-          + ("；窗口口径 OK（P79 ③ 逐格相同）" if "--window" in argv else ""))
+          + ("；窗口口径 OK（P79 ③ 逐格相同）" if "--window" in argv else "")
+          + ("；`common` 反事实 OK（P82 ① 逐格相同）" if "--cf-common" in argv else ""))
     return 0
 
 
