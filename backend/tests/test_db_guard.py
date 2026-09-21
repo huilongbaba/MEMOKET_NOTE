@@ -257,7 +257,14 @@ def test_豁免的假模型确实一行库都不碰():
             x = re.sub(r"#.*$", "", x).strip()
             if x:
                 flat.add(x)
-    assert flat <= {"MIN_CITED_ROUND_CHARS", "MIN_THIN_CHARS", "placeholder_lines"}, flat
+    # P89 加了第四样 `prompts as _p`：`_assert_edit_shape()` 要**读后端真的那几份提示**
+    # （`POLISH_SYSTEM` / `REWRITE_SYSTEM` / `rewrite_user`），核「假模型认这一发的那个串
+    # 今天还在不在」。`app.harness.prompts` 整个模块**只有字符串和纯函数**，
+    # 一行库都不碰——豁免的理由（「它只是个假模型端点」）没有被动摇。
+    # ⚠️ 这一格**不是**「反正都在 app.harness 底下就放行」：这条断言仍然逐个列名字，
+    # 哪天有人从那儿 import 一个会开连接的东西，它照旧当场红。
+    assert flat <= {"MIN_CITED_ROUND_CHARS", "MIN_THIN_CHARS", "placeholder_lines",
+                    "prompts as _p"}, flat
 
 
 def test_跑批脚本不许自己拼只读连接():

@@ -251,8 +251,108 @@ def _assert_shapes(backend: str | None = None) -> dict:
     return {"lens": got, "floor": floor, "thin": thin, "where": where}
 
 
+#: **P89 A：右键「润色 / 重写」那一发**（`/api/rewrite` -> `compose.rewrite`）。
+#:
+#: P89 之前这一发**在每一个 mode 里都落到最后那个 `else`**，回的是 `REPORT`
+#: （一段 markdown 日报）。后端 `llm.extract_json(REPORT)` 当场 `None` ->
+#: `revisions: []` + `unparsed: True` + **HTTP 200**，前端弹一句「模型没按格式答」
+#: 就什么都不做。于是走查 (10) 那一格自称的「润色生一层」**一次都没成立过**：
+#: 它 `until(文档变了, 120s)` 干等满 120 秒（`until` 超时**静默回 None**），
+#: 再 `wait(3000)`，然后把 **(6) 留下的那点残留**当成「润色的结果」印出来。
+#: P85 印到 1、P87 印到 0，差的从来不是「右栏刷没刷到」——
+#: **是这一格根本没测它自己写的那件事**（P87 问题 #2 的真根因）。
+#:
+#: 已经躺在上面的那两条 `is_revise` 分支（回 `{"revisions": []}`）**够不着这一发**：
+#: `is_revise` 要 raw 里有 `revisions` / `修订`，而润色那一发的 system + user
+#: 里这两个串**一个都没有**（P89 当场量的）。它们是给别的形状留的，不是这条路。
+EDIT_MARK = "（假模型润色过）"
+
+#: 认这一发**只看 prompt 里自己要的那个键**（同这个文件开头那条规矩）：
+#: `POLISH_SYSTEM` / `REWRITE_SYSTEM` 自己把要的形状逐字写在提示里
+#: （`只输出 JSON，形如 {"text":"润色后的内容"...}`），而 `EXPAND_SYSTEM`
+#: 要的是 `{"before":...}` —— 三段的开头都是「你是写作编辑。」，**按开头认会把扩展也收走**。
+#:
+#: ⚠️ **串里不许带引号**（P89 当场栽过一次）：别的几条判据比的是 `raw`——
+#: 那是**请求体原文**，里面的 `"` 一律被 JSON 转义成 `\"`，
+#: 于是 `'{"text":"润色后的内容"'` 这个串**一次都匹配不上**，
+#: 这一发照旧静默退回 `REPORT`。中文匹配得上（客户端不转义非 ASCII），引号匹配不上。
+#: 所以这两个串取的是提示里那句话**自己的中文部分**，
+#: 而且比的是**解开之后的 system 那几条**（见 `_system_text`），不是 `raw`：
+#: 用户正文里碰巧写着这四个字也不该把它认成一次润色。
+POLISH_MARK = '润色后的内容'
+REWRITE_MARK = '重写后的内容'
+#: 选中的那一段在 user 提示的**最后一段**（`prompts.rewrite_user` 的末尾）。
+FRAGMENT_MARK = "【被选中要处理的片段】"
+
+
+def _assert_edit_shape() -> dict:
+    """**import 就核一遍**（同 `_assert_shapes` 的理由）：上面那三个串今天还在
+    后端真的那几份提示里吗。
+
+    抄一份串在这儿、而后端把措辞改了，这一发会**一声不响地**退回最后那个 `else`
+    ——回 `REPORT`、`unparsed`、什么都不发生，跟 P89 之前一模一样。
+    **那正是这条闸要拦的那次退化**，所以它读后端源码，不在这儿抄第二份口径。
+
+    读不到后端就**说出来**（别假装核过了）。
+    """
+    _ensure_backend_on_path()
+    try:
+        from app.harness import prompts as _p                # noqa: PLC0415
+    except Exception as e:                                   # noqa: BLE001
+        print(f"[fakellm89] 没读到后端的提示，润色那一发的认法**没核过**：{e}")
+        return {"checked": False}
+    missing = []
+    if POLISH_MARK not in _p.POLISH_SYSTEM:
+        missing.append(f"POLISH_SYSTEM 里没有 {POLISH_MARK!r}")
+    if REWRITE_MARK not in _p.REWRITE_SYSTEM:
+        missing.append(f"REWRITE_SYSTEM 里没有 {REWRITE_MARK!r}")
+    if FRAGMENT_MARK not in _p.rewrite_user("正文", "选中的这一段", "脊", ["拍子"]):
+        missing.append(f"rewrite_user 的末尾没有 {FRAGMENT_MARK!r}")
+    # **反过来也核一条**：扩展那一发**不许**被这两个串认走（按开头认就会收走它）。
+    if POLISH_MARK in _p.EXPAND_SYSTEM or REWRITE_MARK in _p.EXPAND_SYSTEM:
+        missing.append("EXPAND_SYSTEM 也带上了润色/重写的那个键——这两条路分不开了")
+    if missing:
+        raise AssertionError(
+            "润色那一发的认法跟后端对不上了：" + "；".join(missing)
+            + "。**对不上不会报错，只会让这一发静默退回 REPORT**"
+            "（回 `unparsed`、正文一个字不动）—— P87 问题 #2 就是这么来的。")
+    print("[fakellm89] 润色那一发的认法过闸：POLISH / REWRITE / 片段标记三条都在，扩展没被收走")
+    return {"checked": True}
+
+
+def _system_text(j: dict) -> str:
+    """这一发的 system 那几条拼起来。**认路只看它**：用户正文（user 那条）里
+    碰巧出现同样的字不该把这一发认成别的路。"""
+    return "\n".join(str(m.get("content") or "")
+                     for m in (j.get("messages") or [])
+                     if isinstance(m, dict) and m.get("role") == "system")
+
+
+def _selected_fragment(j: dict) -> str:
+    """把「被选中要处理的片段」从 user 提示里抠出来。抠不到就回空串——
+    **空串不进这条分支**（宁可退回原来的行为，也不拿一段猜出来的文字当选区）。"""
+    for m in reversed(j.get("messages") or []):
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        t = str(m.get("content") or "")
+        k = t.rfind(FRAGMENT_MARK)
+        if k >= 0:
+            return t[k + len(FRAGMENT_MARK):].strip()
+    return ""
+
+
+def edit_json(fragment: str) -> str:
+    """润色那一发回的那份 JSON。**只在选中那一段前面加一个记号，别的一个字没动**：
+    这样「改了几处」是 1、「正文长了几个字」恰好是 `len(EDIT_MARK)`，
+    走查那一格就能把「产品真落地了」量成一个数，而不是看一眼截图。"""
+    return json.dumps({"text": EDIT_MARK + fragment,
+                       "reason": "走查用的假润色：只在这一段前面加一个记号。"},
+                      ensure_ascii=False)
+
+
 _assert_shapes()
 _assert_p66_shapes()
+_assert_edit_shape()
 
 SIX ={"factual_grounding": 2, "non_repetition": 2, "coherence": 2,
        "structure": 2, "material_use": 2, "readability": 2}
@@ -324,11 +424,17 @@ class H(BaseHTTPRequestHandler):
         is_score = "rigorous editor" in raw and not is_continue
         is_revise = (not is_continue and not is_skeleton and not is_score
                      and ("revisions" in raw or "修订" in raw))
+        # 右键「润色 / 重写」那一发（P89 A）。**跟 `is_revise` 不是一回事**：
+        # 那一条要 raw 里有 `revisions` / `修订`，而这一发一个都没有。
+        _sys = _system_text(j)
+        is_edit_text = (not is_continue and not is_skeleton and not is_score
+                        and (POLISH_MARK in _sys or REWRITE_MARK in _sys))
         wants_json = is_score
         CALLS.append({"path": self.path, "model": j.get("model"), "image": has_image,
                       "bytes": n, "at": time.strftime("%H:%M:%S"),
                       "kind": ("continue" if is_continue else "skeleton" if is_skeleton
-                               else "score" if is_score else "revise" if is_revise else "other"),
+                               else "score" if is_score else "edit" if is_edit_text
+                               else "revise" if is_revise else "other"),
                       # **把每一发的 prompt 头存下来**：第一次跑发现骨架那一发也被
                       # `wants_json` 收走了，于是库里的 spine 变成了一段打分 JSON。
                       # 「这一发是哪条路」只能从它自己的字里看，猜是猜不出来的。
@@ -397,6 +503,11 @@ class H(BaseHTTPRequestHandler):
             text = json.dumps({"revisions": []}, ensure_ascii=False)
         elif has_image:
             text = "答案：改 capture.ts 的落盘逻辑"
+        elif is_edit_text and _selected_fragment(j):
+            # **不分 mode**：润色那一发在哪个 mode 里都该回一份能落地的建议。
+            # （`hang` 更早就 `return` 了，那一档要的正是「收下不回」。）
+            # 抠不到选区就不进这条分支 —— 退回 `REPORT`，跟 P89 之前逐字一样。
+            text = edit_json(_selected_fragment(j))
         else:
             text = REPORT
         # **请求里 `stream: true` 就得回 SSE**（P58 走查栽的第三个量具坑）。

@@ -74,6 +74,10 @@ def test_第一条b_哪几条是_floor_哪几条是_pinned():
     测试文件数。它属于同一类——今天 1 份 / 70 个源文件，**该随代码涨**，
     钉死等于每写一条 `components/` 的测试就红一次。调低到 0 才是要拦的那个方向
     （那意味着那条路被关掉了，而「不跑」和「跑绿了」在终端里长得一模一样）。
+
+    **P89 加了第 5 条**（`MIN_WHY`）：跨批 diff 归类表里「为什么」那一列至少几个字。
+    同一类——写得更长不是坏事，要拦的只有「调低成 0，于是一行写个 `-` 就算归过类」
+    那一个方向。（它自己这一批就真红过一次：我第一版归类表里有两行的理由写的是「同上」。）
     """
     floors = {k for k, v in F.REGISTRY.items() if v[0] == F.FLOOR}
     assert floors == {
@@ -81,6 +85,7 @@ def test_第一条b_哪几条是_floor_哪几条是_pinned():
         ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_CLASSES"),
         ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_SENDERS"),
         ("frontend/scripts/check-components-gate.mts", "MIN_COMPONENT_TESTS"),
+        ("frontend/scripts/check-walkthrough-diff.mts", "MIN_WHY"),
     }
     # 每一条登记都得说清楚**它一动要去重读什么**：一句空话的登记等于没登记
     for key, (kind, _base, why) in F.REGISTRY.items():

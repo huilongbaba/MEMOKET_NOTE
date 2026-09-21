@@ -82,6 +82,18 @@ const USER = 'p74-newbie'
  *  ⑥ 的三处判据（编辑器、库、重开之后的正文字数）**用同一个常数**：
  *  三处各抄一遍那个数，改错一处另外两处不会吵——那正是「两把尺」那类坑。 */
 const ROUNDS_LEN = 205
+/** 假模型润色那一发在选中那一段**前面**加的那个记号有多长
+ *  （`backend/scripts/walkthrough_fakellm.EDIT_MARK` = 「（假模型润色过）」8 个字）。
+ *
+ *  **P89 A 之前这个数不存在，因为润色一次都没落地过**：那一发在假模型里落到最后那个
+ *  `else`，回的是一段 markdown 日报，后端 `extract_json` 当场 `None` →
+ *  `revisions: []` + `unparsed: true` + **HTTP 200**。于是 ⑩ 那一格读到的
+ *  一直是 ⑥ 留下的残留（P87 问题 #2 把它记成了「右栏没刷到」）。 */
+const EDIT_MARK_LEN = 8
+/** ⑩ 润色落地之后那一篇有多长。**不抄一个 213**：抄一份就有了两把尺。 */
+const POLISHED_LEN = ROUNDS_LEN + EDIT_MARK_LEN
+/** ⑩ 跑完之后库里该有几层：⑥ 那一层「智能续写」+ ⑩ 那一层「润色」。 */
+const LAYERS_AFTER_POLISH = 2
 
 // ── 走哪几步、每一步核什么 ────────────────────────────────────────────────
 // 判据一律**对着步骤脚本自己打出来的那几行**问，因为那几行正是走查台账里抄的数。
@@ -403,10 +415,16 @@ const PLAN = [
     must: [
       // 带层那篇
       [/右栏页签: \[[^\]]*"改动\d+"/, null, '带层那篇重开之后「改动」页签还在'],
-      [/toast: \["上次没处置完的 1 层改动还在右栏「改动」里"\]/, null,
-        'toast **恰好 1 条**、逐字（P43）'],
+      // **P89 A：1 层 → 2 层**。⑩ 的润色以前一次都没落地过（见 `EDIT_MARK_LEN` 那一段），
+      // 所以重开之后只放得回 ⑥ 那一层。现在它真落一层了，两层都得放得回来。
+      [/toast: \["上次没处置完的 (\d+) 层改动还在右栏「改动」里"\]/,
+        (m) => Number(m[1]) === LAYERS_AFTER_POLISH,
+        `toast **恰好 1 条**、层数 ${LAYERS_AFTER_POLISH}（P43）`],
       [/P43 不变式（弹了 toast ⇒ 页签在）: 成立/, null, 'P43 那条不变式成立'],
-      [/正文字数: (\d+)/, (m) => Number(m[1]) === ROUNDS_LEN, '带层那篇正文 205 字（跟 ⑥ 跑完一样）'],
+      // **不是 `ROUNDS_LEN`**：⑥ 跑完是 205，⑩ 的润色又在前面加了 8 个字。
+      // 这一条钉的是「那 8 个字关掉重开之后还在」——润色那一层是真写进库、真放得回来的。
+      [/正文字数: (\d+)/, (m) => Number(m[1]) === POLISHED_LEN,
+        `带层那篇正文 ${POLISHED_LEN} 字（⑥ 的 ${ROUNDS_LEN} + ⑩ 润色的 ${EDIT_MARK_LEN}）`],
       // 不带层那篇（P44 #5）
       [/右栏页签（不许有「改动」）: \["记忆","计划"\]/, null, '不带层那篇只有「记忆」「计划」'],
       [/toast（该一条都没有）: \[\]/, null, '不带层那篇一条 toast 都没有（P44 #5）'],
@@ -622,14 +640,22 @@ function checkProviderPort(ctx) {
 }
 
 /** ⑥ 的「读库」那一格（P45 #1 / P44 #1 的回归）+ ⑩ 前半那一层**真落库了吗**。
- *  三条：正文长度 = 编辑器那个数 / 正文不是 JSON / 恰好一层且 `state=on`。 */
+ *  三条：正文长度 / 正文不是 JSON / 两层且 `state=on`。
+ *
+ *  ⚠️ **这一发跑在整个 `b2old.mjs` 之后，不是「⑥ 之后」**（P89 A 当场发现的）：
+ *  它原来拿 `ROUNDS_LEN`（⑥ 跑完那个 205）比，而那只是因为 ⑩ 的润色**从来没落地过**，
+ *  于是「⑥ 之后」和「⑩ 之后」碰巧是同一个数。润色真落地之后这条当场红成 213。
+ *  **⑥ 自己那个 205 另有人钉着**——`b2old` 的 `must` 里那条
+ *  `库: {"len":205,"json":false}`，读的是步骤脚本在 ⑥ 当场打出来的那一行。
+ *  这一条现在钉的是它真正在看的东西：**这一步全跑完之后库里那篇**。 */
 async function readbackAfterRounds(ctx) {
   const id = await resolveNote(ctx, '走查（可删）')
   const out = []
   const note = await api(ctx, `/api/notes/${id}`)
   const content = note.body?.content ?? ''
-  if (content.length !== ROUNDS_LEN) {
-    out.push(`⑥ 读库：库里那篇是 ${content.length} 字，编辑器跑完是 ${ROUNDS_LEN} 字 `
+  if (content.length !== POLISHED_LEN) {
+    out.push(`⑩ 之后读库：库里那篇是 ${content.length} 字，该是 ${POLISHED_LEN} 字`
+      + `（⑥ 的 ${ROUNDS_LEN} + ⑩ 润色的 ${EDIT_MARK_LEN}）`
       + `——「编辑器里有 ≠ 库里有」（P45 #1 / P44 #1）；HTTP ${note.status}`)
   }
   if (/\{"scores"|\{"spine"|\{"text":/.test(content)) {
@@ -637,9 +663,14 @@ async function readbackAfterRounds(ctx) {
   }
   const lay = await api(ctx, `/api/notes/${id}/change-layers`)
   const layers = lay.body?.layers ?? []
-  if (!(layers.length === 1 && layers[0].state === 'on' && (layers[0].hunks ?? []).length >= 1)) {
-    out.push(`⑩ 前半：库里该恰好 1 层 on 的改动，实际 ${JSON.stringify(
-      layers.map((l) => `${l.label}:${(l.hunks ?? []).length}处/${l.state}`))}；HTTP ${lay.status}`)
+  // **P89 A：1 层 → 2 层**，而且**两层的名字也钉死**。
+  // 原来只数「恰好 1 层」，于是「⑩ 的润色根本没落地、这一层其实是 ⑥ 的」
+  // 跟「⑩ 真落了一层」在这条判据上**长得一模一样**——数对了不等于是那一层。
+  const shape = layers.map((l) => `${l.label}:${(l.hunks ?? []).length}处/${l.state}`)
+  const want = ['智能续写:1处/on', '润色:1处/on']
+  if (layers.length !== LAYERS_AFTER_POLISH || String(shape) !== String(want)) {
+    out.push(`⑩ 前半：库里该是 ${JSON.stringify(want)}（⑥ 一层 + ⑩ 润色一层），`
+      + `实际 ${JSON.stringify(shape)}；HTTP ${lay.status}`)
   }
   return out
 }
