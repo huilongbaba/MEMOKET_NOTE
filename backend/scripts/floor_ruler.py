@@ -104,12 +104,14 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
     ("frontend/scripts/check-walkthrough-selectors.mts", "MIN_SENDERS"): (
         FLOOR, 17, "发 `X-User-Id` 的量具份数（P78 A ⑤）。调低 = 身份那条契约扫不到人了"),
     ("frontend/scripts/check-components-gate.mts", "MIN_COMPONENT_TESTS"): (
-        FLOOR, 3, "**vitest 真要跑的** `src/components/` 底下的测试文件数（P85 A 开的那条路）。"
+        FLOOR, 4, "**vitest 真要跑的** `src/components/` 底下的测试文件数（P85 A 开的那条路）。"
                   "调低 = 那条路被关掉了还让闸绿着——而「不跑」和「跑绿了」在终端里长得一模一样。"
-                  "它一动去重读 P87 B / P91 A 两节：**P85 开路时 1 份，P87 抬到 2 份，"
+                  "它一动去重读 P87 B / P91 A / P93 A 三节：**P85 开路时 1 份，P87 抬到 2 份，"
                   "P91 抬到 3 份**（`p91.test.tsx` 真 `createRoot` 挂 `RightPane`，"
-                  "钉的是「`alwaysShown` 的页签空了得说话」那条路）"
-                  "（70 个源文件今天 3 份，离「够」远得很），这个数**只准往上**"),
+                  "钉的是「`alwaysShown` 的页签**那一格**空了得说话」那条路）；"
+                  "**P93 抬到 4 份**（`p93.test.tsx` 把它做成通用的：`alwaysShown` 的页签"
+                  "**都**不许留白，名单从 `App.tsx` 现解、逐格真挂一次）"
+                  "（70 个源文件今天 4 份，离「够」远得很），这个数**只准往上**"),
     ("frontend/scripts/check-walkthrough-diff.mts", "MIN_WHY"): (
         FLOOR, 4, "跨批 diff 归类表里「为什么」那一列至少几个字（P89 B）。"
                   "调低 = 一行写个 `-` 就算归过类了，那张表就退回成一张打勾表，"

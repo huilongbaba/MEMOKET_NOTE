@@ -1,0 +1,44 @@
+=== ① 设置页 → 填地址 → 测一下 → 保存 → **问库** ===
+  设置页上的钮:
+    {"i":0,"t":"","dis":false,"cls":"icon-btn","x":84,"y":13}
+    {"i":1,"t":"","dis":true,"cls":"icon-btn","x":110,"y":13}
+    {"i":2,"t":"","dis":false,"cls":"tab-scroll","x":140,"y":11}
+    {"i":3,"t":"","dis":false,"cls":"tab-scroll","x":910,"y":11}
+    {"i":4,"t":"","dis":false,"cls":"tab-scroll tab-list","x":942,"y":11}
+    {"i":5,"t":"","dis":false,"cls":"note-new-tab","x":974,"y":7}
+    {"i":6,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":100}
+    {"i":7,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":150}
+    {"i":8,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":200}
+    {"i":9,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":250}
+    {"i":10,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":300}
+    {"i":11,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":670}
+    {"i":12,"t":"","dis":false,"cls":"launcher-btn active","x":6,"y":720}
+    {"i":13,"t":"","dis":false,"cls":"launcher-btn left-pane-toggle","x":6,"y":770}
+    {"i":14,"t":"P","dis":false,"cls":"launcher-btn launcher-user","x":6,"y":820}
+    {"i":15,"t":"层级","dis":false,"cls":"on","x":68,"y":108}
+    {"i":16,"t":"最近","dis":false,"cls":"","x":109,"y":108}
+    {"i":17,"t":"","dis":false,"cls":"tree-item-button","x":282,"y":168}
+    {"i":18,"t":"","dis":false,"cls":"icon-btn","x":266,"y":838}
+    {"i":19,"t":"","dis":false,"cls":"icon-btn","x":292,"y":838}
+    {"i":20,"t":"","dis":false,"cls":"right-pane-reopen","x":1410,"y":56}
+    {"i":21,"t":"跟随系统","dis":false,"cls":"chip","x":357,"y":177}
+    {"i":22,"t":"浅色","dis":false,"cls":"chip active","x":455,"y":177}
+    {"i":23,"t":"深色","dis":false,"cls":"chip","x":527,"y":177}
+    {"i":24,"t":"测一下","dis":false,"cls":"chip chip-action","x":381,"y":619}
+    {"i":25,"t":"测一下","dis":false,"cls":"chip chip-action","x":357,"y":811}
+    {"i":26,"t":"测一下（会发一张图）","dis":false,"cls":"chip chip-action","x":357,"y":975}
+    {"i":27,"t":"保存","dis":false,"cls":"primary","x":357,"y":1141}
+    {"i":28,"t":"添加","dis":true,"cls":"","x":1062,"y":1376}
+    {"i":29,"t":"还没配模型 · 去设置","dis":false,"cls":"health-bad linklike","x":1220,"y":877}
+  地址格: {"i":4,"type":"text","ph":"默认 http://127.0.0.1:<PORT>/v1","val":""}
+  测一下: 连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」
+  带「保存」的钮: [{"i":29,"t":"保存","dis":false,"y":1232,"cls":"primary"}]
+  点的是: {"cx":384.5,"cy":491.15625,"dis":false,"t":"保存"}
+  保存之后「还没配模型」还在吗: true
+  toast: ["保存了，但模型还没配全——填上地址和模型名，AI 功能才用得了"]
+  后端 /api/provider（库里真落了吗）: /api/settings/provider → {"provider":"local","gpt_model":"gpt-4.1-mini","gpt_base_url":"https://api.openai.com/v1","asr_base_url":"","asr_default_url":"http://127.0.0.1:<PORT>","auto_sync_notes":false,"vision_base_url":"","vision_model":"","vision_api_key_set":false,"vision_follows_llm":true,"vision_active_url":"http://127.0.
+shot → <DIR>/<B>-bnew2-1-saved-light.png
+=== ② 900px 下那一个溢出的是谁 ===
+   {"innerWidth":900,"n":0,"out":[]}
+  页面横向滚得动吗: false
+shot → <DIR>/<B>-bnew2-2-900-light.png
