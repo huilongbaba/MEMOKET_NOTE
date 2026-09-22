@@ -27,6 +27,16 @@ export type AgentRound = {
   /** 被防线丢弃的修订及原因。跟 errors 分开：这是防线正常起作用，
    * 混在报错里会让界面变成一片红。 */
   dropped: string[]
+  /** **这一轮少了哪几个能力**（P105 C，收 P103 问题 #7）。
+   *
+   * 一条 middleware 抛异常 ⇒ 后端发一条 `warning`（`loop._fire`），跑照常继续、
+   * 但那一轮少了那个能力。P103 判「切走之后那句红字 toast 照拦」，
+   * 顺手记下一条：**拦掉之后这件事在界面上就没有第二个出处了**。这一格就是那个出处。
+   *
+   * 跟 `errors` 分开（那是「这一轮真的报错了」，红字）、也跟 `dropped` 分开
+   * （那是防线正常起作用）：**少了一个能力 = 这一轮的判断是在更少的证据上做的**，
+   * 用户据此决定要不要重跑一次。空数组 / `undefined` = 一个都没少。 */
+  warnings?: RoundWarning[]
   /** 代码判据（不是模型）当场判这一轮不合格。命中时这一轮**不会**再花一次
    * 模型调用去打分——所以要标出来，否则用户看到一个 0 分却不知道是谁判的。
    *
@@ -81,6 +91,18 @@ export type AgentRound = {
   restored?: RestoredMark
 }
 
+/** 「这一轮少了哪个能力」那一条（P105 C）。**唯一定义在这儿**，
+ *  `App.tsx` 的 `onWarning` 造它（逐字来自后端那条 `warning` 事件）、这份组件摆它。 */
+export type RoundWarning = {
+  /** 哪一步（后端那条事件的 `middleware`，比如「骨架」）。 */
+  middleware: string
+  /** 那一步的哪个钩子（`before_run` / `skeleton` …）。**照实摆**：
+   *  同一个 middleware 的两个钩子各抛一次是两回事。 */
+  hook: string
+  /** 出了什么事，后端的原话。 */
+  error: string
+}
+
 /** 「这张卡是读回来的」那个记号（P101 A）。**唯一定义在这儿**，
  *  `util/roundsRestore` 造它、这份组件摆它。 */
 export type RestoredMark = {
@@ -92,6 +114,20 @@ export type RestoredMark = {
   facts: string
   /** 这一轮哪几条判据命中了（库里 `fired_checks`，解不出来就是空）。 */
   firedChecks: string[]
+}
+
+/** 「本轮少了这个能力」那一句（P105 C）。**唯一出处**：
+ *  卡上那一格和 `App.tsx` 里那句红字 toast **读的是这一份**
+ *  ——两边各写一份就是两把尺，改了一处另一处不会吵（这个仓咬过九次）。 */
+export function warningLine(w: RoundWarning): string {
+  return `「${w.middleware}」这一步出错了，本轮少了这个能力：${w.error}`
+}
+
+/** 那一格的抬头。**数是真数出来的**：一轮能来好几条（每个 middleware 每个钩子
+ *  抛一次就一条），写死「少了一个能力」会把第二条藏起来。 */
+export function warningsHead(ws: RoundWarning[]): string {
+  const steps = [...new Set(ws.map((w) => w.middleware))]
+  return `本轮少了 ${ws.length} 个能力（${steps.join('、')}），这一轮是在少了这一步的证据上跑完的`
 }
 
 /** 「技能」那一行的文案。抽成纯函数是让闸够得着：这是用户判断「Skill 到底加载了没有」的唯一依据。 */
@@ -644,6 +680,28 @@ export default function AgentActivity({ rounds, status, running }: Props) {
                 ))}
               </ul>
             </details>
+          )}
+
+          {/* **这一轮少了哪个能力**（P105 C，收 P103 问题 #7）。
+              摆在「丢弃的修订」和报错中间，**不占报错那个红**：跑没出错，
+              出错的是**某一步**，而这一轮是在少了那一步的证据上跑完的。
+              **不折叠**（跟 `dropped` 那一块不一样）：`<details>` 收着的时候
+              `innerText` 读不到里头的字，而这一格正是 P103 说的
+              「界面上的第二个出处」——**收起来的出处等于没有出处**。 */}
+          {(r.warnings ?? []).length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
+                {warningsHead(r.warnings ?? [])}
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '2px 0 0 6px' }}>
+                {(r.warnings ?? []).map((w, i) => (
+                  <li key={i} className="muted" style={{ display: 'flex', gap: 5, lineHeight: 1.55 }}>
+                    <Icon n="bx-error" style={{ flexShrink: 0 }} />
+                    <span>{warningLine(w)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {(r.errors ?? []).map((e, i) => (

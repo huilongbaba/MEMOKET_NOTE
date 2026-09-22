@@ -184,6 +184,27 @@ for (const k of guardedKeys('self')) {
   ok(NAMES_THE_NOTE.test(body) || /\bawayToast\(/.test(body),
     `\`${k}\` 切走之后那句话**点了名**（自己写的，或走共用的 \`awayToast(\`）——不点名就看不出说的是哪一篇`)
 }
+// ── ⑦ `rounds` 那一档**嘴上还是拦着的**（P105 C）─────────────────────────
+//
+// `onWarning` 这一批从 `blocked` 挪进了 `rounds`，而挪的**只有记账那一半**：
+// 那句红字 toast 照旧排在自己那句 guard 后面 ⇒ 切走之后一个字都不弹
+// （P103 B ③ 判的「照拦」说的是**弹**，这一条一个字没动）。
+// 少了这一条，把那句 toast 挪到 guard 前面这份闸会一声不吭——
+// 而那正是 P103 逐条判过「是噪声不是通知」的那个行为长回来。
+//
+// **写成不变式，对 `rounds` 那一整档都成立**（不是只盯 `onWarning` 一条）：
+// 归 `rounds` 的 handler 里**每一处** `toast(` / `toastAction(` 的下标都**大于**
+// 那句 guard 的下标。要「切走了也说一句」的那几条归 `self`，那一档另有 ⑥ 管着。
+for (const k of guardedKeys('rounds')) {
+  const body = bodies[k]
+  const g = body.indexOf(GUARD_LINE)
+  const says = [...body.matchAll(/\btoast(?:Action)?\(/g)].map((m) => m.index!)
+  if (!says.length) continue
+  ok(g >= 0 && says.every((i) => i > g),
+    `\`${k}\` 归 rounds，那 ${says.length} 句 toast **全排在 guard 后面**`
+    + `（guard @${g}，toast @${says.join('/')}）——切走之后不许弹；要弹得归 self（那一档得点名）`)
+}
+
 ok(guardBlocks('onDelta') === false && guardBlocks('onRevision') === true,
   '`guardBlocks` 自己：onDelta 放行 / onRevision 照拦')
 ok(guardBlocks('onNeverHeardOf') === true,
