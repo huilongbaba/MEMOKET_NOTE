@@ -239,8 +239,8 @@ def test_第五条c_八个读数全登记了_而且两个floor抬到了真值():
     assert bad == [] and behind == []
     ours = [k for k in FR.REGISTRY if k[0].endswith("code_pair_ruler.py")]
     assert len(ours) == 8
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 167   # P104 抬到 167（P102 实得 148）
-    assert FR.CHECKED_COUNT_FLOOR == checked == 179            # P104 抬到 179（P102 实得 160）
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 179   # P104 抬到 167（P102 实得 148）；P106 抬到 179
+    assert FR.CHECKED_COUNT_FLOOR == checked == 191            # P104 抬到 179（P102 实得 160）；P106 抬到 191
 
 
 def test_第五条d_47条那把尺的分母没被这350行标注动到():

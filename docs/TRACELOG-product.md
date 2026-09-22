@@ -29288,3 +29288,317 @@ P107 留给下一批：
 ③ **B 在走查里只有下午那一档**：横条跨天只在 TZ 那一趟 / vitest 里验到，十一步那条路跑在下午永远看不见——要常驻得给 `rounds101` 加一趟 TZ 档；
 ④ `warn105` 仍只造得出「骨架存着半句」那一种 warning（P105 留 ③）；⑤ 读回来的只有最近那一次跑（P101 留 ③）；
 ⑥ 「走查随机」16 行全是毫秒级探针——**P93 / P95 那 67 行仍然一行都没有**；⑦ `p85` / `p87` 仍没有归类表。
+
+---
+
+---
+
+## P106 · 第 823 轮：**一屏之内跨码拼族量完了（两条判据，判「不接」）** + **「拆汉字闸 / 屏级判据」这条线结案**（理由全是用户眼前的数）（2026-09-22）
+
+> 出身：worktree `.claude/worktrees/agent-a77bf36e62fd306c2`，HEAD `f6b6222`（`git log -1` 钉过）。
+> **这一批中途被 API 速率上限打断过一次**：断点在「基线 + 全部探针 + 59 屏盲标 + 两条候选判据都跑完、仓库里一个字节还没改」那一格；
+> 断前的产物全在 `<scratch>/p106/`（`shots.json` / `RULE.md` / `sheet.md` / `labels.tsv` / `cand.txt` …），**续上之后没重做一样**，
+> 续上的是：仓库里的尺（`--fuse`）+ 登记 + 标注入库 + 闸 + 文档 + 突变验 + 收尾。
+> 真库只读做指纹；实验一律 `KITE_DATA_DIR=<scratch>/p106data`（拷前 `ls -ld` 确认**不存在**、`cp -R` 整棵拷、
+> 拷后 `diff <(ls -1a 源) <(ls -1a 目标)` **0 差异**、`recall_ruler` 自报 `users 6`）；
+> worktree 的 `backend/data/notes.sqlite3` 是主仓那份的只读拷贝（`sha256` `150e53cc…` 两边逐字相同，**没 `chmod 444`**；
+> `backend/data/` 开工时不存在，`mkdir` 出来的）。**这一批没碰 `frontend/` 和 `docs/walkthrough-logs/`**。
+>
+> **基线四个数，每个带出处**：
+>
+> * 后端 **3493 passed / 0 skipped** ← `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python -m pytest -q -p no:cacheprovider` @ `f6b6222`
+> * 前端 **104 文件 / 993 条，其中 1 条红**（`p45Desktop.test.ts` 的 `freePort` 那条 **5 秒超时**，单跑这份文件照样红）
+>   ← `cd <worktree>/frontend && npm test` @ `f6b6222`。⚠️ **根因是环境不是代码**：`47232`（开发档起点端口）上坐着一个
+>   `uvicorn`（主仓 `.venv`，`14:12:50` 起的，是另一个 agent 的实例）——`freePort` 在那个端口上探测超时。
+>   **这一批没碰 `frontend/`、也没去动那个进程（不许 `pkill`）**，照实记；任务书给的 993 条总数逐格对上。
+> * `floor_ruler` **看着 12 份 / 登记 167 / 共核 179 / 落后 0 / 对不上 0** ← `cd <worktree>/backend && ./.venv/bin/python scripts/floor_ruler.py` @ `f6b6222`
+> * 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 / `llm_usage` 最大 id 5738 /
+>   `harness_runs` 120 / `harness_rounds` 489** ← `sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" "select …"` + `<scratch>/p104b/fp.py` @ `f6b6222`；
+>   codebook 源和目标各核 **11,429,185 / `403a1183`**。
+>
+> ⚠️ **「同一个字面量有第二份」这次是六份**（任务书写「可能已经六份」，开工 `grep -rn` 数出来确实是六份：
+> `p94`/`p96`/`p98`/`p100`/`p102`/**`p104`**）。
+
+> **这一批产品逻辑一个字节没改**：`fact_distinct.py` 一个字节没碰（`ast` 摘要 `7f837f2f1de58774`，`test_p106::第五条a` 钉着）。
+> 动的是：`recall_ruler` 新增 `--fuse` 那一支（`cf_fuse` / `_fuse_truth` / `_fuse_merge` / `_fixture` + 12 条 `EXPECT_P106_*` / `EXPECT_FUSE_*`）·
+> `floor_ruler` +12 条登记、两个 floor 抬到 **179 / 191** · 六份测试各两行 floor 字面量（**并排改，历史读数一个没抹**）·
+> 新闸 `test_p106`（16 条）· 两组标注 `p106-unread-59`（60 行）/ `p106-fuse-read-2`（3 行）· 计划文档 P106 条目 + **「不做」一节加了结案那一条**。
+
+---
+
+### ① 两轴同劈的族全库有多少：**先把普查补齐（175/175 屏都有人读了），答案是 4 屏 = 2 组事实**
+
+← `<scratch>/p106/survey.py`（765 屏各跑一次 HEAD 召回，每屏跟 `largest_family` / `screen_shape` 核过）→ `zone.py` @ `f6b6222`
+
+`量得了 ≥3` 的 **175 屏**里，P94–P104 各批读过的是 `K团≥3`/`M团≥3`/`K团==2`/`M团==2` 那几档（116 屏），
+**剩下 `K团≤1 ∧ M团≤1` 的 59 屏从没人读过**——P104 的 `_meta` 自己写着「它量不了召回：团 0/1 的屏一屏都没进来」。
+**这一批把这 59 屏盲标普查了**：
+
+* `RULE.md`（`<scratch>/p106/RULE.md`，**`2026-09-22 14:33:23`**）写在造单子之前、看见任何一屏正文之前；
+  此前只跑过三个**只打计数**的探针（`analyze.py` 顺手 dump 过 i=694/45/316/320 四屏正文，**那四屏不在这 59 屏里**）。
+* 问法**逐字同 P104**（人只写「最大的那一族是哪几格」），单子只有洗过的屏号 + 每格正文（种子 106），`labels.tsv` 标完才揭晓。
+* **59 屏 300 格 23,892 字，`?` 0 屏**。
+
+| 库 · 血缘 | 屏 | 人读出族 | **该判是**（族 ≥3 且 ≥ 半屏） |
+|---|---:|---:|---:|
+| `terrence · user` | 37 | 5 | **0** |
+| `terrence · script` | 11 | 2 | 0 |
+| `terrence-rewrite · script` | 2 | 0 | 0 |
+| `shot-demo · fixture` | 7 | 5 | 0 |
+| `fresh678b · fixture` | 2 | 0 | 0 |
+| **合计** | **59** | **12** | **0** |
+
+⇒ **团 ≤1 那一档一屏「半屏同一句话」都没有**（人读出的 12 个族全是两格，其中 8 个两格都量得了）。
+
+**两轴同劈的族全库**（团 ≤2 那两档 = `p104-fam2-111` ∪ `p106-unread-59`，人读族 ≥3 且 ≥ 半屏）：
+
+| | 屏 | 两轴同劈 | P102 那把尺（R2/R1 字面）够得着的劈开成员 | 按库 × 血缘 |
+|---|---:|---:|---:|---|
+| 该判是 | **4**（= 2 组事实：694/696 · 316/320） | **4** | **0 / 8** | `terrence·user` 2 · `terrence-rewrite·script` 2 |
+| 团 ≤1 那档的两格族 | 8 对 | **8** | — | — |
+
+⚠️ **「两轴同劈」不是少数形状，是这一档的全部形状**：人读是同一句话、机器团没圈上的，**12 对里没有一对是「只劈一条轴」的**。
+⚠️ **`code_pair_ruler` 够不着**：劈开的码是 `操作系统`↔`os`↔`构想`↔`逻辑`、`project_ai_memory_architecture`↔`ai_memory_architecture`
+这种——字面口径（R2 真子串 / R1 共享词元）一个都没捞到。**这跟 P102 ④ 自己写的「召回一格都答不了」逐字吻合。**
+
+### ② 拼的判据：**两条，一条先喂反例就死、一条效果 0**
+
+**判据定的规矩**（任务书三条禁令 + 我自己加一条）：别手写同义表 · 别拿目标那一对反推门槛 · 别字面去重 ·
+**别引进任何可调的 cut**（有 cut 就一定会被调到目标那一对上，P98 ③ 的 0.777 就是这么死的）。
+
+| 候选 | 怎么判 | 为什么是它 |
+|---|---|---|
+| **C1 实体桥** | `(obj∩ ∨ ent∩) ∧ (topics∩ ∨ ent∩) ∧ unit≠` | `entities` 是库里现成的第三条轴，P94 单独量过「缝太窄」，**没人拿它当桥试过** |
+| **C12 码的分布互近邻** | 每个库里：`topics` 码按「挂在哪些 `obj` 上」、`obj` 码按「挂在哪些 `topics` 上」做分布向量；**两个码互为对方最近邻（余弦）就并一类**，`same_thing` 在并类之后的码上算 | P98 ③ 走过同一条轴（分布画像），死在「cut 0.77 是拿目标那对反推的」——**把 cut 换成互近邻，就没有可调的数了**；P102 已判「共现」反着（同义码二选一、反而不共现），分布相似正好绕开这一格 |
+
+**先喂反例**（反例池 33 屏 = P94 判假 · P96 该拦 · P102 判假 · P104 放宽新增那 20 屏，全是人读过判假的）：
+
+| | 反例里新判「是」的 | 判 |
+|---|---|---|
+| **C1** | **5 屏**（24 · 25 · 603 · 604 · 703） | ⚠️ **当场死**：新增 14 屏里 5 屏是已知的假，**剩下 9 屏没读**（反例都过不了，没必要读正例那一头） |
+| **C12** | **0 屏** | 过了反例这一关，往下走 |
+
+**再看正例**（C12）：
+
+| 正例 | HEAD 团 | C12 团 | 判 |
+|---|---:|---:|---|
+| i=694 / 696（人读族 5 格） | 1 | **1** | 没修好 |
+| i=316 / 320（人读族 3 格） | 2 | **2** | 没修好 |
+| 团 ≤1 那档 8 对两格族 | — | 拼上 **0/8** | — |
+
+**C12 为什么一个都拼不上**（照实查了，不是猜）：目标那几对码**一对都没被并上**——
+`操作系统 ~ os` 否 · `操作系统 ~ 构想` 否 · `project_ai_memory_architecture ~ ai_memory_architecture` 否
+（前者的互近邻是 `work_product_carousel`）· `e_mail ~ e_mail_address` 否 · `work ~ work_marketing` 否。
+**唯一并上的目标码对是 `ai_memory_os ~ memory_powered_intelligence`（.778）——那正是 i=590 那一族，P98 追的那一对。**
+而 `terrence` 上它并上的 `obj` 码对，头 25 对**全是余弦 1.000 的巧合**（`kid ~ steak`、`summarization ~ 云`、`nre ~ 毛利率`）
+——df = 2 的码只有一个共同邻居，向量退化成一维。**互近邻去掉了 cut，但没去掉「低频码的相似度是噪声」这一格。**
+
+**全库对拍（765 屏，C12）**：判是 **17 → 19**，**新增 2 屏、掉 0 屏**；团大小变了 9 屏（7 屏团 1→2，门外）。
+新增两屏**逐格读完**（`p106-fuse-read-2`，⚠️ **不是盲的**：读的时候看得见 C12 圈了哪几格，照实登记在 `_meta`）：
+
+* **i=590 真**（c/e/f/g 四条是同一句定位话，4×2 ≥ 8）——**跟 P96 `p96-halfdoor-7` 那一份独立的读一致**；
+* **i=23 假**（C12 圈的是 b/c/h：b/c 是同一句定位话，**h 是 AI Insight 这个功能怎么结构化录音**，讲的是一个功能不是那句定位）。
+
+⇒ **C12：新增真 1 / 假 1，而这一批要解的那 4 屏两轴同劈一屏没修好。**
+**判「不接」**——它修好的是 P98 已经点过名的那一屏（只劈 `topics`），**两轴同劈那一格它一格都没动**。
+**四栏留下率 / 47 条三条闸 / 圆点那栏这一批没去量**：没有候选走到「要接」那一步（任务书那一串是「真要接」的验收）；
+**P100 那 27 屏留出集也没跑**：H05 那两对码（`e_mail`↔`e_mail_address`、`work`↔`work_marketing`）C12 都没并上，
+拿它去验只会是「一屏都没翻」，那个 0 是空的，不许读成「没有假阳性」。
+
+⚠️ **废掉的版本照实记**：C1 整条废（反例）；C12 第一版在探针里是**两条轴一起并**，没有再拆「只并 `obj`」/「只并 `topics`」两支
+——**一刀只动一处**，而且两轴同劈那 4 屏的每一对码在两条轴上**都没被并**，拆开跑两支也只会是 0。
+
+### ③ **第 2 条（这一批真正的正题）：这条线要不要结案——算账**
+
+#### ③-a 这条线开工时要解的是什么（往回读到 P84）
+
+* **P84**：接上 `topics` 那条轴（话题面），`common_term()` 多问一句「这个串泛不泛」——**只问汉字串**（「汉字闸」），英文串照旧按 df 扔。
+  要解的用户可见问题是 D2 那一格：**`记录` 一个泛词凑 5 条不相关的记忆卡**（P4 记忆列表 25 条 10/8/7）。
+* **P88 / P90**：「汉字闸」挡着的是**英文主题词**（`agent` / `memory` / `ai`）——拆闸是为了**让右栏把该召回的英文事实召回来**。
+* **P90**：拆闸全库变 6 条，**变好 0 / 中性 2 / 变差 4**；**P92**：换 `topics`@0.60 那条路变 11 条，**变好 0 / 中性 2 / 变差 9**。
+  卡在第三格：放进来的 `agent` / `memory` 命中的是**同一句定位话的六种说法，一进就是半屏**。
+* **P94 → P104**：于是转去造「这一屏是不是半屏同一句话」那把尺（`kb/fact_distinct`），六批都在修这把尺。
+
+#### ③-b 今天离那个问题多远——**用户眼前的数**（HEAD `f6b6222`）
+
+← `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py --fuse` @ `f6b6222`
+
+| 数 | 全库 765 屏 | **`user` 血缘 549 屏** |
+|---|---:|---:|
+| 空屏（右栏一条都没有） | 419（54.8%） | **355（64.7%）** |
+| 量得了 ≥3（这把尺说得了话） | 175 | 81 |
+| **人读「半屏同一句话」**（175 屏全普查） | **22（2.9%）** | **7（1.3%）** |
+| 其中尺子判出 | 17（真 16 · 假 1 = i=388） | 4 |
+| 其中尺子漏 | 6：94 · 316 · 320 · 590 · 694 · 696 | 3：94 · 694 · 696 |
+| **这 22 屏里用户眼前变了的** | **0** | **0** |
+
+⚠️ **最后一行是这张表的正文**：`fact_distinct` **没被 `app/` 里任何代码 import**（`test_p104::第六条b`）
+——尺子判出几屏、漏几屏，**用户看到的那一屏都是原样**。
+⚠️ **i=94 两批读得不一样**（P94 判真、P104 按族格数算不够半屏），**照实并排**：取「任一份判真」是 22，只信 P104 那份是 21。
+⚠️ **「该召回的没召回」这一格这条线能给的是 0**：拆汉字闸那一半两次全库对拍变好 **0/6、0/11**（③-a）。
+**空屏 355 里有多少是「该有而没有」**——这条线**一次都没量过**，这是下一条线的第一格。
+
+#### ③-c 七批（P92–P104）+ 这一批累计改了什么产品行为
+
+| 批 | 动了什么 | 产品行为 | 用户看得见的变化 |
+|---|---|---|---|
+| P92 | 量了、没接 | 0 | 0 |
+| P94 | 造了 `fact_distinct`（没接） | 0 | 0 |
+| **P96** | `same_thing` `K → M` | **改的是没接进产品的那把尺** | **0** |
+| **P98** | 半屏门 `团×2≥n` → `或 cover×2≥n` | **同上** | **0** |
+| P100 | 留出集 | 0 | 0 |
+| P102 | 码表 + 330 对盲标（不接） | 0 | 0 |
+| P104 | `FAMILY_MIN` 不动 | 0 | 0 |
+| P106 | 拼族两条（不接） | 0 | 0 |
+
+**任务书说「P96 K→M、P98 换门 是两刀」——量下来那两刀砍在尺上，不在产品上。** 这不是新发现（P94 起每一节都写着「没接进产品」），
+但八批连起来读，**用户眼前那一屏从 P92 到今天一个像素都没变过**，这是事实。
+
+#### ③-d **判：结案。** 理由是数：
+
+1. **天花板是 22/765 = 2.9%**（`user` 血缘 7/549 = **1.3%**）——175 屏已经**全普查**，不是抽样，不会再冒出一大块；
+   团 ≤1 那一档这一批读完是 **0**。**就算尺子完美、就算接进产品，这条线碰得到的屏就这么多。**
+2. **尺子今天已经拿到了 16/22**；剩下 6 屏 = 4 组事实，**五条路全量死了**：
+   字面（P102 R1/R2：0/8）· 同义合码（P102 `S`：0 翻）· 放宽门槛（P104：新增 20、真 0）·
+   实体桥（P106 C1：反例翻 5）· 分布互近邻（P106 C12：两轴同劈 0/4、两格族 0/8）。
+3. **「该召回的没召回」这一半，这条线能给的量出来是 0**（拆汉字闸 0/6、0/11 变好）。
+4. **对照**：`user` 血缘 **空屏 64.7%**，是「灌屏」那个数的 **50 倍**——这条线八批一次都没碰过它。
+
+**今天的上限在哪、要越过它得先有什么**（写进了 `docs/product-readiness-plan.md` 最后那一节「不做」）：
+**码在抽取那一头就是规范的**（带受控词表重抽；P96 ③-f 记的代价约 2000 次真模型调用 + 全台账 id 作废），
+或者**一条不经过码的相似度信号**（事实正文的语义向量）——**两样今天都没有，也都不是「再造一把尺」换得来的**。
+**而且越过去买到的最多是剩下那 6 屏。** 先去量「空屏 355 里有多少是该召回没召回」，再决定要不要回来。
+
+**结案不是失败**：175 屏逐屏有人读、十份标注、四支反事实（`--cf-shape` / `--cf-hold` / `--fam2` / `--fuse`）、一把码表尺，**全在仓库里**。
+
+### ④ 闸 / 突变 / 尺 / 指纹
+
+**动的源码四处**：`scripts/recall_ruler.py`（`--fuse` 那一支 + 12 条 `EXPECT_*`）· `scripts/floor_ruler.py`（+12 登记、两个 floor 抬到 179 / 191）·
+`tests/test_p106.py`（整份新增，16 条）· `tests/test_p94|p96|p98|p100|p102|p104.py` 各两行 floor 字面量。
+外加 `tests/fixtures/memory_sample.jsonl` +63 行（`p106-unread-59` 60 行 · `p106-fuse-read-2` 3 行）。
+
+⚠️ **「加登记会红哪几条」开工前写了预测、抬 floor 之前先跑了一遍核**：预测 `p90::第四条b` + 六份 floor 字面量那六条 = **7 条**，
+实跑 **7 failed / 212 passed，逐条对上**；`>=` 那几条（p84/p85/p86/p88）预测绿、实跑绿。
+⚠️ **第一次全量跑红了一条没预测到的**：`test_no_undefined_names`（`cf_fuse` 里留了两个没用的 import）——照实记，删掉后 **3509 / 0**。
+
+#### ④-a 突变验
+
+`<scratch>/p106/mutate.py`，子集 = `tests/test_p*.py` 里凡是 import 了 `floor_ruler` 的 **18 份 / 356 条**；
+**预期集合里「凡是调 `floor_ruler.check()` / `main()` 的测试」是事先用 `ast` 算出来的**（不是看红了再填）。
+**扒 nodeid 那一行先自检**（P104 第一趟整趟作废那一课）：每一趟断言扒出来的每一条都含 `::`、都在 `--collect-only` 清单里，
+而且**第一趟只砍 ①（一把肯定红 `test_p106::第一条c` 的刀）**——它确实红了那一条，**尺子是好的**。
+
+| 趟 | 刀 | 砍哪儿 | 红 | 预期逐条对上 |
+|---|---|---|---:|---|
+| 1 | ① | `EXPECT_P106_UNREAD (59,12,0)→(59,12,1)` | 18 | **13/18 ❌**——多红 5 条 `test_p80::第二条*` |
+| 2 | ① | 同上（预期修正后重切） | 18 | **18/18 ✅** |
+| 2 | ② | `EXPECT_FUSE_C12` 「正例修好」0→1 | 18 | **18/18 ✅** |
+| 2 | ③ | **改人标**：`U24`（i=272）`判@3` false→true | 3 | **2/3 ❌**——多红 `test_p106::第三条a` |
+| 2 | ④ | **改人标**：`p106-fuse-read-2` 的 i=23 `假→真` | 1 | **1/1 ✅** |
+| 2 | ⑤ | `main()` 里 `--fuse` 那个 if **外头**多写一处 `cf_fuse` | 1 | **1/1 ✅** |
+| 3 | ③′ | 同 ③（预期修正后重切） | 3 | **3/3 ✅** |
+| 3 | ⑥ | 删掉一条登记（`EXPECT_FUSE_NEG`） | 21 | **21/21 ✅** |
+| 3 | ⑦ | 计划文档「不做」那一节里**结案那一条整条删掉** | 1 | **1/1 ✅** |
+| 3 | ⑧ | `_fuse_truth` 里 P96 那一份的「该放」换成「该拦」 | 2 | **2/2 ✅** |
+| 3 | 对照 A / B | `entity_merge` 的 `SPELL_MIN` / `MIN_SUB_LATIN`（**闭包外头**） | 0 | **全绿 ✅** |
+
+**两处预测错了，照实记（都是预测漏了，不是闸坏了）**：
+* **第一趟 ① 多红 5 条**：`test_p80` 是经由模块级 helper `_with_registry` 调 `F.check()` 的，我那个 `ast` 推导**只看了一层**
+  ——改成「调了『调尺子的 helper』的测试也算」之后，CHK 从 12 条变 17 条，重切 18/18 对上。
+  ⚠️ **这是「量红的那把尺」自己的洞的另一种形状**（P104 是扒 nodeid 扒成了字面量；这一批是**预期集合算少了**）。
+* **③ 多红 `第三条a`**：`_fuse_truth` 也读 `p106-unread-59` 的 `判@3`，改一行人标，22 就变 23——**闸是对的，预测少写了一条**。
+
+⇒ **真刀 8 把（①–⑧，③ 和 ① 各重切一次）· 对照刀 2 把全绿 · 每一刀整文件写回 + 逐字节 `cmp` 还原**；
+砍完 `git diff --stat` 跟砍之前逐字相同（10 files / +461 −14）。
+⚠️ **砍完跑了完整 pytest**（见收尾那张表第一行）。
+
+---
+
+### 收尾（**每个数带出处**）
+
+| 数 | 逐字命令（cwd 写明） | sha7 |
+|---|---|---|
+| 后端 **3493 → 3509 passed / 0 skipped**（+16 = `test_p106`；**砍完那一次也是 3509**） | `cd <worktree>/backend && KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python -m pytest -q -p no:cacheprovider` | `f6b6222` + 本批 |
+| 前端 **104 文件 / 993 条全绿**（开工那条 `freePort` 超时收尾时不见了——`47232` 上那个别人的 `uvicorn` 已经退了；**这一批没碰 `frontend/`**） | `cd <worktree>/frontend && npm test` | 同上 |
+| `floor_ruler` **登记 167 → 179（只准往上 5 · 钉死 174）/ 共核 179 → 191 / 落后 0 / 对不上 0 / 看着 12 份（+0）** | `cd <worktree>/backend && ./.venv/bin/python scripts/floor_ruler.py` | 同上 |
+| **九把尺各跑一遍全 `EXIT=0`**：`765` / `765 + 窗口` / 圆点 **166 · 137 · 33** / 泛尺三档（泛 6 · 不泛 6 · 判不了 2）/ `en-gate` **1369 / 1067 / 793 = 74.3%** / `kb-search` 逐格 OK / 卡 **979 / 315 / 133 / 62 / 29 / 33** / `code_pair_ruler` **18 屏 · 真 1 · 假 17** 逐格复现 / `floor_ruler` | 收尾命令 ② | 同上 |
+| **七支反事实全 `EXIT=0`**（`whoaxis`+`spread`+`common`+`bigcorpus`+`gates` 一趟 · `--cf-shape` HEAD **17**（同一批 17 屏）· `--cf-hold` 人标 **(1, 25, 1)**） | 收尾命令 ③ | 同上 |
+| **这一批新造的第十一支 `--fuse`**（不进例行清单，约四分钟）：`(59,12,0)` · `(4,4,0)` · `(8,8)` · **`(175,175,22,17,16,6)`** · 漏 `(94,316,320,590,694,696)` · **`user (549,355,7)`** · 两批不一致 `(94,)` · C1 `(31,14,5,None,0,6)` · C12 `(19,2,0,1,0,0)` 新增 `(23,590)` · 反例池 33 | `… scripts/recall_ruler.py --fuse` | 同上 |
+| 真库指纹开工 = 收工 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 / `llm_usage` 最大 id 5738 / `harness_runs` 120 / `harness_rounds` 489**（**真模型 0 次调用 / 0 token**） | `sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" "select …"` + `<scratch>/p104b/fp.py` | — |
+| codebook 源和目标各核 **11,429,185 / `403a1183`** | `shasum -a256 <主仓>/backend/data/terrence/codebook.xml <scratch>/p106data/terrence/codebook.xml` | — |
+
+`~/Library/Application Support` **一次都没碰**；`postnote` **一条都没发**；真模型 **0 次调用**。
+
+#### 这一批的收尾命令（**逐条写明在哪个目录、哪个环境跑**；第 776 轮删库事故那条规矩）
+
+```sh
+# ── ⓪ 语料摆**两处**
+#   <worktree>/backend/data/notes.sqlite3 ← 主仓那份**只读拷一份**（gitignored，别 chmod 444；backend/data/ 开工时不存在，先 mkdir）
+#   <scratch>/p106data                    ← 主仓 backend/data **整棵拷**（KITE_DATA_DIR 指它）
+#   ⚠️ 拷前 `ls -ld <scratch>/p106data` 必须是「不存在」（P104/P105 两批都撞上过上一个实例留下的目录）；
+#      拷后 `diff <(ls -1a 源) <(ls -1a 目标)` = 0 差异；`recall_ruler` 自报 `users 6`。
+#   <worktree>/{backend/.venv, frontend/node_modules, node_modules} ← **软链**到主仓（别 git add）
+cd <worktree>                 # = /Users/huilong/Skills-Bugfixing-Feishu/MEMOKET_NOTE/.claude/worktrees/agent-a77bf36e62fd306c2
+mkdir -p backend/data
+cp <主仓>/backend/data/notes.sqlite3 backend/data/notes.sqlite3
+cp -R <主仓>/backend/data <scratch>/p106data
+ln -sfn <主仓>/backend/.venv backend/.venv
+ln -sfn <主仓>/frontend/node_modules frontend/node_modules
+ln -sfn <主仓>/node_modules node_modules
+
+# ── ① 后端（cwd = <worktree>/backend；解释器 = 软链过来的主仓 .venv；KITE_DATA_DIR = scratch 那份拷贝）
+cd <worktree>/backend
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python -m pytest -q -p no:cacheprovider   # 3509 / 0 skipped
+
+# ── ② 九把尺（**一条一条跑，每条后面单独 `EXIT=$?`，别接管道、别 `| tail`**）
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py            ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py --window   ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/margin_dot_ruler.py        ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/topic_spread_ruler.py      ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/en_gate_ruler.py --quorum  ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/kb_search_ruler.py         ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/card_origin_ruler.py       ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/code_pair_ruler.py         ; EXIT=$?
+./.venv/bin/python scripts/floor_ruler.py                                               ; EXIT=$?   # 不读语料
+
+# ── ②b 这一批新造的那一支（⚠️ 一趟 765 屏召回 + 六张码表，约四分钟；**不进每批例行清单**）
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py --fuse     ; EXIT=$?
+
+# ── ③ 七支反事实（各自单独 EXIT=$?）
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py \
+  --cf-whoaxis --cf-spread --cf-common --cf-bigcorpus --cf-gates                        ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py --cf-shape ; EXIT=$?
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python scripts/recall_ruler.py --cf-hold  ; EXIT=$?   # 约十分钟，只读
+
+# ── ④ 前端（cwd = <worktree>/frontend，node_modules 是软链）
+cd <worktree>/frontend && npm test          # 104 文件 / 993 条
+
+# ── ⑤ 突变验（cwd = <worktree>/backend；⚠️ **会改 worktree 里的文件**，跑在主仓上就是改主仓源码；
+#      ⚠️ 别 pkill；clear_pyc 只清 app/ scripts/ tests/；KITE_DATA_DIR 由脚本自己设成 <scratch>/p106data）
+cd <worktree>/backend
+./.venv/bin/python <scratch>/p106/mutate.py ①              # 第一趟：自检扒 nodeid（预期漏了 p80 那 5 条，照实记）
+./.venv/bin/python <scratch>/p106/mutate.py ① ② ③ ④ ⑤    # 第二趟（③ 预期漏了 第三条a）
+./.venv/bin/python <scratch>/p106/mutate.py ③ ⑥ ⑦          # 第三趟 a
+./.venv/bin/python <scratch>/p106/mutate.py ⑧ A B          # 第三趟 b
+KITE_DATA_DIR=<scratch>/p106data ./.venv/bin/python -m pytest -q -p no:cacheprovider   # ⚠️ 砍完跑完整的
+
+# ── ⑥ 真库指纹（**主仓，只读**，`mode=ro`）：开工 / 收尾各一次，必须逐字相同
+sqlite3 "file:<主仓>/backend/data/notes.sqlite3?mode=ro" \
+  "select count(*), max(updated_at), sum(length(content)), (select max(id) from llm_usage), \
+   (select count(*) from note_revisions), (select count(*) from harness_runs), \
+   (select count(*) from harness_rounds) from notes;"
+cd <worktree>/backend && ./.venv/bin/python <scratch>/p104b/fp.py     # digests 那一串 47dcc54be60aa4f2
+shasum -a256 <主仓>/backend/data/terrence/codebook.xml <scratch>/p106data/terrence/codebook.xml
+```
+
+⚠️ `<scratch>` = 这一批的 scratchpad，**不是主仓**；`rm` 一律不出现在收尾里（第 776 轮那一课）。
+⚠️ **入库逐路径 `git add`**，别 `git add -A`（三个软链会被带进去）。
+
+P106 留给下一批：
+① **这条线结案了**（计划文档「不做」最后一条）。**要重开，先有「规范的码」或「不经过码的相似度信号」**，别再造第六条拼码的路；
+② **下一条该量的是「空屏 355/549」里有多少是「该召回没召回」**——这个数这个仓今天没有，它是 D2「记忆准确性」剩下的最大一格；
+③ i=94 两批判得不一样（P94 真 / P104 不够半屏），这一批照实并排、没去仲裁；
+④ C1 新增的 14 屏里 9 屏没读（反例先死了），C12 的 `obj` 互近邻头 25 对全是 df=2 的巧合——**这两份如果有人要重拿，先读这两句**；
+⑤ 突变验这一批撞出**「预期集合算少了」**这个形状（`ast` 推导漏了一层 helper）——下一批的突变脚本，**CHK 那一类要走到 helper**；
+⑥ P105 / P104 / P103 / P102 / P101 / P89 留的那几条一条都没碰。
+

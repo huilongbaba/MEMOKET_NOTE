@@ -404,8 +404,8 @@ def test_第四条b_新钉的数都进了floor_ruler():
 
 
 def test_第四条c_两个floor抬到了本worktree的真值():
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 167   # P104 那一批是 167、P102 是 148、P100 是 140、P98 是 125
-    assert FR.CHECKED_COUNT_FLOOR == 179                            # P104 那一批是 179、P102 是 160、P100 是 152、P98 是 137
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 179   # P104 那一批是 167、P102 是 148、P100 是 140、P98 是 125；P106 抬到 179
+    assert FR.CHECKED_COUNT_FLOOR == 191                            # P104 那一批是 179、P102 是 160、P100 是 152、P98 是 137；P106 抬到 191
 
 
 def test_第四条d_老标注的分母一个没动():

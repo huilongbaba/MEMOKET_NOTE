@@ -459,6 +459,47 @@ EXPECT_FAM2_HOLD_NEW = ("H13", "H15")           # `K` 那一头新增的两屏�
 # 留出集上 `M` 团 == 2 的屏有这么多，**放到 2 一屏都没进门**——半屏那道门先挡着。
 EXPECT_FAM2_HOLD_M2 = 7
 
+# ── `--fuse`：**一屏之内跨码拼族**（P106，收 P104 ①）+ **「拆汉字闸 / 屏级判据」这条线的结案账** ──
+#
+# ⚠️ **这一支不改产品，只读**；它跑一趟 765 屏召回 + 六个库的码表（约四分钟），**不进每批的例行清单**。
+# ⚠️ 人标是**数据**（`p94-shape-18` / `p96-halfdoor-7` / `p102-merge-read-18` / `p104-fam2-111`
+# / `p106-unread-59` / `p106-fuse-read-2`），这一支只重算机械那一半。
+#
+# **① 普查拼齐了**：`量得了 ≥3` 的 175 屏，P94–P104 读过 116 屏，
+# 这一批把剩下 `K团 ≤1 ∧ M团 ≤1` 的 **59 屏**盲标普查完（`p106-unread-59`）⇒ **175/175 屏都有人读**。
+# (屏, 人读出族的, 其中「该判是」= 族 ≥3 且 ≥ 半屏)
+EXPECT_P106_UNREAD = (59, 12, 0)
+EXPECT_P106_UNREAD_LIBS = (("fresh678b", "fixture", 2, 0, 0), ("shot-demo", "fixture", 7, 5, 0),
+                           ("terrence", "script", 11, 2, 0), ("terrence", "user", 37, 5, 0),
+                           ("terrence-rewrite", "script", 2, 0, 0))
+# **② 「两条轴同时被劈开」的族全库有多少**：团 ≤2 那两档（`p104-fam2-111` ∪ `p106-unread-59`）里
+# 人读的族 ≥3 且 ≥ 半屏的屏 → (屏, 其中族里至少一条对 `K` 团每条两轴都不沾的, P102 那把尺 R2/R1 够得着的劈开成员)。
+# 4 屏 = **2 组事实**（i=694/696 同一批、i=316/320 同一批），按库 `terrence·user` 2 · `terrence-rewrite·script` 2。
+# **团 ≤1 那档一屏都没有**（`EXPECT_P106_UNREAD` 第三格 = 0）；那一档里人读的 8 对两格族**8 对全是两轴同劈**。
+EXPECT_P106_TWOAXIS = (4, 4, 0)
+EXPECT_P106_TWOAXIS_PAIRS = (8, 8)       # 团≤1 那档人读的两格族：(对数, 其中两轴同劈)
+# **③ 用户眼前的数**（这一条线结案的正文）：(量得了≥3, 其中有人读的, 人读「半屏同一句话」,
+# 尺子判是, 其中真, 漏)。⚠️ **尺子判是 ≠ 用户看得见的变化**：`fact_distinct` 没接进产品
+# （`test_p104::第六条b`），所以**这 22 屏今天在用户眼前一屏都没变过**。
+EXPECT_P106_CENSUS = (175, 175, 22, 17, 16, 6)
+EXPECT_P106_MISS = (94, 316, 320, 590, 694, 696)
+# `user` 血缘那 549 屏：(屏, 空屏, 半屏同一句话)。⚠️ **空屏 64.7% vs 灌屏 1.3%**——
+# 这条线七批都在第二个数上，第一个数它从来没碰过（拆汉字闸那一半量过：P90 变好 0/6、P92 变好 0/11）。
+EXPECT_P106_USER = (549, 355, 7)
+# i=94 两批读得不一样（P94 判真、P104 按族格数算不够半屏），**照实并排**，不挑一份：取「任一份判真」是 22，
+# 只信 P104 那份是 21。
+EXPECT_P106_DISAGREE = (94,)
+# **④ 两条拼族判据**（都不是手写同义表 / 字面 / 拿目标那对反推的门槛）：
+#   C1  **实体桥**：`(obj∩ ∨ ent∩) ∧ (topics∩ ∨ ent∩) ∧ unit≠` —— **先喂反例就死了**
+#   C12 **码的分布互近邻**：每个库里 `topics` 码按挂在哪些 `obj` 上、`obj` 码按挂在哪些 `topics` 上
+#       做分布向量，**互为最近邻**（余弦，**没有 cut**，df ≥2 才有向量）就并一类，`same_thing` 在并类后的码上算
+# (765 屏判是, 新增, 新增里是**已读反例**的, 新增里人读真的, 4 屏两轴同劈正例修好了几屏, 8 对两格族拼上几对)
+EXPECT_FUSE_C1 = (31, 14, 5, None, 0, 6)
+EXPECT_FUSE_C12 = (19, 2, 0, 1, 0, 0)
+EXPECT_FUSE_C12_NEW = (23, 590)
+# 反例池：P94 判假 · P96 该拦 · P102 判假 · P104 放宽新增的 20 屏（逐屏读过全假），去重
+EXPECT_FUSE_NEG = 33
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -1623,6 +1664,225 @@ def cf_fam2(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     }
 
 
+def _fixture(which: str) -> list[dict]:
+    import json
+
+    fix = BACKEND / "tests" / "fixtures" / "memory_sample.jsonl"
+    return [r for r in (json.loads(line) for line in fix.read_text(encoding="utf-8").splitlines()
+                        if line.strip())
+            if r.get("set") == which and "_meta" not in r]
+
+
+def _fuse_truth() -> dict[int, list[bool]]:
+    """175 屏的人读：各批标注拼起来（**每一份都是人读的，这儿一个字都不判**）。"""
+    out: dict[int, list[bool]] = {}
+    for r in _fixture("p94-shape-18"):
+        out.setdefault(r["i"], []).append(r["判"] == "真")
+    for r in _fixture("p96-halfdoor-7"):
+        out.setdefault(r["i"], []).append(r["判"] == "该放")
+    for r in _fixture("p102-merge-read-18"):
+        out.setdefault(r["i"], []).append(r["verdict"] == "真")
+    for which in ("p104-fam2-111", "p106-unread-59"):
+        for r in _fixture(which):
+            out.setdefault(r["i"], []).append(bool(r["判@3"]))
+    return out
+
+
+def _fuse_merge(lib: str) -> tuple[dict, dict]:
+    """C12：一个库里 `obj` / `topics` 两张码表各自按**分布互近邻**并类（**没有 cut**）。"""
+    import math
+    from collections import Counter, defaultdict
+
+    from scripts import code_pair_ruler as CP
+
+    obj_vec: dict[str, Counter] = defaultdict(Counter)
+    top_vec: dict[str, Counter] = defaultdict(Counter)
+    df: Counter = Counter()
+    for f in CP.tables(lib)["facts"]:
+        objs = (f.get("obj") or "").split()
+        tops = (f.get("topics") or "").split()
+        for o in objs:
+            df[("obj", o)] += 1
+            obj_vec[o].update(tops)
+        for t in tops:
+            df[("topics", t)] += 1
+            top_vec[t].update(objs)
+
+    def cos(a: Counter, b: Counter) -> float:
+        na = math.sqrt(sum(v * v for v in a.values()))
+        nb = math.sqrt(sum(v * v for v in b.values()))
+        return sum(a[k] * b[k] for k in a if k in b) / (na * nb) if na and nb else 0.0
+
+    def mutual(vecs: dict[str, Counter], axis: str) -> dict[str, str]:
+        codes = [c for c in vecs if df[(axis, c)] >= 2 and vecs[c]]
+        nn: dict[str, str] = {}
+        for c in codes:
+            best, bs = None, 0.0
+            for d in codes:
+                if d != c:
+                    s = cos(vecs[c], vecs[d])
+                    if s > bs:
+                        best, bs = d, s
+            if best is not None:
+                nn[c] = best
+        par: dict[str, str] = {}
+
+        def find(x: str) -> str:
+            par.setdefault(x, x)
+            while par[x] != x:
+                par[x] = par[par[x]]
+                x = par[x]
+            return x
+        for c, d in nn.items():
+            if nn.get(d) == c and c < d:
+                par[find(c)] = find(d)
+        return {c: find(c) for c in par}
+
+    return mutual(obj_vec, "obj"), mutual(top_vec, "topics")
+
+
+def cf_fuse(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**一屏之内跨码拼族**（P106）+ 这条线结案那张账。口径和理由写在 `EXPECT_P106_*` / `EXPECT_FUSE_*` 上面。
+
+    ⚠️ **这一支不改产品，只读**，只在 `--fuse` 底下跑。
+    """
+    from app.database.kb import fact_distinct as FD
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+    shots = []
+    for i, (user, q, _m, origin) in enumerate(qs):
+        m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+        facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+        store, _v = m._index()
+        recs = [store.facts[f["id"]] for f in facts if f.get("id") in store.facts]
+        shots.append({"i": i, "lib": user, "origin": origin, "recs": recs, "shape": FD.screen_shape(recs)})
+
+    def same_k(a, b) -> bool:
+        return bool(set(a.obj) & set(b.obj)) and bool(set(a.topics) & set(b.topics))
+
+    # ── ① / ③ 普查 + 用户眼前的数 ─────────────────────────────────────────
+    truth = _fuse_truth()
+    den = [s for s in shots if s["shape"]["measurable"] >= 3]
+    true = {s["i"] for s in den if any(truth.get(s["i"], ()))}
+    head = {s["i"] for s in den if s["shape"]["flagged"]}
+    census = (len(den), sum(1 for s in den if s["i"] in truth), len(true),
+              len(head), len(head & true), len(true - head))
+    user = [s for s in shots if s["origin"] == "user"]
+    user_row = (len(user), sum(1 for s in user if not s["recs"]), sum(1 for s in user if s["i"] in true))
+    disagree = tuple(sorted(i for i, v in truth.items() if len(set(v)) > 1))
+    ur = _fixture("p106-unread-59")
+    tab: dict[tuple[str, str], list[int]] = {}
+    for r in ur:
+        row = tab.setdefault((r["user"], r["血缘"]), [0, 0, 0])
+        row[0] += 1
+        row[1] += bool(r["人读的族"])
+        row[2] += bool(r["判@3"])
+    unread = (len(ur), sum(1 for r in ur if r["人读的族"]), sum(1 for r in ur if r["判@3"]))
+    # 自检：这 59 屏正好就是 `K团≤1 ∧ M团≤1` 那一档
+    zone = {s["i"] for s in den
+            if len(_hold_clique(s["recs"], same_k)) <= 1 and len(s["shape"]["family_idx"]) <= 1}
+    if zone != {r["i"] for r in ur}:
+        raise AssertionError("`p106-unread-59` 不是 `K团≤1 ∧ M团≤1` 那一档了 —— 数作废")
+
+    # ── ② 两轴同劈 ───────────────────────────────────────────────────────
+    by_i = {s["i"]: s for s in shots}
+
+    def split_members(s, letters: str) -> tuple[list[int], list[int]]:
+        recs = s["recs"]
+        F = [j for j in (ord(ch) - ord("a") for ch in letters) if FD.measurable(recs[j])]
+        ck = _hold_clique([recs[j] for j in F], same_k)
+        ck = [F[j] for j in ck]
+        neither = [j for j in F if j not in ck and all(
+            not (set(recs[j].obj) & set(recs[c].obj)) and not (set(recs[j].topics) & set(recs[c].topics))
+            for c in ck)]
+        return ck, neither
+
+    from scripts import code_pair_ruler as CP
+
+    def lit(xs, ys) -> bool:
+        return any(CP.flat(a) != CP.flat(b) and CP.flat(a) and CP.flat(b)
+                   and (CP.flat(a) in CP.flat(b) or CP.flat(b) in CP.flat(a)) for a in xs for b in ys) \
+            or any(a != b and CP.tokens(a) & CP.tokens(b) for a in xs for b in ys)
+
+    pos = {}
+    for r in _fixture("p104-fam2-111"):
+        if r["判@3"]:
+            pos[r["i"]] = max(r["人读的族"].split("|"), key=len)
+    two = [i for i, fam in pos.items() if split_members(by_i[i], fam)[1]]
+    reach = 0
+    for i in two:
+        ck, nei = split_members(by_i[i], pos[i])
+        recs = by_i[i]["recs"]
+        reach += sum(1 for j in nei if any(lit(recs[j].obj, recs[c].obj) and lit(recs[j].topics, recs[c].topics)
+                                           for c in ck))
+    pairs = {r["i"]: r["人读的族"] for r in ur
+             if r["人读的族里量得了的"] == 2 and len(r["人读的族"]) == 2 and "|" not in r["人读的族"]}
+    pairs_split = sum(1 for i, fam in pairs.items() if split_members(by_i[i], fam)[1])
+
+    # ── ④ 两条拼族判据 ────────────────────────────────────────────────────
+    merges = {lib: _fuse_merge(lib) for lib in sorted({s["lib"] for s in shots})}
+
+    def canon(lib: str, axis: int, codes) -> set:
+        mp = merges[lib][axis]
+        return {mp.get(c, c) for c in codes}
+
+    def c12(lib):
+        def f(a, b):
+            return (bool(canon(lib, 0, a.obj) & canon(lib, 0, b.obj))
+                    and bool(canon(lib, 1, a.topics) & canon(lib, 1, b.topics)) and a.unit != b.unit)
+        return f
+
+    def c1(lib):
+        def f(a, b):
+            e = bool(set(a.entities) & set(b.entities))
+            return ((bool(set(a.obj) & set(b.obj)) or e)
+                    and (bool(set(a.topics) & set(b.topics)) or e) and a.unit != b.unit)
+        return f
+
+    def flagged(s, same, topics_of) -> bool:
+        recs = s["recs"]
+        idx = [j for j, f in enumerate(recs) if FD.measurable(f)]
+        fam = [idx[j] for j in _hold_clique([recs[j] for j in idx], same)]
+        n = len(idx)
+        cov = 0
+        if len(fam) >= FD.FAMILY_MIN:
+            common = set.intersection(*(topics_of(recs[j]) for j in fam))
+            cov = max((sum(1 for j in idx if t in topics_of(recs[j])) for t in common), default=0)
+        return n >= FD.FAMILY_MIN and len(fam) >= FD.FAMILY_MIN and (len(fam) * 2 >= n or cov * 2 >= n)
+
+    neg = ({r["i"] for r in _fixture("p94-shape-18") if r["判"] == "假"}
+           | {r["i"] for r in _fixture("p96-halfdoor-7") if r["判"] == "该拦"}
+           | {r["i"] for r in _fixture("p102-merge-read-18") if r["verdict"] == "假"}
+           | set(EXPECT_FAM2_NEW_IDX))
+    fread = {r["i"]: r["判"] == "真" for r in _fixture("p106-fuse-read-2")}
+
+    def branch(make, canon_topics: bool):
+        got = set()
+        for s in den:
+            lib = s["lib"]
+            tof = (lambda f, lib=lib: canon(lib, 1, f.topics)) if canon_topics else (lambda f: set(f.topics))
+            if flagged(s, make(lib), tof):
+                got.add(s["i"])
+        new = got - head
+        fixed = sum(1 for i in two if len(_hold_clique(
+            [by_i[i]["recs"][ord(ch) - ord("a")] for ch in pos[i]], make(by_i[i]["lib"]))) >= FD.FAMILY_MIN)
+        bridged = sum(1 for i, fam in pairs.items()
+                      if make(by_i[i]["lib"])(by_i[i]["recs"][ord(fam[0]) - 97], by_i[i]["recs"][ord(fam[1]) - 97]))
+        new_true = (sum(1 for i in new if fread.get(i)) if new and new <= set(fread) else None)
+        return (len(got), len(new), len(new & neg), new_true, fixed, bridged), tuple(sorted(new))
+
+    fc1, _n1 = branch(c1, False)
+    fc12, n12 = branch(c12, True)
+    if head != {s["i"] for s in den if flagged(s, FD.same_thing, lambda f: set(f.topics))}:
+        raise AssertionError("这一支复刻的门跟 `screen_shape` 对不上 —— 数作废")
+    return {"unread": unread, "unread_libs": tuple(sorted((u, o, *v) for (u, o), v in tab.items())),
+            "census": census, "miss": tuple(sorted(true - head)), "user": user_row, "disagree": disagree,
+            "twoaxis": (len(pos), len(two), reach), "pairs": (len(pairs), pairs_split),
+            "c1": fc1, "c12": fc12, "c12_new": n12, "neg": len(neg)}
+
+
 def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     """**库大小闸和汉字闸今天各自还挡着什么**（P90）。
 
@@ -2063,6 +2323,35 @@ def main(argv: list[str]) -> int:
         if set(EXPECT_FAM2_TRUE_IDX) & set(g["new_idx"]):
             bad.append("fam2: 人读判真的屏里有落在「新增」那一档的 —— "
                        "那判就得重读（今天这一格是 0），数作废")
+    if "--fuse" in argv:
+        g = cf_fuse(qs)
+        c = g["census"]
+        print(f"  **一屏之内跨码拼族 + 这条线的结案账**（P106）：量得了≥3 的 {c[0]} 屏里有人读的 {c[1]} 屏"
+              f"（这一批补读 `K团≤1 ∧ M团≤1` 那 {g['unread'][0]} 屏：人读出族 {g['unread'][1]}、该判是 {g['unread'][2]}）")
+        print(f"    **用户眼前**：人读「半屏同一句话」{c[2]} 屏；尺子判是 {c[3]}（真 {c[4]}）、漏 {c[5]} {g['miss']}"
+              f"；⚠️ 尺子没接进产品 ⇒ **这 {c[2]} 屏今天在用户眼前一屏都没变过**")
+        print(f"    `user` 血缘：{g['user'][0]} 屏 · **空屏 {g['user'][1]}** · 半屏同一句话 {g['user'][2]}"
+              f"；两批判得不一样的：{g['disagree']}")
+        print(f"    两轴同劈：团≤2 那档人读族≥3 且≥半屏 {g['twoaxis'][0]} 屏，两轴同劈 {g['twoaxis'][1]}，"
+              f"P102 那把尺字面口径够得着的劈开成员 {g['twoaxis'][2]}；团≤1 那档两格族 {g['pairs']}")
+        print(f"    拼族两条（判是, 新增, 新增里是已读反例, 新增里真, 正例修好, 两格族拼上）："
+              f"C1 实体桥 {g['c1']} · C12 分布互近邻 {g['c12']}（新增 {g['c12_new']}）；反例池 {g['neg']} 屏")
+        print("    ⇒ **C1 先喂反例就死（新增 14 里 5 屏是读过的假）；C12 两轴同劈那 4 屏一屏没修好、8 对一对没拼上，"
+              "新增 2 屏真 1 假 1 —— 判「不接」；这条线结案，理由在 `docs/product-readiness-plan.md` §4**")
+        for name, got, want in (("补读那一档", g["unread"], EXPECT_P106_UNREAD),
+                                ("补读按库", g["unread_libs"], EXPECT_P106_UNREAD_LIBS),
+                                ("两轴同劈", g["twoaxis"], EXPECT_P106_TWOAXIS),
+                                ("两格族", g["pairs"], EXPECT_P106_TWOAXIS_PAIRS),
+                                ("普查", g["census"], EXPECT_P106_CENSUS),
+                                ("漏", g["miss"], EXPECT_P106_MISS),
+                                ("user 血缘", g["user"], EXPECT_P106_USER),
+                                ("两批判得不一样", g["disagree"], EXPECT_P106_DISAGREE),
+                                ("C1", g["c1"], EXPECT_FUSE_C1),
+                                ("C12", g["c12"], EXPECT_FUSE_C12),
+                                ("C12 新增", g["c12_new"], EXPECT_FUSE_C12_NEW),
+                                ("反例池", g["neg"], EXPECT_FUSE_NEG)):
+            if got != want:
+                bad.append(f"fuse {name}: {got} ≠ {want}")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()
