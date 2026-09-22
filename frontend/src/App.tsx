@@ -47,7 +47,7 @@ import TrayPanel from './components/TrayPanel'
 import RevisionPanel, { applyRevision } from './components/RevisionPanel'
 import SelectionMenu from './components/SelectionMenu'
 import type { SelectionAction } from './components/SelectionMenu'
-import AgentActivity, { type AgentRound } from './components/AgentActivity'
+import AgentActivity, { type AgentRound, warningLine } from './components/AgentActivity'
 import { acceptAllHunks, diffParts, dropHunk, layersOf, pendingHunks, restoreLayers as restoreLayersEffect, roundDiffField, settledOf, type DiffPush }
   from './editor/roundDiff'
 import ContextMenu, { type MenuAt, type MenuItem } from './components/ContextMenu'
@@ -2407,15 +2407,21 @@ export default function App() {
    * 的另一篇笔记上。 */
   /** 往某一轮的记录里打补丁。事件是分散到达的（round-start / tool-calls /
    * evaluate / policy 各一条），先到的先建这一轮的空壳，后到的往上补。 */
+  /** 一张空卡。**一处定义**：`patchRound` 和 `onWarning`（那条在开跑之前就到的
+   *  warning 要落在第 1 轮那张卡上）各写一份就是两把尺，加一格字段只改了一处
+   *  的话，另一处造出来的卡上那一格永远是 `undefined`。 */
+  function emptyRound(round: number): AgentRound {
+    return {
+      round, cleanupOnly: false, revisions: 0, toolCalls: [], toolTruncated: false,
+      scores: {}, status: '', weakest: null, policyReasons: [], policy: null, errors: [], dropped: [],
+    }
+  }
+
   function patchRound(noteId: string, round: number, patch: Partial<AgentRound>) {
     writeRounds(noteId, (rs) => {
       const i = rs.findIndex((r) => r.round === round)
       if (i < 0) {
-        return [...rs, {
-          round, cleanupOnly: false, revisions: 0, toolCalls: [], toolTruncated: false,
-          scores: {}, status: '', weakest: null, policyReasons: [], policy: null, errors: [], dropped: [],
-          ...patch,
-        }]
+        return [...rs, { ...emptyRound(round), ...patch }]
       }
       const next = [...rs]
       next[i] = { ...next[i], ...patch }
@@ -2771,17 +2777,41 @@ export default function App() {
         // 少了那个能力——后端注释写着「不能是静默的」，可在这之前前端根本没接
         // 这个事件，发出来的警告全被丢掉了。
         //
-        // **切走之后照旧拦**（P103 B ③，三条里唯一不改的那条）。两条理由，都窄：
+        // **这一轮少了哪个能力，先记在这一篇的那张卡上**（P105 C，收 P103 问题 #7）。
+        // 按 noteId 写，**排在自己那句 guard 前面**：切走了这一格照样该留着
+        // ——它是**这一篇这一轮的账**，不是「现在屏幕上那一篇」的事。
+        // P103 判「这一批不接」的理由逐字是「要接就得先给轮次卡加一格」，这就是那一格。
+        // ⚠️ **不许写成 `if (!rs.length) return rs`**（`onError` / `onDropped` 那个形状）：
+        //    那两条永远在某一轮**里**发生，而这一条**最早那一发在开跑之前就到了**
+        //    ——`hooks.skeleton` 是 router 在 `loop.run` **之前**跑完的
+        //    （`middleware/cost.py` 抬头逐字写着这件事），那一刻**一张卡都还没有**。
+        //    真壳实拍过：那句红字 toast 第 412 毫秒就弹了，而卡上那一格**一处都没有**
+        //    ——「记了」和「记到了看得见的地方」是两件事。
+        //    ⇒ 一张卡都没有时**现开第 1 轮那张**：`ROUND_START` 到了之后
+        //    `patchRound(noteId, 1, …)` 按轮号**并进同一张卡**，那一格留着。
+        //    （骨架那一条影响的是整次跑，挂在第 1 轮是**照实的近似**：
+        //    它就是这一轮开跑前少掉的那个能力。）
+        writeRounds(noteId, (rs) => {
+          const next = rs.length ? [...rs] : [emptyRound(1)]
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            warnings: [...(next[next.length - 1].warnings ?? []),
+              { middleware: d.middleware, hook: d.hook, error: d.error }],
+          }
+          return next
+        })
+        // ── 下面是**现在显示的这篇**的（那句红字 toast）──────────────────────
+        // **切走之后照旧拦**（P103 B ③ 判的，这一批**一个字没动**）。两条理由，都窄：
         //  · **跑还在继续，用户这一刻做不了任何事**——`onCost` / `onCrossRun` 各自
         //    给了一件事（钱花完了 / 去翻历史版本），这一条给不出。
         //  · **它一轮可以来好几条**：`loop._wrap` 里**每个 middleware 每个钩子**
         //    抛一次就发一条，`hooks/note.py` 光骨架那一处就有两种（生成失败 / 存着的是半句）。
         //    切走之后连弹几条无从下手的红字，是噪声不是通知。
-        // ⚠️ 它被拦掉之后**这一轮少了哪个能力这件事在界面上就没有第二个出处了**
-        //    （轮次卡上没有这一格）。照实记在 `docs/edge-cases.md`，
-        //    要接就得先给轮次卡加一格「这一轮少了什么」——**那是另一刀**。
+        // ⇒ **弹不弹**跟**记不记账**是两件事：这一批只加了记账那一半。
+        //   P103 记的那条「被拦掉之后界面上没有第二个出处」由上面那一格收了：
+        //   切回来（或者压根没切走）都在卡上看得见，而**不用在别处弹一条红字**。
         if (currentRef.current?.id !== noteId) return
-        toast(`「${d.middleware}」这一步出错了，本轮少了这个能力：${d.error}`, 'error')
+        toast(warningLine({ middleware: d.middleware, hook: d.hook, error: d.error }), 'error')
       },
       onError: (detail) => {
         // **记账排在 guard 前面**（P101 B）：这一轮报了什么错是这一篇的账，

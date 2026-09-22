@@ -28343,8 +28343,6 @@ cd <worktree> && zsh <scratch>/p103/cuts.sh                            # 突变�
 ./backend/.venv/bin/python <scratch>/p103/fp.py                        # 开工 / 收工各一次，diff 要 0 行
 ```
 
----
-
 ## P104 · 第 822 轮：**「团 == 2 的那 99 屏里有多少是真的」量完了**（111 屏盲标普查 + 留出集重算）+ **判 `FAMILY_MIN` 不动**（放宽买到 20 屏，一屏真的都没有）+ **更正 P102 那句「差的就是 1」**（2026-09-22）
 
 > 出身：worktree `.claude/worktrees/agent-afd518dab5c36f91f`，HEAD `c8a9299`（`git log -1` 钉过）。
@@ -28675,3 +28673,395 @@ P104 留给下一批：
    下一批的突变脚本**第一件事应该是拿一把「肯定红某条」的刀自检扒 nodeid 那一行**；
 ⑦ **「同一个字面量有第二份」这次是五份**（`p94`/`p96`/`p98`/`p100`/`p102`），**加登记前先 `grep -rn` 数**；
 ⑧ P103 / P102 / P101 / P89 留的那几条一条都没碰。
+
+---
+
+## P105 · 第 822 轮：**十一步那条路够不着「切走」——补上第 ⑫ 步**（它自己判，四把砍刀逐条点名）+ **轮次卡加了「这一轮少了什么」那一格**（收 P103 问题 #7）+ **第三十次走查**（2026-09-22）
+
+worktree `.claude/worktrees/agent-a06955f5f9c778701`，HEAD `c8a9299`。
+
+> **数怎么记**（P95 立的规矩）：每个数带 `<数> ← <逐字命令> @ <sha7>`。**基线一律自己再量，不抄上一批。**
+
+**基线**（都在 `c8a9299` 上自己量的）：
+* 后端 **3468 passed / 0 skipped** ← `cd backend && PYTHONPATH=. KITE_DATA_DIR=<scratch>/p105data ./.venv/bin/python -m pytest -q` @ `c8a9299`
+* 前端 **103 文件 / 980 条** ← `cd frontend && npm test` @ `c8a9299`
+* 假壳那条闸**两个数都对**：**静态 108**（60 判据 + 39 反例 + 9 条闸自跑）
+  ← `cd frontend && ./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts` @ `c8a9299`；
+  **真跑 110**（再加 2 条通道对照）← `cd frontend && WALKTHROUGH_SCRATCH=<scratch>/p105fake1 node scripts/run-walkthrough-fakeshell.mjs` @ `c8a9299`。
+  ⚠️ **这一批第一趟就绿**（P103 那趟第一次红过 1 条 `bnew3` 的 toast，第二趟才绿）——
+  那一族毫秒级抖动**这一批没再出现**，下一批接着看。
+* 真库指纹 **482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` / `note_revisions` 44 /
+  `harness_runs` 120 / `harness_rounds` 489 / `llm_usage` 最大 id 5738**
+  ← `./backend/.venv/bin/python <scratch>/p105/fp.py`（走 `db_guard.readonly()`，**主仓，只读**）
+
+**开工时捡到的**：scratch 里有**上一个 P105 实例**留下的一摞（`<scratch>/p105` + 一个 worktree
+`agent-a2e439ce21dd25eeb`，时间戳 04:55–05:16，进程早没了）。里头有一份 `steps/switchaway105.mjs`
+初稿和四刀砍完的日志。**这一批把那份初稿读完、搬进自己的 worktree，然后所有的数自己重量了一遍**
+（它那一摞原样挪到 `<scratch>/p105-prev0455`，一个字节没动）。照实记在这儿。
+
+---
+
+### A. 十一步那条路够不着「切走」：**走查加第 ⑫ 步**（这一批的正题）
+
+P103 跑完第二十九次走查，跨批 diff 里「**产品改了**」那一格是 **0 行**，而那一批真的改了产品。
+它自己写下了这句：
+
+> **十一步那条路一次都不经过「切走」**，A / B 的证据全在新加的四份探针日志里。
+> ⇒ **「走查全绿」≠「这一批的改动被走查验过」。**
+
+而「切走」这一族这几批出过**三个真缺陷**（P95 轮次卡串台 / P101 `guarded` 误伤 11 条 /
+P103 骨架永久丢 + 停机理由丢）。**十一步该有这一步了。**
+
+#### A1 那一步长什么样（`frontend/scripts/walkthrough/steps/switchaway105.mjs`，**进了仓库**）
+
+一趟跑完这几件事：**现造 A 篇 → 打字 → 点「智能续写」→ 不等任何东西立刻切走
+→ 在别处一边盯库一边攒 toast → ⌘K 新建一篇空笔记 B → 切回 A → 读右栏「计划」**。
+
+**它跟 `steps/` 里那几份专题探针不一样：它自己判。**
+`rounds95` / `rounds99` / `skel103` / `toast103` 抬头都写着「**只读不判**，判在台账」，
+而**一条靠人每批读日志才发现回退的闸不是闸**。这一份判不过**当场 EXIT 非 0 并点名**。
+
+| 判 | 钉的缺陷 | 判据（**一个会变的数都不钉**）| 这一趟实测 |
+|---|---|---|---|
+| ① | **P95 轮次卡串台** | 切走之后 ⌘K 新建的空笔记 B：「计划」页签**不带数字** + **0 种**「第 N 轮」 | 页签 `"计划"` / 0 种 / 0 次 |
+| ② | **P95 切回来不许空** | 切回 A：「第 N 轮」**至少 1 种** | 1 种 `["第 1 轮"]` |
+| ③ | **P101 `guarded` 误伤** | 切回 A：「本轮写出的正文」**至少 1 次**（`TOKEN_CAP=1` ⇒ 只跑一轮，而那一轮整个落在「已经切走」那段时间里）| 1 次 |
+| ④ | **P103 骨架永久丢** | **库里** `spine` 从 0 变非 0，**而且切走那一刻排在落库前面**（比两个毫秒数，不是「第几秒」）| 切走第 **271** 毫秒 → 库里第 **5341** 毫秒（17 字 / 3 条）|
+| ⑤ | **P103 停机理由丢** | 切走之后攒到的 toast 并集里有一条**既点了名**（`「…」：` 开头）**又带着停机的理由**（`上限` + `就停在这儿了` 两个词都要在）| 1 条（第 20538 毫秒）|
+
+← `zsh <scratch>/p105/run.sh sw 19510 <scratch>/p105/steps-sw.txt <scratch>/p105/walk/sw/udd "" 5000 adv 1` @ 本批改动
+（日志 `docs/walkthrough-logs/p105/41-switchaway105.txt`）
+
+**跑它要三样**，缺一样这一步就量不到东西（逐条写死在它抬头）：
+`LLM_MODE=adv`（`ok` 档压根不回骨架 JSON ⇒ 判④ 恒读 0）、`LLM_DELAY_MS` 给几秒
+（`ok` 档一两秒跑完，「切走」演不出来）、`MEMOKET_RUN_TOKEN_CAP=1`（判⑤ 那条 `onCost` 靠它逼出来）。
+**它自己一份 udd、自己一趟壳**（它造两篇笔记，跟十一步共用就会把十一步弄脏——P103 问题 #1 那一族）。
+
+#### A2 **砍刀证明它真的能红**（一刀一趟真壳：改源码 → `npm run build` → 换壳里那棵 `web` → udd 整棵重建 → 跑这一步）
+
+| 刀 | 把哪条缺陷改回缺陷形状 | 结果 |
+|---|---|---|
+| **p95** | `util/roundsByNote.roundsFor` 不认 noteId 了（谁有卡就摆谁的）| **EXIT=1**，红的是**判①**，逐字点名「那是 A 篇的执行记录摆进了 B（P93 问题 #1 长回来了）」|
+| **p101** | `onDelta` 归回 `blocked` | **EXIT=1**，红的是**判③**：「1 种「第 1 轮」，可『本轮写出的正文』**一次都没有**」|
+| **p103a** | `onSkeleton` 归回 `blocked` | **EXIT=1**，红的是**判④**：「盯了 25 秒，**库里 `spine` 一直是 0**」|
+| **p103b** | `onCost` 归回 `blocked` | **EXIT=1**，红的是**判⑤**：「攒到 1 条 toast，点了名的 0 条」|
+| **对照 ⓪a** | `App.tsx` 里 handler 那一摞**外头**改一句注释 | **EXIT=0 / 五条全绿**（绿有个数）|
+
+四刀各红一条、**各自点名到该点的那一条**，另外四条照绿——**不是整趟一起红**。
+
+#### A3 **进不进假壳那条闸：进了**（先量再判）
+
+**先量**：把假壳那条闸拷一份出来（`<scratch>` 里的临时件，跑完删了），
+假模型换 `adv` + 慢 5 秒、后端带 `MEMOKET_RUN_TOKEN_CAP=1` 起，跑这一步——
+**五条判据全绿，25 秒跑完**。⇒ **假壳够得着「切篇」这件事**（它够不着的是主进程那一圈）。
+
+**判「接上」**，理由是这个仓自己立的那条：**「够不着」和「没接」是两件事**。
+接法是**第二段**（`PLAN` 里那一步声明 `stage2`）：前面八步跑完之后
+**假模型在同一个端口上换成 `adv` + 慢 5 秒重起**（端口一换就是 P68 那条老坑）、
+**后端换一个端口带着 cap 重起**（`params.RUN_TOKEN_CAP` 是模块级读一次的，改不了活着的进程）、
+**壳跟着重起**。前面八步那一套（`ok` 档、没有 cap、`b2old` 的 105 → 205）**一个数都没动**。
+
+⇒ 假壳 **静态 108 → 120** / **真跑 110 → 122**；这条闸自己的截图 **32 张全 `fakeshell-*`**。
+⚠️ **第一趟那 4 张叫 `fs-switchaway-*`**：`cdp.mjs` 只改写名字里带 `p<数字>-` 的那些，
+`PLAN` 里第一版写的是 `fs-switchaway`——**「全 `fakeshell-*`」那句话当场破了 4 张**。
+改成 `p105-fs-switchaway` 之后落盘就是 `fakeshell-fs-switchaway-*`，并且**加了一条判据 + 一条反例**钉这件事。
+
+---
+
+### B. C：**轮次卡加了「这一轮少了什么」那一格**（收 P103 问题 #7，判「接」）
+
+P103 逐字留下来的那一条：
+
+> `onWarning` 被拦掉之后，**「这一轮少了哪个能力」在界面上就没有第二个出处了**
+> （轮次卡上没有这一格）。要接就得先给轮次卡加一格——**那是另一刀**。
+
+**判：加**。三条理由：① 那一格有**现成的形状**（P101「缺的明细照实标」）；
+② 这件事**造得出实拍**，不用等模型出错（见 B2）；③ 它**判得了**——
+源码那一头有闸（`check-harness-guard` 第 ②④⑦ 条）、形状那一头有 vitest、
+用户那一头有真壳探针。
+
+#### B1 怎么改的（**「记」和「弹」各判各的**）
+
+```ts
+onWarning: (d) => {
+  writeRounds(noteId, (rs) => { … warnings: [...(last.warnings ?? []), {middleware, hook, error}] … })  // ← 记，排在 guard 前面
+  if (currentRef.current?.id !== noteId) return                                                          // ← 弹，排在 guard 后面
+  toast(warningLine({ … }), 'error')
+},
+```
+
+`HARNESS_GUARD.onWarning` 从 `blocked` 挪到 `rounds`，**挪的只有记账那一半**：
+P103 B ③ 判的「切走之后照拦」说的是**弹**，这一条**一个字没动**。
+⇒ 三档的数：**放行 13 / 照拦 6 / 自理 3**（P103 是 12 / 7 / 3）
+← `cd frontend && ./node_modules/.bin/tsx scripts/check-harness-guard.mts` @ 本批改动（**77 条 / 对不上 0**，P103 是 73 条）。
+
+卡上那一格：`AgentActivity` 多一个 `warnings?: RoundWarning[]`，摆成
+**「本轮少了 N 个能力（骨架）…」+ 逐条原话**，**不折叠**（`<details>` 收着的时候 `innerText` 读不到，
+**收起来的出处等于没有出处**）。那句话的**唯一出处**是 `warningLine()`——`App.tsx` 那句红字 toast
+读的是同一份（两边各写一份就是两把尺）。
+后端那一头：`store.ROUND_SKELETON_MISSING` 多一样**「本轮少了哪个能力」**——
+这一格**不落库**，关掉重开读回来的那张卡上按 P101 那条「缺的明细照实标」把它列出来。
+
+#### B2 **用户可见的实拍**（`steps/warn105.mjs`，**这一批新造**，真壳）
+
+逼出一条 warning **不靠模型出错**：自己造一篇「骨架里存着半句节拍」的笔记
+（`PUT /api/notes/<id>/skeleton`，一条**正好 60 字、不以句读收尾**的 beat，
+`store.truncated_beats` 的判据），`hooks/note.skeleton` 当场发一条。
+
+| 判 | 钉的 | 这一趟实测 |
+|---|---|---|
+| ① | 前提站得住（写完读回来再断言）| beats 长度 `[12,60]`，第 2 条 60 字、不以句读收尾 |
+| ②（对照）| **没切走的时候那句红字是弹的** | 第 **412** 毫秒弹了 1 条，逐字带「本轮少了这个能力」 |
+| ③ | **切走之后一个字都不弹**（P103 B ③ 那半边没动）| 切走之后 45 秒，攒到 **0 条** toast |
+| ④ | **那一格在**（P103 问题 #7 的正面）| 切回来右栏「计划」上 **1 处**「本轮少了 N 个能力」+ 那条原话 |
+| ⑤ | **切回来那一格还在**（按 noteId 记的）| 第 **1** 轮那张卡上有它 |
+
+← `zsh <scratch>/p105/run.sh warn 19510 <scratch>/p105/steps-warn.txt <scratch>/p105/walk/warn/udd "" 5000 adv` @ 本批改动
+（日志 `docs/walkthrough-logs/p105/42-warn105.txt`）
+
+#### B3 **这份探针第一趟红了，红得对**（真壳逮到的真缺陷）
+
+第一版 `onWarning` 抄了 `onError` 的形状：`if (!rs.length) return rs`。
+而**那条 warning 在开跑之前就到**——`hooks.skeleton` 是 router 在 `loop.run` **之前**跑完的
+（`middleware/cost.py` 抬头逐字写着），实拍第 **412** 毫秒，**那一刻一张卡都还没有**
+⇒ 那一条**当场被丢掉**，判④ / 判⑤ 双红：「切回来右栏上**一句『本轮少了 N 个能力』都没有**」。
+**「记了」和「记到了看得见的地方」是两件事**——`npm test` / 静态闸全绿，红的是真壳。
+
+改法：一张卡都没有时**现开第 1 轮那张**（`emptyRound(1)`，跟 `patchRound` **同一处定义**），
+`ROUND_START` 到了之后 `patchRound(noteId, 1, …)` 按轮号并进同一张卡。
+
+#### B4 **砍刀**（C 这一格自己的）
+
+| 刀 | 砍哪儿 | 跑哪条 | 结果 |
+|---|---|---|---|
+| **c2** | 把 `onWarning` 里那句改回 `if (!rs.length) return rs`（B3 那个形状）| 真壳 `warn105` | **EXIT=1 / 红 2 条**（判④ + 判⑤）|
+| **c1** | `onWarning` 归回 `blocked` | 真壳 `warn105` | ⚠️ **砍不到这份探针**（五条全绿）—— 这一趟唯一造得出的那条 warning 在**没切走的时候**就到了，那一刻 guard 本来就不拦。**照实记：那是量具够不着，不是这一刀无害** |
+| **c1**（同一刀，换条尺）| 同上 | 静态闸 + vitest | **闸 EXIT=1 / 红 1 条**（「归 blocked，函数体里一句按 noteId 写的都没有」）；**vitest 3 份 3 条红** |
+| **⑦** | 把那句红字 toast 挪到 guard **前面**（P103 B ③ 判的那半边长回来）| 静态闸 | **EXIT=1 / 红 1 条**（这一批新加的第 ⑦ 条：`rounds` 那一档的 toast 必须全排在 guard 后面）|
+| **⑧** | 把 `if (s.stage2) await restage(...)` 整行删掉 | 假壳静态闸 | **EXIT=1 / 红 1 条**（「`stage2` 声明了但没生效」）|
+| **对照 ⓪b** | 假壳那份 runner 里改一句注释（闸不读那一处）| 假壳静态闸 | **EXIT=0** |
+
+---
+
+### C. 第三十次全流程走查（真打好的壳，**这一批是 `npm run dist` 现打的**）
+
+#### 起壳前：壳里几个可执行件核几个
+
+| 核什么 | 怎么核 | 结果 |
+|---|---|---|
+| `Resources/web` 整树 | 逐文件 sha256 → 排序再取一次 | **179 个 / `18ca9abb6f743407`** = `frontend/dist` 逐格相同（HEAD 那份是 `96abfcc02e060093`，**这一批改了前端**）|
+| `app.asar/dist/{main,preload,capture,backend}.js` | `asar extract` → 跟 `desktop/dist` 现编的 `cmp` | **四个逐字节相同** |
+| 后端那个件 | `check_shipped_source.py`（**不用 `strings`**）| **先喂一个不存在的符号 → `对不上 1 个符号`**；再喂真的：`app.database.store` 的 `ROUND_SKELETON_MISSING` / `truncated_beats` **都有** |
+| 四个 `*_base_url` + `local_model` + `vision_model` | 起壳前走 `walkthrough_db.py` **写完读回来再断言** | 每份 udd 都是 1 行 × 4 个地址列 = `http://127.0.0.1:19503/v1` / `fake-p52` / `fake-vision-p52` |
+| 钥匙 | `scrub_credentials`（**按值扫全库，不按列名**）| 每份 udd 换掉 **1 处**（`provider_config.gpt_api_key`，`sk-` 前缀），换完再扫 **0 处** |
+| 假模型端口 vs udd 里存的 | `go.sh --check-provider-port` | 每一趟都问一次：`库里存的 local_base_url：http://127.0.0.1:19503/v1 ← 跟 19503 对得上` |
+| 语料 | `check_udd` | `codebook.xml` **11,429,185 字节 / `403a1183`**（源和目标各核一次）|
+
+#### 走查表（两个身份 × 十一步 **+ 第 ⑫ 步**；**九次起壳**：新用户 / 老用户 / ⑩ / `rounds95` / `toast97` / `rounds99 --away` / `rounds101` 现造篇 / `rounds101` 语料篇 / **第 ⑫ 步**；外加 C 那一趟 `warn105`）
+
+| # | 步骤 | 空库新用户（`p105-newbie`）| 482 篇老用户（terrence）|
+|---|---|---|---|
+| 1 | 第一次打开 → 设置页配模型 | **对**：「还没配模型 / 去设置」都在；「测一下」→「连上了，2 个模型可用…先用第一个「fake-p52」」；没点 chip 保存红字还在（`true`），点了之后**红条和那句话同时消失**（两头各读一次都是 `false`）；toast「已切换到本地模型：fake-p52」；库里真落了 | **对**：`窗口自己认的身份: terrence` |
+| 2 | 新建 → 打标题 → 右栏「计划」| **对** | **对**：`"prefill":true`（P43 #2 / P44 #4 ✔）|
+| 3 | 打三段正文 → 圆点两档 + 右栏「记忆」| **对**：`P32 #3 空库图例收成一句: true`、`P35 #8 空托盘收成一句: true` | **对**：`{"落槽合计":2,"图例":6,"页面合计":8}`，落槽那 2 是**冲突 1 / 缺依据 1**（跟 P64 起每一批**一个数不差**）|
+| 4 | `/` 菜单全项 + Esc | — | **对**：**19 项**，Esc 之后 0 |
+| 5 | 右键六项 + 选区 | — | **对**：`["校验","重写","润色","扩展上下文","来龙去脉","自定义提示…"]` 逐字连顺序 |
+| 6 | 智能续写 → 轮次卡片 → **读库** | **对**：`{"lines":144,"db":144}`（**`--mode ok`**，**P68 ✔**，判的是**不变式 `lines === db`**）| **对**：`库: {"len":205,"json":false}`（编辑器 205 == 库 205）；`做爰片` **0**、`terrence-8F6` **0**、空括号 **0** |
+| 7 | 导回到 Obsidian | — | **对（浅走）** |
+| 8 | 屏幕活动 | **对**：知情五条；「留多久」那一行的数**从后端读** | **对**：一键全删两段式；「先不删」之后天列表原封不动；翻天两个方向各一次；**P62 ③ 正例 + 反例** |
+| 9 | ⌘K 全部去处 | **对**：18 个去处 | **对** |
+| 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，`19505`）| — | **对**：`["记忆","改动2","计划2"]` + `toast: ["上次没处置完的 2 层改动还在右栏「改动」里"]` + `P43 不变式：成立` + `正文字数: 213`；不带层那篇 `["记忆","幻灯片24","计划5"]` + `toast: []` |
+| 11 | 深色 + 900px | **对**：`rgb(18, 15, 26)`；900px 溢出 **1**（`note-tab`「屏幕活动×」）| **对**：`rgb(18, 15, 26)`、近白大块 **0**、900px **溢出 0**（`溢出的是谁: []`）|
+| **12** | **跑着切走再切回**（`switchaway105`，**这一批新加的那一步**）| — | **五条判据全过**，见 §A1 |
+| **A** | 右栏那叠轮次卡是不是这一篇的（`rounds95`）| — | **对**：`{"A跑完":{"页签":"计划2","几种轮次卡":2},"新建空笔记":{"页签":"计划","几种轮次卡":0,"页签里有数字吗":false},"A切回来":{"页签":"计划2","几种轮次卡":2}}`（跟 P97 / P99 / P101 / P103 逐格相同）|
+| **B** | ⑩ 那句 toast 看不看得见（`toast97`）| — | **看得见**：出现在第 **502** 毫秒、**在屏幕上活了 3498 毫秒**、框 306×42 @ (1118,820) |
+| **C** | **关掉重开那一屏**（`rounds101` 两篇）| — | 现造篇 **2 张骨架卡 / 横条 2 / 「库里没有：…」2 / 「本轮写出的正文（」0**；语料篇 **3 / 3 / 3 / 0**（库里 52 行轮次 / 18 次跑）|
+| **D** | **跑着切走再切回**（`rounds99 --away`）| — | 跑完「本轮写出的正文」**2**（P99 是 1，P101 / P103 是 2）；正文不丢（库 329）|
+| **E** | **C 那一格**（`warn105`，**这一批新造**）| — | 见 §B2 |
+
+#### 重点盯的几格
+
+* **P68 丢字不回退**（`--mode ok`）：两个身份各验一次，**判的是不变式 `lines === db`**（144/144、205/205）。
+* **P103 那两刀**：骨架切走不丢（第 ⑫ 步判④ **库里第 5341 毫秒变非 0**，而切走在第 271 毫秒）、
+  `onCost` 切走弹且**点名**（判⑤）——**这一批是走查表里的一步在验，不是一份只读日志**。
+* **P101 / P100 / P98 / P97 / P95 / P93 / P91 / P89 / P83 / P80 / P81 各刀都没回退**——逐条在日志里找到证据（**83 条**那张单子）。
+* **出处闸在这一趟的日志上生效**：入库 **26 份**日志每一份第一行有 sha、第二行有依赖单子，
+  闸核了 **5 批 / 123 份 / 第二行逐份核依赖 611 次 / 对不上 0**。
+* **`@LAST_NEW_NOTE` 是这一趟现造的**：`59ab02b0f749`，由 `06-old-b1old` 自己打在日志里，
+  `07 / 09 / 10` 三步和 `reopen64` / `rounds95` / `away` / `rounds101-fresh` 用的都是它。
+  ⚠️ `rounds95` / `rounds99` / `rounds101` **都没写 `@LAST_NEW_NOTE`**（写了会解成
+  `18-old-panes93` 刚造的那篇空笔记，P95 问题 #4）；`switchaway105` / `warn105` **自己造自己用**，也没写。
+* **截图 111 张，全 `p105-*`**（`ls | grep -cv '^p105-'` = **0**，其中 **28 张**是砍刀那六趟的），
+  一张都没事后改名；作废的两摞（79 张旧 web 的 + 4 张 C 第一趟红的）挪开了。
+* **`postnote` 这一批一条都没发**（0 条）。
+
+#### 历史修复的回归：**83 条逐条去日志里找证据，0 条找不到**
+
+P103 那 75 条里**改成判据函数 1 条、挪 5 条、摘 1 条、判词跟着产品改 1 条、加 9 条**：
+
+| 动了哪几条 | 怎么动的 | 为什么 |
+|---|---|---|
+| **改成判据函数 1 条** | `P97 B`（「在屏幕上活了 35…」）| **那是钉了个会变的数**：P97 3499 / P99 3501 / P103 3501 / 这一批 **3498**——再跌 1 毫秒它就红，而红的理由跟对错无关。换成量级（3.0–4.2 秒）|
+| **挪 5 条** | `P103 A①–A④` / `B①` 从 `skel103` / `toast103` 那八份挪到 **`41-switchaway105.txt`** | 那八份是 P103 自己那一刀的「改前 / 改后」实拍，这一批没跑；而**第 ⑫ 步把同样那两件事判了**，判词照「改后该成立的样子」重写 |
+| **摘 1 条** | `P103 B②`（「没切走那条路一个字没动」）| 第 ⑫ 步里**没有「不切走」那一档**。**摘了就说，不留空壳** |
+| **判词跟着产品改 1 条** | `P101 A⑤`（缺的明细八样 → **九样**）| P105 C 让 `ROUND_SKELETON_MISSING` 多了一样。⚠️ **留着八样那一版照样 `includes` 得到**（前缀）——那就是**判据比产品窄**的那张脸 |
+| **加 9 条** | `P105 A①–A④` + `C①–C⑤` | 第 ⑫ 步自己判了、P95 / P101 两刀没回退、那句点名照实记；C 那一格在 / 切走不弹 / 没切走弹（对照）/ 切回来还在 / **不落库这件事照实标** |
+
+**先喂了三个该红的反例**，三次都红、EXIT=1、且点名到那一条：
+① 老反例（`/` 菜单 19 → 18）→ 红 `P58 ①`；
+② **这一批自己的**：把第 ⑫ 步判④ 那一格改回 `null` → 红 `P103 A①` + `A③`（**两条**，对照那条也靠它）；
+③ **这一批自己的**：把 C 那一格判红 → 红 `P105 C①`。
+⚠️ 三个反例**都先 `grep -c` 数过锚点出现几次**（各 1 次）并且**全换**——
+「同一个字面量可能有第二份」这个仓咬过九次，**这一批 vitest 里又咬了第十次**
+（`本轮少了` 这四个字在抬头和那一条原话里**各出现一次**，数它的那条测试当场红）。
+
+#### 跨批逐行 diff：`diff -r docs/walkthrough-logs/p103 docs/walkthrough-logs/p105`
+
+**26 行**（13 处，两边各算一次；三份文件里），另 **10 份**整份文件只在一边
+⇒ 归类表 `docs/walkthrough-logs/p105/DIFF-FROM-p103.tsv` 共 **36 行**，**逐行归完类，4 类**：
+
+| 类 | 行数 | 哪几行 · 为什么 |
+|---|---:|---|
+| **产品改了** | **12** | **这一批终于不是 0 了**：`27-old-rounds101-fresh` / `28-old-rounds101-corpus` 两份上「库里·缺的明细几样」**8 → 9**、「库里没有：…」那一行逐字多一项**「本轮少了哪个能力」**——**C 那一格在走查的日志里逐行看得见** |
+| **走查随机** | **12** | `21-old-toast97` 那个毫秒级探针（连上算起 2406 vs 2407 / 出现 534 vs 502 / 消失 4035 vs 4000 / 录了 4345 vs 4310 / reload 之后 313 vs 249）|
+| **量具改了** | **10** | 整份文件：P103 那八份 `skel103` / `toast103` 这一批没跑（**−8**）；这一批新加的 `41-switchaway105` + `42-warn105`（**+2**）|
+| **归一化漏洞** | **2** | 横条上那句「那次跑：`<D0>`/`<D-1>` `<T>`」——库里存的是 **UTC**，而归一化按**本地的今天**算：P103 跑在凌晨（UTC 还是昨天）⇒ `<D-1>`，这一批跑在下午 ⇒ `<D0>`。**不是产品变了，也不是走查随机**；这一档**记着，留给下一批补**（要洗得把时区一起算进去）|
+| 入参素材 / 解释不了 | **各 0** | — |
+
+⚠️ **「走查随机」这一格，P97 是 0 行、P99 是 14 行、P101 是 10 行、P103 是 14 行、这一批是 12 行
+——五个数都对，说的不是同一件事**：P97 那 0 行说的是**右栏开合 / 宽度 / 序号 / 坐标 / 近白大块 / 900px 溢出**
+逐格相同，这一批**照样逐格相同**；这 12 行**全是** P97 自己新加的那个毫秒级探针带进来的
+（「在屏幕上活了」3501 → 3498、框 306×42 @ (1118,820) **逐字相同**）。
+**P93 / P95 那 67 行（右栏开合不同）这一批仍然一行都没有**——**还是不能读成「治好了」**，下一批接着看。
+⚠️ P103 那 14 行里有 2 行是 `docText()` 视口那条老限制（329 vs 310），**这一批那两行没有**
+（`27-fresh` 这一趟两批读回来的是同一个数）——**那条限制一个字没变**，只是这一趟没撞上。
+
+#### 问题清单
+
+| # | 是什么 | 怎么处置 |
+|---:|---|---|
+| **1** | **C 第一版把那条 warning 丢了**：`if (!rs.length) return rs`，而那条 warning 在开跑**之前**就到（第 412 毫秒，那一刻一张卡都没有）⇒ 卡上那一格一处都没有 | **真壳探针第一趟当场红**（判④ + 判⑤）。改成「一张卡都没有时现开第 1 轮那张」。**`npm test` / 静态闸全绿，红的是真壳**——「记了」≠「记到了看得见的地方」 |
+| **2** | **砍刀 c1（`onWarning` 归回 blocked）砍不到 `warn105`**：这一趟唯一造得出的那条 warning 在**没切走的时候**就到了，那一刻 guard 本来就不拦 | **照实记**：那一刀改由**静态闸 + vitest** 抓（都红了）。⚠️ **「砍刀没红」≠「这一刀无害」**，也**≠「那条判据瞎了」**——是这份探针够不着那一格 |
+| **3** | **假壳第 ⑫ 步的截图第一趟叫 `fs-switchaway-*`**（`PLAN` 里那个名字不带 `p<数字>-`，`cdp.mjs` 就不改写）⇒「全 `fakeshell-*`」破了 4 张 | 改成 `p105-fs-switchaway`，并**加了一条判据 + 一条反例**钉住这件事 |
+| **4** | **`shellEnv()` 那次改名把一条 pytest 弄红了**：`backend/tests/test_p74.py` 第 ⑧ 条钉的是 `delete eenv.ELECTRON_RUN_AS_NODE` 这一串，而重构把局部变量改成了 `e` | **没改闸，改回名字**（并在那儿写明为什么必须还叫 `eenv`）——**改名字不等于改行为，但那条闸钉的是名字**，与其把闸改宽不如让名字留着 |
+| **5** | **`<scratch>/p105data` 开工时已经存在**（上一个 P105 实例留下的），第一发 `cp -R` 拷成了 `p105data/data` | 当场 `ls -1a` 两头对出 **1 行差异**（多一个 `data`），把那一摞整个挪到 `p105data-prev0455`、**重拷一份**，再对到 **0 差异（39 行对 39 行）**。⚠️ 「拷前确认目标不存在」这条**我先跑了 `ls` 却没拦住自己**——真正拦住它的是**拷完那一次 `diff`** |
+| **6** | **归一化那一份够不着时区**：横条上「那次跑：`<D0>`」按**本地今天**算，而库里存的是 UTC ⇒ 同一份代码、同一条时间戳，钟点一变就差一天 | **照实归成「归一化漏洞」**（2 行），**这一批不补**：补它要动 `normalize-log.mjs` 的日期那一段，而**那份一动，入库的日志就得整批重洗**（跨批 diff 会当场全红）。记在这儿，留给下一批 |
+| **7** | **`onDone` / `awayToast` 那句点名的出处还是闭包里的 `notes`**（P103 问题 #6）：第 ⑫ 步实拍到的正是「另一篇笔记」 | **判「还是不改」**（同 P103）：探针里**照实打出来、不判**（「点了名」≠「点对了名」）。`docs/edge-cases.md` 上记着 |
+
+---
+
+### 收尾
+
+**后端 3468 passed / 0 skipped**
+← `cd <worktree>/backend && PYTHONPATH=. KITE_DATA_DIR=<scratch>/p105data ./.venv/bin/python -m pytest -q` @ 本批改动
+（基线 3468 / 0，**+0**：这一批后端只动了一个字符串常量，没加测试——那一格由 `test_p101.py` 已有的
+「`missing` 逐条回来」那条**集合相等**断言接着）；
+**前端 104 文件 / 993 条** ← `cd <worktree>/frontend && npm test` @ 本批改动
+（基线 103 / 980，**+1 文件 / +13 条 = `p105.test.tsx`**）。
+
+**假壳那条闸跑一趟报两个数**：**静态 120**（EXIT=0，68 判据 + 43 反例 + 9 条闸自跑）/
+**真跑 122**（EXIT=0，**32 张截图全 `fakeshell-*`**）。
+
+**九把尺一条一条跑，每条单独 `EXIT=$?`、不接管道**，全部 **EXIT=0**：
+`recall_ruler`（**765** 条 / cursor 727 / tail 38 / users 6）· `--window` ·
+`margin_dot_ruler`（**合计 8 条**）· `topic_spread_ruler`（**泛 6 · 不泛 6 · 判不了 2**）·
+`en_gate_ruler --quorum` · `kb_search_ruler` ·
+`card_origin_ruler`（**979 张卡 / 315 条摆了卡 / 133 · 62 · 29 · 33** 逐格相同）·
+`code_pair_ruler`（P102 那把，**18 屏 · 真 1 · 假 17** 逐格相同）·
+`floor_ruler`（**看着 12 份 / 登记 148 条（只准往上 5 · 钉死 143）/ 例反例 12 条 / 共核 160 / 落后 0 / 对不上 0**）。
+⚠️ `floor_ruler` 那几个数跟 P103 台账写的 **11 份 / 140（5 · 135）/ 152** 不一样——**同一种分叉**
+（P93 说 P91、P97 说 P95、P99 说 P97、P101 说 P99、P103 说 P101 都是这个形状）：
+那是**它那个 worktree 上那一刻**的数，这一批跑在本批改动上（这一批自己也新加了判据）。**两笔都留着，各带各的出处。**
+
+**突变验**（`<scratch>/p105/cut.py` + `cuts.sh`：**唯一锚点先断言 → 整文件写回 → 逐字节 `cmp`**）：
+**真壳四刀全红且各点各的名**（p95 → 判① / p101 → 判③ / p103a → 判④ / p103b → 判⑤），
+**C 那两刀**（c2 → `warn105` 红 2 条；c1 → 真壳砍不到、静态闸 + vitest 红），
+**源码两刀**（⑦ toast 挪到 guard 前 → 闸红 1 条；⑧ 删掉 `restage` 那一行 → 假壳静态闸红 1 条），
+**对照刀两把全绿**（⓪a `App.tsx` 注释 → 第 ⑫ 步五条全绿；⓪b runner 注释 → 假壳静态闸绿）。
+**砍完跑了完整 pytest 和完整 npm test**：后端 **3468 passed / 0 skipped**、前端 **104 文件 / 993 条**，两边 EXIT=0。
+
+**真库指纹开工 = 收工**：**482 / 2026-09-16T02:53:27+00:00 / 321250 / `47dcc54be60aa4f2` /
+`note_revisions` 44 / `harness_runs` 120 / `harness_rounds` 489**；
+`llm_usage` 最大 id 开工 = 收工 **5738**（**真模型 0 次调用 / 0 token**）；
+codebook 源和目标各核 **11,429,185 / `403a1183`**；
+`~/Library/Application Support` **一次都没碰**（`memoket-note-desktop` 那个目录的 mtime 还是 **09-20 00:57**）。
+
+### 收尾命令（**每一条都写明在哪个目录、拿哪个解释器跑**，第 776 轮那一课）
+
+```bash
+# ── ① 摆语料（**两处都要**，先摆再量，不然基线偏）
+mkdir -p <worktree>/backend/data                 # ⚠️ 这个目录开工时**整个不存在**
+cp <主仓>/backend/data/notes.sqlite3 <worktree>/backend/data/notes.sqlite3   # **别 chmod 444**
+ls -d <scratch>/p105data || true                 # ⚠️ **拷前确认目标不存在**（这一批它存在，见问题 #5）
+cp -R <主仓>/backend/data <scratch>/p105data
+cd <主仓>/backend/data && ls -1a > a; cd <scratch>/p105data && ls -1a > b; diff a b   # 0 差异（39 行对 39 行）
+
+# ── ② 软链（worktree 里没有 .venv / node_modules）
+ln -sfn <主仓>/backend/.venv           <worktree>/backend/.venv
+ln -sfn <主仓>/frontend/node_modules   <worktree>/frontend/node_modules
+ln -sfn <主仓>/desktop/node_modules    <worktree>/desktop/node_modules      # 假壳那条闸要真 Electron
+
+# ── ③ 后端（cwd = **本 worktree 的 backend/**，解释器 = 那儿的 .venv 软链）
+cd <worktree>/backend
+PYTHONPATH=. KITE_DATA_DIR=<scratch>/p105data ./.venv/bin/python -m pytest -q          # 3468 / 0 skipped
+
+# ── ④ 前端（cwd = **本 worktree 的 frontend/**，node / tsx 走那儿的 node_modules 软链）
+cd <worktree>/frontend
+npm test                                                                              # 104 文件 / 993 条
+./node_modules/.bin/tsx scripts/check-harness-guard.mts                ; echo EXIT=$?  # 77 条 / 对不上 0
+./node_modules/.bin/tsx scripts/check-walkthrough-selectors.mts        ; echo EXIT=$?
+./node_modules/.bin/tsx scripts/check-walkthrough-runnable.mts         ; echo EXIT=$?  # 步骤脚本 40 份
+./node_modules/.bin/tsx scripts/check-walkthrough-fakeshell.mts        ; echo EXIT=$?  # 静态 120
+WALKTHROUGH_SCRATCH=<scratch>/p105fake4 node scripts/run-walkthrough-fakeshell.mjs     # 真跑 122
+npm run build                                                                          # 179 个 / 18ca9abb6f743407
+
+# ── ⑤ 九把尺（**一条一条跑，每条后面单独 `EXIT=$?`，别接管道**；⚠️ 别 `| tail`）
+cd <worktree>/backend && zsh <scratch>/p105/rulers.sh          # 里头每把尺单独 EXIT
+
+# ── ⑥ 打壳（**这一批是现打的**：vite + pyinstaller + electron-builder，十几分钟）
+cd <worktree>/desktop && npm run dist                          # out/mac-arm64/MEMOKET NOTE.app
+cp -R "<worktree>/desktop/out/mac-arm64/MEMOKET NOTE.app" <scratch>/p105/app/
+codesign --force --deep --sign - "<scratch>/p105/app/MEMOKET NOTE.app"
+zsh <scratch>/p105/verify_shell.sh                             # web 整树 / asar 四件 / 后端件（先喂一个不存在的符号）
+
+# ── ⑦ 走查的 userData（cwd = **本 worktree 的 backend/**）
+#     ⚠️ **专题探针跟十一步走查各用各的 udd**；**重跑之前整棵重建**（P103 问题 #1 / #4）
+cd <worktree>/backend
+./.venv/bin/python <scratch>/p105/setup.py 19503 both          # old / probe / sw / warn / new 五份
+./.venv/bin/python scripts/journey_fixture.py <scratch>/p105/walk/old/udd --variant synthetic
+#   ⚠️ 参数是 **userData 目录**，不是 `<udd>/journey`（P103 问题 #2）；**别跑 `--variant full`**
+
+# ── ⑧ 起壳跑走查（cwd = **worktree 根**；`unset ELECTRON_RUN_AS_NODE`；SIGTERM 等它自己退）
+cd <worktree>
+zsh <scratch>/p105/runall.sh                                   # udd 重建 + ⑧ 夹具 + 新用户 + 老用户
+zsh <scratch>/p105/runrest.sh                                  # ⑩ / rounds95 / toast97 / away / 101×2 / **第 ⑫ 步**
+zsh <scratch>/p105/run.sh warn 19510 <scratch>/p105/steps-warn.txt <scratch>/p105/walk/warn/udd "" 5000 adv
+
+# ── ⑨ 日志归一化 + 归类表 + 回归 + 突变验（cwd = **worktree 根**）
+cd <worktree>
+node frontend/scripts/walkthrough/normalize-log.mjs --today 2026-09-22 --out docs/walkthrough-logs/p105 <各趟日志>
+./backend/.venv/bin/python <scratch>/p105/mktsv.py                     # 36 行归类
+cd frontend && npx tsx scripts/check-walkthrough-provenance.mts        # 5 批 / 123 份 / 依赖 611 次
+cd frontend && npx tsx scripts/check-walkthrough-diff.mts              # 9 对 / 382 行 / 对不上 0
+cd <worktree> && node <scratch>/p105/regress.mjs                       # 83 条 / 找不到 0
+cd <worktree> && ./backend/.venv/bin/python <scratch>/p105/neg.py 1    # 反例（2 / 3 同样各跑一趟）
+cd <worktree> && zsh <scratch>/p105/cuts.sh ctl p95 p101 p103a p103b   # 真壳四刀 + 对照
+cd <worktree> && zsh <scratch>/p105/cuts.sh c1 c2                      # C 那两刀（跑 warn105）
+
+# ── ⑩ 真库指纹（**主仓，只读**，走 db_guard.readonly()）
+./backend/.venv/bin/python <scratch>/p105/fp.py                        # 开工 / 收工各一次，diff 要 0 行
+```
+
+P105 留给下一批：
+① **归一化那一份够不着时区**（问题 #6）：横条上「那次跑：`<D0>`」按本地今天算、库里存 UTC——
+   补它要动 `normalize-log.mjs`，而那份一动**入库的日志得整批重洗**；
+② **「点了名」≠「点对了名」**（P103 留 ①，没动）：那句篇名还是闭包里的 `notes`；
+③ **`warn105` 只造得出「骨架存着半句」那一种 warning**，`loop._fire` 那一族（middleware 真抛异常）
+   还没有实拍；而且那条 warning **在开跑之前就到** ⇒ **「切走那几秒里到的 warning 记不记得住」
+   真壳上还没量到**（源码那头由 `check-harness-guard` 第 ④ 条钉着）；
+④ **读回来的只有最近那一次跑**（P101 留 ③，没动）；
+⑤ 砍刀 ⑫ 那一格（`relImports` 不剔注释）**还是没碰**（P101 留 ④）；
+⑥ 老那六批 + `p97` 第二行**永远没有出处**，**不硬追认**；**动态 `import(变量)` 够不到**；
+⑦ 「走查随机」这一批 12 行（全是那个毫秒级探针）——**P93 / P95 那 67 行仍然一行都没有**；
+⑧ 跨批 diff 那条闸仍只追认最新一批，`p85` / `p87` 还是没有归类表；
+⑨ P89 留的 ③④⑤⑥⑦ 一条都没碰。

@@ -441,6 +441,62 @@ const PLAN = [
     // 那就是「点过了 ≠ 翻过了」在这条闸身上原样重演。
     after: { count: 1, run: async (ctx) => shellReallyRestarted(ctx) },
   },
+  // ═══════════════════════════════════════════════════════════════════════
+  // **P105 A 加的第 ⑫ 步：跑着切走再切回**。
+  //
+  // P103 跑完第二十九次走查，跨批 diff 里「产品改了」那一格是 **0 行**，
+  // 而那一批真的改了产品 ⇒ **十一步那条路一次都不经过「切走」**。
+  // 这一步把它补上，而「假壳够不够得着」是**量出来的**：先照下面这套
+  // （adv + 慢几秒 + token cap）真跑了一趟，五条判据全绿、25 秒跑完。
+  //
+  // ⚠️ **它要的那三样跟上面八步是打架的**（所以它单开一段，见 `stage2`）：
+  //  · `LLM_MODE=adv`（`ok` 档压根不回骨架 JSON ⇒ 判 ④ 恒读 0）；
+  //  · 每发慢几秒（`ok` 档一两秒跑完，「切走」演不出来）；
+  //  · `MEMOKET_RUN_TOKEN_CAP=1`（判 ⑤ 那条 `onCost` 靠它逼出来），
+  //    而那是**后端进程的环境变量**（`params.RUN_TOKEN_CAP` 模块级读一次）。
+  // ⇒ 上面八步照旧跑在 `ok` + 无 cap 的那一套上（`b2old` 的 105 → 205 那几个
+  //   常数就是那一档的），**这一步跑完它们之后换一套环境重来**：
+  //   假模型**同一个端口**重起成 adv（端口一换就是 P68 那条老坑），
+  //   后端换一个端口带着 cap 重起，壳跟着重起。
+  // ⚠️ **换后端端口 = 换 origin ⇒ `localStorage` 那几格当场清空**（文件头第 7 条）。
+  //   这一步**受得了**：它自己造自己的两篇笔记，身份走 `identity.json`（preload 给的），
+  //   模型配置在 udd 那个 sqlite 里（跟 origin 无关）。**上面八步受不了，所以它们在前面。**
+  {
+    name: 'switchaway105',
+    step: 'switchaway105.mjs',
+    // ⚠️ **截图名里得带 `p<数字>-`**（同上面 `ctxmenu52` 那一步）：`cdp.mjs` 只把
+    //    带批次前缀的那些改写成 `WALKTHROUGH_SHOT_PREFIX`（这条闸自己给的是 `fakeshell`）。
+    //    第一版写的是 `fs-switchaway`，落盘就是 `fs-switchaway-*`——
+    //    这条闸「28 张全 `fakeshell-*`」那句话当场破了 4 张（P105 实拍）。
+    args: ['p105-fs-switchaway', '120000'],
+    why: '走查第 ⑫ 步（P105 A）：跑着切走再切回。**它自己判**，五条判据分别钉 '
+       + 'P95 轮次卡串台 / P95 切回来卡没了 / P101 `guarded` 误伤 / P103 骨架永久丢 / P103 停机理由丢',
+    // **第二段**：假模型换 adv + 慢 5 秒、后端带 cap 重起、壳跟着重起（见上面那段）。
+    stage2: { llmMode: 'adv', llmDelayMs: 5000, backendEnv: { MEMOKET_RUN_TOKEN_CAP: '1' } },
+    must: [
+      // **五条判据是步骤脚本自己判的**，这儿钉的是「它真判了、而且判过了」。
+      // 只核 `OK:` 那一行不够：五条里少判一条，那一行照样会打出来
+      //（`reds` 空就打）——所以逐条核那五个 `✅` 的抬头。
+      [/OK: 第 ⑫ 步五条判据全过/, null, '第 ⑫ 步五条判据全过'],
+      [/✅ \[判①·P95 轮次卡串台\]/, null, '判① 判了（空笔记 B 上没有 A 的卡）'],
+      [/✅ \[判②·P95 切回来卡没了\]/, null, '判② 判了（切回 A 卡还在）'],
+      [/✅ \[判③·P101 guarded 误伤\]/, null, '判③ 判了（切走那几秒写出来的字留住了）'],
+      [/✅ \[判④·P103 骨架永久丢\]/, null, '判④ 判了（切走之后骨架照样落库）'],
+      [/✅ \[判⑤·P103 停机理由丢\]/, null, '判⑤ 判了（切走之后那条停机理由点名弹了）'],
+      // 截图按 `PLAN` 给的名字 + **这条闸自己的批次前缀**落了盘（同 `ctxmenu52` 那一条）。
+      [/shot → .*\/fakeshell-fs-switchaway-切走了\.png$/m, null,
+        '第 ⑫ 步的截图落盘时带的是这条闸自己的前缀 `fakeshell-`'],
+      // **切走真的排在落库前面**：不然这一趟量的不是「切走之后还落不落库」。
+      [/✅ \[判④·P103 骨架永久丢\] 切走第 (\d+) 毫秒 → 库里 `spine` 第 (\d+) 毫秒变非 0/,
+        (m) => Number(m[1]) < Number(m[2]), '切走排在落库前面（对照组自己得站得住）'],
+    ],
+    refute: [
+      [/❌/, '第 ⑫ 步有判据红了 —— 「切走」那一族的三个缺陷里有一个长回来了'],
+      [/这一趟作废/, '这一趟自己说作废了（没真切走 / 还没点就有骨架 / 切不回来）'],
+      [/★ 库里 spine: \*\*一直是 0\*\*/, 'P103 那处误伤长回来了：切走之后骨架永久丢'],
+      [/shot → .*\/p\d+-fs-switchaway/, '落盘的还带着写死的批次号 —— `WALKTHROUGH_SHOT_PREFIX` 没吃到'],
+    ],
+  },
 ]
 
 // ── 小工具 ────────────────────────────────────────────────────────────────
@@ -722,54 +778,84 @@ const logDir = path.join(scratch, 'log'); fs.mkdirSync(logDir, { recursive: true
 
 preflight()
 const udd = makeUdd(scratch)
-const backendPort = await freePort()
+let backendPort = await freePort()
 const cdpPort = await freePort()
 const llmPort = await freePort()
 console.log(`假壳：后端 ${backendPort} / CDP ${cdpPort} / 假模型 ${llmPort} / udd ${udd}`)
 
 // 假模型端点。**`go.sh` 那条老坑**（P68 栽过）：壳里前端填进去的端口和这个进程
 // 监听的端口必须是同一个。这儿两边是**同一个变量**，抄错这件事在结构上没地方发生。
-const llm = spawn(path.join(ROOT, 'backend/.venv/bin/python'),
-  [path.join(ROOT, 'backend/scripts/walkthrough_fakellm.py'), String(llmPort), '--mode', 'ok'],
-  { cwd: path.join(ROOT, 'backend'), stdio: ['ignore', 'pipe', 'pipe'] })
-procs.push(llm)
-const llmLog = fs.createWriteStream(path.join(logDir, 'fakellm.log'))
-llm.stdout.pipe(llmLog); llm.stderr.pipe(llmLog)
+/** 假模型起一个。**端口从外面给**（P105 A 的第二段要在**同一个端口**上把它换成 adv 档
+ *  ——端口一换，udd 里 `provider_config.local_base_url` 就对不上了，那正是 P68 那条老坑）。 */
+let llm = null
+function startLlm(mode = 'ok', delayMs = 0, tag = '') {
+  llm = spawn(path.join(ROOT, 'backend/.venv/bin/python'),
+    [path.join(ROOT, 'backend/scripts/walkthrough_fakellm.py'), String(llmPort), '--mode', mode,
+      ...(delayMs ? ['--delay-ms', String(delayMs)] : [])],
+    { cwd: path.join(ROOT, 'backend'), stdio: ['ignore', 'pipe', 'pipe'] })
+  procs.push(llm)
+  const lg = fs.createWriteStream(path.join(logDir, `fakellm${tag}.log`))
+  llm.stdout.pipe(lg); llm.stderr.pipe(lg)
+  return llm
+}
+startLlm()
 
-const be = spawn(path.join(ROOT, 'backend/.venv/bin/python'),
-  ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(backendPort)], {
-  cwd: path.join(ROOT, 'backend'),
-  env: {
-    ...process.env,
-    PYTHONPATH: path.join(ROOT, 'backend'),
-    PYTHONUNBUFFERED: '1',
-    MEMOKET_NOTE_WEB_DIR: path.join(FRONTEND, 'dist'),
-    KITE_DATA_DIR: path.join(udd, 'data'),
-    MEMOKET_JOURNEY_DIR: path.join(udd, 'journey'),
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-})
-procs.push(be)
-const beLog = fs.createWriteStream(path.join(logDir, 'backend.log'))
-be.stdout.pipe(beLog); be.stderr.pipe(beLog)
-
-const health = await waitHealth(backendPort)
-if (!health) die(`后端 ${backendPort} 起不来，看 ${path.join(logDir, 'backend.log')}`)
+/** 后端起一个。**端口也从外面给**：第二段要带着 `MEMOKET_RUN_TOKEN_CAP` 重起一次，
+ *  而那个上限是 `params.RUN_TOKEN_CAP` **模块级读一次**的环境变量，改不了活着的进程。 */
+let be = null
+/** 起过的后端日志逐份记着（第二段会再起一个）。 */
+const beLogPaths = []
+async function startBackend(port, extraEnv = {}, tag = '') {
+  be = spawn(path.join(ROOT, 'backend/.venv/bin/python'),
+    ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)], {
+    cwd: path.join(ROOT, 'backend'),
+    env: {
+      ...process.env,
+      PYTHONPATH: path.join(ROOT, 'backend'),
+      PYTHONUNBUFFERED: '1',
+      MEMOKET_NOTE_WEB_DIR: path.join(FRONTEND, 'dist'),
+      KITE_DATA_DIR: path.join(udd, 'data'),
+      MEMOKET_JOURNEY_DIR: path.join(udd, 'journey'),
+      ...extraEnv,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  procs.push(be)
+  const beLogPath = path.join(logDir, `backend${tag}.log`)
+  beLogPaths.push(beLogPath)
+  const lg = fs.createWriteStream(beLogPath)
+  be.stdout.pipe(lg); be.stderr.pipe(lg)
+  const h = await waitHealth(port)
+  if (!h) die(`后端 ${port} 起不来，看 ${path.join(logDir, `backend${tag}.log`)}`)
+  return h
+}
+const health = await startBackend(backendPort)
 console.log('后端起来了：' + health.slice(0, 160))
 
 // `ELECTRON_RUN_AS_NODE` 必须摘掉：留着的话 Electron 当 node 跑，**没有窗口**，
 // 而症状是「CDP 连不上」，看起来像端口问题。（README 每批都重记一遍的那条。）
 // `FAKESHELL_BACKEND_PID`：界面拿 `backendInfo()` 跟 `/api/health` 自报的那份对一次
 // （P45 #2）。给错了它就摆「⚠︎ 连错后端了」——**那会是一条假缺陷**。
-const eenv = {
-  ...process.env,
-  FAKESHELL_BACKEND_PORT: String(backendPort),
-  FAKESHELL_BACKEND_PID: String(be.pid),
+// ⚠️ **现算，不是算一次存着**（P105 A）：第二段会把后端换一个端口重起，
+// 那时候这两格都得跟着换——存着一份的话壳会连回**已经死掉的那个后端**，
+// 而症状是「界面全空 / 一个 API 都不响应」，看起来像产品坏了。
+function shellEnv() {
+  // ⚠️ **这个局部变量必须还叫 `eenv`**：`backend/tests/test_p74.py` 第 ⑧ 条钉的是
+  //    `delete eenv.ELECTRON_RUN_AS_NODE` 这一串（留着它 Electron 会当 node 跑、没有窗口，
+  //    而症状是「CDP 连不上」）。这一批把它从模块级常量改成函数里现算的那一刻，
+  //    那条 pytest 当场红了——**改名字不等于改行为，但那条闸钉的是名字**，
+  //    与其把闸改宽，不如让名字留着（P105 实拍）。
+  const eenv = {
+    ...process.env,
+    FAKESHELL_BACKEND_PORT: String(backendPort),
+    FAKESHELL_BACKEND_PID: String(be.pid),
+  }
+  delete eenv.ELECTRON_RUN_AS_NODE
+  delete eenv.VSCODE_ESM_ENTRYPOINT
+  delete eenv.VSCODE_IPC_HOOK
+  delete eenv.VSCODE_PID
+  return eenv
 }
-delete eenv.ELECTRON_RUN_AS_NODE
-delete eenv.VSCODE_ESM_ENTRYPOINT
-delete eenv.VSCODE_IPC_HOOK
-delete eenv.VSCODE_PID
 /** 起一个壳，等到真有 page target。**P76 拆成函数**：第 ⑩ 步要真关掉重起一个。 */
 let shellSeq = 0
 let el = null
@@ -777,7 +863,7 @@ async function startShell() {
   shellSeq += 1
   el = spawn(path.join(ROOT, 'desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
     [path.join(WALK, 'fakeshell/main.cjs'), `--user-data-dir=${udd}`, `--remote-debugging-port=${cdpPort}`],
-    { env: eenv, stdio: ['ignore', 'pipe', 'pipe'] })
+    { env: shellEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
   procs.push(el)
   const elLog = fs.createWriteStream(path.join(logDir, `electron${shellSeq > 1 ? shellSeq : ''}.log`))
   el.stdout.pipe(elLog); el.stderr.pipe(elLog)
@@ -811,9 +897,37 @@ await wait(3000)
 
 const failures = []
 let checked = 0
+/** **换一套环境重来**（P105 A 的第二段）：假模型换档（**同一个端口**）、
+ *  后端换一个端口带着新的环境变量重起、壳跟着重起。
+ *
+ *  ⚠️ 换后端端口 = **换 origin** ⇒ 页面的 `localStorage`（身份 / 标签条 /
+ *  「上次开着哪一篇」）当场清空（文件头「够不着什么」第 7 条说的正是这件事）。
+ *  所以这一段只放**自己造自己用**的步骤，**上面那八步一律排在它前面**。 */
+async function restage(cfg, name) {
+  console.log(`   ── 第二段（${name}）：假模型换 ${cfg.llmMode}`
+    + `${cfg.llmDelayMs ? ` / 每发慢 ${cfg.llmDelayMs} 毫秒` : ''}`
+    + `${cfg.backendEnv ? ` / 后端带 ${JSON.stringify(cfg.backendEnv)} 重起` : ''} ──`)
+  await stopShell()
+  // 假模型：**同一个端口**（`provider_config.local_base_url` 里存的就是它，P68 那条坑）
+  try { llm.kill('SIGTERM') } catch { /* 已经没了 */ }
+  await wait(1200)
+  startLlm(cfg.llmMode ?? 'ok', cfg.llmDelayMs ?? 0, '-2')
+  await wait(1200)
+  // 后端：换端口重起（**端口不换的话上一个还占着**），ctx 跟着换
+  try { be.kill('SIGTERM') } catch { /* 已经没了 */ }
+  await wait(1200)
+  backendPort = await freePort()
+  const h = await startBackend(backendPort, cfg.backendEnv ?? {}, '-2')
+  ctx.backendPort = backendPort
+  console.log('   后端重起好了：' + h.slice(0, 120))
+  ctx.shellPids.push(await startShell())
+  await wait(3000)
+}
+
 for (const s of PLAN) {
   if (only && s.name !== only) continue
   console.log(`\n── ${s.name}（steps/${s.step}）`)
+  if (s.stage2) await restage(s.stage2, s.name)
   // `before` 先跑（造夹具 / 跑之前对端口），**它报的问题跟判据一样算数**
   if (s.before) {
     checked += s.beforeCount ?? 0
@@ -886,7 +1000,10 @@ if (!only) {
     failures.push(`通道对照组：POST /api/client-log 发不出去（${e.message}）`)
   }
   await wait(600)
-  const beText = fs.readFileSync(path.join(logDir, 'backend.log'), 'utf8')
+  // ⚠️ **后端的日志不止一份**（P105 A 的第二段会带着 cap 重起一个）：
+  //    只读 `backend.log` 的话，第二段那个后端里的 `save-guard` 一条都看不见
+  //    ——**扫不到东西的闸门会一直是绿的**。逐份读，合起来数。
+  const beText = beLogPaths.map((f) => fs.readFileSync(f, 'utf8')).join('\n')
   const alive = (beText.match(new RegExp(CHANNEL_PROBE, 'g')) ?? []).length
   const guard = (beText.match(/save-guard/g) ?? []).length
   if (alive < 1) {

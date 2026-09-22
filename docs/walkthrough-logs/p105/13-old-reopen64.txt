@@ -1,0 +1,19 @@
+步骤脚本: reopen64.mjs sha256=3fe8defb41bf362821222325c8a3c54c86841d294801b19760efb47970c31ddf
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+壳刚起来，现在开着: <ID12>
+  这一刻的 toast: []
+开的是 <ID12> （第 0 个候选： P58 走查（可删）标签 ）
+=== 带层那篇（ <ID12> ）===
+  开着的是: <ID12>
+  右栏页签: ["记忆","改动2","计划2"]
+  toast: ["上次没处置完的 2 层改动还在右栏「改动」里"]
+  P43 不变式（弹了 toast ⇒ 页签在）: 成立
+  整页搜得到「改动」这两个字吗: true
+  正文字数: 213
+shot → <DIR>/<B>-reopen-withlayer-light.png
+开的是 <ID12> （第 0 个候选： harness 测试（可删） · 幻灯片标签 ）
+=== 不带层那篇（ <ID12> ）===
+  开着的是: <ID12>
+  右栏页签（不许有「改动」）: ["记忆","幻灯片24","计划5"]
+  toast（该一条都没有）: []
+shot → <DIR>/<B>-reopen-nolayer-light.png

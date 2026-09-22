@@ -146,6 +146,28 @@ for (const [re, why] of [
   if (!re.test(runnerCode)) fail(why)
 }
 
+// ── ②″ **第二段那一套真的在换环境吗**（P105 A 加的第 ⑫ 步）──────────────
+// 第 ⑫ 步要的三样（`LLM_MODE=adv` / 每发慢几秒 / `MEMOKET_RUN_TOKEN_CAP=1`）
+// 跟前面八步那一套是打架的，所以它单开一段（`stage2`）。
+// **少了这几条，把 `restage(...)` 那一行去掉这条闸会一声不吭**：
+// 那时候第 ⑫ 步跑在 `ok` 档、没有延时、没有 cap 上——**判 ④ 恒读 0、判 ⑤ 永远没有那条 toast**，
+// 而那正是「量具够不着」被读成「产品没毛病」的那张脸（P103 第一趟栽过一次）。
+if (!/stage2:\s*\{[^}]*llmMode:\s*'adv'/.test(runnerCode)) {
+  fail('PLAN 里没有一步声明 `stage2: { llmMode: \'adv\' … }` —— 第 ⑫ 步「跑着切走」没在跑，'
+    + '或者它跑在 `ok` 档上（那一档压根不回骨架 JSON，判 ④ 恒读 0）')
+}
+for (const [re, why] of [
+  [/if \(s\.stage2\) await restage\(/, '步骤那个循环里没人调 `restage(...)` —— `stage2` 声明了但没生效'],
+  [/async function restage\([\s\S]{0,900}?await stopShell\(\)/, '`restage` 里没先把壳关掉'],
+  [/async function restage\([\s\S]{0,900}?startLlm\(cfg\.llmMode/, '`restage` 里没换假模型的档'],
+  [/async function restage\([\s\S]{0,1400}?await startBackend\(backendPort, cfg\.backendEnv/,
+    '`restage` 里没拿新的环境变量重起后端 —— `MEMOKET_RUN_TOKEN_CAP` 是模块级读一次的，改不了活着的进程'],
+  [/async function restage\([\s\S]{0,1600}?ctx\.shellPids\.push\(await startShell\(\)\)/, '`restage` 里没把壳重起'],
+  [/function shellEnv\(\)/, '壳的环境变量又存成一份了 —— 后端换端口之后壳会连回死掉的那个'],
+] as [RegExp, string][]) {
+  if (!re.test(runnerCode)) fail(why)
+}
+
 // ── ③ **接线洞单独一条断言**（P72 那一课）────────────────────────────────
 // 这条闸最容易悄悄失效的方式不是「被删掉」，是「它改成跑自己抄的一份驱动 / 自己写的一份步骤」
 // ——那时候它照样绿，绿的却是**没在跑产品那一份**的绿。

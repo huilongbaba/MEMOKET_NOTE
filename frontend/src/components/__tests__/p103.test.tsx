@@ -36,9 +36,17 @@ describe('B 三条 toast：**逐条判**，答案不一样', () => {
     expect(HARNESS_GUARD.onCrossRun.verdict).toBe('self')
     expect(guardBlocks('onCrossRun')).toBe(false)
   })
-  it('`onWarning` **照旧拦** —— 三条里唯一不改的那条', () => {
-    expect(HARNESS_GUARD.onWarning.verdict).toBe('blocked')
-    expect(guardBlocks('onWarning')).toBe(true)
+  // ⚠️ **P105 C 动了这一条，但只动了半边**：`onWarning` 挪进了 `rounds`
+  //（`writeRounds(noteId, … warnings …)` 记这一轮少了哪个能力，切走照记），
+  // 而 **P103 判的那半边——「那句红字 toast 切走之后不弹」——一个字没动**：
+  // 那句 toast 照旧排在自己那句 guard 后面。
+  // 源码那一头由 `scripts/check-harness-guard.mts` 第 ⑦ 条钉着
+  //（`rounds` 那一档里每一处 `toast(` 的下标都大于 guard 的下标）。
+  // **这儿不把判词改成「照旧拦」**：那句话现在是假的，而一条假的判词比没有更糟。
+  it('`onWarning` 那句红字 toast **切走之后照旧不弹**（P105 C 只挪了记账那一半）', () => {
+    expect(HARNESS_GUARD.onWarning.verdict).toBe('rounds')
+    expect(HARNESS_GUARD.onWarning.why).toContain('guard 后面')
+    expect(HARNESS_GUARD.onWarning.why).toContain('不弹')
   })
   it('三条的「为什么」**各写各的**（不是一句「同 onCost」盖过去）', () => {
     const whys = ['onCost', 'onCrossRun', 'onWarning'].map((k) => HARNESS_GUARD[k].why)

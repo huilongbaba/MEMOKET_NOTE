@@ -9,7 +9,7 @@ P66 把驱动搬了进来，**步骤脚本留在了外面**——于是 P66 / P6
 | 东西 | 在哪儿 | 接在哪条链上 |
 |---|---|---|
 | CDP 驱动 `cdp.mjs`（`d.must` / `d.toasts` / `d.dots` / `d.menuItems` / `d.expandDetails` / `d.readCard` / `d.noteId` / `d.openNoteById` / `d.shot` / `d.cmText` …） | `frontend/scripts/walkthrough/cdp.mjs` | 选择器那一半进了 `npm test`；跑的那一半要壳 |
-| **步骤脚本 33 份**（十一步 + 几批专题探针 + 两份共用量具） | `frontend/scripts/walkthrough/steps/` | **`npm test`**（`check-walkthrough-selectors.mts` 现在**默认扫它们**；`check-walkthrough-runnable.mts` 逐个 import） |
+| **步骤脚本 40 份**（十一步 **+ 第 ⑫ 步** + 几批专题探针 + 两份共用量具） | `frontend/scripts/walkthrough/steps/` | **`npm test`**（`check-walkthrough-selectors.mts` 现在**默认扫它们**；`check-walkthrough-runnable.mts` 逐个 import） |
 | **身份的唯一出处**（P78 A）`whoami.mjs`（`USER_KEY` / `USER` / `USER_SOFT`） | `frontend/scripts/walkthrough/whoami.mjs` | **`npm test`**（`check-walkthrough-selectors.mts` 第三件事：这个键只准在这一份里出现） |
 | 选择器静态自检 | `frontend/scripts/check-walkthrough-selectors.mts` | **`npm test`** |
 | 「按 README 跑得起来」那条闸 | `frontend/scripts/check-walkthrough-runnable.mts` | **`npm test`** |
@@ -41,6 +41,16 @@ P66 把驱动搬了进来，**步骤脚本留在了外面**——于是 P66 / P6
 | 9 | ⌘K 全部去处 | `steps/bnew.mjs` | `steps/b1old.mjs` |
 | 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，壳是新起的） | — | `steps/reopen64.mjs` |
 | 11 | 深色 + 900px | `steps/bnew.mjs` `steps/bnew3.mjs` | `steps/b1old.mjs` |
+| **12** | **跑着切走再切回**（P105 A 加的那一步，**自己一份 udd、自己一趟壳**）| — | `steps/switchaway105.mjs` |
+
+**第 ⑫ 步为什么在这儿**（P105 A）：P103 跑完第二十九次走查，跨批 diff 里
+「**产品改了**」那一格是 **0 行**，而那一批真的改了产品（`onSkeleton` 落库 + 两条 toast 点名）。
+它自己写下了这句：**十一步那条路一次都不经过「切走」**，证据全在新加的四份探针日志里
+⇒ **「走查全绿」≠「这一批的改动被走查验过」。** 而「切走」这一族这几批出过**三个真缺陷**
+（P95 轮次卡串台 / P101 `guarded` 误伤 / P103 骨架永久丢 + 停机理由丢）。
+**它跟别的专题探针不一样：它自己判**，判不过当场 EXIT 非 0 并点名到是哪一条缺陷长回来了
+——「只读不判」的探针要有人每批把日志读一遍才发现回退，而**一条靠人记得的闸不是闸**。
+跑它要 `LLM_MODE=adv` + `LLM_DELAY_MS` 给几秒 + `MEMOKET_RUN_TOKEN_CAP=1`，三条逐字写在它抬头。
 
 十一步之外还有几批的**专题探针**，同在 `steps/`，按需单跑：
 `steps/adv64.mjs`（advisory / judge_floor 两档）、`steps/adv70.mjs`（收工那行 +N 字 · 编辑器 / 库两头）、
@@ -79,7 +89,18 @@ P66 把驱动搬了进来，**步骤脚本留在了外面**——于是 P66 / P6
 一屏读两头：**屏幕上**几种「第 N 轮」/「这张卡是从库里读回来的骨架」出现几次，
 **库里**那条只读 API（`GET /api/notes/<id>/rounds`）说这一次跑几轮、一共几次跑。
 **那条 API 在改前那一趟也通**（后端件同一个）⇒ 库里那个数两趟一样、屏幕上那个不一样，
-**「改前 0 张卡」说的是没人读，不是库里没有**）。
+**「改前 0 张卡」说的是没人读，不是库里没有**）、
+`steps/warn105.mjs`（P105 C 加：**轮次卡上那一格「这一轮少了什么」的实拍**。
+逼出 warning **不靠模型出错**：自己造一篇「骨架里存着半句节拍」的笔记
+（`PUT /api/notes/<id>/skeleton`，**写完读回来再断言**），
+`hooks/note.skeleton` 当场发一条。五条判据里有**一组对照**：
+**没切走那几秒那句红字是弹的 / 切走之后一条都不许弹**（P103 B ③ 判的那半边没动），
+外加**切出去 45 秒再回来那一格还在**（它是按 noteId 记的）。
+⚠️ **那一发在开跑之前就到**（`hooks.skeleton` 在 `loop.run` 之前跑完，实拍第 412 毫秒，
+那一刻一张卡都还没有）⇒ 「切走那几秒里到的 warning 记不记得住」**这份探针够不着**，
+那一半由 `frontend/scripts/check-harness-guard.mts` 第 ④ 条从源码那头钉。
+⚠️ 它要 `LLM_MODE=adv` + 几秒延时，而且**别设 `MEMOKET_RUN_TOKEN_CAP`**
+——设了第一轮末尾就停，这一格该在「一次真跑几轮」的那一屏上看得见）。
 
 共用量具两份，**没有 default 导出**（它们不是「一步」）：
 `steps/lib.mjs`（`docText` / `statusWords` / `pageText` / `until`）、`steps/lib52.mjs`（屏幕活动那一页）。
@@ -104,9 +125,15 @@ cd frontend && npm run build          # 要先有 frontend/dist
 WALKTHROUGH_SCRATCH=<一个空目录> node scripts/run-walkthrough-fakeshell.mjs
 ```
 
-它跑的是**走查本来就在跑的那几步**（`steps/whoami52.mjs` / `steps/bnew.mjs` / `steps/bnew3.mjs`，
-一个字节没改），判据写在 `frontend/scripts/run-walkthrough-fakeshell.mjs` 的 `PLAN` 里。
+它跑的是**走查本来就在跑的那几步**（P105 之后是 **9 步**：`whoami52` / `bnew` / `bnew3` /
+`b1old` / `ctxmenu52` / `b1b` / `b2old` / `reopen64` / **`switchaway105`**，
+步骤脚本一个字节没改），判据写在 `frontend/scripts/run-walkthrough-fakeshell.mjs` 的 `PLAN` 里。
 **够不着什么**（打包 / 主进程那一圈 / 482 篇那一趟 / CI）逐条写在那份文件的头上。
+
+⚠️ **最后那一步跑在「第二段」上**（P105 A）：第 ⑫ 步要 `adv` 档 + 几秒延时 +
+`MEMOKET_RUN_TOKEN_CAP=1`，跟前面八步那一套（`ok` 档、没有 cap、`b2old` 的 105 → 205）打架
+⇒ `PLAN` 里那一步声明 `stage2`，跑到它的时候**假模型同端口换档重起、后端换端口带 cap 重起、壳重起**。
+换后端端口 = 换 origin ⇒ `localStorage` 那几格会清空，所以第二段只放**自己造自己用**的步骤。
 
 ## 怎么跑一趟走查
 
