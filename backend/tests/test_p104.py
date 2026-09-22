@@ -299,8 +299,8 @@ def test_第五条d_下限那把尺跟着抬了():
     """加了 19 条登记，两个 floor 必须一起抬到真值（只准往上，抬是绿的）。"""
     bad, checked, behind = FR.check()
     assert bad == [] and behind == [], (bad, behind)
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 167
-    assert FR.CHECKED_COUNT_FLOOR == checked == 179
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 179  # P106 抬到 179（P104 实得 167）
+    assert FR.CHECKED_COUNT_FLOOR == checked == 191  # P106 抬到 191（P104 实得 179）
 
 
 def test_第五条e_十九条读数条条有登记():

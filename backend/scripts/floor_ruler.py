@@ -85,10 +85,10 @@ WATCHED_NAME = re.compile(r"^(MIN_[A-Z0-9_]*|MAX_[A-Z0-9_]*|EXPECT[A-Z0-9_]*|SHO
 # **一条在每次正当改动上都会红的闸，迟早会被人不假思索地改成不红的那个数。**
 # 所以这两个数按「只准往上」记在这儿，各批的测试去问它，别各自钉一份。
 # 它挡得住的是「有人把登记删了」；挡不住「加了一条没登记」——那是 `check()` 的完整性闸的活。
-REGISTRY_SIZE_FLOOR = 167  # 第 822 轮 P104 在自己 worktree 里实测（+19 条：`FAMILY_MIN` 该不该是 2 那一组读数）；821 轮是 148（+8 条：码表对那把尺）、820 轮是 140（+15 条：留出集那一组读数）、819 轮是 125、818 轮是 121、817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
+REGISTRY_SIZE_FLOOR = 179  # 第 823 轮 P106 在自己 worktree 里实测（+12 条：跨码拼族 + 结案那一组读数）；822 轮 P104 在自己 worktree 里实测（+19 条：`FAMILY_MIN` 该不该是 2 那一组读数）；821 轮是 148（+8 条：码表对那把尺）、820 轮是 140（+15 条：留出集那一组读数）、819 轮是 125、818 轮是 121、817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
 # ⚠️ 合并时记得抬到**合并后**那个数：两批各自在自己 worktree 里抬到 84 / 79，
 # 合并后真值是 85——取任一边都会让「删掉一条登记」不红（这个数只准往上，抬是绿的）。
-CHECKED_COUNT_FLOOR = 179  # 同上；共核 = 登记表 + 例反例；821 轮是 160、820 轮是 152、819 轮是 137、818 轮是 133、817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
+CHECKED_COUNT_FLOOR = 191  # 同上；共核 = 登记表 + 例反例；822 轮是 179、821 轮是 160、820 轮是 152、819 轮是 137、818 轮是 133、817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
 
 
 FLOOR = "floor"      # 只准往上调
@@ -743,6 +743,49 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         PINNED, 7,
         "留出集上 `M` 团 == 2 的屏数。**放到 2 一屏都没进门**——半屏那道门先挡着，"
         "所以上面那个 `M` 的 0 不是「没有假阳性」，是**根本没开口**"),
+
+    # —— P106：**一屏之内跨码拼族（判「不接」）+ 这条线结案**（收 P104 ①）——
+    # 人标在 `p106-unread-59`（59 屏盲标普查）和 `p106-fuse-read-2`；这十二个数是「结案」那个判的全部分量。
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_UNREAD"): (
+        PINNED, (59, 12, 0),
+        "`K团≤1 ∧ M团≤1` 那 59 屏盲标普查：人读出族 12、**该判是 0**。"
+        "它一动说明团 ≤1 那一档里冒出了半屏同一句话 —— 结案那条「上限在 22 屏」就得重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_UNREAD_LIBS"): (
+        PINNED, (("fresh678b", "fixture", 2, 0, 0), ("shot-demo", "fixture", 7, 5, 0),
+                 ("terrence", "script", 11, 2, 0), ("terrence", "user", 37, 5, 0),
+                 ("terrence-rewrite", "script", 2, 0, 0)),
+        "上面那 59 屏按库 × 血缘：(库, 血缘, 屏, 人读出族, 该判是)。**`terrence·user` 37 屏是用户眼前那一档**"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_TWOAXIS"): (
+        PINNED, (4, 4, 0),
+        "团 ≤2 那两档里人读族 ≥3 且 ≥半屏的屏 4、**两轴同劈 4**、P102 那把尺（R2/R1 字面）够得着的劈开成员 **0**。"
+        "4 屏 = 2 组事实（694/696 · 316/320）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_TWOAXIS_PAIRS"): (
+        PINNED, (8, 8), "团 ≤1 那档人读的两格族 8 对，**8 对全是两轴同劈**"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_CENSUS"): (
+        PINNED, (175, 175, 22, 17, 16, 6),
+        "**结案的正文**：量得了≥3 的 175 屏全有人读；人读「半屏同一句话」22 屏；尺子判是 17（真 16）、漏 6。"
+        "⚠️ 尺子没接进产品 ⇒ 这 22 屏在用户眼前一屏都没变过。一动去重读 `product-readiness-plan` §4 那条结案"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_MISS"): (
+        PINNED, (94, 316, 320, 590, 694, 696),
+        "尺子漏的 6 屏 = 4 组事实。94 是 `M`「同一场录音」那条口子（P96 的代价）、590 是只劈了 `topics`（P98）、"
+        "其余 4 屏两轴同劈"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_USER"): (
+        PINNED, (549, 355, 7),
+        "`user` 血缘：549 屏里**空屏 355（64.7%）**、半屏同一句话 **7（1.3%）**。"
+        "这条线七批都在第二个数上；一动去重读结案理由"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_P106_DISAGREE"): (
+        PINNED, (94,), "两批人读判得不一样的屏（P94 判真 / P104 按族格数算不够半屏），照实并排：22 或 21"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FUSE_C1"): (
+        PINNED, (31, 14, 5, None, 0, 6),
+        "C1 实体桥：判是 31、新增 14、**新增里 5 屏是读过的假** ⇒ 先喂反例就死，其余 9 屏**没读**（照实）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FUSE_C12"): (
+        PINNED, (19, 2, 0, 1, 0, 0),
+        "C12 码的分布互近邻（无 cut）：判是 19、新增 2（真 1 假 1）、反例 0、"
+        "**两轴同劈那 4 屏修好 0、8 对两格族拼上 0** ⇒ 判「不接」"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FUSE_C12_NEW"): (
+        PINNED, (23, 590), "C12 新增的两屏：590 真（P96/P106 两份读一致）、23 假（`p106-fuse-read-2`）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FUSE_NEG"): (
+        PINNED, 33, "反例池：P94 假 · P96 该拦 · P102 假 · P104 放宽新增 20，去重 33 屏"),
 
     ("backend/scripts/recall_ruler.py", "EXPECT_CF_WHO_BLOCKED"): (
         PINNED, 9, "被主语面挡回去、不再捞回来的串数（价格/公司/反馈/客户/收到/更新/能力/自动/连接）。"
