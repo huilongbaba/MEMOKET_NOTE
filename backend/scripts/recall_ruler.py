@@ -407,6 +407,58 @@ EXPECT_HOLD_MISS = ("H05",)
 EXPECT_HOLD_READ25 = (22, 40, 65, 94, 101, 273, 307, 337, 388, 427, 575, 587, 588,
                       590, 591, 595, 596, 597, 637, 638, 655, 656, 657, 677, 698)
 
+# ── `--fam2`：**`FAMILY_MIN` 该不该是 2**（P104，收 P102 ①）────────────────────
+#
+# P102 判「合同义码不接」，留的第一条账是：`S` 那一支在 2463 对事实上翻了 4 对、
+# **2 屏的团 1→2**，而 `FAMILY_MIN = 3` 够不着门 ⇒「开了口、顶不过门」。
+# 它留的话是「**先量「团 == 2 的那 99 屏里有多少是真的」，别接着合码**」。这一支就是那件事。
+#
+# ⚠️ **台账上那个 99 是 `K` 的数**（P94 写下它的时候判据还是 `K`）。
+# **HEAD 今天跑的是 `M`**（P96 换的，`K` ∧ 不同 `unit`），`M` 团 == 2 只有 37 屏。
+# 两套**分开记，别混成一个数**——这一支两套都量。
+#
+# 人标那 111 条是**数据**（`tests/fixtures/memory_sample.jsonl` 的 `p104-fam2-111`，
+# 盲标：单子上只有洗过的屏号 + 每格正文，没有团 / `cover` / 判据 / 库名 / 查询 / 原始序号），
+# 这一支只负责**把机械的那一半重算一遍**，并且逐屏跟标注里存的机器读数对，对不上当场抛。
+EXPECT_FAM2_POP = (99, 37, 25, 111)     # (`K` 团==2, `M` 团==2, 交, 并 = 这一批普查的屏数)
+EXPECT_FAM2_LIBS_K = (("fresh678", 4), ("fresh678b", 2), ("fresh678c", 4),
+                      ("shot-demo", 3), ("terrence", 41), ("terrence-rewrite", 45))
+EXPECT_FAM2_LIBS_M = (("shot-demo", 2), ("terrence", 21), ("terrence-rewrite", 14))
+# **机器在「团 == 2」上挑的那一对，人读判是不是「同一句话的多种说法」**：(分母, 真)。
+# ⚠️ 判的是**机器挑的那一对**，不是「这一屏有没有真的一对」——挑错了就是假，
+# 哪怕同一屏上另有一对是真的（实拍：Q047 / Q017 / Q057 三屏都是这个形状）。
+EXPECT_FAM2_PAIR_K = (99, 32)           # 32/99 = 32.3%
+EXPECT_FAM2_PAIR_K_LIBS = (("fresh678", 0, 4), ("fresh678b", 0, 2), ("fresh678c", 0, 4),
+                           ("shot-demo", 0, 3), ("terrence", 8, 41),
+                           ("terrence-rewrite", 24, 45))
+EXPECT_FAM2_PAIR_M = (37, 8)            # 8/37 = 21.6%
+EXPECT_FAM2_PAIR_M_LIBS = (("shot-demo", 2, 2), ("terrence", 2, 21),
+                           ("terrence-rewrite", 4, 14))
+# **屏级**：`FAMILY_MIN` 3→2 之后这 765 屏上判「是」从 17 涨到 37。
+EXPECT_FAM2_FLAG = (17, 37)
+# **新增的那 20 屏，人读判真的有几屏** —— `(新增, 其中真的)`。**这一行就是判的正文。**
+EXPECT_FAM2_NEW = (20, 0)
+EXPECT_FAM2_NEW_LIBS = (("shot-demo", 0, 2), ("terrence", 0, 13), ("terrence-rewrite", 0, 5))
+EXPECT_FAM2_NEW_IDX = (24, 25, 27, 54, 67, 82, 88, 94, 101, 151, 273, 337,
+                       412, 418, 427, 575, 603, 604, 662, 663)
+EXPECT_FAM2_NEW_WHY = (16, 4)   # 新增里靠 `cover×2 ≥ n` 进来的 / 靠 `团×2 ≥ n` 进来的
+# **这 111 屏里人读判「该判是」的**：(真@2, 真@3)。⚠️ 5 屏里**一屏都不在新增那 20 屏里**
+# —— 放宽门槛买到的全是假的，而真的那 5 屏放宽了也照样捞不着。
+EXPECT_FAM2_TRUE = (5, 4)
+EXPECT_FAM2_TRUE_IDX = (45, 316, 320, 694, 696)
+# **P102 那两屏（i=694 / 696）的解剖**：(量得了, 人读的族有几格, `M` 团, `M` 盖住)。
+# ⚠️ **差的不是 1**：就算 `S` 把团合到 2，`2×2 = 4 < 8`、`盖住 2×2 = 4 < 8`，
+# **半屏那道门照样不放行**；人读的族有 5 格，机器差的是 3 格，而且是**召回不到**，不是门槛高。
+EXPECT_FAM2_S = (8, 5, 1, 2)
+# ── 留出集那一面（P100 那 27 屏，**只会多判是的改动，要的正是假阳性那一面**）──
+# 27 屏原样、人标原样，只把门从 3 放到 2 重算一遍：(判是, 真, 假)。
+EXPECT_FAM2_HOLD_K = ((6, 0, 6), (8, 0, 8))     # `K`+门：fmin=3 → fmin=2
+EXPECT_FAM2_HOLD_M = ((0, 0, 0), (0, 0, 0))     # `M`+门：两头都是 0
+EXPECT_FAM2_HOLD_NEW = ("H13", "H15")           # `K` 那一头新增的两屏，**都是假的**
+# ⚠️ **`M` 那两个 0 是空的**（跟 P100 记的 `EXPECT_HOLD_A_M` 同一个形状）：
+# 留出集上 `M` 团 == 2 的屏有这么多，**放到 2 一屏都没进门**——半屏那道门先挡着。
+EXPECT_FAM2_HOLD_M2 = 7
+
 _HEAD = re.compile(r"^#{1,6}\s")
 
 
@@ -1387,6 +1439,190 @@ def cf_hold(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
                           if r["真"] and not r["K"] and not r["M"])}
 
 
+def _fam_door(fam: int, cover: int, meas: int, fmin: int) -> bool:
+    """`screen_shape` 那道门，**只是把 `FAMILY_MIN` 拎出来当参数**（P104）。
+
+    ⚠️ 这是 `fact_distinct.screen_shape` 里那半句的**第二份实现**，存在只有一个理由：
+    这一支要在**同一屏上同时量 `FAMILY_MIN = 3` 和 `= 2`**，而产品那一份把它写死了。
+    所以 `cf_fam2()` 顶上有一条**强制自检**：`fmin = FD.FAMILY_MIN` 的时候这一份
+    必须跟 `FD.screen_shape(...)["flagged"]` **逐屏相同**，对不上当场抛、整支的数作废。
+    """
+    return meas >= fmin and fam >= fmin and (fam * 2 >= meas or cover * 2 >= meas)
+
+
+def _fam2_rows() -> list[dict]:
+    """人标那 111 条（`p104-fam2-111`）。**这是数据，不是这一支算出来的**。"""
+    import json
+
+    fix = BACKEND / "tests" / "fixtures" / "memory_sample.jsonl"
+    rows = [json.loads(line) for line in fix.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [r for r in rows if r.get("set") == "p104-fam2-111" and "sid" in r]
+
+
+def fam2_holdout() -> dict:
+    """**把门从 3 放到 2，在 P100 那 27 屏留出集上多判了几屏「是」、真不真**（P104）。
+
+    ⚠️ **不重造留出集、不重跑召回、不改人标**：27 屏的机器读数（`量得了` / `K团` / `M团`
+    / `盖住`）和人标（`人读的族里量得了的`）原样取自 `p100-holdout-27`，
+    这儿只把**门**换一个参数重算。**先自检**：`fmin = 3` 必须逐屏复现那 27 行里存着的
+    `K判是` / `M判是`，对不上当场抛。
+
+    ⚠️ **为什么这一面够得着**：`FAMILY_MIN` 放宽是**只会多判「是」**的改动
+    （一屏都不会掉），而这份留出集自己写着「量得了假阳性、量不了召回」——**要的正是那一面**。
+    ⚠️ **为什么它答不满**：`M` 那一头判「是」的分母是 **0**（`M` 团 == 2 的 7 屏
+    全被半屏那道门挡在外面），**0 假阳性是空的**，跟 P100 记的 `EXPECT_HOLD_A_M` 同一个形状。
+    """
+    rows = _fam2_holdout_rows()
+    for r in rows:
+        for axis in ("K", "M"):
+            if _fam_door(r[f"{axis}团"], r[f"{axis}盖住"], r["量得了"], 3) != r[f"{axis}判是"]:
+                raise AssertionError(
+                    f"{r['hid']} 的 {axis} 门跟仓库里存的读数对不上 —— 这一支的数作废")
+
+    def 真(r: dict, fmin: int) -> bool:
+        h = r["人读的族里量得了的"]
+        return h >= fmin and h * 2 >= r["量得了"]
+
+    def tally(axis: str, fmin: int) -> tuple[int, int, int]:
+        hit = [r for r in rows if _fam_door(r[f"{axis}团"], r[f"{axis}盖住"], r["量得了"], fmin)]
+        return (len(hit), sum(1 for r in hit if 真(r, fmin)),
+                sum(1 for r in hit if not 真(r, fmin) and r["判"] != "?"))
+
+    new = tuple(r["hid"] for r in rows
+                if _fam_door(r["K团"], r["K盖住"], r["量得了"], 2)
+                and not _fam_door(r["K团"], r["K盖住"], r["量得了"], 3))
+    return {"screens": len(rows), "k": (tally("K", 3), tally("K", 2)),
+            "m": (tally("M", 3), tally("M", 2)), "new_k": new,
+            "m2": sum(1 for r in rows if r["M团"] == 2)}
+
+
+def _fam2_holdout_rows() -> list[dict]:
+    import json
+
+    fix = BACKEND / "tests" / "fixtures" / "memory_sample.jsonl"
+    rows = [json.loads(line) for line in fix.read_text(encoding="utf-8").splitlines() if line.strip()]
+    out = [r for r in rows if r.get("set") == "p100-holdout-27" and "hid" in r]
+    if len(out) != sum(EXPECT_HOLD_SHEET):
+        raise AssertionError(f"留出集 {len(out)} 行，不是 {sum(EXPECT_HOLD_SHEET)} —— 数作废")
+    return out
+
+
+def cf_fam2(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
+    """**`FAMILY_MIN` 该不该是 2**（P104，收 P102 ①）。口径和理由写在 `EXPECT_FAM2_*` 上面那段。
+
+    ⚠️ **这一支不改产品，只读**；它跑一趟 765 屏召回（约三分半），**不进每批的例行清单**。
+    ⚠️ 人标那 111 条是**数据**（`p104-fam2-111`），这一支只把**机械的那一半**重算一遍，
+    并且逐屏跟标注里存着的机器读数对，对不上当场抛。
+    """
+    from collections import Counter
+
+    from app.database.kb import fact_distinct as FD
+    from app.database.kite.kite_memory import UserMemory
+
+    qs = qs or queries()
+    mems: dict[str, UserMemory] = {}
+
+    def same_k(a, b) -> bool:
+        return bool(set(a.obj) & set(b.obj)) and bool(set(a.topics) & set(b.topics))
+
+    def cover(facts, fam) -> int:
+        """`family_cover` 的口径，**但不带 `FAMILY_MIN` 那道早退**——这一批要在团 == 2 上读它。"""
+        if not fam:
+            return 0
+        common: set | None = None
+        for i in fam:
+            t = set(facts[i].topics)
+            common = t if common is None else (common & t)
+        idx = [i for i, f in enumerate(facts) if FD.measurable(f)]
+        best = 0
+        for t in (common or set()):
+            best = max(best, sum(1 for i in idx if t in facts[i].topics))
+        return best
+
+    shots = []
+    for i, (user, q, _m, _o) in enumerate(qs):
+        m = mems.get(user) or mems.setdefault(user, UserMemory(user))
+        facts, _t, _ms = m.recall(q, limit=8, evidence=True)
+        store, _v = m._index()
+        recs = [store.facts[f["id"]] for f in facts if f.get("id") in store.facts]
+        fm = _hold_clique(recs, FD.same_thing)
+        if fm != FD.largest_family(recs):
+            raise AssertionError("`_hold_clique` 跟 `largest_family` 对不上 —— 数作废")
+        fk = _hold_clique(recs, same_k)
+        meas = sum(1 for f in recs if FD.measurable(f))
+        cm, ck = cover(recs, fm), cover(recs, fk)
+        if _fam_door(len(fm), cm, meas, FD.FAMILY_MIN) != FD.screen_shape(recs)["flagged"]:
+            raise AssertionError("`_fam_door` 跟 `screen_shape` 对不上 —— 第二份实现飘了，数作废")
+        shots.append({"i": i, "lib": user, "meas": meas, "famK": fk, "famM": fm,
+                      "coverK": ck, "coverM": cm})
+
+    k2 = [s for s in shots if len(s["famK"]) == 2]
+    m2 = [s for s in shots if len(s["famM"]) == 2]
+    sel = {s["i"] for s in k2} | {s["i"] for s in m2}
+
+    # **逐屏对上人标**（标注里存着机器那几列，飘了当场抛）
+    annot = {r["i"]: r for r in _fam2_rows()}
+    if set(annot) != sel:
+        raise AssertionError(f"标注 {len(annot)} 屏、这一趟选出 {len(sel)} 屏 —— 对不上，数作废")
+    for s in shots:
+        r = annot.get(s["i"])
+        if r is None:
+            continue
+        got = (s["meas"], len(s["famK"]), s["coverK"], len(s["famM"]), s["coverM"])
+        want = (r["量得了"], r["K团"], r["K盖住"], r["M团"], r["M盖住"])
+        if got != want:
+            raise AssertionError(f"i={s['i']} 的机器读数 {got} ≠ 标注里存的 {want} —— 数作废")
+
+    def pair_true(s: dict, axis: str) -> bool:
+        """机器挑的那一对**整对**落在人读的某一族里（并列的族用 `|` 分开存）。"""
+        fam = set(s["fam" + axis])
+        if len(fam) < 2:
+            return False
+        letters = annot[s["i"]]["人读的族"]
+        return any(fam <= {ord(ch) - ord("a") for ch in part}
+                   for part in letters.split("|") if part)
+
+    def 真(s: dict, fmin: int) -> bool:
+        h = annot[s["i"]]["人读的族里量得了的"]
+        return h >= fmin and h * 2 >= s["meas"]
+
+    def by_lib(pop, pick):
+        d: dict[str, list[int]] = {}
+        for s in pop:
+            row = d.setdefault(s["lib"], [0, 0])
+            row[1] += 1
+            row[0] += 1 if pick(s) else 0
+        return tuple(sorted((u, n, m) for u, (n, m) in d.items()))
+
+    head = {s["i"] for s in shots
+            if s["meas"] >= 3 and _fam_door(len(s["famM"]), s["coverM"], s["meas"], 3)}
+    two = {s["i"] for s in shots
+           if s["meas"] >= 3 and _fam_door(len(s["famM"]), s["coverM"], s["meas"], 2)}
+    new = sorted((s for s in shots if s["i"] in two - head), key=lambda s: s["i"])
+    s694 = [s for s in shots if s["i"] == 694][0]
+    return {
+        "pop": (len(k2), len(m2), len({s["i"] for s in k2} & {s["i"] for s in m2}), len(sel)),
+        "libs_k": tuple(sorted(Counter(s["lib"] for s in k2).items())),
+        "libs_m": tuple(sorted(Counter(s["lib"] for s in m2).items())),
+        "pair_k": (len(k2), sum(1 for s in k2 if pair_true(s, "K"))),
+        "pair_k_libs": by_lib(k2, lambda s: pair_true(s, "K")),
+        "pair_m": (len(m2), sum(1 for s in m2 if pair_true(s, "M"))),
+        "pair_m_libs": by_lib(m2, lambda s: pair_true(s, "M")),
+        "flag": (len(head), len(two)),
+        "new": (len(new), sum(1 for s in new if 真(s, 2))),
+        "new_libs": by_lib(new, lambda s: 真(s, 2)),
+        "new_idx": tuple(s["i"] for s in new),
+        "new_why": (sum(1 for s in new if not len(s["famM"]) * 2 >= s["meas"]),
+                    sum(1 for s in new if len(s["famM"]) * 2 >= s["meas"])),
+        "true": (sum(1 for s in shots if s["i"] in sel and 真(s, 2)),
+                 sum(1 for s in shots if s["i"] in sel and 真(s, 3))),
+        "true_idx": tuple(sorted(s["i"] for s in shots if s["i"] in sel and 真(s, 2))),
+        "s694": (s694["meas"], annot[694]["人读的族里量得了的"],
+                 len(s694["famM"]), s694["coverM"]),
+        "hold": fam2_holdout(),
+    }
+
+
 def cf_gates(qs: list[tuple[str, str, str, str]] | None = None) -> dict:
     """**库大小闸和汉字闸今天各自还挡着什么**（P90）。
 
@@ -1768,6 +2004,65 @@ def main(argv: list[str]) -> int:
             if n > g["a_k"][0]:
                 bad.append(f"cf-hold: cut={cut/100} 判是 {n} 屏 > `K`+门 的 {g['a_k'][0]} 屏 —— "
                            "它是套在 `K` 上的过滤器，只该更窄，数作废")
+    if "--fam2" in argv:
+        g = cf_fam2(qs)
+        print(f"  **`FAMILY_MIN` 该不该是 2**（P104，收 P102 ①）：团 == 2 的屏 "
+              f"`K` {g['pop'][0]} 屏 · `M`（HEAD 判据）{g['pop'][1]} 屏 · 交 {g['pop'][2]} · "
+              f"并 {g['pop'][3]} 屏（**全普查，没抽样**）")
+        print(f"    ⚠️ **台账上那个 99 是 `K` 的数**（P94 那会儿判据是 `K`）；"
+              f"HEAD 今天跑的是 `M`，同一格只有 {g['pop'][1]} 屏。按库：`K` {g['libs_k']}；`M` {g['libs_m']}")
+        print(f"    机器挑的那一对人读判真：`K` {g['pair_k'][1]}/{g['pair_k'][0]} "
+              f"= {g['pair_k'][1] / g['pair_k'][0] * 100:.1f}%（按库 {g['pair_k_libs']}）；"
+              f"`M` {g['pair_m'][1]}/{g['pair_m'][0]} = {g['pair_m'][1] / g['pair_m'][0] * 100:.1f}%"
+              f"（按库 {g['pair_m_libs']}）")
+        print(f"    ⚠️ **大库那一档单独看**：`terrence` 上 `K` 只有 "
+              f"{dict((u, (n, m)) for u, n, m in g['pair_k_libs'])['terrence']} —— "
+              "小库读数不等于全库读数")
+        print(f"    屏级：`FAMILY_MIN` 3 → 2，判「是」{g['flag'][0]} → {g['flag'][1]} 屏；"
+              f"**新增 {g['new'][0]} 屏，人读判真 {g['new'][1]} 屏**（按库 {g['new_libs']}）")
+        print(f"      新增是哪几屏：{g['new_idx']}；"
+              f"靠 `cover×2≥n` 进来的 {g['new_why'][0]} 屏 / 靠 `团×2≥n` 的 {g['new_why'][1]} 屏")
+        print(f"    这 {g['pop'][3]} 屏里人读判「该判是」的只有 {g['true'][0]} 屏 "
+              f"（{g['true_idx']}），**一屏都不在新增那 {g['new'][0]} 屏里**")
+        print(f"    **P102 那两屏（i=694/696）**：量得了 {g['s694'][0]} 格、人读的族 {g['s694'][1]} 格、"
+              f"`M` 团 {g['s694'][2]}、盖住 {g['s694'][3]} ⇒ **差的不是 1**："
+              "就算合码把团顶到 2，`2×2 < 8`、`盖住 2×2 < 8`，**半屏那道门照样不放行**；"
+              "缺的是**召回不到那另外 3 格**（两条轴同时被劈开），不是门槛高")
+        h = g["hold"]
+        print(f"    **留出集那一面**（P100 那 {h['screens']} 屏，只会多判是的改动 ⇒ 要的正是假阳性）："
+              f"`K`+门 {h['k'][0]} → {h['k'][1]}（新增 {h['new_k']}，**都是假的**）；"
+              f"`M`+门 {h['m'][0]} → {h['m'][1]}")
+        print(f"      ⚠️ **`M` 那两个 0 是空的**：留出集上 `M` 团 == 2 的有 {h['m2']} 屏，"
+              "**放到 2 一屏都没进门**（半屏那道门先挡着）—— 分母 0，不许读成「放宽了也没事」")
+        print("    ⇒ **判「不动」**：旋钮拧到 2，买来的 20 屏一屏真的都没有，"
+              "而真的那 5 屏一屏都没捡到 —— 且这 111 屏是 in-sample，**别拿它当验收尺**")
+        for name, got, want in (("population", g["pop"], EXPECT_FAM2_POP),
+                                ("K 按库", g["libs_k"], EXPECT_FAM2_LIBS_K),
+                                ("M 按库", g["libs_m"], EXPECT_FAM2_LIBS_M),
+                                ("K 那一对真不真", g["pair_k"], EXPECT_FAM2_PAIR_K),
+                                ("K 那一对按库", g["pair_k_libs"], EXPECT_FAM2_PAIR_K_LIBS),
+                                ("M 那一对真不真", g["pair_m"], EXPECT_FAM2_PAIR_M),
+                                ("M 那一对按库", g["pair_m_libs"], EXPECT_FAM2_PAIR_M_LIBS),
+                                ("3→2 判是", g["flag"], EXPECT_FAM2_FLAG),
+                                ("新增", g["new"], EXPECT_FAM2_NEW),
+                                ("新增按库", g["new_libs"], EXPECT_FAM2_NEW_LIBS),
+                                ("新增是哪几屏", g["new_idx"], EXPECT_FAM2_NEW_IDX),
+                                ("新增靠哪一半", g["new_why"], EXPECT_FAM2_NEW_WHY),
+                                ("人读判真的", g["true"], EXPECT_FAM2_TRUE),
+                                ("人读判真的是哪几屏", g["true_idx"], EXPECT_FAM2_TRUE_IDX),
+                                ("i=694 解剖", g["s694"], EXPECT_FAM2_S),
+                                ("留出集 K", h["k"], EXPECT_FAM2_HOLD_K),
+                                ("留出集 M", h["m"], EXPECT_FAM2_HOLD_M),
+                                ("留出集新增", h["new_k"], EXPECT_FAM2_HOLD_NEW),
+                                ("留出集 M 团==2", h["m2"], EXPECT_FAM2_HOLD_M2)):
+            if got != want:
+                bad.append(f"fam2 {name}: {got} ≠ {want}")
+        # **新增那一档必须是「只多不少」**：放宽门槛一屏都不许掉
+        if not set(g["new_idx"]) or len(g["new_idx"]) != g["flag"][1] - g["flag"][0]:
+            bad.append("fam2: 3→2 新增的屏数跟两档差对不上 —— 有屏掉了？这一支的数作废")
+        if set(EXPECT_FAM2_TRUE_IDX) & set(g["new_idx"]):
+            bad.append("fam2: 人读判真的屏里有落在「新增」那一档的 —— "
+                       "那判就得重读（今天这一格是 0），数作废")
     if "--window" in argv:
         bad += check_paragraph_at_source()
         g = window_gap()

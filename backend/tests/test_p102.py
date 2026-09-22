@@ -239,8 +239,8 @@ def test_第五条c_八个读数全登记了_而且两个floor抬到了真值():
     assert bad == [] and behind == []
     ours = [k for k in FR.REGISTRY if k[0].endswith("code_pair_ruler.py")]
     assert len(ours) == 8
-    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 148
-    assert FR.CHECKED_COUNT_FLOOR == checked == 160
+    assert FR.REGISTRY_SIZE_FLOOR == len(FR.REGISTRY) == 167   # P104 抬到 167（P102 实得 148）
+    assert FR.CHECKED_COUNT_FLOOR == checked == 179            # P104 抬到 179（P102 实得 160）
 
 
 def test_第五条d_47条那把尺的分母没被这350行标注动到():
@@ -257,12 +257,28 @@ def test_第五条d_47条那把尺的分母没被这350行标注动到():
 
 
 def test_第六条_产品逻辑一个字节没改():
-    """判「不接」的批次，`app/` 底下不许有这一批的痕迹。"""
+    """判「不接」的批次，`app/` 底下不许有这一批的痕迹。
+
+    ⚠️ **P104 并排改窄了一格（原来那一版一个字没抹，在下面）**：
+    P104 在 `fact_distinct.py` 的 `FAMILY_MIN` 头上并排补了一段更正，
+    里头**引用了 P102 的读数**，于是「`app/` 里不许出现 `P102` 这个串」当场红了——
+    而 P102 那一批的产品逻辑**确实一个字节没改**。
+    所以这一条改成两句：`code_pair_ruler` 一处都不许有（那是真的「接进产品」）；
+    `P102` 这个串**只许出现在 `fact_distinct.py` 的注释里**，而且那份文件的
+    **`ast` 摘要必须逐位不变**——证的是**逻辑**没动，不是「没留下字」。
+    （原来那一版：`hits = [... if "P102" in ... or "code_pair_ruler" in ...]; assert hits == []`）
+    """
+    import hashlib
+
     root = BACKEND / "app"
-    hits = [p for p in root.rglob("*.py")
-            if "P102" in p.read_text(encoding="utf-8")
-            or "code_pair_ruler" in p.read_text(encoding="utf-8")]
-    assert hits == []
+    assert [p for p in root.rglob("*.py") if "code_pair_ruler" in p.read_text(encoding="utf-8")] == []
+    named = [p for p in root.rglob("*.py") if "P102" in p.read_text(encoding="utf-8")]
+    assert [p.name for p in named] in ([], ["fact_distinct.py"]), named
+    for p in named:
+        import ast as _ast
+        digest = hashlib.sha256(
+            _ast.dump(_ast.parse(p.read_text(encoding="utf-8"))).encode()).hexdigest()[:16]
+        assert digest == "7f837f2f1de58774", "`fact_distinct` 的逻辑动了 —— P102 那个判重读"
     # 那把新尺也不许被产品 import
     out = subprocess.run(["git", "grep", "-l", "code_pair_ruler", "--", "backend/app"],
                          capture_output=True, text=True, cwd=str(BACKEND.parent))

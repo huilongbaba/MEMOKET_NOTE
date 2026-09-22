@@ -85,10 +85,10 @@ WATCHED_NAME = re.compile(r"^(MIN_[A-Z0-9_]*|MAX_[A-Z0-9_]*|EXPECT[A-Z0-9_]*|SHO
 # **一条在每次正当改动上都会红的闸，迟早会被人不假思索地改成不红的那个数。**
 # 所以这两个数按「只准往上」记在这儿，各批的测试去问它，别各自钉一份。
 # 它挡得住的是「有人把登记删了」；挡不住「加了一条没登记」——那是 `check()` 的完整性闸的活。
-REGISTRY_SIZE_FLOOR = 148  # 第 821 轮 P102 在自己 worktree 里实测（+8 条：码表对那把尺）；820 轮是 140（+15 条：留出集那一组读数）、819 轮是 125、818 轮是 121、817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
+REGISTRY_SIZE_FLOOR = 167  # 第 822 轮 P104 在自己 worktree 里实测（+19 条：`FAMILY_MIN` 该不该是 2 那一组读数）；821 轮是 148（+8 条：码表对那把尺）、820 轮是 140（+15 条：留出集那一组读数）、819 轮是 125、818 轮是 121、817 轮是 114、816 轮是 104、814 轮是 95、813 轮是 85
 # ⚠️ 合并时记得抬到**合并后**那个数：两批各自在自己 worktree 里抬到 84 / 79，
 # 合并后真值是 85——取任一边都会让「删掉一条登记」不红（这个数只准往上，抬是绿的）。
-CHECKED_COUNT_FLOOR = 160  # 同上；共核 = 登记表 + 例反例；820 轮是 152、819 轮是 137、818 轮是 133、817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
+CHECKED_COUNT_FLOOR = 179  # 同上；共核 = 登记表 + 例反例；821 轮是 160、820 轮是 152、819 轮是 137、818 轮是 133、817 轮是 126、816 轮是 116、814 轮是 107、813 轮是 97、811 轮是 90
 
 
 FLOOR = "floor"      # 只准往上调
@@ -657,6 +657,92 @@ REGISTRY: dict[tuple[str, str], tuple[str, object, str]] = {
         "字面那条路是套在团上的过滤器，团不成立它就出不了声。"
         "**这正是 `kb/fact_distinct` 第 ⑥ 格「它不认字面」那条的正面实拍。**"
         "它一动去读第 ⑨ 格"),
+
+    # —— P104：**`FAMILY_MIN` 该不该是 2**（收 P102 ①，判**不动**）——
+    # 人标那 111 条在 `memory_sample.jsonl` 的 `p104-fam2-111`；这十九个数是那个判的全部分量。
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_POP"): (
+        PINNED, (99, 37, 25, 111),
+        "团 == 2 的屏：(`K` 99, `M` 37, 交 25, 并 111)。"
+        "⚠️ **台账上那个 99 是 `K` 的数**（P94 写它时判据还是 `K`），"
+        "HEAD 今天跑的 `M` 只有 37 —— **两套分开记，别混成一个数**。"
+        "它一动，`kb/fact_distinct` 里 `FAMILY_MIN` 头上那句注释和 P104 全节都得重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_LIBS_K"): (
+        PINNED, (("fresh678", 4), ("fresh678b", 2), ("fresh678c", 4),
+                 ("shot-demo", 3), ("terrence", 41), ("terrence-rewrite", 45)),
+        "那 99 屏按库分。**大库 41 / 改写库 45**，两个库的读数差一倍，比率只能按库读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_LIBS_M"): (
+        PINNED, (("shot-demo", 2), ("terrence", 21), ("terrence-rewrite", 14)),
+        "`M` 团 == 2 那 37 屏按库分"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_PAIR_K"): (
+        PINNED, (99, 32),
+        "**机器挑的那一对人读判真**：32/99 = 32.3%。"
+        "⚠️ 判的是**机器挑的那一对**，不是「这屏有没有真的一对」——挑错了就是假"
+        "（实拍 i=27 / 663 / 24：同屏另有真的一对，机器挑的是别的两格）。"
+        "它一动去重读 `p104-fam2-111`"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_PAIR_K_LIBS"): (
+        PINNED, (("fresh678", 0, 4), ("fresh678b", 0, 2), ("fresh678c", 0, 4),
+                 ("shot-demo", 0, 3), ("terrence", 8, 41), ("terrence-rewrite", 24, 45)),
+        "上面那个 32/99 按库分：(库, 真, 分母)。**大库 8/41 = 19.5%、改写库 24/45 = 53.3%**"
+        "——**小库读数不等于全库读数**，83.8% 的查询落在大库"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_PAIR_M"): (
+        PINNED, (37, 8), "HEAD 判据 `M` 上同一个数：8/37 = 21.6%"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_PAIR_M_LIBS"): (
+        PINNED, (("shot-demo", 2, 2), ("terrence", 2, 21), ("terrence-rewrite", 4, 14)),
+        "`M` 那一档按库：**大库 2/21 = 9.5%**"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_FLAG"): (
+        PINNED, (17, 37),
+        "765 屏上判「是」：`FAMILY_MIN` 3 → 2 是 17 → 37 屏。"
+        "⚠️ 左边那个 17 必须跟 `EXPECT_SHAPE_HEAD` 逐格相同，对不上说明两支量的不是同一件事"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_NEW"): (
+        PINNED, (20, 0),
+        "**这一行是 P104 判「不动」的正文**：3→2 新增判「是」20 屏，**人读判真 0 屏**。"
+        "它一动（哪怕只到 1）那个判就得整条重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_NEW_LIBS"): (
+        PINNED, (("shot-demo", 0, 2), ("terrence", 0, 13), ("terrence-rewrite", 0, 5)),
+        "新增那 20 屏按库：(库, 真, 分母)。**大库 0/13 单独成立**，不是靠小库摊平的"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_NEW_IDX"): (
+        PINNED, (24, 25, 27, 54, 67, 82, 88, 94, 101, 151, 273, 337,
+                 412, 418, 427, 575, 603, 604, 662, 663),
+        "新增的是哪 20 屏。⚠️ 其中 **i=82 / 88 / 412 / 418 正是 P94 在"
+        "「团 vs 连通块」那一刀上读过、判「全是假」的那批华为 950 的屏**，"
+        "**i=337 是 P94/P96 读过的泛 `广告` 那屏** —— 放宽门槛把它们又放进来了"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_NEW_WHY"): (
+        PINNED, (16, 4),
+        "新增里靠 `cover×2 ≥ n` 进来的 16 屏 / 靠 `团×2 ≥ n` 的 4 屏。"
+        "⚠️ **放宽 `FAMILY_MIN` 的实际出口是 P98 换上去的 `cover` 那一半**"
+        "（团只有 2 的屏几乎不可能占半屏，是共同话题码把它们抬进来的）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_TRUE"): (
+        PINNED, (5, 4),
+        "这 111 屏里人读判「该判是」的：真@2 5 屏 / 真@3 4 屏。"
+        "⚠️ **5 屏一屏都不在新增那 20 屏里**——放宽门槛买到的全是假的，真的一屏都没捡到"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_TRUE_IDX"): (
+        PINNED, (45, 316, 320, 694, 696),
+        "那 5 屏是哪几屏。694/696 是 P102 点名那两屏、316/320 是同一族的两条查询、"
+        "45 是「beta 用户能用新 app 且看得到旧文件」那屏（4 格里 2 格，只有真@2）"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_S"): (
+        PINNED, (8, 5, 1, 2),
+        "**P102 那两屏的解剖**：(量得了 8, 人读的族 5 格, `M` 团 1, `M` 盖住 2)。"
+        "⚠️ **P102 留的「差的就是 1」是错的**：合码把团顶到 2 也只有 `2×2 = 4 < 8`、"
+        "`盖住 2×2 = 4 < 8`，**半屏那道门照样不放行**。缺的是召回不到那另外 3 格"
+        "（`os`/`project` 和 `构想`/`逻辑` 两条轴同时被劈开），**不是门槛高**。"
+        "它一动，`code_pair_ruler.EXPECT_FIRE` 那三个数跟着重读"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_HOLD_K"): (
+        PINNED, ((6, 0, 6), (8, 0, 8)),
+        "**留出集那一面**（P100 那 27 屏，原样、人标原样，只把门从 3 放到 2）："
+        "`K`+门 (判是, 真, 假) 3 → 2。**新增两屏，两屏都是假的**。"
+        "⚠️ 左边那个 (6, 0, 6) 必须跟 `EXPECT_HOLD_A_K` 逐格相同"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_HOLD_M"): (
+        PINNED, ((0, 0, 0), (0, 0, 0)),
+        "同上，`M` 那一头。⚠️ **这两个 0 是空的**（分母 0，同 `EXPECT_HOLD_A_M` 那个形状），"
+        "不许读成「放宽了也没事」"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_HOLD_NEW"): (
+        PINNED, ("H13", "H15"),
+        "留出集上 `K` 那一头新增的两屏。H13 是「DVT 数量别放多 / 一般 10–20 台」，"
+        "H15 是「EVT 要带包装」——**人标都判假**"),
+    ("backend/scripts/recall_ruler.py", "EXPECT_FAM2_HOLD_M2"): (
+        PINNED, 7,
+        "留出集上 `M` 团 == 2 的屏数。**放到 2 一屏都没进门**——半屏那道门先挡着，"
+        "所以上面那个 `M` 的 0 不是「没有假阳性」，是**根本没开口**"),
 
     ("backend/scripts/recall_ruler.py", "EXPECT_CF_WHO_BLOCKED"): (
         PINNED, 9, "被主语面挡回去、不再捞回来的串数（价格/公司/反馈/客户/收到/更新/能力/自动/连接）。"
