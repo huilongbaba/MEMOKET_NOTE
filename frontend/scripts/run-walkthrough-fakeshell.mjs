@@ -462,8 +462,8 @@ const PLAN = [
   //   这一步**受得了**：它自己造自己的两篇笔记，身份走 `identity.json`（preload 给的），
   //   模型配置在 udd 那个 sqlite 里（跟 origin 无关）。**上面八步受不了，所以它们在前面。**
   {
-    name: 'switchaway105',
-    step: 'switchaway105.mjs',
+    name: 'switchaway107',
+    step: 'switchaway107.mjs',
     // ⚠️ **截图名里得带 `p<数字>-`**（同上面 `ctxmenu52` 那一步）：`cdp.mjs` 只把
     //    带批次前缀的那些改写成 `WALKTHROUGH_SHOT_PREFIX`（这条闸自己给的是 `fakeshell`）。
     //    第一版写的是 `fs-switchaway`，落盘就是 `fs-switchaway-*`——
@@ -483,6 +483,9 @@ const PLAN = [
       [/✅ \[判③·P101 guarded 误伤\]/, null, '判③ 判了（切走那几秒写出来的字留住了）'],
       [/✅ \[判④·P103 骨架永久丢\]/, null, '判④ 判了（切走之后骨架照样落库）'],
       [/✅ \[判⑤·P103 停机理由丢\]/, null, '判⑤ 判了（切走之后那条停机理由点名弹了）'],
+      // **P107 A 升级的那半条**：点的名得是这一趟自己那篇的标题，不是「另一篇笔记」
+      //（`noteName()`：读 `notesRef.current` + 走 `displayTitle`，两半缺一不可）。
+      [/✅ \[判⑤·P107 点对了名\]/, null, '判⑤ 升级版判了（点的是这一篇的名，不是「另一篇笔记」）'],
       // 截图按 `PLAN` 给的名字 + **这条闸自己的批次前缀**落了盘（同 `ctxmenu52` 那一条）。
       [/shot → .*\/fakeshell-fs-switchaway-切走了\.png$/m, null,
         '第 ⑫ 步的截图落盘时带的是这条闸自己的前缀 `fakeshell-`'],

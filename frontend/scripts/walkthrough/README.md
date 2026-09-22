@@ -41,7 +41,7 @@ P66 把驱动搬了进来，**步骤脚本留在了外面**——于是 P66 / P6
 | 9 | ⌘K 全部去处 | `steps/bnew.mjs` | `steps/b1old.mjs` |
 | 10 | 关掉重开（**真的重开**：单独一次 `go.sh`，壳是新起的） | — | `steps/reopen64.mjs` |
 | 11 | 深色 + 900px | `steps/bnew.mjs` `steps/bnew3.mjs` | `steps/b1old.mjs` |
-| **12** | **跑着切走再切回**（P105 A 加的那一步，**自己一份 udd、自己一趟壳**）| — | `steps/switchaway105.mjs` |
+| **12** | **跑着切走再切回**（P105 A 加的那一步，**自己一份 udd、自己一趟壳**；**P107 起用 `switchaway107.mjs`**：判⑤ 也判「点的是对的名」，105 那份留着给出处闸对 `p105/` 的日志）| — | `steps/switchaway107.mjs`（`steps/switchaway105.mjs` 是 P105 那一份）|
 
 **第 ⑫ 步为什么在这儿**（P105 A）：P103 跑完第二十九次走查，跨批 diff 里
 「**产品改了**」那一格是 **0 行**，而那一批真的改了产品（`onSkeleton` 落库 + 两条 toast 点名）。
@@ -126,7 +126,7 @@ WALKTHROUGH_SCRATCH=<一个空目录> node scripts/run-walkthrough-fakeshell.mjs
 ```
 
 它跑的是**走查本来就在跑的那几步**（P105 之后是 **9 步**：`whoami52` / `bnew` / `bnew3` /
-`b1old` / `ctxmenu52` / `b1b` / `b2old` / `reopen64` / **`switchaway105`**，
+`b1old` / `ctxmenu52` / `b1b` / `b2old` / `reopen64` / **`switchaway107`**（P105 是 `switchaway105`），
 步骤脚本一个字节没改），判据写在 `frontend/scripts/run-walkthrough-fakeshell.mjs` 的 `PLAN` 里。
 **够不着什么**（打包 / 主进程那一圈 / 482 篇那一趟 / CI）逐条写在那份文件的头上。
 
