@@ -1,0 +1,45 @@
+步骤脚本: bnew2.mjs sha256=102e8eff22f4f58f07ddf251b8a3f90009c5f8fe63e12c8b9fa9adf098209a9d
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/lib.mjs=810f7e4279756e62f5f80a15066b892e7469fff7d4379529ff866e896f3b4990 steps/lib52.mjs=35c1eb21922166b25a6f7c681446566f2e07ce903e39d12afc68f21953c031e9 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+=== ① 设置页 → 填地址 → 测一下 → 保存 → **问库** ===
+  设置页上的钮:
+    {"i":0,"t":"","dis":false,"cls":"icon-btn","x":84,"y":13}
+    {"i":1,"t":"","dis":true,"cls":"icon-btn","x":110,"y":13}
+    {"i":2,"t":"","dis":false,"cls":"note-new-tab","x":878,"y":7}
+    {"i":3,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":100}
+    {"i":4,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":150}
+    {"i":5,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":200}
+    {"i":6,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":250}
+    {"i":7,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":300}
+    {"i":8,"t":"","dis":false,"cls":"launcher-btn","x":6,"y":670}
+    {"i":9,"t":"","dis":false,"cls":"launcher-btn active","x":6,"y":720}
+    {"i":10,"t":"","dis":false,"cls":"launcher-btn left-pane-toggle","x":6,"y":770}
+    {"i":11,"t":"P","dis":false,"cls":"launcher-btn launcher-user","x":6,"y":820}
+    {"i":12,"t":"层级","dis":false,"cls":"on","x":68,"y":108}
+    {"i":13,"t":"最近","dis":false,"cls":"","x":109,"y":108}
+    {"i":14,"t":"","dis":false,"cls":"tree-item-button","x":292,"y":168}
+    {"i":15,"t":"","dis":false,"cls":"icon-btn","x":276,"y":838}
+    {"i":16,"t":"","dis":false,"cls":"icon-btn","x":302,"y":838}
+    {"i":17,"t":"跟随系统","dis":false,"cls":"chip","x":367,"y":177}
+    {"i":18,"t":"浅色","dis":false,"cls":"chip active","x":465,"y":177}
+    {"i":19,"t":"深色","dis":false,"cls":"chip","x":537,"y":177}
+    {"i":20,"t":"测一下","dis":false,"cls":"chip chip-action","x":391,"y":619}
+    {"i":21,"t":"测一下","dis":false,"cls":"chip chip-action","x":367,"y":811}
+    {"i":22,"t":"测一下（会发一张图）","dis":false,"cls":"chip chip-action","x":367,"y":975}
+    {"i":23,"t":"保存","dis":false,"cls":"primary","x":367,"y":1141}
+    {"i":24,"t":"添加","dis":true,"cls":"","x":1005,"y":1376}
+    {"i":25,"t":"记忆","dis":false,"cls":"pane-tab active","x":1109,"y":51}
+    {"i":26,"t":"计划","dis":false,"cls":"pane-tab","x":1172,"y":51}
+    {"i":27,"t":"","dis":false,"cls":"icon-btn","x":1408,"y":55}
+    {"i":28,"t":"还没配模型 · 去设置","dis":false,"cls":"health-bad linklike","x":1220,"y":877}
+  地址格: {"i":4,"type":"text","ph":"默认 http://127.0.0.1:<PORT>/v1","val":""}
+  测一下: 连上了，2 个模型可用；模型名还没填，先用第一个「fake-p52」
+  带「保存」的钮: [{"i":25,"t":"保存","dis":false,"y":1232,"cls":"primary"}]
+  点的是: {"cx":394.5,"cy":491.15625,"dis":false,"t":"保存"}
+  保存之后「还没配模型」还在吗: true
+  toast: ["保存了，但模型还没配全——填上地址和模型名，AI 功能才用得了"]
+  后端 /api/provider（库里真落了吗）: /api/settings/provider → {"provider":"local","gpt_model":"gpt-4.1-mini","gpt_base_url":"https://api.openai.com/v1","asr_base_url":"","asr_default_url":"http://127.0.0.1:<PORT>","auto_sync_notes":false,"vision_base_url":"","vision_model":"","vision_api_key_set":false,"vision_follows_llm":true,"vision_active_url":"http://127.0.
+shot → <DIR>/<B>-bnew2-1-saved-light.png
+=== ② 900px 下那一个溢出的是谁 ===
+   {"innerWidth":900,"n":1,"out":[{"tag":"DIV","cls":"note-tab","right":904,"w":240,"h":36,"text":"屏幕活动×"}]}
+  页面横向滚得动吗: false
+shot → <DIR>/<B>-bnew2-2-900-light.png

@@ -32,8 +32,10 @@
  *     P101 这一条写的是「`self` 正好 `onDone` 一条」——**那是钉了个会变的数**，
  *     这一批 `self` 从 1 条变成 3 条它就该红，而它红的理由跟对错无关。
  *     换成不变式：每条 `self` 的函数体里那句跨篇判断**是个带花括号的分支**
- *     （不是光 `return`），而且分支里**拿 `notes.find(… === noteId)?.title` 点了名**。
+ *     （不是光 `return`），而且分支里**拿 `noteName()` 点了名**（P107 起；原来是 `notes.find(…)?.title`）。
  *     ⇒ 「切走之后弹出来看不出说的是哪一篇」这件事**在结构上就发生不了**。
+ *  ⑧ **点的名是用户这一刻眼前那个名字**（P107 A）：`noteName` 读 `notesRef.current` + 走 `displayTitle`；
+ *     `awayToast` 和 `self` 那一档里旧的两种形状（闭包 `notes.find(…)` / 直接 `?.title`）**一处都不许剩**。
  *
  * ── 它**答不了**什么（别读成「切走之后什么都不丢了」）─────────────────────
  *  · **那一刀放行之后真的留住了没有**：一条都答不了。它读的是源码的形状。
@@ -168,21 +170,46 @@ ok(!/k !== 'onDone' &&/.test(stripped),
 // **不钉「正好几条」**（P101 那条钉的是 1，这一批变成 3 就该红——而它红的理由
 // 跟对错无关）。钉的是不变式：**每一条 `self` 都得自己把跨篇那一支写出来，
 // 并且那一支里点了篇名。**
-const NAMES_THE_NOTE = /notes\.find\(\(x\) => x\.id === noteId\)\?\.title/
+//
+// ⚠️ **P107 A：点名走 `noteName()`，而 `noteName` 自己得「读 `notesRef.current` + 用 `displayTitle`」**。
+// P105 这一条钉的是 `notes.find(…)?.title` 那个形状——而那正是 P103 问题 #6 / P105 问题 #7
+// 那个洞的形状，**而且它有两半**（P107 真壳实拍才知道第二半）：
+//  ① handler 是点「智能续写」那一刻建的，闭包里的 `notes` 停在那一刻；
+//  ② **库里 `title` 常是 `''`**（名字打在正文 `# …` 那一行里，标签页 / 树走 `displayTitle` 显示它）
+//     ⇒ 只修 ① 的那一版（`notesRef.current.find(…)?.title`）真壳上**照样**读成「另一篇笔记」。
+// 这条闸第一版（P107 自己写的）钉的正是「只修 ①」那个形状——**判据比产品窄**，真壳当场拆穿。
+const NAME_HELPER = /const noteName = \(fallback = '另一篇笔记'\) => \{\s*const n = notesRef\.current\.find\(\(x\) => x\.id === noteId\)\s*return n \? displayTitle\(n\) : fallback\s*\}/
+const NAMES_THE_NOTE = /\bnoteName\(/
+/** 那个洞的两种形状：闭包里的 `notes`（①），以及直接读 `.title`（②）。`\bnotes\.` 咬不到 `notesRef.current.`。 */
+const STALE_NAME = /\bnotes\.find\(\(x\) => x\.id === noteId\)/
+const RAW_TITLE = /\.find\(\(x\) => x\.id === noteId\)\?\.title/
+const strippedAll = stripComments(src)
+ok(NAME_HELPER.test(strippedAll),
+  '`noteName` 读的是 `notesRef.current`（弹的那一刻的 notes）、名字走 `displayTitle`（跟标签页同一个名字）')
 // 点名这件事可以**自己写一句**（`onDone` 那样），也可以走那个共用的
 // `awayToast(…)`（`onCost` / `onCrossRun`）。**走共用的那条也得证明**：
-// 所以这儿先单独核一次那个共用件自己真的点了名——
 // 不核的话，把 `awayToast` 改成 `toast(detail)` 这条闸会一声不吭
 // （**「它调了那个函数」≠「那个函数干了那件事」**，跟 P101 刀 ⑦ 同一族）。
-const awayDef = stripComments(src).match(/const awayToast = \([^)]*\) =>[\s\S]{0,240}/)
+const awayDef = strippedAll.match(/const awayToast = \([^)]*\) =>[\s\S]{0,240}/)
 ok(!!awayDef && NAMES_THE_NOTE.test(awayDef[0]),
-  '那个共用的 `awayToast` 自己真的点了名（`notes.find(… === noteId)?.title`）')
+  '那个共用的 `awayToast` 自己真的点了名（`noteName()`）')
 for (const k of guardedKeys('self')) {
   const body = bodies[k]
   ok(/if \(currentRef\.current\?\.id !== noteId\) \{/.test(body),
     `\`${k}\` 归 self，跨篇那一支是个**带花括号的分支**（光 \`return\` 就等于闭嘴，那是 blocked 干的事）`)
   ok(NAMES_THE_NOTE.test(body) || /\bawayToast\(/.test(body),
-    `\`${k}\` 切走之后那句话**点了名**（自己写的，或走共用的 \`awayToast(\`）——不点名就看不出说的是哪一篇`)
+    `\`${k}\` 切走之后那句话**点了名**（自己写 \`noteName()\`，或走共用的 \`awayToast(\`）——不点名就看不出说的是哪一篇`)
+}
+// ── ⑧ 那个洞的两种形状**一处都不剩**（P107 A）─────────────────────────────
+// 正例只证明「有一处走了 helper」；**旧形状剩一处，那一处照样点错名**。
+// ⚠️ 核的是 handler 那一摞 + `awayToast`，**不是整份 `App.tsx`**：
+// 别处（侧栏 / ⌘K / 标签栏 `iconOf`）读闭包里的 `notes` 是每次渲染现建的回调，跟这个洞无关。
+for (const [what, re] of [['闭包那个形状 `notes.find(… === noteId)`', STALE_NAME],
+                          ['直接读 `.title` 那个形状 `…find(… === noteId)?.title`', RAW_TITLE]] as const) {
+  ok(!!awayDef && !re.test(awayDef[0]), `\`awayToast\` 里**没有**${what}`)
+  for (const k of guardedKeys('self')) {
+    ok(!re.test(bodies[k]), `\`${k}\` 里**没有**${what}——刚新建、名字打在正文里的那篇会被它读成「另一篇笔记」`)
+  }
 }
 // ── ⑦ `rounds` 那一档**嘴上还是拦着的**（P105 C）─────────────────────────
 //

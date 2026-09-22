@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { NoteHarnessToolCall } from '../api'
 import Icon from './Icon'
 import { dimLabel, checkLabel } from '../editor/dimLabel'
+import { fmtDateTime } from '../util/time'
 import { checkHitKind, type CheckHit } from '../editor/agentRound'
 
 /** 一轮里 agent 干了什么。按轮聚合而不是按事件平铺——用户关心的是
@@ -420,7 +421,12 @@ export default function AgentActivity({ rounds, status, running }: Props) {
             <div className="agent-restored">
               <div>
                 <b>这张卡是从库里读回来的骨架</b>
-                {r.restored.at && `（那次跑：${r.restored.at.slice(0, 16).replace('T', ' ')}）`}
+                {/* ⚠️ **转成本地时间再摆**（P107 B）：库里那条 `created_at` 是 UTC，
+                    原来这儿直接 `slice(0, 16)`，摆出来的就是 UTC——P105 实拍：本地 12:59
+                    跑的那一趟，卡上写着「那次跑：2026-09-22 04:58」；北京时间早上 8 点
+                    之前跑的，**日期都是昨天的**（P103 那趟就是）。`util/time.ts` 抬头
+                    逐字写着「一律转成本地时间再显示」，这一格是漏网的那一处。 */}
+                {r.restored.at && `（那次跑：${fmtDateTime(r.restored.at)}）`}
                 ——这一轮的明细只活在跑的那一趟里，没有落库。
               </div>
               {r.restored.facts && <div style={{ marginTop: 2 }}>库里存着的：{r.restored.facts}</div>}

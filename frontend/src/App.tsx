@@ -725,6 +725,18 @@ export default function App() {
   const harnessAbortRef = useRef<AbortController | null>(null)
   const currentRef = useRef<Note | null>(current)
   useEffect(() => { currentRef.current = current }, [current])
+  /** `notes` 的 ref（P107 A，收 P103 问题 #6 / P105 问题 #7）。
+   *
+   * 跟上面 `currentRef` 同一个理由：harness 的 handler 是**点「智能续写」那一刻**
+   * 建起来的，闭包里的 `notes` 从那一刻起就不再动。切走之后那几句要**点名**的话
+   * （`awayToast` / `onDone` 那两支 / `notifyIfHidden`）读的若是闭包，
+   * 一篇**刚新建、标题还没落库**的笔记就读成「另一篇笔记」——P105 第 ⑫ 步实拍：
+   * 「点的名里对得上这一趟标题记号的有 0 条；读成「另一篇笔记」的有 1 条」。
+   * **「点了名」≠「点对了名」**。落库之后 `save()` 会把那一篇换进 `notes`，
+   * 这份 ref 让那几句读到的是**弹的那一刻**的 `notes`。⚠️ 光有它**不够**（P107 真壳实拍）：
+   * 名字打在正文里的那篇 `title` 是 `''`，还得走 `displayTitle`——见 `noteHarnessHandlers` 里的 `noteName`。 */
+  const notesRef = useRef<Note[]>(notes)
+  useEffect(() => { notesRef.current = notes }, [notes])
   const harnessFollowRef = useRef(true)
   useEffect(() => { harnessFollowRef.current = harness?.follow ?? true }, [harness?.follow])
 
@@ -2439,9 +2451,22 @@ export default function App() {
      * 屏幕上开着 B，弹出来一句「这次跑到了上限，就停在这儿了」——用户会读成 B 的事，
      * 而 B 上可能正跑着另一次。**一句没有主语的通知，在多标签页里就是一句错话。**
      * 切走那一支**不用 `error` 那个红档**：那是「你现在这一篇出事了」的语气，
-     * 而这句说的是另一篇（`onDone` 切走那一支也是平的）。 */
+     * 而这句说的是另一篇（`onDone` 切走那一支也是平的）。
+     *
+     * ⚠️ **篇名走 `noteName()`**（P107 A），两半各治一样，缺一半都点不对：
+     *  · 读 **`notesRef.current`**，不读闭包里的 `notes`：这份 handler 是点「智能续写」那一刻建的，
+     *    闭包里的 `notes` 停在那一刻，刚新建那篇在里头还是空的；
+     *  · 用 **`displayTitle`**，不读 `.title`：标题框空着、名字打在正文 `# …` 那一行里的笔记，
+     *    库里 `title` 是 `''`（P107 真壳实拍：只加 ref 那一趟照样读成「另一篇笔记」），
+     *    而标签页 / 树上显示的是 `displayTitle`——toast 得跟用户眼前那个名字是同一个。
+     * `awayToast` / `onDone` 切走那一支 / `notifyIfHidden` 三处都走它（同一个根因：
+     * 「这一刻用户看到的这篇叫什么」只有一个出处）。 */
+    const noteName = (fallback = '另一篇笔记') => {
+      const n = notesRef.current.find((x) => x.id === noteId)
+      return n ? displayTitle(n) : fallback
+    }
     const awayToast = (detail: string) =>
-      toast(`「${notes.find((x) => x.id === noteId)?.title || '另一篇笔记'}」：${detail}`)
+      toast(`「${noteName()}」：${detail}`)
     const h: api.NoteHarnessHandlers = {
       onSkeleton: (s, b, notes) => {
         // **落库这一句排在自己那句 guard 前面**（P103 A，收 P101 B 留的第一处）：
@@ -2839,7 +2864,7 @@ export default function App() {
         // 探针实拍：run 在 A 上跑完，把 A 的正文塞进了正显示的 B 的编辑器，
         // 自动保存接着就会把 A 的内容存进 B。只提示一句，正文由服务端保存。
         if (currentRef.current?.id !== noteId) {
-          toast(`「${notes.find((x) => x.id === noteId)?.title || '另一篇笔记'}」的${mode === 'polish' ? '打磨' : '智能续写'}已结束，内容已保存在那篇里`)
+          toast(`「${noteName()}」的${mode === 'polish' ? '打磨' : '智能续写'}已结束，内容已保存在那篇里`)
           return
         }
         // 跑完（或暂停）时也用服务端的正文对齐——见 onRoundEnd
@@ -2885,7 +2910,7 @@ export default function App() {
         harnessDoneRef.current = true
         setHarnessDone(true)
         toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
-        notifyIfHidden('MEMOKET NOTE · 智能续写', `${notes.find((x) => x.id === noteId)?.title || '笔记'}：${label}`)
+        notifyIfHidden('MEMOKET NOTE · 智能续写', `${noteName('笔记')}：${label}`)
       },
     }
     // **统一挡一层**：run 属于 noteId 那篇，用户切走之后**动正文 / 动编辑器**那几条

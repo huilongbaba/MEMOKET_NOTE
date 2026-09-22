@@ -1,0 +1,9 @@
+步骤脚本: whoami52.mjs sha256=63e11b084ab8c034489d3c63c480bb6facddc9f4125795cac939daf1d5444e40
+依赖: cdp.mjs=9d056ec2349bcb402c30e2e0f338986928f8faf51914e1e3816327fde98af693 provenance.mjs=80a30f1455cdccdfc7771a6d3b552d15d032896b560793411950c8a3b8726dcb shotname.mjs=8984b13a24a46487bc1b54396e53ee1972fac3e46f7227f3c9c27ff464412308 steps/lib52.mjs=35c1eb21922166b25a6f7c681446566f2e07ce903e39d12afc68f21953c031e9 whoami.mjs=6c5e368bc000e3199acab242a455f167f60187c34d347236a7983126e64d5768
+窗口 origin: http://127.0.0.1:<PORT>
+  /api/health: {"status":"ok","backend":{"pid":<PID>,"data_dir":"<DIR>","started_at":"<TS
+  窗口自己认的身份: terrence
+  带头问 /api/notes?limit=1: 200 [{"ingested_at":"","source":"slides","source_id":"","imported_at":"","id":"<ID12>","user_id":"terrence","title":"harness 测试（可删） · 幻灯片","content":"---\nmarp: true\nslides: true\n---\n\n# 创业一年
+  带头问 /api/journey/days: 200 ["<D0>","<D-1>"]
+  现在开着哪一篇（note id）: <ID12>
+  自检横幅: (没有)
