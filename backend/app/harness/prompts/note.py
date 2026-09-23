@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from .fragments import (content_block, facts_block, facts_index_block, tray_block,
                         heading_format_reminder,
-                        profile_block, spine_beats_block)
+                        profile_block, spine_beats_block, writing_facts)
 
 
 # ---------------------------------------------------------------- 单篇笔记 harness
@@ -53,8 +53,14 @@ list_topics / list_entities 只是帮你决定往哪查的**元信息**，它们
 - 一次把要查的都查了，同一件事不要换几种说法反复查。
 - 拿到事实后如果拿不准某条的确切含义，可以用 fact_sources 回溯原话。
 
-宁可多查一点，也不要在该查的时候不查——查不到最多是白花点时间，不查就
-会编造，而编造出来的具体日期和人名会被用户当成自己的记录。
+按当前写作决策逐步取材，已有直接证据足够支撑下一步时就停止扩展。召回结果里
+标有主体时，正文必须保留原主体及其与用户的关系。不得把材料中的第三人称
+改成第一人称，不得把观察、转述或外部案例写成用户亲历。主体无法确认，或与
+当前写作对象不一致的事实直接不用。
+
+该查而不查会编造，但多查同样会把宽泛主题里的旁人材料带进来。查不到时只
+允许换一种更具体的说法再试一次；仍然没有，就依据用户已写正文继续，或只
+点明一次缺什么材料，不要用不相干事实把空缺填满。
 
 **这一步也是画图的地方。** 接下来要写的东西里如果有一条流程（A 之后是 B、
 B 之后是 C）或者一组可比的数字，就在这里把图画了：调 **render_chart**
@@ -214,7 +220,8 @@ def note_harness_continue_user(spine: str, beats: list[str], content: str,
     if facts_index:
         # 更早几轮的材料，一行一条的索引（计划 3.2）。**摆在逐字事实前面**：
         # 索引只追加、逐字那一窗每轮在移，稳定的放前面。
-        parts.append(facts_index_block(facts_index))
+        parts.append(facts_index_block(facts_index[-8:]))
+    facts = writing_facts(facts)
     if facts:
         parts.append(facts_block(facts))
     parts.append(content_block(content))

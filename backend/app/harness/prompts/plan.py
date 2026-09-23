@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from .fragments import (FOCUS_LABELS, content_block, facts_block, facts_index_block,
-                        heading_format_reminder, profile_block)
+                        heading_format_reminder, profile_block, writing_facts)
 
 
 # ---------------------------------------------------------------- 无限续写计划
@@ -61,7 +61,8 @@ def section_write_user(section_title: str, goal: str, prior_summaries: list[str]
     if facts_index:
         # 更早几轮的材料，一行一条的索引（计划 3.2）。**摆在逐字事实前面**：
         # 索引只追加、逐字那一窗每轮在移，稳定的放前面。
-        parts.append(facts_index_block(facts_index))
+        parts.append(facts_index_block(facts_index[-8:]))
+    facts = writing_facts(facts)
     if facts:
         parts.append(facts_block(facts))
     parts.append(content_block(content, "（这个分段还没开始写）"))

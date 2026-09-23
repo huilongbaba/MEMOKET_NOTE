@@ -131,6 +131,7 @@ def test_placeholder_lines():
     assert any("待指定" in g for g in got)
     assert any("___" in g for g in got)
     assert placeholder_lines("干干净净的一段话。") == []
+    assert placeholder_lines("这里需要补上验收测试的实际记录。")
     assert len(placeholder_lines("待定\n" * 20)) == 6      # 限量
 
 

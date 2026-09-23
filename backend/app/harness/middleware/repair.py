@@ -33,7 +33,7 @@ from ..state import State
 #
 # 归内在质量的理由很硬：**已经跑题的那段文字，不会因为后面补了几段切题的
 # 就不跑题了。** 跟重复是同一个形状——追加只会让它更差，只有修订能让它变对。
-INNER_QUALITY = ("non_repetition", "coherence", "topic_fidelity")
+INNER_QUALITY = ("non_repetition", "coherence", "topic_fidelity", "prose_quality")
 
 # ------------------------------------------------- 只能停机的那一档 ---
 #

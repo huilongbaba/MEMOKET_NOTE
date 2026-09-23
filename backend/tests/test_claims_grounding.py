@@ -255,29 +255,21 @@ def test_认得出弃答句():
     assert not grounding_rules.abstention_lines("硬件量产计划在四月启动。")
 
 
-def test_推荐的弃答写法不会被另外两条判据当场打回():
-    """**判据之间不许打架。** 7.2 让模型写的那句话，如果被 `audit_voice_lines`
-    当成审计腔整句删掉、或者被 `placeholder_lines` 当成占位符打回，
-    那这条诊断就是个照办不了的要求——第 601 轮 `no_placeholder` 那次死锁的形状。
-    """
+def test_旧版弃答句现在按占位符处理():
+    """真实端到端输出证明这句话会把半成品留在正文里，不能再作为推荐形态。"""
     line = "这里需要补上验收测试的实际记录。"
     assert not grounding_rules.audit_voice_lines(line)
-    assert not grounding_rules.placeholder_lines(line)
+    assert grounding_rules.placeholder_lines(line)
     assert not grounding_rules.scrub_meta_sentences_v(line)[1]
     assert grounding_rules.abstention_lines(line)
 
 
-def test_判据自己给的那句写法必须过得了三道():
-    """**光钉住「这里需要补上 XX 的实际记录」这句话本身不够**——判据实际递给
-    模型的是 `_abstain_hint()` 拼出来的那句。把它改成「材料不足以说明」，
-    钉住字面的那条测试照样绿，而生产里两条判据当场打起来。
-    所以这里从**判据自己的输出**里把那句话摘出来再验一遍。
-    """
+def test_判据要求跳过无据内容而不是向正文写占位():
     hint = grounding._abstain_hint("验收测试")
-    quoted = re.search(r"「([^」]+)」", hint).group(1)
-    assert grounding_rules.abstention_lines(quoted)
-    assert not grounding_rules.audit_voice_lines(quoted)
-    assert not grounding_rules.placeholder_lines(quoted)
+    assert "跳过" in hint and "本轮就不要新增文字" in hint
+    assert "这里需要补上" not in hint
+    assert not grounding_rules.audit_voice_lines(hint)
+    assert not grounding_rules.placeholder_lines(hint)
 
 
 def test_审计腔和弃答句是两件事():
@@ -298,8 +290,8 @@ def test_查过了一条材料都没有_正文却照样写满():
     """`Sufficient Context` 的那个实测：材料不够时模型不弃答，直接答。"""
     st = _st(LONG, facts=[], ledger=ASKED_EMPTY)
     v = grounding.material_thin(st)
-    assert v is not None
-    assert "需要补上" in v.message
+    assert v is not None and v.advisory
+    assert "跳过" in v.message and "待补" in v.message
 
 
 def test_问过的方向库里没有_这一轮又空手又零引用():
@@ -372,9 +364,9 @@ def test_打磨模式关掉():
     assert grounding.material_thin(st) is None
 
 
-def test_已经弃答过就不再拦一次():
+def test_旧版弃答句不再让材料判据静默放行():
     st = _st(LONG + "这里需要补上定价的实际记录。", facts=[], ledger=ASKED_EMPTY)
-    assert grounding.material_thin(st) is None
+    assert grounding.material_thin(st) is not None
 
 
 def test_这一轮写得很短就不判():

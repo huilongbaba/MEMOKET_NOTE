@@ -160,7 +160,7 @@ async def evaluate(
     dup_hints: list[DupHint] = (),
     tail_context: dict[str, str] | None = None,
     system_prompt: str | None = None,
-    max_tokens: int = 600,
+    max_tokens: int = 900,
     temperature: float = 0.1,
 ) -> Evaluation:
     """Score ``content`` against ``dimensions`` in one LLM call, return the

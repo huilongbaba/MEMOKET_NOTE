@@ -33,7 +33,24 @@ FOCUS_LABELS = {
                  "编号错序、前后体例不统一、或者自我拆台的表述",
     "factual_grounding": "正文依赖知识库事实的地方是否准确、有没有矛盾",
     "style_fit": "语气/结构/用词是否贴合个人偏好",
+    "prose_quality": "新写的文字是否已经像成稿：自然、具体、顺畅，没有计划标签、写作旁白、模板腔或抽象空话",
 }
+
+
+# 写作模型一次真正能消化的材料窗口。事实账本和打分器仍保留完整材料；这里只有
+# 「这一轮拿来写句子」的少量强证据，避免模型面对四十条事实时退化成逐项汇报。
+WRITING_FACT_LIMIT = 12
+
+
+def writing_facts(facts: list[str], limit: int = WRITING_FACT_LIMIT) -> list[str]:
+    """给生成步骤挑一小窗事实，保序、去重，并优先保留回溯到原话的材料。"""
+    unique: list[str] = []
+    for fact in facts:
+        if fact and fact not in unique:
+            unique.append(fact)
+    sourced = [f for f in unique if "的原话]" in f]
+    ordinary = [f for f in unique if f not in sourced]
+    return (sourced + ordinary)[:max(0, limit)]
 
 
 # 三处续写型 user prompt（magic_tap_user/section_write_user/

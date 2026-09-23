@@ -181,6 +181,7 @@ class ToolTrace:
         每行当一条事实。保留工具名前缀，让模型知道这条是怎么查到的。
         """
         out: list[str] = []
+        meta_line = re.compile(r"^（[^）]{0,160}）$")
         for name, _args, result in self.calls:
             if name not in FACT_TOOLS:
                 # list_topics / list_entities 返回的是**元信息**（主题名、
@@ -190,13 +191,21 @@ class ToolTrace:
                 continue
             if not result or result.startswith("（"):
                 continue        # 空结果/错误提示，不当事实喂给写作
+            last_fact: int | None = None
             for line in result.splitlines():
                 line = line.strip()
                 if not line or line.startswith("共 "):
                     continue
-                out.append(line.lstrip("- ").strip())
+                # search_memory 把主体/日期放在事实下一行。旧逻辑把它拆成一条
+                # 独立「事实」，既浪费窗口，也让正文看见内容却看不见主体，容易
+                # 把 Speaker B 的经历改写成用户自己的经历。元信息必须跟原句同生共死。
+                if meta_line.match(line) and last_fact is not None:
+                    out[last_fact] += " " + line
+                    continue
                 if len(out) >= limit:
                     return out
+                out.append(line.lstrip("- ").strip())
+                last_fact = len(out) - 1
         return out
 
 

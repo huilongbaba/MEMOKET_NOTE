@@ -180,7 +180,8 @@ async def magic_tap(body: MagicTapIn, user: str = Depends(current_user)):
     facts = tray + [f for f in facts if f not in tray]
     ids = tray_ids + [i for i in ids if i not in tray_ids]
 
-    system = doc_intent.block(body.intent) + prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, "magic_tap", user)
+    system = doc_intent.block(body.intent) + prompts.compose_system(
+        prompts.MAGIC_TAP_SYSTEM_LEAN_NOCHART, "magic_tap", user)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompts.magic_tap_user(

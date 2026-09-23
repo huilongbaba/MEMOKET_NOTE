@@ -138,7 +138,7 @@ def _note_citation_message(bad: list[dict]) -> str:
         parts.append("这几句引了笔记，可那篇里找不到它说的事："
                      + "；".join(f"「{b['sentence'][:40]}…」→ [{b['title'] or b['id']}](note://{b['id']})" for b in weak[:2]))
     return ("有 " + str(len(bad)) + " 处引笔记对不上：" + "。".join(parts)
-            + "。引托盘里的笔记时，那句话要写那篇里真有的事（日期、决定、数字照那篇写），"
+            + "。引用本篇材料里的笔记时，那句话要写那篇里真有的事（日期、决定、数字照那篇写），"
               "编出来的结论不要挂它的链接；那篇里没有的就别引。")
 
 
@@ -291,7 +291,7 @@ def citations_present(st: State) -> Verdict | None:
     # `test_dimension_method_gates` 那条闸是静态读 `Verdict(` 第一个实参的，
     # 提成变量它就看不见了——而「安静地看不见」正是 `pick_dimension` 要治的病。
     head = (f"这一轮写了 {len(fresh)} 字，手上有 {len(st.facts)} 条材料，正文里一个 [事实编号] 都没有"
-            "（引托盘里的笔记时用它开头的 [标题](note://id) 也算）。")
+            "（引用本篇材料里的笔记时用它开头的 [标题](note://id) 也算）。")
     cov = citation_coverage(fresh, list(st.facts or []))
     if cov.located <= 0:
         # 九成以上的句子落在这一档（P30 量的可引率 7.7–9.1%）。**这里不许再喊补编号**：
@@ -372,10 +372,9 @@ def material_used(st: State) -> Verdict | None:
 # `return None`、`no_placeholder` 自己也主动退让——**一条判据都不响**，
 # 模型于是写出一篇干净的通用文章，六维全 2、判定 complete。
 #
-# **弃答的正确形态这个仓早就有**：`scrub_meta_sentences` 的注释里写着，对冲
-# 句子该整句删，正确形态是「这里需要补上 XX 的实际记录」。
-# **表达方式定好了，缺的只是触发它的信号**——而信号就是账本的覆盖分母
-# （`middleware/ledger.py` 的 `axes`，批 10/13 做的）。
+# 旧实现把材料不足改写成“这里需要补上 XX 的实际记录”，真实端到端结果证明它会
+# 直接污染成稿。现在仍用账本覆盖分母识别“对着空气写”，但给生成步骤的动作是：
+# 略过无依据的点，只写已有正文和材料能支撑的内容。
 #
 # ---------------------------------------------------------------------------
 # **必须守住的边界**（[LED] §4，这是写死的）：**覆盖率是诊断，不是指标。**
@@ -422,18 +421,11 @@ def _asked(st: State) -> int:
 
 
 def _abstain_hint(what: str) -> str:
-    """弃答的正确形态。**逐字给出来**，而不是说「请弃答」。
-
-    这句话的措辞是 `grounding_rules.scrub_meta_sentences` 的注释里早就定好的
-    那一句，`abstention_lines` 认得出它，`audit_voice_lines` /
-    `placeholder_lines` 都不会把它打回去（有一条闸钉着这三件事）。
-    **说「请弃答」而不给写法，模型会写成「材料不足以说明…」**——那正是
-    审计腔，另一条判据会把它整句删掉，两条判据当场打起来。
-    """
-    subject = f"{what}的" if what else "对应的"
-    return (f"正确的写法是留一句「这里需要补上{subject}实际记录」，然后接着写下一节"
-            "——**不要**写「材料不足以说明」这类关于证据够不够的话（那是审计腔，"
-            "另一条判据会整句删掉），也不要写「待补充」这类占位。")
+    """没有材料时给生成步骤的可执行动作，不再向正文制造占位句。"""
+    subject = f"「{what}」" if what else "这一点"
+    return (f"跳过{subject}，只写用户已写正文和现有材料能够直接支撑的部分。"
+            "不要把‘缺材料’写进正文，不要留下待补句；如果没有别的内容可写，"
+            "本轮就不要新增文字。")
 
 
 def material_thin(st: State) -> Verdict | None:
@@ -467,7 +459,7 @@ def material_thin(st: State) -> Verdict | None:
         return None
     if st.bag.get("outline_mode"):
         # 跟 `material_used` 同一条理由：用户自己列的小节可能本来就没有材料，
-        # 那时候该做的是照着标题写，不是逐节弃答。
+        # 那时候该做的是照着标题写，不是逐节制造待补句。
         return None
     if st.bag.get("polish"):
         # 打磨模式**只修不写**，它无权去检索也无权新增内容。拿一个它改善不了的
@@ -476,8 +468,6 @@ def material_thin(st: State) -> Verdict | None:
     fresh = (st.fresh or "").strip()
     if len(fresh) < MIN_THIN_CHARS:
         return None
-    if grounding_check.abstention_lines(fresh):
-        return None                     # 它已经照做了，别再拦一次
     asked = _asked(st)
     barren = barren_axes(st)
     if not st.facts:
@@ -498,6 +488,7 @@ def material_thin(st: State) -> Verdict | None:
             "没有记录的事不要替它写通用内容——那既不是用户自己的东西，也没法核对，"
             "写得再干净价值也是零。"
             + _abstain_hint(where[:20]),
+            advisory=True,
         )
     if barren and not st.facts_new:
         from .citations import has_citation
@@ -511,5 +502,6 @@ def material_thin(st: State) -> Verdict | None:
                 + _abstain_hint(where[:20])
                 + "（这跟「材料用了多少」无关——查回来的材料用不完是正常的，"
                 "这里说的是这个方向压根没有材料。）",
+                advisory=True,
             )
     return None

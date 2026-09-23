@@ -89,6 +89,51 @@ def test_note_harness_continue_user_includes_beats_and_facts():
     assert "事实一" in text
 
 
+def test_writing_prompt_uses_a_small_focused_fact_window():
+    facts = [f"[u-{i}-A] 普通事实{i}" for i in range(20)]
+    facts += ["[u-source-A 的原话] 最需要保留的逐字来源"]
+    text = prompts.note_harness_continue_user(
+        spine="核心", beats=["节拍"], content="正文", facts=facts, profile=[],
+    )
+    assert "最需要保留的逐字来源" in text
+    assert "普通事实0" in text
+    assert "普通事实11" not in text, "生成步骤一次只读少量强材料，不把事实账本整本塞进去"
+    assert text.count("普通事实") == 11
+
+
+def test_finished_prose_prompt_rejects_planning_labels_and_meta_narration():
+    p = prompts.MAGIC_TAP_SYSTEM_LEAN
+    assert "直接进入正文" in p
+    assert "结构节拍是内部导航" in p
+    assert "背景与前提" in p and "检验标准" in p
+    assert "写作过程" in p and "抽象名词堆叠" in p
+    assert "待补材料" in p and "不要留下" in p
+
+
+def test_note_harness_defaults_to_finished_prose_prompt_with_rollback_switch():
+    """生产默认必须走精简成稿提示词；旧长提示词只保留显式回滚开关。"""
+    src = (Path(__file__).resolve().parent.parent / "app" / "harness" /
+           "hooks" / "note.py").read_text(encoding="utf-8")
+    assert 'os.getenv("MEMOKET_LEGACY_WRITING_PROMPT") == "1"' in src
+    assert "else prompts.MAGIC_TAP_SYSTEM_LEAN_NOCHART" in src
+
+
+def test_writing_prefers_current_round_facts_and_keeps_pinned_material():
+    from app.harness.hooks.note import _facts_for_writing
+    from app.harness.modes import NOTE
+    from app.harness.state import State
+    from app.harness.tools import ToolContext
+
+    st = State(mode=NOTE, ctx=ToolContext(user="u", note_id="n"))
+    st.facts = [f"[u-{i}-A] 历史事实{i}" for i in range(20)]
+    st.facts_new = ["[u-new-A] 本轮强相关事实"]
+    st.bag["tray_lines"] = ["[u-pin-A] 用户钉住的材料"]
+
+    selected = _facts_for_writing(st)
+    assert selected == ["[u-pin-A] 用户钉住的材料", "[u-new-A] 本轮强相关事实"]
+    assert not any("历史事实" in fact for fact in selected)
+
+
 def test_edit_user_includes_focus_when_given():
     text = prompts.edit_user(
         spine="", beats=[], content="正文", facts=[], profile=[], focus="non_repetition",

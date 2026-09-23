@@ -16,6 +16,7 @@ import re
 from typing import AsyncIterator
 
 from .. import prompts
+from ..prompts.fragments import writing_facts
 from .. import agent_loop
 from .. import query_cache
 from ...editor import outline
@@ -147,14 +148,15 @@ class SectionHooks:
             # more now is precisely what this round exists to avoid.
             return
 
-        system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM, st.mode.skill_scope,
+        system = prompts.compose_system(prompts.MAGIC_TAP_SYSTEM_LEAN, st.mode.skill_scope,
                                         st.ctx.user, st.skill_menu,
                                         st.skill_bodies)
+        current_facts = writing_facts(st.facts_new or st.facts[-12:])
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompts.section_write_user(
                 st.ctx.note_title, self.goal, self.other_summaries,
-                st.content_for_continue(), st.facts, self.folder_ctx,
+                st.content_for_continue(), current_facts, self.folder_ctx,
                 self.profile, focus=st.bag.get("focus", ""),
                 facts_index=st.bag.get("facts_index"))},
         ]

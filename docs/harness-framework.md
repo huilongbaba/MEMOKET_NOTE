@@ -280,6 +280,7 @@ backend/app/
     query_cache.py           查询级短路：一次跑里参数完全相同的知识库查询只真查一次
                              （同一轮内的重复连上下文都不再塞第二遍；跨轮的原样返回全文）
     policy.py                Runtime 策略控制器：上一轮反馈 → 下一轮参数
+    completion.py            长文交付完整性闸：空章节 / 明示待补 → needs_input，不许报 complete
     replan_rules.py          骨架重规划的约束
     revision.py              定位 / 应用修订：纯函数
     checklist.py             从用户那条指令现场生成 instruction-specific checklist

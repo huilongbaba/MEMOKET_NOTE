@@ -52,6 +52,7 @@ this package. The short version:
     单独成文件是因为它们比使用它们的 middleware 长
     revision.py       修订怎么定位、怎么应用、四道防线   → middleware/revise
     policy.py         这一轮的观测怎么变成下一轮的参数   → middleware/runtime
+    completion.py     长文交付前的确定性完整性闸：空章节 / 明示待补不能报 complete → loop
     replan_rules.py   骨架该不该改、改完合不合法         → middleware/replan
     tailing.py        撞 token 上限后要不要续尾、续回来的收不收 → hooks/{note,section}
     tray.py           材料托盘（P14 §3.4）进 harness 的三条：优先 · 不筛 · 不滚出窗口 → hooks/{note,block} · middleware/facts

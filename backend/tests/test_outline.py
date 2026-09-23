@@ -106,7 +106,7 @@ def test_both_prompts_forbid_leaking_the_retrieval_machinery():
     for p in (MAGIC_TAP_SYSTEM, MAGIC_TAP_SYSTEM_LEAN):
         assert "KB" in p and "知识库" in p          # 明确点名了这些词
         assert "不能证明" in p                       # 明确禁止这类元评论
-        assert "这里需要补上" in p                   # 给出了替代写法
+        assert ("这里需要补上" in p or "不要留下任何“待补材料”" in p)
 
 
 def test_drop_already_written():

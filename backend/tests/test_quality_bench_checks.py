@@ -125,3 +125,8 @@ def test_prompt_example_leak_detects_verbatim_copy():
 def test_blank_runs():
     assert writing._no_blank_runs("a\n\n\n\nb")[0] is False
     assert writing._no_blank_runs("a\n\nb")[0] is True
+
+
+def test_writing_bench_rejects_material_placeholders_and_process_commentary():
+    assert not writing._no_material_placeholder("这里需要补上验收测试的实际记录。")[0]
+    assert not writing._no_meta_commentary("为什么现在写：因为我需要先回答读者会追问的问题。")[0]

@@ -86,7 +86,7 @@ async def compose_block(body: ComposeBlockIn, request: Request,
     # 材料托盘（P14）：这篇摊在桌上的材料，跟 intent 同一条路进 ctx；「从托盘写」托盘空着就不花模型调用
     tray = store.list_tray(user, body.note_id) if body.note_id else []
     if body.from_tray and not tray:
-        raise HTTPException(400, "托盘是空的——先把要用的笔记 / 事实放进右栏「记忆」顶上的托盘，再「从托盘写」。")
+        raise HTTPException(400, "还没有本篇材料——先从右栏「记忆」添加要用的笔记或事实，再点「用本篇材料写」。")
 
     async def gen():
         before, after = _context_block(body.content, body.cursor)

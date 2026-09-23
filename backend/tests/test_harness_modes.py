@@ -102,6 +102,7 @@ def test_a_run_without_a_style_profile_is_not_scored_on_style():
     assert "style_fit" not in names
     assert "style_fit" in [d.name for d in modes.for_run(
         modes.NOTE, has_profile=True).dims]
+    assert "prose_quality" in names, "成稿质量不依赖用户先维护个人风格档案"
 
 
 def test_polish_is_not_scored_on_how_much_got_written():
@@ -111,6 +112,7 @@ def test_polish_is_not_scored_on_how_much_got_written():
     assert "beat_coverage" not in names
     assert "material_use" not in names
     assert "spine_fidelity" in names       # what polish *can* move still counts
+    assert "prose_quality" in names         # 打磨正是有权改善成稿质量的模式
 
 
 def test_modes_with_fixed_dimensions_pass_through_unchanged():

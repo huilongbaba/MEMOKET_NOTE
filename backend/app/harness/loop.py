@@ -22,6 +22,7 @@ from typing import AsyncIterator, Sequence
 
 from .checks import rubric
 from .checks.rubric import evaluate
+from .completion import unfinished_reasons
 
 from . import adapter as harness_adapter
 from . import score_context
@@ -186,10 +187,12 @@ async def run(st: State, hooks: Hooks,
         committed = True
         async for e in _fire(chain, "after_run", st):
             yield e
-        yield Event.run_finished(
-            st.content, reason,
-            pre_blocked or (st.ev.blocked_reason if st.ev and reason == "blocked" else ""),
-            _pause(st, reason))
+        finish_detail = pre_blocked or (
+            st.ev.blocked_reason if st.ev and reason == "blocked" else "")
+        if reason == "needs_input":
+            finish_detail = "；".join(unfinished_reasons(
+                st.content, st.bag.get("beats") or []))
+        yield Event.run_finished(st.content, reason, finish_detail, _pause(st, reason))
 
     except asyncio.CancelledError:
         raise                       # persistence happens in finally
@@ -386,7 +389,15 @@ def _weak_note(st: State) -> str:
 # stop" unanswerable.
 
 def _complete(st: State) -> str | None:
-    return "complete" if st.ev and st.ev.status == "complete" else None
+    if not (st.ev and st.ev.status == "complete"):
+        return None
+    # Block tools may intentionally generate templates or snippets containing
+    # placeholders. This contract is for the two long-form writing harnesses:
+    # they are the paths that claim an entire note/section is finished.
+    if st.mode.key in {"note", "section"} and unfinished_reasons(
+            st.content, st.bag.get("beats") or []):
+        return "needs_input"
+    return "complete"
 
 
 def _blocked(st: State) -> str | None:

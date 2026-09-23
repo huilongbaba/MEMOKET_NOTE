@@ -20,6 +20,7 @@ import os
 from typing import AsyncIterator
 
 from .. import prompts
+from ..prompts.fragments import writing_facts
 from .. import agent_loop
 from .. import query_cache
 from ...util import llm
@@ -48,6 +49,19 @@ from ..state import State
 # How many of the user's own headings become beats. Past this the skeleton
 # stops being a plan and becomes a copy of the table of contents.
 MAX_OUTLINE_BEATS = 12
+
+
+def _facts_for_writing(st: State) -> list[str]:
+    """本轮强相关材料优先；本轮空手时才回退到累计窗口。
+
+    ``st.facts`` 继续完整供核验、引用检查和事实账本使用。生成阶段不需要同时
+    阅读四十条历史材料，否则很容易把正文写成材料盘点。
+    """
+    tray = [f for f in (st.bag.get("tray_lines") or []) if f]
+    fresh = [f for f in (st.facts_new or []) if f not in tray]
+    accumulated = [f for f in (st.facts or []) if f not in tray]
+    chosen = writing_facts(fresh or accumulated[-12:])
+    return tray + [f for f in chosen if f not in tray]
 
 
 def refill_facts(user: str, content: str, spine: str, beats: list[str], *,
@@ -416,10 +430,12 @@ class NoteHooks:
         policy = st.bag.get("policy")
         # 模式没有 chart 组就用不画图的那一份（P8 问题 7）：`_MERMAID_HINT`「遇到就画」
         # 是 P5 / P6 那几张复述清单的图的来处；`charts_from_tools` 兜底摘掉手写的。
-        base = (prompts.MAGIC_TAP_SYSTEM_LEAN
-                if os.getenv("MEMOKET_LEAN_PROMPT") == "1"
-                else prompts.MAGIC_TAP_SYSTEM if "chart" in st.mode.groups
-                else prompts.MAGIC_TAP_SYSTEM_NOCHART)
+        legacy = os.getenv("MEMOKET_LEGACY_WRITING_PROMPT") == "1"
+        base = ((prompts.MAGIC_TAP_SYSTEM if "chart" in st.mode.groups
+                 else prompts.MAGIC_TAP_SYSTEM_NOCHART)
+                if legacy else
+                (prompts.MAGIC_TAP_SYSTEM_LEAN if "chart" in st.mode.groups
+                 else prompts.MAGIC_TAP_SYSTEM_LEAN_NOCHART))
         # 写正文那一发同样以文档意图开头（P11）——口气、读者、完成标准是在这里起作用的：
         # 只接检索规划那一发的话，材料对了、写出来的还是给自己看的口气。
         system = doc_intent.block(st.ctx.intent) + prompts.compose_system(
@@ -441,7 +457,7 @@ class NoteHooks:
             {"role": "system", "content": system},
             {"role": "user", "content": prompts.note_harness_continue_user(
                 st.bag.get("spine", ""), st.bag.get("beats") or [],
-                st.content_for_continue(), st.facts, self.profile,
+                st.content_for_continue(), _facts_for_writing(st), self.profile,
                 outline_note=note_block, sections=sections,
                 # 更早几轮的材料压成一行索引（计划 3.2）。逐字那一半在
                 # `st.facts` 里，两边由 `middleware/facts.py` 一起算出来。
