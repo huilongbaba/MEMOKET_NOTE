@@ -129,15 +129,16 @@ describe('界面：计划页签 + 角标 + 勾（P12）', () => {
     expect(app).toMatch(/<DocumentOutline content=\{content\} viewRef=\{editorViewRef\} withStatus \/>/)
     expect(app).toMatch(/onJumpLine=\{jumpToLine\}/)
   })
-  it('PlanChecks：代码判的画 ✓ / ✗ 并说为什么；要你判的是 checkbox（键盘能按）；空的说去哪填', () => {
+  it('PlanChecks：自动检查画 ✓ / ✗ 并说为什么；人工确认项明确说明作用；空的说去哪填', () => {
     const html = renderToStaticMarkup(createElement(PlanChecks, { done: '每条进展有日期；卡住的说清要什么', content: 周报, checked: [], onToggle: () => {} }))
     expect(html).toContain('plan-check-mark fail')
     expect(html).toContain('3 条里 1 条没有日期')
     expect(html).toContain('type="checkbox"')
-    expect(html).toContain('代码判不了，你来判')
+    expect(html).toContain('需你确认')
+    expect(html).toContain('AI 会按这条写；系统无法可靠验收，完成后请你确认')
     expect(html).toContain('0/2')
     const empty = renderToStaticMarkup(createElement(PlanChecks, { done: '', content: 周报, checked: [], onToggle: () => {}, onEdit: () => {} }))
-    expect(empty).toContain('还是空的')
+    expect(empty).toContain('这是可选项')
     expect(empty).toContain('去填')
   })
   it('标题下「完成标准」后面挂 n/m 角标：没过的标 fail、全过标 ok；没有完成标准就不挂', () => {

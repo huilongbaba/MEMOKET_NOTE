@@ -190,9 +190,10 @@ def test_3_prepare_托盘排最前_且不过相关性筛(monkeypatch, no_skills)
     facts, trace = asyncio.run(NoteHooks().prepare(st))
     assert facts[:4] == TRAY_LINES and len(facts) == 4
     assert st.bag["tray_lines"] == TRAY_LINES
-    # 不算「无关」：facts_irrelevant 里只有检索回来的那两条 + 元信息行
+    # 不算「无关」：facts_irrelevant 里只有检索回来的两条；日期/主体元信息
+    # 已经粘回各自事实，不再单独占两条材料。
     assert all(not tray.is_tray_line(f, TRAY_LINES) for f, _n in st.bag["facts_irrelevant"])
-    assert len(st.bag["facts_irrelevant"]) == 4
+    assert len(st.bag["facts_irrelevant"]) == 2
 
 
 def test_3_prepare_真_gate_开着也不剔托盘_检索材料排在后面(monkeypatch, no_skills):
@@ -330,7 +331,7 @@ def test_4_compose_block_从库里装托盘_从托盘写空托盘400(client, mon
     got = _capture_ctx(monkeypatch, compose_block)
     body = {"note_id": n["id"], "title": "t", "content": "正文", "cursor": 2, "mode": "prompt", "prompt": "写一段"}
     r = client.post("/api/compose/block", headers=H, json=dict(body, from_tray=True))
-    assert r.status_code == 400 and "托盘是空的" in r.text            # 一次模型调用不花
+    assert r.status_code == 400 and "还没有本篇材料" in r.text        # 一次模型调用不花
     client.put(f"/api/notes/{n['id']}/tray", headers=H, json={"items": FOUR})
     r = client.post("/api/compose/block", headers=H, json=dict(body, from_tray=True))
     assert r.status_code == 200, r.text

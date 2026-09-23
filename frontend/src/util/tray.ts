@@ -33,7 +33,7 @@ export function trayAddNotice(items: Pick<TrayItemIn, 'kind' | 'excerpt'>[]): st
   const long = items.filter((it) => (it.kind === 'import' || it.kind === 'selection') && (it.excerpt ?? '').length > TRAY_EXCERPT_MAX)
   if (!long.length) return ''
   const n = Math.max(...long.map((it) => (it.excerpt ?? '').length))
-  return `；只放了前 ${TRAY_EXCERPT_MAX} 字（全文 ${n} 字）——长录音 / 长段落走「存入知识库」，再把要用的事实放进托盘`
+  return `；这里只保留前 ${TRAY_EXCERPT_MAX} 字（全文 ${n} 字）。长录音或长文请先存入知识库，再选择需要的事实作为本篇材料`
 }
 
 /** 把一批加到末尾（纯函数）：逐条走 `withItem`，已在的跳过、封顶 24 */
@@ -110,5 +110,5 @@ export function trayCount(noteId: string): number { return cache.get(noteId)?.le
 
 /** 「从托盘写」开跑前的门槛：托盘空着就说一句、不发请求（后端也拦，`compose_block` 400）。空串 = 放行 */
 export function trayPrecondition(noteId: string): string {
-  return trayCount(noteId) === 0 ? '托盘是空的——先把要用的笔记 / 事实放进右栏「记忆」顶上的托盘，再「从托盘写」。' : ''
+  return trayCount(noteId) === 0 ? '还没有本篇材料——先从右栏「记忆」添加要用的笔记或事实，再点「用本篇材料写」。' : ''
 }

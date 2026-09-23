@@ -28,7 +28,7 @@ export function trayItemTitle(it: Pick<TrayItem, 'kind' | 'title' | 'excerpt'>):
 /** 托盘空着时那一句（P35 走查 #8）。**一句话要把两件事都说掉**：托盘是空的、
  *  以及东西从哪儿来——原来这两件事各占一整段散文，在空库新用户的右栏上
  *  合起来 173px = 21.1%（`p35-3c-new-memory-light` 实测）。 */
-export const TRAY_EMPTY_LINE = '托盘还是空的——记忆卡上的「放进托盘」、正文里 [[ 链接右键「摊到这篇桌上」，都能把材料摊上来。'
+export const TRAY_EMPTY_LINE = '还没有本篇材料。可从下方记忆卡添加，也可以右键正文里的笔记链接添加。'
 
 /** 种类标的类名写成字面量：`check-css-classes` 不认拼出来的类名（P9 被抓过一次） */
 const KIND_CLS: Record<TrayKind, string> = { note: 'tray-kind-note', fact: 'tray-kind-fact', import: 'tray-kind-import', selection: 'tray-kind-selection' }
@@ -53,7 +53,7 @@ export default function TrayPanel({ noteId, onWrite }: {
     setBusy(true)
     listTray(noteId)
       .then((r) => { if (alive) commit(r) })
-      .catch((e) => { if (alive) toast('托盘读不出来：' + friendlyError(e), 'error') })
+      .catch((e) => { if (alive) toast('本篇材料读不出来：' + friendlyError(e), 'error') })
       .finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
   }, [noteId, commit])
@@ -65,12 +65,12 @@ export default function TrayPanel({ noteId, onWrite }: {
       if (d.noteId && d.noteId !== noteId) return
       const batch: TrayItemIn[] = (d.items ?? (d.kind ? [d as TrayItemIn] : []))
         .filter((it) => !(it.kind === 'note' && it.ref_id === noteId))         // 这篇自己不摊到自己桌上
-      if (!batch.length) { if (d.kind === 'note' && d.ref_id === noteId) toast('这篇就是当前这篇，不用摊到自己桌上'); return }
+      if (!batch.length) { if (d.kind === 'note' && d.ref_id === noteId) toast('当前笔记不用加入自己的写作材料'); return }
       const fresh = batch.filter((it) => !alreadyInTray(itemsRef.current, it))
-      if (!fresh.length) { toast(batch.length > 1 ? '这几条都已经在托盘里了' : '已经在托盘里了'); return }
+      if (!fresh.length) { toast(batch.length > 1 ? '这些已经是本篇材料了' : '已经是本篇材料了'); return }
       putTray(noteId, withItems(itemsRef.current, fresh))
-        .then((r) => { commit(r); toast((fresh.length > 1 ? `${fresh.length} 条已放进托盘（共 ${r.length} 条）` : `已放进托盘（${r.length} 条）`) + trayAddNotice(fresh)) })
-        .catch((err) => toast('放不进托盘：' + friendlyError(err), 'error'))
+        .then((r) => { commit(r); toast((fresh.length > 1 ? `已加入 ${fresh.length} 条本篇材料（共 ${r.length} 条）` : `已加入本篇材料（共 ${r.length} 条）`) + trayAddNotice(fresh)) })
+        .catch((err) => toast('加入本篇材料失败：' + friendlyError(err), 'error'))
     }
     window.addEventListener('tray-add', on)
     return () => window.removeEventListener('tray-add', on)
@@ -92,8 +92,8 @@ export default function TrayPanel({ noteId, onWrite }: {
     if (!/^https?:\/\//i.test(url)) { toast('贴一个 http(s) 开头的网址'); return }
     setClipping(true)
     clipToTray(noteId, url)
-      .then((r) => { commit(r); setClipUrl(''); toast(`网页已进托盘（${r.length} 条）`) })
-      .catch((e) => toast('剪不进托盘：' + friendlyError(e), 'error'))
+      .then((r) => { commit(r); setClipUrl(''); toast(`网页已加入本篇材料（共 ${r.length} 条）`) })
+      .catch((e) => toast('网页添加失败：' + friendlyError(e), 'error'))
       .finally(() => setClipping(false))
   }
 
@@ -118,13 +118,13 @@ export default function TrayPanel({ noteId, onWrite }: {
   return (
     <div className="tray-panel" data-count={items.length}>
       <div className="row tray-head" style={{ alignItems: 'center' }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--s-2)' }}><Icon n="bx-layer-plus" /> 托盘</h2>
-        <span className="badge" title="摊在这篇桌上的材料有几条">{items.length}</span>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--s-2)' }}><Icon n="bx-layer-plus" /> 本篇材料</h2>
+        <span className="badge" title="这篇写作已指定的材料数量">{items.length}</span>
         {busy && <span className="spinner" />}
         <span style={{ flex: 1 }} />
         {items.length > 0 && onWrite && (
-          <button className="tray-write" onClick={onWrite} title="在光标处按托盘里的材料写一段（跟 / 菜单「从托盘写」同一件事）">
-            <Icon n="bx-pen" /> 从托盘写
+          <button className="tray-write" onClick={onWrite} title="只根据本篇材料，在光标处写一段">
+            <Icon n="bx-pen" /> 用材料写
           </button>
         )}
       </div>
@@ -136,35 +136,28 @@ export default function TrayPanel({ noteId, onWrite }: {
           那时候它说的是「这几条为什么排最前」，是有用的。 */}
       {items.length > 0 ? (
         <p className="muted tray-hint">
-          摊在桌上的材料：续写、智能续写、<code>/</code> 块、右键动作取材料时，这几条排最前、不被筛掉、不会滚出窗口。
+          AI 写这篇时会优先参考这些材料。
         </p>
       ) : !busy && (
-        <p className="muted tray-hint tray-hint-empty">
+        <p className="muted tray-hint">
           {TRAY_EMPTY_LINE}
-          <details className="tray-why">
-            <summary>摊上来的材料有什么用、怎么摊</summary>
-            <span>
-              续写、智能续写、<code>/</code> 块、右键动作取材料时，托盘里这几条排最前、不被筛掉、不会滚出窗口。
-              记忆卡上的「放进托盘」、正文里 <code>[[</code> 链接右键「摊到这篇桌上」，都能放进来。
-            </span>
-          </details>
         </p>
       )}
       <div className="tray-tools">
-        <label className="row tray-default" title="开着：导入进来的笔记、录音转写、贴进来的网页先进托盘（不进正文、不直接进知识库），要用再说；关掉回到原来的去处">
+        <label className="row tray-default" title="开启后，新导入的笔记、录音转写和网页剪藏会加入当前笔记的写作材料">
           <input type="checkbox" checked={byDefault} onChange={(e) => { setByDefault(e.target.checked); setTrayByDefault(e.target.checked) }} />
-          <span>导入 / 录音 / 剪藏默认进托盘</span>
+          <span>导入 / 录音 / 剪藏后加入本篇材料</span>
         </label>
         <form className="row tray-clip" onSubmit={(e) => { e.preventDefault(); clip() }}>
-          <input type="url" className="tray-clip-url" placeholder="贴一个网址 → 抓正文进托盘" aria-label="要剪藏的网址"
+          <input type="url" className="tray-clip-url" placeholder="粘贴网址，加入本篇材料" aria-label="要剪藏的网址"
                  value={clipUrl} onChange={(e) => setClipUrl(e.target.value)} disabled={clipping} />
-          <button type="submit" className="tray-clip-go" disabled={clipping || !clipUrl.trim()} title="抓这个网页的正文，作为一条材料放进托盘（不插进正文）">
+          <button type="submit" className="tray-clip-go" disabled={clipping || !clipUrl.trim()} title="提取网页正文并加入本篇材料">
             {clipping ? <span className="spinner" /> : <Icon n="bx-link" />} 剪藏
           </button>
         </form>
       </div>
       {items.length > 0 && (
-        <ol className="tray-list" aria-label="托盘里的材料">
+        <ol className="tray-list" aria-label="本篇材料">
           {items.map((it, i) => {
             const expanded = open.has(it.id)
             const text = expanded || it.excerpt.length <= TRAY_PREVIEW_CHARS ? it.excerpt : it.excerpt.slice(0, TRAY_PREVIEW_CHARS) + '…'
@@ -195,7 +188,7 @@ export default function TrayPanel({ noteId, onWrite }: {
                   <button className="icon-btn" title="下移" disabled={i === items.length - 1} onClick={() => reorder(i, i + 1)}><Icon n="bx-chevron-down" /></button>
                   <button className="icon-btn" title={it.kind === 'note' ? '打开这篇笔记' : it.kind === 'fact' ? '打开这条事实' : it.kind === 'import' && /^https?:\/\//i.test(it.ref_id) ? '打开原网页' : expanded ? '收起' : '看全文'}
                           onClick={() => openOriginal(it)}><Icon n="bx-link-external" /></button>
-                  <button className="icon-btn" title="从托盘移除（原文不动）" onClick={() => remove(it)}><Icon n="bx-x" /></button>
+                  <button className="icon-btn" title="从本篇材料移除（原文不动）" onClick={() => remove(it)}><Icon n="bx-x" /></button>
                 </span>
               </li>
             )

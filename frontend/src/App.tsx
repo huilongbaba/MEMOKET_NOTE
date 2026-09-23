@@ -61,7 +61,7 @@ const JourneyPage = lazy(() => import('./components/JourneyPage'))
 import { displayTitle, isPlaceholderTitle } from './util/displayTitle'
 import ExportNotePanel from './components/ExportNotePanel'
 import { setPendingKbQuery } from './util/pendingKbQuery'
-import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine } from './util/virtual'
+import { VIRTUAL_LABELS, isKnownVirtual, factsLabel, previewLine, isKbVirtual, syncVirtualTab } from './util/virtual'
 import { buildCrumbs } from './util/crumbs'
 import { layoutPanes, makeRoomForRight } from './util/layoutPanes'
 import { readDraft, writeDraft, clearDraft, resolveDraft } from './util/draft'
@@ -99,7 +99,7 @@ import PlanChecks from './components/PlanChecks'
 import { checkDone, doneSummary } from './util/doneChecks'
 import MarginCard from './components/MarginCard'
 import TraceCard, { type TraceCardState } from './components/TraceCard'
-import { intentText, resolveIntent, type DocIntent } from './util/docIntent'
+import { intentText, needsHarnessGoal, resolveIntent, type DocIntent } from './util/docIntent'
 import SettingsPanel, { AboutLine } from './components/SettingsPanel'
 import SkillsPanel from './components/SkillsPanel'
 import TapProvenance from './components/TapProvenance'
@@ -130,19 +130,6 @@ const SKELETON_MIN_DELTA = 20
  *  晚一步写，那份正文刚好已经落库，下次打开走的就是「按坐标精确放回」那条路，
  *  不必靠文字重新定位。 */
 const CHANGE_LAYER_SAVE_MS = 1600
-
-/** 意图行预填的防抖（P46 #5）：**名字停下来多久才重推一次预填**。
- *
- *  **不是为 CPU**——P43 量过一次 0.03–0.10ms，占一帧的 0.6%。是为**帧数**：
- *  真机上一个字一个字敲 32 个字（160ms 一个），「目标」那一格变了 **19 次**，
- *  中间十几帧是半句话（「周报 9-20：这周把众**：这段时间做了什么…**」）。
- *  标签页跟着变没关系——那是标题；这三格是**用户能改的输入框**，
- *  一个输入框在你打字时自己一格一格换内容，读起来就是坏了。
- *
- *  为什么是 500：一个字的间隔 ~160ms，500ms 落在「真的停下来想了一下」那一侧，
- *  句读之间的停顿（~300ms）还够不着它。实测 19 次 → 1 次。 */
-const INTENT_PREFILL_IDLE_MS = 500
-
 
 /** 无限续写 harness 的运行状态——挂在 App 这一级而不是 WritingPlanPanel
  * 里，是直接回应"必须要写作计划那一页吗？？不能在后台吗？"：状态生命周期
@@ -281,7 +268,9 @@ export default function App() {
   const [tabs, setTabs] = useState<Tab[]>(() => {
     try {
       const raw = localStorage.getItem('memoket-note-tabs:' + api.getUser())
-      return raw ? (JSON.parse(raw) as Tab[]) : []
+      const loaded = raw ? (JSON.parse(raw) as Tab[]) : []
+      const kb = loaded.find((t) => isKbVirtual(t.noteId))
+      return kb ? syncVirtualTab(loaded, kb, null) : loaded
     } catch { return [] }
   })
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
@@ -558,11 +547,19 @@ export default function App() {
     api.listRevisions(id).then((r) => { if (alive) setRunRevs(r) }).catch(() => { if (alive) setRunRevs([]) })
     return () => { alive = false }
   }, [current?.id, current?.updated_at, harnessDone, runsTick])
-  /** 文档意图（P9，§3.1）：这篇要干什么。打开时从库里读，没有就按标题预填（零模型）。 */
+  /** 文档意图（P9，§3.1）：可选的写作任务，只恢复用户显式填写的内容。 */
   const [intent, setIntent] = useState<DocIntent>(() => resolveIntent(null, ''))
+  // 开发热更新可能保留老版本已经装进 state 的标题预填；不用等用户重开笔记，
+  // 当场撤掉，避免「计划」继续展示并执行一条用户从未选择过的要求。
+  useEffect(() => {
+    if (intent.source === 'prefill') setIntent(resolveIntent(intent, ''))
+  }, [intent])
+  /** 只有短草稿且没有目标/骨架时，智能续写才在标题下就地追问一句。 */
+  const [intentPrompt, setIntentPrompt] = useState(false)
   /** 意图改了（字段、或「完成标准」勾了一条）：本地先更新、落库、树上那份跟着变。用户改字段的路和勾选的路同一条。 */
   const saveIntent = useCallback((next: DocIntent) => {
     setIntent(next)
+    if (next.goal.trim()) { setIntentPrompt(false); setNoteHarnessStatus('') }
     const id = current?.id
     if (!id) return
     api.saveIntent(id, next)
@@ -574,53 +571,6 @@ export default function App() {
   // 生成骨架 / 智能排版的「停止」（P3 遗留 ❌×2：模型卡住只能干等 300 秒）
   const skeletonAbortRef = useRef<AbortController | null>(null)
   const restructureAbortRef = useRef<AbortController | null>(null)
-  // 标题变了、意图还是预填的 → 跟着标题重推；用户改过一个字的（source=user）永远不覆盖
-  // **把现在这份传进去，不要传 `null`**（P31 #1）：这个 effect 也挂在 `current?.id` 上，
-  // 每打开一篇都会在上面那句「从库里读」之后再跑一次；传 `null` = 拿一份干净的预填把刚读出来的
-  // 盖掉，于是 `checked` 每次开篇都被抹掉——勾过的完成标准关掉重开就退回 `0/n`
-  // （库里 `notes.intent.checked` 一直是对的，纯粹丢在这一行）。传 `i` 照样跟着标题重推，
-  // 只是把勾带过去；标题改了、判据对不上的那几个勾在 `resolveIntent` 里作废。
-  //
-  // **认的是界面上那个名字，不是标题框那一格**（P43 #2 / P42 问题 #2）。实拍：新建笔记、
-  // 正文第一行打 `# 周报 9-20`，左栏树、标签页、状态栏**全都叫「周报 9-20」**，
-  // 唯独 `input.note-title` 的 value 是空的——于是意图行一直空着、没有「预填」角标。
-  // 一篇笔记只有一个名字（`displayTitle`，App 里另外五处用的就是它），预填也得认这一个。
-  //
-  // **重推的代价量过了**（$S/p43/bench2.ts，真函数 + 真库最长的两篇，各 2000 次取均值）：
-  //   47k 字 / 2402 行（最长那篇）：`displayTitle` + `resolveIntent` = **0.10 ms**
-  //   30k 字 / 533 行（公司汇报）：**0.03 ms**
-  //   标题框里有字时 `displayTitle` 压根不碰正文：**0.0001 ms**
-  // 一帧是 16.67ms，一个字的间隔 ~160ms——最坏那一档也只占一帧的 0.6%，**不用防抖**。
-  // 真正要防的不是 CPU 是**重推的次数**：所以依赖挂的是**算出来的名字**，不是 `content`。
-  // 名字没变（正文改的是第三段、或者标题框里本来就有字）这个 effect 一次都不跑，
-  // 「会不会覆盖用户勾过的完成标准」那个担心从根上没了；名字真变了才重推，
-  // 跟原来在标题框里打字时的行为逐字一样（`source === 'user'` 照旧永不覆盖）。
-  const shownTitle = useMemo(() => displayTitle({ title, content }), [title, content])
-  // **真机上数出来的**（P46 #5，P43 留的「下一步」：「视觉上会跳，真机上看一眼再定」）。
-  // 一个字一个字敲 `# 周报 9-20：这周把众筹页面的文案定稿了，3月12号上线。`（32 个字、160ms 一个）：
-  // 「目标」那一格**变了 19 次**，而且中间那十几帧是半句话——
-  //   第 3 个字：「围绕「周」写清楚一件事」（**先跳到另一个模板**）
-  //   第 4 个字：「周报：这段时间做了什么、进展到哪、卡在哪」（模板又跳回来）
-  //   第 11–23 个字：「周报 9-20：这周把众**：这段时间做了什么…**」一个字一个字长出来
-  // 标签页跟着变 20 次那是**标题**，看着正常；而这三格是**用户能改的输入框**——
-  // 一个输入框在你打字时自己一格一格换内容，读起来就是坏了。**所以加防抖。**
-  // 不是为 CPU（P43 量过 0.03–0.10ms / 次，占一帧的 0.6%），是为这 19 帧。
-  const [settledTitle, setSettledTitle] = useState(shownTitle)
-  useEffect(() => {
-    if (settledTitle === shownTitle) return
-    const t = setTimeout(() => setSettledTitle(shownTitle), INTENT_PREFILL_IDLE_MS)
-    return () => clearTimeout(t)
-  }, [shownTitle, settledTitle])
-  // **换篇不等**：那一下不是「打字打到一半」，是一篇新的东西开了，
-  // 晚半秒才填出来会被读成「这篇没预填」。
-  useEffect(() => { setSettledTitle(displayTitle({ title, content })) },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [current?.id])
-  useEffect(() => {
-    if (!current) return
-    setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, settledTitle)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settledTitle, current?.id])
   const [scopeTick, setScopeTick] = useState(0)
   useEffect(() => {
     const on = () => setScopeTick((t) => t + 1)
@@ -749,11 +699,15 @@ export default function App() {
     const ids = new Set(list.map((n) => n.id))
     // 虚拟标签也过一遍：不认识的 kb:* id（旧版本留下的 kb:overview）一起收掉
     const knownVirtual = isKnownVirtual
-    setTabs((prev) => prev
-      .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
-      // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
-      .map((t) => (t.title === t.noteId && t.noteId.startsWith('kb:fact:') ? { ...t, title: '事实 ' + t.noteId.slice(8) }
-        : t.noteId.startsWith('kb:unit:') && t.title === t.noteId.slice(8) ? { ...t, title: '会议记录' } : t)))
+    setTabs((prev) => {
+      const kept = prev
+        .filter((t) => (api.isVirtualId(t.noteId) ? knownVirtual(t.noteId) : ids.has(t.noteId)))
+        // 旧版本存下来的标签标题就是裸 id（kb:fact:terrence-…）：补个名字
+        .map((t) => (t.title === t.noteId && t.noteId.startsWith('kb:fact:') ? { ...t, title: '事实 ' + t.noteId.slice(8) }
+          : t.noteId.startsWith('kb:unit:') && t.title === t.noteId.slice(8) ? { ...t, title: '会议记录' } : t))
+      const kb = kept.find((t) => isKbVirtual(t.noteId))
+      return kb ? syncVirtualTab(kept, kb, null) : kept
+    })
     return list
   }, [])
 
@@ -936,19 +890,15 @@ export default function App() {
     // 只盯 kbRows 就永远等不到下一次。有 changed 守卫，不会循环。
   }, [kbRows, tabs])
 
-  /** 真笔记 + 虚拟子树，一个控件画。虚拟节点的展开状态从本机的集合来。 */
-  /** 树上的行 = 用户自己的笔记 + **一行**知识库入口。
-   *
-   * 知识库原来是整棵子树接在树的最底下（主题 / 实体 / 时间线…一层层展开）。
+  /** 知识库原来是整棵子树接在树的最底下（主题 / 实体 / 时间线…一层层展开）。
    * 不合适，理由在 docs/sidebar-ia-plan.md §1，一句话说：**树是「我写的、我摆
    * 的」，知识库是「机器抽的、机器摆的」**，两套层级规则相反——笔记能改名能拖
    * 能删，主题不能；而且体量倒挂，实测这个库真笔记 26 行、知识库子树 180 行，
    * 排在最底下的那个节点装的东西比它上面所有东西加起来多一个数量级。
    *
-   * 留这一行是因为它在回答「我的材料在哪」；点进去才回答「里面有什么」——
-   * 下钻交给知识库首页，那一页（搜索 + 数字 + 月度图 + 主题 / 实体 / 最近摄入）
-   * 本来就比在树里一层层展开好用。而「写作时够到知识」有两条更好的路：右栏的
-   * 「记忆」面板和 ⌘K。 */
+   * `allRows` 仍把知识库根节点并进来，只供面包屑、页面标题和知识库页面查数据；
+   * 它不再喂给 NoteTree。知识库的入口在最左侧启动栏，笔记树只表达用户自己的
+   * 笔记层级。 */
   const allRows = useMemo(() => {
     const entry = kbRows.find((r) => r.note_id === 'kb')
     return entry ? [...tree, { ...entry, child_count: 0, is_expanded: false }] : tree
@@ -973,8 +923,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbRows])
 
-  /** 打开一个虚拟节点：一条事实 = 一篇只读笔记，占中栏、开标签，跟真笔记
-   *  一样的肌肉记忆。离开正在写的那篇之前先落盘——跟 switchTo 同一条纪律。 */
+  /** 打开一个虚拟节点。知识库内部始终复用同一个工作区标签；设置、导入等特殊页
+   *  仍各自保留标签。离开正在写的那篇之前先落盘——跟 switchTo 同一条纪律。 */
   async function openVirtual(id: string, title?: string) {
     // 传进来的是普通笔记 id（探针 open:<noteId>、旧标签页残留）就走笔记那条路——
     // 实拍：一个笔记 id 会被当成实体名渲染成「别名：<正文前 100 字>」的知识库页。
@@ -998,10 +948,9 @@ export default function App() {
     const label = title ?? factsLabel(id) ?? allRows.find((r) => r.note_id === id)?.title ?? VIRTUAL_LABELS[id]
       ?? (id.startsWith('kb:unit:') ? '会议记录' : /^kb:(topic|entity):/.test(id) ? id.split(':').slice(2).join(':')
         : id.startsWith('kb:fact:') ? '事实 ' + id.slice(8) : id)
-    setTabs((prev) => prev.find((x) => x.noteId === id)
-      // 已经开着：名字按现在的规则刷一遍（标签落 localStorage，老规则起的名会一直留着——实拍带筛选的事实表标签还叫「事实表」）
-      ? prev.map((x) => (x.noteId === id && x.title !== label ? { ...x, title: label } : x))
-      : [...prev, { id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label }])
+    setTabs((prev) => syncVirtualTab(prev, {
+      id: 't' + Math.random().toString(36).slice(2, 9), noteId: id, title: label,
+    }, activeTabId))
   }
 
   // 右栏那些面板没有 openVirtual 的句柄，用一个窗口事件把「打开某个虚拟节点」
@@ -1499,6 +1448,7 @@ export default function App() {
     setBeats(n.beats ?? [])
     setSkeletonNotes([])
     setIntent(resolveIntent(n.intent, d.title))
+    setIntentPrompt(false)
     setMarginCard(null)
     setTraceCard(null)
     // 已经有骨架的笔记，打开时不要 8 秒后又生成一遍——之前每开一篇就一次模型
@@ -2884,32 +2834,34 @@ export default function App() {
     }
         const label = reason === 'no_more_changes' ? '已经改不动了，打磨结束'
           : reason === 'complete' ? (mode === 'polish' ? '已写内容都达标了，打磨完成' : '内容已完整，自动停止')
+          : reason === 'needs_input' ? `草稿已保存，但还不能算完成：${blockedReason || '还有空章节或待补材料'}`
           : reason === 'blocked' ? `卡住了，需要你看一眼：${blockedReason || '原因未知'}`
           // P8 问题 10：这条规则数的是**修订**没落地（`no_change_rounds`），不是「没有新内容」
           // ——P6 e783 停在 stalled 时那两轮续写各写了 393 / 333 字，文案跟机制要对得上。
-          : reason === 'stalled' ? '连续两轮修订都没落地，自动停止（这几轮写的内容留着）'
-          : reason === 'regressed' ? '再改反而更差，留下了最好的那轮'
-          : reason === 'cost_cap' ? '这次跑到了成本上限，留下了最好的那轮'
-          : reason === 'material_used_up' ? '知识库里能用的材料用完了，自动停止'
+          : reason === 'stalled' ? '这次没能继续改善：连续两轮修订都没有落地，当前草稿已保存'
+          : reason === 'regressed' ? '继续修改使结果变差，已恢复并保存最好的一轮'
+          : reason === 'cost_cap' ? '本次达到成本上限，已保存最好的一轮；可以收窄任务后继续'
+          : reason === 'material_used_up' ? '现有材料不足以继续，当前草稿已保存；请补材料或收窄任务'
           // P6 问题 4：同一条判据连响几轮、模型一次都没照做，后端停了交最好的一轮。
           // 「哪条、几轮」来自收工前那条带 stopped 的 check_hit 事件。
           : reason === 'check_stuck' ? (stuckCheckRef.current
               // 后面那半句「下一步做什么」只给**模型答的形状不对**那一档（`stuckTail`，P40 · B #2）：
               // 别的判据连响几轮说的是内容还没写到位，下一步是「你自己看一眼」，不是「换个模型」。
-              ? `「${checkLabel(stuckCheckRef.current.check)}」这条判据连响 ${stuckCheckRef.current.rounds} 轮都没解决，停下留了最好的那轮${stuckTail(stuckCheckRef.current.check)}`
-              : '同一条判据连响几轮都没解决，停下留了最好的那轮')
+              ? `这次没达到交付标准：「${checkLabel(stuckCheckRef.current.check)}」连续 ${stuckCheckRef.current.rounds} 轮没有改善。最好草稿已保存${stuckTail(stuckCheckRef.current.check)}`
+              : '这次没达到交付标准：同一个问题连续几轮没有改善。最好草稿已保存，请查看计划后调整正文或任务')
           // P55 #4：`best` 连着几轮一格没涨。**不能落到下面那句兜底上**——
           // 「到达轮数上限」会让用户以为再多给几轮就能更好，而这条规则说的恰好相反：
           // 已经量过了，接着跑不会更好（`modes.BEST_STALL_ROUNDS`）。
-          : reason === 'best_stalled' ? '接连几轮都没写得更好，停下留了最好的那轮'
-          : '到达轮数上限，自动停止'
+          : reason === 'best_stalled' ? '连续几轮都没有改善，已保存最好草稿；请修改任务或补材料后再试'
+          : '本次达到轮数上限但尚未达标，已保存最好草稿；请查看计划里的未完成项'
         stuckCheckRef.current = null
         const delta = liveContentRef.current.length - runBaseRef.current.length
         const summary = `${label} · ${(roundsByNoteRef.current[noteId]?.length ?? 0) || 1} 轮 · ${delta === 0 ? '正文没有改动' : `${delta > 0 ? '+' : ''}${delta} 字`}`
         setNoteHarnessStatus(summary)
         harnessDoneRef.current = true
         setHarnessDone(true)
-        toast(`智能续写：${label}`, reason === 'blocked' ? 'error' : undefined)
+        const unsuccessful = ['blocked', 'needs_input', 'check_stuck', 'max_rounds', 'best_stalled', 'material_used_up'].includes(reason)
+        toast(`智能续写：${label}`, unsuccessful ? 'error' : undefined)
         notifyIfHidden('MEMOKET NOTE · 智能续写', `${noteName('笔记')}：${label}`)
       },
     }
@@ -2956,6 +2908,12 @@ export default function App() {
     }
     if (!current) return
     { const why = notePrecondition(mode === 'polish' ? 'polish' : 'harness', content, title); if (why) { toast(why); return } }
+    if (mode === 'write' && needsHarnessGoal(intent, content, spine, beats)) {
+      setIntentPrompt(true)
+      setNoteHarnessStatus('先告诉智能续写这篇最终要写成什么')
+      requestAnimationFrame(() => document.querySelector('.doc-intent')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+      return
+    }
     if (!llmGate()) return
     const noteId = current.id
     // 起跑时记一笔发出去的是什么：哪篇、多少字、骨架开头——探针实拍过一次
@@ -3148,8 +3106,8 @@ export default function App() {
       if (!trayByDefault() || !target) return
       try {
         const k = await landNotesInTray(target, notes)
-        if (k) toast(`导入的 ${k} 篇已进托盘——写那篇时优先用；不想要就在托盘里移除`)
-      } catch (e) { toast('进托盘没成：' + friendlyError(e), 'error') }
+        if (k) toast(`导入的 ${k} 篇已加入本篇材料；AI 写这篇时会优先参考`)
+      } catch (e) { toast('加入本篇材料失败：' + friendlyError(e), 'error') }
     }
     if (list.length === 1) {
       const text = await list[0].text()
@@ -3624,7 +3582,7 @@ export default function App() {
         { note_id: current.id, title, content: before, cursor: from,
           // 「从托盘写」走的是 prompt 模式 + from_tray（不是新的 block mode）；留空的指令后端按托盘材料写一段
           mode: (item.key === 'tray' ? 'prompt' : item.key) as api.BlockMode,
-          prompt: item.key === 'tray' && !prompt.trim() ? '按托盘里摊开的材料写一段，每句话带材料的出处' : prompt,
+          prompt: item.key === 'tray' && !prompt.trim() ? '根据本篇材料写一段，每句话带材料的出处' : prompt,
           selection, from_tray: item.key === 'tray' },
         {
           onPhase: (label) => {
@@ -3774,7 +3732,7 @@ export default function App() {
       {noteLinkMenu && (
         <ContextMenu at={{ x: noteLinkMenu.x, y: noteLinkMenu.y }} onClose={() => setNoteLinkMenu(null)} items={[
           { kind: 'header', label: noteLinkMenu.title || '未命名' },
-          { label: '摊到这篇桌上', icon: 'bx-layer-plus', hint: '放进托盘，写这篇时优先用它',
+          { label: '加入本篇材料', icon: 'bx-layer-plus', hint: 'AI 写这篇时优先参考',
             onSelect: () => {
               const id = noteLinkMenu.id
               // 摘要要那篇的开头几百字：拉一次（`[[` 链接标记只带标题）
@@ -3922,12 +3880,14 @@ export default function App() {
         <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）：日记 / 年 / 月 / 日，没有就建`} onClick={() => void openToday()}><Icon n="bx-calendar-event" /></button>
         <button className="launcher-btn" title={`全局搜索：笔记 + 知识库（${fmtShortcut('⌘K')}）`}
                 onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><Icon n="bx-search" /></button>
-        {/* 去处（导入 / 屏幕活动 / Skill / 设置）**从 `util/destinations` 生成**：
+        {/* 去处（知识库 / 导入 / 屏幕活动 / Skill / 设置）**从 `util/destinations` 生成**：
             这一份同时喂给 ⌘K（第 779 轮 / P21）。原来两处各写各的，于是屏幕活动
             和写作 Skill 在左栏有、在 ⌘K 里没有——而计划 §8.4 明写要有。
             加一个新去处只改那一个文件，两处同时出现。 */}
         {DESTINATIONS.filter((d) => d.where === 'top').map((d) => (
-          <button key={d.id} className={'launcher-btn' + (virtualId === d.id ? ' active' : '')}
+          <button key={d.id} className={'launcher-btn' + (d.id === 'kb'
+                    ? (virtualId === 'kb' || virtualId?.startsWith('kb:') ? ' active' : '')
+                    : (virtualId === d.id ? ' active' : ''))}
                   title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /></button>
         ))}
         <div className="launcher-spacer" />
@@ -4025,12 +3985,12 @@ export default function App() {
             : visibleNotes.map(renderNoteItem)
         ) : (
           <NoteTree
-            rows={allRows}
+            rows={tree}
             menuRowId={treeMenu?.row.id ?? null}
             activeNoteId={current?.id ?? virtualId}
             onOpen={openFromTree}
-            /* 树上只剩真笔记可以展开：知识库现在是一行入口，下钻在它自己那一页里 */
-            onToggle={(row) => { if (!api.isVirtualId(row.note_id)) void toggleTreeNode(row) }}
+            /* 笔记树只放用户自己的笔记；知识库是最左侧的一级工作区。 */
+            onToggle={(row) => void toggleTreeNode(row)}
             onDelete={(row) => { const n = notes.find((x) => x.id === row.note_id); if (n) void removeWithSubtree(n, row) }}
             locateTick={locateTick}
             onRename={(row) => void renameNode(row)}
@@ -4096,10 +4056,11 @@ export default function App() {
             )}
           </div>
         )}
-        {/* 这篇要干什么（P9，agent-native-editor §3.1）：标题下面常驻一行，所有 AI 动作的前提。
-            专注模式收起——那会儿只剩正文。 */}
+        {/* 写作任务（P9，agent-native-editor §3.1）：标题下常驻一行可选摘要，需要 agent
+            按明确目标执行时再展开；普通笔记直接写。专注模式收起——那会儿只剩正文。 */}
         {current && !focusMode && (
           <DocIntentRow intent={intent} onChange={saveIntent}
+            promptForGoal={intentPrompt}
             checks={doneChecksSum}
             onOpenChecks={() => setPaneFocus({ id: 'plan', n: Date.now() })} />
         )}
@@ -4217,6 +4178,7 @@ export default function App() {
               id={virtualId}
               rows={allRows}
               onOpen={(id) => void openVirtual(id)}
+              onBack={() => { if (histState.back) goHistory(-1); else void openVirtual('kb') }}
               onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n) }}
               onCite={null}
             /></Suspense>
@@ -4572,7 +4534,10 @@ export default function App() {
                       const next = on ? Array.from(new Set([...was, text])) : was.filter((t) => t !== text)
                       saveIntent({ ...intent, source: intent.source || 'user', checked: next })
                     }}
-                    onEdit={() => document.querySelector<HTMLInputElement>('.doc-intent-input[aria-label="完成标准"]')?.focus()} />
+                    onEdit={() => {
+                      document.querySelector<HTMLButtonElement>('.doc-intent-toggle')?.click()
+                      requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.doc-intent-input[aria-label="完成标准"]')?.focus())
+                    }} />
                 )
                 const outline = current && (
                   <div key="outline">

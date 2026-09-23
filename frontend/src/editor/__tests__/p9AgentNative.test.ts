@@ -2,7 +2,7 @@
 /**
  * P9（产品就绪计划 §2 C2 + B 线遗留，`docs/TRACELOG-product.md` P9 节）：前端管得着的几条。
  *
- *   文档意图（`util/docIntent`，agent-native-editor §3.1）：按标题预填（零模型）、用户改过就不覆盖、
+ *   文档意图（`util/docIntent`，agent-native-editor §3.1）：标题不猜任务、用户填写后原样恢复、
  *     拼成一句随 AI 动作带给后端（格式跟后端 `editor/intent.as_text` 一样）；标题下那一行 `DocIntentRow`
  *   边缘记忆（`editor/marginMemory`，§3.3）：光标所在段的段首行、点的身份、哪两种关系自己贴到行边上
  *   关系卡动作一份两处（`util/relationActions`）：后端没起来时 toast 说人话，不再是英文 `Failed to fetch`
@@ -13,62 +13,70 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Text } from '@codemirror/state'
 
-import { EMPTY_INTENT, intentText, isEmptyIntent, prefillIntent, resolveIntent, INTENT_FIELD_MAX } from '../../util/docIntent'
+import { EMPTY_INTENT, WRITING_SCENARIOS, intentText, isEmptyIntent, needsHarnessGoal, resolveIntent } from '../../util/docIntent'
 import { AUTO_SHOW, markKey, paragraphStartLine, type MarginMark } from '../marginMemory'
 import { alreadyCited, citeText, fillInText, ignoreRelation, ignoredSet, relationKey, supersedeRelation } from '../../util/relationActions'
 import DocIntentRow from '../../components/DocIntentRow'
 import SkeletonPanel from '../../components/SkeletonPanel'
 import MarkdownToolbar from '../../components/MarkdownToolbar'
+import { checkDone } from '../../util/doneChecks'
 
-describe('文档意图：预填 / 校准 / 拼句（P9 §3.1）', () => {
-  it('按标题预填：周报 / 复盘 / 会议 / 方案 / 调研 / 日记各一套，都标 prefill', () => {
-    const w = prefillIntent('第 37 周周报')
-    expect(w.source).toBe('prefill')
-    expect(w.goal).toContain('第 37 周周报')
-    expect(w.reader).toContain('老板')
-    expect(w.done).toContain('日期')
-    expect(prefillIntent('创业反思').goal).toContain('发生了什么')
-    expect(prefillIntent('周一例会').done).toContain('负责人')
-    expect(prefillIntent('APP 需求 PRD').reader).toContain('执行团队')
-    expect(prefillIntent('竞品调研').done).toContain('出处')
-    expect(prefillIntent('日记').reader).toBe('自己')
+describe('文档意图：显式设置 / 拼句（P9 §3.1）', () => {
+  it('任何标题都不自动推断目标、读者或完成标准', () => {
+    for (const title of ['周报', '会议纪要', '产品方案', '日记', 'Research Plan', '']) {
+      expect(isEmptyIntent(resolveIntent(null, title))).toBe(true)
+    }
   })
-  it('匹配不上的标题给一个中性的；空标题 / 占位标题不猜', () => {
-    const g = prefillIntent('plaud的优势分析')     // 「分析」命中调研那条
-    expect(g.source).toBe('prefill')
-    const n = prefillIntent('hi')
-    expect(n.goal).toContain('「hi」')
-    expect(n.done).toContain('依据')
-    expect(isEmptyIntent(prefillIntent(''))).toBe(true)
-    expect(isEmptyIntent(prefillIntent('未命名'))).toBe(true)
-  })
-  it('标题末尾的冒号不进目标；超长封顶', () => {
-    expect(prefillIntent('公司汇报：').goal.startsWith('公司汇报：这段')).toBe(true)
-    expect(prefillIntent('x'.repeat(400)).goal.length).toBeLessThanOrEqual(INTENT_FIELD_MAX)
-  })
-  it('用户改过的（source=user）永远不被标题覆盖；预填的跟标题重推', () => {
+  it('用户写过的任务永远不被标题覆盖；历史 prefill 直接清空', () => {
     const mine = { goal: '我的目标', reader: '我', done: '写完', source: 'user' as const }
     expect(resolveIntent(mine, '第 37 周周报')).toEqual(mine)
-    const pre = prefillIntent('创业反思')
-    expect(resolveIntent(pre, '第 37 周周报').reader).toContain('老板')
+    expect(resolveIntent({ goal: '自动内容', reader: '某类读者', done: '自动标准', source: 'prefill' }, '任意标题')).toEqual(EMPTY_INTENT)
     // 接口直接写进来、没标来源但填了字的，也算他的
     expect(resolveIntent({ ...EMPTY_INTENT, goal: 'x' }, '日记').source).toBe('user')
-    expect(resolveIntent(null, '日记').source).toBe('prefill')
+    expect(resolveIntent(null, '日记').source).toBe('')
   })
   it('拼成一句：只列填了的，「目标：…；读者：…；完成标准：…」', () => {
     expect(intentText({ goal: '本周汇报', reader: '', done: '每条有日期', source: 'user' })).toBe('目标：本周汇报；完成标准：每条有日期')
+    expect(intentText({ goal: '旧周报', reader: '', done: '卡住的说清要什么', source: 'prefill' })).toBe('')
     expect(intentText(EMPTY_INTENT)).toBe('')
     expect(intentText(null)).toBe('')
   })
-  it('标题下那一行：三个字段就地可改，预填的带「预填」标', () => {
-    const html = renderToStaticMarkup(createElement(DocIntentRow, { intent: prefillIntent('创业反思'), onChange: () => {} }))
-    expect(html).toContain('这篇要干什么')
-    expect(html).toContain('aria-label="目标"')
-    expect(html).toContain('aria-label="读者"')
-    expect(html).toContain('aria-label="完成标准"')
-    expect(html).toContain('预填')
+  it('标题下默认只显示可选任务摘要，不把三个设置冒充新建笔记必填项', () => {
+    const html = renderToStaticMarkup(createElement(DocIntentRow, { intent: { goal: '整理关键判断', reader: '', done: '', source: 'user' }, onChange: () => {} }))
+    expect(html).toContain('写作任务')
+    expect(html).toContain('整理关键判断')
+    expect(html).not.toContain('doc-intent-input')
     const mine = renderToStaticMarkup(createElement(DocIntentRow, { intent: { goal: 'g', reader: 'r', done: 'd', source: 'user' }, onChange: () => {} }))
-    expect(mine).not.toContain('>预填<')
+    expect(mine).toContain('>g<')
+    const empty = renderToStaticMarkup(createElement(DocIntentRow, { intent: EMPTY_INTENT, onChange: () => {} }))
+    expect(empty).toContain('写作任务（可选）')
+  })
+  it('四个工作流都由用户主动选择，套用的是同一份可编辑 Doc Intent', () => {
+    expect(WRITING_SCENARIOS.map((s) => s.label)).toEqual(['日报', '周报', '日记', '会议纪要'])
+    for (const scenario of WRITING_SCENARIOS) {
+      expect(scenario.intent.goal).not.toBe('')
+      expect(scenario.intent.reader).not.toBe('')
+      expect(scenario.intent.done).not.toBe('')
+      expect(intentText({ ...scenario.intent, source: 'user' })).toContain('完成标准：')
+    }
+    for (const id of ['daily', 'weekly', 'meeting']) {
+      const scenario = WRITING_SCENARIOS.find((s) => s.id === id)!
+      const sectionCheck = checkDone(scenario.intent.done, '').find((item) => item.why.startsWith('标题里没有：'))
+      expect(sectionCheck?.status).toBe('fail')
+    }
+    const html = renderToStaticMarkup(createElement(DocIntentRow, {
+      intent: EMPTY_INTENT, onChange: () => {}, promptForGoal: true,
+    }))
+    expect(html).toContain('智能续写还不知道最终要写成什么')
+    for (const label of ['日报', '周报', '日记', '会议纪要']) expect(html).toContain(`>${label}<`)
+  })
+  it('只在目标、骨架、正文都不足时追问，不让成熟草稿重复填表', () => {
+    expect(needsHarnessGoal(EMPTY_INTENT, '只有一个想法', '', [])).toBe(true)
+    expect(needsHarnessGoal({ ...EMPTY_INTENT, goal: '写清取舍' }, '只有一个想法', '', [])).toBe(false)
+    expect(needsHarnessGoal(EMPTY_INTENT, '只有一个想法', '围绕成本和速度的取舍展开', [])).toBe(false)
+    expect(needsHarnessGoal(EMPTY_INTENT, '只有一个想法', '', ['补出失败后的决策变化'])).toBe(false)
+    expect(needsHarnessGoal(EMPTY_INTENT,
+      '第一段已经交代了问题、背景和当前结论，足以让编辑器判断接下来要补哪一层。\n\n第二段继续给出事实和取舍，并留下一个尚未回答的问题。', '', [])).toBe(false)
   })
 })
 

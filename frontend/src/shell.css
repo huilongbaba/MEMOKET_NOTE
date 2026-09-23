@@ -237,7 +237,27 @@
   padding: 0 var(--content-margin-inline) var(--s-3);
   font-size: var(--t-sm); line-height: 1.6;
 }
-.doc-intent-head { color: var(--muted); font-weight: var(--w-semi); white-space: nowrap; cursor: help; }
+.doc-intent-collapsed { align-items: center; gap: var(--s-2); }
+.doc-intent-src { display: none; } /* 旧 prefill 数据的兼容锚点；新数据不会产生它。 */
+.doc-intent-toggle { min-width: 0; display: inline-flex; align-items: baseline; gap: var(--s-3); padding: 1px 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.doc-intent-toggle:hover .doc-intent-edit { color: var(--accent); }
+.doc-intent-head { color: var(--muted); font-weight: var(--w-semi); white-space: nowrap; }
+.doc-intent-summary { min-width: 0; max-width: min(56ch, 55vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.doc-intent-edit, .doc-intent-close { color: var(--ink-3); font: inherit; font-size: var(--t-xs); white-space: nowrap; }
+.doc-intent-close { border: 0; background: transparent; cursor: pointer; padding: 0; }
+.doc-intent-close:hover { color: var(--accent); }
+.doc-intent-expanded { display: block; }
+.doc-intent-intro, .doc-intent-fields { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-5); }
+.doc-intent-intro { margin-bottom: var(--s-2); }
+.doc-intent-help { color: var(--muted); }
+.doc-intent-guidance { margin: 0 0 var(--s-2); color: var(--fg); }
+.doc-intent-scenarios { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-2); }
+.doc-intent-scenario-label { color: var(--muted); }
+.doc-intent-scenario {
+  border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--fg);
+  padding: 1px var(--s-2); font: inherit; font-size: var(--t-xs); cursor: pointer;
+}
+.doc-intent-scenario:hover, .doc-intent-scenario:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .doc-intent-field { display: inline-flex; align-items: baseline; gap: var(--s-2); min-width: 0; max-width: 100%; flex: 0 1 auto; }
 .doc-intent-label { color: var(--muted); white-space: nowrap; }
 .doc-intent-label::after { content: '：'; }
@@ -250,7 +270,6 @@
 }
 .doc-intent .doc-intent-input::placeholder { color: var(--ink-3); }
 .doc-intent .doc-intent-input:focus-visible { outline: none; border-bottom: 1px solid var(--brand) !important; }
-.doc-intent-src { color: var(--ink-3); font-size: var(--t-xs); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0 6px; cursor: help; white-space: nowrap; }
 /* 正文的滚动容器。左右边距 --content-margin-inline（scrolling_container.css） */
 .note-scroll {
   flex: 1; min-height: 0; overflow-y: auto;

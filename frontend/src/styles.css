@@ -893,10 +893,17 @@ h2:first-child { margin-top: 0; }
 }
 
 /* ---------------------------------------------------------- 行内出处 */
-.cm-fact-cite {
-  color: var(--accent); cursor: help;
-  border-bottom: 1px dotted var(--accent);
-  /* 不加背景色：正文里出处可能很密，块块底色会把段落切碎 */
+.cm-fact-cite-chip {
+  display: inline-flex; align-items: center; vertical-align: baseline;
+  margin: 0 2px; padding: 0 6px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 91%);
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 68%);
+  border-radius: var(--r-pill); font-size: var(--t-xs); line-height: 1.55;
+  cursor: pointer; user-select: none;
+}
+.cm-fact-cite-chip:hover, .cm-fact-cite-chip:focus-visible {
+  background: color-mix(in srgb, var(--accent), transparent 84%);
+  border-color: var(--accent); outline: none;
 }
 .cm-fact-peek {
   max-width: 420px; padding: 8px 10px;
@@ -1184,6 +1191,30 @@ input[type=file]:hover { border-color: var(--accent); }
 /* **构图按 memoket-desktop 的来**（第 689 轮照着它的实拍改的，不是照着 CSS）：
    内容收在一条窄列里、分组之间留大白、每一「行」是一张卡。
    之前只抄了调色板没抄构图，结果是一张密集的表——用户原话「好丑」。 */
+.kb-workspace { width: 100%; min-width: 0; max-width: 820px; display: flex; flex-direction: column; gap: var(--s-7); }
+.kb-workspace-head {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-5); flex-wrap: wrap;
+  padding: var(--s-3) 0; background: color-mix(in srgb, var(--main-bg), transparent 4%);
+  border-bottom: 1px solid var(--mk-line);
+}
+.kb-workspace-brand { display: flex; align-items: center; gap: var(--s-3); color: var(--ink-2); white-space: nowrap; }
+.kb-workspace-brand > .bx { color: var(--brand); font-size: var(--t-xl); }
+.kb-workspace-back { display: inline-flex; align-items: center; gap: var(--s-1); height: 30px; padding: 0 8px 0 5px; margin-inline-end: 2px; border: 1px solid var(--mk-line-2); border-radius: var(--r-pill); background: var(--panel); color: var(--ink-2); font-size: var(--t-sm); }
+.kb-workspace-back:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand), transparent 60%); }
+.kb-workspace-nav { display: flex; align-items: center; gap: var(--s-2); overflow-x: auto; }
+.kb-workspace-nav button {
+  display: inline-flex; align-items: center; gap: var(--s-2); height: 32px; padding: 0 10px;
+  border: 1px solid transparent; border-radius: var(--r-pill); background: transparent;
+  color: var(--muted); font-size: var(--t-sm); font-weight: var(--w-semi); white-space: nowrap;
+}
+.kb-workspace-nav button:hover { color: var(--fg); background: var(--hover); }
+.kb-workspace-nav button.active { color: var(--brand); background: var(--brand-weak); border-color: color-mix(in srgb, var(--brand), transparent 76%); }
+.kb-workspace-content { min-width: 0; }
+@container (max-width: 760px) {
+  .kb-workspace-head { align-items: flex-start; }
+  .kb-workspace-nav { width: 100%; }
+}
 .kb-page { display: flex; flex-direction: column; gap: var(--s-8); max-width: 820px; }
 .kb-head { display: flex; flex-direction: column; gap: var(--s-2); margin-bottom: 4px; }
 .kb-crumbs { font-size: var(--t-sm); }
@@ -1212,8 +1243,13 @@ input[type=file]:hover { border-color: var(--accent); }
 .stat-row > .stat-tile { flex: 1 1 118px; min-width: 0; }   /* 正常宽度一行五张；窄了最后一张换到下一行占整行（grid auto-fit 在正常宽度也会挤成 4+1，第 212 轮实拍） */
 .stat-span { white-space: nowrap; }
 .stat-row > .stat-tile:has(.stat-span) { flex-basis: 168px; }   /* 「1996-03 → 2026-12」不折行要这么宽 */
-.stat-tile { transition: border-color .12s, box-shadow .12s; padding: 14px 16px; border: 1px solid var(--mk-line-2); border-radius: var(--r); background: var(--panel); }
-.stat-value { font-size: var(--t-2xl); font-weight: var(--w-bold); letter-spacing: var(--ls-tight); line-height: 1.2; }
+.stat-tile { position: relative; display: block; white-space: normal; transition: border-color .12s, box-shadow .12s, transform .07s; padding: 14px 16px; border: 1px solid var(--mk-line-2); border-radius: var(--r); background: var(--panel); color: var(--fg); font: inherit; text-align: start; }
+.stat-tile.interactive { cursor: pointer; }
+.stat-tile.interactive:hover { border-color: color-mix(in srgb, var(--brand), transparent 55%); box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }
+.stat-tile.interactive:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.stat-open { position: absolute; inset-inline-end: 10px; inset-block-start: 10px; color: var(--muted); opacity: .65; }
+.stat-tile.interactive:hover .stat-open { color: var(--brand); opacity: 1; }
+.stat-value { font-size: var(--t-2xl); font-weight: var(--w-bold); letter-spacing: var(--ls-tight); line-height: 1.2; white-space: nowrap; }
 .stat-label { font-size: var(--t-sm); font-weight: var(--w-semi); color: var(--muted); margin-top: 2px; }
 /* 中栏本来就不宽（三栏下 ~620px），再一分为二每边只剩 300——卡片被挤扁，
    chip 折行。源仓库是**单列宽卡**。窄于 700 就并成一列。 */
@@ -1361,8 +1397,8 @@ details[open] > .run-title::before { content: '▾'; }
 .chain li { cursor: pointer; margin: 2px 0; }
 .chain li:hover { text-decoration: underline; }
 .chain-when { color: var(--muted); font-size: var(--t-xs); margin-inline-end: 4px; }
-.memory-card-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 120ms; }
-.memory-card:hover .memory-card-actions { opacity: 1; }
+.memory-card-actions { display: flex; gap: var(--s-1); opacity: 1; }
+.memory-card-actions button { padding: 2px 7px; font-size: var(--t-xs); display: inline-flex; align-items: center; gap: var(--s-1); }
 /* 右栏的记忆卡跟内容卡一套：14px 圆角、卡之间留白。原来是 8px 间距的小卡，
    一列堆下来像列表，而源仓库的卡是**一张一张分开的**（第 689 轮对比实拍）。 */
 .memory-card { border-radius: var(--r-card); padding: 14px 16px; }
@@ -1376,10 +1412,6 @@ details[open] > .run-title::before { content: '▾'; }
 .tray-write { font-size: var(--t-sm); padding: 2px var(--s-3); display: inline-flex; align-items: center; gap: var(--s-1); }
 .tray-hint { font-size: var(--t-xs); margin: var(--s-1) 0 0; line-height: 1.6; }
 .tray-hint code { font-family: var(--mono); }
-/* 空托盘那一档：一句话 + 折起来的「有什么用、怎么摊」（P35 走查 #8，
-   跟 P32 #3 的 `.mem-legend-empty` 同一个形状——规则收起来，想看还能展开） */
-.tray-hint-empty > .tray-why > summary { color: var(--muted); cursor: pointer; }
-.tray-hint-empty > .tray-why { margin-top: var(--s-1); }
 /* 托盘格里的两件工具（P15 #3）：「默认进托盘」开关 + 网页剪藏；说明文字是元信息（灰），输入框走全局样式 */
 .tray-tools { display: flex; flex-direction: column; gap: var(--s-1); margin-top: var(--s-2); }
 .tray-default { gap: var(--s-2); align-items: center; font-size: var(--t-xs); color: var(--muted); cursor: pointer; }
@@ -1938,24 +1970,28 @@ label.plan-check-row { cursor: pointer; }
    和 transform（不掉帧），而且 `prefers-reduced-motion` 那一块会把它关掉。
    源 design-theme.css:366-367。 */
 @keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.note-body > .kb-page, .note-body > .kb-note, .note-body > .welcome {
+.note-body > .kb-workspace, .note-body > .kb-page, .note-body > .kb-note, .note-body > .welcome {
   animation: view-in .26s cubic-bezier(.22, .61, .36, 1);
 }
 
 /* ---------------------------------------------------------- P1（第 768 轮点名那六条）
    四处「把规则写到界面上」的说明文字。都是元信息，走 muted；正文一律 --fg（P1-3）。 */
 .tap-why { line-height: 1.6; }                                 /* 续写一条材料都没取到时的原因 */
-.mem-legend .mm-dot { display: inline-block; }                 /* 右栏「记忆」顶部的圆点图例 */
-/* 空库那一档：一句话 + 「导入」+ 折起来的规则（P32 #3）。规则那段展开时不要再撑一行行高 */
-.mem-legend-empty > details > summary { color: var(--muted); }
+.mem-legend .mm-dot { display: inline-block; width: 7px; height: 7px; margin: 0 3px 0 0; vertical-align: middle; }
+.mem-help { color: var(--muted); font-size: var(--t-xs); }
+.mem-help > summary { cursor: pointer; user-select: none; }
+.mem-help > p { margin: var(--s-1) 0; line-height: 1.6; }
+.mem-rel-help { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1) var(--s-3); }
+.mem-rel-help > span { min-width: 0; line-height: 1.5; }
 .mem-terms { word-break: break-all; line-height: 1.6; }        /* 右栏「记忆」：按哪几个词找的（P7，A5 第一步） */
-.mem-no-record-note { line-height: 1.6; }                      /* 右栏「记忆」：折起来的「连沾边的记录都没有」那一档（P25 #4） */
+.mem-no-record-note { margin: var(--s-1) 0 0; line-height: 1.6; font-size: var(--t-xs); }
 /* 右栏「记忆」：这一段**没查成**（P80 A）。跟「问过了，没有」两句话、两个样子——
    不然「没拿到回答」会被当成「知识库里确实没有」。 */
 .mem-failed { color: var(--warn); line-height: 1.6; }
 /* 右栏「记忆」：**这张卡是前一段带回来的**（P83 A）。跟「已引用」那个绿章分得开——
    它说的不是「这条怎么样」，是「这条为什么在这儿」，所以走 muted 不抢正文。 */
 .mem-card-from-before { color: var(--muted); border-style: dashed; }
+.mem-card-from-current { color: var(--accent); border-color: color-mix(in srgb, var(--accent), transparent 60%); }
 .mem-inbody summary { user-select: none; }                     /* 右栏「记忆」：已在正文里的原话折叠（P7 #8） */
 .mem-inbody[open] summary { margin-bottom: 2px; }
 .outline-fallback-note { word-break: break-all; }              /* 目录：没有 # 标题时按什么列的说明（P7 #3） */

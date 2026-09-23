@@ -56,10 +56,10 @@ describe('util/tray：纯函数', () => {
     expect(noteExcerpt('x'.repeat(1000))).toHaveLength(TRAY_EXCERPT_MAX + 1)
     expect(noteExcerpt('x'.repeat(1000)).endsWith('…')).toBe(true)
   })
-  it('「从托盘写」的门槛读缓存：空托盘给一句话、有东西放行（量程：trayPrecondition / setTrayCache）', () => {
+  it('「用本篇材料写」的门槛读缓存：没有材料给一句话、有东西放行（量程：trayPrecondition / setTrayCache）', () => {
     setTrayCache('n1', [])
-    expect(trayPrecondition('n1')).toContain('托盘是空的')
-    expect(trayPrecondition('never-loaded')).toContain('托盘是空的')
+    expect(trayPrecondition('n1')).toContain('还没有本篇材料')
+    expect(trayPrecondition('never-loaded')).toContain('还没有本篇材料')
     const heard: unknown[] = []
     const on = (e: Event) => heard.push((e as CustomEvent).detail)
     window.addEventListener('tray-changed', on)
@@ -71,13 +71,13 @@ describe('util/tray：纯函数', () => {
   })
 })
 
-describe('/ 菜单「从托盘写」', () => {
-  it('在 AI 组里、能按「托盘」过滤、留空也能跑（promptOptional）', () => {
+describe('/ 菜单「用本篇材料写」', () => {
+  it('在 AI 组里、能按「材料」过滤、留空也能跑（promptOptional）', () => {
     const it_ = SLASH_ITEMS.find((i) => i.key === 'tray')
     expect(it_?.group).toBe('AI')
-    expect(it_?.label).toBe('从托盘写')
+    expect(it_?.label).toBe('用本篇材料写')
     expect(it_?.needsPrompt && it_?.promptOptional).toBe(true)
-    expect(filtered('托盘').map((i) => i.key)).toEqual(['tray'])
+    expect(filtered('材料').map((i) => i.key)).toContain('tray')
   })
   it('不是新的 block mode：BLOCK_MODES 里没有 tray（App.runBlock 映射成 prompt + from_tray）', () => {
     expect((BLOCK_MODES as readonly string[]).includes('tray')).toBe(false)
@@ -110,16 +110,17 @@ describe('TrayPanel：右栏「记忆」的第一格，不是新页签', () => {
     expect(memoryTab.indexOf('<TrayPanel')).toBeLessThan(memoryTab.indexOf('<RelatedMemory'))
   })
 
-  it('空态：说清从哪儿放进来；「从托盘写」按钮只在有东西时出现', async () => {
+  it('空态：用用户语言说清从哪儿添加；「用材料写」只在有东西时出现', async () => {
     fetchMock.mockImplementation(() => ok([]))
     root = createRoot(host)
     await act(async () => { root!.render(createElement(TrayPanel, { noteId: 'n1', onWrite: () => {} })) })
     await act(async () => { await Promise.resolve() })
     const text = host.textContent ?? ''
-    expect(text).toContain('托盘')
-    expect(text).toContain('托盘还是空的')
-    expect(text).toContain('放进托盘')
-    expect(text).toContain('摊到这篇桌上')
+    expect(text).toContain('本篇材料')
+    expect(text).toContain('还没有本篇材料')
+    expect(text).toContain('记忆卡')
+    expect(text).toContain('右键正文里的笔记链接')
+    expect(text).not.toContain('托盘')
     expect(host.querySelector('.tray-write')).toBeNull()
     expect(host.querySelector('.tray-panel')?.getAttribute('data-count')).toBe('0')
   })
@@ -192,18 +193,18 @@ describe('TrayPanel：右栏「记忆」的第一格，不是新页签', () => {
     await act(async () => { (host.querySelector('.tray-item button[title="下移"]') as HTMLButtonElement).click(); await Promise.resolve() })
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')
     expect(JSON.parse(String((put![1] as RequestInit).body)).items.map((i: { id: string }) => i.id)).toEqual(['b', 'a', 'c'])
-    await act(async () => { (host.querySelector('.tray-item button[title="从托盘移除（原文不动）"]') as HTMLButtonElement).click(); await Promise.resolve() })
+    await act(async () => { (host.querySelector('.tray-item button[title="从本篇材料移除（原文不动）"]') as HTMLButtonElement).click(); await Promise.resolve() })
     const del = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')
     expect(String(del?.[0])).toMatch(/\/notes\/n1\/tray\/b$/)
     expect(host.querySelectorAll('.tray-item')).toHaveLength(2)
   })
 })
 
-describe('入口：记忆卡「放进托盘」、`[[` 链接右键', () => {
-  it('RelatedMemory 的记忆卡动作区有「放进托盘」；关系卡有「放进托盘」（量程：RelatedMemory.tsx）', () => {
+describe('入口：记忆卡「加入本篇材料」、`[[` 链接右键', () => {
+  it('RelatedMemory 的记忆卡和关系卡都能加入本篇材料（量程：RelatedMemory.tsx）', () => {
     const src = relatedMemorySrc
     expect(src).toContain("requestTrayAdd({ kind: 'fact', ref_id: f.id")
-    expect(src.match(/放进托盘/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+    expect(src.match(/加入本篇材料/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
   })
   it('noteLink 标记右键发 note-link-menu（id / title / x / y），左键照旧 open-note', () => {
     const src = noteLinkSrc
@@ -212,11 +213,11 @@ describe('入口：记忆卡「放进托盘」、`[[` 链接右键', () => {
     expect(src).toContain('e.stopPropagation()')
     const app = appSrc
     expect(app).toContain("window.addEventListener('note-link-menu', on)")
-    expect(app).toContain("label: '摊到这篇桌上'")
+    expect(app).toContain("label: '加入本篇材料'")
   })
   it('renderToStaticMarkup 也能画（没有 window 依赖的首屏）', () => {
     const html = renderToStaticMarkup(createElement(TrayPanel, { noteId: 'n1' }))
     expect(html).toContain('tray-panel')
-    expect(html).toContain('托盘')
+    expect(html).toContain('本篇材料')
   })
 })

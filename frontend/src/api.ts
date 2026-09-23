@@ -21,7 +21,7 @@ export type Note = {
    * 跟随切页就没了——而 harness 每轮都拿它当主线依据。 */
   spine: string
   beats: string[]
-  /** 文档意图（P9，agent-native-editor §3.1）：目标 / 读者 / 完成标准；source = prefill / user / 空 */
+  /** 文档意图（P9，agent-native-editor §3.1）：可选的目标 / 读者 / 完成标准；prefill 仅兼容历史数据 */
   intent?: DocIntent
   created_at: string
   updated_at: string

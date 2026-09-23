@@ -53,6 +53,8 @@ def test_intent_normalize_收成一行_封顶_来源只认两种():
 def test_intent_as_text_只列填了的_跟前端同一格式():
     assert intent.as_text({"goal": "本周汇报", "reader": "", "done": "每条有日期"}) == "目标：本周汇报；完成标准：每条有日期"
     assert intent.as_text({}) == ""
+    # 历史标题预填在界面已经不显示，后端也不能从数据库回退后暗中继续执行。
+    assert intent.as_text({"goal": "旧周报", "done": "卡住的说清要什么", "source": "prefill"}) == ""
     # 前端 `intentText` 用的标签和分隔符要跟这里一样（一份两处，逐字核对）
     ts = FRONTEND_TS.read_text(encoding="utf-8")
     for label in intent.FIELD_LABEL.values():

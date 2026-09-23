@@ -114,13 +114,13 @@ export default function AudioRecorder({ onTranscript, onIngested, offline = '', 
   }
   const order = recordMenuOrder(noteId, trayByDefault())
   const MENU: Record<RecordTarget, MenuItem> = {
-    tray: { label: '录音 → 进托盘', icon: 'bx-layer-plus', hint: order[0] === 'tray' ? '默认：转写后摊在桌上，不进正文' : '转写后摊在桌上，不进正文', onSelect: () => void start('tray') },
+    tray: { label: '录音 → 本篇材料', icon: 'bx-layer-plus', hint: order[0] === 'tray' ? '默认：转写后供 AI 写这篇时参考' : '转写后供 AI 写这篇时参考', onSelect: () => void start('tray') },
     insert: { label: '录音 → 插入正文', icon: 'bx-text', hint: '只转写', onSelect: () => void start('insert') },
     memory: { label: '录音 → 存入知识库', icon: 'bx-brain', hint: '转写后抽成事实', onSelect: () => void start('memory') },
   }
   return (
     <>
-      <button className="fb-btn" title={order[0] === 'tray' ? '录音：转写后先进托盘（默认），也可以插入正文或存进知识库' : '录音：转写后插入正文，或存进知识库'}
+      <button className="fb-btn" title={order[0] === 'tray' ? '录音：转写后加入本篇材料（默认），也可以插入正文或存进知识库' : '录音：转写后插入正文，或存进知识库'}
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt({ x: r.left, y: r.bottom + 4 }) }}>
         <Icon n="bx-microphone" /><Icon n="bx-chevron-down" className="fb-caret" />
       </button>

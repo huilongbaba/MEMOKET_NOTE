@@ -1,6 +1,6 @@
 """文档意图（Doc Intent，docs/agent-native-editor.md §3.1）：每篇笔记知道自己要干什么。
 
-三个字段——目标 / 读者 / 完成标准——存在 `notes.intent`（JSON），标题下面常驻一行。
+三个可选字段——目标 / 读者 / 完成标准——存在 `notes.intent`（JSON），标题下面收在「写作任务」里。
 **所有作用在这篇上的 AI 动作（骨架 / 续写 / 重写 / 润色 / 扩展 / 校验 / 排版）的
 system prompt 第一段都是它**：润色不再不知道这篇是给谁看的，校验按「完成标准」核。
 
@@ -16,6 +16,7 @@ from __future__ import annotations
 FIELDS = ("goal", "reader", "done")
 FIELD_LABEL = {"goal": "目标", "reader": "读者", "done": "完成标准"}
 FIELD_MAX = 200
+# prefill 只为兼容旧数据；当前产品只保存用户填写或主动选择工作流形成的 user 意图。
 SOURCES = ("", "prefill", "user")
 # 「完成标准」最多勾几条（一句话拆不出这么多条；防止接口塞垃圾）
 CHECKED_MAX = 20
@@ -53,6 +54,11 @@ def is_empty(intent: dict) -> bool:
 def as_text(intent: dict) -> str:
     """「目标：…；读者：…；完成标准：…」——只列填了的字段。"""
     d = normalize(intent)
+    # 老版本会按标题自动写入 ``source=prefill`` 的任务，例如
+    # 「卡住的说清要什么」。现在前端已经把这类历史预填当作空任务；后端也必须
+    # 同样忽略，否则界面看不见它，Harness 却会从数据库回退读到并暗中执行。
+    if d["source"] == "prefill":
+        return ""
     parts = [f"{FIELD_LABEL[k]}：{d[k]}" for k in FIELDS if d[k]]
     return "；".join(parts)
 

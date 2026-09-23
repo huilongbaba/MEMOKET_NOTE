@@ -52,8 +52,8 @@ export const SLASH_ITEMS: SlashItem[] = [
   /* 从托盘写（P14，agent-native-editor §3.4）：只用右栏「记忆」顶上托盘里摊开的材料写这一块。
      后端走的还是 `prompt` 模式 + `from_tray`（`App.runBlock` 映射）——不是新的 block mode，
      `check-block-modes` 对拍的是 `BLOCK_MODES`，这个 key 不在里面。托盘空着开跑前就拦（`util/tray.trayPrecondition`）。 */
-  { group: 'AI', key: 'tray', icon: 'bx-layer-plus', label: '从托盘写', hint: '只用托盘里摊开的那几篇 / 几条材料写一段',
-    needsPrompt: true, promptOptional: true, placeholder: '想写什么？留空 = 按托盘里的材料写一段' },
+  { group: 'AI', key: 'tray', icon: 'bx-layer-plus', label: '用本篇材料写', hint: '只根据你为这篇指定的材料写一段',
+    needsPrompt: true, promptOptional: true, placeholder: '想写什么？留空 = 根据本篇材料写一段' },
   { group: 'AI', key: 'chart', icon: 'bx-image-add', label: '智能插图', hint: '数据用图表、概念用文生图，自动判断' },
   { group: 'AI', key: 'table', icon: 'bx-table', label: '智能表格', hint: '把上下文整理成表格',
     needsPrompt: true, promptOptional: true, placeholder: '想整理成什么表？留空则自动判断' },

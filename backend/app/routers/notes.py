@@ -320,7 +320,7 @@ def clip_to_tray(note_id: str, body: TrayClipIn, user: str = Depends(current_use
         raise HTTPException(400, "要一个 http(s) 开头的网址")
     title, text = fetch_page(url)
     if not text:
-        raise HTTPException(400, "这个网页抓不出正文（可能要登录、或者是纯脚本渲染的页面）——把要用的那段复制下来「摘录」进托盘")
+        raise HTTPException(400, "这个网页抓不出正文（可能需要登录或由脚本渲染）。请复制需要的段落，再加入本篇材料")
     # 同一网页再剪一次：`replace_tray` 按（kind, ref_id, excerpt）去重——正文没变就还是那一条，
     # 变了就多一条新摘要（旧的留着，用户自己删）。这里不另写一道「同网址就跳过」的守卫：
     # 突变验证明它挡不住任何东西（store 已经挡了），留一条谁也证明不了在挡什么的守卫比没有更糟（§21）。

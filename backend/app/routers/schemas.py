@@ -31,7 +31,7 @@ class NoteIn(BaseModel):
 
 class NoteIntent(BaseModel):
     """文档意图（P9，agent-native-editor §3.1）：这篇要干什么。三个字段各一行；
-    source = prefill（代码按标题预填的）/ user（用户改过一个字就是校准）/ 空。"""
+    source = user（用户填写或主动选择工作流）/ 空；prefill 只兼容旧数据。"""
     goal: str = ""
     reader: str = ""
     done: str = ""

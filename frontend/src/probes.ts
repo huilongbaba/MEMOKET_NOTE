@@ -805,7 +805,7 @@ export function runProbe(probe: string, ctx: ProbeCtx): void {
     setTreeMenu({ row, at: { x: 260, y: 180 } })
     return
   }
-  // P9：`title:<ms>:<文字>` 把标题输入框改成这段（走 React 认的 input 事件）——看「这篇要干什么」按标题预填
+  // P9：`title:<ms>:<文字>` 把标题输入框改成这段（走 React 认的 input 事件）——验证标题编辑不改写作任务
   if (probe?.startsWith('title:')) {
     const [, ms, ...rest] = probe.split(':')
     setTimeout(() => {
