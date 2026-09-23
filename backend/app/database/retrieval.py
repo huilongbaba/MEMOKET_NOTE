@@ -36,7 +36,9 @@ def format_fact(r: dict) -> str:
     """
     d = (r.get("date") or r.get("when") or "").strip()
     fid = (r.get("id") or "").strip()
-    head = (f"[{fid}] " if fid else "") + (f"[{d}] " if d else "")
+    entities = [str(x) for x in (r.get("entities") or []) if str(x).strip()]
+    subject = f"[主体：{'、'.join(entities[:3])}] " if entities else ""
+    head = (f"[{fid}] " if fid else "") + (f"[{d}] " if d else "") + subject
     return head + r["text"]
 
 
@@ -65,7 +67,9 @@ def retrieve(user: str, content: str, spine: str, beats: list[str], limit: int =
     # grain; magic tap answers a cursor and reads it at topic grain. Same
     # data, two views -- see kb/clusters.py for why the fine topics stay.
     if anchor_first:
-        rows, _terms, took = recall_clustered(mem, query, limit=limit, scope=scope)
+        rows, _terms, took = recall_clustered(
+            mem, query, limit=limit, scope=scope,
+            evidence=True, entity_guard=True)
     else:
         rows, _terms, took = mem.recall(query, limit=limit, scope=scope)
     hits = [r for r in rows if r.get("text")]
@@ -76,5 +80,9 @@ def retrieve(user: str, content: str, spine: str, beats: list[str], limit: int =
     # 日期键在这条路径上是 ``date``（execute_plan 的行），不是 ``when``。
     texts = []
     for r in hits:
+        # execute_plan 的 recall 行没有 entities；写作前按 id 补全，让模型看得见
+        # 每条陈述的原始主体，避免跨主体归因。
+        if r.get("id") and not r.get("entities"):
+            r = {**r, **(mem.fact_by_id(r["id"]) or {})}
         texts.append(format_fact(r))
     return texts, [r.get("id", "") for r in hits], took

@@ -288,6 +288,8 @@ def test_as_facts_ignores_metadata_only_tools():
     facts = t.as_facts()
     assert facts and any("硬件设计没问题" in f for f in facts)
     assert not any("work_product_design" in f for f in facts)
+    assert len(facts) == 1 and "speaker b" in facts[0], \
+        "日期/主体元信息必须粘在事实上，不能单占一条、也不能和正文主体分离"
 
 
 def test_scoped_question_detection():

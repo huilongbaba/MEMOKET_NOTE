@@ -31,15 +31,31 @@ PER_CLUSTER = 8
 
 def recall_clustered(memory, query: str, *, limit: int = 12,
                      seed_limit: int = SEED_LIMIT, scope: str = "all",
-                     per_cluster: int = PER_CLUSTER) -> tuple[list[dict], list[str], float]:
+                     per_cluster: int = PER_CLUSTER, evidence: bool = False,
+                     entity_guard: bool = False) -> tuple[list[dict], list[str], float]:
     """``(fact rows, matched surface terms, milliseconds)`` -- recall's shape.
 
     Same tuple as ``UserMemory.recall`` on purpose: the caller decides which
     view it wants, and nothing downstream has to know which one it got.
     """
-    seeds, terms, took = memory.recall(query, limit=seed_limit, scope=scope)
+    seeds, terms, took = memory.recall(
+        query, limit=seed_limit, scope=scope, evidence=evidence)
     store, _vocab = memory._index()
     groups = cached(memory)
+
+    # A topic cluster is deliberately broad and can contain facts about
+    # unrelated people or organisations. Expansion must preserve the subject
+    # boundary established by the direct query hits.
+    #
+    # Seeds are still the query's direct answer. When the strict writing path
+    # enables this guard, expansion may add facts with no named entity, or
+    # facts about an entity already present in a seed; it cannot introduce a
+    # brand-new named subject merely because both facts share a broad topic.
+    seed_entities: set[str] = set()
+    if entity_guard:
+        for row in seeds:
+            fact = store.facts.get(row.get("id"))
+            seed_entities.update(getattr(fact, "entities", ()) or ())
 
     out = list(seeds)
     seen = {row.get("id") for row in out}
@@ -49,6 +65,9 @@ def recall_clustered(memory, query: str, *, limit: int = 12,
             if len(out) >= limit or added >= per_cluster:
                 break
             if fact["id"] in seen:
+                continue
+            if (entity_guard and fact.get("entities")
+                    and not (set(fact["entities"]) & seed_entities)):
                 continue
             out.append(fact)
             seen.add(fact["id"])
@@ -118,6 +137,7 @@ def _facts_of(cluster: _clusters.Cluster, store) -> list[dict]:
             rows.append({"type": "fact", "id": fact.id, "unit": fact.unit,
                          "date": fact.when, "kind": fact.kind, "who": fact.who,
                          "conf": fact.conf, "text": fact.text,
-                         "topics": list(fact.topics)})
+                         "topics": list(fact.topics),
+                         "entities": list(fact.entities)})
     rows.sort(key=lambda r: (r["date"] or "", r["id"]), reverse=True)
     return rows

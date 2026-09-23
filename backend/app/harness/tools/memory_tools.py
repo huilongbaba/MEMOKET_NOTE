@@ -45,7 +45,12 @@ def _fmt_facts(rows: list[dict], *, with_id: bool = True, user: str = "") -> str
     if not rows:
         return EMPTY_KB if user and kb_is_empty(user) else "（没有匹配的事实）"
     out = []
+    mem = UserMemory(user) if user else None
     for r in rows:
+        # recall() 为了轻量没有带 entities；工具输出却是模型判断事实主体的
+        # 最后一站。按 id 补全一次，明确显示主体边界。
+        if mem is not None and r.get("id") and not r.get("entities"):
+            r = {**r, **(mem.fact_by_id(r["id"]) or {})}
         head = f"[{r.get('id','')}] " if with_id and r.get("id") else ""
         # recall() 走 execute_plan，返回行的日期键是 ``date``；facts_page() /
         # facts_between() 走 _fact_dict()，键是 ``when``。两条路径键名不同，
@@ -53,7 +58,9 @@ def _fmt_facts(rows: list[dict], *, with_id: bool = True, user: str = "") -> str
         # 这样，agent 因此全程看不到任何时间信息。
         when = r.get("when") or r.get("date") or "无日期"
         who = r.get("who") or ""
-        meta = " · ".join(x for x in (when, who, r.get("kind") or "") if x)
+        entities = [str(x) for x in (r.get("entities") or []) if str(x).strip()]
+        subject = f"主体：{'、'.join(entities[:3])}" if entities else ""
+        meta = " · ".join(x for x in (when, subject, who, r.get("kind") or "") if x)
         out.append(f"{head}{r.get('text','')[:FACT_CHARS]}\n    （{meta}）")
     return "\n".join(out)
 
@@ -72,7 +79,9 @@ def _fmt_facts(rows: list[dict], *, with_id: bool = True, user: str = "") -> str
     required=["query"],
 )
 def search_memory(ctx: ToolContext, query: str, limit: int = 8) -> str:
-    rows, _terms, _took = UserMemory(ctx.user).recall(query, limit=max(1, min(int(limit or 8), 20)), scope=ctx.scope)
+    rows, _terms, _took = UserMemory(ctx.user).recall(
+        query, limit=max(1, min(int(limit or 8), 20)),
+        scope=ctx.scope, evidence=True)
     hits = [r for r in rows if r.get("text")]
     return _fmt_facts(hits, user=ctx.user)
 
@@ -271,5 +280,7 @@ def gather_subject(ctx: ToolContext, query: str, limit: int = 14) -> str:
     from ...database.kb.recall import recall_clustered
 
     rows, _terms, _took = recall_clustered(
-        UserMemory(ctx.user), query, limit=max(1, min(int(limit or 14), 30)), scope=ctx.scope)
+        UserMemory(ctx.user), query,
+        limit=max(1, min(int(limit or 14), 30)), scope=ctx.scope,
+        evidence=True, entity_guard=True)
     return _fmt_facts([r for r in rows if r.get("text")], user=ctx.user)
