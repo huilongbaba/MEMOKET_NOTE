@@ -48,7 +48,7 @@ export function dotWorthy(m: { relation: MemoryRelationKind; why?: string }): bo
 
 /** 被折起来的那一档在面板上的一句话（`n` = 这篇里 `no_record` 的段数）。 */
 export function noRecordNote(n: number): string {
-  return `这篇还有 ${n} 段带了数字，知识库里连沾边的记录都没有——没有逐段画点（一整列灰圈说的是同一件事）；光标停在那一段上，右栏会说。`
+  return `有 ${n} 段包含数字，但知识库里暂时没有相关记录。`
 }
 
 /** 六种关系的人话。右栏关系卡、页边圆点的悬停、图例三处同一份。 */
@@ -58,7 +58,7 @@ export const RELATION_LABEL: Record<MemoryRelationKind, string> = {
 
 /** 圆点的规则，一句话（P1-1d，用户第 768 轮问「一个点代表一行还是一段？绿色黄色是什么？」）。
  *  写在这里而不是散在各处：悬停提示、右栏图例读的是同一句。 */
-export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段），只看含数字 / 日期的段落——判的是量的比对，圆点零模型'
+export const MARGIN_RULE = '页边圆点会标出含数字或日期的段落与知识库之间的关系；悬停查看，点击处理'
 /** 空库时右栏「记忆」顶上那**一句**（P31 #8；它替掉了 P17 加的 `KB_EMPTY_DOTS_NOTE`，
  *  那句话说的事一个字没少——知识库空着时一个点都不会有，后端 `relations_batch` 直接回一排 null，
  *  不说出来新用户会照着写了带数字的段等半天）。
@@ -66,7 +66,7 @@ export const MARGIN_RULE = '页边圆点：每段一个（空行隔开算一段�
  *  **为什么并成一句**：第一天的用户在这儿看到的原来是**四段**图例——圆点规则 / 六种颜色 /
  *  光标停 0.9 秒 / 冲突才让模型复核，再加这一句。**一条记录都没有的时候这几段的信息量是零**，
  *  却占掉大半屏。规则本身没删，收进「想看再展开」里，旁边给一个真的能点的「导入」。 */
-export const KB_EMPTY_NOTE = '知识库还是空的，导入或录一段就有了——存进第一条记录之前页边不画圆点，这里也不会有记忆。'
+export const KB_EMPTY_NOTE = '知识库还是空的。导入资料后，相关记忆会在这里自动出现。'
 
 /** 这一段**没查成**时右栏那一句（P80 A）。
  *
@@ -81,8 +81,6 @@ export const RECALL_FAILED_NOTE = '这一段没查成（没拿到回答）——
 
 /** 图例里「零模型」差的那一个条件（P4 #10）：右栏关系卡判到「冲突」时，后端会让模型把那句人话复核 / 改写一次
  *  （`routers/memory.py` `relations`，只对 conflict 候选）；圆点（`relations/batch`）不会。 */
-export const MODEL_NOTE = '关系卡里判到「冲突」时会让模型复核一次那句话；其余（圆点、印证、缺依据、叠加、合并、延续）全是代码判的。'
-
 /** 哪几种关系值得**自己**贴到行边上来（不用悬停）：知识库有话要说的两种。其余静默，要看才悬停。 */
 export const AUTO_SHOW: ReadonlySet<MemoryRelationKind> = new Set<MemoryRelationKind>(['conflict', 'continuation'])
 

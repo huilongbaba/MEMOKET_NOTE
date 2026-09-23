@@ -3,8 +3,8 @@ import { clickable } from '../util/clickable'
 import { memoryRelations, memoryScope, recall, SCOPE_LABEL, setMemoryScope, type MemoryScope } from '../api'
 import type { Fact, MemoryRelation, RecallEvidence } from '../api'
 import { stripForRecall } from '../util/wordCount'
-import { cardFromBefore, evidenceLine, evidencePool, factInBody, FROM_BEFORE_NOTE, recallQuery, RECALL_CONTEXT_BEFORE, RECALL_TAIL_CHARS } from '../util/recallContext'
-import { KB_EMPTY_NOTE, MARGIN_RULE, MODEL_NOTE, noRecordNote, RECALL_FAILED_NOTE, RELATION_LABEL } from '../editor/marginMemory'
+import { cardFromBefore, cardFromCurrent, evidenceLine, evidencePool, factInBody, FROM_BEFORE_NOTE, recallQuery, RECALL_TAIL_CHARS } from '../util/recallContext'
+import { KB_EMPTY_NOTE, MARGIN_RULE, noRecordNote, RECALL_FAILED_NOTE, RELATION_LABEL } from '../editor/marginMemory'
 import { citeText, fillInText, ignoreRelation, ignoredSet, mergeRelation, relationKey, supersedeRelation } from '../util/relationActions'
 import Icon from './Icon'
 import { requestTrayAdd } from '../util/tray'
@@ -18,7 +18,14 @@ const REL_LABEL: Record<MemoryRelation['relation'], { text: string; cls: string;
   merge: { text: '合并', cls: 'rel-merge', icon: 'bx-git-merge' },
 }
 
-const IDLE_MS = 900
+const REL_HELP: Record<MemoryRelation['relation'], string> = {
+  conflict: '和旧记录不一致', continuation: '是旧记录的后续', corroborated: '已有记录可以支持',
+  unsupported: '暂时没有找到支撑', accumulation: '可以补充到旧记录', merge: '两条记录可以整理成一条',
+}
+
+/** 召回是本地零模型检索，短防抖即可；关系判定更重，仍等用户真正停在一段上。 */
+const RECALL_IDLE_MS = 450
+const RELATION_IDLE_MS = 900
 const TAIL_CHARS = RECALL_TAIL_CHARS
 const MIN_CHARS = 8
 /** 记忆列表最多显示几条（已在正文里的折叠掉，位子让给新的——P4 #8） */
@@ -85,20 +92,30 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   const relSeq = useRef(0)
   useEffect(() => {
     const p = stripForRecall(paragraph).trim()
-    if (p.length < MIN_CHARS || !/\d/.test(p)) { setRels([]); return }
+    if (p.length < MIN_CHARS || !/\d/.test(p)) {
+      ++relSeq.current; lastPara.current = ''; setRels([]); setRelBusy(false); return
+    }
     if (p === lastPara.current) return
+    // 段落一变，上一段的关系立即作废。不能在 900ms 防抖期间把旧卡挂在新段下面。
+    lastPara.current = p
+    const seq = ++relSeq.current
+    setRels([])
+    setRelBusy(true)
+    let started = false
     const t = setTimeout(() => {
-      lastPara.current = p
-      const seq = ++relSeq.current
-      setRelBusy(true)
+      started = true
       memoryRelations(p)
         .then((r) => { if (seq === relSeq.current) setRels(r.relations) })
         // 跟召回那一半同一条（P80 A）：没答上就把**上一段的关系卡**撤掉。
         // 原来这儿也是空的 `catch`，于是「光标这段跟知识库的关系」底下摆着上一段的卡。
         .catch(() => { if (seq === relSeq.current) { lastPara.current = ''; setRels([]) } })
         .finally(() => { if (seq === relSeq.current) setRelBusy(false) })
-    }, IDLE_MS)
-    return () => clearTimeout(t)
+    }, RELATION_IDLE_MS)
+    return () => {
+      clearTimeout(t)
+      // 依赖变了但清洗后的段落没变时，cleanup 会先取消定时器；放开缓存键让下一轮重新挂上。
+      if (!started && lastPara.current === p) lastPara.current = ''
+    }
   }, [paragraph, scope])
   // 动作跟页边圆点旁边那张卡同一份（`util/relationActions`，P9）；「忽略」的名单也是同一份——
   // 那边点了忽略这边跟着灭，反过来一样（`relation-ignored` 事件）
@@ -117,12 +134,20 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
   // 用户在顶部写华为芯片、右栏是尾段恒瑞翻译的记忆）。零模型，每次 ~100ms。
   useEffect(() => {
     const q = recallQuery(content, paragraph)
-    if (q.query.length < MIN_CHARS) { setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); setQCtx(null); setFailed(false); return }
+    if (q.query.length < MIN_CHARS) {
+      ++recallSeq.current; lastQueried.current = ''; setFacts([]); setTerms([]); setEvidence(null)
+      setWhyEmpty(''); setQCtx(null); setFailed(false); setLoading(false); return
+    }
     if (q.query === lastQueried.current) return
+    // 新段落开始检索时就撤掉旧答案，而不是等新请求成功/失败后才撤。
+    // 这样防抖和网络等待期间，屏幕不会把上一段的记忆误认成当前段的。
+    lastQueried.current = q.query
+    const seq = ++recallSeq.current
+    setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); setQCtx(null); setFailed(false)
+    setMode(q.mode); setLoading(true)
+    let started = false
     const t = setTimeout(() => {
-      lastQueried.current = q.query
-      const seq = ++recallSeq.current
-      setLoading(true)
+      started = true
       recall(q.query, RECALL_LIMIT)
         .then((r) => {
           if (seq !== recallSeq.current) return       // 不是最新那一问的回答：丢掉，别盖回上一段
@@ -138,16 +163,29 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           setFacts([]); setTerms([]); setEvidence(null); setWhyEmpty(''); setMode(q.mode); setQCtx(null); setFailed(true)
         })
         .finally(() => { if (seq === recallSeq.current) setLoading(false) })
-    }, IDLE_MS)
-    return () => clearTimeout(t)
+    }, RECALL_IDLE_MS)
+    return () => {
+      clearTimeout(t)
+      // content 变了但有效查询没变时，不能“取消旧定时器后又因同 key 提前返回”。
+      if (!started && lastQueried.current === q.query) lastQueried.current = ''
+    }
   }, [content, paragraph, scope])
   // 已经在正文里的原话折叠掉（P4 #8：N4 5 条全是用户刚写的），位子让给新的
-  const fresh = facts.filter((f) => !factInBody(f.text, content)).slice(0, LIST_MAX)
+  const candidates = facts.filter((f) => !factInBody(f.text, content))
   const inBody = facts.filter((f) => factInBody(f.text, content))
   // **这一趟拿哪几个词去判卡**（P83 A）：跟上面那一行同一条三档，**同进同退**。
   // 召回和 `out[:8]` 一个字没动——变的只有「怎么说」，不是「捞什么」。
   const pool = evidencePool(evidence, terms)
   const fromBefore = (text: string) => !!qCtx && cardFromBefore(text, pool, qCtx.paragraph, qCtx.before)
+  const fromCurrent = (text: string) => !!qCtx && cardFromCurrent(text, pool, qCtx.paragraph)
+  // 拼入前一段能帮短段补足上下文，但混合命中时先摆当前段的结果，避免旧上下文抢占首屏。
+  // 只移动被判据明确认作“前一段带回”的卡；判不清的仍保留后端原始顺序。
+  const fresh = [
+    ...candidates.filter((f) => fromCurrent(f.text)),
+    ...candidates.filter((f) => !fromCurrent(f.text) && !fromBefore(f.text)),
+    ...candidates.filter((f) => fromBefore(f.text)),
+  ]
+    .slice(0, LIST_MAX)
 
   // 之前 facts 是空的时候整个组件（连带标题）直接 return null——这是这个
   // 面板在"写作"/"相关记忆"/"知识库" 三个 tab 里唯一的内容，点进"相关记忆"
@@ -160,7 +198,7 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
     <div>
       <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
         {/* 转圈 + 下拉一起挤上来时这句会折成两行把头部撑高（第 216 轮实拍）：文字可截断，别折行 */}
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>跟着正文自动浮现，点一下插入引用。</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>自动查找当前段相关的旧记录。</span>
         {loading && <span className="spinner" style={{ flexShrink: 0 }} />}
         {/* 记忆范围：一个库里混着会议记录 / 笔记 / 导入的，写自家复盘时别让别家汇报串进来 */}
         <select className="select-sm" value={scope} onChange={(e) => setMemoryScope(e.target.value as MemoryScope)} title="召回、关系、续写、扩写、校验、回顾、写作计划取材料都只看这一档"
@@ -168,32 +206,27 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           {(Object.keys(SCOPE_LABEL) as MemoryScope[]).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
         </select>
       </p>
-      {/* 规则写在界面上（P1-1d）：一个点 = 一段、为什么只有含数字的段、六种颜色各是什么、
-          光标停下 0.9s 查哪段、下面的记忆按什么召回。用户第 768 轮问的就是这几句。 */}
-      {/* 空库（第一天的用户）：这四段图例的信息量是零，却占掉大半屏（P31 #8）——
-          换成一句话 + 导入入口，规则收进 `<details>`，想看再展开。 */}
       {kbEmpty ? (
-        <div className="muted mem-legend mem-legend-empty" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
+        <div className="muted mem-legend" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
           {KB_EMPTY_NOTE}
           <button className="primary" style={{ fontSize: 'var(--t-sm)', padding: '2px 8px', marginInlineStart: 6 }}
                   onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}>
             <Icon n="bx-import" /> 导入
           </button>
-          <details style={{ marginTop: 4 }}>
-            <summary style={{ cursor: 'pointer' }}>页边圆点和这份记忆是怎么来的</summary>
-            {MARGIN_RULE}。{MODEL_NOTE}
-          </details>
         </div>
       ) : (
-      <p className="muted mem-legend" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
-        {MARGIN_RULE}：
-        {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
-          <span key={k} style={{ whiteSpace: 'nowrap', marginInlineEnd: 6 }}><span className={'mm-dot mm-' + k} style={{ width: 7, height: 7, marginTop: 0, verticalAlign: 'middle', marginInlineEnd: 2 }} />{RELATION_LABEL[k]}</span>
-        ))}
-        <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按光标所在段（带前一段、约 {RECALL_CONTEXT_BEFORE} 字）召回，光标不在正文里时按末尾 {TAIL_CHARS} 字。
-        <br />{MODEL_NOTE}
-        {noRecordDots > 0 && <><br /><span className="mem-no-record-note">{noRecordNote(noRecordDots)}</span></>}
-      </p>
+        <div className="mem-legend" style={{ margin: '0 0 8px' }}>
+          <details className="mem-help">
+            <summary>页边圆点说明</summary>
+            <p>{MARGIN_RULE}。</p>
+            <div className="mem-rel-help">
+              {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
+                <span key={k}><span className={'mm-dot mm-' + k} />{RELATION_LABEL[k]}：{REL_HELP[k]}</span>
+              ))}
+            </div>
+          </details>
+          {noRecordDots > 0 && <p className="muted mem-no-record-note">{noRecordNote(noRecordDots)}</p>}
+        </div>
       )}
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>
@@ -224,8 +257,8 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
                   {r.relation === 'conflict' && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => void supersede(r)}>新的取代旧的</button>}
                   {r.relation === 'accumulation' && r.facts.length > 0 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => fillIn(r)}>补进来</button>}
                   {r.relation === 'merge' && r.facts.length === 2 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => void merge(r)}>合成一条</button>}
-                  {r.facts.length > 0 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} title="把这几条记录放进托盘：写这篇时优先用（不插进正文）"
-                          onClick={() => r.facts.forEach((f) => requestTrayAdd({ kind: 'fact', ref_id: f.id, title: f.when || '', excerpt: f.text }))}>放进托盘</button>}
+                  {r.facts.length > 0 && <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} title="加入本篇材料，之后 AI 写这篇时优先参考"
+                          onClick={() => r.facts.forEach((f) => requestTrayAdd({ kind: 'fact', ref_id: f.id, title: f.when || '', excerpt: f.text }))}>加入本篇材料</button>}
                   <button style={{ fontSize: 'var(--t-sm)', padding: '2px 8px' }} onClick={() => ignore(key)}>忽略</button>
                 </div>
               </div>
@@ -239,12 +272,11 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           {evidenceLine(mode, evidence, terms, qCtx)}
         </p>
       )}
-      {facts.length === 0 && !loading && (
+      {facts.length === 0 && !loading && !kbEmpty && (
         <p className={'muted' + (failed ? ' mem-failed' : '')} style={{ fontSize: 'var(--t-md)' }}>
           {/* **「没问成」排在最前**（P80 A）：没拿到回答的时候，关于知识库的任何一句
               （空库 / 没找到 / 没有可查的关键词）都是在替空气背书。 */}
           {failed ? RECALL_FAILED_NOTE
-            : kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
             : tooShort ? '再多写几个字就会开始自动检索。'
             // P4 #6：查询退化到一个泛词（「记录」）时原来硬凑 5 条不相干的；现在后端不凑，这里说清楚为什么空
             : whyEmpty === 'no_terms' ? (mode === 'cursor' ? '光标这段' : '正文末尾') + '没有可查的关键词（人名、项目、日期、数字这类具体的词）。'
@@ -259,9 +291,6 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
         <div
           className="card memory-card"
           key={f.id}
-          style={{ cursor: 'pointer' }}
-          {...clickable(() => onInsert(`${f.text} [${f.id}]`))}
-          title="点击插入引用到光标处"
         >
           <div style={{ fontSize: 'var(--t-md)' }}>{f.text}</div>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -272,24 +301,26 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
                   29 条查询里两种卡摆在一起、33 条整屏 5 张全是前一段的，而用户一点提示都没有。
                   判据两条都成立才盖（`cardFromBefore`），落差只会让它少说一句。 */}
               {fromBefore(f.text) && (
-                <span className="badge mem-card-from-before"
-                      title={`这条不是按光标这段捞回来的：命中的是前一段（约 ${RECALL_CONTEXT_BEFORE} 字）带进查询的词`}>
+                <span className="badge mem-card-from-before" title="这条来自光标前一段，不是当前段落">
                   {FROM_BEFORE_NOTE}
                 </span>
+              )}
+              {fromCurrent(f.text) && mode === 'cursor' && (
+                <span className="badge mem-card-from-current" title="这条由当前段的内容召回">当前段</span>
               )}
               {/* 正文里已经引过的标出来——不然同一条会被插两次（实拍：一段里两个同样的出处） */}
               {content.includes(`[${f.id}]`) && <span className="badge ok" title="正文里已经引用了这条">已引用</span>}
             </span>
             <span className="memory-card-actions">
-              <button className="icon-btn" title="打开这条事实"
+              <button title="打开这条事实"
                       onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })) }}>
-                <Icon n="bx-link-external" />
+                <Icon n="bx-link-external" /> 查看
               </button>
-              <button className="icon-btn" title="插入引用到光标处" onClick={(e) => { e.stopPropagation(); onInsert(`${f.text} [${f.id}]`) }}>
-                <Icon n="bx-link" />
+              <button title="把原文和可核验来源插入光标处" onClick={(e) => { e.stopPropagation(); onInsert(`${f.text} [${f.id}]`) }}>
+                <Icon n="bx-link" /> 引用
               </button>
               {/* 放进托盘（P14 §3.4）：不进正文，进材料层——之后续写 / `/` 块取材料时它排最前 */}
-              <button className="icon-btn" title="放进托盘：写这篇时优先用这条（不插进正文）"
+              <button className="icon-btn" title="加入本篇材料，之后 AI 写这篇时优先参考"
                       onClick={(e) => { e.stopPropagation(); requestTrayAdd({ kind: 'fact', ref_id: f.id, title: f.when || '', excerpt: f.text }) }}>
                 <Icon n="bx-layer-plus" />
               </button>

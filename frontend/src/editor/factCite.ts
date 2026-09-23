@@ -17,7 +17,7 @@ import { RangeSetBuilder, type Extension } from '@codemirror/state'
 import { CITE_RE_SOURCE } from '../util/wordCount'
 import {
   Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate,
-  hoverTooltip,
+  hoverTooltip, WidgetType,
 } from '@codemirror/view'
 
 /** 事实 id 的形状：`<用户>-<数字>-<十六进制>`（KITE 的 fact id），或者笔记摄入的
@@ -35,20 +35,51 @@ export type FactLookup = (id: string) => Promise<{
   sources?: string[]
 } | null>
 
-const citeMark = Decoration.mark({ class: 'cm-fact-cite' })
+/** 正文里不直接露出 `[用户名-数字-哈希]`：那是机器主键，对作者没有阅读价值。
+ * 底层文本仍然原样保留，复制、导出、校验和模型 grounding 都继续使用完整 id；
+ * 光标进入引用时也会展开原文，用户仍能删除或修正它。 */
+export function citeChipLabel(id: string): string {
+  const suffix = id.match(/-([0-9A-Fa-f]+)$/)?.[1]?.toUpperCase()
+  return suffix ? `来源 · ${suffix.slice(-4)}` : '来源'
+}
+
+class FactCiteWidget extends WidgetType {
+  constructor(readonly id: string) { super() }
+  eq(other: FactCiteWidget) { return other.id === this.id }
+  toDOM() {
+    const el = document.createElement('span')
+    el.className = 'cm-fact-cite-chip'
+    el.textContent = citeChipLabel(this.id)
+    el.title = '查看这条来源'
+    el.tabIndex = 0
+    el.setAttribute('role', 'link')
+    el.setAttribute('aria-label', `打开引用来源 ${this.id}`)
+    const open = () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + this.id }))
+    el.addEventListener('mousedown', (e) => { e.preventDefault(); open() })
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() }
+    })
+    return el
+  }
+  ignoreEvent() { return true }
+}
 
 function buildCites(view: EditorView): DecorationSet {
   const b = new RangeSetBuilder<Decoration>()
+  const sel = view.state.selection.main
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to)
     CITE.lastIndex = 0
     let m: RegExpExecArray | null
     while ((m = CITE.exec(text))) {
       const start = from + m.index
+      const end = start + m[0].length
       // 代码块里的方括号不是出处——那可能是代码本身
       const node = syntaxTree(view.state).resolveInner(start, 1)
       if (/CodeBlock|FencedCode|InlineCode/.test(node.type.name)) continue
-      b.add(start, start + m[0].length, citeMark)
+      // 光标进来时露出完整原文，跟 note link / 图片预览的编辑规则一致。
+      if (sel.from <= end && sel.to >= start) continue
+      b.add(start, end, Decoration.replace({ widget: new FactCiteWidget(m[1]) }))
     }
   }
   return b.finish()
@@ -58,7 +89,7 @@ const citePlugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet
   constructor(view: EditorView) { this.decorations = buildCites(view) }
   update(u: ViewUpdate) {
-    if (u.docChanged || u.viewportChanged) this.decorations = buildCites(u.view)
+    if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = buildCites(u.view)
   }
 }, { decorations: (v) => v.decorations })
 

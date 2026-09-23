@@ -31,12 +31,12 @@ export async function landImportInTray(jobId: string, trayNoteId: string): Promi
   const j = await jobStatus(jobId)
   const landed = importedTrayItems(j.items)
   if (!landed.length) return 0
-  if (!trayNoteId) { toast(`导入了 ${landed.length} 篇；没有打开着的笔记，这次没进托盘（打开一篇再导，会先摊到它桌上）`); return 0 }
+  if (!trayNoteId) { toast(`导入了 ${landed.length} 篇；当前没有打开的笔记，因此没有加入本篇材料`); return 0 }
   const notes = await Promise.all(landed.map((l) => getNote(l.note_id).catch(() => null)))
   const n = await landNotesInTray(trayNoteId, landed.map((l, i) => ({
     id: l.note_id, title: notes[i]?.title || l.filename.replace(/\.[^.]+$/, ''), content: notes[i]?.content ?? '',
   })))
-  if (n) toast(`导入的 ${n} 篇已进托盘——写那篇时优先用；不想要就在托盘里移除`)
+  if (n) toast(`导入的 ${n} 篇已加入本篇材料；AI 写这篇时会优先参考`)
   return n
 }
 
@@ -111,7 +111,7 @@ export default function MemoryPanel({ pendingJob, trayNoteId = '' }: { pendingJo
       const r = await resumeImportJob(j.job_id)
       setInterrupted((xs) => xs.filter((x) => x.job_id !== j.job_id))
       setBatchJob(r)
-      watchJob(r.job_id, (x) => { setBatchJob(x); void pollRecentFacts(x.facts) }, () => { void refresh(); setRecentFacts([]); void loadInterrupted(); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
+      watchJob(r.job_id, (x) => { setBatchJob(x); void pollRecentFacts(x.facts) }, () => { void refresh(); setRecentFacts([]); void loadInterrupted(); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("加入本篇材料失败：" + friendlyError(e), "error")) })
     } catch (e) { toast('继续不了：' + friendlyError(e), 'error') }
   }
   // 开始前的预估：这一批要跑多久、大概多少 token
@@ -174,7 +174,7 @@ export default function MemoryPanel({ pendingJob, trayNoteId = '' }: { pendingJo
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("加入本篇材料失败：" + friendlyError(e), "error")) })
     } catch (e) {
       // P3 遗留（？）：原来 `e.message` 原样——后端没起来时是英文 `Failed to fetch`
       toast('导入失败：' + friendlyError(e), 'error')
@@ -190,7 +190,7 @@ export default function MemoryPanel({ pendingJob, trayNoteId = '' }: { pendingJo
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("加入本篇材料失败：" + friendlyError(e), "error")) })
     } catch (e) {
       toast('导入失败：' + friendlyError(e), 'error')
     } finally {
@@ -205,7 +205,7 @@ export default function MemoryPanel({ pendingJob, trayNoteId = '' }: { pendingJo
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("加入本篇材料失败：" + friendlyError(e), "error")) })
     } catch (e) {
       toast('导入失败：' + friendlyError(e), 'error')
     } finally {
@@ -220,7 +220,7 @@ export default function MemoryPanel({ pendingJob, trayNoteId = '' }: { pendingJo
       announceEstimate(r)
       setBatchJob(r)
       watchJob(r.job_id, (j) => { setBatchJob(j); pollRecentFacts(j.facts) },
-        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("进托盘没成：" + friendlyError(e), "error")) })
+        () => { void refresh(); setRecentFacts([]); void landImportInTray(r.job_id, trayNoteId).catch((e) => toast("加入本篇材料失败：" + friendlyError(e), "error")) })
     } catch (e) {
       toast('导入失败：' + friendlyError(e), 'error')
     } finally {

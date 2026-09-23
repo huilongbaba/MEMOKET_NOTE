@@ -26,6 +26,6 @@ describe('边缘记忆', () => {
   })
   it('折起来的那一档在面板上说清楚有多少段', () => {
     expect(noRecordNote(89)).toContain('89 段')
-    expect(noRecordNote(89)).toContain('右栏会说')
+    expect(noRecordNote(89)).toContain('知识库里暂时没有相关记录')
   })
 })

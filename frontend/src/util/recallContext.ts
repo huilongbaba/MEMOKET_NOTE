@@ -102,6 +102,20 @@ export function cardFromBefore(factText: string, pool: string[], paragraph: stri
   return fromBefore
 }
 
+/** 这张卡是否有**可逐字核对**的当前段命中词。
+ *
+ * `!cardFromBefore` 不能反推“来自当前段”：它还包括“分词/语义召回到了，但前端无法用子串
+ * 说明原因”的卡。只有命中词同时出现在当前段和事实文本里，才盖“当前段”标记。 */
+export function cardFromCurrent(factText: string, pool: string[], paragraph: string): boolean {
+  const body = stripForRecall(factText || '').toLowerCase()
+  const para = stripForRecall(paragraph || '').toLowerCase()
+  if (!body || !para) return false
+  return pool.some((term) => {
+    const t = (term || '').toLowerCase()
+    return !!t && para.includes(t) && body.includes(t)
+  })
+}
+
 const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
 const grams = (s: string) => { const g = new Set<string>(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g }
 
