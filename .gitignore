@@ -55,3 +55,6 @@ frontend/dist/
 backend/build/
 backend/dist/
 backend/*.spec.bak
+
+# 生成的演示产物（pptx / mp4 / png / 截图），跟 writing_bench_results 同理不进库
+outputs/
