@@ -94,10 +94,10 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
       ) : (
         <>
           <div className="stat-row">
-            <StatTile value={data.stats.facts.toLocaleString()} label="条事实" />
-            <StatTile value={data.stats.topics} label="个主题" />
-            <StatTile value={data.stats.entities.toLocaleString()} label="个实体" />
-            <StatTile value={data.stats.units.toLocaleString()} label="场会议" />
+            <StatTile value={data.stats.facts.toLocaleString()} label="条事实" hint="打开事实表" onClick={() => actions.onOpen('kb:facts')} />
+            <StatTile value={data.stats.topics} label="个主题" hint="打开主题地图" onClick={() => actions.onOpen('kb:graph')} />
+            <StatTile value={data.stats.entities.toLocaleString()} label="个实体" hint="查看全部实体" onClick={() => actions.onOpen('kb:entities')} />
+            <StatTile value={data.stats.units.toLocaleString()} label="场会议" hint="查看最近摄入" onClick={() => actions.onOpen('kb:recent')} />
             {/* 两边各掐掉 2%：这个数要回答「我攒了多久的记录」，而不是「有没有
                 一条离群的日期」。掐掉的那截写在 title 里——**掐掉的东西要能看见**。 */}
             <StatTile
@@ -107,7 +107,7 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
                              : undefined}>
                        {data.stats.start_date ? `${data.stats.start_date.slice(0, 7)} → ${data.stats.end_date.slice(0, 7)}` : '—'}
                      </span>}
-              label="跨度（按事实里的日期）" />
+              label="跨度（按事实里的日期）" hint="打开完整时间线" onClick={() => actions.onOpen('kb:timeline')} />
             {/* 体检。原来这个数字只有一条前端从没调过的接口拿得到（第 665 轮翻出来的）。
                 **第一版把它写成「能用的事实 84%」，那是过头了**——第 667 轮抽样逐条读过
                 被标记的那 3256 条：里面有「这款手机的价格是2999元」「用户量级几千的量级」
@@ -121,7 +121,8 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
                                      + '这是形状上的信号，不是说它们没用——里面有「这款手机的价格是2999元」这种又短又有用的句子。'}>
                          {Math.round(data.quality.unusable_rate * 100)}%
                        </span>}
-                label={`形状可疑（${data.quality.unusable.toLocaleString()} 条太短 / 提问 / 口水话）`} />
+                label={`形状可疑（${data.quality.unusable.toLocaleString()} 条太短 / 提问 / 口水话）`}
+                hint="到事实表核对这些内容" onClick={() => actions.onOpen('kb:facts')} />
             )}
           </div>
 
@@ -170,12 +171,6 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
                 {data.speakers.map((s) => <Chip key={s.who} icon="bx-user-voice" count={s.facts} onClick={() => actions.onOpen('kb:facts?who=' + s.who)}>{s.who}</Chip>)}
               </div>
             </KbSection>
-          </div>
-
-          <div className="chip-wrap" style={{ marginTop: 4 }}>
-            <Chip icon="bx-table" onClick={() => actions.onOpen('kb:facts')}>事实表</Chip>
-            <Chip icon="bx-network-chart" onClick={() => actions.onOpen('kb:graph')}>主题地图</Chip>
-            <Chip icon="bx-history" onClick={() => actions.onOpen('kb:digest')}>定期回顾</Chip>
           </div>
         </>
       )}

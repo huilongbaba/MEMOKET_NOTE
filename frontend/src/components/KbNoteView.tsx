@@ -1,10 +1,6 @@
 /**
- * 知识库虚拟子树上的节点，打开就是这个——**一条事实 = 一篇只读笔记**
- * （docs/kb-fusion-design.md §3.3），分类节点 = 一篇列出名下事实的只读笔记。
- *
- * 为什么不是右栏的一个面板：右栏是「跟着当前笔记走」的东西，而用户点开
- * 一条事实时想看的是**它本身**——原话、谁引用了它、它的邻居。这些占一整
- * 屏才看得清，也才能用标签页把它留着、跟笔记并排。
+ * 知识库工作区。事实、主题、实体仍然可以占满中栏查看，但它们是同一个工作区
+ * 里的页面：顶部导航负责切换，返回负责回到上一层，外层只保留一个知识库标签。
  */
 import { isSpeakerTag } from '../util/kbNoise'
 import EntityMerges from './kb/EntityMerges'
@@ -38,6 +34,21 @@ type Props = {
   onOpenNote: (noteId: string) => void
   /** 把 `原文 [fact-id]` 送进当前正在写的笔记；没有正在写的就是 null。 */
   onCite: ((factId: string, text: string) => void) | null
+  /** 主栏走全局浏览历史；分屏没传时退回知识库总览。 */
+  onBack?: () => void
+}
+
+const KB_NAV = [
+  { id: 'kb', label: '总览', icon: 'bx-home' },
+  { id: 'kb:facts', label: '事实表', icon: 'bx-table' },
+  { id: 'kb:graph', label: '主题地图', icon: 'bx-network-chart' },
+  { id: 'kb:digest', label: '定期回顾', icon: 'bx-history' },
+] as const
+
+function navActive(current: string, item: typeof KB_NAV[number]['id']): boolean {
+  if (item === 'kb') return current === 'kb'
+  if (item === 'kb:facts') return current === 'kb:facts' || current.startsWith('kb:facts?') || current.startsWith('kb:fact:')
+  return current === item
 }
 
 export default function KbNoteView(props: Props) {
@@ -46,24 +57,52 @@ export default function KbNoteView(props: Props) {
     onOpen: props.onOpen, onOpenNote: props.onOpenNote,
     onCite: props.onCite ? (f) => props.onCite!(f.id, f.text) : null,
   }
-  if (isFactId(id)) return <FactNote {...props} />
-  // 每个节点打开都是一页有设计的「只读笔记」（docs/kb-experience-plan.md §2）
-  if (id === 'kb') return <KbDashboard actions={actions} />
-  if (id === 'kb:topics') return <TopicsIndex rows={rows} actions={actions} />
-  if (id === 'kb:entities') return <EntitiesIndex rows={rows} actions={actions} />
-  if (id === 'kb:merges') return <ToolNote title="可能是同一个" icon="bx-merge"><EntityMerges /></ToolNote>
-  if (id.startsWith('kb:etype:')) return <EntitiesIndex rows={rows} actions={actions} node={id} />
-  if (id === 'kb:recent') return <RecentIndex rows={rows} actions={actions} />
-  if (id === 'kb:timeline') return <TimelinePage actions={actions} />
-  if (id === 'kb:facts' || id.startsWith('kb:facts?')) return <FactsTable query={id.split('?')[1] ?? ''} actions={actions} />
-  if (id.startsWith('kb:topic:')) return <TopicPage code={id.slice('kb:topic:'.length)} actions={actions} />
-  if (id.startsWith('kb:entity:')) return <EntityPage code={id.slice('kb:entity:'.length)} actions={actions} />
-  if (id.startsWith('kb:unit:')) return <UnitPage id={id.slice('kb:unit:'.length)} actions={actions} />
+  let page: React.ReactNode
+  if (isFactId(id)) page = <FactNote {...props} />
+  else if (id === 'kb') page = <KbDashboard actions={actions} />
+  else if (id === 'kb:topics') page = <TopicsIndex rows={rows} actions={actions} />
+  else if (id === 'kb:entities') page = <EntitiesIndex rows={rows} actions={actions} />
+  else if (id === 'kb:merges') page = <ToolNote title="可能是同一个" icon="bx-merge"><EntityMerges /></ToolNote>
+  else if (id.startsWith('kb:etype:')) page = <EntitiesIndex rows={rows} actions={actions} node={id} />
+  else if (id === 'kb:recent') page = <RecentIndex rows={rows} actions={actions} />
+  else if (id === 'kb:timeline') page = <TimelinePage actions={actions} />
+  else if (id === 'kb:facts' || id.startsWith('kb:facts?')) page = <FactsTable query={id.split('?')[1] ?? ''} actions={actions} />
+  else if (id.startsWith('kb:topic:')) page = <TopicPage code={id.slice('kb:topic:'.length)} actions={actions} />
+  else if (id.startsWith('kb:entity:')) page = <EntityPage code={id.slice('kb:entity:'.length)} actions={actions} />
+  else if (id.startsWith('kb:unit:')) page = <UnitPage id={id.slice('kb:unit:'.length)} actions={actions} />
   // 多段材料（树上的「（n 段）」行）：打开它的第一段，页顶有分段导航
-  if (id.startsWith('kb:material:')) return <UnitPage id={id.slice('kb:material:'.length)} actions={actions} />
-  if (id === 'kb:graph') return <ToolNote title="主题地图" icon="bx-network-chart"><MemoryBrowser /></ToolNote>
-  if (id === 'kb:digest') return <ToolNote title="定期回顾" icon="bx-history"><DigestPanel /></ToolNote>
-  return <CollectionNote {...props} />
+  else if (id.startsWith('kb:material:')) page = <UnitPage id={id.slice('kb:material:'.length)} actions={actions} />
+  else if (id === 'kb:graph') page = <ToolNote title="主题地图" icon="bx-network-chart"><MemoryBrowser /></ToolNote>
+  else if (id === 'kb:digest') page = <ToolNote title="定期回顾" icon="bx-history"><DigestPanel /></ToolNote>
+  else page = <CollectionNote {...props} />
+
+  return (
+    <div className="kb-workspace">
+      <header className="kb-workspace-head">
+        <div className="kb-workspace-brand">
+          {id !== 'kb' && (
+            <button type="button" className="kb-workspace-back" title="返回上一页"
+                    aria-label="返回上一页" onClick={props.onBack ?? (() => props.onOpen('kb'))}>
+              <Icon n="bx-left-arrow-alt" /> <span>返回</span>
+            </button>
+          )}
+          <Icon n="bx-data" />
+          <strong>知识库</strong>
+        </div>
+        <nav className="kb-workspace-nav" aria-label="知识库视图">
+          {KB_NAV.map((item) => (
+            <button type="button" key={item.id}
+                    className={navActive(id, item.id) ? 'active' : ''}
+                    aria-current={navActive(id, item.id) ? 'page' : undefined}
+                    onClick={() => props.onOpen(item.id)}>
+              <Icon n={item.icon} /> <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      </header>
+      <div className="kb-workspace-content">{page}</div>
+    </div>
+  )
 }
 
 function ToolNote({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {

@@ -35,7 +35,7 @@ const dest = src('util/destinations.ts')
 const ids = [...dest.matchAll(/\{\s*id:\s*'([^']+)'/g)].map((m) => m[1])
 if (ids.length < 3) fail(`util/destinations.ts 里只读到 ${ids.length} 个去处——这份清单是两处入口的唯一来源，闸门失效`)
 for (const id of ids) {
-  if (!id.startsWith('app:')) fail(`去处 id「${id}」不是 app: 开头——启动栏上的去处都是虚拟页`)
+  if (!id.startsWith('app:') && id !== 'kb') fail(`去处 id「${id}」不是 app:* 或 kb——启动栏上的去处都必须是虚拟页`)
 }
 if (!ids.includes('app:journey')) fail('屏幕活动（app:journey）不在去处清单里——它就是这条闸门的由来')
 

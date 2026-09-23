@@ -36,6 +36,8 @@ export type Destination = {
 }
 
 export const DESTINATIONS: Destination[] = [
+  { id: 'kb', name: '知识库', icon: 'bx-data', where: 'top',
+    hint: '知识库：搜索事实、查看主题地图和定期回顾' },
   { id: 'app:import', name: '导入', icon: 'bx-import', where: 'top',
     hint: '导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件' },
   { id: 'app:journey', name: '屏幕活动', icon: 'bx-desktop', where: 'top',

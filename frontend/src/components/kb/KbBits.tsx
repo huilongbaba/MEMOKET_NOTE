@@ -31,13 +31,17 @@ export type KbActions = {
   onCite: ((f: { id: string; text: string }) => void) | null
 }
 
-export function StatTile({ value, label, hint }: { value: ReactNode; label: string; hint?: string }) {
-  return (
-    <div className="stat-tile" title={hint}>
+export function StatTile({ value, label, hint, onClick }: {
+  value: ReactNode; label: string; hint?: string; onClick?: () => void
+}) {
+  const body = <>
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
-    </div>
-  )
+      {onClick && <Icon n="bx-right-arrow-alt" className="stat-open" />}
+    </>
+  return onClick
+    ? <button type="button" className="stat-tile interactive" title={hint} onClick={onClick}>{body}</button>
+    : <div className="stat-tile" title={hint}>{body}</div>
 }
 
 /** 单色条形图：月份 × 数量。hover 显示值；首尾标月份。

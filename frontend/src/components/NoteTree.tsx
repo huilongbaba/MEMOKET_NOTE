@@ -47,7 +47,7 @@ type Props = {
 export type DropWhere = 'before' | 'after' | 'over'
 
 /** 每种节点一个图标（Boxicons）。真笔记：叶子 = note、有子节点 = folder
- *  （notes.ts:140-143 的规则）；知识库那棵虚拟子树按节点种类分。 */
+ *  （notes.ts:140-143 的规则）。知识库已经移到启动栏的独立工作区。 */
 function iconOf(n: { note_id: string; child_count: number; icon?: string; source?: string }): string {
   const id = n.note_id
   if (n.icon) return n.icon              // 用户自己挑的图标优先（Trilium 的 NoteIcon）
@@ -119,7 +119,7 @@ export default function NoteTree({
   const hasFiles = (e: React.DragEvent) => !!onFilesDrop && Array.from(e.dataTransfer.types).includes('Files')
   const nodes = useMemo(() => flatten(rows), [rows])
   // 树上撞名的那几个标题（第 609 轮截图实拍：四行都写着「创业一年回顾」）。
-  // 只认真笔记：知识库那棵虚拟子树里同名很正常（两个月份下各有一条同名事实），
+  // 只认真笔记：历史版本曾把知识库虚拟节点也喂进来，那里同名很正常，
   // 给它们挂日期没有意义。
   const dup = useMemo(
     () => dupSuffixes(nodes.filter((n) => !isVirtualId(n.note_id))

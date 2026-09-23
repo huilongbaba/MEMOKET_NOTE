@@ -11,6 +11,37 @@ export const VIRTUAL_LABELS: Record<string, string> = {
 /** 认识的知识库虚拟 id 形状（`kb:facts?topic=x` 也算——重启时带查询串的事实表标签不能被当成不认识的收掉） */
 export const KNOWN_KB_RE = /^kb:(topic|entity|unit|material|fact|facts|etype)(:|\?|$)/
 
+/** 知识库是一块工作区，不是一组彼此独立的笔记标签。 */
+export function isKbVirtual(id: string): boolean {
+  return id === 'kb' || id.startsWith('kb:')
+}
+
+export type VirtualTabLike = { id: string; noteId: string; title: string }
+
+/**
+ * 打开普通虚拟页时沿用原来的「一页一个标签」。知识库内部导航则始终复用同一个
+ * 标签，并顺手收掉旧版本留在 localStorage 里的多个知识库标签。
+ */
+export function syncVirtualTab<T extends VirtualTabLike>(
+  tabs: T[], next: T, activeTabId: string | null,
+): T[] {
+  if (!isKbVirtual(next.noteId)) {
+    const found = tabs.find((t) => t.noteId === next.noteId)
+    if (!found) return [...tabs, next]
+    return found.title === next.title
+      ? tabs
+      : tabs.map((t) => (t.id === found.id ? { ...t, title: next.title } : t))
+  }
+
+  const kbTabs = tabs.filter((t) => isKbVirtual(t.noteId))
+  const keep = kbTabs.find((t) => t.id === activeTabId) ?? kbTabs[0]
+  if (!keep) return [...tabs, next]
+  return tabs.flatMap((t) => {
+    if (t.id === keep.id) return [{ ...t, noteId: next.noteId, title: next.title }]
+    return isKbVirtual(t.noteId) ? [] : [t]
+  })
+}
+
 /** 这个虚拟 id 认不认识：固定页、知识库各种节点、app:* 特殊页 */
 export function isKnownVirtual(id: string): boolean {
   return !!VIRTUAL_LABELS[id] || KNOWN_KB_RE.test(id) || id.startsWith('app:')
