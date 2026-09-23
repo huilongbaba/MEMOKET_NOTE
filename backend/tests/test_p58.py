@@ -96,11 +96,12 @@ def test_1_advisory默认是假_别的判据一条都没被带上():
     """反向闸：`advisory` 是新加的字段，默认必须是 False——默认成 True 的话，
     仓里每一条判据一夜之间全都不再短路，而这条 harness 唯一的硬拦路就是短路。
 
-    **逐条数过来，不是抽查**：`modes.NOTE` 那一串判据里，允许 advisory 的只有
-    `citations_present`（而且只在 `located==0` 那两档）。
+        **逐条数过来，不是抽查**：`modes.NOTE` 那一串判据里，允许 advisory 的只有
+        `citations_present`（`located==0` 两档）和 `material_thin`。后者只提醒跳过
+        无据内容；若短路评分，会再次把占位句当成唯一可执行的出口。
     """
     assert Verdict(dimension="d", message="m").advisory is False
-    allowed = {"citations_present"}
+    allowed = {"citations_present", "material_thin"}
     seen = set()
     for check in modes.NOTE.checks:
         src = check.__doc__ or ""

@@ -145,8 +145,8 @@ TARGETS: list[tuple[str, str, str]] = [
      "一条记录都没有时那一行会变成「最早 ）」，跟 P35 #7 那对空括号同一个形状"),
     ("src/components/MarkdownEditor.tsx", "/^#{1,6}\\s/.test(cur.text)",
      "「按光标这段找的」的段落边界；放宽到 7 个井号会把一段劈成两段"),
-    ("src/components/MemoryPanel.tsx", "没有打开着的笔记，这次没进托盘",
-     "导入落不进托盘时**说清楚**的那一句；没有它用户只看到什么都没发生"),
+    ("src/components/MemoryPanel.tsx", "当前没有打开的笔记，因此没有加入本篇材料",
+     "导入后没有当前笔记可以承接材料时**说清楚**的那一句；没有它用户只看到什么都没发生"),
     ("src/components/TraceCard.tsx", "`${phrase}#${focus}`",
      "⌥ 悬停那张卡的缓存键带着落点；不带的话同一串停在不同的字上会拿到上一次那个词"),
 ]

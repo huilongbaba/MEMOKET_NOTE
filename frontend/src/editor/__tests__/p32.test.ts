@@ -80,17 +80,20 @@ describe('P32 #2 形状不对不落正文', () => {
 })
 
 describe('P32 #3 空库图例折成一句', () => {
-  it('那一句既说了「不画圆点」也说了什么时候开始判（P17 #8 要的两件事一件没少）', () => {
-    expect(KB_EMPTY_NOTE).toMatch(/不画圆点/)
-    expect(KB_EMPTY_NOTE).toMatch(/第一条记录/)
+  it('那一句只说现状和可执行的下一步', () => {
+    expect(KB_EMPTY_NOTE).toMatch(/知识库还是空的/)
+    expect(KB_EMPTY_NOTE).toMatch(/导入资料/)
+    expect(KB_EMPTY_NOTE).not.toMatch(/圆点|零模型|第一条记录/)
   })
-  it('空库那一支只出一句 + 一个「导入」入口，四段规则收进 details', () => {
+  it('空库只出一句 + 一个「导入」入口；有数据后才提供可选的圆点说明', () => {
     const empty = memSrc.slice(memSrc.indexOf('{kbEmpty ? ('), memSrc.indexOf('{KB_EMPTY_NOTE}') + 400)
     expect(empty).toMatch(/\{KB_EMPTY_NOTE\}/)
     expect(empty).toMatch(/app:import/)
-    expect(empty).toMatch(/<details/)
-    // 六种颜色那一排**不在**空库这一支里（信息量为零却占掉大半屏）
+    expect(empty).not.toMatch(/<details/)
     expect(empty).not.toMatch(/RELATION_LABEL/)
+    expect(memSrc).toContain('<summary>页边圆点说明</summary>')
+    expect(memSrc).not.toContain('光标停在一段上 {IDLE_MS / 1000} 秒')
+    expect(memSrc).not.toContain('{MODEL_NOTE}')
   })
 })
 

@@ -125,6 +125,9 @@ describe('P80 A：光标换段时右栏摆的是这一段的', () => {
 
     mode = 'reject'
     draw(PARAS[1])
+    // 新段一生效就撤掉旧段答案，防抖期间也不能张冠李戴。
+    expect(line(host)).toBe(null)
+    expect(cards(host)).toBe(0)
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
     vi.useRealTimers()
     // 改之前这三条各是：`按光标这段找的，命中：甲甲甲` / 1 / false
@@ -168,6 +171,21 @@ describe('P80 A：光标换段时右栏摆的是这一段的', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
     vi.useRealTimers()
     expect(line(host)).toBe('按光标这段找的，命中：乙乙乙')
+  })
+
+  it('⑤b 防抖期间正文别处变化、有效查询没变时，定时器会重新挂上', async () => {
+    mode = 'ok'
+    vi.useFakeTimers()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => { root.render(<RelatedMemory content={CONTENT} paragraph={PARAS[0]} onInsert={() => {}} />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+    // 改的是正文尾部，当前段召回 query 逐字不变；旧 timer 会被 effect cleanup 取消。
+    act(() => { root.render(<RelatedMemory content={CONTENT + '\n尾注'} paragraph={PARAS[0]} onInsert={() => {}} />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(600) })
+    vi.useRealTimers()
+    expect(line(host)).toBe('按光标这段找的，命中：甲甲甲')
   })
 })
 
@@ -228,7 +246,7 @@ describe('P80 A：「按光标这段找的」这句话说不说老实', () => {
     expect(evidenceLine('tail', EV, [], { paragraph: HERE, before: '' })).not.toContain(FROM_BEFORE_NOTE)
   })
 
-  it('⑨ 接线洞单独一条：面板标的是**发那一问时**的两段，不是渲染这一刻的', async () => {
+  it('⑨ 光标换段后，上一问即使答过也立即撤掉，等待新段自己的回答', async () => {
     mode = 'hold'; held.length = 0
     vi.useFakeTimers()
     const host = document.createElement('div')
@@ -239,7 +257,7 @@ describe('P80 A：「按光标这段找的」这句话说不说老实', () => {
     })
     draw(HERE)
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
-    // 回答在飞的时候光标挪回了**前一段**；答案回来时要按「问的时候那两段」标
+    // 第一段的回答先回来。
     await act(async () => {
       held[0].resolve({ facts: [{ id: 'f1', text: '库里那条', when: '' }],
                         terms: ['主流'], evidence: null, why_empty: '' })
@@ -248,7 +266,8 @@ describe('P80 A：「按光标这段找的」这句话说不说老实', () => {
     draw(BEFORE)
     await act(async () => { await vi.advanceTimersByTimeAsync(100) })
     vi.useRealTimers()
-    expect(host.querySelector('.mem-terms')?.textContent)
-      .toBe(`按光标这段找的，命中：主流（${FROM_BEFORE_NOTE}）`)
+    // 光标已经换段，防抖期间也不再展示上一段的命中词。
+    expect(host.querySelector('.mem-terms')).toBeNull()
+    expect(host.querySelectorAll('.memory-card')).toHaveLength(0)
   })
 })

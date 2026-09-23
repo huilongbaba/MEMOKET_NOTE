@@ -12,9 +12,8 @@
  *   面板上是一行灰字「已处置：N 处接受、M 处撤回」，那正是 P39 面板
  *   「你逐处按下去的接受 / 撤回也留着」那句承诺的兑现物。清掉 = 让那句话变成空头支票。
  *
- * · **#2** 意图预填只认 `input.note-title`，不认正文 H1。一篇笔记**只有一个名字**
- *   （`displayTitle`），预填得认这一个。重推的代价先量过（见 `App.tsx` 那段注释）；
- *   依赖挂的是**算出来的名字**而不是 `content`，名字没变一次都不跑。
+ * · **#2** 写作任务不再由标题推断。标题和正文 H1 只决定显示名称；目标、读者、
+ *   完成标准只能来自用户显式设置，因此改标题不会暗中改任务。
  */
 import { describe, expect, it } from 'vitest'
 import { EditorState, type TransactionSpec } from '@codemirror/state'
@@ -216,9 +215,9 @@ describe('P43 #5 「脉络」也要写清自己在说哪一段', () => {
   })
 })
 
-// ------------------------------------------------------------------ #2 意图预填
+// ------------------------------------------------------------------ #2 标题不推断任务
 
-describe('P43 #2 意图预填认的是界面上那个名字，不是标题框那一格', () => {
+describe('P43 #2 标题和正文 H1 只负责名称，不生成写作任务', () => {
   const H1 = '# 周报 9-20\n\n这周把众筹页面的文案定稿了。'
   const prefill: DocIntent = { goal: '', reader: '', done: '', source: 'prefill', checked: [] }
 
@@ -226,43 +225,29 @@ describe('P43 #2 意图预填认的是界面上那个名字，不是标题框那
     expect(displayTitle({ title: '', content: H1 })).toBe('周报 9-20')
   })
 
-  it('**修之前**：拿标题框那一格去推 → 一个字都推不出来（P42 实拍的空意图行）', () => {
-    const before = resolveIntent(prefill, '')
-    expect(before.goal).toBe('')
-    expect(before.source).toBe('')
-  })
-
-  it('**修之后**：拿那个名字去推 → 周报那条规则当场命中，角标是「预填」', () => {
-    const after = resolveIntent(prefill, displayTitle({ title: '', content: H1 }))
-    expect(after.source).toBe('prefill')
-    expect(after.goal).toContain('周报 9-20')
-    expect(after.reader).toBe('老板 / 团队')
-    expect(after.done).toContain('每条进展有日期')
+  it('无论名称来自标题框还是 H1，都不推断任务', () => {
+    for (const name of ['', displayTitle({ title: '', content: H1 }), '任意方案']) {
+      const after = resolveIntent(prefill, name)
+      expect(after.goal).toBe('')
+      expect(after.reader).toBe('')
+      expect(after.done).toBe('')
+      expect(after.source).toBe('')
+    }
   })
 
   it('标题框里有字就照旧只认它——正文里另有一个 H1 也不抢（`displayTitle` 的老规矩）', () => {
     expect(displayTitle({ title: '真标题', content: H1 })).toBe('真标题')
   })
 
-  it('**重推的次数**：正文改的不是首行，名字一个字没变 → 那个 effect 的依赖不变、一次都不跑', () => {
-    const a = displayTitle({ title: '', content: H1 })
-    const b = displayTitle({ title: '', content: H1 + '\n\n又写了一段，跟标题没关系。' })
-    expect(a).toBe(b)
-  })
-
-  it('用户改过一个字的（source=user）永远不被覆盖（P31 #1 那条闸没动）', () => {
+  it('用户显式设置永远不被标题覆盖', () => {
     const mine: DocIntent = { goal: '我自己写的', reader: '', done: '', source: 'user', checked: [] }
     expect(resolveIntent(mine, '周报 9-20').goal).toBe('我自己写的')
+    expect(resolveIntent(mine, '另一个标题')).toEqual(mine)
   })
 
-  it('接线洞：App 真的按 `displayTitle({ title, content })` 算名字，effect 依赖的是它', () => {
-    expect(appSrc).toContain('const shownTitle = useMemo(() => displayTitle({ title, content }), [title, content])')
-    // P46 #5 在名字和 effect 之间多插了一层防抖（`settledTitle`），**这一条守的性质没变**：
-    // 依赖的还是「**算出来的名字**」那条链，不是 `content`。防抖本身在 `p46.test.ts` 里钉。
-    expect(appSrc).toContain('setIntent((i) => (i.source === \'user\' ? i : resolveIntent(i, settledTitle)))')
-    expect(appSrc).toContain('}, [settledTitle, current?.id])')
-    expect(appSrc).toContain('setSettledTitle(shownTitle), INTENT_PREFILL_IDLE_MS')
-    // **依赖不许直接挂 `content`**：那才是「每敲一个字重推一次」
-    expect(appSrc).not.toContain('}, [title, content, current?.id])')
+  it('接线洞：App 没有标题驱动的任务重推', () => {
+    expect(appSrc).toContain('setIntent(resolveIntent(n.intent, d.title))')
+    expect(appSrc).not.toContain('settledTitle')
+    expect(appSrc).not.toContain('INTENT_PREFILL_IDLE_MS')
   })
 })

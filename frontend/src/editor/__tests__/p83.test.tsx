@@ -29,7 +29,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
-import { cardFromBefore, evidencePool, FROM_BEFORE_NOTE, recallQuery } from '../../util/recallContext'
+import { cardFromBefore, cardFromCurrent, evidencePool, FROM_BEFORE_NOTE, recallQuery } from '../../util/recallContext'
 
 type Ev = { term: string; why: string; units: number }
 type R = { facts: { id: string; text: string; when: string }[]; terms: string[]; evidence: Ev[] | null; why_empty: '' }
@@ -109,6 +109,13 @@ describe('P83 A：底下那几张卡自己说得出「我是前一段带回来�
     expect(cardFromBefore('智能风控和智能诊断都提了', pool, paragraph, before)).toBe(true)
   })
 
+  it('②b 只有能逐字核对当前段命中词的卡才标“当前段”，判不清的不冒认', () => {
+    const { paragraph } = CTX()
+    const pool = evidencePool(EV, [])
+    expect(FACTS.map((f) => cardFromCurrent(f.text, pool, paragraph)))
+      .toEqual([false, true, true, false, false])
+  })
+
   it('③ 落差只让它少说：两头都不沾、没有前一段、空文本，一律不标', () => {
     const { paragraph, before } = CTX()
     const pool = evidencePool(EV, [])
@@ -137,14 +144,16 @@ describe('P83 A：底下那几张卡自己说得出「我是前一段带回来�
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
     vi.useRealTimers()
     // 改之前这一列是 **5 个 false**：卡混着摆，用户一点提示都没有
+    // 明确认作“前一段带回”的卡排到当前段/判不清的结果之后，不再抢首屏。
     expect(cardMarks(host)).toEqual([
-      ['三季度把主流大模型的适配', true],
       ['关于智影相机的季度汇报要', false],
       ['智能风控那次评审顺带聊到', false],
       ['仓库盘点单据的归档规则去', false],
       ['诊断智影这个说法是接缝上', false],
+      ['三季度把主流大模型的适配', true],
     ])
     expect(host.querySelectorAll('.mem-card-from-before').length).toBe(1)
+    expect(host.querySelectorAll('.mem-card-from-current').length).toBe(2)
     expect(host.querySelector('.mem-card-from-before')?.textContent).toBe(FROM_BEFORE_NOTE)
     // 上面那一行（P80 改的）**一处没回退**：三个前一段的词照样标着，光标这段那个不标
     const termsLine = host.querySelector('.mem-terms')?.textContent ?? ''
@@ -165,7 +174,7 @@ describe('P83 A：底下那几张卡自己说得出「我是前一段带回来�
     expect(host.querySelectorAll('.mem-card-from-before').length).toBe(0)
   })
 
-  it('⑦ 接线洞：盖的是**发那一问时**的两段，不是渲染这一刻的', async () => {
+  it('⑦ 光标换段后旧卡立即撤掉，不拿新段去重标旧结果', async () => {
     evidence = EV
     vi.useFakeTimers()
     const host = document.createElement('div')
@@ -177,13 +186,12 @@ describe('P83 A：底下那几张卡自己说得出「我是前一段带回来�
     draw(HERE)
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
     expect(host.querySelectorAll('.mem-card-from-before').length).toBe(1)
-    // 光标挪回**前一段**（那一段自己没有「前一段」，`before` 是空的）。
-    // 答案还是刚才那一份，戳**必须还按问的时候那两段算**——拿新光标段去标旧结果
-    // 就是 P17 #2「A 篇的校验结果挂在 B 篇上」换个地方重演。
+    // 光标挪回前一段。旧答案不再留在屏幕上，也就不会拿新段去重标旧结果。
     draw(BEFORE)
     await act(async () => { await vi.advanceTimersByTimeAsync(100) })
     vi.useRealTimers()
-    expect(host.querySelectorAll('.mem-card-from-before').length).toBe(1)
+    expect(host.querySelectorAll('.memory-card').length).toBe(0)
+    expect(host.querySelectorAll('.mem-card-from-before').length).toBe(0)
   })
 
   it('⑧ 对照：末尾档（光标不在正文里）没有「前一段」这回事，一张都不盖', () => {

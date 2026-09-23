@@ -10,7 +10,7 @@
  * 只有 CSS / JSX 这种跑不起来的，才退而求其次钉源码。
  */
 import { describe, expect, it } from 'vitest'
-import { resolveIntent, prefillIntent } from '../../util/docIntent'
+import { EMPTY_INTENT, resolveIntent } from '../../util/docIntent'
 import { checkDone, doneSummary } from '../../util/doneChecks'
 import { undoRound, conflictLead } from '../undoRound'
 import appSrc from '../../App.tsx?raw'
@@ -24,13 +24,12 @@ import { fileURLToPath } from 'node:url'
 const cssPath = fileURLToPath(new URL('../../styles.css', import.meta.url))
 const css: string = readFileSync(cssPath, 'utf8')
 
-describe('P31 #1 勾过的完成标准要活过一次重开', () => {
-  // 实拍那一篇：标题「周报 9-20」，意图从没被改过（source=prefill），勾了「卡住的说清要什么」
-  const title = '周报 9-20'
-  const stored = { ...prefillIntent(title), checked: ['卡住的说清要什么'] }
+describe('P31 #1 用户设置的完成标准要活过一次重开', () => {
+  const title = '任意标题'
+  const stored = { goal: '形成可执行结论', reader: '项目成员', done: '结论有依据；风险有应对', source: 'user' as const, checked: ['风险有应对'] }
 
-  it('意图还是预填的那份：重开之后 checked 还在', () => {
-    expect(resolveIntent(stored, title).checked).toEqual(['卡住的说清要什么'])
+  it('重开之后用户勾选仍在', () => {
+    expect(resolveIntent(stored, title).checked).toEqual(['风险有应对'])
   })
 
   it('角标不再退回 0/2——这是用户唯一看得见的那个数', () => {
@@ -46,36 +45,19 @@ describe('P31 #1 勾过的完成标准要活过一次重开', () => {
     expect(resolveIntent(mine, title)).toEqual(mine)
   })
 
-  it('标题换了、判据跟着换：对不上的勾作废，不留幽灵勾', () => {
-    // 「周报」→「会议纪要」，完成标准整句都不一样了
-    const after = resolveIntent(stored, '9-20 会议纪要')
-    expect(after.done).toBe(prefillIntent('9-20 会议纪要').done)
-    expect(after.checked ?? []).toEqual([])
+  it('标题变化不改写用户的任务或勾选', () => {
+    expect(resolveIntent(stored, '另一个标题')).toEqual(stored)
   })
 
-  it('库里没有 checked / 是空数组：跟原来一样，不平白多一个字段', () => {
-    expect(resolveIntent(prefillIntent(title), title).checked).toBeUndefined()
-    expect(resolveIntent({ ...prefillIntent(title), checked: [] }, title).checked).toBeUndefined()
+  it('没有用户任务时保持为空', () => {
+    expect(resolveIntent(null, title)).toEqual(EMPTY_INTENT)
+    expect(resolveIntent({ ...EMPTY_INTENT, source: 'prefill' }, title)).toEqual(EMPTY_INTENT)
   })
 
-  it('空串不会当成「命中」（done.includes("") 恒真）', () => {
-    const after = resolveIntent({ ...prefillIntent(title), checked: [''] }, title)
-    expect(after.checked ?? []).toEqual([])
-  })
-
-  it('「跟着标题重推」那个 effect 传的是现在这份意图，不是 null', () => {
-    // 这个 effect 也挂在 current?.id 上，每开一篇都会在「从库里读」之后再跑一次；
-    // 传 null = 拿干净的预填把刚读出来的盖掉，checked 又没了（P31 实拍：改完 resolveIntent
-    // 还是 0/2，就是栽在这一行）。
-    // P43 #2 起第二个实参从 `title`（标题框那一格）换成了 `shownTitle`
-    // （= `displayTitle({ title, content })`，界面上到处显示的那个名字）。
-    // P46 #5 起又换了一次：换成 `settledTitle`（= 名字**停下来 500ms 之后**那一份，真机上
-    // 数出来 32 个字里那一格变了 19 次）。**这一条守的性质照旧一个字没变**：
-    // 传下去的第一个实参还是 `i`（现在这份意图），不是 `null`。
-    expect(appSrc).toContain("setIntent((i) => (i.source === 'user' ? i : resolveIntent(i, settledTitle)))")
-    // 全文里 `resolveIntent(null, …)` 只许有一处：`useState` 的初值（那会儿真的什么都没有）
-    expect(appSrc.match(/resolveIntent\(null,/g) ?? []).toHaveLength(1)
-    expect(appSrc).not.toContain('resolveIntent(null, title)')
+  it('App 打开笔记时只解析库存任务，没有标题驱动的重推 effect', () => {
+    expect(appSrc).toContain('setIntent(resolveIntent(n.intent, d.title))')
+    expect(appSrc).not.toContain('INTENT_PREFILL_IDLE_MS')
+    expect(appSrc).not.toContain('settledTitle')
   })
 })
 

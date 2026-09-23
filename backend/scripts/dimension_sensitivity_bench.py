@@ -1583,6 +1583,7 @@ PROBES: tuple[Probe, ...] = (
     Probe("note", "whole", "fabricate_specifics", ("factual_grounding",)),
     Probe("note", "whole", "heading_levels", ("coherence",)),
     Probe("note", "whole", "double_ending", ("coherence",)),
+    Probe("note", "whole", "audit_voice", ("prose_quality",)),
     Probe("note", "whole", "strip_specifics", ("material_use",),
           precondition=_pre_has_material, precondition_label="材料块非空"),
     Probe("note", "whole", "audit_voice", ("style_fit",)),

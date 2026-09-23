@@ -165,7 +165,7 @@ describe('凭证与托盘（P18 #6）', () => {
   })
   it('录音 / 长段落进托盘只放前 600 字：放进去那一声明说全文多长；笔记 / 事实项不说', () => {
     const long = '字'.repeat(TRAY_EXCERPT_MAX + 150)
-    expect(trayAddNotice([{ kind: 'import', excerpt: long }])).toMatch(/只放了前 600 字（全文 750 字）/)
+    expect(trayAddNotice([{ kind: 'import', excerpt: long }])).toMatch(/只保留前 600 字（全文 750 字）/)
     expect(trayAddNotice([{ kind: 'selection', excerpt: long }])).toMatch(/600/)
     expect(trayAddNotice([{ kind: 'import', excerpt: '短的' }, { kind: 'note', excerpt: long }])).toBe('')
     expect(trayPanelSrc).toMatch(/\+ trayAddNotice\(fresh\)/)

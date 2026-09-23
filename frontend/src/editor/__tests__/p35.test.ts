@@ -121,18 +121,19 @@ describe('P35 #7 收工那条 ⚑ 的空括号和措辞', () => {
   })
 })
 
-describe('P35 #8 空托盘收成一句 + 折起来的说明', () => {
-  it('那一句同时说掉「是空的」和「东西从哪来」', () => {
-    expect(TRAY_EMPTY_LINE).toMatch(/空的/)
-    expect(TRAY_EMPTY_LINE).toMatch(/放进托盘/)
-    expect(TRAY_EMPTY_LINE).toMatch(/摊到这篇桌上/)
-    expect(TRAY_EMPTY_LINE.length).toBeLessThan(60)      // 一句话，不是一段
+describe('P35 #8 空的本篇材料只留一句操作指引', () => {
+  it('那一句同时说掉现状和两个添加入口', () => {
+    expect(TRAY_EMPTY_LINE).toMatch(/还没有本篇材料/)
+    expect(TRAY_EMPTY_LINE).toMatch(/记忆卡/)
+    expect(TRAY_EMPTY_LINE).toMatch(/右键正文里的笔记链接/)
+    expect(TRAY_EMPTY_LINE).not.toMatch(/托盘|摊到|不被筛|滚出窗口/)
   })
 
-  it('规则是**折起来**不是删掉：空的那一支里有 details，展开还看得到那三条规矩', () => {
-    expect(traySrc).toContain('tray-why')
-    expect(traySrc).toContain('<summary>摊上来的材料有什么用、怎么摊</summary>')
-    expect(traySrc).toContain('排最前、不被筛掉、不会滚出窗口')
+  it('不再把检索优先级和窗口策略写进产品界面', () => {
+    const rendered = traySrc.slice(traySrc.indexOf('return ('), traySrc.lastIndexOf(')'))
+    expect(rendered).not.toContain('tray-why')
+    expect(rendered).not.toContain('不被筛掉')
+    expect(rendered).not.toContain('不会滚出窗口')
   })
 
   it('有材料的时候还是原来那一段（这一刀只砍空托盘那一档）', () => {

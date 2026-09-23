@@ -186,6 +186,96 @@ def test_看图那条路走的是同一个判据():
     assert any(p.get("type") == "image_url" for p in sent[1]["messages"][-1]["content"])
 
 
+def test_看图模型不收temperature就删掉它立即重试():
+    """Daily Journey 自动描述的真实 400：推理模型只接受默认 temperature=1。
+
+    修复必须落在 ``ask_image``，这样自动描述、手动描述、图片转表格和设置页探针
+    四条入口一起恢复；不能只在 Journey 路由里吞错等三分钟。
+    """
+    sent: list[dict] = []
+    temp_400 = {"error": {
+        "message": "Unsupported value: 'temperature' does not support 0.1 with this model. Only the default (1) value is supported.",
+        "type": "invalid_request_error", "param": "temperature", "code": "unsupported_value",
+    }}
+
+    class _Cli:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            sent.append(dict(json or {}))
+            if len(sent) == 1:
+                return _Resp(400, temp_400)
+            return _Resp(200, {"choices": [{"message": {"content": "正在编辑代码"}}]})
+
+    cfg = {"base_url": "http://temp/v1", "model": "vl-temp", "api_key": "k"}
+    vision._UNSUPPORTED_CHAT_PARAMS.pop(("http://temp/v1", "vl-temp"), None)
+    with mock.patch.object(vision.httpx, "AsyncClient", _Cli), \
+         mock.patch.object(vision.store, "get_active_vision_config",
+                           lambda: cfg):
+        out = asyncio.run(vision.ask_image("这个人在做什么？", b"\x89PNG", max_tokens=600))
+        first_sent = list(sent)
+        # 同一进程里的下一张图直接按已知能力发，不再先制造一个 400。
+        out2 = asyncio.run(vision.ask_image("再读一张", b"\x89PNG", max_tokens=600))
+    assert out == "正在编辑代码"
+    assert len(first_sent) == 2
+    assert first_sent[0]["temperature"] == 0.1
+    assert "temperature" not in first_sent[1]
+    assert first_sent[1]["max_tokens"] == 600
+    assert out2 == "正在编辑代码" and len(sent) == 3
+    assert "temperature" not in sent[2] and sent[2]["max_tokens"] == 600
+
+
+def test_看图能连续协商token字段和temperature():
+    """同一模型可能先拒绝 max_tokens，换字段后才继续拒绝 temperature。"""
+    sent: list[dict] = []
+    temp_400 = {"error": {
+        "message": "Unsupported value: 'temperature' does not support 0.1 with this model.",
+        "type": "invalid_request_error", "param": "temperature", "code": "unsupported_value",
+    }}
+
+    class _Cli:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            sent.append(dict(json or {}))
+            if len(sent) == 1:
+                return _Resp(400, REAL_400_OBJ)
+            if len(sent) == 2:
+                return _Resp(400, temp_400)
+            return _Resp(200, {"choices": [{"message": {"content": "完成"}}]})
+
+    cfg = {"base_url": "http://chain/v1", "model": "vl-chain", "api_key": "k"}
+    vision._UNSUPPORTED_CHAT_PARAMS.pop(("http://chain/v1", "vl-chain"), None)
+    with mock.patch.object(vision.httpx, "AsyncClient", _Cli), \
+         mock.patch.object(vision.store, "get_active_vision_config",
+                           lambda: cfg):
+        out = asyncio.run(vision.ask_image("读图", b"\x89PNG", max_tokens=24))
+        first_sent = list(sent)
+        out2 = asyncio.run(vision.ask_image("再读一张", b"\x89PNG", max_tokens=24))
+    assert out == "完成" and len(first_sent) == 3
+    assert "max_tokens" in first_sent[0] and "temperature" in first_sent[0]
+    assert "max_completion_tokens" in first_sent[1] and "temperature" in first_sent[1]
+    assert "max_completion_tokens" in first_sent[2] and "temperature" not in first_sent[2]
+
+    assert out2 == "完成" and len(sent) == 4
+    assert "max_completion_tokens" in sent[3] and "max_tokens" not in sent[3]
+    assert "temperature" not in sent[3]
+
+
 def test_写作那条线一个字都不发max_tokens():
     """**P26 #1 量出来的结论**：`_payload` 那条线（写作 / 打分 / 工具循环全走它）
     本来就统一在 `max_completion_tokens` 上，所以「写作那档看起来是好的」不是因为

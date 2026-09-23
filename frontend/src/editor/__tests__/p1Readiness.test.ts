@@ -93,11 +93,12 @@ describe('页边圆点（P1-1d）', () => {
     expect(paras.length).toBe(150)
     expect(chunked(paras, MARGIN_BATCH).map((c) => c.length)).toEqual([80, 70])
   })
-  it('悬停那句话：一段 · 关系 · 人话 · 规则 · 还有别的', () => {
+  it('悬停只说用户需要的关系和操作，不暴露算法实现', () => {
     const t = markTitle({ line: 12, relation: 'conflict', say: '跟知识库 5-8 的记录不一致', kinds: 2 })
     expect(t).toContain('这一段（第 12 行起）· 冲突')
-    expect(t).toContain('每段一个')
-    expect(t).toContain('含数字 / 日期')
+    expect(t).toContain('含数字或日期')
+    expect(t).toContain('悬停查看，点击处理')
+    expect(t).not.toContain('零模型')
     expect(t).toContain('另外 1 种关系')
     expect(markTitle({ line: 1, relation: 'corroborated', say: 'x' })).not.toContain('另外')
     expect(Object.keys(RELATION_LABEL).sort()).toEqual(['accumulation', 'conflict', 'continuation', 'corroborated', 'merge', 'unsupported'])

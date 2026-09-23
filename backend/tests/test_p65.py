@@ -478,6 +478,6 @@ def test_3_stuck_rounds那条结论今天更硬了_advisory让它买得更少():
     assert 'key = f"{verdict.dimension}\\u0000{verdict.message}"' in src
     assert "streak = cur[key]" in src
 
-    # `citations_present` 的 `located == 0` 两档确实是 advisory
+    # `citations_present` 的 `located == 0` 两档 + material_thin 的两档确实是 advisory
     g = inspect.getsource(grounding)
-    assert g.count("advisory=True") == 2
+    assert g.count("advisory=True") == 4

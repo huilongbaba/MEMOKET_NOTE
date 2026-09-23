@@ -109,33 +109,15 @@ describe('P46 #4 「说的是你选中的这一段」那两行能跳回去', () 
   })
 })
 
-describe('P46 #5 预填不再跟着正文首行边打字边变', () => {
-  // **真机上数出来的**（`$S/p46/steps/p46intent.mjs`，打包壳、真键盘、160ms 一个字）：
-  // 一个字一个字敲 `# 周报 9-20：这周把众筹页面的文案定稿了，3月12号上线。`（32 个字），
-  // 「目标」那一格**变了 19 次**——第 3 个字先跳到另一个模板（「围绕「周」写清楚一件事」），
-  // 第 4 个字跳回「周报…」，第 11–23 个字一个字一个字长出半句话。
-  // P43 量过 CPU（0.03–0.10ms / 次，占一帧的 0.6%）——**这不是性能问题，是那 19 帧**。
-  it('防抖是 500ms，而且挂在**算出来的名字**上，不是 `content`', () => {
-    expect(appSrc).toContain('const INTENT_PREFILL_IDLE_MS = 500')
-    expect(appSrc).toContain('const [settledTitle, setSettledTitle] = useState(shownTitle)')
-    expect(appSrc).toContain('setSettledTitle(shownTitle), INTENT_PREFILL_IDLE_MS')
-    expect(appSrc).toContain('}, [shownTitle, settledTitle])')
+describe('P46 #5 标题编辑不会触发写作任务生成', () => {
+  it('旧的标题防抖和重推链路已移除', () => {
+    expect(appSrc).not.toContain('INTENT_PREFILL_IDLE_MS')
+    expect(appSrc).not.toContain('settledTitle')
+    expect(appSrc).not.toContain('resolveIntent(i, shownTitle)')
   })
 
-  it('**换篇不等那 500ms**——晚半秒填出来会被读成「这篇没预填」', () => {
-    expect(appSrc).toContain("useEffect(() => { setSettledTitle(displayTitle({ title, content })) },")
-  })
-
-  it('接线洞：预填真的走防抖过的那一份，不是 `shownTitle`', () => {
-    expect(appSrc).toContain("resolveIntent(i, settledTitle)")
-    expect(appSrc).not.toContain("resolveIntent(i, shownTitle)")
-    expect(appSrc).toContain('}, [settledTitle, current?.id])')
-  })
-
-  it('P43 #2 / P31 #1 那两条闸一个字没退', () => {
-    // 名字还是按「界面上那个名字」算的（认正文 H1，不只认标题框）
-    expect(appSrc).toContain('const shownTitle = useMemo(() => displayTitle({ title, content }), [title, content])')
-    // 用户改过的永不覆盖
-    expect(appSrc).toContain("i.source === 'user' ? i :")
+  it('任务只在打开笔记和用户保存时变化', () => {
+    expect(appSrc).toContain('setIntent(resolveIntent(n.intent, d.title))')
+    expect(appSrc).toContain('const saveIntent = useCallback')
   })
 })

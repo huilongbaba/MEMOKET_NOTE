@@ -55,6 +55,7 @@ import db_guard  # noqa: E402
 # 搬过来的时候当场发现名单里有一条在现在的提示词里一个字都找不到了。
 from app.harness.checks.tap import (leaked_prompt_examples,  # noqa: E402
                                     scaffold_headings)
+from app.harness.checks.grounding_rules import placeholder_lines  # noqa: E402
 
 def _title_tokens(title: str) -> set[str]:
     """把标题切成 2-gram 主题词集合。中文没有空格，2-gram 比单字稳，
@@ -143,9 +144,16 @@ def _no_empty_heading(text: str) -> tuple[bool, str]:
 
 def _no_meta_commentary(text: str) -> tuple[bool, str]:
     pats = [r"本文将", r"本节将", r"接下来我们", r"下面我们将", r"这一节将",
-            r"本篇笔记(将|旨在)", r"值得注意的是[，,]?$"]
+            r"本篇笔记(将|旨在)", r"值得注意的是[，,]?$",
+            r"(?:我|我们)?需要先回答(?:读者|用户).{0,16}(?:追问|问题)",
+            r"这里(?:先|需要)(?:回答|说明|交代)"]
     hits = [p for p in pats if re.search(p, text)]
     return (not hits, f"元评论 {hits or '无'}")
+
+
+def _no_material_placeholder(text: str) -> tuple[bool, str]:
+    hits = placeholder_lines(text)
+    return (not hits, f"材料占位句 {hits or '无'}")
 
 
 # 数字类的"具体度"标记——出现这些就是在给出可被当真的量化事实
@@ -210,6 +218,7 @@ CHECKS = [
     ("中段收束", _single_ending),
     ("空壳标题", _no_empty_heading),
     ("元评论", _no_meta_commentary),
+    ("材料占位", _no_material_placeholder),
     ("数字无据", _figures_are_hedged),
     ("示例泄漏", _no_prompt_example_leak),
     ("来源宣称", _no_false_source_claim),

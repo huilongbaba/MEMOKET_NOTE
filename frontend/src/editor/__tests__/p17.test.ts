@@ -82,11 +82,10 @@ describe('P17 #5 校验结果 / 改动层消息不跟篇', () => {
 })
 
 describe('P17 #8 空库图例', () => {
-  // P32 #3 把这一格改了：空库时**整份图例**折成这一句（原来是四段，信息量为零却占掉大半屏），
-  // 但 P17 要的两件事一个字没少——说了「不画圆点」，也说了什么时候开始判。
-  it('空库那句话说了「不画圆点」和什么时候开始判，而且真的挂在 kbEmpty 这一支上', () => {
-    expect(KB_EMPTY_NOTE).toMatch(/不画圆点/)
-    expect(KB_EMPTY_NOTE).toMatch(/第一条记录/)
+  it('空库只告诉用户现状和下一步，而且真的挂在 kbEmpty 这一支上', () => {
+    expect(KB_EMPTY_NOTE).toMatch(/知识库还是空的/)
+    expect(KB_EMPTY_NOTE).toMatch(/导入资料/)
+    expect(KB_EMPTY_NOTE).not.toMatch(/圆点|模型|算法/)
     expect(memSrc).toMatch(/\{kbEmpty \? \(/)
     expect(memSrc).toMatch(/\{KB_EMPTY_NOTE\}/)
   })

@@ -191,7 +191,7 @@ def test_4_前端认得这个新的停机原因():
     app = (pathlib.Path(__file__).resolve().parents[2] / "frontend/src/App.tsx").read_text(encoding="utf-8")
     assert "reason === 'best_stalled'" in app
     i = app.index("reason === 'best_stalled'")
-    j = app.index("'到达轮数上限，自动停止'")
+    j = app.index("'本次达到轮数上限但尚未达标")
     assert i < j, "得排在兜底那句前面，不然写了也走不到"
 
 

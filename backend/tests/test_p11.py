@@ -156,6 +156,14 @@ def test_1_note_harness_请求带的意图优先_不带用库里那份(tmp_path,
     assert r.status_code == 200, r.text
     assert got["intent"] == "目标：库里的目标；读者：团队"
 
+    # 老版本按标题生成的 prefill 已从界面撤掉；请求不带意图时，后端也不能
+    # 从数据库把这条不可见要求重新装进 Harness。
+    c.put(f"/api/notes/{n['id']}/intent", headers=H,
+          json={"goal": "旧周报", "reader": "团队", "done": "卡住的说清要什么", "source": "prefill"})
+    r = c.post("/api/note-harness/run", headers=H, json={"note_id": n["id"], "content": n["content"]})
+    assert r.status_code == 200, r.text
+    assert got["intent"] == ""
+
 
 def test_1_compose_block_的意图进_ctx(tmp_path, monkeypatch, no_skills):
     c = _client(tmp_path, monkeypatch)

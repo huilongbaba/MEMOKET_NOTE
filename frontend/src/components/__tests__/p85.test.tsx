@@ -91,6 +91,28 @@ function termsLine(el: HTMLElement): string {
 
 afterEach(() => { document.body.innerHTML = ''; setPendingKbQuery('') })
 
+describe('知识库总览的一级入口', () => {
+  it('顶部统计卡可以直接进入对应视图，底部不再藏一排小按钮', async () => {
+    const opened: string[] = []
+    const el = document.createElement('div')
+    document.body.append(el)
+    const root = createRoot(el)
+    await act(async () => {
+      root.render(<KbDashboard actions={{ ...ACTIONS, onOpen: (id) => opened.push(id) }} />)
+      await Promise.resolve()
+    })
+
+    const cards = Array.from(el.querySelectorAll<HTMLButtonElement>('button.stat-tile'))
+    expect(cards.map((c) => c.textContent)).toEqual(expect.arrayContaining([
+      expect.stringContaining('条事实'), expect.stringContaining('个主题'),
+      expect.stringContaining('个实体'), expect.stringContaining('场会议'),
+    ]))
+    await act(async () => { cards[0].click(); cards[1].click() })
+    expect(opened).toEqual(['kb:facts', 'kb:graph'])
+    expect(Array.from(el.querySelectorAll('.chip')).map((x) => x.textContent)).not.toContain('定期回顾')
+  })
+})
+
 describe('P85 A：知识库搜索框那一行（`components/` 下第一条前端闸）', () => {
   it('① 有结果 → 说「命中词：」，「找过：」一个字都不出现', async () => {
     reply = { facts: [fact(1), fact(2)], took_ms: 7, terms: ['潜水艇', '排期'] }

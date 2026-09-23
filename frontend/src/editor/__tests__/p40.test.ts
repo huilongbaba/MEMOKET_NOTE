@@ -42,7 +42,7 @@ describe('P40 #2 收工那句话要说清是谁的毛病、下一步做什么', 
 
   it('**接线洞**：App.tsx 的 check_stuck 那一支真的调了 stuckTail', () => {
     // 函数写对了没接上，上面三条全绿——P32 / P34 / P36 三次都栽在这个形状上。
-    const line = appSrc.split('\n').find((l: string) => l.includes('这条判据连响'))
+    const line = appSrc.split('\n').find((l: string) => l.includes('这次没达到交付标准'))
     expect(line, 'App.tsx 里找不到收工那句话').toBeTruthy()
     expect(line).toContain('stuckTail(stuckCheckRef.current.check)')
   })

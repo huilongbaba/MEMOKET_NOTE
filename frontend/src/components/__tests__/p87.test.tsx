@@ -291,9 +291,9 @@ describe('P87 ③：导入落托盘的四条分支（`MemoryPanel.landImportInTr
     expect(landed).toEqual([])          // **一次 PUT 都没发**
     const msgs = newToasts(before)
     expect(msgs).toHaveLength(1)
-    expect(msgs[0]).toBe('导入了 2 篇；没有打开着的笔记，这次没进托盘（打开一篇再导，会先摊到它桌上）')
+    expect(msgs[0]).toBe('导入了 2 篇；当前没有打开的笔记，因此没有加入本篇材料')
     // ⚠️ 这一档**不许**说成功那句
-    expect(msgs[0]).not.toContain('已进托盘')
+    expect(msgs[0]).not.toContain('已加入本篇材料')
   })
 
   it('落成了、有目标笔记 —— 进托盘、标题用笔记自己的、并且说一句', async () => {
@@ -310,7 +310,7 @@ describe('P87 ③：导入落托盘的四条分支（`MemoryPanel.landImportInTr
       { id: 'n2', title: '排期', content: '正文二' },
     ])
     const msgs = newToasts(before)
-    expect(msgs).toEqual(['导入的 2 篇已进托盘——写那篇时优先用；不想要就在托盘里移除'])
+    expect(msgs).toEqual(['导入的 2 篇已加入本篇材料；AI 写这篇时会优先参考'])
   })
 
   it('笔记拉不回来 / 没有标题时，退回文件名**并且去掉扩展名** —— 托盘里不摆「a.md」', async () => {

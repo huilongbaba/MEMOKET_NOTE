@@ -102,7 +102,7 @@ describe('TrayPanel：开关 / 剪藏 / 标题回退 / 一批一次 PUT', () => 
     await act(async () => { await Promise.resolve() })
     const box = host.querySelector<HTMLInputElement>('.tray-default input')
     expect(box?.checked).toBe(true)
-    expect(host.textContent).toContain('导入 / 录音 / 剪藏默认进托盘')
+    expect(host.textContent).toContain('导入 / 录音 / 剪藏后加入本篇材料')
     expect(host.querySelector('.tray-clip-url')?.getAttribute('placeholder')).toContain('网址')
     expect((host.querySelector('.tray-clip-go') as HTMLButtonElement).disabled).toBe(true)     // 没贴网址不能点
     await act(async () => { box!.click() })
@@ -177,7 +177,7 @@ describe('AudioRecorder：录音的默认去处', () => {
   })
   it('进托盘那条路：转写后 requestTrayAdd(kind import) 不 onTranscript；App 把 current.id 传进去（量程：源码接线）', () => {
     expect(recorderSrc).toContain("target.current === 'tray') requestTrayAdd({ kind: 'import'")
-    expect(recorderSrc).toContain("label: '录音 → 进托盘'")
+    expect(recorderSrc).toContain("label: '录音 → 本篇材料'")
     expect(appSrc).toContain('<AudioRecorder onTranscript={insertAtCursor} onIngested={setJob} offline={asrOffline} noteId={current?.id} />')
   })
 })
