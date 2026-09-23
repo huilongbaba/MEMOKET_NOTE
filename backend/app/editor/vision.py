@@ -23,6 +23,15 @@ class VisionError(RuntimeError):
     pass
 
 
+# 一个服务进程里，同一端点/模型的参数能力不会在相邻两张图之间变化。第一次
+# 根据明确的 400 完成协商后记住结果，批量描述余下截图时不再每张图都先撞两次 400。
+_UNSUPPORTED_CHAT_PARAMS: dict[tuple[str, str], set[str]] = {}
+
+
+def _remember_unsupported(key: tuple[str, str], param: str) -> None:
+    _UNSUPPORTED_CHAT_PARAMS.setdefault(key, set()).add(param)
+
+
 async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
                     *, max_tokens: int = 1200, timeout: float = 300.0,
                     system: str = "", cfg: dict | None = None) -> str:
@@ -48,31 +57,49 @@ async def ask_image(prompt: str, image: bytes, mime: str = "image/png",
         {"type": "text", "text": prompt},
         {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
     ]})
+    endpoint_key = (str(cfg["base_url"]).rstrip("/"), str(cfg["model"]))
+    unsupported = _UNSUPPORTED_CHAT_PARAMS.get(endpoint_key, set())
+    # 跟随 GPT 写作配置时，provider 已经明确告诉我们该发哪个 token 上限字段；
+    # 单独填写的看图端点没有 provider，只能先发兼容面更广的 max_tokens 再协商。
+    token_field = ("max_completion_tokens"
+                   if cfg.get("provider") == "gpt" or "max_tokens" in unsupported
+                   else "max_tokens")
     body = {
         "model": cfg["model"],
         "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.1,
+        token_field: max_tokens,
     }
+    if "temperature" not in unsupported:
+        body["temperature"] = 0.1
     headers = {"Authorization": f"Bearer {cfg['api_key'] or 'no-key'}"}
     try:
         async with httpx.AsyncClient(timeout=timeout) as c:
-            r = await c.post(f"{cfg['base_url']}/chat/completions",
-                             json=body, headers=headers)
+            # 用户可以把任意 OpenAI-compatible 端点填进“看图”。有的只认
+            # max_completion_tokens，有的只接受默认 temperature；而且同一个端点
+            # 可能按顺序各拒绝一次。每次只根据 400 中明确点名的参数调整请求，
+            # 最多处理这两个已知差异，其他 400 原样报给用户。
+            for _attempt in range(3):
+                r = await c.post(f"{cfg['base_url']}/chat/completions",
+                                 json=body, headers=headers)
+                if llm.rejects_max_tokens(r.status_code, r.content) and \
+                        llm.swap_to_max_completion_tokens(body):
+                    _remember_unsupported(endpoint_key, "max_tokens")
+                    continue
+                if llm.drop_unsupported_temperature(body, r.status_code, r.content):
+                    _remember_unsupported(endpoint_key, "temperature")
+                    continue
+                break
             # **新一代 OpenAI 模型不收 `max_tokens`**（P23 #4 实拍抓到的）：设置页新加的
             # 「测一下（会发一张图）」第一次真发图，用户库里存着的那档（`gpt-5.6-luna` @
             # api.openai.com）当场回 400「Unsupported parameter: 'max_tokens' is not
             # supported with this model. Use 'max_completion_tokens' instead.」——
             # 也就是说**这一档的看图从来就没成过**（图片转表格 / 屏幕活动描述都走这儿），
             # 只是以前没有任何一处会去发一张图，所以没人知道。
-            # 不能直接换成 `max_completion_tokens`：本地那几家（Ollama / LM Studio /
-            # llama.cpp）认的是 `max_tokens`。**按对方的回话改一次再来**，一次就够。
+            # 不能全部直接换成 `max_completion_tokens`：本地那几家（Ollama / LM Studio /
+            # llama.cpp）认的是 `max_tokens`。跟随 GPT 配置时直接用正确字段；未知端点
+            # 按对方的回话调整，并记住结果供后续图片复用。
             # 判据和换字段这两步都搬去了 `util/llm`（P26 #1）：同一件事仓里有三处
             # 在做，P23 只修了这一处，设置页那条纯文字探针还原样发着 `max_tokens`。
-            if llm.rejects_max_tokens(r.status_code, r.content) and \
-                    llm.swap_to_max_completion_tokens(body):
-                r = await c.post(f"{cfg['base_url']}/chat/completions",
-                                 json=body, headers=headers)
             r.raise_for_status()
             data = r.json()
     except httpx.HTTPStatusError as exc:

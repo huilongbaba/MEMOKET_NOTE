@@ -63,6 +63,17 @@ def test_rejects_temperature_handles_non_json_body_gracefully():
     assert llm._rejects_temperature(400, b"") is False
 
 
+def test_drop_unsupported_temperature_only_removes_the_rejected_parameter():
+    body = json.dumps({"error": {
+        "message": "Unsupported value: 'temperature' does not support 0.1 with this model. Only the default (1) value is supported.",
+        "type": "invalid_request_error", "param": "temperature", "code": "unsupported_value",
+    }}).encode()
+    payload = {"model": "m", "temperature": 0.1, "max_tokens": 600}
+    assert llm.drop_unsupported_temperature(payload, 400, body) is True
+    assert payload == {"model": "m", "max_tokens": 600}
+    assert llm.drop_unsupported_temperature(payload, 400, body) is False
+
+
 # ------------------------------------------------ 模型流怎么被解析 ---
 #
 # 这两个解析器决定了上层看到什么：`_consume_sse` 给出的 finish_reason 是

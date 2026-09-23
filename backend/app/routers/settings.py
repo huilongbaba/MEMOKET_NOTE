@@ -153,7 +153,9 @@ async def probe_endpoint(kind: str, base_url: str, model: str = "", api_key: str
             try:
                 answer = await vision.ask_image(
                     f"这张图上写着一个三位数，只回那三个数字，别写别的。",
-                    probe_png(), max_tokens=24, timeout=timeout,
+                    # 推理模型会把一部分 completion budget 用在 reasoning 上；24
+                    # 实测会出现“正确看到了图但正文为空”，造成看图探针假阴性。
+                    probe_png(), max_tokens=128, timeout=timeout,
                     cfg={"base_url": base, "model": model, "api_key": api_key})
             except vision.VisionError as exc:
                 return ProviderTestOut(

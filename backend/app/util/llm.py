@@ -393,6 +393,18 @@ def _rejects_temperature(status_code: int, body: bytes) -> bool:
     return err.get("param") == "temperature" and err.get("code") == "unsupported_value"
 
 
+def drop_unsupported_temperature(payload: dict, status_code: int, body: bytes) -> bool:
+    """端点明确拒绝自定义 temperature 时，原地删掉它并要求调用方重试。
+
+    看图走独立的 HTTP 请求，不能直接复用 ``complete``，但必须复用同一条
+    精确判据；否则写作能在推理模型上工作，自动图片描述却会一直 400。
+    """
+    if not _rejects_temperature(status_code, body) or "temperature" not in payload:
+        return False
+    payload.pop("temperature")
+    return True
+
+
 def _drop_rejected_param(payload: dict, status_code: int, body: bytes) -> bool:
     """端点不认某个参数时把它剥掉，返回要不要重试。
 
@@ -403,8 +415,7 @@ def _drop_rejected_param(payload: dict, status_code: int, body: bytes) -> bool:
     if _rejects_cache_key(status_code, body):
         payload.pop("prompt_cache_key", None)
         return True
-    if _rejects_temperature(status_code, body):
-        payload.pop("temperature", None)
+    if drop_unsupported_temperature(payload, status_code, body):
         return True
     # 上限字段那一对（P30 #5）。**两条都带「另一个还在」这个前提**：
     # 剥掉之后 body 里一个上限都不剩的话，重试拿回来的是一次**完全没有上限**的
