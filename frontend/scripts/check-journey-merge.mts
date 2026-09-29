@@ -7,7 +7,7 @@
  *     npx tsx scripts/check-journey-merge.mts
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { BLIP_SEC, DENY_APPS, DENY_TITLE_WORDS, IDLE_SEC, keepBackendFields, mergeBlips, staleTick, sweepOrphans, trimIdleTail, type Segment } from '../../desktop/src/capture.ts'
@@ -50,6 +50,8 @@ for case in json.load(sys.stdin):
 print(json.dumps(out))
 `
 const venv = new URL('../../backend/.venv/bin/python', import.meta.url).pathname
+// 后端 venv 不在（只装了前端）：这一项对拍没法做，跳过而不是崩——和别的对拍脚本一个规矩。
+if (!existsSync(venv)) { console.log('· 后端 venv 不在，跳过'); process.exit(0) }
 const got = JSON.parse(execFileSync(venv, ['-c', py], {
   input: JSON.stringify(CASES.map((c) => c.input)), encoding: 'utf8',
 })) as unknown[][]

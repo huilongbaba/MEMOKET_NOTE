@@ -11,7 +11,7 @@
  *     npx tsx scripts/check-api-wired.mts
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** 有意不接前端的。**每一条都要写清楚为什么**，不然它就只是「懒得接」的遮羞布。 */
@@ -44,6 +44,8 @@ print(json.dumps(sorted({p for p in walk(app.routes) if p.startswith("/api")})))
 print("ROUTES>>>")
 `
 const venv = new URL('../../backend/.venv/bin/python', import.meta.url).pathname
+// 后端 venv 不在（只装了前端）：这一项对拍没法做，跳过而不是崩——和别的对拍脚本一个规矩。
+if (!existsSync(venv)) { console.log('· 后端 venv 不在，跳过'); process.exit(0) }
 const raw = execFileSync(venv, ['-c', py], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
 const routes = JSON.parse(raw.split('<<<ROUTES')[1].split('ROUTES>>>')[0].trim()) as string[]
 

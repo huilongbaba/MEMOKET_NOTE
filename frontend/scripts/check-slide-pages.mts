@@ -6,6 +6,7 @@
  *     npx tsx scripts/check-slide-pages.mts
  */
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 
 import { slidePages } from '../src/util/slidePages'
 
@@ -27,6 +28,8 @@ from app.harness.checks.slides import split_pages
 print(json.dumps([len(split_pages(m)) for m in json.load(sys.stdin)]))
 `
 const venv = new URL('../../backend/.venv/bin/python', import.meta.url).pathname
+// 后端 venv 不在（只装了前端）：这一项对拍没法做，跳过而不是崩——和别的对拍脚本一个规矩。
+if (!existsSync(venv)) { console.log('· 后端 venv 不在，跳过'); process.exit(0) }
 const got = JSON.parse(execFileSync(venv, ['-c', py], {
   input: JSON.stringify(CASES.map((c) => c.md)), encoding: 'utf8',
 })) as number[]

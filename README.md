@@ -127,7 +127,7 @@ n-gram 生成有两个要点：从**最靠近光标的片段**开始（续写时
 
 ```bash
 cd backend
-cp ../.env.example .env   # 按需改 LLM / Whisper 地址（后端从自己的目录读 .env）
+cp .env.example .env      # 按需改 LLM / Whisper 地址（后端从自己的目录读 .env）
 python3 -m venv .venv     # Python 3.11–3.14 都验证过；requirements 里的 memoket-kite 装自 GitHub，需要 git 和网络
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 PYTHONPATH=. .venv/bin/uvicorn app.main:app --reload --port 8000
@@ -141,13 +141,14 @@ npm run dev               # http://localhost:5173
 
 ## 桌面版
 
-先准备后端虚拟环境和前端依赖，桌面版使用构建后的前端：
+先准备后端虚拟环境（桌面壳在开发模式下直接用 `backend/.venv/bin/python` 起后端，没有它启动就报错）和前端依赖，桌面版使用构建后的前端。需要 Node ≥ 22.12：
 
 ```bash
-npm --prefix frontend run build
+python3 -m venv backend/.venv && backend/.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+npm --prefix frontend install && npm --prefix frontend run build
 cd desktop && npm install
-npm run dev            # 编译桌面壳并启动 Electron，默认显示顶部灵动岛；不启动 Vite
-npm run dist           # 打包：先 PyInstaller 后端、再 electron-builder → out/*.dmg
+npm run dev            # 编译桌面壳并启动 Electron，默认显示顶部灵动岛；不启动 Vite。第一次会下载 Electron 本体（约 110 MB，慢；断了可 npx install-electron 重来）
+npm run dist           # 打包：先 PyInstaller 后端、再 electron-builder → out/*.dmg（先 backend/.venv/bin/pip install pyinstaller）
 npx electron . --user=<id> --probe=<name> --dark   # 截图核对用：固定用户 / 摆好某个界面状态 / 强制暗色
 ```
 
