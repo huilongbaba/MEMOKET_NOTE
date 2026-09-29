@@ -116,7 +116,7 @@ npm --prefix desktop test
 
 # 前端交互回归：使用模拟桥接，不读取系统剪贴板；知识库面板与相关记忆条另有一套，召回接口用假的
 cd frontend
-npm exec -- vitest run src/components/__tests__/desktopCompanion.test.tsx src/components/__tests__/companionKnowledge.test.tsx
+npm exec -- vitest run src/components/__tests__/desktopCompanion.test.tsx
 
 # 后端独立生成接口回归，不调用真实 Gemini
 cd ../backend

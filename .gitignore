@@ -19,6 +19,7 @@ artifacts/*
 !artifacts/_seed_empty.xml
 
 # 构建产物
+backend/.coverage
 frontend/tsconfig.tsbuildinfo
 desktop/tsconfig.tsbuildinfo
 

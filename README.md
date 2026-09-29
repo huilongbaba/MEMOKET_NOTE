@@ -126,11 +126,11 @@ n-gram 生成有两个要点：从**最靠近光标的片段**开始（续写时
 ## 快速开始
 
 ```bash
-cp .env.example .env      # 按需改 LLM / Whisper 地址
-
 cd backend
-pip install -r requirements.txt
-PYTHONPATH=. uvicorn app.main:app --reload --port 8000
+cp ../.env.example .env   # 按需改 LLM / Whisper 地址（后端从自己的目录读 .env）
+python3 -m venv .venv     # Python 3.11–3.14 都验证过；requirements 里的 memoket-kite 装自 GitHub，需要 git 和网络
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+PYTHONPATH=. .venv/bin/uvicorn app.main:app --reload --port 8000
 
 cd ../frontend
 npm install
@@ -183,7 +183,7 @@ cd backend
 pip install -r requirements.txt -r requirements-dev.txt
 PYTHONPATH=. pytest -q                     # 950 条，约 42 秒，不需要模型
 
-cd ../frontend && npm test                 # tsc + eslint + vitest + 19 个检查脚本
+cd ../frontend && npm test                 # tsc + eslint + vitest + 检查脚本；其中几个对拍脚本要用 backend/.venv，先按上面把后端装好
 ```
 
 两道闸门都在 `.github/workflows/ci.yml` 里，每次 push 和 PR 自动跑。

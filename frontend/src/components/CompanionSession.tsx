@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import type { AgentArtifact, AgentBridge, AgentMessage, AgentSession, AgentStatus, AgentTurnEvent } from '../desktop'
 import Icon from './Icon'
+import { fmtShortcut } from '../util/keys'
 import '../companion-session.css'
 
 type Props = {
@@ -508,7 +509,7 @@ export default function CompanionSession({ bridge, active, focusRequested, onEsc
         <textarea ref={textareaRef} aria-label="问 Claude" placeholder={attachments.length ? `问 Claude 关于这 ${attachments.length} 个文件…` : '问 Claude…'} rows={1} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposeKeyDown} />
         {running
           ? <button type="button" className="dc-icon dc-session-send" aria-label="停止" title="停下这一轮" onClick={interrupt}><Icon n="bx-stop" /></button>
-          : <button type="submit" className="dc-icon dc-session-send" aria-label="发送" title="发送 · ↵，换行 · ⇧↵" disabled={!draft.trim() && !attachments.length}><Icon n="bx-paper-plane" /></button>}
+          : <button type="submit" className="dc-icon dc-session-send" aria-label="发送" title={`发送 · ${fmtShortcut('↩')}，换行 · ${fmtShortcut('⇧↩')}`} disabled={!draft.trim() && !attachments.length}><Icon n="bx-paper-plane" /></button>}
       </form>
     </section>
   )
