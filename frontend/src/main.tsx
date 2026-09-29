@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { clientLog } from './api'
 import { restoreTheme } from './theme'
@@ -9,6 +8,14 @@ import './design-tokens.css'  // 最先：源令牌（唯一允许写字面颜�
 import './shell.css'   // 再：外壳令牌指向源令牌
 import './styles.css'  // 最后：老变量名指向那些令牌
 
+import './workspace.css'
+
+const App = React.lazy(() => import('./App'))
+const DesktopCompanion = React.lazy(() => import('./components/DesktopCompanion'))
+const DesktopLayerPreview = React.lazy(() => import('./components/DesktopLayerPreview'))
+const desktopSurface = new URLSearchParams(location.search).get('surface')
+if (desktopSurface === 'top' || desktopSurface === 'shelf') document.documentElement.classList.add('desktop-companion-root')
+
 restoreTheme()
 // 探针下报一次首帧耗时（从文档开始加载到 React 首次渲染完成）——包体瘦身有没有效，看这个数
 if (new URLSearchParams(location.search).get('probe')) requestAnimationFrame(() => void clientLog('info', `first paint ${Math.round(performance.now())} ms · js ${Math.round((performance.getEntriesByType('resource') as PerformanceResourceTiming[]).filter((r) => r.name.endsWith('.js')).reduce((a, r) => a + (r.transferSize || r.encodedBodySize || 0), 0) / 1024)} KB`, '', 'first-paint'))
@@ -16,6 +23,13 @@ if (new URLSearchParams(location.search).get('probe')) requestAnimationFrame(() 
 // 退出前把没存的正文存完（App 里监听 flush-save，存完回 flushed）
 window.memoketDesktop?.onFlush?.(() => window.dispatchEvent(new CustomEvent('flush-save')))
 window.memoketDesktop?.onMenu?.((name) => {
+  if (name.startsWith('workspace:')) {
+    const destination = name.slice('workspace:'.length)
+    if (destination.startsWith('note:')) window.dispatchEvent(new CustomEvent('open-note', { detail: destination.slice(5) }))
+    else if (destination.startsWith('command:')) window.dispatchEvent(new CustomEvent(destination.slice(8)))
+    else window.dispatchEvent(new CustomEvent('open-virtual', { detail: destination }))
+  }
+  if (name === 'quick-capture') window.dispatchEvent(new CustomEvent('open-quick-capture'))
   if (name === 'shortcuts') window.dispatchEvent(new CustomEvent('show-shortcuts'))
   if (name === 'export-all') window.dispatchEvent(new CustomEvent('export-all'))
   if (name === 'new-note') window.dispatchEvent(new CustomEvent('new-note'))
@@ -39,6 +53,9 @@ if (/Mac/.test(navigator.platform)) document.documentElement.classList.add('is-m
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ErrorBoundary><App /></ErrorBoundary>
+    <ErrorBoundary><React.Suspense fallback={<div role="status">正在准备工作空间…</div>}>
+      {desktopSurface === 'top' || desktopSurface === 'shelf' ? <DesktopCompanion surface={desktopSurface} />
+        : desktopSurface === 'preview' ? <DesktopLayerPreview /> : <App />}
+    </React.Suspense></ErrorBoundary>
   </React.StrictMode>,
 )

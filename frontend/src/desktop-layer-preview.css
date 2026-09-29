@@ -1,0 +1,19 @@
+.desk-preview { position: relative; width: 100%; min-height: 100dvh; overflow: hidden; background: var(--ws-nav); color: var(--ws-ink); font-family: var(--sans); }
+.desk-preview-label { position: absolute; top: 24px; left: 28px; display: flex; align-items: center; gap: var(--s-4); color: var(--ws-muted); font-size: var(--t-xs); }
+.desk-preview-label span:first-of-type { font-family: var(--mono); letter-spacing: var(--ls-caps); }
+.desk-preview-label span:last-child { border: 1px solid var(--ws-line); padding: var(--s-2) var(--s-4); border-radius: var(--r-pill); }
+.desk-preview-context { position: absolute; inset: 35% auto auto 12%; color: var(--ws-muted); pointer-events: none; }
+.desk-preview-context-line { display: block; width: 38px; height: 2px; background: var(--ws-accent); }
+.desk-preview-context p { font-size: var(--ws-title); font-weight: var(--w-med); line-height: 1.6; letter-spacing: var(--ls-tight); }
+.desk-preview-context > span:last-child { font-size: var(--t-sm); }
+.desk-preview-top { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(640px, calc(100% - 28px)); height: min(460px, calc(100dvh - 150px)); z-index: var(--z-float); pointer-events: none; }
+.desk-preview-top > .dc-companion { pointer-events: auto; }
+.desk-preview-footer { position: absolute; bottom: 24px; left: 28px; right: 28px; display: flex; align-items: end; justify-content: space-between; gap: var(--s-8); color: var(--ws-muted); font-size: var(--t-xs); line-height: 1.8; }
+.desk-preview-footer > span { max-width: 560px; }
+.desk-preview-footer strong { display: block; font-weight: var(--w-med); color: var(--ws-ink); }
+.desk-preview-footer a { display: inline-flex; align-items: center; gap: var(--s-4); color: var(--ws-accent); white-space: nowrap; }
+@media (max-width: 760px) {
+  .desk-preview-label { top: 68px; }
+  .desk-preview-context { left: 8%; top: 32%; }
+  .desk-preview-footer { align-items: start; flex-direction: column; gap: var(--s-4); }
+}

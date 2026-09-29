@@ -1,0 +1,40 @@
+/* 灵动岛 · 待办（CompanionTasks）。纯黑底上一列可以勾掉的事：18px 的圆环，勾上就填成白；
+   做完的沉到下面变淡。全部尺度走 --desk-* / --s-* 令牌（闸门 check-ui-tokens）。 */
+.dc-tasks { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: var(--s-4) var(--s-6) var(--s-5); color: var(--desk-ink); background: var(--desk-bg); font-family: var(--sans); }
+.dc-tasks-list { display: flex; flex: 1; flex-direction: column; gap: var(--s-1); min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; }
+.dc-task { display: flex; align-items: center; gap: var(--s-4); flex-shrink: 0; min-height: var(--desk-row-h); padding: var(--s-1) var(--s-3); border-radius: var(--desk-r-control); animation: dc-rise var(--desk-dur) var(--desk-ease) both; transition: background var(--desk-dur-fast) var(--desk-ease); }
+.dc-task:hover, .dc-task:focus-within { background: var(--desk-surface); }
+/* 圆环：完成是一件小而确定的事——填成白，勾变黑。 */
+.dc-companion .dc-task-check { display: inline-grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px; min-height: 0; padding: 0; border: 1px solid var(--desk-highlight); border-radius: var(--r-circle); background: transparent; color: transparent; transition: background var(--desk-dur-fast) var(--desk-ease), border-color var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease), transform var(--desk-dur-fast) var(--desk-ease); }
+.dc-companion .dc-task-check > .bx { font-size: var(--icon-sm); }
+.dc-companion .dc-task-check:hover:not(:disabled) { border-color: var(--desk-ink); background: transparent; color: var(--desk-muted); transform: none; }
+.dc-companion .dc-task-check:active:not(:disabled) { transform: scale(.9); }
+.dc-companion .dc-task-check:focus-visible { outline: 1px solid var(--desk-accent-line); outline-offset: 2px; }
+.dc-companion .dc-task-done .dc-task-check, .dc-companion .dc-task-done .dc-task-check:hover:not(:disabled) { border-color: var(--desk-ink); background: var(--desk-ink); color: var(--desk-on-ink); }
+.dc-task-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-ink); font-size: var(--desk-t-body); line-height: 1.4; transition: color var(--desk-dur) var(--desk-ease); }
+.dc-task-done .dc-task-text { color: var(--desk-faint); text-decoration: line-through; text-decoration-color: var(--desk-highlight); }
+.dc-companion .dc-task-remove { display: inline-grid; place-items: center; flex-shrink: 0; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: var(--r-circle); background: transparent; color: var(--desk-muted); opacity: 0; transition: opacity var(--desk-dur-fast) var(--desk-ease), background var(--desk-dur-fast) var(--desk-ease); }
+.dc-companion .dc-task-remove > .bx { font-size: var(--icon-sm); }
+.dc-task:hover .dc-task-remove, .dc-task:focus-within .dc-task-remove, .dc-companion .dc-task-remove:focus-visible { opacity: 1; }
+.dc-companion .dc-task-remove:hover:not(:disabled) { background: var(--desk-raised); color: var(--desk-ink); }
+/* 空态与全部完成：一句话，居中，不说教。 */
+.dc-tasks-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2); min-height: 0; text-align: center; }
+.dc-tasks-empty-ring { width: 22px; height: 22px; margin-bottom: var(--s-3); border: 1px solid var(--desk-highlight); border-radius: var(--r-circle); }
+.dc-tasks-empty p { margin: 0; color: var(--desk-ink); font-size: var(--desk-t-state); font-weight: var(--w-med); }
+.dc-tasks-empty small { max-width: 300px; color: var(--desk-muted); font-size: var(--desk-t-ui); line-height: 1.6; }
+.dc-tasks-done { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; margin: 0; padding: var(--s-2) var(--s-3) var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-ui); }
+.dc-tasks-done > .bx { color: var(--desk-accent); font-size: var(--icon-sm); }
+/* 前几天没做完的：一行，整行可点。 */
+.dc-companion .dc-tasks-carry { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); flex-shrink: 0; width: 100%; min-height: var(--desk-row-h); margin-top: var(--s-2); padding: 0 var(--s-3); border-radius: var(--desk-r-control); background: transparent; color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-normal); text-align: left; }
+.dc-companion .dc-tasks-carry:hover:not(:disabled) { background: var(--desk-surface); color: var(--desk-ink); }
+.dc-tasks-carry-action { display: inline-flex; align-items: center; gap: var(--s-1); flex-shrink: 0; color: var(--desk-ink); font-weight: var(--w-med); }
+.dc-tasks-carry-action > .bx { font-size: var(--icon-sm); }
+.dc-tasks-error { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; margin: var(--s-2) 0 0; padding: 0 var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-tasks-error > .bx { flex-shrink: 0; font-size: var(--icon-sm); }
+/* 添加：底部一行，和笔记页脚同一个位置；没有框，输入时只把上面那根发丝线提亮。 */
+.dc-tasks-add { display: flex; align-items: center; gap: var(--s-4); flex-shrink: 0; min-height: var(--desk-row-h); margin-top: var(--s-2); padding: 0 var(--s-3); border-top: 1px solid var(--desk-line); color: var(--desk-muted); transition: border-color var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease); }
+.dc-tasks-add:focus-within { border-top-color: var(--desk-highlight); color: var(--desk-ink); }
+.dc-tasks-add > .bx { flex-shrink: 0; font-size: var(--icon-md); }
+.dc-tasks .dc-tasks-add input { flex: 1; min-width: 0; width: auto; max-height: var(--desk-row-h); padding: 0; border: none; box-shadow: none; border-radius: 0; background: transparent; color: var(--desk-ink); font-size: var(--desk-t-body); }
+.dc-tasks .dc-tasks-add input::placeholder { color: var(--desk-faint); opacity: 1; }
+.dc-tasks .dc-tasks-add input:focus { outline: none; box-shadow: none; }

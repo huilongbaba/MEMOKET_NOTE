@@ -9,7 +9,10 @@ export default function ShortcutsPanel({ onClose }: { onClose: () => void }) {
   // Esc 关掉（capture 阶段，别让编辑器先吃掉）
   useRestoreFocus()
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return
+      if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+    }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])

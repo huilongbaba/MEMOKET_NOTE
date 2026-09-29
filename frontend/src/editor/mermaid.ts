@@ -156,7 +156,7 @@ function mermaidDecorations(state: EditorState): DecorationSet {
       const code = text.slice(firstNewline + 1, lastNewline > firstNewline ? lastNewline : undefined).trim()
       if (!code) return
 
-      const cursorInside = ranges.some((r) => r.from <= node.to && r.to >= node.from)
+      const cursorInside = !state.readOnly && ranges.some((r) => r.from <= node.to && r.to >= node.from)
       if (cursorInside) return // editing -- leave raw source visible, no widget
 
       decos.push(Decoration.replace({ block: true }).range(node.from, node.to))
@@ -181,7 +181,7 @@ export const mermaidPreview = StateField.define<DecorationSet>({
     return mermaidDecorations(state)
   },
   update(value, tr) {
-    return (tr.docChanged || tr.selection) ? mermaidDecorations(tr.state) : value
+    return (tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly) ? mermaidDecorations(tr.state) : value
   },
   provide: (f) => EditorView.decorations.from(f),
 })

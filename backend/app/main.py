@@ -21,7 +21,7 @@ from .database.ingest import asr
 from .database.kite.kite_memory import UserMemory
 from .util import llm, parent_watch
 from .util.config import get_settings
-from .routers import (assets, client_log, compose, compose_block, export, harness, import_sources, ingest, journey, kb, memory, note_harness, notes, profile,
+from .routers import (assets, client_log, compose, compose_block, decide, desktop_notes, export, harness, import_sources, ingest, journey, kb, memory, note_harness, notes, profile,
                       settings as settings_router, skills, tree, writing_plan)
 
 async def _memory_janitor_loop() -> None:
@@ -158,6 +158,8 @@ app.include_router(compose_block.router)
 app.include_router(profile.router)
 app.include_router(settings_router.router)
 app.include_router(export.router)
+app.include_router(desktop_notes.router)
+app.include_router(decide.router)
 
 
 

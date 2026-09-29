@@ -1,0 +1,8 @@
+.ws-notes-status { display: flex; align-items: center; gap: var(--s-5); margin: 0 0 16px; padding: 16px 18px; border: 1px solid var(--ws-line); border-radius: var(--r-sm); background: var(--ws-surface); color: var(--ws-muted); }
+.ws-notes-status > .bx { flex: 0 0 auto; font-size: var(--icon-nav); }
+.ws-notes-status > .spinner { flex: 0 0 auto; }
+.ws-notes-status > div { flex: 1; min-width: 0; }
+.ws-notes-status p { margin: 0; color: var(--ws-ink); font-size: var(--t-sm); line-height: 1.6; }
+.ws-notes-status small { display: block; margin-top: 3px; font-size: var(--t-xs); line-height: 1.7; overflow-wrap: anywhere; }
+.ws-notes-status > button { flex: 0 0 auto; border: 1px solid var(--ws-line); border-radius: var(--r-sm); padding: 6px 10px; background: var(--ws-surface); color: var(--ws-accent); font-size: var(--t-xs); cursor: pointer; }
+.ws-notes-status > button:disabled { cursor: default; opacity: .6; }

@@ -300,8 +300,6 @@
 }
 .gutter:hover, .gutter.dragging { background: var(--gutter-hover); }
 /* 启动栏底部的左栏开关，折叠时箭头掉头（Trilium 有 600ms 旋转动画） */
-.left-pane-toggle { transition: transform 600ms; }
-.left-pane-toggle.collapsed { transform: rotate(180deg); }
 
 /* 状态栏 */
 .status-bar {
@@ -475,8 +473,6 @@
 /* ---------------------------------------------------------------- 图标
    Boxicons 字体图标。尺寸按位置定，不在每个用点上写。 */
 .launcher-btn .bx { font-size: var(--icon-xl); }
-.launcher-logo { margin: 4px 0 6px; display: flex; justify-content: center; }
-.launcher-logo svg { border-radius: var(--r); box-shadow: var(--shadow-card); }
 .launcher-user .avatar {
   width: 26px; height: 26px; border-radius: var(--r-circle); display: flex; align-items: center; justify-content: center;
   /* 头像用品牌渐变（源仓库 design-theme.css:208 同样处理）——`--grad` 原来定义了
@@ -489,7 +485,6 @@
 .cm-icon .bx { font-size: var(--icon-lg); vertical-align: -2px; }
 .tree-item-button .bx { font-size: var(--icon-md); }
 .note-new-tab .bx { font-size: var(--icon-md); }
-.left-pane-toggle .bx { transition: transform 600ms; }
 
 /* 快速搜索：一个带图标的圆角框（theme-next/shell.css:561-640） */
 /* 搜索框照 0.5.10 的 `.sb-search`：高 40、圆角 12、内边距 0 14、gap 12、

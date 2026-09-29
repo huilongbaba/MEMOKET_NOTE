@@ -1,0 +1,150 @@
+/* AI 是挂在笔记上的一项任务：一行任务条，需要时才拉开一格抽屉；从不接管编辑器。 */
+.dc-ai-note { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--s-3); padding: var(--s-4) var(--s-7); overflow: hidden; color: var(--desk-ink); }
+.dc-ai-header { display: flex; align-items: center; gap: var(--s-4); flex-shrink: 0; min-height: 24px; }
+.dc-ai-header h2 { flex: 1; margin: 0; font-size: var(--t-md); font-weight: var(--w-med); color: var(--desk-ink); }
+.dc-companion .dc-ai-header > button { min-height: 24px; padding: 0 var(--s-3) 0 var(--s-2); }
+.dc-ai-provider { font-size: var(--t-2xs); color: var(--desk-faint); }
+.dc-ai-selection, .dc-ai-review { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--s-3); overflow: hidden; }
+.dc-ai-disclosure { margin: 0; font-size: var(--desk-t-micro); color: var(--desk-muted); line-height: 1.5; }
+.dc-ai-status { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-companion .dc-ai-status button { min-height: 22px; padding: 0 var(--s-3); font-size: var(--desk-t-micro); flex-shrink: 0; }
+.dc-ai-sources { flex: 1; min-height: 56px; overflow-y: auto; border-radius: var(--desk-r-control); background: var(--desk-surface); }
+.dc-ai-source { display: flex; align-items: flex-start; gap: var(--s-4); padding: var(--s-3) var(--s-4); cursor: pointer; transition: background var(--desk-dur-fast) var(--desk-ease); }
+.dc-ai-source + .dc-ai-source { border-top: 1px solid var(--desk-line); }
+.dc-ai-source:hover, .dc-ai-source-selected { background: var(--desk-hover); }
+.dc-ai-source:focus-within { outline: 1px solid var(--desk-accent-line); outline-offset: -1px; }
+.dc-ai-source input[type=checkbox] { width: 14px; height: 14px; margin: var(--s-1) 0 0; flex-shrink: 0; accent-color: var(--desk-accent); }
+.dc-ai-source > span { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.dc-ai-source strong { color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-med); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-ai-source small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.4; overflow-wrap: anywhere; }
+.dc-ai-source em { color: var(--desk-faint); font-size: var(--t-2xs); font-style: normal; }
+.dc-ai-instruction { display: flex; flex-direction: column; gap: var(--s-2); flex-shrink: 0; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-companion .dc-ai-instruction textarea { height: 50px; min-height: 50px; padding: var(--s-3) var(--s-4); border: none; box-shadow: none; border-radius: var(--desk-r-control); background: var(--desk-surface); font-size: var(--desk-t-ui); resize: none; }
+.dc-ai-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); flex-shrink: 0; padding-top: var(--s-2); }
+.dc-ai-footer > span { color: var(--desk-muted); font-size: var(--desk-t-micro); font-variant-numeric: tabular-nums; }
+.dc-companion .dc-ai-footer button { min-height: 26px; padding: 0 var(--s-4); font-size: var(--desk-t-micro); }
+.dc-companion .dc-ai-footer .dc-primary { padding: 0 var(--s-5); }
+.dc-ai-cancel { color: var(--desk-muted); }
+.dc-ai-empty { flex: 1; min-height: 90px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--s-3); padding: var(--s-4); text-align: center; color: var(--desk-muted); }
+.dc-ai-empty > .bx { font-size: var(--icon-xl); color: var(--desk-faint); }
+.dc-ai-empty strong { color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-med); }
+.dc-ai-empty p { margin: 0; font-size: var(--desk-t-micro); }
+.dc-ai-hint { margin: 0; color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; }
+/* 错误与提示是一行字，不是一个框。 */
+.dc-ai-error, .dc-ai-notice { display: flex; gap: var(--s-3); flex-shrink: 0; margin: 0; padding: var(--s-2) 0; max-height: 56px; overflow-y: auto; overflow-wrap: anywhere; color: var(--desk-ink); font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-ai-error > .bx { flex-shrink: 0; margin-top: var(--s-1); color: var(--desk-accent); }
+.dc-ai-notice { color: var(--desk-muted); }
+.dc-ai-review-meta { flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-companion .dc-ai-review-meta button { min-height: 22px; padding: 0 var(--s-3); font-size: var(--desk-t-micro); }
+.dc-ai-review-meta > span { flex: 1; text-align: right; }
+.dc-companion .dc-ai-title { flex-shrink: 0; min-height: 26px; padding: var(--s-1) var(--s-3); border: none; box-shadow: none; border-radius: var(--desk-r-control); background: var(--desk-surface); font-size: var(--desk-t-ui); font-weight: var(--w-med); }
+.dc-companion .dc-ai-body { flex: 1; min-height: 180px; padding: var(--s-4); border: none; box-shadow: none; border-radius: var(--desk-r-control); background: var(--desk-surface); font-size: var(--desk-t-ui); line-height: 1.7; resize: none; }
+.dc-ai-source-proof { position: relative; flex-shrink: 0; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-ai-source-proof summary { cursor: pointer; }
+.dc-ai-source-proof ul { position: absolute; bottom: calc(100% + var(--s-3)); left: 0; z-index: var(--z-float); width: 250px; max-height: 130px; overflow-y: auto; overflow-wrap: anywhere; margin: 0; padding: var(--s-4) var(--s-5); border-radius: var(--desk-r-card); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); color: var(--desk-ink); }
+.dc-ai-source-proof li { margin: var(--s-2) 0; }
+.dc-companion .dc-ai-note .dc-ai-return { align-self: flex-start; min-height: 0; padding: 0; color: var(--desk-accent); font-size: var(--desk-t-micro); }
+.dc-ai-options { flex-shrink: 0; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-ai-options summary { cursor: pointer; }
+.dc-ai-options .dc-ai-instruction { padding-top: var(--s-3); }
+.dc-ai-review-tabs { display: flex; gap: var(--s-1); flex-shrink: 0; padding: 2px; border-radius: var(--r-pill); background: var(--desk-surface); }
+.dc-companion .dc-ai-review-tabs button { min-height: 20px; padding: 0 var(--s-4); border-radius: var(--r-pill); color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-companion .dc-ai-review-tabs button[aria-selected=true] { color: var(--desk-ink); background: var(--desk-raised); box-shadow: var(--desk-control-shadow); }
+.dc-ai-rendered { flex: 1; min-height: 180px; overflow: auto; border-radius: var(--desk-r-control); background: var(--desk-surface); --fg: var(--desk-ink); --muted: var(--desk-muted); --accent: var(--desk-accent); --card-alt: var(--desk-bg); }
+.dc-ai-fallback { margin: 0; padding: var(--s-4); white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: var(--desk-t-micro); line-height: 1.65; color: var(--desk-ink); }
+.dc-ai-rendered .cm-editor { min-height: 100%; background: transparent; color: var(--desk-ink); font-size: var(--t-sm); }
+.dc-ai-rendered .cm-editor.cm-focused { outline: none; }
+.dc-ai-rendered .cm-scroller { font-family: inherit; line-height: 1.65; }
+.dc-ai-rendered .cm-content { padding: var(--s-4); caret-color: transparent; }
+.dc-ai-rendered .cm-line { padding: 0 var(--s-2); }
+.dc-ai-rendered .cm-md-table { overflow: auto; }
+.dc-ai-rendered .cm-md-table table { width: 100%; font-size: var(--desk-t-micro); color: var(--desk-ink); border-collapse: collapse; }
+.dc-ai-rendered .cm-md-table th, .dc-ai-rendered .cm-md-table td { border: 1px solid var(--desk-line); padding: var(--s-3) var(--s-4); white-space: normal; color: var(--desk-ink); background: transparent; }
+.dc-ai-rendered .cm-md-table th { background: var(--desk-surface); }
+.dc-ai-rendered .cm-md-table tbody tr:nth-child(even) td { background: var(--desk-bg); }
+.dc-ai-rendered .cm-md-table tbody tr:hover td { color: var(--desk-ink); background: var(--desk-hover); }
+.dc-ai-rendered .cm-mermaid-widget { overflow: auto; padding: var(--s-4); color: var(--desk-ink); background: transparent; }
+.dc-ai-rendered .cm-mermaid-widget svg { max-width: 100%; height: auto; }
+/* Mermaid 会把带 id 的主题规则嵌进每张 SVG。只覆盖这个只读预览，不动编辑器缓存的 SVG，也不压平数据系列的颜色。 */
+.dc-ai-rendered .cm-mermaid-widget svg { background: transparent !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class~="background"] { fill: transparent !important; }
+.dc-ai-rendered .cm-mermaid-widget svg text:not([class~="slice"]),
+.dc-ai-rendered .cm-mermaid-widget svg [class~="nodeLabel"],
+.dc-ai-rendered .cm-mermaid-widget svg [class~="nodeLabel"] p,
+.dc-ai-rendered .cm-mermaid-widget svg [class~="edgeLabel"],
+.dc-ai-rendered .cm-mermaid-widget svg [class~="edgeLabel"] p { fill: var(--desk-ink) !important; color: var(--desk-ink) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class~="node"] :is(rect, circle, ellipse, polygon, path) { fill: var(--desk-hover) !important; stroke: var(--desk-accent) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class~="cluster"] rect { fill: var(--desk-bg) !important; stroke: var(--desk-line) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class~="flowchart-link"] { stroke: var(--desk-accent) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg marker path { fill: var(--desk-accent) !important; stroke: var(--desk-accent) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class~="edgeLabel"] rect,
+.dc-ai-rendered .cm-mermaid-widget svg [class~="labelBkg"] { fill: var(--desk-bg) !important; background: var(--desk-bg) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class~="edgeLabel"] span { color: var(--desk-ink) !important; background: var(--desk-bg) !important; }
+.dc-ai-rendered .cm-mermaid-widget svg [class$="-axis"] :is(line, path) { stroke: var(--desk-muted) !important; }
+.dc-ai-result-actions { display: flex; align-items: center; gap: var(--s-2); }
+.dc-companion .dc-ai-drafts { max-width: 130px; min-width: 0; min-height: 22px; padding: 0 var(--s-2); border: 0; border-radius: var(--desk-r-control); background: transparent; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-companion .dc-ai-drafts:hover { background: var(--desk-hover); color: var(--desk-ink); }
+.dc-ai-running { display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-4); text-align: center; }
+.dc-ai-running-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-circle); color: var(--desk-muted); background: var(--desk-surface); font-size: var(--icon-lg); }
+.dc-ai-running h3 { margin: 0; color: var(--desk-ink); font-size: var(--desk-t-state); font-weight: var(--w-med); }
+.dc-ai-running > p { margin: 0; color: var(--desk-muted); font-size: var(--desk-t-ui); }
+.dc-ai-running-source { width: min(100%, 400px); min-width: 0; padding: var(--s-4) var(--s-5); border-radius: var(--desk-r-control); background: var(--desk-surface); text-align: left; }
+.dc-ai-running-source strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-med); }
+.dc-ai-running-source p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: var(--s-2) 0; color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.6; overflow-wrap: anywhere; }
+.dc-ai-running-source span { color: var(--desk-faint); font-size: var(--t-2xs); }
+.dc-ai-note .dc-ai-notice { padding: var(--s-1) 0; max-height: 40px; }
+.dc-ai-preview-title { margin: 0; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-med); line-height: 1.4; }
+.dc-ai-review .dc-ai-footer { min-height: 30px; padding-top: 0; }
+.dc-ai-action-control { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; }
+.dc-companion .dc-ai-action-control select { min-width: 0; flex: 1; min-height: var(--desk-control-h); padding: 0 var(--s-4); border: 0; border-radius: var(--desk-r-control); background: var(--desk-surface); color: var(--desk-ink); font-family: inherit; font-size: var(--desk-t-ui); }
+.dc-ai-action-control select:focus-visible { outline: 1px solid var(--desk-accent-line); outline-offset: 2px; }
+.dc-companion .dc-ai-action-control button { min-height: var(--desk-control-h); padding: 0 var(--s-5); }
+
+/* 紧凑模式：任务条 + 抽屉。 */
+.dc-ai-detail { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--s-3); }
+.dc-ai-note.dc-ai-note-compact { flex: 0 0 auto; max-height: 200px; padding: 0; gap: 0; overflow: hidden; border-top: 1px solid var(--desk-line); }
+.dc-ai-taskbar { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; min-height: var(--desk-row-h); padding: 0 var(--s-5) 0 var(--s-7); color: var(--desk-muted); }
+.dc-ai-task-mark { display: grid; place-items: center; flex-shrink: 0; width: 14px; height: 14px; color: var(--desk-muted); }
+.dc-ai-taskbar[data-phase=generating] .dc-ai-task-mark, .dc-ai-taskbar[data-phase=connecting] .dc-ai-task-mark { color: var(--desk-accent); animation: dc-ai-progress 1s linear infinite; }
+.dc-ai-taskbar[data-phase=ready] .dc-ai-task-mark { color: var(--desk-ink); }
+.dc-ai-task-label { display: flex; align-items: baseline; gap: var(--s-3); flex: 1; min-width: 0; font-size: var(--desk-t-ui); }
+.dc-ai-task-label strong { flex-shrink: 0; color: var(--desk-ink); font-weight: var(--w-med); }
+.dc-ai-task-label > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--desk-muted); }
+.dc-companion .dc-ai-taskbar > button { flex-shrink: 0; min-height: 24px; padding: 0 var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-ui); }
+.dc-companion .dc-ai-taskbar > button:hover:not(:disabled) { color: var(--desk-ink); }
+.dc-companion .dc-ai-taskbar .dc-ai-task-cancel { width: 24px; padding: 0; justify-content: center; color: var(--desk-faint); }
+/* 抽屉只有 166px：结果在里面滚，动作行吸在底边，永远够得着。 */
+.dc-ai-drawer { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; height: var(--desk-drawer-h); max-height: var(--desk-drawer-h); padding: 0 var(--s-7) 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; animation: dc-rise var(--desk-dur) var(--desk-ease) both; }
+.dc-ai-note-compact .dc-ai-review .dc-ai-footer, .dc-ai-note-compact .dc-ai-selection .dc-ai-footer { position: sticky; bottom: 0; z-index: 1; margin: 0 calc(var(--s-7) * -1); padding: var(--s-2) var(--s-7) var(--s-3); background: var(--desk-bg); }
+.dc-ai-note-compact .dc-ai-header { justify-content: flex-end; min-height: 22px; }
+.dc-ai-note-compact .dc-ai-review { overflow: visible; gap: var(--s-2); }
+.dc-ai-note-compact .dc-ai-review-meta { gap: var(--s-2); font-size: var(--t-2xs); }
+.dc-ai-note-compact .dc-ai-review-meta > span { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.dc-ai-note-compact .dc-ai-preview-title { font-size: var(--desk-t-ui); }
+.dc-ai-note-compact .dc-ai-rendered, .dc-ai-note-compact .dc-ai-body { flex: 1 1 80px; min-height: 48px; }
+.dc-ai-note-compact .dc-ai-rendered .cm-editor { font-size: var(--desk-t-micro); }
+.dc-ai-note-compact .dc-ai-source-proof { font-size: var(--t-2xs); }
+.dc-ai-note-compact .dc-ai-footer { gap: var(--s-2); }
+.dc-ai-note-compact .dc-ai-result-actions { gap: var(--s-2); }
+/* 岛里只有一枚实心胶囊：把结果插进正文是主路径，另存一篇笔记退成幽灵按钮。 */
+.dc-companion .dc-ai-note-compact .dc-ai-result-actions .dc-primary:last-child:not(:first-child) { color: var(--desk-ink); background: transparent; box-shadow: none; }
+.dc-companion .dc-ai-note-compact .dc-ai-result-actions .dc-primary:last-child:not(:first-child):hover:not(:disabled) { background: var(--desk-hover); opacity: 1; }
+.dc-companion .dc-ai-note-compact .dc-ai-footer button { min-height: 26px; padding: 0 var(--s-3); font-size: var(--desk-t-micro); }
+.dc-ai-note-compact .dc-ai-selection { flex: 0 0 auto; overflow: visible; }
+.dc-ai-note-compact .dc-ai-sources { flex: 0 0 auto; max-height: 100px; }
+.dc-ai-note-compact .dc-ai-running { justify-content: flex-start; align-items: stretch; gap: var(--s-2); text-align: left; }
+.dc-ai-note-compact .dc-ai-running-mark, .dc-ai-note-compact .dc-ai-running h3, .dc-ai-note-compact .dc-ai-running > p, .dc-ai-note-compact .dc-ai-running > button { display: none; }
+.dc-ai-note-compact .dc-ai-running-source { width: 100%; padding: var(--s-2) 0; background: transparent; }
+.dc-ai-note-compact .dc-ai-error { padding: var(--s-1) 0; max-height: 40px; }
+@keyframes dc-ai-progress { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .dc-ai-taskbar[data-phase=generating] .dc-ai-task-mark, .dc-ai-taskbar[data-phase=connecting] .dc-ai-task-mark { animation: none; }
+}
+@media (max-width: 520px) {
+  .dc-ai-note { padding: var(--s-4); }
+  .dc-ai-provider { display: none; }
+  .dc-ai-footer > span { max-width: 42%; }
+  .dc-ai-taskbar { padding-inline: var(--s-4); }
+  .dc-ai-drawer { padding-inline: var(--s-4); }
+  .dc-ai-note-compact .dc-ai-source-proof { max-width: 72px; }
+}

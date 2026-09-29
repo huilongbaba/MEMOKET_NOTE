@@ -1628,6 +1628,22 @@ export const uploadAsset = (file: File) => {
     .then(json<{ url: string; name: string; kind: 'image' | 'audio'; bytes: number }>)
 }
 
+export type NoteAttachmentAsset = {
+  url: string
+  name: string
+  kind: 'image' | 'file'
+  bytes: number
+  content_type: string
+}
+
+/** 笔记附件独立保存副本；图片可直接预览，其他文件按原文件名下载。 */
+export const uploadNoteAttachment = (file: File, signal?: AbortSignal) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  return fetch('/api/assets/attachments', { method: 'POST', headers: headers(), body: fd, signal })
+    .then(json<NoteAttachmentAsset>)
+}
+
 /** 一张图 → markdown 表格。看图走**本地**那台带视觉的模型，图片不出内网。
  * 识别不出表格时 detected=false，前端如实说「没有检测到表格」——比硬塞一张
  * 空表进用户笔记好得多。 */
@@ -1797,3 +1813,72 @@ export const journeySetRetention = (segment_days: number, thumb_days: number) =>
  *  开关 / 黑名单 / 保留期留着——那是设置，不是记录。 */
 export const journeyWipeAll = () =>
   fetch('/api/journey/all', { method: 'DELETE', headers: headers() }).then(json<JourneyRetention>)
+
+export type DesktopComposeSource = { id: string; kind: 'text' | 'link'; title: string; text: string; url?: string }
+export type DesktopAIAction = 'organize' | 'continue' | 'summarize' | 'diagram' | 'table' | 'tasks'
+export type DesktopComposeResult = { title: string; content: string; sourceCount: number; model: string }
+export type DesktopAIStatus = { configured: boolean; provider: 'gemini'; model: string }
+
+/** Configuration status only; does not send any shelf content to the provider. */
+export const desktopAIStatus = (signal?: AbortSignal) =>
+  fetch('/api/desktop/ai-status', { headers: headers(), signal }).then(json<DesktopAIStatus>)
+
+/** Explicitly selected text/link excerpts only. Saving the returned draft is a separate action. */
+export const composeDesktopNote = (sources: DesktopComposeSource[], instruction?: string, signal?: AbortSignal, action?: DesktopAIAction) =>
+  fetch('/api/desktop/compose-note', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), signal,
+    body: JSON.stringify({ sources, instruction: instruction || undefined, action }),
+  }).then(json<DesktopComposeResult>)
+
+// ---------------------------------------------------------------- 拿主意（灵动岛 · 全局热键）
+//
+// 三步：Jev 的 Noul 判断这段是不是要拿主意的事 → Gemini 出候选（带知识库召回的事实与 [fact-id]）
+// → Jev 的 Choice 给每个候选校准过的概率。不是决定题时先反问：出三个「你可能想问的问题」，
+// Jev 排一遍哪一个最可能，选了再走后两步。scorer 说明概率从哪来：jev = 校准概率；model = 模型估计
+// （没有 Jev 密钥时的兜底）；none = 没有可靠数字，界面不显示概率。
+
+export type DecideMode = 'auto' | 'options' | 'questions'
+export type DecideIn = {
+  /** 选中或剪贴板里的文字；剪贴板里是图片时可为空串，image 必填。 */
+  text: string
+  /** 剪贴板里的图片（PNG data URL）：Gemini 先把图里的内容读成文字（digest），再走同一套。 */
+  image?: string
+  /** 前台应用名（Safari、备忘录…），只用于提示。 */
+  source?: string
+  /** 「补一句背景…」：用户补充的上下文，重跑时带上。 */
+  context?: string
+  mode?: DecideMode
+  /** 从反问里选中的问题：带上它重跑，就进入选项模式。 */
+  question?: string
+}
+export type DecideItem = {
+  id: string
+  label: string
+  /** 一句理由；反问模式下是「为什么你可能在问这个」。 */
+  why: string
+  /** 0–1；scorer 为 none 时全为 0。 */
+  probability: number
+  /** 理由里引用到的事实 id，可点回知识库。 */
+  factIds: string[]
+}
+export type DecideFact = { id: string; text: string; when: string }
+export type DecideOut = {
+  mode: 'options' | 'questions'
+  /** 输入是图片时：Gemini 从图里读出来的内容（一两句），台面上替代引文显示。 */
+  digest?: string
+  /** 这一题是什么，一句话；反问模式下是「这段更像信息，你想拿主意的是…」的引子。 */
+  frame: string
+  /** Jev 判断「这段是要拿主意的事」的概率。 */
+  isDecision: number
+  items: DecideItem[]
+  facts: DecideFact[]
+  /** 有没有用到知识库里的事实。 */
+  grounded: boolean
+  scorer: 'jev' | 'model' | 'none'
+  model: string
+  tookMs: number
+}
+export const decide = (input: DecideIn, signal?: AbortSignal) =>
+  fetch('/api/desktop/decide', {
+    method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(input), signal,
+  }).then(json<DecideOut>)

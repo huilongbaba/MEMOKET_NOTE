@@ -16,6 +16,7 @@ import Icon from './Icon'
  * 在左栏有、在 ⌘K 里没有——而计划 §8.4 明写「⌘K 加『今天的屏幕活动』」。
  * 靠 ⌘K 导航的人因此找不到这两个功能。现在加一个去处只改那一个文件。 */
 export const COMMANDS: { label: string; icon: string; run: () => void }[] = [
+  { label: '快速捕捉 / 随手记', icon: 'bx-layer-plus', run: () => window.dispatchEvent(new CustomEvent('open-quick-capture')) },
   { label: '新建笔记', icon: 'bx-plus', run: () => window.dispatchEvent(new CustomEvent('new-note')) },
   { label: '今天的日记', icon: 'bx-calendar-event', run: () => window.dispatchEvent(new CustomEvent('open-today')) },
   { label: '知识库总览', icon: 'bx-data', run: () => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb' })) },
@@ -45,13 +46,15 @@ export const COMMANDS: { label: string; icon: string; run: () => void }[] = [
 /**
  * Cmd/Ctrl+K: one search box over both notes and the knowledge base, instead
  * of two separate search boxes in two separate panels. Picking a note opens
- * it; picking a fact inserts a citation at the cursor -- same citation
- * format @-mention completion and RelatedMemory already use, so all three
- * "find and cite a fact" paths in the app behave identically.
+ * it; picking a fact opens its source. While editing a note, a separate
+ * action inserts a citation using the same format as @-mention completion
+ * and RelatedMemory. Searching from Home must never write into an invisible editor.
  */
-export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], onOpenTab }: {
+export default function CommandPalette({ onOpenNote, onOpenFact, onInsertFact, canInsertFact, tabs = [], onOpenTab }: {
   onOpenNote: (id: string) => void
+  onOpenFact: (id: string) => void
   onInsertFact: (text: string) => void
+  canInsertFact: boolean
   /** 开着的标签（含知识库的虚拟页）：打字时先列命中的标签——50 个标签靠标签行找不到，靠名字找（第 502 轮） */
   tabs?: { noteId: string; title: string; snip?: string }[]
   onOpenTab?: (noteId: string) => void
@@ -77,10 +80,12 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (document.querySelector('dialog[open]')) return
       // ⌘K 是我们的；⌘J 是 Trilium 的 jumpToNote——给个别名，两边的肌肉记忆都认
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'j')) {
         e.preventDefault()
-        setOpen((v) => !v)
+        if (!openRef.current) setQ('')
+        setOpen(!openRef.current)
       } else if (e.key === 'Escape' && openRef.current) {
         // 只在开着的时候吃掉 Esc：下面叠着写作计划面板时，Esc 只关最上面这一层
         e.preventDefault()
@@ -89,7 +94,17 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
     }
     // 左栏放大镜按钮 / 探针走这条事件——它曾经只有发送方没有接收方，
     // 按钮点了没反应（r3 截图实拍）。
-    function onOpenEvent() { setOpen(true) }
+    function onOpenEvent(e: Event) {
+      const detail = (e as CustomEvent<{ query?: unknown } | undefined>).detail
+      setQ(typeof detail?.query === 'string' ? detail.query.trim() : '')
+      setNotes([])
+      setNotesTotal(0)
+      setFacts([])
+      setActiveIndex(0)
+      setOpen(true)
+      // The open effect handles first mount; an already-open palette still needs focus.
+      inputRef.current?.focus()
+    }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('open-command-palette', onOpenEvent)
     return () => {
@@ -104,7 +119,6 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
 
   useEffect(() => {
     if (!open) return
-    setQ('')
     setNotes([])
     setFacts([])
     setActiveIndex(0)
@@ -168,7 +182,13 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
     if (item.kind === 'note') onOpenNote(item.note.id)
     else if (item.kind === 'tab') (onOpenTab ?? onOpenNote)(item.tab.noteId)
     else if (item.kind === 'cmd') item.cmd.run()
-    else onInsertFact(`${item.fact.text} [${item.fact.id}]`)
+    else onOpenFact(item.fact.id)
+    setOpen(false)
+  }
+
+  function insertFact(fact: Fact) {
+    if (!canInsertFact) return
+    onInsertFact(`${fact.text} [${fact.id}]`)
     setOpen(false)
   }
 
@@ -180,6 +200,21 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
         <Icon n={icon} /> {label}
       </div>
     )
+  }
+
+  function factRow(fact: Fact) {
+    const i = idx++
+    return <div key={fact.id} className={'palette-item palette-fact' + (i === activeIndex ? ' active' : '')}>
+      <button type="button" className="palette-fact-open" aria-label={`查看来源：${fact.text}`}
+              title="打开这条记录及原始来源" onClick={() => choose(i)}>
+        <Icon n="bx-bulb" />
+        <span className="palette-line"><span className="palette-main"><Highlight text={fact.text} q={q} /></span>
+          {fact.when && <span className="muted palette-when">{fact.when}</span>}</span>
+        <span className="palette-fact-label">查看来源</span>
+      </button>
+      {canInsertFact && <button type="button" className="palette-fact-insert" aria-label={`插入引用：${fact.text}`}
+                               title="将这条记录和引用插入当前笔记" onClick={() => insertFact(fact)}>插入引用</button>}
+    </div>
   }
 
   return (
@@ -220,11 +255,10 @@ export default function CommandPalette({ onOpenNote, onInsertFact, tabs = [], on
           })}
           {/* 412 篇「会议纪要」搜「会议」只列 8 条，得说清后面还有多少（实拍大库用户） */}
           {typing && notesTotal > notes.length && <p className="muted palette-group" style={{ marginTop: 2 }}>还有 {notesTotal - notes.length} 篇没列出——多打几个字缩小范围</p>}
-          {facts.length > 0 && <p className="muted palette-group">知识库（点击插入引用）</p>}
+          {facts.length > 0 && <p className="muted palette-group">知识库 · 查看来源</p>}
           {/* 日期单独一格不被截：之前拼在正文后面，长一点的事实日期先被省略号吃掉，
               一列里有的有日期有的没有。 */}
-          {typing && facts.map((f) => row(f.id, <span className="palette-line"><span className="palette-main"><Highlight text={f.text} q={q} /></span>
-            {f.when && <span className="muted palette-when">{f.when}</span>}</span>, 'bx-bulb'))}
+          {typing && facts.map(factRow)}
           {!typing && <p className="muted palette-group">前往</p>}
           {!typing && COMMANDS.map((c) => row('c' + c.label, c.label, c.icon))}
         </div>

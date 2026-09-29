@@ -1,0 +1,81 @@
+/* 灵动岛 · 会话（CompanionSession）。纯黑底上一列对话：用户说的话是唯一一块填色的胶囊，
+   Claude 的回复就是正文，动作悬停才现；强调色只给正在进行的那个小点。
+   全部尺度走 --desk-* / --s-* 令牌（闸门 check-ui-tokens）。 */
+.dc-session { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: var(--s-3) var(--s-6) var(--s-5); color: var(--desk-ink); background: var(--desk-bg); font-family: var(--sans); }
+.dc-session-web { margin: auto; color: var(--desk-muted); font-size: var(--desk-t-ui); }
+
+/* 头一行 28px：模型、会话名、最近 / 新会话。模型是个安静的下拉，悬停才有一层面。 */
+.dc-session-head { position: relative; display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; height: var(--desk-control-h); }
+.dc-session .dc-session-model { flex-shrink: 0; max-width: 128px; height: 22px; padding: 0 var(--s-6) 0 var(--s-3); border: 0; border-radius: var(--r-xs); background-color: transparent; background-position: right var(--s-2) center; background-size: 12px 12px; color: var(--desk-muted); font-family: inherit; font-size: var(--desk-t-micro); font-weight: var(--w-med); line-height: 1; transition: background-color var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease); }
+.dc-session .dc-session-model:hover { background-color: var(--desk-hover); color: var(--desk-ink); }
+.dc-session .dc-session-model:focus-visible { outline: 1px solid var(--desk-accent-line); outline-offset: 1px; }
+.dc-session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-muted); font-size: var(--desk-t-ui); text-align: center; }
+.dc-session-tools { display: flex; align-items: center; gap: var(--s-1); flex-shrink: 0; }
+.dc-companion .dc-session-recent { height: 22px; min-height: 0; padding: 0 var(--s-3); border-radius: var(--r-xs); font-size: var(--desk-t-micro); }
+.dc-session-recent-menu { position: absolute; top: calc(100% + var(--s-2)); right: 0; z-index: var(--z-menu); display: flex; flex-direction: column; min-width: 220px; max-width: 320px; max-height: 240px; padding: var(--s-2); overflow-y: auto; border-radius: var(--desk-r-card); color: var(--desk-ink); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); transform-origin: top right; animation: dc-pop var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-companion .dc-session-recent-item { display: flex; align-items: center; gap: var(--s-4); width: 100%; min-height: var(--desk-row-h); padding: 0 var(--s-4); border-radius: var(--desk-r-control); color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-normal); text-align: left; }
+.dc-companion .dc-session-recent-item:focus-visible { outline: none; background: var(--desk-hover); box-shadow: inset 0 0 0 1px var(--desk-accent); }
+.dc-session-recent-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-session-recent-date { flex-shrink: 0; color: var(--desk-faint); font-size: var(--desk-t-micro); font-variant-numeric: tabular-nums; }
+.dc-session-recent-empty { margin: 0; padding: var(--s-3) var(--s-4); color: var(--desk-muted); font-size: var(--desk-t-ui); }
+
+/* 对话列：最新的在底下，新字流进来时跟到底。 */
+.dc-session-log { display: flex; flex: 1; flex-direction: column; gap: var(--s-4); min-height: 0; padding: var(--s-3) var(--s-2) var(--s-2); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; }
+.dc-turn { display: flex; flex-direction: column; flex-shrink: 0; animation: dc-rise var(--desk-dur) var(--desk-ease) both; }
+.dc-turn-user { align-items: flex-end; }
+.dc-turn-capsule { max-width: 78%; margin: 0; padding: var(--s-3) var(--s-5); border-radius: var(--desk-r-card); background: var(--desk-surface); color: var(--desk-ink); font-size: var(--desk-t-body); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.dc-turn-assistant { align-items: stretch; }
+/* 正在进行的那一轮：底下留一点气口，活动行不贴着输入行。 */
+.dc-turn-live { padding-bottom: var(--s-2); }
+.dc-turn-text { margin: 0; color: var(--desk-ink); font-size: var(--desk-t-body); line-height: var(--desk-lh-body); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+/* 产出的文件：一行一个，动作常驻——它是这一行的意义所在。 */
+.dc-turn-files { display: flex; flex-direction: column; gap: var(--s-1); margin: var(--s-2) 0 0; padding: 0; list-style: none; }
+.dc-turn-file { display: flex; align-items: center; gap: var(--s-3); min-height: 24px; color: var(--desk-muted); font-size: var(--desk-t-ui); }
+.dc-turn-file > .bx { flex-shrink: 0; color: var(--desk-faint); font-size: var(--icon-sm); }
+.dc-turn-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-ink); }
+.dc-turn-file-state { flex-shrink: 0; color: var(--desk-faint); font-size: var(--desk-t-micro); }
+.dc-turn-file-error { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-turn-error { margin: var(--s-1) 0 0; color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; overflow-wrap: anywhere; }
+/* 回复底下的动作：悬停 / 焦点才现，22px 的文字按钮，没有边框。 */
+.dc-turn-actions { display: flex; align-items: center; gap: var(--s-1); min-height: 22px; margin-top: var(--s-1); opacity: 0; transition: opacity var(--desk-dur-fast) var(--desk-ease); }
+.dc-turn-assistant:hover .dc-turn-actions, .dc-turn-assistant:focus-within .dc-turn-actions { opacity: 1; }
+.dc-companion .dc-turn-act { height: 22px; min-height: 0; padding: 0 var(--s-3); border-radius: var(--r-xs); color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-turn-note { padding: 0 var(--s-3); color: var(--desk-faint); font-size: var(--desk-t-micro); animation: dc-fade var(--desk-dur-fast) var(--desk-ease) both; }
+/* 正在进行：最新一行活动，前面一个呼吸的强调色小点——这是面板里唯一的强调色。 */
+.dc-turn-activity { display: flex; align-items: center; gap: var(--s-3); margin: var(--s-2) 0 0; color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-turn-dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: var(--r-circle); background: var(--desk-accent); animation: dc-pulse 1.4s ease-in-out infinite; }
+
+/* 空会话 / 找不到 / 没登录：一块居中的安静说明。 */
+.dc-session-empty, .dc-session-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2); min-height: 0; padding: var(--s-6); text-align: center; }
+.dc-session-empty-title, .dc-session-state-title { margin: 0; color: var(--desk-ink); font-size: var(--desk-t-state); font-weight: var(--w-med); }
+.dc-session-empty small, .dc-session-state-note { max-width: 300px; margin: 0; color: var(--desk-muted); font-size: var(--desk-t-ui); line-height: 1.6; }
+.dc-session-cwd { max-width: 100%; margin-top: var(--s-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-faint); font-size: var(--desk-t-micro); }
+.dc-companion .dc-session-retry { height: var(--desk-control-h); margin-top: var(--s-3); padding: 0 var(--s-5); border-radius: var(--r-pill); color: var(--desk-ink); background: var(--desk-surface); }
+.dc-companion .dc-session-retry:hover:not(:disabled) { background: var(--desk-raised); }
+.dc-session-problem { flex-shrink: 0; margin: var(--s-2) 0 0; padding: 0 var(--s-2); color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; overflow-wrap: anywhere; }
+
+/* 输入：底部一行，和待办的「添加」同一个位置；没有框，输入时只把上面那根发丝线提亮。
+   单行起步，按内容长到四行（field-sizing，Chromium 123+；Electron 有）。 */
+.dc-session-compose { display: flex; align-items: flex-end; gap: var(--s-3); flex-shrink: 0; min-height: var(--desk-row-h); margin-top: var(--s-2); padding: var(--s-2) 0 0 var(--s-3); border-top: 1px solid var(--desk-line); transition: border-color var(--desk-dur-fast) var(--desk-ease); }
+.dc-session-compose:focus-within { border-top-color: var(--desk-highlight); }
+.dc-session .dc-session-compose textarea { flex: 1; min-width: 0; width: auto; min-height: 24px; max-height: calc(var(--desk-t-body) * 6); margin: 0; padding: var(--s-1) 0; border: none; box-shadow: none; border-radius: 0; background: transparent; color: var(--desk-ink); font-size: var(--desk-t-body); line-height: 1.5; resize: none; field-sizing: content; overflow-y: auto; scrollbar-width: thin; }
+.dc-session .dc-session-compose textarea::placeholder { color: var(--desk-faint); opacity: 1; }
+.dc-session .dc-session-compose textarea:focus { outline: none; box-shadow: none; }
+.dc-companion .dc-session-compose .dc-session-send { color: var(--desk-ink); }
+.dc-companion .dc-session-compose .dc-session-send:disabled { color: var(--desk-faint); }
+
+/* 带上的文件：输入行上方一排小胶囊，随下一句一起发；问题里也列出名字。 */
+.dc-session-attachments { display: flex; flex-wrap: wrap; gap: var(--s-2); flex-shrink: 0; margin: 0; padding: var(--s-2) var(--s-2) 0; list-style: none; }
+.dc-session-chip { display: inline-flex; align-items: center; gap: var(--s-2); max-width: 100%; height: 24px; padding: 0 var(--s-1) 0 var(--s-3); border-radius: var(--r-pill); background: var(--desk-surface); color: var(--desk-ink); font-size: var(--desk-t-micro); animation: dc-pop var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-session-chip > .bx { flex-shrink: 0; color: var(--desk-muted); font-size: var(--icon-sm); }
+.dc-session-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-companion .dc-session-chip-remove { display: inline-grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px; min-height: 0; padding: 0; border-radius: var(--r-circle); background: transparent; color: var(--desk-muted); }
+.dc-companion .dc-session-chip-remove > .bx { font-size: var(--icon-sm); }
+.dc-companion .dc-session-chip-remove:hover:not(:disabled) { background: var(--desk-raised); color: var(--desk-ink); }
+.dc-turn-user { flex-direction: column; align-items: flex-end; }
+.dc-turn-attached { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-3); margin: var(--s-1) 0 0; padding: 0; list-style: none; }
+.dc-turn-attached-item { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-turn-attached-item > .bx { font-size: var(--icon-sm); }
+.dc-session-hint { flex-shrink: 0; margin: 0; padding: var(--s-1) var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-micro); }
+/* 只给读屏器听的一行：面板里的临时提示都从这里播报一遍。 */
+.dc-session-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

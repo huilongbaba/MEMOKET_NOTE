@@ -86,8 +86,9 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
           <Icon n="bx-brain" />
           <h3>知识库还是空的</h3>
           <p className="muted">把会议记录、录音、其他应用的笔记导进来，或者把一篇写好的笔记「存入知识库」——之后这里会长出主题、实体和时间线，写作时右栏会自动浮现相关的记忆。</p>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row kb-sources" style={{ gap: 8 }}>
             <button className="primary" onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}><Icon n="bx-import" /> 导入</button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:journey' }))} title="今天都在做什么：屏幕活动"><Icon n="bx-desktop" /> 屏幕活动</button>
           </div>
           <ExampleFacts />
         </div>
@@ -123,6 +124,12 @@ export default function KbDashboard({ actions }: { actions: KbActions }) {
                        </span>}
                 label={`形状可疑（${data.quality.unusable.toLocaleString()} 条太短 / 提问 / 口水话）`} />
             )}
+          </div>
+
+          {/* 来源就在记忆的家里：导入与屏幕活动不再各占一个侧栏入口。 */}
+          <div className="row kb-sources" style={{ gap: 8 }}>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))} title="导入 .md / Obsidian / Evernote / Notion / Apple Notes / 批量文件"><Icon n="bx-import" /> 导入</button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:journey' }))} title="今天都在做什么：屏幕活动"><Icon n="bx-desktop" /> 屏幕活动</button>
           </div>
 
           <ConflictInbox actions={actions} />

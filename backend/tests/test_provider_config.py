@@ -102,3 +102,62 @@ def test_asr_base_url_round_trip_and_fallback(isolated_store):
     assert isolated_store.get_asr_base_url() == "http://127.0.0.1:8081"
     isolated_store.set_provider_config("gpt", asr_base_url="")
     assert isolated_store.get_asr_base_url() == get_settings().whisper_base_url
+
+
+# ---------------------------------------------------------------- Gemini 回退（桌面版）
+# 谁都没配抽取模型、但启动环境给了 Gemini 凭据：抽取走 Gemini 的 OpenAI 兼容端点，
+# 岛上存的笔记才进得了知识库。明确配了本地模型 / .env 给了地址的，仍用那个。
+
+def _factory_defaults(monkeypatch):
+    fake_settings = SimpleNamespace(
+        llm_base_url="http://127.0.0.1:11434/v1", llm_api_key="no-key", llm_model="", model_fields_set=set())
+    monkeypatch.setattr(store, "get_settings", lambda: fake_settings)
+    from app.util import config as config_module
+    monkeypatch.setattr(config_module, "env_set", lambda name: False)
+    monkeypatch.delenv("MEMOKET_GEMINI_KEY_FILE", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+
+
+def test_active_llm_falls_back_to_gemini_when_no_model_is_configured(isolated_store, monkeypatch):
+    _factory_defaults(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "unit-test-placeholder")
+    active = isolated_store.get_active_llm_config()
+    assert active == {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                      "api_key": "unit-test-placeholder", "model": "gemini-3.5-flash", "provider": "gemini"}
+    assert isolated_store.llm_configured() == {"configured": True, "source": "gemini"}
+
+
+def test_gemini_fallback_reads_the_key_file_and_model_env(isolated_store, monkeypatch, tmp_path):
+    _factory_defaults(monkeypatch)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    key_file = tmp_path / "gemini.key"
+    key_file.write_text("file-key-value\n", encoding="utf-8")
+    monkeypatch.setenv("MEMOKET_GEMINI_KEY_FILE", str(key_file))
+    monkeypatch.setenv("GEMINI_MODEL", "models/gemini-test-model")
+    active = isolated_store.get_active_llm_config()
+    assert active["provider"] == "gemini"
+    assert active["api_key"] == "file-key-value"
+    assert active["model"] == "gemini-test-model"
+
+
+def test_gemini_fallback_stays_out_of_the_way_of_a_configured_model(isolated_store, monkeypatch):
+    _factory_defaults(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "unit-test-placeholder")
+    # 设置页填了本地模型：还是本地模型。
+    isolated_store.set_provider_config("local", local_base_url="http://lan-box:8080/v1", local_model="qwen3-30b")
+    active = isolated_store.get_active_llm_config()
+    assert active["provider"] == "local"
+    assert active["base_url"] == "http://lan-box:8080/v1"
+    assert isolated_store.llm_configured()["source"] == "local"
+    # 选了 GPT 并填了 key：GPT 优先。
+    isolated_store.set_provider_config("gpt", gpt_api_key="sk-test")
+    assert isolated_store.get_active_llm_config()["provider"] == "gpt"
+
+
+def test_without_gemini_credentials_the_factory_default_is_still_unconfigured(isolated_store, monkeypatch):
+    _factory_defaults(monkeypatch)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    active = isolated_store.get_active_llm_config()
+    assert active["provider"] == "local"
+    assert active["base_url"] == "http://127.0.0.1:11434/v1"
+    assert isolated_store.llm_configured() == {"configured": False, "source": "default"}

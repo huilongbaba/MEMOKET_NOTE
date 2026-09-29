@@ -1,0 +1,287 @@
+/* 灵动岛：一块从刘海长出来的黑色物体。
+   几何由弹簧写进 --dc-width / --dc-height / --dc-progress；这里的每一层只是进度的函数，
+   所以途中反向自然连续。其余动效全是可中断的 transform / opacity / grid-rows 过渡。 */
+
+/* ── 外壳 ─────────────────────────────────────────────────────────────── */
+.dc-companion {
+  user-select: none; --dc-width: 240px; --dc-height: 44px; --dc-progress: 0; --dc-stage-width: 640px; --dc-stage-height: 460px;
+  color-scheme: light dark;   /* 跟着桌面端的外观：深色纯黑，浅色纯白（令牌见 design-tokens.css） */
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: var(--dc-width, 240px); height: var(--dc-height, 44px); min-height: 0; min-width: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+  color: var(--desk-ink); background: var(--desk-bg);
+  border: 0;
+  border-radius: 0 0 calc(var(--desk-radius-pill) + (var(--desk-radius) - var(--desk-radius-pill)) * var(--dc-progress, 0)) calc(var(--desk-radius-pill) + (var(--desk-radius) - var(--desk-radius-pill)) * var(--dc-progress, 0));
+  box-shadow: var(--desk-shell-shadow);
+  font-family: var(--sans); font-size: var(--desk-t-ui); font-optical-sizing: auto; -webkit-font-smoothing: antialiased; -webkit-app-region: no-drag;
+  contain: layout style;
+}
+.dc-expanded .dc-island-trigger { pointer-events: none; }
+.dc-stage { position: absolute; top: 0; left: 50%; width: var(--dc-stage-width, 640px); height: var(--dc-stage-height, 460px); display: flex; flex-direction: column; transform: translateX(-50%); }
+.dc-stage[inert] { pointer-events: none; }
+.dc-stage > .dc-topbar { opacity: clamp(0, calc((var(--dc-progress, 0) - .3) * 2.2), 1); transform: translateY(calc((1 - var(--dc-progress, 0)) * -4px)); }
+.dc-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; opacity: clamp(0, calc((var(--dc-progress, 0) - .45) * 2.2), 1); transform: translateY(calc((1 - var(--dc-progress, 0)) * -8px)); }
+.dc-panel[hidden], .dc-ai-host[hidden], .dc-decide-host[hidden], .dc-session-host[hidden], .dc-shelf-panel[hidden], .dc-items[hidden] { display: none; }
+
+/* 岛内的按钮：默认是幽灵按钮，没有边框，悬停才有一层面。 */
+.dc-companion button { font: inherit; display: inline-flex; align-items: center; gap: var(--s-3); min-height: var(--desk-control-h); padding: 0 var(--s-4); border: 0; border-radius: var(--desk-r-control); background: transparent; color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-med); line-height: 1.2; white-space: nowrap; cursor: pointer; box-shadow: none; transition: background var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease), opacity var(--desk-dur-fast) var(--desk-ease), transform 60ms var(--desk-ease); }
+.dc-companion button:hover:not(:disabled) { color: var(--desk-ink); background: var(--desk-hover); border-color: transparent; }
+.dc-companion button:active:not(:disabled) { background: var(--desk-pressed); transform: scale(.98); }
+.dc-companion button[aria-pressed=true] { color: var(--desk-ink); background: var(--desk-surface); }
+.dc-companion button:focus-visible { outline: 2px solid var(--desk-accent-line); outline-offset: -2px; }
+.dc-companion button:disabled { opacity: .45; cursor: default; }
+.dc-companion .dc-icon { width: var(--desk-control-h); height: var(--desk-control-h); min-height: 0; padding: 0; justify-content: center; flex-shrink: 0; color: var(--desk-faint); font-size: var(--icon-lg); }
+.dc-companion .dc-icon:hover:not(:disabled) { color: var(--desk-ink); }
+.dc-companion input, .dc-companion textarea { color: var(--desk-ink); background: var(--desk-surface); border-color: var(--desk-line); font-size: var(--desk-t-ui); }
+.dc-companion input::placeholder, .dc-companion textarea::placeholder { color: var(--desk-faint); opacity: 1; }
+.dc-companion input:focus, .dc-companion textarea:focus { border-color: var(--desk-accent-line); box-shadow: none; }
+.dc-companion kbd { color: var(--desk-faint); background: transparent; border: 1px solid var(--desk-line); padding: 0 var(--s-2); border-radius: var(--r-xs); font-size: var(--t-2xs); font-family: var(--mono); line-height: 1.5; }
+
+/* ── 收起的药丸 ───────────────────────────────────────────────────────── */
+.dc-companion .dc-island-trigger { --dc-done: 0; position: absolute; left: 50%; top: 0; width: min(var(--dc-width, 240px), 320px); height: 44px; min-height: 44px; padding: 0 var(--s-6); display: flex; align-items: center; gap: var(--s-4); border-radius: 0; color: var(--desk-ink); background: transparent; opacity: clamp(0, calc(1 - var(--dc-progress, 0) * 3), 1); transform: translate(-50%, calc(var(--dc-progress, 0) * -3px)); }
+.dc-companion .dc-island-trigger:hover:not(:disabled) { background: var(--desk-surface); color: var(--desk-ink); }
+.dc-companion .dc-island-trigger:active:not(:disabled) { background: var(--desk-pressed); transform: translate(-50%, 0); }
+.dc-island-trigger[inert] { pointer-events: none; }
+/* 专注进行中：药丸底沿一条 2px 的强调色进度线，随剩余时间收短。 */
+.dc-island-trigger::after { content: ''; position: absolute; left: var(--s-6); right: var(--s-6); bottom: 0; height: 2px; border-radius: var(--r-pill); background: var(--desk-muted); transform-origin: left center; transform: scaleX(var(--dc-done)); opacity: clamp(0, calc(var(--dc-done) * 100), 1); transition: transform var(--desk-dur-slow) var(--desk-ease), opacity var(--desk-dur) var(--desk-ease); pointer-events: none; }
+.dc-mark { display: grid; place-items: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--desk-muted); font-size: var(--icon-md); }
+.dc-island-hint { display: inline-flex; align-items: center; gap: var(--s-2); margin-left: auto; color: var(--desk-muted); font-size: var(--desk-t-micro); font-weight: var(--w-med); font-variant-numeric: tabular-nums; letter-spacing: var(--ls-tight); white-space: nowrap; }
+/* 下一件待办前的小圆环：和面板里的勾选圈是同一个符号。 */
+.dc-hint-ring { width: 8px; height: 8px; flex-shrink: 0; border: 1px solid var(--desk-muted); border-radius: var(--r-circle); }
+.dc-presence { width: 6px; height: 6px; flex-shrink: 0; border-radius: var(--r-circle); background: var(--desk-accent); opacity: 0; transition: opacity var(--desk-dur) var(--desk-ease); }
+.dc-presence[data-live=true] { opacity: 1; animation: dc-pulse 1.4s ease-in-out infinite; }
+.dc-presence[data-live=ready] { opacity: 1; }
+/* 拿主意在读 / 在想：药丸在弹簧上长到 320，摘录占满中间（上移淡入），一道光扫过；剪贴板里是图片时前面是 22px 高的缩略图。 */
+.dc-live-thumb { display: block; height: 22px; width: auto; max-width: 40px; flex-shrink: 0; border-radius: var(--r-xs); object-fit: cover; animation: dc-rise var(--desk-dur) var(--desk-ease) both; }
+/* 拿主意进行中：提示字上一道光缓缓扫过——在想，但不吵。 */
+.dc-island-hint.dc-hint-thinking { background: linear-gradient(90deg, var(--desk-muted) 0%, var(--desk-ink) 50%, var(--desk-muted) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: dc-shimmer 1.8s linear infinite; }
+.dc-island-hint.dc-live-text { flex: 1; min-width: 0; margin-left: 0; display: block; overflow: hidden; text-overflow: ellipsis; font-size: var(--desk-t-ui); animation: dc-rise var(--desk-dur) var(--desk-ease) both, dc-shimmer 1.8s linear infinite; }
+
+/* ── 头部：与药丸同高，同一个物体在伸展 ──────────────────────────────── */
+.dc-topbar { height: var(--desk-head); min-height: var(--desk-head); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--s-4); padding: 0 var(--s-5) 0 var(--s-6); }
+.dc-topbar > .dc-mark { color: var(--desk-faint); }
+/* 头部的标记就是通往完整笔记库的门。 */
+.dc-companion .dc-mark-button { min-height: 0; padding: 0; border-radius: var(--r-xs); background: transparent; }
+.dc-companion .dc-mark-button:hover:not(:disabled) { color: var(--desk-ink); background: transparent; }
+.dc-nav { --dc-tab: 0; position: relative; justify-self: center; display: grid; grid-auto-flow: column; grid-auto-columns: var(--desk-segment-w); align-items: stretch; height: var(--desk-control-h); padding: 2px; border-radius: var(--r-pill); background: var(--desk-surface); }
+/* 滑块：按序号平移，悬停切页时它就是反馈本身；途中改变目标只是重新定向。 */
+.dc-nav::before { content: ''; position: absolute; top: 2px; left: 2px; width: var(--desk-segment-w); height: calc(100% - 4px); border-radius: var(--r-pill); background: var(--desk-raised); box-shadow: var(--desk-control-shadow); transform: translateX(calc(var(--dc-tab) * var(--desk-segment-w))); transition: transform var(--desk-dur) var(--desk-ease), opacity var(--desk-dur-fast) var(--desk-ease); pointer-events: none; }
+/* 拿主意不是标签：台面在上的时候四个标签都不亮，滑块留在原位隐去。 */
+.dc-nav-quiet::before { opacity: 0; }
+.dc-companion .dc-nav button { position: relative; z-index: 1; justify-content: center; gap: var(--s-2); min-height: 0; height: 100%; padding: 0 var(--s-3); border-radius: var(--r-pill); color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-med); }
+.dc-companion .dc-nav button:hover:not(:disabled), .dc-companion .dc-nav button:active:not(:disabled) { background: transparent; color: var(--desk-ink); transform: none; }
+.dc-companion .dc-nav .dc-nav-active { color: var(--desk-ink); }
+.dc-action-label { white-space: nowrap; }
+.dc-count { color: var(--desk-faint); font-size: var(--desk-t-micro); font-weight: var(--w-normal); font-variant-numeric: tabular-nums; }
+.dc-nav-active .dc-count { color: var(--desk-muted); }
+.dc-ai-nav-status { width: 5px; height: 5px; flex-shrink: 0; border-radius: var(--r-circle); background: var(--desk-accent); }
+.dc-ai-nav-status[data-state=busy] { animation: dc-pulse 1.4s ease-in-out infinite; }
+.dc-ai-nav-status[data-state=error] { background: var(--desk-muted); }
+.dc-head-tools { display: flex; align-items: center; gap: var(--s-1); }
+.dc-topbar:hover .dc-head-tools .dc-icon { color: var(--desk-muted); }
+.dc-companion .dc-head-tools .dc-icon:hover:not(:disabled) { color: var(--desk-ink); }
+.dc-companion .dc-keep-open[aria-pressed=true] { color: var(--desk-accent); background: var(--desk-surface); }
+
+/* 面板进入：只有进入的一方有动画，离开的一方直接卸载；滑块承担连续性。 */
+.dc-capture, .dc-shelf-panel, .dc-preview-panel, .dc-session-host, .dc-decide-host, .dc-tasks { animation: dc-panel-enter var(--desk-dur) var(--desk-ease) both; }
+.dc-session-host, .dc-decide-host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* ── 笔记 ───────────────────────────────────────────────────────────── */
+.dc-capture { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: var(--s-3) var(--s-7) 0; }
+.dc-companion .dc-title-input { height: 34px; padding: 0; border: none; box-shadow: none; border-radius: 0; background: transparent; color: var(--desk-ink); font-family: var(--display); font-size: var(--desk-t-title); font-weight: var(--w-semi); letter-spacing: var(--desk-ls-title); line-height: 1.3; }
+.dc-companion .dc-title-input:focus { box-shadow: none; outline: none; }
+.dc-note-attachments { display: flex; gap: var(--s-4); flex-shrink: 0; overflow-x: auto; padding: var(--s-3) 0 var(--s-4); scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; }
+.dc-note-attachment { position: relative; display: flex; align-items: center; gap: var(--s-1); flex-shrink: 0; width: 200px; min-width: 0; height: 40px; padding-right: var(--s-2); border-radius: var(--desk-r-control); background: var(--desk-surface); box-shadow: inset 0 0 0 1px var(--desk-line); }
+.dc-note-attachment > a { display: flex; align-items: center; flex: 1; gap: var(--s-4); min-width: 0; height: 100%; padding: 0 var(--s-3); border-radius: inherit; color: var(--desk-ink); text-decoration: none; }
+.dc-note-attachment > a:focus-visible { outline: 2px solid var(--desk-accent-line); outline-offset: -2px; }
+.dc-note-attachment > a > span:last-child, .dc-attachment-job-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.dc-note-attachment strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--w-med); font-size: var(--desk-t-ui); line-height: 1.3; }
+.dc-note-attachment small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-faint); font-size: var(--desk-t-micro); line-height: 1.3; }
+.dc-note-attachment img, .dc-attachment-extension { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: var(--r-xs); background: var(--desk-raised); object-fit: cover; font-family: var(--mono); font-size: var(--t-2xs); color: var(--desk-muted); }
+.dc-attachment-extension > .bx { font-size: var(--icon-sm); }
+.dc-attachment-pending { width: 240px; padding-left: var(--s-3); gap: var(--s-3); }
+.dc-attachment-failed { box-shadow: inset 0 0 0 1px var(--desk-accent-line); }
+.dc-attachment-failed small { color: var(--desk-ink); }
+.dc-note-attachment .dc-icon { width: 22px; height: 22px; font-size: var(--icon-sm); opacity: 0; }
+.dc-note-attachment:hover .dc-icon, .dc-note-attachment:focus-within .dc-icon, .dc-attachment-pending .dc-icon { opacity: 1; }
+.dc-draft-error { margin: 0 0 var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-editor-footer { display: flex; align-items: center; gap: var(--s-1); flex-shrink: 0; height: 44px; padding-top: var(--s-2); border-top: 1px solid var(--desk-line); }
+.dc-companion .dc-editor-ai-trigger { padding: 0 var(--s-4) 0 var(--s-3); gap: var(--s-2); color: var(--desk-muted); }
+.dc-editor-footer .dc-icon { color: var(--desk-faint); }
+.dc-editor-footer:hover .dc-icon, .dc-editor-footer:focus-within .dc-icon { color: var(--desk-muted); }
+.dc-companion .dc-editor-footer .dc-icon:hover:not(:disabled) { color: var(--desk-ink); }
+.dc-editor-status { flex: 1; min-width: 0; padding-right: var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-micro); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 唯一的实心控件：白色胶囊。 */
+.dc-companion .dc-primary { height: var(--desk-control-h); padding: 0 var(--s-5); border-radius: var(--r-pill); color: var(--desk-on-ink); background: var(--desk-ink); box-shadow: var(--desk-control-shadow); font-weight: var(--w-semi); }
+.dc-companion .dc-primary:hover:not(:disabled) { color: var(--desk-on-ink); background: var(--desk-ink); opacity: .9; }
+.dc-companion .dc-primary:active:not(:disabled) { background: var(--desk-ink); }
+.dc-companion .dc-primary:disabled { color: var(--desk-faint); background: var(--desk-surface); box-shadow: none; opacity: 1; }
+/* AI 写完之后留一行：写了什么、几行、一键撤销。 */
+.dc-ai-applied { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; min-height: var(--desk-row-h); margin: 0 calc(var(--s-7) * -1); padding: 0 var(--s-5) 0 var(--s-7); border-top: 1px solid var(--desk-line); color: var(--desk-muted); font-size: var(--desk-t-ui); animation: dc-rise var(--desk-dur) var(--desk-ease) both; }
+.dc-ai-applied > .bx { flex-shrink: 0; color: var(--desk-accent); font-size: var(--icon-sm); }
+.dc-ai-applied strong { flex-shrink: 0; color: var(--desk-ink); font-weight: var(--w-med); }
+.dc-ai-applied > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-companion .dc-ai-applied button { min-height: 24px; padding: 0 var(--s-3); font-size: var(--desk-t-ui); }
+.dc-companion .dc-ai-applied .dc-icon { width: 24px; height: 24px; }
+.dc-ai-host { display: grid; grid-template-rows: 1fr; flex: 0 0 auto; min-height: 0; max-height: 200px; animation: dc-grow var(--desk-dur) var(--desk-ease) both; }
+.dc-ai-host > * { min-height: 0; overflow: hidden; }
+
+/* 一行反馈，停在面板底部。 */
+.dc-feedback { display: flex; align-items: flex-start; gap: var(--s-3); flex-shrink: 0; margin: 0; padding: var(--s-3) var(--s-7) var(--s-4); color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; overflow-wrap: anywhere; max-height: 56px; overflow-y: auto; animation: dc-rise var(--desk-dur) var(--desk-ease) both; }
+.dc-feedback .bx { flex-shrink: 0; margin-top: var(--s-1); color: var(--desk-faint); }
+.dc-feedback > span { flex: 1; }
+.dc-companion .dc-feedback > button { min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--desk-ink); font: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.dc-feedback-error { color: var(--desk-ink); }
+
+/* ── 拖入时的两个去处 ─────────────────────────────────────────────────── */
+.dc-drop-intent { position: absolute; inset: var(--desk-head) 0 0; z-index: var(--z-float); display: flex; flex-direction: column; padding: var(--s-5) var(--s-7) var(--s-6); background: var(--desk-bg); opacity: clamp(0, calc(var(--dc-progress, 0) * 2), 1); animation: dc-fade var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-drop-summary { margin: 0 0 var(--s-4); color: var(--desk-muted); font-size: var(--desk-t-ui); text-align: center; font-variant-numeric: tabular-nums; }
+/* 三个去处：左 笔记、中 会话、右 暂存箱。左右两个位置不动，新来的放中间。 */
+.dc-drop-destinations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex: 1; min-height: 0; gap: var(--s-4); }
+.dc-drop-destination { --dc-drop-from: 0px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2); min-width: 0; padding: var(--s-6) var(--s-4); border-radius: var(--desk-r-card); background: var(--desk-surface); box-shadow: inset 0 0 0 1px var(--desk-line); color: var(--desk-muted); animation: dc-drop-in var(--desk-dur) var(--desk-ease) both; transition: background var(--desk-dur-fast) var(--desk-ease), box-shadow var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease), opacity var(--desk-dur-fast) var(--desk-ease); }
+.dc-drop-destination:first-child { --dc-drop-from: 8px; }
+.dc-drop-destination:last-child { --dc-drop-from: -8px; }
+.dc-drop-destination > * { pointer-events: none; }
+.dc-drop-destination[data-active=true] { background: var(--desk-accent-soft); box-shadow: inset 0 0 0 1px var(--desk-accent-line); color: var(--desk-ink); }
+.dc-drop-destinations:has([data-active=true]) .dc-drop-destination:not([data-active=true]) { opacity: .55; }
+.dc-drop-destination-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: var(--s-3); border-radius: var(--r-circle); background: var(--desk-raised); color: var(--desk-muted); font-size: var(--icon-xl); transition: background var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease); }
+.dc-drop-destination[data-active=true] .dc-drop-destination-icon { background: var(--desk-accent); color: var(--desk-on-ink); }
+.dc-drop-destination > strong { color: var(--desk-ink); font-family: var(--display); font-size: var(--desk-t-drop); font-weight: var(--w-semi); letter-spacing: var(--desk-ls-title); }
+.dc-drop-detail { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--desk-t-ui); }
+.dc-drop-outcome { margin-top: var(--s-4); color: var(--desk-faint); font-size: var(--desk-t-micro); }
+.dc-drop-destination[data-active=true] .dc-drop-outcome { color: var(--desk-ink); }
+
+/* ── AI 菜单（右键 / 底部 AI 按钮）──────────────────────────────────── */
+.dc-ai-menu { position: absolute; z-index: var(--z-menu); width: 216px; padding: var(--s-2); overflow: auto; border-radius: var(--desk-r-card); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); color: var(--desk-ink); transform-origin: top left; animation: dc-pop var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-ai-menu-scope { display: flex; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4) var(--s-2); color: var(--desk-muted); font-size: var(--desk-t-micro); font-variant-numeric: tabular-nums; }
+.dc-ai-menu-hint { margin: 0; padding: var(--s-1) var(--s-4) var(--s-3); color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-companion .dc-ai-menu button[role=menuitem] { display: flex; align-items: center; gap: var(--s-4); width: 100%; min-height: var(--desk-control-h); padding: 0 var(--s-4); border-radius: var(--desk-r-control); color: var(--desk-ink); font-size: var(--t-md); font-weight: var(--w-normal); text-align: left; }
+.dc-companion .dc-ai-menu button[role=menuitem]:focus, .dc-companion .dc-ai-menu button[role=menuitem]:hover:not(:disabled) { outline: none; color: var(--desk-ink); background: var(--desk-hover); }
+.dc-companion .dc-ai-menu button[role=menuitem]:focus-visible { box-shadow: inset 0 0 0 1px var(--desk-accent); }
+.dc-companion .dc-ai-menu button[role=menuitem]:disabled { color: var(--desk-faint); opacity: 1; }
+.dc-ai-menu button > .bx { color: var(--desk-muted); font-size: var(--icon-md); }
+.dc-ai-menu-divider { height: 1px; margin: var(--s-2) var(--s-3); background: var(--desk-line); }
+.dc-ai-menu-provider { display: block; padding: var(--s-2) var(--s-4); color: var(--desk-faint); font-size: var(--t-2xs); }
+
+/* ── 暂存箱 ─────────────────────────────────────────────────────────── */
+.dc-shelf-panel { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; gap: var(--s-4); padding: var(--s-4) var(--s-7) var(--s-4); }
+.dc-shelf-toolbar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--s-5); min-height: var(--desk-control-h); flex-shrink: 0; }
+.dc-shelf-toolbar > div:not([role=menu]) { display: flex; align-items: center; gap: var(--s-4); min-width: 0; }
+.dc-shelf-toolbar strong { color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-med); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dc-shelf-toolbar span { color: var(--desk-muted); font-size: var(--desk-t-micro); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-companion .dc-shelf-toolbar button[aria-haspopup=menu] { padding: 0 var(--s-5) 0 var(--s-4); border-radius: var(--r-pill); color: var(--desk-ink); background: var(--desk-surface); }
+.dc-companion .dc-shelf-toolbar button[aria-haspopup=menu]:hover:not(:disabled) { background: var(--desk-raised); }
+.dc-shelf-add-menu { position: absolute; top: calc(100% + var(--s-2)); right: 0; z-index: var(--z-menu); min-width: 188px; padding: var(--s-2); border-radius: var(--desk-r-card); color: var(--desk-ink); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); transform-origin: top right; animation: dc-pop var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-companion .dc-shelf-add-menu button[role=menuitem] { display: flex; align-items: center; gap: var(--s-4); width: 100%; min-height: var(--desk-control-h); padding: 0 var(--s-4); border-radius: var(--desk-r-control); color: var(--desk-ink); font-size: var(--t-md); font-weight: var(--w-normal); text-align: left; }
+.dc-companion .dc-shelf-add-menu button[role=menuitem]:focus-visible, .dc-companion .dc-shelf-add-menu button[role=menuitem]:hover:not(:disabled) { outline: none; background: var(--desk-hover); color: var(--desk-ink); }
+.dc-companion .dc-shelf-add-menu button[role=menuitem]:focus-visible { box-shadow: inset 0 0 0 1px var(--desk-accent); }
+.dc-companion .dc-shelf-add-menu button[role=menuitem]:disabled { color: var(--desk-faint); opacity: 1; }
+.dc-shelf-add-menu button > .bx { color: var(--desk-muted); font-size: var(--icon-md); }
+.dc-search-field { display: flex; align-items: center; gap: var(--s-4); margin: 0; padding-inline: var(--s-5) var(--s-2); border-radius: var(--r-pill); background: var(--desk-surface); color: var(--desk-muted); box-shadow: inset 0 0 0 1px transparent; transition: box-shadow var(--desk-dur-fast) var(--desk-ease); }
+.dc-search-field:focus-within { box-shadow: inset 0 0 0 1px var(--desk-accent-line); }
+.dc-companion .dc-search-field input { flex: 1; min-width: 0; height: 30px; border: none; box-shadow: none; background: transparent; padding-inline: 0; padding-block: 0; font-size: var(--desk-t-ui); color: var(--desk-ink); }
+.dc-shelf-search { flex: 0 0 auto; min-height: 32px; }
+.dc-list-caption { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); margin: 0 0 var(--s-4); color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-4); margin: 0; padding: var(--s-7) var(--s-5); text-align: center; color: var(--desk-muted); font-size: var(--desk-t-ui); line-height: 1.6; }
+.dc-empty > .bx { font-size: var(--icon-xl); color: var(--desk-faint); }
+.dc-empty p { margin: 0; }
+.dc-browser-note { margin: 0; padding: 0 var(--s-2); color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.6; }
+/* 空态是一句安静的话，不是一个虚线框。拖文字进来时整片才亮起。 */
+.dc-drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); padding: var(--s-6); border-radius: var(--desk-r-card); color: var(--desk-muted); font-size: var(--t-md); text-align: center; transition: background var(--desk-dur-fast) var(--desk-ease), box-shadow var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease); }
+.dc-drop-zone > .bx { margin-bottom: var(--s-2); color: var(--desk-faint); font-size: var(--icon-xl); }
+.dc-drop-zone small { color: var(--desk-faint); font-size: var(--desk-t-micro); }
+.dc-companion .dc-drop-zone button { margin-top: var(--s-3); color: var(--desk-muted); }
+.dc-dragging .dc-drop-zone { background: var(--desk-accent-soft); box-shadow: inset 0 0 0 1px var(--desk-accent-line); color: var(--desk-ink); }
+.dc-dragging .dc-drop-zone > .bx { color: var(--desk-accent); }
+.dc-drop-zone-compact { position: absolute; inset: var(--s-5); z-index: var(--z-float); background: var(--desk-bg); pointer-events: none; }
+.dc-drop-zone-compact button { display: none; }
+.dc-file-input { display: none; }
+.dc-items { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 132px; align-content: start; gap: var(--s-4) var(--s-5); padding: var(--s-2) 0; scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; }
+.dc-items > .dc-empty { grid-column: 1 / -1; }
+.dc-item { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: var(--s-2); border-radius: var(--desk-r-card); background: transparent; transition: background var(--desk-dur-fast) var(--desk-ease), box-shadow var(--desk-dur-slow) var(--desk-ease); }
+.dc-item:hover, .dc-item:focus-within { background: var(--desk-surface); }
+.dc-item[draggable=true] { cursor: grab; }
+.dc-item[draggable=true]:active { cursor: grabbing; }
+.dc-companion .dc-item-preview, .dc-companion .dc-window-preview { display: block; width: 100%; height: 96px; min-height: 0; flex-shrink: 0; padding: 0; border: 0; border-radius: var(--desk-r-thumb); overflow: hidden; background: var(--desk-surface); color: var(--desk-ink); text-align: left; white-space: normal; cursor: zoom-in; transition: box-shadow var(--desk-dur-fast) var(--desk-ease); }
+.dc-companion .dc-item-preview:hover:not(:disabled), .dc-companion .dc-window-preview:hover:not(:disabled) { background: var(--desk-surface); box-shadow: inset 0 0 0 1px var(--desk-highlight); }
+.dc-companion .dc-item-preview:active:not(:disabled), .dc-companion .dc-window-preview:active:not(:disabled) { background: var(--desk-surface); transform: none; }
+.dc-item-preview[draggable=true]:active { cursor: grabbing; }
+.dc-item-content { display: flex; flex-direction: column; min-width: 0; flex: 1; padding: var(--s-3) var(--s-1) 0; text-align: center; }
+.dc-item-content > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-med); line-height: 1.4; transition: color var(--desk-dur-fast) var(--desk-ease); }
+.dc-item:hover .dc-item-content > strong, .dc-item:focus-within .dc-item-content > strong { color: var(--desk-ink); }
+.dc-item-missing { outline: 1px dashed var(--desk-line); outline-offset: -1px; }
+.dc-item-missing .dc-item-preview { opacity: .5; }
+.dc-item-actions { position: absolute; left: 50%; bottom: 38px; z-index: 1; display: flex; gap: var(--s-1); padding: var(--s-1); border-radius: var(--r-pill); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); opacity: 0; transform: translateX(-50%); transition: opacity var(--desk-dur-fast) var(--desk-ease); }
+.dc-companion .dc-item-actions button { min-height: 22px; padding: 0 var(--s-3); gap: var(--s-2); border-radius: var(--r-pill); color: var(--desk-ink); font-size: var(--desk-t-micro); }
+.dc-companion .dc-item-remove { position: absolute; top: var(--s-3); right: var(--s-3); z-index: 1; width: 20px; height: 20px; border-radius: var(--r-circle); color: var(--desk-muted); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); font-size: var(--icon-sm); opacity: 0; transition: opacity var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease); }
+.dc-item:hover .dc-item-actions, .dc-item:focus-within .dc-item-actions, .dc-item:hover .dc-item-remove, .dc-item:focus-within .dc-item-remove { opacity: 1; }
+.dc-shelf-populated .dc-item-arrived { box-shadow: inset 0 0 0 1px var(--desk-accent-line); animation: dc-item-arrive var(--desk-dur-slow) var(--desk-ease) both; }
+.dc-window-picker { flex: 1; min-height: 0; overflow-y: auto; }
+.dc-window-picker .dc-list-caption button { font-size: var(--desk-t-micro); padding: 0 var(--s-3); }
+.dc-window-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-4) var(--s-5); }
+.dc-window-choice { position: relative; min-width: 0; overflow: hidden; padding: var(--s-2); border-radius: var(--desk-r-card); background: transparent; transition: background var(--desk-dur-fast) var(--desk-ease); }
+.dc-window-choice:hover, .dc-window-choice:focus-within { background: var(--desk-surface); }
+.dc-window-meta { display: flex; align-items: center; padding: var(--s-3) var(--s-1) 0; text-align: center; }
+.dc-window-meta > strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-med); }
+.dc-companion .dc-window-meta > button { position: absolute; top: var(--s-3); right: var(--s-3); z-index: 1; width: 22px; height: 22px; min-height: 0; padding: 0; justify-content: center; border-radius: var(--r-circle); color: var(--desk-ink); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); font-size: var(--icon-md); }
+.dc-shelf-entry { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; padding: var(--s-1) var(--s-1) var(--s-1) var(--s-5); border-radius: var(--r-pill); background: var(--desk-surface); box-shadow: inset 0 0 0 1px var(--desk-line); }
+.dc-companion .dc-shelf-entry input { flex: 1; min-width: 0; height: 28px; border: none; box-shadow: none; background: transparent; padding: 0; font-size: var(--desk-t-ui); }
+.dc-shelf-footer { display: flex; align-items: center; justify-content: center; gap: var(--s-4); flex-shrink: 0; min-height: 16px; margin: 0; color: var(--desk-faint); font-size: var(--t-2xs); line-height: 1.4; }
+
+/* ── 内容预览（缩略图与大图共用）────────────────────────────────────── */
+.dc-content-image { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; min-height: 0; }
+.dc-content-image > img { display: block; width: 100%; height: 100%; object-fit: contain; padding: var(--s-3); }
+.dc-item-preview .dc-content-image, .dc-window-preview .dc-content-image { border-radius: var(--desk-r-thumb); overflow: hidden; }
+.dc-item-preview .dc-content-image > img, .dc-window-preview .dc-content-image > img { filter: drop-shadow(var(--desk-item-shadow)); }
+.dc-content-document { background: var(--desk-preview-paper); }
+.dc-content-file-text { display: block; width: 100%; height: 100%; padding: var(--s-4); overflow: hidden; color: var(--desk-preview-ink); background: var(--desk-preview-paper); font-family: var(--mono); font-size: var(--t-2xs); font-weight: var(--w-normal); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+.dc-content-file-text-full { padding: var(--s-6); overflow-y: auto; font-size: var(--t-sm); user-select: text; }
+.dc-file-text-boundary { display: block; padding-top: var(--s-5); font-family: var(--sans); font-size: var(--t-xs); }
+.dc-content-no-image { background: var(--desk-surface); }
+.dc-preview-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2); max-width: 100%; padding: var(--s-5); text-align: center; }
+.dc-preview-placeholder > strong { color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-med); }
+.dc-preview-placeholder > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--desk-faint); font-size: var(--desk-t-micro); line-height: 1.5; overflow-wrap: anywhere; }
+.dc-preview-caption { position: absolute; bottom: var(--s-2); left: 50%; transform: translateX(-50%); max-width: calc(100% - var(--s-4)); padding: var(--s-1) var(--s-3); border-radius: var(--r-pill); background: var(--desk-menu-bg); color: var(--desk-muted); font-size: var(--t-2xs); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-content-excerpt { display: flex; flex-direction: column; gap: var(--s-3); height: 100%; padding: var(--s-5) var(--s-6); overflow: hidden; text-align: left; background: var(--desk-surface); }
+.dc-item-preview .dc-content-excerpt { padding: var(--s-4) var(--s-5); gap: var(--s-2); background: transparent; }
+.dc-item-preview .dc-content-text { -webkit-line-clamp: 3; font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-content-eyebrow { flex-shrink: 0; color: var(--desk-faint); font-size: var(--t-2xs); font-weight: var(--w-med); letter-spacing: var(--ls-caps); }
+.dc-content-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--desk-ink); font-size: var(--desk-t-ui); font-weight: var(--w-normal); line-height: 1.6; }
+.dc-content-url { color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.5; overflow-wrap: anywhere; }
+.dc-content-boundary { margin-top: var(--s-5); color: var(--desk-faint); font-size: var(--desk-t-micro); line-height: 1.5; }
+.dc-preview-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--s-4); padding: var(--s-4) var(--s-7) var(--s-5); }
+.dc-preview-header { display: flex; align-items: center; gap: var(--s-4); flex-shrink: 0; min-height: var(--desk-row-h); }
+.dc-preview-header > button { flex-shrink: 0; padding-left: var(--s-2); }
+.dc-preview-header > div { flex: 1; min-width: 0; }
+.dc-preview-header h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-ink); font-size: var(--desk-t-state); font-weight: var(--w-semi); line-height: 1.3; }
+.dc-preview-header span { color: var(--desk-muted); font-size: var(--desk-t-micro); line-height: 1.4; }
+.dc-preview-stage { display: flex; min-height: 100px; flex: 1; overflow: hidden; border-radius: var(--desk-r-card); background: var(--desk-surface); box-shadow: inset 0 0 0 1px var(--desk-line); }
+.dc-preview-stage[draggable=true] { cursor: grab; }
+.dc-preview-stage[draggable=true]:active { cursor: grabbing; }
+.dc-preview-stage > .dc-content-image { flex: 1; }
+.dc-preview-stage .dc-preview-placeholder > span { -webkit-line-clamp: 5; font-size: var(--desk-t-micro); }
+.dc-content-excerpt-full { width: 100%; overflow-y: auto; padding: var(--s-6) var(--s-7); background: transparent; }
+.dc-content-excerpt-full .dc-content-text { display: block; overflow: visible; flex-shrink: 0; font-size: var(--desk-t-body); line-height: var(--desk-lh-body); user-select: text; }
+.dc-content-excerpt-full .dc-content-url { user-select: text; }
+.dc-preview-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); flex-shrink: 0; }
+.dc-preview-footer > span { min-width: 0; color: var(--desk-muted); font-size: var(--desk-t-micro); }
+.dc-preview-actions { display: flex; justify-content: flex-end; gap: var(--s-1); flex-shrink: 0; }
+.dc-companion .dc-preview-actions button { min-height: 26px; padding: 0 var(--s-4); font-size: var(--desk-t-micro); }
+
+/* ── 动效 ─────────────────────────────────────────────────────────────── */
+@keyframes dc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes dc-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes dc-panel-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes dc-pop { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes dc-fade { from { opacity: 0; } }
+@keyframes dc-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes dc-grow { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+@keyframes dc-drop-in { from { opacity: 0; transform: translateX(var(--dc-drop-from)); } to { opacity: 1; transform: none; } }
+@keyframes dc-item-arrive { from { opacity: .3; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 520px) { .dc-items, .dc-window-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .dc-topbar { padding-inline: var(--s-4); } .dc-drop-intent { padding-inline: var(--s-4); } .dc-drop-destination { padding: var(--s-4); } .dc-preview-footer { flex-wrap: wrap; } .dc-preview-footer > span { flex-basis: 100%; } .dc-preview-actions { width: 100%; } }
+@media (hover: none) { .dc-item .dc-item-actions, .dc-item .dc-item-remove, .dc-note-attachment .dc-icon { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dc-companion, .dc-companion *, .dc-companion *::before, .dc-companion *::after { transition: none !important; animation: none !important; } }
+@media (prefers-contrast: more) { .dc-companion { box-shadow: inset 0 0 0 1px var(--desk-highlight); } }
+.desktop-companion-root, .desktop-companion-root body, .desktop-companion-root #root { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }

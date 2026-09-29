@@ -1361,8 +1361,14 @@ details[open] > .run-title::before { content: '▾'; }
 .chain li { cursor: pointer; margin: 2px 0; }
 .chain li:hover { text-decoration: underline; }
 .chain-when { color: var(--muted); font-size: var(--t-xs); margin-inline-end: 4px; }
-.memory-card-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 120ms; }
-.memory-card:hover .memory-card-actions { opacity: 1; }
+.memory-card-actions { display: flex; gap: var(--s-1); opacity: .7; transition: opacity 120ms; }
+.memory-card:hover .memory-card-actions, .memory-card:focus-within .memory-card-actions { opacity: 1; }
+.mem-legend { font-size: var(--t-xs); line-height: 1.6; margin: var(--s-2) 0; }
+.mem-legend p { margin: var(--s-2) 0; }
+.mem-help { margin-top: var(--s-3); font-size: var(--t-xs); line-height: 1.6; }
+.mem-help > summary { cursor: pointer; color: var(--muted); }
+.mem-help > summary:hover { color: var(--fg); }
+.mem-help > summary:focus-visible, .tray-why > summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 /* 右栏的记忆卡跟内容卡一套：14px 圆角、卡之间留白。原来是 8px 间距的小卡，
    一列堆下来像列表，而源仓库的卡是**一张一张分开的**（第 689 轮对比实拍）。 */
 .memory-card { border-radius: var(--r-card); padding: 14px 16px; }
@@ -1376,10 +1382,13 @@ details[open] > .run-title::before { content: '▾'; }
 .tray-write { font-size: var(--t-sm); padding: 2px var(--s-3); display: inline-flex; align-items: center; gap: var(--s-1); }
 .tray-hint { font-size: var(--t-xs); margin: var(--s-1) 0 0; line-height: 1.6; }
 .tray-hint code { font-family: var(--mono); }
+.tray-hint-empty { text-wrap: pretty; }
 /* 空托盘那一档：一句话 + 折起来的「有什么用、怎么摊」（P35 走查 #8，
    跟 P32 #3 的 `.mem-legend-empty` 同一个形状——规则收起来，想看还能展开） */
-.tray-hint-empty > .tray-why > summary { color: var(--muted); cursor: pointer; }
-.tray-hint-empty > .tray-why { margin-top: var(--s-1); }
+.tray-why { margin-top: var(--s-1); font-size: var(--t-xs); color: var(--muted); line-height: 1.6; }
+.tray-why > summary { cursor: pointer; }
+.tray-why > summary:hover { color: var(--fg); }
+.tray-why > p { margin: var(--s-2) 0; }
 /* 托盘格里的两件工具（P15 #3）：「默认进托盘」开关 + 网页剪藏；说明文字是元信息（灰），输入框走全局样式 */
 .tray-tools { display: flex; flex-direction: column; gap: var(--s-1); margin-top: var(--s-2); }
 .tray-default { gap: var(--s-2); align-items: center; font-size: var(--t-xs); color: var(--muted); cursor: pointer; }
@@ -1433,6 +1442,7 @@ details[open] > .run-title::before { content: '▾'; }
 
 .kb-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-4); padding: 24px 0; max-width: 560px; }
 .kb-empty > .bx { font-size: var(--icon-2xl); color: var(--ink-3); }
+.kb-sources { margin: 0 0 var(--s-6); }
 .kb-empty h3 { margin: 0; font-size: var(--t-xl); }
 
 /* 空态里的「长什么样」示例：**必须一眼看出不是你自己的数据**（第 673 轮）。

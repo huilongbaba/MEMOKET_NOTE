@@ -7,11 +7,13 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "npm run build && electron . --dev",
-    "start": "npm run build && electron .",
+    "test": "npm run build && node --test scripts/check-companion-*.cjs",
+    "dev": "npm run build && npm run build:helpers && electron . --dev",
+    "start": "npm run build && npm run build:helpers && electron .",
     "dist": "npm run dist:web && npm run dist:backend && npm run build && electron-builder",
     "dist:web": "cd ../frontend && npm run build",
-    "dist:backend": "cd ../backend && .venv/bin/pyinstaller backend.spec --noconfirm --clean"
+    "dist:backend": "cd ../backend && .venv/bin/pyinstaller backend.spec --noconfirm --clean",
+    "build:helpers": "node scripts/build-helpers.cjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

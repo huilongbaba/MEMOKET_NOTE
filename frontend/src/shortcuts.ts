@@ -1,6 +1,7 @@
 /** 快捷键一览——只列真的在 App.tsx / 编辑器里接了的键。改键记得同步这里。 */
 export const SHORTCUT_GROUPS: { title: string; items: { keys: string; what: string }[] }[] = [
   { title: '笔记', items: [
+    { keys: '⇧⌘N', what: '快速捕捉（桌面版支持全局唤起）' },
     { keys: '⌘N / ⌘T', what: '新建笔记' },
     { keys: '⇧⌘D', what: '今天的日记（日记 / 年 / 月 / 日）' },
     { keys: '⌘S', what: '保存（自动保存已开，这只是个安心键）' },

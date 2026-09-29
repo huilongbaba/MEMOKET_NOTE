@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -91,3 +93,42 @@ def env_set(name: str) -> bool:
     「开发机 .env 里配了内网那台」（算配好了）和「谁都没配、还是出厂默认」（状态栏要说「还没配模型」）。
     pydantic-settings 把来自 env 的字段记进 `model_fields_set`，默认值不记。"""
     return name in getattr(get_settings(), "model_fields_set", set())
+
+
+# ── 桌面版的 Gemini 凭据 ──────────────────────────────────────────────────
+# 放在这里而不是单独一个 util 模块：`database/store` 只允许从 `util.config` 拿东西
+# （tests/test_layering.py 钉死的那条窄边），而抽取模型的 Gemini 回退正是 store 要用的。
+# `GEMINI_API_KEY`，或 `MEMOKET_GEMINI_KEY_FILE` 指向的仅含密钥的本机文件。错误里永远不带密钥的值和文件路径。
+GEMINI_DEFAULT_MODEL = "gemini-3.5-flash"
+# Gemini 的 OpenAI 兼容端点：/chat/completions、/models 都在这个前缀下。
+GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+
+def gemini_model() -> str:
+    value = (os.environ.get("GEMINI_MODEL") or GEMINI_DEFAULT_MODEL).strip().removeprefix("models/")
+    return value if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value) else ""
+
+
+def gemini_api_key() -> str:
+    """Read only the configured credential location. Never include values or paths in errors."""
+    value = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not value:
+        filename = os.environ.get("MEMOKET_GEMINI_KEY_FILE", "").strip()
+        if not filename:
+            return ""
+        try:
+            with Path(filename).expanduser().open(encoding="utf-8") as key_file:
+                value = key_file.read(8193).strip()
+        except (OSError, UnicodeError, ValueError):
+            return ""
+    # A key is a single ASCII header value; reject pasted commands or multiline files.
+    return value if value and len(value) <= 8192 and all(33 <= ord(c) <= 126 for c in value) else ""
+
+
+def gemini_llm_config() -> dict | None:
+    """有可用的 Gemini 凭据就给出一份 OpenAI 兼容的 LLM 配置；没有就 None。"""
+    key = gemini_api_key()
+    model = gemini_model()
+    if not key or not model:
+        return None
+    return {"base_url": GEMINI_OPENAI_BASE, "api_key": key, "model": model, "provider": "gemini"}

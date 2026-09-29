@@ -1,15 +1,4 @@
-/**
- * 标签行 —— 对标 Trilium 的 tab_row。
- *
- * 尺寸取自它（tab_row.ts）：单个标签 100–240px，标签多了按 84 / 60 / 48
- * 三档缩，新建按钮 36px。这几个数字不是我猜的——标签缩到 48px 时只剩一个
- * 图标位，再窄就点不准了。
- *
- * **为什么这个产品需要多标签**：痛点 10「笔记散在飞书和 Notion，想把两边
- * 交起来写，得先想起两边叫什么名字」，以及写作时最常见的动作——对照着另
- * 一篇写。单篇编辑器逼着用户在脑子里存住另一篇的内容，那正是判据 2 要省
- * 下来的注意力。
- */
+/** Multi-note workspace tabs stay readable and scroll when the window is full. */
 import { useEffect, useRef, useState } from 'react'
 import { fmtShortcut } from '../util/keys'
 import Icon from './Icon'
@@ -17,9 +6,8 @@ import Icon from './Icon'
 export type Tab = { id: string; noteId: string; title: string }
 
 const MAX_W = 240
-/** Trilium 的三档：TAB_SIZE_SMALL 84 / SMALLER 60 / MINI 48。我们的下限取
- *  84——再窄的那两档它靠滚动按钮兜底，我们靠 strip 横向可滚兜底，效果一样。 */
-const MIN_W = 84
+/** Keep enough room for a recognizable title; overflow has explicit scroll controls. */
+const MIN_W = 128
 const MARGIN_W = 5
 
 export default function TabBar({
@@ -70,17 +58,25 @@ export default function TabBar({
 
   useEffect(() => {
     const el = ref.current
-    if (!el) return
-    // 可用宽度是 strip 的父容器（标签行）减去左右 spacer / filler / ＋；
-    // 间隙照 tab_row.ts:536-538 扣掉 (n-1)*5。
-    const parent = el.parentElement
-    const avail = (parent?.clientWidth ?? el.clientWidth) - 36 - 50 - 72 - (tabs.length - 1) * MARGIN_W
-    const each = Math.floor(avail / Math.max(1, tabs.length))
-    const w = Math.max(MIN_W, Math.min(each, MAX_W))
-    el.style.setProperty('--tab-w', `${w}px`)
-    // narrow：图标会把本来就短的标题再吃掉一截（实拍 84px 的标签只剩「h…」），120 以下不画图标
-    el.dataset.size = w <= 84 ? 'small' : w < 120 ? 'narrow' : ''
-  }, [tabs.length])
+    const parent = el?.parentElement
+    if (!el || !parent) return
+    const resize = () => {
+      // Measure the actual controls; navigation and capture widths vary by platform/window.
+      const siblings = [...parent.children].filter((child) => child !== el && !child.classList.contains('tab-row-filler'))
+      const controls = siblings.reduce((sum, child) => sum + child.getBoundingClientRect().width, 0)
+      const gap = parseFloat(getComputedStyle(parent).columnGap) || MARGIN_W
+      const inset = parseFloat(getComputedStyle(parent).paddingLeft) + parseFloat(getComputedStyle(parent).paddingRight) || 0
+      const avail = parent.clientWidth - controls - inset - 50 - gap * (parent.children.length - 1) - (tabs.length - 1) * MARGIN_W
+      const width = Math.max(MIN_W, Math.min(Math.floor(avail / Math.max(1, tabs.length)), MAX_W))
+      el.style.setProperty('--tab-w', `${width}px`)
+      el.dataset.size = width < 160 ? 'narrow' : ''
+    }
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(parent)
+    for (const child of parent.children) if (child !== el && !child.classList.contains('tab-row-filler')) observer.observe(child)
+    return () => observer.disconnect()
+  }, [tabs.length, overflow])
 
   return (
     <>
@@ -92,11 +88,25 @@ export default function TabBar({
         <div
           key={t.id}
           role="tab"
+          tabIndex={t.id === activeId || (!tabs.some((tab) => tab.id === activeId) && i === 0) ? 0 : -1}
           aria-selected={t.id === activeId}
           className={'note-tab' + (t.id === activeId ? ' active' : '') + (busyIds?.has(t.noteId) ? ' busy' : '') + (menuTabId === t.id ? ' ctx-target' : '')
             + (dragId === t.id ? ' dragging' : '') + (overIndex === i && dragId !== t.id ? ' drop-before' : '')}
           title={`${t.title || '未命名'}${busyIds?.has(t.noteId) ? '（正在写）' : ''}${i < 9 ? `　${fmtShortcut('⌘' + (i + 1))}` : ''}`}
           onClick={() => onSelect(t.id)}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault(); onSelect(t.id); return
+            }
+            const next = event.key === 'ArrowRight' ? (i + 1) % tabs.length
+              : event.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length
+                : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
+            if (next < 0) return
+            event.preventDefault(); event.stopPropagation()
+            onSelect(tabs[next].id)
+            ref.current?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus()
+          }}
           // 同行内拖拽排序（Trilium 用 Draggabilly；HTML5 dnd 够用）
           draggable={!!onReorder}
           onDragStart={(e) => { setDragId(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id) }}
@@ -123,13 +133,13 @@ export default function TabBar({
         >
           {iconOf?.(t.noteId) && <Icon n={iconOf(t.noteId)!} className="note-tab-icon" />}
           <span className="note-tab-title">{t.title || '未命名'}</span>
-          <span
+          <button type="button" tabIndex={-1}
             className="note-tab-close"
-            aria-label="关闭"
+            aria-label={`关闭 ${t.title || '未命名'}`}
             onClick={(e) => { e.stopPropagation(); onClose(t.id) }}
           >
-            ×
-          </span>
+            <Icon n="bx-x" />
+          </button>
         </div>
       ))}
     </div>

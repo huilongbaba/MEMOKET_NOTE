@@ -1,0 +1,37 @@
+/* 岛上的正文编辑器：跟完整笔记库同一个 CodeMirror 编辑器，只换材质——黑底、15px/1.6、没有框。 */
+.dc-draft-editor { user-select: text; position: relative; display: flex; flex-direction: column; flex: 1; min-height: 52px; isolation: isolate; overflow: hidden; }
+.dc-draft-editor > .md-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dc-draft-editor .cm-editor { flex: 1; min-height: 0; height: 100%; background: transparent; color: var(--desk-ink); font-size: var(--desk-t-body); --fg: var(--desk-ink); --muted: var(--desk-muted); --accent: var(--desk-accent); --card-alt: var(--desk-surface); --ink-3: var(--desk-faint); }
+.dc-draft-editor .cm-editor.cm-focused { outline: none; }
+.dc-draft-editor .cm-scroller { min-height: 0; padding: var(--s-3) 0 var(--s-7); font-family: var(--sans); line-height: var(--desk-lh-body); scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; }
+.dc-draft-editor .cm-content { padding: 0; caret-color: var(--desk-accent); }
+.dc-draft-editor .cm-line { padding: 0; }
+.dc-draft-editor .cm-placeholder { color: var(--desk-faint); }
+.dc-draft-editor .cm-selectionBackground, .dc-draft-editor .cm-editor ::selection { background: var(--desk-accent-soft); }
+.dc-draft-editor .cm-cursor { border-left-color: var(--desk-accent); }
+/* 就地渲染的块：表格、图片、Mermaid 与正文同一材质。 */
+.dc-draft-editor .cm-md-table { overflow: auto; margin: var(--s-2) 0; }
+.dc-draft-editor .cm-md-table table { width: 100%; border-collapse: collapse; color: var(--desk-ink); font-size: var(--desk-t-ui); }
+.dc-draft-editor .cm-md-table th, .dc-draft-editor .cm-md-table td { padding: var(--s-3) var(--s-4); border: 1px solid var(--desk-line); white-space: normal; color: var(--desk-ink); background: transparent; text-align: left; }
+.dc-draft-editor .cm-md-table th { background: var(--desk-surface); font-weight: var(--w-med); }
+.dc-draft-editor .cm-md-table tbody tr:hover td { background: var(--desk-hover); }
+.dc-draft-editor .cm-image-embed { display: block; max-width: 100%; max-height: 240px; margin: var(--s-2) 0; border-radius: var(--desk-r-thumb); object-fit: contain; }
+.dc-draft-editor .cm-mermaid-widget { margin: var(--s-2) 0; padding: var(--s-4); border-radius: var(--desk-r-thumb); background: var(--desk-surface); color: var(--desk-ink); }
+.dc-draft-editor .cm-mermaid-widget svg { max-width: 100%; height: auto; background: transparent !important; }
+.dc-draft-editor .cm-mermaid-widget svg text:not([class~="slice"]), .dc-draft-editor .cm-mermaid-widget svg [class~="nodeLabel"], .dc-draft-editor .cm-mermaid-widget svg [class~="edgeLabel"] { fill: var(--desk-ink) !important; color: var(--desk-ink) !important; }
+.dc-draft-editor .cm-mermaid-widget svg [class~="node"] :is(rect, circle, ellipse, polygon, path) { fill: var(--desk-hover) !important; stroke: var(--desk-accent) !important; }
+.dc-draft-editor .cm-mermaid-widget svg [class~="flowchart-link"] { stroke: var(--desk-accent) !important; }
+.dc-draft-editor .cm-mermaid-widget svg marker path { fill: var(--desk-accent) !important; stroke: var(--desk-accent) !important; }
+/* 剪贴板候选：浅色文字接在正文末尾，Tab 补齐。 */
+.dc-draft-ghost { white-space: pre-wrap; }
+.dc-draft-ghost-prefix { color: transparent; }
+.dc-draft-ghost-text { color: var(--desk-faint); }
+.dc-draft-clipboard-controls { position: absolute; bottom: var(--s-3); right: 0; z-index: 1; display: flex; align-items: center; gap: var(--s-1); padding: var(--s-1) var(--s-1) var(--s-1) var(--s-3); border-radius: var(--r-pill); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); animation: dc-rise var(--desk-dur) var(--desk-ease) both; }
+.dc-companion .dc-draft-clipboard-accept,
+.dc-draft-clipboard-hint { display: inline-flex; align-items: center; gap: var(--s-3); min-height: 22px; padding: 0 var(--s-2); border-radius: var(--r-pill); color: var(--desk-muted); font-size: var(--desk-t-micro); font-weight: var(--w-med); }
+.dc-companion .dc-draft-clipboard-controls kbd { padding: 0 var(--s-2); color: var(--desk-muted); background: transparent; border-color: var(--desk-highlight); font-size: var(--t-2xs); line-height: 1.4; }
+.dc-companion .dc-draft-clipboard-dismiss { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: var(--r-circle); color: var(--desk-muted); font-size: var(--icon-sm); }
+/* 选中一段文字，它旁边长出一枚小小的 AI 胶囊：直接操控，不用先去找菜单。 */
+.dc-companion .dc-draft-selection-ai { position: absolute; z-index: 1; height: 24px; min-height: 0; padding: 0 var(--s-4) 0 var(--s-3); gap: var(--s-2); border-radius: var(--r-pill); color: var(--desk-ink); background: var(--desk-menu-bg); box-shadow: var(--desk-menu-shadow); font-size: var(--desk-t-micro); font-weight: var(--w-med); transform-origin: bottom left; animation: dc-pop var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-companion .dc-draft-selection-ai > .bx { color: var(--desk-accent); font-size: var(--icon-sm); }
+.dc-companion .dc-draft-selection-ai:hover:not(:disabled) { background: var(--desk-raised); color: var(--desk-ink); }

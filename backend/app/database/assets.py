@@ -7,6 +7,10 @@ from pathlib import Path
 
 from ..util.config import get_settings
 
+# A durable ownership marker also protects attachments referenced only by a
+# desktop draft (which lives in localStorage, outside the notes database).
+ATTACHMENT_METADATA_DIR = ".attachment-names"
+
 
 def assets_dir() -> Path:
     d = Path(get_settings().kite_data_dir) / "assets"

@@ -96,7 +96,8 @@ def mermaid_xy(title: str, labels: list[str], values: list[float],
     return "```mermaid\n" + "\n".join(lines) + "\n```"
 
 
-def mermaid_flow(title: str, steps: list[str], kind: str = "LR") -> str:
+def mermaid_flow(title: str, steps: list[str], kind: str = "LR",
+                 edges: list[tuple[int, int, str]] | None = None) -> str:
     """流程图。节点 id 用 N0/N1… 自己生成，**不要拿标签当 id**——中文和标点
     当 id 会直接解析失败。"""
     ids = [f"N{i}" for i in range(len(steps))]
@@ -105,6 +106,13 @@ def mermaid_flow(title: str, steps: list[str], kind: str = "LR") -> str:
         lines.insert(0, f"---\ntitle: {safe_label(title, 40)}\n---")
     for i, (nid, label) in enumerate(zip(ids, steps)):
         lines.append(f'    {nid}["{safe_label(label)}"]')
-        if i:
+        if i and edges is None:
             lines.append(f"    {ids[i - 1]} --> {nid}")
+    # An explicit graph preserves decisions and retry loops. Existing callers that
+    # only pass steps keep the original linear behavior.
+    for source, target, label in edges or []:
+        if not (0 <= source < len(ids) and 0 <= target < len(ids)):
+            raise ValueError("flow edge references an unknown node")
+        arrow = f' -->|"{safe_label(label)}"| ' if label.strip() else " --> "
+        lines.append(f"    {ids[source]}{arrow}{ids[target]}")
     return "```mermaid\n" + "\n".join(lines) + "\n```"

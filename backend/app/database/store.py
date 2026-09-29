@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from .assets import ATTACHMENT_METADATA_DIR
 from .wordcount import word_count
 from ..editor import intent as intent_mod
 from ..util.config import get_settings
@@ -2803,11 +2804,21 @@ def get_active_llm_config() -> dict:
     定死的，改配置页不会让它实时生效，也不该为了这个改成运行时可变——
     那是给"部署环境切换"用的，跟"用户在设置页切供应商"是两件事，前者
     改 .env 重启，后者查这张表。"""
+    from ..util.config import env_set
+    from ..util.config import gemini_llm_config
     cfg = get_provider_config()
     if cfg["provider"] == "gpt" and cfg["gpt_api_key"]:
         return {"base_url": cfg["gpt_base_url"], "api_key": cfg["gpt_api_key"],
                 "model": cfg["gpt_model"], "provider": "gpt"}
     s = get_settings()
+    # 谁都没配抽取模型（设置页没填本地模型、.env 也没给地址，还是出厂默认的本机 11434），
+    # 但桌面版给了 Gemini 凭据：抽取就走 Gemini 的 OpenAI 兼容端点。岛上存的笔记要进知识库，
+    # 靠的就是这一条——用户配一次 key，不用再去设置页填一个本地模型。
+    # 设置页明确填了本地模型、或 .env 给了 `LLM_BASE_URL` 的，仍以那个为准。
+    if not (cfg["local_base_url"] and cfg["local_model"]) and not env_set("llm_base_url"):
+        gemini = gemini_llm_config()
+        if gemini:
+            return gemini
     # 「本地模型」：设置页填的优先，没填退回 .env / 出厂默认（P19 #1）
     #
     # **`provider` 一起给出去**（P30 #5）：`llm._payload` 要按它决定发不发
@@ -2837,6 +2848,10 @@ def llm_configured() -> dict:
         return {"configured": True, "source": "local"}
     if env_set("llm_base_url"):
         return {"configured": True, "source": "env"}
+    # 桌面版的 Gemini 凭据也算配过：抽取走它的 OpenAI 兼容端点（get_active_llm_config）。
+    from ..util.config import gemini_llm_config
+    if gemini_llm_config():
+        return {"configured": True, "source": "gemini"}
     return {"configured": False, "source": "default"}
 
 
@@ -2963,7 +2978,9 @@ def recent_harness_runs(key: str, limit: int = 3) -> list[dict]:
 def sweep_orphan_assets(assets_dir: Path, min_age_days: int = 7) -> dict:
     """资产库里没有任何笔记 / 历史版本 / 最近删除引用的图删掉。dev 库 10 张里 6 张（6.6MB）是探针拖图、
     删掉的笔记留下的，之前没有任何清理机制（第 417 轮）。7 天宽限：刚贴进来还没自动保存的图不能误删；
-    引用按文件名 LIKE 扫三张表，笔记里的图片链接是 `/api/assets/<名字>`。"""
+    引用按文件名 LIKE 扫三张表，笔记里的图片链接是 `/api/assets/<名字>`。
+    桌面附件可只被 localStorage 草稿引用，不能靠这三张表判断无人使用；有持久化
+    附件标记的文件保留，直到将来有显式的附件清理流程。"""
     if not assets_dir.is_dir():
         return {"removed": 0, "bytes": 0}
     now = datetime.now(timezone.utc).timestamp()
@@ -2972,6 +2989,8 @@ def sweep_orphan_assets(assets_dir: Path, min_age_days: int = 7) -> dict:
     with connect() as c:
         for entry in sorted(assets_dir.iterdir()):
             if not entry.is_file() or entry.name.startswith("."):
+                continue
+            if (assets_dir / ATTACHMENT_METADATA_DIR / f"{entry.name}.json").is_file():
                 continue
             if now - entry.stat().st_mtime < min_age_days * 86400:
                 continue

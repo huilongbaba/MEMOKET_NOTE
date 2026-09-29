@@ -36,11 +36,17 @@ export type Destination = {
 }
 
 export const DESTINATIONS: Destination[] = [
-  { id: 'app:import', name: '导入', icon: 'bx-import', where: 'top',
-    hint: '导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件' },
-  { id: 'app:journey', name: '屏幕活动', icon: 'bx-desktop', where: 'top',
+  // 桌面端只留三扇门：今日（回顾与继续）、笔记（长文与资料）、知识库（记忆的家）。
+  // 随手记、暂存、专注都在顶部的灵动岛上做完；导入与屏幕活动是知识库的来源，从知识库页和 ⌘K 进。
+  { id: 'app:workspace', name: '今日', icon: 'bx-home', where: 'top',
+    hint: '今日：从上次停下的地方继续，定今天的重点', palette: '今日 Home 工作台' },
+  { id: 'app:notes', name: '笔记', icon: 'bx-book', where: 'top',
+    hint: '笔记：全部笔记与资料，搜索、收藏和继续编辑', palette: '全部笔记与资料 Notes' },
+  { id: 'app:import', name: '导入', icon: 'bx-import', where: 'palette',
+    hint: '导入：.md 文件 / Obsidian / Evernote / Notion / Apple Notes / 批量文件', palette: '导入笔记与文件 Import' },
+  { id: 'app:journey', name: '屏幕活动', icon: 'bx-desktop', where: 'palette',
     hint: '屏幕活动：今天都在做什么', palette: '今天的屏幕活动' },
-  { id: 'app:skills', name: '写作 Skill', icon: 'bx-extension', hint: '写作 Skill', where: 'foot' },
+  { id: 'app:skills', name: 'AI 工作技能', icon: 'bx-extension', hint: '管理 AI 写作 Skill 与工作方式', palette: '写作 Skill', where: 'palette' },
   { id: 'app:settings', name: '设置', icon: 'bx-cog', hint: '设置：LLM 供应商', where: 'foot' },
   { id: 'app:trash', name: '最近删除', icon: 'bx-trash', where: 'palette',
     hint: '最近删除（30 天内可找回）', palette: '最近删除（30 天内可找回）' },

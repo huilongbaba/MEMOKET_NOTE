@@ -42,8 +42,8 @@ function isSeparator(line: string): boolean {
 }
 
 class TableWidget extends WidgetType {
-  constructor(readonly source: string) { super() }
-  eq(other: TableWidget) { return other.source === this.source }
+  constructor(readonly source: string, readonly readOnly: boolean) { super() }
+  eq(other: TableWidget) { return other.source === this.source && other.readOnly === this.readOnly }
 
   toDOM() {
     const lines = this.source.split('\n').filter((l) => l.trim())
@@ -76,8 +76,8 @@ class TableWidget extends WidgetType {
     return wrap
   }
 
-  // 点一下表格要能把光标放进原文去改，所以**不能**吞掉事件
-  ignoreEvent() { return false }
+  // 编辑模式允许点击进入源码；只读模式保留可阅读、可选择的表格。
+  ignoreEvent() { return this.readOnly }
 }
 
 /** 找出所有 GFM 表格。lang-markdown 的 GFM 扩展把它解析成 ``Table`` 节点，
@@ -92,10 +92,10 @@ function tableDecorations(state: EditorState): DecorationSet {
       const lines = text.split('\n').filter((l) => l.trim())
       if (lines.length < 2 || !isSeparator(lines[1])) return
       // 光标在表格里 = 正在编辑，显示原文
-      if (ranges.some((r) => r.from <= node.to && r.to >= node.from)) return
+      if (!state.readOnly && ranges.some((r) => r.from <= node.to && r.to >= node.from)) return
       decos.push(Decoration.replace({ block: true }).range(node.from, node.to))
       decos.push(Decoration.widget({
-        widget: new TableWidget(text), side: 1, block: true,
+        widget: new TableWidget(text, state.readOnly), side: 1, block: true,
       }).range(node.to))
     },
   })
@@ -108,7 +108,7 @@ function tableDecorations(state: EditorState): DecorationSet {
 export const tablePreview = StateField.define<DecorationSet>({
   create(state) { return tableDecorations(state) },
   update(value, tr) {
-    return (tr.docChanged || tr.selection) ? tableDecorations(tr.state) : value
+    return (tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly) ? tableDecorations(tr.state) : value
   },
   provide: (f) => EditorView.decorations.from(f),
 })

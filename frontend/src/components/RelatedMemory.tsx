@@ -160,41 +160,29 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
     <div>
       <p className="muted" style={{ fontSize: 'var(--t-sm)', margin: '4px 0 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
         {/* 转圈 + 下拉一起挤上来时这句会折成两行把头部撑高（第 216 轮实拍）：文字可截断，别折行 */}
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>跟着正文自动浮现，点一下插入引用。</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>相关资料，随正文更新。</span>
         {loading && <span className="spinner" style={{ flexShrink: 0 }} />}
         {/* 记忆范围：一个库里混着会议记录 / 笔记 / 导入的，写自家复盘时别让别家汇报串进来 */}
-        <select className="select-sm" value={scope} onChange={(e) => setMemoryScope(e.target.value as MemoryScope)} title="召回、关系、续写、扩写、校验、回顾、写作计划取材料都只看这一档"
+        <select className="select-sm" value={scope} onChange={(e) => setMemoryScope(e.target.value as MemoryScope)} title="选择检索和 AI 写作使用的知识来源" aria-label="知识来源范围"
                 style={{ marginInlineStart: 'auto', flexShrink: 0 }}>
           {(Object.keys(SCOPE_LABEL) as MemoryScope[]).map((k) => <option key={k} value={k}>{SCOPE_LABEL[k]}</option>)}
         </select>
       </p>
-      {/* 规则写在界面上（P1-1d）：一个点 = 一段、为什么只有含数字的段、六种颜色各是什么、
-          光标停下 0.9s 查哪段、下面的记忆按什么召回。用户第 768 轮问的就是这几句。 */}
-      {/* 空库（第一天的用户）：这四段图例的信息量是零，却占掉大半屏（P31 #8）——
-          换成一句话 + 导入入口，规则收进 `<details>`，想看再展开。 */}
+      {/* 默认先给资料和下一步；触发规则保留在折叠帮助中。 */}
       {kbEmpty ? (
-        <div className="muted mem-legend mem-legend-empty" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
-          {KB_EMPTY_NOTE}
+        <div className="muted mem-legend mem-legend-empty">
+          <p>导入资料，或将笔记存入知识库，即可在这里找到相关内容。</p>
           <button className="primary" style={{ fontSize: 'var(--t-sm)', padding: '2px 8px', marginInlineStart: 6 }}
                   onClick={() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'app:import' }))}>
-            <Icon n="bx-import" /> 导入
+            <Icon n="bx-import" /> 导入资料
           </button>
-          <details style={{ marginTop: 4 }}>
-            <summary style={{ cursor: 'pointer' }}>页边圆点和这份记忆是怎么来的</summary>
-            {MARGIN_RULE}。{MODEL_NOTE}
+          <details className="mem-help">
+            <summary>页边圆点和这份记忆是怎么来的</summary>
+            <p>{KB_EMPTY_NOTE}</p>
+            <p>{MARGIN_RULE}。{MODEL_NOTE}</p>
           </details>
         </div>
-      ) : (
-      <p className="muted mem-legend" style={{ fontSize: 'var(--t-xs)', margin: '0 0 8px', lineHeight: 1.7 }}>
-        {MARGIN_RULE}：
-        {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
-          <span key={k} style={{ whiteSpace: 'nowrap', marginInlineEnd: 6 }}><span className={'mm-dot mm-' + k} style={{ width: 7, height: 7, marginTop: 0, verticalAlign: 'middle', marginInlineEnd: 2 }} />{RELATION_LABEL[k]}</span>
-        ))}
-        <br />光标停在一段上 {IDLE_MS / 1000} 秒，查这段跟知识库的关系；下面的记忆按光标所在段（带前一段、约 {RECALL_CONTEXT_BEFORE} 字）召回，光标不在正文里时按末尾 {TAIL_CHARS} 字。
-        <br />{MODEL_NOTE}
-        {noRecordDots > 0 && <><br /><span className="mem-no-record-note">{noRecordNote(noRecordDots)}</span></>}
-      </p>
-      )}
+      ) : null}
       {(visibleRels.length > 0 || relBusy) && (
         <div className="stack" style={{ gap: 6, marginBottom: 10 }}>
           <div className="muted" style={{ fontSize: 'var(--t-xs)' }}>光标这段跟知识库的关系{relBusy && <> <span className="spinner" /></>}</div>
@@ -239,21 +227,20 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
           {evidenceLine(mode, evidence, terms, qCtx)}
         </p>
       )}
-      {facts.length === 0 && !loading && (
+      {facts.length === 0 && !loading && (!kbEmpty || failed) && (
         <p className={'muted' + (failed ? ' mem-failed' : '')} style={{ fontSize: 'var(--t-md)' }}>
           {/* **「没问成」排在最前**（P80 A）：没拿到回答的时候，关于知识库的任何一句
               （空库 / 没找到 / 没有可查的关键词）都是在替空气背书。 */}
           {failed ? RECALL_FAILED_NOTE
-            : kbEmpty ? '知识库还是空的。导入会议记录，或把写好的笔记「存入知识库」，之后这里会跟着你写的内容浮现相关记忆。'
-            : tooShort ? '再多写几个字就会开始自动检索。'
+            : tooShort ? '写下几句话，相关资料会出现在这里。'
             // P4 #6：查询退化到一个泛词（「记录」）时原来硬凑 5 条不相干的；现在后端不凑，这里说清楚为什么空
-            : whyEmpty === 'no_terms' ? (mode === 'cursor' ? '光标这段' : '正文末尾') + '没有可查的关键词（人名、项目、日期、数字这类具体的词）。'
-            : whyEmpty === 'weak' ? (mode === 'cursor' ? '光标这段' : '正文末尾') + '的关键词在知识库里没有一条记录同时命中两个——不硬凑不相干的。'
+            : whyEmpty === 'no_terms' ? '暂时没有足够线索。写下具体的人名、项目或日期后再试。'
+            : whyEmpty === 'weak' ? '暂时没有足够相关的资料。可以补充正文，或切换知识来源。'
             : '知识库里暂时没有找到相关内容。'}
         </p>
       )}
       {facts.length > 0 && fresh.length === 0 && !loading && (
-        <p className="muted" style={{ fontSize: 'var(--t-md)' }}>召回的 {inBody.length} 条都是正文里已经写了的原话（折在下面）。</p>
+        <p className="muted" style={{ fontSize: 'var(--t-md)' }}>找到的 {inBody.length} 条资料已在正文中，可展开查看来源。</p>
       )}
       {fresh.map((f) => (
         <div
@@ -299,13 +286,29 @@ export default function RelatedMemory({ content, paragraph = '', onInsert, kbEmp
       ))}
       {inBody.length > 0 && (
         <details className="mem-inbody" style={{ marginTop: 8 }}>
-          <summary className="muted" style={{ fontSize: 'var(--t-sm)', cursor: 'pointer' }}>已在正文里的 {inBody.length} 条（你刚写的原话，折起来）</summary>
+          <summary className="muted" style={{ fontSize: 'var(--t-sm)', cursor: 'pointer' }}>已在正文中的 {inBody.length} 条资料</summary>
           {inBody.map((f) => (
             <div key={f.id} className="muted" style={{ fontSize: 'var(--t-sm)', margin: '6px 0 0 8px', cursor: 'pointer' }} title="打开这条"
                  {...clickable(() => window.dispatchEvent(new CustomEvent('open-virtual', { detail: 'kb:fact:' + f.id })))}>
               {f.when ? <span className="badge" style={{ marginInlineEnd: 4 }}>{f.when}</span> : null}{f.text}
             </div>
           ))}
+        </details>
+      )}
+      {!kbEmpty && (
+        <details className="muted mem-legend mem-help">
+          <summary>关联如何出现</summary>
+          <p>资料会根据正在写的内容自动更新。点资料卡插入引用；卡片上的按钮可以查看来源，或放进托盘供写作时使用。</p>
+          <p>{MARGIN_RULE}。</p>
+          <p>
+            {(Object.keys(RELATION_LABEL) as (keyof typeof RELATION_LABEL)[]).map((k) => (
+              <span key={k} style={{ whiteSpace: 'nowrap', marginInlineEnd: 6 }}><span className={'mm-dot mm-' + k} style={{ width: 7, height: 7, marginTop: 0, verticalAlign: 'middle', marginInlineEnd: 2 }} />{RELATION_LABEL[k]}</span>
+            ))}
+          </p>
+          <p>光标停在一段上 {IDLE_MS / 1000} 秒，检查这段与知识库的关系。检索会参考光标所在段和前一段约 {RECALL_CONTEXT_BEFORE} 字；光标不在正文时，参考末尾 {TAIL_CHARS} 字。</p>
+          <p>{MODEL_NOTE}</p>
+          {whyEmpty === 'weak' && <p>当前关键词没有一条记录同时命中两个，因此不展示关联较弱的资料。</p>}
+          {noRecordDots > 0 && <p className="mem-no-record-note">{noRecordNote(noRecordDots)}</p>}
         </details>
       )}
     </div>

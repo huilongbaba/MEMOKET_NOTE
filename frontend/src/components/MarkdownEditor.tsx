@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import { Compartment, EditorState } from '@codemirror/state'
-import type { TransactionSpec } from '@codemirror/state'
+import type { Extension, TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
@@ -103,6 +103,8 @@ type Props = {
   onStopRun?: (id: string) => void
   /** 形状不对被拦下的那次，原样再跑一遍（P31 #7） */
   onRetryRun?: (id: string) => void
+  /** 宿主追加的扩展（灵动岛的剪贴板候选、选区 AI 胶囊）。只在挂载时读一次。 */
+  extensions?: Extension[]
 }
 
 /** 光标所在段落：往上往下各找到空行为止。标题行单独算一段。 */
@@ -121,7 +123,7 @@ export function paragraphAt(doc: { lineAt(pos: number): { number: number; text: 
 
 export default function MarkdownEditor({
   content, onChange, revisions = [], onAcceptInline, placeholder, viewRef, readOnly = false, scrollPad = false,
-  roundDiff = null, undoGroup = 0, onPendingDiff, onLayersChanged, onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover,
+  roundDiff = null, undoGroup = 0, onPendingDiff, onLayersChanged, onSelectionContextMenu, onSlash, onStopRun, onRetryRun, onCursorParagraph, marginMarks, onMarginClick, onAltHover, extensions = [],
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const lastPending = useRef(-1)
@@ -237,6 +239,7 @@ export default function MarkdownEditor({
         // 只读放在 Compartment 里：AI 在写的时候把编辑器锁住（改动会被轮末对齐盖掉），
         // 停下来再解锁——所以它得能在运行中切换
         readOnlyComp.current.of(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+        extensions,
       ],
     })
     const view = new EditorView({ state, parent: hostRef.current })

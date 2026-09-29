@@ -4,11 +4,17 @@
  * 三件事：起后端、开窗口、退出时收干净。界面本身全在渲染进程里，跟网页版
  * 是同一份代码——**桌面和网页不分叉**，这是 backend 自己托管前端换来的。
  */
-import { nativeTheme, app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, dialog, shell, ipcMain, session, screen } from 'electron'
+import { nativeTheme, app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, dialog, shell, ipcMain, session, screen, globalShortcut, clipboard } from 'electron'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 import { startBackend, type Backend } from './backend.js'
+import { createAgentBridge } from './agent.js'
+import { createDecideHotkey } from './decide.js'
+import { createCue } from './cue.js'
+import { createModifierTap } from './modtap.js'
+import { createDesktopCompanion } from './companion.js'
 import { fakeSource, makeRecorder, onPowerEvent, type CaptureSource, type CaptureState, type FakeSpec, type Recorder } from './capture.js'
 
 // **--dev 只管开不开 devtools。** 「前端从哪来」必须看 app.isPackaged：
@@ -45,7 +51,7 @@ function loadIdentity(): string | undefined {
   } catch { return undefined }
 }
 function saveIdentity(user: string) {
-  try { writeFileSync(identityFile(), JSON.stringify({ user, saved_at: new Date().toISOString() })) } catch { /* 写不了就下次再说 */ }
+  try { mkdirSync(app.getPath('userData'), { recursive: true }); writeFileSync(identityFile(), JSON.stringify({ user, saved_at: new Date().toISOString() })) } catch { /* 写不了就下次再说 */ }
 }
 
 function appUrl(port: number): string {
@@ -58,7 +64,90 @@ function appUrl(port: number): string {
 }
 let backend: Backend | null = null
 let win: BrowserWindow | null = null
+let companion: ReturnType<typeof createDesktopCompanion> | null = null
+/** 岛上的会话（Claude Code 无头运行）；和岛同生同灭。 */
+let agent: ReturnType<typeof createAgentBridge> | null = null
+/** 「拿主意」的全局热键：读别的应用里的选区、把岛展开成决策台面；和岛同生同灭。 */
+let decide: ReturnType<typeof createDecideHotkey> | null = null
+let cue: ReturnType<typeof createCue> | null = null
+let modtap: ReturnType<typeof createModifierTap> | null = null
+const workspaceOnLaunch = process.argv.includes('--workspace') || Boolean(probe || shotPath)
+let pendingWorkspaceDestination: string | undefined
 const logs: string[] = []
+const QUICK_CAPTURE_SHORTCUT = 'CommandOrControl+Shift+N'
+let quickCaptureRegistered = false
+let quickCaptureReason = ''
+let quickCapturePending = false
+let rendererReadyForCapture = false
+let booting: Promise<void> | null = null
+let recoveringBackend: Promise<void> | null = null
+
+function deliverQuickCapture() {
+  if (!quickCapturePending || !rendererReadyForCapture || !win || win.isDestroyed()) return
+  quickCapturePending = false
+  win.webContents.send('menu', 'quick-capture')
+}
+
+/** Only brings our own window forward. Clipboard access is a separate user action. */
+async function openQuickCapture() {
+  if (!workspaceOnLaunch) {
+    if (!companion) await boot()
+    companion?.show('top', 'capture')
+    return
+  }
+  quickCapturePending = true
+  if (!win || win.isDestroyed()) {
+    if (backend) createWindow(appUrl(backend.port))
+    else await boot()
+  }
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  if (process.platform === 'darwin') app.focus({ steal: true })
+  win.focus()
+  deliverQuickCapture()
+}
+
+function requestQuickCapture() {
+  void openQuickCapture().catch((e) => {
+    remember(`[desktop] 快速捕捉未能打开：${e instanceof Error ? e.message : String(e)}\n`)
+    dialog.showErrorBox('无法打开快速捕捉', '应用窗口未能启动，请重启应用后重试。')
+  })
+}
+
+function registerQuickCaptureShortcut() {
+  try {
+    quickCaptureRegistered = globalShortcut.register(QUICK_CAPTURE_SHORTCUT, requestQuickCapture)
+    if (!quickCaptureRegistered) quickCaptureReason = '快捷键已被其他应用占用，或当前系统不允许注册。仍可在应用内使用。'
+  } catch (e) {
+    quickCaptureReason = e instanceof Error ? e.message : String(e)
+  }
+  remember(`[desktop] 全局快速捕捉快捷键 ${quickCaptureRegistered ? '已注册' : `不可用：${quickCaptureReason}`}\n`)
+}
+
+function isMainRenderer(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
+  if (!win || win.isDestroyed() || !backend || event.sender !== win.webContents
+    || event.senderFrame !== win.webContents.mainFrame) return false
+  try { return new URL(event.senderFrame.url).origin === `http://127.0.0.1:${backend.port}` } catch { return false }
+}
+
+ipcMain.on('quick-capture:ready', (event) => {
+  if (!isMainRenderer(event)) return
+  rendererReadyForCapture = true
+  deliverQuickCapture()
+  deliverWorkspaceDestination()
+})
+ipcMain.handle('quick-capture:status', (event) => {
+  if (!isMainRenderer(event)) throw new Error('此窗口无法读取快捷键状态。')
+  return { accelerator: QUICK_CAPTURE_SHORTCUT, registered: quickCaptureRegistered, reason: quickCaptureReason }
+})
+ipcMain.handle('quick-capture:clipboard', (event) => {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender)
+  const companionFrame = companion?.owns(event.sender) && event.senderFrame === event.sender.mainFrame
+    && backend && new URL(event.senderFrame.url).origin === `http://127.0.0.1:${backend.port}`
+  if ((!isMainRenderer(event) && !companionFrame) || !senderWindow?.isFocused()) throw new Error('请先回到记录面板，再点击粘贴。')
+  return clipboard.readText()
+})
 
 function remember(line: string) {
   logs.push(line.trimEnd())
@@ -138,7 +227,8 @@ function rememberBounds(w: BrowserWindow) {
 // 就丢最后几句。主进程先拦一次退出，问界面一声，存完（或 800ms 没回音）再真退。
 let flushed = false
 function flushThenQuit(e: Electron.Event) {
-  if (flushed || !win || win.isDestroyed()) return
+  if (flushed) return
+  if (!win || win.isDestroyed()) { flushed = true; return }
   e.preventDefault()
   const started = Date.now()
   const done = () => { if (flushed) return; flushed = true; remember(`[desktop] 退出前保存：界面 ${Date.now() - started}ms 后回应`); app.quit() }
@@ -148,6 +238,7 @@ function flushThenQuit(e: Electron.Event) {
 }
 
 function createWindow(url: string) {
+  rendererReadyForCapture = false
   // `--win=WxH`：截图核对窄窗口用
   const winArg = process.argv.find((a) => a.startsWith('--win='))?.slice(6).split('x').map(Number)
   // 上次的窗口位置和大小（Trilium 也记）。探针传了 --win 就不用。
@@ -174,7 +265,15 @@ function createWindow(url: string) {
   })
 
   win.once('ready-to-show', () => win?.show())
-  win.on('closed', () => { win = null })
+  win.on('close', (event) => {
+    if (!quitting && companion) { event.preventDefault(); win?.hide(); if (process.platform === 'darwin') app.dock?.hide() }
+  })
+  win.on('closed', () => { win = null; rendererReadyForCapture = false })
+  win.webContents.on('did-start-loading', () => { rendererReadyForCapture = false })
+  win.webContents.on('did-finish-load', () => {
+    // React reports ready after mounting its navigation listeners.
+    if (pendingWorkspaceDestination && rendererReadyForCapture) deliverWorkspaceDestination()
+  })
 
   // 外链走系统浏览器，不在应用里开一个没有地址栏的窗口。
   win.webContents.setWindowOpenHandler(({ url: target }) => {
@@ -202,6 +301,27 @@ function createWindow(url: string) {
       })
     })
   }
+}
+
+function deliverWorkspaceDestination() {
+  if (!pendingWorkspaceDestination || !rendererReadyForCapture || !win || win.isDestroyed()) return
+  win.webContents.send('menu', `workspace:${pendingWorkspaceDestination}`)
+  pendingWorkspaceDestination = undefined
+}
+
+function openWorkspace(destination?: string) {
+  pendingWorkspaceDestination = destination
+  if (!backend) {
+    void (recoveringBackend ?? boot()).then(() => { if (backend && !quitting) openWorkspace(destination) })
+    return
+  }
+  if (!win || win.isDestroyed()) createWindow(appUrl(backend.port))
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  if (process.platform === 'darwin') void app.dock?.show()
+  win.show()
+  win.focus()
+  deliverWorkspaceDestination()
 }
 
 let quitting = false
@@ -241,8 +361,10 @@ async function launchBackend(webDir: string): Promise<Backend> {
       restarts += 1
       const oldPort = backend?.port
       backend = null
-      setTimeout(() => {
-        void launchBackend(webDir).then((b) => {
+      recoveringBackend = new Promise<void>(resolve => setTimeout(resolve, 800)).then(async () => {
+        if (quitting) return
+        await launchBackend(webDir).then((b) => {
+          if (quitting) { b.stop(); return }
           backend = b
           if (b.port !== oldPort) {
             remember(`[desktop] 后端换到了 ${b.port}（原来是 ${oldPort}），窗口跟着改地址\n`)
@@ -251,16 +373,24 @@ async function launchBackend(webDir: string): Promise<Backend> {
           // 那上面可能正坐着**另一份实例**的后端（P45 #2）。
           win?.loadURL(appUrl(b.port)).catch((e) =>
             remember(`[desktop] 重拉后端之后页面加载失败 ${appUrl(b.port)}：${e}\n`))
+          companion?.reload()
         }).catch((e) => {
           dialog.showErrorBox('后端没能重新启动',
             `${(e as Error).message}\n\n最后几行日志：\n${logs.slice(-12).join('\n') || '（没有输出）'}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
         })
-      }, 800)
+      }).finally(() => { recoveringBackend = null })
     },
   })
 }
 
-async function boot() {
+function boot(): Promise<void> {
+  // Activation and a global shortcut can arrive together while the backend starts.
+  if (!booting) booting = bootApp().finally(() => { booting = null })
+  return booting
+}
+
+async function bootApp() {
+  if (backend) return
   const webDir = app.isPackaged
     ? path.join(process.resourcesPath, 'web')
     : path.resolve(__dirname, '..', '..', 'frontend', 'dist')
@@ -289,7 +419,30 @@ async function boot() {
     app.quit()
     return
   }
-  createWindow(appUrl(backend.port))
+  // Both floating surfaces use the same persistent note identity from their first paint.
+  if (!forcedUser && !probe && !loadIdentity()) saveIdentity(`user-${randomUUID().slice(0, 8)}`)
+  if (!workspaceOnLaunch && !companion) {
+    companion = createDesktopCompanion({
+      getUrl: () => appUrl(backend!.port),
+      openWorkspace,
+      log: remember,
+    })
+    agent = createAgentBridge({
+      // 不放在 companion/ 下：暂存箱拒收自己私有目录里的文件，会话产出的文件要能「放入暂存箱」。
+      directory: path.join(app.getPath('userData'), 'agent'),
+      authorize: event => { if (!companion) throw new Error('不允许从这个窗口调用会话。'); companion.assertIsland(event) },
+      shelve: paths => companion!.addFiles(paths),
+      targets: () => companion?.contents() ?? [],
+      log: remember,
+    })
+    // 热键读到的选区只送给岛（contents），状态查询也只答岛的窗口（assertIsland）；光标处那一下光环用的透明窗口先预热好。
+    cue = createCue({ log: remember })
+    cue.warm()
+    // 双击 ⌃ 截图：原生辅助进程盯着修饰键（dist/modtap）；没编出来就只有 ⌥D。
+    modtap = createModifierTap({ helper: path.join(__dirname, 'modtap'), key: process.env.MEMOKET_DECIDE_TAP, log: remember, onTap: () => { void decide?.screenshot() } })
+    decide = createDecideHotkey({ companion, cue, tapActive: () => modtap?.active() ?? false, log: remember, ...(process.env.MEMOKET_DECIDE_SHORTCUT ? { accelerator: process.env.MEMOKET_DECIDE_SHORTCUT } : {}) })
+    if (process.platform === 'darwin') app.dock?.hide()
+  } else if (workspaceOnLaunch && !win) createWindow(appUrl(backend.port))
 }
 
 if (forcedTheme) nativeTheme.themeSource = forcedTheme
@@ -299,6 +452,7 @@ ipcMain.on('remember-user', (_e, user: unknown) => {
   if (typeof user === 'string' && /^[\w.-]{1,64}$/.test(user) && user !== loadIdentity()) {
     saveIdentity(user)
     remember(`[desktop] 记住身份 ${user}`)
+    companion?.reload()
   }
 })
 /** 导回 Notion / 飞书的凭证记在 identity.json 旁边（`export-credentials.json`，0600）。
@@ -391,14 +545,19 @@ function installMenu() {
       // 快捷键只是显示：真正的按键在渲染进程里处理，这里 click 发同名事件。
       label: '文件',
       submenu: [
+        { label: '显示桌面悬浮层', click: () => companion?.show() },
+        { label: '暂存架', click: () => companion?.show('top', 'clipboard') },
+        { label: '打开完整笔记库', click: () => openWorkspace('app:notes') },
+        { type: 'separator' as const },
         // registerAccelerator: false = 菜单上只显示快捷键、不向系统注册——按键还是渲染进程处理，
         // 否则 ⌘N 会被菜单吃掉再发一次事件（或者两边各建一篇）
-        { label: '新建笔记', accelerator: 'CommandOrControl+N', registerAccelerator: false, click: () => win?.webContents.send('menu', 'new-note') },
-        { label: '今天的日记', accelerator: 'CommandOrControl+Shift+D', registerAccelerator: false, click: () => win?.webContents.send('menu', 'today') },
+        { label: '新建笔记', accelerator: 'CommandOrControl+N', registerAccelerator: false, click: requestQuickCapture },
+        { label: '快速捕捉', accelerator: QUICK_CAPTURE_SHORTCUT, registerAccelerator: false, click: requestQuickCapture },
+        { label: '今天的日记', accelerator: 'CommandOrControl+Shift+D', registerAccelerator: false, click: () => openWorkspace('command:open-today') },
         { type: 'separator' as const },
-        { label: '导入…', click: () => win?.webContents.send('menu', 'import') },
-        { label: '导出全部笔记…', click: () => win?.webContents.send('menu', 'export-all') },
-        { label: '最近删除', click: () => win?.webContents.send('menu', 'trash') },
+        { label: '导入…', click: () => openWorkspace('app:import') },
+        { label: '导出全部笔记…', click: () => openWorkspace('command:export-all') },
+        { label: '最近删除', click: () => openWorkspace('app:trash') },
         { label: '屏幕活动', click: () => openJourneyPage() },
         { type: 'separator' as const },
         { role: 'close' as const, label: '关闭窗口' },
@@ -437,9 +596,9 @@ function installMenu() {
       // Trilium 的 Help 菜单：快捷键、数据在哪、日志在哪、去哪报问题
       label: '帮助',
       submenu: [
-        { label: '快捷键一览', accelerator: 'CommandOrControl+/', click: () => win?.webContents.send('menu', 'shortcuts') },
+        { label: '快捷键一览', accelerator: 'CommandOrControl+/', click: () => openWorkspace('command:show-shortcuts') },
         { type: 'separator' as const },
-        { label: '导出全部笔记…', click: () => win?.webContents.send('menu', 'export-all') },
+        { label: '导出全部笔记…', click: () => openWorkspace('command:export-all') },
         { label: '打开备份文件夹', click: () => { void shell.openPath(path.join(app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.resolve(__dirname, '..', '..', 'backend', 'data'), 'backups')) } },
         { label: '打开数据文件夹', click: () => { void shell.openPath(app.isPackaged ? path.join(app.getPath('userData'), 'data') : path.resolve(__dirname, '..', '..', 'backend', 'data')) } },
         { label: '打开日志文件夹', click: () => { void shell.openPath(app.getPath('logs')) } },
@@ -469,10 +628,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (win) { if (win.isMinimized()) win.restore(); win.focus() }
+    if (companion) companion.show()
+    else if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus() }
   })
   // boot() 里没兜住的意外（起窗口 / 读身份文件抛出来的）原来是 unhandled rejection：进程活着、窗口没有。
-  app.whenReady().then(() => { installMenu(); setupJourney(); return clearCacheOnUpgrade() }).then(boot).catch((e) => {
+  app.whenReady().then(() => { installMenu(); setupJourney(); return clearCacheOnUpgrade() }).then(boot).then(registerQuickCaptureShortcut).catch((e) => {
     remember(`[desktop] 启动失败：${e instanceof Error ? e.stack ?? e.message : String(e)}\n`)
     dialog.showErrorBox('启动失败', `${e instanceof Error ? e.message : String(e)}\n\n完整日志：${logFile ?? app.getPath('logs')}`)
     app.quit()
@@ -517,6 +677,16 @@ function refreshTray() {
   tray.setTitle(`${TRAY_GLYPH[st]}`)
   tray.setToolTip(TRAY_SAY[st])
   tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示桌面悬浮层', click: () => companion?.show() },
+    { label: '暂存架', click: () => companion?.show('top', 'clipboard') },
+    { label: '已移除的暂存文件…', click: async () => {
+      const result = await companion?.revealRemoved()
+      if (result && !result.ok) dialog.showErrorBox('无法打开已移除文件夹', result.error || '请稍后重试。')
+    } },
+    { label: '打开完整笔记库', click: () => openWorkspace('app:notes') },
+    { label: '暂时隐藏悬浮层', click: () => companion?.hide() },
+    { label: '快速捕捉', accelerator: QUICK_CAPTURE_SHORTCUT, registerAccelerator: false, click: requestQuickCapture },
+    { type: 'separator' },
     { label: TRAY_SAY[st], enabled: false },
     { type: 'separator' },
     // **菜单栏是用户平时待的地方**，「今天记了什么」必须从这儿点得进去——
@@ -533,6 +703,8 @@ function refreshTray() {
           ]),
     { type: 'separator' },
     { label: '停止并关掉', enabled: st !== 'off', click: () => { journey?.stop(); autoPaused = false; refreshTray() } },
+    { type: 'separator' },
+    { role: 'quit', label: '退出 MEMOKET' },
   ]))
 }
 
@@ -547,11 +719,7 @@ function userPause(minutes?: number) {
 
 /** 把窗口拿到前面并翻到「今天」页。菜单栏和「文件」菜单共用。 */
 function openJourneyPage() {
-  if (!win || win.isDestroyed()) { void boot(); return }
-  if (win.isMinimized()) win.restore()
-  win.show()
-  app.focus({ steal: true })
-  win.webContents.send('menu', 'journey')
+  openWorkspace('app:journey')
 }
 
 function setupJourneyIpc() {
@@ -702,6 +870,7 @@ async function describeBacklog() {
 }
 
 app.on('window-all-closed', () => {
+  if (companion && !quitting) return
   // macOS 的习惯是关窗不退出；但后端是这个 app 的子进程，留着它空跑没有意义
   // ——重新激活时 boot() 会再起一个。
   backend?.stop()
@@ -710,6 +879,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
+  if (companion) { companion.show(); return }
   if (win) return
   if (backend) createWindow(appUrl(backend.port))
   else void boot()
@@ -724,7 +894,21 @@ app.on('before-quit', (e) => {
   flushThenQuit(e)
   if (!flushed) return
   quitting = true
+  decide?.dispose()
+  decide = null
+  cue?.dispose()
+  cue = null
+  modtap?.dispose()
+  modtap = null
+  agent?.dispose()
+  agent = null
+  companion?.dispose()
+  companion = null
   try { session.defaultSession.flushStorageData() } catch { /* 没有 session 时无所谓 */ }
   backend?.stop()
 })
 process.on('exit', () => backend?.stop())
+app.on('will-quit', () => {
+  globalShortcut.unregister(QUICK_CAPTURE_SHORTCUT)
+  quickCaptureRegistered = false
+})

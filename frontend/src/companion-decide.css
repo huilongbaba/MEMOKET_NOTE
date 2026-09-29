@@ -1,0 +1,80 @@
+/* 灵动岛 · 拿主意（CompanionDecide）。纯黑底上：一段引文、一根细线在想、然后是几张白色叠层的卡。
+   强调色只给两处「活着的状态」：想的时候那根进度线，和每张卡底下的概率条。高亮的那张卡只有一圈内侧发丝线，
+   没有投影。全部尺度走 --desk-* / --s-* 令牌（闸门 check-ui-tokens）。 */
+.dc-decide { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: var(--s-3) var(--s-6) var(--s-5); outline: none; color: var(--desk-ink); background: var(--desk-bg); font-family: var(--sans); }
+
+/* 引文：两行截断，来源应用一行小字。 */
+.dc-decide-quote { display: flex; flex-direction: column; gap: var(--s-1); flex-shrink: 0; padding: var(--s-2) var(--s-3) var(--s-3); }
+/* 引文是「你选的那段」，退到次要：小一号、灰一点；题目才是这一屏的标题。 */
+.dc-decide-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin: 0; overflow: hidden; overflow-wrap: anywhere; color: var(--desk-muted); font-size: var(--desk-t-ui); line-height: 1.5; user-select: text; }
+.dc-decide-source { color: var(--desk-faint); font-size: var(--desk-t-micro); }
+/* 剪贴板里是图片：引文的位置放一张缩略图（最高 96px，等比，不撑满一行），底下垫一层 surface 让透明 PNG 也有边界。
+   Gemini 读出来的那句在图下面，同引文一样的灰字两行；前面一个小字「图里说的是」说明它不是原文。 */
+.dc-decide-image { display: block; align-self: flex-start; width: auto; max-width: 100%; max-height: 96px; border-radius: var(--desk-r-thumb); background: var(--desk-surface); object-fit: contain; }
+.dc-decide-digest { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin: 0; overflow: hidden; overflow-wrap: anywhere; color: var(--desk-muted); font-size: var(--desk-t-ui); line-height: 1.5; user-select: text; }
+.dc-decide-digest-lead { margin-right: var(--s-2); color: var(--desk-faint); font-size: var(--desk-t-micro); }
+
+/* 在想：一根 2px 的线，强调色的一段来回扫。 */
+.dc-decide-progress { flex-shrink: 0; height: 2px; margin: var(--s-1) var(--s-3) var(--s-3); overflow: hidden; border-radius: var(--r-pill); background: var(--desk-line); }
+.dc-decide-progress > i { display: block; width: 30%; height: 100%; border-radius: var(--r-pill); background: var(--desk-accent); animation: dc-decide-sweep 1.2s var(--desk-ease) infinite; }
+
+/* 头一行：这一题是什么，右边一个小标签说概率从哪来。 */
+.dc-decide-head { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; min-height: var(--desk-control-h); padding: 0 var(--s-3); }
+.dc-decide-frame { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--desk-ink); font-size: var(--desk-t-body); font-weight: var(--w-med); }
+.dc-decide-keys { flex-shrink: 0; color: var(--desk-faint); font-size: var(--desk-t-micro); white-space: nowrap; }
+.dc-decide-scorer { flex-shrink: 0; padding: 0 var(--s-3); border: 1px solid var(--desk-line); border-radius: var(--r-pill); color: var(--desk-faint); font-size: var(--desk-t-micro); line-height: 1.6; }
+
+/* 候选：一列卡，白色叠层；高亮的那张一圈内侧发丝线。重跑时旧卡先淡下去。 */
+.dc-decide-list { display: flex; flex: 1; flex-direction: column; gap: var(--s-2); min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--desk-hover) transparent; transition: opacity var(--desk-dur) var(--desk-ease); }
+.dc-decide-list[aria-busy="true"] { opacity: .45; }
+.dc-decide-card { --dc-i: 0; flex-shrink: 0; border-radius: var(--desk-r-card); background: var(--desk-surface); animation: dc-rise var(--desk-dur) var(--desk-ease) both; animation-delay: calc(var(--dc-i) * 45ms); transition: background var(--desk-dur-fast) var(--desk-ease), box-shadow var(--desk-dur-fast) var(--desk-ease); }
+.dc-decide-card:hover, .dc-decide-card:focus-within { background: var(--desk-hover); }
+.dc-decide-card[data-highlight="true"] { box-shadow: inset 0 0 0 1px var(--desk-highlight); }
+/* 整张卡的正面是一个按钮：标题、概率、理由、概率条排成一个小网格。 */
+.dc-companion .dc-decide-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label pct' 'why why' 'bar bar'; gap: var(--s-1) var(--s-4); width: 100%; min-height: 0; padding: var(--s-4) var(--s-5); border-radius: var(--desk-r-card); background: transparent; color: var(--desk-ink); text-align: left; white-space: normal; }
+.dc-companion .dc-decide-pick:hover:not(:disabled), .dc-companion .dc-decide-pick:active:not(:disabled) { background: transparent; transform: none; }
+.dc-decide-label { grid-area: label; min-width: 0; overflow-wrap: anywhere; color: var(--desk-ink); font-size: var(--desk-t-body); font-weight: var(--w-med); line-height: 1.4; }
+.dc-decide-pct { grid-area: pct; align-self: start; color: var(--desk-muted); font-size: var(--desk-t-ui); font-variant-numeric: tabular-nums; line-height: 1.7; }
+.dc-decide-why { grid-area: why; overflow-wrap: anywhere; color: var(--desk-muted); font-size: var(--desk-t-ui); font-weight: var(--w-normal); line-height: 1.5; }
+/* 概率条：这块面板里唯一常驻的强调色。 */
+.dc-decide-bar { --dc-p: 0; grid-area: bar; height: 2px; margin-top: var(--s-2); overflow: hidden; border-radius: var(--r-pill); background: var(--desk-line); }
+.dc-decide-bar > i { display: block; width: calc(var(--dc-p) * 100%); height: 100%; border-radius: var(--r-pill); background: var(--desk-accent); transform-origin: left center; animation: dc-decide-fill var(--desk-dur-slow) var(--desk-ease) both; animation-delay: calc(var(--dc-i) * 45ms + var(--desk-dur)); transition: width var(--desk-dur-slow) var(--desk-ease); }
+.dc-decide-card[data-highlight="true"] .dc-decide-pct { color: var(--desk-ink); }
+/* 理由引用到的事实：一排小胶囊，标题里是事实原文，点一下复制 [id]。 */
+.dc-decide-facts { display: flex; flex-wrap: wrap; gap: var(--s-1); padding: 0 var(--s-5) var(--s-3); }
+.dc-companion .dc-decide-fact { height: 20px; min-height: 0; padding: 0 var(--s-3); border-radius: var(--r-pill); background: var(--desk-raised); color: var(--desk-muted); font-size: var(--desk-t-micro); font-weight: var(--w-normal); font-variant-numeric: tabular-nums; }
+.dc-companion .dc-decide-fact:hover:not(:disabled) { background: var(--desk-pressed); color: var(--desk-ink); }
+/* 动作行：选中之后才出现，四个 24px 的文字按钮。 */
+.dc-decide-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); padding: 0 var(--s-3) var(--s-3); animation: dc-rise var(--desk-dur-fast) var(--desk-ease) both; }
+.dc-companion .dc-decide-act { height: 24px; min-height: 0; padding: 0 var(--s-3); gap: var(--s-2); border-radius: var(--desk-r-control); color: var(--desk-ink); font-size: var(--desk-t-micro); }
+.dc-decide-act > .bx { color: var(--desk-muted); font-size: var(--icon-sm); }
+
+/* 一句小字：知识库没记录、已复制。 */
+.dc-decide-note { flex-shrink: 0; margin: 0; padding: var(--s-2) var(--s-3) 0; color: var(--desk-faint); font-size: var(--desk-t-micro); line-height: 1.5; }
+
+/* 没权限 / 没选中 / 出错：一块居中的安静说明。 */
+.dc-decide-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); min-height: 0; padding: var(--s-6); text-align: center; }
+.dc-decide-state > .bx { color: var(--desk-faint); font-size: var(--icon-xl); }
+.dc-decide-state p { max-width: 360px; margin: 0; color: var(--desk-ink); font-size: var(--desk-t-state); font-weight: var(--w-med); line-height: 1.5; }
+.dc-companion .dc-decide-retry { height: var(--desk-control-h); margin-top: var(--s-2); padding: 0 var(--s-5); border-radius: var(--r-pill); color: var(--desk-ink); background: var(--desk-surface); }
+.dc-companion .dc-decide-retry:hover:not(:disabled) { background: var(--desk-raised); }
+
+/* 补一句背景：底部一行，和待办的「添加」同一个位置；没有框，输入时只把上面那根发丝线提亮。 */
+.dc-decide-context { display: flex; align-items: center; gap: var(--s-4); flex-shrink: 0; min-height: var(--desk-row-h); margin-top: var(--s-2); padding: 0 var(--s-3); border-top: 1px solid var(--desk-line); color: var(--desk-muted); transition: border-color var(--desk-dur-fast) var(--desk-ease), color var(--desk-dur-fast) var(--desk-ease); }
+.dc-decide-context:focus-within { border-top-color: var(--desk-highlight); color: var(--desk-ink); }
+.dc-decide-context > .bx { flex-shrink: 0; font-size: var(--icon-md); }
+.dc-decide .dc-decide-context input { flex: 1; min-width: 0; width: auto; max-height: var(--desk-row-h); padding: 0; border: none; box-shadow: none; border-radius: 0; background: transparent; color: var(--desk-ink); font-size: var(--desk-t-body); }
+.dc-decide .dc-decide-context input::placeholder { color: var(--desk-faint); opacity: 1; }
+.dc-decide .dc-decide-context input:focus { outline: none; box-shadow: none; }
+
+/* 在想的那两三秒：三张骨架卡占好位置，结果一到就换成真的，视线不用重新找。 */
+.dc-decide-skeleton { display: flex; flex-direction: column; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
+.dc-decide-skeleton > li { --dc-i: 0; height: 56px; border-radius: var(--desk-r-card); background: var(--desk-surface); animation: dc-pulse 1.4s ease-in-out infinite; animation-delay: calc(var(--dc-i) * 120ms); }
+.dc-decide-skeleton > li:nth-child(2) { --dc-i: 1; }
+.dc-decide-skeleton > li:nth-child(3) { --dc-i: 2; }
+@keyframes dc-decide-sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@keyframes dc-decide-fill { from { transform: scaleX(0); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .dc-decide-progress > i { animation: dc-pulse 1.4s ease-in-out infinite; transform: none; width: 100%; }
+  .dc-decide-card, .dc-decide-actions, .dc-decide-bar > i, .dc-decide-skeleton > li { animation: none; }
+}

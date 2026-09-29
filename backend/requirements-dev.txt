@@ -7,3 +7,5 @@ pytest>=8.0
 pytest-asyncio>=0.24
 pytest-cov>=5.0
 pyflakes>=3.0
+# Journey parity probes render fixture screenshots during the frontend suite.
+Pillow>=10.0

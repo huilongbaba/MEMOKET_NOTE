@@ -85,7 +85,9 @@ import { NoteInfoPanel, NotePathsPanel } from './components/NoteInfoPanels'
 import NoteLinksPanel from './components/NoteLinksPanel'
 import RevisionHistoryPanel from './components/RevisionHistoryPanel'
 import QuickView from './components/QuickView'
-import WelcomePane from './components/WelcomePane'
+import WorkspaceHome from './components/WorkspaceHome'
+import WorkspaceLibrary from './components/WorkspaceLibrary'
+import QuickCapture from './components/QuickCapture'
 import ShortcutsPanel from './components/ShortcutsPanel'
 import type { DropWhere } from './components/NoteTree'
 import NoteKbPanel from './components/NoteKbPanel'
@@ -185,6 +187,9 @@ const BUSY_LABEL: Record<string, string> = {
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
+  const [notesLoading, setNotesLoading] = useState(true)
+  const [notesError, setNotesError] = useState('')
+  const notesLoadVersion = useRef(0)
   // 整棵树一次拿全（见 api.getTree 的注释：按层拿会让展开变成一次网络往返）。
   const [tree, setTree] = useState<TreeRow[]>([])
   // 知识库那棵**虚拟**子树（docs/kb-fusion-design.md §3.2）。分类层一次取全，
@@ -192,7 +197,21 @@ export default function App() {
   const [kbRows, setKbRows] = useState<TreeRow[]>([])
   // 中栏正在看的虚拟节点（一条事实 / 一个分类）。跟 current 互斥：有 current
   // 就是在写笔记，有 virtualId 就是在看知识库。
-  const [virtualId, setVirtualId] = useState<string | null>(null)
+  const [virtualId, setVirtualId] = useState<string | null>('app:workspace')
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
+  useEffect(() => {
+    const show = () => setQuickCaptureOpen(true)
+    const shortcut = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault(); e.stopImmediatePropagation(); show()
+      }
+    }
+    window.addEventListener('open-quick-capture', show)
+    window.addEventListener('keydown', shortcut, true)
+    window.memoketDesktop?.quickCapture?.ready()
+    return () => { window.removeEventListener('open-quick-capture', show); window.removeEventListener('keydown', shortcut, true) }
+  }, [])
   // 应用内对话框（替掉 window.prompt——Electron 里那是系统级模态，主题管不到）
   const [picker, setPicker] = useState<PickerRequest | null>(null)
   /** 「导回这一篇」的弹层。整库导在导入页，这里只是换个范围——**共用同一个组件**，
@@ -448,7 +467,7 @@ export default function App() {
   const insertCursorRef = useRef<number | null>(null)
   // 探针里的 setTimeout 回调抓的是那一次 render 的函数——闭包里的 current 是旧的
   // （实拍：harness 跑到了启动时自动打开的那篇上）。永远走最新的那份。
-  const actionsRef = useRef({ runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve(), runVoice: (_f: number, _t: number) => Promise.resolve(), flushChangeLayers: (_k?: boolean) => {} })
+  const actionsRef = useRef({ switchTo: (_n: Note) => Promise.resolve(), runNoteHarness: (_m: 'write' | 'polish') => Promise.resolve(), runMagicTap: () => Promise.resolve(), handleSelectionAction: (_a: SelectionAction) => Promise.resolve(), runHarness: (_r: TreeRow) => Promise.resolve(), ingestCurrentNote: () => Promise.resolve(), runBlock: (_i: SlashItem, _f: number, _t: number, _p: string) => Promise.resolve(), dropIfStillEmpty: (_n: Note | null) => Promise.resolve(), collapseAll: () => Promise.resolve(), pushDiff: (_l: string, _b: string, _a: string, _r?: boolean) => {}, runSlides: (_s: 'points' | 'talk') => Promise.resolve(), onPickFile: (_f: FileList | null) => Promise.resolve(), restructureNote: () => Promise.resolve(), runSkeleton: (_b?: boolean) => Promise.resolve(), newNoteUnder: (_p: string) => Promise.resolve(), importMarkdown: (_f: FileList | null, _u?: string, _k?: boolean) => Promise.resolve(), runVoice: (_f: number, _t: number) => Promise.resolve(), flushChangeLayers: (_k?: boolean) => {} })
   const [noteHarnessStatus, setNoteHarnessStatus] = useState('')
   // 跑完之后那行结果（几轮、加了多少字、为什么停）留着，直到用户关掉 / 换笔记 /
   // 再跑一次。之前只弹一个 toast，几秒就没了，用户回头看只剩「改了 1 处」的工具条。
@@ -510,13 +529,22 @@ export default function App() {
     return false
   }
   const [focusMode, setFocusMode] = useState(false)
+  const [navMode, setNavMode] = useState<'auto' | 'compact' | 'full'>(() => {
+    try {
+      const saved = localStorage.getItem('memoket-navigation:' + api.getUser())
+      return saved === 'compact' || saved === 'full' ? saved : 'auto'
+    } catch { return 'auto' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('memoket-navigation:' + api.getUser(), navMode) } catch { /* The current window still works. */ }
+  }, [navMode])
   // 左右栏各自可拖宽、可独立折叠，按用户存本机（Trilium 存 leftPaneWidth /
   // rightPaneWidth / leftPaneVisible，我们同一套思路）。focusMode 保留为
   // 「两个都收」的快捷方式。
   const [panes, setPanes] = useState(() => {
     // 左栏默认 280 = 0.5.10 的 `--sidebar-width`（第 716 轮）。原来是 260——
     // 配上 16px 的内边距（也是他们的值）之后，260 会把树标题挤得更早截断。
-    const d = { leftW: 280, rightW: 340, leftOn: true, rightOn: true }
+    const d = { leftW: 228, rightW: 300, leftOn: false, rightOn: true }
     try {
       const raw = localStorage.getItem('memoket-note-panes:' + api.getUser())
       return raw ? { ...d, ...(JSON.parse(raw) as Partial<typeof d>) } : d
@@ -534,7 +562,37 @@ export default function App() {
     window.addEventListener('resize', on)
     return () => window.removeEventListener('resize', on)
   }, [])
-  const { leftW, splitW, leftShown, rightShown } = layoutPanes({ winW, panes, splitW: split?.w ?? null, focusMode })
+  const compactNav = (!!current && focusMode) || navMode === 'compact' || (navMode === 'auto' && winW <= 900)
+  const navWidth = compactNav ? 68 : 220
+  const paneLayout = layoutPanes({ winW: winW - navWidth + 80, panes, splitW: split?.w ?? null, focusMode })
+  const { leftW, splitW } = paneLayout
+  const leftShown = paneLayout.leftShown && !!current
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(false)
+  const rightReopenRef = useRef<HTMLButtonElement>(null)
+  const rightDrawerCloseRef = useRef<HTMLButtonElement>(null)
+  const rightDocked = paneLayout.rightShown && !!current
+    && winW - navWidth - (leftShown ? leftW : 0) - splitW - panes.rightW >= 520
+  const rightOverlay = rightDrawerOpen && !rightDocked && panes.rightOn && !!current && !focusMode
+  const rightShown = rightDocked || rightOverlay
+  const openRightPane = useCallback(() => {
+    setRightDrawerOpen(true)
+    // If even a closed tree cannot leave 520px for the editor, float over it instead.
+    // Preserve the tree width in that case: shrinking it cannot make the pane fit.
+    setPanes((p) => winW - navWidth - splitW - p.rightW < 520
+      ? { ...p, rightOn: true }
+      : makeRoomForRight(p, winW - navWidth + 80, splitW))
+  }, [winW, navWidth, splitW])
+  const closeRightPane = useCallback(() => {
+    setRightDrawerOpen(false)
+    setPanes((p) => ({ ...p, rightOn: false }))
+    requestAnimationFrame(() => rightReopenRef.current?.focus())
+  }, [])
+  useEffect(() => {
+    if (rightDocked || !current || focusMode) setRightDrawerOpen(false)
+  }, [rightDocked, current, focusMode])
+  useEffect(() => {
+    if (rightOverlay) rightDrawerCloseRef.current?.focus()
+  }, [rightOverlay])
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null)
   // 光标所在段落：右栏「记忆」按它查跟知识库的关系（冲突 / 延续 / 印证 / 缺依据）
   const [cursorPara, setCursorPara] = useState('')
@@ -743,7 +801,12 @@ export default function App() {
   // ---------------------------------------------------------------- 加载
 
   const reload = useCallback(async () => {
+    const version = ++notesLoadVersion.current
+    setNotesLoading(true)
+    setNotesError('')
+    try {
     const list = await api.listNotes()
+    if (version !== notesLoadVersion.current) return list
     setNotes(list)
     // 库里已经没有的笔记（别处删的、导入回滚的）标签也收掉——留着点了只会「找不到」
     const ids = new Set(list.map((n) => n.id))
@@ -755,6 +818,12 @@ export default function App() {
       .map((t) => (t.title === t.noteId && t.noteId.startsWith('kb:fact:') ? { ...t, title: '事实 ' + t.noteId.slice(8) }
         : t.noteId.startsWith('kb:unit:') && t.title === t.noteId.slice(8) ? { ...t, title: '会议记录' } : t)))
     return list
+    } catch (error) {
+      if (version === notesLoadVersion.current) setNotesError('暂时无法读取笔记库。请确认桌面后台服务正在运行，然后重试。')
+      throw error
+    } finally {
+      if (version === notesLoadVersion.current) setNotesLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -1557,12 +1626,9 @@ export default function App() {
   useEffect(() => {
     void reload().then((list) => {
       if (!list.length) return
-      // 回到上次看的那篇（标签页已经跨启动保住了，正文也该回到同一篇），
-      // 没记录才退回最近编辑的。探针要的是确定的起点，一律最近编辑的。
-      let last: string | null = null
-      try { if (!new URLSearchParams(location.search).get('probe')) last = localStorage.getItem('memoket-note-active:' + api.getUser()) } catch { /* 无所谓 */ }
-      open(list.find((n) => n.id === last) ?? list[0])
-    })
+      if (new URLSearchParams(location.search).get('probe')) open(list[0])
+
+    }).catch(() => { /* The workspace presents the connection error with retry. */ })
     void reloadTree()
     void checkHealth()
     // 设置里换了供应商 / 服务恢复了，状态栏那行红字要跟着变：之前只在启动时查一次，
@@ -1882,6 +1948,7 @@ export default function App() {
   // no-op when nothing's dirty so this can't double-save anything.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (document.querySelector('dialog[open]')) return
       if (!(e.metaKey || e.ctrlKey)) return
       const key = e.key.toLowerCase()
       if (key === 's') { e.preventDefault(); void save() }
@@ -1892,7 +1959,7 @@ export default function App() {
       // 再 toggle 一次就又关上了——实拍 `p10-keys-before`：正文里按 ⌘/ 什么都不出现（P10 C3-1）
       else if (key === '/') { if (e.defaultPrevented) return; e.preventDefault(); setShowShortcuts((v) => !v) }
       // 折叠左/右栏。Trilium 没给默认键，我们给 ⌘\ 和 ⌘⇧\
-      else if (key === '\\' && e.shiftKey) { e.preventDefault(); setPanes((p) => (p.rightOn ? { ...p, rightOn: false } : makeRoomForRight(p, winW, split?.w ?? 0))) }
+      else if (key === '\\' && e.shiftKey) { e.preventDefault(); if (rightShown) closeRightPane(); else openRightPane() }
       else if (key === '\\') { e.preventDefault(); setPanes((p) => ({ ...p, leftOn: !p.leftOn })) }
       // ⌘/Ctrl+⇧+F 一键格式化。加 shift 是为了不跟浏览器/编辑器的「查找」撞
       else if (key === 'f' && e.shiftKey) { e.preventDefault(); formatNote() }
@@ -1923,7 +1990,7 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, title, content, tabs, activeTabId, notes])
+  }, [current, title, content, tabs, activeTabId, notes, rightShown, openRightPane, closeRightPane])
 
   /** 把一批建议**直接应用到正文**，然后按 diff 标出来交给「接受 / 撤回」。
    *
@@ -3730,7 +3797,7 @@ export default function App() {
           <button className="icon-btn" title="关闭分屏" onClick={() => setSplit(null)}><Icon n="bx-x" /></button>
           {/* 右栏收起时那个「展开右栏」小钮是绝对定位在中栏右上角的，分屏一开正好压在「关闭分屏」上（第 198 轮实拍）——分屏时挪进这一行 */}
           {!rightShown && !focusMode && (
-            <button className="icon-btn" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={() => setPanes((p) => makeRoomForRight(p, winW, split?.w ?? 0))}><Icon n="bx-chevrons-left" /></button>
+            <button ref={rightReopenRef} className="icon-btn" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`} onClick={openRightPane}><Icon n="bx-chevrons-left" /></button>
           )}
         </div>
         <div className="split-body">
@@ -3757,10 +3824,30 @@ export default function App() {
 
   // ---------------------------------------------------------------- 渲染
 
-  actionsRef.current = { runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown, runVoice, flushChangeLayers }
+  actionsRef.current = { switchTo, runNoteHarness, runMagicTap, handleSelectionAction, runHarness, ingestCurrentNote, runBlock, dropIfStillEmpty, collapseAll, pushDiff, runSlides, onPickFile, restructureNote, runSkeleton, newNoteUnder, importMarkdown, runVoice, flushChangeLayers }
+
+  async function captureNote(noteTitle: string, body: string) {
+    const created = await api.createNote(noteTitle, body)
+    setNotes((prev) => [created, ...prev.filter((n) => n.id !== created.id)])
+    void reloadTree().catch(() => toast('记录已保存，目录暂时没有刷新', 'error'))
+    toastAction('已存入笔记与资料', '打开笔记', () => void actionsRef.current.switchTo(created))
+  }
+  function openWorkspaceNote(id: string) {
+    const n = notes.find((note) => note.id === id)
+    if (n) void switchTo(n)
+  }
+  function searchWorkspace(query: string) {
+    window.dispatchEvent(new CustomEvent('open-command-palette', { detail: { query: query.trim() } }))
+  }
+
+  const home = <WorkspaceHome notes={notes} onOpenNote={openWorkspaceNote}
+    notesLoading={notesLoading} notesError={notesError} onRetry={() => void reload().catch(() => {})}
+    onNewNote={() => void newNote()} onOpenToday={() => void openToday()}
+    onOpenDestination={(id) => void openVirtual(id)} onSearch={searchWorkspace}
+    onCapture={captureNote} onRefresh={() => { void reload().catch(() => {}); void reloadTree().catch(() => {}) }} />
 
   return (
-    <div className={'shell' + (focusMode ? ' focus-mode' : '')}>
+    <div className={'shell workspace-shell' + (compactNav ? ' ws-nav-compact' : '') + (focusMode ? ' focus-mode' : '') + (!current ? ' workspace-page' : ' workspace-editor')}>
       {treeMenu && (
         <ContextMenu
           at={treeMenu.at}
@@ -3808,7 +3895,9 @@ export default function App() {
       {quick && <QuickView note={quick} onClose={() => setQuick(null)} onOpen={(n) => void switchTo(n)} />}
       {prompt && <TextPrompt req={prompt} />}
       <Toaster />
+      {quickCaptureOpen && <QuickCapture onClose={() => setQuickCaptureOpen(false)} onSave={captureNote} />}
       <CommandPalette onOpenNote={(id) => { const n = notes.find((x) => x.id === id); if (n) void switchTo(n); else void api.getNote(id).then((fresh) => switchTo(fresh)).catch(() => toast('这篇笔记不在了', 'error')) }} onInsertFact={insertAtCursor}
+                      onOpenFact={(id) => void openVirtual(`kb:fact:${id}`)} canInsertFact={Boolean(current)}
                       tabs={tabs.map((t) => ({ noteId: t.noteId, title: t.title, snip: previewLine(notes.find((n) => n.id === t.noteId)?.content ?? '', t.title) }))}
                       onOpenTab={(id) => activateTab(tabs.find((t) => t.noteId === id))} />
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
@@ -3893,6 +3982,7 @@ export default function App() {
           标签行只占 rest-pane 就给不出位置，红绿灯会画到启动栏上）。 */}
       <div className="tab-bar">
         <div className="tab-row-left-spacer" />
+        <button className="ws-sidebar-toggle" title={compactNav ? '展开导航' : '收起导航，留更多空间给工作'} aria-label={compactNav ? '展开导航' : '收起导航'} aria-expanded={!compactNav} onClick={() => { if (focusMode) setFocusMode(false); setNavMode(compactNav ? 'full' : 'compact') }}><Icon n="bx-columns" /></button>
         {/* 前进后退（TabHistoryNavigationButtons）。跳去看一篇再回来。 */}
         <span className="history-nav">
           <button className="icon-btn" disabled={!histState.back} title={`后退（${fmtShortcut('⌘[')}）`} onClick={() => goHistory(-1)}><Icon n="bx-left-arrow-alt" /></button>
@@ -3911,37 +4001,39 @@ export default function App() {
           menuTabId={tabMenu?.tab.id ?? null}
           busyIds={new Set([loading === 'note-harness' ? noteHarnessNoteId : null, harness?.running ? harness.currentNoteId : null].filter((x): x is string => !!x))}
         />
+        <button className="ws-top-capture" title={`快速捕捉（${fmtShortcut('⇧⌘N')}）`} onClick={() => setQuickCaptureOpen(true)}><Icon n="bx-plus" /><span>快速捕捉</span><kbd>{fmtShortcut('⇧⌘N')}</kbd></button>
       </div>
       <div className="shell-main">
       {/* 启动栏 —— 照 Trilium 的 58px 竖排。放的是**跨笔记的入口**：
           知识库、Skill、无限续写、设置、用户。判据见 docs/product-north-star.md：
           记忆是一等公民，不该藏在某个按钮后面的弹层里。 */}
       <div className="launcher-pane">
-        <div className="launcher-logo" title="MEMOKET NOTE"><Logo size={30} /></div>
-        <button className="launcher-btn" title={`新建笔记（${fmtShortcut('⌘N')}）`} onClick={newNote}><Icon n="bx-plus" /></button>
-        <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）：日记 / 年 / 月 / 日，没有就建`} onClick={() => void openToday()}><Icon n="bx-calendar-event" /></button>
-        <button className="launcher-btn" title={`全局搜索：笔记 + 知识库（${fmtShortcut('⌘K')}）`}
-                onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><Icon n="bx-search" /></button>
-        {/* 去处（导入 / 屏幕活动 / Skill / 设置）**从 `util/destinations` 生成**：
-            这一份同时喂给 ⌘K（第 779 轮 / P21）。原来两处各写各的，于是屏幕活动
-            和写作 Skill 在左栏有、在 ⌘K 里没有——而计划 §8.4 明写要有。
-            加一个新去处只改那一个文件，两处同时出现。 */}
-        {DESTINATIONS.filter((d) => d.where === 'top').map((d) => (
-          <button key={d.id} className={'launcher-btn' + (virtualId === d.id ? ' active' : '')}
-                  title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /></button>
-        ))}
+        <button className="ws-brand" title="MEMOKET · 今日" onClick={() => void openVirtual(DESTINATIONS[0].id)}>
+          <Logo size={36} /><span><strong>memoket<span className="ws-brand-dot">.</span></strong><small>你的桌面工作空间</small></span>
+        </button>
+        <button className="ws-nav-search" title={`搜索与命令（${fmtShortcut('⌘K')}）`} onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}><Icon n="bx-search" /><span>搜索与命令</span><kbd>{fmtShortcut('⌘K')}</kbd></button>
+        <nav className="ws-main-nav" aria-label="工作空间导航">
+          {DESTINATIONS.filter((d) => d.where === 'top').map((d) => (
+            <button key={d.id} className={'launcher-btn' + ((virtualId === d.id || (d.id === 'app:notes' && current) || (d.id === 'app:workspace' && !current && !virtualId)) ? ' active' : '')}
+              aria-current={virtualId === d.id ? 'page' : undefined}
+              title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /><span>{d.name}</span>{d.id === 'app:notes' && notes.length > 0 && <small>{notes.length}</small>}</button>
+          ))}
+          <button className={'launcher-btn' + (virtualId?.startsWith('kb') ? ' active' : '')} title="知识库：检索记忆与原始来源" onClick={() => void openVirtual('kb', '知识库')}><Icon n="bx-brain" /><span>知识库</span></button>
+        </nav>
+        <div className="ws-nav-section"><span>随手可及</span><button className="icon-btn" title="新建笔记" onClick={() => void newNote()}><Icon n="bx-plus" /></button></div>
+        <button className="launcher-btn" title={`今天的日记（${fmtShortcut('⇧⌘D')}）`} onClick={() => void openToday()}><Icon n="bx-calendar-event" /><span>今日笔记</span></button>
+        <div className="ws-pinned-notes">
+          {notes.filter((n) => n.pinned).slice(0, 5).map((n) => <button key={n.id} className={'ws-pinned-note' + (current?.id === n.id ? ' active' : '')} title={displayTitle(n)} onClick={() => void switchTo(n)}><Icon n={n.icon || 'bx-file'} /><span>{displayTitle(n)}</span></button>)}
+          {notes.every((n) => !n.pinned) && <p>固定常用笔记，<br />随时回到工作上下文。</p>}
+        </div>
         <div className="launcher-spacer" />
-        {/* 设置和 Skill 是「特殊笔记」：开标签、进中栏，跟别的笔记一样对待
-            （照 Trilium：选项是隐藏子树里的笔记，不是弹层）。 */}
-        {DESTINATIONS.filter((d) => d.where === 'foot').map((d) => (
-          <button key={d.id} className={'launcher-btn' + (virtualId === d.id ? ' active' : '')}
-                  title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /></button>
-        ))}
-        <button className={'launcher-btn left-pane-toggle' + (panes.leftOn ? '' : ' collapsed')}
-                title={panes.leftOn ? '收起左栏（⌘\\）' : '展开左栏（⌘\\）'}
-                onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))}><Icon n="bx-chevrons-left" /></button>
-        {/* 用户头像放在最底下——对标 Trilium 启动栏底部的 GlobalMenu。 */}
-        <UserSwitcher />
+        <div className="ws-nav-foot">
+          {DESTINATIONS.filter((d) => d.where === 'foot').map((d) => (
+            <button key={d.id} className={'launcher-btn' + (virtualId === d.id ? ' active' : '')} title={d.hint} onClick={() => void openVirtual(d.id, d.name)}><Icon n={d.icon} /><span>{d.name}</span></button>
+          ))}
+          <button className="launcher-btn" title="快捷键一览" onClick={() => setShowShortcuts(true)}><Icon n="bx-command" /><span>快捷键</span><small>{fmtShortcut('⌘/')}</small></button>
+        </div>
+        <div className="ws-profile"><UserSwitcher /></div>
       </div>
 
       {/* 专注模式把左栏收起来——但启动栏留着：那是跨笔记的入口，收掉之后
@@ -4058,14 +4150,19 @@ export default function App() {
 
       <div className="rest-pane">
         {/* 这一支在 `!split` 里，所以腾地方时分屏宽度按 0 算 */}
-        {!rightShown && !focusMode && !split && (
-          <button className="right-pane-reopen" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`}
-                  onClick={() => setPanes((p) => makeRoomForRight(p, winW, 0))}><Icon n="bx-chevrons-left" /></button>
+        {current && !rightShown && !focusMode && !split && (
+          <button ref={rightReopenRef} className="right-pane-reopen" title={`展开右栏（${fmtShortcut('⇧⌘\\')}）`}
+                  onClick={openRightPane}><Icon n="bx-chevrons-left" /></button>
         )}
         <div className="center-pane">
         <div className={'note-pane' + (focusMode ? ' focus' : '')}>
         {/* 标题行固定在滚动区之上（Trilium 的 title-row 是 ScrollingContainer
             的兄弟，50px）。跟正文一起滚走的标题，滚到下面就不知道在写哪篇。 */}
+        {current && <div className="ws-editor-toolbar">
+          <button onClick={() => setPanes((p) => ({ ...p, leftOn: !p.leftOn }))} aria-pressed={panes.leftOn} title="浏览笔记树"><Icon n="bx-columns" /><span>笔记目录</span></button>
+          <span className="ws-editor-location">笔记 <Icon n="bx-chevron-right" /> 正在编辑</span>
+          <button onClick={() => setFocusMode((v) => !v)} aria-pressed={focusMode} title="切换专注写作"><Icon n={focusMode ? 'bx-collapse-vertical' : 'bx-expand'} /><span>{focusMode ? '退出专注' : '专注写作'}</span></button>
+        </div>}
         {current && (
           <div className="title-row">
             {/* 图标可点：挑一个当这篇的标识（Trilium 的 NoteIcon）。树、标签、标题行三处同一个 */}
@@ -4179,7 +4276,9 @@ export default function App() {
         <div className="note-body">
 
         {!current ? (
-          virtualId === 'app:import' ? (
+          virtualId === 'app:workspace' ? home : virtualId === 'app:notes' ? (
+            <WorkspaceLibrary notes={notes} notesLoading={notesLoading} notesError={notesError} onRetry={() => void reload().catch(() => {})} onOpen={(n) => void switchTo(n)} onNew={() => void newNote()} onImport={() => void openVirtual('app:import')} onPin={togglePin} />
+          ) : virtualId === 'app:import' ? (
             <div className="kb-note" style={{ maxWidth: 760 }}>
               <h2 className="kb-note-title"><Icon n="bx-import" /> 导入</h2>
               <div className="card">
@@ -4221,15 +4320,7 @@ export default function App() {
               onCite={null}
             /></Suspense>
           ) : (
-            <WelcomePane
-              notes={notes}
-              factCount={kbRows.find((r) => r.note_id === 'kb')?.fact_count ?? 0}
-              onNew={() => void newNote()}
-              onImport={() => void openVirtual('app:import', '导入')}
-              onOpen={(id) => void openVirtual(id)}
-              onOpenNote={(n) => void switchTo(n)}
-              onShortcuts={() => setShowShortcuts(true)}
-            />
+            home
           )
         ) : (
           <>
@@ -4485,11 +4576,14 @@ export default function App() {
           </>
         )}
 
-      {rightShown && (
+      {rightDocked && (
         <Gutter side="right" onResize={(dx) => setPanes((p) => ({ ...p, rightW: Math.max(180, Math.min(700, p.rightW + dx)) }))} />
       )}
       {rightShown && (
-      <div className="right-pane" style={{ width: panes.rightW }}>
+      <div className={'right-pane' + (rightOverlay ? ' ws-context-drawer' : '')} style={{ width: panes.rightW }} role="complementary" aria-label="上下文助手" onKeyDown={(event) => {
+        if (rightOverlay && event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); closeRightPane() }
+      }}>
+        <div className="ws-context-heading"><span><Icon n="bx-brain" /> 上下文助手</span>{rightOverlay ? <button ref={rightDrawerCloseRef} className="icon-btn" title="关闭上下文助手（Esc）" aria-label="关闭上下文助手" onClick={closeRightPane}><Icon n="bx-x" /></button> : <small>围绕这篇笔记</small>}</div>
         {verifyResult && (
           <VerifyPanel findings={verifyResult.findings}
                        checked={verifyResult.checked ?? 0}
@@ -4500,7 +4594,7 @@ export default function App() {
                        onClose={() => setVerifyResult(null)} />
         )}
         <RightPane
-          onCollapse={() => setPanes((p) => ({ ...p, rightOn: false }))}
+          onCollapse={closeRightPane}
           defaultTab="memory"
           focusTab={paneFocus}
           tabs={[
@@ -4692,11 +4786,9 @@ export default function App() {
           {/* 红字可点：装好的包第一次开、或换了台机器没填模型，红字只说「不可达」用户不知道去哪修 */}
           {healthMsg && (
             <button className="health-bad linklike"
-                    title={healthMsg === NOT_CONFIGURED
-                      ? '还没配过模型：打开设置，选「本地模型」填地址和模型名，或选「OpenAI 兼容」填 key'
-                      : '点开设置页填模型地址 / 密钥'}
-                    onClick={() => void openVirtual('app:settings', '设置')}>
-              <Icon n="bx-error" /> {healthMsg} · 去设置
+                    title={healthMsg === '后端不可达' ? '无法连接笔记库，点击重新检查连接' : `${healthMsg}。打开设置连接 AI 模型。笔记仍可正常记录与编辑。`}
+                    onClick={() => healthMsg === '后端不可达' ? void checkHealth() : void openVirtual('app:settings', '设置')}>
+              <Icon n={healthMsg === '后端不可达' ? 'bx-error' : 'bx-bot'} /> {healthMsg === '后端不可达' ? '笔记库未连接 · 重试' : healthMsg === NOT_CONFIGURED ? '连接 AI' : 'AI 未连接'}
             </button>
           )}
           {asrOffline && <span className="muted" title={'语音服务不可达：' + asrOffline + '。录音转写用不了，其它功能不受影响。'}><Icon n="bx-microphone-off" /> 语音离线</span>}

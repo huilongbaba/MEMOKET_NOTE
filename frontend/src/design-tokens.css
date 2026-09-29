@@ -3,9 +3,7 @@
    规范见 docs/UI_SPEC.md。**这是全应用唯一允许写字面颜色的文件**
    （闸门 scripts/check-ui-tokens.mts 会拦别处的）。
 
-   来源：memoket/memoket-desktop 的 Design System v3
-   （electron/src/renderer/src/styles/design-theme.css），它自己又对齐移动端
-   APP 的 AppTheme（品牌紫 #620FF0）。
+   保留原编辑器令牌契约；桌面工作台主题见文件末尾。
 
    深色写在 `@media (prefers-color-scheme: dark)` 里，**不用 `[data-theme]`**：
    这个应用的主题切换是 Electron `nativeTheme.themeSource` 驱动系统偏好
@@ -13,6 +11,62 @@
    ========================================================================== */
 
 :root {
+  /* ── 灵动岛（桌面顶部浮窗）──────────────────────────────────────────
+     一块纯黑的物体从屏幕顶边（刘海）长出来：#000 与刘海同色，不描边、不投影
+     （原生窗口与外形等大，外投影本来也会被裁掉），只有一圈内侧的 1px 亮边。
+     深度靠黑底上的白色叠层（6 / 8 / 10 / 14%）与 8% 的发丝线，颜色只保留一个
+     强调色（提亮的品牌紫），只给「活着的状态」：计时弧、AI 进行中的点、拖放的
+     目标、键盘焦点。主按钮是唯一的白色实心胶囊。
+     浅色跟着桌面端的外观走（设置 › 外观 → nativeTheme → prefers-color-scheme）：
+     同一套令牌换成白底黑字，叠层与发丝线换成黑色的 5 / 6 / 8 / 12%，强调色用
+     品牌紫本色；见下面的 light 媒体查询。 */
+  --desk-bg: #000000;
+  --desk-surface: rgba(255, 255, 255, .06);
+  --desk-raised: rgba(255, 255, 255, .10);
+  --desk-hover: rgba(255, 255, 255, .08);
+  --desk-pressed: rgba(255, 255, 255, .14);
+  --desk-line: rgba(255, 255, 255, .08);
+  --desk-highlight: rgba(255, 255, 255, .18);
+  --desk-shell-shadow: inset 0 -1px 0 rgba(255, 255, 255, .08), inset 1px 0 0 rgba(255, 255, 255, .05), inset -1px 0 0 rgba(255, 255, 255, .05);
+  --desk-control-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 1px 2px rgba(0, 0, 0, .40);
+  --desk-item-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+  --desk-menu-bg: #1C1C1E;
+  --desk-menu-shadow: 0 8px 24px rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(255, 255, 255, .08);
+  --desk-ink: #F5F5F7;
+  --desk-muted: rgba(245, 245, 247, .62);
+  --desk-faint: rgba(245, 245, 247, .38);
+  --desk-on-ink: #000000;
+  --desk-accent: #A48CFF;
+  --desk-accent-soft: rgba(164, 140, 255, .14);
+  --desk-accent-line: rgba(164, 140, 255, .50);
+  --desk-preview-paper: #FFFFFF;
+  --desk-preview-ink: #1D1D1F;
+  /* 几何：收起的药丸与展开的头部同高，同一个物体在伸展，不是「打开一扇窗」。 */
+  --desk-head: 44px;
+  --desk-radius-pill: 22px;   /* 收起时底部圆角：44px 的一半，胶囊底 */
+  --desk-radius: 28px;        /* 展开时底部圆角，随弹簧进度从 22 过渡到 28 */
+  --desk-r-card: 12px;        /* 卡片、投放目标、抽屉 */
+  --desk-r-thumb: 10px;       /* 暂存缩略图、预览台 */
+  --desk-r-control: 8px;      /* 菜单项、附件条、事实行 */
+  --desk-segment-w: 72px;     /* 分段控件每一段的宽度：滑块按序号平移，不用测量 */
+  --desk-control-h: 28px;
+  --desk-row-h: 32px;
+  --desk-drawer-h: 166px;
+  /* 字：标题 19（Display）/ 正文 15 / 界面 12 / 元信息 11；数字与大字走 --display。 */
+  --desk-t-title: 19px;
+  --desk-t-drop: 17px;
+  --desk-t-state: 15px;
+  --desk-t-body: 15px;
+  --desk-t-ui: 12px;
+  --desk-t-micro: 11px;
+  --desk-t-stat: 20px;
+  --desk-lh-body: 1.6;
+  --desk-ls-title: -0.02em;
+  /* 动：几何由弹簧驱动；其余全是可中断的 transform / opacity / grid-rows 过渡。 */
+  --desk-ease: cubic-bezier(.2, .8, .2, 1);
+  --desk-dur-fast: 120ms;
+  --desk-dur: 200ms;
+  --desk-dur-slow: 320ms;
   /* ── 品牌 ───────────────────────────────────────────────────────────── */
   --brand:       #620FF0;
   --brand-2:     #8B5AE8;
@@ -215,6 +269,65 @@
      都在用 Text，放大之后字距偏松。） */
   --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+
+/* 完整笔记库窗口：与灵动岛同一种材质语言——中性的近黑（窗口不用纯黑，黑留给岛），
+   白色叠层作面，8% 发丝线，唯一的强调色是提亮的品牌紫；浅色下是中性的暖白与品牌紫。 */
+:root {
+  --ws-bg: #FAFAFA;
+  --ws-surface: #FFFFFF;
+  --ws-nav: #F2F2F4;
+  --ws-ink: #111114;
+  --ws-muted: #6E6E76;
+  --ws-line: rgba(0, 0, 0, .08);
+  --ws-accent: #620FF0;
+  --ws-accent-soft: rgba(98, 15, 240, .08);
+  --ws-on-accent: #FFFFFF;
+  --ws-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px -12px rgba(0, 0, 0, .12);
+  --ws-title: 32px;
+  --ws-brand-size: 18px;
+}
+/* 灵动岛 · 浅色：桌面端外观选了浅色（或跟随系统且系统为浅色）时，岛是一块白的。
+   形状、尺度、动效全部不变，只有材质：白底、黑字、黑色叠层，主按钮是黑色实心胶囊。
+   窗口和外形等大，外投影会被裁掉，所以只靠一圈 1px 的内侧暗边把它从浅色壁纸上分出来。 */
+@media (prefers-color-scheme: light) {
+  :root {
+    --desk-bg: #FFFFFF;
+    --desk-surface: rgba(0, 0, 0, .05);
+    --desk-raised: rgba(0, 0, 0, .08);
+    --desk-hover: rgba(0, 0, 0, .06);
+    --desk-pressed: rgba(0, 0, 0, .12);
+    --desk-line: rgba(0, 0, 0, .08);
+    --desk-highlight: rgba(0, 0, 0, .16);
+    --desk-shell-shadow: inset 0 0 0 1px rgba(0, 0, 0, .10), inset 0 -1px 0 rgba(0, 0, 0, .06);
+    --desk-control-shadow: inset 0 1px 0 rgba(255, 255, 255, .60), 0 1px 2px rgba(0, 0, 0, .12);
+    --desk-item-shadow: 0 2px 6px rgba(0, 0, 0, .14);
+    --desk-menu-bg: #FFFFFF;
+    --desk-menu-shadow: 0 8px 24px rgba(0, 0, 0, .18), inset 0 0 0 1px rgba(0, 0, 0, .06);
+    --desk-ink: #111114;
+    --desk-muted: rgba(17, 17, 20, .62);
+    --desk-faint: rgba(17, 17, 20, .40);
+    --desk-on-ink: #FFFFFF;
+    --desk-accent: #620FF0;
+    --desk-accent-soft: rgba(98, 15, 240, .10);
+    --desk-accent-line: rgba(98, 15, 240, .45);
+    --desk-preview-paper: #FFFFFF;
+    --desk-preview-ink: #1D1D1F;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ws-bg: #0E0E10;
+    --ws-surface: #161618;
+    --ws-nav: #0A0A0B;
+    --ws-ink: #F5F5F7;
+    --ws-muted: rgba(245, 245, 247, .62);
+    --ws-line: rgba(255, 255, 255, .08);
+    --ws-accent: #A48CFF;
+    --ws-accent-soft: rgba(164, 140, 255, .14);
+    --ws-on-accent: #000000;
+    --ws-shadow: none;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
